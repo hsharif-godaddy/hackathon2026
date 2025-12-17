@@ -263,6 +263,134 @@ Cypress.Commands.add('deleteApp', (appId: string) => {
   });
 });
 
+/**
+ * Get or create a shared app for a test spec
+ * Uses environment variables to cache app ID across tests in the same spec
+ * @param sharedAppKey - The Cypress.env() key to store/retrieve the app ID
+ * @param specPrefix - The prefix to use when creating a new app (e.g., '[e2e:develop-chat]')
+ * @param appDescription - Optional description to append to the app name (e.g., 'Test app for chat')
+ */
+Cypress.Commands.add('getOrCreateSharedApp', (
+  sharedAppKey: string,
+  specPrefix: string,
+  appDescription?: string
+) => {
+  return cy.request({
+    method: 'GET',
+    url: '/api/sites',
+    failOnStatusCode: false,
+  }).then((response): Cypress.Chainable<string> => {
+    if (response.status === 200 && response.body?.length > 0) {
+      const existingId = Cypress.env(sharedAppKey) as string | undefined;
+      const apps = response.body as Array<{ id: string }>;
+
+      if (existingId && apps.some((app) => app.id === existingId)) {
+        cy.log(`Using cached app: ${existingId}`);
+        return cy.wrap(existingId);
+      }
+
+      const appId = apps[0].id;
+      cy.log(`Using existing app: ${appId}`);
+      Cypress.env(sharedAppKey, appId);
+      return cy.wrap(appId);
+    }
+
+    cy.log('No existing apps, creating new one');
+    const appName = appDescription ? `${specPrefix} ${appDescription}` : `${specPrefix} Test app`;
+    return cy.createAppAndGetId(appName).then((id: string) => {
+      Cypress.env(sharedAppKey, id);
+      return cy.wrap(id);
+    });
+  });
+});
+
+interface DeploymentPollResult {
+  success: boolean;
+  deploymentId: string;
+  status: string;
+}
+
+/**
+ * Poll deployment status until complete or timeout
+ * Used to wait for deployment after clicking publish button
+ */
+Cypress.Commands.add('pollDeploymentStatus', (
+  appId: string,
+  deploymentId: string,
+  pollInterval: number,
+  maxWaitTime: number
+) => {
+  const startTime = Date.now();
+
+  function checkStatus(): void {
+    const elapsed = Date.now() - startTime;
+
+    if (elapsed >= maxWaitTime) {
+      cy.log(`⚠ Deployment timeout after ${Math.round(elapsed / 1000)}s`);
+      const result: DeploymentPollResult = {
+        success: false,
+        deploymentId,
+        status: 'timeout',
+      };
+      cy.wrap(result).as('deploymentPollResult');
+      return;
+    }
+
+    cy.request({
+      method: 'GET',
+      url: `/api/apps/${appId}/deployments?limit=10&includeJobData=true`,
+      failOnStatusCode: false,
+    }).then((response) => {
+      if (response.status !== 200) {
+        cy.log(`Deployments API error: ${response.status}`);
+        // Continue polling on API errors
+        cy.wait(pollInterval).then(() => checkStatus());
+        return;
+      }
+
+      const deployments = response.body?.deployments || response.body || [];
+      const deployment = deployments.find((d: { id: string }) => d.id === deploymentId);
+
+      if (!deployment) {
+        cy.log(`Deployment ${deploymentId} not found yet, continuing to poll...`);
+        cy.wait(pollInterval).then(() => checkStatus());
+        return;
+      }
+
+      const status = deployment.status?.toLowerCase();
+      cy.log(`Deployment status: ${status} (elapsed: ${Math.round(elapsed / 1000)}s)`);
+
+      if (status === 'deployed') {
+        cy.log(`✓ Deployment successful after ${Math.round(elapsed / 1000)}s`);
+        const result: DeploymentPollResult = {
+          success: true,
+          deploymentId,
+          status: 'deployed',
+        };
+        cy.wrap(result).as('deploymentPollResult');
+        return;
+      }
+
+      if (status === 'failed') {
+        cy.log(`✗ Deployment failed after ${Math.round(elapsed / 1000)}s`);
+        const result: DeploymentPollResult = {
+          success: false,
+          deploymentId,
+          status: 'failed',
+        };
+        cy.wrap(result).as('deploymentPollResult');
+        return;
+      }
+
+      // Status is pending or deploying, continue polling
+      cy.wait(pollInterval).then(() => checkStatus());
+    });
+  }
+
+  checkStatus();
+  return cy.get<DeploymentPollResult>('@deploymentPollResult');
+});
+
 // Extend Cypress namespace for TypeScript support
 declare global {
   namespace Cypress {
@@ -371,6 +499,36 @@ declare global {
        * @example cy.deleteApp('abc-123')
        */
       deleteApp(appId: string): Chainable<void>;
+
+      /**
+       * Get or create a shared app for a test spec
+       * Uses Cypress.env() to cache app ID across tests in the same spec
+       * @param sharedAppKey - The Cypress.env() key to store/retrieve the app ID
+       * @param specPrefix - The prefix to use when creating a new app (e.g., '[e2e:develop-chat]')
+       * @param appDescription - Optional description to append to the app name
+       * @example cy.getOrCreateSharedApp('sharedAppId_developChat', '[e2e:develop-chat]', 'Test app for chat')
+       */
+      getOrCreateSharedApp(
+        sharedAppKey: string,
+        specPrefix: string,
+        appDescription?: string
+      ): Chainable<string>;
+
+      /**
+       * Poll deployment status until complete or timeout
+       * Used after clicking publish to wait for deployment completion
+       * @param appId - The ID of the app
+       * @param deploymentId - The deployment ID to poll
+       * @param pollInterval - Time between polls in ms
+       * @param maxWaitTime - Maximum wait time in ms
+       * @example cy.pollDeploymentStatus('app-123', 'deploy-456', 5000, 300000)
+       */
+      pollDeploymentStatus(
+        appId: string,
+        deploymentId: string,
+        pollInterval: number,
+        maxWaitTime: number
+      ): Chainable<{ success: boolean; deploymentId: string; status: string }>;
     }
   }
 }

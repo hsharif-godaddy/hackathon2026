@@ -1,5 +1,5 @@
 /**
- * Develop Page Smoke Tests
+ * Core Navigation Smoke Tests
  *
  * Foundational E2E tests that verify the core user journey:
  * 1. Homepage loads (authentication successful)
@@ -8,7 +8,28 @@
  *
  * User is already authenticated via e2e.ts before hook.
  */
-describe('Develop Page', () => {
+const SPEC_PREFIX = '[e2e:core-navigation]';
+
+describe('Core Navigation', () => {
+  /**
+   * Ensure at least one app exists for navigation tests.
+   * Creates an app with spec prefix if the account has no apps.
+   */
+  before(() => {
+    cy.request({
+      method: 'GET',
+      url: `${Cypress.env('baseUrl')}/api/sites`,
+      failOnStatusCode: false,
+    }).then((response) => {
+      if (response.status !== 200 || !response.body?.length) {
+        cy.log('No apps found - creating one for navigation tests');
+        cy.createAppAndGetId(`${SPEC_PREFIX} Test app for navigation`);
+      } else {
+        cy.log(`Found ${response.body.length} existing app(s) - skipping creation`);
+      }
+    });
+  });
+
   it('should navigate from homepage to develop page and verify core functionality', () => {
     cy.intercept('GET', '**/api/sites').as('getSites');
 

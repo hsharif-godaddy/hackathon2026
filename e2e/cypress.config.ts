@@ -51,7 +51,7 @@ export default defineConfig({
 
     // Retry failed tests - helps with AI processing timing variations
     retries: {
-      runMode: 2,    // Retry up to 2 times in CI (cypress run)
+      runMode: 1,    // Retry up to 1 time in CI (cypress run)
       openMode: 0,   // No retries in interactive mode (cypress open)
     },
 

@@ -6,20 +6,31 @@
  * 2. App card actions - Edit, Preview, Delete
  * 3. Navigation - Create new app, Edit to develop page
  * 4. Status display - Running, Stopped, Creating tags
+ *
+ * Strategy:
+ * - Uses spec prefix for parallel-safe app creation
+ * - Apps created by this spec are cleaned up automatically
  */
 
-describe('Apps Page', () => {
-  beforeEach(function setupAppsPage() {
-    cy.intercept('GET', '**/api/sites').as('getSites');
-    cy.visit('/apps');
-    cy.wait('@getSites');
-  });
+/** Prefix used to identify apps created by this spec file */
+const SPEC_PREFIX = '[e2e:apps-page]';
 
+/**
+ * Navigate to /apps and wait for page to be ready by checking DOM elements.
+ * More reliable than waiting for XHR requests which can race with intercept setup.
+ */
+function visitAppsPage(): void {
+  cy.visit('/apps');
+  cy.get('[data-eid*="apps.app.edit"]', { timeout: 30000 }).should('exist');
+}
+
+describe('Apps Page', () => {
   it('should display page content and status tags', () => {
+    visitAppsPage();
+
     cy.contains('Manage your AI-powered websites and applications')
       .should('be.visible');
 
-    // Match "1 app total" or "N apps total"
     cy.get('body').should(($body) => {
       expect($body.text()).to.match(/\d+ apps? total/);
     });
@@ -35,31 +46,24 @@ describe('Apps Page', () => {
   });
 
   it('should delete an app via confirmation dialog', () => {
-    cy.createAppAndGetId('Single Page with Hello World as the title');
+    cy.createAppAndGetId(`${SPEC_PREFIX} Single Page with Hello World as the title`);
 
-    // Go back to apps page with fresh intercept
-    cy.intercept('GET', '**/api/sites').as('getSitesRefresh');
-    cy.visit('/apps');
-    cy.wait('@getSitesRefresh');
+    // Navigate to apps page and wait for content to load
+    visitAppsPage();
 
-    // Count apps before delete
     cy.get('[data-eid*="apps.app.delete"]', { timeout: 30000 }).then(($deleteButtons) => {
       const countBefore = $deleteButtons.length;
       cy.log(`Apps before delete: ${countBefore}`);
 
-      // Click delete on the first app
       cy.wrap($deleteButtons.first()).click();
 
-      // Verify confirmation dialog appears
       cy.contains('Are you sure you want to delete').should('be.visible');
       cy.contains('button', 'Delete').should('be.visible');
 
-      // Actually delete the app
       cy.intercept('DELETE', '**/api/sites/*').as('deleteApp');
       cy.contains('button', 'Delete').click();
       cy.wait('@deleteApp', { timeout: 30000 });
 
-      // Verify dialog closes and app count decreased
       cy.contains('Are you sure you want to delete').should('not.exist');
       cy.get('[data-eid*="apps.app.delete"]', { timeout: 30000 })
         .should('have.length', countBefore - 1);
@@ -69,6 +73,8 @@ describe('Apps Page', () => {
   });
 
   it('should show Preview button for running apps and open preview in new tab', () => {
+    visitAppsPage();
+
     cy.get('[data-eid*="apps.app.view"]', { timeout: 30000 }).then(($previewButtons) => {
       if ($previewButtons.length > 0) {
         cy.wrap($previewButtons.first())
@@ -87,6 +93,8 @@ describe('Apps Page', () => {
   });
 
   it('should navigate to homepage when clicking Create a new app', () => {
+    visitAppsPage();
+
     cy.contains('Create a new app').click();
 
     cy.url({ timeout: 15000 }).should('match', /\/$/);
@@ -95,6 +103,8 @@ describe('Apps Page', () => {
   });
 
   it('should navigate to develop page when clicking Edit on an app card', () => {
+    visitAppsPage();
+
     cy.get('[data-eid*="apps.app.edit"]', { timeout: 30000 })
       .first()
       .click();

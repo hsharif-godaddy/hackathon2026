@@ -80,15 +80,21 @@ function setupAuth() {
 }
 
 /**
- * Pre-test cleanup - runs once before all tests in each spec file
- * Ensures consistent starting state with max 1 app
+ * Get the spec prefix for the current spec file.
+ * Used to identify apps created by this spec for cleanup.
  */
-before(() => {
-  // Set up auth first so API calls work
-  setupAuth();
+function getSpecPrefix(): string {
+  const specName = Cypress.spec.name.replace('.cy.ts', '').replace('.cy.js', '');
+  return `[e2e:${specName}]`;
+}
 
-  // Now clean up apps via API
+/**
+ * Clean up apps created by this spec (identified by prompt prefix).
+ * This is parallel-safe: only deletes apps matching this spec's prefix.
+ */
+function cleanupSpecApps(context: string) {
   const baseUrl = Cypress.env('baseUrl');
+  const specPrefix = getSpecPrefix();
 
   cy.request({
     method: 'GET',
@@ -96,23 +102,23 @@ before(() => {
     failOnStatusCode: false,
   }).then((response) => {
     if (response.status !== 200 || !response.body?.length) {
-      cy.log('No apps found or API error - skipping cleanup');
+      cy.log(`${context}: No apps found or API error - skipping cleanup`);
       return;
     }
 
-    const apps = response.body;
-    cy.log(`Pre-test cleanup: Found ${apps.length} app(s)`);
+    const apps = response.body as Array<{ id: string; name?: string; prompt?: string }>;
 
-    if (apps.length <= 1) {
-      cy.log('Only 1 app - no cleanup needed');
+    // Only delete apps created by THIS spec (matching prefix in prompt)
+    const myApps = apps.filter((app) => app.prompt?.startsWith(specPrefix));
+
+    if (myApps.length === 0) {
+      cy.log(`${context}: No apps from ${specPrefix} to clean up`);
       return;
     }
 
-    // Delete all but first app
-    const appsToDelete = apps.slice(1);
-    cy.log(`Deleting ${appsToDelete.length} app(s) to leave 1`);
+    cy.log(`${context}: Cleaning up ${myApps.length} app(s) from ${specPrefix}`);
 
-    appsToDelete.forEach((app: { id: string; name?: string }) => {
+    myApps.forEach((app) => {
       cy.request({
         method: 'DELETE',
         url: `${baseUrl}/api/sites/${app.id}`,
@@ -126,6 +132,16 @@ before(() => {
       });
     });
   });
+}
+
+/**
+ * Pre-test cleanup - runs once before all tests in each spec file
+ * Cleans up apps from PREVIOUS runs of this spec
+ * This is parallel-safe: specs don't interfere with each other's apps
+ */
+before(() => {
+  setupAuth();
+  cleanupSpecApps('Pre-test');
 });
 
 /**
