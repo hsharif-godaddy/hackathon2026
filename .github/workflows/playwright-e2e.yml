@@ -25,6 +25,20 @@ on:
         type: boolean
         default: false
 
+  # Allow triggering from other GitHub Actions
+  workflow_call:
+    inputs:
+      environment:
+        description: "Environment to test against"
+        required: true
+        default: "test" # The workflow_call will mostly be called building for the test env
+        type: string
+      post_promotion:
+        description: "Triggered by promotion workflow (internal use)"
+        required: false
+        type: boolean
+        default: false
+
 permissions:
   id-token: write # required for artifactory token login
   contents: read
