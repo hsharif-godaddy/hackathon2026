@@ -44,6 +44,7 @@ import { AppRepository } from '../database/repositories/AppRepository.js'
 import { GitTool } from '../tools/git-tool.js'
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
 import { initializeContextRegistry } from '../services/initializeContextRegistry.js'
+import { KnowBDriver } from '../tools/ai-lib-tools/drivers/knowb-driver.js'
 
 /**
  * Shared AppRepository instance to avoid repeated initialization
@@ -274,7 +275,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       async loadContextMessages(context: Record<string, unknown>): Promise<ContextMessage[]> {
         // Always show concise summary
         logger.debug('websocket.context.provider.loading', {
-          message: 'Loading context messages'
+          message: 'Loading context messages',
+          contextKeys: Object.keys(context),
+          hasMetadata: !!context.metadata,
+          metadataKeys: context.metadata ? Object.keys(context.metadata as Record<string, unknown>) : []
         })
 
         if (!context) {
@@ -418,11 +422,44 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             }
           }
 
+          // Search KnowB with user's message for relevant documentation
+          let knowBContextMessage: ContextMessage | null = null
+          const userMessage = agentsAppContext.metadata?._userMessage as string | undefined
+
+          if (userMessage && typeof userMessage === 'string' && userMessage.trim().length > 0) {
+            try {
+              const knowBDriver = new KnowBDriver()
+              const knowBResult = await knowBDriver.search({
+                query: userMessage,
+                kbNodeIds: ['/airo_sys'],
+                maxResults: 3,
+                scoreThreshold: 0.35,
+              })
+
+              if (knowBResult.success && knowBResult.results && knowBResult.results.length > 0) {
+                const docsContent = knowBDriver.formatResultsAsMarkdown(knowBResult.results)
+
+                knowBContextMessage = {
+                  role: 'assistant',
+                  content: `# Relevant Documentation\n\nHere is relevant documentation from the knowledge base that may help answer this question:\n\n${docsContent}\n\n---\n*Use this documentation to inform your response, but respond naturally without explicitly referencing it unless directly relevant.*`,
+                  insertionOrder: 'before_history'
+                }
+              }
+            } catch (error) {
+              logger.warn('websocket.context.knowb.error', {
+                error: error instanceof Error ? error.message : String(error),
+                query: userMessage.substring(0, 100)
+              })
+              // Continue without KnowB context if search fails
+            }
+          }
+
           logger.info('websocket.context.provider.success', {
             message: 'Built context messages',
-            messageCount: contextResult.contextMessages.length + (dynamicDataMessage ? 1 : 0) + (todoContextMessage ? 1 : 0),
+            messageCount: contextResult.contextMessages.length + (dynamicDataMessage ? 1 : 0) + (todoContextMessage ? 1 : 0) + (knowBContextMessage ? 1 : 0),
             hasDynamicData: !!dynamicDataMessage,
-            hasTodoContext: !!todoContextMessage
+            hasTodoContext: !!todoContextMessage,
+            hasKnowBContext: !!knowBContextMessage
           })
 
           // Collect all context messages
@@ -453,6 +490,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               role: todoContextMessage.role as 'user' | 'system',
               content: todoContextMessage.content,
               insertionOrder: todoContextMessage.insertionOrder
+            })
+          }
+
+          // Add KnowB documentation context if present
+          if (knowBContextMessage) {
+            allMessages.push({
+              role: knowBContextMessage.role as 'user' | 'system',
+              content: knowBContextMessage.content,
+              insertionOrder: knowBContextMessage.insertionOrder
             })
           }
 
@@ -1077,23 +1123,18 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       },
 
       // Context extractor to validate appId
+      // NOTE: _userMessage is set in processContext() in ai-lib, NOT here
+      // because contextExtractor only receives data.context, not data.message
       contextExtractor: (rawContext: Record<string, unknown>, _socketContext?: any) => {
         // Extract appId from context metadata
         const metadata = rawContext.metadata as any
         const appId = metadata?.appId
-        const message = rawContext.message as string
 
         if (!appId || typeof appId !== 'string') {
           throw new Error('appId is required in context.metadata.appId')
         }
 
-        // Validate message length - same limit as frontend
-        if (message && typeof message === 'string' && message.length > MAX_PROMPT_LENGTH) {
-          throw new Error(`Message exceeds maximum length of ${MAX_PROMPT_LENGTH} characters`)
-        }
-
         // Authentication already validated at WebSocket handshake
-        // Just return the raw context - no need for customer context
         const contextLogger = log.forApp(appId);
         contextLogger.debug('websocket.context.validated', {
           message: 'Context validated - authentication passed at handshake',
@@ -1103,8 +1144,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           hasVisualContext: !!rawContext.visualContext,
           hasAiEditContext: !!rawContext.aiEditContext,
           hasSelectedAssets: !!(rawContext as any).selectedAssets,
-          hasConversation: !!rawContext.conversation,
-          messageLength: message?.length || 0
+          hasConversation: !!rawContext.conversation
         });
 
         return rawContext;

@@ -1,136 +1,271 @@
-import https from 'https';
-import fs from 'fs';
+import { readFile, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+// @ts-expect-error - gd-auth-client is a CommonJS module without TypeScript definitions
+import { getTokenFromCertificate } from 'gd-auth-client';
 import { config } from '../config';
 import logger from '../utils/logger';
-import { TokenCache, SSOResponse } from '../types';
+import { TokenCache } from '../types';
 
 class SSOClient {
-  private tokenCache: TokenCache;
+  // Cache tokens per SSO host (production vs test)
+  private tokenCaches: Map<string, TokenCache>;
 
   constructor() {
-    this.tokenCache = {
-      token: null,
-      expires: null,
-      isRefreshing: false,
-      refreshPromise: null
-    };
-  }
+    this.tokenCaches = new Map();
 
-  async getToken(): Promise<string> {
-    // Check if we have a valid cached token
-    if (this.tokenCache.token && this.tokenCache.expires && new Date() < this.tokenCache.expires) {
-      return this.tokenCache.token;
-    }
-
-    // If a refresh is already in progress, wait for it
-    if (this.tokenCache.isRefreshing && this.tokenCache.refreshPromise) {
-      return this.tokenCache.refreshPromise;
-    }
-
-    // Start token refresh
-    this.tokenCache.isRefreshing = true;
-    this.tokenCache.refreshPromise = this._refreshToken();
-
-    try {
-      const token = await this.tokenCache.refreshPromise;
-      return token;
-    } finally {
-      this.tokenCache.isRefreshing = false;
-      this.tokenCache.refreshPromise = null;
-    }
-  }
-
-  private async _refreshToken(): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
-      if (!fs.existsSync(config.getty.certs.certPath) || !fs.existsSync(config.getty.certs.keyPath)) {
-        return reject(new Error('Getty client certificates not available for SSO authentication'));
-      }
-
-      const url = new URL(config.sso.endpoint);
-      const postData = `realm=${encodeURIComponent(config.sso.realm)}`;
-
-      const options = {
-        hostname: url.hostname,
-        port: url.port || 443,
-        path: url.pathname,
-        method: 'POST',
-        cert: fs.readFileSync(config.getty.certs.certPath),
-        key: fs.readFileSync(config.getty.certs.keyPath),
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Content-Length': Buffer.byteLength(postData)
-        },
-        timeout: config.sso.timeout
-      };
-
-      // Refreshing SSO token
-
-      const request = https.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-          data += chunk;
-        });
-
-        response.on('end', () => {
-          if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
-            try {
-              const responseData: SSOResponse = JSON.parse(data);
-              const token = responseData.data ?? responseData.access_token ?? responseData.token ?? data.trim();
-              const expiresIn = responseData.expires_in ?? config.sso.tokenExpiry;
-              const expires = new Date(Date.now() + (expiresIn * 1000));
-
-              this.tokenCache.token = token;
-              this.tokenCache.expires = expires;
-              
-              // SSO token refreshed successfully
-              resolve(token);
-
-            } catch {
-              const token = data.trim();
-              if (token) {
-                const expires = new Date(Date.now() + (50 * 60 * 1000));
-                this.tokenCache.token = token;
-                this.tokenCache.expires = expires;
-                
-                // SSO token refreshed (non-JSON response)
-                resolve(token);
-              } else {
-                logger.error('Empty response from SSO endpoint');
-                reject(new Error('Empty response from SSO endpoint'));
-              }
-            }
-          } else {
-            logger.error('SSO authentication failed', { statusCode: response.statusCode, response: data });
-            reject(new Error(`SSO authentication failed with status ${response.statusCode ?? 'unknown'}`));
-          }
-        });
-      });
-
-      request.on('error', (error) => {
-        logger.error('SSO request failed', { error: error.message });
-        reject(error);
-      });
-
-      request.on('timeout', () => {
-        logger.error('SSO request timed out');
-        request.destroy();
-        reject(new Error('SSO request timed out'));
-      });
-
-      request.write(postData);
-      request.end();
+    // Log initial configuration
+    logger.info('[SSO] Client initialized', {
+      defaultSsoHost: config.sso.host,
+      certPath: config.getty.certs.certPath,
+      keyPath: config.getty.certs.keyPath,
+      tokenExpiry: config.sso.tokenExpiry
     });
   }
 
-  clearCache(): void {
-    this.tokenCache = {
-      token: null,
-      expires: null,
-      isRefreshing: false,
-      refreshPromise: null
-    };
-    // SSO token cache cleared
+  async getToken(ssoHost?: string): Promise<string> {
+    // Use provided host or default from config
+    const host = ssoHost || config.sso.host;
+    const now = new Date();
+
+    // Get or create token cache for this host
+    let tokenCache = this.tokenCaches.get(host);
+    if (!tokenCache) {
+      tokenCache = {
+        token: null,
+        expires: null,
+        isRefreshing: false,
+        refreshPromise: null
+      };
+      this.tokenCaches.set(host, tokenCache);
+      logger.info('[SSO] Created new token cache', { ssoHost: host });
+    }
+
+    // Check if we have a valid cached token for this host
+    if (tokenCache.token && tokenCache.expires && now < tokenCache.expires) {
+      const remainingMs = tokenCache.expires.getTime() - now.getTime();
+      const remainingMins = Math.round(remainingMs / 60000);
+
+      logger.debug('[SSO] Using cached token', {
+        ssoHost: host,
+        expiresAt: tokenCache.expires.toISOString(),
+        remainingMinutes: remainingMins,
+        tokenPreview: tokenCache.token.substring(0, 20) + '...'
+      });
+
+      return tokenCache.token;
+    }
+
+    // Log why we need a new token
+    if (!tokenCache.token) {
+      logger.info('[SSO] No cached token available, requesting new token', { ssoHost: host });
+    } else if (tokenCache.expires && now >= tokenCache.expires) {
+      logger.info('[SSO] Cached token expired', {
+        ssoHost: host,
+        expiredAt: tokenCache.expires.toISOString(),
+        expiredAgoMs: now.getTime() - tokenCache.expires.getTime()
+      });
+    }
+
+    // If a refresh is already in progress for this host, wait for it
+    if (tokenCache.isRefreshing && tokenCache.refreshPromise) {
+      logger.debug('[SSO] Token refresh already in progress, waiting...', { ssoHost: host });
+      return tokenCache.refreshPromise;
+    }
+
+    // Start token refresh for this host
+    logger.info('[SSO] Starting token refresh', { ssoHost: host });
+    tokenCache.isRefreshing = true;
+    tokenCache.refreshPromise = this._refreshToken(host, tokenCache);
+
+    try {
+      const token = await tokenCache.refreshPromise;
+      return token;
+    } finally {
+      tokenCache.isRefreshing = false;
+      tokenCache.refreshPromise = null;
+    }
+  }
+
+  private async _refreshToken(ssoHost: string, tokenCache: TokenCache): Promise<string> {
+    const startTime = Date.now();
+    const certPath = config.getty.certs.certPath;
+    const keyPath = config.getty.certs.keyPath;
+
+    logger.info('[SSO] Token refresh starting', {
+      ssoHost,
+      certPath,
+      keyPath
+    });
+
+    // Check if certificate files exist
+    const certExists = existsSync(certPath);
+    const keyExists = existsSync(keyPath);
+
+    logger.debug('[SSO] Certificate file check', {
+      certPath,
+      certExists,
+      keyPath,
+      keyExists
+    });
+
+    if (!certExists || !keyExists) {
+      const error = `Getty client certificates not available: cert=${certExists}, key=${keyExists}`;
+      logger.error('[SSO] Certificate files missing', {
+        certPath,
+        certExists,
+        keyPath,
+        keyExists
+      });
+      throw new Error(error);
+    }
+
+    try {
+      // Get file stats for debugging
+      const [certStat, keyStat] = await Promise.all([
+        stat(certPath),
+        stat(keyPath)
+      ]);
+
+      logger.debug('[SSO] Certificate file details', {
+        certSize: certStat.size,
+        certModified: certStat.mtime.toISOString(),
+        keySize: keyStat.size,
+        keyModified: keyStat.mtime.toISOString()
+      });
+
+      // Read certificate and key files
+      logger.debug('[SSO] Reading certificate files...');
+      const readStartTime = Date.now();
+
+      const [cert, key] = await Promise.all([
+        readFile(certPath, 'utf8'),
+        readFile(keyPath, 'utf8')
+      ]);
+
+      logger.debug('[SSO] Certificate files read successfully', {
+        certLength: cert.length,
+        keyLength: key.length,
+        certPreview: cert.substring(0, 50) + '...',
+        readDurationMs: Date.now() - readStartTime
+      });
+
+      // Get token using gd-auth-client
+      logger.info('[SSO] Calling getTokenFromCertificate', {
+        ssoHost,
+        certLength: cert.length,
+        keyLength: key.length
+      });
+
+      const tokenStartTime = Date.now();
+      const token = await getTokenFromCertificate(ssoHost, cert, key);
+      const tokenDurationMs = Date.now() - tokenStartTime;
+
+      logger.info('[SSO] getTokenFromCertificate returned successfully', {
+        tokenLength: token?.length || 0,
+        tokenPreview: token ? token.substring(0, 30) + '...' : 'null',
+        durationMs: tokenDurationMs
+      });
+
+      if (!token) {
+        throw new Error('getTokenFromCertificate returned empty token');
+      }
+
+      // Decode JWT to get actual expiry time
+      let expires: Date;
+      try {
+        const tokenParts = token.split('.');
+        if (tokenParts.length === 3 && tokenParts[1]) {
+          const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString('utf8'));
+          
+          // Log token details for debugging
+          logger.debug('[SSO] Token payload decoded', {
+            tokenType: payload.typ,
+            tokenAuth: payload.auth,
+            tokenSubject: payload.sub,
+            tokenIssuer: payload.iss,
+            tokenExpiry: payload.exp ? new Date(payload.exp * 1000).toISOString() : 'unknown'
+          });
+          
+          if (payload.exp && typeof payload.exp === 'number') {
+            // Use actual JWT expiry
+            expires = new Date(payload.exp * 1000);
+          } else {
+            // Fallback to config if no expiry in token
+            logger.warn('[SSO] JWT token missing exp claim, using config default');
+            expires = new Date(Date.now() + (config.sso.tokenExpiry * 1000));
+          }
+        } else {
+          // Invalid JWT format, use config default
+          logger.warn('[SSO] Invalid JWT format, using config default expiry');
+          expires = new Date(Date.now() + (config.sso.tokenExpiry * 1000));
+        }
+      } catch (decodeError) {
+        // Failed to decode, use config default
+        logger.warn('[SSO] Failed to decode JWT payload, using config default', {
+          error: decodeError instanceof Error ? decodeError.message : String(decodeError)
+        });
+        expires = new Date(Date.now() + (config.sso.tokenExpiry * 1000));
+      }
+
+      // Cache token with actual expiry
+      tokenCache.token = token;
+      tokenCache.expires = expires;
+
+      const totalDurationMs = Date.now() - startTime;
+      const expirySeconds = Math.round((expires.getTime() - Date.now()) / 1000);
+
+      logger.info('[SSO] Token refresh completed successfully', {
+        ssoHost,
+        tokenLength: token.length,
+        tokenPreview: token.substring(0, 30) + '...',
+        expiresAt: expires.toISOString(),
+        expirySeconds,
+        totalDurationMs
+      });
+
+      return token;
+    } catch (error) {
+      const totalDurationMs = Date.now() - startTime;
+
+      logger.error('[SSO] Token refresh failed', {
+        error: error instanceof Error ? error.message : String(error),
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorStack: error instanceof Error ? error.stack?.split('\n').slice(0, 3).join('\n') : undefined,
+        ssoHost,
+        certPath,
+        keyPath,
+        totalDurationMs
+      });
+
+      throw error;
+    }
+  }
+
+  clearCache(ssoHost?: string): void {
+    if (ssoHost) {
+      // Clear cache for specific host
+      const tokenCache = this.tokenCaches.get(ssoHost);
+      if (tokenCache) {
+        const hadToken = !!tokenCache.token;
+        const previousExpiry = tokenCache.expires;
+
+        this.tokenCaches.delete(ssoHost);
+
+        logger.info('[SSO] Token cache cleared', {
+          ssoHost,
+          hadToken,
+          previousExpiry: previousExpiry?.toISOString() || null
+        });
+      }
+    } else {
+      // Clear all caches
+      const hostCount = this.tokenCaches.size;
+      this.tokenCaches.clear();
+
+      logger.info('[SSO] All token caches cleared', {
+        hostCount
+      });
+    }
   }
 }
 

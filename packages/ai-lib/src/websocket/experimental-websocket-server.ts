@@ -1632,13 +1632,14 @@ export class WebSocketServer {
       throw new Error('No active agent found - agentId is required in context.metadata')
     }
 
-    // Ensure metadata exists and set agentId
+    // Ensure metadata exists and set agentId and user message
     const metadata = ((context as { metadata?: MetadataRecord }).metadata) || {}
     context = {
       ...context,
       metadata: {
         ...metadata,
-        agentId: currentAgent
+        agentId: currentAgent,
+        _userMessage: data.message // Add user's message for context provider to use (for KnowB search)
       }
     }
 

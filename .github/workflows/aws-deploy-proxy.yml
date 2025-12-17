@@ -13,12 +13,15 @@ on:
           - "dev-private-ecs"
           - "test"
 
+run-name: "[Env: ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
+
 permissions:
   id-token: write # required for artifactory token login
   contents: read
 
 jobs:
   continuous-integration:
+    name: "[Env: ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }}"
     runs-on:
       group: 8606-awsx64
       labels:
@@ -83,3 +86,17 @@ jobs:
           app: ${{ steps.katana-app.outputs.app }}
           environment: ${{ inputs.DEPLOY_TO_ENV }}
           artifact_id: ${{ steps.katana-publish.outputs.artifact_id }}
+
+      # Publish summary
+      - name: Publish Summary
+        run: |
+          {
+            printf '**Build Summary:**\n\n```\n'
+            echo "Artifact ID: ${{ steps.katana-publish.outputs.artifact_id }}"
+            echo "Deployed to: ${{ inputs.DEPLOY_TO_ENV }}"
+            echo "Image: ${{ steps.katana-publish.outputs.image_uri }}"
+            echo "Commit: ${{ github.sha }}"
+            echo "Branch: ${{ github.ref_name }}"
+            echo "Actor: ${{ github.actor }}"
+            printf '\n```\n\n'
+          } >> $GITHUB_STEP_SUMMARY

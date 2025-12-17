@@ -25,6 +25,7 @@ export {
 } from './memory-tool.js';
 export { memoryAITool } from './memory.js';
 export { ragSearchAITool } from './rag-search.js';
+export { knowBSearchAITool } from './knowb-search.js';
 export { widgetRenderAITool } from './widget-render.js';
 export { cssColorAITool } from './css-color.js';
 export { cssSuggestAITool } from './css-suggest.js';
@@ -67,6 +68,7 @@ import {
 } from './memory-tool.js';
 import { memoryAITool } from './memory.js';
 import { ragSearchAITool } from './rag-search.js';
+import { knowBSearchAITool } from './knowb-search.js';
 import { widgetRenderAITool } from './widget-render.js';
 import { cssColorAITool } from './css-color.js';
 import { cssSuggestAITool } from './css-suggest.js';
@@ -111,6 +113,7 @@ export const allAILibTools: Record<string, Tool> = {
   memoryListKeys: memoryListKeysAITool,
   memory: memoryAITool,
   ragSearch: ragSearchAITool,
+  knowBSearch: knowBSearchAITool,
   widgetRender: widgetRenderAITool,
   cssColor: cssColorAITool,
   cssSuggest: cssSuggestAITool,
@@ -175,6 +178,7 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
     mediaSearch: mediaSearchAITool,
     iconsValidator: iconsValidatorAITool,
     ragSearch: ragSearchAITool,
+    knowBSearch: knowBSearchAITool,
   },
 
   // Monitoring and debugging tools

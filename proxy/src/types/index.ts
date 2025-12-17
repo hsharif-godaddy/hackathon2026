@@ -26,7 +26,15 @@ export interface WebScraperConfig {
   userAgent: string;
 }
 
+export interface KnowBConfig {
+  upstream: string;
+  defaultKbNodeIds: string[];
+  defaultMaxResults: number;
+  defaultScoreThreshold: number;
+}
+
 export interface SSOConfig {
+  host: string;
   endpoint: string;
   realm: string;
   timeout: number;
@@ -46,6 +54,7 @@ export interface AppConfig {
   server: ServerConfig;
   getty: GettyConfig;
   webScraper: WebScraperConfig;
+  knowb: KnowBConfig;
   sso: SSOConfig;
   auth: AuthConfig;
   logging: LoggingConfig;
@@ -115,6 +124,37 @@ export interface WebScraperAPIResponse {
   duration?: number;
 }
 
+// KnowB API types
+export interface KnowBSearchParams {
+  query: string;
+  kbNodeIds?: string[];
+  maxResults?: number;
+  scoreThreshold?: number;
+}
+
+export interface KnowBAPIResponse {
+  statusCode: number;
+  headers: Record<string, string | string[]>;
+  data: string;
+  duration?: number;
+}
+
+export interface KnowBSearchResult {
+  location: {
+    kbNodeId: string;
+  };
+  metadata: Record<string, unknown>;
+  content: {
+    text: string;
+    type: string;
+  };
+  score: number;
+}
+
+export interface KnowBSearchResponse {
+  results: KnowBSearchResult[];
+}
+
 // Health check types
 export interface HealthStatus {
   status: 'healthy' | 'unhealthy' | 'degraded';
@@ -162,6 +202,8 @@ export interface EnvironmentVariables {
   GETTY_APP_KEY?: string;
   WEB_SCRAPER_UPSTREAM?: string;
   WEB_SCRAPER_APP_KEY?: string;
+  KNOWB_UPSTREAM?: string;
+  SSO_HOST?: string;
   SSO_ENDPOINT?: string;
   SSO_REALM?: string;
   SSO_TIMEOUT?: string;

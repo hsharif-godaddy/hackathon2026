@@ -1,20 +1,7 @@
-import https from 'https';
 import { config } from '../config';
 import ssoClient from '../auth/sso-client';
 import logger from '../utils/logger';
 import { WebScraperParams, WebScraperAPIResponse } from '../types';
-
-/**
- * HTTPS request options interface
- */
-interface HttpsRequestOptions {
-  hostname: string;
-  port: number | string;
-  path: string;
-  method: 'GET' | 'POST';
-  headers: Record<string, string | number>;
-  timeout: number;
-}
 
 /**
  * Web Scraper Client
@@ -33,7 +20,8 @@ class WebScraperClient {
     const startTime = Date.now();
 
     try {
-      const jwtToken = await ssoClient.getToken();
+      // WebScraper uses production SSO (godaddy.com)
+      const jwtToken = await ssoClient.getToken('sso.godaddy.com');
       const queryString = new URLSearchParams(params as Record<string, string>).toString();
       const scraperUrl = `${config.webScraper.upstream}/v1/scrape-website?${queryString}`;
 
@@ -64,7 +52,8 @@ class WebScraperClient {
     const startTime = Date.now();
 
     try {
-      const jwtToken = await ssoClient.getToken();
+      // WebScraper uses production SSO (godaddy.com)
+      const jwtToken = await ssoClient.getToken('sso.godaddy.com');
       const queryString = new URLSearchParams(params as Record<string, string>).toString();
       const scraperUrl = `${config.webScraper.upstream}/v1/screenshot-website?${queryString}`;
 
@@ -103,104 +92,75 @@ class WebScraperClient {
     body?: string,
     retries: number = 2
   ): Promise<WebScraperAPIResponse> {
-    return new Promise<WebScraperAPIResponse>((resolve, reject) => {
-      const urlObj = new URL(url);
-      
-      const options: HttpsRequestOptions = {
-        hostname: urlObj.hostname,
-        port: urlObj.port || 443,
-        path: urlObj.pathname + urlObj.search,
-        method,
-        headers: {
-          'Authorization': `sso-jwt ${jwtToken}`,
-          'x-app-key': config.webScraper.appKey,
-          'Accept': 'application/json',
-          'User-Agent': config.webScraper.userAgent
-        },
-        timeout: 60000 // 60 second timeout (scraping can take longer)
-      };
+    const urlObj = new URL(url);
 
-      if (body && method === 'POST') {
-        options.headers['Content-Type'] = 'application/json';
-        options.headers['Content-Length'] = Buffer.byteLength(body);
-      }
+    const headers: Record<string, string> = {
+      'Authorization': `sso-jwt ${jwtToken}`,
+      'x-app-key': config.webScraper.appKey,
+      'Accept': 'application/json',
+      'User-Agent': config.webScraper.userAgent
+    };
 
-      logger.debug('Making Web Scraper API request', { 
-        requestId,
-        method,
-        url: urlObj.pathname + urlObj.search,
-        headers: this.sanitizeHeaders(options.headers)
-      });
+    if (body && method === 'POST') {
+      headers['Content-Type'] = 'application/json';
+    }
 
-      const request = https.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-          data += chunk;
-        });
-
-        response.on('end', () => {
-          if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
-            resolve({
-              statusCode: response.statusCode,
-              headers: response.headers as Record<string, string | string[]>,
-              data: data
-            });
-          } else if (response.statusCode === 401 && retries > 0) {
-            // Token might be expired, clear cache and retry
-            logger.warn('Web Scraper API returned 401, clearing SSO cache and retrying', { 
-              requestId, 
-              retriesLeft: retries 
-            });
-            ssoClient.clearCache();
-            
-            // Retry with exponential backoff
-            setTimeout(() => {
-              this.makeRequest(url, jwtToken, requestId, method, body, retries - 1)
-                .then(resolve)
-                .catch(reject);
-            }, Math.pow(2, 3 - retries) * 1000);
-          } else {
-            const error = new Error(`Web Scraper API request failed with status ${response.statusCode}`) as Error & {
-              statusCode?: number;
-              response?: string;
-            };
-            if (response.statusCode !== undefined) {
-              error.statusCode = response.statusCode;
-            }
-            error.response = data;
-            reject(error);
-          }
-        });
-      });
-
-      request.on('error', (error) => {
-        logger.error('Web Scraper API request error', { requestId, error: error.message });
-        
-        if (retries > 0) {
-          logger.info('Retrying Web Scraper API request', { requestId, retriesLeft: retries });
-          setTimeout(() => {
-            this.makeRequest(url, jwtToken, requestId, method, body, retries - 1)
-              .then(resolve)
-              .catch(reject);
-          }, 1000);
-        } else {
-          reject(error);
-        }
-      });
-
-      request.on('timeout', () => {
-        logger.error('Web Scraper API request timed out', { requestId });
-        request.destroy();
-        reject(new Error('Web Scraper API request timed out'));
-      });
-
-      if (body && method === 'POST') {
-        request.write(body);
-      }
-
-      request.end();
+    logger.debug('Making Web Scraper API request with fetch', {
+      requestId,
+      method,
+      url: urlObj.pathname + urlObj.search,
+      headers: this.sanitizeHeaders(headers)
     });
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers,
+        ...(body && method === 'POST' && { body })
+      });
+
+      const data = await response.text();
+
+      if (response.ok) {
+        return {
+          statusCode: response.status,
+          headers: Object.fromEntries(response.headers.entries()) as Record<string, string | string[]>,
+          data: data
+        };
+      } else if (response.status === 401 && retries > 0) {
+        // Token might be expired, clear cache and retry
+        logger.warn('Web Scraper API returned 401, clearing SSO cache and retrying', {
+          requestId,
+          retriesLeft: retries
+        });
+        ssoClient.clearCache('sso.godaddy.com');
+
+        // Retry with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, 3 - retries) * 1000));
+        return this.makeRequest(url, jwtToken, requestId, method, body, retries - 1);
+      } else {
+        const error = new Error(`Web Scraper API request failed with status ${response.status}`) as Error & {
+          statusCode?: number;
+          response?: string;
+        };
+        error.statusCode = response.status;
+        error.response = data;
+        throw error;
+      }
+    } catch (error) {
+      logger.error('Web Scraper API request error', {
+        requestId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+
+      if (retries > 0) {
+        logger.info('Retrying Web Scraper API request', { requestId, retriesLeft: retries });
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return this.makeRequest(url, jwtToken, requestId, method, body, retries - 1);
+      } else {
+        throw error;
+      }
+    }
   }
 
   /**

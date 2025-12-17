@@ -212,8 +212,8 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
   }
 
   promptBuilder
-    .file(paths.getAgentFile('develop', 'email.md'))
-    .file(paths.getAgentFile('develop', 'deployment.md'))
+    // .file(paths.getAgentFile('develop', 'email.md'))
+    // .file(paths.getAgentFile('develop', 'deployment.md'))
     .file(paths.getAgentFile('develop', 'decision-matrix.md'))
 
   // Conditionally load commerce decision matrix and checkout guide if commerce agent is enabled

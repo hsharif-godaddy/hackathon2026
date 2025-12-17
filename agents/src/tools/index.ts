@@ -9,6 +9,8 @@ export { MediaSearchTool, findMedia } from './media-search-tool.js';
 export { GettyMediaDriver } from './ai-lib-tools/drivers/getty-media-driver.js';
 export { WebsiteScraperDriver } from './ai-lib-tools/drivers/website-scraper-driver.js';
 export { scrapeWebsite, websiteScraperToolDefinition } from './website-scraper-tool.js';
+export { KnowBDriver, knowBDriver } from './ai-lib-tools/drivers/knowb-driver.js';
+export { KnowBSearchTool, searchKnowB } from './knowb-search-tool.js';
 export { ASTEditorBase } from './ast-editor-base.js';
 export { ASTTextEditor } from './ast-text-editor.js';
 export { ServerManagementTool } from './server-management-tool.js';
@@ -62,6 +64,18 @@ export type {
   WebsiteScraperOptions,
   WebsiteScraperResult
 } from './ai-lib-tools/drivers/website-scraper-driver.js';
+
+export type {
+  KnowBSearchOptions as KnowBDriverOptions,
+  KnowBSearchResult as KnowBDriverResult,
+  KnowBResultItem
+} from './ai-lib-tools/drivers/knowb-driver.js';
+
+export type {
+  KnowBSearchOptions,
+  KnowBSearchResult,
+  KnowBSearchItem
+} from './knowb-search-tool.js';
 export type {
   BaseEditContext,
   BaseEditResult

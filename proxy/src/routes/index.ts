@@ -1,14 +1,16 @@
 import express, { Request, Response, Router } from 'express';
-import { validateGdToken } from '../auth/middleware';
-import gettyClient from '../clients/getty-client';
 import webScraperClient from '../clients/web-scraper-client';
+import { validateGdToken } from '../auth/middleware';
 import ssoValidationRoutes from './sso-validation';
+import gettyClient from '../clients/getty-client';
+import knowbClient from '../clients/knowb-client';
 import logger from '../utils/logger';
 import {
   AuthenticatedRequest,
   HealthStatus,
   GettySearchParams,
-  WebScraperParams
+  WebScraperParams,
+  KnowBSearchParams
 } from '../types';
 
 const router: Router = express.Router();
@@ -23,7 +25,7 @@ router.get('/health', (req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version ?? '2.0.0'
   };
-  
+
   res.status(200).json(health);
 });
 
@@ -35,13 +37,13 @@ router.get('/img/search',
   async (req: AuthenticatedRequest, res: Response) => {
     const requestId = String(req.id ?? 'unknown');
     const startTime = req.startTime ?? Date.now();
-    
+
     logger.info('[INFO] Legacy /img/search route accessed, processing as /v1/search', {
       requestId,
       originalPath: req.path,
       query: req.query
     });
-    
+
     try {
       // Validate required parameters
       if (!req.query.phrase && !req.query.q) {
@@ -76,7 +78,7 @@ router.get('/img/search',
     } catch (error) {
       const err = error as { message: string; statusCode?: number; duration?: number };
       const totalDuration = Date.now() - startTime;
-      
+
       logger.error('[ERROR] Legacy Getty API search failed', {
         requestId,
         method: req.method,
@@ -123,7 +125,7 @@ router.get('/v1/search',
   async (req: AuthenticatedRequest, res: Response) => {
     const requestId = String(req.id ?? 'unknown');
     const startTime = req.startTime ?? Date.now();
-    
+
     try {
       // Validate required parameters
       if (!req.query.phrase && !req.query.q) {
@@ -178,7 +180,7 @@ router.get('/v1/search',
     } catch (error) {
       const err = error as { message: string; statusCode?: number; duration?: number };
       const totalDuration = Date.now() - startTime;
-      
+
       // Single comprehensive error log statement
       logger.error('[ERROR] Getty API search failed', {
         requestId,
@@ -226,7 +228,7 @@ router.get('/v1/videos/search',
   async (req: AuthenticatedRequest, res: Response) => {
     const requestId = String(req.id ?? 'unknown');
     const startTime = req.startTime ?? Date.now();
-    
+
     try {
       // Validate required parameters
       if (!req.query.phrase && !req.query.q) {
@@ -281,7 +283,7 @@ router.get('/v1/videos/search',
     } catch (error) {
       const err = error as { message: string; statusCode?: number; duration?: number };
       const totalDuration = Date.now() - startTime;
-      
+
       // Single comprehensive error log statement
       logger.error('[ERROR] Getty Video API search failed', {
         requestId,
@@ -315,7 +317,7 @@ router.post('/v1/videos/upload',
   async (req: AuthenticatedRequest, res: Response) => {
     const requestId = String(req.id ?? 'unknown');
     const startTime = req.startTime ?? Date.now();
-    
+
     try {
       // Validate required parameters
       if (!req.body || !req.body.id) {
@@ -355,7 +357,7 @@ router.post('/v1/videos/upload',
     } catch (error) {
       const err = error as { message: string; statusCode?: number; duration?: number };
       const totalDuration = Date.now() - startTime;
-      
+
       // Single comprehensive error log statement
       logger.error('[ERROR] Getty Video upload failed', {
         requestId,
@@ -389,7 +391,7 @@ router.get('/v1/scrape-website',
   async (req: AuthenticatedRequest, res: Response) => {
     const requestId = String(req.id ?? 'unknown');
     const startTime = req.startTime ?? Date.now();
-    
+
     try {
       // Validate required parameters
       if (!req.query.url) {
@@ -430,7 +432,7 @@ router.get('/v1/scrape-website',
     } catch (error) {
       const err = error as { message: string; statusCode?: number; duration?: number };
       const totalDuration = Date.now() - startTime;
-      
+
       logger.error('[ERROR] Web Scraper scrape failed', {
         requestId,
         method: req.method,
@@ -463,7 +465,7 @@ router.get('/v1/screenshot-website',
   async (req: AuthenticatedRequest, res: Response) => {
     const requestId = String(req.id ?? 'unknown');
     const startTime = req.startTime ?? Date.now();
-    
+
     try {
       // Validate required parameters
       if (!req.query.url) {
@@ -504,7 +506,7 @@ router.get('/v1/screenshot-website',
     } catch (error) {
       const err = error as { message: string; statusCode?: number; duration?: number };
       const totalDuration = Date.now() - startTime;
-      
+
       logger.error('[ERROR] Web Scraper screenshot failed', {
         requestId,
         method: req.method,
@@ -532,14 +534,130 @@ router.get('/v1/screenshot-website',
 );
 
 
+// KnowB knowledge base search endpoint
+router.post('/v1/knowb/search',
+  validateGdToken,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const requestId = String(req.id ?? 'unknown');
+    const startTime = req.startTime ?? Date.now();
+
+    try {
+      // Validate required query parameter
+      const { query, kbNodeIds, maxResults, scoreThreshold } = req.body as KnowBSearchParams;
+
+      if (!query || typeof query !== 'string' || query.trim().length === 0) {
+        res.status(400).json({
+          error: {
+            message: 'Missing required parameter: query',
+            type: 'invalid_request_error'
+          }
+        });
+        return;
+      }
+
+      // Build search params
+      const params: KnowBSearchParams = {
+        query: query.trim()
+      };
+
+      if (kbNodeIds && Array.isArray(kbNodeIds)) {
+        params.kbNodeIds = kbNodeIds;
+      }
+
+      if (maxResults && typeof maxResults === 'number') {
+        params.maxResults = maxResults;
+      }
+
+      if (scoreThreshold && typeof scoreThreshold === 'number') {
+        params.scoreThreshold = scoreThreshold;
+      }
+
+      const response = await knowbClient.search(params, requestId);
+      const totalDuration = Date.now() - startTime;
+
+      logger.info('[INFO] KnowB search completed', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        query: {
+          query: params.query.substring(0, 100),
+          kbNodeIds: params.kbNodeIds,
+          maxResults: params.maxResults,
+          scoreThreshold: params.scoreThreshold
+        },
+        userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
+        statusCode: response.statusCode,
+        searchDuration: response.duration ? `${response.duration}ms` : 'unknown',
+        totalDuration: `${totalDuration}ms`,
+        userAgent: req.get('User-Agent'),
+        ip: req.ip
+      });
+
+      // Force JSON content type and re-serialize to prevent XSS from upstream data
+      res.set('Content-Type', 'application/json');
+      res.set('Cache-Control', 'no-cache');
+      res.status(response.statusCode);
+      try {
+        // Parse and re-serialize to validate JSON and sanitize any malicious content
+        const jsonData = typeof response.data === 'string'
+          ? JSON.parse(response.data)
+          : response.data;
+        res.json(jsonData);
+      } catch {
+        // If response is not valid JSON, log error and return safe error response
+        logger.warn('[WARN] KnowB returned invalid JSON response', {
+          requestId,
+          statusCode: response.statusCode,
+          contentType: response.headers['content-type']
+        });
+        res.status(502).json({
+          error: {
+            message: 'Invalid response from upstream API',
+            type: 'upstream_error',
+            requestId
+          }
+        });
+      }
+
+    } catch (error) {
+      const err = error as { message: string; statusCode?: number; duration?: number };
+      const totalDuration = Date.now() - startTime;
+
+      logger.error('[ERROR] KnowB search failed', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        body: req.body,
+        userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
+        error: err.message,
+        statusCode: err.statusCode,
+        searchDuration: err.duration ? `${err.duration}ms` : 'unknown',
+        totalDuration: `${totalDuration}ms`,
+        userAgent: req.get('User-Agent'),
+        ip: req.ip
+      });
+
+      const statusCode = err.statusCode ?? 503;
+      res.status(statusCode).json({
+        error: {
+          message: 'KnowB API request failed',
+          type: 'upstream_error',
+          requestId
+        }
+      });
+    }
+  }
+);
+
+
 // Catch-all for unsupported routes
 router.use('*', (req: Request, res: Response) => {
-  logger.warn('Unsupported route accessed', { 
+  logger.warn('Unsupported route accessed', {
     method: req.method,
     path: req.originalUrl,
     ip: req.ip
   });
-  
+
   res.status(404).json({
     error: {
       message: 'Not Found',

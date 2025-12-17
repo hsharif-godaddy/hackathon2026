@@ -19,6 +19,15 @@
 
 ### Internal Changes
 
+- **KnowB Knowledge Base Integration**: Added semantic search capability for querying GoDaddy documentation and knowledge bases
+  - Added `KnowBSearchTool`: AI-lib compatible tool for semantic document search with configurable result limits and score thresholds
+  - Added `knowb-client` to proxy service: HTTP client with mTLS certificate authentication for KnowB API
+  - Added `knowb-driver` to agents: Dual-mode driver supporting both proxy (GETTY_TOKEN) and direct (SSO_JWT) authentication
+  - Proxy endpoint: `POST /v1/knowb/search` with JSON validation and XSS protection via response re-serialization
+  - Default configuration: searches `/airo_sys` knowledge base node, 5 results max, 0.35 score threshold
+  - Integrated with Develop Agent for documentation queries (GoDaddy UX standards, API documentation, best practices)
+  - Environment variables: `KNOWB_UPSTREAM` (defaults to test environment)
+
 - **Event-Driven WebSocket Architecture with Connection Recovery**: Introduced pub/sub event channel system for reliable WebSocket streaming with connection recovery
   - Added `ConversationEventChannel`: Central event bus managing per-conversation event buffers with circular buffer implementation
     - Circular buffer with fixed capacity (1,000 events) and automatic overflow handling prevents unbounded memory growth
