@@ -40,7 +40,10 @@ const mockClient = {
     createdAt: '2023-01-01T00:00:00Z',
     updatedAt: '2023-01-01T00:00:00Z'
   })),
-  getAiroJobApps: vi.fn().mockResolvedValue({ apps: [] }),
+  getAiroJobApps: vi.fn().mockRejectedValue({
+    status: 404,
+    message: 'Job not found'
+  }),
   deleteApp: vi.fn().mockResolvedValue({ success: true })
 }
 

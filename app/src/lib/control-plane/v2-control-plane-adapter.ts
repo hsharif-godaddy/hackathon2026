@@ -182,7 +182,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     appId: string,
     subscriptionId: string,
     systemId: string,
-    jwt: string
+    jwt: string,
+    customerId?: string
   ): Promise<SiteInfo | null> {
     const client = this.createClient(jwt);
 
@@ -190,8 +191,9 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       // SINGLE API CALL - Direct app fetch with CDN info for domains
       const app = await client.getApp(subscriptionId, systemId, appId, true);
 
+      // Use provided customerId or fallback to cache
       const cache = useSubscriptionCacheStore.getState();
-      return this.mapAppToSiteInfo(app, cache.customerId || undefined);
+      return this.mapAppToSiteInfo(app, customerId || cache.customerId || undefined);
     } catch (error: any) {
       if (error.status === 404) {
         // App moved or deleted - invalidate cache
@@ -207,7 +209,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
   /**
    * Fallback to job ID lookup for sites that are still being created
    */
-  private async jobIdLookup(siteId: string, jwt: string): Promise<SiteInfo | null> {
+  private async jobIdLookup(siteId: string, jwt: string, customerId?: string): Promise<SiteInfo | null> {
     // Only try job lookup if length suggests it's a job ID
     // Job IDs are shorter than app IDs (app IDs are exactly APP_ID_LENGTH chars)
     if (siteId.length === APP_ID_LENGTH) {
@@ -219,12 +221,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       const jobStatus = await client.getAiroJobApps(siteId);
 
       if (jobStatus.apps && jobStatus.apps.length === 0) {
-        const cache = useSubscriptionCacheStore.getState();
         return {
           id: siteId,
           name: 'Provisioning...',
           status: 'creating',
-          account_id: cache.customerId || 'unknown',
+          account_id: customerId || 'unknown',
           created_at: new Date(),
           updated_at: new Date()
         };
@@ -236,8 +237,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         // Only return job data if it's complete (has systemId and subscriptionId)
         // If systemId/subscriptionId is missing, try to look it up in cache first
         if (jobApp.systemId && jobApp.subscriptionId) {
-          const cache = useSubscriptionCacheStore.getState();
-          return this.mapAppToSiteInfo(jobApp, cache.customerId || undefined);
+          return this.mapAppToSiteInfo(jobApp, customerId);
         } else if (jobApp.id) {
           // We have an app ID but missing metadata - try to look it up in cache
           const subscriptionCache = useSubscriptionCacheStore.getState();
@@ -256,7 +256,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
                 jobApp.id,
                 appLocation.subscriptionId,
                 appLocation.systemId,
-                jwt
+                jwt,
+                customerId
               );
             } catch (error) {
               logger.warn('v2-control-plane.job-id-lookup.cache-fetch-failed', {
@@ -295,89 +296,97 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     }
   }
 
-  async getSite(siteId: string, jwt: string): Promise<SiteInfo | null> {
+  async getSite(siteId: string, jwt: string, owningProduct?: string): Promise<SiteInfo | null> {
     try {
       const customerId = extractCustomerId(jwt);
       if (!customerId) {
         throw new Error('Failed to extract customer ID from JWT');
       }
 
-      // Get subscription cache
-      const subscriptionCache = useSubscriptionCacheStore.getState();
+      // Skip cache if looking for non-AIRO products
+      // Cache only contains AIRO_APP_BUILDER apps, so cross-product queries must bypass it
+      const shouldSkipCache = owningProduct && owningProduct !== AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER;
 
-      // Initialize cache on first use
-      if (!subscriptionCache.customerId) {
-        await subscriptionCache.initialize(jwt);
-      }
+      // Try cache-based lookup first (fastest - in-memory, only for AAB apps)
+      if (!shouldSkipCache) {
+        // Get subscription cache
+        const subscriptionCache = useSubscriptionCacheStore.getState();
 
-      // Refresh cache if stale (background refresh)
-      if (this.isCacheStale(subscriptionCache)) {
-        // Non-blocking refresh
-        subscriptionCache.refresh(jwt, false);
-      }
+        // Initialize cache on first use
+        if (!subscriptionCache.customerId) {
+          await subscriptionCache.initialize(jwt);
+        }
 
-      // Try cache-based direct lookup
-      const location = subscriptionCache.getAppLocation(siteId);
-      if (location) {
-        try {
-          const result = await this.directAppLookup(
-            siteId,
-            location.subscriptionId,
-            location.systemId,
-            jwt
-          );
+        // Refresh cache if stale (background refresh)
+        if (this.isCacheStale(subscriptionCache)) {
+          // Non-blocking refresh
+          subscriptionCache.refresh(jwt, false);
+        }
 
-          if (result) {
-            return result;
+        // Try cache-based direct lookup
+        const location = subscriptionCache.getAppLocation(siteId);
+        if (location) {
+          try {
+            const result = await this.directAppLookup(
+              siteId,
+              location.subscriptionId,
+              location.systemId,
+              jwt,
+              customerId || undefined
+            );
+
+            if (result) {
+              return result;
+            }
+          } catch (error) {
+            logger.warn('v2-control-plane.get-site.cache-lookup-failed', {
+              siteId,
+              error: error instanceof Error ? error.message : String(error)
+            });
+            // Continue to fallback methods
           }
-        } catch (error) {
-          logger.warn('v2-control-plane.get-site.cache-lookup-failed', {
-            siteId,
-            error: error instanceof Error ? error.message : String(error)
-          });
-          // Continue to fallback methods
+        }
+
+        // If cache miss or direct lookup failed, force refresh and try again
+        await subscriptionCache.refresh(jwt, true);
+
+        const retryLocation = subscriptionCache.getAppLocation(siteId);
+        if (retryLocation) {
+          try {
+            const result = await this.directAppLookup(
+              siteId,
+              retryLocation.subscriptionId,
+              retryLocation.systemId,
+              jwt,
+              customerId || undefined
+            );
+
+            if (result) {
+              return result;
+            }
+          } catch (error) {
+            logger.warn('v2-control-plane.get-site.refreshed-cache-lookup-failed', {
+              siteId,
+              error: error instanceof Error ? error.message : String(error)
+            });
+            // Continue to full search logic (job lookup happens after cache attempts)
+          }
         }
       }
 
-      // Try job ID lookup first (for sites that are still being created)
-      const jobResult = await this.jobIdLookup(siteId, jwt);
+      // Try job ID lookup second (for sites that are still being created)
+      const jobResult = await this.jobIdLookup(siteId, jwt, customerId || undefined);
       if (jobResult) {
+        // Filter by owningProduct if specified AND job result has ownerProduct
+        // Skip filtering if ownerProduct is missing (site still being created)
+        if (owningProduct && jobResult.ownerProduct && jobResult.ownerProduct !== owningProduct) {
+          return null;
+        }
         return jobResult;
       }
 
-      // If cache miss or direct lookup failed, force refresh and try again
-      await subscriptionCache.refresh(jwt, true);
-
-      const retryLocation = subscriptionCache.getAppLocation(siteId);
-      if (retryLocation) {
-        try {
-          const result = await this.directAppLookup(
-            siteId,
-            retryLocation.subscriptionId,
-            retryLocation.systemId,
-            jwt
-          );
-
-          if (result) {
-            return result;
-          }
-        } catch (error) {
-          logger.warn('v2-control-plane.get-site.refreshed-cache-lookup-failed', {
-            siteId,
-            error: error instanceof Error ? error.message : String(error)
-          });
-          // Fall through to full search
-        }
-      }
-
-      // Final fallback: traditional full search
+      // Final fallback: traditional full search across subscriptions
       const client = this.createClient(jwt);
-
-      // Try job ID lookup as fallback
-      const fallbackJobResult = await this.jobIdLookup(siteId, jwt);
-      if (fallbackJobResult) {
-        return fallbackJobResult;
-      }
 
       // Search by app ID across subscriptions
       try {
@@ -394,7 +403,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       }
 
       // Use ownerProduct for forward compatibility
-      const subscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
+      const productFilter = owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER;
+      const subscriptions = await client.getSubscriptions(productFilter);
 
       for (const sub of subscriptions) {
         const systems = await client.getSystems(sub.id);
@@ -413,13 +423,13 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
               // Fetch full app details to get variables (including initialPrompt) and CDN info
               try {
                 const fullApp = await client.getApp(sub.id, system.id, matchingApp.id, true);
-                return this.mapAppToSiteInfo(fullApp, subscriptionCache.customerId || undefined);
+                return this.mapAppToSiteInfo(fullApp, customerId);
               } catch (fetchError) {
                 logger.warn('v2-control-plane.get-site.full-app-fetch-failed', {
                   siteId,
                   error: fetchError instanceof Error ? fetchError.message : 'Unknown error'
                 });
-                return this.mapAppToSiteInfo(matchingApp, subscriptionCache.customerId || undefined);
+                return this.mapAppToSiteInfo(matchingApp, customerId);
               }
             }
           } catch (error) {

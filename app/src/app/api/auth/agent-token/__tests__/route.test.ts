@@ -600,7 +600,7 @@ describe('agent-token', function packageTests() {
           siteId: MOCK_SITE_ID,
           type: 'jwt'
         });
-        expect(mockControlPlaneAdapter.getSite).toHaveBeenCalledWith(MOCK_SITE_ID, 'user-jwt-token');
+        expect(mockControlPlaneAdapter.getSite).toHaveBeenCalledWith(MOCK_SITE_ID, 'user-jwt-token', 'AiroAppBuilder');
         expect(mockJWTService.getToken).toHaveBeenCalledWith({
           siteId: MOCK_SITE_ID
         });

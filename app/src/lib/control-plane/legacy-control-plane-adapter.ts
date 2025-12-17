@@ -75,8 +75,9 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
 
   /**
    * Get site by ID (handles both jobIds and real appIds)
+   * Note: owningProduct parameter is not used in legacy mode (database-only)
    */
-  async getSite(siteId: string, _jwt: string): Promise<SiteInfo | null> {
+  async getSite(siteId: string, _jwt: string, _owningProduct?: string): Promise<SiteInfo | null> {
     // Check if this is a jobId (matches V2 flow)
     if (this.isJobId(siteId)) {
       return await this.jobIdLookup(siteId);

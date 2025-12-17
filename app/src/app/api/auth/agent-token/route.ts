@@ -5,6 +5,7 @@
  * 
  * @param request.body.siteId - Site ID for the token
  * @param request.body.expiresInSeconds - Optional expiration time in seconds (must be > 0 and <= 43200, default: 12 hours)
+ * @param request.body.owningProduct - Optional owner product to filter by (defaults to AiroAppBuilder)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -13,10 +14,12 @@ import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-p
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser,withCustomerAuth } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
 import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
+import { AIRO_OWNER_PRODUCTS } from '@/lib/mgmt-airo';
 
 export interface CreateAgentTokenRequest {
   siteId: string;
   expiresInSeconds?: number;
+  owningProduct?: string;
 }
 
 export const dynamic = 'force-dynamic';
@@ -29,13 +32,14 @@ const MAX_EXPIRATION_SECONDS = 12 * 60 * 60; // 43200 seconds
 /**
  * Validate and retrieve site using V2 control plane adapter
  */
-async function getSiteV2(siteId: string, user: CustomerUser, jwt: string): Promise<NextResponse | null> {
+async function getSiteV2(siteId: string, user: CustomerUser, jwt: string, owningProduct?: string): Promise<NextResponse | null> {
   if (!customerHasAccount(user)) {
     return createCustomerAuthError('You must have an account to create agent tokens', 403);
   }
   
   const adapter = getControlPlaneAdapter();
-  const site = await adapter.getSite(siteId, jwt);
+  const productFilter = owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER;
+  const site = await adapter.getSite(siteId, jwt, productFilter);
   
   if (!site) {
     return NextResponse.json({ 
@@ -74,9 +78,9 @@ async function getSiteLegacy(siteId: string, user: CustomerUser): Promise<NextRe
 /**
  * Validate site access and ownership based on control plane mode
  */
-async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: string): Promise<NextResponse | null> {
+async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: string, owningProduct?: string): Promise<NextResponse | null> {
   const isV2 = isV2ControlPlaneEnabled();
-  return isV2 ? await getSiteV2(siteId, user, jwt) : await getSiteLegacy(siteId, user);
+  return isV2 ? await getSiteV2(siteId, user, jwt, owningProduct) : await getSiteLegacy(siteId, user);
 }
 
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext): Promise<NextResponse> => {
@@ -104,7 +108,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       }
     }
 
-    const validationError = await validateSiteAccess(body.siteId, user, authContext.jwt || '');
+    const validationError = await validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct);
     if (validationError) {
       return validationError;
     }
