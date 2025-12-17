@@ -124,7 +124,7 @@ function removeNullFields(obj: any): any {
 async function fetchLogsForDate(jwtToken: string): Promise<SpendLog[]> {
   const endDate = new Date();
   const startDate = new Date(endDate.toISOString().split('T')[0]);
-  startDate.setDate(startDate.getDate() - 2); // Fetch logs for the last 2 days
+  startDate.setDate(startDate.getDate() - 1);
 
 
   console.log(`Fetching logs for ${startDate} to ${endDate}`);
@@ -134,6 +134,8 @@ async function fetchLogsForDate(jwtToken: string): Promise<SpendLog[]> {
     start_date: startDate.toISOString().split('T')[0],
     end_date: endDate.toISOString().split('T')[0]
   });
+
+  console.log(`calling : ${GOCODE_ENDPOINT}/spend/logs?${params}`);
   
   const response = await fetch(`${GOCODE_ENDPOINT}/spend/logs?${params}`, {
     headers: {
@@ -164,22 +166,32 @@ function createESClient(secret: any) {
 async function indexLogs(esClient: Client, logs: SpendLog[]) {
   if (logs.length === 0) return 0;
 
-  const operations = logs.flatMap(log => [
-    { index: { _index: ES_INDEX, _id: log.request_id } },
-    removeNullFields(log)
-  ]);
+  const BATCH_SIZE = 2000;
+  let totalIndexed = 0;
 
-  const response = await esClient.bulk({ operations, refresh: false });
+  for (let i = 0; i < logs.length; i += BATCH_SIZE) {
+    const batch = logs.slice(i, i + BATCH_SIZE);
+    const operations = batch.flatMap(log => [
+      { index: { _index: ES_INDEX, _id: log.request_id } },
+      removeNullFields(log)
+    ]);
 
-  if (response.errors) {
-    const erroredDocs = response.items.filter((item: any) => item.index?.error);
-    console.error(`⚠️  ${erroredDocs.length} documents failed to index`);
-    erroredDocs.slice(0, 5).forEach((item: any) => {
-      console.error(`   - ${item.index._id}: ${item.index.error.reason}`);
-    });
+    console.log(`Indexing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(logs.length / BATCH_SIZE)} (${batch.length} docs)`);
+    const response = await esClient.bulk({ operations, refresh: false });
+
+    if (response.errors) {
+      const erroredDocs = response.items.filter((item: any) => item.index?.error);
+      console.error(`⚠️  ${erroredDocs.length} documents failed to index`);
+      erroredDocs.slice(0, 5).forEach((item: any) => {
+        console.error(`   - ${item.index._id}: ${item.index.error.reason}`);
+      });
+      totalIndexed += batch.length - erroredDocs.length;
+    } else {
+      totalIndexed += batch.length;
+    }
   }
 
-  return logs.length - (response.errors ? response.items.filter((item: any) => item.index?.error).length : 0);
+  return totalIndexed;
 }
 
 

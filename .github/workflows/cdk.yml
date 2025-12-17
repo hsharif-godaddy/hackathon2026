@@ -1,4 +1,5 @@
 name: CDK Workflow
+run-name: "CDK ${{ github.event.inputs.DEFAULT_ACTION }} - ${{ github.event.inputs.STACK_NAME }} (${{ github.event.inputs.ENV_NAME }})"
 
 on:
   workflow_dispatch:
@@ -9,7 +10,6 @@ on:
         type: choice
         options:
           - "dev"
-          - "test"
           - "prod"
         default: "dev"
       STACK_NAME:
@@ -21,6 +21,7 @@ on:
           - "AiroBuilderStack"
           - "MySQLV2Stack"
           - "AiroJWTKeyStack"
+          - "GocaasSpendLambdaStack"
         default: "--all"
       DEFAULT_ACTION:
         description: "Default action to take"
@@ -98,6 +99,8 @@ jobs:
           echo "progress=false" >> .npmrc
           echo @godaddy:registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ >> .npmrc
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
+
+          cp .npmrc lambda/gocode-spend-essp-exporter/.npmrc
 
           npm install -g pnpm@10.17.0+sha512.fce8a3dd29a4ed2ec566fb53efbb04d8c44a0f05bc6f24a73046910fb9c3ce7afa35a0980500668fa3573345bd644644fa98338fa168235c80f4aa17aa17fbef
 

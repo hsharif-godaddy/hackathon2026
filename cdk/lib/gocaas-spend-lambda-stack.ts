@@ -17,7 +17,7 @@ import config from "./config";
  * Pulls logs periodically and indexes them for analysis and visualization.
  * 
  * Features:
- * - Automatic log sync on schedule (daily at 2 AM UTC)
+ * - Automatic log sync on schedule (hourly)
  * - AWS IAM role assumption for GoCode API access
  * - Uses existing Secrets Manager secret for ESSP credentials
  * - CloudWatch Logs for execution tracking
@@ -125,10 +125,11 @@ export class GocaasSpendLambdaStack extends GDStack {
         }
       }),
       timeout: cdk.Duration.minutes(5),
-      memorySize: 512,
+      memorySize: 2048,
       role: this.syncLambdaRole,
       logGroup: syncLogGroup,
       vpc,
+      retryAttempts: 0,
       vpcSubnets: { subnets: privateSubnets },
       securityGroups: [lambdaSecurityGroup],
       environment: {
@@ -138,17 +139,11 @@ export class GocaasSpendLambdaStack extends GDStack {
       }
     });
 
-    // Create EventBridge rule for scheduled sync (daily at 2 AM UTC)
+    // Create EventBridge rule for scheduled sync (every hour)
     const syncScheduleRule = new events.Rule(this, 'SyncSchedule', {
       ruleName: `${config.envName}-gocode-spend-sync-schedule`,
       description: 'Scheduled sync of GoCode spend logs to Elasticsearch',
-      schedule: events.Schedule.cron({
-        minute: '0',
-        hour: '2',
-        day: '*',
-        month: '*',
-        year: '*'
-      })
+      schedule: events.Schedule.rate(cdk.Duration.hours(1))
     });
 
     // Add Lambda as target for the rule
