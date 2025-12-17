@@ -12,10 +12,10 @@ import config from "./config";
 
 /**
  * Airo JWT Key Management Stack
- * 
+ *
  * Manages automatic JWT signing key rotation using Node.js crypto and AWS Secrets Manager.
  * Keys are generated locally in Lambda and stored in Secrets Manager for use by the application.
- * 
+ *
  * Features:
  * - Automatic key rotation on schedule
  * - Grace period for key transitions
@@ -116,7 +116,7 @@ export class AiroJWTKeyStack extends GDStack {
     // Create EventBridge rule for scheduled key rotation
     const keyRotationRule = new events.Rule(this, 'KeyRotationSchedule', {
       ruleName: `${config.envName}-airo-jwt-rotation-schedule`,
-      description: 'Scheduled JWT key rotation for Airo App Builder',
+      description: 'Scheduled JWT key rotation for Airo Builder',
       schedule: events.Schedule.rate(cdk.Duration.days(config.jwt.rotationIntervalDays))
     });
 

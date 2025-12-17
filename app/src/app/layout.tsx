@@ -30,7 +30,7 @@ import gasket from '../../gasket';
  * @returns Promise resolving to Metadata object with title and description
  */
 export async function generateMetadata(): Promise<Metadata> {
-  const defaultTitle = 'Airo App Builder';
+  const defaultTitle = 'Airo Builder';
   const defaultDescription = "Share your idea and we'll handle the rest";
   try {
     const locale = await detectLocale();

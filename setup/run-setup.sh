@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Airo App Builder - Advanced Setup Runner
+# Airo Builder - Advanced Setup Runner
 # This script runs the TypeScript setup application
 
 set -e
@@ -10,7 +10,7 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🚀 Starting Airo App Builder Advanced Setup...${NC}"
+echo -e "${BLUE}🚀 Starting Airo Builder Advanced Setup...${NC}"
 echo ""
 
 # Check if we're in the setup directory

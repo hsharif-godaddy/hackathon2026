@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Develop - Airo App Builder",
+  title: "Develop - Airo Builder",
   description: "Build and customize your app with AI assistance",
 };
 

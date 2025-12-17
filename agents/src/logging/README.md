@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is the Phase 1 implementation of the structured logging system for Airo App Builder. It provides a consistent, event-driven logging architecture that produces structured JSON in production while offering an enhanced developer experience in development.
+This is the Phase 1 implementation of the structured logging system for Airo Builder. It provides a consistent, event-driven logging architecture that produces structured JSON in production while offering an enhanced developer experience in development.
 
 ## Features Implemented
 

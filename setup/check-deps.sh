@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Airo App Builder - Dependency Checker
+# Airo Builder - Dependency Checker
 # This script checks for required dependencies and provides installation instructions
 
 set -e
@@ -32,7 +32,7 @@ print_info() {
 print_header() {
     echo ""
     echo "=================================="
-    echo "  Airo App Builder Setup Checker"
+    echo "    Airo Builder Setup Checker    "
     echo "=================================="
     echo ""
 }
@@ -40,12 +40,12 @@ print_header() {
 # Check Node.js version
 check_nodejs() {
     print_info "Checking Node.js installation..."
-    
+
     if command -v node &> /dev/null; then
         NODE_VERSION=$(node --version)
         NODE_MAJOR=$(echo $NODE_VERSION | cut -d'.' -f1 | sed 's/v//')
         NODE_MINOR=$(echo $NODE_VERSION | cut -d'.' -f2)
-        
+
         # Check for Node.js 22.16.0 or higher (required to fix ERR_INVALID_URL_SCHEME bug)
         if [ "$NODE_MAJOR" -eq 22 ] && [ "$NODE_MINOR" -ge 16 ]; then
             print_status "Node.js $NODE_VERSION is installed and compatible"
@@ -66,7 +66,7 @@ check_nodejs() {
 # Check pnpm installation
 check_pnpm() {
     print_info "Checking pnpm installation..."
-    
+
     if command -v pnpm &> /dev/null; then
         PNPM_VERSION=$(pnpm --version)
         print_status "pnpm $PNPM_VERSION is installed"
@@ -284,24 +284,24 @@ main() {
     if [[ "$1" == "--integrated" ]]; then
         integrated_mode=true
     fi
-    
+
     # Only show header if not in integrated mode
     if [ "$integrated_mode" = false ]; then
         print_header
     fi
-    
+
     local nodejs_ok=0
     local pnpm_ok=0
     local mkcert_ok=0
     local direnv_ok=0
     local direnv_hook_ok=0
-    
+
     # Check mkcert (optional but recommended)
     if check_mkcert; then
         mkcert_ok=1
     fi
     echo ""
-    
+
     # Check direnv first - it can automatically manage Node.js and pnpm
     if check_direnv; then
         direnv_ok=1
@@ -327,11 +327,11 @@ main() {
     if check_nodejs; then
         nodejs_ok=1
     fi
-    
+
     if check_pnpm; then
         pnpm_ok=1
     fi
-    
+
     # Summary - adjust based on mode
     if [ "$integrated_mode" = false ]; then
         echo ""
@@ -339,7 +339,7 @@ main() {
         echo "  Dependency Check Summary"
         echo "=================================="
     fi
-    
+
     if [ $direnv_ok -eq 1 ] && [ $direnv_hook_ok -eq 1 ] && [ $nodejs_ok -eq 1 ] && [ $pnpm_ok -eq 1 ]; then
         if [ "$integrated_mode" = false ]; then
             print_status "All required dependencies are satisfied!"
@@ -353,7 +353,7 @@ main() {
                 print_status "mkcert is installed - apps will use trusted local certificates"
             fi
             echo ""
-            print_info "You can now proceed with the Airo App Builder setup."
+            print_info "You can now proceed with the Airo Builder setup."
             echo ""
             echo "Next steps:"
             echo "  1. Run './setup.sh' for full setup, or"

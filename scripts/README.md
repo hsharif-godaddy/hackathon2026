@@ -1,6 +1,6 @@
 # Scripts Directory
 
-This directory contains various utility scripts for development, security auditing, and maintenance of the Airo App Builder project.
+This directory contains various utility scripts for development, security auditing, and maintenance of the Airo Builder project.
 
 ## Security Scripts
 

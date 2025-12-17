@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-Airo App Builder: AI-powered app development platform with multi-service architecture, AI agents, real-time collaboration, and flexible deployment.
+Airo Builder: AI-powered app development platform with multi-service architecture, AI agents, real-time collaboration, and flexible deployment.
 
 ## General Rules
 

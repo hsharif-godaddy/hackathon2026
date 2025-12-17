@@ -1,4 +1,4 @@
-# Translations in Airo App Builder
+# Translations in Airo Builder
 
 Comprehensive guide to using translations in both Client Components and Server Components.
 
@@ -721,7 +721,7 @@ Current keys in `@airo/app-builder`:
 {
   "builder_project_domain_title": "Project Domain",
   "builder_beta": "Beta",
-  "builder_title": "Airo App Builder"
+  "builder_title": "Airo Builder"
   // Add more as they're added to the package
 }
 ```

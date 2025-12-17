@@ -1,7 +1,7 @@
 import { SHOPPER_AUTH_FAILURE_MESSAGE } from './customer-auth';
 import { auth } from './features';
 import { logger } from './request-context';
-// Gasket configuration for Airo App Builder authentication
+// Gasket configuration for Airo Builder authentication
 
 // Extend globalThis interface for auth logging flag and config cache
 declare global {
@@ -35,7 +35,7 @@ export interface GasketConfig {
 // Runtime configuration loader (lazy - only called when needed)
 async function loadRuntimeConfig(): Promise<GasketConfig> {
   // Server-side: access environment variables directly
-  if (typeof window === 'undefined') {    
+  if (typeof window === 'undefined') {
     const config = {
       auth: {
         realm: 'idp',
@@ -57,18 +57,18 @@ async function loadRuntimeConfig(): Promise<GasketConfig> {
         logoutRedirectUrl: process.env.LOGOUT_REDIRECT_URL || 'https://airo-builder.test-godaddy.com/'
       }
     };
-    
+
     return config;
   }
-  
+
   try {
     const response = await fetch('/api/config');
     if (!response.ok) {
       throw new Error(`Config API error: ${response.status} ${response.statusText}`);
     }
-    
+
     const config = await response.json();
-    
+
     return config;
   } catch (error) {
     logger.error('🔧 Failed to load runtime config - no fallback available:', error);
@@ -97,11 +97,11 @@ export async function getGasketConfig(): Promise<GasketConfig> {
     return config;
   }).catch(error => {
     logger.error('🔧 Failed to load gasket config:', error);
-    
+
     if (typeof globalThis !== 'undefined') {
       globalThis.__gasketConfigPromise = undefined; // Clear promise on error
     }
-    
+
     // Re-throw the error instead of using fallback
     throw error;
   });
@@ -181,17 +181,17 @@ export async function isAuthDisabled(): Promise<boolean> {
 /**
  * Helper function for authenticated API calls
  * Wraps authFetch and adds access restriction handling
- * 
+ *
  * @param url - API endpoint URL
  * @param options - Fetch options
  * @returns Response from the API
- * 
+ *
  * @throws {Error} Redirects to coming-soon page if access is restricted
  */
 export async function appFetch(url: string, options?: RequestInit): Promise<Response> {
   const { authFetch } = await import('@godaddy/gasket-auth');
   const response = await authFetch(url, options);
-  
+
   // Check specifically for shopper ID authorization failure (403 only)
   if (response.status === 403) {
     try {
@@ -214,6 +214,6 @@ export async function appFetch(url: string, options?: RequestInit): Promise<Resp
       });
     }
   }
-  
+
   return response;
 }

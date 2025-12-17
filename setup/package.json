@@ -1,7 +1,7 @@
 {
   "name": "airo-setup",
   "version": "1.0.0",
-  "description": "Airo App Builder setup utility",
+  "description": "Airo Builder setup utility",
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",

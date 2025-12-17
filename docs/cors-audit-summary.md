@@ -5,7 +5,7 @@
 
 ## Executive Summary
 
-The CORS configuration audit has been completed for the Airo App Builder project. The current implementation is **secure and follows best practices**:
+The CORS configuration audit has been completed for the Airo Builder project. The current implementation is **secure and follows best practices**:
 
 - ✅ **No fail-open configurations** - CORS never allows all origins
 - ✅ **Explicit origin validation** - All origins checked against allowlist
@@ -177,7 +177,7 @@ The risk of "running in local dev mode in production" is now eliminated because:
 
 ## Conclusion
 
-The CORS configuration in Airo App Builder is **secure and production-ready**. The implementation:
+The CORS configuration in Airo Builder is **secure and production-ready**. The implementation:
 
 - ✅ Validates all origins against an explicit allowlist
 - ✅ Rejects unauthorized origins with error

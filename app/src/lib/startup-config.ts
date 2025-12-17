@@ -12,7 +12,7 @@ export function logStartupConfiguration() {
   hasInitialized = true;
 
   logger.info('startup.config.begin', {
-    message: '🚀 Airo App Builder - Service Configuration'
+    message: '🚀 Airo Builder - Service Configuration'
   });
 
   // Database Configuration

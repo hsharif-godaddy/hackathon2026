@@ -1,6 +1,6 @@
-# Airo App Builder E2E Tests
+# Airo Builder E2E Tests
 
-End-to-end testing suite for Airo App Builder using Cypress and Testla.
+End-to-end testing suite for Airo Builder using Cypress and Testla.
 
 ## Framework Selection: Cypress vs Playwright
 
@@ -157,7 +157,7 @@ npm run testla:prod
 
 ### Testla Dashboard
 
-View test results, manage test runs, and monitor test health on the [Airo App Builder Testla Dashboard](https://testla.int.gdcorp.tools/project-details?orgId=1&productId=75&projectId=26202).
+View test results, manage test runs, and monitor test health on the [Airo Builder Testla Dashboard](https://testla.int.gdcorp.tools/project-details?orgId=1&productId=75&projectId=26202).
 
 ### Updating Cached Tests in Testla
 
@@ -243,7 +243,7 @@ To use a new shopper account for E2E testing in Testla, you must request the SSO
    We need to allowlist a shopper account for E2E testing with heartbeat auth.
 
    - Shopper username: [username]
-   - Purpose: Automated E2E testing for Airo App Builder
+   - Purpose: Automated E2E testing for Airo Builder
    - Auth method: /v1/api/token (via @gd-cypress/auth package)
 
    Thank you!

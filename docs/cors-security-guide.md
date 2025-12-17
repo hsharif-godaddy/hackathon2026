@@ -1,10 +1,10 @@
 # CORS Security Guide
 
-Complete guide for CORS (Cross-Origin Resource Sharing) configuration, auditing, and verification in the Airo App Builder project.
+Complete guide for CORS (Cross-Origin Resource Sharing) configuration, auditing, and verification in the Airo Builder project.
 
 ## Overview
 
-The Airo App Builder uses a multi-service architecture where the main app (port 3000) makes cross-origin requests to the agents service (port 4000). Proper CORS configuration is critical for security.
+The Airo Builder uses a multi-service architecture where the main app (port 3000) makes cross-origin requests to the agents service (port 4000). Proper CORS configuration is critical for security.
 
 ### Security Requirements
 

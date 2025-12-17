@@ -71,7 +71,7 @@ export default function InviteFriends({ location = 'unknown', variant = InviteFr
   const referralContent = (
     <Box orientation='vertical' gap='sm'>
       <text.p size={0}>
-        Share your referral link with friends and let them experience the magic of Airo App Builder!
+        Share your referral link with friends and let them experience the magic of Airo Builder!
       </text.p>
       <Box orientation='horizontal' gap='sm' className='w-full' blockAlignChildren='center'>
         <TextInput

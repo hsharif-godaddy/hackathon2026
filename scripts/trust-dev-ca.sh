@@ -15,7 +15,7 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}╔══════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║   Airo App Builder - Trust Development CA   ║${NC}"
+echo -e "${BLUE}║      Airo Builder - Trust Development CA     ║${NC}"
 echo -e "${BLUE}╚══════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -61,7 +61,7 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         sudo update-ca-certificates
         echo -e "${GREEN}✅ CA certificate installed to system trust store${NC}"
         echo ""
-        
+
         # Check if running in WSL2
         if [ -d "/mnt/c" ] && command -v powershell.exe &> /dev/null; then
             echo -e "${BLUE}🔍 Detected WSL2 with PowerShell access${NC}"
@@ -71,14 +71,14 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
             if [[ "$win_response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
                 # Convert WSL path to Windows path
                 CA_CERT_WIN=$(wslpath -w "$CA_CERT" 2>/dev/null || echo "$CA_CERT" | sed 's|^/mnt/\([a-z]\)/|\1:/|' | sed 's|/|\\|g')
-                
+
                 echo ""
                 echo -e "${BLUE}🔐 Installing CA to Windows host certificate store...${NC}"
                 echo -e "${YELLOW}   This requires administrator privileges on Windows${NC}"
                 echo ""
-                
+
                 powershell.exe -Command "Start-Process powershell -Verb RunAs -ArgumentList '-Command', 'Import-Certificate -FilePath \"$CA_CERT_WIN\" -CertStoreLocation Cert:\\LocalMachine\\Root'" 2>/dev/null
-                
+
                 if [ $? -eq 0 ]; then
                     echo -e "${GREEN}✅ CA certificate installation initiated on Windows host${NC}"
                     echo -e "${YELLOW}   You may see a UAC prompt - please approve it${NC}"
@@ -91,7 +91,7 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
                 echo ""
             fi
         fi
-        
+
         echo -e "${YELLOW}⚠️  You may still need to manually import it in your browsers${NC}"
     fi
 

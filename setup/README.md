@@ -1,6 +1,6 @@
-# Airo App Builder Setup Utilities
+# Airo Builder Setup Utilities
 
-This directory contains setup utilities to help you configure and install the Airo App Builder development environment.
+This directory contains setup utilities to help you configure and install the Airo Builder development environment.
 
 ## 🚀 Quick Start
 

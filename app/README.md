@@ -1,4 +1,4 @@
-# Airo App Builder
+# Airo Builder
 
 An AI-powered application development platform that combines artificial intelligence with enterprise-grade hosting and development tools, built with Next.js, TypeScript, and Tailwind CSS.
 

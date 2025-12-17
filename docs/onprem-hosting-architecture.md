@@ -1,14 +1,14 @@
-# Airo App Builder Hosting Platform - On-Premises Architecture
+# Airo Builder Hosting Platform - On-Premises Architecture
 
 ## Executive Summary
 
-This document describes the on-premises hosting platform architecture for the Airo AI application hosting service. The platform leverages the existing v2 Managed WordPress platform infrastructure components with modifications to support Airo App Builder workloads. This document is intended for security teams to understand the architecture, network flows, and security controls.
+This document describes the on-premises hosting platform architecture for the Airo AI application hosting service. The platform leverages the existing v2 Managed WordPress platform infrastructure components with modifications to support Airo Builder workloads. This document is intended for security teams to understand the architecture, network flows, and security controls.
 
 ## Architecture Overview
 
-This document is meant to highlight and explain the new changes to the v2 platform to support Airo App Builder. Any reused existing components and networking have already been through a threat model and security certification. The architecture and security review documents for that can be found at <https://godaddy-corp.atlassian.net/wiki/spaces/PARCH/pages/3505685011/Managed+WordPress+MWP+MWCS+V2+Design+Summary>, <https://godaddy-corp.atlassian.net/wiki/spaces/PARCH/pages/3218325911/Threat+Model>, and <https://godaddy-corp.atlassian.net/wiki/spaces/PARCH/pages/3298051616/WordPress+PaaS+V2+Threat+Models>.
+This document is meant to highlight and explain the new changes to the v2 platform to support Airo Builder. Any reused existing components and networking have already been through a threat model and security certification. The architecture and security review documents for that can be found at <https://godaddy-corp.atlassian.net/wiki/spaces/PARCH/pages/3505685011/Managed+WordPress+MWP+MWCS+V2+Design+Summary>, <https://godaddy-corp.atlassian.net/wiki/spaces/PARCH/pages/3218325911/Threat+Model>, and <https://godaddy-corp.atlassian.net/wiki/spaces/PARCH/pages/3298051616/WordPress+PaaS+V2+Threat+Models>.
 
-The Airo App Builder hosting platform consists of multiple server groups orchestrated by Nomad, with Cilium providing network security and SELinux enforcing container-level security policies.
+The Airo Builder hosting platform consists of multiple server groups orchestrated by Nomad, with Cilium providing network security and SELinux enforcing container-level security policies.
 
 ```mermaid
 graph TB

@@ -1,6 +1,6 @@
 # Structured Logging Guide
 
-This guide explains how to use the structured logging system in the Airo App Builder codebase.
+This guide explains how to use the structured logging system in the Airo Builder codebase.
 
 ## Overview
 

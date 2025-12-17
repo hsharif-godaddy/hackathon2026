@@ -37,7 +37,7 @@ Hence: **Per‑App client registration**.
   - Each App has **Preview** and **Published** variants.
     - **Preview**: Runs the **Agent** service and the Application task.
     - **Published**: Runs only the Application task.
-- **OAuth Client** – Registered by the **Control Plane** (Airo App Builder team):
+- **OAuth Client** – Registered by the **Control Plane** (Airo Builder team):
   - Created at **Pre-Provisioning Time** (when the app instance is warmed up).
   - Owned by a single **App** (not shared across Apps).
   - Configured with that App’s specific redirect URIs.

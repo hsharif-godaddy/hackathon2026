@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Airo App Builder - Master Setup Script
+# Airo Builder - Master Setup Script
 # This script orchestrates the complete setup process
 
 set -e
@@ -17,7 +17,7 @@ print_header() {
     clear
     echo -e "${CYAN}╔══════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}║                                              ║${NC}"
-    echo -e "${CYAN}║          🚀 Airo App Builder Setup          ║${NC}"
+    echo -e "${CYAN}║            🚀 Airo Builder Setup             ║${NC}"
     echo -e "${CYAN}║                                              ║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
     echo ""
@@ -59,7 +59,7 @@ main() {
     fi
 
     print_header
-    
+
     # Confirm user wants to proceed
     echo -e "${YELLOW}⚠️  This setup will check and potentially modify your system configuration.${NC}"
     echo ""
@@ -68,14 +68,14 @@ main() {
         echo -e "${YELLOW}Setup cancelled by user.${NC}"
         exit 0
     fi
-    
+
     echo ""
-    
+
     # Step 1: Basic Dependencies
     print_step "1" "Basic Dependency Check"
     echo -e "${BLUE}Checking Node.js 22 and pnpm installation...${NC}"
     echo ""
-    
+
     if ./setup/check-deps.sh --integrated; then
         print_success "Basic dependencies satisfied"
     else
@@ -85,14 +85,14 @@ main() {
         echo "You can also run just the dependency checker: ${BLUE}./setup/check-deps.sh${NC}"
         exit 1
     fi
-    
+
     confirm_continue
-    
+
     # Step 2: Advanced Setup
     print_step "2" "Advanced Configuration"
     echo -e "${BLUE}Starting Docker checks and environment configuration...${NC}"
     echo ""
-    
+
     # Check if dependencies are installed for the setup app
     if [ ! -d "setup/node_modules" ]; then
         # Check if already authenticated by testing package access
@@ -107,7 +107,7 @@ main() {
         pnpm install
         echo ""
     fi
-    
+
     # Run the advanced setup
     if pnpm --filter airo-setup start; then
         print_success "Advanced setup completed successfully"
@@ -115,12 +115,12 @@ main() {
         print_error "Advanced setup failed"
         exit 1
     fi
-    
+
     # Step 3: Final Summary
     echo ""
     print_step "3" "Setup Complete"
-    
-    echo -e "${GREEN}🎉 Airo App Builder setup completed successfully!${NC}"
+
+    echo -e "${GREEN}🎉 Airo Builder setup completed successfully!${NC}"
     echo ""
     echo -e "${CYAN}📋 What's been configured:${NC}"
     echo "  ✅ Node.js 22 and pnpm verified"
@@ -141,7 +141,7 @@ main() {
     echo "   # Terminal 1 - Backend API (port 4000)"
     echo "   cd agents && pnpm run dev"
     echo ""
-    echo "   # Terminal 2 - Frontend App (HTTPS port 8443)"  
+    echo "   # Terminal 2 - Frontend App (HTTPS port 8443)"
     echo "   cd app && pnpm run dev"
     echo ""
     echo -e "${YELLOW}3. Access your application:${NC}"
@@ -161,7 +161,7 @@ trap 'echo -e "\n${YELLOW}Setup interrupted by user. Exiting...${NC}"; exit 130'
 
 # Check if we're in the right directory
 if [ ! -f "setup/check-deps.sh" ]; then
-    echo -e "${RED}❌ Error: Please run this script from the Airo App Builder root directory${NC}"
+    echo -e "${RED}❌ Error: Please run this script from the Airo Builder root directory${NC}"
     echo "Expected to find: setup/check-deps.sh"
     exit 1
 fi

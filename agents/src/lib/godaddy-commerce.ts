@@ -246,7 +246,7 @@ export class GoDaddyCommerce {
         ...(args.storeName && { legalName: args.storeName }),
       },
       metadata: {
-        source: 'GoDaddy - Airo App Builder Agent',
+        source: 'GoDaddy - Airo Builder Agent',
         appId: args.appId,
       },
       intent: 'CREATE_BUSINESS',

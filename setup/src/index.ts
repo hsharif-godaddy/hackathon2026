@@ -19,14 +19,14 @@ const projectRoot = path.resolve(__dirname, '../..');
 
 function printHeader() {
   console.clear();
-  console.log(chalk.cyan.bold('🚀 Airo App Builder Setup Utility'));
+  console.log(chalk.cyan.bold('🚀 Airo Builder Setup Utility'));
   console.log(chalk.gray('==================================='));
   console.log('');
 }
 
 function printSelectiveHeader() {
   console.clear();
-  console.log(chalk.cyan.bold('🔧 Airo App Builder Configuration'));
+  console.log(chalk.cyan.bold('🔧 Airo Builder Configuration'));
   console.log(chalk.gray('=================================='));
   console.log('');
 }

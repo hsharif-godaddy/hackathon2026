@@ -1,12 +1,12 @@
 openapi: 3.0.3
 info:
-  title: Airo App Builder - Frontend Backend APIs
+  title: Airo Builder - Frontend Backend APIs
   description: |
-    REST API specification for the Airo App Builder frontend backend service.
+    REST API specification for the Airo Builder frontend backend service.
     This Next.js application provides APIs for:
     - JWT token validation and authentication
     - Customer account management (authenticated customers only)
-    - Customer site management with Nomad container deployment (authenticated customers only)  
+    - Customer site management with Nomad container deployment (authenticated customers only)
     - Public subscription plan viewing
     - System health monitoring
 
@@ -38,7 +38,7 @@ info:
     - **Integration with GoDaddy SSO API** for signature verification
   version: 1.0.0
   contact:
-    name: Airo App Builder Team
+    name: Airo Builder Team
     email: support@airo.build
   license:
     name: Private
@@ -726,7 +726,7 @@ paths:
 
         Default plans:
         - Free: 10 sites, $5/month
-        - Starter: 30 sites, $20/month  
+        - Starter: 30 sites, $20/month
         - Pro: 100 sites, $50/month
       security:
         - CustomerBearerAuth: []

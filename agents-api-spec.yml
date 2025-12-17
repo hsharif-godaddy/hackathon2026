@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
-  title: Airo App Builder - Agent System APIs
+  title: Airo Builder - Agent System APIs
   description: |
-    REST API specification for the Airo App Builder agent system microservice.
+    REST API specification for the Airo Builder agent system microservice.
     This Express.js application provides APIs for:
     - Application lifecycle management (create, deploy, manage)
     - AI agent interactions and conversations
@@ -23,7 +23,7 @@ info:
     Most development-focused endpoints are open for local development.
   version: 1.0.0
   contact:
-    name: Airo App Builder Team
+    name: Airo Builder Team
     email: support@airo.build
   license:
     name: Private

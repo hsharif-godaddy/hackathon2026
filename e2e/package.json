@@ -2,7 +2,7 @@
   "name": "airo-app-builder-e2e",
   "version": "1.0.0",
   "private": true,
-  "description": "E2E tests for Airo App Builder",
+  "description": "E2E tests for Airo Builder",
   "scripts": {
     "cypress:open": "cypress open",
     "cypress:open:dev": "CYPRESS_ENV=dev cypress open",

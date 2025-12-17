@@ -61,7 +61,7 @@ export class CAManager {
       cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 10);
 
       const attrs = [
-        { name: 'commonName', value: 'Airo App Builder Development CA' },
+        { name: 'commonName', value: 'Airo Builder Development CA' },
         { name: 'organizationName', value: 'Airo Development' },
         { name: 'organizationalUnitName', value: 'Development' }
       ];

@@ -77,13 +77,13 @@ export class CASetup {
         const { stdout } = await execa('security', [
           'find-certificate',
           '-c',
-          'Airo App Builder Development CA',
+          'Airo Builder Development CA',
           '-a',
           '-Z',
           '/Library/Keychains/System.keychain'
         ]);
 
-        if (!stdout.includes('Airo App Builder Development CA')) {
+        if (!stdout.includes('Airo Builder Development CA')) {
           return false;
         }
 
@@ -146,7 +146,7 @@ export class CASetup {
           cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 10);
 
           const attrs = [
-            { name: 'commonName', value: 'Airo App Builder Development CA' },
+            { name: 'commonName', value: 'Airo Builder Development CA' },
             { name: 'organizationName', value: 'Airo Development' },
             { name: 'organizationalUnitName', value: 'Development' }
           ];
@@ -379,7 +379,7 @@ export class CASetup {
       console.log(chalk.red('❌ Failed to install CA certificate on Windows host'));
       console.log('');
       console.log('You can install it manually by running this in an elevated PowerShell:');
-      
+
       let windowsPath: string;
       try {
         const { stdout } = await execa('wslpath', ['-w', this.caCertPath]);
@@ -387,7 +387,7 @@ export class CASetup {
       } catch {
         windowsPath = this.caCertPath.replace(/\/mnt\/([a-z])\//g, '$1:/').replace(/\//g, '\\');
       }
-      
+
       console.log(chalk.blue(`  Import-Certificate -FilePath "${windowsPath}" -CertStoreLocation Cert:\\LocalMachine\\Root`));
       console.log('');
     }

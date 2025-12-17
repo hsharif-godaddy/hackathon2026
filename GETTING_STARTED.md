@@ -1,4 +1,4 @@
-# 🚀 Getting Started - Airo App Builder
+# 🚀 Getting Started - Airo Builder
 
 Complete setup guide to run the AI builder locally in under 5 minutes.
 

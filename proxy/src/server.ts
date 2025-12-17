@@ -80,7 +80,7 @@ const sslOptions = {
 const server = https.createServer(sslOptions, app);
 
 server.listen(config.server.port, config.server.host, () => {
-  logger.info('Airo App Builder Proxy started', {
+  logger.info('Airo Builder Proxy started', {
     port: config.server.port,
     host: config.server.host,
     environment: process.env.NODE_ENV ?? 'development',
@@ -93,7 +93,7 @@ server.listen(config.server.port, config.server.host, () => {
 // Graceful shutdown
 const gracefulShutdown = (signal: string): void => {
   logger.info(`Received ${signal}, shutting down gracefully`);
-  
+
   server.close(() => {
     logger.info('Server closed');
     process.exit(0);

@@ -10,7 +10,7 @@ The platform is composed of four primary systems that work together to deliver t
 
 ```mermaid
 graph TB
-    subgraph "1. Airo App Builder"
+    subgraph "1. Airo Builder"
         UI[User Interface]
         CDK[AWS CDK Deployment]
         Katana[Katana Build System]
@@ -71,7 +71,7 @@ graph TB
 
 ## System Components
 
-### 1. Airo App Builder (`/app`)
+### 1. Airo Builder (`/app`)
 
 The user-facing application that provides the complete development experience:
 
@@ -102,7 +102,7 @@ A collection of AI agents that manage application lifecycle and development:
 - **Location**: `/agents` in codebase
 - **Deployment**: Github action to create docker image, registered in the control plane
 - **Scaling**: One agent deployment per customer application
-- **Communication**: Direct HTTP/WebSocket with Airo App Builder
+- **Communication**: Direct HTTP/WebSocket with Airo Builder
 
 ### 3. Control Plane
 
@@ -162,7 +162,7 @@ For detailed hosting architecture, see [AI Hosting Platform Documentation](ai-ho
 
 | Service Type         | Domain Pattern             | Example                      |
 | -------------------- | -------------------------- | ---------------------------- |
-| Airo App Builder     | `app.airo.com`             | Main application             |
+| Airo Builder         | `app.airo.com`             | Main application             |
 | Agent                | `{id}.agents.platform.com` | `abc123.agents.platform.com` |
 | Development          | `{id}.dev.platform.com`    | `xyz789.dev.platform.com`    |
 | Production (Default) | `{id}.prod.platform.com`   | `def456.prod.platform.com`   |
@@ -170,7 +170,7 @@ For detailed hosting architecture, see [AI Hosting Platform Documentation](ai-ho
 
 ## Technology Stack
 
-### Airo App Builder
+### Airo Builder
 
 - **Framework**: Next.js
 - **Deployment**: AWS (via Katana/CDK)
@@ -200,7 +200,7 @@ For detailed hosting architecture, see [AI Hosting Platform Documentation](ai-ho
 
 ```
 airo-ai-builder/
-├── app/                    # Airo App Builder application
+├── app/                    # Airo Builder application
 ├── agents/                 # Agent system implementation
 ├── cdk/                    # AWS CDK deployment configs
 ├── docs/                   # Platform documentation
