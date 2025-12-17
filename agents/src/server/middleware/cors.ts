@@ -25,7 +25,13 @@ const corsOptions: CorsOptions = {
         'https://airo-builder.test-godaddy.com',
         'https://airo-builder.godaddy.com:8443',
         'https://airo-builder.godaddy.com',
-        'https://airo-builder.dev-godaddy.com'
+        'https://airo-builder.dev-godaddy.com',
+        'https://host.pcx.dev-godaddy.com',
+        'https://host.pcx.test-godaddy.com',
+        'https://host.pcx.godaddy.com',
+        'https://host.local.pcx.dev-godaddy.com:444',
+        'https://host.local.pcx.test-godaddy.com:444',
+        'https://host.local.pcx.godaddy.com:444'
       ];
     }
 

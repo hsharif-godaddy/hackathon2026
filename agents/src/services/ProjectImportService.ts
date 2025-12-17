@@ -597,14 +597,21 @@ export class ProjectImportService {
       // Convert agent path to container path (/app is the standard container mount)
       const containerAppPath = '/app';
 
-      // Delete all files except .git, node_modules, .is_ready, and dev_setup_and_serve.sh
-      // Using find to delete everything except preserved items
+      // Delete all files except .git, node_modules, .is_ready, dev_setup_and_serve.sh, and public/assets
+      // Preserve public/assets as it contains persistent user data, refer this doc for more detail -> docs/persistent-storage-architecture.md
       const deleteResult = await devSupervisor.exec({
-        command: `find "${containerAppPath}" -mindepth 1 -maxdepth 1 ! -name ".git" ! -name "node_modules" ! -name ".is_ready" ! -name ".import-*" ! -name "dev_setup_and_serve.sh" -exec rm -rf {} +`,
+        command: `find "${containerAppPath}" -mindepth 1 -maxdepth 1 ! -name ".git" ! -name "node_modules" ! -name ".is_ready" ! -name ".import-*" ! -name "dev_setup_and_serve.sh" ! -name "public" -exec rm -rf {} + && find "${containerAppPath}/public" -mindepth 1 -maxdepth 1 ! -name "assets" -exec rm -rf {} +`,
         timeout: 30, // seconds
       });
 
       if (!deleteResult.success) {
+        this.logger.error('project-import.copy-in-container.cleanup-failed', {
+          projectRoot,
+          appPath,
+          containerAppPath,
+          stderr: deleteResult.stderr,
+          exitCode: deleteResult.exit_code,
+        });
         return {
           success: false,
           error: `Failed to clean app directory: ${deleteResult.stderr}`,
