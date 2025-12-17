@@ -277,7 +277,7 @@ export default makeGasket({
   },
   cds: {
     api: {
-      baseUrl: process.env.CDS_API_BASE_URL || 'https://cds.api.int.dev-godaddy.com',
+      baseUrl: process.env.CDS_API_BASE_URL || 'https://cds.api.int.godaddy.com',
       logPath: '/log'
     },
     componentTypes: [
