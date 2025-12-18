@@ -1175,12 +1175,6 @@ export function useStreamingWebSocket() {
     if (!content.trim() || !currentAppId) return
 
     try {
-      setIsLoading(true)
-      setStreamingState('streaming')
-
-      // Start new stream (adds user message + creates activeStream)
-      startNewStream(content)
-
       // Reuse existing Socket.IO connection
       const socket = socketRef.current
 
@@ -1191,6 +1185,12 @@ export function useStreamingWebSocket() {
       if (!socket.connected) {
         throw new Error('WebSocket not connected. Connection may be reconnecting...')
       }
+
+      setIsLoading(true)
+      setStreamingState('streaming')
+
+      // Start new stream (adds user message + creates activeStream)
+      startNewStream(content)
 
       // Get current state for rich context
       const state = useStreamingConversationStore.getState()

@@ -94,7 +94,7 @@ function DevelopPageContent() {
   const setAiEditContext = useSetAiEditContext()
   const setBuildErrorContext = useSetBuildErrorContext()
   const autoSendInitialMessage = useAutoSendInitialMessage()
-  const { sendMessage } = useStreamingWebSocket()
+  const { sendMessage, webSocketState } = useStreamingWebSocket()
 
   const chatPaneWidth = useDevelopPageStore((state) => state.chatPaneWidth)
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
@@ -133,6 +133,8 @@ function DevelopPageContent() {
     url?: string
     scrollPosition?: { x: number; y: number }
   }>({})
+  const pendingAutoSendRef = useRef<string | null>(null)
+  const autoSendInFlightRef = useRef(false)
 
   useEffect(() => {
     logImpressionEvent('develop.page.view')();
@@ -562,25 +564,57 @@ function DevelopPageContent() {
 
   // Handle auto-send initial message for new apps (driven by init.ui.shouldAutoSendPrompt)
   useEffect(() => {
-    if (!init.ui.shouldAutoSendPrompt || !init.ui.autoSendPromptText) return
+    if (!init.ui.shouldAutoSendPrompt || !init.ui.autoSendPromptText || !appId) return
     if (searchParams.get('message')) return // Don't auto-send if there's a URL message
 
-    logger.info('develop-page.auto-send.triggered', {
-      message: 'Auto-sending initial message for new app',
-      appId,
-      promptPreview: init.ui.autoSendPromptText.substring(0, 50) + '...'
-    })
+    if (!pendingAutoSendRef.current) {
+      const wasTriggered = autoSendInitialMessage(init.ui.autoSendPromptText, appId)
 
-    // Use the streaming store's auto-send function
-    const wasTriggered = autoSendInitialMessage(init.ui.autoSendPromptText, appId!)
-
-    if (wasTriggered) {
-      // Send immediately - WebSocket is confirmed to be connected
-      sendMessage(init.ui.autoSendPromptText, null)
-      // Mark as sent so we don't trigger again
-      init.actions.markInitialPromptSent()
+      if (wasTriggered) {
+        pendingAutoSendRef.current = init.ui.autoSendPromptText
+        logger.info('develop-page.auto-send.triggered', {
+          message: 'Auto-sending initial message for new app',
+          appId,
+          promptPreview: init.ui.autoSendPromptText.substring(0, 50) + '...'
+        })
+      }
     }
-  }, [init.ui.shouldAutoSendPrompt, init.ui.autoSendPromptText, searchParams, autoSendInitialMessage, sendMessage, appId, init.actions])
+
+    if (
+      pendingAutoSendRef.current &&
+      webSocketState.connected &&
+      !autoSendInFlightRef.current
+    ) {
+      autoSendInFlightRef.current = true
+      const messageToSend = pendingAutoSendRef.current
+
+      const sendPendingMessage = async () => {
+        try {
+          await sendMessage(messageToSend, null)
+          pendingAutoSendRef.current = null
+          init.actions.markInitialPromptSent()
+        } catch (error) {
+          logger.error('develop-page.auto-send.failed', {
+            error: error instanceof Error ? error.message : String(error),
+            appId
+          })
+        } finally {
+          autoSendInFlightRef.current = false
+        }
+      }
+
+      void sendPendingMessage()
+    }
+  }, [
+    init.ui.shouldAutoSendPrompt,
+    init.ui.autoSendPromptText,
+    searchParams,
+    autoSendInitialMessage,
+    sendMessage,
+    appId,
+    init.actions,
+    webSocketState.connected
+  ])
 
   useEffect(() => {
     if (loadingPhase !== 'ready' || !init.initialJobId) return
