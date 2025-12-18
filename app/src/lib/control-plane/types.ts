@@ -6,7 +6,32 @@
  * - Legacy: Direct database + Nomad/SQS (internal)
  */
 
+import type { SiteVariant } from '@/lib/site-adapters/interfaces/ISiteAdapter';
+
+// Re-export lifecycle types from ISiteAdapter for consumers
+export {
+  type LifecycleMetadata,
+  LifecycleReason,
+  LifecycleState,
+  type SiteVariant,
+  type VariantLifecycle,
+} from '@/lib/site-adapters/interfaces/ISiteAdapter';
+
 export type SiteStatus = 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';
+
+/**
+ * Options for deploying a site
+ */
+export interface DeploySiteOptions {
+  /**
+   * Which variant to deploy (e.g., 'preview' or 'publish')
+   */
+  variant?: string;
+  /**
+   * Set to true when resuming an app from hibernation
+   */
+  resumeFromHibernation?: boolean;
+}
 
 /**
  * Domain type enum
@@ -60,7 +85,8 @@ export interface SiteInfo {
   system_id?: string; // V2 only: systemId from mgmt-hosting (needed for deploy/delete/update)
   subscription_id?: string; // V2 only: subscriptionId from mgmt-hosting (needed for hierarchical URLs)
   domains?: SiteDomain[]; // V2 only: Custom domains from mgmt-hosting
-  variants?: string[]; // V2 only: Available variants (e.g., ["preview", "publish"])
+  variants?: string[]; // V2 only: Variants with lifecycle state
+  variantsWithLifecycle?: SiteVariant[]; // V2 only: Variants with lifecycle state for hibernation
   productId?: string; // V2 only: Product ID (e.g., "aab-v1", "paas-nodejs-v1")
   ownerProduct?: string; // V2 only: Owner product family (e.g., "AiroAppBuilder", "PaaSNodeJS")
   compositionId?: string; // V2 only: Composition type (e.g., "ai-builder", "node-app")
@@ -149,9 +175,23 @@ export interface IControlPlaneAdapter {
    *
    * @param siteId - Site identifier
    * @param jwt - Customer JWT token
+   * @param options - Optional deployment options (variant, resumeFromHibernation)
    * @returns Deployment result with updated site status
    */
-  deploySite(siteId: string, jwt: string): Promise<{ success: boolean; site: SiteInfo; message: string; note?: string }>;
+  deploySite(siteId: string, jwt: string, options?: DeploySiteOptions): Promise<{ success: boolean; site: SiteInfo; message: string; note?: string }>;
+
+  /**
+   * Resume site variant from hibernation
+   *
+   * V2: POST /airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/variants/:variant/resume
+   * Legacy: Not implemented
+   *
+   * @param siteId - Site identifier
+   * @param variant - Variant to resume (e.g., 'preview', 'publish')
+   * @param jwt - Customer JWT token
+   * @returns Resume result with success status
+   */
+  resumeSite(siteId: string, variant: string, jwt: string): Promise<{ success: boolean; message: string }>;
 
   /**
    * Update site

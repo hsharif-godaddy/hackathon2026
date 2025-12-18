@@ -370,7 +370,13 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // -------------------------------------------------------------------------
 
   const ui = useMemo(
-    () => computeUIState(phase, subPhase, context, creationError, isActiveCreationSession.current),
+    () => computeUIState(
+      phase,
+      subPhase,
+      context,
+      creationError,
+      isActiveCreationSession.current
+    ),
     [ /* eslint-disable-line react-hooks/exhaustive-deps */
       phase,
       subPhase,
@@ -603,7 +609,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
 
     markFirstFileEditSeen: () => {
       setHasSeenFirstFileEdit(true)
-    }
+    },
   }
 
   // Legacy handlers for backward compatibility

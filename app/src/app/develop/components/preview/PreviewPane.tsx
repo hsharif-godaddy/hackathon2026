@@ -28,12 +28,20 @@ interface PreviewPaneProps {
   onPreviewRefresh: () => void
   isMobile?: boolean
   showBuildingOverlay?: boolean
+  isHibernated?: boolean
+  isResuming?: boolean
+  resumeFailed?: boolean
+  onRetryResume?: () => void
 }
 
 export default function PreviewPane({
   onPreviewRefresh,
   isMobile = false,
-  showBuildingOverlay = false
+  showBuildingOverlay = false,
+  isHibernated = false,
+  isResuming = false,
+  resumeFailed = false,
+  onRetryResume,
 }: PreviewPaneProps) {
   const t = useTranslations();
 
@@ -278,6 +286,24 @@ export default function PreviewPane({
     logger.warn('preview-pane.iframe.error', { message: 'Iframe error', appId })
     setIframeError(true)
   }
+
+  // Show error state when resume failed
+  if (resumeFailed) {
+    return (
+      <PreviewError
+        title={t('builder_preview_resume_failed_title')}
+        error={t('builder_preview_resume_failed_message')}
+        buttonText={t('builder_common_try_again')}
+        buttonOnClick={onRetryResume || onPreviewRefresh}
+      />
+    )
+  }
+
+  // Show restarting message when app is hibernated or resuming
+  if (isHibernated || isResuming) {
+    return <Tips buildingMessage={t('builder_preview_resuming_message')} />
+  }
+
   if (isPollingEntitlements) {
     // We don't want to show tips when polling entitlements
     return <Tips buildingMessage={t('builder_preview_updating_suscription')} showTips={false} />

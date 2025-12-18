@@ -16,6 +16,7 @@ import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
 import { usePublishApp } from '@/hooks/usePublishApp';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
+import { shipAnalyticsLog } from '@/lib/logging';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
@@ -26,7 +27,6 @@ import { useSiteStore } from '@/stores/useSiteStore';
 import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversationStore';
 import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
-import { shipAnalyticsLog } from '@/lib/logging';
 
 export default function AppPublish({ location }: { location?: string }) {
   const intl = useIntl();

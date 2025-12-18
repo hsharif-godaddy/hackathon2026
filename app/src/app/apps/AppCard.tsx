@@ -1,15 +1,14 @@
 import { useRouter } from 'next/navigation'
-import { useEffect,useState } from 'react'
-import { FormattedMessage } from 'react-intl'
-import {
-  ClockIcon,
-  EyeIcon,
-  GlobeAltIcon,
-  PlayIcon,
-  TrashIcon} from '@heroicons/react/24/outline'
+import { useEffect, useState } from 'react';
+import { FormattedMessage } from 'react-intl';
 import Box from '@ux/box'
 import Button from '@ux/button'
+import ClockIcon from '@ux/icon/clock'
+import PlayIcon from '@ux/icon/play'
 import PlusIcon from '@ux/icon/plus'
+import ShowIcon from '@ux/icon/show'
+import TrashIcon from '@ux/icon/trash'
+import WebsiteIcon from '@ux/icon/website'
 import Tag from '@ux/tag'
 import text from '@ux/text'
 
@@ -29,9 +28,26 @@ interface AlertState {
   message: string | React.ReactNode
 }
 
-export default function AppCard({site}) {
+function getStatusConfig(status: string): { key: string; emphasis: 'success' | 'warning' | 'info' | 'critical' | 'neutral' } {
+  switch (status) {
+    case 'running':
+      return { key: 'builder_status_running', emphasis: 'success' };
+    case 'creating':
+    case 'created':
+      return { key: 'builder_status_creating', emphasis: 'warning' };
+    case 'failed':
+    case 'error':
+      return { key: 'builder_status_failed', emphasis: 'critical' };
+    case 'stopped':
+      return { key: 'builder_status_stopped', emphasis: 'info' };
+    default:
+      return { key: 'builder_status_unknown', emphasis: 'neutral' };
+  }
+}
+
+export default function AppCard({site}: {site: SiteInfo}) {
+  const router = useRouter();
   const t = useTranslations();
-  const router = useRouter()
 
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [alertState, setAlertState] = useState<AlertState>({ siteId: null, type: null, message: '' })
@@ -60,21 +76,9 @@ export default function AppCard({site}) {
     fetchSiteDetails()
   }, [site.id])
 
-  const getStatusLabel = (status: SiteInfo['status']) => {
-    switch (status) {
-      case 'running':
-        return <Tag emphasis="success">{t('builder_status_running')}</Tag>
-      case 'creating':
-      case 'created':
-        return <Tag emphasis="warning">{t('builder_status_creating')}</Tag>
-      case 'failed':
-      case 'error':
-        return <Tag emphasis="critical">{t('builder_status_failed')}</Tag>
-      case 'stopped':
-        return <Tag emphasis="info">{t('builder_status_stopped')}</Tag>
-      default:
-        return <Tag emphasis="neutral">{t('builder_status_unknown')}</Tag>
-    }
+  const renderStatusTag = () => {
+    const { key, emphasis } = getStatusConfig(site.status);
+    return <Tag emphasis={emphasis}>{t(key)}</Tag>;
   }
 
   const handleDeleteSite = async (siteId: string) => {
@@ -156,9 +160,7 @@ export default function AppCard({site}) {
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between mb-1 mt-0.5">
-            <div className="flex items-center space-x-1">
-              {getStatusLabel(site.status)}
-            </div>
+            {renderStatusTag()}
           </div>
           <h3 className="font-semibold mb-0.5">
             {site.name || t('builder_apps_alert_delete_untitled')}
@@ -184,11 +186,12 @@ export default function AppCard({site}) {
 
       <div className="flex items-center justify-between pt-2 mt-2 border-t">
         <div className="flex space-x-1">
-          {publishedUrl && site.status === 'running' && (
+          {/* Visit published site */}
+          {publishedUrl && (
             <Button
               href={publishedUrl}
               data-eid={generateClickEID('apps.app.visit_published')}
-              icon={<GlobeAltIcon />}
+              icon={<WebsiteIcon />}
               size="sm"
               design="tertiary"
               text={t('builder_common_visit')}
@@ -196,11 +199,12 @@ export default function AppCard({site}) {
             />
           )}
 
-          {site.preview_url && site.status === 'running' && (
+          {/* Preview site - only show when running */}
+          {site.status === 'running' && site.preview_url && (
             <Button
               href={site.preview_url}
               data-eid={generateClickEID('apps.app.view')}
-              icon={<EyeIcon />}
+              icon={<ShowIcon />}
               size="sm"
               design="tertiary"
               text={t('builder_common_preview')}
@@ -208,6 +212,7 @@ export default function AppCard({site}) {
             />
           )}
 
+          {/* Edit button */}
           {site.status === 'running' && (
             <Button
               onClick={() => router.push(`/develop/${site.id}?siteId=${site.id}`)}

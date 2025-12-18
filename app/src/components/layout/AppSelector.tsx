@@ -57,7 +57,7 @@ export default function AppSelector({ location }: { location?: string }) {
   const currentSite = currentSiteId ? sites.find(site => site.id === currentSiteId) : null;
   const displayTitle = currentSite?.name || t('builder_common_my_apps');
 
-  // Sort sites: running sites first (by updated_at desc), then other sites (by updated_at desc)
+  // Sort sites by updated_at (most recent first)
   const sortedSites = [...sites].sort((a, b) => {
     // First priority: running status
     const aIsRunning = a.status === 'running';

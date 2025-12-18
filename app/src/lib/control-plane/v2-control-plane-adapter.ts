@@ -2,13 +2,60 @@ import { AIRO_OWNER_PRODUCTS,AIRO_PRODUCT_IDS, AiroMgmtClient } from '@/lib/mgmt
 import { logger } from '@/lib/request-context';
 import { extractCustomerId } from '@/lib/utils/jwt-utils';
 import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore';
-import { hasBeenPublished } from '@/utils/site';
-import { CreateSiteParams, CreateSiteResult, IControlPlaneAdapter, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate,SiteInfo, SiteStatus } from './types';
+import { CreateSiteParams, CreateSiteResult, DeploySiteOptions, IControlPlaneAdapter, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteInfo, SiteStatus, SiteVariant } from './types';
 
 /**
  * ID length constants for distinguishing job IDs from app IDs
  */
 const APP_ID_LENGTH = 10; // App IDs are exactly 10 chars (nanoId format)
+
+/**
+ * Transform backend variants to SiteVariant format
+ * Handles both old format (string[]) and new format (with lifecycle)
+ */
+function transformVariants(variants: unknown): SiteVariant[] | undefined {
+  if (!variants || !Array.isArray(variants)) {
+    return undefined;
+  }
+
+  return variants.map((v: unknown) => {
+    // Old format: just a string like "preview" or "publish"
+    if (typeof v === 'string') {
+      return { variant: v, status: 'active' };
+    }
+
+    // New format: object with variant and lifecycle
+    if (typeof v === 'object' && v !== null) {
+      const obj = v as Record<string, unknown>;
+      return {
+        variant: String(obj.variant || ''),
+        status: String(obj.status || 'active'),
+        lifecycle: obj.lifecycle as SiteVariant['lifecycle'],
+        lastActivityTime: obj.lastActivityTime as string | undefined,
+      };
+    }
+
+    return { variant: String(v), status: 'active' };
+  });
+}
+
+/**
+ * Check if app has been published (has publish variant)
+ * Works with both transformed SiteVariant[] and raw backend data
+ */
+function hasPublishVariant(variants: unknown): boolean {
+  if (!variants || !Array.isArray(variants)) {
+    return false;
+  }
+
+  return variants.some((v: unknown) => {
+    if (typeof v === 'string') return v === 'publish';
+    if (typeof v === 'object' && v !== null) {
+      return (v as Record<string, unknown>).variant === 'publish';
+    }
+    return false;
+  });
+}
 
 /**
  * V2 Control Plane Adapter
@@ -645,8 +692,12 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
    * IMPORTANT: In V2, deployment happens automatically during signup.
    * This method is primarily for re-deployments after the app exists.
    * If called during initial creation (with job ID), it gracefully indicates deployment is in progress.
+   *
+   * @param siteId - Site identifier
+   * @param jwt - Customer JWT token
+   * @param options - Optional deployment options (variant, resumeFromHibernation)
    */
-  async deploySite(siteId: string, jwt: string): Promise<{ success: boolean; site: SiteInfo; message: string; note?: string }> {
+  async deploySite(siteId: string, jwt: string, options?: DeploySiteOptions): Promise<{ success: boolean; site: SiteInfo; message: string; note?: string }> {
     try {
       // Get site to find systemId
       const site = await this.getSite(siteId, jwt);
@@ -706,7 +757,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       return {
         success: true,
         site: updatedSite || site,
-        message: 'Deployment triggered successfully'
+        message: options?.resumeFromHibernation ? 'Resume from hibernation triggered successfully' : 'Deployment triggered successfully'
       };
     } catch (error: any) {
       // Re-throw 401 for auth redirect (preserve original error with status)
@@ -718,6 +769,62 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         error: error instanceof Error ? error.message : 'Unknown error'
       });
       throw new Error(`Deploy failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Resume site variant from hibernation
+   *
+   * Uses: PUT /airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/deploy
+   * with environment and variant set to the target variant
+   *
+   * @param siteId - Site identifier
+   * @param variant - Variant to resume (e.g., 'preview', 'publish')
+   * @param jwt - Customer JWT token
+   */
+  async resumeSite(siteId: string, variant: string, jwt: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const site = await this.getSite(siteId, jwt);
+
+      if (!site) {
+        return {
+          success: false,
+          message: 'Site not found'
+        };
+      }
+
+      if (!site.system_id || !site.subscription_id) {
+        return {
+          success: false,
+          message: 'Site missing system_id or subscription_id - cannot resume'
+        };
+      }
+
+      const client = this.createClient(jwt);
+      await client.deployApp(site.subscription_id, site.system_id, siteId, {
+        environment: variant,
+        variant: variant,
+      });
+
+      logger.info('v2-control-plane.resume-site.success', {
+        siteId,
+        variant
+      });
+
+      return {
+        success: true,
+        message: `Resume triggered for variant: ${variant}`
+      };
+    } catch (error: any) {
+      if (error.status === 401) {
+        throw error;
+      }
+      logger.error('v2-control-plane.resume-site.error', {
+        siteId,
+        variant,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      throw new Error(`Resume failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -875,12 +982,12 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     preview_url = preview_url || urls.preview;
 
     // Only construct published_url if app has been published (has "publish" variant)
-    if (!published_url && hasBeenPublished(app)) {
+    if (!published_url && hasPublishVariant(app.variants)) {
       published_url = urls.publish;
     }
 
     // Override published_url if custom domains are active (only for published sites)
-    if (hasBeenPublished(app) && app.domains && Array.isArray(app.domains)) {
+    if (hasPublishVariant(app.variants) && app.domains && Array.isArray(app.domains)) {
       // Find active custom domain
       const customDomain = app.domains.find(
         (d: any) => d.domainType !== 'prefix' && d.status === 'active'
@@ -898,7 +1005,6 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         published_url = `https://${prefixDomain.fqdn}`;
       }
     }
-
     return {
       id: app.id,
       name: app.variables?.title || app.id,
@@ -915,11 +1021,12 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       system_id: app.systemId, // Store systemId for delete/update/deploy operations
       subscription_id: app.subscriptionId, // Store subscriptionId for hierarchical URLs
       domains: app.domains, // Custom domains from mgmt-hosting
-      variants: app.variants, // Available variants (e.g., ["preview", "publish"])
       // ownerProduct is nested in system object, compositionId indicates the product type
       ownerProduct: app.system?.ownerProduct,
       compositionId: app.compositionId, // e.g., 'ai-builder', 'node-app'
       productId: app.system?.productId,
+      variants: app.variants, // Simple string array ['preview', 'publish']
+      variantsWithLifecycle: transformVariants(app.variantsWithLifecycle),
     };
   }
 

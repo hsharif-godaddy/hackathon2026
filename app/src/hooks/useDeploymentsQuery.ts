@@ -2,6 +2,7 @@ import { useEffect,useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { appFetch } from '@/lib/gasket-config';
+import { shipAnalyticsLog } from '@/lib/logging';
 import type { AiroDeployment } from '@/lib/mgmt-airo';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
@@ -9,7 +10,6 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { logAiroHQEvent,logImpressionEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
-import { shipAnalyticsLog } from '@/lib/logging';
 
 const INITIAL_POLL_DELAY_MS = 5000;  // Wait 5 seconds before first poll
 const FAST_POLLING_INTERVAL_MS = 2000;  // Poll every 2 seconds initially

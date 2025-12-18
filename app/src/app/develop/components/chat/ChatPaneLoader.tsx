@@ -5,8 +5,14 @@ import Button from '@ux/button'
 import { useTranslations } from '@/hooks/useTranslations'
 import { SiteCreationPhase } from '@/stores/useSiteCreationStore'
 
+export enum ResumeLoaderPhase {
+  RESUMING = 'resuming',
+}
+
+export type LoaderPhase = SiteCreationPhase | ResumeLoaderPhase
+
 interface ChatPaneLoaderProps {
-  phase: SiteCreationPhase
+  phase: LoaderPhase
   error: string | null
   retryCount: number
   maxRetries: number
@@ -14,13 +20,16 @@ interface ChatPaneLoaderProps {
   onCancel: () => void
 }
 
-const phaseMessages = {
-  'initializing': 'Convincing the servers to cooperate...',
-  'deploying': 'Teaching your code how to fly...',
-  'polling': 'Adding a bit of magic...',
-  'verifying-agent': 'Making sure the AI didn\'t break anything...',
-  'complete': 'Your building environment is ready!'
-} as const
+// Translation keys for each phase
+const phaseMessageKeys: Record<LoaderPhase, string> = {
+  'initializing': 'builder_chatpane_phase_initializing',
+  'deploying': 'builder_chatpane_phase_deploying',
+  'polling': 'builder_chatpane_phase_polling',
+  'verifying-agent': 'builder_chatpane_phase_verifying-agent',
+  'complete': 'builder_chatpane_phase_complete',
+  'error': 'builder_chatpane_phase_error',
+  [ResumeLoaderPhase.RESUMING]: 'builder_chatpane_phase_resuming'
+}
 
 export default function ChatPaneLoader({
   phase,
@@ -31,6 +40,7 @@ export default function ChatPaneLoader({
   onCancel
 }: ChatPaneLoaderProps) {
   const t = useTranslations();
+  const phaseMessage = t(phaseMessageKeys[phase]);
 
   if (error) {
     return (
@@ -72,7 +82,7 @@ export default function ChatPaneLoader({
                   transition={{ duration: 0.6 }}
                   className="text-2xl font-medium"
                 >
-                  {phaseMessages[phase]}
+                  {phaseMessage}
                 </motion.div>
               </AnimatePresence>
             </motion.div>

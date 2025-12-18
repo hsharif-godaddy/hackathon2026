@@ -25,6 +25,7 @@ function releaseDeploymentLock(siteId: string): void {
 }
 
 // POST /api/sites/[id]/deploy - Trigger deployment for an existing site
+// Body (optional): { variant?: 'preview' | 'publish', resumeFromHibernation?: boolean }
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { user } = authContext;
@@ -58,7 +59,24 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       );
     }
 
-    logger.info('deploy.start', { message: 'Starting deployment for site', siteId });
+    // Parse optional body parameters
+    let variant: string | undefined;
+    let resumeFromHibernation: boolean | undefined;
+    
+    try {
+      const body = await request.json().catch(() => ({}));
+      variant = body?.variant;
+      resumeFromHibernation = body?.resumeFromHibernation;
+    } catch {
+      // Body is optional, ignore parse errors
+    }
+
+    logger.info('deploy.start', { 
+      message: 'Starting deployment for site', 
+      siteId,
+      variant,
+      resumeFromHibernation,
+    });
 
     // JWT is required for both V2 and legacy auth
     if (!authContext.jwt) {
@@ -68,7 +86,10 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     // Use control plane adapter (automatically handles V2 vs Legacy)
     const adapter = getControlPlaneAdapter();
-    const result = await adapter.deploySite(siteId, authContext.jwt);
+    const result = await adapter.deploySite(siteId, authContext.jwt, {
+      variant,
+      resumeFromHibernation,
+    });
 
     releaseDeploymentLock(siteId);
 

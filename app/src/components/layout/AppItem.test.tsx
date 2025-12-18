@@ -24,6 +24,7 @@ describe('AppItem', () => {
     id: 'site-123',
     name: 'My Test App',
     status: 'running',
+    account_id: 'test-account',
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   };

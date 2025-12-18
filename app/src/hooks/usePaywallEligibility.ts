@@ -1,5 +1,6 @@
 import React from 'react';
 import { useEffect } from 'react';
+
 import { shipAnalyticsLog } from '@/lib/logging';
 import { useEntitlementsBySubscriptionId } from './useEntitlementsBySubscriptionId';
 import { useMatchingProject } from './useMatchingProject';

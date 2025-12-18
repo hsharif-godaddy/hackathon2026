@@ -5,7 +5,7 @@ import { Suspense,useCallback, useEffect, useRef, useState } from 'react'
 
 import AppNotFound from '@/app/develop/components/AppNotFound'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
-import ChatPaneLoader from '@/app/develop/components/chat/ChatPaneLoader'
+import ChatPaneLoader, { ResumeLoaderPhase } from '@/app/develop/components/chat/ChatPaneLoader'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
@@ -20,6 +20,8 @@ import { Feedback } from '@/components/feedback/Feedback'
 import Header from '@/components/layout/Header'
 import PublishStatusAlert from '@/components/layout/PublishStatusAlert'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import { useAppDetails } from '@/hooks/useAppDetails'
+import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { usePageTiming } from '@/hooks/usePageTiming'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
@@ -34,6 +36,7 @@ import {
   useActiveStream,
   useAutoSendInitialMessage,
   useConversations,
+  useLoadConversationHistory,
   useMessages,
   useSetAiEditContext,
   useSetBuildErrorContext,
@@ -53,6 +56,28 @@ function DevelopPageContent() {
 
   // Unified initialization hook - handles all sequencing and UI state
   const init = useInitialization({ appId, isJobId })
+
+  // Hibernation handling - auto-resume when app is hibernated
+  const appDetails = useAppDetails(appId);
+  const hibernation = useAppHibernation(appDetails.data, appId, true);
+  const loadConversationHistory = useLoadConversationHistory();
+
+  // Track if we've completed post-resume loading
+  const hasCompletedPostResumeRef = useRef(false)
+
+  // Load conversation history when resume completes (hook waits for server to be healthy)
+  useEffect(() => {
+    if (hibernation.resumeComplete && appId && !hasCompletedPostResumeRef.current) {
+      hasCompletedPostResumeRef.current = true;
+      logger.info('app-hibernation.post-resume-ready', { appId });
+      loadConversationHistory(appId);
+    }
+  }, [hibernation.resumeComplete, appId, loadConversationHistory]);
+
+  // Reset the post-resume tracking when app changes
+  useEffect(() => {
+    hasCompletedPostResumeRef.current = false;
+  }, [appId]);
 
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
 
@@ -78,7 +103,6 @@ function DevelopPageContent() {
   const activeChatTab = useDevelopPageStore((state) => state.activeChatTab)
   const isPreviewVisible = useDevelopPageStore((state) => state.isPreviewVisible)
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
-  const site = useDevelopPageStore((state) => state.site)
   const openFeedbackId = useDevelopPageStore((state) => state.openFeedbackId)
   const showIntroTour = useDevelopPageStore((state) => state.showIntroTour)
 
@@ -91,6 +115,7 @@ function DevelopPageContent() {
   const setIsPreviewVisible = useDevelopPageStore((state) => state.setIsPreviewVisible)
   const setShowIntroTour = useDevelopPageStore((state) => state.setShowIntroTour)
   const checkAndTriggerIntroTour = useDevelopPageStore((state) => state.checkAndTriggerIntroTour)
+  const site = useDevelopPageStore((state) => state.site);
 
   useGitHistoryQuery({
     appId: appId || '',
@@ -627,6 +652,15 @@ function DevelopPageContent() {
                   onRetry={init.actions.retry}
                   onCancel={init.actions.cancel}
                 />
+              ) : hibernation.isHibernated || hibernation.isResuming ? (
+                <ChatPaneLoader
+                  phase={ResumeLoaderPhase.RESUMING}
+                  error={null}
+                  retryCount={0}
+                  maxRetries={0}
+                  onRetry={() => {}}
+                  onCancel={() => {}}
+                />
               ) : (
                 <ChatPane
                   onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
@@ -651,6 +685,10 @@ function DevelopPageContent() {
                 <PreviewPane
                   onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                   showBuildingOverlay={init.ui.showPreviewLoader}
+                  isHibernated={hibernation.isHibernated}
+                  isResuming={hibernation.isResuming}
+                  resumeFailed={hibernation.resumeFailed}
+                  onRetryResume={() => hibernation.resume()}
                 />
               </div>
               <div className={`absolute inset-0 ${activeChatTab !== ChatTab.SETTINGS ? 'hidden' : ''}`}>

@@ -17,13 +17,13 @@ import { useAppNameUpdate } from '@/hooks/useAppName';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
 import { useTranslations } from '@/hooks/useTranslations';
 import { DomainStatus,DomainType } from "@/lib/control-plane/types";
+import { shipAnalyticsLog } from '@/lib/logging';
 import { DomainMode } from "@/lib/mgmt-airo/types";
 import { logger } from "@/lib/request-context";
 import { useSiteStore } from "@/stores/useSiteStore";
 import { getDomainErrorMessage } from '@/utils/domain-validation';
 import { generateClickEID } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
-import { shipAnalyticsLog } from '@/lib/logging';
 
 export default function ProjectDomain() {
   const t = useTranslations();

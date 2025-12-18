@@ -13,8 +13,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser,withCustomerAuth } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
-import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 import { AIRO_OWNER_PRODUCTS } from '@/lib/mgmt-airo';
+import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 
 export interface CreateAgentTokenRequest {
   siteId: string;

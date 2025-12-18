@@ -7,6 +7,58 @@ import type { SiteDomain } from '@/lib/control-plane/types';
  * Production uses Nomad/SQS, development uses local processes/Docker.
  */
 
+/**
+ * Lifecycle state for a site variant (from hosting_app_lifecycle table)
+ */
+export enum LifecycleState {
+  RUNNING = 'running',
+  PAUSED = 'paused',
+  PROVISIONING = 'provisioning',
+  DELETING = 'deleting',
+  FAILED = 'failed',
+}
+
+/**
+ * Reason for the current lifecycle state
+ */
+export enum LifecycleReason {
+  HIBERNATION = 'hibernation',
+  USER_REQUEST = 'user_request',
+  MAINTENANCE = 'maintenance',
+  DEPLOYMENT_COMPLETE = 'deployment_complete',
+  USER_RESUMED = 'user_resumed',
+}
+
+/**
+ * Lifecycle metadata providing additional context
+ */
+export interface LifecycleMetadata {
+  pausedBy?: 'system' | 'user';
+  daysSinceActivity?: number;
+  hibernatedAt?: string;
+  thresholdDays?: number;
+}
+
+/**
+ * Lifecycle information for a site variant
+ */
+export interface VariantLifecycle {
+  lifecycleState: LifecycleState;
+  reason?: LifecycleReason;
+  stateChangedAt?: string;
+  metadata?: LifecycleMetadata;
+}
+
+/**
+ * Site variant with lifecycle information
+ */
+export interface SiteVariant {
+  variant: string;
+  status: string;
+  lifecycle?: VariantLifecycle;
+  lastActivityTime?: string;
+}
+
 export interface SiteInfo {
   id: string;
   name: string;
@@ -23,7 +75,8 @@ export interface SiteInfo {
   subscription_id?: string; // V2 only: subscriptionId from mgmt-hosting
   controlPlane?: 'v2' | 'legacy'; // Control plane type (v2 or legacy)
   domains?: SiteDomain[]; // Custom domains from mgmt-hosting
-  variants?: string[]; // V2 only: Available variants (e.g., ["preview", "publish"])
+  variants?: string[]; // V2 only: Simple variant names ['preview', 'publish']
+  variantsWithLifecycle?: SiteVariant[]; // V2 only: Variants with lifecycle state for hibernation
 }
 
 export interface CreateSiteRequest {

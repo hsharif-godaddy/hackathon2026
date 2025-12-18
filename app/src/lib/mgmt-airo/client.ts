@@ -469,16 +469,24 @@ export class AiroMgmtClient {
 
   /**
    * Deploy app
+   *
+   * PUT /api/airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/deploy
+   *
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - App ID
+   * @param options - Optional deploy options (environment, variant for hibernation resume)
    */
   async deployApp(
     subscriptionId: string,
     systemId: string,
-    appId: string
+    appId: string,
+    options?: { environment?: string; variant?: string }
   ): Promise<AiroDeployAppResponse> {
     return this.request<AiroDeployAppResponse>(
       'PUT',
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/deploy`,
-      undefined,
+      options,
       { logEvent: 'mgmt-airo.deploy-app' }
     );
   }

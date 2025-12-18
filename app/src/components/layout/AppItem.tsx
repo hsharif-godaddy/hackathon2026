@@ -12,6 +12,7 @@ import { useTranslations } from '@/hooks/useTranslations';
 import { Site } from '@/stores/useSitesStore';
 import { generateClickEID } from '@/utils/instrumentation';
 
+
 export default function AppItem({site, dataEid}: {site: Site, dataEid?: string}) {
   const router = useRouter();
   const params = useParams();
@@ -36,7 +37,9 @@ export default function AppItem({site, dataEid}: {site: Site, dataEid?: string})
         className="p-1 rounded-md leading-tight group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300"
       >
         <AppThumbnail siteId={site.id} siteName={site.name} size="xs" />
-        <div className="flex flex-wrap">{site.name}</div>
+        <div className="flex flex-wrap items-center gap-0.5">
+          <span>{site.name}</span>
+        </div>
       </Box>
     </button>
   )

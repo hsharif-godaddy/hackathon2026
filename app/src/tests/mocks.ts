@@ -1,6 +1,17 @@
 import { vi } from 'vitest';
 
-import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
+import type { SiteInfo, SiteVariant } from '@/lib/site-adapters/interfaces/ISiteAdapter';
+
+/**
+ * Create a mock SiteVariant
+ */
+export function createMockVariant(variant: string, overrides: Partial<SiteVariant> = {}): SiteVariant {
+  return {
+    variant,
+    status: 'active',
+    ...overrides,
+  };
+}
 
 /**
  * Mock next/navigation router with common methods
@@ -59,6 +70,7 @@ export function mockURLMethods() {
  *
  * @example
  * const site = createMockSite({ name: 'My App', status: 'running' });
+ * const siteWithVariants = createMockSite({ variants: ['preview', 'publish'] });
  */
 export function createMockSite(overrides: Partial<SiteInfo> = {}): SiteInfo {
   return {

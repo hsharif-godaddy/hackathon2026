@@ -5,7 +5,7 @@ import { PrismaSiteService } from '@/lib/database/prisma-site-service';
 import { getDeploymentAdapter } from '@/lib/deployment';
 import { getAllocPath } from '@/lib/dev-environment/utils/app-paths';
 import { logger } from '@/lib/request-context';
-import { CreateSiteParams, CreateSiteResult, IControlPlaneAdapter, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate,SiteInfo } from './types';
+import { CreateSiteParams, CreateSiteResult, DeploySiteOptions,IControlPlaneAdapter, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteInfo } from './types';
 
 /**
  * Legacy Control Plane Adapter - Uses database + Nomad/SQS
@@ -166,8 +166,12 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
    *
    * Legacy Mode: Triggers manual deployment via background task.
    * Updates site status to 'creating' and starts async deployment.
+   *
+   * @param siteId - Site identifier
+   * @param jwt - Customer JWT token
+   * @param _options - Deployment options (unused in legacy mode)
    */
-  async deploySite(siteId: string, jwt: string): Promise<{ success: boolean; site: SiteInfo; message: string }> {
+  async deploySite(siteId: string, jwt: string, _options?: DeploySiteOptions): Promise<{ success: boolean; site: SiteInfo; message: string }> {
     try {
       // Get site to validate status
       const site = await this.getSite(siteId, jwt);
@@ -221,6 +225,27 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
       });
       throw new Error(`Deploy failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Resume site from hibernation
+   *
+   * Legacy Mode: Not implemented - hibernation is V2 only
+   *
+   * @param siteId - Site identifier
+   * @param variant - Variant to resume
+   * @param _jwt - Customer JWT token (unused)
+   */
+  async resumeSite(siteId: string, variant: string, _jwt: string): Promise<{ success: boolean; message: string }> {
+    logger.warn('legacy-control-plane.resume-site.not-implemented', {
+      siteId,
+      variant,
+      message: 'Hibernation resume is not supported in legacy mode'
+    });
+    return {
+      success: false,
+      message: 'Hibernation resume is not supported in legacy mode'
+    };
   }
 
   /**

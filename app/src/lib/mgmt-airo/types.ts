@@ -76,9 +76,24 @@ export interface AiroApp {
     publish?: string;
   };
   variables?: Record<string, any>;
-  variants?: string[];
   productId?: string; // Product ID (e.g., "aab-v1", "paas-nodejs-v1") - inherited from the system object
   ownerProduct?: string; // Owner product family (e.g., "AiroAppBuilder", "PaaSNodeJS") - inherited from the system object
+  variants?: string[];
+  variantsWithLifecycle?: Array<{
+    variant: string;
+    status: string;
+    lifecycle?: {
+      lifecycleState: string;
+      reason?: string;
+      stateChangedAt?: string;
+      metadata?: {
+        pausedBy?: string;
+        daysSinceActivity?: number;
+        hibernatedAt?: string;
+      };
+    };
+    lastActivityTime?: string;
+  }>;
 }
 
 /**
@@ -276,6 +291,20 @@ export interface AiroDomainCheckResponse {
   fqdn?: string;
   domain?: string;
   errors?: DomainValidationErrorObject[];
+}
+
+/**
+ * Deploy app options
+ */
+export interface AiroDeployAppOptions {
+  /**
+   * Which variant to deploy (e.g., 'preview' or 'publish')
+   */
+  variant?: string;
+  /**
+   * Set to true when resuming an app from hibernation
+   */
+  resumeFromHibernation?: boolean;
 }
 
 /**

@@ -20,37 +20,37 @@ describe('ChatPaneLoader', () => {
   it('should render without crashing', () => {
     renderWithProviders(<ChatPaneLoader {...defaultProps} />);
 
-    expect(screen.getByText('Convincing the servers to cooperate...')).toBeInTheDocument();
+    expect(screen.getByText('builder_chatpane_phase_initializing')).toBeInTheDocument();
   });
 
   it('should display phase message for initializing', () => {
     renderWithProviders(<ChatPaneLoader {...defaultProps} phase="initializing" />);
 
-    expect(screen.getByText('Convincing the servers to cooperate...')).toBeInTheDocument();
+    expect(screen.getByText('builder_chatpane_phase_initializing')).toBeInTheDocument();
   });
 
   it('should display phase message for deploying', () => {
     renderWithProviders(<ChatPaneLoader {...defaultProps} phase="deploying" />);
 
-    expect(screen.getByText('Teaching your code how to fly...')).toBeInTheDocument();
+    expect(screen.getByText('builder_chatpane_phase_deploying')).toBeInTheDocument();
   });
 
   it('should display phase message for polling', () => {
     renderWithProviders(<ChatPaneLoader {...defaultProps} phase="polling" />);
 
-    expect(screen.getByText('Adding a bit of magic...')).toBeInTheDocument();
+    expect(screen.getByText('builder_chatpane_phase_polling')).toBeInTheDocument();
   });
 
   it('should display phase message for verifying-agent', () => {
     renderWithProviders(<ChatPaneLoader {...defaultProps} phase="verifying-agent" />);
 
-    expect(screen.getByText("Making sure the AI didn't break anything...")).toBeInTheDocument();
+    expect(screen.getByText('builder_chatpane_phase_verifying-agent')).toBeInTheDocument();
   });
 
   it('should display phase message for complete', () => {
     renderWithProviders(<ChatPaneLoader {...defaultProps} phase="complete" />);
 
-    expect(screen.getByText('Your building environment is ready!')).toBeInTheDocument();
+    expect(screen.getByText('builder_chatpane_phase_complete')).toBeInTheDocument();
   });
 
   it('should display loading indicators', () => {

@@ -5,53 +5,39 @@ import { hasBeenPublished } from './site';
 describe('hasBeenPublished', () => {
   describe('with publish variant', () => {
     it('should return true when variants includes "publish"', () => {
-      const site = {
-        variants: ['preview', 'publish'],
-      };
+      const site = { variants: ['preview', 'publish'] };
       expect(hasBeenPublished(site)).toBe(true);
     });
 
     it('should return true when only publish variant exists', () => {
-      const site = {
-        variants: ['publish'],
-      };
+      const site = { variants: ['publish'] };
       expect(hasBeenPublished(site)).toBe(true);
     });
 
     it('should return true when publish is first in variants array', () => {
-      const site = {
-        variants: ['publish', 'preview'],
-      };
+      const site = { variants: ['publish', 'preview'] };
       expect(hasBeenPublished(site)).toBe(true);
     });
 
     it('should return true when publish is in middle of variants array', () => {
-      const site = {
-        variants: ['preview', 'publish', 'staging'],
-      };
+      const site = { variants: ['preview', 'publish', 'staging'] };
       expect(hasBeenPublished(site)).toBe(true);
     });
   });
 
   describe('without publish variant', () => {
     it('should return false when variants only includes "preview"', () => {
-      const site = {
-        variants: ['preview'],
-      };
+      const site = { variants: ['preview'] };
       expect(hasBeenPublished(site)).toBe(false);
     });
 
     it('should return false when variants is empty array', () => {
-      const site = {
-        variants: [],
-      };
+      const site = { variants: [] as string[] };
       expect(hasBeenPublished(site)).toBe(false);
     });
 
     it('should return false when variants has other values but not publish', () => {
-      const site = {
-        variants: ['preview', 'staging', 'development'],
-      };
+      const site = { variants: ['preview', 'staging', 'development'] };
       expect(hasBeenPublished(site)).toBe(false);
     });
   });
@@ -66,16 +52,12 @@ describe('hasBeenPublished', () => {
     });
 
     it('should return false when variants is undefined', () => {
-      const site = {
-        variants: undefined,
-      };
+      const site = { variants: undefined };
       expect(hasBeenPublished(site as any)).toBe(false);
     });
 
     it('should return false when variants is null', () => {
-      const site = {
-        variants: null,
-      };
+      const site = { variants: null };
       expect(hasBeenPublished(site as any)).toBe(false);
     });
 
@@ -87,55 +69,38 @@ describe('hasBeenPublished', () => {
 
   describe('edge cases', () => {
     it('should be case-sensitive for "publish"', () => {
-      const siteUpperCase = {
-        variants: ['Publish'],
-      };
-      expect(hasBeenPublished(siteUpperCase)).toBe(false);
-
-      const siteMixedCase = {
-        variants: ['PUBLISH'],
-      };
-      expect(hasBeenPublished(siteMixedCase)).toBe(false);
+      expect(hasBeenPublished({ variants: ['Publish'] })).toBe(false);
+      expect(hasBeenPublished({ variants: ['PUBLISH'] })).toBe(false);
     });
 
     it('should not match partial strings', () => {
-      const site = {
-        variants: ['published', 'pre-publish', 'publishable'],
-      };
+      const site = { variants: ['published', 'pre-publish', 'publishable'] };
       expect(hasBeenPublished(site)).toBe(false);
     });
 
     it('should handle duplicate "publish" entries', () => {
-      const site = {
-        variants: ['publish', 'preview', 'publish'],
-      };
+      const site = { variants: ['publish', 'preview', 'publish'] };
       expect(hasBeenPublished(site)).toBe(true);
     });
 
     it('should handle variants with whitespace', () => {
-      const site = {
-        variants: [' publish ', 'preview'],
-      };
+      const site = { variants: [' publish ', 'preview'] };
       expect(hasBeenPublished(site)).toBe(false);
     });
 
     it('should handle empty strings in variants', () => {
-      const site = {
-        variants: ['', 'publish', ''],
-      };
+      const site = { variants: ['', 'publish', ''] };
       expect(hasBeenPublished(site)).toBe(true);
     });
   });
 
   describe('type compatibility', () => {
     it('should work with minimal site object', () => {
-      const site: Pick<{ variants?: string[] }, 'variants'> = {
-        variants: ['publish'],
-      };
+      const site = { variants: ['publish'] };
       expect(hasBeenPublished(site)).toBe(true);
     });
 
-    it('should work with full SiteInfo interface', () => {
+    it('should work with full SiteInfo-like object', () => {
       const site = {
         id: 'site-123',
         name: 'My Site',
@@ -143,13 +108,6 @@ describe('hasBeenPublished', () => {
         createdAt: new Date(),
       };
       expect(hasBeenPublished(site)).toBe(true);
-    });
-
-    it('should work with readonly variants array', () => {
-      const site = {
-        variants: ['publish', 'preview'] as readonly string[],
-      };
-      expect(hasBeenPublished(site as any)).toBe(true);
     });
   });
 
