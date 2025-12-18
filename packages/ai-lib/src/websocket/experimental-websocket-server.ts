@@ -816,7 +816,7 @@ export class WebSocketServer {
       try {
         const activeConversation = this.activeConversations.get(socketId)
         const context = activeConversation?.context
-        const appId = context?.appId
+        const appId = context?.appId || (context?.metadata as MetadataRecord)?.appId
         const conversationId = activeConversation?.conversationId
 
         // Build params object, only including defined values to avoid exactOptionalPropertyTypes issues
@@ -874,7 +874,7 @@ export class WebSocketServer {
       try {
         const activeConversation = this.activeConversations.get(socketId)
         const context = activeConversation?.context
-        const appId = context?.appId
+        const appId = context?.appId || (context?.metadata as MetadataRecord)?.appId
         const conversationId = activeConversation?.conversationId
 
         // Build params object, only including defined values to avoid exactOptionalPropertyTypes issues
@@ -2370,6 +2370,7 @@ Please try again with corrected formatting.`
       if (this.config.onTokenUsage) {
         try {
           const processedContext = context as ProcessedContext
+          const contextAppId = processedContext?.appId || (processedContext?.metadata as MetadataRecord)?.appId
           await this.config.onTokenUsage(
             {
               inputTokens: usage.inputTokens || 0,
@@ -2382,7 +2383,7 @@ Please try again with corrected formatting.`
               agentName,
               modelName,
               ...(conversationAfterStream?.conversationId && { conversationId: conversationAfterStream.conversationId }),
-              ...(processedContext?.appId && { appId: processedContext.appId })
+              ...(contextAppId && { appId: contextAppId })
             }
           )
         } catch (error) {
