@@ -1,0 +1,35 @@
+name: AWS Security Cirrus Scan
+# Required scan for AWS
+# https://cto-guidelines.gd3p.tools/Standards-Best-Practices/CICD/VulnerabilityScansAndFuzzTesting.html
+
+on:
+  schedule:
+    # Doc says, there should be a scheduled scan every 90 days
+    # for compliance with GoDaddy standards.
+    # decided to run it once a month on the 7th day at 2:00 AM
+    - cron: "0 2 7 * *"
+  workflow_dispatch:
+
+env:
+  AWS_DEFAULT_REGION: us-west-2
+
+jobs:
+  cirrus-scan-dev-private:
+    # Doc says, it should not be executed in production accounts,
+    # and it is sufficient to run this scan in at least one account per project
+    # so we are running it in dev-private account
+    name: CirrusScan dev-private
+
+    runs-on:
+      group: 8606-airobuildercdk
+      labels:
+        - self-hosted
+
+    steps:
+      - name: Request CirrusScan Scans
+        uses: gdcorp-actions/cirrusscan-request-scan@v5
+        with:
+          requester_arn: arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy
+          github_commit: ${{ github.sha }}
+          github_repository: ${{ github.repository }}
+          github_token: ${{ github.token }}
