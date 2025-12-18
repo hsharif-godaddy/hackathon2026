@@ -61,7 +61,7 @@ export default function GrepSearchToolRenderer({
     displayMessage = `${t('builder_tools_grep_title')}: "${query}"`
   }
   if (hasResults && matchCount > 0) {
-    displayMessage += `${t('builder_tools_grep_matches', { matchCount, fileCount })} BOB`
+    displayMessage += `${t('builder_tools_grep_matches', { matchCount, fileCount })}`
     displayMessage += ` - ${t('builder_tools_grep_no_matches')}`
   }
 
