@@ -1,3 +1,7 @@
+/** TREAT AS IMMUTABLE - This file is protected by the file-edit tool
+ *
+ * Database configuration loader
+ */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { env } from 'node:process';

@@ -1,15 +1,12 @@
+/** TREAT AS IMMUTABLE - This file is protected by the file-edit tool
+ *
+ * Database connection setup using Drizzle ORM with MySQL2
+ */
+
 import { drizzle } from 'drizzle-orm/mysql2';
 import mysql from 'mysql2/promise';
 import { getDatabaseCredentials } from './config';
 import * as schema from './schema';
-
-/**
- * Database connection setup using Drizzle ORM with MySQL2
- *
- * Configuration source:
- * - Reads from /alloc/config.json (in container) or uses NOMAD_ALLOC_DIR if available
- * - Throws error if config file not found or invalid
- */
 
 // Get database configuration
 const dbConfig = getDatabaseCredentials();
