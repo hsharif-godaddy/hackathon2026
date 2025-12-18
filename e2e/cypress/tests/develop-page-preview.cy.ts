@@ -7,23 +7,25 @@
  * - Desktop/Mobile view switching
  *
  * Strategy:
- * - Uses a shared app for all tests in this file
+ * - Creates an isolated app per spec file (cleaned up before each run)
  * - Independent of other develop-page test files
  */
 
 const SPEC_PREFIX = '[e2e:develop-preview]';
-const SHARED_APP_KEY = 'sharedAppId_developPreview';
 
 describe('Develop Page - Preview', () => {
+  let appId: string;
+
+  before(function createIsolatedApp() {
+    cy.setupIsolatedApp(SPEC_PREFIX, 'Add a single page app that displays hello world').then((id) => {
+      appId = id;
+    });
+  });
 
   describe('Preview Pane', () => {
     beforeEach(function setupPreviewTests() {
-      cy.intercept('POST', '**/api/sites/quick-create').as('quickCreate');
-
-      cy.getOrCreateSharedApp(SHARED_APP_KEY, SPEC_PREFIX, 'Test app for preview').then((id) => {
-        cy.openDevelop(id);
-        cy.waitForDevelopPage();
-      });
+      cy.openDevelop(appId);
+      cy.waitForDevelopPage();
     });
 
     it('should display preview iframe and allow using all controls', () => {

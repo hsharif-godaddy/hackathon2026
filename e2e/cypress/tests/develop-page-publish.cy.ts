@@ -8,7 +8,7 @@
  * - Published URL accessibility
  *
  * Strategy:
- * - Uses a shared app for all tests in this file
+ * - Creates an isolated app per spec file (cleaned up before each run)
  * - Independent of other develop-page test files
  * - Tests critical publishing workflows
  */
@@ -16,9 +16,15 @@
 import { DEPLOYMENT_POLL_INTERVAL_MS, DEPLOYMENT_TIMEOUT_MS } from '../support/constants';
 
 const SPEC_PREFIX = '[e2e:develop-publish]';
-const SHARED_APP_KEY = 'sharedAppId_developPublish';
 
 describe('Develop Page - Publishing', () => {
+  let appId: string;
+
+  before(function createIsolatedApp() {
+    cy.setupIsolatedApp(SPEC_PREFIX, 'Add a single page app that displays hello world').then((id) => {
+      appId = id;
+    });
+  });
 
   describe('Publishing', () => {
     /**
@@ -32,15 +38,13 @@ describe('Develop Page - Publishing', () => {
      * 7. Verify publish button is disabled after successful publish (current commit deployed)
      */
     it('should open publish popover, show changes and history, complete publish flow, and verify disabled states', () => {
-      cy.intercept('POST', '**/api/sites/quick-create').as('quickCreate');
       cy.intercept('POST', '**/api/apps/*/publish').as('publishApp');
       cy.intercept('GET', '**/api/apps/*/deployments*').as('getDeployments');
 
-      cy.getOrCreateSharedApp(SHARED_APP_KEY, SPEC_PREFIX, 'Test app for publish').then((appId) => {
-        cy.openDevelop(appId);
-        cy.waitForDevelopPage();
-        cy.waitForChatInput();
-        cy.wait(1000);
+      cy.openDevelop(appId);
+      cy.waitForDevelopPage();
+      cy.waitForChatInput();
+      cy.wait(1000);
 
       cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 30000 })
         .should('be.visible')
@@ -113,63 +117,56 @@ describe('Develop Page - Publishing', () => {
           }
         });
       });
-      });
     });
 
     it('should disable publish button while AI is processing and re-enable after completion', () => {
-      cy.intercept('POST', '**/api/sites/quick-create').as('quickCreate');
       cy.intercept('POST', '**/api/chat/stream').as('chatStream');
-      cy.intercept('GET', '**/api/sites').as('getSites');
 
-      cy.getOrCreateSharedApp(SHARED_APP_KEY, SPEC_PREFIX, 'Test app for publish').then((appId) => {
-        cy.log(`Using app ID: ${appId}`);
+      cy.visit(`/develop/${appId}`);
 
-        cy.visit(`/develop/${appId}`);
+      cy.waitForDevelopPage();
 
-        cy.waitForDevelopPage();
+      cy.get('body').type('{esc}');
+      cy.wait(500);
 
-        cy.get('body').type('{esc}');
-        cy.wait(500);
+      cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 30000 })
+        .should('be.visible')
+        .should('contain.text', 'Publish');
 
-        cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 30000 })
-          .should('be.visible')
-          .should('contain.text', 'Publish');
+      cy.waitForChatInput();
+      cy.wait(1000);
 
-        cy.waitForChatInput();
-        cy.wait(1000);
+      cy.get('#chat-input-textarea')
+        .should('be.visible')
+        .should('not.be.disabled')
+        .clear()
+        .type('Add a small footer with copyright notice');
 
-        cy.get('#chat-input-textarea')
-          .should('be.visible')
-          .should('not.be.disabled')
-          .clear()
-          .type('Add a small footer with copyright notice');
+      cy.get('#chat-send-button')
+        .should('be.visible')
+        .should('not.be.disabled')
+        .click();
 
-        cy.get('#chat-send-button')
-          .should('be.visible')
-          .should('not.be.disabled')
-          .click();
+      cy.contains('Add a small footer with copyright notice', { timeout: 10000 })
+        .should('be.visible');
 
-        cy.contains('Add a small footer with copyright notice', { timeout: 10000 })
-          .should('be.visible');
+      cy.get('#chat-send-button', { timeout: 10000 })
+        .should('be.disabled');
 
-        cy.get('#chat-send-button', { timeout: 10000 })
-          .should('be.disabled');
+      cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 10000 })
+        .should('be.disabled');
 
-        cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 10000 })
-          .should('be.disabled');
+      cy.log('✓ Publish button disabled while AI processes');
 
-        cy.log('✓ Publish button disabled while AI processes');
+      cy.waitForChatInput();
 
-        cy.waitForChatInput();
+      cy.log('✓ AI processing completed');
 
-        cy.log('✓ AI processing completed');
+      cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 30000 })
+        .should('not.be.disabled')
+        .should('contain.text', 'Publish');
 
-        cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 30000 })
-          .should('not.be.disabled')
-          .should('contain.text', 'Publish');
-
-        cy.log('✓ Publish button re-enabled after AI completion');
-      });
+      cy.log('✓ Publish button re-enabled after AI completion');
     });
   });
 });

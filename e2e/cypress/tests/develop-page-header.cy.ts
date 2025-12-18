@@ -9,23 +9,25 @@
  * - Header persistence during interactions
  *
  * Strategy:
- * - Uses a shared app for all tests in this file
+ * - Creates an isolated app per spec file (cleaned up before each run)
  * - Independent of other develop-page test files
  */
 
 const SPEC_PREFIX = '[e2e:develop-header]';
-const SHARED_APP_KEY = 'sharedAppId_developHeader';
 
 describe('Develop Page - Header', () => {
+  let appId: string;
+
+  before(function createIsolatedApp() {
+    cy.setupIsolatedApp(SPEC_PREFIX, 'Add a single page app that displays hello world').then((id) => {
+      appId = id;
+    });
+  });
 
   describe('Header State', () => {
     beforeEach(function setupHeaderTests() {
-      cy.intercept('POST', '**/api/sites/quick-create').as('quickCreate');
-
-      cy.getOrCreateSharedApp(SHARED_APP_KEY, SPEC_PREFIX, 'Test app for header').then((id) => {
-        cy.openDevelop(id);
-        cy.waitForDevelopPage();
-      });
+      cy.openDevelop(appId);
+      cy.waitForDevelopPage();
     });
 
     it('should display header with logo, beta tag, publish button, and user menu', () => {

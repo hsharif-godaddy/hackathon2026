@@ -264,45 +264,94 @@ Cypress.Commands.add('deleteApp', (appId: string) => {
 });
 
 /**
- * Get or create a shared app for a test spec
- * Uses environment variables to cache app ID across tests in the same spec
- * @param sharedAppKey - The Cypress.env() key to store/retrieve the app ID
- * @param specPrefix - The prefix to use when creating a new app (e.g., '[e2e:develop-chat]')
- * @param appDescription - Optional description to append to the app name (e.g., 'Test app for chat')
+ * Delete all apps whose name or description contains the given prefix.
+ * Used for cleanup before test runs to ensure isolation.
  */
-Cypress.Commands.add('getOrCreateSharedApp', (
-  sharedAppKey: string,
-  specPrefix: string,
-  appDescription?: string
-) => {
-  return cy.request({
+Cypress.Commands.add('deleteAppsWithPrefix', (prefix: string) => {
+  cy.request({
     method: 'GET',
     url: '/api/sites',
     failOnStatusCode: false,
-  }).then((response): Cypress.Chainable<string> => {
-    if (response.status === 200 && response.body?.length > 0) {
-      const existingId = Cypress.env(sharedAppKey) as string | undefined;
-      const apps = response.body as Array<{ id: string }>;
-
-      if (existingId && apps.some((app) => app.id === existingId)) {
-        cy.log(`Using cached app: ${existingId}`);
-        return cy.wrap(existingId);
-      }
-
-      const appId = apps[0].id;
-      cy.log(`Using existing app: ${appId}`);
-      Cypress.env(sharedAppKey, appId);
-      return cy.wrap(appId);
+  }).then((response) => {
+    if (response.status !== 200 || !response.body?.length) {
+      cy.log('No apps found to clean up');
+      return;
     }
 
-    cy.log('No existing apps, creating new one');
-    const appName = appDescription ? `${specPrefix} ${appDescription}` : `${specPrefix} Test app`;
-    return cy.createAppAndGetId(appName).then((id: string) => {
-      Cypress.env(sharedAppKey, id);
-      return cy.wrap(id);
+    interface AppData {
+      id: string;
+      name?: string;
+      initial_prompt?: string;
+    }
+
+    const apps = response.body as AppData[];
+    const toDelete = apps.filter((app) => {
+      const searchFields = [app.name, app.initial_prompt].filter(Boolean).join(' ');
+      return searchFields.includes(prefix);
+    });
+
+    if (toDelete.length === 0) {
+      cy.log(`No apps found with prefix: ${prefix}`);
+      return;
+    }
+
+    cy.log(`Cleaning up ${toDelete.length} app(s) with prefix: ${prefix}`);
+
+    toDelete.forEach((app) => {
+      cy.request({
+        method: 'DELETE',
+        url: `/api/sites/${app.id}`,
+        failOnStatusCode: false,
+      }).then((deleteResponse) => {
+        if (deleteResponse.status === 200) {
+          cy.log(`✓ Cleaned up: ${app.name || app.initial_prompt} (${app.id})`);
+        }
+      });
     });
   });
 });
+
+/**
+ * Clean up ALL e2e test apps (any app with [e2e: in name/description).
+ * Useful for one-time cleanup of accumulated test apps.
+ */
+Cypress.Commands.add('cleanupAllE2eApps', () => {
+  cy.deleteAppsWithPrefix('[e2e:');
+});
+
+/**
+ * Set up an isolated app for a test spec file.
+ * Cleans up any existing apps with the prefix, then creates a fresh one.
+ * Call this in a `before` hook to create one app per spec file.
+ */
+Cypress.Commands.add('setupIsolatedApp', (specPrefix: string, appDescription?: string) => {
+  cy.deleteAppsWithPrefix(specPrefix);
+
+  const appName = appDescription
+    ? `${specPrefix} ${appDescription}`
+    : `${specPrefix} Test app`;
+
+  cy.intercept('POST', '**/api/sites/quick-create').as('setupQuickCreate');
+
+  cy.visit('/');
+
+  cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+    .should('be.visible')
+    .type(appName);
+
+  cy.get('[data-eid*="homepage.prompt.submit"]')
+    .should('not.be.disabled')
+    .click();
+
+  return cy.wait('@setupQuickCreate', { timeout: 60000 }).then((interception) => {
+    const status = interception.response?.statusCode;
+    expect(status).to.be.oneOf([200, 201]);
+    const appId = interception.response?.body?.id as string;
+    cy.log(`✓ Created isolated app: ${appId}`);
+    return cy.wrap(appId);
+  });
+});
+
 
 interface DeploymentPollResult {
   success: boolean;
@@ -501,18 +550,29 @@ declare global {
       deleteApp(appId: string): Chainable<void>;
 
       /**
-       * Get or create a shared app for a test spec
-       * Uses Cypress.env() to cache app ID across tests in the same spec
-       * @param sharedAppKey - The Cypress.env() key to store/retrieve the app ID
-       * @param specPrefix - The prefix to use when creating a new app (e.g., '[e2e:develop-chat]')
-       * @param appDescription - Optional description to append to the app name
-       * @example cy.getOrCreateSharedApp('sharedAppId_developChat', '[e2e:develop-chat]', 'Test app for chat')
+       * Delete all apps whose name contains the given prefix
+       * Used for cleanup before test runs to ensure isolation
+       * @param prefix - The prefix to match in app names
+       * @example cy.deleteAppsWithPrefix('[e2e:develop-chat]')
        */
-      getOrCreateSharedApp(
-        sharedAppKey: string,
-        specPrefix: string,
-        appDescription?: string
-      ): Chainable<string>;
+      deleteAppsWithPrefix(prefix: string): Chainable<void>;
+
+      /**
+       * Clean up ALL e2e test apps (any app with [e2e: in name/description)
+       * Useful for one-time cleanup of accumulated test apps
+       * @example cy.cleanupAllE2eApps()
+       */
+      cleanupAllE2eApps(): Chainable<void>;
+
+      /**
+       * Set up an isolated app for a test spec file
+       * Cleans up existing apps with the prefix, then creates a fresh one
+       * Call this in a `before` hook to create one app per spec file
+       * @param specPrefix - The prefix to use for cleanup and app naming
+       * @param appDescription - Optional description to append to the app name
+       * @example cy.setupIsolatedApp('[e2e:develop-chat]', 'Test app for chat')
+       */
+      setupIsolatedApp(specPrefix: string, appDescription?: string): Chainable<string>;
 
       /**
        * Poll deployment status until complete or timeout

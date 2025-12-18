@@ -8,25 +8,27 @@
  * - Multiline input handling
  *
  * Strategy:
- * - Uses a shared app for all tests in this file
+ * - Creates an isolated app per spec file (cleaned up before each run)
  * - Independent of other develop-page test files
  */
 
 import { AI_RESPONSE_TIMEOUT_MS } from '../support/constants';
 
 const SPEC_PREFIX = '[e2e:develop-chat]';
-const SHARED_APP_KEY = 'sharedAppId_developChat';
 
 describe('Develop Page - Chat', () => {
+  let appId: string;
+
+  before(function createIsolatedApp() {
+    cy.setupIsolatedApp(SPEC_PREFIX, 'Hello world app').then((id) => {
+      appId = id;
+    });
+  });
 
   describe('Chat Pane', () => {
     beforeEach(function setupChatTests() {
-      cy.intercept('POST', '**/api/sites/quick-create').as('quickCreate');
-
-      cy.getOrCreateSharedApp(SHARED_APP_KEY, SPEC_PREFIX, 'Test app for chat').then((id) => {
-        cy.openDevelop(id);
-        cy.waitForChatInput();
-      });
+      cy.openDevelop(appId);
+      cy.waitForChatInput();
     });
 
     it('should display toolbar and allow navigating between views', () => {
@@ -72,12 +74,8 @@ describe('Develop Page - Chat', () => {
 
   describe('Send Message', () => {
     beforeEach(function setupSendTests() {
-      cy.intercept('POST', '**/api/sites/quick-create').as('quickCreate');
-
-      cy.getOrCreateSharedApp(SHARED_APP_KEY, SPEC_PREFIX, 'Test app for chat').then((id) => {
-        cy.openDevelop(id);
-        cy.waitForDevelopPage();
-      });
+      cy.openDevelop(appId);
+      cy.waitForDevelopPage();
     });
 
     it('should send message via click button and show in chat', () => {
