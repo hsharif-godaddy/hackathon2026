@@ -9,21 +9,21 @@ import EditIcon from '@ux/icon/edit';
 import Skeleton from '@ux/skeleton';
 import text from '@ux/text';
 
+import { TableDataBrowser } from '@/app/develop/components/settings/Database/TableDataBrowser';
+import { formatColumnName } from '@/app/develop/components/settings/Database/utils';
 import { ChatTab } from '@/app/develop/components/types';
 import BigCard from '@/components/layout/BigCard';
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { useDatabaseTables } from '@/hooks/useDatabaseTables';
+import { useTranslations } from '@/hooks/useTranslations';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { TableDataBrowser } from './TableDataBrowser';
-import { formatColumnName } from './utils';
 
 interface DatabasePanelProps {
   appId: string;
 }
 
-const DATABASE_DESCRIPTION = "Manage the data tables that store your app's information. Browse existing records, add new entries, update values, or remove data as needed to keep your app's database organized and up-to-date.";
-
 export function DatabasePanel({ appId }: DatabasePanelProps) {
+  const t = useTranslations();
   const router = useRouter();
   const { setActiveChatTab } = useDevelopPageStore();
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
@@ -57,8 +57,8 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
   if (isLoading) {
     return (
       <BigCard
-        title="Database Tables"
-        description={DATABASE_DESCRIPTION}
+        title={t('builder_settings_database_title')}
+        description={t('builder_settings_database_description')}
       >
         <Box gap="sm">
           {[1, 2, 3].map((i) => (
@@ -85,9 +85,9 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
     return (
       <EmptyStateCard
         icon={<DatabaseIcon width={48} height={48} />}
-        title="Error Loading Database"
-        description="An error occurred while loading database tables. Please try again."
-        ctaLabel="Retry"
+        title={t('builder_settings_database_error_title')}
+        description={t('builder_settings_database_error_desc')}
+        ctaLabel={t('builder_common_retry')}
         onCtaClick={() => refetch()}
       />
     );
@@ -97,9 +97,9 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
     return (
       <EmptyStateCard
         icon={<DatabaseIcon width={48} height={48} />}
-        title="No Database Tables Yet"
-        description="This app doesn't have any database tables integrated yet. Ask Airo through the chat to create tables for storing your app's data."
-        ctaLabel="Go to Chat"
+        title={t('builder_settings_database_empty_title')}
+        description={t('builder_settings_database_empty_desc')}
+        ctaLabel={t('builder_settings_database_empty_cta')}
         onCtaClick={() => {
           setActiveChatTab(ChatTab.CHAT);
           router.push(`/develop/${appId}`, { scroll: false });
@@ -110,8 +110,8 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
 
   return (
     <BigCard
-      title="Database Tables"
-      description={DATABASE_DESCRIPTION}
+      title={t('builder_settings_database_title')}
+      description={t('builder_settings_database_description')}
     >
       <Box gap="sm">
         {tables.map((table) => (
@@ -133,7 +133,7 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
               design="tertiary"
               size="sm"
               onClick={() => handleTableClick(table)}
-              text="Edit Table"
+              text={t('builder_settings_database_common_edit_table')}
             />
           </Box>
         ))}

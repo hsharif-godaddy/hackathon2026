@@ -7,10 +7,11 @@ import ShieldIcon from '@ux/icon/shield-check-filled';
 import Tag from '@ux/tag';
 import text from '@ux/text';
 
+import { useAppIdFromParams } from '@/app/develop/components/utils';
+import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
 import { type TestPilotRunResult } from '@/lib/testpilot';
 import { TodoListService } from '@/services/TodoListService';
-import { useAppIdFromParams } from '../../../utils';
 
 /**
  * Security vulnerability interface based on TestPilot response
@@ -66,6 +67,7 @@ interface SecurityTestResult {
  * Component to display success screen when no vulnerabilities are found
  */
 function SecuritySuccessScreen() {
+  const t = useTranslations();
   return (
     <Card className="p-4 text-center">
       <Box gap="lg" className="items-center">
@@ -76,10 +78,10 @@ function SecuritySuccessScreen() {
         </div>
         <Box gap="md">
           <text.h3 as="title" size={2}>
-            Security Analysis Complete
+            {t('builder_settings_security_results_complete_title')}
           </text.h3>
           <text.p>
-            Great news! No security vulnerabilities were found in your application. Your application is secure.
+            {t('builder_settings_security_results_complete_text')}
           </text.p>
         </Box>
       </Box>
@@ -157,16 +159,11 @@ function SecurityVulnerabilityCard({
  *
  * @param results - The TestPilot API response containing security test results
  */
-export default function SecurityResults({
-  results,
-}: {
-  results: { security?: TestPilotRunResult };
-}) {
+export default function SecurityResults({ results }: { results: { security?: TestPilotRunResult } }) {
+  const t = useTranslations();
   const router = useRouter();
   const appId = useAppIdFromParams();
-  const [checkedVulnerabilities, setCheckedVulnerabilities] = useState<
-    Set<string>
-  >(new Set());
+  const [checkedVulnerabilities, setCheckedVulnerabilities] = useState<Set<string>>(new Set());
   const [isCreatingTodoList, setIsCreatingTodoList] = useState(false);
   const todoListService = new TodoListService();
 
@@ -175,12 +172,11 @@ export default function SecurityResults({
     return (
       <div>
         <text.p className="font-medium">
-          <text.span emphasis="critical">Error:</text.span> Security Analysis
-          Failed
+          <text.span emphasis="critical">{t('builder_status_error')}:</text.span>
+          {t('builder_settings_security_results_failed_title')}
         </text.p>
         <text.p>
-          The security test results are missing. Please try running the analysis
-          again.
+          {t('builder_settings_security_results_failed_text')}
         </text.p>
       </div>
     );
@@ -193,14 +189,14 @@ export default function SecurityResults({
     return (
       <div>
         <text.p className="font-medium">
-          <text.span emphasis="critical">Timeout:</text.span> Security Analysis
-          Timed Out
+          <text.span emphasis="critical">{t('builder_status_timeout')}:</text.span>
+          {t('builder_settings_security_results_timeout_title')}
         </text.p>
         <text.p>
-          The security analysis took longer than expected to complete.
+          {t('builder_settings_security_results_timeout_text_1')}
         </text.p>
         <text.p className="text-sm mt-2">
-          You can try running the analysis again.
+          {t('builder_settings_security_results_timeout_text_2')}
         </text.p>
       </div>
     );
@@ -303,15 +299,15 @@ export default function SecurityResults({
 
       // Create items from selected vulnerabilities
       const todoItems = selectedVulnerabilities.map((vulnerability) => ({
-        title: `Fix ${vulnerability.severity} severity: ${vulnerability.title}`,
-        description: `${vulnerability.description}${vulnerability.remediation ? `\nSuggested Remediation:\n${vulnerability.remediation.map((item) => `- ${item}`).join("\n")}` : ""}`,
+        title: t('builder_settings_security_results_suggested_fix', { severity: vulnerability.severity, title: vulnerability.title}),
+        description: `${vulnerability.description}${vulnerability.remediation ? `\n${t('builder_settings_security_results_suggested_remediation')}:\n${vulnerability.remediation.map((item) => `- ${item}`).join("\n")}` : ""}`,
       }));
 
       // Create the list
       const newTodoList = await todoListService.createList(
         appId,
-        "Selected Security Vulnerabilities",
-        `Security vulnerabilities found during analysis on ${new Date().toLocaleDateString()}`,
+        t('builder_settings_security_results_selected_title'),
+        t('builder_settings_security_results_selected_text', { date: new Date().toLocaleDateString() }),
         todoItems,
       );
 
@@ -351,22 +347,19 @@ export default function SecurityResults({
         <Box gap="md">
           <div className="flex justify-between items-center">
             <text.h3 as="title" size={2}>
-              Vulnerabilities ({vulnerabilities.length})
+              {t('builder_settings_security_results_title')} ({vulnerabilities.length})
             </text.h3>
             <div className="flex gap-1">
               <Button size="sm" design="secondary" onClick={handleSelectAll}>
-                {areAllSelected() ? "Deselect All" : "Select All"}
+                {areAllSelected() ? t('builder_common_deselect_all') : t('builder_common_select_all')}
               </Button>
               <Button
                 size="sm"
                 design="primary"
                 onClick={handleQuickFix}
-                disabled={
-                  checkedVulnerabilities.size === 0 || isCreatingTodoList
-                }
-              >
-                {isCreatingTodoList ? "Creating..." : "Quick Fix"}
-              </Button>
+                disabled={checkedVulnerabilities.size === 0 || isCreatingTodoList}
+                text={isCreatingTodoList ? t('builder_common_creating') : t('builder_common_quick_fix')}
+              />
             </div>
           </div>
           <div className="grid gap-2">

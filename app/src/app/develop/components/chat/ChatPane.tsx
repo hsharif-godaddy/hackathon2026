@@ -390,7 +390,7 @@ export default function ChatPane({
                         onClick={handleClearSelectedAsset}
                         className="absolute -top-1 -right-1 w-3 h-3 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
                         style={{ backgroundColor: '#ffffff' }}
-                        title="Clear asset"
+                        title={t('builder_chatpane_clear_asset')}
                       >
                         ×
                       </button>

@@ -33,25 +33,25 @@ describe('DeleteRowModal', () => {
   it('should render when isOpen is true', () => {
     renderWithProviders(<DeleteRowModal {...defaultProps} isOpen={true} />);
 
-    expect(screen.getByText('Delete Row')).toBeInTheDocument();
+    expect(screen.getByText('builder_settings_database_delete_row_title')).toBeInTheDocument();
   });
 
   it('should display confirmation message', () => {
     renderWithProviders(<DeleteRowModal {...defaultProps} isOpen={true} />);
 
-    expect(screen.getByText('Are you sure you want to delete this row? This action cannot be undone.')).toBeInTheDocument();
+    expect(screen.getByText('builder_settings_database_delete_row_warning')).toBeInTheDocument();
   });
 
   it('should render cancel button', () => {
     renderWithProviders(<DeleteRowModal {...defaultProps} isOpen={true} />);
 
-    expect(screen.getByRole('button', { name: /Cancel/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'builder_common_cancel' })).toBeInTheDocument();
   });
 
   it('should render delete button', () => {
     renderWithProviders(<DeleteRowModal {...defaultProps} isOpen={true} />);
 
-    expect(screen.getByRole('button', { name: /Delete/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'builder_common_delete' })).toBeInTheDocument();
   });
 
   it('should call onClose when cancel button clicked', async () => {
@@ -60,7 +60,7 @@ describe('DeleteRowModal', () => {
       <DeleteRowModal {...defaultProps} isOpen={true} onClose={onClose} />
     );
 
-    const cancelButton = screen.getByRole('button', { name: /Cancel/i });
+    const cancelButton = screen.getByRole('button', { name: 'builder_common_cancel' });
     await user.click(cancelButton);
 
     await waitFor(() => {
@@ -74,7 +74,7 @@ describe('DeleteRowModal', () => {
       <DeleteRowModal {...defaultProps} isOpen={true} onConfirm={onConfirm} />
     );
 
-    const deleteButton = screen.getByRole('button', { name: /Delete/i });
+    const deleteButton = screen.getByRole('button', { name: 'builder_common_delete' });
     await user.click(deleteButton);
 
     await waitFor(() => {
@@ -85,8 +85,8 @@ describe('DeleteRowModal', () => {
   it('should disable buttons when isDeleting is true', () => {
     renderWithProviders(<DeleteRowModal {...defaultProps} isOpen={true} isDeleting={true} />);
 
-    const cancelButton = screen.getByRole('button', { name: /Cancel/i });
-    const deleteButton = screen.getByRole('button', { name: /Deleting.../i });
+    const cancelButton = screen.getByRole('button', { name: 'builder_common_cancel' });
+    const deleteButton = screen.getByRole('button', { name: 'builder_common_deleting' });
 
     expect(cancelButton).toBeDisabled();
     expect(deleteButton).toBeDisabled();
@@ -95,19 +95,19 @@ describe('DeleteRowModal', () => {
   it('should show deleting text when isDeleting is true', () => {
     renderWithProviders(<DeleteRowModal {...defaultProps} isOpen={true} isDeleting={true} />);
 
-    expect(screen.getByRole('button', { name: /Deleting.../i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'builder_common_deleting' })).toBeInTheDocument();
   });
 
   it('should show delete text when isDeleting is false', () => {
     renderWithProviders(<DeleteRowModal {...defaultProps} isOpen={true} isDeleting={false} />);
 
-    expect(screen.getByRole('button', { name: /^Delete$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'builder_common_delete' })).toBeInTheDocument();
   });
 
   it('should have critical design for delete button', () => {
     renderWithProviders(<DeleteRowModal {...defaultProps} isOpen={true} />);
 
-    const deleteButton = screen.getByRole('button', { name: /Delete/i });
+    const deleteButton = screen.getByRole('button', { name: 'builder_common_delete' });
     // Critical button should have specific styling
     expect(deleteButton).toBeInTheDocument();
   });
@@ -115,7 +115,7 @@ describe('DeleteRowModal', () => {
   it('should have secondary design for cancel button', () => {
     renderWithProviders(<DeleteRowModal {...defaultProps} isOpen={true} />);
 
-    const cancelButton = screen.getByRole('button', { name: /Cancel/i });
+    const cancelButton = screen.getByRole('button', { name: 'builder_common_cancel' });
     // Secondary button should have specific styling
     expect(cancelButton).toBeInTheDocument();
   });

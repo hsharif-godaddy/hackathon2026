@@ -7,6 +7,7 @@ import SelectInput from '@ux/select-input';
 import TextInput from '@ux/text-input';
 
 import { useUpdateRow } from '@/hooks/useTableMutations';
+import { useTranslations } from '@/hooks/useTranslations';
 import { formatColumnName, formatColumnType, getGridClasses } from './utils';
 
 interface EditRowDialogProps {
@@ -35,6 +36,7 @@ export function EditRowDialog({
   schema,
   row,
 }: EditRowDialogProps) {
+  const t = useTranslations();
   const [formData, setFormData] = useState<Record<string, string>>({});
 
   // Extract primary key from row
@@ -233,8 +235,8 @@ export function EditRowDialog({
     const type = col.type.toLowerCase();
     const enumValues = parseEnumValues(col.type);
     const isRequired = !col.nullable && col.default === null && col.key !== 'PRI';
-    const labelText = `${formatColumnName(col.name)}${col.key === 'PRI' ? ' (Primary Key)' : ''}`;
-    const helpText = `${formatColumnType(col.type)}${col.nullable ? ' (optional)' : ''}`;
+    const labelText = `${formatColumnName(col.name)}${col.key === 'PRI' ? ` (${t('builder_settings_database_common_primary_key')})` : ''}`;
+    const helpText = `${formatColumnType(col.type)}${col.nullable ? ` (${t('builder_settings_database_common_optional')})` : ''}`;
 
     // Primary keys should be read-only
     if (col.key === 'PRI') {
@@ -245,7 +247,7 @@ export function EditRowDialog({
           label={labelText}
           value={formData[col.name] || ''}
           disabled
-          helpMessage="Primary key (read-only)"
+          helpMessage={`${t('builder_settings_database_common_primary_key')} (${t('builder_settings_database_common_read_only')})`}
           stretch
         />
       );
@@ -305,19 +307,19 @@ export function EditRowDialog({
 
   return (
     <Modal
-      title={`Edit Row in ${tableName}`}
+      title={t('builder_settings_database_edit_row_title', { tableName })}
       onClose={handleClose}
       actions={
         <>
           <Button
             design="secondary"
-            text="Cancel"
+            text={t('builder_common_cancel')}
             onClick={handleClose}
             disabled={updateRow.isPending}
           />
           <Button
             design="primary"
-            text={updateRow.isPending ? 'Updating...' : 'Update Row'}
+            text={updateRow.isPending ? t('builder_common_updating') : t('builder_settings_database_common_edit_row')}
             type="submit"
             disabled={updateRow.isPending}
             onClick={handleSubmit}

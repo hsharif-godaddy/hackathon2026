@@ -24,7 +24,7 @@ export default function HelpSection() {
         </text.p>
         <Button
           external
-          text="Get help"
+          text={t('builder_homepage_help_cta')}
           design="primary"
           data-partial="inverted"
           href="https://www.godaddy.com/help/contact-us"

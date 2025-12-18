@@ -12,6 +12,7 @@ import { TableDataBrowser } from '@/app/develop/components/settings/Database/Tab
 import { ChatTab } from '@/app/develop/components/types';
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { useDatabaseTables } from '@/hooks/useDatabaseTables';
+import { useTranslations } from '@/hooks/useTranslations';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 
 interface DatabasePanelProps {
@@ -19,6 +20,7 @@ interface DatabasePanelProps {
 }
 
 export function DatabasePanel({ appId }: DatabasePanelProps) {
+  const t = useTranslations();
   const router = useRouter();
   const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
@@ -53,7 +55,7 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
     return (
       <div className='flex flex-col justify-center items-center h-[calc(100vh-40rem)] gap-4'>
         <Spinner size='md'/>
-        <text.p>Loading database tables...</text.p>
+        <text.p>={t('builder_settings_database_loading')}  </text.p>
       </div>
     );
   }
@@ -62,9 +64,9 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
     return (
       <EmptyStateCard
         icon={<DatabaseIcon width={48} height={48} />}
-        title="Error Loading Database"
-        description="An error occurred while loading database tables. Please try again."
-        ctaLabel="Retry"
+        title={t('builder_settings_database_error_title')}
+        description={t('builder_settings_database_error_desc')}
+        ctaLabel={t('builder_common_retry')}
         onCtaClick={() => refetch()}
       />
     );
@@ -75,9 +77,9 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
       {tables.length === 0 && (
         <EmptyStateCard
           icon={<DatabaseIcon width={48} height={48} />}
-          title="No Database Tables Yet"
-          description="This app doesn't have any database tables integrated yet. Ask Airo through the chat to create tables for storing your app's data."
-          ctaLabel="Go to Chat"
+          title={t('builder_settings_database_empty_title')}
+          description={t('builder_settings_database_empty_desc')}
+          ctaLabel={t('builder_settings_database_empty_cta')}
           onCtaClick={() => {
             setActiveChatTab(ChatTab.CHAT);
             router.push(`/develop/${appId}`, { scroll: false });
@@ -89,7 +91,7 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              Found {tables.length} {tables.length === 1 ? 'table' : 'tables'}
+              {t('builder_settings_database_found', { count: tables.length })}
             </p>
           </div>
 

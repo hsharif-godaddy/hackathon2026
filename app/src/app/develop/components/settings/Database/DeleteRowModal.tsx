@@ -5,6 +5,8 @@ import Modal from '@ux/modal';
 import SiblingSet from '@ux/sibling-set';
 import text from '@ux/text';
 
+import { useTranslations } from '@/hooks/useTranslations';
+
 interface DeleteRowModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -20,32 +22,33 @@ interface DeleteRowModalProps {
  * with options to cancel or proceed with the deletion.
  */
 export function DeleteRowModal({ isOpen, onClose, onConfirm, isDeleting, error }: DeleteRowModalProps) {
+  const t = useTranslations();
+
   if (!isOpen) return null;
 
   return (
     <Modal
-      title="Delete Row"
+      title={t('builder_settings_database_delete_row_title')}
       onClose={onClose}
       centered
       actions={
         <SiblingSet gap="md">
           <Button
             design="secondary"
-            text="Cancel"
+            text={t('builder_common_cancel')}
             onClick={onClose}
             disabled={isDeleting}
           />
           <Button
             design="critical"
-            text={isDeleting ? 'Deleting...' : 'Delete'}
+            text={isDeleting ? t('builder_common_deleting') : t('builder_common_delete')}
             onClick={onConfirm}
             disabled={isDeleting}
           />
         </SiblingSet>
       }
     >
-      <text.p>Are you sure you want to delete this row? This action cannot be undone.</text.p>
-
+      <text.p>{t('builder_settings_database_delete_row_warning')}</text.p>
       {error && (
         <div className="bg-destructive/10 text-destructive rounded-lg p-1.5 mt-2 text-sm">
           {error instanceof Error ? error.message : String(error)}

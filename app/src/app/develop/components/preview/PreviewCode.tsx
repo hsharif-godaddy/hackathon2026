@@ -25,7 +25,6 @@ const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
     <div className="h-full flex items-center justify-center text-white">
       <div className="text-center">
         <div className="animate-spin rounded-full h-4 w-4 border-b-2 mx-auto mb-1"></div>
-        <div className="text-sm">Loading editor...</div>
       </div>
     </div>
   )

@@ -7,6 +7,7 @@ import SelectInput from '@ux/select-input';
 import TextInput from '@ux/text-input';
 
 import { useAddRow } from '@/hooks/useTableMutations';
+import { useTranslations } from '@/hooks/useTranslations';
 import { formatColumnName, formatColumnType, getGridClasses } from './utils';
 
 interface AddRowDialogProps {
@@ -33,6 +34,7 @@ export function AddRowDialog({
   tableName,
   schema,
 }: AddRowDialogProps) {
+  const t = useTranslations();
   const [formData, setFormData] = useState<Record<string, string>>({});
 
   const addRow = useAddRow({
@@ -201,14 +203,14 @@ export function AddRowDialog({
   }) => {
     // Show auto-increment fields as disabled
     if (col.extra === 'auto_increment') {
-      const labelText = `${formatColumnName(col.name)}${col.key === 'PRI' ? ' (Primary Key)' : ''}`;
+      const labelText = `${formatColumnName(col.name)}${col.key === 'PRI' ? ` (${t('builder_settings_database_common_primary_key')})` : ''}`;
       return (
         <TextInput
           key={col.name}
           id={`add-row-${col.name}`}
           name={col.name}
           label={labelText}
-          value="Auto-generated"
+          value={t('builder_settings_database_common_auto_generated')}
           visualSize="sm"
           disabled
           stretch
@@ -219,8 +221,8 @@ export function AddRowDialog({
     const type = col.type.toLowerCase();
     const enumValues = parseEnumValues(col.type);
     const isRequired = !col.nullable && col.default === null && col.extra !== 'auto_increment';
-    const labelText = `${formatColumnName(col.name)}${col.key === 'PRI' ? ' (Primary Key)' : ''}`;
-    const helpText = `${formatColumnType(col.type)}${col.nullable ? ' (optional)' : ''}${col.default ? ` (default: ${col.default})` : ''}`;
+    const labelText = `${formatColumnName(col.name)}${col.key === 'PRI' ? ` (${t('builder_settings_database_common_primary_key')})` : ''}`;
+    const helpText = `${formatColumnType(col.type)}${col.nullable ? ` (${t('builder_settings_database_common_optional')})` : ''}${col.default ? ` (${t('builder_settings_database_common_default')}: ${col.default})` : ''}`;
 
     // Render SelectInput dropdown for enum fields
     if (enumValues) {
@@ -278,19 +280,19 @@ export function AddRowDialog({
 
   return (
     <Modal
-      title={`Add Row to ${tableName}`}
+      title={t('builder_settings_database_add_row_title', { tableName })}
       onClose={handleClose}
       actions={
         <>
           <Button
             design="secondary"
-            text="Cancel"
+            text={t('builder_common_cancel')}
             onClick={handleClose}
             disabled={addRow.isPending}
           />
           <Button
             design="primary"
-            text={addRow.isPending ? 'Adding...' : 'Add Row'}
+            text={addRow.isPending ? t('builder_common_adding') : t('builder_settings_database_common_add_row')}
             type="submit"
             disabled={addRow.isPending}
             onClick={handleSubmit}

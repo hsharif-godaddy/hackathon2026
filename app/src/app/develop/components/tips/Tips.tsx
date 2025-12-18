@@ -6,14 +6,15 @@ import { Loader } from '@airo-ux/loader'
 import Alert from '@ux/alert'
 import Box from '@ux/box'
 
-import { shuffleArray,tips } from './tips-content'
+import { shuffleArray,tips } from '@/app/develop/components/tips/tips-content'
+import { useTranslations } from '@/hooks/useTranslations'
 
 /**
  * Props for the Tips component.
  */
 interface TipsProps {
   /** Message to display in the loader description */
-  buildingMessage?: string
+  buildingMessage?: string | null
   showTips?: boolean
 }
 
@@ -25,7 +26,9 @@ interface TipsProps {
  * @param props - Component props
  * @returns The Tips component with loader and carousel
  */
-export default function Tips({ buildingMessage = 'The AI agent is building your app...', showTips = true }: TipsProps) {
+export default function Tips({ buildingMessage = null, showTips = true }: TipsProps) {
+  const t = useTranslations();
+
   // Randomize tips once on mount
   const shuffledTips = useMemo(() => shuffleArray(tips), [])
 
@@ -53,7 +56,7 @@ export default function Tips({ buildingMessage = 'The AI agent is building your 
   return (
     <Box className="h-full mt-6" blockAlignChildren="center" inlineAlignChildren="center" gap="xl">
       {/* Loader spinner with building message */}
-      <Loader title={buildingMessage} />
+      <Loader title={buildingMessage ?? t('builder_tips_message')} />
 
       {/* Tips section below loader */}
       {showTips && (
@@ -65,7 +68,7 @@ export default function Tips({ buildingMessage = 'The AI agent is building your 
               <AnimatePresence mode="wait">
                 <motion.div
                   className="p-2"
-                  key={currentTip.id}
+                  key={currentTip}
                   initial={{ opacity: 0, y: 5, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 5, scale: 0.95 }}
@@ -73,9 +76,9 @@ export default function Tips({ buildingMessage = 'The AI agent is building your 
                 >
                   <Alert
                     emphasis="info"
-                    title={currentTip.title}
+                    title={t(`builder_tips_${currentTip}_title`)}
                   >
-                   {currentTip.description}
+                    {t(`builder_tips_${currentTip}_description`)}
                   </Alert>
                 </motion.div>
               </AnimatePresence>

@@ -24,6 +24,7 @@ import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { useTableData } from '@/hooks/useTableData';
 import { useDeleteRow } from '@/hooks/useTableMutations';
 import { useTableSchema } from '@/hooks/useTableSchema';
+import { useTranslations } from '@/hooks/useTranslations';
 import { formatDate } from '@/utils/common';
 import { AddRowDialog } from './AddRowDialog';
 import { DeleteRowModal } from './DeleteRowModal';
@@ -38,6 +39,8 @@ interface TableDataBrowserProps {
 }
 
 export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserProps) {
+  const t = useTranslations();
+
   const [currentPage, setCurrentPage] = useState(1);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editRow, setEditRow] = useState<Record<string, any> | null>(null);
@@ -193,16 +196,16 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
       <Box orientation="vertical" gap="md" className="@container w-full">
         <div className="flex">
           <Button
-            text="Back"
+            text={t('builder_common_back')}
             icon={<ArrowLeftIcon />}
             onClick={onBack}
           />
         </div>
         <EmptyStateCard
           icon={<DatabaseIcon width={48} height={48} />}
-          title="Error Loading Table Data"
-          description={`An error occurred while loading data from ${tableName}. Please try again.`}
-          ctaLabel="Retry"
+          title={t('builder_settings_tabledata_error_title')}
+          description={t('builder_settings_tabledata_error_desc', { tableName })}
+          ctaLabel={t('builder_common_retry')}
           onCtaClick={() => refetch()}
         />
       </Box>
@@ -218,7 +221,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
       <Box orientation="vertical" gap="md" className="@container w-full">
         <div className="flex">
           <Button
-            text="Back"
+            text={t('builder_common_back')}
             icon={<ArrowLeftIcon />}
             onClick={onBack}
           />
@@ -230,20 +233,20 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
         button={(
           <Box orientation="horizontal" gap="sm">
             <Button
-              text="Add Row"
+              text={t('builder_settings_database_common_add_row')}
               icon={<PlusIcon />}
               design="primary"
               size="sm"
               onClick={() => setIsAddDialogOpen(true)}
             />
             <Button
-              text="Refresh"
+              text={t('builder_common_refresh')}
               icon={<RefreshIcon className={isRefetching ? 'animate-spin' : ''} />}
               design="secondary"
               size="sm"
               onClick={() => refetch()}
               disabled={isLoading || isRefetching}
-              aria-label={isRefetching ? 'Refreshing table data' : 'Refresh table data'}
+              aria-label={isRefetching ? t('builder_settings_datatable_refreshing_table') : t('builder_settings_datatable_refresh_table')}
               aria-busy={isRefetching}
             />
           </Box>
@@ -252,8 +255,8 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
         {/* Empty state */}
         {data.length === 0 && (
           <div className="text-sm bg-intents-ux-box-backgroundColor rounded-lg p-4 text-center border">
-            <text.p emphasis="passive">No data found in this table</text.p>
-            <text.p emphasis="passive" className="text-xs mt-1">Click &ldquo;Add Row&rdquo; to insert data</text.p>
+            <text.p emphasis="passive">{t('builder_settings_datatable_no_data_table')}</text.p>
+            <text.p emphasis="passive" className="text-xs mt-1">{t('builder_settings_datatable_no_data_table_cta')}</text.p>
           </div>
         )}
 
@@ -265,7 +268,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
                   <Thead>
                     <Tr>
                       <Th className="px-2 py-1.5 border-r border-intents-ux-box-borderColor">
-                        <text.span as='label' className="text-xs">Actions</text.span>
+                        <text.span as='label' className="text-xs">{t('builder_common_actions')}</text.span>
                       </Th>
                       {schema.map((col) => (
                         <Th key={col.name} className="px-3 py-1.5 max-w-xs">

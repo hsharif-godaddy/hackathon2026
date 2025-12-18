@@ -1,20 +1,276 @@
 ---
 description: Test structure and organization standards for consistent testing patterns
-globs: **/*.test.{ts,js}
+globs: **/*.test.{ts,tsx,js}
 alwaysApply: true
 ---
 
 # Test Structure Standards
 
-## Required Libraries
+## Testing Framework Differences by Location
+
+### `/app` Directory (Vitest + React Testing Library)
+
+For the `/app` (Next.js) workspace, use:
+- **Test Runner**: Vitest
+- **Assertions**: Vitest's `expect` with `@testing-library/jest-dom`
+- **UI Testing**: `@testing-library/react` with `renderWithProviders`
+- **User Interactions**: `@testing-library/user-event`
+
+### Other Packages (Node.js Testing)
+
+For other packages (e.g., `packages/`), use:
+- **Test Runner**: `node:test`
+- **Assertions**: `assume`
+- Avoid mixing frameworks unless specifically required
+
+## `/app` Directory Test Standards
+
+### Core Principles
+
+1. **Don't Mock Internal Components**
+   - ONLY mock external dependencies (Next.js, APIs, third-party libraries)
+   - DO NOT mock React components from the same codebase
+   - Testing mocked components is worthless
+
+2. **Use Centralized Mocks**
+   - All common mocks live in `app/src/tests/mocks.ts`
+   - Import from centralized location instead of duplicating
+   - Add new common mocks to `mocks.ts` if used in multiple files
+
+3. **Use Test Utilities**
+   - Use `renderWithProviders` from `app/src/tests/test-utils.tsx`
+   - Automatically wraps with QueryClientProvider and IntlProvider
+   - Returns `user` for userEvent interactions
+
+### Required Imports
+
+```typescript
+import '@testing-library/jest-dom';
+
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { screen, waitFor } from '@testing-library/react';
+
+import { renderWithProviders } from '@/tests/test-utils';
+import { mockRouter, mockInstrumentation, mockFeatures } from '@/tests/mocks';
+```
+
+### Test File Structure
+
+```typescript
+import '@testing-library/jest-dom';
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { screen, waitFor } from '@testing-library/react';
+
+import { appFetch } from '@/lib/gasket-config';
+import { mockRouter, mockInstrumentation } from '@/tests/mocks';
+import { renderWithProviders } from '@/tests/test-utils';
+import ComponentToTest from './ComponentToTest';
+
+// Mock external dependencies only
+vi.mock('@/lib/gasket-config');
+vi.mock('next/navigation', () => ({
+  useRouter: () => mockRouter(),
+  usePathname: () => '/',
+}));
+vi.mock('@/utils/instrumentation', () => mockInstrumentation());
+
+describe('ComponentToTest', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  it('should render without crashing', async () => {
+    renderWithProviders(<ComponentToTest />);
+
+    await waitFor(() => {
+      expect(document.body).toBeTruthy();
+    });
+  });
+});
+```
+
+### Test Organization
+
+1. **Top-level `describe`**: Component or page name
+2. **Nested `describe`**: Group related test cases (optional but recommended)
+3. **Individual `it`**: Specific test case with descriptive name
+
+```typescript
+describe('AppCard', () => {
+  describe('renders site information correctly', () => {
+    it('should display site name', () => {
+      // Test implementation
+    });
+
+    it('should display initial prompt', () => {
+      // Test implementation
+    });
+  });
+
+  describe('handles delete confirmation flow', () => {
+    it('should show confirmation alert when delete is clicked', async () => {
+      // Test implementation
+    });
+  });
+});
+```
+
+### Element Selection Priority
+
+1. **Semantic roles**: `getByRole('button')`, `getByRole('link')`
+2. **data-testid**: `getByTestId('specific-element')`
+3. **Text content**: `getByText(/unique text/i)` (only for unique, stable text)
+4. **Avoid**: CSS selectors, class names
+
+### Testing Internationalized Text
+
+The test utilities use `IntlProvider` with an empty messages object, which means i18n keys are rendered as-is (e.g., `builder_apps_empty_create` appears as the literal string "builder_apps_empty_create").
+
+**This is intentional and working correctly. Do NOT mock translation strings.**
+
+```typescript
+// ✅ CORRECT - Test using the i18n key
+it('should render create new app text', () => {
+  renderWithProviders(<AppCardEmptyState />);
+  expect(screen.getByText('builder_apps_empty_create')).toBeInTheDocument();
+});
+
+// ✅ CORRECT - Test button with i18n key
+it('should render send button', () => {
+  renderWithProviders(<ChatInput {...defaultProps} />);
+  expect(screen.getByRole('button', { name: 'builder_chatinput_send' })).toBeInTheDocument();
+});
+
+// ❌ WRONG - Do not mock all translation strings
+vi.mock('@/i18n/messages', () => ({
+  'builder_apps_empty_create': 'Create a new app',
+  'builder_chatinput_send': 'Send',
+  // Don't do this!
+}));
+```
+
+**Why this works:**
+- `IntlProvider` renders keys as strings when no translation is found
+- Tests validate the correct i18n keys are used
+- Ensures components reference the right translation keys
+- Avoids brittle tests that break when translations change
+- No need to maintain duplicate translation mocks in tests
+
+### Common Testing Patterns
+
+#### Testing Renders
+```typescript
+it('should render without crashing', async () => {
+  renderWithProviders(<MyComponent />);
+
+  await waitFor(() => {
+    expect(document.body).toBeTruthy();
+  });
+});
+```
+
+#### Testing User Interactions
+```typescript
+it('should handle button click', async () => {
+  const { user } = renderWithProviders(<MyComponent />);
+
+  const button = screen.getByRole('button', { name: /Submit/i });
+  await user.click(button);
+
+  await waitFor(() => {
+    expect(mockFn).toHaveBeenCalled();
+  });
+});
+```
+
+#### Testing Error States
+```typescript
+it('should handle errors gracefully', async () => {
+  vi.mocked(appFetch).mockRejectedValue(new Error('Network error'));
+
+  renderWithProviders(<MyComponent />);
+
+  await waitFor(() => {
+    expect(document.body).toBeTruthy();
+  });
+});
+```
+
+#### Testing Store State
+```typescript
+it('should update store on action', async () => {
+  const mockFn = vi.fn();
+  useSitesStore.setState({ deleteSite: mockFn });
+
+  const { user } = renderWithProviders(<MyComponent />);
+
+  await user.click(screen.getByRole('button', { name: /Delete/i }));
+
+  await waitFor(() => {
+    expect(mockFn).toHaveBeenCalled();
+  });
+});
+```
+
+### Available Centralized Mocks
+
+In `app/src/tests/mocks.ts`:
+- `mockRouter()` - Next.js router with push, replace, back, etc.
+- `mockParams(params)` - Route parameters
+- `mockSearchParams(params)` - URL search parameters
+- `mockURLMethods()` - URL.createObjectURL and revokeObjectURL
+- `createMockSite(overrides)` - SiteInfo object
+- `mockInstrumentation()` - Instrumentation utilities
+- `mockFeatures(overrides)` - Feature flags
+- `mockAuthContext(overrides)` - Auth provider context
+
+### Test Utilities
+
+In `app/src/tests/test-utils.tsx`:
+- `renderWithProviders(ui, options)` - Render with QueryClient and IntlProvider
+- `renderHookWithProviders(hook, options)` - Render hook with providers
+- `mockFetchResponse(data, init)` - Mock successful fetch
+- `mockFetchError(status, statusText)` - Mock error fetch
+
+### What NOT to Do
+
+1. ❌ Don't mock internal components
+2. ❌ Don't duplicate mocks (use `mocks.ts`)
+3. ❌ Don't mock translation strings (i18n keys render as-is, which is correct)
+4. ❌ Don't test implementation details
+5. ❌ Don't forget `beforeEach(() => vi.clearAllMocks())`
+6. ❌ Don't forget to import `'@testing-library/jest-dom'`
+7. ❌ Don't use CSS selectors or class names
+
+### Running Tests
+
+```bash
+# Run all tests
+pnpm --filter website test
+
+# Run specific test file
+pnpm --filter website test src/app/page.test.tsx
+
+# Run tests in watch mode
+pnpm --filter website test --watch
+
+# Run tests with coverage
+pnpm --filter website test:coverage
+```
+
+## Node.js Package Test Standards
+
+### Required Libraries
 
 - Use `node:test` as the primary test runner
 - Use `assume` as the main assertion library
-- Avoid other testing frameworks unless specifically required
 
-## Test Organization Pattern
+### Test Organization Pattern
 
-### 1. Top-Level Describe Block
+#### 1. Top-Level Describe Block
 
 The first `describe` statement must be the **package name** being tested:
 
@@ -24,7 +280,7 @@ describe('mdc-parser', function packageTests() {
 });
 ```
 
-### 2. Function/API Describe Blocks
+#### 2. Function/API Describe Blocks
 
 Each function or API should have its own `describe` block with `#` prefix:
 
@@ -38,7 +294,7 @@ describe('#stringify', function stringifyTests() {
 });
 ```
 
-### 3. Test Cases with `it`
+#### 3. Test Cases with `it`
 
 Individual test cases use `it` statements with descriptive names:
 
@@ -48,7 +304,7 @@ it('should parse basic MDC file with frontmatter', function parseBasic() {
 });
 ```
 
-## Whitespace and Formatting
+### Whitespace and Formatting
 
 - **No extra empty lines** between describe blocks and their content
 - **No extra empty lines** between it blocks and their content
@@ -58,7 +314,7 @@ it('should parse basic MDC file with frontmatter', function parseBasic() {
 - **No trailing spaces** at the end of any line
 - **Compact structure** - minimize unnecessary whitespace
 
-## Complete Example Structure
+### Complete Example Structure
 
 ```typescript
 import { parse, stringify } from '../src/index.js';
@@ -90,20 +346,20 @@ describe('mdc-parser', function packageTests() {
 });
 ```
 
-## Naming Conventions
+### Naming Conventions
 
-### Describe Block Function Names
+#### Describe Block Function Names
 
 - Package level: `function packageTests()`
 - API level: `function [functionName]Tests()` (e.g., `parseTests`, `syncTests`)
 
-### Test Function Names
+#### Test Function Names
 
 - Use descriptive action-based names: `parseBasic`, `syncMultiple`, `validateInput`
 - Avoid generic prefixes like "test", "should", "when"
 - Keep to 1-2 words when possible
 
-## Nested Testing
+### Nested Testing
 
 For complex APIs with multiple scenarios, use nested describes:
 
@@ -123,7 +379,7 @@ describe('#reposync', function reposyncTests() {
 });
 ```
 
-## Import Organization
+### Import Organization
 
 Follow the standard import sorting rules, with test-specific imports:
 
