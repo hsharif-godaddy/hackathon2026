@@ -9,6 +9,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as path from 'path';
 import { GDStack, GDStackProps } from "@gd-safeguard/godaddy-constructs";
 import config from "./config";
+import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 
 /**
  * Airo JWT Key Management Stack
@@ -94,12 +95,18 @@ export class AiroJWTKeyStack extends GDStack {
     });
 
     // Create Key Rotation Lambda Function
-    this.keyRotationLambda = new lambda.Function(this, 'KeyRotationLambda', {
+    this.keyRotationLambda = new NodejsFunction(this, 'KeyRotationLambda', {
       functionName: `${config.envName}-airo-jwt-rotation`,
       description: 'Automated JWT key rotation',
-      runtime: lambda.Runtime.NODEJS_18_X,
-      handler: 'key-rotation.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../lambda')),
+      runtime: lambda.Runtime.NODEJS_22_X,
+      entry: path.join(__dirname, '../lambda/key-rotation.ts'),
+      bundling: {
+        externalModules: [
+          '@aws-sdk/*' // AWS SDK v3 is available in Node.js 18+ runtimes
+        ],
+        minify: true, // Reduce bundle size
+        sourceMap: true, // Helpful for debugging
+      },
       timeout: cdk.Duration.minutes(5),
       memorySize: 256,
       role: keyRotationRole,
