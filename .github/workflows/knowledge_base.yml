@@ -1,0 +1,63 @@
+name: Upload Knowledge Base to GoKnowB
+
+run-name: "Upload ${{ github.event.inputs.filename || 'all files' }} from ${{ github.event.inputs.branch }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to upload from"
+        required: true
+        default: "main"
+        type: choice
+        options:
+          - "main"
+          - "master"
+          - "develop"
+      filename:
+        description: "Filename to upload (e.g., deployment.md) or leave empty to upload all files"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  upload-knowledge-base:
+    name: Upload Knowledge Base Documents
+    runs-on:
+      group: 8606-awsx64
+      labels:
+        - self-hosted
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Fetch GETTY_TOKEN from AWS
+        env:
+          AWS_REGION: us-west-2
+          AWS_ACCOUNT_ID: "694282668781"
+          SECRET_PATH: /Katana/Secrets/airobuilde/app/dev-private-ecs/GETTY_TOKEN
+        run: |
+          # Assume role
+          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" $(aws sts assume-role \
+          --role-arn arn:aws:iam::${AWS_ACCOUNT_ID}:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy \
+          --role-session-name knowledge-base-${GITHUB_RUN_ID} \
+          --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
+
+          # Fetch token from Secrets Manager
+          GETTY_TOKEN=$(aws secretsmanager get-secret-value \
+            --secret-id "${SECRET_PATH}" \
+            --region "${AWS_REGION}" \
+            --query SecretString \
+            --output text)
+
+          echo "::add-mask::$GETTY_TOKEN"
+          echo "GETTY_TOKEN=$GETTY_TOKEN" >> $GITHUB_ENV
+          echo "✅ Token retrieved successfully"
