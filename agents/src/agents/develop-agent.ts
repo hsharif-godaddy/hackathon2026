@@ -18,6 +18,7 @@ import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-facto
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 import { logger, log } from '../logging/index.js'
 import { agents as featureAgents } from '../services/features.js'
+import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
 
 /**
  * Develop Agent - AI developer for building web applications
@@ -197,9 +198,17 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
   // Get modular prompt paths using helper utility
   const paths = getModularPromptPaths(import.meta.url);
 
+  // Get available skills list
+  const skillLoader = new SkillLoaderTool();
+  const skillsResult = await skillLoader.listSkills();
+  const skillsList = skillsResult.success && skillsResult.skills
+    ? skillsResult.skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')
+    : '(No skills available)';
+
   // Load all modular prompt sections in order
   promptBuilder
     .file(paths.getAgentFile('develop', 'core.md'))
+    .text(`\n## Available Skills\n\n${skillsList}\n\n`)
     .file(paths.getAgentFile('develop', 'skills.md')) // CRITICAL: Load skills system immediately after core
     .file(paths.getSharedFile('communication.md')) // CRITICAL: Load communication style EARLY
     .file(paths.getSharedFile('filesystem.md'))

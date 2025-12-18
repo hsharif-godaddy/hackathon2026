@@ -63,9 +63,8 @@ interface FeatureConfig {
 
   // Skill enablement configuration
   enabledSkills: {
-    // Add skill enablement flags here as needed, e.g.:
-    // blogWriting: boolean
-    [key: string]: boolean
+    social: boolean
+    socialPosts: boolean
   }
 }
 
@@ -152,7 +151,8 @@ function parseEnvironmentFeatures(): FeatureConfig {
 
     // Skill enablement configuration. Add skills here as they are created.
     enabledSkills: {
-      // Example: blogWriting: process.env.ENABLE_SKILL_BLOG_WRITING === 'true'
+      social: process.env.ENABLE_SOCIAL_PLATFORM === 'true',
+      socialPosts: process.env.ENABLE_SOCIAL_POSTS === 'true'
     }
   }
 }

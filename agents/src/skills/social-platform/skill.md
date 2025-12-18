@@ -1,4 +1,28 @@
-# Social Platform Integration
+---
+name: social-platform
+description: Connect and manage social media platform integrations
+enablementId: social
+---
+
+# Social Platform Integration Skill
+
+**Purpose:** Help users connect and manage their social media platform accounts.
+
+---
+
+## When to Use This Skill
+
+**User says:**
+
+- "Connect my Facebook"
+- "Connect my Instagram"
+- "Show my social connections"
+- "What platforms am I connected to"
+- "Link my social accounts"
+
+---
+
+# Your Role
 
 You have social media management tools available. Use them to help users check connections and connect their social media accounts.
 

@@ -10,31 +10,28 @@ import { getAgentModelWithName } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { Logger } from '../logging/index.js'
-import { agents as featureAgents } from '../services/features.js'
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
+import { skills } from '../services/features.js'
+import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
 
 const logger = Logger.create({ service: 'marketing-agent' })
 
 async function buildMarketingSystemPrompt(): Promise<string> {
   const promptBuilder = createPromptBuilder()
   const paths = getModularPromptPaths(import.meta.url)
-  const isSocialPlatformEnabled = featureAgents.isEnabled('social')
-  const isSocialPostsEnabled = featureAgents.isEnabled('socialPosts')
+
+  // Get available skills list
+  const skillLoader = new SkillLoaderTool()
+  const skillsResult = await skillLoader.listSkills()
+  const skillsList = skillsResult.success && skillsResult.skills
+    ? skillsResult.skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')
+    : '(No skills available)'
 
   promptBuilder
     .file(paths.getAgentFile('marketing', 'core.md'))
-    .file(paths.getAgentFile('marketing', 'seo.md'))
+    .text(`\n## Available Skills\n\n${skillsList}\n\n`)
     .file(paths.getSharedFile('communication.md'))
     .file(paths.getSharedFile('security.md'))
-
-    // Conditionally include social platform prompt if feature is enabled
-  if (isSocialPlatformEnabled) {
-    promptBuilder.file(paths.getAgentFile('marketing', 'social-platform.md'))
-  }
-  // Conditionally include social posts prompt if feature is enabled
-  if (isSocialPostsEnabled) {
-    promptBuilder.file(paths.getAgentFile('marketing', 'social-posts.md'))
-  }
 
   return await promptBuilder.build()
 }
@@ -42,8 +39,8 @@ async function buildMarketingSystemPrompt(): Promise<string> {
 export async function createMarketingAgent(): Promise<AgentConfig> {
   const systemPrompt = await buildMarketingSystemPrompt()
   const { model, modelName } = await getAgentModelWithName('full')
-  const isSocialPostsEnabled = featureAgents.isEnabled('socialPosts')
-  const isSocialPlatformEnabled = featureAgents.isEnabled('social')
+  const isSocialPostsEnabled = skills.isEnabled('socialPosts')
+  const isSocialPlatformEnabled = skills.isEnabled('social')
 
   const baseTools = {
     seoAnalysis: allAILibTools.seoAnalysis,
@@ -53,12 +50,14 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     directoryListing: allAILibTools.directoryListing,
     grepSearch: allAILibTools.grepSearch,
     suggestedResponse: allAILibTools.suggestedResponse,
+    skill: allAILibTools.skill,
+    mediaSearch: allAILibTools.mediaSearch,
   }
 
   const socialPostTools = isSocialPostsEnabled ? {
-      socialPostCreate: allAILibTools.socialPostCreate,
-    }
-  : {}
+    socialPostCreate: allAILibTools.socialPostCreate,
+  } : {}
+
   const socialTools = isSocialPlatformEnabled ? {
     socialConnect: allAILibTools.socialConnect,
     socialStatus: allAILibTools.socialStatus,
@@ -72,7 +71,7 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     tools: {
       ...baseTools,
       ...socialTools,
-      ...socialPostTools,
+      ...socialPostTools
     },
 
     handoffs: [
