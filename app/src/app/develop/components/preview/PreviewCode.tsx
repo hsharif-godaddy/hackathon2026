@@ -2,7 +2,7 @@
 
 import clsx from 'clsx'
 import dynamic from 'next/dynamic'
-import { useCallback,useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Button from '@ux/button'
 import DownloadIcon from '@ux/icon/download'
 import HamburgerIcon from '@ux/icon/hamburger'
@@ -79,6 +79,10 @@ function handleEditorWillMount(monaco: typeof import('monaco-editor')) {
   });
 }
 
+// Timing constants for file loading
+const APP_START_DELAY_MS = 2000  // Wait for app to fully start after ensure-running
+const RETRY_DELAY_MS = 5000     // Delay between retry attempts on failure
+
 interface OpenFile {
   path: string
   name: string
@@ -106,9 +110,23 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const [showFileTree, setShowFileTree] = useState(isMobile)
   const setHasUnsavedChanges = useDevelopPageStore((state) => state.setHasUnsavedChanges)
 
+  // Refs to prevent duplicate loads and manage retry
+  const isLoadingRef = useRef(false)
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   // Load real files from backend
   const loadFiles = useCallback(async () => {
-    if (!(appId)) return
+    if (!appId) return
+
+    // Prevent duplicate simultaneous loads
+    if (isLoadingRef.current) return
+    isLoadingRef.current = true
+
+    // Clear any pending retry
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current)
+      retryTimeoutRef.current = null
+    }
 
     setIsLoading(true)
     setError(null)
@@ -117,8 +135,8 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       // First try to ensure the app is running
       await appService.ensureAppIsRunning(appId)
 
-      // Small delay to let the app fully start
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      // Wait for app to fully start before fetching files
+      await new Promise(resolve => setTimeout(resolve, APP_START_DELAY_MS))
 
       const result = await appService.getFiles(appId, 5)
 
@@ -136,12 +154,21 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
         setError(`${t('builder_code_error_failed')}: ${errorMessage}`)
       }
 
-      // Retry after a delay
-      setTimeout(() => {
-        loadFiles()
-      }, 5000)
+      // Schedule retry after delay (only if not already scheduled)
+      if (!retryTimeoutRef.current) {
+        retryTimeoutRef.current = setTimeout(() => {
+          retryTimeoutRef.current = null
+          isLoadingRef.current = false
+          loadFiles()
+        }, RETRY_DELAY_MS)
+      }
     } finally {
       setIsLoading(false)
+      // Keep isLoadingRef true during scheduled retries to prevent duplicate calls
+      // from useEffect re-runs. Only clear when no retry is pending.
+      if (!retryTimeoutRef.current) {
+        isLoadingRef.current = false
+      }
     }
   }, [appId, t])
 
@@ -201,9 +228,19 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   }, [appId])
 
   useEffect(() => {
-    // Load real files from backend
+    // Load real files from backend - only when appId changes
     loadFiles()
-  }, [loadFiles])
+
+    // Cleanup: cancel pending retry when appId changes or component unmounts
+    return () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current)
+        retryTimeoutRef.current = null
+      }
+      isLoadingRef.current = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFiles identity changes due to t(), but we only want to reload when appId changes
+  }, [appId])
 
   // Notify parent about unsaved changes
   useEffect(() => {

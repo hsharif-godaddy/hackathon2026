@@ -19,6 +19,17 @@ import { logger,type RequestContext, RequestContextService } from '@/lib/request
  */
 export const SHOPPER_AUTH_FAILURE_MESSAGE = 'Your account does not have authorization to access this application.';
 
+/**
+ * Check if an error is a unique constraint violation (works with both Prisma/MySQL and SQLite)
+ * Prisma returns code 'P2002' for unique constraint violations
+ */
+function isUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { code?: string; message?: string };
+  return err.code === 'P2002' ||
+    err.message?.toLowerCase().includes('unique constraint failed') === true;
+}
+
 // Use account adapter factory to get the appropriate service for the environment
 function getAccountService() {
   return AccountAdapterFactory.getInstance();
@@ -66,8 +77,8 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
         try {
           mockAccount = await getAccountService().createAccount(mockShopperId, mockCustomerId);
           logger.info('auth.mock.account.success', { message: 'Mock account created', accountId: mockAccount.id }, { tags: ['security'] });
-        } catch (error: any) {
-          if (error.message.includes('UNIQUE constraint failed')) {
+        } catch (error: unknown) {
+          if (isUniqueConstraintError(error)) {
             mockAccount = await getAccountService().getAccountByShopperId(mockCustomerId);
             logger.info('auth.mock.account.found', { message: 'Mock account found', accountId: mockAccount?.id }, { tags: ['security'] });
           } else {
@@ -174,9 +185,8 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
     if (!account || !account.id) {
       try {
         account = await getAccountService().createAccount(shopperId, customerId);
-      } catch (error: any) {
-        // If creation fails due to duplicate customer_id, find the existing account
-        if (error.message.includes('UNIQUE constraint failed: accounts.customer_id')) {
+      } catch (error: unknown) {
+        if (isUniqueConstraintError(error)) {
           account = await getAccountService().getAccountByShopperId(customerId);
         }
         if (!account || !account.id) {
