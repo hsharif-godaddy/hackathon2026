@@ -115,6 +115,15 @@ export interface WebSocketState {
   error?: StructuredError
 }
 
+// Connection retry state - survives component remounts
+export interface ConnectionRetryState {
+  isRetrying: boolean
+  retryStartedAt: number | null
+  wasStreamingOnDisconnect: boolean
+  disconnectSocketId: string | null
+  escalationTimeoutId: ReturnType<typeof setTimeout> | null
+}
+
 // Main store state
 export interface StreamingConversationState {
   // Core data
@@ -149,6 +158,9 @@ export interface StreamingConversationState {
 
   // WebSocket state
   websocket: WebSocketState
+
+  // Connection retry state - survives component remounts
+  connectionRetry: ConnectionRetryState
 
   // === CORE STREAMING ACTIONS ===
 
@@ -185,6 +197,13 @@ export interface StreamingConversationState {
 
   setWebSocketState: (state: Partial<WebSocketState>) => void
   setStreamingState: (state: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error') => void
+
+  // === CONNECTION RETRY ACTIONS ===
+
+  startConnectionRetry: (socketId: string) => void
+  setEscalationTimeout: (timeoutId: ReturnType<typeof setTimeout>) => void
+  clearConnectionRetry: () => void
+  checkStaleRetry: () => boolean
 
   // === UTILITY ACTIONS ===
 
@@ -228,6 +247,13 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   websocket: {
     connected: false,
     status: 'idle'
+  },
+  connectionRetry: {
+    isRetrying: false,
+    retryStartedAt: null,
+    wasStreamingOnDisconnect: false,
+    disconnectSocketId: null,
+    escalationTimeoutId: null
   },
 
   // === CORE STREAMING ACTIONS ===
@@ -624,6 +650,11 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       // Load new app's chat history (or empty array if new app)
       const newAppMessages = appId ? (newAppChatHistory[appId] || []) : []
 
+      // Clear escalation timeout before resetting retry state when switching apps
+      if (currentState.connectionRetry.escalationTimeoutId) {
+        clearTimeout(currentState.connectionRetry.escalationTimeoutId)
+      }
+
       set({
         currentAppId: appId,
         messages: newAppMessages,
@@ -642,7 +673,14 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
           isLoading: false
         },
         appChatHistory: newAppChatHistory,
-        websocket: { connected: false, status: 'idle' }
+        websocket: { connected: false, status: 'idle' },
+        connectionRetry: {
+          isRetrying: false,
+          retryStartedAt: null,
+          wasStreamingOnDisconnect: false,
+          disconnectSocketId: null,
+          escalationTimeoutId: null
+        }
       })
     } else {
       // Same app, just update the ID
@@ -666,6 +704,74 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   setStreamingState: (state) => set({ streamingState: state }),
 
+  // === CONNECTION RETRY ACTIONS ===
+
+  startConnectionRetry: (socketId: string) => {
+    logger.info('streaming-store.connection-retry.start', { socketId })
+    set({
+      connectionRetry: {
+        isRetrying: true,
+        retryStartedAt: Date.now(),
+        wasStreamingOnDisconnect: true,
+        disconnectSocketId: socketId,
+        escalationTimeoutId: null
+      },
+      streamingState: 'retrying'
+    })
+  },
+
+  setEscalationTimeout: (timeoutId: ReturnType<typeof setTimeout>) => {
+    set((state) => ({
+      connectionRetry: {
+        ...state.connectionRetry,
+        escalationTimeoutId: timeoutId
+      }
+    }))
+  },
+
+  clearConnectionRetry: () => {
+    const currentState = get()
+
+    // Clear escalation timeout if active
+    if (currentState.connectionRetry.escalationTimeoutId) {
+      clearTimeout(currentState.connectionRetry.escalationTimeoutId)
+    }
+
+    logger.info('streaming-store.connection-retry.clear', {
+      wasRetrying: currentState.connectionRetry.isRetrying,
+      elapsedMs: currentState.connectionRetry.retryStartedAt
+        ? Date.now() - currentState.connectionRetry.retryStartedAt
+        : null
+    })
+
+    set({
+      connectionRetry: {
+        isRetrying: false,
+        retryStartedAt: null,
+        wasStreamingOnDisconnect: false,
+        disconnectSocketId: null,
+        escalationTimeoutId: null
+      }
+    })
+  },
+
+  checkStaleRetry: () => {
+    const { connectionRetry } = get()
+    if (!connectionRetry.isRetrying || !connectionRetry.retryStartedAt) {
+      return false
+    }
+    const elapsedMs = Date.now() - connectionRetry.retryStartedAt
+    const CONNECTION_RETRY_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+    const isStale = elapsedMs > CONNECTION_RETRY_TIMEOUT_MS
+    if (isStale) {
+      logger.warn('streaming-store.connection-retry.stale-detected', {
+        elapsedMs,
+        retryStartedAt: connectionRetry.retryStartedAt
+      })
+    }
+    return isStale
+  },
+
   // === UTILITY ACTIONS ===
 
   addCompletedMessage: (message) => {
@@ -683,6 +789,13 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   },
 
   cleanup: () => {
+    const currentState = get()
+
+    // Clear escalation timeout before resetting state
+    if (currentState.connectionRetry.escalationTimeoutId) {
+      clearTimeout(currentState.connectionRetry.escalationTimeoutId)
+    }
+
     set({
       messages: [],
       activeStream: null,
@@ -701,6 +814,13 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       },
       appChatHistory: {},
       websocket: { connected: false, status: 'idle' },
+      connectionRetry: {
+        isRetrying: false,
+        retryStartedAt: null,
+        wasStreamingOnDisconnect: false,
+        disconnectSocketId: null,
+        escalationTimeoutId: null
+      }
     })
   },
 
@@ -1036,6 +1156,13 @@ export const useSetConversations = () => useStreamingConversationStore(state => 
 
 export const useSetWebSocketState = () => useStreamingConversationStore(state => state.setWebSocketState)
 export const useSetStreamingState = () => useStreamingConversationStore(state => state.setStreamingState)
+
+// Connection retry selectors
+export const useConnectionRetry = () => useStreamingConversationStore(state => state.connectionRetry)
+export const useStartConnectionRetry = () => useStreamingConversationStore(state => state.startConnectionRetry)
+export const useSetEscalationTimeout = () => useStreamingConversationStore(state => state.setEscalationTimeout)
+export const useClearConnectionRetry = () => useStreamingConversationStore(state => state.clearConnectionRetry)
+export const useCheckStaleRetry = () => useStreamingConversationStore(state => state.checkStaleRetry)
 
 export const useDevelopmentPlan = () => useStreamingConversationStore(state => state.developmentPlan)
 export const useAiEditContext = () => useStreamingConversationStore(state => state.aiEditContext)

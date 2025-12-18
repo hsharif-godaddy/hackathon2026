@@ -45,7 +45,22 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
       conversations: [],
       messages: [],
       currentAppId: null,
-      updateToolDelta: vi.fn()
+      updateToolDelta: vi.fn(),
+      // Connection retry state and actions
+      connectionRetry: {
+        isRetrying: false,
+        retryStartedAt: null,
+        wasStreamingOnDisconnect: false,
+        disconnectSocketId: null,
+        escalationTimeoutId: null
+      },
+      startConnectionRetry: vi.fn(),
+      setEscalationTimeout: vi.fn(),
+      clearConnectionRetry: vi.fn(),
+      checkStaleRetry: vi.fn(() => false),
+      setWebSocketState: vi.fn(),
+      setStreamingState: vi.fn(),
+      setIsLoading: vi.fn()
     })),
     setState: vi.fn(),
     subscribe: vi.fn(() => vi.fn())

@@ -39,6 +39,7 @@ import type { AgentsAppChatMessage,AgentsAppContext } from '../types/websocket-c
 
 // Constants
 const RAF_FALLBACK_DELAY_MS = 16 // ~60fps frame duration for setTimeout fallback
+const CONNECTION_RETRY_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes - escalation timeout for connection retry
 
 /**
  * Get short-lived JWT token for WebSocket authentication (12 hours)
@@ -129,12 +130,6 @@ export function useStreamingWebSocket() {
   const initializingRef = useRef<boolean>(false)
   // Timer ref for delayed initialization
   const initTimerRef = useRef<NodeJS.Timeout | null>(null)
-  // Track if we were streaming when disconnect happened
-  const wasStreamingOnDisconnectRef = useRef<boolean>(false)
-  // Track disconnect time to determine if we should show error after 5 minutes
-  const disconnectTimeRef = useRef<number | null>(null)
-  // Timer to switch from warning to error after 5 minutes
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   /**
    * Helper function to clear retry timer and reset retry state
@@ -517,77 +512,109 @@ export function useStreamingWebSocket() {
           safeReject(error instanceof Error ? error : new Error(errorMessage))
         })
         socket.on('disconnect', () => {
-          const state = useStreamingConversationStore.getState()
-          const isStreaming = state.streamingState === 'streaming' || state.activeStream !== null
+          const store = useStreamingConversationStore.getState()
+          const isStreaming = store.streamingState === 'streaming' || store.activeStream !== null
 
           if (isStreaming) {
-            // Connection dropped during active streaming - mark that we were streaming
-            wasStreamingOnDisconnectRef.current = true
-            disconnectTimeRef.current = Date.now()
+            // Connection dropped during active streaming
+            // Start store-based retry (survives component remounts)
+            store.startConnectionRetry(socket.id)
 
             // Show warning (yellow) initially - we'll retry for 5 minutes
             setWebSocketState({ connected: false, status: 'connecting', error: { message: 'Connection lost, retrying...' } })
-            setStreamingState('retrying')
 
-            // Set timeout to switch to error after 5 minutes (300000ms)
-            reconnectTimeoutRef.current = setTimeout(() => {
-              const state = useStreamingConversationStore.getState()
-              if (state.streamingState === 'retrying') {
-                setWebSocketState({ connected: false, status: 'error', error: { message: 'Connection lost - retry timeout exceeded' } })
-                setStreamingState('error')
-                setIsLoading(false)
+            // Create deterministic escalation timeout that survives component remounts
+            // This fires regardless of component lifecycle state
+            const escalationTimeoutId = setTimeout(() => {
+              const currentStore = useStreamingConversationStore.getState()
+              if (currentStore.connectionRetry.isRetrying) {
+                logger.warn('websocket.escalation.timeout-fired', {
+                  socketId: socket.id,
+                  elapsedMs: currentStore.connectionRetry.retryStartedAt
+                    ? Date.now() - currentStore.connectionRetry.retryStartedAt
+                    : null
+                })
+
+                // Mark the active stream as failed and finalize it
+                // This moves it to message history so user can see what failed
+                const { activeStream } = currentStore
+                if (activeStream) {
+                  // Update active stream with error info before finalizing
+                  currentStore.markUpstreamError({
+                    message: 'Connection lost - retry timeout exceeded',
+                    type: 'NETWORK_ERROR'
+                  })
+                  currentStore.finalizeStream()
+                }
+
+                // Escalate to error state
+                currentStore.setWebSocketState({ connected: false, status: 'error', error: { message: 'Connection lost - retry timeout exceeded' } })
+                currentStore.setStreamingState('idle') // Reset to idle since stream is finalized
+                currentStore.setIsLoading(false)
+                currentStore.clearConnectionRetry()
               }
-            }, 300000) // 5 minutes
+            }, CONNECTION_RETRY_TIMEOUT_MS)
+
+            // Store escalation timeout ID in Zustand (survives remounts)
+            store.setEscalationTimeout(escalationTimeoutId)
           } else {
             // Normal disconnect when idle
-            wasStreamingOnDisconnectRef.current = false
             setWebSocketState({ connected: false, status: 'idle' })
           }
         })
         socket.on('reconnect_attempt', () => setWebSocketState({ connected: false, status: 'connecting' }))
         socket.on('reconnect', () => {
           setWebSocketState({ connected: true, status: 'idle' })
+          const store = useStreamingConversationStore.getState()
 
-          // Clear the 5-minute timeout if reconnection succeeded
-          if (reconnectTimeoutRef.current) {
-            clearTimeout(reconnectTimeoutRef.current)
-            reconnectTimeoutRef.current = null
-          }
-          disconnectTimeRef.current = null
+          // Check store-based retry state
+          if (store.connectionRetry.isRetrying) {
+            logger.info('websocket.reconnect.resuming-stream', {
+              socketId: socket.id,
+              elapsedMs: store.connectionRetry.retryStartedAt
+                ? Date.now() - store.connectionRetry.retryStartedAt
+                : null
+            })
 
-          // If we were streaming when disconnect happened, check if stream was recovered
-          if (wasStreamingOnDisconnectRef.current) {
-            const state = useStreamingConversationStore.getState()
             // If we're still in retrying state, the stream was successfully recovered
-            if (state.streamingState === 'retrying') {
+            if (store.streamingState === 'retrying') {
               setStreamingState('streaming')
               setIsLoading(true)
+              logger.info('websocket.stream.recovered', { socketId: socket.id })
             } else {
               // Otherwise, mark as error
               setStreamingState('error')
               setIsLoading(false)
             }
-            wasStreamingOnDisconnectRef.current = false // Reset after handling
+
+            // Clear store-based retry (this also clears the escalation timeout)
+            store.clearConnectionRetry()
           }
         })
         socket.on('reconnect_error', (error) => setWebSocketState({ connected: false, status: 'connecting', error: { message: error.message } }))
         socket.on('reconnect_failed', () => {
-          const state = useStreamingConversationStore.getState()
-          const isStreaming = state.streamingState === 'streaming' || state.streamingState === 'retrying' || state.activeStream !== null
+          const store = useStreamingConversationStore.getState()
+          const isStreaming = store.streamingState === 'streaming' || store.streamingState === 'retrying' || store.activeStream !== null
+          const wasRetrying = store.connectionRetry.isRetrying || store.connectionRetry.wasStreamingOnDisconnect
 
-          // Clear the timeout since we've given up
-          if (reconnectTimeoutRef.current) {
-            clearTimeout(reconnectTimeoutRef.current)
-            reconnectTimeoutRef.current = null
+          // Clear store-based retry (this also clears the escalation timeout)
+          if (store.connectionRetry.isRetrying) {
+            store.clearConnectionRetry()
           }
-          disconnectTimeRef.current = null
 
           setWebSocketState({ connected: false, status: 'error', error: { message: 'Failed to reconnect' } })
-          if (isStreaming || wasStreamingOnDisconnectRef.current) {
-            // This is a connection error, not an upstream service error
-            setStreamingState('error')
+          if (isStreaming || wasRetrying) {
+            // Mark the active stream as failed and finalize it
+            const { activeStream } = store
+            if (activeStream) {
+              store.markUpstreamError({
+                message: 'Failed to reconnect after multiple attempts',
+                type: 'NETWORK_ERROR'
+              })
+              store.finalizeStream()
+            }
+            setStreamingState('idle') // Reset to idle since stream is finalized
             setIsLoading(false)
-            wasStreamingOnDisconnectRef.current = false // Reset after handling
           }
         })
         return socket
@@ -731,22 +758,24 @@ export function useStreamingWebSocket() {
 
         case 'step_start':
           sendToolImpression('start')
-          // Clear any retrying state and resume streaming
+          // Clear any retrying/error state and resume streaming
           setStreamingState('streaming')
-          // Clear reconnection timeout if still active
-          if (reconnectTimeoutRef.current) {
-            clearTimeout(reconnectTimeoutRef.current)
-            reconnectTimeoutRef.current = null
+          setWebSocketState({ connected: true, status: 'streaming', error: undefined })
+          // Clear store-based retry state when streaming data arrives
+          const stepStartStore = useStreamingConversationStore.getState()
+          if (stepStartStore.connectionRetry.isRetrying) {
+            stepStartStore.clearConnectionRetry()
           }
           break
         case 'chunk':
           // Ensure we're in streaming state (in case we recovered and are receiving chunks)
-          const currentState = useStreamingConversationStore.getState()
-          if (currentState.streamingState === 'retrying') {
+          const chunkStore = useStreamingConversationStore.getState()
+          if (chunkStore.streamingState === 'retrying' || chunkStore.streamingState === 'error') {
             setStreamingState('streaming')
-            if (reconnectTimeoutRef.current) {
-              clearTimeout(reconnectTimeoutRef.current)
-              reconnectTimeoutRef.current = null
+            setWebSocketState({ connected: true, status: 'streaming', error: undefined })
+            // Clear store-based retry state when streaming data arrives
+            if (chunkStore.connectionRetry.isRetrying) {
+              chunkStore.clearConnectionRetry()
             }
           }
           appendTextSegment(data.content)
@@ -844,7 +873,13 @@ export function useStreamingWebSocket() {
           // Log what we received from the WebSocket
           flushToolDeltaBufferImmediate()
 
-          // Clear retry state on successful completion
+          // Clear store-based retry state on successful completion
+          const completeStore = useStreamingConversationStore.getState()
+          if (completeStore.connectionRetry.isRetrying) {
+            completeStore.clearConnectionRetry()
+          }
+
+          // Clear APP_NOT_FOUND retry state
           clearRetryState()
 
           finalizeStream({
@@ -1093,6 +1128,8 @@ export function useStreamingWebSocket() {
     }
 
     // Cleanup when app changes or component unmounts
+    // IMPORTANT: Do NOT clear connectionRetry state here - it must survive remounts
+    // The escalation timeout in the store will fire regardless of component lifecycle
     return () => {
       // Clear initialization timer if pending
       if (initTimerRef.current) {
@@ -1102,7 +1139,7 @@ export function useStreamingWebSocket() {
         initializingRef.current = false
       }
 
-      // Clear retry timer if pending
+      // Clear APP_NOT_FOUND retry timer (not connection retry - that survives remounts)
       clearRetryState()
 
       if (socketRef.current) {
