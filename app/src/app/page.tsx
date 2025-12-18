@@ -198,7 +198,7 @@ function HomeContent() {
         <div className="header-orb" />
         <div className="footer-bg" />
 
-      <div className="w-full h-full relative">
+      <div className="w-full h-full relative z-10">
           <Header
             className="absolute top-0 left-0 w-full border-0! z-20"
             onShowMockLogin={() => setShowMockLogin(true)}

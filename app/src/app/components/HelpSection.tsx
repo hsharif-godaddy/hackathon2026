@@ -20,7 +20,7 @@ export default function HelpSection() {
           className="max-w-screen-sm !font-thin"
           size={1}
         >
-         {t('builder_homepage_help_text')}
+         {t('builder_homepage_help_text', { phone: <a href={`tel:${t('builder_help_phone')}`}>{t('builder_help_phone')}</a> })}
         </text.p>
         <Button
           external
