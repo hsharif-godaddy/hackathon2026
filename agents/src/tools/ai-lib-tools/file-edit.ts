@@ -20,33 +20,56 @@ const fileOperationSchema = z.object({
   content: z.string().optional().describe('Full content for rewrite or create operations')
 })
 
-const operationsSchema = z.preprocess(value => {
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-    if (!trimmed) {
-      return value
-    }
+type FileOperation = z.infer<typeof fileOperationSchema>
 
-    try {
-      const parsed = JSON.parse(trimmed)
-      if (Array.isArray(parsed)) {
-        return parsed
-      }
-
-      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.operations)) {
-        return parsed.operations
-      }
-
-      return parsed
-    } catch {
-      return value
-    }
+/**
+ * Parse operations from string or return array as-is.
+ * Handles cases where LLMs send operations as a JSON string instead of an array.
+ */
+function parseOperations(value: string | FileOperation[]): FileOperation[] {
+  if (Array.isArray(value)) {
+    return value
   }
 
-  return value
-}, z.array(fileOperationSchema).min(1).describe(
-  'Array of file operations to perform. Must contain at least one operation. If provided as a JSON string, it will be parsed automatically.'
-))
+  const trimmed = value.trim()
+  if (!trimmed) {
+    throw new Error('Operations JSON string cannot be empty')
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (Array.isArray(parsed)) {
+      return parsed
+    }
+
+    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.operations)) {
+      return parsed.operations
+    }
+
+    if (parsed && typeof parsed === 'object' && 'path' in parsed) {
+      const validation = fileOperationSchema.safeParse(parsed)
+      if (validation.success) {
+        return [validation.data]
+      }
+      throw new Error(`Single operation object is invalid: ${validation.error.message}`)
+    }
+
+    throw new Error('Parsed operations must be an array or an object with an operations array')
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      throw new Error(`Failed to parse operations JSON string: ${e.message}`)
+    }
+    throw e
+  }
+}
+
+// Accept either an array of operations OR a JSON string (some LLMs stringify the array)
+const operationsSchema = z.union([
+  z.array(fileOperationSchema).min(1),
+  z.string().describe('JSON string containing an array of file operations')
+]).describe(
+  'Array of file operations to perform (or JSON string of the array). Must contain at least one operation.'
+)
 
 /**
  * File Edit Tool for AI-Lib
@@ -91,7 +114,13 @@ CRITICAL RULES:
       throw new Error(`App '${appId}' not found`)
     }
 
-    const result = await fileEditTool.editFiles(app.path, input as FileBatchEditOptions, {
+    // Normalize operations - handle case where LLM sends as JSON string
+    const normalizedInput = {
+      ...input,
+      operations: parseOperations(input.operations)
+    } as FileBatchEditOptions
+
+    const result = await fileEditTool.editFiles(app.path, normalizedInput, {
       appId,
       conversationId: context?.metadata?.conversationId as string
     })
@@ -112,8 +141,8 @@ CRITICAL RULES:
       }
 
       // Include details about the specific operation that failed
-      if (input.operations && result.completedOperations < input.operations.length) {
-        const failedOp = input.operations[result.completedOperations];
+      if (normalizedInput.operations && result.completedOperations < normalizedInput.operations.length) {
+        const failedOp = normalizedInput.operations[result.completedOperations];
         if (failedOp && failedOp.edits && failedOp.edits.length > 0) {
           errorMessage += `\nRequested edits (${failedOp.edits.length}):\n`;
           failedOp.edits.forEach((edit, index) => {
