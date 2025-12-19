@@ -34,7 +34,7 @@ const config: AppConfig = {
   knowb: {
     // Use test environment which has /airo_sys registered
     upstream: env.KNOWB_UPSTREAM ?? 'https://knowb.api.int.test-godaddy.com',
-    defaultKbNodeIds: ['/airo_sys'],
+    defaultKbNodeIds: ['/airo_info'],
     defaultMaxResults: 5,
     defaultScoreThreshold: 0.35
   },

@@ -1,28 +1,23 @@
 name: Upload Knowledge Base to GoKnowB
 
-run-name: "Upload ${{ github.event.inputs.filename || 'all files' }} from ${{ github.event.inputs.branch }}"
+run-name: "Upload ${{ github.event.inputs.filenames || 'all files' }} from ${{ github.ref_name }} to ${{ github.event.inputs.environment }}"
 
 on:
   workflow_dispatch:
     inputs:
-      branch:
-        description: "Branch to upload from"
+      environment:
+        description: "Target environment"
         required: true
-        default: "main"
         type: choice
         options:
-          - "main"
-          - "master"
-          - "develop"
-      filename:
-        description: "Filename to upload (e.g., deployment.md) or leave empty to upload all files"
+          - "TEST"
+          - "PROD"
+        default: "TEST"
+      filenames:
+        description: "Comma-separated filenames (e.g., deployment.md,media_manager.md) or leave empty to upload all"
         required: false
         type: string
         default: ""
-
-permissions:
-  id-token: write
-  contents: read
 
 jobs:
   upload-knowledge-base:
@@ -34,10 +29,16 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Validate branch for PROD
+        if: ${{ github.event.inputs.environment == 'PROD' && github.ref_name != 'main' }}
+        run: |
+          echo "❌ ERROR: PROD environment only allows main branch"
+          echo "Current branch: ${{ github.ref_name }}"
+          echo "Please run this workflow from main branch for PROD deployments"
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.branch }}
 
       - name: Fetch GETTY_TOKEN from AWS
         env:
@@ -61,3 +62,107 @@ jobs:
           echo "::add-mask::$GETTY_TOKEN"
           echo "GETTY_TOKEN=$GETTY_TOKEN" >> $GITHUB_ENV
           echo "✅ Token retrieved successfully"
+
+      - name: Upload knowledge base files
+        env:
+          FILENAMES: ${{ github.event.inputs.filenames }}
+          ENVIRONMENT: ${{ github.event.inputs.environment }}
+        run: |
+          echo "Starting knowledge base upload..."
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Environment: $ENVIRONMENT"
+
+          # Set proxy URL and kbNodeId based on environment
+          if [ "$ENVIRONMENT" == "PROD" ]; then
+            PROXY_URL="https://airobuilde-proxy-prod-ecs.airobuilde-prod.prod.onkatana.net"
+            KB_NODE_ID="/airo_sys"
+            echo "Target: Production KB (/airo_sys)"
+          else
+            PROXY_URL="https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net"
+            KB_NODE_ID="/airo_info"
+            echo "Target: Test KB (/airo_info)"
+          fi
+
+          echo "Using proxy: $PROXY_URL"
+
+          UPLOAD_COUNT=0
+          FAILED_COUNT=0
+
+          # Build file list
+          if [ -n "$FILENAMES" ]; then
+            echo "Uploading specific files: $FILENAMES"
+            # Convert comma-separated list to array
+            IFS=',' read -ra FILE_ARRAY <<< "$FILENAMES"
+            FILES_TO_UPLOAD=()
+            for fname in "${FILE_ARRAY[@]}"; do
+              # Trim whitespace
+              fname=$(echo "$fname" | xargs)
+              FILES_TO_UPLOAD+=("knowledge-base/$fname")
+            done
+          else
+            echo "Uploading all markdown files"
+            FILES_TO_UPLOAD=(knowledge-base/*.md)
+          fi
+
+          # Upload each file
+          for file in "${FILES_TO_UPLOAD[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "⚠️  File not found: $file"
+              FAILED_COUNT=$((FAILED_COUNT + 1))
+              continue
+            fi
+
+            filename=$(basename "$file")
+            echo ""
+            echo "=================================================="
+            echo "Uploading: $filename"
+            echo "=================================================="
+
+            response=$(curl -s -w "\n%{http_code}" \
+              -X POST \
+              "${PROXY_URL}/v1/knowb/upload" \
+              -H "Authorization: Bearer ${GETTY_TOKEN}" \
+              -H "Accept: application/json" \
+              -F "file=@${file}" \
+              -F "kbNodeId=${KB_NODE_ID}" \
+              -F "resourceType=document" \
+              -F "metadata={\"filename\":\"${filename}\"}")
+
+            http_code=$(echo "$response" | tail -n 1)
+            response_body=$(echo "$response" | head -n -1)
+
+            echo "Response status: $http_code"
+            echo "Response body: $response_body"
+
+            if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+              echo "✅ Successfully uploaded: $filename"
+              UPLOAD_COUNT=$((UPLOAD_COUNT + 1))
+            else
+              echo "❌ Failed to upload: $filename (HTTP $http_code)"
+              FAILED_COUNT=$((FAILED_COUNT + 1))
+            fi
+          done
+
+          echo ""
+          echo "=================================================="
+          echo "Upload Summary"
+          echo "=================================================="
+          echo "Environment: $ENVIRONMENT"
+          echo "KB Node ID: $KB_NODE_ID"
+          echo "Successfully uploaded: $UPLOAD_COUNT file(s)"
+          echo "Failed uploads: $FAILED_COUNT file(s)"
+
+          if [ $FAILED_COUNT -gt 0 ]; then
+            echo ""
+            echo "⚠️  Some uploads failed. Please check the logs above."
+            exit 1
+          fi
+
+          if [ $UPLOAD_COUNT -eq 0 ]; then
+            echo ""
+            echo "⚠️  No files were uploaded. Check if files exist in knowledge-base directory."
+            exit 1
+          else
+            echo ""
+            echo "✅ All knowledge base files uploaded successfully!"
+          fi

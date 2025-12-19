@@ -1,17 +1,23 @@
 import express, { Request, Response, Router } from 'express';
-import webScraperClient from '../clients/web-scraper-client';
+import multer from 'multer';
+
 import { validateGdToken } from '../auth/middleware';
-import ssoValidationRoutes from './sso-validation';
 import gettyClient from '../clients/getty-client';
 import knowbClient from '../clients/knowb-client';
+import webScraperClient from '../clients/web-scraper-client';
+import { config } from '../config';
+import ssoValidationRoutes from './sso-validation';
 import logger from '../utils/logger';
 import {
   AuthenticatedRequest,
   HealthStatus,
   GettySearchParams,
-  WebScraperParams,
-  KnowBSearchParams
+  KnowBSearchParams,
+  KnowBUploadParams,
+  WebScraperParams
 } from '../types';
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const router: Router = express.Router();
 
@@ -555,22 +561,13 @@ router.post('/v1/knowb/search',
         return;
       }
 
-      // Build search params
+      // Build search params - always use defaults
       const params: KnowBSearchParams = {
-        query: query.trim()
+        query: query.trim(),
+        kbNodeIds: config.knowb.defaultKbNodeIds,
+        maxResults: config.knowb.defaultMaxResults,
+        scoreThreshold: config.knowb.defaultScoreThreshold
       };
-
-      if (kbNodeIds && Array.isArray(kbNodeIds)) {
-        params.kbNodeIds = kbNodeIds;
-      }
-
-      if (maxResults && typeof maxResults === 'number') {
-        params.maxResults = maxResults;
-      }
-
-      if (scoreThreshold && typeof scoreThreshold === 'number') {
-        params.scoreThreshold = scoreThreshold;
-      }
 
       const response = await knowbClient.search(params, requestId);
       const totalDuration = Date.now() - startTime;
@@ -643,6 +640,145 @@ router.post('/v1/knowb/search',
           message: 'KnowB API request failed',
           type: 'upstream_error',
           requestId
+        }
+      });
+    }
+  }
+);
+
+// KnowB knowledge base upload endpoint
+router.post('/v1/knowb/upload',
+  validateGdToken,
+  upload.single('file'),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const requestId = String(req.id ?? 'unknown');
+    const startTime = req.startTime ?? Date.now();
+
+    try {
+      if (!req.file) {
+        res.status(400).json({
+          error: {
+            message: 'Missing required file upload',
+            type: 'invalid_request_error'
+          }
+        });
+        return;
+      }
+
+      const { kbNodeId, resourceType, acl, metadata } = req.body;
+
+      if (!kbNodeId || typeof kbNodeId !== 'string') {
+        res.status(400).json({
+          error: {
+            message: 'Missing required parameter: kbNodeId',
+            type: 'invalid_request_error'
+          }
+        });
+        return;
+      }
+
+      if (!resourceType || typeof resourceType !== 'string') {
+        res.status(400).json({
+          error: {
+            message: 'Missing required parameter: resourceType',
+            type: 'invalid_request_error'
+          }
+        });
+        return;
+      }
+
+      const params: KnowBUploadParams = {
+        kbNodeId,
+        resourceType,
+        file: req.file.buffer,
+        filename: req.file.originalname,
+        contentType: req.file.mimetype,
+      };
+
+      if (acl !== undefined) {
+        params.acl = acl;
+      }
+
+      if (metadata) {
+        try {
+          params.metadata = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
+        } catch {
+          res.status(400).json({
+            error: {
+              message: 'Invalid metadata format (must be valid JSON)',
+              type: 'invalid_request_error'
+            }
+          });
+          return;
+        }
+      }
+
+      const response = await knowbClient.upload(params, requestId);
+      const totalDuration = Date.now() - startTime;
+
+      logger.info('[INFO] KnowB upload completed', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        filename: params.filename,
+        kbNodeId: params.kbNodeId,
+        resourceType: params.resourceType,
+        fileSize: params.file.length,
+        userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
+        statusCode: response.statusCode,
+        uploadDuration: response.duration ? `${response.duration}ms` : 'unknown',
+        totalDuration: `${totalDuration}ms`,
+        userAgent: req.get('User-Agent'),
+        ip: req.ip
+      });
+
+      res.set('Content-Type', 'application/json');
+      res.status(response.statusCode);
+      try {
+        const jsonData = typeof response.data === 'string'
+          ? JSON.parse(response.data)
+          : response.data;
+        res.json(jsonData);
+      } catch {
+        logger.warn('[WARN] KnowB returned invalid JSON response', {
+          requestId,
+          statusCode: response.statusCode,
+          contentType: response.headers['content-type']
+        });
+        res.status(502).json({
+          error: {
+            message: 'Invalid response from upstream API',
+            type: 'upstream_error',
+            requestId
+          }
+        });
+      }
+
+    } catch (error) {
+      const err = error as { message: string; statusCode?: number; duration?: number; response?: string };
+      const totalDuration = Date.now() - startTime;
+
+      logger.error('[ERROR] KnowB upload failed', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        body: req.body,
+        userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
+        error: err.message,
+        statusCode: err.statusCode,
+        uploadDuration: err.duration ? `${err.duration}ms` : 'unknown',
+        totalDuration: `${totalDuration}ms`,
+        userAgent: req.get('User-Agent'),
+        ip: req.ip
+      });
+
+      const statusCode = err.statusCode ?? 503;
+      res.status(statusCode).json({
+        error: {
+          message: err.message || 'KnowB upload failed',
+          type: 'upstream_error',
+          requestId,
+          details: err.response
         }
       });
     }

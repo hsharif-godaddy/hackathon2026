@@ -132,6 +132,16 @@ export interface KnowBSearchParams {
   scoreThreshold?: number;
 }
 
+export interface KnowBUploadParams {
+  kbNodeId: string;
+  resourceType: string;
+  file: Buffer;
+  filename: string;
+  contentType: string;
+  acl?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface KnowBAPIResponse {
   statusCode: number;
   headers: Record<string, string | string[]>;

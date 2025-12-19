@@ -1,4 +1,4 @@
-import { KnowBSearchParams, KnowBAPIResponse } from '../types';
+import { KnowBSearchParams, KnowBAPIResponse, KnowBUploadParams } from '../types';
 import ssoClient from '../auth/sso-client';
 import logger from '../utils/logger';
 import { config } from '../config';
@@ -189,6 +189,164 @@ class KnowBClient {
         logger.info('Retrying KnowB API request', { requestId, retriesLeft: retries });
         await new Promise(resolve => setTimeout(resolve, 1000));
         return this.makeRequest(url, jwtToken, requestId, method, body, retries - 1);
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Upload document to knowledge base
+   *
+   * @param params - Upload parameters including file and metadata
+   * @param requestId - Request ID for logging
+   * @returns Promise resolving to API response
+   */
+  async upload(params: KnowBUploadParams, requestId: string = 'unknown'): Promise<KnowBAPIResponse> {
+    const startTime = Date.now();
+
+    try {
+      const jwtToken = await ssoClient.getToken('sso.test-godaddy.com');
+
+      const tokenPayload = decodeJwtPayload(jwtToken);
+      logger.info('[KnowB] SSO token obtained for upload', {
+        requestId,
+        tokenLength: jwtToken.length,
+        tokenType: tokenPayload?.typ,
+        tokenSubject: tokenPayload?.sub,
+      });
+
+      const knowbUrl = `${config.knowb.upstream}/v1/kbnodes`;
+
+      logger.info('KnowB API upload request details', {
+        requestId,
+        fullUrl: knowbUrl,
+        hostname: new URL(knowbUrl).hostname,
+        filename: params.filename,
+        kbNodeId: params.kbNodeId,
+        resourceType: params.resourceType,
+      });
+
+      const response = await this.makeUploadRequest(knowbUrl, jwtToken, requestId, params);
+      const duration = Date.now() - startTime;
+
+      response.duration = duration;
+      return response;
+
+    } catch (error) {
+      const duration = Date.now() - startTime;
+
+      if (error instanceof Error) {
+        (error as Error & { duration?: number }).duration = duration;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Make multipart/form-data upload request to KnowB API
+   *
+   * @param url - Full URL to request
+   * @param jwtToken - SSO JWT token
+   * @param requestId - Request ID for logging
+   * @param params - Upload parameters
+   * @param retries - Number of retries remaining
+   * @returns Promise resolving to API response
+   */
+  private async makeUploadRequest(
+    url: string,
+    jwtToken: string,
+    requestId: string,
+    params: KnowBUploadParams,
+    retries: number = 2
+  ): Promise<KnowBAPIResponse> {
+    const urlObj = new URL(url);
+
+    const FormData = (await import('form-data')).default;
+    const formData = new FormData();
+
+    formData.append('files', params.file, {
+      filename: params.filename,
+      contentType: params.contentType,
+      knownLength: params.file.length
+    });
+    formData.append('kbNodeId', params.kbNodeId);
+    formData.append('resourceType', params.resourceType);
+
+    if (params.acl !== undefined) {
+      formData.append('acl', params.acl);
+    }
+
+    if (params.metadata) {
+      formData.append('metadata', JSON.stringify(params.metadata));
+    }
+
+    const headers = {
+      'Authorization': `sso-jwt ${jwtToken}`,
+      'Accept': 'application/json',
+      ...formData.getHeaders(),
+    };
+
+    logger.info('[KnowB] Making upload request with form-data', {
+      requestId,
+      url: urlObj.pathname,
+      hostname: urlObj.hostname,
+      filename: params.filename,
+      fileSize: params.file.length,
+    });
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: formData.getBuffer()
+      } as any);
+
+      const data = await response.text();
+
+      if (response.ok) {
+        return {
+          statusCode: response.status,
+          headers: Object.fromEntries(response.headers.entries()) as Record<string, string | string[]>,
+          data: data
+        };
+      } else if (response.status === 401 && retries > 0) {
+        logger.warn('KnowB upload returned 401, clearing SSO cache and retrying', {
+          requestId,
+          retriesLeft: retries
+        });
+        ssoClient.clearCache('sso.test-godaddy.com');
+
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, 3 - retries) * 1000));
+        return this.makeUploadRequest(url, jwtToken, requestId, params, retries - 1);
+      } else {
+        logger.error('[KnowB] Upload request failed', {
+          requestId,
+          statusCode: response.status,
+          responseBody: data,
+          responseHeaders: Object.fromEntries(response.headers.entries()),
+          url: urlObj.pathname,
+          hostname: urlObj.hostname
+        });
+
+        const error = new Error(`KnowB upload failed with status ${response.status}`) as Error & {
+          statusCode?: number;
+          response?: string;
+        };
+        error.statusCode = response.status;
+        error.response = data;
+        throw error;
+      }
+    } catch (error) {
+      logger.error('KnowB upload error', {
+        requestId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+
+      if (retries > 0) {
+        logger.info('Retrying KnowB upload', { requestId, retriesLeft: retries });
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return this.makeUploadRequest(url, jwtToken, requestId, params, retries - 1);
       } else {
         throw error;
       }
