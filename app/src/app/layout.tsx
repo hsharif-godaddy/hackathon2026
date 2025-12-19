@@ -20,6 +20,23 @@ import { detectLocale, getServerIntl } from "@/lib/translations";
 import { loadTranslations } from "@/lib/translations/load-translations";
 import gasket from '../../gasket';
 
+function getMetadataBaseUrl(): string {
+  if (process.env.LOGIN_REDIRECT_URL) {
+    try {
+      const url = new URL(process.env.LOGIN_REDIRECT_URL);
+      return url.origin; // Just need base URL for metadata
+    } catch (error) {
+      // If LOGIN_REDIRECT_URL is invalid, continue to fallbacks
+    }
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://airo-builder.godaddy.com';
+  }
+
+  return 'http://localhost:3000';
+}
+
 /**
  * Generate metadata dynamically based on user's locale
  *
@@ -32,6 +49,8 @@ import gasket from '../../gasket';
 export async function generateMetadata(): Promise<Metadata> {
   const defaultTitle = 'Airo Builder';
   const defaultDescription = "Share your idea and we'll handle the rest";
+  const shareImageUrl = `${getMetadataBaseUrl()}/images/share.png`;
+  
   try {
     const locale = await detectLocale();
     const intl = await getServerIntl({ locale });
@@ -49,14 +68,14 @@ export async function generateMetadata(): Promise<Metadata> {
       openGraph: {
         title: title || defaultTitle,
         description: description || defaultDescription,
-        images: ['/images/share.png'],
+        images: [shareImageUrl],
         type: 'website',
       },
       twitter: {
         card: 'summary_large_image',
         title: title || defaultTitle,
         description: description || defaultDescription,
-        images: ['/images/share.png'],
+        images: [shareImageUrl],
       },
     };
   } catch (error) {
@@ -66,14 +85,14 @@ export async function generateMetadata(): Promise<Metadata> {
       openGraph: {
         title: defaultTitle,
         description: defaultDescription,
-        images: ['/images/share.png'],
+        images: [shareImageUrl],
         type: 'website',
       },
       twitter: {
         card: 'summary_large_image',
         title: defaultTitle,
         description: defaultDescription,
-        images: ['/images/share.png'],
+        images: [shareImageUrl],
       },
     };
   }
