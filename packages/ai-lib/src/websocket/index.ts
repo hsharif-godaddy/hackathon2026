@@ -29,3 +29,23 @@ export type {
   EventMetadata,
   CircularBufferConfig
 } from './interfaces.js'
+
+// Event Subscribers
+export {
+  WebSocketSubscriber
+} from './subscribers/websocket-subscriber.js'
+export {
+  PersistenceSubscriber
+} from './subscribers/persistence-subscriber.js'
+export {
+  APMSubscriber
+} from './subscribers/apm-subscriber.js'
+export type {
+  WebSocketMessage,
+  DisconnectedStreamState
+} from './subscribers/websocket-subscriber.js'
+export type {
+  APMAgent,
+  APMSpan,
+  APMTransaction
+} from './subscribers/apm-subscriber.js'
