@@ -40,6 +40,7 @@ export default function AppPublish({ location }: { location?: string }) {
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
   const clearPublishStatus = useDevelopPageStore((state) => state.clearPublishStatus);
   const setDeploymentsRefetch = useDevelopPageStore((state) => state.setDeploymentsRefetch);
+  const [hasCompletedPurchase, setHasCompletedPurchase] = useState(false);
   const isPollingEntitlements = useDevelopPageStore((state) => state.isPollingEntitlements);
   const setIsPollingEntitlements = useDevelopPageStore((state) => state.setIsPollingEntitlements);
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
@@ -68,6 +69,7 @@ export default function AppPublish({ location }: { location?: string }) {
       }
       setOpen(true);
       setEntitlementsPollingFailed(false);
+      setHasCompletedPurchase(true); // Set flag to prevent showing paywall again
     } else {
       setEntitlementsPollingFailed(true);
       setOpen(false);
@@ -267,8 +269,10 @@ export default function AppPublish({ location }: { location?: string }) {
     if (open) {
       setEntitlementsPollingFailed(false);
     }
-   
-    if (isAiroPlusPaywallEnabled && isPaywallEnabledInMarket && showPaywall && open) { // TODO: check to make sure entitlemnet is not granted already before showing the paywall
+
+    // Show paywall only if not completed purchase and showPaywall is true
+    const shouldShowPaywall = !hasCompletedPurchase && showPaywall;
+    if (isAiroPlusPaywallEnabled && isPaywallEnabledInMarket && shouldShowPaywall && open) {
       setShowAiroPlusPaywall(true);
       shipAnalyticsLog('airoplus.paywall.shown', {
         appId: currentAppId,
