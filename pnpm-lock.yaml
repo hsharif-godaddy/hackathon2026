@@ -161,10 +161,16 @@ importers:
       ws:
         specifier: ^8.14.2
         version: 8.18.3
+      yauzl:
+        specifier: ^2.10.0
+        version: 2.10.0
       zod:
         specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
+      "@types/archiver":
+        specifier: ^6.0.2
+        version: 6.0.4
       "@types/babel__generator":
         specifier: ^7.6.8
         version: 7.27.0
@@ -201,6 +207,9 @@ importers:
       "@types/ws":
         specifier: ^8.5.10
         version: 8.18.1
+      "@types/yauzl":
+        specifier: ^2.10.3
+        version: 2.10.3
       "@typescript-eslint/eslint-plugin":
         specifier: ^6.13.0
         version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint@8.57.1)(typescript@5.9.2)
@@ -210,6 +219,9 @@ importers:
       "@vitest/coverage-v8":
         specifier: ^3.2.4
         version: 3.2.4(vitest@3.2.4)
+      archiver:
+        specifier: ^7.0.0
+        version: 7.0.1
       eslint:
         specifier: ^8.54.0
         version: 8.57.1
@@ -7306,6 +7318,12 @@ packages:
         integrity: sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==,
       }
 
+  "@types/archiver@6.0.4":
+    resolution:
+      {
+        integrity: sha512-ULdQpARQ3sz9WH4nb98mJDYA0ft2A8C4f4fovvUcFwINa1cgGjY36JCAYuP5YypRq4mco1lJp1/7jEMS2oR0Hg==,
+      }
+
   "@types/aria-query@5.0.4":
     resolution:
       {
@@ -7700,6 +7718,12 @@ packages:
         integrity: sha512-hHkbU/eoO3EG5/MZkuFSKmYqPbSVk5byPFa3e7y/8TybHiLMACgI8seVYlicwk7H5K/rI2px9xrQp/C+AUDTiQ==,
       }
 
+  "@types/readdir-glob@1.1.5":
+    resolution:
+      {
+        integrity: sha512-raiuEPUYqXu+nvtY2Pe8s8FEmZ3x5yAH4VkLdihcPdalvsHltomrRC9BzuStrJ9yk06470hS0Crw0f1pXqD+Hg==,
+      }
+
   "@types/semver@7.5.8":
     resolution:
       {
@@ -7832,6 +7856,13 @@ packages:
       {
         integrity: sha512-WpxBCKWPLr4xSsHgz511rFJAM+wS28w2zEO1QDNY5zM/S8ok70NNfztH0xwhqKyaK0OHCbN98LDAZuy1ctxDkA==,
         tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@types/yargs/-/types-yargs-17.0.33.tgz,
+      }
+
+  "@types/yauzl@2.10.3":
+    resolution:
+      {
+        integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@types/yauzl/-/types-yauzl-2.10.3.tgz,
       }
 
   "@typescript-eslint/eslint-plugin@6.21.0":
@@ -9520,6 +9551,20 @@ packages:
         integrity: sha512-tLIEcj5GuR2RSTnxNKdkK0dJ/GrC7P38sUkiDmDuHfsHmbagTFAxDVIBltoklXEVIQ/f14IL8IMJ5pn9Hez1Ew==,
       }
 
+  archiver-utils@5.0.2:
+    resolution:
+      {
+        integrity: sha512-wuLJMmIBQYCsGZgYLTy5FIB2pF6Lfb6cXMSF8Qywwk3t20zWnAi7zLcQFdKQmIB8wyZpY5ER38x08GbwtR2cLA==,
+      }
+    engines: { node: ">= 14" }
+
+  archiver@7.0.1:
+    resolution:
+      {
+        integrity: sha512-ZcbTaIqJOfCc03QwD468Unz/5Ir8ATtvAHsK+FdXbDIbGfihqh9mrvdcYunQzqn4HrvWWaFyaxJhGZagaJJpPQ==,
+      }
+    engines: { node: ">= 14" }
+
   are-we-there-yet@3.0.1:
     resolution:
       {
@@ -9819,6 +9864,17 @@ packages:
       }
     engines: { node: ">= 0.4" }
 
+  b4a@1.7.3:
+    resolution:
+      {
+        integrity: sha512-5Q2mfq2WfGuFp3uS//0s6baOJLMoVduPYVeNmDYxu5OUA1/cBfvr2RIS7vi62LdNj/urk1hfmj867I3qt6uZ7Q==,
+      }
+    peerDependencies:
+      react-native-b4a: "*"
+    peerDependenciesMeta:
+      react-native-b4a:
+        optional: true
+
   babel-jest@29.7.0:
     resolution:
       {
@@ -9900,6 +9956,17 @@ packages:
       {
         integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==,
       }
+
+  bare-events@2.8.2:
+    resolution:
+      {
+        integrity: sha512-riJjyv1/mHLIPX4RwiK+oW9/4c3TEUeORHKefKAKnZ5kyslbN+HXowtbaVEqt4IMUB7OXlfixcs6gsFeo/jhiQ==,
+      }
+    peerDependencies:
+      bare-abort-controller: "*"
+    peerDependenciesMeta:
+      bare-abort-controller:
+        optional: true
 
   base64-js@1.5.1:
     resolution:
@@ -10092,6 +10159,19 @@ packages:
       }
     engines: { node: ">= 0.4.0" }
     hasBin: true
+
+  buffer-crc32@0.2.13:
+    resolution:
+      {
+        integrity: sha512-VO9Ht/+p3SN7SKWqcrgEzjGbRSJYTx+Q1pTQC0wrWqHx0vpJraQ6GtHx8tvcg1rlK1byhU5gccxgOgj7B0TDkQ==,
+      }
+
+  buffer-crc32@1.0.0:
+    resolution:
+      {
+        integrity: sha512-Db1SbgBS/fg/392AblrMJk97KggmvYhr4pB5ZIMTWtaivCPMWLkmb7m21cJvpvgK+J3nsU2CmmixNBZx4vFj/w==,
+      }
+    engines: { node: ">=8.0.0" }
 
   buffer-equal-constant-time@1.0.1:
     resolution:
@@ -10633,6 +10713,13 @@ packages:
         integrity: sha512-T0+barUSQRTUQASh8bx02dl+DhF54GtIDY13Y3m9oWTklKbb3Wv974meRpeZ3lp1JpLVECWWNHC4vaG2XHXouQ==,
       }
 
+  compress-commons@6.0.2:
+    resolution:
+      {
+        integrity: sha512-6FqVXeETqWPoGcfzrXb37E50NP0LXT8kAMu5ooZayhWWdgEY4lBEEcbQNXtkuKQsGduxiIcI4gOTsxTmuq/bSg==,
+      }
+    engines: { node: ">= 14" }
+
   compressible@2.0.18:
     resolution:
       {
@@ -10805,6 +10892,21 @@ packages:
         integrity: sha512-KIHbLJqu73RGr/hnbrO9uBeixNGuvSQjul/jdFvS/KFSIH1hWVd1ng7zOHx+YrEfInLG7q4n6GHQ9cDtxv/P6g==,
       }
     engines: { node: ">= 0.10" }
+
+  crc-32@1.2.2:
+    resolution:
+      {
+        integrity: sha512-ROmzCKrTnOwybPcJApAA6WBWij23HVfGVNKqqrZpuyZOHqK2CwHSvpGuyt/UNNvaIjEd8X5IFGp4Mh+Ie1IHJQ==,
+      }
+    engines: { node: ">=0.8" }
+    hasBin: true
+
+  crc32-stream@6.0.0:
+    resolution:
+      {
+        integrity: sha512-piICUB6ei4IlTv1+653yq5+KoqfBYmj9bw6LqXoOneTMDXk5nM1qt12mFW1caG3LlJXEKW1Bp0WggEmIfQB34g==,
+      }
+    engines: { node: ">= 14" }
 
   create-jest@29.7.0:
     resolution:
@@ -11870,6 +11972,12 @@ packages:
         integrity: sha512-GWkBvjiSZK87ELrYOSESUYeVIc9mvLLf/nXalMOS5dYrgZq9o5OVkbZAVM06CVxYsCwH9BDZFPlQTlPA1j4ahA==,
       }
 
+  events-universal@1.0.1:
+    resolution:
+      {
+        integrity: sha512-LUd5euvbMLpwOF8m6ivPCbhQeSiYVNb8Vs0fQ8QjXo0JTkEHpz8pxdQf0gStltaPpw0Cca8b39KxvK9cfKRiAw==,
+      }
+
   events@1.1.1:
     resolution:
       {
@@ -12034,6 +12142,12 @@ packages:
         integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==,
       }
 
+  fast-fifo@1.3.2:
+    resolution:
+      {
+        integrity: sha512-/d9sfos4yxzpwkDkuN7k2SqFKtYNmCTzgfEpz82x34IM9/zc8KGxQoXg1liNC/izpRM/MBdt44Nmx41ZWqk+FQ==,
+      }
+
   fast-glob@3.3.1:
     resolution:
       {
@@ -12139,6 +12253,12 @@ packages:
     resolution:
       {
         integrity: sha512-p5161BqbuCaSnB8jIbzQHOlpgsPmK5rJVDfDKO91Axs5NC1uu3HRQm6wt9cd9/+GtQQIO53JdGXXoyDpTAsgYA==,
+      }
+
+  fd-slicer@1.1.0:
+    resolution:
+      {
+        integrity: sha512-cE1qsB/VwyQozZ+q1dGxR8LBYNZeofhEdUNGSMbQD3Gw2lAzX9Zb3uIU6Ebc/Fmyjo9AWWfnn0AUCHqtevs/8g==,
       }
 
   fdir@6.5.0:
@@ -14214,6 +14334,13 @@ packages:
       }
     engines: { node: ">=0.10" }
 
+  lazystream@1.0.1:
+    resolution:
+      {
+        integrity: sha512-b94GiNHQNy6JNTrt5w6zNyffMrNkXZb3KTkCZJb2V1xaEGCk093vkZ2jk3tpaeP33/OiXC+WvK9AxUebnf5nbw==,
+      }
+    engines: { node: ">= 0.6.3" }
+
   leven@3.1.0:
     resolution:
       {
@@ -16061,6 +16188,12 @@ packages:
       }
     engines: { node: ">=20.16.0 || >=22.3.0" }
 
+  pend@1.2.0:
+    resolution:
+      {
+        integrity: sha512-F3asv42UuXchdzt+xXqfW1OGlVBe+mxa2mqI0pg5yAHZPvFmY3Y6drSf/GQ1A86WgWEN9Kzh/WrgKa6iGcHXLg==,
+      }
+
   penpal@3.1.3:
     resolution:
       {
@@ -16812,6 +16945,12 @@ packages:
         integrity: sha512-oIGGmcpTLwPga8Bn6/Z75SVaH1z5dUut2ibSyAMVhmUggWpmDn2dapB0n7f8nwaSiRtepAsfJyfXIO5DCVAODg==,
       }
     engines: { node: ^12.22.0 || ^14.17.0 || >=16.0.0 }
+
+  readdir-glob@1.1.3:
+    resolution:
+      {
+        integrity: sha512-v05I2k7xN8zXvPD9N+z/uhXPaj0sUFCe2rcWZIpBsqxfP7xXFQ0tipAd/wjj1YxWyWtUS5IDJpOG82JKt2EAVA==,
+      }
 
   readdirp@3.6.0:
     resolution:
@@ -17841,6 +17980,12 @@ packages:
       }
     engines: { node: ">=10.0.0" }
 
+  streamx@2.23.0:
+    resolution:
+      {
+        integrity: sha512-kn+e44esVfn2Fa/O0CPFcex27fjIL6MkVae0Mm6q+E6f0hWv578YCERbv+4m02cjxvDsPKLnmxral/rR6lBMAg==,
+      }
+
   string-argv@0.3.2:
     resolution:
       {
@@ -18161,6 +18306,12 @@ packages:
       }
     engines: { node: ">=6" }
 
+  tar-stream@3.1.7:
+    resolution:
+      {
+        integrity: sha512-qJj60CXt7IU1Ffyc3NJMjh6EkuCFej46zUqJ4J7pqYlThyd9bO0XBTmcOIhSzZJVWfsLks0+nle/j538YAW9RQ==,
+      }
+
   tar@6.2.1:
     resolution:
       {
@@ -18215,6 +18366,12 @@ packages:
         integrity: sha512-pFYqmTw68LXVjeWJMST4+borgQP2AyMNbg1BpZh9LbyhUeNkeaPF9gzfPGUAnSMV3qPYdWUwDIjjCLiSDOl7vg==,
       }
     engines: { node: ">=18" }
+
+  text-decoder@1.2.3:
+    resolution:
+      {
+        integrity: sha512-3/o9z3X0X0fTupwsYvR03pJ/DjWuqqrfwBgTQzdWDiQSm9KitAyz/9WqsT2JQW7KV2m+bC2ol/zqpW37NHxLaA==,
+      }
 
   text-hex@1.0.0:
     resolution:
@@ -19488,6 +19645,12 @@ packages:
       }
     engines: { node: ">=12" }
 
+  yauzl@2.10.0:
+    resolution:
+      {
+        integrity: sha512-p4a9I6X6nu6IhoGmBqAcbJy1mlC4j27vEPZX9F4L4/vZT3Lyq1VkFHw/V/PUcB9Buo+DG3iHkT0x3Qya58zc3g==,
+      }
+
   ylru@1.4.0:
     resolution:
       {
@@ -19522,6 +19685,13 @@ packages:
         integrity: sha512-CzhO+pFNo8ajLM2d2IW/R93ipy99LWjtwblvC1RsoSUMZgyLbYFr221TnSNT7GjGdYui6P459mw9JH/g/zW2ug==,
       }
     engines: { node: ">=18" }
+
+  zip-stream@6.0.1:
+    resolution:
+      {
+        integrity: sha512-zK7YHHz4ZXpW89AHXUPbQVGKI7uvkd3hzusTdotCg1UxyaVtg0zFJSTfW/Dq5f7OBBVnq6cZIaC8Ti4hb6dtCA==,
+      }
+    engines: { node: ">= 14" }
 
   zlib@1.0.5:
     resolution:
@@ -25029,6 +25199,10 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+  "@types/archiver@6.0.4":
+    dependencies:
+      "@types/readdir-glob": 1.1.5
+
   "@types/aria-query@5.0.4": {}
 
   "@types/aws-lambda@8.10.147": {}
@@ -25265,6 +25439,10 @@ snapshots:
     dependencies:
       csstype: 3.1.3
 
+  "@types/readdir-glob@1.1.5":
+    dependencies:
+      "@types/node": 22.18.12
+
   "@types/semver@7.5.8": {}
 
   "@types/semver@7.7.1": {}
@@ -25335,6 +25513,10 @@ snapshots:
   "@types/yargs@17.0.33":
     dependencies:
       "@types/yargs-parser": 21.0.3
+
+  "@types/yauzl@2.10.3":
+    dependencies:
+      "@types/node": 22.18.12
 
   "@typescript-eslint/eslint-plugin@6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint@8.57.1)(typescript@5.9.2)":
     dependencies:
@@ -26650,6 +26832,29 @@ snapshots:
   aproba@2.1.0:
     optional: true
 
+  archiver-utils@5.0.2:
+    dependencies:
+      glob: 10.4.5
+      graceful-fs: 4.2.11
+      is-stream: 2.0.1
+      lazystream: 1.0.1
+      lodash: 4.17.21
+      normalize-path: 3.0.0
+      readable-stream: 4.7.0
+
+  archiver@7.0.1:
+    dependencies:
+      archiver-utils: 5.0.2
+      async: 3.2.6
+      buffer-crc32: 1.0.0
+      readable-stream: 4.7.0
+      readdir-glob: 1.1.3
+      tar-stream: 3.1.7
+      zip-stream: 6.0.1
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - react-native-b4a
+
   are-we-there-yet@3.0.1:
     dependencies:
       delegates: 1.0.0
@@ -26838,6 +27043,8 @@ snapshots:
 
   axobject-query@4.1.0: {}
 
+  b4a@1.7.3: {}
+
   babel-jest@29.7.0(@babel/core@7.28.4):
     dependencies:
       "@babel/core": 7.28.4
@@ -26922,6 +27129,8 @@ snapshots:
   bail@2.0.2: {}
 
   balanced-match@1.0.2: {}
+
+  bare-events@2.8.2: {}
 
   base64-js@1.5.1: {}
 
@@ -27055,6 +27264,10 @@ snapshots:
       node-int64: 0.4.0
 
   btoa@1.2.1: {}
+
+  buffer-crc32@0.2.13: {}
+
+  buffer-crc32@1.0.0: {}
 
   buffer-equal-constant-time@1.0.1: {}
 
@@ -27339,6 +27552,14 @@ snapshots:
 
   component-emitter@1.3.1: {}
 
+  compress-commons@6.0.2:
+    dependencies:
+      crc-32: 1.2.2
+      crc32-stream: 6.0.0
+      is-stream: 2.0.1
+      normalize-path: 3.0.0
+      readable-stream: 4.7.0
+
   compressible@2.0.18:
     dependencies:
       mime-db: 1.54.0
@@ -27434,6 +27655,13 @@ snapshots:
     dependencies:
       object-assign: 4.1.1
       vary: 1.1.2
+
+  crc-32@1.2.2: {}
+
+  crc32-stream@6.0.0:
+    dependencies:
+      crc-32: 1.2.2
+      readable-stream: 4.7.0
 
   create-jest@29.7.0(@types/node@22.18.12)(ts-node@10.9.2(@types/node@22.18.12)(typescript@5.9.2)):
     dependencies:
@@ -28246,6 +28474,12 @@ snapshots:
 
   eventemitter3@5.0.1: {}
 
+  events-universal@1.0.1:
+    dependencies:
+      bare-events: 2.8.2
+    transitivePeerDependencies:
+      - bare-abort-controller
+
   events@1.1.1: {}
 
   events@3.3.0: {}
@@ -28412,6 +28646,8 @@ snapshots:
 
   fast-deep-equal@3.1.3: {}
 
+  fast-fifo@1.3.2: {}
+
   fast-glob@3.3.1:
     dependencies:
       "@nodelib/fs.stat": 2.0.5
@@ -28496,6 +28732,10 @@ snapshots:
   fb-watchman@2.0.2:
     dependencies:
       bser: 2.1.1
+
+  fd-slicer@1.1.0:
+    dependencies:
+      pend: 1.2.0
 
   fdir@6.5.0(picomatch@4.0.3):
     optionalDependencies:
@@ -30057,6 +30297,10 @@ snapshots:
     dependencies:
       language-subtag-registry: 0.3.23
 
+  lazystream@1.0.1:
+    dependencies:
+      readable-stream: 2.3.8
+
   leven@3.1.0: {}
 
   levn@0.4.1:
@@ -31294,6 +31538,8 @@ snapshots:
     optionalDependencies:
       "@napi-rs/canvas": 0.1.80
 
+  pend@1.2.0: {}
+
   penpal@3.1.3: {}
 
   perfect-debounce@1.0.0: {}
@@ -31786,6 +32032,10 @@ snapshots:
       events: 3.3.0
       process: 0.11.10
       string_decoder: 1.3.0
+
+  readdir-glob@1.1.3:
+    dependencies:
+      minimatch: 5.1.6
 
   readdirp@3.6.0:
     dependencies:
@@ -32477,6 +32727,15 @@ snapshots:
 
   streamsearch@1.1.0: {}
 
+  streamx@2.23.0:
+    dependencies:
+      events-universal: 1.0.1
+      fast-fifo: 1.3.2
+      text-decoder: 1.2.3
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - react-native-b4a
+
   string-argv@0.3.2: {}
 
   string-hash@1.1.3: {}
@@ -32687,6 +32946,15 @@ snapshots:
       inherits: 2.0.4
       readable-stream: 3.6.2
 
+  tar-stream@3.1.7:
+    dependencies:
+      b4a: 1.7.3
+      fast-fifo: 1.3.2
+      streamx: 2.23.0
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - react-native-b4a
+
   tar@6.2.1:
     dependencies:
       chownr: 2.0.0
@@ -32732,6 +33000,12 @@ snapshots:
       "@istanbuljs/schema": 0.1.3
       glob: 10.4.5
       minimatch: 9.0.5
+
+  text-decoder@1.2.3:
+    dependencies:
+      b4a: 1.7.3
+    transitivePeerDependencies:
+      - react-native-b4a
 
   text-hex@1.0.0: {}
 
@@ -33545,6 +33819,11 @@ snapshots:
       y18n: 5.0.8
       yargs-parser: 21.1.1
 
+  yauzl@2.10.0:
+    dependencies:
+      buffer-crc32: 0.2.13
+      fd-slicer: 1.1.0
+
   ylru@1.4.0: {}
 
   yn@3.1.1: {}
@@ -33554,6 +33833,12 @@ snapshots:
   yoctocolors-cjs@2.1.3: {}
 
   yoctocolors@2.1.2: {}
+
+  zip-stream@6.0.1:
+    dependencies:
+      archiver-utils: 5.0.2
+      compress-commons: 6.0.2
+      readable-stream: 4.7.0
 
   zlib@1.0.5: {}
 

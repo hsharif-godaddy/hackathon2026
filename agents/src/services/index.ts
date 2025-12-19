@@ -6,4 +6,4 @@ export * from './features.js';
 
 // Import feature services (feature-flagged via ENABLE_ZIP_IMPORT)
 export { projectImportService, ProjectImportService } from './ProjectImportService.js';
-export { zipSecurityService, ZipSecurityService, ZIP_LIMITS } from './ZipSecurityService.js';
+export { zipSecurityService, ZipSecurityService } from './ZipSecurityService.js';

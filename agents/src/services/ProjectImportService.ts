@@ -132,6 +132,14 @@ export class ProjectImportService {
       const securityValidation = await zipSecurityService.validate(zipPath);
 
       if (!securityValidation.valid) {
+        // Log detailed validation failure
+        this.logger.warn('project-import.security-validation.failed', {
+          jobId,
+          appId,
+          errors: securityValidation.errors,
+          stats: securityValidation.stats,
+        });
+
         await this.importJobRepo.markFailed(
           jobId,
           'Zip security validation failed',
@@ -141,6 +149,13 @@ export class ProjectImportService {
         await this.cleanupZipFile(zipPath);
         return;
       }
+
+      // Log validation success with stats
+      this.logger.info('project-import.security-validation.success', {
+        jobId,
+        appId,
+        stats: securityValidation.stats,
+      });
 
       // Phase 2: Copy zip to container via shared filesystem
       await this.updateStatus(jobId, ImportJobStatus.EXTRACTING);

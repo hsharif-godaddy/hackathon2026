@@ -36,6 +36,12 @@ export enum ValidationErrorKey {
   ZIP_PATH_TRAVERSAL = 'ZIP_PATH_TRAVERSAL',
   ZIP_BOMB_DETECTED = 'ZIP_BOMB_DETECTED',
   ZIP_SYMLINK_FOUND = 'ZIP_SYMLINK_FOUND',
+  ZIP_TOO_MANY_FILES = 'ZIP_TOO_MANY_FILES',
+  ZIP_EXTRACTED_TOO_LARGE = 'ZIP_EXTRACTED_TOO_LARGE',
+  ZIP_DANGEROUS_FILE = 'ZIP_DANGEROUS_FILE',
+  ZIP_SUSPICIOUS_FILE = 'ZIP_SUSPICIOUS_FILE',
+  ZIP_INVALID_FILENAME = 'ZIP_INVALID_FILENAME',
+  ZIP_PATH_TOO_LONG = 'ZIP_PATH_TOO_LONG',
   // Project structure errors
   PACKAGE_JSON_NOT_FOUND = 'PACKAGE_JSON_NOT_FOUND',
   PACKAGE_JSON_INVALID = 'PACKAGE_JSON_INVALID',
@@ -215,6 +221,37 @@ export interface ProjectValidationResult {
   errors?: ValidationError[];
   /** Non-fatal warnings */
   warnings?: ValidationError[];
+}
+
+/**
+ * Statistics from zip validation inspection
+ */
+export interface ZipValidationStats {
+  /** Total number of files in the zip */
+  fileCount: number;
+  /** Total uncompressed size of all files (from metadata, not extraction) */
+  totalUncompressedSize: number;
+  /** Compressed size of the zip file */
+  compressedSize: number;
+  /** Compression ratio (uncompressed / compressed) */
+  compressionRatio: number;
+  /** Information about the largest file in the archive */
+  largestFile?: {
+    name: string;
+    size: number;
+  };
+}
+
+/**
+ * Result from zip security validation
+ */
+export interface ZipValidationResult {
+  /** Whether the zip passed all security checks */
+  valid: boolean;
+  /** Validation errors encountered */
+  errors: ValidationError[];
+  /** Statistics about the zip file (undefined if validation failed early) */
+  stats?: ZipValidationStats;
 }
 
 

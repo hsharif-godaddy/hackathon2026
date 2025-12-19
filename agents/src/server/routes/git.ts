@@ -9,7 +9,8 @@ import { GitTool } from '../../tools/git-tool.js';
 import { Logger, log } from '../../logging/index.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { projectImportService } from '../../services/ProjectImportService.js';
-import { zipSecurityService, ZIP_LIMITS } from '../../services/ZipSecurityService.js';
+import { zipSecurityService } from '../../services/ZipSecurityService.js';
+import { getZipImportLimits } from '../../services/features.js';
 import {
   ImportJobStatus,
   type CreateImportResponse,
@@ -50,7 +51,7 @@ const zipUpload = multer({
     },
   }),
   limits: {
-    fileSize: ZIP_LIMITS.MAX_ZIP_SIZE,
+    fileSize: getZipImportLimits().maxZipSize,
     files: 1,
   },
   fileFilter: (_req, file, cb) => {

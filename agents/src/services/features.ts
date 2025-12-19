@@ -74,6 +74,53 @@ interface FeatureConfig {
 export const MAX_PROMPT_LENGTH = 40000
 
 /**
+ * Size constants for readability
+ */
+const ONE_KB = 1024;
+const ONE_MB = ONE_KB * 1024;
+const ONE_GB = ONE_MB * 1024;
+
+// Default zip import size limits
+const DEFAULT_MIN_ZIP_SIZE = ONE_KB; // 1KB
+const DEFAULT_MAX_ZIP_SIZE = 250 * ONE_MB; // 250MB
+const DEFAULT_MAX_EXTRACTED_SIZE = ONE_GB; // 1GB
+const DEFAULT_MAX_COMPRESSION_RATIO = 100;
+const DEFAULT_MAX_FILES = 50000;
+const DEFAULT_MAX_PATH_LENGTH = 260;
+
+/**
+ * Zip Import security limits configuration
+ */
+export interface ZipImportLimits {
+  minZipSize: number;
+  maxZipSize: number;
+  maxExtractedSize: number;
+  maxCompressionRatio: number;
+  maxFiles: number;
+  maxPathLength: number;
+  blockedExtensions: string[];
+}
+
+/**
+ * Get zip import security limits from environment variables
+ * All limits have sensible defaults if not configured
+ */
+export function getZipImportLimits(): ZipImportLimits {
+  return {
+    minZipSize: parseInt(process.env.ZIP_IMPORT_MIN_SIZE || String(DEFAULT_MIN_ZIP_SIZE), 10),
+    maxZipSize: parseInt(process.env.ZIP_IMPORT_MAX_SIZE || String(DEFAULT_MAX_ZIP_SIZE), 10),
+    maxExtractedSize: parseInt(process.env.ZIP_IMPORT_MAX_EXTRACTED_SIZE || String(DEFAULT_MAX_EXTRACTED_SIZE), 10),
+    maxCompressionRatio: parseInt(process.env.ZIP_IMPORT_MAX_COMPRESSION_RATIO || String(DEFAULT_MAX_COMPRESSION_RATIO), 10),
+    maxFiles: parseInt(process.env.ZIP_IMPORT_MAX_FILES || String(DEFAULT_MAX_FILES), 10),
+    maxPathLength: parseInt(process.env.ZIP_IMPORT_MAX_PATH_LENGTH || String(DEFAULT_MAX_PATH_LENGTH), 10),
+    blockedExtensions: (process.env.ZIP_IMPORT_BLOCKED_EXTENSIONS ||
+                       'exe,dll,so,dylib,bin,deb,rpm,pkg,app,ps1')
+      .split(',')
+      .map(ext => `.${ext.trim().toLowerCase()}`),
+  };
+}
+
+/**
  * Determine authentication type based on environment
  */
 function determineAuthType(): AuthType {
