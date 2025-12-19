@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 
-import { 
-  createAgentFactory, 
+import {
+  createAgentFactory,
   getModel,
   createDelegateTool,
   createDelegationHistoryTool,
@@ -13,11 +13,11 @@ import 'dotenv/config'
 
 /**
  * Agent Handoff System Demo
- * 
+ *
  * This example demonstrates:
  * 1. Agent-to-agent handoffs with context-only transfer
  * 2. Handoff history tracking
- * 3. Develop-agent to Database-agent handoff simulation
+ * 3. Multi-agent coordination with specialized roles
  * 4. Multi-step handoff chains
  */
 
@@ -34,7 +34,7 @@ const fileEditTool = createTool(
   async ({ filePath, content, operation }) => {
     console.log(`📝 ${operation.toUpperCase()}: ${filePath}`)
     console.log(`Content: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`)
-    
+
     return {
       success: true,
       message: `File ${filePath} ${operation}ed successfully`,
@@ -53,7 +53,7 @@ const terminalTool = createTool(
   }),
   async ({ command, workingDir }) => {
     console.log(`💻 Executing: ${command}${workingDir ? ` (in ${workingDir})` : ''}`)
-    
+
     return {
       success: true,
       stdout: `Command executed: ${command}`,
@@ -80,7 +80,7 @@ const createDatabaseTool = createTool(
   async ({ databaseName, schema, credentials }) => {
     console.log(`🗄️  Creating database: ${databaseName}`)
     console.log(`📋 Schema: ${JSON.stringify(schema, null, 2)}`)
-    
+
     return {
       success: true,
       databaseName,
@@ -107,7 +107,7 @@ const generateApiTool = createTool(
   async ({ databaseName, endpoints, framework }) => {
     console.log(`🔌 Generating ${framework} API for database: ${databaseName}`)
     console.log(`📡 Endpoints: ${endpoints.join(', ')}`)
-    
+
     return {
       success: true,
       databaseName,
@@ -132,7 +132,7 @@ const createComponentTool = createTool(
   async ({ componentName, componentType, props, styling }) => {
     console.log(`⚛️  Creating ${componentType} component: ${componentName}`)
     console.log(`🎨 Styling: ${styling}`)
-    
+
     return {
       success: true,
       componentName,
@@ -149,7 +149,7 @@ async function demonstrateBasicHandoff() {
   console.log('🚀 Basic Agent Handoff Demo\n')
 
   const factory = createAgentFactory()
-  
+
   const agents = factory.defineAgents({
     developer: {
       name: 'AI Developer',
@@ -224,7 +224,7 @@ You can hand back to the Developer Agent when frontend work is complete.`,
 
   console.log('🤖 Created multi-agent system:')
   console.log('  • Developer Agent (coordinator)')
-  console.log('  • Database Agent (specialist)')
+  console.log('  • Data Specialist (database operations)')
   console.log('  • Frontend Agent (specialist)\n')
 
   // Test scenario: User wants to build a user management system
@@ -242,16 +242,16 @@ Please coordinate this development and hand off to specialists as needed.`
   try {
     const developer = agents.get('developer')
     const result = await developer.streamGenerate(userRequest)
-    
+
     let response = ''
     for await (const chunk of result.textStream) {
       process.stdout.write(chunk)
       response += chunk
     }
-    
+
     const finalResult = await result.getFinalResult()
     console.log(`\n\n📊 Tools used: ${finalResult.toolCalls?.length || 0}`)
-    
+
     // Show handoff history
     console.log('\n📋 Handoff History:')
     const history = factory.getHandoffHistory()
@@ -267,7 +267,7 @@ Please coordinate this development and hand off to specialists as needed.`
       }
       console.log()
     })
-    
+
   } catch (error) {
     console.log(`❌ Error: ${error instanceof Error ? error.message : String(error)}`)
   }
@@ -277,13 +277,13 @@ async function demonstrateHandoffChain() {
   console.log('\n🔄 Handoff Chain Demo\n')
 
   const factory = createAgentFactory()
-  
+
   // Create a simple chain: Planner → Developer → Database → Frontend
   const agents = factory.defineAgents({
     planner: {
       name: 'Project Planner',
       system: `You are a project planner who breaks down complex requests into manageable tasks.
-      
+
 When you receive a project request, analyze it and hand off to the Developer Agent with a clear plan.`,
       model: await getModel('gpt4o'),
       tools: {
@@ -344,13 +344,13 @@ When you receive a project request, analyze it and hand off to the Developer Age
   try {
     const planner = agents.get('planner')
     const result = await planner.streamGenerate(plannerRequest)
-    
+
     let response = ''
     for await (const chunk of result.textStream) {
       process.stdout.write(chunk)
       response += chunk
     }
-    
+
     console.log('\n\n📋 Complete Handoff Chain:')
     const history = factory.getHandoffHistory()
     history.forEach((entry, index) => {
@@ -360,7 +360,7 @@ When you receive a project request, analyze it and hand off to the Developer Age
       console.log(`   📊 ${entry.status}`)
       console.log()
     })
-    
+
   } catch (error) {
     console.log(`❌ Error: ${error instanceof Error ? error.message : String(error)}`)
   }
@@ -370,7 +370,7 @@ async function demonstrateHandoffHistory() {
   console.log('\n📚 Handoff History Management Demo\n')
 
   const factory = createAgentFactory()
-  
+
   const agents = factory.defineAgents({
     coordinator: {
       name: 'Task Coordinator',
@@ -399,7 +399,7 @@ async function demonstrateHandoffHistory() {
   console.log('🤖 Testing handoff history management...\n')
 
   const coordinator = agents.get('coordinator')
-  
+
   // Make the coordinator check its handoff history
   const historyRequest = 'Please check our handoff history and then create a simple file if there are no recent handoffs'
 
@@ -408,24 +408,24 @@ async function demonstrateHandoffHistory() {
 
   try {
     const result = await coordinator.streamGenerate(historyRequest)
-    
+
     let response = ''
     for await (const chunk of result.textStream) {
       process.stdout.write(chunk)
       response += chunk
     }
-    
+
     console.log('\n\n📊 Final History State:')
     const history = factory.getHandoffHistory()
     console.log(`Total handoffs: ${history.length}`)
-    
+
     if (history.length > 0) {
       console.log('\nRecent handoffs:')
       history.slice(-3).forEach((entry, index) => {
         console.log(`${index + 1}. ${entry.sourceAgent} → ${entry.targetAgent} (${entry.status})`)
       })
     }
-    
+
   } catch (error) {
     console.log(`❌ Error: ${error instanceof Error ? error.message : String(error)}`)
   }
@@ -438,7 +438,7 @@ async function main() {
     await demonstrateBasicHandoff()
     await demonstrateHandoffChain()
     await demonstrateHandoffHistory()
-    
+
     console.log('\n✅ All handoff demos completed successfully!')
     console.log('\n📚 Key Features Demonstrated:')
     console.log('  • Agent-to-agent handoffs with context-only transfer')
@@ -452,7 +452,7 @@ async function main() {
     console.log('  • No full conversation history in handoffs')
     console.log('  • Trackable handoff audit trail')
     console.log('  • Configurable handoff permissions')
-    
+
   } catch (error) {
     console.error('❌ Demo failed:', error)
     process.exit(1)

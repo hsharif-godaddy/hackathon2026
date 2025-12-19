@@ -508,7 +508,7 @@ components:
               items:
                 type: string
               description: List of valid/healthy agent IDs
-              example: ["develop-agent", "database-agent", "color-scheme-agent"]
+              example: ["develop", "color-scheme", "marketing"]
             invalid:
               type: array
               items:
@@ -1304,9 +1304,9 @@ paths:
                 timestamp: "2024-12-28T10:30:00Z"
                 agents:
                   valid:
-                    - "develop-agent"
-                    - "database-agent"
-                    - "color-scheme-agent"
+                    - "develop"
+                    - "color-scheme"
+                    - "marketing"
                   invalid: []
                   total: 3
         "200 (degraded)":
@@ -1320,10 +1320,10 @@ paths:
                 timestamp: "2024-12-28T10:30:00Z"
                 agents:
                   valid:
-                    - "develop-agent"
-                    - "database-agent"
+                    - "develop"
+                    - "color-scheme"
                   invalid:
-                    - "color-scheme-agent"
+                    - "marketing"
                   total: 3
         "500":
           description: Health check failed

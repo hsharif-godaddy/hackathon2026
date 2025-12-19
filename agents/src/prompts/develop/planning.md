@@ -195,7 +195,7 @@ todoList operation=get_list listId=<list-id>
 
 # Step 3: Work on first task - create database schema
 
-[... handoff to database agent ...]
+[... work on database schema ...]
 
 # Step 4: IMMEDIATELY mark first task complete (don't wait!)
 
@@ -203,7 +203,7 @@ todoList operation=mark_done itemIds=[<posts-schema-item-id>]
 
 # Step 5: Work on second task - comments schema
 
-[... handoff to database agent ...]
+[... work on schema ...]
 
 # Step 6: IMMEDIATELY mark second task complete
 

@@ -21,7 +21,7 @@ Create and maintain eight concise design documentation sections that provide ess
 
 ### Agent Structure
 
-Following the established pattern from `develop-agent.ts` and `database-agent.ts`:
+Following the established pattern from existing agents like `develop-agent.ts`:
 
 ```typescript
 agents/src/agents/design-agent.ts

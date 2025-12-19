@@ -35,7 +35,7 @@ Create and manage comprehensive design documentation for applications using AI-p
 
 ### Agent Architecture
 
-Follows existing patterns from `develop-agent.ts` and `database-agent.ts`:
+Follows existing patterns from `develop-agent.ts` and other agents:
 
 - `DesignAgent` class with factory pattern
 - Modular prompt system in `prompts/design/`

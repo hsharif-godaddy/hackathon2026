@@ -8,7 +8,7 @@ This guide explains the difference between **delegation** (calling another agent
 
 **Delegation** is when one agent calls another agent to perform a task and waits for the result. The calling agent remains in control.
 
-- **Use case**: "I need the database agent to create a schema for me"
+- **Use case**: "I need a specialized agent to create a schema for me"
 - **Tool**: `delegate` tool (via `createDelegateTool` or `addDelegationTools`)
 - **Behavior**: Calls another agent, gets response, returns control to caller
 - **Analogy**: Like calling a function or making an API request
@@ -17,7 +17,7 @@ This guide explains the difference between **delegation** (calling another agent
 
 **Handoff** is when you switch from one agent to another as the active agent. The original agent is no longer in control.
 
-- **Use case**: "The user wants to switch from the developer agent to the database agent"
+- **Use case**: "The user wants to switch from the developer agent to a specialized agent"
 - **Implementation**: Handoff helpers (via `createHandoffHelpers`)
 - **Behavior**: Switches the active agent in your application
 - **Analogy**: Like changing the current user or switching tabs
@@ -98,9 +98,9 @@ const agents = factory.defineAgents({
     tools: {},
     handoffs: [{ agentName: "database", description: "Database operations" }],
   },
-  database: {
-    name: "Database Agent",
-    system: "You handle database operations",
+  specialist: {
+    name: "Specialist Agent",
+    system: "You handle specialized operations",
     model: await getModel("gpt4o"),
     tools: {},
     handoffs: [],
@@ -111,14 +111,14 @@ const agents = factory.defineAgents({
 const handoff = createHandoffHelpers(agents);
 
 // Check if handoff is allowed
-if (handoff.canHandoffTo("developer", "database")) {
-  // Switch to database agent
-  const databaseAgent = await handoff.switchAgent("developer", "database", {
-    reason: "User requested database operations",
+if (handoff.canHandoffTo("developer", "specialist")) {
+  // Switch to specialist agent
+  const specialistAgent = await handoff.switchAgent("developer", "specialist", {
+    reason: "User requested specialized operations",
   });
 
-  // Now use databaseAgent as the active agent
-  const result = await databaseAgent.execute({
+  // Now use specialistAgent as the active agent
+  const result = await specialistAgent.execute({
     prompt: "Create a users table",
   });
 }
@@ -243,7 +243,7 @@ const handoff = createHandoffHelpers(factory, {
 - You want the result back to continue processing
 - The calling agent remains responsible for the task
 - You're building autonomous agent workflows
-- Example: "Developer agent asks database agent to create a schema"
+- Example: "Developer agent asks specialized agent to create a schema"
 
 ### Use Handoff When:
 
@@ -251,7 +251,7 @@ const handoff = createHandoffHelpers(factory, {
 - You're building a multi-agent chat interface
 - Different agents handle different conversation phases
 - You need to change the active agent in your UI
-- Example: "User clicks 'Switch to Database Agent' button"
+- Example: "User clicks 'Switch to Specialist Agent' button"
 
 ## Migration from Old "Handoff" Tool
 
@@ -341,11 +341,13 @@ async function main() {
       tools: {
         ...addDelegationTools(factory, "developer", true),
       },
-      handoffs: [{ agentName: "database", description: "Database operations" }],
+      handoffs: [
+        { agentName: "specialist", description: "Specialized operations" },
+      ],
     },
-    database: {
-      name: "Database Agent",
-      system: "You handle database operations",
+    specialist: {
+      name: "Specialist Agent",
+      system: "You handle specialized operations",
       model: await getModel("gpt4o"),
       tools: {},
       handoffs: [],
@@ -385,7 +387,7 @@ async function main() {
   // Example 3: Developer delegates to database (delegation)
   console.log("\n=== Nested Delegation Example ===");
   const nestedResult = await currentAgent.execute({
-    prompt: "Delegate database schema creation to the database agent",
+    prompt: "Delegate schema creation to the specialist agent",
   });
   console.log("Nested delegation result:", nestedResult);
 }

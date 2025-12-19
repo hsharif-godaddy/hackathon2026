@@ -138,16 +138,16 @@ async function developAgentAfterToolExecution(
 }
 
 /**
- * Database Agent handoff simulation
+ * Specialized agent handoff simulation
  * Shows how agent handoffs could work in the new system
  */
-async function simulateDatabaseHandoff(params: { userId: string; databaseName: string }) {
-  console.log('🔄 Simulating handoff to Database Agent for MySQL setup...')
+async function simulateSpecializedHandoff(params: { userId: string; databaseName: string }) {
+  console.log('🔄 Simulating handoff to specialized agent for MySQL setup...')
   console.log(`👤 User ID: ${params.userId}`)
   console.log(`🗄️  Database: ${params.databaseName}`)
 
   // In real implementation, this would:
-  // 1. Create a new agent instance (database agent)
+  // 1. Create a new agent instance (specialized agent)
   // 2. Pass context and parameters
   // 3. Execute database setup operations
   // 4. Return results
@@ -242,16 +242,16 @@ When editing files or running commands, proceed confidently knowing that safety 
 async function demonstrateAgentHandoff() {
   console.log('\n🔄 Agent Handoff Simulation\n')
 
-  // Simulate the develop-agent's handoffToDatabase method
+  // Simulate the develop-agent's handoff to specialized agent method
   console.log('💬 User: "Set up a MySQL database for user management"')
-  console.log('🤖 Developer Agent: "I need to hand this off to the Database Agent..."')
+  console.log('🤖 Developer Agent: "I need to hand this off to a specialized agent..."')
 
-  const handoffResult = await simulateDatabaseHandoff({
+  const handoffResult = await simulateSpecializedHandoff({
     userId: 'user123',
     databaseName: 'user_management_db'
   })
 
-  console.log('✅ Database Agent handoff completed successfully')
+  console.log('✅ Specialized agent handoff completed successfully')
   console.log('🔗 Backend integration ready for frontend development')
   console.log('📊 Handoff result:', JSON.stringify(handoffResult, null, 2))
 }
