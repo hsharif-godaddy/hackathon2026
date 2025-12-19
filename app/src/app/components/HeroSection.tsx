@@ -149,7 +149,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
       <text.p
         size={2}
-        className='max-w-xl mx-auto !font-thin text-center'
+        className='max-w-xl mx-auto !font-thin text-center text-pretty'
       >
         {t('builder_homepage_hero_text')}
       </text.p>
@@ -197,9 +197,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 rows={5}
                 disabled={isLoading}
                 maxLength={MAX_PROMPT_LENGTH + 1}
-                className={clsx('!bg-intents-ux-box-backgroundColor relative pl-2 md:pl-4 pr-10 md:pr-12 md:py-3 w-full text-md sm:text-xl md:text-2xl leading-[1.4] font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
-                  'h-32 rounded-2xl py-2': isExpanded,
-                  'h-10 rounded-[3rem] py-3.5': !isExpanded
+                className={clsx('!bg-intents-ux-box-backgroundColor relative pl-3 sm:pl-4 pr-8 sm:pr-12 py-2.5 sm:py-3 w-full text-md sm:text-xl leading-[1.5] font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
+                  'h-32 rounded-2xl': isExpanded,
+                  'h-8 sm:h-10 rounded-[3rem]': !isExpanded
                 })}
                 placeholder={isTyping ? "" : t('builder_homepage_hero_placeholder')}
               />
@@ -209,9 +209,13 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 data-eid={generateClickEID('homepage.prompt.submit')}
                 disabled={!promptText.trim() || isLoading || isTyping || promptText.length >= MAX_PROMPT_LENGTH}
                 design='primary'
-                className="group cursor-pointer absolute transition-all duration-300 flex items-center disabled:opacity-50 disabled:cursor-not-allowed !rounded-full aspect-square !p-2 !border-none right-1.5 bottom-1.5"
+                className={clsx('group cursor-pointer absolute transition-all duration-300 flex items-center disabled:opacity-50 disabled:cursor-not-allowed !rounded-full aspect-square !border-none right-1.5', {
+                  'bottom-1/2 translate-y-1/2': !isExpanded,
+                  'bottom-1.5': isExpanded
+                })}
                 icon={isLoading ? <Spinner size='sm' /> : <SendIcon />}
                 aria-label={isLoading ? t('builder_homepage_hero_prompt_button_loading') : t('builder_homepage_hero_prompt_button')}
+                size={isMobile ? 'sm' : 'md'}
               />
             </Box>
           </div>
