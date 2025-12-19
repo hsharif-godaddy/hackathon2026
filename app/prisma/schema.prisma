@@ -24,6 +24,15 @@ enum AccountStatus {
   closed
 }
 
+enum SocialPlatformType {
+  FACEBOOK
+  INSTAGRAM
+  GOOGLE_BUSINESS_PROFILE
+  TIKTOK
+  YELP
+  WHATSAPP
+}
+
 model accounts {
   id          String        @id
   shopper_id  String        @unique
@@ -59,7 +68,21 @@ model sites {
   created_at      DateTime   @default(now())
   updated_at      DateTime   @default(now())
   account         accounts   @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  social_associations     social_associations[]
 
   @@index([ceph_mount_id, ceph_dir_number])
   @@index([account_id])
+}
+
+model social_associations {
+  id              String              @id @default(cuid())
+  site_id         String
+  social_id       String
+  platform        SocialPlatformType
+  created_at      DateTime            @default(now())
+  site            sites               @relation(fields: [site_id], references: [id], onDelete: Cascade)
+
+  @@unique([site_id, social_id])
+  @@index([site_id, platform])
+  @@map("social_associations")
 }

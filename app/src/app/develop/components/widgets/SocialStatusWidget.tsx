@@ -5,9 +5,9 @@ import type { ComponentType } from 'react'
 import { memo,useMemo } from 'react'
 import text from '@ux/text'
 
-import { useSocialConnections } from '@/hooks/useSocialConnections'
 import { useTranslations } from '@/hooks/useTranslations'
-import { PLATFORM_CONFIG } from '@/lib/social-platforms'
+import { getSimplePlatformStatuses } from '@/lib/social-platforms'
+import { useSocialConnectionsWithMetadata } from '@/hooks/social/queries/useSocialConnections'
 
 interface PlatformStatusItemProps {
   name: string
@@ -44,21 +44,13 @@ function SocialStatusWidget({
 }: SocialStatusWidgetProps) {
   const t = useTranslations();
 
-  const { data: connectionsData, isLoading, error } = useSocialConnections()
+  const { connections, isLoading } = useSocialConnectionsWithMetadata()
+  const error = null
 
-  const connections = useMemo(() => connectionsData ?? [], [connectionsData]);
-
-  const platformStatuses = useMemo(() => {
-    const validConnections = connections.filter(c => c.platform);
-
-    return Object.entries(PLATFORM_CONFIG).map(([key, config]) => ({
-      platform: key,
-      ...config,
-      connected: validConnections.some(c =>
-        c.platform?.toLowerCase() === key.toLowerCase()
-      ),
-    }));
-  }, [connections]);
+  const platformStatuses = useMemo(() =>
+    getSimplePlatformStatuses(connections),
+    [connections]
+  )
 
   if (isLoading) {
     return (
@@ -71,7 +63,7 @@ function SocialStatusWidget({
   if (error) {
     return (
       <div className={clsx('flex flex-col gap-1 p-1 border border-border rounded-sm my-1', className)}>
-        <text.p size={-2} className="text-intents-ux-error-textColor" text={`${t('builder_status_error')}: ${error.message}`} />
+        <text.p size={-2} className="text-intents-ux-error-textColor" text={`${t('builder_status_error')}: ${error}`} />
       </div>
     )
   }

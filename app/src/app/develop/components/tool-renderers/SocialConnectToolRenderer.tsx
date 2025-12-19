@@ -3,7 +3,8 @@
 import { memo } from 'react'
 import LinkIcon from '@ux/icon/link'
 
-import SocialConnectFlow from '@/app/develop/components/SocialConnectFlow'
+
+import SocialConnectFlow from '@/app/develop/components/social/connect-flow/SocialConnectFlow'
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import DefaultToolRenderer from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
@@ -20,7 +21,7 @@ function SocialConnectToolRenderer({
 
     if (r.action === 'connect' && r.platform && r.appId) {
       return (
-        <div>
+        <>
           <ToolHeader
             icon={<LinkIcon className="w-2 h-2" />}
             displayName={t('builder_tools_social_connect_title')}
@@ -32,8 +33,9 @@ function SocialConnectToolRenderer({
             platform={r.platform}
             appId={r.appId}
             state={r.state}
+            disableAutoOpen={false}
           />
-        </div>
+        </>
       )
     }
   }

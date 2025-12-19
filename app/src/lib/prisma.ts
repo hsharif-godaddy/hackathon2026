@@ -3,7 +3,9 @@
  * Single instance shared across all services to properly pool connections
  */
 
-import { PrismaClient } from '@/generated/prisma';
+import { PrismaClient, SocialPlatformType } from '@/generated/prisma';
+
+export { SocialPlatformType };
 
 /**
  * Singleton Prisma client instance

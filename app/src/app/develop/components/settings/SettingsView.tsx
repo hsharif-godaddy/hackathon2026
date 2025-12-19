@@ -7,7 +7,7 @@ import DomainPanel from '@/app/develop/components/settings/DomainPanel'
 import LogsPanel from '@/app/develop/components/settings/LogsPanel'
 import ProjectPanel from '@/app/develop/components/settings/ProjectPanel'
 import SecurityPanel from '@/app/develop/components/settings/SecurityPanel'
-import SocialPanel from '@/app/develop/components/settings/SocialPanel'
+import SocialPanel from '@/app/develop/components/settings/social/SocialPanel'
 import VisualScanPanel from '@/app/develop/components/settings/VisualScanPanel'
 import { SettingsSection } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
@@ -45,7 +45,7 @@ export default function SettingsView() {
       case SettingsSection.SECRETS:
         return isSecretsEnabled ? <SecretsPanel appId={appId} variant="preview" /> : null;
       case SettingsSection.SOCIAL:
-        return isSocialEnabled ? <SocialPanel /> : null;
+        return isSocialEnabled ? <SocialPanel siteId={appId} /> : null;
       case SettingsSection.VISUAL_SCAN:
         return isVisualScanEnabled ? <VisualScanPanel /> : null;
       case SettingsSection.LOGS:

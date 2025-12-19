@@ -1,0 +1,98 @@
+import { useMemo } from 'react'
+import { useConnectionById } from '../queries/useSocialV2'
+import { useSocialConnectionsWithMetadata } from '../queries/useSocialConnections'
+import { useSiteLinks } from '../queries/useSiteLinks'
+import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
+import type { SocialConnection, EnrichedSocialConnection } from '@/types/social'
+
+interface UseSocialConnectFlowParams {
+  platform: string
+  appId: string
+  enabled: boolean
+}
+
+interface UseSocialConnectFlowResult {
+  isLoading: boolean
+  siteLinks: any[]
+  availableConnections: SocialConnection[]
+  enrichedConnections: Array<SocialConnection | EnrichedSocialConnection>
+  currentSiteLink: any | undefined
+  linkedConnection: SocialConnection | undefined
+  isLoadingMetadata: boolean
+  connectionsLoadingMetadata: Set<string>
+}
+
+/**
+ * Hook for social connect flow
+ * Combines connections with metadata, site links, and current linked connection
+ */
+export function useSocialConnectFlow({
+  platform,
+  appId,
+  enabled
+}: UseSocialConnectFlowParams): UseSocialConnectFlowResult {
+  const normalizedPlatform = PLATFORM_TRANSFORMS.toDisplay(platform)
+
+  // Fetch connections with metadata for this platform only
+  const {
+    connections: enrichedConnections,
+    isLoading: isLoadingConnections,
+    isLoadingMetadata: isLoadingPlatformMetadata,
+    connectionsLoadingMetadata
+  } = useSocialConnectionsWithMetadata({ platform, enabled })
+
+  // Fetch site links
+  const siteLinksQuery = useSiteLinks(appId, enabled)
+  const siteLinks = siteLinksQuery.data ?? []
+  const isLoadingSiteLinks = siteLinksQuery.isLoading
+  const isFetchingSiteLinks = siteLinksQuery.isFetching
+
+  // Find the current site link for this platform
+  const currentSiteLink = useMemo(() => {
+    return siteLinks.find(link => PLATFORM_TRANSFORMS.toDisplay(link.platform) === normalizedPlatform)
+  }, [siteLinks, normalizedPlatform])
+
+  // Fetch the currently linked connection details
+  const { data: currentConnectionDetails, isLoading: isLoadingCurrentConnection } = useConnectionById(
+    currentSiteLink?.social_id || '',
+    !!currentSiteLink?.social_id
+  )
+
+  // Enrich the currently linked connection with metadata (if not already in enrichedConnections)
+  const currentConnectionArray = currentConnectionDetails ? [currentConnectionDetails] : []
+  const {
+    connections: enrichedCurrentArray,
+    isLoadingMetadata: isLoadingCurrentMetadata
+  } = useSocialConnectionsWithMetadata({
+    platform,
+    enabled: enabled && !!currentConnectionDetails
+  })
+
+  const linkedConnection = useMemo(() => {
+    if (!currentConnectionDetails) return undefined
+    // Try to find in enriched array first
+    const enriched = enrichedCurrentArray.find(c => c.socialId === currentConnectionDetails.socialId)
+    return enriched || currentConnectionDetails
+  }, [currentConnectionDetails, enrichedCurrentArray])
+
+  // Plain connections (without metadata enrichment)
+  const availableConnections = enrichedConnections as SocialConnection[]
+
+  const isLoadingMetadata = isLoadingPlatformMetadata || isLoadingCurrentMetadata
+  const isLoading =
+    isLoadingSiteLinks ||
+    isLoadingConnections ||
+    isLoadingCurrentConnection ||
+    isFetchingSiteLinks
+
+  return {
+    isLoading,
+    siteLinks,
+    availableConnections,
+    enrichedConnections,
+    currentSiteLink,
+    linkedConnection,
+    isLoadingMetadata,
+    connectionsLoadingMetadata
+  }
+}
