@@ -315,14 +315,8 @@ export default function FileEditToolRenderer({
 }: DefaultToolRendererProps) {
   const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
   const lastSuccessfulEstimateRef = useRef<{ additions: number; deletions: number } | null>(null)
   const [streamingEstimate, setStreamingEstimate] = useState<{ additions: number; deletions: number } | null>(null)
-
-  // Track client-side mount to prevent SSR issues with ToolModal portal
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   /**
    * Manage streaming estimate lifecycle
@@ -578,12 +572,11 @@ export default function FileEditToolRenderer({
   const modalTitle = normalizedToBatch ? t('builder_tools_file_edit_operations') : `${verb} ${filename}`
 
   const modalContent = (
-    <ToolModal
-      isOpen={isModalOpen}
-      onClose={() => setIsModalOpen(false)}
-      title={modalTitle}
-      mounted={mounted}
-    >
+      <ToolModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={modalTitle}
+      >
       {/* Markdown format (backwards compatibility) */}
       {isMarkdownFormat && (
         <div className="flex-1 overflow-y-auto">

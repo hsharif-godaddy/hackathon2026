@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion'
 import { Image, Sparkles,SquarePlay } from 'lucide-react'
-import { useEffect, useRef,useState } from 'react'
+import { useRef,useState } from 'react'
 import { createPortal } from 'react-dom'
 import Button from '@ux/button'
 import XThickIcon from '@ux/icon/x-thick'
@@ -39,15 +39,10 @@ export default function MediaSearchToolRenderer({
 }: DefaultToolRendererProps) {
   const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const inlineVideoRef = useRef<HTMLVideoElement>(null)
   const modalVideoRef = useRef<HTMLVideoElement>(null)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   // Parse result - expects JSON format from mediaSearch tool
   let parsedResult: any = null
@@ -169,7 +164,7 @@ export default function MediaSearchToolRenderer({
     setIsModalOpen(false)
   }
 
-  const modalContent = mounted && (
+  const modalContent = typeof document !== 'undefined' && (
     <AnimatePresence>
       {isModalOpen && (
         <>
@@ -361,7 +356,7 @@ export default function MediaSearchToolRenderer({
         </div>
       )}
 
-      {mounted && createPortal(modalContent, document.body)}
+      {createPortal(modalContent, document.body)}
     </div>
   )
 }

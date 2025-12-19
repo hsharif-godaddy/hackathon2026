@@ -14,7 +14,6 @@ interface ToolModalProps {
   onClose: () => void
   title: string
   children: ReactNode
-  mounted?: boolean
 }
 
 /**
@@ -27,15 +26,13 @@ interface ToolModalProps {
  * @param onClose - Callback to close the modal
  * @param title - Modal title text
  * @param children - Modal content
- * @param mounted - Whether the component is mounted (for SSR)
  * @returns Modal component
  */
 export default function ToolModal({
   isOpen,
   onClose,
   title,
-  children,
-  mounted = true
+  children
 }: ToolModalProps): ReactPortal | null {
   useEffect(() => {
     if (isOpen) {
@@ -49,7 +46,7 @@ export default function ToolModal({
     }
   }, [isOpen])
 
-  if (!mounted) return null
+  if (typeof document === 'undefined') return null
 
   return createPortal(
     <AnimatePresence>

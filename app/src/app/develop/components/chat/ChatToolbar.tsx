@@ -1,6 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import Box from '@ux/box'
 import CommentsIcon from '@ux/icon/comments'
@@ -15,6 +14,7 @@ import SettingsMenu from '@/app/develop/components/settings/SettingsMenu'
 import { ChatTab } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
+import { useChatTabs } from '@/hooks/useChatTabs'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -29,12 +29,9 @@ interface ChatToolbarProps {
 
 export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventureId }: ChatToolbarProps) {
   const t = useTranslations();
-  const router = useRouter()
   const appId = useAppIdFromParams()
-  const activeChatTab = useDevelopPageStore((state) => state.activeChatTab);
+  const { activeChatTab, setActiveChatTab, activeSettingsSection, setActiveSettingsSection } = useChatTabs()
   const isMobile = useDevelopPageStore((state) => state.isMobile);
-  const activeSettingsSection = useDevelopPageStore((state) => state.activeSettingsSection);
-  const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab);
   const isSelectingCommit = useGitStore((state) => state.isSelectingCommit);
 
   const { data: isAssetManagerEnabled } = useSwitchboard('appbuilder-image-manager');
@@ -58,34 +55,13 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
   }
 
   const handleTabClick = (tab: ChatTab) => {
-    setActiveChatTab(tab)
-
-    // Update URL for deep linking
-    const params = new URLSearchParams()
-
-    switch (tab) {
-      case ChatTab.SETTINGS:
-        params.set('tab', 'settings')
-        params.set('settings', activeSettingsSection)
-        break
-      case ChatTab.HISTORY:
-        params.set('tab', 'history')
-        break
-      case ChatTab.PREVIEW:
-        params.set('tab', 'preview')
-        break
-      case ChatTab.CHAT:
-        // Chat is the default, no param needed
-        break
-      default:
-        break
+    if (tab === ChatTab.SETTINGS) {
+      // Preserve or initialize settings section when opening the settings tab
+      setActiveSettingsSection(activeSettingsSection)
+      return
     }
 
-    const url = params.toString()
-      ? `/develop/${appId}?${params.toString()}`
-      : `/develop/${appId}`
-
-    router.push(url, { scroll: false })
+    setActiveChatTab(tab)
   }
 
   return (

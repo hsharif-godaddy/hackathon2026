@@ -24,6 +24,7 @@ import { useAppDetails } from '@/hooks/useAppDetails'
 import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { usePageTiming } from '@/hooks/usePageTiming'
+import { useChatTabs } from '@/hooks/useChatTabs'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -100,7 +101,7 @@ function DevelopPageContent() {
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
   const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
-  const activeChatTab = useDevelopPageStore((state) => state.activeChatTab)
+  const { activeChatTab, setActiveChatTab, setActiveSettingsSection } = useChatTabs()
   const isPreviewVisible = useDevelopPageStore((state) => state.isPreviewVisible)
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
   const openFeedbackId = useDevelopPageStore((state) => state.openFeedbackId)
@@ -110,8 +111,6 @@ function DevelopPageContent() {
   const setIsSelectMode = useDevelopPageStore((state) => state.setIsSelectMode)
   const initializeMobileDetection = useDevelopPageStore((state) => state.initializeMobileDetection)
   const closeFeedbackModal = useDevelopPageStore((state) => state.closeFeedbackModal)
-  const setActiveSettingsSection = useDevelopPageStore((state) => state.setActiveSettingsSection)
-  const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab)
   const setIsPreviewVisible = useDevelopPageStore((state) => state.setIsPreviewVisible)
   const setShowIntroTour = useDevelopPageStore((state) => state.setShowIntroTour)
   const checkAndTriggerIntroTour = useDevelopPageStore((state) => state.checkAndTriggerIntroTour)
@@ -508,41 +507,7 @@ function DevelopPageContent() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [hasUnsavedChanges, t])
 
-  // Handle URL parameters for deep linking - runs immediately on mount
-  useEffect(() => {
-    const tabParam = searchParams.get('tab')
-    const settingsParam = searchParams.get('settings')
-
-    // Handle tab parameter - if no tab param, default to CHAT
-    if (tabParam) {
-      switch (tabParam) {
-        case 'settings':
-          setActiveChatTab(ChatTab.SETTINGS)
-          // Also handle settings section if provided
-          if (settingsParam) {
-            const validSections = Object.values(SettingsSection)
-            if (validSections.includes(settingsParam as SettingsSection)) {
-              setActiveSettingsSection(settingsParam as SettingsSection)
-            }
-          }
-          break
-        case 'history':
-          setActiveChatTab(ChatTab.HISTORY)
-          break
-        case 'preview':
-          setActiveChatTab(ChatTab.PREVIEW)
-          break
-        case 'chat':
-          setActiveChatTab(ChatTab.CHAT)
-          break
-        default:
-          break
-      }
-    } else {
-      // No tab param, default to CHAT
-      setActiveChatTab(ChatTab.CHAT)
-    }
-  }, [searchParams, setActiveSettingsSection, setActiveChatTab])
+  // activeChatTab and activeSettingsSection are driven directly by URL parameters via useChatTabs
 
   // Handle URL message parameter - simplified logic
   useEffect(() => {

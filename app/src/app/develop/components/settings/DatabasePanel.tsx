@@ -1,6 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
 import Box from '@ux/box';
 import Card from '@ux/card';
@@ -13,7 +12,7 @@ import { ChatTab } from '@/app/develop/components/types';
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { useDatabaseTables } from '@/hooks/useDatabaseTables';
 import { useTranslations } from '@/hooks/useTranslations';
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { useChatTabs } from '@/hooks/useChatTabs';
 
 interface DatabasePanelProps {
   appId: string;
@@ -21,8 +20,7 @@ interface DatabasePanelProps {
 
 export function DatabasePanel({ appId }: DatabasePanelProps) {
   const t = useTranslations();
-  const router = useRouter();
-  const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab);
+  const { setActiveChatTab } = useChatTabs();
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
 
   const {
@@ -82,7 +80,6 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
           ctaLabel={t('builder_settings_database_empty_cta')}
           onCtaClick={() => {
             setActiveChatTab(ChatTab.CHAT);
-            router.push(`/develop/${appId}`, { scroll: false });
           }}
         />
       )}

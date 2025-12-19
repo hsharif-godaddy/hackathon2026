@@ -1,7 +1,7 @@
 'use client'
 
 import { Wrench } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { useState } from 'react'
 
 import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
@@ -46,11 +46,6 @@ export default function DefaultToolRenderer({
 }: DefaultToolRendererProps) {
   const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   const hasDetails = Boolean(result || error || (input && Object.keys(input).length > 0))
 
@@ -74,7 +69,6 @@ export default function DefaultToolRenderer({
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={getToolDisplayName(toolName)}
-        mounted={mounted}
       >
         <div className="flex-1 overflow-y-auto space-y-2">
           {/* Duration */}

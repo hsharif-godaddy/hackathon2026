@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion'
 import { Image } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import Button from '@ux/button'
 import XThickIcon from '@ux/icon/x-thick'
@@ -33,12 +33,7 @@ export default function ImageSearchToolRenderer({
 }: DefaultToolRendererProps) {
   const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   // Parse result - can be JSON (new format) or Markdown (old format)
   let parsedResult: any = null
@@ -118,7 +113,7 @@ export default function ImageSearchToolRenderer({
   const shouldShowSeeAll = imageCount > 4
   const displayedImages = shouldShowSeeAll ? images.slice(0, 3) : images
 
-  const modalContent = mounted && (
+  const modalContent = typeof document !== 'undefined' && (
     <AnimatePresence>
       {isModalOpen && (
         <>
@@ -258,7 +253,7 @@ export default function ImageSearchToolRenderer({
         </div>
       )}
 
-      {mounted && createPortal(modalContent, document.body)}
+      {createPortal(modalContent, document.body)}
     </div>
   )
 }

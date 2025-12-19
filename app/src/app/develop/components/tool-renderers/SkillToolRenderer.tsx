@@ -300,11 +300,6 @@ export default function SkillToolRenderer({
   result
 }: DefaultToolRendererProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   // Parse result
   let parsedResult: SkillResult | null = null
@@ -373,7 +368,6 @@ export default function SkillToolRenderer({
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={modalTitle}
-        mounted={mounted}
       >
         <div className="flex-1 overflow-y-auto">
           {modalContentElement}

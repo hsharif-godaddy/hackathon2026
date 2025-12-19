@@ -12,11 +12,11 @@ import VisualScanPanel from '@/app/develop/components/settings/VisualScanPanel'
 import { SettingsSection } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useSwitchboard } from '@/hooks/useSwitchboard';
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useChatTabs } from '@/hooks/useChatTabs'
 import { SecretsPanel } from './SecretsPanel'
 
 export default function SettingsView() {
-  const activeSettingsSection = useDevelopPageStore((state) => state.activeSettingsSection)
+  const { activeSettingsSection } = useChatTabs()
   const appId = useAppIdFromParams()
 
   const { data: isProjectEnabled } = useSwitchboard('appbuilder-settings-project');

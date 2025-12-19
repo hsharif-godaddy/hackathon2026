@@ -1,36 +1,30 @@
 'use client';
 
 import clsx from 'clsx';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import Button from '@ux/button';
 import SettingsIcon from '@ux/icon/settings';
 
 import { useSettingsNavItems } from '@/app/develop/components/settings/useSettingsNavItems';
 import { SettingsSection } from '@/app/develop/components/types';
-import { useAppIdFromParams } from '@/app/develop/components/utils';
 import { useTranslations } from '@/hooks/useTranslations';
+import { useChatTabs } from '@/hooks/useChatTabs';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/lib/shadcn/popover";
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { generateClickEID } from '@/utils/instrumentation';
 
 export default function SettingsMenu() {
   const t = useTranslations();
 
-  const router = useRouter();
-  const appId = useAppIdFromParams();
   const [open, setOpen] = useState(false);
 
-  const activeSettingsSection = useDevelopPageStore((state) => state.activeSettingsSection);
-  const setActiveSettingsSection = useDevelopPageStore((state) => state.setActiveSettingsSection);
+  const { activeSettingsSection, setActiveSettingsSection } = useChatTabs();
 
   const handleNavigate = (id: SettingsSection) => {
     setActiveSettingsSection(id);
-    router.push(`/develop/${appId}?tab=settings&settings=${id}`, { scroll: false });
     setOpen(false);
   };
 

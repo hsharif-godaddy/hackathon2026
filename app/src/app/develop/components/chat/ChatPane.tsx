@@ -17,6 +17,7 @@ import { ChatTab } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useChatTabs } from '@/hooks/useChatTabs'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -63,10 +64,9 @@ export default function ChatPane({
   const setCurrentAppId = useSetCurrentAppId()
 
   const expandedPlan = useDevelopPageStore((state) => state.expandedPlan)
-  const activeChatTab = useDevelopPageStore((state) => state.activeChatTab)
   const toggleExpandedPlan = useDevelopPageStore((state) => state.toggleExpandedPlan)
-  const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
+  const { activeChatTab, setActiveChatTab } = useChatTabs()
 
   const appId = useAppIdFromParams()
 

@@ -33,6 +33,8 @@ function HomeContent() {
   const searchParams = useSearchParams()
   const heroSectionRef = useRef<HeroSectionRef>(null)
   const promptTextRef = useRef(promptText)
+  // Ensure ref always mirrors latest prompt text without extra renders
+  promptTextRef.current = promptText
 
   const { isAuthenticated, isAuthDisabled, isLoading: authIsLoading } = useAuthContext()
   const { signIn } = useSsoSignIn();
@@ -58,10 +60,6 @@ function HomeContent() {
     // Intentionally excluding promptText from the dependency array to prevent clearing the input when typing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
-
-  useEffect(() => {
-    promptTextRef.current = promptText
-  }, [promptText])
 
   useEffect(() => {
     // Reset the redirect state when returning to this page

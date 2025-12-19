@@ -3,17 +3,20 @@ import '@testing-library/jest-dom';
 import { beforeEach,describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
-import { ChatTab } from '@/app/develop/components/types';
+import { ChatTab, SettingsSection } from '@/app/develop/components/types';
 import { renderWithProviders } from '@/tests/test-utils';
 import ChatToolbar from './ChatToolbar';
 
 const mockRouter = { push: vi.fn() };
 const mockParams = { id: 'app-123' };
 const mockDevelopStore = {
-  activeChatTab: ChatTab.CHAT,
   isMobile: false,
-  activeSettingsSection: 'general',
+};
+const mockChatTabs = {
+  activeChatTab: ChatTab.CHAT,
   setActiveChatTab: vi.fn(),
+  activeSettingsSection: SettingsSection.DOMAIN,
+  setActiveSettingsSection: vi.fn(),
 };
 const mockGitStore = {
   isSelectingCommit: false,
@@ -28,6 +31,9 @@ vi.mock('@/app/develop/components/utils', () => ({
 }));
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => selector(mockDevelopStore),
+}));
+vi.mock('@/hooks/useChatTabs', () => ({
+  useChatTabs: () => mockChatTabs,
 }));
 vi.mock('@/stores/useGitStore', () => ({
   useGitStore: (selector: any) => selector(mockGitStore),
@@ -61,8 +67,9 @@ describe('ChatToolbar', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDevelopStore.activeChatTab = ChatTab.CHAT;
     mockDevelopStore.isMobile = false;
+    mockChatTabs.activeChatTab = ChatTab.CHAT;
+    mockChatTabs.activeSettingsSection = SettingsSection.DOMAIN;
     mockGitStore.isSelectingCommit = false;
   });
 
@@ -115,7 +122,7 @@ describe('ChatToolbar', () => {
   });
 
   it('should mark chat button as active when chat tab selected', () => {
-    mockDevelopStore.activeChatTab = ChatTab.CHAT;
+    mockChatTabs.activeChatTab = ChatTab.CHAT;
 
     const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
 
@@ -126,7 +133,7 @@ describe('ChatToolbar', () => {
   });
 
   it('should mark history button as active when history tab selected', () => {
-    mockDevelopStore.activeChatTab = ChatTab.HISTORY;
+    mockChatTabs.activeChatTab = ChatTab.HISTORY;
 
     const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
 

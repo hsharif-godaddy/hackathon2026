@@ -1,24 +1,17 @@
 'use client'
 
-import { useRouter } from 'next/navigation';
 import Button from '@ux/button';
 
 import { useSettingsNavItems } from '@/app/develop/components/settings/useSettingsNavItems';
 import { SettingsSection } from '@/app/develop/components/types';
-import { useAppIdFromParams } from '@/app/develop/components/utils';
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { useChatTabs } from '@/hooks/useChatTabs';
 import { generateClickEID } from '@/utils/instrumentation';
 
 export default function SettingsPane() {
-  const router = useRouter()
-  const appId = useAppIdFromParams()
-
-  const activeSettingsSection = useDevelopPageStore((state) => state.activeSettingsSection)
-  const setActiveSettingsSection = useDevelopPageStore((state) => state.setActiveSettingsSection)
+  const { activeSettingsSection, setActiveSettingsSection } = useChatTabs()
 
   const handleNavigate = (id: SettingsSection) => {
     setActiveSettingsSection(id)
-    router.push(`/develop/${appId}?tab=settings&settings=${id}`, { scroll: false })
   }
 
   const items = useSettingsNavItems()

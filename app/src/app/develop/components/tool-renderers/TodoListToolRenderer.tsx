@@ -233,12 +233,7 @@ export default function TodoListToolRenderer({
 }: DefaultToolRendererProps) {
   const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
   const [isVisible, setIsVisible] = useState(true)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   // Parse result - can be JSON (new format) or Markdown (old format)
   let parsedResult: any = null
@@ -277,27 +272,20 @@ export default function TodoListToolRenderer({
     operation = inputObj.operation || ''
   }
 
-  // Reset visibility when operation changes
+  // Handle select_list visibility with auto-removal after 4 seconds
   useEffect(() => {
-    if (operation === 'select_list') {
-      setIsVisible(true)
-    } else {
-      setIsVisible(true)
-    }
-  }, [operation])
-
-  // Handle select_list with auto-removal after 4 seconds
-  useEffect(() => {
-    if (operation === 'select_list' && toolStatus === 'completed' && isVisible) {
+    if (operation === 'select_list' && toolStatus === 'completed') {
       const timer = setTimeout(() => {
         setIsVisible(false)
       }, 4000)
 
-      return () => {
-        clearTimeout(timer)
-      }
+      return () => clearTimeout(timer)
     }
-  }, [operation, toolStatus, isVisible]) /* eslint-disable-line react-hooks/exhaustive-deps */
+
+    // Reset visibility for other operations or when tool reruns
+    setIsVisible(true)
+    return undefined
+  }, [operation, toolStatus])
 
   // Don't render anything for mark_done/mark_undone/show_list operations
   // The persistent todo list UI handles these updates
@@ -353,7 +341,6 @@ export default function TodoListToolRenderer({
       isOpen={isModalOpen}
       onClose={() => setIsModalOpen(false)}
       title={listName ? `${listName} - ${operation.replace(/_/g, ' ')}` : `${t('builder_common_todo_show_list')}: ${operation.replace(/_/g, ' ')}`}
-      mounted={mounted}
     >
       <div className="flex-1 overflow-y-auto">
         {modalContentElement}

@@ -42,12 +42,7 @@ export default function ColorPaletteModal({
   detailsContent = ''
 }: ColorPaletteModalProps) {
   const t = useTranslations();
-  const [mounted, setMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<number | 'details'>(0)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   useEffect(() => {
     if (isOpen) {
@@ -68,7 +63,7 @@ export default function ColorPaletteModal({
     }
   }, [isOpen])
 
-  if (!mounted) return null
+  if (typeof document === 'undefined') return null
 
   // Determine which palette to display
   const displayPalette = palettes

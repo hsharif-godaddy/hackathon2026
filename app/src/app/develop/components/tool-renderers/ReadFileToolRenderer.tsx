@@ -1,7 +1,7 @@
 'use client'
 
 import { File } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { useState } from 'react'
 
 import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
@@ -52,11 +52,6 @@ export default function ReadFileToolRenderer({
 }: DefaultToolRendererProps) {
   const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   // Extract file info from input and result
   let filePath = ''
@@ -119,7 +114,6 @@ export default function ReadFileToolRenderer({
       isOpen={isModalOpen}
       onClose={() => setIsModalOpen(false)}
       title={filename}
-      mounted={mounted}
     >
       {/* Metadata */}
       {Object.keys(metadata).length > 0 && (

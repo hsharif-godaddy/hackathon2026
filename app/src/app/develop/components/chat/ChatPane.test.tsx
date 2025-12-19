@@ -76,10 +76,14 @@ const mockStreamingStore = {
 
 const mockDevelopPageStore = {
   expandedPlan: false,
-  activeChatTab: ChatTab.CHAT,
   isMobile: false,
   toggleExpandedPlan: vi.fn(),
+};
+const mockChatTabs = {
+  activeChatTab: ChatTab.CHAT,
   setActiveChatTab: vi.fn(),
+  activeSettingsSection: 'domain',
+  setActiveSettingsSection: vi.fn(),
 };
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
@@ -100,6 +104,9 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => selector(mockDevelopPageStore),
+}));
+vi.mock('@/hooks/useChatTabs', () => ({
+  useChatTabs: () => mockChatTabs,
 }));
 
 vi.mock('@/app/develop/components/utils', () => ({
@@ -135,8 +142,8 @@ describe('ChatPane', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDevelopPageStore.activeChatTab = ChatTab.CHAT;
     mockDevelopPageStore.isMobile = false;
+    mockChatTabs.activeChatTab = ChatTab.CHAT;
     mockStreamingStore.messages = [];
     mockStreamingStore.inputValue = '';
     mockStreamingStore.isLoading = false;
@@ -175,7 +182,7 @@ describe('ChatPane', () => {
   });
 
   it('should show version history when HISTORY tab is active', () => {
-    mockDevelopPageStore.activeChatTab = ChatTab.HISTORY;
+    mockChatTabs.activeChatTab = ChatTab.HISTORY;
 
     renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
 
@@ -183,7 +190,7 @@ describe('ChatPane', () => {
   });
 
   it('should show preview pane on mobile when PREVIEW tab is active', () => {
-    mockDevelopPageStore.activeChatTab = ChatTab.PREVIEW;
+    mockChatTabs.activeChatTab = ChatTab.PREVIEW;
     mockDevelopPageStore.isMobile = true;
 
     renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
@@ -192,7 +199,7 @@ describe('ChatPane', () => {
   });
 
   it('should show settings pane when SETTINGS tab is active', () => {
-    mockDevelopPageStore.activeChatTab = ChatTab.SETTINGS;
+    mockChatTabs.activeChatTab = ChatTab.SETTINGS;
 
     renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
 
@@ -200,12 +207,12 @@ describe('ChatPane', () => {
   });
 
   it('should fall back to CHAT tab on desktop if PREVIEW is selected', () => {
-    mockDevelopPageStore.activeChatTab = ChatTab.PREVIEW;
+    mockChatTabs.activeChatTab = ChatTab.PREVIEW;
     mockDevelopPageStore.isMobile = false;
 
     renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
 
-    expect(mockDevelopPageStore.setActiveChatTab).toHaveBeenCalledWith(ChatTab.CHAT);
+    expect(mockChatTabs.setActiveChatTab).toHaveBeenCalledWith(ChatTab.CHAT);
   });
 
   it('should fetch ventureId on mount', async () => {
@@ -220,7 +227,7 @@ describe('ChatPane', () => {
 
   it('should pass onPreviewRefresh to PreviewPane', () => {
     const onPreviewRefresh = vi.fn();
-    mockDevelopPageStore.activeChatTab = ChatTab.PREVIEW;
+    mockChatTabs.activeChatTab = ChatTab.PREVIEW;
     mockDevelopPageStore.isMobile = true;
 
     renderWithProviders(<ChatPane sendMessage={mockSendMessage} onPreviewRefresh={onPreviewRefresh} />);

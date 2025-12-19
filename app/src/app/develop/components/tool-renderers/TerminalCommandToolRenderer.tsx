@@ -1,7 +1,7 @@
 'use client'
 
 import { SquareTerminal } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { useState } from 'react'
 
 import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
@@ -26,11 +26,6 @@ export default function TerminalCommandToolRenderer({
   const t = useTranslations();
 
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   // Parse result - can be JSON (new format) or Markdown (old format)
   let parsedResult: any = null
@@ -100,7 +95,6 @@ export default function TerminalCommandToolRenderer({
       isOpen={isModalOpen}
       onClose={() => setIsModalOpen(false)}
       title={t('builder_tools_terminal_title')}
-      mounted={mounted}
     >
       {/* Markdown format (backwards compatibility) */}
       {isMarkdownFormat && (

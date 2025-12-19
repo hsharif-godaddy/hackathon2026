@@ -7,7 +7,6 @@ import { renderWithProviders } from '@/tests/test-utils';
 import PreviewHeader from './PreviewHeader';
 import { PreviewViewMode,ViewMode } from '../types';
 
-const mockRouter = { push: vi.fn() };
 const mockDevelopStore = {
   viewMode: ViewMode.PREVIEW,
   isCheckingApp: false,
@@ -23,8 +22,6 @@ const mockDevelopStore = {
   toggleSelectMode: vi.fn(),
   toggleChatPaneCollapse: vi.fn(),
   openFeedbackModal: vi.fn(),
-  setActiveChatTab: vi.fn(),
-  setActiveSettingsSection: vi.fn(),
 };
 const mockServerState = {
   port: 3000,
@@ -32,7 +29,7 @@ const mockServerState = {
 };
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => mockRouter,
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 vi.mock('@/app/develop/components/utils', () => ({
   useAppIdFromParams: () => 'app-123',

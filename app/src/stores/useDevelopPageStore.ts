@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
-import { ChatTab, PreviewViewMode, SettingsSection,ViewMode } from '@/app/develop/components/types'
+import { PreviewViewMode,ViewMode } from '@/app/develop/components/types'
 import { logger } from '@/lib/request-context'
 import { type App,appService } from '@/services/AppService'
 import { type Site, useSitesStore } from '@/stores/useSitesStore'
@@ -14,7 +14,6 @@ type LoadingPhase = 'idle' | 'loading-app' | 'loading-site' | 'loading-conversat
 
 interface DevelopPageStore {
   // UI states
-  activeChatTab: ChatTab
   viewMode: ViewMode
   previewViewMode: PreviewViewMode
   isSelectMode: boolean
@@ -36,9 +35,6 @@ interface DevelopPageStore {
 
   // Feedback modal UI
   openFeedbackId: string | null
-
-  // Settings section UI
-  activeSettingsSection: SettingsSection
 
   // Tour UI
   showIntroTour: boolean
@@ -63,7 +59,6 @@ interface DevelopPageStore {
   autoSendTriggered: boolean
 
   // UI setters
-  setActiveChatTab: (tab: ChatTab) => void
   setViewMode: (mode: ViewMode) => void
   setPreviewViewMode: (mode: PreviewViewMode) => void
   setIsSelectMode: (selectMode: boolean) => void
@@ -79,9 +74,6 @@ interface DevelopPageStore {
   // Feedback modal actions
   openFeedbackModal: (feedbackId: string) => void
   closeFeedbackModal: () => void
-
-  // Settings section actions
-  setActiveSettingsSection: (section: SettingsSection) => void
 
   // Tour actions
   setShowIntroTour: (show: boolean) => void
@@ -129,7 +121,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
   devtools(
     immer((set, get) => ({
     // Initial UI state
-    activeChatTab: ChatTab.CHAT,
     viewMode: ViewMode.PREVIEW,
     previewViewMode: PreviewViewMode.DESKTOP,
     isSelectMode: false,
@@ -148,9 +139,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // Feedback modal state
     openFeedbackId: null,
 
-    // Settings section state
-    activeSettingsSection: SettingsSection.DOMAIN,
-
     // Tour state
     showIntroTour: false,
 
@@ -166,7 +154,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     autoSendTriggered: false,
 
     // UI setters
-    setActiveChatTab: (tab) => set((state) => { state.activeChatTab = tab }),
     setViewMode: (mode) => set((state) => { state.viewMode = mode }),
     setPreviewViewMode: (mode) => set((state) => { state.previewViewMode = mode }),
     setIsSelectMode: (selectMode) => set((state) => { state.isSelectMode = selectMode }),
@@ -176,20 +163,10 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setHasUnsavedChanges: (hasChanges) => set((state) => { state.hasUnsavedChanges = hasChanges }),
     setIsPollingEntitlements: (isPolling) => set((state) => { state.isPollingEntitlements = isPolling }),
     setIsMobile: (isMobile) => set((state) => {
-      // Only reset tab if we're actually transitioning between mobile/desktop
-      const wasTransition = state.isMobile !== isMobile
       const wasMobileGoingToDesktop = state.isMobile === true && isMobile === false
-
       state.isMobile = isMobile
-
-      // Reset activeTab when switching between mobile/desktop to ensure proper layout
-      if (wasTransition && state.activeChatTab !== ChatTab.CHAT) {
-        state.activeChatTab = ChatTab.CHAT
-      }
-
-      // Reset chatPaneWidth when going from mobile to desktop to prevent layout issues
       if (wasMobileGoingToDesktop) {
-        state.chatPaneWidth = 400 // Reset to default width
+        state.chatPaneWidth = 400
       }
     }),
     setIsVersionHistoryOpen: (open) => set((state) => { state.isVersionHistoryOpen = open }),
@@ -229,9 +206,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.openFeedbackId = null
       })
     },
-
-    // Settings section actions
-    setActiveSettingsSection: (section) => set((state) => { state.activeSettingsSection = section }),
 
     // Tour actions
     setShowIntroTour: (show: boolean) => set((state) => {

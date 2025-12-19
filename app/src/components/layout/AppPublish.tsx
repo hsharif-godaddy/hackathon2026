@@ -9,7 +9,6 @@ import Tag from '@ux/tag';
 import text from '@ux/text';
 
 import SinglePlanUpgradeContainer from '@/app/develop/components/SinglePlanUpgradeContainer';
-import { ChatTab } from '@/app/develop/components/types';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
@@ -41,7 +40,6 @@ export default function AppPublish({ location }: { location?: string }) {
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
   const clearPublishStatus = useDevelopPageStore((state) => state.clearPublishStatus);
   const setDeploymentsRefetch = useDevelopPageStore((state) => state.setDeploymentsRefetch);
-  const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab);
   const isPollingEntitlements = useDevelopPageStore((state) => state.isPollingEntitlements);
   const setIsPollingEntitlements = useDevelopPageStore((state) => state.setIsPollingEntitlements);
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
@@ -206,13 +204,8 @@ export default function AppPublish({ location }: { location?: string }) {
    */
   const handleViewHistory = useCallback(() => {
     if (!currentAppId) return;
-
-    // Set active tab to history
-    setActiveChatTab(ChatTab.HISTORY);
-
-    // Navigate to develop page with history tab
     router.push(`/develop/${currentAppId}?tab=history`, { scroll: false });
-  }, [currentAppId, setActiveChatTab, router]);
+  }, [currentAppId, router]);
 
   // Register deployments refetch function in store for retry functionality
   useEffect(() => {
@@ -426,4 +419,3 @@ export default function AppPublish({ location }: { location?: string }) {
   </>
   )
 }
-

@@ -1,7 +1,7 @@
 'use client'
 
 import { Bot } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { useState } from 'react'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
@@ -38,11 +38,6 @@ export default function HandoffToolRenderer({
 }: DefaultToolRendererProps) {
   const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   // Extract target agent from input or result
   let targetAgent = t('builder_tools_handoff_display_unknown')
@@ -64,7 +59,6 @@ export default function HandoffToolRenderer({
       isOpen={isModalOpen}
       onClose={() => setIsModalOpen(false)}
       title={t('builder_tools_handoff_to', {targetAgent})}
-      mounted={mounted}
     >
       <div className="flex-1 overflow-y-auto space-y-2">
         {/* Arguments */}

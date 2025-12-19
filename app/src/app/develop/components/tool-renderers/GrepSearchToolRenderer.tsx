@@ -5,7 +5,7 @@
  */
 
 import { TextSearch } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { useState } from 'react'
 
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
@@ -25,11 +25,6 @@ export default function GrepSearchToolRenderer({
 }: DefaultToolRendererProps) {
   const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   // Parse the result to extract match count and file count
   let matchCount = 0
@@ -68,11 +63,10 @@ export default function GrepSearchToolRenderer({
   const hasDetails = result && typeof result === 'string' && result.length > 0
 
   const modalContent = (
-    <ToolModal
-      isOpen={isModalOpen}
-      onClose={() => setIsModalOpen(false)}
-      title={`${t('builder_tools_grep_results_title')}: ${query || 'grep'}`}
-      mounted={mounted}
+      <ToolModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={`${t('builder_tools_grep_results_title')}: ${query || 'grep'}`}
     >
       <div className="flex-1 overflow-y-auto">
         <pre className="text-sm font-mono whitespace-pre-wrap break-words bg-muted p-2 rounded border border-border">

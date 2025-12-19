@@ -30,11 +30,6 @@ export default function FullscreenModal({
   children
 }: FullscreenModalProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   useEffect(() => {
     if (isOpen) {
@@ -47,6 +42,10 @@ export default function FullscreenModal({
       document.body.style.overflow = 'unset'
     }
   }, [isOpen])
+
+  if (typeof document === 'undefined') {
+    return null
+  }
 
   const isImage = type === 'image';
 
@@ -134,20 +133,6 @@ export default function FullscreenModal({
       )}
     </AnimatePresence>
   )
-
-  if (!mounted) {
-    if (children) {
-      return <div>{children}</div>
-    }
-    return (
-      <button
-        className="flex items-center justify-center w-3 h-3 rounded transition-colors"
-        title="Open in fullscreen"
-      >
-        <WindowNewIcon className="w-2 h-2" />
-      </button>
-    )
-  }
 
   return (
     <>
