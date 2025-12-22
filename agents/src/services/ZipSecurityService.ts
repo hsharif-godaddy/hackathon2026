@@ -423,7 +423,6 @@ export class ZipSecurityService {
   private isSuspiciousFile(fileName: string): boolean {
     const lower = fileName.toLowerCase();
     const suspicious = [
-      '__macosx/',
       '.ds_store',
       'thumbs.db',
       '.git/hooks/', // Git hooks can execute code
