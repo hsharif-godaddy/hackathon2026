@@ -5,9 +5,9 @@
  * - Proxy mode: Uses PROXY_URL with GETTY_TOKEN for authentication
  * - Direct mode: Uses SSO_JWT for local development
  */
-import { Logger, log } from '../../../logging/index.js';
+import { log } from '../../../logging/index.js';
 
-const logger = Logger.create({ service: 'knowb-driver' });
+import { BaseDriver } from './base-driver.js';
 
 /**
  * Options for KnowB search
@@ -59,45 +59,24 @@ interface KnowBAPIResponse {
  * KnowB Knowledge Base Driver
  * Handles semantic search against GoDaddy's knowledge base
  */
-export class KnowBDriver {
-  private useProxy: boolean;
-  private apiBaseUrl: string;
+export class KnowBDriver extends BaseDriver {
   private directApiUrl: string;
-  private proxyToken: string;
-  private ssoJwt: string;
 
   constructor() {
-    // Get base URL from GETTY_API_URL (same env as Getty driver)
-    const baseUrl = process.env.GETTY_API_URL || '';
-
-    // Strip any path components to get clean base URL (backward compatibility)
-    try {
-      const urlObj = new URL(baseUrl);
-      this.apiBaseUrl = `${urlObj.protocol}//${urlObj.host}`;
-    } catch {
-      // If URL parsing fails, strip common path patterns
-      this.apiBaseUrl = baseUrl.replace(/\/(img\/search|v1\/search|v1\/videos|v1\/knowb).*$/, '');
-    }
+    super({
+      serviceName: 'knowb-driver',
+      defaultBaseUrl: '',
+    });
 
     this.directApiUrl = process.env.KNOWB_API_URL || 'https://knowb.api.int.test-godaddy.com/v1/search';
 
-    // Use GETTY_TOKEN for proxy auth (same as Getty driver)
-    this.proxyToken = process.env.GETTY_TOKEN || '';
-    this.ssoJwt = process.env.SSO_JWT || '';
-
-    // Prefer proxy mode when GETTY_API_URL and GETTY_TOKEN are set
-    this.useProxy = !!(this.apiBaseUrl && this.proxyToken);
-
-    logger.info('knowb-driver.config.initialized', {
+    this.logger.info('knowb-driver.direct-api.configured', {
+      directApiUrl: this.directApiUrl,
       useProxy: this.useProxy,
-      apiBaseUrl: this.useProxy ? this.apiBaseUrl : undefined,
-      directApiUrl: !this.useProxy ? this.directApiUrl : undefined,
-      hasProxyToken: !!this.proxyToken,
-      hasSsoJwt: !!this.ssoJwt,
     });
 
-    if (!this.useProxy && !this.ssoJwt) {
-      logger.warn('knowb-driver.auth.missing', {
+    if (!this.hasAuth()) {
+      this.logger.warn('knowb-driver.auth.missing', {
         message: 'No auth configured. Set GETTY_API_URL + GETTY_TOKEN for hosted or SSO_JWT for local.',
       });
     }
@@ -124,7 +103,7 @@ export class KnowBDriver {
       };
     }
 
-    logger.info('knowb-driver.search.begin', {
+    this.logger.info('knowb-driver.search.begin', {
       query: query.substring(0, 100),
       kbNodeIds,
       maxResults,
@@ -139,7 +118,7 @@ export class KnowBDriver {
         return await this.searchDirect(query, kbNodeIds, maxResults, scoreThreshold);
       }
     } catch (error) {
-      log.error(logger, 'knowb-driver.search.error', error as Error, {
+      log.error(this.logger, 'knowb-driver.search.error', error as Error, {
         query: query.substring(0, 100),
       });
 
@@ -159,26 +138,16 @@ export class KnowBDriver {
     maxResults: number,
     scoreThreshold: number
   ): Promise<KnowBSearchResult> {
-    const url = `${this.apiBaseUrl}/v1/knowb/search`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.proxyToken}`,
-      },
-      body: JSON.stringify({
-        query: query.trim(),
-        kbNodeIds,
-        maxResults,
-        scoreThreshold,
-      }),
+    const response = await this.post('/v1/knowb/search', {
+      query: query.trim(),
+      kbNodeIds,
+      maxResults,
+      scoreThreshold,
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      logger.error('knowb-driver.proxy.error', {
+      this.logger.error('knowb-driver.proxy.error', {
         status: response.status,
         statusText: response.statusText,
         error: errorText,
@@ -202,10 +171,10 @@ export class KnowBDriver {
     maxResults: number,
     scoreThreshold: number
   ): Promise<KnowBSearchResult> {
-    if (!this.ssoJwt) {
+    if (!this.hasAuth()) {
       return {
         success: false,
-        error: 'No SSO_JWT configured for direct API access.',
+        error: this.getAuthErrorMessage(),
       };
     }
 
@@ -221,17 +190,15 @@ export class KnowBDriver {
 
     const response = await fetch(this.directApiUrl, {
       method: 'POST',
-      headers: {
-        'accept': 'application/json',
+      headers: this.getHeaders({
         'Content-Type': 'application/json',
-        'Authorization': `sso-jwt ${this.ssoJwt}`,
-      },
+      }),
       body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      logger.error('knowb-driver.api.error', {
+      this.logger.error('knowb-driver.api.error', {
         status: response.status,
         statusText: response.statusText,
         error: errorText,
@@ -256,7 +223,7 @@ export class KnowBDriver {
       score: item.score,
     }));
 
-    logger.info('knowb-driver.search.success', {
+    this.logger.info('knowb-driver.search.success', {
       query: query.substring(0, 100),
       totalResults: results.length,
       topScore: results[0]?.score.toFixed(3),

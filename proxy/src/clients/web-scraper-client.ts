@@ -1,6 +1,5 @@
 import { config } from '../config';
-import ssoClient from '../auth/sso-client';
-import logger from '../utils/logger';
+import { BaseClient } from './base-client';
 import { WebScraperParams, WebScraperAPIResponse } from '../types';
 
 /**
@@ -8,7 +7,14 @@ import { WebScraperParams, WebScraperAPIResponse } from '../types';
  * 
  * Handles requests to the web-scraper API for content extraction and screenshots
  */
-class WebScraperClient {
+class WebScraperClient extends BaseClient {
+  constructor() {
+    super({
+      serviceName: 'WebScraper',
+      ssoHost: config.sso.host,
+      defaultRetries: 2,
+    });
+  }
   /**
    * Scrape website content
    * 
@@ -17,28 +23,15 @@ class WebScraperClient {
    * @returns Promise resolving to API response
    */
   async scrape(params: WebScraperParams, requestId: string = 'unknown'): Promise<WebScraperAPIResponse> {
-    const startTime = Date.now();
-
-    try {
-      // WebScraper uses production SSO (godaddy.com)
-      const jwtToken = await ssoClient.getToken('sso.godaddy.com');
+    return this.executeWithTiming(async () => {
       const queryString = new URLSearchParams(params as Record<string, string>).toString();
       const scraperUrl = `${config.webScraper.upstream}/v1/scrape-website?${queryString}`;
 
-      const response = await this.makeRequest(scraperUrl, jwtToken, requestId, 'GET');
-      const duration = Date.now() - startTime;
-
-      response.duration = duration;
-      return response;
-
-    } catch (error) {
-      const duration = Date.now() - startTime;
-
-      if (error instanceof Error) {
-        (error as Error & { duration?: number }).duration = duration;
-      }
-      throw error;
-    }
+      return this.makeRequest(scraperUrl, requestId, 'GET', undefined, {
+        'x-app-key': config.webScraper.appKey,
+        'User-Agent': config.webScraper.userAgent,
+      });
+    });
   }
 
   /**
@@ -49,139 +42,17 @@ class WebScraperClient {
    * @returns Promise resolving to API response with screenshot URL
    */
   async screenshot(params: WebScraperParams, requestId: string = 'unknown'): Promise<WebScraperAPIResponse> {
-    const startTime = Date.now();
-
-    try {
-      // WebScraper uses production SSO (godaddy.com)
-      const jwtToken = await ssoClient.getToken('sso.godaddy.com');
+    return this.executeWithTiming(async () => {
       const queryString = new URLSearchParams(params as Record<string, string>).toString();
       const scraperUrl = `${config.webScraper.upstream}/v1/screenshot-website?${queryString}`;
 
-      const response = await this.makeRequest(scraperUrl, jwtToken, requestId, 'GET');
-      const duration = Date.now() - startTime;
-
-      response.duration = duration;
-      return response;
-
-    } catch (error) {
-      const duration = Date.now() - startTime;
-
-      if (error instanceof Error) {
-        (error as Error & { duration?: number }).duration = duration;
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Make HTTPS request to web-scraper API
-   * 
-   * @param url - Full URL to request
-   * @param jwtToken - SSO JWT token
-   * @param requestId - Request ID for logging
-   * @param method - HTTP method
-   * @param body - Optional request body
-   * @param retries - Number of retries remaining
-   * @returns Promise resolving to API response
-   */
-  private async makeRequest(
-    url: string,
-    jwtToken: string,
-    requestId: string,
-    method: 'GET' | 'POST' = 'GET',
-    body?: string,
-    retries: number = 2
-  ): Promise<WebScraperAPIResponse> {
-    const urlObj = new URL(url);
-
-    const headers: Record<string, string> = {
-      'Authorization': `sso-jwt ${jwtToken}`,
-      'x-app-key': config.webScraper.appKey,
-      'Accept': 'application/json',
-      'User-Agent': config.webScraper.userAgent
-    };
-
-    if (body && method === 'POST') {
-      headers['Content-Type'] = 'application/json';
-    }
-
-    logger.debug('Making Web Scraper API request with fetch', {
-      requestId,
-      method,
-      url: urlObj.pathname + urlObj.search,
-      headers: this.sanitizeHeaders(headers)
+      return this.makeRequest(scraperUrl, requestId, 'GET', undefined, {
+        'x-app-key': config.webScraper.appKey,
+        'User-Agent': config.webScraper.userAgent,
+      });
     });
-
-    try {
-      const response = await fetch(url, {
-        method,
-        headers,
-        ...(body && method === 'POST' && { body })
-      });
-
-      const data = await response.text();
-
-      if (response.ok) {
-        return {
-          statusCode: response.status,
-          headers: Object.fromEntries(response.headers.entries()) as Record<string, string | string[]>,
-          data: data
-        };
-      } else if (response.status === 401 && retries > 0) {
-        // Token might be expired, clear cache and retry
-        logger.warn('Web Scraper API returned 401, clearing SSO cache and retrying', {
-          requestId,
-          retriesLeft: retries
-        });
-        ssoClient.clearCache('sso.godaddy.com');
-
-        // Retry with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, 3 - retries) * 1000));
-        return this.makeRequest(url, jwtToken, requestId, method, body, retries - 1);
-      } else {
-        const error = new Error(`Web Scraper API request failed with status ${response.status}`) as Error & {
-          statusCode?: number;
-          response?: string;
-        };
-        error.statusCode = response.status;
-        error.response = data;
-        throw error;
-      }
-    } catch (error) {
-      logger.error('Web Scraper API request error', {
-        requestId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-
-      if (retries > 0) {
-        logger.info('Retrying Web Scraper API request', { requestId, retriesLeft: retries });
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return this.makeRequest(url, jwtToken, requestId, method, body, retries - 1);
-      } else {
-        throw error;
-      }
-    }
   }
 
-  /**
-   * Sanitize headers for logging
-   * 
-   * @param headers - Request headers
-   * @returns Sanitized headers with sensitive data redacted
-   */
-  private sanitizeHeaders(headers: Record<string, string | number>): Record<string, string> {
-    const sanitized: Record<string, string> = {};
-    
-    for (const [key, value] of Object.entries(headers)) {
-      if (key === 'Authorization') {
-        sanitized[key] = String(value).substring(0, 20) + '...';
-      } else {
-        sanitized[key] = String(value);
-      }
-    }
-    
-    return sanitized;
-  }
 }
 
 export default new WebScraperClient();

@@ -2,6 +2,7 @@ import { KnowBSearchParams, KnowBAPIResponse, KnowBUploadParams } from '../types
 import ssoClient from '../auth/sso-client';
 import logger from '../utils/logger';
 import { config } from '../config';
+import { BaseClient } from './base-client';
 
 /**
  * Decode JWT token payload (without verification)
@@ -25,7 +26,14 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
  *
  * Handles requests to the KnowB knowledge base API for semantic search
  */
-class KnowBClient {
+class KnowBClient extends BaseClient {
+  constructor() {
+    super({
+      serviceName: 'KnowB',
+      ssoHost: config.sso.host,
+      defaultRetries: 2,
+    });
+  }
   /**
    * Search the knowledge base
    *
@@ -34,19 +42,16 @@ class KnowBClient {
    * @returns Promise resolving to API response
    */
   async search(params: KnowBSearchParams, requestId: string = 'unknown'): Promise<KnowBAPIResponse> {
-    const startTime = Date.now();
+    return this.executeWithTiming(async () => {
+      // Log the configuration being used
+      logger.info('KnowB client config', {
+        requestId,
+        configuredUpstream: config.knowb.upstream,
+        configuredDefaultKbNodeIds: config.knowb.defaultKbNodeIds,
+        envKnowbUpstream: process.env.KNOWB_UPSTREAM || '(not set, using default)',
+      });
 
-    // Log the configuration being used
-    logger.info('KnowB client config', {
-      requestId,
-      configuredUpstream: config.knowb.upstream,
-      configuredDefaultKbNodeIds: config.knowb.defaultKbNodeIds,
-      envKnowbUpstream: process.env.KNOWB_UPSTREAM || '(not set, using default)',
-    });
-
-    try {
-      // KnowB uses test SSO host (test-godaddy.com)
-      const jwtToken = await ssoClient.getToken('sso.test-godaddy.com');
+      const jwtToken = await this.getToken();
 
       // Decode token to understand its type
       const tokenPayload = decodeJwtPayload(jwtToken);
@@ -81,118 +86,8 @@ class KnowBClient {
         requestBody: JSON.stringify(requestBody),
       });
 
-      const response = await this.makeRequest(knowbUrl, jwtToken, requestId, 'POST', JSON.stringify(requestBody));
-      const duration = Date.now() - startTime;
-
-      response.duration = duration;
-      return response;
-
-    } catch (error) {
-      const duration = Date.now() - startTime;
-
-      if (error instanceof Error) {
-        (error as Error & { duration?: number }).duration = duration;
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Make HTTPS request to KnowB API using fetch (same as test script)
-   *
-   * @param url - Full URL to request
-   * @param jwtToken - SSO JWT token
-   * @param requestId - Request ID for logging
-   * @param method - HTTP method
-   * @param body - Optional request body
-   * @param retries - Number of retries remaining
-   * @returns Promise resolving to API response
-   */
-  private async makeRequest(
-    url: string,
-    jwtToken: string,
-    requestId: string,
-    method: 'GET' | 'POST' = 'POST',
-    body?: string,
-    retries: number = 2
-  ): Promise<KnowBAPIResponse> {
-    const urlObj = new URL(url);
-
-    const headers: Record<string, string> = {
-      'Authorization': `sso-jwt ${jwtToken}`,
-      'Accept': 'application/json',
-      'Content-Type': 'application/json'
-    };
-
-    logger.info('[KnowB] Making API request with fetch', {
-      requestId,
-      method,
-      url: urlObj.pathname,
-      hostname: urlObj.hostname,
-      headers: this.sanitizeHeaders(headers),
-      tokenPreview: jwtToken.substring(0, 50) + '...',
-      tokenLength: jwtToken.length
+      return this.makeRequest(knowbUrl, requestId, 'POST', JSON.stringify(requestBody));
     });
-
-    try {
-      const response = await fetch(url, {
-        method,
-        headers,
-        ...(body && method === 'POST' && { body })
-      });
-
-      const data = await response.text();
-
-      if (response.ok) {
-        return {
-          statusCode: response.status,
-          headers: Object.fromEntries(response.headers.entries()) as Record<string, string | string[]>,
-          data: data
-        };
-      } else if (response.status === 401 && retries > 0) {
-        // Token might be expired, clear cache and retry
-        logger.warn('KnowB API returned 401, clearing SSO cache and retrying', {
-          requestId,
-          retriesLeft: retries
-        });
-        ssoClient.clearCache('sso.test-godaddy.com');
-
-        // Retry with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, 3 - retries) * 1000));
-        return this.makeRequest(url, jwtToken, requestId, method, body, retries - 1);
-      } else {
-        // Log detailed error information
-        logger.error('[KnowB] API request failed', {
-          requestId,
-          statusCode: response.status,
-          responseBody: data,
-          responseHeaders: Object.fromEntries(response.headers.entries()),
-          url: urlObj.pathname,
-          hostname: urlObj.hostname
-        });
-
-        const error = new Error(`KnowB API request failed with status ${response.status}`) as Error & {
-          statusCode?: number;
-          response?: string;
-        };
-        error.statusCode = response.status;
-        error.response = data;
-        throw error;
-      }
-    } catch (error) {
-      logger.error('KnowB API request error', {
-        requestId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-
-      if (retries > 0) {
-        logger.info('Retrying KnowB API request', { requestId, retriesLeft: retries });
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return this.makeRequest(url, jwtToken, requestId, method, body, retries - 1);
-      } else {
-        throw error;
-      }
-    }
   }
 
   /**
@@ -203,10 +98,8 @@ class KnowBClient {
    * @returns Promise resolving to API response
    */
   async upload(params: KnowBUploadParams, requestId: string = 'unknown'): Promise<KnowBAPIResponse> {
-    const startTime = Date.now();
-
-    try {
-      const jwtToken = await ssoClient.getToken('sso.test-godaddy.com');
+    return this.executeWithTiming(async () => {
+      const jwtToken = await this.getToken();
 
       const tokenPayload = decodeJwtPayload(jwtToken);
       logger.info('[KnowB] SSO token obtained for upload', {
@@ -227,20 +120,8 @@ class KnowBClient {
         resourceType: params.resourceType,
       });
 
-      const response = await this.makeUploadRequest(knowbUrl, jwtToken, requestId, params);
-      const duration = Date.now() - startTime;
-
-      response.duration = duration;
-      return response;
-
-    } catch (error) {
-      const duration = Date.now() - startTime;
-
-      if (error instanceof Error) {
-        (error as Error & { duration?: number }).duration = duration;
-      }
-      throw error;
-    }
+      return this.makeUploadRequest(knowbUrl, jwtToken, requestId, params);
+    });
   }
 
   /**
@@ -351,26 +232,6 @@ class KnowBClient {
         throw error;
       }
     }
-  }
-
-  /**
-   * Sanitize headers for logging
-   *
-   * @param headers - Request headers
-   * @returns Sanitized headers with sensitive data redacted
-   */
-  private sanitizeHeaders(headers: Record<string, string | number>): Record<string, string> {
-    const sanitized: Record<string, string> = {};
-
-    for (const [key, value] of Object.entries(headers)) {
-      if (key === 'Authorization') {
-        sanitized[key] = String(value).substring(0, 20) + '...';
-      } else {
-        sanitized[key] = String(value);
-      }
-    }
-
-    return sanitized;
   }
 }
 

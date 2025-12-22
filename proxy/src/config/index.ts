@@ -5,6 +5,33 @@ import path from 'path';
 
 const env = process.env as EnvironmentVariables;
 
+// Detect environment from ENVIRONMENT variable (returns 'test' or 'prod')
+const environment = env.ENVIRONMENT || 'test'; // Default to test for safety
+const isProduction = environment === 'prod';
+
+// SSO configuration based on environment
+const getDefaultSsoHost = (): string => {
+  return isProduction ? 'sso.godaddy.com' : 'sso.test-godaddy.com';
+};
+
+const getDefaultSsoEndpoint = (): string => {
+  return `https://${getDefaultSsoHost()}/v1/secure/api/token`;
+};
+
+// KnowB upstream based on environment
+const getDefaultKnowBUpstream = (): string => {
+  return isProduction 
+    ? 'https://knowb.api.int.godaddy.com'
+    : 'https://knowb.api.int.test-godaddy.com';
+};
+
+// WebScraper upstream based on environment
+const getDefaultWebScraperUpstream = (): string => {
+  return isProduction
+    ? 'https://web-scraper.api.int.gdcorp.tools'
+    : 'https://web-scraper.api.int.test-gdcorp.tools';
+};
+
 const config: AppConfig = {
   server: {
     port: parseInt(env.PORT ?? '8888'),
@@ -26,22 +53,21 @@ const config: AppConfig = {
   },
 
   webScraper: {
-    upstream: env.WEB_SCRAPER_UPSTREAM ?? 'https://web-scraper.api.int.gdcorp.tools',
+    upstream: env.WEB_SCRAPER_UPSTREAM ?? getDefaultWebScraperUpstream(),
     appKey: env.WEB_SCRAPER_APP_KEY ?? 'airo-app-builder',
     userAgent: env.USER_AGENT ?? 'airo-proxy/2.0'
   },
 
   knowb: {
-    // Use test environment which has /airo_sys registered
-    upstream: env.KNOWB_UPSTREAM ?? 'https://knowb.api.int.test-godaddy.com',
+    upstream: env.KNOWB_UPSTREAM ?? getDefaultKnowBUpstream(),
     defaultKbNodeIds: ['/airo_info'],
     defaultMaxResults: 5,
     defaultScoreThreshold: 0.35
   },
 
   sso: {
-    host: env.SSO_HOST ?? 'sso.godaddy.com',
-    endpoint: env.SSO_ENDPOINT ?? 'https://sso.godaddy.com/v1/secure/api/token',
+    host: getDefaultSsoHost(),
+    endpoint: getDefaultSsoEndpoint(),
     realm: env.SSO_REALM ?? 'cert',
     timeout: parseInt(env.SSO_TIMEOUT ?? '10000'),
     tokenExpiry: parseInt(env.TOKEN_EXPIRY ?? '3000') // seconds
@@ -84,21 +110,21 @@ function validateConfig(): boolean {
 
   // Console acceptable here: config validates before logger is initialized (circular dep)
   console.log('[CONFIG] ========== PROXY CONFIGURATION ==========');
-  console.log('[CONFIG] SSO configuration:', {
+  console.log('[CONFIG] Environment:', {
+    ENVIRONMENT: env.ENVIRONMENT || '(not set, defaulting to test)',
+    detectedEnv: isProduction ? 'production' : 'test'
+  });
+  console.log('[CONFIG] SSO:', {
     host: config.sso.host,
-    endpoint: config.sso.endpoint,
-    realm: config.sso.realm,
-    tokenExpiry: config.sso.tokenExpiry,
-    envSSO_HOST: env.SSO_HOST || '(not set, using default: sso.test-godaddy.com)'
+    endpoint: config.sso.endpoint
   });
-  console.log('[CONFIG] KnowB configuration:', {
+  console.log('[CONFIG] KnowB:', {
     upstream: config.knowb.upstream,
-    defaultKbNodeIds: config.knowb.defaultKbNodeIds,
-    envKNOWB_UPSTREAM: env.KNOWB_UPSTREAM || '(not set, using default)'
+    source: env.KNOWB_UPSTREAM ? 'env variable' : `auto-detected (${environment})`
   });
-  console.log('[CONFIG] Getty certs:', {
-    certPath: config.getty.certs.certPath,
-    keyPath: config.getty.certs.keyPath
+  console.log('[CONFIG] WebScraper:', {
+    upstream: config.webScraper.upstream,
+    source: env.WEB_SCRAPER_UPSTREAM ? 'env variable' : `auto-detected (${environment})`
   });
   console.log('[CONFIG] ===========================================');
 

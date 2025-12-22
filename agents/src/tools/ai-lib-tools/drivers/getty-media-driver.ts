@@ -4,10 +4,10 @@
  * Handles both image and video search through Getty Images API
  * Consolidates common functionality to eliminate code duplication
  */
-import { Logger, log } from '../../../logging/index.js';
+import { log } from '../../../logging/index.js';
 import { toolImageSearchEvents, toolVideoSearchEvents } from '../../../logging/events/index.js';
 
-const logger = Logger.create({ service: 'getty-media-driver' });
+import { BaseDriver } from './base-driver.js';
 
 /**
  * Media type enumeration
@@ -93,10 +93,15 @@ interface DisplaySize {
  * Unified Getty Media Tool
  * Handles both image and video search with shared infrastructure
  */
-export class GettyMediaDriver {
-  private apiBaseUrl: string;
-  private appKey: string;
-  private ssoJwt: string;
+export class GettyMediaDriver extends BaseDriver {
+  constructor() {
+    super({
+      serviceName: 'getty-media-driver',
+      defaultBaseUrl: 'https://getty-images-proxy.api.test-godaddy.com',
+      appKeyEnvVar: 'GETTY_APP_KEY',
+      defaultAppKey: 'airo-app-builder',
+    });
+  }
 
   /**
    * Convert filter values from PascalCase/mixed format to Getty API's expected lowercase snake_case
@@ -118,43 +123,6 @@ export class GettyMediaDriver {
       .replace(/^_/, ''); // Remove leading underscore
   }
 
-  constructor() {
-    // Extract base URL without any path components
-    const baseUrl = process.env.GETTY_API_URL || 'https://getty-images-proxy.api.test-godaddy.com';
-    
-    // Strip any path components to get clean base URL (backward compatibility)
-    try {
-      const urlObj = new URL(baseUrl);
-      this.apiBaseUrl = `${urlObj.protocol}//${urlObj.host}`;
-    } catch (error) {
-      // If URL parsing fails, strip common path patterns
-      this.apiBaseUrl = baseUrl.replace(/\/(img\/search|v1\/search|v1\/videos).*$/, '');
-    }
-    
-    this.appKey = process.env.GETTY_APP_KEY || 'airo-app-builder';
-
-    if (process.env.GETTY_TOKEN) {
-      this.ssoJwt = 'Bearer ' + process.env.GETTY_TOKEN;
-    } else if (process.env.SSO_JWT) {
-      this.ssoJwt = 'sso-jwt ' + process.env.SSO_JWT;
-    } else {
-      this.ssoJwt = '';
-    }
-
-    if (!this.ssoJwt) {
-      logger.warn('getty-media.auth.missing', {
-        message: 'Neither GETTY_TOKEN nor SSO_JWT is set',
-      });
-    }
-    
-    // Log the configured base URL for debugging
-    logger.info('getty-media.config.initialized', {
-      configuredUrl: baseUrl,
-      cleanedBaseUrl: this.apiBaseUrl,
-      hasToken: !!this.ssoJwt
-    });
-  }
-
   /**
    * Search for media (images or videos) using Getty API
    * 
@@ -173,10 +141,10 @@ export class GettyMediaDriver {
         };
       }
 
-      if (!this.ssoJwt) {
+      if (!this.hasAuth()) {
         return {
           success: false,
-          error: 'SSO JWT token is not configured. Please add it to your .env file.'
+          error: this.getAuthErrorMessage()
         };
       }
 
@@ -194,7 +162,7 @@ export class GettyMediaDriver {
       // Getty API expects lowercase snake_case values for filters
       if (orientations && mediaType === 'image') {
         const converted = this.convertToGettyFormat(orientations);
-        logger.info('getty-media.filter.conversion', { 
+        this.logger.info('getty-media.filter.conversion', { 
           filter: 'orientations', 
           original: orientations, 
           converted 
@@ -204,7 +172,7 @@ export class GettyMediaDriver {
 
       if (compositions && mediaType === 'image') {
         const converted = this.convertToGettyFormat(compositions);
-        logger.info('getty-media.filter.conversion', { 
+        this.logger.info('getty-media.filter.conversion', { 
           filter: 'compositions', 
           original: compositions, 
           converted 
@@ -218,14 +186,12 @@ export class GettyMediaDriver {
       }
 
       const endpoint = mediaType === 'image' ? '/v1/search' : '/v1/videos/search';
-      const url = `${this.apiBaseUrl}${endpoint}?${queryParams.toString()}`;
 
       // Log the full request with all parameters
-      logger.info('getty-media.request', {
+      this.logger.info('getty-media.request', {
         mediaType,
         baseUrl: this.apiBaseUrl,
         endpoint,
-        fullUrl: url,
         params: {
           phrase,
           page,
@@ -239,30 +205,22 @@ export class GettyMediaDriver {
       });
 
       const eventLogger = mediaType === 'video' ? toolVideoSearchEvents : toolImageSearchEvents;
-      eventLogger.begin(logger, {
+      eventLogger.begin(this.logger, {
         toolName: 'GettyMediaDriver',
         prompt: phrase,
         count: pageSize,
         provider: 'getty',
       });
 
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': this.ssoJwt,
-          'x-app-key': this.appKey,
-          'Accept': 'application/json'
-        }
-      });
+      const response = await this.get(endpoint, queryParams);
 
       if (!response.ok) {
         const errorText = await response.text();
-        logger.error('getty-media.request.failed', {
+        this.logger.error('getty-media.request.failed', {
           mediaType,
           status: response.status,
           statusText: response.statusText,
           errorText,
-          url
         });
         throw new Error(`Getty API request failed: ${response.status} ${errorText}`);
       }
@@ -270,7 +228,7 @@ export class GettyMediaDriver {
       const data = await response.json() as GettyAPIResponse;
 
       // Log the response summary
-      logger.info('getty-media.response', {
+      this.logger.info('getty-media.response', {
         mediaType,
         resultCount: data.result_count,
         itemsReturned: mediaType === 'image' 
@@ -281,7 +239,7 @@ export class GettyMediaDriver {
       const items = mediaType === 'image' ? data.images : data.videos;
 
       if (!data || !items || !Array.isArray(items) || items.length === 0) {
-        logger.warn('getty-media.no-results', {
+        this.logger.warn('getty-media.no-results', {
           mediaType,
           phrase,
           resultCount: data?.result_count || 0
@@ -298,7 +256,7 @@ export class GettyMediaDriver {
         const uploadUrl = await this.uploadVideo(videoId);
         
         if (!uploadUrl) {
-          logger.error('getty-media.video-upload.no-url', {
+          this.logger.error('getty-media.video-upload.no-url', {
             videoId,
             phrase
           });
@@ -311,7 +269,7 @@ export class GettyMediaDriver {
         const processedItem = this.processItem(items[0], mediaType);
         processedItem.urls.highRes = uploadUrl;
 
-        logger.info('getty-media.video.success', {
+        this.logger.info('getty-media.video.success', {
           videoId,
           videoUrl: uploadUrl,
           title: processedItem.title
@@ -327,7 +285,7 @@ export class GettyMediaDriver {
       // For images, process all items
       const processedItems = items.map(item => this.processItem(item, mediaType));
 
-      logger.info('getty-media.images.success', {
+      this.logger.info('getty-media.images.success', {
         phrase,
         itemsProcessed: processedItems.length,
         totalResults: data.result_count,
@@ -342,7 +300,7 @@ export class GettyMediaDriver {
 
     } catch (error) {
       const eventLogger = mediaType === 'video' ? toolVideoSearchEvents : toolImageSearchEvents;
-      eventLogger.failure(logger, error as Error, {
+      eventLogger.failure(this.logger, error as Error, {
         toolName: 'GettyMediaDriver',
         prompt: options.phrase,
         count: options.pageSize || 1,
@@ -364,19 +322,9 @@ export class GettyMediaDriver {
    */
   private async uploadVideo(videoId: string): Promise<string | null> {
     try {
-      logger.info('getty-media.video-upload.begin', { videoId });
+      this.logger.info('getty-media.video-upload.begin', { videoId });
 
-      const uploadUrl = `${this.apiBaseUrl}/v1/videos/upload`;
-      const response = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': this.ssoJwt,
-          'x-app-key': this.appKey,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ id: videoId })
-      });
+      const response = await this.post('/v1/videos/upload', { id: videoId });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -389,14 +337,14 @@ export class GettyMediaDriver {
         return null;
       }
 
-      logger.info('getty-media.video-upload.success', {
+      this.logger.info('getty-media.video-upload.success', {
         videoId,
         videoUrl: uploadData.videoUrl,
       });
 
       return uploadData.videoUrl;
     } catch (error) {
-      log.error(logger, 'getty-media.video-upload.error', error as Error, { videoId });
+      log.error(this.logger, 'getty-media.video-upload.error', error as Error, { videoId });
       return null;
     }
   }

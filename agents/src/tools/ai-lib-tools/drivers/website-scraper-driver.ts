@@ -4,9 +4,9 @@
  * Handles website content scraping and screenshot capture through the web-scraper API
  * Uses SSO JWT for authentication similar to Getty implementation
  */
-import { Logger, log } from '../../../logging/index.js';
+import { log } from '../../../logging/index.js';
 
-const logger = Logger.create({ service: 'website-scraper-driver' });
+import { BaseDriver } from './base-driver.js';
 
 /**
  * Options for website scraping
@@ -44,49 +44,13 @@ interface ScrapeAPIResponse {
  * Website Scraper Driver
  * Handles website content extraction and screenshot capture with shared infrastructure
  */
-export class WebsiteScraperDriver {
-  private apiBaseUrl: string;
-  private appKey: string;
-  private ssoJwt: string;
-
+export class WebsiteScraperDriver extends BaseDriver {
   constructor() {
-    // Use GETTY_API_URL (shared proxy URL) or fallback to direct API
-    // In hosted env: GETTY_API_URL points to proxy (e.g., https://...onkatana.net/img/search)
-    // In local dev: Can point directly to web-scraper API
-    const baseUrl = process.env.GETTY_API_URL || 'https://web-scraper.api.int.test-gdcorp.tools';
-    
-    // Strip any path components to get clean base URL
-    // Getty URL may include paths like /img/search which need to be removed
-    try {
-      const urlObj = new URL(baseUrl);
-      this.apiBaseUrl = `${urlObj.protocol}//${urlObj.host}`;
-    } catch (error) {
-      // If URL parsing fails, strip common path patterns
-      this.apiBaseUrl = baseUrl.replace(/\/(img\/search|v1\/).*$/, '');
-    }
-    
-    this.appKey = process.env.WEB_SCRAPER_APP_KEY || 'airo-app-builder';
-
-    if (process.env.GETTY_TOKEN) {
-      this.ssoJwt = 'Bearer ' + process.env.GETTY_TOKEN;
-    } else if (process.env.SSO_JWT) {
-      this.ssoJwt = 'sso-jwt ' + process.env.SSO_JWT;
-    } else {
-      this.ssoJwt = '';
-    }
-
-    if (!this.ssoJwt) {
-      logger.warn('website-scraper.auth.missing', {
-        message: 'Neither GETTY_TOKEN nor SSO_JWT is set',
-      });
-    }
-    
-    // Log the configured base URL for debugging
-    logger.info('website-scraper.config.initialized', {
-      configuredUrl: baseUrl,
-      cleanedBaseUrl: this.apiBaseUrl,
-      hasToken: !!this.ssoJwt,
-      usingProxyUrl: baseUrl.includes('onkatana.net')
+    super({
+      serviceName: 'website-scraper-driver',
+      defaultBaseUrl: 'https://web-scraper.api.int.test-gdcorp.tools',
+      appKeyEnvVar: 'WEB_SCRAPER_APP_KEY',
+      defaultAppKey: 'airo-app-builder',
     });
   }
 
@@ -117,14 +81,14 @@ export class WebsiteScraperDriver {
         };
       }
 
-      if (!this.ssoJwt) {
+      if (!this.hasAuth()) {
         return {
           success: false,
-          error: 'SSO JWT token is not configured. Please add it to your .env file.'
+          error: this.getAuthErrorMessage()
         };
       }
 
-      logger.info('website-scraper.request.begin', {
+      this.logger.info('website-scraper.request.begin', {
         url,
         baseUrl: this.apiBaseUrl
       });
@@ -159,7 +123,7 @@ export class WebsiteScraperDriver {
         }
       }
 
-      logger.info('website-scraper.request.success', {
+      this.logger.info('website-scraper.request.success', {
         url,
         hasContent: !!scrapeResult.sanitizedContent,
         hasScreenshot: !!screenshotResult.screenshotUrl,
@@ -191,7 +155,7 @@ export class WebsiteScraperDriver {
       return resultData;
 
     } catch (error) {
-      log.error(logger, 'website-scraper.request.error', error as Error, {
+      log.error(this.logger, 'website-scraper.request.error', error as Error, {
         url: options.url
       });
       
@@ -211,22 +175,13 @@ export class WebsiteScraperDriver {
   private async scrapeWebsite(url: string): Promise<{ success: boolean; sanitizedContent?: string; scrapeTime?: number; error?: string }> {
     try {
       const queryParams = new URLSearchParams({ url });
-      const endpoint = '/v1/scrape-website';
-      const fullUrl = `${this.apiBaseUrl}${endpoint}?${queryParams.toString()}`;
 
-      logger.info('website-scraper.scrape.request', {
+      this.logger.info('website-scraper.scrape.request', {
         url,
-        endpoint: fullUrl
+        endpoint: '/v1/scrape-website'
       });
 
-      const response = await fetch(fullUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': this.ssoJwt,
-          'x-app-key': this.appKey,
-          'Accept': 'application/json'
-        }
-      });
+      const response = await this.get('/v1/scrape-website', queryParams);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -249,7 +204,7 @@ export class WebsiteScraperDriver {
       };
 
     } catch (error) {
-      log.error(logger, 'website-scraper.scrape.error', error as Error, { url });
+      log.error(this.logger, 'website-scraper.scrape.error', error as Error, { url });
       return {
         success: false,
         error: `Content scraping failed: ${error instanceof Error ? error.message : String(error)}`
@@ -265,14 +220,11 @@ export class WebsiteScraperDriver {
    */
   private async convertBlobToBase64(blobUrl: string): Promise<{ success: boolean; base64?: string; error?: string }> {
     try {
-      logger.info('website-scraper.blob-conversion.begin', { blobUrl });
+      this.logger.info('website-scraper.blob-conversion.begin', { blobUrl });
 
       const response = await fetch(blobUrl, {
         method: 'GET',
-        headers: {
-          'Authorization': this.ssoJwt,
-          'x-app-key': this.appKey
-        }
+        headers: this.getHeaders()
       });
 
       if (!response.ok) {
@@ -292,7 +244,7 @@ export class WebsiteScraperDriver {
       // Create data URI
       const dataUri = `data:${contentType};base64,${base64}`;
 
-      logger.info('website-scraper.blob-conversion.success', {
+      this.logger.info('website-scraper.blob-conversion.success', {
         blobUrl,
         contentType,
         base64Length: base64.length
@@ -304,7 +256,7 @@ export class WebsiteScraperDriver {
       };
 
     } catch (error) {
-      log.error(logger, 'website-scraper.blob-conversion.error', error as Error, { blobUrl });
+      log.error(this.logger, 'website-scraper.blob-conversion.error', error as Error, { blobUrl });
       return {
         success: false,
         error: `Blob conversion failed: ${error instanceof Error ? error.message : String(error)}`
@@ -321,22 +273,13 @@ export class WebsiteScraperDriver {
   private async screenshotWebsite(url: string): Promise<{ success: boolean; screenshotUrl?: string; error?: string }> {
     try {
       const queryParams = new URLSearchParams({ url });
-      const endpoint = '/v1/screenshot-website';
-      const fullUrl = `${this.apiBaseUrl}${endpoint}?${queryParams.toString()}`;
 
-      logger.info('website-scraper.screenshot.request', {
+      this.logger.info('website-scraper.screenshot.request', {
         url,
-        endpoint: fullUrl
+        endpoint: '/v1/screenshot-website'
       });
 
-      const response = await fetch(fullUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': this.ssoJwt,
-          'x-app-key': this.appKey,
-          'Accept': 'application/json'
-        }
-      });
+      const response = await this.get('/v1/screenshot-website', queryParams);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -359,7 +302,7 @@ export class WebsiteScraperDriver {
       };
 
     } catch (error) {
-      log.error(logger, 'website-scraper.screenshot.error', error as Error, { url });
+      log.error(this.logger, 'website-scraper.screenshot.error', error as Error, { url });
       return {
         success: false,
         error: `Screenshot capture failed: ${error instanceof Error ? error.message : String(error)}`

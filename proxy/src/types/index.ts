@@ -208,6 +208,7 @@ export interface EnvironmentVariables {
   PORT?: string;
   LOG_LEVEL?: LogLevel;
   LOG_FORMAT?: 'json' | 'text';
+  ENVIRONMENT?: 'test' | 'prod';
   GETTY_IMAGES_UPSTREAM?: string;
   GETTY_APP_KEY?: string;
   WEB_SCRAPER_UPSTREAM?: string;
@@ -218,7 +219,6 @@ export interface EnvironmentVariables {
   SSO_REALM?: string;
   SSO_TIMEOUT?: string;
   GETTY_CERTS_JSON?: string;
-  NODE_ENV?: 'development' | 'production' | 'test';
   USER_AGENT?: string;
   TOKEN_EXPIRY?: string;
   VALID_TOKENS?: string;
