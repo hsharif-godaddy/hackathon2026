@@ -78,11 +78,22 @@ pnpm --filter <package> build
 
 **HTTP Proxy (dev-supervisor):**
 
-- Ports: 5000+ (HTTPS), 8877+ (API)
-- TLS termination, reverse proxy :8080, WebSocket, retry backoff
-- Config: `DEV_SUPERVISOR_ENABLE_PROXY`, `*_PROXY_PORT`, `*_TARGET_HOST/PORT`, `*_CERT/KEY_PATH`, `*_LOG_LEVEL`, `*_MAX_RETRIES=10`, `*_INITIAL_BACKOFF_MS=200`, `*_MAX_BACKOFF_MS=5000`
-- Errors: 503 (backend starting, retries with backoff: ~31s dev/~4s prod), 502 (proxy error)
-- Files: `dev-supervisor/{http_proxy,main,api}.go`
+- **Ports**: 5000+ (HTTPS), 8877+ (API)
+- **TLS termination**, reverse proxy :8080, WebSocket, retry backoff
+- **Static Serving**: Auto-serves static files from `dist/client/` in production mode (configurable)
+- **SPA Fallback**: For GET requests to extensionless paths, tries serving real file first (e.g., `/.well-known/apple-app-site-association`), then falls back to `index.html`. HEAD/OPTIONS on non-existent extensionless paths return 404 when SPA mode is on; otherwise they proxy to backend (for health checks, CORS preflight).
+- **Modes**:
+  - **Dev mode** (SERVE_STATIC=false): Forwards all non-API to backend Vite (maintains HMR)
+  - **Production mode** (SERVE_STATIC=true): Serves static files directly with cache headers
+- **Config**:
+  - Basic: `DEV_SUPERVISOR_ENABLE_PROXY`, `*_PROXY_PORT`, `*_TARGET_HOST/PORT`, `*_CERT/KEY_PATH`
+  - Static: `DEV_SUPERVISOR_SERVE_STATIC=false` (default), `*_STATIC_ROOT` (default: `/app/dist/client`), `*_SPA_MODE=true`, `*_API_PREFIX=/api`
+  - Advanced: `*_ROUTING_CONFIG=/path/to/config.json` (optional JSON config for cache settings; forward_rules not yet implemented)
+  - Retry: `*_MAX_RETRIES=10`, `*_INITIAL_BACKOFF_MS=200`, `*_MAX_BACKOFF_MS=5000`
+- **Cache Headers**: 1 year for content-hashed assets (.js/.css), 30 days for images, no-cache for index.html
+- **HTTP Methods**: Supports GET, HEAD, OPTIONS for static assets (browser cache validation)
+- **Errors**: 503 (backend starting, retries with backoff: ~31s dev/~4s prod), 502 (proxy error)
+- **Files**: `dev-supervisor/{http_proxy,main,api}.go`
 
 **App Structure:**
 

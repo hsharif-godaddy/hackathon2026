@@ -39,6 +39,13 @@ type Config struct {
 	ProxyTargetPort        int    // Proxy target port (backend port)
 	ProxyCertPath          string // Path to TLS certificate
 	ProxyKeyPath           string // Path to TLS private key
+
+	// Static serving configuration
+	ProxyStaticRoot    string // Root directory for static files (required if ProxyServeStatic=true)
+	ProxyServeStatic   bool   // Enable static file serving (explicit, default: false)
+	ProxySPAMode       bool   // Enable SPA fallback (default: true)
+	ProxyAPIPrefix     string // API route prefix (default: /api)
+	ProxyRoutingConfig string // Optional routing config file path
 }
 
 // configureSchedulerDefaults re-enables Go 1.25's automatic container-aware scheduler tuning.
@@ -285,6 +292,13 @@ func (s *Server) startHTTPProxyIfEnabled() error {
 		TargetPort:  s.config.ProxyTargetPort,
 		TLSCertPath: s.config.ProxyCertPath,
 		TLSKeyPath:  s.config.ProxyKeyPath,
+
+		// Static serving configuration
+		StaticRoot:          s.config.ProxyStaticRoot,
+		EnableStaticServing: s.config.ProxyServeStatic,
+		SPAMode:             s.config.ProxySPAMode,
+		APIPrefix:           s.config.ProxyAPIPrefix,
+		ConfigPath:          s.config.ProxyRoutingConfig,
 	}
 	s.httpProxy = NewHTTPProxy(proxyConfig)
 	if err := s.httpProxy.Start(); err != nil {
@@ -690,6 +704,14 @@ func parseFlags() *Config {
 	config.ProxyTargetPort = getEnvIntWithDefault("DEV_SUPERVISOR_PROXY_TARGET_PORT", 8080)
 	config.ProxyCertPath = getEnvStringWithDefault("DEV_SUPERVISOR_PROXY_CERT_PATH", "")
 	config.ProxyKeyPath = getEnvStringWithDefault("DEV_SUPERVISOR_PROXY_KEY_PATH", "")
+
+	// Static serving configuration from environment variables
+	// Default static root is /app/dist/client (standard Vite build output in container)
+	config.ProxyStaticRoot = getEnvStringWithDefault("DEV_SUPERVISOR_STATIC_ROOT", "/app/dist/client")
+	config.ProxyServeStatic = getEnvBoolWithDefault("DEV_SUPERVISOR_SERVE_STATIC", false)
+	config.ProxySPAMode = getEnvBoolWithDefault("DEV_SUPERVISOR_SPA_MODE", true)
+	config.ProxyAPIPrefix = getEnvStringWithDefault("DEV_SUPERVISOR_API_PREFIX", "/api")
+	config.ProxyRoutingConfig = getEnvStringWithDefault("DEV_SUPERVISOR_ROUTING_CONFIG", "")
 
 	return config
 }

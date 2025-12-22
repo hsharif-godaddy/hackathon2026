@@ -3,14 +3,17 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -29,13 +32,21 @@ type HTTPProxyConfig struct {
 	MaxRetries     int           // Maximum number of retries for connection errors (default: 5)
 	InitialBackoff time.Duration // Initial backoff duration (default: 100ms)
 	MaxBackoff     time.Duration // Maximum backoff duration (default: 2s)
+
+	// Static serving configuration
+	StaticRoot          string // Root directory for static files (required if EnableStaticServing=true)
+	EnableStaticServing bool   // Enable static file serving (explicit, default: false)
+	SPAMode             bool   // Enable SPA fallback (default: true when static serving enabled)
+	APIPrefix           string // API route prefix (default: "/api")
+	ConfigPath          string // Optional path to routing config file
 }
 
 /**
- * HTTPProxy provides HTTP reverse proxy with TLS termination
+ * HTTPProxy provides HTTP reverse proxy with optional TLS termination
  *
  * Responsibilities:
- * - HTTPS termination using provided TLS certificates
+ * - HTTPS termination using provided TLS certificates (optional)
+ * - Plain HTTP mode when certificates are not provided
  * - Reverse proxy to backend application
  * - WebSocket upgrade support
  * - Request header forwarding
@@ -60,6 +71,158 @@ type HTTPProxyStatus struct {
 	ListenAddr string `json:"listen_addr,omitempty"`
 	TargetURL  string `json:"target_url,omitempty"`
 	Uptime     string `json:"uptime,omitempty"`
+}
+
+/**
+ * RequestRouter handles HTTP request routing based on configuration
+ * Routes requests to static file handler, SPA fallback, or backend proxy
+ */
+type RequestRouter struct {
+	staticHandler    http.Handler
+	proxyHandler     http.Handler
+	spaFallback      string
+	apiPrefix        string
+	isProductionMode bool
+}
+
+/**
+ * ServeHTTP implements http.Handler interface for RequestRouter
+ * Routes requests based on path, method, and configuration
+ */
+func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// 1. API routes - always proxy to backend
+	if strings.HasPrefix(r.URL.Path, rr.apiPrefix) {
+		slog.Debug("routing to API backend", "path", r.URL.Path)
+		rr.proxyHandler.ServeHTTP(w, r)
+		return
+	}
+
+	// 2. Static serving disabled - proxy everything else to backend
+	if !rr.isProductionMode {
+		slog.Debug("proxying to backend (static serving disabled)", "path", r.URL.Path)
+		rr.proxyHandler.ServeHTTP(w, r)
+		return
+	}
+
+	// 3. Static serving enabled - handle safe HTTP methods for static content
+	// Handle GET, HEAD, OPTIONS for static assets (browsers use HEAD for cache validation)
+	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+		// Has file extension? Serve as static file directly
+		if path.Ext(r.URL.Path) != "" {
+			slog.Debug("serving static file", "path", r.URL.Path, "method", r.Method)
+			rr.staticHandler.ServeHTTP(w, r)
+			return
+		}
+
+		// No extension - first try to serve as a real file (e.g., /.well-known/apple-app-site-association)
+		// If the file doesn't exist (404), fall back to SPA for GET requests or proxy for HEAD/OPTIONS
+		if rr.staticHandler != nil {
+			// Use an isolated recorder to probe if the file exists without contaminating
+			// the real response writer's headers (avoids Content-Type: text/plain leak)
+			recorder := httptest.NewRecorder()
+			rr.staticHandler.ServeHTTP(recorder, r)
+
+			// If file was found (not 404), copy the response to the real writer
+			if recorder.Code != http.StatusNotFound {
+				// Copy headers from recorder to real response
+				for k, v := range recorder.Header() {
+					w.Header()[k] = v
+				}
+
+				// If serving HTML (e.g., index.html from a directory request like /),
+				// override with strict no-cache headers to prevent stale app shell.
+				// This is critical for SPA deployments where the HTML shell must always
+				// be fresh to load the correct versioned JS/CSS bundles.
+				contentType := recorder.Header().Get("Content-Type")
+				if strings.Contains(contentType, "text/html") {
+					w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+					w.Header().Set("Pragma", "no-cache")
+					w.Header().Set("Expires", "0")
+				}
+
+				w.WriteHeader(recorder.Code)
+				if _, err := w.Write(recorder.Body.Bytes()); err != nil {
+					slog.Error("failed to write response body", "error", err)
+				}
+				return
+			}
+
+			// File not found - behavior depends on method and SPA mode:
+			// - GET with SPA enabled: fall through to SPA fallback below
+			// - GET without SPA: fall through to proxy backend
+			// - HEAD/OPTIONS with SPA enabled: return 404 (client-side routes don't exist as files)
+			// - HEAD/OPTIONS without SPA: fall through to proxy backend (for health checks, CORS preflight)
+			if r.Method != http.MethodGet && rr.spaFallback != "" {
+				http.NotFound(w, r)
+				return
+			}
+		}
+
+		// SPA fallback for GET requests (serve index.html with no-cache)
+		if rr.spaFallback != "" && r.Method == http.MethodGet {
+			slog.Debug("SPA fallback", "path", r.URL.Path)
+			// Set no-cache headers for SPA shell (index.html should never be cached)
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+			http.ServeFile(w, r, rr.spaFallback)
+			return
+		}
+	}
+
+	// 4. Default - proxy to backend
+	rr.proxyHandler.ServeHTTP(w, r)
+}
+
+/**
+ * RoutingConfig defines advanced routing rules loaded from JSON file (optional)
+ */
+type RoutingConfig struct {
+	StaticRoot   string        `json:"static_root"`
+	SPAMode      bool          `json:"spa_mode"`
+	APIPrefix    string        `json:"api_prefix"`
+	ForwardRules []ForwardRule `json:"forward_rules"`
+	CacheControl CacheSettings `json:"cache_control"`
+}
+
+/**
+ * routingConfigJSON is used for unmarshalling JSON with optional fields
+ * Uses pointers so we can distinguish between "not set" and "set to false/zero"
+ */
+type routingConfigJSON struct {
+	StaticRoot    *string            `json:"static_root"`
+	SPAMode       *bool              `json:"spa_mode"`
+	APIPrefix     *string            `json:"api_prefix"`
+	ForwardRules  []ForwardRule      `json:"forward_rules"`
+	CacheControl  *cacheSettingsJSON `json:"cache_control"`
+	EnableCaching *bool              `json:"enable_caching"` // Deprecated, use cache_control.enable_caching
+}
+
+/**
+ * cacheSettingsJSON is used for unmarshalling cache settings from JSON
+ * Uses pointers so we can distinguish between "not set" and "set to false/zero"
+ */
+type cacheSettingsJSON struct {
+	EnableCaching *bool           `json:"enable_caching"`
+	MaxAge        *map[string]int `json:"max_age"` // file extension -> seconds
+}
+
+/**
+ * ForwardRule defines a custom routing rule for advanced request forwarding
+ */
+type ForwardRule struct {
+	PathPattern string   `json:"path_pattern"` // Regex or glob pattern
+	TargetURL   string   `json:"target_url"`   // Where to forward
+	Rewrite     string   `json:"rewrite"`      // Optional path rewrite
+	Methods     []string `json:"methods"`      // HTTP methods (default: all)
+}
+
+/**
+ * CacheSettings defines cache control headers for static assets
+ */
+type CacheSettings struct {
+	EnableCaching bool           `json:"enable_caching"`
+	MaxAge        map[string]int `json:"max_age"` // file extension -> seconds
 }
 
 /**
@@ -245,9 +408,9 @@ func isRetryableError(err error) bool {
  *
  * Performs the following operations:
  * 1. Validates configuration
- * 2. Loads TLS certificates
+ * 2. Loads TLS certificates (if provided)
  * 3. Creates reverse proxy to backend
- * 4. Starts HTTPS listener
+ * 4. Starts HTTPS listener (or HTTP if no certificates)
  * 5. Begins serving requests
  *
  * @returns error if startup fails, nil on success
@@ -265,10 +428,15 @@ func (p *HTTPProxy) Start() error {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	// Load TLS certificates
-	tlsConfig, err := p.loadTLSConfig()
-	if err != nil {
-		return fmt.Errorf("failed to load TLS certificates: %w", err)
+	// Load TLS certificates if provided
+	var tlsConfig *tls.Config
+	useTLS := p.config.TLSCertPath != "" && p.config.TLSKeyPath != ""
+	if useTLS {
+		var err error
+		tlsConfig, err = p.loadTLSConfig()
+		if err != nil {
+			return fmt.Errorf("failed to load TLS certificates: %w", err)
+		}
 	}
 
 	// Create reverse proxy to backend
@@ -276,8 +444,6 @@ func (p *HTTPProxy) Start() error {
 		Scheme: "http",
 		Host:   fmt.Sprintf("%s:%d", p.config.TargetHost, p.config.TargetPort),
 	}
-
-	p.reverseProxy = httputil.NewSingleHostReverseProxy(targetURL)
 
 	// Create custom transport with retry logic
 	baseTransport := &http.Transport{
@@ -293,70 +459,62 @@ func (p *HTTPProxy) Start() error {
 	}
 
 	// Wrap transport with retry logic
-	p.reverseProxy.Transport = &retryTransport{
+	retryTransport := &retryTransport{
 		base:           baseTransport,
 		maxRetries:     p.config.MaxRetries,
 		initialBackoff: p.config.InitialBackoff,
 		maxBackoff:     p.config.MaxBackoff,
 	}
 
-	// Customize proxy behavior
-	originalDirector := p.reverseProxy.Director
-	p.reverseProxy.Director = func(req *http.Request) {
-		// Capture original host before originalDirector rewrites it
-		originalHost := req.Host
+	// Create ReverseProxy manually with only Rewrite (not Director)
+	// Note: Must have exactly one of Director or Rewrite set
+	p.reverseProxy = &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			// Set the target URL
+			r.SetURL(targetURL)
 
-		// Call original director (this will rewrite req.Host to backend)
-		originalDirector(req)
+			// Preserve original Host header (required for Vite HMR and backend routing)
+			// This proxy only accepts requests from trusted sources (internal network),
+			// so preserving the original Host header is safe.
+			r.Out.Host = r.In.Host
+			r.Out.Header.Set("Host", r.In.Host)
 
-		// Restore original host to preserve host-based logic in the app
-		// This preserves the original Host header value for the proxied request
-		req.Host = originalHost
-		req.Header.Set("Host", originalHost)
-
-		// Set X-Forwarded-Host header for additional context
-		req.Header.Set("X-Forwarded-Host", originalHost)
-
-		// Set forwarding headers
-		if clientIP, _, splitErr := net.SplitHostPort(req.RemoteAddr); splitErr == nil {
-			// Set X-Forwarded-For header
-			if prior, ok := req.Header["X-Forwarded-For"]; ok {
-				clientIP = prior[0] + ", " + clientIP
+			// Copy X-Forwarded-For unchanged from incoming request (if present)
+			// By default, ReverseProxy removes X-Forwarded-* headers, so we explicitly copy it
+			if xff := r.In.Header.Get("X-Forwarded-For"); xff != "" {
+				r.Out.Header["X-Forwarded-For"] = []string{xff}
 			}
-			req.Header.Set("X-Forwarded-For", clientIP)
-		}
 
-		// Set X-Real-IP header
-		if clientIP, _, splitErr := net.SplitHostPort(req.RemoteAddr); splitErr == nil {
-			req.Header.Set("X-Real-IP", clientIP)
-		}
+			// Set X-Forwarded-Proto to "https" if not already set
+			// This ensures backends know the original protocol when behind TLS-terminating load balancers
+			if xfp := r.In.Header.Get("X-Forwarded-Proto"); xfp != "" {
+				r.Out.Header["X-Forwarded-Proto"] = []string{xfp}
+			} else {
+				r.Out.Header.Set("X-Forwarded-Proto", "https")
+			}
 
-		// Set X-Forwarded-Proto header
-		if req.TLS != nil {
-			req.Header.Set("X-Forwarded-Proto", "https")
-		} else {
-			req.Header.Set("X-Forwarded-Proto", "http")
-		}
+			// Note: X-Forwarded-Host is not set (Host header is already correct)
+			// Note: X-Real-IP is not set (only accessible by trusted sources)
 
-		slog.Debug("proxying request",
-			"method", req.Method,
-			"path", req.URL.Path,
-			"host", originalHost,
-			"target", targetURL.String(),
-			"remote_addr", req.RemoteAddr)
+			slog.Debug("proxying request",
+				"method", r.In.Method,
+				"path", r.In.URL.Path,
+				"host", r.In.Host,
+				"target", targetURL.String(),
+				"remote_addr", r.In.RemoteAddr)
+		},
+		Transport: retryTransport,
 	}
 
 	// Custom error handler
 	p.reverseProxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		// Determine appropriate status code based on error type
 		statusCode := http.StatusBadGateway
-		statusText := "Bad Gateway"
 
 		// Check if this is a connection error (backend not ready)
 		if isRetryableError(err) {
 			// 503 Service Unavailable - backend is starting up or temporarily unavailable
 			statusCode = http.StatusServiceUnavailable
-			statusText = "Service Unavailable"
 
 			slog.Warn("backend not ready after retries",
 				"error", err,
@@ -372,43 +530,85 @@ func (p *HTTPProxy) Start() error {
 				"remote_addr", r.RemoteAddr)
 		}
 
-		// Return appropriate status code
+		// Return appropriate status code with generic error message to avoid information disclosure
 		// Use http.Error to avoid XSS vulnerability from fmt.Fprintf
-		errorMsg := fmt.Sprintf("%d %s: %v", statusCode, statusText, err)
-		http.Error(w, errorMsg, statusCode)
+		// Detailed error information is already logged above
+		http.Error(w, http.StatusText(statusCode), statusCode)
 	}
 
-	// Create HTTP server with reverse proxy handler
+	// Load routing configuration (with error handling)
+	routingConfig, err := p.loadRoutingConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load routing configuration: %w", err)
+	}
+
+	// Validate static serving configuration (after loading routing config)
+	if validateErr := p.validateStaticServingConfig(routingConfig); validateErr != nil {
+		return fmt.Errorf("invalid static serving configuration: %w", validateErr)
+	}
+
+	// Create request router
+	router := &RequestRouter{
+		proxyHandler:     p.reverseProxy,
+		apiPrefix:        routingConfig.APIPrefix,
+		isProductionMode: p.config.EnableStaticServing,
+	}
+
+	// Configure static serving if enabled
+	if p.config.EnableStaticServing {
+		// Use static root from routing config (which may come from JSON or env var)
+		staticRoot := routingConfig.StaticRoot
+		if staticRoot == "" {
+			staticRoot = p.config.StaticRoot
+		}
+
+		router.staticHandler = newStaticFileHandler(staticRoot, routingConfig.CacheControl)
+
+		if routingConfig.SPAMode {
+			router.spaFallback = path.Join(staticRoot, "index.html")
+		}
+	}
+
+	// Create HTTP server with router (instead of reverse proxy directly)
 	p.server = &http.Server{
-		Handler:      p.reverseProxy,
+		Handler:      router,
 		TLSConfig:    tlsConfig,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
 
-	// Create TLS listener
+	// Create listener (TLS or plain HTTP)
 	listenAddr := fmt.Sprintf(":%d", p.config.ListenPort)
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return fmt.Errorf("failed to create listener on port %d: %w", p.config.ListenPort, err)
 	}
 
-	// Wrap with TLS
-	tlsListener := tls.NewListener(listener, tlsConfig)
-	p.listener = tlsListener
+	// Wrap with TLS if enabled
+	if useTLS {
+		listener = tls.NewListener(listener, tlsConfig)
+	}
+
+	p.listener = listener
 	p.running = true
 	p.startTime = time.Now()
 
 	actualAddr := p.listener.Addr().String()
-	slog.Info("HTTP proxy started",
-		"listen_addr", actualAddr,
-		"target_url", targetURL.String(),
-		"tls_cert", p.config.TLSCertPath)
+	if useTLS {
+		slog.Info("HTTP proxy started with TLS",
+			"listen_addr", actualAddr,
+			"target_url", targetURL.String(),
+			"tls_cert", p.config.TLSCertPath)
+	} else {
+		slog.Info("HTTP proxy started without TLS",
+			"listen_addr", actualAddr,
+			"target_url", targetURL.String())
+	}
 
 	// Start serving in background
 	go func() {
-		if err := p.server.Serve(tlsListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := p.server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("HTTP proxy server error", "error", err)
 		}
 	}()
@@ -510,24 +710,199 @@ func (p *HTTPProxy) validateConfig() error {
 		return fmt.Errorf("target host cannot be empty")
 	}
 
-	if p.config.TLSCertPath == "" {
-		return fmt.Errorf("TLS certificate path cannot be empty")
+	// TLS certificates are optional - if provided, both cert and key must be specified
+	hasCert := p.config.TLSCertPath != ""
+	hasKey := p.config.TLSKeyPath != ""
+
+	if hasCert != hasKey {
+		return fmt.Errorf("both TLS certificate and key must be provided, or neither (cert=%q, key=%q)",
+			p.config.TLSCertPath, p.config.TLSKeyPath)
 	}
 
-	if p.config.TLSKeyPath == "" {
-		return fmt.Errorf("TLS key path cannot be empty")
-	}
+	// If TLS paths are provided, validate they exist
+	if hasCert {
+		if _, err := os.Stat(p.config.TLSCertPath); os.IsNotExist(err) {
+			return fmt.Errorf("TLS certificate file not found: %s", p.config.TLSCertPath)
+		}
 
-	// Validate cert and key files exist and are readable
-	if _, err := os.Stat(p.config.TLSCertPath); os.IsNotExist(err) {
-		return fmt.Errorf("TLS certificate file not found: %s", p.config.TLSCertPath)
-	}
-
-	if _, err := os.Stat(p.config.TLSKeyPath); os.IsNotExist(err) {
-		return fmt.Errorf("TLS key file not found: %s", p.config.TLSKeyPath)
+		if _, err := os.Stat(p.config.TLSKeyPath); os.IsNotExist(err) {
+			return fmt.Errorf("TLS key file not found: %s", p.config.TLSKeyPath)
+		}
 	}
 
 	return nil
+}
+
+/**
+ * validateStaticServingConfig validates static serving configuration after routing config is loaded
+ *
+ * This validation happens after loadRoutingConfig() so it can validate the merged configuration
+ * (env vars + JSON config) rather than just env vars.
+ *
+ * @param routingConfig - The merged routing configuration to validate
+ * @returns error if configuration is invalid
+ */
+func (p *HTTPProxy) validateStaticServingConfig(routingConfig RoutingConfig) error {
+	if !p.config.EnableStaticServing {
+		slog.Info("static file serving disabled, proxying all requests to backend")
+		return nil
+	}
+
+	// Determine effective static root (from routingConfig or fallback to p.config)
+	staticRoot := routingConfig.StaticRoot
+	if staticRoot == "" {
+		staticRoot = p.config.StaticRoot
+	}
+
+	if staticRoot == "" {
+		return fmt.Errorf("static root must be specified when static serving is enabled (via DEV_SUPERVISOR_STATIC_ROOT env var or static_root in routing config)")
+	}
+
+	// Check if static root exists
+	if _, err := os.Stat(staticRoot); os.IsNotExist(err) {
+		return fmt.Errorf("static root directory does not exist: %s", staticRoot)
+	}
+
+	// Check if index.html exists for SPA mode
+	if routingConfig.SPAMode {
+		indexPath := path.Join(staticRoot, "index.html")
+		if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+			slog.Warn("index.html not found in static root, SPA fallback may not work",
+				"path", indexPath)
+		}
+	}
+
+	// Log whether using default or custom static root
+	isDefault := staticRoot == "/app/dist/client"
+	slog.Info("static file serving enabled",
+		"root", staticRoot,
+		"spa_mode", routingConfig.SPAMode,
+		"using_default_root", isDefault)
+
+	return nil
+}
+
+/**
+ * newStaticFileHandler creates an http.Handler for serving static files with caching
+ *
+ * @param root - Root directory for static files
+ * @param cacheSettings - Cache control settings for different file types
+ * @returns http.Handler that serves static files with appropriate cache headers
+ */
+func newStaticFileHandler(root string, cacheSettings CacheSettings) http.Handler {
+	fs := http.FileServer(http.Dir(root))
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Ensure intermediaries cache distinct variants per negotiated encoding
+		w.Header().Add("Vary", "Accept-Encoding")
+
+		// Set cache headers based on file extension
+		if cacheSettings.EnableCaching {
+			ext := path.Ext(r.URL.Path)
+			if maxAge, ok := cacheSettings.MaxAge[ext]; ok {
+				w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAge))
+			}
+		}
+
+		fs.ServeHTTP(w, r)
+	})
+}
+
+/**
+ * loadRoutingConfig loads routing configuration from file or returns defaults
+ *
+ * @returns RoutingConfig with merged settings or error if file operations fail
+ */
+func (p *HTTPProxy) loadRoutingConfig() (RoutingConfig, error) {
+	// Default config
+	config := RoutingConfig{
+		APIPrefix: "/api",
+		SPAMode:   true,
+		CacheControl: CacheSettings{
+			EnableCaching: true,
+			MaxAge: map[string]int{
+				".js":    31536000, // 1 year (content-hashed)
+				".css":   31536000,
+				".woff2": 31536000,
+				".png":   2592000, // 30 days
+				".jpg":   2592000,
+				".svg":   2592000,
+				".html":  0, // Never cache (SPA shell)
+				".json":  0,
+			},
+		},
+	}
+
+	// Apply environment variable overrides to defaults
+	if p.config.APIPrefix != "" {
+		config.APIPrefix = p.config.APIPrefix
+	}
+	if p.config.StaticRoot != "" {
+		config.StaticRoot = p.config.StaticRoot
+	}
+	config.SPAMode = p.config.SPAMode
+
+	// Load from JSON file if specified (JSON config takes precedence over env vars)
+	if p.config.ConfigPath != "" {
+		slog.Info("loading routing config from file", "path", p.config.ConfigPath)
+
+		// Check if file exists
+		if _, err := os.Stat(p.config.ConfigPath); os.IsNotExist(err) {
+			return config, fmt.Errorf("routing config file not found: %s", p.config.ConfigPath)
+		}
+
+		// Read file
+		data, err := os.ReadFile(p.config.ConfigPath)
+		if err != nil {
+			return config, fmt.Errorf("failed to read routing config file: %w", err)
+		}
+
+		// Unmarshal JSON using pointer struct to distinguish "not set" from "set to false/zero"
+		var fileConfig routingConfigJSON
+		if err := json.Unmarshal(data, &fileConfig); err != nil {
+			return config, fmt.Errorf("failed to parse routing config JSON: %w", err)
+		}
+
+		// Merge file config with defaults (file config takes precedence)
+		// Only override values that were explicitly set in JSON (non-nil pointers)
+		if fileConfig.StaticRoot != nil && *fileConfig.StaticRoot != "" {
+			config.StaticRoot = *fileConfig.StaticRoot
+		}
+		if fileConfig.APIPrefix != nil && *fileConfig.APIPrefix != "" {
+			config.APIPrefix = *fileConfig.APIPrefix
+		}
+		if fileConfig.SPAMode != nil {
+			config.SPAMode = *fileConfig.SPAMode
+		}
+
+		// Merge cache control settings
+		if fileConfig.CacheControl != nil {
+			// Copy EnableCaching only if explicitly set in JSON
+			if fileConfig.CacheControl.EnableCaching != nil {
+				config.CacheControl.EnableCaching = *fileConfig.CacheControl.EnableCaching
+			}
+
+			// Copy MaxAge only if explicitly set in JSON
+			if fileConfig.CacheControl.MaxAge != nil {
+				config.CacheControl.MaxAge = *fileConfig.CacheControl.MaxAge
+			}
+		} else if fileConfig.EnableCaching != nil {
+			// Support deprecated top-level enable_caching for backward compatibility
+			config.CacheControl.EnableCaching = *fileConfig.EnableCaching
+		}
+
+		if fileConfig.ForwardRules != nil {
+			config.ForwardRules = fileConfig.ForwardRules
+			slog.Warn("forward_rules are not yet implemented and will be ignored",
+				"rule_count", len(fileConfig.ForwardRules))
+		}
+
+		slog.Info("routing config loaded successfully",
+			"api_prefix", config.APIPrefix,
+			"spa_mode", config.SPAMode)
+	}
+
+	return config, nil
 }
 
 /**
