@@ -26,6 +26,15 @@ export default function PersistentTodoList() {
   const [isLoading, setIsLoading] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const updateContainerRef = useRef<HTMLDivElement>(null)
+  // Track which appId the currentList belongs to
+  const listAppIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (listAppIdRef.current !== appId) {
+      setCurrentList(null)
+      listAppIdRef.current = null
+    }
+  }, [appId, setCurrentList])
 
   /**
    * Load the current list when the app changes
@@ -35,9 +44,11 @@ export default function PersistentTodoList() {
       if (!appId) return
 
       setIsLoading(true)
+
       try {
         const list = await todoListService.getCurrentList(appId)
         setCurrentList(list)
+        listAppIdRef.current = appId // Track that this list belongs to this appId
         logger.debug('persistent-todo-list.load.success', {
           appId,
           hasCurrentList: !!list,
@@ -72,8 +83,9 @@ export default function PersistentTodoList() {
     }
   }, [viewState, updatedItemIds])
 
-  // Don't render if no list or loading
-  if (isLoading || !currentList) {
+  // Don't render if no list or loading or invalid list
+  const isValidList = currentList && listAppIdRef.current === appId
+  if (isLoading || !isValidList) {
     return null
   }
 
@@ -447,4 +459,3 @@ function TodoListModal({
     </AnimatePresence>
   )
 }
-

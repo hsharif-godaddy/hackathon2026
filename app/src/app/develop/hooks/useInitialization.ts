@@ -216,8 +216,8 @@ function computeUIState(
 
   const chatLoaderPhase: 'initializing' | 'deploying' | 'verifying-agent' =
     phase === 'creating' ? 'deploying' :
-    (subPhase === 'waiting-for-websocket' || phase === 'error') ? 'verifying-agent' :
-    'initializing'
+      (subPhase === 'waiting-for-websocket' || phase === 'error') ? 'verifying-agent' :
+        'initializing'
 
   // Preview loader logic - show from when we're ready to send initial prompt until first file edit
   // This overlay sits on top of PreviewPane's internal "Starting Server" loader
@@ -436,6 +436,12 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       return
     }
 
+
+    // Reset realAppId from site creation store when navigating to a regular app
+    if (!isJobId && realAppId) {
+      useSiteCreationStore.getState().reset()
+    }
+
     if (isJobId) {
       setPhase('checking-creation')
       setSubPhase(null)
@@ -444,7 +450,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       setPhase('initializing-page')
       setSubPhase(null)
     }
-  }, [appId, isJobId])
+  }, [appId, isJobId, realAppId])
 
   // Step 2: Handle site creation flow
   useEffect(() => {
@@ -502,7 +508,10 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   useEffect(() => {
     if (phase === 'loading-history' && appId && loadingPhase === 'ready') {
       const effectiveAppId = realAppId || appId
-
+      logger.debug('initialization.history.loading', {
+        appId: effectiveAppId,
+        message: 'Loading conversation history'
+      })
       loadConversationHistory(effectiveAppId)
         .then(() => {
           setPhase('ready')
