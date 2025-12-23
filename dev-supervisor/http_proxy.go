@@ -75,6 +75,26 @@ type HTTPProxyStatus struct {
 }
 
 /**
+ * responseWriter wraps http.ResponseWriter to capture status code and response size
+ */
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+	size       int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+func (rw *responseWriter) Write(b []byte) (int, error) {
+	n, err := rw.ResponseWriter.Write(b)
+	rw.size += n
+	return n, err
+}
+
+/**
  * RequestRouter handles HTTP request routing based on configuration
  * Routes requests to static file handler, SPA fallback, or backend proxy
  */
@@ -84,6 +104,37 @@ type RequestRouter struct {
 	spaFallback      string
 	apiPrefix        string
 	isProductionMode bool
+}
+
+/**
+ * loggingMiddleware wraps an http.Handler to log requests with response details
+ */
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		// Wrap response writer to capture status and size
+		rw := &responseWriter{
+			ResponseWriter: w,
+			statusCode:     http.StatusOK, // Default to 200 if WriteHeader not called
+			size:           0,
+		}
+
+		// Call next handler
+		next.ServeHTTP(rw, r)
+
+		// Log request with response details
+		duration := time.Since(start)
+		slog.Info("http.request",
+			"type", "http_request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", rw.statusCode,
+			"size", rw.size,
+			"duration_ms", duration.Milliseconds(),
+			"remote_addr", r.RemoteAddr,
+		)
+	})
 }
 
 /**
@@ -570,9 +621,12 @@ func (p *HTTPProxy) Start() error {
 		}
 	}
 
+	// Wrap router with logging middleware
+	handler := loggingMiddleware(router)
+
 	// Create HTTP server with router (instead of reverse proxy directly)
 	p.server = &http.Server{
-		Handler:      router,
+		Handler:      handler,
 		TLSConfig:    tlsConfig,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
