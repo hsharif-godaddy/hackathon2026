@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -565,7 +566,7 @@ func (p *HTTPProxy) Start() error {
 		router.staticHandler = newStaticFileHandler(staticRoot, routingConfig.CacheControl)
 
 		if routingConfig.SPAMode {
-			router.spaFallback = path.Join(staticRoot, "index.html")
+			router.spaFallback = filepath.Join(staticRoot, "index.html")
 		}
 	}
 
@@ -758,17 +759,18 @@ func (p *HTTPProxy) validateStaticServingConfig(routingConfig RoutingConfig) err
 		return fmt.Errorf("static root must be specified when static serving is enabled (via DEV_SUPERVISOR_STATIC_ROOT env var or static_root in routing config)")
 	}
 
-	// Check if static root exists
+	// Check if static root exists (warn but don't fail - directory may be created after startup)
 	if _, err := os.Stat(staticRoot); os.IsNotExist(err) {
-		return fmt.Errorf("static root directory does not exist: %s", staticRoot)
-	}
-
-	// Check if index.html exists for SPA mode
-	if routingConfig.SPAMode {
-		indexPath := path.Join(staticRoot, "index.html")
-		if _, err := os.Stat(indexPath); os.IsNotExist(err) {
-			slog.Warn("index.html not found in static root, SPA fallback may not work",
-				"path", indexPath)
+		slog.Warn("static root directory does not exist at startup, will be unavailable until created",
+			"path", staticRoot)
+	} else {
+		// Only check index.html if directory exists and SPA mode is enabled
+		if routingConfig.SPAMode {
+			indexPath := filepath.Join(staticRoot, "index.html")
+			if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+				slog.Warn("index.html not found in static root, SPA fallback may not work",
+					"path", indexPath)
+			}
 		}
 	}
 

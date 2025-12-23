@@ -216,12 +216,10 @@ func TestValidateStaticServingConfig_NonExistentRoot(t *testing.T) {
 		SPAMode:    true,
 	}
 
+	// Should not return error when static root doesn't exist (just logs warning)
 	err := proxy.validateStaticServingConfig(routingConfig)
-	if err == nil {
-		t.Error("expected error when static root does not exist, got nil")
-	}
-	if !strings.Contains(err.Error(), "static root directory does not exist") {
-		t.Errorf("expected error about non-existent directory, got: %v", err)
+	if err != nil {
+		t.Errorf("expected no error when static root does not exist (should just warn), got: %v", err)
 	}
 }
 
