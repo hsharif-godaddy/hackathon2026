@@ -39,6 +39,9 @@ interface DevelopPageStore {
   // Tour UI
   showIntroTour: boolean
 
+  // Asset Manager UI
+  isAssetManagerOpen: boolean
+
   // Publish status UI (per-app state keyed by appId)
   publishStates: Record<string, {
     isPublishing: boolean
@@ -78,6 +81,9 @@ interface DevelopPageStore {
   // Tour actions
   setShowIntroTour: (show: boolean) => void
   checkAndTriggerIntroTour: (appId: string) => void
+
+  // Asset Manager actions
+  setIsAssetManagerOpen: (open: boolean) => void
 
   // Publish status actions (per-app)
   setIsPublishing: (appId: string, isPublishing: boolean) => void
@@ -141,6 +147,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // Tour state
     showIntroTour: false,
+
+    // Asset Manager state
+    isAssetManagerOpen: false,
 
     // Publish status state (per-app, keyed by appId)
     publishStates: {},
@@ -245,6 +254,11 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         })
       }, 1000)
     },
+
+    // Asset Manager actions
+    setIsAssetManagerOpen: (open: boolean) => set((state) => {
+      state.isAssetManagerOpen = open
+    }),
 
     // Publish status actions (per-app)
     getPublishState: (appId: string) => {

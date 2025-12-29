@@ -115,6 +115,8 @@ function DevelopPageContent() {
   const setShowIntroTour = useDevelopPageStore((state) => state.setShowIntroTour)
   const checkAndTriggerIntroTour = useDevelopPageStore((state) => state.checkAndTriggerIntroTour)
   const site = useDevelopPageStore((state) => state.site);
+  const isAssetManagerOpen = useDevelopPageStore((state) => state.isAssetManagerOpen);
+  const setIsAssetManagerOpen = useDevelopPageStore((state) => state.setIsAssetManagerOpen);
 
   useGitHistoryQuery({
     appId: appId || '',
@@ -619,8 +621,19 @@ function DevelopPageContent() {
     )
   }
 
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes('Files') && !isAssetManagerOpen) {
+      setIsAssetManagerOpen(true);
+    }
+  };
+
   return (
-    <div className="h-screen flex flex-col">
+    <div
+      className="h-screen flex flex-col"
+      onDragEnter={handleDragEnter}
+    >
       <Header location="develop" />
 
       {isMobile ? (

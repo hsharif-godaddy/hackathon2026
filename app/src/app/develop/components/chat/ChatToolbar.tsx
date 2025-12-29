@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import Box from '@ux/box'
 import CommentsIcon from '@ux/icon/comments'
 import HistoryIcon from '@ux/icon/history'
@@ -42,7 +41,8 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
     enabled: !!appId
   })
 
-  const [isAssetManagerOpen, setIsAssetManagerOpen] = useState(false)
+  const isAssetManagerOpen = useDevelopPageStore((state) => state.isAssetManagerOpen);
+  const setIsAssetManagerOpen = useDevelopPageStore((state) => state.setIsAssetManagerOpen);
 
   function handleAssetSelect(items: AssetManagerItem[]) {
     logger.debug('chat_toolbar.assets.selected', {
