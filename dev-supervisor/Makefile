@@ -1,6 +1,6 @@
 # dev-supervisor Makefile
 
-.PHONY: build clean test lint fmt fmt-fix vet run help install deps
+.PHONY: build clean test test-all test-docker test-docker-go lint fmt fmt-fix vet run help install deps
 
 # Build variables
 BINARY_NAME := dev-supervisor
@@ -48,6 +48,21 @@ test-coverage: test
 	@echo "Generating coverage report..."
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
+
+## Run all tests including Linux-specific (same as test on Linux, cross-platform elsewhere)
+test-all: test
+	@echo "Note: On Linux, all tests run automatically. On other platforms, Linux-specific tests are skipped."
+
+## Run Docker integration tests
+test-docker:
+	@echo "Running Docker integration tests..."
+	@chmod +x test/run-docker-tests.sh
+	@./test/run-docker-tests.sh
+
+## Run Docker tests via Go test wrapper
+test-docker-go:
+	@echo "Running Docker integration tests via Go..."
+	@go test -v -tags=docker_integration -run TestDockerIntegration
 
 ## Run linter
 lint:

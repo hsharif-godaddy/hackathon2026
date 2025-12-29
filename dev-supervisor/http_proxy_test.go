@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -15,6 +17,22 @@ import (
 
 const testProxyResponse = "proxy"
 const testRemoteAddr = "10.0.0.1:12345"
+
+// newIPv4TestServer creates an httptest server that binds to IPv4 only
+// This avoids IPv6 binding issues on macOS which can require elevated privileges
+func newIPv4TestServer(handler http.Handler) *httptest.Server {
+	srv := httptest.NewUnstartedServer(handler)
+	// Force IPv4 by using tcp4 network
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		// Fallback to default behavior if IPv4-only fails
+		srv.Start()
+		return srv
+	}
+	srv.Listener = listener
+	srv.Start()
+	return srv
+}
 
 // Unit tests for validateConfig()
 func TestValidateConfig_StaticServingDisabled(t *testing.T) {
@@ -964,13 +982,47 @@ func TestRequestRouter_StaticFileWithExtension_OPTIONS(t *testing.T) {
 	}
 
 	req := httptest.NewRequest("OPTIONS", "/app.js", nil)
+	req.Header.Set("Origin", "https://example.com")
+	req.Header.Set("Access-Control-Request-Headers", "X-Test-Header")
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
 
-	// http.FileServer returns 200 for OPTIONS
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got: %d", rec.Code)
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("expected status 204, got: %d", rec.Code)
+	}
+	if rec.Header().Get("Access-Control-Allow-Origin") != "https://example.com" {
+		t.Errorf("expected Access-Control-Allow-Origin echo, got %s", rec.Header().Get("Access-Control-Allow-Origin"))
+	}
+	if rec.Header().Get("Access-Control-Allow-Headers") != "X-Test-Header" {
+		t.Errorf("expected Access-Control-Allow-Headers to mirror request, got %s", rec.Header().Get("Access-Control-Allow-Headers"))
+	}
+}
+
+func TestRequestRouter_ExtensionlessStaticFile_OPTIONS(t *testing.T) {
+	tmpDir := t.TempDir()
+	file := path.Join(tmpDir, ".well-known")
+	if err := os.WriteFile(file, []byte("data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	router := &RequestRouter{
+		staticHandler:    http.FileServer(http.Dir(tmpDir)),
+		proxyHandler:     http.NotFoundHandler(),
+		apiPrefix:        "/api",
+		isProductionMode: true,
+	}
+
+	req := httptest.NewRequest("OPTIONS", "/.well-known", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for OPTIONS, got %d", rec.Code)
+	}
+	if rec.Header().Get("Allow") != "GET, HEAD, OPTIONS" {
+		t.Fatalf("expected Allow header to advertise safe methods, got %s", rec.Header().Get("Allow"))
 	}
 }
 
@@ -1623,7 +1675,7 @@ func TestRequestRouter_ExtensionlessNonHTML_NoCacheNotForced(t *testing.T) {
 // Test that upstream X-Forwarded-Proto is preserved (for TLS-terminating load balancers)
 func TestReverseProxy_PreservesUpstreamXForwardedProto(t *testing.T) {
 	var capturedHeaders http.Header
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	backend := newIPv4TestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedHeaders = r.Header.Clone()
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -1648,7 +1700,7 @@ func TestReverseProxy_PreservesUpstreamXForwardedProto(t *testing.T) {
 	})
 
 	targetURL := &url.URL{
-		Scheme: "http",
+		Scheme: protoHTTP,
 		Host:   backend.URL[7:],
 	}
 
@@ -1664,31 +1716,27 @@ func TestReverseProxy_PreservesUpstreamXForwardedProto(t *testing.T) {
 				r.Out.Header["X-Forwarded-For"] = []string{xff}
 			}
 
-			if xfp := r.In.Header.Get("X-Forwarded-Proto"); xfp != "" {
-				r.Out.Header["X-Forwarded-Proto"] = []string{xfp}
-			} else {
-				r.Out.Header.Set("X-Forwarded-Proto", "https")
-			}
+			r.Out.Header.Set("X-Forwarded-Proto", determineForwardedProto(r.In))
 		},
 	}
 
 	req := httptest.NewRequest("GET", "http://example.com/test", nil)
-	req.Header.Set("X-Forwarded-Proto", "https") // Upstream proxy set this
+	req.Header.Set("X-Forwarded-Proto", protoHTTPS) // Upstream proxy set this
 	req.RemoteAddr = testRemoteAddr
 
 	rec := httptest.NewRecorder()
 	proxy.reverseProxy.ServeHTTP(rec, req)
 
-	if capturedHeaders.Get("X-Forwarded-Proto") != "https" {
+	if capturedHeaders.Get("X-Forwarded-Proto") != protoHTTPS {
 		t.Errorf("expected X-Forwarded-Proto 'https' (from upstream), got: %s",
 			capturedHeaders.Get("X-Forwarded-Proto"))
 	}
 }
 
-// Test that X-Forwarded-Proto defaults to "https" when not set
-func TestReverseProxy_DefaultsXForwardedProtoToHTTPS(t *testing.T) {
+// Test that X-Forwarded-Proto defaults to the inbound request scheme when not set
+func TestReverseProxy_DefaultsXForwardedProtoToRequestScheme(t *testing.T) {
 	var capturedHeaders http.Header
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	backend := newIPv4TestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedHeaders = r.Header.Clone()
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -1713,7 +1761,7 @@ func TestReverseProxy_DefaultsXForwardedProtoToHTTPS(t *testing.T) {
 	})
 
 	targetURL := &url.URL{
-		Scheme: "http",
+		Scheme: protoHTTP,
 		Host:   backend.URL[7:],
 	}
 
@@ -1729,11 +1777,7 @@ func TestReverseProxy_DefaultsXForwardedProtoToHTTPS(t *testing.T) {
 				r.Out.Header["X-Forwarded-For"] = []string{xff}
 			}
 
-			if xfp := r.In.Header.Get("X-Forwarded-Proto"); xfp != "" {
-				r.Out.Header["X-Forwarded-Proto"] = []string{xfp}
-			} else {
-				r.Out.Header.Set("X-Forwarded-Proto", "https")
-			}
+			r.Out.Header.Set("X-Forwarded-Proto", determineForwardedProto(r.In))
 		},
 	}
 
@@ -1744,16 +1788,16 @@ func TestReverseProxy_DefaultsXForwardedProtoToHTTPS(t *testing.T) {
 	rec := httptest.NewRecorder()
 	proxy.reverseProxy.ServeHTTP(rec, req)
 
-	if capturedHeaders.Get("X-Forwarded-Proto") != "https" {
-		t.Errorf("expected X-Forwarded-Proto to default to 'https', got: %s",
+	if capturedHeaders.Get("X-Forwarded-Proto") != protoHTTP {
+		t.Errorf("expected X-Forwarded-Proto to default to '%s', got: %s",
+			protoHTTP,
 			capturedHeaders.Get("X-Forwarded-Proto"))
 	}
 }
 
-// Test that X-Forwarded-For is passed through unchanged
-func TestReverseProxy_PassesThroughXForwardedFor(t *testing.T) {
+func TestReverseProxy_DefaultsXForwardedProtoToHTTPSWhenTLS(t *testing.T) {
 	var capturedHeaders http.Header
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	backend := newIPv4TestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedHeaders = r.Header.Clone()
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -1778,7 +1822,115 @@ func TestReverseProxy_PassesThroughXForwardedFor(t *testing.T) {
 	})
 
 	targetURL := &url.URL{
-		Scheme: "http",
+		Scheme: protoHTTP,
+		Host:   backend.URL[7:],
+	}
+
+	proxy.reverseProxy = &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(targetURL)
+			r.Out.Host = r.In.Host
+			r.Out.Header.Set("Host", r.In.Host)
+
+			r.Out.Header.Set("X-Forwarded-Proto", determineForwardedProto(r.In))
+		},
+	}
+
+	req := httptest.NewRequest("GET", "https://example.com/test", nil)
+	req.RemoteAddr = testRemoteAddr
+	req.TLS = &tls.ConnectionState{}
+
+	rec := httptest.NewRecorder()
+	proxy.reverseProxy.ServeHTTP(rec, req)
+
+	if capturedHeaders.Get("X-Forwarded-Proto") != protoHTTPS {
+		t.Errorf("expected X-Forwarded-Proto to default to '%s' when TLS is present, got: %s",
+			protoHTTPS,
+			capturedHeaders.Get("X-Forwarded-Proto"))
+	}
+}
+
+func TestReverseProxy_IgnoresInvalidForwardedProto(t *testing.T) {
+	var capturedHeaders http.Header
+	backend := newIPv4TestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	host := backendURL.Hostname()
+	port := backendURL.Port()
+	if port == "" {
+		port = "80"
+	}
+
+	proxy := NewHTTPProxy(HTTPProxyConfig{
+		Enabled:    true,
+		ListenPort: 0,
+		TargetHost: host,
+		TargetPort: mustParsePort(t, port),
+	})
+
+	targetURL := &url.URL{
+		Scheme: protoHTTP,
+		Host:   backend.URL[7:],
+	}
+
+	proxy.reverseProxy = &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(targetURL)
+			r.Out.Host = r.In.Host
+			r.Out.Header.Set("Host", r.In.Host)
+			r.Out.Header.Set("X-Forwarded-Proto", determineForwardedProto(r.In))
+		},
+	}
+
+	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req.Header.Set("X-Forwarded-Proto", "ftp") // invalid value should be ignored
+	req.RemoteAddr = testRemoteAddr
+
+	rec := httptest.NewRecorder()
+	proxy.reverseProxy.ServeHTTP(rec, req)
+
+	if capturedHeaders.Get("X-Forwarded-Proto") != protoHTTP {
+		t.Fatalf("expected invalid header to fall back to '%s', got %s", protoHTTP, capturedHeaders.Get("X-Forwarded-Proto"))
+	}
+}
+
+// Test that X-Forwarded-For is passed through unchanged
+func TestReverseProxy_PassesThroughXForwardedFor(t *testing.T) {
+	var capturedHeaders http.Header
+	backend := newIPv4TestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	host := backendURL.Hostname()
+	port := backendURL.Port()
+	if port == "" {
+		port = "80"
+	}
+
+	proxy := NewHTTPProxy(HTTPProxyConfig{
+		Enabled:    true,
+		ListenPort: 0,
+		TargetHost: host,
+		TargetPort: mustParsePort(t, port),
+	})
+
+	targetURL := &url.URL{
+		Scheme: protoHTTP,
 		Host:   backend.URL[7:],
 	}
 
@@ -1794,11 +1946,7 @@ func TestReverseProxy_PassesThroughXForwardedFor(t *testing.T) {
 				r.Out.Header["X-Forwarded-For"] = []string{xff}
 			}
 
-			if xfp := r.In.Header.Get("X-Forwarded-Proto"); xfp != "" {
-				r.Out.Header["X-Forwarded-Proto"] = []string{xfp}
-			} else {
-				r.Out.Header.Set("X-Forwarded-Proto", "https")
-			}
+			r.Out.Header.Set("X-Forwarded-Proto", determineForwardedProto(r.In))
 		},
 	}
 

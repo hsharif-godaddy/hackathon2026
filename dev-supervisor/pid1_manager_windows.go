@@ -36,9 +36,9 @@ func (pm *PID1Manager) Start(shutdownCallback func()) {
 	pm.setupBasicSignalHandling()
 }
 
-func (pm *PID1Manager) RegisterChildProcess(process *os.Process) {
+func (pm *PID1Manager) RegisterChildProcess(process *os.Process, managedProcess *ManagedProcess) bool {
 	if process == nil {
-		return
+		return false
 	}
 
 	pm.mu.Lock()
@@ -46,6 +46,7 @@ func (pm *PID1Manager) RegisterChildProcess(process *os.Process) {
 
 	pm.childProcesses[process.Pid] = process
 	slog.Debug("registered child process", "pid", process.Pid)
+	return false
 }
 
 func (pm *PID1Manager) UnregisterChildProcess(pid int) {

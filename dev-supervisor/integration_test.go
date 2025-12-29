@@ -81,14 +81,17 @@ type IntegrationTestSuite struct {
 
 // SetupTestSuite initializes the test environment
 func SetupTestSuite(t *testing.T) *IntegrationTestSuite {
+	configureSMTPTestEnv(t)
+
 	// Create temporary directory for test files
-	tempDir, err := os.MkdirTemp("", "dev-supervisor-test-*")
+	// Use /tmp directly with short name to avoid macOS socket path length limit (104 chars)
+	tempDir, err := os.MkdirTemp("/tmp", "ds-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
 
-	// Create unique socket path for this test
-	socketPath := filepath.Join(tempDir, "test-dev-supervisor.sock")
+	// Create unique socket path for this test (keep it short for macOS)
+	socketPath := filepath.Join(tempDir, "test.sock")
 
 	// Create server instance
 	server := NewServer()
@@ -263,7 +266,7 @@ func TestCommandExecution(t *testing.T) {
 		},
 		{
 			name:         "command with error",
-			command:      "ls /nonexistent",
+			command:      "sh -c 'exit 2'",
 			expectedExit: 2,
 			expectError:  false, // Command runs but exits with error code
 		},

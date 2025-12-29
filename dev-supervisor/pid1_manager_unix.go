@@ -12,22 +12,27 @@ import (
 	"time"
 )
 
+type childProcessInfo struct {
+	process        *os.Process
+	managedProcess *ManagedProcess
+}
+
 type PID1Manager struct {
 	mu               sync.RWMutex
-	childProcesses   map[int]*os.Process
+	childProcesses   map[int]*childProcessInfo
 	signalForwarding bool
-	zombieReaping    bool
 	shutdownCallback func()
 	shutdownTimeout  time.Duration
 	isShuttingDown   bool
+	isPID1           bool
 }
 
 func NewPID1Manager() *PID1Manager {
 	return &PID1Manager{
-		childProcesses:   make(map[int]*os.Process),
+		childProcesses:   make(map[int]*childProcessInfo),
 		signalForwarding: true,
-		zombieReaping:    true,
 		shutdownTimeout:  30 * time.Second,
+		isPID1:           os.Getpid() == 1,
 	}
 }
 
@@ -35,18 +40,15 @@ func (pm *PID1Manager) Start(shutdownCallback func()) {
 	pm.shutdownCallback = shutdownCallback
 
 	// Only enable PID 1 behavior if we are actually PID 1
-	if os.Getpid() == 1 {
+	if pm.isPID1 {
 		slog.Info("running as PID 1, enabling init process behavior")
-
-		// Start zombie reaper
-		if pm.zombieReaping {
-			go pm.startZombieReaper()
-		}
 
 		// Setup signal forwarding
 		if pm.signalForwarding {
 			pm.setupSignalForwarding()
 		}
+
+		pm.startOrphanReaper()
 	} else {
 		slog.Info("PID 1 behavior disabled", "pid", os.Getpid())
 		// Still setup basic signal handling for graceful shutdown
@@ -54,16 +56,26 @@ func (pm *PID1Manager) Start(shutdownCallback func()) {
 	}
 }
 
-func (pm *PID1Manager) RegisterChildProcess(process *os.Process) {
+func (pm *PID1Manager) RegisterChildProcess(process *os.Process, managedProcess *ManagedProcess) bool {
 	if process == nil {
-		return
+		return false
 	}
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	pm.childProcesses[process.Pid] = process
+	pm.childProcesses[process.Pid] = &childProcessInfo{
+		process:        process,
+		managedProcess: managedProcess,
+	}
 	slog.Debug("registered child process", "pid", process.Pid)
+
+	managedLifecycle := pm.shouldManageChildLifecycle(managedProcess)
+	if managedLifecycle {
+		pm.startManagedWatcher(process.Pid, managedProcess)
+	}
+
+	return managedLifecycle
 }
 
 func (pm *PID1Manager) UnregisterChildProcess(pid int) {
@@ -74,33 +86,16 @@ func (pm *PID1Manager) UnregisterChildProcess(pid int) {
 	slog.Debug("unregistered child process", "pid", pid)
 }
 
-func (pm *PID1Manager) startZombieReaper() {
-	slog.Info("starting zombie process reaper")
-
-	// Setup SIGCHLD handler for zombie reaping
-	sigchld := make(chan os.Signal, 1)
-	signal.Notify(sigchld, syscall.SIGCHLD)
-
-	for range sigchld {
-		pm.reapZombies()
-	}
+func (pm *PID1Manager) shouldManageChildLifecycle(managedProcess *ManagedProcess) bool {
+	return pm.isPID1 && managedProcess != nil
 }
 
-func (pm *PID1Manager) reapZombies() {
-	for {
-		// Wait for any child process to exit
-		var wstatus syscall.WaitStatus
-		pid, err := syscall.Wait4(-1, &wstatus, syscall.WNOHANG, nil)
-
-		if err != nil || pid <= 0 {
-			break // No more zombie processes
-		}
-
-		slog.Debug("reaped zombie process", "pid", pid, "exit_status", wstatus.ExitStatus())
-
-		// Remove from our tracking
+func (pm *PID1Manager) startManagedWatcher(pid int, managedProcess *ManagedProcess) {
+	go func() {
+		err := managedProcess.safeWait()
+		managedProcess.notifyPID1WaitResult(err)
 		pm.UnregisterChildProcess(pid)
-	}
+	}()
 }
 
 func (pm *PID1Manager) setupSignalForwarding() {
@@ -164,8 +159,8 @@ func (pm *PID1Manager) handleSignal(sig os.Signal) {
 }
 
 func (pm *PID1Manager) forwardSignalToChildren(sig os.Signal) {
-	for pid, process := range pm.childProcesses {
-		if err := process.Signal(sig); err != nil {
+	for pid, child := range pm.childProcesses {
+		if err := child.process.Signal(sig); err != nil {
 			slog.Error("failed to send signal to child", "signal", sig, "pid", pid, "error", err)
 		} else {
 			slog.Debug("forwarded signal to child", "signal", sig, "pid", pid)
@@ -222,8 +217,8 @@ func (pm *PID1Manager) terminateChildren(sig os.Signal) {
 
 	slog.Info("sending signal to child processes", "signal", sig, "child_count", len(pm.childProcesses))
 
-	for pid, process := range pm.childProcesses {
-		if err := process.Signal(sig); err != nil {
+	for pid, child := range pm.childProcesses {
+		if err := child.process.Signal(sig); err != nil {
 			slog.Error("failed to send signal to child", "signal", sig, "pid", pid, "error", err)
 		}
 	}

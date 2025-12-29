@@ -116,26 +116,186 @@ make check
 make build-all
 ```
 
+## Cross-Platform Development
+
+dev-supervisor is designed for **production deployment on linux/amd64 only**, but supports **development and testing on macOS, Windows/WSL, and Linux**.
+
+### Platform Support
+
+| Platform      | Production | Development | Testing              |
+| ------------- | ---------- | ----------- | -------------------- |
+| Linux (amd64) | [YES] Full | [YES] Full  | [YES] All tests      |
+| macOS         | [NO]       | [YES] Yes   | [YES] Cross-platform |
+| Windows/WSL   | [NO]       | [YES] Yes   | [YES] Cross-platform |
+| Linux (arm64) | [NO]       | [YES] Yes   | [YES] Cross-platform |
+
+### Platform-Specific Features
+
+Some features are only available on Linux due to kernel dependencies:
+
+- **Orphan Reaping** (PID 1 only): Uses Linux-specific `waitid()` syscall for proper zombie process cleanup
+- **Port Discovery**: Reads `/proc/net/tcp` and `/proc/PID/fd` to detect ports used by processes
+- **Signal Handling**: Uses Linux signal semantics for process management
+
+On non-Linux platforms:
+
+- Port discovery returns empty results (process restarts still work, port conflicts detected at bind time)
+- PID 1 features are stubbed out (not needed outside containers)
+- Signal handling uses cross-platform Go abstractions
+
+### Testing Strategy
+
+dev-supervisor uses a **three-tier testing approach** for comprehensive coverage:
+
+#### Tier 1: Cross-Platform Unit Tests
+
+Run on all platforms (macOS, Windows, Linux):
+
+```bash
+make test           # Runs cross-platform tests
+go test -v ./...    # Linux-specific tests auto-skipped on other platforms
+```
+
+**What's tested:**
+
+- API endpoints and HTTP handling
+- Process lifecycle management (start/stop/restart)
+- Command execution
+- Environment management
+- Health monitoring
+- Log management
+- Configuration parsing
+
+**Note:** Linux-specific tests are automatically skipped via build tags - no runtime checks needed.
+
+#### Tier 2: Linux-Specific Unit Tests
+
+Run only on Linux (automatic via build tags):
+
+```bash
+make test           # Includes Linux tests when run on Linux
+```
+
+**What's tested:**
+
+- Port discovery from `/proc/net/tcp`
+- PID 1 orphan reaping behavior
+- Linux-specific signal handling
+
+**Files:** `*_linux_test.go` (automatically excluded on non-Linux platforms)
+
+#### Tier 3: Docker Integration Tests
+
+Test actual production binary as PID 1 (runnable from any platform with Docker):
+
+```bash
+make test-docker    # Builds and tests linux/amd64 binary in Docker
+```
+
+**What's tested:**
+
+- Actual PID 1 behavior in container
+- Orphan reaping with real processes
+- Signal handling and graceful shutdown
+- API functionality over Unix socket
+- Process lifecycle in production environment
+
+**Requirements:** Docker installed and running
+
+### Development Workflow
+
+**On macOS/Windows:**
+
+```bash
+# 1. Install dependencies
+make deps
+
+# 2. Run cross-platform tests (90%+ coverage)
+make test
+
+# 3. Run Docker integration tests (full production validation)
+make test-docker
+
+# 4. Build for local platform
+make build
+
+# 5. Cross-compile for Linux production
+GOOS=linux GOARCH=amd64 go build -o dev-supervisor .
+```
+
+**On Linux:**
+
+```bash
+# All tests run, including Linux-specific features
+make test           # Includes Linux-specific tests automatically
+make test-docker    # Full integration tests
+```
+
+### Platform Compatibility Matrix
+
+| Feature                  | Linux | macOS  | Windows/WSL | Notes                                 |
+| ------------------------ | ----- | ------ | ----------- | ------------------------------------- |
+| Build                    | [YES] | [YES]  | [YES]       | Go cross-compilation works everywhere |
+| Unit Tests               | [YES] | [YES]  | [YES]       | 90%+ of tests are cross-platform      |
+| Linux-Specific Tests     | [YES] | [SKIP] | [SKIP]      | Auto-skipped via build tags           |
+| Docker Integration Tests | [YES] | [YES]  | [YES]       | Requires Docker                       |
+| Port Discovery           | [YES] | [N/A]  | [N/A]       | Graceful fallback on non-Linux        |
+| PID 1 Orphan Reaping     | [YES] | [N/A]  | [N/A]       | Only relevant in containers           |
+| Production Deployment    | [YES] | [NO]   | [NO]        | linux/amd64 only                      |
+
+**Legend:** [YES] Supported | [SKIP] Auto-skipped | [N/A] Not Available | [NO] Not Supported
+
+### Troubleshooting
+
+**"Tests are failing on my Mac"**
+
+- Linux-specific tests are automatically skipped via build tags
+- Run `go test -v ./...` to see which tests run
+- Files like `*_linux_test.go` won't appear in test output on macOS
+
+**"I need to test PID 1 behavior locally"**
+
+- Use `make test-docker` to run full integration tests
+- This builds and tests the actual linux/amd64 binary in a container
+- Works from any platform with Docker installed
+
+**"Port discovery isn't working on macOS"**
+
+- This is expected behavior - port discovery only works on Linux
+- Process restarts still work (port conflicts detected at bind time)
+- Use `make test-docker` to verify port discovery in Linux container
+
 ### Project Structure
 
 ```
 dev-supervisor/
-├── main.go                     # Main application entry point
-├── api.go                      # HTTP API endpoint handlers
-├── health_monitor.go           # Health monitoring and restart policies
-├── process_manager.go          # Process lifecycle management
-├── command_executor.go         # Command execution functionality
-├── environment_manager.go      # Environment variable management
-├── logging.go                  # Logging configuration and management
-├── *_test.go                   # Test files
-├── integration_test.go         # Integration tests
-├── go.mod                      # Go module definition
-├── go.sum                      # Go module checksums
-├── Makefile                    # Build and development commands
-├── Dockerfile                  # Docker container definition
-├── .golangci.yml               # Linter configuration
-├── .gitignore                  # Git ignore patterns
-└── README.md                   # This file
+├── main.go                        # Main application entry point
+├── api.go                         # HTTP API endpoint handlers
+├── health_monitor.go              # Health monitoring and restart policies
+├── process_manager.go             # Process lifecycle management
+├── port_discovery.go              # Port discovery interface
+├── port_discovery_linux.go        # Linux port discovery implementation
+├── port_discovery_fallback.go    # Non-Linux port discovery stub
+├── command_executor.go            # Command execution functionality
+├── environment_manager.go         # Environment variable management
+├── logging.go                     # Logging configuration and management
+├── *_test.go                      # Cross-platform test files
+├── *_linux_test.go                # Linux-specific test files
+├── integration_test.go            # Cross-platform integration tests
+├── docker_integration_test.go     # Docker integration test wrapper
+├── test/
+│   ├── Dockerfile.integration     # Docker image for integration tests
+│   ├── docker-integration-tests.sh # Bash test suite for Docker
+│   └── run-docker-tests.sh        # Docker test runner script
+├── docs/
+│   └── DEVELOPMENT.md             # Development guide
+├── go.mod                         # Go module definition
+├── go.sum                         # Go module checksums
+├── Makefile                       # Build and development commands
+├── Dockerfile                     # Docker container definition
+├── .golangci.yml                  # Linter configuration
+├── .gitignore                     # Git ignore patterns
+└── README.md                      # This file
 ```
 
 ## API Endpoints

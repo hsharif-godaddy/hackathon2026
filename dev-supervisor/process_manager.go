@@ -9,8 +9,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -72,78 +70,9 @@ type ManagedProcess struct {
 	waitOnce sync.Once
 	waitErr  error
 	waitDone chan struct{}
-}
 
-// getProcessPorts discovers what ports a process is actually using via /proc/net/tcp
-func getProcessPorts(pid int) ([]int, error) {
-	if pid <= 0 {
-		return nil, fmt.Errorf("invalid PID: %d", pid)
-	}
-
-	// Read /proc/net/tcp to find listening ports for this process
-	tcpFile := "/proc/net/tcp"
-	content, err := os.ReadFile(tcpFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read %s: %w", tcpFile, err)
-	}
-
-	var ports []int
-	lines := strings.Split(string(content), "\n")
-
-	// Skip header line
-	for i, line := range lines {
-		if i == 0 || strings.TrimSpace(line) == "" {
-			continue
-		}
-
-		fields := strings.Fields(line)
-		if len(fields) < 10 {
-			continue
-		}
-
-		// Check if this entry belongs to our process
-		// Field 9 is the inode, we need to check if our PID has this socket
-		inode := fields[9]
-		if inode == "0" {
-			continue
-		}
-
-		// Check if this process owns this socket by looking in /proc/PID/fd/
-		if processOwnsSocket(pid, inode) {
-			// Parse the local address (field 1: "address:port" in hex)
-			localAddr := fields[1]
-			if colonIdx := strings.LastIndex(localAddr, ":"); colonIdx != -1 {
-				portHex := localAddr[colonIdx+1:]
-				if port, err := strconv.ParseInt(portHex, 16, 32); err == nil && port > 0 {
-					ports = append(ports, int(port))
-				}
-			}
-		}
-	}
-
-	return ports, nil
-}
-
-// processOwnsSocket checks if a process owns a socket by examining /proc/PID/fd/
-func processOwnsSocket(pid int, inode string) bool {
-	fdDir := fmt.Sprintf("/proc/%d/fd", pid)
-	entries, err := os.ReadDir(fdDir)
-	if err != nil {
-		return false
-	}
-
-	targetLink := fmt.Sprintf("socket:[%s]", inode)
-
-	for _, entry := range entries {
-		linkPath := filepath.Join(fdDir, entry.Name())
-		if target, err := os.Readlink(linkPath); err == nil {
-			if target == targetLink {
-				return true
-			}
-		}
-	}
-
-	return false
+	usePID1Wait    bool
+	externalWaitCh chan error
 }
 
 // isPortAvailable checks if a port is available for binding (i.e., not in use)
@@ -201,6 +130,7 @@ type ProcessManager struct {
 	logMgr                *LogManager
 	healthMon             *HealthMonitor
 	pid1Mgr               *PID1Manager
+	portDiscovery         PortDiscovery
 	restartCount          int
 	enableLogging         bool // Control whether to log child process stdout/stderr
 	outputToStructuredLog bool // Control whether to output child process logs to structured logging
@@ -210,6 +140,7 @@ func NewProcessManager(logMgr *LogManager, pid1Mgr *PID1Manager) *ProcessManager
 	return &ProcessManager{
 		logMgr:                logMgr,
 		pid1Mgr:               pid1Mgr,
+		portDiscovery:         NewPortDiscovery(),
 		healthMon:             NewHealthMonitor(logMgr),
 		enableLogging:         true,                        // Default: enable child process logging
 		outputToStructuredLog: getProcessLoggingToStdout(), // Default: enable structured logging output, configurable via env
@@ -256,8 +187,9 @@ func NewManagedProcess(config ProcessStartRequest) (*ManagedProcess, error) {
 			State:     ProcessStateStarting,
 			StartTime: time.Now(),
 		},
-		done:     make(chan struct{}),
-		waitDone: make(chan struct{}),
+		done:           make(chan struct{}),
+		waitDone:       make(chan struct{}),
+		externalWaitCh: make(chan error, 1),
 	}, nil
 }
 
@@ -288,9 +220,9 @@ func (mp *ManagedProcess) Start(logMgr *LogManager, pid1Mgr *PID1Manager, enable
 	mp.info.State = ProcessStateRunning
 	mp.infoMu.Unlock()
 
-	// Register with PID 1 manager
+	// Register with PID 1 manager (may take ownership of Wait())
 	if pid1Mgr != nil {
-		pid1Mgr.RegisterChildProcess(mp.cmd.Process)
+		mp.usePID1Wait = pid1Mgr.RegisterChildProcess(mp.cmd.Process, mp)
 	}
 
 	// Start log streaming if enabled
@@ -434,6 +366,10 @@ func (mp *ManagedProcess) WaitForCompletion() {
 	<-mp.done
 }
 
+func (mp *ManagedProcess) notifyPID1WaitResult(err error) {
+	mp.externalWaitCh <- err
+}
+
 // GetInfo returns the current process information
 func (mp *ManagedProcess) GetInfo() ProcessInfo {
 	mp.infoMu.RLock()
@@ -457,7 +393,12 @@ func (mp *ManagedProcess) safeWait() error {
 func (mp *ManagedProcess) waitForCompletion(pid1Mgr *PID1Manager) {
 	defer close(mp.done) // Signal completion when this function exits
 
-	err := mp.safeWait()
+	var err error
+	if mp.usePID1Wait {
+		err = <-mp.externalWaitCh
+	} else {
+		err = mp.safeWait()
+	}
 
 	mp.infoMu.Lock()
 	if err != nil {
@@ -474,8 +415,9 @@ func (mp *ManagedProcess) waitForCompletion(pid1Mgr *PID1Manager) {
 	}
 	mp.infoMu.Unlock()
 
-	// Unregister from PID 1 manager
-	if pid1Mgr != nil {
+	// Unregister from PID 1 manager when we owned the wait. For PID 1-managed
+	// processes the manager's watcher handles removal after safeWait returns.
+	if pid1Mgr != nil && !mp.usePID1Wait {
 		pid1Mgr.UnregisterChildProcess(mp.cmd.Process.Pid)
 	}
 
@@ -605,7 +547,7 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 		processInfo := pm.currentProcess.GetInfo()
 		if processInfo.PID > 0 {
 			var err error
-			ports, err = getProcessPorts(processInfo.PID)
+			ports, err = pm.portDiscovery.GetProcessPorts(processInfo.PID)
 			if err != nil {
 				slog.Warn("failed to discover process ports", "pid", processInfo.PID, "error", err)
 				// No ports to wait for - continue with restart

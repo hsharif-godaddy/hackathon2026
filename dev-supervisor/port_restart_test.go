@@ -3,16 +3,38 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 )
 
+func configureSMTPTestEnv(t *testing.T) {
+	listenPort := findAvailablePort(t)
+	destPort := findAvailablePort(t)
+	t.Setenv("SMTP_LISTEN_ADDR", fmt.Sprintf("127.0.0.1:%d", listenPort))
+	t.Setenv("SMTP_DESTINATION", fmt.Sprintf("127.0.0.1:%d", destPort))
+}
+
+// shortTempDir creates a temp directory with a short path to avoid macOS socket path length limit (104 chars)
+func shortTempDir(t testing.TB) string {
+	tempDir, err := os.MkdirTemp("/tmp", "ds-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	t.Cleanup(func() {
+		os.RemoveAll(tempDir)
+	})
+	return tempDir
+}
+
 func TestPortReuseAfterRestart(t *testing.T) {
+	configureSMTPTestEnv(t)
+
 	// Create a temporary socket for this test
-	tempDir := t.TempDir()
-	socketPath := filepath.Join(tempDir, "test-supervisor.sock")
+	tempDir := shortTempDir(t)
+	socketPath := filepath.Join(tempDir, "test.sock")
 
 	// Create and start the server
 	server := NewServer()
@@ -92,9 +114,11 @@ func TestPortReuseAfterRestart(t *testing.T) {
 }
 
 func TestConcurrentRestarts(t *testing.T) {
+	configureSMTPTestEnv(t)
+
 	// Create a temporary socket for this test
-	tempDir := t.TempDir()
-	socketPath := filepath.Join(tempDir, "test-supervisor-concurrent.sock")
+	tempDir := shortTempDir(t)
+	socketPath := filepath.Join(tempDir, "test.sock")
 
 	// Create and start the server
 	server := NewServer()
@@ -278,8 +302,8 @@ func waitForPortInUse(port int, timeout time.Duration) error {
 // Benchmark the restart performance with port waiting
 func BenchmarkRestartWithPortWait(b *testing.B) {
 	// Setup
-	tempDir := b.TempDir()
-	socketPath := filepath.Join(tempDir, "bench-supervisor.sock")
+	tempDir := shortTempDir(b)
+	socketPath := filepath.Join(tempDir, "test.sock")
 
 	server := NewServer()
 	config := &Config{

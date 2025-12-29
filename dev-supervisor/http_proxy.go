@@ -20,6 +20,31 @@ import (
 	"time"
 )
 
+const (
+	protoHTTP  = "http"
+	protoHTTPS = "https"
+)
+
+func determineForwardedProto(req *http.Request) string {
+	if raw := strings.TrimSpace(req.Header.Get("X-Forwarded-Proto")); raw != "" {
+		normalized := strings.ToLower(raw)
+		if normalized == protoHTTP || normalized == protoHTTPS {
+			return normalized
+		}
+
+		slog.Warn("http.proxy.invalid_forwarded_proto",
+			"value", raw,
+			"remote_addr", req.RemoteAddr,
+		)
+	}
+
+	if req.TLS != nil {
+		return protoHTTPS
+	}
+
+	return protoHTTP
+}
+
 /**
  * HTTPProxyConfig defines configuration for the HTTP proxy server
  */
@@ -106,6 +131,26 @@ type RequestRouter struct {
 	isProductionMode bool
 }
 
+func (rr *RequestRouter) writeStaticOptionsResponse(w http.ResponseWriter, r *http.Request) {
+	// Dev-supervisor only listens on the internal loopback interface and sits behind
+	// a trusted proxy in production, so we simply echo the Origin when provided.
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		origin = "*"
+	} else {
+		w.Header().Add("Vary", "Origin")
+	}
+
+	w.Header().Set("Access-Control-Allow-Origin", origin)
+	w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+	if reqHeaders := r.Header.Get("Access-Control-Request-Headers"); reqHeaders != "" {
+		w.Header().Set("Access-Control-Allow-Headers", reqHeaders)
+	}
+
+	w.Header().Set("Allow", "GET, HEAD, OPTIONS")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 /**
  * loggingMiddleware wraps an http.Handler to log requests with response details
  */
@@ -161,6 +206,10 @@ func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
 		// Has file extension? Serve as static file directly
 		if path.Ext(r.URL.Path) != "" {
+			if r.Method == http.MethodOptions {
+				rr.writeStaticOptionsResponse(w, r)
+				return
+			}
 			slog.Debug("serving static file", "path", r.URL.Path, "method", r.Method)
 			rr.staticHandler.ServeHTTP(w, r)
 			return
@@ -176,6 +225,10 @@ func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			// If file was found (not 404), copy the response to the real writer
 			if recorder.Code != http.StatusNotFound {
+				if r.Method == http.MethodOptions {
+					rr.writeStaticOptionsResponse(w, r)
+					return
+				}
 				// Copy headers from recorder to real response
 				for k, v := range recorder.Header() {
 					w.Header()[k] = v
@@ -537,13 +590,8 @@ func (p *HTTPProxy) Start() error {
 				r.Out.Header["X-Forwarded-For"] = []string{xff}
 			}
 
-			// Set X-Forwarded-Proto to "https" if not already set
-			// This ensures backends know the original protocol when behind TLS-terminating load balancers
-			if xfp := r.In.Header.Get("X-Forwarded-Proto"); xfp != "" {
-				r.Out.Header["X-Forwarded-Proto"] = []string{xfp}
-			} else {
-				r.Out.Header.Set("X-Forwarded-Proto", "https")
-			}
+			// Set X-Forwarded-Proto based on upstream input or actual scheme
+			r.Out.Header.Set("X-Forwarded-Proto", determineForwardedProto(r.In))
 
 			// Note: X-Forwarded-Host is not set (Host header is already correct)
 			// Note: X-Real-IP is not set (only accessible by trusted sources)
