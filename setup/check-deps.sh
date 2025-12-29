@@ -47,7 +47,7 @@ check_nodejs() {
         NODE_MINOR=$(echo $NODE_VERSION | cut -d'.' -f2)
 
         # Check for Node.js 22.16.0 or higher (required to fix ERR_INVALID_URL_SCHEME bug)
-        if [ "$NODE_MAJOR" -eq 22 ] && [ "$NODE_MINOR" -ge 16 ]; then
+        if [ "$NODE_MAJOR" -gt 22 ] || ([ "$NODE_MAJOR" -eq 22 ] && [ "$NODE_MINOR" -ge 16 ]); then
             print_status "Node.js $NODE_VERSION is installed and compatible"
             return 0
         else
