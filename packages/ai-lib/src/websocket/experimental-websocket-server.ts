@@ -26,6 +26,8 @@ import { WebSocketSubscriber } from './subscribers/websocket-subscriber.js'
 import { PersistenceSubscriber } from './subscribers/persistence-subscriber.js'
 import { APMSubscriber } from './subscribers/apm-subscriber.js'
 import type { DisconnectedStreamState } from './subscribers/websocket-subscriber.js'
+import { ConnectionStateManager } from './connection-state-manager.js'
+import { ConnectionRecoveryManager } from './connection-recovery-manager.js'
 
 /**
  * APM agent type for tool execution tracking
@@ -322,12 +324,7 @@ export class WebSocketServer {
    */
   private socketIdMigrations: Map<string, string> = new Map()
 
-  /**
-   * Per-socket message queue to prevent concurrent handleChatMessage races
-   * Maps socket ID -> promise chain to serialize message processing per socket
-   * This prevents duplicate conversation creation when messages arrive rapidly
-   */
-  private socketMessageQueues: Map<string, Promise<void>> = new Map()
+  // socketMessageQueues moved to ConnectionStateManager.queueMessage()
 
   /**
    * Track sockets where setup is in progress (conversation exists but stream not yet registered)
@@ -340,6 +337,18 @@ export class WebSocketServer {
    * Guards against disconnect + ACK timeout race conditions
    */
   private cleanupInProgress: Set<string> = new Set()
+
+  /**
+   * Consolidated state manager for connection lifecycle
+   * Manages state transitions, socket ID migrations, and cleanup
+   */
+  private stateManager: ConnectionStateManager
+
+  /**
+   * Recovery manager for connection recovery scenarios
+   * Handles automatic, manual, and conversation-based recovery
+   */
+  private recoveryManager: ConnectionRecoveryManager
 
   constructor(httpServer: HTTPServer, config: WebSocketConfig) {
     this.config = config
@@ -373,6 +382,28 @@ export class WebSocketServer {
       capacity: config.eventBufferSize ?? 10_000,
       ttl: eventBufferTTL
     }, this.logger)
+
+    // Initialize connection state manager
+    this.stateManager = new ConnectionStateManager({
+      recoveryWindow: this.STREAM_RECOVERY_WINDOW,
+      ackTimeout: this.ACK_TIMEOUT_MS
+    }, this.logger)
+
+    // Initialize connection recovery manager
+    this.recoveryManager = new ConnectionRecoveryManager(
+      {
+        stateManager: this.stateManager,
+        eventChannel: this.eventChannel,
+        disconnectedStreams: this.disconnectedStreams,
+        logger: this.logger
+      },
+      {
+        ackTimeout: this.ACK_TIMEOUT_MS,
+        recoveryWindow: this.STREAM_RECOVERY_WINDOW,
+        ...(config.onDisconnection && { onDisconnection: config.onDisconnection }),
+        ...(config.apmAgent && { apmAgent: config.apmAgent })
+      }
+    )
 
     // Schedule periodic cleanup of expired conversations (every 60 seconds)
     this.cleanupInterval = setInterval(() => {
@@ -428,6 +459,15 @@ export class WebSocketServer {
           hasDisconnectedStream: this.disconnectedStreams.has(previousSocketId),
           disconnectedStreamsSize: this.disconnectedStreams.size,
           disconnectedStreamKeys: Array.from(this.disconnectedStreams.keys())
+        })
+      }
+
+      // Use recovery manager to detect recovery mode (preparation for full delegation)
+      const detectedRecoveryMode = this.recoveryManager.attemptRecovery(socket)
+      if (detectedRecoveryMode) {
+        this.logger.debug('connection.recovery_mode_detected', {
+          socketId,
+          recoveryMode: detectedRecoveryMode
         })
       }
 
@@ -2379,26 +2419,8 @@ export class WebSocketServer {
     const socketId = socket.id
 
     // Queue this message to prevent concurrent handleChatMessage races
-    // Get existing queue promise for this socket (or create resolved promise)
-    const existingQueue = this.socketMessageQueues.get(socketId) ?? Promise.resolve()
-
-    // Chain new work onto the queue
-    const newQueue = existingQueue
-      .catch(() => {
-        // Ignore errors from previous messages - they were already handled
-      })
-      .then(() => this.handleChatMessageInternal(socket, data))
-      .finally(() => {
-        // Clean up if this was the last queued message
-        if (this.socketMessageQueues.get(socketId) === newQueue) {
-          this.socketMessageQueues.delete(socketId)
-        }
-      })
-
-    // Store the new queue promise
-    this.socketMessageQueues.set(socketId, newQueue)
-
-    return newQueue
+    // StateManager handles the queue chain, cleanup, and error isolation
+    return this.stateManager.queueMessage(socketId, () => this.handleChatMessageInternal(socket, data))
   }
 
   /**
