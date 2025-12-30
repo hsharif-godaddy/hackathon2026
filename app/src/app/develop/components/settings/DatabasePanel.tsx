@@ -10,9 +10,9 @@ import text from '@ux/text';
 import { TableDataBrowser } from '@/app/develop/components/settings/Database/TableDataBrowser';
 import { ChatTab } from '@/app/develop/components/types';
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
+import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDatabaseTables } from '@/hooks/useDatabaseTables';
 import { useTranslations } from '@/hooks/useTranslations';
-import { useChatTabs } from '@/hooks/useChatTabs';
 
 interface DatabasePanelProps {
   appId: string;

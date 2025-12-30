@@ -12,9 +12,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { logger } from '@/lib/request-context'
 import { getSharedSocket,setSharedSocket } from '@/lib/socketRegistry'
-import { AgentService } from '@/services/AgentService'
 import { useGitStore } from '@/stores/useGitStore'
-import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import {
   useAddToolCallSegment,
   useAddToolResultSegment,
@@ -32,8 +30,26 @@ import {
   useStreamingConversationStore,
   useWebSocketState,
 } from '@/stores/useStreamingConversationStore'
-import { useTodoListStore } from '@/stores/useTodoListStore'
 import { logImpressionEvent } from '@/utils/instrumentation'
+import {
+  CatchupCompleteHandler,
+  CatchupStatusHandler,
+  ChunkHandler,
+  CompleteHandler,
+  ConversationInfoHandler,
+  ErrorHandler,
+  type MessageContext,
+  MessageHandlerRegistry,
+  RecoveryStatusHandler,
+  ReplayCompleteHandler,
+  ServerConfigHandler,
+  StepCompleteHandler,
+  StepStartHandler,
+  ToolCallHandler,
+  ToolInputDeltaHandler,
+  ToolResultHandler,
+  ToolStartHandler,
+} from './websocket/handlers'
 import { captureVisualContext } from '../app/develop/components/visualContextCapture'
 import type { AgentsAppChatMessage,AgentsAppContext } from '../types/websocket-context'
 
@@ -867,6 +883,65 @@ export function useStreamingWebSocket() {
 
   // Set up Socket.IO event handlers for streaming (defined before useEffect to satisfy dependency ordering)
   const setupEventHandlers = useCallback((socket: Socket) => {
+    // Create message handler registry for strategy pattern
+    const registry = new MessageHandlerRegistry()
+
+    // Register all handlers
+    registry.register(new ServerConfigHandler())
+    registry.register(new ConversationInfoHandler())
+    registry.register(new RecoveryStatusHandler())
+    registry.register(new ReplayCompleteHandler())
+    registry.register(new CatchupStatusHandler())
+    registry.register(new CatchupCompleteHandler())
+    registry.register(new StepStartHandler())
+    registry.register(new ChunkHandler())
+    registry.register(new ToolStartHandler())
+    registry.register(new ToolInputDeltaHandler())
+    registry.register(new ToolCallHandler())
+    registry.register(new ToolResultHandler())
+    registry.register(new StepCompleteHandler())
+    registry.register(new CompleteHandler())
+    registry.register(new ErrorHandler())
+
+    // Build context once (reused for all handlers)
+    const messageContext: MessageContext = {
+      socket,
+      currentAppId,
+      actions: {
+        setWebSocketState,
+        setStreamingState,
+        setIsLoading,
+        startNewStream,
+        appendTextSegment,
+        addToolStartSegment,
+        addToolCallSegment,
+        addToolResultSegment,
+        markMaxStepsReached,
+        markUpstreamError,
+        markBudgetExceeded,
+        finalizeStream,
+        flushToolDeltaBufferImmediate,
+        scheduleToolDeltaFlush,
+      },
+      helpers: {
+        maybeSendRecoveryAck,
+        trackReplayEventReceipt,
+        clearStoredSocketId,
+        handleCommitComplete,
+        setConversationIdCookie,
+        clearConversationIdCookie,
+        getConversationIdFromCookie,
+        clearRetryState,
+        sendToolImpression,
+      },
+      refs: {
+        serverConfig: serverConfigRef,
+        pendingRecoveryAck: pendingRecoveryAckRef,
+        toolDeltaBuffer: toolDeltaBufferRef,
+        retryState: retryStateRef,
+      },
+    }
+
     // Track if we've initialized stream for replayed events
     socket.on('status', (data) => {
       if (data.data?.status === 'thinking') {
@@ -884,624 +959,9 @@ export function useStreamingWebSocket() {
       }
 
       trackReplayEventReceipt(socket, data.type)
-      switch (data.type) {
-        case 'server_config':
-          // Server sends configuration during handshake for timeout synchronization
-          // This ensures client and server use the same recovery window
-          serverConfigRef.current = {
-            streamRecoveryWindow: data.data?.streamRecoveryWindow ?? CONNECTION_RETRY_TIMEOUT_MS,
-            ackTimeout: data.data?.ackTimeout ?? 30000
-          }
-          logger.info('websocket.server_config.received', {
-            streamRecoveryWindow: serverConfigRef.current.streamRecoveryWindow,
-            ackTimeout: serverConfigRef.current.ackTimeout
-          })
-          return // Don't process as regular message
 
-        case 'conversation_info':
-          // Control-plane message for durable conversationId delivery
-          // Persists cookie BEFORE acknowledging so server knows cookie was written
-          if (data.data?.conversationId && currentAppId) {
-            setConversationIdCookie(currentAppId, data.data.conversationId as string)
-          }
-          // Acknowledge receipt so server knows cookie was written
-          // Guard: some transports may not supply ack callback
-          if (typeof ack === 'function') {
-            ack()
-          }
-          return // Don't process as regular message
-
-        case 'recovery_status':
-          // Server is telling us about recovery state
-          // Guard: Clear stale recovery state if app has changed since this event was sent
-          if (useStreamingConversationStore.getState().currentAppId !== currentAppId) {
-            pendingRecoveryAckRef.current = null
-            return
-          }
-
-          if (data.data?.streamCompleted) {
-            // Stream already completed - load history and finalize properly
-            wasRecoveredRef.current = false
-
-            // Load conversation history to get the final assistant message
-            if (data.data.conversationId && currentAppId) {
-              try {
-                const agentService = AgentService.getInstance()
-                const conversation = await agentService.getConversation(currentAppId, data.data.conversationId)
-
-                if (conversation.messages && conversation.messages.length > 0) {
-                  // Set messages in store - they're already complete from DB
-                  useStreamingConversationStore.setState({ messages: conversation.messages as any[] })
-                }
-              } catch (error) {
-                logger.error('websocket.recovery.history_load_failed', {
-                  conversationId: data.data.conversationId,
-                  error: error instanceof Error ? error.message : String(error)
-                })
-              }
-            }
-
-            // Finalize any active stream to move it to message history
-            const store = useStreamingConversationStore.getState()
-            if (store.activeStream) {
-              finalizeStream({})
-            }
-
-            // Clear connection retry if active
-            if (store.connectionRetry.isRetrying) {
-              store.clearConnectionRetry()
-            }
-
-            // Clear APP_NOT_FOUND retry state
-            clearRetryState()
-
-            setWebSocketState({ status: 'idle' })
-            setStreamingState('idle')
-            setIsLoading(false)
-            clearStoredSocketId()
-          } else if (data.data?.isRecovering === false) {
-            // Recovery complete, stream is active again
-            setIsLoading(false)
-            setStreamingState('streaming')
-            logger.info('websocket.recovery.finalized', {
-              eventsReplayed: data.data.eventsReplayed
-            })
-          } else if (data.data?.hasBufferedEvents) {
-            // CRITICAL: Set up ack tracking BEFORE any async operations
-            // Buffered events arrive during the async history load, and trackReplayEventReceipt
-            // needs pendingRecoveryAckRef to be set to count them
-            if (data.data?.requiresAck && data.data?.conversationId && data.data?.lastSequence !== undefined) {
-              const expectedCount = data.data?.bufferedEventCount ?? 0
-              pendingRecoveryAckRef.current = {
-                conversationId: data.data.conversationId,
-                lastSequence: data.data.lastSequence,
-                expectedCount,
-                receivedCount: 0,
-                replayComplete: expectedCount === 0,
-                ackEvent: 'recovery_ack'
-              }
-              logger.info('websocket.recovery.ack_pending', {
-                conversationId: data.data.conversationId,
-                expectedCount
-              })
-              if (expectedCount === 0) {
-                maybeSendRecoveryAck(socket)
-              }
-            }
-
-            // Stream is still active - load history then prepare for replay
-            // Load conversation history from API if we have conversationId
-            if (data.data.conversationId && currentAppId) {
-              try {
-                const agentService = AgentService.getInstance()
-
-                // Load the specific conversation
-                const conversation = await agentService.getConversation(currentAppId, data.data.conversationId)
-
-                // Add messages to store if we have them
-                if (conversation.messages && conversation.messages.length > 0) {
-                  // Set messages directly in the store (they're already complete messages from DB)
-                  // Type assertion needed because conversation.messages comes from API
-                  useStreamingConversationStore.setState({ messages: conversation.messages as any[] })
-
-                  // Initialize an empty activeStream to receive buffered events
-                  // Guard: only create if not already streaming (avoid overwriting on duplicate recovery)
-                  const store = useStreamingConversationStore.getState()
-                  if (!store.activeStream) {
-                    const streamingMessage = {
-                      id: `recovered_${Date.now()}`,
-                      role: 'assistant' as const,
-                      content: '',
-                      segments: [],
-                      toolCalls: [],
-                      timestamp: new Date(),
-                      isComplete: false
-                    }
-
-                    useStreamingConversationStore.setState({
-                      activeStream: streamingMessage,
-                      streamingState: 'streaming',
-                      currentStep: 1,
-                      isLoading: true
-                    })
-                  }
-                }
-              } catch (error) {
-                logger.error('websocket.recovery.history_failed', {
-                  error: error instanceof Error ? error.message : String(error)
-                })
-              }
-            } else {
-              // No conversation history - still initialize stream for buffered events
-              // Guard: only create if not already streaming (avoid overwriting on duplicate recovery)
-              const store = useStreamingConversationStore.getState()
-              if (!store.activeStream) {
-                const streamingMessage = {
-                  id: `recovered_${Date.now()}`,
-                  role: 'assistant' as const,
-                  content: '',
-                  segments: [],
-                  toolCalls: [],
-                  timestamp: new Date(),
-                  isComplete: false
-                }
-
-                useStreamingConversationStore.setState({
-                  activeStream: streamingMessage,
-                  streamingState: 'streaming',
-                  currentStep: 1,
-                  isLoading: true
-                })
-              }
-            }
-
-            setStreamingState('streaming')
-          } else if (data.data?.requiresAck && data.data?.conversationId && data.data?.lastSequence !== undefined) {
-            // Handle requiresAck for other recovery scenarios (non-buffered-events case)
-            const expectedCount = data.data?.bufferedEventCount ?? 0
-            pendingRecoveryAckRef.current = {
-              conversationId: data.data.conversationId,
-              lastSequence: data.data.lastSequence,
-              expectedCount,
-              receivedCount: 0,
-              replayComplete: expectedCount === 0,
-              ackEvent: 'recovery_ack'
-            }
-            logger.info('websocket.recovery.ack_pending', {
-              conversationId: data.data.conversationId,
-              expectedCount
-            })
-
-            // Restore UI state for recovery with no buffered events
-            // Check if there's an active stream that needs to be restored
-            const store = useStreamingConversationStore.getState()
-            if (store.activeStream || data.data?.isRecovering) {
-              setIsLoading(true)
-              setStreamingState('streaming')
-              logger.info('websocket.recovery.ui_restored', {
-                conversationId: data.data.conversationId,
-                hasActiveStream: !!store.activeStream
-              })
-            }
-
-            if (expectedCount === 0) {
-              maybeSendRecoveryAck(socket)
-            }
-          } else {
-            pendingRecoveryAckRef.current = null
-          }
-
-          if (data.data?.lossDetected) {
-            setWebSocketState({
-              error: {
-                message: 'Some earlier data could not be recovered due to buffer limits.',
-                type: 'DATA_LOSS'
-              }
-            })
-          }
-
-          // Reset recovery flag
-          wasRecoveredRef.current = false
-          break
-
-        case 'replay_complete':
-          // Guard: Clear stale recovery state if app has changed to prevent
-          // stale ack from leaking into new app's recovery attempt
-          if (useStreamingConversationStore.getState().currentAppId !== currentAppId) {
-            pendingRecoveryAckRef.current = null
-            return
-          }
-          // Server finished replaying all buffered events, send acknowledgement
-          if (data.data?.conversationId && data.data?.lastSequence !== undefined) {
-            const pending = pendingRecoveryAckRef.current
-            if (pending) {
-              pending.lastSequence = data.data.lastSequence
-              pending.replayComplete = true
-
-              // Log count mismatch for telemetry
-              if (pending.receivedCount !== pending.expectedCount) {
-                logger.warn('websocket.recovery.count_mismatch', {
-                  conversationId: data.data.conversationId,
-                  expectedCount: pending.expectedCount,
-                  receivedCount: pending.receivedCount,
-                  serverReported: data.data.eventsReplayed
-                })
-              }
-            } else {
-              pendingRecoveryAckRef.current = {
-                conversationId: data.data.conversationId,
-                lastSequence: data.data.lastSequence,
-                expectedCount: data.data?.eventsReplayed ?? 0,
-                receivedCount: data.data?.eventsReplayed ?? 0,
-                replayComplete: true,
-                ackEvent: 'recovery_ack'
-              }
-            }
-
-            // Force send ack - server is authoritative on replay completion
-            maybeSendRecoveryAck(socket, true)
-          }
-          break
-        case 'catchup_status':
-          // Guard: Clear stale recovery state if app has changed to prevent
-          // stale ack from leaking into new app's recovery attempt
-          if (useStreamingConversationStore.getState().currentAppId !== currentAppId) {
-            pendingRecoveryAckRef.current = null
-            return
-          }
-          if (data.data?.requiresAck && data.data?.conversationId && data.data?.lastSequence !== undefined) {
-            const expectedCount = data.data?.pendingCount ?? 0
-            pendingRecoveryAckRef.current = {
-              conversationId: data.data.conversationId,
-              lastSequence: data.data.lastSequence,
-              expectedCount,
-              receivedCount: 0,
-              replayComplete: expectedCount === 0,
-              ackEvent: 'catchup_ack'
-            }
-            if (expectedCount === 0) {
-              maybeSendRecoveryAck(socket)
-            }
-          }
-          break
-        case 'catchup_complete':
-          // Guard: Clear stale recovery state if app has changed to prevent
-          // stale ack from leaking into new app's recovery attempt
-          if (useStreamingConversationStore.getState().currentAppId !== currentAppId) {
-            pendingRecoveryAckRef.current = null
-            return
-          }
-          if (data.data?.conversationId && data.data?.lastSequence !== undefined) {
-            const pending = pendingRecoveryAckRef.current
-            if (pending && pending.ackEvent === 'catchup_ack' && pending.conversationId === data.data.conversationId) {
-              pending.lastSequence = data.data.lastSequence
-              pending.replayComplete = true
-
-              // Log count mismatch for telemetry
-              if (pending.expectedCount > 0 && pending.receivedCount !== pending.expectedCount) {
-                logger.warn('websocket.catchup.count_mismatch', {
-                  conversationId: data.data.conversationId,
-                  expectedCount: pending.expectedCount,
-                  receivedCount: pending.receivedCount,
-                  serverReported: data.data.eventsReplayed
-                })
-              }
-
-              // Force send ack - server is authoritative on catchup completion
-              maybeSendRecoveryAck(socket, true)
-            } else if (!pending) {
-              // No pending ack - create one and send immediately (late catchup_complete)
-              pendingRecoveryAckRef.current = {
-                conversationId: data.data.conversationId,
-                lastSequence: data.data.lastSequence,
-                expectedCount: data.data?.eventsReplayed ?? 0,
-                receivedCount: data.data?.eventsReplayed ?? 0,
-                replayComplete: true,
-                ackEvent: 'catchup_ack'
-              }
-              maybeSendRecoveryAck(socket, true)
-            }
-          }
-          break
-
-        case 'step_start':
-          sendToolImpression('start')
-          // Clear any retrying/error state and resume streaming
-          setStreamingState('streaming')
-          setWebSocketState({ connected: true, status: 'streaming', error: undefined })
-          // Clear store-based retry state when streaming data arrives
-          const stepStartStore = useStreamingConversationStore.getState()
-          if (stepStartStore.connectionRetry.isRetrying) {
-            stepStartStore.clearConnectionRetry()
-          }
-          break
-        case 'chunk':
-          // Ensure we're in streaming state (in case we recovered and are receiving chunks)
-          const chunkStore = useStreamingConversationStore.getState()
-          if (chunkStore.streamingState === 'retrying' || chunkStore.streamingState === 'error') {
-            setStreamingState('streaming')
-            setWebSocketState({ connected: true, status: 'streaming', error: undefined })
-            // Clear store-based retry state when streaming data arrives
-            if (chunkStore.connectionRetry.isRetrying) {
-              chunkStore.clearConnectionRetry()
-            }
-          }
-          appendTextSegment(data.content)
-          break
-        case 'tool_start':
-          if (data.data?.tool) {
-            const toolCall: ToolCall = {
-              id: data.data.tool.id || `tool_${Date.now()}`,
-              name: data.data.tool.name,
-              input: data.data.tool.input || {},
-              status: 'running',
-              startTime: Date.now()
-            }
-            addToolStartSegment(toolCall)
-          }
-          break
-        case 'tool_input_delta':
-          // Tool input streaming delta - update partial input accumulation
-          // Only require toolId and delta - toolName can be looked up from existing tool calls
-          // Skip empty deltas (they don't add any information)
-          if (data.data?.toolId && data.data?.delta !== undefined && data.data.delta.length > 0) {
-            const toolId = data.data.toolId
-            const incomingName = data.data.toolName
-            const normalizedName = incomingName || 'unknown-tool'
-            const hasExplicitName = !!incomingName && incomingName !== 'unknown-tool'
-            const existingDelta = toolDeltaBufferRef.current.get(toolId)
-
-            if (existingDelta) {
-              existingDelta.delta += data.data.delta
-              if (hasExplicitName) {
-                existingDelta.name = normalizedName
-                existingDelta.hasExplicitName = true
-              }
-            } else {
-              toolDeltaBufferRef.current.set(toolId, {
-                name: normalizedName,
-                delta: data.data.delta,
-                hasExplicitName
-              })
-            }
-
-            scheduleToolDeltaFlush()
-          }
-          break
-        case 'tool_call':
-          // Tool call with complete input - update existing tool start segment
-          if (data.data?.tool) {
-            flushToolDeltaBufferImmediate()
-            const toolCall: ToolCall = {
-              id: data.data.tool.id,
-              name: data.data.tool.name,
-              input: data.data.tool.input || {},
-              status: 'running'
-            }
-            addToolCallSegment(toolCall)
-          }
-          break
-        case 'tool_result':
-          if (data.data?.tool) {
-            flushToolDeltaBufferImmediate()
-            const hasError = data.data.tool.error || data.data.tool.is_error
-
-            const toolCall: ToolCall = {
-              id: data.data.tool.id,
-              name: data.data.tool.name,
-              input: data.data.tool.input || {},
-              result: data.data.tool.output || data.data.tool.result,
-              error: data.data.tool.error,
-              status: hasError ? 'error' : 'completed',
-              startTime: data.data.tool.startTime,
-              endTime: Date.now()
-            }
-            sendToolImpression(data.data.tool.name)
-            addToolResultSegment(toolCall)
-            // Update persistent todo list if this is a todoList tool
-            if (data.data.tool.name === 'todoList' && !hasError) {
-              try {
-                const { updateFromToolCall } = useTodoListStore.getState()
-                updateFromToolCall(toolCall.result)
-              } catch (error) {
-                logger.error('websocket.todo-list.update.failure', {
-                  error: error instanceof Error ? error.message : String(error)
-                })
-              }
-            }
-          }
-          break
-        case 'step_complete':
-          if (data.data?.maxStepsReached === true) {
-            logger.warn('websocket.steps.max-reached')
-            markMaxStepsReached()
-          }
-          break
-        case 'complete':
-          // Log what we received from the WebSocket
-          flushToolDeltaBufferImmediate()
-
-          // Clear store-based retry state on successful completion
-          const completeStore = useStreamingConversationStore.getState()
-          if (completeStore.connectionRetry.isRetrying) {
-            completeStore.clearConnectionRetry()
-          }
-
-          // Clear APP_NOT_FOUND retry state
-          clearRetryState()
-
-          finalizeStream({
-            agentId: data.data?.agentId,
-            usage: data.data?.usage,
-            totalSteps: data.data?.step
-          })
-          sendToolImpression('complete');
-          setWebSocketState({ status: 'idle' });
-          setStreamingState('idle');
-          setIsLoading(false);
-
-          // Handle commit selection and preview refresh
-          handleCommitComplete(data.data?.commitHash)
-          clearStoredSocketId()
-          // Clear conversationId cookie - conversation is complete, no recovery needed
-          clearConversationIdCookie(currentAppId)
-          break
-        case 'error':
-          flushToolDeltaBufferImmediate()
-          // Check error type for specific handling
-          const errorType = data.data?.errorType
-          const errorCode = data.data?.statusCode
-          const errorTimestamp = data.data?.timestamp
-          const retryAttempts = data.data?.retryAttempts
-          const retryReason = data.data?.retryReason
-          const isBudgetError = errorType === 'BUDGET_EXCEEDED';
-          const isAppNotFound = errorType === 'APP_NOT_FOUND'
-          const isToolValidationError = errorType === 'TOOL_VALIDATION_ERROR'
-          const retryState = retryStateRef.current
-          const elapsedTime = retryState.pendingMessage
-            ? Date.now() - retryState.pendingMessage.startTime
-            : 0
-
-          // Handle tool validation errors - non-terminal, backend auto-retries
-          if (isToolValidationError) {
-            logger.info('websocket.error.tool_validation', {
-              message: 'Tool validation error - agent will retry',
-              content: data.content,
-              details: data.data?.details
-            })
-            // Continue streaming - don't mark as error since backend retries
-            break;
-          }
-
-          // Handle budget exceeded errors - show immediately, no retry
-          if (isBudgetError) {
-            logger.warn('websocket.error.budget_exceeded', {
-              message: 'Budget exceeded error received',
-              content: data.content
-            })
-
-            clearRetryState();
-
-            markBudgetExceeded();
-            finalizeStream({
-              agentId: data.data?.agentId,
-              totalSteps: data.data?.step
-            })
-            sendToolImpression('error');
-            setWebSocketState({
-              status: 'error',
-              error: {
-                message: data.content,
-                type: errorType,
-                statusCode: errorCode,
-                timestamp: errorTimestamp
-              }
-            });
-            setStreamingState('error');
-            setIsLoading(false);
-            clearStoredSocketId()
-            pendingRecoveryAckRef.current = null
-            break;
-          }
-
-          const shouldRetry = isAppNotFound && elapsedTime < 30000 // Retry for up to 30 seconds
-
-          if (shouldRetry && retryState.pendingMessage) {
-            retryState.retryCount++
-            const retryDelay = Math.min(500 * Math.pow(2, retryState.retryCount - 1), 5000) // Exponential backoff, max 5s
-
-            logger.warn('websocket.error.app_not_found.retry', {
-              message: 'App not found, will retry',
-              retryCount: retryState.retryCount,
-              retryDelay,
-              elapsedTime,
-              data
-            })
-
-            // Clear any existing retry timer
-            if (retryState.retryTimer) {
-              clearTimeout(retryState.retryTimer)
-            }
-
-            // Schedule retry
-            retryState.retryTimer = setTimeout(() => {
-              const socket = socketRef.current
-              const pendingMessage = retryState.pendingMessage
-
-              if (socket && socket.connected && pendingMessage) {
-                const messageToSend: AgentsAppChatMessage = {
-                  ...pendingMessage.chatMessage,
-                  // Refresh timestamp for retry visibility
-                  timestamp: new Date().toISOString(),
-                  context: {
-                    ...(pendingMessage.chatMessage.context || {}),
-                    metadata: {
-                      ...((pendingMessage.chatMessage.context?.metadata as AgentsAppContext['metadata']) || {}),
-                      appId: currentAppId,
-                      sessionId: socket.id,
-                      userId: 'current-user'
-                    }
-                  }
-                }
-
-                socket.emit('chat_message', messageToSend)
-                // Update stored message timestamp for potential subsequent retries
-                retryState.pendingMessage = {
-                  chatMessage: messageToSend,
-                  startTime: pendingMessage.startTime
-                }
-                // Clear timer reference after successful retry to allow proper cleanup in tests
-                retryState.retryTimer = undefined
-              }
-            }, retryDelay)
-          } else {
-            // Not retryable or exceeded retry time - show error
-            if (isAppNotFound && elapsedTime >= 30000) {
-              logger.error('websocket.error.app_not_found.timeout', {
-                message: 'App not found after 30 seconds of retries',
-                retryCount: retryState.retryCount,
-                elapsedTime
-              })
-            } else {
-              logger.error('websocket.error', { message: 'Socket.IO error', data })
-            }
-
-            // Clear retry state
-            clearRetryState()
-
-            markUpstreamError({
-              message: data.content,
-              type: errorType,
-              statusCode: errorCode,
-              timestamp: errorTimestamp,
-              retryAttempts,
-              retryReason
-            });
-            finalizeStream({
-              agentId: data.data?.agentId,
-              totalSteps: data.data?.step
-            })
-            sendToolImpression('error')
-            setWebSocketState({
-              status: 'error',
-              error: {
-                message: data.content,
-                type: errorType,
-                statusCode: errorCode,
-                timestamp: errorTimestamp,
-                retryAttempts,
-                retryReason
-              }
-            })
-            setStreamingState('error')
-            setIsLoading(false)
-            clearStoredSocketId()
-            pendingRecoveryAckRef.current = null
-          }
-          break
-        default:
-          break
-      }
+      // Dispatch to appropriate handler via registry
+      await registry.dispatch(data.type, data, messageContext, ack)
     })
   }, [
     appendTextSegment,

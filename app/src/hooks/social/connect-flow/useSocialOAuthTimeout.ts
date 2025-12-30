@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
-import { FlowStep } from './useSocialConnectFlowStateMachine'
-import { SocialFlowAction } from '@/types/social'
+
 import { OAUTH_TIMEOUT_MS } from '@/lib/social'
+import { SocialFlowAction } from '@/types/social'
+import { FlowStep } from './useSocialConnectFlowStateMachine'
 
 interface UseSocialOAuthTimeoutProps {
   flowStep: FlowStep

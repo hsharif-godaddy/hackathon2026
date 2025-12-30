@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+
 import type { CustomerAuthContext } from '@/lib/customer-auth'
 import type { getPrismaClient } from '@/lib/prisma'
 

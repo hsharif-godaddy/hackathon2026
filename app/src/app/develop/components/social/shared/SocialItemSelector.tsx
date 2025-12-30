@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { SocialConnectionInfo } from './SocialConnectionInfo'
-import { SocialSectionHeader } from './SocialSectionHeader'
 import Button from '@ux/button'
 import text from '@ux/text'
+
+import { SocialConnectionInfo } from './SocialConnectionInfo'
+import { SocialSectionHeader } from './SocialSectionHeader'
 
 interface SocialItemSelectorItem {
   id: string

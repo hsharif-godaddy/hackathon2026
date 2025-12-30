@@ -13,9 +13,9 @@ import { formatColumnName } from '@/app/develop/components/settings/Database/uti
 import { ChatTab } from '@/app/develop/components/types';
 import BigCard from '@/components/layout/BigCard';
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
+import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDatabaseTables } from '@/hooks/useDatabaseTables';
 import { useTranslations } from '@/hooks/useTranslations';
-import { useChatTabs } from '@/hooks/useChatTabs';
 
 interface DatabasePanelProps {
   appId: string;

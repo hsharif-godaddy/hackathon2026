@@ -3,7 +3,6 @@
 import { memo } from 'react'
 import LinkIcon from '@ux/icon/link'
 
-
 import SocialConnectFlow from '@/app/develop/components/social/connect-flow/SocialConnectFlow'
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import DefaultToolRenderer from '@/app/develop/components/tool-renderers/DefaultToolRenderer'

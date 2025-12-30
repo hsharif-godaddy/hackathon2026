@@ -2,8 +2,8 @@
 'use client'
 
 import { memo } from 'react'
-import text from '@ux/text'
 import Box from '@ux/box'
+import text from '@ux/text'
 
 interface SocialConnectionInfoProps {
   name: string

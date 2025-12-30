@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { socialV2Client } from '@/lib/social'
 import { useIsFullscreen } from '@/hooks/useFullscreen'
+import { socialV2Client } from '@/lib/social'
 import { getPlatformStrategy, PLATFORM_CONFIG, PLATFORM_TRANSFORMS, PlatformConfig } from '@/lib/social-platforms'
 import { getErrorMessage } from '@/lib/social-utils'
 import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'

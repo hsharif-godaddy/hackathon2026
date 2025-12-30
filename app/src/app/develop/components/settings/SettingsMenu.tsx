@@ -7,8 +7,8 @@ import SettingsIcon from '@ux/icon/settings';
 
 import { useSettingsNavItems } from '@/app/develop/components/settings/useSettingsNavItems';
 import { SettingsSection } from '@/app/develop/components/types';
-import { useTranslations } from '@/hooks/useTranslations';
 import { useChatTabs } from '@/hooks/useChatTabs';
+import { useTranslations } from '@/hooks/useTranslations';
 import {
   Popover,
   PopoverContent,

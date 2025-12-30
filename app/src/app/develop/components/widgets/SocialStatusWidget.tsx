@@ -5,9 +5,9 @@ import type { ComponentType } from 'react'
 import { memo,useMemo } from 'react'
 import text from '@ux/text'
 
+import { useSocialConnectionsWithMetadata } from '@/hooks/social/queries/useSocialConnections'
 import { useTranslations } from '@/hooks/useTranslations'
 import { getSimplePlatformStatuses } from '@/lib/social-platforms'
-import { useSocialConnectionsWithMetadata } from '@/hooks/social/queries/useSocialConnections'
 
 interface PlatformStatusItemProps {
   name: string

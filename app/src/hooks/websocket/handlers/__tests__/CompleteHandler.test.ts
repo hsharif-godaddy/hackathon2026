@@ -1,0 +1,67 @@
+/**
+ * CompleteHandler Tests
+ */
+
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { CompleteHandler } from '../CompleteHandler'
+import type { WebSocketMessage } from '../types'
+import { createMockMessageContext } from './testUtils'
+
+vi.mock('@/stores/useStreamingConversationStore', () => ({
+  useStreamingConversationStore: {
+    getState: vi.fn(),
+  },
+}))
+
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+
+const mockStore = useStreamingConversationStore as unknown as {
+  getState: ReturnType<typeof vi.fn>
+}
+
+describe('CompleteHandler', () => {
+  const handler = new CompleteHandler()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('finalizes stream and clears recovery state on completion', async () => {
+    const clearConnectionRetry = vi.fn()
+    mockStore.getState.mockReturnValue({
+      connectionRetry: { isRetrying: true },
+      clearConnectionRetry,
+    })
+
+    const context = createMockMessageContext()
+    const data: WebSocketMessage = {
+      type: 'complete',
+      content: '',
+      data: {
+        agentId: 'develop',
+        usage: { totalTokens: 100 },
+        step: 3,
+        commitHash: 'abcdef1',
+      },
+    }
+
+    await handler.handle(data, context)
+
+    expect(context.actions.flushToolDeltaBufferImmediate).toHaveBeenCalled()
+    expect(clearConnectionRetry).toHaveBeenCalled()
+    expect(context.helpers.clearRetryState).toHaveBeenCalled()
+    expect(context.actions.finalizeStream).toHaveBeenCalledWith({
+      agentId: 'develop',
+      usage: { totalTokens: 100 },
+      totalSteps: 3,
+    })
+    expect(context.helpers.sendToolImpression).toHaveBeenCalledWith('complete')
+    expect(context.actions.setWebSocketState).toHaveBeenCalledWith({ status: 'idle' })
+    expect(context.actions.setStreamingState).toHaveBeenCalledWith('idle')
+    expect(context.actions.setIsLoading).toHaveBeenCalledWith(false)
+    expect(context.helpers.handleCommitComplete).toHaveBeenCalledWith('abcdef1')
+    expect(context.helpers.clearStoredSocketId).toHaveBeenCalled()
+    expect(context.helpers.clearConversationIdCookie).toHaveBeenCalledWith('app-123')
+  })
+})

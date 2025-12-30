@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
-import { useSocialConnectionsWithMetadata } from '../queries/useSocialConnections'
-import { useSiteLinks } from '../queries/useSiteLinks'
-import { getDetailedPlatformStatuses } from '@/lib/social-platforms'
+
 import { SOCIAL_FLOW_CONFIG } from '@/lib/social'
+import { getDetailedPlatformStatuses } from '@/lib/social-platforms'
 import type { EnrichedSocialConnection } from '@/types/social'
+import { useSiteLinks } from '../queries/useSiteLinks'
+import { useSocialConnectionsWithMetadata } from '../queries/useSocialConnections'
 
 interface UseSocialPanelDataResult {
   allConnections: EnrichedSocialConnection[]

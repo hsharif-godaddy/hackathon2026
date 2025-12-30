@@ -11,8 +11,8 @@ import SocialPanel from '@/app/develop/components/settings/social/SocialPanel'
 import VisualScanPanel from '@/app/develop/components/settings/VisualScanPanel'
 import { SettingsSection } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
-import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useChatTabs } from '@/hooks/useChatTabs'
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { SecretsPanel } from './SecretsPanel'
 
 export default function SettingsView() {
