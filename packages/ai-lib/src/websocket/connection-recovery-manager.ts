@@ -127,7 +127,7 @@ export class ConnectionRecoveryManager {
   async handleAutomaticRecovery(
     socket: Socket,
     callbacks: {
-      onRecoveryComplete: (socketId: string, events: StreamingEvent[]) => void
+      onRecoveryComplete: (socketId: string, events: StreamingEvent[], finalSequence: number) => void
       onRecoveryFailed: (socketId: string, reason: string) => void
       createWebSocketSubscriber: (socket: Socket) => WebSocketSubscriber
     }
@@ -167,7 +167,7 @@ export class ConnectionRecoveryManager {
     socket: Socket,
     previousSocketId: string,
     callbacks: {
-      onRecoveryComplete: (socketId: string, events: StreamingEvent[]) => void
+      onRecoveryComplete: (socketId: string, events: StreamingEvent[], finalSequence: number) => void
       onRecoveryFailed: (socketId: string, reason: string) => void
       createWebSocketSubscriber: (socket: Socket) => WebSocketSubscriber
     }
@@ -212,7 +212,7 @@ export class ConnectionRecoveryManager {
     conversationId: string,
     validateAppId: (conversationId: string, auth: Record<string, unknown>) => boolean,
     callbacks: {
-      onRecoveryComplete: (socketId: string, events: StreamingEvent[]) => void
+      onRecoveryComplete: (socketId: string, events: StreamingEvent[], finalSequence: number) => void
       onRecoveryFailed: (socketId: string, reason: string) => void
       createWebSocketSubscriber: (socket: Socket) => WebSocketSubscriber
     }
@@ -291,7 +291,7 @@ export class ConnectionRecoveryManager {
     context: RecoveryContext,
     streamData: DisconnectedStreamState,
     callbacks: {
-      onRecoveryComplete: (socketId: string, events: StreamingEvent[]) => void
+      onRecoveryComplete: (socketId: string, events: StreamingEvent[], finalSequence: number) => void
       onRecoveryFailed: (socketId: string, reason: string) => void
       createWebSocketSubscriber: (socket: Socket) => WebSocketSubscriber
     }
@@ -385,7 +385,7 @@ export class ConnectionRecoveryManager {
     preReplaySequence: number,
     replayedEvents: StreamingEvent[],
     callbacks: {
-      onRecoveryComplete: (socketId: string, events: StreamingEvent[]) => void
+      onRecoveryComplete: (socketId: string, events: StreamingEvent[], finalSequence: number) => void
       onRecoveryFailed: (socketId: string, reason: string) => void
       createWebSocketSubscriber: (socket: Socket) => WebSocketSubscriber
     }
@@ -474,7 +474,7 @@ export class ConnectionRecoveryManager {
         toSequence: finalSequence
       })
 
-      callbacks.onRecoveryComplete(context.newSocketId, replayedEvents)
+      callbacks.onRecoveryComplete(context.newSocketId, replayedEvents, finalSequence)
     }
 
     handleRecoveryAck = (ackData: { conversationId: string; lastSequence: number }) => {

@@ -1,7 +1,6 @@
 import type { ModelMessage } from 'ai'
 import { APICallError, RetryError } from 'ai'
 import { Server as SocketIOServer } from 'socket.io'
-import type { Socket } from 'socket.io'
 import { Server as HTTPServer } from 'http'
 import type { AgentFactory, AgentWrapper } from '../core/agent-factory.js'
 import { createAgentFactory } from '../core/agent-factory.js'
@@ -18,8 +17,7 @@ import type {
   ConversationPersistenceWithCleanup,
   ConversationMessage,
   PersistenceStreamingEvent,
-  ConversationContext,
-  StreamingEvent
+  ConversationContext
 } from './interfaces.js'
 import { ConversationEventChannel } from './conversation-event-channel.js'
 import { WebSocketSubscriber } from './subscribers/websocket-subscriber.js'
@@ -462,441 +460,80 @@ export class WebSocketServer {
         })
       }
 
-      // Use recovery manager to detect recovery mode (preparation for full delegation)
+      // Use recovery manager to detect and handle recovery
       const detectedRecoveryMode = this.recoveryManager.attemptRecovery(socket)
-      if (detectedRecoveryMode) {
-        this.logger.debug('connection.recovery_mode_detected', {
-          socketId,
-          recoveryMode: detectedRecoveryMode
-        })
-      }
 
-      // Check if this is a recovered connection (automatic recovery via Socket.IO)
-      if (socket.recovered && this.disconnectedStreams.has(socketId)) {
-        this.logger.info('Socket reconnected during recovery window (automatic), replaying from event channel', { socketId })
+      // Delegate to recovery manager for all recovery scenarios
+      if (detectedRecoveryMode === 'automatic') {
+        // Capture state needed for local Map updates in callbacks
         const streamData = this.disconnectedStreams.get(socketId)!
-
-        // Cancel the original abort timeout
-        clearTimeout(streamData.timeoutId)
-
         const conversation = this.activeConversations.get(socketId)
-        const preReplaySequence = streamData.lastDeliveredSequence
 
-        const events = this.eventChannel.getEventsSince(
-          streamData.conversationId,
-          streamData.lastDeliveredSequence
-        )
-
-        const expectedNextSequence = streamData.lastDeliveredSequence + 1
-        const { lossDetected, lostEventCount } = this.getBufferLossInfo(
-          streamData.conversationId,
-          expectedNextSequence
-        )
-
-        if (lossDetected) {
-          this.logger.warn('websocket.recovery.buffer_loss_detected', {
-            socketId,
-            conversationId: streamData.conversationId,
-            lostEventCount
-          })
-        }
-
-        const replayLastSequence = events.length > 0 ? events[events.length - 1]!.sequence : preReplaySequence
-
-        socket.emit('message', {
-          type: 'recovery_status',
-          content: 'Recovering connection...',
-          data: {
-            isRecovering: true,
-            hasBufferedEvents: events.length > 0,
-            bufferedEventCount: events.length,
-            conversationId: conversation?.conversationId,
-            agentName: conversation?.agentName,
-            recoveryMode: 'automatic',
-            requiresAck: true,
-            lastSequence: replayLastSequence,
-            lossDetected,
-            lostEventCount
-          }
-        } as WebSocketMessage)
-
-        for (const event of events) {
-          socket.emit('message', {
-            type: event.type,
-            content: event.content,
-            data: event.data
-          } as WebSocketMessage)
-        }
-
-        socket.emit('message', {
-          type: 'replay_complete',
-          content: 'All buffered events replayed',
-          data: {
-            lastSequence: replayLastSequence,
-            conversationId: conversation?.conversationId,
-            eventsReplayed: events.length
-          }
-        } as WebSocketMessage)
-
-        let handleRecoveryAck: ((ackData: { conversationId: string; lastSequence: number }) => void) | null = null
-
-        const handleAckTimeout = () => {
-          // Always remove the listener first to prevent it from firing after cleanup
-          if (handleRecoveryAck) {
-            socket.off('recovery_ack', handleRecoveryAck)
-          }
-
-          // Guard against cleanup race - if cleanup already in progress, skip
-          if (this.cleanupInProgress.has(socketId)) {
-            this.logger.debug('websocket.ack_timeout.cleanup_in_progress', { socketId })
-            return
-          }
-          this.logger.warn('websocket.recovery.ack_timeout', {
-            socketId,
-            recoveryWindow: this.ACK_TIMEOUT_MS
-          })
-
-          // Clean up event channel subscribers before conversation cleanup
-          const conv = this.activeConversations.get(socketId)
-          if (conv) {
-            this.cleanupEventChannelSubscribers(socketId, conv.conversationId)
-          }
-
-          streamData.abortController.abort()
-          // Explicit synchronous cleanup of maps (for test compatibility)
-          this.disconnectedStreams.delete(socketId)
-          this.activeStreams.delete(socketId)
-          // Additional async cleanup
-          void this.cleanupConversation(socketId).catch((error) => {
-            this.logger.error('websocket.recovery.ack_timeout.cleanup_failed', {
-              socketId,
-              error: error instanceof Error ? error.message : String(error)
-            })
-          })
-        }
-
-        const ackTimeoutId = setTimeout(handleAckTimeout, this.ACK_TIMEOUT_MS)
-
-        this.disconnectedStreams.set(socketId, {
-          abortController: streamData.abortController,
-          timeoutId: ackTimeoutId,
-          conversationId: streamData.conversationId,
-          lastDeliveredSequence: preReplaySequence
-        })
-
-        const finalizeAutomaticRecovery = (finalSequence: number, catchUpCount = 0) => {
-          this.activeStreams.set(socketId, streamData.abortController)
-          this.disconnectedStreams.delete(socketId)
-
-          if (conversation) {
-            conversation.lastDeliveredSequence = finalSequence
-            const conversationId = conversation.conversationId
-            this.eventChannel.unsubscribe(conversationId, `websocket-${socketId}`)
-            this.eventChannel.subscribe(
-              conversationId,
-              new WebSocketSubscriber(socket, this.disconnectedStreams)
-            )
-          }
-
-          socket.emit('message', {
-            type: 'recovery_status',
-            content: 'Connection restored',
-            data: {
-              isRecovering: false,
-              eventsReplayed: events.length + catchUpCount,
-              streamStatus: 'active'
+        await this.recoveryManager.handleAutomaticRecovery(socket, {
+          onRecoveryComplete: (_completedSocketId, _events, finalSequence) => {
+            // Update local Maps (recovery manager handles disconnectedStreams and eventChannel)
+            this.activeStreams.set(socketId, streamData.abortController)
+            if (conversation) {
+              conversation.lastDeliveredSequence = finalSequence
             }
-          } as WebSocketMessage)
-
-          this.logger.info('websocket.reconnect.transfer_complete', {
-            socketId,
-            eventCount: events.length + catchUpCount,
-            fromSequence: preReplaySequence,
-            toSequence: finalSequence,
-            conversationId: conversation?.conversationId
-          })
-        }
-
-        handleRecoveryAck = (ackData: { conversationId: string; lastSequence: number }) => {
-          if (ackData.conversationId !== streamData.conversationId) {
-            this.logger.warn('websocket.recovery.ack_mismatch', {
-              socketId,
-              expectedConversationId: streamData.conversationId,
-              receivedConversationId: ackData.conversationId
-            })
-            return
-          }
-
-          clearTimeout(ackTimeoutId)
-
-          const catchUpEvents = this.eventChannel.getEventsSince(
-            streamData.conversationId,
-            ackData.lastSequence
-          )
-
-          if (catchUpEvents.length === 0) {
-            finalizeAutomaticRecovery(ackData.lastSequence)
-            return
-          }
-
-          this.beginCatchUpHandshake(socket, {
-            conversationId: streamData.conversationId,
-            events: catchUpEvents,
-            onComplete: (finalSequence) => finalizeAutomaticRecovery(finalSequence, catchUpEvents.length),
-            onTimeout: () => {
-              // Clean up event channel subscribers - conversation may be undefined in catch-up context
-              const conv = this.activeConversations.get(socketId)
-              if (conv) {
-                this.cleanupEventChannelSubscribers(socketId, conv.conversationId)
-              }
-
-              streamData.abortController.abort()
-              this.disconnectedStreams.delete(socketId)
-              this.activeStreams.delete(socketId)
-              void this.cleanupConversation(socketId).catch((error) => {
-                this.logger.error('websocket.catchup.timeout.cleanup_failed', {
-                  socketId,
-                  error: error instanceof Error ? error.message : String(error)
-                })
+          },
+          onRecoveryFailed: (_failedSocketId, _reason) => {
+            // Cleanup local Maps - use captured conversation to avoid race with Map modifications
+            if (conversation) {
+              this.cleanupEventChannelSubscribers(socketId, conversation.conversationId)
+            }
+            streamData.abortController.abort()
+            this.activeStreams.delete(socketId)
+            void this.cleanupConversation(socketId).catch((error) => {
+              this.logger.error('websocket.recovery.cleanup_failed', {
+                socketId,
+                error: error instanceof Error ? error.message : String(error)
               })
-            }
-          })
-        }
-
-        socket.once('recovery_ack', handleRecoveryAck)
+            })
+          },
+          createWebSocketSubscriber: (sock) => new WebSocketSubscriber(sock, this.disconnectedStreams)
+        })
+        return // Recovery handled, skip fresh connection setup
       }
+
       // Check for manual recovery after page reload (client sends previousSocketId)
-      else if (previousSocketId && this.disconnectedStreams.has(previousSocketId)) {
-        this.logger.info('Manual recovery after page reload, replaying from event channel', {
-          newSocketId: socketId,
-          previousSocketId
-        })
-        const streamData = this.disconnectedStreams.get(previousSocketId)!
+      if (detectedRecoveryMode === 'manual') {
+        // Capture state needed for local Map updates in callbacks
+        const streamData = this.disconnectedStreams.get(previousSocketId!)!
+        const conversation = this.activeConversations.get(previousSocketId!)
 
-        // Capture pre-replay sequence - don't advance until client confirms receipt
-        const preReplaySequence = streamData.lastDeliveredSequence
-
-        // Cancel the abort timeout
-        clearTimeout(streamData.timeoutId)
-
-        // Get conversation info for the client
-        const conversation = this.activeConversations.get(previousSocketId)
-
-        // Replay events from event channel since last delivered sequence
-        const events = this.eventChannel.getEventsSince(
-          streamData.conversationId,
-          streamData.lastDeliveredSequence
-        )
-
-        const expectedNextSequenceManual = streamData.lastDeliveredSequence + 1
-        const { lossDetected: manualLossDetected, lostEventCount: manualLostEventCount } = this.getBufferLossInfo(
-          streamData.conversationId,
-          expectedNextSequenceManual
-        )
-
-        if (manualLossDetected) {
-          this.logger.warn('websocket.recovery.buffer_loss_detected', {
-            previousSocketId,
-            conversationId: streamData.conversationId,
-            lostEventCount: manualLostEventCount
-          })
-        }
-
-        // Calculate the last sequence we're about to replay
-        const replayLastSequence = events.length > 0 ? events[events.length - 1]!.sequence : preReplaySequence
-
-        socket.emit('message', {
-          type: 'recovery_status',
-          content: 'Recovering connection...',
-          data: {
-            isRecovering: true,
-            hasBufferedEvents: events.length > 0,
-            bufferedEventCount: events.length,
-            conversationId: conversation?.conversationId,
-            agentName: conversation?.agentName,
-            recoveryMode: 'manual',
-            requiresAck: true,
-            lastSequence: replayLastSequence,
-            lossDetected: manualLossDetected,
-            lostEventCount: manualLostEventCount
-          }
-        } as WebSocketMessage)
-
-        for (const event of events) {
-          socket.emit('message', {
-            type: event.type,
-            content: event.content,
-            data: event.data
-          } as WebSocketMessage)
-        }
-
-        socket.emit('message', {
-          type: 'replay_complete',
-          content: 'All buffered events replayed',
-          data: {
-            lastSequence: replayLastSequence,
-            conversationId: conversation?.conversationId,
-            eventsReplayed: events.length
-          }
-        } as WebSocketMessage)
-
-        let handleRecoveryAck: ((ackData: { conversationId: string; lastSequence: number }) => void) | null = null
-
-        const handleAckTimeout = () => {
-          // Always remove the listener first to prevent it from firing after cleanup
-          if (handleRecoveryAck) {
-            socket.off('recovery_ack', handleRecoveryAck)
-          }
-
-          // Guard against cleanup race - if cleanup already in progress, skip
-          if (this.cleanupInProgress.has(previousSocketId)) {
-            this.logger.debug('websocket.ack_timeout.cleanup_in_progress', { socketId, previousSocketId })
-            return
-          }
-          this.logger.warn('websocket.recovery.ack_timeout', {
-            socketId,
-            previousSocketId,
-            recoveryWindow: this.ACK_TIMEOUT_MS
-          })
-
-          // Clean up event channel subscribers before conversation cleanup
-          const conv = this.activeConversations.get(previousSocketId)
-          if (conv) {
-            this.cleanupEventChannelSubscribers(previousSocketId, conv.conversationId)
-          }
-
-          streamData.abortController.abort()
-          // Explicit synchronous cleanup of maps (for test compatibility)
-          this.disconnectedStreams.delete(previousSocketId)
-          this.activeStreams.delete(previousSocketId)
-          // Additional async cleanup
-          void this.cleanupConversation(previousSocketId).catch((error) => {
-            this.logger.error('websocket.recovery.ack_timeout.cleanup_failed', {
-              previousSocketId,
-              error: error instanceof Error ? error.message : String(error)
-            })
-          })
-        }
-
-        const ackTimeoutId = setTimeout(handleAckTimeout, this.ACK_TIMEOUT_MS)
-
-        this.disconnectedStreams.set(previousSocketId, {
-          abortController: streamData.abortController,
-          timeoutId: ackTimeoutId,
-          conversationId: streamData.conversationId,
-          lastDeliveredSequence: preReplaySequence
-        })
-
-        const finalizeManualRecovery = (finalSequence: number, catchUpCount = 0) => {
-          this.activeStreams.set(socketId, streamData.abortController)
-
-          if (conversation) {
-            conversation.lastDeliveredSequence = finalSequence
-            this.activeConversations.set(socketId, conversation)
-            this.activeConversations.delete(previousSocketId)
-            this.socketIdMigrations.set(previousSocketId, socketId)
-
-            const conversationId = conversation.conversationId
-            this.eventChannel.unsubscribe(conversationId, `websocket-${previousSocketId}`)
-            this.eventChannel.subscribe(
-              conversationId,
-              new WebSocketSubscriber(socket, this.disconnectedStreams)
-            )
-          }
-
-          this.disconnectedStreams.delete(previousSocketId)
-
-          socket.emit('message', {
-            type: 'recovery_status',
-            content: 'Connection restored',
-            data: {
-              isRecovering: false,
-              eventsReplayed: events.length + catchUpCount,
-              streamStatus: 'active'
+        await this.recoveryManager.handleManualRecovery(socket, previousSocketId!, {
+          onRecoveryComplete: (_completedSocketId, _events, finalSequence) => {
+            // Update local Maps (recovery manager handles disconnectedStreams, eventChannel, onDisconnection)
+            this.activeStreams.set(socketId, streamData.abortController)
+            if (conversation) {
+              conversation.lastDeliveredSequence = finalSequence
+              this.activeConversations.set(socketId, conversation)
+              this.activeConversations.delete(previousSocketId!)
+              this.socketIdMigrations.set(previousSocketId!, socketId)
             }
-          } as WebSocketMessage)
-
-          const disconnectResult = this.config.onDisconnection?.(previousSocketId)
-          if (disconnectResult) {
-            disconnectResult.catch((disconnectError: unknown) => {
-              this.logger.warn('websocket.reconnect.cleanup_failed', {
-                previousSocketId,
-                error: disconnectError instanceof Error ? disconnectError.message : String(disconnectError)
+          },
+          onRecoveryFailed: (_failedSocketId, _reason) => {
+            // Cleanup local Maps - use captured conversation to avoid race with Map modifications
+            if (conversation) {
+              this.cleanupEventChannelSubscribers(previousSocketId!, conversation.conversationId)
+            }
+            streamData.abortController.abort()
+            this.activeStreams.delete(previousSocketId!)
+            void this.cleanupConversation(previousSocketId!).catch((error) => {
+              this.logger.error('websocket.recovery.cleanup_failed', {
+                socketId: previousSocketId,
+                error: error instanceof Error ? error.message : String(error)
               })
             })
-          }
-
-          this.logger.info('websocket.reconnect.transfer_complete', {
-            newSocketId: socketId,
-            previousSocketId,
-            eventCount: events.length + catchUpCount,
-            fromSequence: preReplaySequence,
-            toSequence: finalSequence,
-            conversationId: conversation?.conversationId
-          })
-        }
-
-        // Register one-off listener for client acknowledgement
-        // Only transition to active state after client confirms receipt
-        handleRecoveryAck = (ackData: { conversationId: string; lastSequence: number }) => {
-          if (ackData.conversationId !== streamData.conversationId) {
-            this.logger.warn('websocket.recovery.ack_mismatch', {
-              socketId,
-              expectedConversationId: streamData.conversationId,
-              receivedConversationId: ackData.conversationId
-            })
-            return
-          }
-
-          clearTimeout(ackTimeoutId)
-
-          this.logger.info('websocket.recovery.ack_received', {
-            socketId,
-            previousSocketId,
-            lastSequence: ackData.lastSequence
-          })
-
-          const catchUpEventsManual = this.eventChannel.getEventsSince(
-            streamData.conversationId,
-            ackData.lastSequence
-          )
-
-          if (catchUpEventsManual.length === 0) {
-            finalizeManualRecovery(ackData.lastSequence)
-            return
-          }
-
-          this.beginCatchUpHandshake(socket, {
-            conversationId: streamData.conversationId,
-            events: catchUpEventsManual,
-            onComplete: (finalSequence) => finalizeManualRecovery(finalSequence, catchUpEventsManual.length),
-            onTimeout: () => {
-              // Clean up event channel subscribers - conversation may be undefined in catch-up context
-              const conv = this.activeConversations.get(previousSocketId)
-              if (conv) {
-                this.cleanupEventChannelSubscribers(previousSocketId, conv.conversationId)
-              }
-
-              streamData.abortController.abort()
-              this.disconnectedStreams.delete(previousSocketId)
-              this.activeStreams.delete(previousSocketId)
-              void this.cleanupConversation(previousSocketId).catch((error) => {
-                this.logger.error('websocket.catchup.timeout.cleanup_failed', {
-                  previousSocketId,
-                  error: error instanceof Error ? error.message : String(error)
-                })
-              })
-            }
-          })
-        }
-
-        // Set up the ack listener
-        // Stream stays in disconnectedStreams until ack arrives, so WebSocketSubscriber
-        // won't emit and there's no race condition if disconnect happens before ack
-        socket.once('recovery_ack', handleRecoveryAck)
+          },
+          createWebSocketSubscriber: (sock) => new WebSocketSubscriber(sock, this.disconnectedStreams)
+        })
+        return // Recovery handled, skip fresh connection setup
       }
+
       // Check if client is trying to recover but stream already completed/cleaned up
-      else if (previousSocketId) {
+      if (previousSocketId && !detectedRecoveryMode) {
         this.logger.info('Recovery attempted but no buffered events found', {
           newSocketId: socketId,
           previousSocketId
@@ -915,266 +552,55 @@ export class WebSocketServer {
       }
       // Conversation-based recovery fallback (for tab-closure recovery when socket ID is lost)
       // This allows recovery using a durable conversationId cookie instead of ephemeral sessionStorage
-      else if (auth.conversationId && !previousSocketId) {
-        // Find disconnectedStream with matching conversationId
+      if (detectedRecoveryMode === 'conversation') {
+        // Find the old socket ID for local Map updates
         const entry = Array.from(this.disconnectedStreams.entries()).find(
           ([_, data]) => data.conversationId === auth.conversationId
         )
+        const oldSocketId = entry?.[0]
+        const streamData = entry?.[1]
+        const conversation = oldSocketId ? this.activeConversations.get(oldSocketId) : undefined
 
-        if (entry) {
-          const [oldSocketId, streamData] = entry
+        // Validation function for security check
+        const validateAppId = (_conversationId: string, authData: Record<string, unknown>): boolean => {
+          const authenticatedSiteId = (authData as any).agentContext?.siteId || (authData as any).decoded?.siteId
+          if (conversation && authenticatedSiteId && conversation.context?.appId !== authenticatedSiteId) {
+            return false
+          }
+          return true
+        }
 
-          // SECURITY: Validate conversation belongs to same app/user
-          // Use validated siteId from JWT (set by agents server after JWT validation) instead of untrusted auth.appId
-          // The siteId is stored at socket.handshake.auth.agentContext?.siteId or socket.handshake.auth.decoded?.siteId
-          const authenticatedSiteId = auth.agentContext?.siteId || auth.decoded?.siteId
-          const originalConversation = this.activeConversations.get(oldSocketId)
-          if (originalConversation && authenticatedSiteId && originalConversation.context?.appId !== authenticatedSiteId) {
-            this.logger.warn('websocket.recovery.app_mismatch', {
-              socketId,
-              conversationId: auth.conversationId,
-              authenticatedSiteId,
-              actualAppId: originalConversation.context?.appId
-            })
-            // Reject recovery - send fresh start
-            socket.emit('message', {
-              type: 'recovery_status',
-              content: 'No active stream to recover',
-              data: { recovered: false, hasBufferedEvents: false }
-            } as WebSocketMessage)
-          } else {
-            this.logger.info('websocket.recovery.by_conversation_id', {
-              newSocketId: socketId,
-              oldSocketId,
-              conversationId: auth.conversationId
-            })
-
-            // Perform recovery similar to previousSocketId path
-            const preReplaySequence = streamData.lastDeliveredSequence
-            clearTimeout(streamData.timeoutId)
-
-            const conversation = this.activeConversations.get(oldSocketId)
-            const events = this.eventChannel.getEventsSince(
-              streamData.conversationId,
-              streamData.lastDeliveredSequence
-            )
-
-            const expectedNextSequence = streamData.lastDeliveredSequence + 1
-            const { lossDetected, lostEventCount } = this.getBufferLossInfo(
-              streamData.conversationId,
-              expectedNextSequence
-            )
-
-            if (lossDetected) {
-              this.logger.warn('websocket.recovery.buffer_loss_detected', {
-                oldSocketId,
-                conversationId: streamData.conversationId,
-                lostEventCount
-              })
+        await this.recoveryManager.handleConversationRecovery(socket, auth.conversationId, validateAppId, {
+          onRecoveryComplete: (_completedSocketId, _events, finalSequence) => {
+            // Update local Maps for backward compatibility
+            if (streamData) {
+              this.activeStreams.set(socketId, streamData.abortController)
             }
-
-            const replayLastSequence = events.length > 0 ? events[events.length - 1]!.sequence : preReplaySequence
-
-            socket.emit('message', {
-              type: 'recovery_status',
-              content: 'Recovering connection...',
-              data: {
-                isRecovering: true,
-                hasBufferedEvents: events.length > 0,
-                bufferedEventCount: events.length,
-                conversationId: conversation?.conversationId,
-                agentName: conversation?.agentName,
-                recoveryMode: 'conversation',
-                requiresAck: true,
-                lastSequence: replayLastSequence,
-                lossDetected,
-                lostEventCount
-              }
-            } as WebSocketMessage)
-
-            for (const event of events) {
-              socket.emit('message', {
-                type: event.type,
-                content: event.content,
-                data: event.data
-              } as WebSocketMessage)
+            if (conversation && oldSocketId) {
+              conversation.lastDeliveredSequence = finalSequence
+              this.activeConversations.set(socketId, conversation)
+              this.activeConversations.delete(oldSocketId)
+              this.socketIdMigrations.set(oldSocketId, socketId)
             }
-
-            socket.emit('message', {
-              type: 'replay_complete',
-              content: 'All buffered events replayed',
-              data: {
-                lastSequence: replayLastSequence,
-                conversationId: conversation?.conversationId,
-                eventsReplayed: events.length
+          },
+          onRecoveryFailed: (_failedSocketId, _reason) => {
+            // Cleanup local Maps - use captured conversation to avoid race with Map modifications
+            if (oldSocketId) {
+              if (conversation) {
+                this.cleanupEventChannelSubscribers(oldSocketId, conversation.conversationId)
               }
-            } as WebSocketMessage)
-
-            let handleRecoveryAck: ((ackData: { conversationId: string; lastSequence: number }) => void) | null = null
-
-            const handleAckTimeout = () => {
-              // Always remove the listener first to prevent it from firing after cleanup
-              if (handleRecoveryAck) {
-                socket.off('recovery_ack', handleRecoveryAck)
-              }
-
-              if (this.cleanupInProgress.has(oldSocketId)) {
-                this.logger.debug('websocket.ack_timeout.cleanup_in_progress', { socketId, oldSocketId })
-                return
-              }
-              this.logger.warn('websocket.recovery.ack_timeout', {
-                socketId,
-                oldSocketId,
-                recoveryWindow: this.ACK_TIMEOUT_MS
-              })
-
-              // Clean up event channel subscribers before conversation cleanup
-              const conv = this.activeConversations.get(oldSocketId)
-              if (conv) {
-                this.cleanupEventChannelSubscribers(oldSocketId, conv.conversationId)
-              }
-
-              streamData.abortController.abort()
-              // Explicit synchronous cleanup of maps
-              this.disconnectedStreams.delete(oldSocketId)
               this.activeStreams.delete(oldSocketId)
-              // Additional async cleanup
               void this.cleanupConversation(oldSocketId).catch((error) => {
-                this.logger.error('websocket.recovery.ack_timeout.cleanup_failed', {
-                  oldSocketId,
+                this.logger.error('websocket.recovery.conversation.cleanup_failed', {
+                  socketId: oldSocketId,
                   error: error instanceof Error ? error.message : String(error)
                 })
               })
             }
-
-            const ackTimeoutId = setTimeout(handleAckTimeout, this.ACK_TIMEOUT_MS)
-
-            this.disconnectedStreams.set(oldSocketId, {
-              abortController: streamData.abortController,
-              timeoutId: ackTimeoutId,
-              conversationId: streamData.conversationId,
-              lastDeliveredSequence: preReplaySequence
-            })
-
-            const finalizeConversationRecovery = (finalSequence: number, catchUpCount = 0) => {
-              this.activeStreams.set(socketId, streamData.abortController)
-
-              if (conversation) {
-                conversation.lastDeliveredSequence = finalSequence
-                this.activeConversations.set(socketId, conversation)
-                this.activeConversations.delete(oldSocketId)
-                this.socketIdMigrations.set(oldSocketId, socketId)
-
-                const conversationId = conversation.conversationId
-                this.eventChannel.unsubscribe(conversationId, `websocket-${oldSocketId}`)
-                this.eventChannel.subscribe(
-                  conversationId,
-                  new WebSocketSubscriber(socket, this.disconnectedStreams)
-                )
-              }
-
-              this.disconnectedStreams.delete(oldSocketId)
-
-              socket.emit('message', {
-                type: 'recovery_status',
-                content: 'Connection restored',
-                data: {
-                  isRecovering: false,
-                  eventsReplayed: events.length + catchUpCount,
-                  streamStatus: 'active'
-                }
-              } as WebSocketMessage)
-
-              const disconnectResult = this.config.onDisconnection?.(oldSocketId)
-              if (disconnectResult) {
-                disconnectResult.catch((disconnectError: unknown) => {
-                  this.logger.warn('websocket.reconnect.cleanup_failed', {
-                    oldSocketId,
-                    error: disconnectError instanceof Error ? disconnectError.message : String(disconnectError)
-                  })
-                })
-              }
-
-              this.logger.info('websocket.reconnect.transfer_complete', {
-                newSocketId: socketId,
-                oldSocketId,
-                eventCount: events.length + catchUpCount,
-                fromSequence: preReplaySequence,
-                toSequence: finalSequence,
-                conversationId: conversation?.conversationId
-              })
-            }
-
-            handleRecoveryAck = (ackData: { conversationId: string; lastSequence: number }) => {
-              if (ackData.conversationId !== streamData.conversationId) {
-                this.logger.warn('websocket.recovery.ack_mismatch', {
-                  socketId,
-                  expectedConversationId: streamData.conversationId,
-                  receivedConversationId: ackData.conversationId
-                })
-                return
-              }
-
-              clearTimeout(ackTimeoutId)
-
-              this.logger.info('websocket.recovery.ack_received', {
-                socketId,
-                oldSocketId,
-                lastSequence: ackData.lastSequence
-              })
-
-              const catchUpEvents = this.eventChannel.getEventsSince(
-                streamData.conversationId,
-                ackData.lastSequence
-              )
-
-              if (catchUpEvents.length === 0) {
-                finalizeConversationRecovery(ackData.lastSequence)
-                return
-              }
-
-              this.beginCatchUpHandshake(socket, {
-                conversationId: streamData.conversationId,
-                events: catchUpEvents,
-                onComplete: (finalSequence) => finalizeConversationRecovery(finalSequence, catchUpEvents.length),
-                onTimeout: () => {
-                  // Clean up event channel subscribers - conversation may be undefined in catch-up context
-                  const conv = this.activeConversations.get(oldSocketId)
-                  if (conv) {
-                    this.cleanupEventChannelSubscribers(oldSocketId, conv.conversationId)
-                  }
-
-                  streamData.abortController.abort()
-                  this.disconnectedStreams.delete(oldSocketId)
-                  this.activeStreams.delete(oldSocketId)
-                  void this.cleanupConversation(oldSocketId).catch((error) => {
-                    this.logger.error('websocket.catchup.timeout.cleanup_failed', {
-                      oldSocketId,
-                      error: error instanceof Error ? error.message : String(error)
-                    })
-                  })
-                }
-              })
-            }
-
-            socket.once('recovery_ack', handleRecoveryAck)
-          }
-        } else {
-          // Stale conversationId - buffer expired or conversation already completed
-          this.logger.info('websocket.recovery.stale_conversation_id', {
-            socketId,
-            conversationId: auth.conversationId
-          })
-          socket.emit('message', {
-            type: 'recovery_status',
-            content: 'Stream already completed',
-            data: {
-              recovered: false,
-              hasBufferedEvents: false,
-              reason: 'stream_completed'
-            }
-          } as WebSocketMessage)
-        }
+          },
+          createWebSocketSubscriber: (sock) => new WebSocketSubscriber(sock, this.disconnectedStreams)
+        })
+        return // Recovery handled, skip fresh connection setup
       }
 
       // Call connection handler (await to ensure async initialization completes before subsequent handlers)
@@ -1456,95 +882,6 @@ export class WebSocketServer {
       this.socketIdMigrations.delete(current)
       current = next
     }
-  }
-
-  private beginCatchUpHandshake(
-    socket: Socket,
-    params: {
-      conversationId: string
-      events: StreamingEvent[]
-      onComplete: (finalSequence: number) => void
-      onTimeout: () => void
-    }
-  ): void {
-    const { conversationId, events, onComplete, onTimeout } = params
-    const finalSequence = events[events.length - 1]!.sequence
-
-    socket.emit('message', {
-      type: 'catchup_status',
-      content: 'Delivering queued events',
-      data: {
-        conversationId,
-        pendingCount: events.length,
-        lastSequence: finalSequence,
-        requiresAck: true
-      }
-    } as WebSocketMessage)
-
-    for (const event of events) {
-      socket.emit('message', {
-        type: event.type,
-        content: event.content,
-        data: event.data
-      } as WebSocketMessage)
-    }
-
-    socket.emit('message', {
-      type: 'catchup_complete',
-      content: 'Catch-up events sent',
-      data: {
-        conversationId,
-        eventsReplayed: events.length,
-        lastSequence: finalSequence
-      }
-    } as WebSocketMessage)
-
-    const cleanupListeners = (handler: (...args: any[]) => void, timeoutId: NodeJS.Timeout) => {
-      socket.off('catchup_ack', handler)
-      socket.off('disconnect', handleDisconnect)
-      clearTimeout(timeoutId)
-    }
-
-    const handleTimeout = () => {
-      cleanupListeners(handleCatchUpAck, timeoutId)
-      onTimeout()
-    }
-
-    const timeoutId = setTimeout(handleTimeout, this.ACK_TIMEOUT_MS)
-
-    const handleCatchUpAck = (ackData: { conversationId: string; lastSequence: number }) => {
-      if (ackData.conversationId !== conversationId) {
-        this.logger.warn('websocket.catchup.ack_mismatch', {
-          expectedConversationId: conversationId,
-          receivedConversationId: ackData.conversationId
-        })
-        return
-      }
-      cleanupListeners(handleCatchUpAck, timeoutId)
-      onComplete(ackData.lastSequence ?? finalSequence)
-    }
-
-    const handleDisconnect = () => {
-      cleanupListeners(handleCatchUpAck, timeoutId)
-      onTimeout()
-    }
-
-    socket.once('catchup_ack', handleCatchUpAck)
-    socket.once('disconnect', handleDisconnect)
-  }
-
-  private getBufferLossInfo(conversationId: string, expectedNextSequence: number): { lossDetected: boolean; lostEventCount: number } {
-    const metadata = this.eventChannel.getMetadata(conversationId)
-    if (!metadata) {
-      return { lossDetected: false, lostEventCount: 0 }
-    }
-
-    const missingEvents = metadata.firstSequence - expectedNextSequence
-    if (missingEvents > 0) {
-      return { lossDetected: true, lostEventCount: missingEvents }
-    }
-
-    return { lossDetected: false, lostEventCount: 0 }
   }
 
   /**

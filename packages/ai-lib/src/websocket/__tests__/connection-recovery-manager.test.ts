@@ -300,7 +300,8 @@ describe('ConnectionRecoveryManager', () => {
 
       expect(callbacks.onRecoveryComplete).toHaveBeenCalledWith(
         'socket-1',
-        []
+        [],
+        5 // finalSequence from ackData.lastSequence
       )
     })
 
