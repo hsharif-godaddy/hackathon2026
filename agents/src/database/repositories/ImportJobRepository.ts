@@ -21,8 +21,12 @@ interface ImportJobRow {
   id: string;
   app_id: string;
   status: string;
-  zip_file_name: string;
-  zip_file_size: number;
+  source_type: string;
+  zip_file_name: string | null;
+  zip_file_size: number | null;
+  git_url: string | null;
+  git_branch: string | null;
+  git_commit_hash: string | null;
   extracted_path: string | null;
   detected_package_manager: string | null;
   has_build_script: number | null;
@@ -43,8 +47,13 @@ interface ImportJobRow {
  */
 export interface CreateImportJobParams {
   appId: string;
-  zipFileName: string;
-  zipFileSize: number;
+  sourceType: 'zip' | 'git';
+  // For zip imports
+  zipFileName?: string;
+  zipFileSize?: number;
+  // For git imports
+  gitUrl?: string;
+  gitBranch?: string;
 }
 
 /**
@@ -63,6 +72,10 @@ export interface UpdateImportJobParams {
   errorStage?: string | undefined;
   startedAt?: Date;
   completedAt?: Date;
+  // Git-specific fields
+  gitUrl?: string | undefined;
+  gitBranch?: string | undefined;
+  gitCommitHash?: string | undefined;
 }
 
 export class ImportJobRepository {
@@ -80,12 +93,16 @@ export class ImportJobRepository {
       id: row.id,
       appId: row.app_id,
       status: row.status as ImportJobStatus,
-      zipFileName: row.zip_file_name,
-      zipFileSize: row.zip_file_size,
+      sourceType: row.source_type as 'zip' | 'git',
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     };
 
+    if (row.zip_file_name) job.zipFileName = row.zip_file_name;
+    if (row.zip_file_size) job.zipFileSize = row.zip_file_size;
+    if (row.git_url) job.gitUrl = row.git_url;
+    if (row.git_branch) job.gitBranch = row.git_branch;
+    if (row.git_commit_hash) job.gitCommitHash = row.git_commit_hash;
     if (row.extracted_path) job.extractedPath = row.extracted_path;
     if (row.detected_package_manager) job.detectedPackageManager = row.detected_package_manager as 'npm' | 'yarn' | 'pnpm';
     if (row.has_build_script !== null) job.hasBuildScript = row.has_build_script === 1;
@@ -108,23 +125,48 @@ export class ImportJobRepository {
    * @returns Created import job
    */
   async create(params: CreateImportJobParams): Promise<ImportJob> {
-    const { appId, zipFileName, zipFileSize } = params;
+    const { appId, sourceType, zipFileName, zipFileSize, gitUrl, gitBranch } = params;
     const id = nanoid();
 
     try {
-      const stmt = this.db.prepare(`
-        INSERT INTO import_jobs (id, app_id, status, zip_file_name, zip_file_size)
-        VALUES (?, ?, 'pending', ?, ?)
-      `);
+      if (sourceType === 'zip') {
+        const stmt = this.db.prepare(`
+          INSERT INTO import_jobs (
+            id, app_id, status, source_type,
+            zip_file_name, zip_file_size
+          )
+          VALUES (?, ?, 'pending', 'zip', ?, ?)
+        `);
 
-      stmt.run(id, appId, zipFileName, zipFileSize);
+        stmt.run(id, appId, zipFileName, zipFileSize);
 
-      this.logger.info('import-job.create.success', {
-        jobId: id,
-        appId,
-        zipFileName,
-        zipFileSize,
-      });
+        this.logger.info('import-job.create.success', {
+          jobId: id,
+          appId,
+          sourceType,
+          zipFileName,
+          zipFileSize,
+        });
+      } else {
+        const stmt = this.db.prepare(`
+          INSERT INTO import_jobs (
+            id, app_id, status, source_type,
+            zip_file_name, zip_file_size,
+            git_url, git_branch
+          )
+          VALUES (?, ?, 'pending', 'git', NULL, NULL, ?, ?)
+        `);
+
+        stmt.run(id, appId, gitUrl, gitBranch || null);
+
+        this.logger.info('import-job.create.success', {
+          jobId: id,
+          appId,
+          sourceType,
+          gitUrl,
+          gitBranch,
+        });
+      }
 
       const job = await this.findById(id);
       if (!job) {
@@ -135,7 +177,7 @@ export class ImportJobRepository {
     } catch (error) {
       this.logger.error('import-job.create.failed', {
         appId,
-        zipFileName,
+        sourceType,
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -246,6 +288,9 @@ export class ImportJobRepository {
     errorStage: { column: 'error_stage' },
     startedAt: { column: 'started_at', transform: (v) => (v as Date).toISOString() },
     completedAt: { column: 'completed_at', transform: (v) => (v as Date).toISOString() },
+    gitUrl: { column: 'git_url' },
+    gitBranch: { column: 'git_branch' },
+    gitCommitHash: { column: 'git_commit_hash' },
   };
 
   /**

@@ -13,6 +13,7 @@ import { Logger } from '../logging/index.js';
 import { ImportJobRepository, UpdateImportJobParams } from '../database/repositories/ImportJobRepository.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { zipSecurityService } from './ZipSecurityService.js';
+import { gitCloneService } from './GitCloneService.js';
 import { TerminalTool } from '../tools/terminal.js';
 import { GitTool } from '../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
@@ -31,9 +32,17 @@ const IMPORT_TIMEOUTS = {
 export interface StartImportParams {
   appId: string;
   appName: string;
-  zipPath: string;
-  zipFileName: string;
-  zipFileSize: number;
+  sourceType: 'zip' | 'git';
+
+  // For zip imports
+  zipPath?: string;
+  zipFileName?: string;
+  zipFileSize?: number;
+
+  // For git imports
+  gitUrl?: string;
+  gitToken?: string;
+  gitBranch?: string;
 }
 
 /**
@@ -53,33 +62,48 @@ export class ProjectImportService {
   private appRepo = new AppRepository();
 
   /**
-   * Start the import process for a zip file
+   * Start the import process for a zip file or git repository
    * This creates the import job and begins background processing
    *
    * @param params - Import parameters
    * @returns Created import job
    */
   async startImport(params: StartImportParams): Promise<ImportJob> {
-    const { appId, zipPath, zipFileName, zipFileSize } = params;
+    const { appId, sourceType } = params;
 
     this.logger.info('project-import.start', {
       appId,
-      zipFileName,
-      zipFileSize,
+      sourceType,
+      ...(sourceType === 'zip' && {
+        zipFileName: params.zipFileName,
+        zipFileSize: params.zipFileSize,
+      }),
+      ...(sourceType === 'git' && {
+        gitUrl: params.gitUrl,
+        gitBranch: params.gitBranch,
+      }),
     });
 
     // Create import job
     const job = await this.importJobRepo.create({
       appId,
-      zipFileName,
-      zipFileSize,
+      sourceType,
+      ...(sourceType === 'zip' && {
+        zipFileName: params.zipFileName!,
+        zipFileSize: params.zipFileSize!,
+      }),
+      ...(sourceType === 'git' && {
+        gitUrl: params.gitUrl!,
+        gitBranch: params.gitBranch,
+      }),
     });
 
     // Start background processing (don't await)
-    this.processImport(job.id, appId, zipPath).catch(error => {
+    this.processImport(job.id, params).catch(error => {
       this.logger.error('project-import.background.failed', {
         jobId: job.id,
         appId,
+        sourceType,
         error: error instanceof Error ? error.message : String(error),
       });
     });
@@ -91,18 +115,19 @@ export class ProjectImportService {
    * Process the import in the background
    *
    * This method implements container-side processing:
-   * 1. Validate zip on agent (security)
-   * 2. Copy zip to container via shared filesystem
-   * 3. Extract and process inside container
+   * For Zip: 1. Validate zip on agent (security) 2. Copy zip to container 3. Extract inside container
+   * For Git: 1. Clone repository inside container using dev-supervisor
+   * Then: Validate, copy files, install, build, commit, restart
    *
    * @param jobId - Import job ID
-   * @param appId - App ID
-   * @param zipPath - Path to uploaded zip file on agent
+   * @param params - Import parameters
    */
-  private async processImport(jobId: string, appId: string, zipPath: string): Promise<void> {
+  private async processImport(jobId: string, params: StartImportParams): Promise<void> {
+    const { appId, sourceType } = params;
     // Paths for container-side operations
     let containerZipPath: string | null = null;
     let containerExtractPath: string | null = null;
+    let containerProjectPath: string | null = null;
 
     try {
       // Mark as started
@@ -127,80 +152,117 @@ export class ProjectImportService {
         throw new Error('Dev supervisor not available for container operations');
       }
 
-      // Phase 1: Validate zip on agent (security checks)
-      await this.updateStatus(jobId, ImportJobStatus.VALIDATING);
-      const securityValidation = await zipSecurityService.validate(zipPath);
+      // Branch based on source type
+      if (sourceType === 'git') {
+        // Git clone flow
+        await this.updateStatus(jobId, ImportJobStatus.EXTRACTING); // Reuse "extracting" status for "cloning"
 
-      if (!securityValidation.valid) {
-        // Log detailed validation failure
-        this.logger.warn('project-import.security-validation.failed', {
+        const cloneResult = await gitCloneService.cloneRepository(devSupervisor, {
+          appId,
+          gitUrl: params.gitUrl!,
+          gitToken: params.gitToken!,
+          gitBranch: params.gitBranch,
+        });
+
+        if (!cloneResult.success) {
+          await this.importJobRepo.markFailed(
+            jobId,
+            cloneResult.error || 'Git clone failed',
+            ImportJobStatus.EXTRACTING,
+            cloneResult.validationErrors
+          );
+          return;
+        }
+
+        containerProjectPath = cloneResult.clonePath!;
+
+        // Update job with git info
+        await this.importJobRepo.update(jobId, {
+          gitUrl: params.gitUrl,
+          gitBranch: params.gitBranch,
+          gitCommitHash: cloneResult.commitHash,
+        });
+
+      } else {
+        // Zip import flow (existing logic)
+        const zipPath = params.zipPath!;
+
+        // Phase 1: Validate zip on agent (security checks)
+        await this.updateStatus(jobId, ImportJobStatus.VALIDATING);
+        const securityValidation = await zipSecurityService.validate(zipPath);
+
+        if (!securityValidation.valid) {
+          this.logger.warn('project-import.security-validation.failed', {
+            jobId,
+            appId,
+            errors: securityValidation.errors,
+            stats: securityValidation.stats,
+          });
+
+          await this.importJobRepo.markFailed(
+            jobId,
+            'Zip security validation failed',
+            ImportJobStatus.VALIDATING,
+            securityValidation.errors
+          );
+          await this.cleanupZipFile(zipPath);
+          return;
+        }
+
+        this.logger.info('project-import.security-validation.success', {
           jobId,
           appId,
-          errors: securityValidation.errors,
           stats: securityValidation.stats,
         });
 
-        await this.importJobRepo.markFailed(
+        // Phase 2: Copy zip to container via shared filesystem
+        await this.updateStatus(jobId, ImportJobStatus.EXTRACTING);
+
+        const agentZipPath = join(app.path, `.import-${jobId}.zip`);
+        containerZipPath = `/app/.import-${jobId}.zip`;
+        containerExtractPath = `/app/.import-${jobId}-extract`;
+
+        this.logger.info('project-import.copy-zip-to-container', {
           jobId,
-          'Zip security validation failed',
-          ImportJobStatus.VALIDATING,
-          securityValidation.errors
+          appId,
+          sourceZipPath: zipPath,
+          agentZipPath,
+          containerZipPath,
+        });
+
+        // Copy zip file to container via shared filesystem mount (agent-side path)
+        await cp(zipPath, agentZipPath);
+
+        // Phase 3: Extract zip inside container (container-side paths for dev-supervisor)
+        const extractResult = await this.extractZipInContainer(
+          devSupervisor,
+          containerZipPath,
+          containerExtractPath
         );
-        await this.cleanupZipFile(zipPath);
-        return;
+
+        if (!extractResult.success) {
+          await this.importJobRepo.markFailed(
+            jobId,
+            'Zip extraction failed in container',
+            ImportJobStatus.EXTRACTING,
+            extractResult.errors
+          );
+          await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+          if (sourceType === 'zip' && params.zipPath) await this.cleanupZipFile(params.zipPath!);
+          return;
+        }
+
+        containerProjectPath = containerExtractPath;
       }
 
-      // Log validation success with stats
-      this.logger.info('project-import.security-validation.success', {
-        jobId,
-        appId,
-        stats: securityValidation.stats,
-      });
-
-      // Phase 2: Copy zip to container via shared filesystem
-      await this.updateStatus(jobId, ImportJobStatus.EXTRACTING);
-
-      // Paths: agent-side uses app.path for file copy, container uses /app for commands
-      // The shared filesystem mount makes them point to the same files
-      const agentZipPath = join(app.path, `.import-${jobId}.zip`);
-      containerZipPath = `/app/.import-${jobId}.zip`;
-      containerExtractPath = `/app/.import-${jobId}-extract`;
-
-      this.logger.info('project-import.copy-zip-to-container', {
-        jobId,
-        appId,
-        sourceZipPath: zipPath,
-        agentZipPath,
-        containerZipPath,
-      });
-
-      // Copy zip file to container via shared filesystem mount (agent-side path)
-      await cp(zipPath, agentZipPath);
-
-      // Phase 3: Extract zip inside container (container-side paths for dev-supervisor)
-      const extractResult = await this.extractZipInContainer(
-        devSupervisor,
-        containerZipPath,
-        containerExtractPath
-      );
-
-      if (!extractResult.success) {
-        await this.importJobRepo.markFailed(
-          jobId,
-          'Zip extraction failed in container',
-          ImportJobStatus.EXTRACTING,
-          extractResult.errors
-        );
-        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
-        await this.cleanupZipFile(zipPath);
-        return;
-      }
+      // SHARED FLOW: Both zip and git converge here
+      // At this point, containerProjectPath contains either extracted zip or cloned repo
 
       // Phase 4: Validate project structure in container
       await this.updateStatus(jobId, ImportJobStatus.VALIDATING);
       const validation = await this.validateProjectInContainer(
         devSupervisor,
-        containerExtractPath
+        containerProjectPath!
       );
 
       if (!validation.valid) {
@@ -210,13 +272,13 @@ export class ProjectImportService {
           ImportJobStatus.VALIDATING,
           validation.errors
         );
-        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
-        await this.cleanupZipFile(zipPath);
+        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+        if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
         return;
       }
 
       // Update job with project info
-      const updateParams: UpdateImportJobParams = { extractedPath: containerExtractPath };
+      const updateParams: UpdateImportJobParams = { extractedPath: containerProjectPath };
       if (validation.packageManager) updateParams.detectedPackageManager = validation.packageManager;
       if (validation.hasBuildScript !== undefined) updateParams.hasBuildScript = validation.hasBuildScript;
       if (validation.hasDevScript !== undefined) updateParams.hasDevScript = validation.hasDevScript;
@@ -225,11 +287,26 @@ export class ProjectImportService {
       }
       await this.importJobRepo.update(jobId, updateParams);
 
-      // Phase 5: Copy files to app directory (inside container)
+      // Phase 5: Stop dev server before copying (to release file locks)
+      this.logger.info('project-import.stop-server.start', { appId });
+      const stopResult = await this.stopDevServer(appId);
+      if (!stopResult.success) {
+        this.logger.warn('project-import.stop-server.failed', {
+          appId,
+          error: stopResult.error,
+        });
+        // Continue anyway - cleanup might still work
+      } else {
+        // Wait a bit for process to fully terminate and release file locks
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        this.logger.info('project-import.stop-server.success', { appId });
+      }
+
+      // Phase 6: Copy files to app directory (inside container)
       await this.updateStatus(jobId, ImportJobStatus.COPYING);
       const copyResult = await this.copyFilesInContainer(
         devSupervisor,
-        validation.projectRoot || containerExtractPath,
+        validation.projectRoot || containerProjectPath!,
         app.path
       );
 
@@ -239,12 +316,12 @@ export class ProjectImportService {
           copyResult.error || 'Failed to copy files',
           ImportJobStatus.COPYING
         );
-        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
-        await this.cleanupZipFile(zipPath);
+        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+        if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
         return;
       }
 
-      // Phase 6: Install dependencies (already runs in container via dev-supervisor)
+      // Phase 7: Install dependencies (already runs in container via dev-supervisor)
       await this.updateStatus(jobId, ImportJobStatus.INSTALLING);
       const installResult = await this.runNpmInstall(appId, app.path);
 
@@ -264,12 +341,12 @@ export class ProjectImportService {
             details: { exitCode: installResult.exitCode },
           }]
         );
-        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
-        await this.cleanupZipFile(zipPath);
+        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+        if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
         return;
       }
 
-      // Phase 7: Build (if script exists)
+      // Phase 8: Build (if script exists)
       if (validation.hasBuildScript) {
         await this.updateStatus(jobId, ImportJobStatus.BUILDING);
         const buildResult = await this.runNpmBuild(appId, app.path);
@@ -290,13 +367,13 @@ export class ProjectImportService {
               details: { exitCode: buildResult.exitCode },
             }]
           );
-          await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
-          await this.cleanupZipFile(zipPath);
+          await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+          if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
           return;
         }
       }
 
-      // Phase 8: Git commit
+      // Phase 9: Git commit
       await this.updateStatus(jobId, ImportJobStatus.COMMITTING);
       const commitResult = await this.gitCommit(appId, app.path);
 
@@ -310,12 +387,12 @@ export class ProjectImportService {
             message: commitResult.error || 'Git commit failed',
           }]
         );
-        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
-        await this.cleanupZipFile(zipPath);
+        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+        if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
         return;
       }
 
-      // Phase 9: Restart dev server
+      // Phase 10: Restart dev server
       await this.updateStatus(jobId, ImportJobStatus.RESTARTING);
       const restartResult = await this.restartDevServer(appId);
 
@@ -334,13 +411,14 @@ export class ProjectImportService {
       this.logger.info('project-import.complete', { jobId, appId });
 
       // Cleanup all temp files
-      await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
-      await this.cleanupZipFile(zipPath);
+      await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+      if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
 
     } catch (error) {
       this.logger.error('project-import.failed', {
         jobId,
         appId,
+        sourceType,
         error: error instanceof Error ? error.message : String(error),
       });
 
@@ -354,12 +432,12 @@ export class ProjectImportService {
       try {
         const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
         if (devSupervisor) {
-          await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
+          await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
         }
       } catch {
         // Ignore cleanup errors
       }
-      await this.cleanupZipFile(zipPath);
+      if (sourceType === 'zip' && params.zipPath) await this.cleanupZipFile(params.zipPath);
     }
   }
 
@@ -821,8 +899,8 @@ export class ProjectImportService {
   }
 
   /**
-   * Rollback git changes on failure (git checkout .)
-   * This restores the app to its previous state before the import
+   * Rollback git changes on failure
+   * Uses git reset --hard to discard all changes and git clean to remove untracked files
    */
   private async gitRollback(appId: string, appPath: string): Promise<void> {
     try {
@@ -831,18 +909,34 @@ export class ProjectImportService {
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
       const gitTool = new GitTool(devSupervisor || undefined);
 
-      // Discard all changes (git checkout .)
-      const result = await gitTool.executeGitOperation(appPath, {
-        operation: 'checkout',
-        files: ['.'],
+      // Step 1: Reset all tracked files to HEAD (discards all changes)
+      const resetResult = await gitTool.executeGitOperation(appPath, {
+        operation: 'reset',
+        options: {
+          mode: 'hard',
+          hash: 'HEAD',
+        },
       });
 
-      if (result.success) {
+      if (!resetResult.success) {
+        this.logger.warn('project-import.rollback.reset-failed', {
+          appId,
+          error: resetResult.error,
+        });
+        return;
+      }
+
+      // Step 2: Remove all untracked files and directories
+      const cleanResult = await gitTool.executeGitOperation(appPath, {
+        operation: 'clean',
+      });
+
+      if (cleanResult.success) {
         this.logger.info('project-import.rollback.success', { appId });
       } else {
-        this.logger.warn('project-import.rollback.failed', {
+        this.logger.warn('project-import.rollback.clean-failed', {
           appId,
-          error: result.error,
+          error: cleanResult.error,
         });
       }
     } catch (error) {
@@ -850,6 +944,31 @@ export class ProjectImportService {
         appId,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  /**
+   * Stop the dev server
+   */
+  private async stopDevServer(appId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+
+      if (!devSupervisor) {
+        return { success: false, error: 'Dev supervisor not available' };
+      }
+
+      // Send stop command
+      const success = await devSupervisor.stopProcess();
+
+      const result: { success: boolean; error?: string } = { success };
+      if (!success) result.error = 'Failed to stop dev server';
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to stop dev server',
+      };
     }
   }
 

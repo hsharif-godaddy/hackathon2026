@@ -1,6 +1,6 @@
 /**
  * Database Schema and Types
- * 
+ *
  * This module contains TypeScript interface definitions AND database schema management.
  * It provides both type definitions for TypeScript and database creation functions.
  */
@@ -193,7 +193,7 @@ export interface ConversationSummary {
 export function initializeSchema(db: Database): void {
   // Configure database settings
   configureDatabaseSettings(db);
-  
+
   // Create all tables
   // Note: Table creation happens before migrations for new installations
   // All table creation uses IF NOT EXISTS, ensuring idempotency
@@ -211,13 +211,13 @@ export function initializeSchema(db: Database): void {
   // Apply migrations BEFORE creating indexes (migrations may alter schema)
   // Note: oauth_tokens table creation moved to migrations (added in PR #646)
   applyMigrations(db);
-  
+
   // Create all indexes (after migrations complete)
   createIndexes(db);
-  
+
   // Create all triggers
   createTriggers(db);
-  
+
   // Create file context indexes after migrations (in case table was created during migration)
   createFileContextIndexes(db);
 }
@@ -400,8 +400,12 @@ function createImportJobsTable(db: Database): void {
         'copying', 'installing', 'building', 'committing', 'restarting',
         'completed', 'failed'
       )),
-      zip_file_name TEXT NOT NULL,
-      zip_file_size INTEGER NOT NULL,
+      source_type TEXT NOT NULL DEFAULT 'zip' CHECK(source_type IN ('zip', 'git')),
+      zip_file_name TEXT,
+      zip_file_size INTEGER,
+      git_url TEXT,
+      git_branch TEXT,
+      git_commit_hash TEXT,
       extracted_path TEXT,
       detected_package_manager TEXT CHECK(detected_package_manager IN ('npm', 'yarn', 'pnpm')),
       has_build_script BOOLEAN,
@@ -418,6 +422,10 @@ function createImportJobsTable(db: Database): void {
       FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
     )
   `);
+
+  // Run table-specific migrations after creation
+  // This handles existing databases that were created with old schema
+  migrateImportJobsNullableColumns(db);
 }
 
 /**
@@ -455,7 +463,7 @@ function createIndexes(db: Database): void {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_running_processes_app_id ON running_processes(app_id)
   `);
-  
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_running_processes_pid ON running_processes(pid)
   `);
@@ -464,7 +472,7 @@ function createIndexes(db: Database): void {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversations_app_id ON conversations(app_id)
   `);
-  
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON conversations(created_at)
   `);
@@ -473,7 +481,7 @@ function createIndexes(db: Database): void {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation_id ON conversation_messages(conversation_id)
   `);
-  
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversation_messages_created_at ON conversation_messages(created_at)
   `);
@@ -556,10 +564,10 @@ function createFileContextIndexes(db: Database): void {
   try {
     // Check if file_context table exists before creating indexes
     const tableExists = db.prepare(`
-      SELECT name FROM sqlite_master 
+      SELECT name FROM sqlite_master
       WHERE type='table' AND name='file_context'
     `).get();
-    
+
     if (tableExists) {
       db.exec(`
         CREATE INDEX IF NOT EXISTS idx_file_context_app_path ON file_context(app_path)
@@ -591,7 +599,7 @@ function createFileContextIndexes(db: Database): void {
 function createTriggers(db: Database): void {
   // Trigger to automatically update updated_at on apps
   db.exec(`
-    CREATE TRIGGER IF NOT EXISTS update_apps_updated_at 
+    CREATE TRIGGER IF NOT EXISTS update_apps_updated_at
     AFTER UPDATE ON apps
     FOR EACH ROW
     BEGIN
@@ -601,7 +609,7 @@ function createTriggers(db: Database): void {
 
   // Trigger to automatically update conversations updated_at when messages are added
   db.exec(`
-    CREATE TRIGGER IF NOT EXISTS update_conversations_updated_at 
+    CREATE TRIGGER IF NOT EXISTS update_conversations_updated_at
     AFTER INSERT ON conversation_messages
     FOR EACH ROW
     BEGIN
@@ -611,7 +619,7 @@ function createTriggers(db: Database): void {
 
   // Trigger to automatically update updated_at on memory
   db.exec(`
-    CREATE TRIGGER IF NOT EXISTS update_memory_updated_at 
+    CREATE TRIGGER IF NOT EXISTS update_memory_updated_at
     AFTER UPDATE ON memory
     FOR EACH ROW
     BEGIN
@@ -621,7 +629,7 @@ function createTriggers(db: Database): void {
 
   // Trigger to automatically update updated_at on import_jobs
   db.exec(`
-    CREATE TRIGGER IF NOT EXISTS update_import_jobs_updated_at 
+    CREATE TRIGGER IF NOT EXISTS update_import_jobs_updated_at
     AFTER UPDATE ON import_jobs
     FOR EACH ROW
     BEGIN
@@ -685,7 +693,7 @@ function applyMigrations(db: Database): void {
   // Add missing columns to existing file_context table if they don't exist
   const fileContextColumns = [
     'ALTER TABLE file_context ADD COLUMN last_modified INTEGER NOT NULL DEFAULT 0',
-    'ALTER TABLE file_context ADD COLUMN last_read INTEGER NOT NULL DEFAULT 0', 
+    'ALTER TABLE file_context ADD COLUMN last_read INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE file_context ADD COLUMN modification_count INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE file_context ADD COLUMN read_count INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE file_context ADD COLUMN file_size INTEGER NOT NULL DEFAULT 0',
@@ -703,42 +711,42 @@ function applyMigrations(db: Database): void {
       // Column might already exist, that's fine
     }
   }
-  
+
   // Add port column if it doesn't exist (for existing databases)
   try {
     db.exec(`ALTER TABLE apps ADD COLUMN port INTEGER NOT NULL DEFAULT 5000`);
   } catch (err) {
     // Column might already exist, that's fine
   }
-  
+
   // Add initial_prompt column if it doesn't exist (for existing databases)
   try {
     db.exec(`ALTER TABLE apps ADD COLUMN initial_prompt TEXT`);
   } catch (err) {
     // Column might already exist, that's fine
   }
-  
+
   // Add status column if it doesn't exist (for existing databases)
   try {
     db.exec(`ALTER TABLE apps ADD COLUMN status TEXT NOT NULL DEFAULT 'creating' CHECK(status IN ('creating', 'created', 'error'))`);
   } catch (err) {
     // Column might already exist, that's fine
   }
-  
+
   // Add initial_build_complete column if it doesn't exist (for existing databases)
   try {
     db.exec(`ALTER TABLE apps ADD COLUMN initial_build_complete BOOLEAN DEFAULT FALSE`);
   } catch (err) {
     // Column might already exist, that's fine
   }
-  
+
   // Add socket_path column if it doesn't exist (for existing databases)
   try {
     db.exec(`ALTER TABLE apps ADD COLUMN socket_path TEXT`);
   } catch (err) {
     // Column might already exist, that's fine
   }
-  
+
   // Add preview_url column if it doesn't exist (for existing databases)
   try {
     db.exec(`ALTER TABLE apps ADD COLUMN preview_url TEXT`);
@@ -789,6 +797,117 @@ function applyMigrations(db: Database): void {
     db.exec(`ALTER TABLE conversation_messages ADD COLUMN context_attachments TEXT`);
   } catch (err) {
     // Column might already exist, that's fine
+  }
+
+  // Add git import columns to import_jobs table if they don't exist
+  try {
+    db.exec(`ALTER TABLE import_jobs ADD COLUMN source_type TEXT NOT NULL DEFAULT 'zip' CHECK(source_type IN ('zip', 'git'))`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
+
+  try {
+    db.exec(`ALTER TABLE import_jobs ADD COLUMN git_url TEXT`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
+
+  try {
+    db.exec(`ALTER TABLE import_jobs ADD COLUMN git_branch TEXT`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
+
+  try {
+    db.exec(`ALTER TABLE import_jobs ADD COLUMN git_commit_hash TEXT`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
+}
+
+/**
+ * Migration: Remove NOT NULL constraints from zip_file_name and zip_file_size
+ *
+ * These columns must be nullable because git imports don't populate them.
+ * This migration handles existing databases that were created with NOT NULL constraints.
+ *
+ * @param db - Database instance
+ */
+function migrateImportJobsNullableColumns(db: Database): void {
+  try {
+    // Check if import_jobs table exists
+    const tableExists = db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='import_jobs'
+    `).get() as { name: string } | undefined;
+
+    if (!tableExists) {
+      logger.info('database.migration.import-jobs-nullable-zip-columns.skipped', {
+        reason: 'import_jobs table does not exist yet',
+      });
+      return;
+    }
+
+    // Check if columns exist with NOT NULL constraints using PRAGMA table_info
+    const columnInfo = db.prepare(`
+      SELECT name, notnull FROM pragma_table_info('import_jobs')
+      WHERE name IN ('zip_file_name', 'zip_file_size')
+    `).all() as Array<{ name: string; notnull: number }>;
+
+    logger.info('database.migration.import-jobs-nullable-zip-columns.check', {
+      columnsFound: columnInfo.length,
+      columns: columnInfo,
+    });
+
+    // Check if any columns have NOT NULL constraint (notnull = 1)
+    const hasNotNullConstraint = columnInfo.some(col => col.notnull === 1);
+
+    if (!hasNotNullConstraint) {
+      logger.info('database.migration.import-jobs-nullable-zip-columns.skipped', {
+        reason: 'Columns are already nullable',
+        columnsFound: columnInfo.length,
+      });
+      return;
+    }
+
+    if (columnInfo.length !== 2) {
+      logger.warn('database.migration.import-jobs-nullable-zip-columns.skipped', {
+        reason: 'Expected 2 columns but found different count',
+        columnsFound: columnInfo.length,
+        columns: columnInfo,
+      });
+      return;
+    }
+
+    logger.info('database.migration.import-jobs-nullable-zip-columns.start', {
+      reason: 'Removing NOT NULL constraints from zip_file_name and zip_file_size for git import compatibility',
+      columnsToMigrate: columnInfo,
+    });
+
+    // Step 1: Rename old columns with NOT NULL constraints
+    db.exec(`ALTER TABLE import_jobs RENAME COLUMN zip_file_name TO zip_file_name_old`);
+    db.exec(`ALTER TABLE import_jobs RENAME COLUMN zip_file_size TO zip_file_size_old`);
+
+    // Step 2: Add new nullable columns
+    db.exec(`ALTER TABLE import_jobs ADD COLUMN zip_file_name TEXT`);
+    db.exec(`ALTER TABLE import_jobs ADD COLUMN zip_file_size INTEGER`);
+
+    // Step 3: Copy data from old to new columns for all existing rows
+    db.exec(`UPDATE import_jobs SET zip_file_name = zip_file_name_old, zip_file_size = zip_file_size_old`);
+
+    // Step 4: Drop old columns (requires SQLite 3.35.0+)
+    db.exec(`ALTER TABLE import_jobs DROP COLUMN zip_file_name_old`);
+    db.exec(`ALTER TABLE import_jobs DROP COLUMN zip_file_size_old`);
+
+    logger.info('database.migration.import-jobs-nullable-zip-columns.complete', {
+      success: true,
+      migrated: true,
+    });
+  } catch (err) {
+    logger.error('database.migration.import-jobs-nullable-zip-columns.failed', {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    // Don't throw - migration failures shouldn't break app startup
   }
 }
 

@@ -282,7 +282,7 @@ export interface ToolGrepSearchData {
 
 export interface ToolGitOperationData {
   toolName: string;
-  operation: 'status' | 'add' | 'commit' | 'diff' | 'log' | 'branch' | 'checkout' | 'merge' | 'pull' | 'push' | 'stash' | 'reset' | 'revert' | 'restore';
+  operation: 'status' | 'add' | 'commit' | 'diff' | 'log' | 'branch' | 'checkout' | 'merge' | 'pull' | 'push' | 'stash' | 'reset' | 'revert' | 'restore' | 'clean';
   appPath: string;
   appId?: string;
   options?: {
@@ -293,6 +293,8 @@ export interface ToolGitOperationData {
     amend?: boolean;
     force?: boolean;
     hard?: boolean;
+    mode?: 'soft' | 'mixed' | 'hard';
+    hash?: string;
     count?: number;
     createBranch?: boolean;
     includeUntracked?: boolean;

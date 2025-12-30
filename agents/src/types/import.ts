@@ -62,6 +62,14 @@ export enum ValidationErrorKey {
   DEV_SERVER_START_FAILED = 'DEV_SERVER_START_FAILED',
   COPY_FAILED = 'COPY_FAILED',
   CLEANUP_FAILED = 'CLEANUP_FAILED',
+  // Git clone errors
+  GIT_URL_INVALID = 'GIT_URL_INVALID',
+  GIT_URL_UNSUPPORTED = 'GIT_URL_UNSUPPORTED',
+  GIT_CLONE_FAILED = 'GIT_CLONE_FAILED',
+  GIT_CLONE_TIMEOUT = 'GIT_CLONE_TIMEOUT',
+  GIT_AUTH_FAILED = 'GIT_AUTH_FAILED',
+  GIT_REPO_NOT_FOUND = 'GIT_REPO_NOT_FOUND',
+  GIT_REPO_TOO_LARGE = 'GIT_REPO_TOO_LARGE',
 }
 
 /**
@@ -86,10 +94,18 @@ export interface ImportJob {
   appId: string;
   /** Current status of the import job */
   status: ImportJobStatus;
-  /** Original filename of the uploaded zip */
-  zipFileName: string;
-  /** Size of the uploaded zip in bytes */
-  zipFileSize: number;
+  /** Source type for the import (zip or git) */
+  sourceType: 'zip' | 'git';
+  /** Original filename of the uploaded zip (for zip imports only) */
+  zipFileName?: string;
+  /** Size of the uploaded zip in bytes (for zip imports only) */
+  zipFileSize?: number;
+  /** Git repository URL (for git imports) */
+  gitUrl?: string;
+  /** Git branch name (for git imports) */
+  gitBranch?: string;
+  /** Git commit hash that was cloned (for git imports) */
+  gitCommitHash?: string;
   /** Path where zip was extracted (temporary) */
   extractedPath?: string;
   /** Detected package manager (npm, yarn, pnpm) */
@@ -140,8 +156,14 @@ export interface CreateImportResponse {
   importJobId?: string;
   /** Current status */
   status?: ImportJobStatus;
+  /** Source type (zip or git) */
+  sourceType?: 'zip' | 'git';
   /** Error message if failed */
   error?: string;
+  /** Validation errors */
+  validationErrors?: Pick<ValidationError, 'key' | 'message'>[];
+  /** ID of existing job (for 409 conflict) */
+  existingJobId?: string;
 }
 
 /**

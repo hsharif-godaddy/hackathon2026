@@ -24,7 +24,8 @@ export interface GitToolOptions {
     | 'stash'
     | 'reset'
     | 'revert'
-    | 'restore';
+    | 'restore'
+    | 'clean';
   /** Files to operate on (for add, diff, etc.) */
   files?: string[];
   /** Commit message (for commit operation, or to identify commit by message for revert) */
@@ -35,14 +36,14 @@ export interface GitToolOptions {
   options?: {
     /** Include all files (for add, commit) */
     all?: boolean;
-    /** Commit hash (for revert/restore operation) */
+    /** Commit hash (for revert/restore operation, reset target) */
     hash?: string;
     /** Amend last commit (for commit) */
     amend?: boolean;
     /** Force operation (for push, checkout) */
     force?: boolean;
-    /** Hard reset (for reset) */
-    hard?: boolean;
+    /** Reset mode (for reset operation) */
+    mode?: 'soft' | 'mixed' | 'hard';
     /** Number of commits (for log, reset) */
     count?: number;
     /** Create new branch (for checkout) */
@@ -246,6 +247,9 @@ export class GitTool {
           break;
         case 'restore':
           result = await this.handleRestore(appPath, options);
+          break;
+        case 'clean':
+          result = await this.handleClean(appPath, options);
           break;
         default:
           throw new Error(`Unknown git operation: ${options.operation}`);
@@ -623,11 +627,119 @@ export class GitTool {
     return this.handleUnsupportedOperation('stash', 'Git stash operations are not yet supported');
   }
 
-  private async handleReset(_appPath: string, _options: GitToolOptions): Promise<GitToolResult> {
-    return this.handleUnsupportedOperation(
-      'reset',
-      'Git reset operations are not yet supported for safety'
-    );
+  /**
+   * Handle git reset - reset current HEAD to specified state
+   * Supports soft, mixed (default), and hard reset modes
+   */
+  private async handleReset(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+    try {
+      // Default to HEAD if no commit specified
+      const target = options.options?.hash || 'HEAD';
+      const mode = options.options?.mode || 'mixed';
+
+      // Validate mode
+      if (!['soft', 'mixed', 'hard'].includes(mode)) {
+        return {
+          success: false,
+          operation: 'reset',
+          error: `Invalid reset mode: ${mode}. Must be 'soft', 'mixed', or 'hard'`,
+        };
+      }
+
+      // Check if dev-supervisor is available for containerized environments
+      if (!this.devSupervisor?.isAvailable()) {
+        throw new Error(
+          'Git reset requires dev-supervisor to be available for command execution. ' +
+          'This typically means the system is not running in a containerized environment with dev-supervisor installed, ' +
+          'or the dev-supervisor socket is not accessible.'
+        );
+      }
+
+      // Build git reset command
+      const args = ['git', 'reset', `--${mode}`, target];
+
+      // Execute via dev-supervisor
+      // Always use /app as the working directory since all deployments are containerized
+      const execResult = await this.devSupervisor!.exec({
+        command: buildShellCommand(args),
+        working_dir: '/app',
+        timeout: 30,
+        capture_output: true,
+      });
+
+      const toolResult: GitToolResult = {
+        success: execResult.success,
+        operation: 'reset',
+        output: execResult.success
+          ? `Successfully reset to ${target} (${mode} mode)`
+          : execResult.stderr,
+      };
+
+      if (!execResult.success) {
+        toolResult.error = execResult.stderr;
+      }
+
+      return toolResult;
+    } catch (error) {
+      return {
+        success: false,
+        operation: 'reset',
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Handle git clean - remove untracked files and directories
+   */
+  private async handleClean(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+    try {
+      // Check if dev-supervisor is available
+      if (!this.devSupervisor?.isAvailable()) {
+        throw new Error(
+          'Git clean requires dev-supervisor to be available for command execution. ' +
+          'This typically means the system is not running in a containerized environment with dev-supervisor installed, ' +
+          'or the dev-supervisor socket is not accessible.'
+        );
+      }
+
+      // Build git clean command
+      // -f: force, -d: directories
+      const args = ['git', 'clean', '-fd'];
+
+      if (options.dryRun) {
+        args.push('-n'); // dry run
+      }
+
+      // Execute via dev-supervisor
+      // Always use /app as the working directory since all deployments are containerized
+      const execResult = await this.devSupervisor!.exec({
+        command: buildShellCommand(args),
+        working_dir: '/app',
+        timeout: 30,
+        capture_output: true,
+      });
+
+      const toolResult: GitToolResult = {
+        success: execResult.success,
+        operation: 'clean',
+        output: execResult.success
+          ? execResult.stdout || 'Successfully removed untracked files'
+          : execResult.stderr,
+      };
+
+      if (!execResult.success) {
+        toolResult.error = execResult.stderr;
+      }
+
+      return toolResult;
+    } catch (error) {
+      return {
+        success: false,
+        operation: 'clean',
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   /**
@@ -925,7 +1037,6 @@ export class GitTool {
         ...(options.options?.all !== undefined && { all: options.options.all }),
         ...(options.options?.amend !== undefined && { amend: options.options.amend }),
         ...(options.options?.force !== undefined && { force: options.options.force }),
-        ...(options.options?.hard !== undefined && { hard: options.options.hard }),
         ...(options.options?.count !== undefined && { count: options.options.count }),
         ...(options.options?.createBranch !== undefined && {
           createBranch: options.options.createBranch,

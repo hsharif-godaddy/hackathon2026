@@ -482,31 +482,36 @@ function getStageInfo(status: ImportJobStatus): ImportProgress {
 }
 
 /**
- * POST /apps/:id/git/replace - Replace entire codebase from a zip file
+ * POST /apps/:id/git/replace - Replace entire codebase from a zip file or git repository
  *
- * DESTRUCTIVE: Deletes all existing code and replaces it with zip contents.
+ * DESTRUCTIVE: Deletes all existing code and replaces it with new contents.
  *
  * FEATURE FLAG: Requires ENABLE_ZIP_IMPORT=true environment variable.
  *
+ * Accepts two input formats:
+ * 1. Zip file (multipart/form-data with zipFile field)
+ * 2. Git repository (application/json with gitUrl, gitToken, gitBranch fields)
+ *
  * Process:
- * 1. Validate zip file (size, security, structure)
- * 2. Delete existing code from app directory
- * 3. Extract zip contents to app directory
- * 4. Run `npm install` to install dependencies
- * 5. Run `npm run build` if build script exists
- * 6. On success: `git commit` to persist changes
- * 7. On failure: `git checkout .` to rollback
- * 8. Restart dev server
+ * 1. For Zip: Validate and extract zip file
+ *    For Git: Clone repository using provided token
+ * 2. Validate project structure (package.json)
+ * 3. Delete existing code from app directory
+ * 4. Copy new code to app directory
+ * 5. Run `npm install` to install dependencies
+ * 6. Run `npm run build` if build script exists
+ * 7. On success: `git commit` to persist changes
+ * 8. On failure: `git checkout .` to rollback
+ * 9. Restart dev server
  *
  * @returns {CreateImportResponse} 202 - Replacement job started
  */
 router.post(
   '/apps/:id/git/replace',
   requireZipImportFeature,
-  zipUpload.single('zipFile'),
   async (req: Request, res: Response) => {
-    let zipPath: string | null = null;
     const { id: appId } = req.params;
+    const contentType = req.headers['content-type'] || '';
 
     try {
       if (!appId) {
@@ -516,40 +521,30 @@ router.post(
         });
       }
 
-      if (!req.file) {
-        return res.status(400).json({
+      // Validate app exists
+      const app = appRepository.findById(appId);
+      if (!app) {
+        return res.status(404).json({
           success: false,
-          error: 'Zip file is required',
+          error: 'App not found',
         } as CreateImportResponse);
       }
 
-      zipPath = req.file.path;
+      // Detect input type based on content-type
+      const isZipUpload = contentType.toLowerCase().startsWith('multipart/form-data');
+      const isGitImport = contentType.toLowerCase().startsWith('application/json');
 
-      importLogger.info('route.git.replace.upload.start', {
-        appId,
-        zipFileName: req.file.originalname,
-        zipFileSize: req.file.size,
-      });
 
-      const validation = await zipSecurityService.validate(zipPath);
-      if (!validation.valid) {
-        await rm(zipPath, { force: true });
-
-        const sanitizedErrors = validation.errors.map(err => ({
-          key: err.key,
-          message: err.message,
-        }));
-
+      if (!isZipUpload && !isGitImport) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid zip file',
-          validationErrors: sanitizedErrors,
+          error: 'Must provide either zipFile (multipart/form-data) or gitUrl (application/json)',
         });
       }
 
+      // Check for existing job
       const existingJob = await importJobRepo.findByAppId(appId);
       if (existingJob && existingJob.status !== ImportJobStatus.COMPLETED && existingJob.status !== ImportJobStatus.FAILED) {
-        await rm(zipPath, { force: true });
         return res.status(409).json({
           success: false,
           error: 'Import already in progress',
@@ -557,36 +552,16 @@ router.post(
         });
       }
 
-      const importJob = await projectImportService.startImport({
-        appId,
-        appName: appId,
-        zipPath,
-        zipFileName: req.file.originalname,
-        zipFileSize: req.file.size,
-      });
-
-      importLogger.info('route.git.replace.upload.success', {
-        appId,
-        importJobId: importJob.id,
-      });
-
-      return res.status(202).json({
-        success: true,
-        appId,
-        importJobId: importJob.id,
-        status: importJob.status,
-      } as CreateImportResponse);
-
-    } catch (error) {
-      if (zipPath) {
-        try {
-          await rm(zipPath, { force: true });
-        } catch {
-          // Ignore cleanup errors
-        }
+      if (isGitImport) {
+        // Handle Git import
+        return handleGitImport(req, res, appId);
+      } else {
+        // Handle Zip import
+        return handleZipImport(req, res, appId);
       }
 
-      log.error(importLogger, 'route.git.replace.upload.error', error as Error, { appId });
+    } catch (error) {
+      log.error(importLogger, 'route.git.replace.error', error as Error, { appId });
 
       return res.status(500).json({
         success: false,
@@ -595,6 +570,148 @@ router.post(
     }
   }
 );
+
+/**
+ * Handle zip file import
+ */
+async function handleZipImport(req: Request, res: Response, appId: string): Promise<Response> {
+  return new Promise((resolve) => {
+    zipUpload.single('zipFile')(req, res, async (err) => {
+      let zipPath: string | null = null;
+
+      try {
+        if (err) {
+          return resolve(res.status(400).json({
+            success: false,
+            error: err.message || 'Failed to upload zip file',
+          } as CreateImportResponse));
+        }
+
+        if (!req.file) {
+          return resolve(res.status(400).json({
+            success: false,
+            error: 'Zip file is required',
+          } as CreateImportResponse));
+        }
+
+        zipPath = req.file.path;
+
+        importLogger.info('route.git.replace.zip.start', {
+          appId,
+          zipFileName: req.file.originalname,
+          zipFileSize: req.file.size,
+        });
+
+        const validation = await zipSecurityService.validate(zipPath);
+        if (!validation.valid) {
+          await rm(zipPath, { force: true });
+
+          const sanitizedErrors = validation.errors.map(err => ({
+            key: err.key,
+            message: err.message,
+          }));
+
+          return resolve(res.status(400).json({
+            success: false,
+            error: 'Invalid zip file',
+            validationErrors: sanitizedErrors,
+          } as CreateImportResponse));
+        }
+
+        const importJob = await projectImportService.startImport({
+          appId,
+          appName: appId,
+          sourceType: 'zip',
+          zipPath,
+          zipFileName: req.file.originalname,
+          zipFileSize: req.file.size,
+        });
+
+        importLogger.info('route.git.replace.zip.success', {
+          appId,
+          importJobId: importJob.id,
+        });
+
+        return resolve(res.status(202).json({
+          success: true,
+          appId,
+          importJobId: importJob.id,
+          status: importJob.status,
+          sourceType: 'zip',
+        } as CreateImportResponse));
+
+      } catch (error) {
+        if (zipPath) {
+          try {
+            await rm(zipPath, { force: true });
+          } catch {
+            // Ignore cleanup errors
+          }
+        }
+
+        log.error(importLogger, 'route.git.replace.zip.error', error as Error, { appId });
+
+        return resolve(res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Internal server error',
+        } as CreateImportResponse));
+      }
+    });
+  });
+}
+
+/**
+ * Handle git repository import
+ */
+async function handleGitImport(req: Request, res: Response, appId: string): Promise<Response> {
+  try {
+    const { gitUrl, gitToken, gitBranch } = req.body;
+
+    // Validate required fields
+    if (!gitUrl || !gitToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'gitUrl and gitToken are required for git import',
+      } as CreateImportResponse);
+    }
+
+    importLogger.info('route.git.replace.git.start', {
+      appId,
+      gitUrl,
+      gitBranch: gitBranch || 'default',
+    });
+
+    const importJob = await projectImportService.startImport({
+      appId,
+      appName: appId,
+      sourceType: 'git',
+      gitUrl,
+      gitToken,
+      gitBranch: gitBranch || undefined,
+    });
+
+    importLogger.info('route.git.replace.git.success', {
+      appId,
+      importJobId: importJob.id,
+    });
+
+    return res.status(202).json({
+      success: true,
+      appId,
+      importJobId: importJob.id,
+      status: importJob.status,
+      sourceType: 'git',
+    } as CreateImportResponse);
+
+  } catch (error) {
+    log.error(importLogger, 'route.git.replace.git.error', error as Error, { appId });
+
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Internal server error',
+    } as CreateImportResponse);
+  }
+}
 
 /**
  * GET /apps/:id/git/replace/status - Get the current status of a codebase replacement

@@ -22,7 +22,7 @@ export const gitOperationAITool: Tool = createTool(
       all: z.boolean().optional().describe('Include all files (for add, commit)'),
       amend: z.boolean().optional().describe('Amend last commit (for commit)'),
       force: z.boolean().optional().describe('Force operation (for push, checkout)'),
-      hard: z.boolean().optional().describe('Hard reset (for reset)'),
+      mode: z.enum(['soft', 'mixed', 'hard']).optional().describe('Reset mode (for reset operation)'),
       count: z.number().optional().describe('Number of commits (for log, reset)'),
       createBranch: z.boolean().optional().describe('Create new branch (for checkout)'),
       includeUntracked: z.boolean().optional().describe('Include untracked files (for stash)'),
