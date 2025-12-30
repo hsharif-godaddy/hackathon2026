@@ -60,9 +60,7 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
     })
 
     const eventChannel = (testServer as any).eventChannel
-    const disconnectedStreams = (testServer as any).disconnectedStreams
-    const activeConversations = (testServer as any).activeConversations
-    const activeStreams = (testServer as any).activeStreams
+    const stateManager = (testServer as any).stateManager
 
     // ========================================
     // CYCLE 1: Initial stream, disconnect, reconnect (socket-A)
@@ -84,17 +82,16 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
 
     // Step 2: Simulate events 1-3 being published BEFORE disconnect
     // These go through normal WebSocketSubscriber path
-    activeConversations.set('socket-A', {
+    const controller = new AbortController()
+    stateManager.createConnection('socket-A', {
       conversationId: 'test-conv-id',
       agentName: 'test-agent',
-      context: { socketId: 'socket-A' },
-      streamingEvents: [],
-      startTime: Date.now(),
+      context: { socketId: 'socket-A' }
+    })
+    stateManager.updateConnection('socket-A', {
+      abortController: controller,
       lastDeliveredSequence: -1
     })
-
-    const controller = new AbortController()
-    activeStreams.set('socket-A', controller)
 
     // Publish events 1-3 (normal operation, before disconnect)
     await eventChannel.publish('test-conv-id', {
@@ -118,7 +115,8 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
 
     // Manually emit these through WebSocketSubscriber (simulating normal operation)
     const { WebSocketSubscriber } = await import('../subscribers/websocket-subscriber.js')
-    const subscriber = new WebSocketSubscriber(mockSocketA, disconnectedStreams)
+    const isDisconnected = (socketId: string) => stateManager.isDisconnected(socketId)
+    const subscriber = new WebSocketSubscriber(mockSocketA, isDisconnected)
     eventChannel.subscribe('test-conv-id', subscriber)
 
     // These would be emitted automatically, but we'll manually trigger for test clarity
@@ -127,23 +125,11 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
     mockSocketA.emit('message', { type: 'chunk', content: 'Event 3', data: {} })
 
     // Step 3: Simulate disconnect while streaming is active
-    activeConversations.set('socket-A', {
-      conversationId: 'test-conv-id',
-      agentName: 'test-agent',
-      context: { socketId: 'socket-A' },
-      streamingEvents: [],
-      startTime: Date.now(),
+    stateManager.updateConnection('socket-A', {
       lastDeliveredSequence: 2  // Last delivered sequence (0-based) before disconnect
     })
-
-    disconnectedStreams.set('socket-A', {
-      abortController: controller,
-      timeoutId: setTimeout(() => {}, 60000),
-      conversationId: 'test-conv-id',
-      lastDeliveredSequence: 2
-    })
-
-    activeStreams.delete('socket-A')
+    const recoveryTimeoutId1 = setTimeout(() => {}, 60000)
+    stateManager.transitionTo('socket-A', 'disconnected', { recoveryTimeoutId: recoveryTimeoutId1 })
 
     // Step 4: Events 4-5 published DURING disconnect (go to event channel only, not Socket.IO)
     await eventChannel.publish('test-conv-id', {
@@ -179,33 +165,20 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
       })
     }
 
-    // Clean up cycle 1
-    activeStreams.set('socket-A', controller)
-    disconnectedStreams.delete('socket-A')
-    clearTimeout(disconnectedStreams.get('socket-A')?.timeoutId)
+    // Clean up cycle 1 - transition back to connected
+    clearTimeout(recoveryTimeoutId1)
+    stateManager.transitionTo('socket-A', 'connected', {
+      recoveryTimeoutId: undefined,
+      lastDeliveredSequence: 4
+    })
 
     // ========================================
     // CYCLE 2: Second disconnect/reconnect
     // ========================================
 
     // Step 6: Simulate another disconnect
-    activeConversations.set('socket-A', {
-      conversationId: 'test-conv-id',
-      agentName: 'test-agent',
-      context: { socketId: 'socket-A' },
-      streamingEvents: [],
-      startTime: Date.now(),
-      lastDeliveredSequence: 4  // Includes events 4-5 (seq 3 & 4)
-    })
-
-    disconnectedStreams.set('socket-A', {
-      abortController: controller,
-      timeoutId: setTimeout(() => {}, 60000),
-      conversationId: 'test-conv-id',
-      lastDeliveredSequence: 4
-    })
-
-    activeStreams.delete('socket-A')
+    const recoveryTimeoutId2 = setTimeout(() => {}, 60000)
+    stateManager.transitionTo('socket-A', 'disconnected', { recoveryTimeoutId: recoveryTimeoutId2 })
 
     // Step 7: Events 6-7 published during second disconnect
     await eventChannel.publish('test-conv-id', {
@@ -274,6 +247,7 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
     expect(eventCounts['chunk:Event 7']).toBe(1)
 
     // Clean up
+    clearTimeout(recoveryTimeoutId2)
     testServer.close()
   })
 
@@ -291,9 +265,7 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
     })
 
     const eventChannel = (testServer as any).eventChannel
-    const disconnectedStreams = (testServer as any).disconnectedStreams
-    const activeConversations = (testServer as any).activeConversations
-    const activeStreams = (testServer as any).activeStreams
+    const stateManager = (testServer as any).stateManager
 
     // Socket with volatile emit support
     const mockSocketA = {
@@ -317,17 +289,16 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
     }
 
     // Setup initial state
-    activeConversations.set('socket-A', {
+    const controller = new AbortController()
+    stateManager.createConnection('socket-A', {
       conversationId: 'test-conv-id',
       agentName: 'test-agent',
-      context: { socketId: 'socket-A' },
-      streamingEvents: [],
-      startTime: Date.now(),
+      context: { socketId: 'socket-A' }
+    })
+    stateManager.updateConnection('socket-A', {
+      abortController: controller,
       lastDeliveredSequence: -1
     })
-
-    const controller = new AbortController()
-    activeStreams.set('socket-A', controller)
 
     // Events 1-3 (normal operation)
     await eventChannel.publish('test-conv-id', {
@@ -354,13 +325,9 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
     mockSocketA.emit('message', { type: 'chunk', content: 'Event 3', data: {} })
 
     // Disconnect
-    disconnectedStreams.set('socket-A', {
-      abortController: controller,
-      timeoutId: setTimeout(() => {}, 60000),
-      conversationId: 'test-conv-id',
-      lastDeliveredSequence: 2
-    })
-    activeStreams.delete('socket-A')
+    stateManager.updateConnection('socket-A', { lastDeliveredSequence: 2 })
+    const recoveryTimeoutId1 = setTimeout(() => {}, 60000)
+    stateManager.transitionTo('socket-A', 'disconnected', { recoveryTimeoutId: recoveryTimeoutId1 })
 
     // Events 4-5 during disconnect
     await eventChannel.publish('test-conv-id', {
@@ -387,26 +354,16 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
       })
     }
 
-    activeStreams.set('socket-A', controller)
-    disconnectedStreams.delete('socket-A')
+    // Transition back to connected
+    clearTimeout(recoveryTimeoutId1)
+    stateManager.transitionTo('socket-A', 'connected', {
+      recoveryTimeoutId: undefined,
+      lastDeliveredSequence: 4
+    })
 
     // Second disconnect
-    activeConversations.set('socket-A', {
-      conversationId: 'test-conv-id',
-      agentName: 'test-agent',
-      context: { socketId: 'socket-A' },
-      streamingEvents: [],
-      startTime: Date.now(),
-      lastDeliveredSequence: 4
-    })
-
-    disconnectedStreams.set('socket-A', {
-      abortController: controller,
-      timeoutId: setTimeout(() => {}, 60000),
-      conversationId: 'test-conv-id',
-      lastDeliveredSequence: 4
-    })
-    activeStreams.delete('socket-A')
+    const recoveryTimeoutId2 = setTimeout(() => {}, 60000)
+    stateManager.transitionTo('socket-A', 'disconnected', { recoveryTimeoutId: recoveryTimeoutId2 })
 
     await eventChannel.publish('test-conv-id', {
       type: 'chunk',
@@ -454,6 +411,8 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
     expect(eventCounts['chunk:Event 6']).toBe(1)
     expect(eventCounts['chunk:Event 7']).toBe(1)
 
+    // Clean up
+    clearTimeout(recoveryTimeoutId2)
     testServer.close()
   })
 })

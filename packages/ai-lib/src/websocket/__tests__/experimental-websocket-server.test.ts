@@ -39,6 +39,32 @@ const mockAgents = {
 }
 
 /**
+ * Helper to create a disconnected connection state via stateManager
+ * This replaces direct Map manipulation in tests
+ */
+function createDisconnectedConnectionState(
+  stateManager: any,
+  socketId: string,
+  conversationId: string,
+  agentName: string,
+  lastDeliveredSequence: number = 3
+): AbortController {
+  const abortController = new AbortController()
+  stateManager.createConnection(socketId, {
+    conversationId,
+    agentName,
+    context: { socketId, agentName }
+  })
+  stateManager.updateConnection(socketId, {
+    abortController,
+    lastDeliveredSequence
+  })
+  const recoveryTimeoutId = setTimeout(() => {}, 60000)
+  stateManager.transitionTo(socketId, 'disconnected', { recoveryTimeoutId })
+  return abortController
+}
+
+/**
  * Creates a default mock persistence for tests that need event publishing
  */
 function createMockPersistence() {
@@ -196,27 +222,10 @@ describe('WebSocketServer - Error Handling', () => {
       })
 
       const eventChannel = (testServer as any).eventChannel
-      const disconnectedStreams = (testServer as any).disconnectedStreams
-      const activeConversations = (testServer as any).activeConversations
-      const activeStreams = (testServer as any).activeStreams
+      const stateManager = (testServer as any).stateManager
 
-      const abortController = new AbortController()
-      activeStreams.set('auto-socket-id', abortController)
-      activeConversations.set('auto-socket-id', {
-        conversationId: 'auto-conv-id',
-        agentName: 'test-agent',
-        context: { socketId: 'auto-socket-id' },
-        streamingEvents: [],
-        startTime: Date.now(),
-        lastDeliveredSequence: 3
-      })
-
-      disconnectedStreams.set('auto-socket-id', {
-        abortController,
-        timeoutId: setTimeout(() => {}, 60000),
-        conversationId: 'auto-conv-id',
-        lastDeliveredSequence: 3
-      })
+      // Set up disconnected connection state
+      createDisconnectedConnectionState(stateManager, 'auto-socket-id', 'auto-conv-id', 'test-agent', 3)
 
       const initialEvents = [
         { id: 'init1', sequence: 4, type: 'chunk', content: 'Initial chunk', data: {}, timestamp: new Date(), conversationId: 'auto-conv-id', agentName: 'test-agent' }
@@ -290,11 +299,12 @@ describe('WebSocketServer - Error Handling', () => {
         )
         expect(catchUpEmits.length).toBe(1)
 
-        expect(disconnectedStreams.has('auto-socket-id')).toBe(false)
-        expect(activeStreams.has('auto-socket-id')).toBe(true)
+        // Verify connection is no longer disconnected and has active stream
+        expect(stateManager.isDisconnected('auto-socket-id')).toBe(false)
+        expect(stateManager.hasActiveStream('auto-socket-id')).toBe(true)
       }
 
-      clearTimeout(disconnectedStreams.get('auto-socket-id')?.timeoutId)
+      // Clean up - timeout is managed by stateManager internally
       testServer.close()
     })
 
@@ -314,24 +324,10 @@ describe('WebSocketServer - Error Handling', () => {
       })
 
       const eventChannel = (testServer as any).eventChannel
-      const disconnectedStreams = (testServer as any).disconnectedStreams
-      const activeConversations = (testServer as any).activeConversations
+      const stateManager = (testServer as any).stateManager
 
-      disconnectedStreams.set('old-socket-id', {
-        abortController: new AbortController(),
-        timeoutId: setTimeout(() => {}, 60000),
-        conversationId: 'manual-conv-id',
-        lastDeliveredSequence: 7
-      })
-
-      activeConversations.set('old-socket-id', {
-        conversationId: 'manual-conv-id',
-        agentName: 'test-agent',
-        context: { socketId: 'old-socket-id' },
-        streamingEvents: [],
-        startTime: Date.now(),
-        lastDeliveredSequence: 7
-      })
+      // Set up disconnected connection state
+      createDisconnectedConnectionState(stateManager, 'old-socket-id', 'manual-conv-id', 'test-agent', 7)
 
       const initialEvents = [
         { id: 'm1', sequence: 8, type: 'chunk', content: 'Manual chunk', data: {}, timestamp: new Date(), conversationId: 'manual-conv-id', agentName: 'test-agent' }
@@ -379,10 +375,10 @@ describe('WebSocketServer - Error Handling', () => {
           lastSequence: 9
         })
 
-        expect(disconnectedStreams.has('old-socket-id')).toBe(false)
+        // Verify connection is no longer disconnected (migrated to new socket ID)
+        expect(stateManager.isDisconnected('new-socket-id')).toBe(false)
       }
 
-      clearTimeout(disconnectedStreams.get('old-socket-id')?.timeoutId)
       testServer.close()
     })
 
@@ -402,6 +398,7 @@ describe('WebSocketServer - Error Handling', () => {
       })
 
       const eventChannel = (testServer as any).eventChannel
+      const stateManager = (testServer as any).stateManager
       const metadataSpy = vi.spyOn(eventChannel, 'getMetadata').mockReturnValue({
         conversationId: 'loss-conv-id',
         firstSequence: 50,
@@ -411,27 +408,8 @@ describe('WebSocketServer - Error Handling', () => {
         newestTimestamp: new Date()
       })
 
-      const disconnectedStreams = (testServer as any).disconnectedStreams
-      const activeConversations = (testServer as any).activeConversations
-      const activeStreams = (testServer as any).activeStreams
-
-      const abortController = new AbortController()
-      activeStreams.set('loss-socket-id', abortController)
-      activeConversations.set('loss-socket-id', {
-        conversationId: 'loss-conv-id',
-        agentName: 'test-agent',
-        context: { socketId: 'loss-socket-id' },
-        streamingEvents: [],
-        startTime: Date.now(),
-        lastDeliveredSequence: 10
-      })
-
-      disconnectedStreams.set('loss-socket-id', {
-        abortController,
-        timeoutId: setTimeout(() => {}, 60000),
-        conversationId: 'loss-conv-id',
-        lastDeliveredSequence: 10
-      })
+      // Set up disconnected connection state
+      createDisconnectedConnectionState(stateManager, 'loss-socket-id', 'loss-conv-id', 'test-agent', 10)
 
       vi.spyOn(eventChannel, 'getEventsSince').mockReturnValue([])
 
@@ -458,7 +436,6 @@ describe('WebSocketServer - Error Handling', () => {
         expect(recoveryStatus?.[1].data.lostEventCount).toBeGreaterThan(0)
       }
 
-      clearTimeout(disconnectedStreams.get('loss-socket-id')?.timeoutId)
       testServer.close()
     })
 
@@ -1052,11 +1029,11 @@ describe('WebSocketServer - Error Handling', () => {
         agentId: 'test-agent'
       })
 
-      // Verify conversation has lastDeliveredSequence tracked
-      const activeConversations = (testServer as any).activeConversations
-      const conversation = activeConversations.get('test-socket-id')
-      expect(conversation).toBeDefined()
-      expect(conversation.lastDeliveredSequence).toBe(5)
+      // Verify conversation has lastDeliveredSequence tracked via stateManager
+      const stateManager = (testServer as any).stateManager
+      const stateData = stateManager.getStateData('test-socket-id')
+      expect(stateData).toBeDefined()
+      expect(stateData.lastDeliveredSequence).toBe(5)
 
       testServer.close()
     })
@@ -1069,26 +1046,10 @@ describe('WebSocketServer - Error Handling', () => {
         defaultAgent: 'test-agent'
       })
 
-      // Manually set up conversation and disconnected state
-      const activeConversations = (testServer as any).activeConversations
-      const disconnectedStreams = (testServer as any).disconnectedStreams
+      const stateManager = (testServer as any).stateManager
 
-      activeConversations.set('test-socket-id', {
-        conversationId: 'test-conv-id',
-        agentName: 'test-agent',
-        context: { socketId: 'test-socket-id' },
-        streamingEvents: [],
-        startTime: Date.now(),
-        lastDeliveredSequence: 3  // Last delivered before disconnect
-      })
-
-      // Mark socket as disconnected
-      disconnectedStreams.set('test-socket-id', {
-        abortController: new AbortController(),
-        timeoutId: setTimeout(() => {}, 60000),
-        conversationId: 'test-conv-id',
-        lastDeliveredSequence: 3
-      })
+      // Set up disconnected connection state
+      createDisconnectedConnectionState(stateManager, 'test-socket-id', 'test-conv-id', 'test-agent', 3)
 
       // Call publishToEventChannel while disconnected
       const publishToEventChannel = (testServer as any).publishToEventChannel.bind(testServer)
@@ -1107,11 +1068,9 @@ describe('WebSocketServer - Error Handling', () => {
       await publishToEventChannel('test-socket-id', 'chunk', 'New content', {}, 'test-agent')
 
       // Verify lastDeliveredSequence was NOT updated (socket is disconnected)
-      const conversation = activeConversations.get('test-socket-id')
-      expect(conversation.lastDeliveredSequence).toBe(3)  // Still 3, not 10
+      const stateData = stateManager.getStateData('test-socket-id')
+      expect(stateData.lastDeliveredSequence).toBe(3)  // Still 3, not 10
 
-      // Clean up
-      clearTimeout(disconnectedStreams.get('test-socket-id').timeoutId)
       testServer.close()
     })
 
@@ -1125,6 +1084,7 @@ describe('WebSocketServer - Error Handling', () => {
 
       // Set up the event channel with some events
       const eventChannel = (testServer as any).eventChannel
+      const stateManager = (testServer as any).stateManager
       const missedEvents = [
         { id: 'e1', sequence: 4, type: 'chunk', content: 'Missed 1', data: { step: 1 }, timestamp: new Date(), conversationId: 'test-conv-id', agentName: 'test-agent' },
         { id: 'e2', sequence: 5, type: 'chunk', content: 'Missed 2', data: { step: 1 }, timestamp: new Date(), conversationId: 'test-conv-id', agentName: 'test-agent' },
@@ -1132,25 +1092,8 @@ describe('WebSocketServer - Error Handling', () => {
       ]
       vi.spyOn(eventChannel, 'getEventsSince').mockReturnValue(missedEvents)
 
-      // Set up disconnected stream state
-      const disconnectedStreams = (testServer as any).disconnectedStreams
-      const activeConversations = (testServer as any).activeConversations
-
-      disconnectedStreams.set('old-socket-id', {
-        abortController: new AbortController(),
-        timeoutId: setTimeout(() => {}, 60000),
-        conversationId: 'test-conv-id',
-        lastDeliveredSequence: 3  // Events 4, 5, 6 were missed
-      })
-
-      activeConversations.set('old-socket-id', {
-        conversationId: 'test-conv-id',
-        agentName: 'test-agent',
-        context: { socketId: 'old-socket-id' },
-        streamingEvents: [],
-        startTime: Date.now(),
-        lastDeliveredSequence: 3
-      })
+      // Set up disconnected connection state
+      createDisconnectedConnectionState(stateManager, 'old-socket-id', 'test-conv-id', 'test-agent', 3)
 
       // Simulate reconnection with previousSocketId
       const newMockSocket = {
@@ -1183,28 +1126,13 @@ describe('WebSocketServer - Error Handling', () => {
 
       // Set up the same state on new server
       const eventChannel2 = (testServer2 as any).eventChannel
+      const stateManager2 = (testServer2 as any).stateManager
       const getEventsSinceSpy = vi.spyOn(eventChannel2, 'getEventsSince').mockImplementation((_: string, lastSequence: number) => {
         return lastSequence === 3 ? missedEvents : []
       })
 
-      const disconnectedStreams2 = (testServer2 as any).disconnectedStreams
-      const activeConversations2 = (testServer2 as any).activeConversations
-
-      disconnectedStreams2.set('old-socket-id', {
-        abortController: new AbortController(),
-        timeoutId: setTimeout(() => {}, 60000),
-        conversationId: 'test-conv-id',
-        lastDeliveredSequence: 3
-      })
-
-      activeConversations2.set('old-socket-id', {
-        conversationId: 'test-conv-id',
-        agentName: 'test-agent',
-        context: { socketId: 'old-socket-id' },
-        streamingEvents: [],
-        startTime: Date.now(),
-        lastDeliveredSequence: 3
-      })
+      // Set up disconnected connection state on new server
+      createDisconnectedConnectionState(stateManager2, 'old-socket-id', 'test-conv-id', 'test-agent', 3)
 
       // Trigger connection with the new socket
       if (connectionHandler) {
@@ -1266,34 +1194,12 @@ describe('WebSocketServer - Error Handling', () => {
       }
 
       // Clean up
-      clearTimeout(disconnectedStreams.get('old-socket-id')?.timeoutId)
       testServer.close()
       testServer2.close()
     })
 
-    it('should copy lastDeliveredSequence to disconnectedStreams on disconnect', async () => {
+    it('should copy lastDeliveredSequence to state on disconnect', async () => {
       vi.clearAllMocks()
-
-      const testServer = new WebSocketServer(httpServer, {
-        agents: mockAgents,
-        defaultAgent: 'test-agent'
-      })
-
-      // Set up active conversation and stream
-      const activeConversations = (testServer as any).activeConversations
-      const activeStreams = (testServer as any).activeStreams
-      const disconnectedStreams = (testServer as any).disconnectedStreams
-
-      const controller = new AbortController()
-      activeStreams.set('test-socket-id', controller)
-      activeConversations.set('test-socket-id', {
-        conversationId: 'test-conv-id',
-        agentName: 'test-agent',
-        context: { socketId: 'test-socket-id' },
-        streamingEvents: [],
-        startTime: Date.now(),
-        lastDeliveredSequence: 7  // Sequence before disconnect
-      })
 
       // Capture disconnect handler
       let disconnectHandler: any
@@ -1313,7 +1219,7 @@ describe('WebSocketServer - Error Handling', () => {
         }
       })
 
-      // Trigger connection to capture handlers
+      // Create server and trigger connection to capture handlers
       const testServer2 = new WebSocketServer(httpServer, {
         agents: mockAgents,
         defaultAgent: 'test-agent'
@@ -1323,19 +1229,17 @@ describe('WebSocketServer - Error Handling', () => {
         await connectionHandler(mockSocketWithDisconnect)
       }
 
-      // Set up state before disconnect
-      const activeConversations2 = (testServer2 as any).activeConversations
-      const activeStreams2 = (testServer2 as any).activeStreams
-      const disconnectedStreams2 = (testServer2 as any).disconnectedStreams
+      // Set up state before disconnect using stateManager
+      const stateManager2 = (testServer2 as any).stateManager
+      const abortController = new AbortController()
 
-      const controller2 = new AbortController()
-      activeStreams2.set(mockSocketWithDisconnect.id, controller2)
-      activeConversations2.set(mockSocketWithDisconnect.id, {
+      stateManager2.createConnection(mockSocketWithDisconnect.id, {
         conversationId: 'test-conv-id',
         agentName: 'test-agent',
-        context: { socketId: mockSocketWithDisconnect.id },
-        streamingEvents: [],
-        startTime: Date.now(),
+        context: { socketId: mockSocketWithDisconnect.id, agentName: 'test-agent' }
+      })
+      stateManager2.updateConnection(mockSocketWithDisconnect.id, {
+        abortController,
         lastDeliveredSequence: 7
       })
 
@@ -1343,17 +1247,14 @@ describe('WebSocketServer - Error Handling', () => {
       if (disconnectHandler) {
         await disconnectHandler('transport close')
 
-        // Verify disconnectedStreams has correct lastDeliveredSequence
-        const streamData = disconnectedStreams2.get(mockSocketWithDisconnect.id)
-        expect(streamData).toBeDefined()
-        expect(streamData.lastDeliveredSequence).toBe(7)
-        expect(streamData.conversationId).toBe('test-conv-id')
-
-        // Clean up the timeout
-        clearTimeout(streamData.timeoutId)
+        // Verify state has correct lastDeliveredSequence after disconnect
+        const stateData = stateManager2.getStateData(mockSocketWithDisconnect.id)
+        expect(stateData).toBeDefined()
+        expect(stateData.lastDeliveredSequence).toBe(7)
+        expect(stateData.conversationId).toBe('test-conv-id')
+        expect(stateData.state).toBe('disconnected')
       }
 
-      testServer.close()
       testServer2.close()
     })
 
@@ -1370,17 +1271,12 @@ describe('WebSocketServer - Error Handling', () => {
         connected: true
       }
 
-      // Set up disconnected streams map (simulating server state)
-      const disconnectedStreams = new Map()
-      disconnectedStreams.set('test-socket-id', {
-        abortController: new AbortController(),
-        timeoutId: setTimeout(() => {}, 60000),
-        conversationId: 'test-conv-id',
-        lastDeliveredSequence: 5
-      })
+      // Set up disconnected state check function
+      const disconnectedSocketIds = new Set(['test-socket-id'])
+      const isDisconnected = (socketId: string) => disconnectedSocketIds.has(socketId)
 
-      // Create subscriber with disconnected streams
-      const subscriber = new WebSocketSubscriber(mockDisconnectedSocket, disconnectedStreams)
+      // Create subscriber with isDisconnected function
+      const subscriber = new WebSocketSubscriber(mockDisconnectedSocket, isDisconnected)
 
       // Send event to subscriber
       await subscriber.onEvent({
@@ -1394,47 +1290,18 @@ describe('WebSocketServer - Error Handling', () => {
         agentName: 'test-agent'
       })
 
-      // Verify socket.emit was NOT called (subscriber skips when socket is in disconnectedStreams)
+      // Verify socket.emit was NOT called (subscriber skips when socket is disconnected)
       expect(mockDisconnectedSocket.emit).not.toHaveBeenCalled()
-
-      // Clean up
-      clearTimeout(disconnectedStreams.get('test-socket-id').timeoutId)
     })
 
     it('should abort stream if recovery acknowledgement is not received in time', async () => {
       vi.clearAllMocks()
       vi.useFakeTimers()
 
-      const testServer = new WebSocketServer(httpServer, {
-        agents: mockAgents,
-        defaultAgent: 'test-agent'
-      })
-
-      const eventChannel = (testServer as any).eventChannel
-      const disconnectedStreams = (testServer as any).disconnectedStreams
-      const activeConversations = (testServer as any).activeConversations
-
       const missedEvents = [
         { id: 'e1', sequence: 4, type: 'chunk', content: 'Event 1', data: {}, timestamp: new Date(), conversationId: 'test-conv-id', agentName: 'test-agent' },
         { id: 'e2', sequence: 5, type: 'chunk', content: 'Event 2', data: {}, timestamp: new Date(), conversationId: 'test-conv-id', agentName: 'test-agent' }
       ]
-      vi.spyOn(eventChannel, 'getEventsSince').mockReturnValue(missedEvents)
-
-      disconnectedStreams.set('old-socket-id', {
-        abortController: new AbortController(),
-        timeoutId: setTimeout(() => {}, 60000),
-        conversationId: 'test-conv-id',
-        lastDeliveredSequence: 3
-      })
-
-      activeConversations.set('old-socket-id', {
-        conversationId: 'test-conv-id',
-        agentName: 'test-agent',
-        context: { socketId: 'old-socket-id' },
-        streamingEvents: [],
-        startTime: Date.now(),
-        lastDeliveredSequence: 3
-      })
 
       let connectionHandler: any
       mockIO.on.mockImplementation((event: string, handler: any) => {
@@ -1447,30 +1314,16 @@ describe('WebSocketServer - Error Handling', () => {
         agents: mockAgents,
         defaultAgent: 'test-agent'
       })
-      const cleanupSpy = vi.spyOn(testServer2 as any, 'cleanupConversation').mockResolvedValue(undefined)
 
       const eventChannel2 = (testServer2 as any).eventChannel
+      const stateManager2 = (testServer2 as any).stateManager
       vi.spyOn(eventChannel2, 'getEventsSince').mockReturnValue(missedEvents)
 
-      const disconnectedStreams2 = (testServer2 as any).disconnectedStreams
-      const activeConversations2 = (testServer2 as any).activeConversations
+      // Spy on stateManager.cleanup since recovery manager uses it directly
+      const cleanupSpy = vi.spyOn(stateManager2, 'cleanup')
 
-      const abortController = new AbortController()
-      disconnectedStreams2.set('old-socket-id', {
-        abortController,
-        timeoutId: setTimeout(() => {}, 60000),
-        conversationId: 'test-conv-id',
-        lastDeliveredSequence: 3
-      })
-
-      activeConversations2.set('old-socket-id', {
-        conversationId: 'test-conv-id',
-        agentName: 'test-agent',
-        context: { socketId: 'old-socket-id' },
-        streamingEvents: [],
-        startTime: Date.now(),
-        lastDeliveredSequence: 3
-      })
+      // Set up disconnected connection state
+      const abortController = createDisconnectedConnectionState(stateManager2, 'old-socket-id', 'test-conv-id', 'test-agent', 3)
 
       const newMockSocket = {
         id: 'new-socket-id',
@@ -1490,21 +1343,23 @@ describe('WebSocketServer - Error Handling', () => {
       if (connectionHandler) {
         await connectionHandler(newMockSocket)
 
-        const entry = disconnectedStreams2.get('old-socket-id')
-        expect(entry).toBeDefined()
-        expect(entry.timeoutId).toBeDefined()
+        // Verify state is set up for recovery
+        expect(stateManager2.isDisconnected('old-socket-id')).toBe(true)
 
         const ackTimeout = (testServer2 as any).ACK_TIMEOUT_MS ?? 30_000
         vi.advanceTimersByTime(ackTimeout + 10)
 
+        // The timeout handler runs synchronously and aborts the stream
         expect(abortController.signal.aborted).toBe(true)
+
+        // cleanup is called asynchronously but we can verify it was invoked
         expect(cleanupSpy).toHaveBeenCalledWith('old-socket-id')
-        expect(disconnectedStreams2.has('old-socket-id')).toBe(false)
+
+        // Verify listener cleanup (happens synchronously in timeout handler)
         expect(newMockSocket.off).toHaveBeenCalledWith('recovery_ack', expect.any(Function))
       }
 
       vi.useRealTimers()
-      testServer.close()
       testServer2.close()
     })
   })
@@ -1518,7 +1373,7 @@ describe('WebSocketServer - Error Handling', () => {
      * 4. WebSocket subscriber survives migration (new subscriber not unsubscribed)
      */
 
-    it('should follow migration chain when looking up conversations via getConversation', async () => {
+    it('should follow migration chain when looking up conversations via stateManager', async () => {
       vi.clearAllMocks()
 
       const testServer = new WebSocketServer(httpServer, {
@@ -1526,32 +1381,29 @@ describe('WebSocketServer - Error Handling', () => {
         defaultAgent: 'test-agent'
       })
 
-      const activeConversations = (testServer as any).activeConversations
-      const socketIdMigrations = (testServer as any).socketIdMigrations
+      const stateManager = (testServer as any).stateManager
 
-      // Set up conversation under NEW socket ID (after migration)
-      activeConversations.set('new-socket-id', {
+      // Create connection under old socket ID
+      stateManager.createConnection('old-socket-id', {
         conversationId: 'test-conv-id',
         agentName: 'test-agent',
-        context: { socketId: 'new-socket-id' },
-        streamingEvents: [],
-        startTime: Date.now(),
+        context: { socketId: 'old-socket-id', agentName: 'test-agent' }
+      })
+      stateManager.updateConnection('old-socket-id', {
         accumulatedContent: 'Test content from stream',
-        pendingToolCalls: new Map(),
         lastDeliveredSequence: 5
       })
 
-      // Set up migration chain: old-socket-id -> new-socket-id
-      socketIdMigrations.set('old-socket-id', 'new-socket-id')
+      // Migrate socket ID: old-socket-id -> new-socket-id
+      stateManager.migrateSocketId('old-socket-id', 'new-socket-id')
 
-      // Use getConversation with the OLD socket ID
-      const getConversation = (testServer as any).getConversation.bind(testServer)
-      const conversation = getConversation('old-socket-id')
+      // State should be accessible via OLD socket ID (through migration chain)
+      const stateData = stateManager.getStateData('old-socket-id')
 
       // Should find the conversation via migration chain
-      expect(conversation).toBeDefined()
-      expect(conversation.conversationId).toBe('test-conv-id')
-      expect(conversation.accumulatedContent).toBe('Test content from stream')
+      expect(stateData).toBeDefined()
+      expect(stateData.conversationId).toBe('test-conv-id')
+      expect(stateData.accumulatedContent).toBe('Test content from stream')
 
       testServer.close()
     })
@@ -1564,39 +1416,34 @@ describe('WebSocketServer - Error Handling', () => {
         defaultAgent: 'test-agent'
       })
 
-      const activeConversations = (testServer as any).activeConversations
-      const socketIdMigrations = (testServer as any).socketIdMigrations
+      const stateManager = (testServer as any).stateManager
 
-      // Set up conversation under FINAL socket ID
-      activeConversations.set('socket-C', {
+      // Create conversation under FIRST socket ID
+      stateManager.createConnection('socket-A', {
         conversationId: 'test-conv-id',
         agentName: 'test-agent',
-        context: { socketId: 'socket-C' },
-        streamingEvents: [],
-        startTime: Date.now(),
-        lastDeliveredSequence: 10
+        context: { socketId: 'socket-A', agentName: 'test-agent' }
       })
+      stateManager.updateConnection('socket-A', { lastDeliveredSequence: 10 })
 
       // Set up multi-hop migration chain: A → B → C
-      socketIdMigrations.set('socket-A', 'socket-B')
-      socketIdMigrations.set('socket-B', 'socket-C')
+      stateManager.migrateSocketId('socket-A', 'socket-B')
+      stateManager.migrateSocketId('socket-B', 'socket-C')
 
       // getEffectiveSocketId should follow the full chain
-      const getEffectiveSocketId = (testServer as any).getEffectiveSocketId.bind(testServer)
-      expect(getEffectiveSocketId('socket-A')).toBe('socket-C')
-      expect(getEffectiveSocketId('socket-B')).toBe('socket-C')
-      expect(getEffectiveSocketId('socket-C')).toBe('socket-C')
+      expect(stateManager.getEffectiveSocketId('socket-A')).toBe('socket-C')
+      expect(stateManager.getEffectiveSocketId('socket-B')).toBe('socket-C')
+      expect(stateManager.getEffectiveSocketId('socket-C')).toBe('socket-C')
 
-      // getConversation should work from any point in the chain
-      const getConversation = (testServer as any).getConversation.bind(testServer)
-      expect(getConversation('socket-A')?.conversationId).toBe('test-conv-id')
-      expect(getConversation('socket-B')?.conversationId).toBe('test-conv-id')
-      expect(getConversation('socket-C')?.conversationId).toBe('test-conv-id')
+      // getStateData should work from any point in the chain
+      expect(stateManager.getStateData('socket-A')?.conversationId).toBe('test-conv-id')
+      expect(stateManager.getStateData('socket-B')?.conversationId).toBe('test-conv-id')
+      expect(stateManager.getStateData('socket-C')?.conversationId).toBe('test-conv-id')
 
       testServer.close()
     })
 
-    it('should clean up activeStreams for both original and migrated socket IDs', async () => {
+    it('should clean up connection state after migration', async () => {
       vi.clearAllMocks()
 
       const testServer = new WebSocketServer(httpServer, {
@@ -1604,36 +1451,27 @@ describe('WebSocketServer - Error Handling', () => {
         defaultAgent: 'test-agent'
       })
 
-      const activeStreams = (testServer as any).activeStreams
-      const socketIdMigrations = (testServer as any).socketIdMigrations
+      const stateManager = (testServer as any).stateManager
 
-      // Simulate: old handler created stream under original ID
-      const oldController = new AbortController()
-      activeStreams.set('old-socket-id', oldController)
+      // Create connection and migrate
+      stateManager.createConnection('old-socket-id', {
+        conversationId: 'test-conv-id',
+        agentName: 'test-agent',
+        context: { socketId: 'old-socket-id', agentName: 'test-agent' }
+      })
+      const abortController = new AbortController()
+      stateManager.updateConnection('old-socket-id', { abortController })
+      stateManager.migrateSocketId('old-socket-id', 'new-socket-id')
 
-      // Simulate: during manual recovery, stream was moved to new socket ID
-      const newController = new AbortController()
-      activeStreams.set('new-socket-id', newController)
-      socketIdMigrations.set('old-socket-id', 'new-socket-id')
+      // State should be accessible via new socket ID
+      expect(stateManager.getStateData('new-socket-id')).toBeDefined()
+      expect(stateManager.getEffectiveSocketId('old-socket-id')).toBe('new-socket-id')
 
-      // Before cleanup, both entries exist
-      expect(activeStreams.has('old-socket-id')).toBe(true)
-      expect(activeStreams.has('new-socket-id')).toBe(true)
+      // Clean up via new socket ID
+      await stateManager.cleanup('new-socket-id')
 
-      // The finally block logic:
-      // 1. Get effective socket ID BEFORE deleting migration
-      const effectiveSocketId = (testServer as any).getEffectiveSocketId('old-socket-id')
-      expect(effectiveSocketId).toBe('new-socket-id')
-
-      // 2. Delete from both original and effective
-      activeStreams.delete('old-socket-id')
-      if (effectiveSocketId !== 'old-socket-id') {
-        activeStreams.delete(effectiveSocketId)
-      }
-
-      // After cleanup, BOTH entries should be removed
-      expect(activeStreams.has('old-socket-id')).toBe(false)
-      expect(activeStreams.has('new-socket-id')).toBe(false)
+      // After cleanup, state should be removed
+      expect(stateManager.getStateData('new-socket-id')).toBeUndefined()
 
       testServer.close()
     })
@@ -1647,16 +1485,20 @@ describe('WebSocketServer - Error Handling', () => {
       })
 
       const eventChannel = (testServer as any).eventChannel
-      const socketIdMigrations = (testServer as any).socketIdMigrations
+      const stateManager = (testServer as any).stateManager
 
       const unsubscribeSpy = vi.spyOn(eventChannel, 'unsubscribe')
 
-      // Simulate migration: old-socket-id → new-socket-id
-      socketIdMigrations.set('old-socket-id', 'new-socket-id')
+      // Create connection and migrate
+      stateManager.createConnection('old-socket-id', {
+        conversationId: 'test-conv-id',
+        agentName: 'test-agent',
+        context: { socketId: 'old-socket-id', agentName: 'test-agent' }
+      })
+      stateManager.migrateSocketId('old-socket-id', 'new-socket-id')
 
       // Get effective socket ID (follows migration chain)
-      const getEffectiveSocketId = (testServer as any).getEffectiveSocketId.bind(testServer)
-      const effectiveSocketId = getEffectiveSocketId('old-socket-id')
+      const effectiveSocketId = stateManager.getEffectiveSocketId('old-socket-id')
       expect(effectiveSocketId).toBe('new-socket-id')
 
       // Simulate finally block cleanup logic
@@ -1693,15 +1535,12 @@ describe('WebSocketServer - Error Handling', () => {
       })
 
       const eventChannel = (testServer as any).eventChannel
-      const socketIdMigrations = (testServer as any).socketIdMigrations
+      const stateManager = (testServer as any).stateManager
 
       const unsubscribeSpy = vi.spyOn(eventChannel, 'unsubscribe')
 
       // Scenario: No migration (normal completion)
-      // socketIdMigrations is empty, so effective = original
-
-      const getEffectiveSocketId = (testServer as any).getEffectiveSocketId.bind(testServer)
-      const effectiveSocketId = getEffectiveSocketId('test-socket-id')
+      const effectiveSocketId = stateManager.getEffectiveSocketId('test-socket-id')
       expect(effectiveSocketId).toBe('test-socket-id') // No migration, same ID
 
       const conversationId = 'test-conv-id'
@@ -1729,7 +1568,7 @@ describe('WebSocketServer - Error Handling', () => {
       })
 
       const eventChannel = (testServer as any).eventChannel
-      const socketIdMigrations = (testServer as any).socketIdMigrations
+      const stateManager = (testServer as any).stateManager
 
       // Setup: Create conversation state to track subscribers
       const conversationId = 'test-conv-id'
@@ -1737,20 +1576,24 @@ describe('WebSocketServer - Error Handling', () => {
       // Subscribe initial WebSocket subscriber (simulates recovery)
       const { WebSocketSubscriber } = await import('../subscribers/websocket-subscriber.js')
       const mockSocket = { id: 'new-socket-id', emit: vi.fn(), connected: true }
-      const disconnectedStreams = new Map()
+      const isDisconnected = () => false
 
-      eventChannel.subscribe(conversationId, new WebSocketSubscriber(mockSocket, disconnectedStreams))
+      eventChannel.subscribe(conversationId, new WebSocketSubscriber(mockSocket, isDisconnected))
 
       // Verify one subscriber exists
       const state1 = (eventChannel as any).conversations.get(conversationId)
       expect(state1.subscribers.size).toBe(1)
 
       // Simulate migration exists (old handler still running)
-      socketIdMigrations.set('old-socket-id', 'new-socket-id')
+      stateManager.createConnection('old-socket-id', {
+        conversationId,
+        agentName: 'test-agent',
+        context: { socketId: 'old-socket-id', agentName: 'test-agent' }
+      })
+      stateManager.migrateSocketId('old-socket-id', 'new-socket-id')
 
       // Get effective socket ID and cleanup (simulates finally block)
-      const getEffectiveSocketId = (testServer as any).getEffectiveSocketId.bind(testServer)
-      const effectiveSocketId = getEffectiveSocketId('old-socket-id')
+      const effectiveSocketId = stateManager.getEffectiveSocketId('old-socket-id')
 
       // Unsubscribe WebSocket with effective ID (the correct fix)
       eventChannel.unsubscribe(conversationId, `websocket-${effectiveSocketId}`)
@@ -1760,7 +1603,7 @@ describe('WebSocketServer - Error Handling', () => {
       expect(state2).toBeUndefined() // Conversation cleaned up when last subscriber removed
 
       // Now simulate next message registering a new subscriber
-      eventChannel.subscribe(conversationId, new WebSocketSubscriber(mockSocket, disconnectedStreams))
+      eventChannel.subscribe(conversationId, new WebSocketSubscriber(mockSocket, isDisconnected))
 
       // Verify exactly one subscriber (no duplicates)
       const state3 = (eventChannel as any).conversations.get(conversationId)
@@ -1777,38 +1620,33 @@ describe('WebSocketServer - Error Handling', () => {
         defaultAgent: 'test-agent'
       })
 
-      const activeConversations = (testServer as any).activeConversations
-      const socketIdMigrations = (testServer as any).socketIdMigrations
+      const stateManager = (testServer as any).stateManager
 
-      // Set up: conversation stored under NEW socket ID after migration
-      activeConversations.set('new-socket-id', {
+      // Create connection under old socket ID
+      stateManager.createConnection('old-socket-id', {
         conversationId: 'test-conv-id',
         agentName: 'test-agent',
-        context: { socketId: 'new-socket-id' },
-        streamingEvents: [],
-        startTime: Date.now(),
-        lastDeliveredSequence: 5
+        context: { socketId: 'old-socket-id', agentName: 'test-agent' }
       })
+      stateManager.updateConnection('old-socket-id', { lastDeliveredSequence: 5 })
 
-      // Set up migration
-      socketIdMigrations.set('old-socket-id', 'new-socket-id')
+      // Migrate to new socket ID
+      stateManager.migrateSocketId('old-socket-id', 'new-socket-id')
 
-      // Verify conversation exists under new ID
-      expect(activeConversations.has('new-socket-id')).toBe(true)
-      expect(activeConversations.has('old-socket-id')).toBe(false)
+      // Verify state exists under new ID
+      expect(stateManager.getStateData('new-socket-id')).toBeDefined()
+      expect(stateManager.getEffectiveSocketId('old-socket-id')).toBe('new-socket-id')
 
-      // cleanupConversation should find and delete using effective ID
-      const getEffectiveSocketId = (testServer as any).getEffectiveSocketId.bind(testServer)
-      const effectiveId = getEffectiveSocketId('old-socket-id')
+      // Cleanup should work via effective ID
+      const effectiveId = stateManager.getEffectiveSocketId('old-socket-id')
       expect(effectiveId).toBe('new-socket-id')
 
-      // Simulate cleanupConversation logic
-      const conversation = activeConversations.get(effectiveId)
-      expect(conversation).toBeDefined()
-      activeConversations.delete(effectiveId)  // Should delete effectiveId, not original
+      const stateData = stateManager.getStateData(effectiveId)
+      expect(stateData).toBeDefined()
+      await stateManager.cleanup(effectiveId)
 
       // Verify cleanup worked
-      expect(activeConversations.has('new-socket-id')).toBe(false)
+      expect(stateManager.getStateData('new-socket-id')).toBeUndefined()
 
       testServer.close()
     })
@@ -1824,9 +1662,7 @@ describe('WebSocketServer - Error Handling', () => {
       })
 
       const eventChannel = (testServer as any).eventChannel
-      const socketIdMigrations = (testServer as any).socketIdMigrations
-      const activeConversations = (testServer as any).activeConversations
-      const getEffectiveSocketId = (testServer as any).getEffectiveSocketId.bind(testServer)
+      const stateManager = (testServer as any).stateManager
 
       const conversationId = 'integration-test-conv'
       const { WebSocketSubscriber } = await import('../subscribers/websocket-subscriber.js')
@@ -1838,33 +1674,32 @@ describe('WebSocketServer - Error Handling', () => {
 
       const mockSocketA = {
         id: 'socket-A',
-        emit: vi.fn((event: string, data: any) => socketAEvents.push({ event, data })),
+        emit: vi.fn((_event: string, data: any) => socketAEvents.push({ event: _event, data })),
         connected: true
       }
       const mockSocketB = {
         id: 'socket-B',
-        emit: vi.fn((event: string, data: any) => socketBEvents.push({ event, data })),
+        emit: vi.fn((_event: string, data: any) => socketBEvents.push({ event: _event, data })),
         connected: true
       }
       const mockSocketC = {
         id: 'socket-C',
-        emit: vi.fn((event: string, data: any) => socketCEvents.push({ event, data })),
+        emit: vi.fn((_event: string, data: any) => socketCEvents.push({ event: _event, data })),
         connected: true
       }
 
-      const disconnectedStreams = new Map()
+      // Function-based disconnection check
+      const isDisconnected = (socketId: string) => stateManager.isDisconnected(socketId)
 
       // === Phase 1: Socket A connects and starts receiving events ===
-      activeConversations.set('socket-A', {
+      stateManager.createConnection('socket-A', {
         conversationId,
         agentName: 'test-agent',
-        context: { socketId: 'socket-A' },
-        streamingEvents: [],
-        startTime: Date.now(),
-        lastDeliveredSequence: 0
+        context: { socketId: 'socket-A', agentName: 'test-agent' }
       })
+      stateManager.updateConnection('socket-A', { lastDeliveredSequence: 0 })
 
-      const subscriberA = new WebSocketSubscriber(mockSocketA, disconnectedStreams)
+      const subscriberA = new WebSocketSubscriber(mockSocketA, isDisconnected)
       eventChannel.subscribe(conversationId, subscriberA)
 
       // Publish events 1-3 to socket A
@@ -1878,16 +1713,12 @@ describe('WebSocketServer - Error Handling', () => {
       mockSocketA.connected = false
       eventChannel.unsubscribe(conversationId, `websocket-socket-A`)
 
-      // Set up migration A→B
-      socketIdMigrations.set('socket-A', 'socket-B')
-
-      // Move conversation to socket B
-      const convA = activeConversations.get('socket-A')
-      activeConversations.delete('socket-A')
-      activeConversations.set('socket-B', { ...convA, context: { socketId: 'socket-B' }, lastDeliveredSequence: 3 })
+      // Migrate socket A → B
+      stateManager.updateConnection('socket-A', { lastDeliveredSequence: 3 })
+      stateManager.migrateSocketId('socket-A', 'socket-B')
 
       // Register new subscriber for socket B
-      const subscriberB = new WebSocketSubscriber(mockSocketB, disconnectedStreams)
+      const subscriberB = new WebSocketSubscriber(mockSocketB, isDisconnected)
       eventChannel.subscribe(conversationId, subscriberB)
 
       // Publish events 4-6 to socket B
@@ -1901,16 +1732,12 @@ describe('WebSocketServer - Error Handling', () => {
       mockSocketB.connected = false
       eventChannel.unsubscribe(conversationId, `websocket-socket-B`)
 
-      // Set up migration B→C (now chain: A→B→C)
-      socketIdMigrations.set('socket-B', 'socket-C')
-
-      // Move conversation to socket C
-      const convB = activeConversations.get('socket-B')
-      activeConversations.delete('socket-B')
-      activeConversations.set('socket-C', { ...convB, context: { socketId: 'socket-C' }, lastDeliveredSequence: 6 })
+      // Migrate socket B → C (now chain: A→B→C)
+      stateManager.updateConnection('socket-B', { lastDeliveredSequence: 6 })
+      stateManager.migrateSocketId('socket-B', 'socket-C')
 
       // Register new subscriber for socket C
-      const subscriberC = new WebSocketSubscriber(mockSocketC, disconnectedStreams)
+      const subscriberC = new WebSocketSubscriber(mockSocketC, isDisconnected)
       eventChannel.subscribe(conversationId, subscriberC)
 
       // Publish events 7-9 to socket C
@@ -1921,9 +1748,9 @@ describe('WebSocketServer - Error Handling', () => {
       expect(socketCEvents).toHaveLength(3)
 
       // === Verification: Migration chain resolves correctly ===
-      expect(getEffectiveSocketId('socket-A')).toBe('socket-C')
-      expect(getEffectiveSocketId('socket-B')).toBe('socket-C')
-      expect(getEffectiveSocketId('socket-C')).toBe('socket-C')
+      expect(stateManager.getEffectiveSocketId('socket-A')).toBe('socket-C')
+      expect(stateManager.getEffectiveSocketId('socket-B')).toBe('socket-C')
+      expect(stateManager.getEffectiveSocketId('socket-C')).toBe('socket-C')
 
       // === Verification: Each socket received exactly its events, no duplicates ===
       expect(socketAEvents.map(e => e.data.content)).toEqual(['Event 1', 'Event 2', 'Event 3'])
@@ -1936,7 +1763,7 @@ describe('WebSocketServer - Error Handling', () => {
 
       // === Cleanup using original socket ID (simulates finally block) ===
       // When original handler (socket-A) finishes, it should clean up using effective ID
-      const effectiveForCleanup = getEffectiveSocketId('socket-A')
+      const effectiveForCleanup = stateManager.getEffectiveSocketId('socket-A')
       expect(effectiveForCleanup).toBe('socket-C')
 
       eventChannel.unsubscribe(conversationId, `websocket-${effectiveForCleanup}`)

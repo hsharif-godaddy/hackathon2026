@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { WebSocketSubscriber, type DisconnectedStreamState } from '../websocket-subscriber.js'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { WebSocketSubscriber, type IsDisconnectedFn } from '../websocket-subscriber.js'
 import type { StreamingEvent } from '../../interfaces.js'
 
 /**
@@ -46,17 +46,19 @@ function createTestEvent(overrides?: Partial<StreamingEvent>): StreamingEvent {
 
 describe('WebSocketSubscriber', () => {
   let socket: MockSocket
-  let disconnectedStreams: Map<string, DisconnectedStreamState>
+  let isDisconnected: IsDisconnectedFn
+  let disconnectedSocketIds: Set<string>
   let subscriber: WebSocketSubscriber
 
   beforeEach(() => {
     socket = new MockSocket('socket-123')
-    disconnectedStreams = new Map()
-    subscriber = new WebSocketSubscriber(socket, disconnectedStreams)
+    disconnectedSocketIds = new Set<string>()
+    isDisconnected = (socketId: string) => disconnectedSocketIds.has(socketId)
+    subscriber = new WebSocketSubscriber(socket, isDisconnected)
   })
 
   describe('constructor', () => {
-    it('initializes with socket and disconnected streams map', () => {
+    it('initializes with socket and isDisconnected function', () => {
       expect(subscriber.id).toBe('websocket-socket-123')
       expect(subscriber).toBeInstanceOf(WebSocketSubscriber)
     })
@@ -86,13 +88,8 @@ describe('WebSocketSubscriber', () => {
         content: 'Content during disconnection'
       })
 
-      // Add socket to disconnected streams (no local buffering - event channel handles it)
-      disconnectedStreams.set('socket-123', {
-        abortController: new AbortController(),
-        timeoutId: setTimeout(() => {}, 0), // Use 0ms to avoid slowing tests
-        conversationId: 'conv1',
-        lastDeliveredSequence: 5  // Last sequence delivered before disconnect
-      })
+      // Mark socket as disconnected
+      disconnectedSocketIds.add('socket-123')
 
       await subscriber.onEvent(event)
 
@@ -158,11 +155,9 @@ describe('WebSocketSubscriber', () => {
       // Should not throw
       await expect(subscriber.onEvent(event)).resolves.toBeUndefined()
 
-      // Should not emit (socket disconnected)
+      // Should not emit (socket disconnected but not in disconnectedSocketIds means socket is truly gone)
+      // The isDisconnected check happens first, but socket.connected check in emit would also catch this
       expect(socket.emittedEvents).toHaveLength(0)
-
-      // Should not buffer (not in disconnectedStreams)
-      expect(disconnectedStreams.size).toBe(0)
     })
   })
 
@@ -254,15 +249,7 @@ describe('WebSocketSubscriber', () => {
   describe('integration scenarios', () => {
     it('skips events during disconnection, resumes after reconnection', async () => {
       // Simulate disconnection (event channel handles buffering, not subscriber)
-      const abortController = new AbortController()
-      const timeoutId = setTimeout(() => {}, 0) // Use 0ms to avoid slowing tests
-
-      disconnectedStreams.set('socket-123', {
-        abortController,
-        timeoutId,
-        conversationId: 'conv1',
-        lastDeliveredSequence: 3  // Last sequence before disconnect
-      })
+      disconnectedSocketIds.add('socket-123')
 
       // Send events while disconnected - they are SKIPPED (not buffered here)
       // The event channel buffers them separately
@@ -273,9 +260,9 @@ describe('WebSocketSubscriber', () => {
       // No emissions during disconnection
       expect(socket.emittedEvents).toHaveLength(0)
 
-      // Simulate reconnection (remove from disconnectedStreams)
+      // Simulate reconnection (remove from disconnectedSocketIds)
       // In reality, the server would replay events from event channel via getEventsSince()
-      disconnectedStreams.delete('socket-123')
+      disconnectedSocketIds.delete('socket-123')
 
       // New events after reconnection should emit normally
       await subscriber.onEvent(createTestEvent({ content: 'Event 4' }))
@@ -283,19 +270,15 @@ describe('WebSocketSubscriber', () => {
       expect(socket.emittedEvents[0].data.content).toBe('Event 4')
     })
 
-    it('maintains lastDeliveredSequence in disconnectedStreams', () => {
-      // Verify the type structure for disconnected streams
-      const streamState: DisconnectedStreamState = {
-        abortController: new AbortController(),
-        timeoutId: setTimeout(() => {}, 0),
-        conversationId: 'conv1',
-        lastDeliveredSequence: 42
-      }
+    it('uses function to check disconnected state', () => {
+      // Verify the function-based approach works correctly
+      expect(isDisconnected('socket-123')).toBe(false)
 
-      disconnectedStreams.set('socket-123', streamState)
+      disconnectedSocketIds.add('socket-123')
+      expect(isDisconnected('socket-123')).toBe(true)
 
-      expect(disconnectedStreams.get('socket-123')!.lastDeliveredSequence).toBe(42)
-      expect(disconnectedStreams.get('socket-123')!.conversationId).toBe('conv1')
+      disconnectedSocketIds.delete('socket-123')
+      expect(isDisconnected('socket-123')).toBe(false)
     })
   })
 })

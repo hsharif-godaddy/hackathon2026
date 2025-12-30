@@ -50,9 +50,10 @@ export interface CreateConnectionParams {
  * Parameters for state transitions
  */
 export interface TransitionParams {
-  abortController?: AbortController
-  recoveryTimeoutId?: NodeJS.Timeout
-  setupTimeoutId?: NodeJS.Timeout
+  abortController?: AbortController | null
+  // Note: | undefined is required due to exactOptionalPropertyTypes - allows passing undefined to clear
+  recoveryTimeoutId?: NodeJS.Timeout | undefined
+  setupTimeoutId?: NodeJS.Timeout | undefined
   lastDeliveredSequence?: number
 }
 
@@ -252,7 +253,8 @@ export class ConnectionStateManager {
    */
   updateConnection(socketId: string, updates: Partial<Pick<ConnectionStateData,
     'abortController' | 'lastDeliveredSequence' | 'recoveryTimeoutId' | 'setupTimeoutId' |
-    'streamingEvents' | 'pendingSegments' | 'pendingToolCalls' | 'accumulatedContent'
+    'streamingEvents' | 'pendingSegments' | 'pendingToolCalls' | 'accumulatedContent' |
+    'agentName' | 'context'
   >>): boolean {
     const effectiveId = this.getEffectiveSocketId(socketId)
     const data = this.connections.get(effectiveId)
@@ -269,6 +271,8 @@ export class ConnectionStateManager {
     if (updates.pendingSegments !== undefined) data.pendingSegments = updates.pendingSegments
     if (updates.pendingToolCalls !== undefined) data.pendingToolCalls = updates.pendingToolCalls
     if (updates.accumulatedContent !== undefined) data.accumulatedContent = updates.accumulatedContent
+    if (updates.agentName !== undefined) data.agentName = updates.agentName
+    if (updates.context !== undefined) data.context = updates.context
 
     return true
   }
@@ -505,7 +509,60 @@ export class ConnectionStateManager {
     return data?.state === 'disconnected'
   }
 
+  /**
+   * Find a connection by conversation ID
+   * Used for conversation-based recovery when socket ID is unknown
+   * @returns [socketId, stateData] tuple or null if not found
+   */
+  findByConversationId(conversationId: string): [string, ConnectionStateData] | null {
+    for (const [socketId, data] of this.connections) {
+      if (data.conversationId === conversationId) {
+        return [socketId, data]
+      }
+    }
+    return null
+  }
+
+  /**
+   * Find a disconnected connection by conversation ID
+   * Used for conversation-based recovery
+   * @returns [socketId, stateData] tuple or null if not found
+   */
+  findDisconnectedByConversationId(conversationId: string): [string, ConnectionStateData] | null {
+    for (const [socketId, data] of this.connections) {
+      if (data.conversationId === conversationId && data.state === 'disconnected') {
+        return [socketId, data]
+      }
+    }
+    return null
+  }
+
   // ===== Utility Methods =====
+
+  /**
+   * Abort all active connections (for server shutdown)
+   * @returns Number of connections aborted
+   */
+  abortAll(): number {
+    let count = 0
+    for (const [_socketId, data] of this.connections) {
+      if (data.abortController) {
+        data.abortController.abort()
+        count++
+      }
+      // Clear timeouts
+      if (data.recoveryTimeoutId) {
+        clearTimeout(data.recoveryTimeoutId)
+      }
+      if (data.setupTimeoutId) {
+        clearTimeout(data.setupTimeoutId)
+      }
+    }
+    this.connections.clear()
+    this.socketIdMigrations.clear()
+    this.cleanupInProgress.clear()
+    return count
+  }
 
   /**
    * Get count of active connections

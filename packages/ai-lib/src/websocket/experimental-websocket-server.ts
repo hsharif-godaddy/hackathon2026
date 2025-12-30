@@ -23,8 +23,7 @@ import { ConversationEventChannel } from './conversation-event-channel.js'
 import { WebSocketSubscriber } from './subscribers/websocket-subscriber.js'
 import { PersistenceSubscriber } from './subscribers/persistence-subscriber.js'
 import { APMSubscriber } from './subscribers/apm-subscriber.js'
-import type { DisconnectedStreamState } from './subscribers/websocket-subscriber.js'
-import { ConnectionStateManager } from './connection-state-manager.js'
+import { ConnectionStateManager, type ConnectionStateData } from './connection-state-manager.js'
 import { ConnectionRecoveryManager } from './connection-recovery-manager.js'
 
 /**
@@ -261,19 +260,6 @@ export class WebSocketServer {
   private io: SocketIOServer
   private config: WebSocketConfig
   private logger = createLogger('websocket')
-  private activeStreams: Map<string, AbortController> = new Map()
-  private activeConversations: Map<string, {
-    conversationId: string
-    agentName: string
-    context: ConversationContext
-    streamingEvents: PersistenceStreamingEvent[]
-    startTime: number
-    pendingSegments?: any[]
-    pendingToolCalls?: Map<string, any>
-    accumulatedContent?: string
-    /** Track last sequence delivered to socket for recovery */
-    lastDeliveredSequence: number
-  }> = new Map()
 
   /**
    * Track active APM spans for tool executions
@@ -286,13 +272,6 @@ export class WebSocketServer {
    * Enables decoupled event transport and connection recovery
    */
   private eventChannel: ConversationEventChannel
-
-  /**
-   * Track disconnected sockets with active streams during recovery window
-   * Allows LLM to continue working while client reconnects
-   * Events are buffered in the event channel, not here - we just track the last delivered sequence
-   */
-  private disconnectedStreams: Map<string, DisconnectedStreamState> = new Map()
 
   /**
    * Recovery window for connection state recovery (default: 5 minutes)
@@ -315,30 +294,14 @@ export class WebSocketServer {
   private readonly ACK_TIMEOUT_MS: number
 
   /**
-   * Track socket ID migrations during manual recovery
-   * Maps old socket ID -> new socket ID so publishToEventChannel can find the conversation
-   * This handles the case where handleChatMessage is still running with the old socketId
-   * but the conversation has been migrated to a new socket ID
-   */
-  private socketIdMigrations: Map<string, string> = new Map()
-
-  // socketMessageQueues moved to ConnectionStateManager.queueMessage()
-
-  /**
-   * Track sockets where setup is in progress (conversation exists but stream not yet registered)
-   * This handles early disconnect during the gap between activeConversations.set() and activeStreams.set()
-   */
-  private pendingSetup: Map<string, { conversationId: string; timeoutId: NodeJS.Timeout }> = new Map()
-
-  /**
-   * Track sockets being cleaned up to prevent duplicate cleanup and racing map operations
-   * Guards against disconnect + ACK timeout race conditions
-   */
-  private cleanupInProgress: Set<string> = new Set()
-
-  /**
    * Consolidated state manager for connection lifecycle
-   * Manages state transitions, socket ID migrations, and cleanup
+   * Single source of truth for all connection state including:
+   * - Active streams (abortController)
+   * - Active conversations (conversationId, context, streamingEvents, etc.)
+   * - Disconnected streams in recovery window
+   * - Socket ID migrations
+   * - Pending setup tracking
+   * - Cleanup in progress tracking
    */
   private stateManager: ConnectionStateManager
 
@@ -392,13 +355,11 @@ export class WebSocketServer {
       {
         stateManager: this.stateManager,
         eventChannel: this.eventChannel,
-        disconnectedStreams: this.disconnectedStreams,
         logger: this.logger
       },
       {
         ackTimeout: this.ACK_TIMEOUT_MS,
         recoveryWindow: this.STREAM_RECOVERY_WINDOW,
-        ...(config.onDisconnection && { onDisconnection: config.onDisconnection }),
         ...(config.apmAgent && { apmAgent: config.apmAgent })
       }
     )
@@ -454,9 +415,9 @@ export class WebSocketServer {
         this.logger.info('Connection with previousSocketId detected', {
           socketId,
           previousSocketId,
-          hasDisconnectedStream: this.disconnectedStreams.has(previousSocketId),
-          disconnectedStreamsSize: this.disconnectedStreams.size,
-          disconnectedStreamKeys: Array.from(this.disconnectedStreams.keys())
+          hasDisconnectedStream: this.stateManager.isDisconnected(previousSocketId),
+          disconnectedStreamsCount: this.stateManager.getDisconnectedCount(),
+          disconnectedStreamKeys: Array.from(this.stateManager.getDisconnectedSocketIds())
         })
       }
 
@@ -465,69 +426,38 @@ export class WebSocketServer {
 
       // Delegate to recovery manager for all recovery scenarios
       if (detectedRecoveryMode === 'automatic') {
-        // Capture state needed for local Map updates in callbacks
-        const streamData = this.disconnectedStreams.get(socketId)!
-        const conversation = this.activeConversations.get(socketId)
-
         await this.recoveryManager.handleAutomaticRecovery(socket, {
-          onRecoveryComplete: (_completedSocketId, _events, finalSequence) => {
-            // Update local Maps (recovery manager handles disconnectedStreams and eventChannel)
-            this.activeStreams.set(socketId, streamData.abortController)
-            if (conversation) {
-              conversation.lastDeliveredSequence = finalSequence
-            }
+          onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
+            // State manager handles all state updates
+            // No local Map updates needed
           },
           onRecoveryFailed: (_failedSocketId, _reason) => {
-            // Cleanup local Maps - use captured conversation to avoid race with Map modifications
-            if (conversation) {
-              this.cleanupEventChannelSubscribers(socketId, conversation.conversationId)
-            }
-            streamData.abortController.abort()
-            this.activeStreams.delete(socketId)
-            void this.cleanupConversation(socketId).catch((error) => {
-              this.logger.error('websocket.recovery.cleanup_failed', {
-                socketId,
-                error: error instanceof Error ? error.message : String(error)
-              })
-            })
+            // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
+            // No additional cleanup needed
           },
-          createWebSocketSubscriber: (sock) => new WebSocketSubscriber(sock, this.disconnectedStreams)
+          createWebSocketSubscriber: (sock) => new WebSocketSubscriber(
+            sock,
+            (id) => this.stateManager.isDisconnected(id)
+          )
         })
         return // Recovery handled, skip fresh connection setup
       }
 
       // Check for manual recovery after page reload (client sends previousSocketId)
       if (detectedRecoveryMode === 'manual') {
-        // Capture state needed for local Map updates in callbacks
-        const streamData = this.disconnectedStreams.get(previousSocketId!)!
-        const conversation = this.activeConversations.get(previousSocketId!)
-
         await this.recoveryManager.handleManualRecovery(socket, previousSocketId!, {
-          onRecoveryComplete: (_completedSocketId, _events, finalSequence) => {
-            // Update local Maps (recovery manager handles disconnectedStreams, eventChannel, onDisconnection)
-            this.activeStreams.set(socketId, streamData.abortController)
-            if (conversation) {
-              conversation.lastDeliveredSequence = finalSequence
-              this.activeConversations.set(socketId, conversation)
-              this.activeConversations.delete(previousSocketId!)
-              this.socketIdMigrations.set(previousSocketId!, socketId)
-            }
+          onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
+            // State manager handles all state updates including socket ID migration
+            // No local Map updates needed
           },
           onRecoveryFailed: (_failedSocketId, _reason) => {
-            // Cleanup local Maps - use captured conversation to avoid race with Map modifications
-            if (conversation) {
-              this.cleanupEventChannelSubscribers(previousSocketId!, conversation.conversationId)
-            }
-            streamData.abortController.abort()
-            this.activeStreams.delete(previousSocketId!)
-            void this.cleanupConversation(previousSocketId!).catch((error) => {
-              this.logger.error('websocket.recovery.cleanup_failed', {
-                socketId: previousSocketId,
-                error: error instanceof Error ? error.message : String(error)
-              })
-            })
+            // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
+            // No additional cleanup needed
           },
-          createWebSocketSubscriber: (sock) => new WebSocketSubscriber(sock, this.disconnectedStreams)
+          createWebSocketSubscriber: (sock) => new WebSocketSubscriber(
+            sock,
+            (id) => this.stateManager.isDisconnected(id)
+          )
         })
         return // Recovery handled, skip fresh connection setup
       }
@@ -553,52 +483,64 @@ export class WebSocketServer {
       // Conversation-based recovery fallback (for tab-closure recovery when socket ID is lost)
       // This allows recovery using a durable conversationId cookie instead of ephemeral sessionStorage
       if (detectedRecoveryMode === 'conversation') {
-        // Find the old socket ID for local Map updates
-        const entry = Array.from(this.disconnectedStreams.entries()).find(
-          ([_, data]) => data.conversationId === auth.conversationId
-        )
-        const oldSocketId = entry?.[0]
-        const streamData = entry?.[1]
-        const conversation = oldSocketId ? this.activeConversations.get(oldSocketId) : undefined
+        // Find the connection state for validation
+        const entry = this.stateManager.findDisconnectedByConversationId(auth.conversationId)
+        const stateData = entry?.[1]
 
         // Validation function for security check
+        // Checks siteId from all possible auth sources:
+        // - agentContext.siteId (JWT auth)
+        // - decoded.siteId (JWT auth fallback)
+        // - siteId (NONE/MOCK auth modes)
+        interface AuthDataWithSiteId {
+          agentContext?: { siteId?: string }
+          decoded?: { siteId?: string }
+          siteId?: string
+        }
         const validateAppId = (_conversationId: string, authData: Record<string, unknown>): boolean => {
-          const authenticatedSiteId = (authData as any).agentContext?.siteId || (authData as any).decoded?.siteId
-          if (conversation && authenticatedSiteId && conversation.context?.appId !== authenticatedSiteId) {
+          const typedAuth = authData as AuthDataWithSiteId
+          const authenticatedSiteId =
+            typedAuth.agentContext?.siteId ||
+            typedAuth.decoded?.siteId ||
+            typedAuth.siteId
+
+          // Block recovery if we can't determine the authenticated site
+          if (!authenticatedSiteId) {
+            this.logger.warn('recovery.conversation.no_site_id', {
+              socketId,
+              conversationId: auth.conversationId,
+              authKeys: Object.keys(authData)
+            })
             return false
           }
+
+          // Block recovery if site doesn't match the conversation's app
+          if (stateData && stateData.context?.appId !== authenticatedSiteId) {
+            this.logger.warn('recovery.conversation.site_mismatch', {
+              socketId,
+              conversationId: auth.conversationId,
+              authenticatedSiteId,
+              conversationAppId: stateData.context?.appId
+            })
+            return false
+          }
+
           return true
         }
 
         await this.recoveryManager.handleConversationRecovery(socket, auth.conversationId, validateAppId, {
-          onRecoveryComplete: (_completedSocketId, _events, finalSequence) => {
-            // Update local Maps for backward compatibility
-            if (streamData) {
-              this.activeStreams.set(socketId, streamData.abortController)
-            }
-            if (conversation && oldSocketId) {
-              conversation.lastDeliveredSequence = finalSequence
-              this.activeConversations.set(socketId, conversation)
-              this.activeConversations.delete(oldSocketId)
-              this.socketIdMigrations.set(oldSocketId, socketId)
-            }
+          onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
+            // State manager handles all state updates including socket ID migration
+            // No local Map updates needed
           },
           onRecoveryFailed: (_failedSocketId, _reason) => {
-            // Cleanup local Maps - use captured conversation to avoid race with Map modifications
-            if (oldSocketId) {
-              if (conversation) {
-                this.cleanupEventChannelSubscribers(oldSocketId, conversation.conversationId)
-              }
-              this.activeStreams.delete(oldSocketId)
-              void this.cleanupConversation(oldSocketId).catch((error) => {
-                this.logger.error('websocket.recovery.conversation.cleanup_failed', {
-                  socketId: oldSocketId,
-                  error: error instanceof Error ? error.message : String(error)
-                })
-              })
-            }
+            // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
+            // No additional cleanup needed
           },
-          createWebSocketSubscriber: (sock) => new WebSocketSubscriber(sock, this.disconnectedStreams)
+          createWebSocketSubscriber: (sock) => new WebSocketSubscriber(
+            sock,
+            (id) => this.stateManager.isDisconnected(id)
+          )
         })
         return // Recovery handled, skip fresh connection setup
       }
@@ -639,60 +581,46 @@ export class WebSocketServer {
       socket.on('disconnect', async (reason) => {
         this.logger.info('Socket disconnected', { socketId, reason })
 
-        // Check if there's an active stream for this socket
-        const controller = this.activeStreams.get(socketId)
-        const conversation = this.activeConversations.get(socketId)
+        // Check if there's an active stream for this socket via state manager
+        const stateData = this.stateManager.getStateData(socketId)
+        const hasActiveStream = this.stateManager.hasActiveStream(socketId)
 
-        if (controller && conversation) {
-          // Don't abort immediately - move to disconnected streams with timeout
+        if (hasActiveStream && stateData) {
+          // Don't abort immediately - transition to disconnected state with timeout
           this.logger.info('Active stream detected, starting recovery window', {
             socketId,
             recoveryWindow: `${this.STREAM_RECOVERY_WINDOW}ms`,
-            conversationId: conversation.conversationId
+            conversationId: stateData.conversationId
           })
 
           // Set timeout to abort if client doesn't reconnect
           const timeoutId = setTimeout(() => {
             this.logger.warn('Recovery window expired, aborting stream', { socketId })
-            controller.abort()
-            this.disconnectedStreams.delete(socketId)
-            this.activeStreams.delete(socketId)
+            stateData.abortController?.abort()
 
-            // Clean up conversation
+            // Clean up conversation (handles persistence and state cleanup)
             this.cleanupConversation(socketId).catch((error) => {
               this.logger.error('Error cleaning up conversation after recovery timeout', error)
             })
           }, this.STREAM_RECOVERY_WINDOW)
 
-          // Move to disconnected streams, preserving last delivered sequence
-          // Events will continue to be published to event channel during disconnection
-          this.disconnectedStreams.set(socketId, {
-            abortController: controller,
-            timeoutId,
-            conversationId: conversation.conversationId,
-            lastDeliveredSequence: conversation.lastDeliveredSequence
+          // Transition to disconnected state
+          this.stateManager.transitionTo(socketId, 'disconnected', {
+            recoveryTimeoutId: timeoutId
           })
-
-          // Remove from active streams (but don't abort the controller)
-          this.activeStreams.delete(socketId)
-        } else if (conversation && !controller) {
+        } else if (stateData && !hasActiveStream) {
           // Conversation exists but stream not yet registered - setup still in progress
-          // This handles early disconnect during the gap between activeConversations.set() and activeStreams.set()
           this.logger.info('websocket.disconnect.during_setup', {
             socketId,
-            conversationId: conversation.conversationId
+            conversationId: stateData.conversationId
           })
 
-          // Create a placeholder AbortController - there's no stream yet, but we need the structure
-          // for disconnectedStreams so publishToEventChannel won't mark events as delivered
+          // Create a placeholder AbortController for the disconnected state
           const placeholderController = new AbortController()
 
           const timeoutId = setTimeout(() => {
             this.logger.warn('websocket.deferred_cleanup.expired', { socketId })
             placeholderController.abort()
-            this.pendingSetup.delete(socketId)
-            this.disconnectedStreams.delete(socketId)
-            this.activeConversations.delete(socketId)
             this.cleanupConversation(socketId).catch(err =>
               this.logger.error('websocket.deferred_cleanup.error', {
                 socketId,
@@ -701,26 +629,16 @@ export class WebSocketServer {
             )
           }, this.STREAM_RECOVERY_WINDOW)
 
-          // Add to disconnectedStreams so publishToEventChannel won't mark events as delivered
-          // Events will be buffered and replayed when client reconnects
-          this.disconnectedStreams.set(socketId, {
+          // Update state with placeholder controller and transition to disconnected
+          this.stateManager.updateConnection(socketId, {
             abortController: placeholderController,
-            timeoutId,
-            conversationId: conversation.conversationId,
-            lastDeliveredSequence: conversation.lastDeliveredSequence
+            setupTimeoutId: timeoutId
           })
-
-          this.pendingSetup.set(socketId, {
-            conversationId: conversation.conversationId,
-            timeoutId
+          this.stateManager.transitionTo(socketId, 'disconnected', {
+            recoveryTimeoutId: timeoutId
           })
         } else {
           // No conversation - safe to cleanup immediately
-          if (controller) {
-            controller.abort()
-            this.activeStreams.delete(socketId)
-          }
-
           await this.cleanupConversation(socketId)
         }
 
@@ -735,20 +653,25 @@ export class WebSocketServer {
       socket.on('cancel', () => {
         this.logger.info('Stream explicitly cancelled by user', { socketId })
 
-        // Cancel any active or disconnected stream
-        const controller = this.activeStreams.get(socketId) ||
-                          this.disconnectedStreams.get(socketId)?.abortController
+        // Cancel any active or disconnected stream via state manager
+        const controller = this.stateManager.getAbortController(socketId)
+        const cancelStateData = this.stateManager.getStateData(socketId)
 
         if (controller) {
           controller.abort()
-          this.activeStreams.delete(socketId)
 
-          // Clean up disconnected stream if exists
-          const disconnected = this.disconnectedStreams.get(socketId)
-          if (disconnected) {
-            clearTimeout(disconnected.timeoutId)
-            this.disconnectedStreams.delete(socketId)
+          // Clear any pending recovery timeout
+          if (cancelStateData?.recoveryTimeoutId) {
+            clearTimeout(cancelStateData.recoveryTimeoutId)
           }
+
+          // Clean up conversation (handles persistence and state cleanup)
+          this.cleanupConversation(socketId).catch(err => {
+            this.logger.error('websocket.cancel.cleanup_failed', {
+              socketId,
+              error: err instanceof Error ? err.message : String(err)
+            })
+          })
         }
       })
     })
@@ -778,15 +701,15 @@ export class WebSocketServer {
   ): Promise<number | undefined> {
     // Get effective socket ID after following migration chain (handles A→B→C)
     // handleChatMessage may still be using old socketId after migration(s)
-    const effectiveSocketId = this.getEffectiveSocketId(socketId)
-    const conversation = this.activeConversations.get(effectiveSocketId)
-    if (!conversation) {
+    const effectiveSocketId = this.stateManager.getEffectiveSocketId(socketId)
+    const stateData = this.stateManager.getStateData(effectiveSocketId)
+    if (!stateData) {
       return undefined // No conversation to publish to
     }
 
     try {
-      const event = await this.eventChannel.publish(conversation.conversationId, {
-        conversationId: conversation.conversationId,
+      const event = await this.eventChannel.publish(stateData.conversationId, {
+        conversationId: stateData.conversationId,
         type,
         content,
         data,
@@ -796,19 +719,21 @@ export class WebSocketServer {
       // Only track as "delivered" if socket is connected
       // When disconnected, events are buffered but not delivered
       // Use effectiveSocketId to check the actual current socket
-      if (!this.disconnectedStreams.has(effectiveSocketId)) {
-        conversation.lastDeliveredSequence = event.sequence
+      if (!this.stateManager.isDisconnected(effectiveSocketId)) {
+        this.stateManager.updateConnection(effectiveSocketId, {
+          lastDeliveredSequence: event.sequence
+        })
       }
 
       // Track event locally for conversation state management
       // This handles: streamingEvents array, content accumulation, segment/tool tracking
-      await this.trackEventForConversation(conversation, type, content, data)
+      await this.trackEventForConversation(stateData, type, content, data)
 
       return event.sequence
     } catch (err) {
       // Log as warning - event channel failed but we continue
       this.logger.warn('eventChannel.publish.failed', {
-        conversationId: conversation.conversationId,
+        conversationId: stateData.conversationId,
         type,
         error: err instanceof Error ? err.message : String(err)
       })
@@ -817,158 +742,43 @@ export class WebSocketServer {
   }
 
   /**
-   * Get the effective socket ID after following the migration chain
-   * Handles multiple reconnections (A→B→C) by following the chain to the end
-   *
-   * @param socketId - The original socket ID
-   * @returns The current effective socket ID after all migrations
-   */
-  private getEffectiveSocketId(socketId: string): string {
-    const visited = new Set<string>()
-    let current = socketId
-    let next = this.socketIdMigrations.get(current)
-
-    // Follow the chain until we reach a socket with no further migration
-    while (next !== undefined && !visited.has(current)) {
-      visited.add(current)
-      current = next
-      next = this.socketIdMigrations.get(current)
-    }
-
-    // Cycle detected - break it by removing the circular entries
-    if (visited.has(current)) {
-      this.logger.error('websocket.migration_chain.cycle_detected', {
-        socketId,
-        visited: Array.from(visited),
-        cyclePoint: current
-      })
-
-      // Break the cycle by removing all entries in the visited set
-      // This prevents infinite loops on subsequent lookups
-      for (const id of visited) {
-        this.socketIdMigrations.delete(id)
-      }
-
-      // Return the last valid socket ID before the cycle
-      // (current is the cycle point, so it's still the best answer we have)
-    }
-
-    return current
-  }
-
-  /**
-   * Get the conversation for a socket ID, following migration chain if necessary
-   * This should be used instead of direct activeConversations.get() calls
+   * Get the conversation state for a socket ID, following migration chain if necessary
+   * Delegates to stateManager for consistent state access
    *
    * @param socketId - The socket ID (may be original or migrated)
-   * @returns The conversation object, or undefined if not found
+   * @returns The connection state data, or undefined if not found
    */
-  private getConversation(socketId: string): typeof this.activeConversations extends Map<string, infer V> ? V | undefined : never {
-    const effectiveId = this.getEffectiveSocketId(socketId)
-    return this.activeConversations.get(effectiveId)
-  }
-
-  /**
-   * Remove any socketId migration chain starting from the provided socket ID.
-   * This prevents socketIdMigrations from growing indefinitely across multi-hop recoveries.
-   */
-  private clearSocketMigrationChain(startingSocketId: string): void {
-    const visited = new Set<string>()
-    let current = startingSocketId
-
-    while (!visited.has(current) && this.socketIdMigrations.has(current)) {
-      visited.add(current)
-      const next = this.socketIdMigrations.get(current)!
-      this.socketIdMigrations.delete(current)
-      current = next
-    }
-  }
-
-  /**
-   * Clean up event channel subscribers for a conversation.
-   * Handles socket ID migration: websocket subscriber uses effective (current) socket ID,
-   * while persistence/APM subscribers use the original socket ID they were registered with.
-   *
-   * @param originalSocketId - The socket ID the subscribers were originally registered with
-   * @param conversationId - The conversation ID to unsubscribe from
-   */
-  private cleanupEventChannelSubscribers(
-    originalSocketId: string,
-    conversationId: string
-  ): void {
-    // WebSocket subscriber migrates with socket - use effective ID
-    const effectiveSocketId = this.getEffectiveSocketId(originalSocketId)
-    this.eventChannel.unsubscribe(conversationId, `websocket-${effectiveSocketId}`)
-
-    // Persistence and APM subscribers stay with original socket ID (never re-registered)
-    this.eventChannel.unsubscribe(conversationId, `persistence-${originalSocketId}`)
-    if (this.config.apmAgent) {
-      this.eventChannel.unsubscribe(conversationId, `apm-${originalSocketId}`)
-    }
+  private getConversation(socketId: string): ConnectionStateData | undefined {
+    const effectiveId = this.stateManager.getEffectiveSocketId(socketId)
+    return this.stateManager.getStateData(effectiveId)
   }
 
   /**
    * Clean up conversation state and persistence
-   * Includes idempotency guard to prevent duplicate cleanup from disconnect + ACK timeout race
+   * Delegates to stateManager for state cleanup, handles persistence separately
    */
   private async cleanupConversation(socketId: string): Promise<void> {
-    const effectiveId = this.getEffectiveSocketId(socketId)
+    const effectiveId = this.stateManager.getEffectiveSocketId(socketId)
 
-    // Idempotency guard - prevents duplicate cleanup from disconnect + ACK timeout race
-    if (this.cleanupInProgress.has(effectiveId)) {
+    // Idempotency guard via state manager
+    if (this.stateManager.isCleanupInProgress(effectiveId)) {
       this.logger.debug('websocket.cleanup.already_in_progress', { socketId: effectiveId })
       return
     }
-    this.cleanupInProgress.add(effectiveId)
 
-    try {
-      // Guard map deletions - check existence before delete to avoid race conditions
-      if (this.disconnectedStreams.has(effectiveId)) {
-        const streamData = this.disconnectedStreams.get(effectiveId)
-        if (streamData?.timeoutId) {
-          clearTimeout(streamData.timeoutId)
-        }
-        this.disconnectedStreams.delete(effectiveId)
-      }
+    // Get state data before cleanup for persistence handling
+    const stateData = this.stateManager.getStateData(effectiveId)
 
-      if (this.activeStreams.has(effectiveId)) {
-        const controller = this.activeStreams.get(effectiveId)
-        controller?.abort()
-        this.activeStreams.delete(effectiveId)
-      }
-
-      if (this.pendingSetup.has(effectiveId)) {
-        const pending = this.pendingSetup.get(effectiveId)
-        if (pending?.timeoutId) {
-          clearTimeout(pending.timeoutId)
-        }
-        this.pendingSetup.delete(effectiveId)
-      }
-
-      const conversation = this.activeConversations.get(effectiveId)
-      if (conversation) {
-        if (this.config.messagePersistence && 'handleDisconnection' in this.config.messagePersistence) {
-          await (this.config.messagePersistence as ConversationPersistenceWithCleanup).handleDisconnection(
-            effectiveId,  // Use effective ID for consistency
-            [conversation.conversationId]
-          )
-        }
-        // Always remove the active conversation entry to avoid leaks when persistence is disabled
-        this.activeConversations.delete(effectiveId)
-      }
-
-      // Clean up any migrations that pointed to this socket ID
-      // This handles the case where a migrated socket is being fully cleaned up
-      for (const [oldId, newId] of this.socketIdMigrations) {
-        if (newId === socketId) {
-          this.socketIdMigrations.delete(oldId)
-        }
-      }
-
-      this.clearSocketMigrationChain(socketId)
-    } finally {
-      this.cleanupInProgress.delete(effectiveId)
+    // Handle persistence cleanup if needed
+    if (stateData && this.config.messagePersistence && 'handleDisconnection' in this.config.messagePersistence) {
+      await (this.config.messagePersistence as ConversationPersistenceWithCleanup).handleDisconnection(
+        effectiveId,
+        [stateData.conversationId]
+      )
     }
+
+    // Delegate state cleanup to state manager (handles timeouts, abort controller, migrations, etc.)
+    await this.stateManager.cleanup(socketId)
   }
 
   /**
@@ -1327,7 +1137,7 @@ export class WebSocketServer {
 
     let reader: ReadableStreamDefaultReader | null = null
     const socketId = socket.id
-    const abortController = this.activeStreams.get(socketId)
+    const abortController = this.stateManager.getAbortController(socketId)
 
     try {
       reader = baseStream.getReader()
@@ -1613,7 +1423,7 @@ export class WebSocketServer {
    */
   private async processTextOnlyStream(socket: any, streamResult: any, currentStep: number, agentName: string): Promise<void> {
     const socketId = socket.id
-    const abortController = this.activeStreams.get(socketId)
+    const abortController = this.stateManager.getAbortController(socketId)
 
     try {
       for await (const chunk of streamResult.textStream) {
@@ -1803,7 +1613,7 @@ export class WebSocketServer {
         // WebSocket delivery (blocking)
         this.eventChannel.subscribe(
           conversationId,
-          new WebSocketSubscriber(socket, this.disconnectedStreams)
+          new WebSocketSubscriber(socket, (id) => this.stateManager.isDisconnected(id))
         )
 
         // Persistence (non-blocking)
@@ -1858,44 +1668,37 @@ export class WebSocketServer {
       // 5. Call message start handler (await to ensure invocation tracking is set up before LLM calls)
       await this.config.onMessageStart?.(socketId, data.message, agentName, processedContext)
 
-      // 6. Create abort controller
+      // 6. Create abort controller and register with state manager
       const controller = new AbortController()
-      this.activeStreams.set(socketId, controller)
+      this.stateManager.updateConnection(socketId, { abortController: controller })
 
       // Clear pending setup if socket disconnected during setup but stream is now starting
       // This happens when the agent starts streaming after the client disconnected
-      const pending = this.pendingSetup.get(socketId)
-      if (pending) {
-        clearTimeout(pending.timeoutId)
-        this.pendingSetup.delete(socketId)
+      const stateData = this.stateManager.getStateData(socketId)
+      if (stateData?.setupTimeoutId) {
+        clearTimeout(stateData.setupTimeoutId)
+        this.stateManager.updateConnection(socketId, { setupTimeoutId: null })
 
-        // Socket is still disconnected - update disconnectedStreams with the real controller
-        // Don't set in activeStreams - the socket isn't connected
-        const disconnected = this.disconnectedStreams.get(socketId)
-        if (disconnected) {
+        // Socket is still disconnected - update state with the real controller
+        if (this.stateManager.isDisconnected(socketId)) {
           // Replace placeholder controller with the real stream controller
           // Reset timeout for the full recovery window
           const newTimeoutId = setTimeout(() => {
             this.logger.warn('Recovery window expired after early disconnect', { socketId })
             controller.abort()
-            this.disconnectedStreams.delete(socketId)
-            this.activeStreams.delete(socketId)
             this.cleanupConversation(socketId).catch((error) => {
               this.logger.error('Error cleaning up conversation after recovery timeout', error)
             })
           }, this.STREAM_RECOVERY_WINDOW)
 
-          this.disconnectedStreams.set(socketId, {
+          this.stateManager.updateConnection(socketId, {
             abortController: controller,
-            timeoutId: newTimeoutId,
-            conversationId: disconnected.conversationId,
-            lastDeliveredSequence: disconnected.lastDeliveredSequence
+            recoveryTimeoutId: newTimeoutId
           })
-          // Remove from activeStreams since socket is disconnected
-          this.activeStreams.delete(socketId)
+
           this.logger.info('websocket.pending_setup.converted_to_disconnected', {
             socketId,
-            conversationId: disconnected.conversationId
+            conversationId: stateData.conversationId
           })
         } else {
           this.logger.info('websocket.pending_setup.cleared', { socketId })
@@ -2051,30 +1854,29 @@ export class WebSocketServer {
       await this.config.onError?.(socketId, error instanceof Error ? error : new Error(String(error)), data.message, processedContext)
 
       // Handle persistence error
-      const effectiveSocketId = this.getEffectiveSocketId(socketId)
-      const conversation = this.activeConversations.get(effectiveSocketId)
-      if (conversation && this.config.messagePersistence) {
+      const effectiveSocketId = this.stateManager.getEffectiveSocketId(socketId)
+      const errorStateData = this.stateManager.getStateData(effectiveSocketId)
+      if (errorStateData && this.config.messagePersistence) {
         await this.config.messagePersistence.handleConversationError(
-          conversation.conversationId,
+          errorStateData.conversationId,
           error instanceof Error ? error : new Error(String(error)),
           data.message,
-          conversation.context
+          errorStateData.context
         )
-        this.activeConversations.delete(effectiveSocketId)
+        // Transition to cleaned state (or cleanup will handle it)
+        this.stateManager.transitionTo(effectiveSocketId, 'cleaned')
       }
     } finally {
-      // Clean up stream tracking for BOTH original and effective socket IDs
-      // During manual recovery, the controller is moved to the new socket ID (via activeStreams.set)
-      // so we need to clean up both to prevent phantom streams
-      const effectiveSocketIdForCleanup = this.getEffectiveSocketId(socketId)
-      this.activeStreams.delete(socketId)
-      if (effectiveSocketIdForCleanup !== socketId) {
-        this.activeStreams.delete(effectiveSocketIdForCleanup)
-      }
+      // Clean up stream tracking via state manager
+      // State manager handles socket ID migration cleanup internally
+      const effectiveSocketIdForCleanup = this.stateManager.getEffectiveSocketId(socketId)
+
+      // Clear abort controller since stream is complete
+      this.stateManager.updateConnection(effectiveSocketIdForCleanup, { abortController: null })
 
       // Clean up socket ID migration if this was the old socket that got migrated
       // Now that the old handler is finishing, the migration entry is no longer needed
-      this.clearSocketMigrationChain(socketId)
+      this.stateManager.clearMigrationChain(socketId)
 
       // Unsubscribe all subscribers for this conversation
       // Use conversationIdForCleanup captured earlier - activeConversations may have been
@@ -2224,37 +2026,32 @@ export class WebSocketServer {
       ...processedContext
     }
 
-    // Check if we already have an active conversation for this socket
-    const existingConversation = this.activeConversations.get(socketId)
+    // Check if we already have an active conversation for this socket via state manager
+    const existingState = this.stateManager.getStateData(socketId)
 
-    if (existingConversation) {
+    if (existingState && this.stateManager.hasConversation(socketId)) {
       // Reuse existing conversation, even if agent changed (handoff scenario)
       if (this.config.messagePersistence?.continueConversation) {
         await this.config.messagePersistence.continueConversation(
-          existingConversation.conversationId,
+          existingState.conversationId,
           data.message,
           persistenceContext
         )
       }
 
-      // Update agent name and context for handoff
-      existingConversation.agentName = agentName
-      existingConversation.context = persistenceContext
-      existingConversation.streamingEvents = []
+      // Update agent name, context, and reset tracking state for the new turn
       // Reset lastDeliveredSequence for the new turn
       // The event channel creates a new buffer starting at sequence 0
       // Without reset, recovery would ask for events after the old high watermark
-      existingConversation.lastDeliveredSequence = -1
-
-      // Explicitly clear all incremental tracking state for the new turn
-      // initializeConversationBuffers only initializes fields if they're undefined,
-      // so we must explicitly clear stale data from the previous turn to prevent
-      // duplicated segments/tool calls from surfacing in persistence and UI
-      existingConversation.pendingSegments = []
-      existingConversation.pendingToolCalls = new Map()
-      existingConversation.accumulatedContent = ''
-
-      this.initializeConversationBuffers(existingConversation)
+      this.stateManager.updateConnection(socketId, {
+        agentName,
+        context: persistenceContext,
+        streamingEvents: [],
+        lastDeliveredSequence: -1,
+        pendingSegments: [],
+        pendingToolCalls: new Map(),
+        accumulatedContent: ''
+      })
     } else {
       // Create new conversation
       // If persistence is configured, use it to generate the conversation ID
@@ -2270,17 +2067,11 @@ export class WebSocketServer {
         conversationId = `local-${socketId}-${Date.now()}`
       }
 
-      // Track conversation for streaming events (required for publishToEventChannel)
-      this.activeConversations.set(socketId, {
+      // Create connection state via state manager
+      this.stateManager.createConnection(socketId, {
         conversationId,
         agentName,
-        context: persistenceContext,
-        streamingEvents: [],
-        startTime: Date.now(),
-        pendingSegments: [],
-        pendingToolCalls: new Map(),
-        accumulatedContent: '',
-        lastDeliveredSequence: -1  // Start at -1 so first event (sequence 0) is captured
+        context: persistenceContext
       })
     }
   }
@@ -3034,11 +2825,8 @@ Please try again with corrected formatting.`
       this.cleanupInterval = null
     }
 
-    // Cancel all active streams
-    for (const controller of this.activeStreams.values()) {
-      controller.abort()
-    }
-    this.activeStreams.clear()
+    // Cancel all active streams via state manager
+    this.stateManager.abortAll()
 
     // Close Socket.IO server
     this.io.close()

@@ -1,8 +1,8 @@
 import type { Socket } from 'socket.io'
 import type { StreamingEvent } from './interfaces.js'
 import type { ConversationEventChannel } from './conversation-event-channel.js'
-import type { ConnectionStateManager } from './connection-state-manager.js'
-import { WebSocketSubscriber, type DisconnectedStreamState } from './subscribers/websocket-subscriber.js'
+import type { ConnectionStateManager, ConnectionStateData } from './connection-state-manager.js'
+import { WebSocketSubscriber } from './subscribers/websocket-subscriber.js'
 import { createLogger } from '../utils/logger.js'
 
 /**
@@ -38,7 +38,6 @@ interface WebSocketMessage {
 export interface ConnectionRecoveryManagerConfig {
   ackTimeout: number
   recoveryWindow: number
-  onDisconnection?: (socketId: string) => void | Promise<void>
   apmAgent?: any
 }
 
@@ -58,7 +57,6 @@ export interface RecoveryManagerLogger {
 export interface ConnectionRecoveryManagerDependencies {
   stateManager: ConnectionStateManager
   eventChannel: ConversationEventChannel
-  disconnectedStreams: Map<string, DisconnectedStreamState>
   logger?: RecoveryManagerLogger
 }
 
@@ -74,7 +72,6 @@ export interface ConnectionRecoveryManagerDependencies {
 export class ConnectionRecoveryManager {
   private readonly stateManager: ConnectionStateManager
   private readonly eventChannel: ConversationEventChannel
-  private readonly disconnectedStreams: Map<string, DisconnectedStreamState>
   private readonly config: ConnectionRecoveryManagerConfig
   private readonly logger: RecoveryManagerLogger
 
@@ -84,7 +81,6 @@ export class ConnectionRecoveryManager {
   ) {
     this.stateManager = dependencies.stateManager
     this.eventChannel = dependencies.eventChannel
-    this.disconnectedStreams = dependencies.disconnectedStreams
     this.config = config
     this.logger = dependencies.logger ?? createLogger('recovery')
   }
@@ -101,18 +97,18 @@ export class ConnectionRecoveryManager {
     const previousSocketId = auth.previousSocketId
 
     // Check automatic recovery (Socket.IO CSR)
-    if (socket.recovered && this.disconnectedStreams.has(socketId)) {
+    if (socket.recovered && this.stateManager.isDisconnected(socketId)) {
       return 'automatic'
     }
 
     // Check manual recovery (previousSocketId in auth)
-    if (previousSocketId && this.disconnectedStreams.has(previousSocketId)) {
+    if (previousSocketId && this.stateManager.isDisconnected(previousSocketId)) {
       return 'manual'
     }
 
     // Check conversation-based recovery (conversationId cookie)
     if (auth.conversationId && !previousSocketId) {
-      const entry = this.findDisconnectedStreamByConversationId(auth.conversationId)
+      const entry = this.stateManager.findDisconnectedByConversationId(auth.conversationId)
       if (entry) {
         return 'conversation'
       }
@@ -133,31 +129,34 @@ export class ConnectionRecoveryManager {
     }
   ): Promise<void> {
     const socketId = socket.id
-    const streamData = this.disconnectedStreams.get(socketId)
+    const stateData = this.stateManager.getStateData(socketId)
 
-    if (!streamData) {
+    if (!stateData || stateData.state !== 'disconnected') {
       this.logger.warn('recovery.automatic.no_stream_data', { socketId })
       return
     }
 
     this.logger.info('recovery.automatic.started', {
       socketId,
-      conversationId: streamData.conversationId
+      conversationId: stateData.conversationId
     })
 
     // Cancel the original abort timeout
-    clearTimeout(streamData.timeoutId)
+    if (stateData.recoveryTimeoutId) {
+      clearTimeout(stateData.recoveryTimeoutId)
+      this.stateManager.updateConnection(socketId, { recoveryTimeoutId: null })
+    }
 
     const context: RecoveryContext = {
       mode: 'automatic',
       newSocketId: socketId,
       oldSocketId: socketId, // Same for automatic recovery
-      conversationId: streamData.conversationId,
-      lastDeliveredSequence: streamData.lastDeliveredSequence,
-      abortController: streamData.abortController
+      conversationId: stateData.conversationId,
+      lastDeliveredSequence: stateData.lastDeliveredSequence,
+      abortController: stateData.abortController!
     }
 
-    await this.executeRecoveryFlow(socket, context, streamData, callbacks)
+    await this.executeRecoveryFlow(socket, context, stateData, callbacks)
   }
 
   /**
@@ -173,9 +172,9 @@ export class ConnectionRecoveryManager {
     }
   ): Promise<void> {
     const socketId = socket.id
-    const streamData = this.disconnectedStreams.get(previousSocketId)
+    const stateData = this.stateManager.getStateData(previousSocketId)
 
-    if (!streamData) {
+    if (!stateData || stateData.state !== 'disconnected') {
       this.logger.warn('recovery.manual.no_stream_data', {
         socketId,
         previousSocketId
@@ -186,22 +185,25 @@ export class ConnectionRecoveryManager {
     this.logger.info('recovery.manual.started', {
       socketId,
       previousSocketId,
-      conversationId: streamData.conversationId
+      conversationId: stateData.conversationId
     })
 
     // Cancel the abort timeout
-    clearTimeout(streamData.timeoutId)
+    if (stateData.recoveryTimeoutId) {
+      clearTimeout(stateData.recoveryTimeoutId)
+      this.stateManager.updateConnection(previousSocketId, { recoveryTimeoutId: null })
+    }
 
     const context: RecoveryContext = {
       mode: 'manual',
       newSocketId: socketId,
       oldSocketId: previousSocketId,
-      conversationId: streamData.conversationId,
-      lastDeliveredSequence: streamData.lastDeliveredSequence,
-      abortController: streamData.abortController
+      conversationId: stateData.conversationId,
+      lastDeliveredSequence: stateData.lastDeliveredSequence,
+      abortController: stateData.abortController!
     }
 
-    await this.executeRecoveryFlow(socket, context, streamData, callbacks)
+    await this.executeRecoveryFlow(socket, context, stateData, callbacks)
   }
 
   /**
@@ -221,7 +223,7 @@ export class ConnectionRecoveryManager {
     const auth = socket.handshake.auth || {}
 
     // Find disconnected stream by conversationId
-    const entry = this.findDisconnectedStreamByConversationId(conversationId)
+    const entry = this.stateManager.findDisconnectedByConversationId(conversationId)
 
     if (!entry) {
       this.logger.warn('recovery.conversation.no_stream_found', {
@@ -232,7 +234,7 @@ export class ConnectionRecoveryManager {
       return
     }
 
-    const [oldSocketId, streamData] = entry
+    const [oldSocketId, stateData] = entry
 
     // Security validation
     if (!validateAppId(conversationId, auth)) {
@@ -251,18 +253,21 @@ export class ConnectionRecoveryManager {
     })
 
     // Cancel the abort timeout
-    clearTimeout(streamData.timeoutId)
+    if (stateData.recoveryTimeoutId) {
+      clearTimeout(stateData.recoveryTimeoutId)
+      this.stateManager.updateConnection(oldSocketId, { recoveryTimeoutId: null })
+    }
 
     const context: RecoveryContext = {
       mode: 'conversation',
       newSocketId: socketId,
       oldSocketId,
       conversationId,
-      lastDeliveredSequence: streamData.lastDeliveredSequence,
-      abortController: streamData.abortController
+      lastDeliveredSequence: stateData.lastDeliveredSequence,
+      abortController: stateData.abortController!
     }
 
-    await this.executeRecoveryFlow(socket, context, streamData, callbacks)
+    await this.executeRecoveryFlow(socket, context, stateData, callbacks)
   }
 
   /**
@@ -289,7 +294,7 @@ export class ConnectionRecoveryManager {
   private async executeRecoveryFlow(
     socket: Socket,
     context: RecoveryContext,
-    streamData: DisconnectedStreamState,
+    stateData: ConnectionStateData,
     callbacks: {
       onRecoveryComplete: (socketId: string, events: StreamingEvent[], finalSequence: number) => void
       onRecoveryFailed: (socketId: string, reason: string) => void
@@ -323,10 +328,7 @@ export class ConnectionRecoveryManager {
       ? events[events.length - 1]!.sequence
       : preReplaySequence
 
-    // Get conversation data for status message
-    const stateData = this.stateManager.getStateData(context.oldSocketId)
-
-    // Send recovery status
+    // Send recovery status (use stateData parameter for agent name)
     socket.emit('message', {
       type: 'recovery_status',
       content: 'Recovering connection...',
@@ -368,7 +370,6 @@ export class ConnectionRecoveryManager {
     await this.setupRecoveryAckHandling(
       socket,
       context,
-      streamData,
       preReplaySequence,
       events,
       callbacks
@@ -381,7 +382,6 @@ export class ConnectionRecoveryManager {
   private async setupRecoveryAckHandling(
     socket: Socket,
     context: RecoveryContext,
-    streamData: DisconnectedStreamState,
     preReplaySequence: number,
     replayedEvents: StreamingEvent[],
     callbacks: {
@@ -412,11 +412,9 @@ export class ConnectionRecoveryManager {
 
     const ackTimeoutId = setTimeout(handleAckTimeout, this.config.ackTimeout)
 
-    // Update disconnected streams with new timeout
-    this.disconnectedStreams.set(context.oldSocketId, {
-      abortController: streamData.abortController,
-      timeoutId: ackTimeoutId,
-      conversationId: context.conversationId,
+    // Update state with new timeout
+    this.stateManager.updateConnection(context.oldSocketId, {
+      recoveryTimeoutId: ackTimeoutId,
       lastDeliveredSequence: preReplaySequence
     })
 
@@ -428,11 +426,9 @@ export class ConnectionRecoveryManager {
       }
 
       this.stateManager.transitionTo(context.newSocketId, 'connected', {
-        lastDeliveredSequence: finalSequence
+        lastDeliveredSequence: finalSequence,
+        recoveryTimeoutId: undefined // Clear the recovery timeout
       })
-
-      // Clean up disconnected streams
-      this.disconnectedStreams.delete(context.oldSocketId)
 
       // Re-subscribe WebSocket subscriber with new socket
       this.eventChannel.unsubscribe(context.conversationId, `websocket-${context.oldSocketId}`)
@@ -452,18 +448,10 @@ export class ConnectionRecoveryManager {
         }
       } as WebSocketMessage)
 
-      // Call onDisconnection for old socket if applicable
-      if (context.mode !== 'automatic' && this.config.onDisconnection) {
-        const result = this.config.onDisconnection(context.oldSocketId)
-        if (result instanceof Promise) {
-          result.catch((err: unknown) => {
-            this.logger.warn('recovery.disconnect_callback_failed', {
-              oldSocketId: context.oldSocketId,
-              error: err instanceof Error ? err.message : String(err)
-            })
-          })
-        }
-      }
+      // Note: We intentionally do NOT call onDisconnection here.
+      // The disconnect handler already called it when the socket dropped.
+      // Calling it again after successful recovery would cause duplicate
+      // telemetry, double cleanup of session maps, and misleading audit logs.
 
       this.logger.info('recovery.complete', {
         socketId: context.newSocketId,
@@ -626,33 +614,16 @@ export class ConnectionRecoveryManager {
   }
 
   /**
-   * Find disconnected stream by conversationId
-   */
-  private findDisconnectedStreamByConversationId(
-    conversationId: string
-  ): [string, DisconnectedStreamState] | null {
-    for (const [socketId, data] of this.disconnectedStreams) {
-      if (data.conversationId === conversationId) {
-        return [socketId, data]
-      }
-    }
-    return null
-  }
-
-  /**
    * Clean up after recovery failure
    */
   private cleanupAfterRecoveryFailure(context: RecoveryContext): void {
     // Abort the stream
     context.abortController.abort()
 
-    // Clean up disconnected streams
-    this.disconnectedStreams.delete(context.oldSocketId)
-
     // Clean up event channel subscribers
     this.cleanupEventChannelSubscribers(context.oldSocketId, context.conversationId)
 
-    // Clean up state
+    // Clean up state (includes clearing timeouts)
     this.stateManager.cleanup(context.oldSocketId).catch((err) => {
       this.logger.error('recovery.cleanup_failed', {
         socketId: context.oldSocketId,

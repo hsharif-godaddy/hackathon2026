@@ -10,17 +10,10 @@ export interface WebSocketMessage {
 }
 
 /**
- * Disconnected stream state for tracking recovery during connection window
- * Note: Events are buffered in the ConversationEventChannel, not here.
- * This only tracks the last delivered sequence for replay on reconnection.
+ * Function type for checking if a socket is disconnected
+ * Used to decouple WebSocketSubscriber from state management implementation
  */
-export interface DisconnectedStreamState {
-  abortController: AbortController
-  timeoutId: NodeJS.Timeout
-  conversationId: string
-  /** Last sequence number successfully delivered before disconnection */
-  lastDeliveredSequence: number
-}
+export type IsDisconnectedFn = (socketId: string) => boolean
 
 /**
  * WebSocket subscriber that delivers events to connected Socket.IO clients
@@ -36,7 +29,7 @@ export interface DisconnectedStreamState {
  * ```typescript
  * const subscriber = new WebSocketSubscriber(
  *   socket,
- *   disconnectedStreams
+ *   (socketId) => stateManager.isDisconnected(socketId)
  * )
  * channel.subscribe(conversationId, subscriber)
  * ```
@@ -52,25 +45,28 @@ export class WebSocketSubscriber implements EventSubscriber {
   blocking = true
 
   private socket: any // Socket.IO socket
-  private disconnectedStreams: Map<string, DisconnectedStreamState>
+  private isDisconnected: IsDisconnectedFn
 
   /**
    * Creates a new WebSocket subscriber
    *
    * @param socket - Socket.IO socket instance
-   * @param disconnectedStreams - Map of disconnected streams for skip detection
+   * @param isDisconnected - Function to check if socket is disconnected
    *
    * @example
    * ```typescript
-   * const subscriber = new WebSocketSubscriber(socket, disconnectedStreams)
+   * const subscriber = new WebSocketSubscriber(
+   *   socket,
+   *   (socketId) => stateManager.isDisconnected(socketId)
+   * )
    * ```
    */
   constructor(
     socket: any,
-    disconnectedStreams: Map<string, DisconnectedStreamState>
+    isDisconnected: IsDisconnectedFn
   ) {
     this.socket = socket
-    this.disconnectedStreams = disconnectedStreams
+    this.isDisconnected = isDisconnected
     this.id = `websocket-${socket.id}`
   }
 
@@ -90,7 +86,7 @@ export class WebSocketSubscriber implements EventSubscriber {
     // Check if socket is disconnected but stream is still active
     // Skip emitting - events are buffered in the event channel and will be
     // replayed via getEventsSince() when the socket reconnects
-    if (this.disconnectedStreams.has(this.socket.id)) {
+    if (this.isDisconnected(this.socket.id)) {
       return // No-op: event channel handles buffering
     }
 

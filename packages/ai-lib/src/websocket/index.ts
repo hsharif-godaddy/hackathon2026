@@ -48,7 +48,7 @@ export {
 } from './subscribers/apm-subscriber.js'
 export type {
   WebSocketMessage,
-  DisconnectedStreamState
+  IsDisconnectedFn
 } from './subscribers/websocket-subscriber.js'
 export type {
   APMAgent,

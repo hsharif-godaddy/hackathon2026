@@ -6,7 +6,6 @@ import {
 } from '../connection-recovery-manager.js'
 import { ConnectionStateManager } from '../connection-state-manager.js'
 import type { ConversationEventChannel } from '../conversation-event-channel.js'
-import type { DisconnectedStreamState } from '../subscribers/websocket-subscriber.js'
 import type { StreamingEvent } from '../interfaces.js'
 
 // Mock Socket.IO socket
@@ -62,9 +61,31 @@ describe('ConnectionRecoveryManager', () => {
   let manager: ConnectionRecoveryManager
   let stateManager: ConnectionStateManager
   let eventChannel: ReturnType<typeof createMockEventChannel>
-  let disconnectedStreams: Map<string, DisconnectedStreamState>
   let config: ConnectionRecoveryManagerConfig
   let mockLogger: any
+
+  // Helper to create a disconnected connection in state manager
+  const createDisconnectedConnection = (
+    socketId: string,
+    conversationId: string,
+    lastDeliveredSequence: number = 10
+  ) => {
+    const abortController = new AbortController()
+    stateManager.createConnection(socketId, {
+      conversationId,
+      agentName: 'test-agent',
+      context: { appId: 'test-app' }
+    })
+    stateManager.updateConnection(socketId, {
+      abortController,
+      lastDeliveredSequence
+    })
+    // Transition to disconnected state
+    stateManager.transitionTo(socketId, 'disconnected', {
+      recoveryTimeoutId: setTimeout(() => {}, 1000) as NodeJS.Timeout
+    })
+    return abortController
+  }
 
   beforeEach(() => {
     vi.useFakeTimers()
@@ -82,7 +103,6 @@ describe('ConnectionRecoveryManager', () => {
     )
 
     eventChannel = createMockEventChannel()
-    disconnectedStreams = new Map()
 
     config = {
       ackTimeout: 30_000,
@@ -92,7 +112,6 @@ describe('ConnectionRecoveryManager', () => {
     const dependencies: ConnectionRecoveryManagerDependencies = {
       stateManager,
       eventChannel: eventChannel as unknown as ConversationEventChannel,
-      disconnectedStreams,
       logger: mockLogger
     }
 
@@ -111,12 +130,7 @@ describe('ConnectionRecoveryManager', () => {
         recovered: true
       })
 
-      disconnectedStreams.set('socket-1', {
-        abortController: new AbortController(),
-        timeoutId: setTimeout(() => {}, 1000),
-        conversationId: 'conv-1',
-        lastDeliveredSequence: 10
-      })
+      createDisconnectedConnection('socket-1', 'conv-1')
 
       const mode = manager.attemptRecovery(socket)
       expect(mode).toBe('automatic')
@@ -128,12 +142,7 @@ describe('ConnectionRecoveryManager', () => {
         handshake: { auth: { previousSocketId: 'socket-old' } }
       })
 
-      disconnectedStreams.set('socket-old', {
-        abortController: new AbortController(),
-        timeoutId: setTimeout(() => {}, 1000),
-        conversationId: 'conv-1',
-        lastDeliveredSequence: 10
-      })
+      createDisconnectedConnection('socket-old', 'conv-1')
 
       const mode = manager.attemptRecovery(socket)
       expect(mode).toBe('manual')
@@ -145,12 +154,7 @@ describe('ConnectionRecoveryManager', () => {
         handshake: { auth: { conversationId: 'conv-1' } }
       })
 
-      disconnectedStreams.set('socket-old', {
-        abortController: new AbortController(),
-        timeoutId: setTimeout(() => {}, 1000),
-        conversationId: 'conv-1',
-        lastDeliveredSequence: 10
-      })
+      createDisconnectedConnection('socket-old', 'conv-1')
 
       const mode = manager.attemptRecovery(socket)
       expect(mode).toBe('conversation')
@@ -193,19 +197,7 @@ describe('ConnectionRecoveryManager', () => {
       }
 
       // Set up state
-      stateManager.createConnection('socket-1', {
-        conversationId: 'conv-1',
-        agentName: 'test-agent',
-        context: { socketId: 'socket-1', agentName: 'test-agent' }
-      })
-      stateManager.transitionTo('socket-1', 'disconnected')
-
-      disconnectedStreams.set('socket-1', {
-        abortController: new AbortController(),
-        timeoutId: setTimeout(() => {}, 1000),
-        conversationId: 'conv-1',
-        lastDeliveredSequence: 5
-      })
+      createDisconnectedConnection('socket-1', 'conv-1', 5)
     })
 
     it('sends recovery_status with buffered events info', async () => {
@@ -357,19 +349,7 @@ describe('ConnectionRecoveryManager', () => {
       }
 
       // Set up state for old socket
-      stateManager.createConnection('socket-old', {
-        conversationId: 'conv-1',
-        agentName: 'test-agent',
-        context: { socketId: 'socket-old', agentName: 'test-agent' }
-      })
-      stateManager.transitionTo('socket-old', 'disconnected')
-
-      disconnectedStreams.set('socket-old', {
-        abortController: new AbortController(),
-        timeoutId: setTimeout(() => {}, 1000),
-        conversationId: 'conv-1',
-        lastDeliveredSequence: 10
-      })
+      createDisconnectedConnection('socket-old', 'conv-1', 10)
     })
 
     it('sends recovery_status with manual mode', async () => {
@@ -401,7 +381,7 @@ describe('ConnectionRecoveryManager', () => {
       expect(stateManager.getStateData('socket-new')?.conversationId).toBe('conv-1')
     })
 
-    it('removes old socket from disconnectedStreams', async () => {
+    it('transitions old socket to connected state after recovery', async () => {
       eventChannel.getEventsSince.mockReturnValue([])
 
       await manager.handleManualRecovery(socket, 'socket-old', callbacks)
@@ -412,7 +392,9 @@ describe('ConnectionRecoveryManager', () => {
         lastSequence: 10
       })
 
-      expect(disconnectedStreams.has('socket-old')).toBe(false)
+      // Old socket should be migrated and in connected state
+      const stateData = stateManager.getStateData('socket-new')
+      expect(stateData?.state).toBe('connected')
     })
   })
 
@@ -437,20 +419,8 @@ describe('ConnectionRecoveryManager', () => {
 
       validateAppId = vi.fn().mockReturnValue(true)
 
-      // Set up state for old socket
-      stateManager.createConnection('socket-old', {
-        conversationId: 'conv-1',
-        agentName: 'test-agent',
-        context: { socketId: 'socket-old', agentName: 'test-agent' }
-      })
-      stateManager.transitionTo('socket-old', 'disconnected')
-
-      disconnectedStreams.set('socket-old', {
-        abortController: new AbortController(),
-        timeoutId: setTimeout(() => {}, 1000),
-        conversationId: 'conv-1',
-        lastDeliveredSequence: 15
-      })
+      // Set up disconnected state for old socket
+      createDisconnectedConnection('socket-old', 'conv-1', 15)
     })
 
     it('sends recovery_status with conversation mode', async () => {
@@ -752,7 +722,6 @@ describe('ConnectionRecoveryManager', () => {
         {
           stateManager,
           eventChannel: eventChannel as unknown as ConversationEventChannel,
-          disconnectedStreams,
           logger: mockLogger
         },
         { ...config, apmAgent: {} }
