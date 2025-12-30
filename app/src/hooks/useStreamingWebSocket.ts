@@ -460,7 +460,7 @@ export function useStreamingWebSocket() {
         const socketOptions: any = {
           transports: ['websocket', 'polling'],
           timeout: 10000,
-          autoConnect: true,
+          autoConnect: false, // Prevent race: register handlers before connecting
           reconnection: true,
           reconnectionAttempts: 60,  // 60 attempts over ~5 minutes with exponential backoff
           reconnectionDelay: 2000,   // Start with 2 second delay
@@ -1071,6 +1071,19 @@ export function useStreamingWebSocket() {
               conversationId: data.data.conversationId,
               expectedCount
             })
+
+            // Restore UI state for recovery with no buffered events
+            // Check if there's an active stream that needs to be restored
+            const store = useStreamingConversationStore.getState()
+            if (store.activeStream || data.data?.isRecovering) {
+              setIsLoading(true)
+              setStreamingState('streaming')
+              logger.info('websocket.recovery.ui_restored', {
+                conversationId: data.data.conversationId,
+                hasActiveStream: !!store.activeStream
+              })
+            }
+
             if (expectedCount === 0) {
               maybeSendRecoveryAck(socket)
             }
@@ -1538,6 +1551,9 @@ export function useStreamingWebSocket() {
 
         // Set up event handlers once for the lifetime of this connection
         setupEventHandlers(socket)
+
+        // Connect the socket after handlers are registered (autoConnect=false prevents race)
+        socket.connect()
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
 

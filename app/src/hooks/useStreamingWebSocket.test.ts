@@ -66,6 +66,15 @@ const createMockSocket = () => {
       })
     }),
     disconnect: vi.fn(),
+    connect: vi.fn(() => {
+      socket.connected = true
+      // Trigger connect event when connect() is called
+      setTimeout(() => socket.trigger('connect'), 0)
+      return socket
+    }),
+    io: {
+      reconnection: vi.fn()
+    },
     volatile: { emit: vi.fn() },
     trigger: (event: string, ...args: any[]) => {
       ;(handlers[event] || []).forEach((handler) => handler(...args))
