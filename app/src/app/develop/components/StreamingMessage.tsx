@@ -95,8 +95,8 @@ function renderMessageContent(message: ChatMessage | StreamingMessageType, isAct
     // Check if we should show thinking indicator (no content yet, stream is active)
     const hasNoContent = !message.content && !message.segments?.length && !message.toolCalls?.length
     const isIncomplete = 'isComplete' in message && !message.isComplete
-    const isErrorState = streamingState === 'error'
-    const showThinking = isActiveStream && isIncomplete && hasNoContent && !message.upstreamError && !message.budgetExceeded && !message.maxStepsReached && !isErrorState
+    const isErrorOrRetrying = streamingState === 'error' || streamingState === 'retrying'
+    const showThinking = isActiveStream && isIncomplete && hasNoContent && !message.upstreamError && !message.budgetExceeded && !message.maxStepsReached && !isErrorOrRetrying
 
     if (showThinking) {
       return <ThinkingIndicator />

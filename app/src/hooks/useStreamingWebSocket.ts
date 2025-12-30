@@ -40,6 +40,19 @@ import type { AgentsAppChatMessage,AgentsAppContext } from '../types/websocket-c
 // Constants
 const RAF_FALLBACK_DELAY_MS = 16 // ~60fps frame duration for setTimeout fallback
 const CONNECTION_RETRY_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes - escalation timeout for connection retry
+const INIT_RETRY_MAX_ATTEMPTS = 5 // Maximum number of initialization retry attempts
+const INIT_RETRY_BASE_DELAY_MS = 1000 // Initial retry delay (1 second)
+const INIT_RETRY_MAX_DELAY_MS = 30000 // Maximum retry delay (30 seconds)
+
+/**
+ * Calculate exponential backoff delay for initialization retries
+ * @param attempt - Current retry attempt number (1-indexed)
+ * @returns Delay in milliseconds
+ */
+const calculateInitRetryDelay = (attempt: number): number => {
+  const exponentialDelay = INIT_RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1)
+  return Math.min(exponentialDelay, INIT_RETRY_MAX_DELAY_MS)
+}
 
 /**
  * Get short-lived JWT token for WebSocket authentication (12 hours)
@@ -86,16 +99,27 @@ const getAgentJWTToken = async (siteId: string): Promise<string | null> => {
 };
 
 /**
- * Get conversationId from browser cookies
+ * Get the per-app cookie name for conversationId
+ * @param appId - The app ID for scoping the cookie
+ * @returns Cookie name string
+ */
+function getConversationIdCookieName(appId: string): string {
+  return `conversationId_${appId}`
+}
+
+/**
+ * Get conversationId from per-app browser cookie
+ * @param appId - The app ID for scoping the cookie
  * @returns Conversation ID string or null if not found or invalid
  */
-function getConversationIdFromCookie(): string | null {
-  if (typeof document === 'undefined') return null
+function getConversationIdFromCookie(appId: string | null): string | null {
+  if (typeof document === 'undefined' || !appId) return null
 
+  const cookieName = getConversationIdCookieName(appId)
   const cookies = document.cookie.split(';')
   for (const cookie of cookies) {
     const [name, value] = cookie.trim().split('=')
-    if (name === 'conversationId' && value) {
+    if (name === cookieName && value) {
       const decodedValue = decodeURIComponent(value)
       if (validateUUID(decodedValue)) {
         return decodedValue
@@ -106,13 +130,28 @@ function getConversationIdFromCookie(): string | null {
 }
 
 /**
- * Delete conversationId cookie from browser
+ * Set conversationId in per-app browser cookie
+ * @param appId - The app ID for scoping the cookie
+ * @param conversationId - The conversation ID to store
  */
-function deleteConversationIdCookie(): void {
+function setConversationIdCookie(appId: string, conversationId: string): void {
   if (typeof document === 'undefined') return
 
+  const cookieName = getConversationIdCookieName(appId)
+  // 7-day expiration for tab-closure recovery
+  document.cookie = `${cookieName}=${encodeURIComponent(conversationId)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`
+}
+
+/**
+ * Delete conversationId cookie from browser
+ * @param appId - The app ID for scoping the cookie
+ */
+function clearConversationIdCookie(appId: string | null): void {
+  if (typeof document === 'undefined' || !appId) return
+
+  const cookieName = getConversationIdCookieName(appId)
   // Delete cookie by setting it with past expiration date
-  document.cookie = 'conversationId=; path=/; max-age=0; SameSite=Lax'
+  document.cookie = `${cookieName}=; path=/; max-age=0; SameSite=Lax`
 }
 
 export function useStreamingWebSocket() {
@@ -130,6 +169,21 @@ export function useStreamingWebSocket() {
   const initializingRef = useRef<boolean>(false)
   // Timer ref for delayed initialization
   const initTimerRef = useRef<NodeJS.Timeout | null>(null)
+  // Pending recovery acknowledgement tracking
+  const pendingRecoveryAckRef = useRef<{
+    conversationId: string
+    lastSequence: number
+    expectedCount: number
+    receivedCount: number
+    replayComplete: boolean
+    ackEvent: 'recovery_ack' | 'catchup_ack'
+  } | null>(null)
+
+  // Server configuration received during handshake (for timeout synchronization)
+  const serverConfigRef = useRef<{
+    streamRecoveryWindow: number
+    ackTimeout: number
+  } | null>(null)
 
   /**
    * Helper function to clear retry timer and reset retry state
@@ -144,6 +198,16 @@ export function useStreamingWebSocket() {
 
   const webSocketState = useWebSocketState()
   const currentAppId = useCurrentAppId()
+
+  /**
+   * Helper function to clear stored socket ID from sessionStorage
+   * Called on stream completion, errors, and cleanup to prevent stale recovery attempts
+   */
+  const clearStoredSocketId = useCallback(() => {
+    if (currentAppId) {
+      sessionStorage.removeItem(`socket_id_${currentAppId}`)
+    }
+  }, [currentAppId])
   const queryClient = useQueryClient()
   // Hook setters & streaming state (declared early for use in callbacks)
   const startNewStream = useStartNewStream()
@@ -218,6 +282,39 @@ export function useStreamingWebSocket() {
     flushToolDeltaBuffer()
   }, [flushToolDeltaBuffer])
 
+  const maybeSendRecoveryAck = useCallback((socket: Socket | null, force = false) => {
+    const pending = pendingRecoveryAckRef.current
+    if (!pending || !socket) return
+    if (!pending.replayComplete) return
+
+    // Only check counts if not forced - when server says replay is complete, trust it
+    if (!force && pending.expectedCount > 0 && pending.receivedCount < pending.expectedCount) {
+      return
+    }
+
+    socket.emit(pending.ackEvent, {
+      conversationId: pending.conversationId,
+      lastSequence: pending.lastSequence
+    })
+    logger.info('websocket.recovery.ack_sent', {
+      conversationId: pending.conversationId,
+      lastSequence: pending.lastSequence,
+      expectedCount: pending.expectedCount,
+      receivedCount: pending.receivedCount,
+      forced: force
+    })
+    pendingRecoveryAckRef.current = null
+  }, [])
+
+  const trackReplayEventReceipt = useCallback((socket: Socket | null, eventType: string) => {
+    const pending = pendingRecoveryAckRef.current
+    if (!pending || !socket) return
+    if (eventType === 'recovery_status' || eventType === 'replay_complete' || eventType === 'catchup_status' || eventType === 'catchup_complete') return
+
+    pending.receivedCount++
+    maybeSendRecoveryAck(socket)
+  }, [maybeSendRecoveryAck])
+
   const scheduleToolDeltaFlush = useCallback(() => {
     if (toolDeltaFlushScheduledRef.current) {
       return
@@ -276,6 +373,9 @@ export function useStreamingWebSocket() {
   // Create Socket.IO connection (stable)
   const createConnection = useCallback(async (appId: string): Promise<Socket> => {
     return new Promise(async (resolve, reject) => {
+      // Track initialization retry attempts
+      let initAttempt = 0
+
       // Flag to track if the promise has been resolved/rejected to prevent double resolution
       let promiseResolved = false
 
@@ -334,12 +434,8 @@ export function useStreamingWebSocket() {
         logger.error('websocket.token.error', { message: 'Failed to get WebSocket JWT token', error: e instanceof Error ? e.message : String(e) })
       }
 
-      // Feature flag for manual recovery (disabled by default until fully tested)
-      const enableManualRecovery = process.env.NEXT_PUBLIC_ENABLE_MANUAL_RECOVERY === 'true'
-
-
-      // Check if we have a previous socket ID from before page reload (only if feature enabled)
-      const previousSocketId = enableManualRecovery ? sessionStorage.getItem(`socket_id_${appId}`) : null
+      const getSessionStorageKey = () => `socket_id_${appId}`
+      const previousSocketId = sessionStorage.getItem(getSessionStorageKey())
 
       // Track token refresh attempts to prevent infinite loops
       let tokenRefreshCount = 0
@@ -357,9 +453,10 @@ export function useStreamingWebSocket() {
        *   properly resolved even after token refresh
        *
        * @param token - JWT token to use for authentication
+       * @param isInitialAttempt - Whether this is an initial connection attempt (for retry logic)
        * @returns The created Socket instance
        */
-      const createSocketWithHandlers = (token: string | null): Socket => {
+      const createSocketWithHandlers = (token: string | null, isInitialAttempt: boolean = true): Socket => {
         const socketOptions: any = {
           transports: ['websocket', 'polling'],
           timeout: 10000,
@@ -372,10 +469,15 @@ export function useStreamingWebSocket() {
           // Enable connection state recovery to preserve socket ID across reconnections
           // This allows the server to replay buffered events after brief disconnections
           connectionStateRecovery: {},
-          // Pass previous socket ID for manual recovery after page reload (feature flagged)
+          // Pass previous socket ID for manual recovery after page reload
+          // Pass conversationId from cookie for recovery after tab closure (when socket ID is lost)
           auth: {
             ...(token && { token }),
-            ...(enableManualRecovery && previousSocketId && { previousSocketId }),
+            ...(previousSocketId && { previousSocketId }),
+            // Include conversationId from cookie for tab-closure recovery
+            ...(getConversationIdFromCookie(appId) && { conversationId: getConversationIdFromCookie(appId) }),
+            // Include appId for server-side validation of recovery requests
+            appId,
           }
         }
         if (token) {
@@ -396,22 +498,45 @@ export function useStreamingWebSocket() {
             // Update UI state to show we're reconnected
             setWebSocketState({ connected: true, status: 'idle' })
           } else if (previousSocketId && previousSocketId !== socket.id) {
-            // Manual recovery after page reload - new socket ID but we had a previous one
-            // Mark as recovered so we initialize stream when messages arrive
             wasRecoveredRef.current = true
             setWebSocketState({ connected: true, status: 'idle' })
-            // Update sessionStorage with new socket ID for next potential recovery (if feature enabled)
-            if (enableManualRecovery) {
-              sessionStorage.setItem(`socket_id_${appId}`, socket.id)
-            }
+            sessionStorage.setItem(getSessionStorageKey(), socket.id)
           } else {
             wasRecoveredRef.current = false
             setWebSocketState({ connected: true, status: 'idle' })
-            // Store new socket ID in sessionStorage (if feature enabled)
-            if (enableManualRecovery) {
-              sessionStorage.setItem(`socket_id_${appId}`, socket.id)
-            }
+            sessionStorage.setItem(getSessionStorageKey(), socket.id)
           }
+
+          // Check store-based retry state and clear stale state (same logic as 'reconnect' handler)
+          // This is needed when a NEW socket connects (not just reconnects), e.g., after page refresh
+          // or component remount, to clear any persisted retry state from Zustand
+          const store = useStreamingConversationStore.getState()
+          if (store.connectionRetry.isRetrying) {
+            logger.info('websocket.connect.clearing-stale-retry', {
+              socketId: socket.id,
+              elapsedMs: store.connectionRetry.retryStartedAt
+                ? Date.now() - store.connectionRetry.retryStartedAt
+                : null
+            })
+
+            // If we're still in retrying state, the stream was successfully recovered
+            if (store.streamingState === 'retrying') {
+              setStreamingState('streaming')
+              setIsLoading(true)
+              logger.info('websocket.stream.recovered-on-connect', { socketId: socket.id })
+            } else {
+              // Otherwise, just clear the stale retry state without changing streamingState
+              // (it may have already been set to 'idle' or 'streaming' by recovery_status)
+              logger.info('websocket.connect.retry-already-cleared', {
+                socketId: socket.id,
+                currentStreamingState: store.streamingState
+              })
+            }
+
+            // Clear store-based retry (this also clears the escalation timeout)
+            store.clearConnectionRetry()
+          }
+
           // Resolve the original promise (from createConnection) via closure
           // This works for both initial connection and token refresh retries
           safeResolve(socket)
@@ -473,12 +598,12 @@ export function useStreamingWebSocket() {
               socket.removeAllListeners()
               socket.disconnect()
 
-              // Create a new socket with the fresh token
+              // Create a new socket with the fresh token (not an initial attempt)
               // IMPORTANT: createSocketWithHandlers is defined in the same scope as safeResolve/safeReject,
               // so it has access to them via closure. When the new socket connects, its 'connect' handler
               // will call safeResolve(socket), which resolves the ORIGINAL promise from createConnection.
               // This ensures the caller of createConnection() gets the resolved socket even after token refresh.
-              const newSocket = createSocketWithHandlers(newToken)
+              const newSocket = createSocketWithHandlers(newToken, false)
 
               // Store the new socket immediately so it's available even before connection completes
               // This ensures socketRef.current is always pointing to the active socket
@@ -503,7 +628,71 @@ export function useStreamingWebSocket() {
             }
           }
 
-          // For non-token-expiration errors, proceed with normal error handling
+          // Handle initialization retry for transient network failures
+          if (isInitialAttempt && initAttempt < INIT_RETRY_MAX_ATTEMPTS) {
+            initAttempt++
+            const retryDelay = calculateInitRetryDelay(initAttempt)
+
+            logger.info('websocket.init.retry', {
+              message: 'Initial connection failed, retrying with exponential backoff',
+              appId,
+              attempt: initAttempt,
+              maxAttempts: INIT_RETRY_MAX_ATTEMPTS,
+              retryDelay,
+              error: errorMessage
+            })
+
+            // Update UI to show retry status
+            setWebSocketState({
+              connected: false,
+              status: 'connecting',
+              error: { message: 'Connecting to server — retrying automatically.' }
+            })
+
+            // Wait for backoff delay, then retry
+            await new Promise(resolve => setTimeout(resolve, retryDelay))
+
+            // Check if cleanup ran during delay (component unmounted or appId changed)
+            // If socketRef was cleared, don't create a new orphaned socket
+            if (!socketRef.current) {
+              logger.info('websocket.init.retry_aborted', {
+                message: 'Component unmounted during retry delay, aborting retry',
+                appId,
+                attempt: initAttempt
+              })
+              safeReject(new Error('Connection retry aborted: component unmounted'))
+              return
+            }
+
+            // Clean up the failed socket
+            socket.removeAllListeners()
+            socket.disconnect()
+
+            // Retry connection with same token
+            try {
+              const newSocket = createSocketWithHandlers(token, true)
+              socketRef.current = newSocket
+              return
+            } catch (retryError) {
+              logger.error('websocket.init.retry_exception', {
+                message: 'Exception during retry attempt',
+                appId,
+                attempt: initAttempt,
+                error: retryError instanceof Error ? retryError.message : String(retryError)
+              })
+            }
+          }
+
+          // For non-token-expiration errors after exhausting retries, proceed with error handling
+          if (isInitialAttempt && initAttempt >= INIT_RETRY_MAX_ATTEMPTS) {
+            logger.error('websocket.init.max_retries_exceeded', {
+              message: 'Maximum initialization retry attempts exceeded',
+              appId,
+              attempts: initAttempt,
+              finalError: errorMessage
+            })
+          }
+
           setWebSocketState({
             connected: false,
             status: 'error',
@@ -512,8 +701,11 @@ export function useStreamingWebSocket() {
           safeReject(error instanceof Error ? error : new Error(errorMessage))
         })
         socket.on('disconnect', () => {
+          pendingRecoveryAckRef.current = null
+          // DO NOT clear APP_NOT_FOUND retry state here - it contains pendingMessage for auto-resend
+          // Only clear it when we explicitly give up on the retry (in error handlers)
           const store = useStreamingConversationStore.getState()
-          const isStreaming = store.streamingState === 'streaming' || store.activeStream !== null
+          const isStreaming = store.streamingState === 'streaming' || store.streamingState === 'retrying' || store.activeStream !== null
 
           if (isStreaming) {
             // Connection dropped during active streaming
@@ -553,7 +745,9 @@ export function useStreamingWebSocket() {
                 currentStore.setIsLoading(false)
                 currentStore.clearConnectionRetry()
               }
-            }, CONNECTION_RETRY_TIMEOUT_MS)
+            // Use server-configured timeout if available, otherwise use default
+            // This ensures client and server use the same recovery window
+            }, serverConfigRef.current?.streamRecoveryWindow ?? CONNECTION_RETRY_TIMEOUT_MS)
 
             // Store escalation timeout ID in Zustand (survives remounts)
             store.setEscalationTimeout(escalationTimeoutId)
@@ -620,8 +814,8 @@ export function useStreamingWebSocket() {
         return socket
       }
 
-      // Create the initial socket
-      createSocketWithHandlers(authToken)
+      // Create the initial socket with retry logic enabled
+      createSocketWithHandlers(authToken, true)
     })
   }, [setWebSocketState]) /* eslint-disable-line react-hooks/exhaustive-deps */
 
@@ -680,16 +874,121 @@ export function useStreamingWebSocket() {
         setStreamingState('streaming')
       }
     })
-    socket.on('message', async (data) => {
+    // Use function (not arrow) to ensure ack callback is reliably accessible
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    socket.on('message', async function (data: { type: string; content: string; data?: any }, ack?: () => void) {
+      // Persist conversationId to per-app cookie for tab-closure recovery
+      // This enables recovery even when sessionStorage (socket ID) is lost
+      if (data.data?.conversationId && currentAppId && typeof data.data.conversationId === 'string') {
+        setConversationIdCookie(currentAppId, data.data.conversationId)
+      }
+
+      trackReplayEventReceipt(socket, data.type)
       switch (data.type) {
+        case 'server_config':
+          // Server sends configuration during handshake for timeout synchronization
+          // This ensures client and server use the same recovery window
+          serverConfigRef.current = {
+            streamRecoveryWindow: data.data?.streamRecoveryWindow ?? CONNECTION_RETRY_TIMEOUT_MS,
+            ackTimeout: data.data?.ackTimeout ?? 30000
+          }
+          logger.info('websocket.server_config.received', {
+            streamRecoveryWindow: serverConfigRef.current.streamRecoveryWindow,
+            ackTimeout: serverConfigRef.current.ackTimeout
+          })
+          return // Don't process as regular message
+
+        case 'conversation_info':
+          // Control-plane message for durable conversationId delivery
+          // Persists cookie BEFORE acknowledging so server knows cookie was written
+          if (data.data?.conversationId && currentAppId) {
+            setConversationIdCookie(currentAppId, data.data.conversationId as string)
+          }
+          // Acknowledge receipt so server knows cookie was written
+          // Guard: some transports may not supply ack callback
+          if (typeof ack === 'function') {
+            ack()
+          }
+          return // Don't process as regular message
+
         case 'recovery_status':
           // Server is telling us about recovery state
+          // Guard: Clear stale recovery state if app has changed since this event was sent
+          if (useStreamingConversationStore.getState().currentAppId !== currentAppId) {
+            pendingRecoveryAckRef.current = null
+            return
+          }
+
           if (data.data?.streamCompleted) {
-            // Stream already completed - just load history and stay idle
+            // Stream already completed - load history and finalize properly
             wasRecoveredRef.current = false
+
+            // Load conversation history to get the final assistant message
+            if (data.data.conversationId && currentAppId) {
+              try {
+                const agentService = AgentService.getInstance()
+                const conversation = await agentService.getConversation(currentAppId, data.data.conversationId)
+
+                if (conversation.messages && conversation.messages.length > 0) {
+                  // Set messages in store - they're already complete from DB
+                  useStreamingConversationStore.setState({ messages: conversation.messages as any[] })
+                }
+              } catch (error) {
+                logger.error('websocket.recovery.history_load_failed', {
+                  conversationId: data.data.conversationId,
+                  error: error instanceof Error ? error.message : String(error)
+                })
+              }
+            }
+
+            // Finalize any active stream to move it to message history
+            const store = useStreamingConversationStore.getState()
+            if (store.activeStream) {
+              finalizeStream({})
+            }
+
+            // Clear connection retry if active
+            if (store.connectionRetry.isRetrying) {
+              store.clearConnectionRetry()
+            }
+
+            // Clear APP_NOT_FOUND retry state
+            clearRetryState()
+
+            setWebSocketState({ status: 'idle' })
             setStreamingState('idle')
             setIsLoading(false)
+            clearStoredSocketId()
+          } else if (data.data?.isRecovering === false) {
+            // Recovery complete, stream is active again
+            setIsLoading(false)
+            setStreamingState('streaming')
+            logger.info('websocket.recovery.finalized', {
+              eventsReplayed: data.data.eventsReplayed
+            })
           } else if (data.data?.hasBufferedEvents) {
+            // CRITICAL: Set up ack tracking BEFORE any async operations
+            // Buffered events arrive during the async history load, and trackReplayEventReceipt
+            // needs pendingRecoveryAckRef to be set to count them
+            if (data.data?.requiresAck && data.data?.conversationId && data.data?.lastSequence !== undefined) {
+              const expectedCount = data.data?.bufferedEventCount ?? 0
+              pendingRecoveryAckRef.current = {
+                conversationId: data.data.conversationId,
+                lastSequence: data.data.lastSequence,
+                expectedCount,
+                receivedCount: 0,
+                replayComplete: expectedCount === 0,
+                ackEvent: 'recovery_ack'
+              }
+              logger.info('websocket.recovery.ack_pending', {
+                conversationId: data.data.conversationId,
+                expectedCount
+              })
+              if (expectedCount === 0) {
+                maybeSendRecoveryAck(socket)
+              }
+            }
+
             // Stream is still active - load history then prepare for replay
             // Load conversation history from API if we have conversationId
             if (data.data.conversationId && currentAppId) {
@@ -706,23 +1005,26 @@ export function useStreamingWebSocket() {
                   useStreamingConversationStore.setState({ messages: conversation.messages as any[] })
 
                   // Initialize an empty activeStream to receive buffered events
-                  // Don't create a new user message - we're resuming an existing conversation
-                  const streamingMessage = {
-                    id: `recovered_${Date.now()}`,
-                    role: 'assistant' as const,
-                    content: '',
-                    segments: [],
-                    toolCalls: [],
-                    timestamp: new Date(),
-                    isComplete: false
-                  }
+                  // Guard: only create if not already streaming (avoid overwriting on duplicate recovery)
+                  const store = useStreamingConversationStore.getState()
+                  if (!store.activeStream) {
+                    const streamingMessage = {
+                      id: `recovered_${Date.now()}`,
+                      role: 'assistant' as const,
+                      content: '',
+                      segments: [],
+                      toolCalls: [],
+                      timestamp: new Date(),
+                      isComplete: false
+                    }
 
-                  useStreamingConversationStore.setState({
-                    activeStream: streamingMessage,
-                    streamingState: 'streaming',
-                    currentStep: 1,
-                    isLoading: true
-                  })
+                    useStreamingConversationStore.setState({
+                      activeStream: streamingMessage,
+                      streamingState: 'streaming',
+                      currentStep: 1,
+                      isLoading: true
+                    })
+                  }
                 }
               } catch (error) {
                 logger.error('websocket.recovery.history_failed', {
@@ -731,29 +1033,162 @@ export function useStreamingWebSocket() {
               }
             } else {
               // No conversation history - still initialize stream for buffered events
-              const streamingMessage = {
-                id: `recovered_${Date.now()}`,
-                role: 'assistant' as const,
-                content: '',
-                segments: [],
-                toolCalls: [],
-                timestamp: new Date(),
-                isComplete: false
-              }
+              // Guard: only create if not already streaming (avoid overwriting on duplicate recovery)
+              const store = useStreamingConversationStore.getState()
+              if (!store.activeStream) {
+                const streamingMessage = {
+                  id: `recovered_${Date.now()}`,
+                  role: 'assistant' as const,
+                  content: '',
+                  segments: [],
+                  toolCalls: [],
+                  timestamp: new Date(),
+                  isComplete: false
+                }
 
-              useStreamingConversationStore.setState({
-                activeStream: streamingMessage,
-                streamingState: 'streaming',
-                currentStep: 1,
-                isLoading: true
-              })
+                useStreamingConversationStore.setState({
+                  activeStream: streamingMessage,
+                  streamingState: 'streaming',
+                  currentStep: 1,
+                  isLoading: true
+                })
+              }
             }
 
             setStreamingState('streaming')
+          } else if (data.data?.requiresAck && data.data?.conversationId && data.data?.lastSequence !== undefined) {
+            // Handle requiresAck for other recovery scenarios (non-buffered-events case)
+            const expectedCount = data.data?.bufferedEventCount ?? 0
+            pendingRecoveryAckRef.current = {
+              conversationId: data.data.conversationId,
+              lastSequence: data.data.lastSequence,
+              expectedCount,
+              receivedCount: 0,
+              replayComplete: expectedCount === 0,
+              ackEvent: 'recovery_ack'
+            }
+            logger.info('websocket.recovery.ack_pending', {
+              conversationId: data.data.conversationId,
+              expectedCount
+            })
+            if (expectedCount === 0) {
+              maybeSendRecoveryAck(socket)
+            }
+          } else {
+            pendingRecoveryAckRef.current = null
+          }
+
+          if (data.data?.lossDetected) {
+            setWebSocketState({
+              error: {
+                message: 'Some earlier data could not be recovered due to buffer limits.',
+                type: 'DATA_LOSS'
+              }
+            })
           }
 
           // Reset recovery flag
           wasRecoveredRef.current = false
+          break
+
+        case 'replay_complete':
+          // Guard: Clear stale recovery state if app has changed to prevent
+          // stale ack from leaking into new app's recovery attempt
+          if (useStreamingConversationStore.getState().currentAppId !== currentAppId) {
+            pendingRecoveryAckRef.current = null
+            return
+          }
+          // Server finished replaying all buffered events, send acknowledgement
+          if (data.data?.conversationId && data.data?.lastSequence !== undefined) {
+            const pending = pendingRecoveryAckRef.current
+            if (pending) {
+              pending.lastSequence = data.data.lastSequence
+              pending.replayComplete = true
+
+              // Log count mismatch for telemetry
+              if (pending.receivedCount !== pending.expectedCount) {
+                logger.warn('websocket.recovery.count_mismatch', {
+                  conversationId: data.data.conversationId,
+                  expectedCount: pending.expectedCount,
+                  receivedCount: pending.receivedCount,
+                  serverReported: data.data.eventsReplayed
+                })
+              }
+            } else {
+              pendingRecoveryAckRef.current = {
+                conversationId: data.data.conversationId,
+                lastSequence: data.data.lastSequence,
+                expectedCount: data.data?.eventsReplayed ?? 0,
+                receivedCount: data.data?.eventsReplayed ?? 0,
+                replayComplete: true,
+                ackEvent: 'recovery_ack'
+              }
+            }
+
+            // Force send ack - server is authoritative on replay completion
+            maybeSendRecoveryAck(socket, true)
+          }
+          break
+        case 'catchup_status':
+          // Guard: Clear stale recovery state if app has changed to prevent
+          // stale ack from leaking into new app's recovery attempt
+          if (useStreamingConversationStore.getState().currentAppId !== currentAppId) {
+            pendingRecoveryAckRef.current = null
+            return
+          }
+          if (data.data?.requiresAck && data.data?.conversationId && data.data?.lastSequence !== undefined) {
+            const expectedCount = data.data?.pendingCount ?? 0
+            pendingRecoveryAckRef.current = {
+              conversationId: data.data.conversationId,
+              lastSequence: data.data.lastSequence,
+              expectedCount,
+              receivedCount: 0,
+              replayComplete: expectedCount === 0,
+              ackEvent: 'catchup_ack'
+            }
+            if (expectedCount === 0) {
+              maybeSendRecoveryAck(socket)
+            }
+          }
+          break
+        case 'catchup_complete':
+          // Guard: Clear stale recovery state if app has changed to prevent
+          // stale ack from leaking into new app's recovery attempt
+          if (useStreamingConversationStore.getState().currentAppId !== currentAppId) {
+            pendingRecoveryAckRef.current = null
+            return
+          }
+          if (data.data?.conversationId && data.data?.lastSequence !== undefined) {
+            const pending = pendingRecoveryAckRef.current
+            if (pending && pending.ackEvent === 'catchup_ack' && pending.conversationId === data.data.conversationId) {
+              pending.lastSequence = data.data.lastSequence
+              pending.replayComplete = true
+
+              // Log count mismatch for telemetry
+              if (pending.expectedCount > 0 && pending.receivedCount !== pending.expectedCount) {
+                logger.warn('websocket.catchup.count_mismatch', {
+                  conversationId: data.data.conversationId,
+                  expectedCount: pending.expectedCount,
+                  receivedCount: pending.receivedCount,
+                  serverReported: data.data.eventsReplayed
+                })
+              }
+
+              // Force send ack - server is authoritative on catchup completion
+              maybeSendRecoveryAck(socket, true)
+            } else if (!pending) {
+              // No pending ack - create one and send immediately (late catchup_complete)
+              pendingRecoveryAckRef.current = {
+                conversationId: data.data.conversationId,
+                lastSequence: data.data.lastSequence,
+                expectedCount: data.data?.eventsReplayed ?? 0,
+                receivedCount: data.data?.eventsReplayed ?? 0,
+                replayComplete: true,
+                ackEvent: 'catchup_ack'
+              }
+              maybeSendRecoveryAck(socket, true)
+            }
+          }
           break
 
         case 'step_start':
@@ -894,6 +1329,9 @@ export function useStreamingWebSocket() {
 
           // Handle commit selection and preview refresh
           handleCommitComplete(data.data?.commitHash)
+          clearStoredSocketId()
+          // Clear conversationId cookie - conversation is complete, no recovery needed
+          clearConversationIdCookie(currentAppId)
           break
         case 'error':
           flushToolDeltaBufferImmediate()
@@ -948,6 +1386,8 @@ export function useStreamingWebSocket() {
             });
             setStreamingState('error');
             setIsLoading(false);
+            clearStoredSocketId()
+            pendingRecoveryAckRef.current = null
             break;
           }
 
@@ -997,6 +1437,8 @@ export function useStreamingWebSocket() {
                   chatMessage: messageToSend,
                   startTime: pendingMessage.startTime
                 }
+                // Clear timer reference after successful retry to allow proper cleanup in tests
+                retryState.retryTimer = undefined
               }
             }, retryDelay)
           } else {
@@ -1040,6 +1482,8 @@ export function useStreamingWebSocket() {
             })
             setStreamingState('error')
             setIsLoading(false)
+            clearStoredSocketId()
+            pendingRecoveryAckRef.current = null
           }
           break
         default:
@@ -1063,6 +1507,9 @@ export function useStreamingWebSocket() {
     handleCommitComplete,
     scheduleToolDeltaFlush,
     flushToolDeltaBufferImmediate,
+    maybeSendRecoveryAck,
+    trackReplayEventReceipt,
+    clearStoredSocketId,
   ])
 
   useEffect(() => {
@@ -1141,6 +1588,12 @@ export function useStreamingWebSocket() {
 
       // Clear APP_NOT_FOUND retry timer (not connection retry - that survives remounts)
       clearRetryState()
+      pendingRecoveryAckRef.current = null
+
+      // DO NOT clear stored socket ID here - it must persist across remounts for manual recovery.
+      // Socket ID is already cleared in the correct places: on 'complete' and 'error' events,
+      // which are the only scenarios where we definitively know the stream is finished.
+      // Clearing here would break manual recovery when users refresh during an active stream.
 
       if (socketRef.current) {
         // Only disconnect and clear shared socket if this instance created it
@@ -1149,6 +1602,8 @@ export function useStreamingWebSocket() {
           setSharedSocket(null)
 
           socketRef.current.removeAllListeners()
+          // Stop reconnection attempts before disconnecting to prevent stale reconnects
+          socketRef.current.io.reconnection(false)
           socketRef.current.disconnect()
         }
 
@@ -1159,7 +1614,7 @@ export function useStreamingWebSocket() {
       initializingRef.current = false
     }
     // Including createConnection & setupEventHandlers satisfies exhaustive-deps; guard prevents duplicate initialization.
-  }, [currentAppId, createConnection, setupEventHandlers, clearRetryState, setWebSocketState]) /* eslint-disable-line react-hooks/exhaustive-deps */
+  }, [currentAppId, createConnection, setupEventHandlers, clearRetryState, setWebSocketState, clearStoredSocketId]) /* eslint-disable-line react-hooks/exhaustive-deps */
 
   /**
    * Send message - the main streaming function
@@ -1202,9 +1657,9 @@ export function useStreamingWebSocket() {
 
       // If conversationId is null, check cookie and delete it
       if (!conversationId) {
-        conversationId = getConversationIdFromCookie()
+        conversationId = getConversationIdFromCookie(currentAppId)
         if (conversationId) {
-          deleteConversationIdCookie()
+          clearConversationIdCookie(currentAppId)
         }
       }
 
@@ -1371,6 +1826,11 @@ export function useStreamingWebSocket() {
         timestamp: new Date().toISOString(),
         // Don't set agentId - let backend routing logic decide based on app state
         context: richContext
+      }
+
+      // Clear any pending retry timer before starting new message
+      if (retryStateRef.current.retryTimer) {
+        clearTimeout(retryStateRef.current.retryTimer)
       }
 
       // Store message for potential retry on APP_NOT_FOUND error

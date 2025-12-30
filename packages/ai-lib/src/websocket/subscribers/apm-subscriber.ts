@@ -30,6 +30,13 @@ export type APMTransaction = any
  */
 export class APMSubscriber implements EventSubscriber {
   id: string
+
+  /**
+   * Non-blocking subscriber - APM tracking errors should never affect the stream.
+   * Monitoring is fire-and-forget; errors are silently handled in onEvent.
+   */
+  blocking = false
+
   private apmAgent: APMAgent
   private activeSpans: Map<string, APMSpan>
   private getActiveTransaction: ((socketId: string) => APMTransaction | undefined) | undefined

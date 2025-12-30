@@ -553,6 +553,23 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     }
   }, [phase, subPhase, isWebSocketConnected, context.hasInitialPrompt, context.initialPromptSent, appId])
 
+  // Auto-exit creation flow when app is demonstrably ready
+  useEffect(() => {
+    if (phase !== 'ready' || !context.hasInitialPrompt || context.initialPromptSent || !isWebSocketConnected) {
+      return
+    }
+
+    logger.info('initialization.auto-exit-creation', { appId })
+
+    if (context.initialJobId) {
+      sessionStorage.removeItem(`initial-prompt-pending-${context.initialJobId}`)
+      sessionStorage.removeItem(`in-creation-flow-${context.initialJobId}`)
+    }
+
+    setInitialPromptSent(true)
+    setSubPhase('active')
+  }, [phase, context.hasInitialPrompt, context.initialPromptSent, isWebSocketConnected, context.initialJobId, appId])
+
   // Handle WebSocket errors - set siteNotFound for inline error display
   useEffect(() => {
     if (webSocketError?.type === 'APP_NOT_FOUND') {

@@ -218,6 +218,12 @@ export type StreamingEventType =
   | 'complete'
   | 'error'
   | 'recovery_status'
+  | 'conversation_info'
+  | 'agents_available'
+  | 'replay_complete'
+  | 'catchup_status'
+  | 'catchup_complete'
+  | 'server_config'
 
 /**
  * Normalized streaming event structure for event channel
@@ -304,7 +310,7 @@ export interface EventSubscriber {
   /**
    * Handle a streaming event
    * @param event - The streaming event to process
-   * @throws Error to signal subscriber failure (triggers fail-fast)
+   * @throws Error to signal subscriber failure (triggers fail-fast for blocking subscribers)
    */
   onEvent(event: StreamingEvent): Promise<void>
 
@@ -320,4 +326,11 @@ export interface EventSubscriber {
    * @returns true to receive this event, false to skip
    */
   filter?(event: StreamingEvent): boolean
+
+  /**
+   * If true, publish() awaits this subscriber and propagates errors (fail-fast).
+   * If false, subscriber runs fire-and-forget with errors captured via onError().
+   * Default: true (for backward compatibility with existing subclasses)
+   */
+  blocking?: boolean
 }

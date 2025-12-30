@@ -1,17 +1,131 @@
+import { act, renderHook } from '@testing-library/react';
 import { beforeEach,describe, expect, it, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
+
+const createStreamingStoreState = () => ({
+  streamingState: 'idle',
+  activeStream: null,
+  conversations: [],
+  messages: [],
+  currentAppId: null,
+  updateToolDelta: vi.fn(),
+  connectionRetry: {
+    isRetrying: false,
+    retryStartedAt: null,
+    wasStreamingOnDisconnect: false,
+    disconnectSocketId: null,
+    escalationTimeoutId: null
+  },
+  startConnectionRetry: vi.fn(),
+  setEscalationTimeout: vi.fn(),
+  clearConnectionRetry: vi.fn(),
+  checkStaleRetry: vi.fn(() => false),
+  setWebSocketState: vi.fn(),
+  setStreamingState: vi.fn(),
+  setIsLoading: vi.fn(),
+  markUpstreamError: vi.fn(),
+  finalizeStream: vi.fn()
+})
+
+let streamingStoreState = createStreamingStoreState()
+const mockSockets: any[] = []
+const mockSetWebSocketState = vi.fn()
+const getLatestMockSocket = () => mockSockets[mockSockets.length - 1]
+
+const createMockSocket = () => {
+  const handlers: Record<string, Array<(...args: any[]) => void>> = {}
+
+  const socket = {
+    id: `mock-socket-${mockSockets.length + 1}`,
+    connected: false,
+    recovered: false,
+    emit: vi.fn(),
+    on: vi.fn((event, handler) => {
+      handlers[event] = handlers[event] || []
+      handlers[event]!.push(handler)
+      return socket
+    }),
+    once: vi.fn((event, handler) => {
+      const onceWrapper = (...args: any[]) => {
+        socket.off(event, onceWrapper)
+        handler(...args)
+      }
+      return socket.on(event, onceWrapper)
+    }),
+    off: vi.fn((event, handler) => {
+      if (!handlers[event]) return socket
+      if (handler) {
+        handlers[event] = handlers[event]!.filter((h) => h !== handler)
+      } else {
+        handlers[event] = []
+      }
+      return socket
+    }),
+    removeAllListeners: vi.fn(() => {
+      Object.keys(handlers).forEach((event) => {
+        handlers[event] = []
+      })
+    }),
+    disconnect: vi.fn(),
+    volatile: { emit: vi.fn() },
+    trigger: (event: string, ...args: any[]) => {
+      ;(handlers[event] || []).forEach((handler) => handler(...args))
+    },
+    getHandlers: () => handlers
+  }
+
+  mockSockets.push(socket)
+  return socket
+}
+
+const setupWebSocketWithApp = async (appId = 'test-app-123') => {
+  const [{ useStreamingWebSocket }, { useCurrentAppId }] = await Promise.all([
+    import('./useStreamingWebSocket'),
+    import('@/stores/useStreamingConversationStore')
+  ])
+
+  vi.mocked(useCurrentAppId).mockReturnValue(appId)
+  streamingStoreState.currentAppId = appId
+
+  const hook = renderHook(() => useStreamingWebSocket())
+
+  // Run all pending timers and wait for async operations
+  await act(async () => {
+    vi.runAllTimers()
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+
+  const socket = getLatestMockSocket()
+
+  if (socket) {
+    // Trigger connect and wait for all handlers to be set up
+    await act(async () => {
+      socket.trigger('connect')
+      socket.connected = true
+      // Wait for promises to resolve
+      await Promise.resolve()
+      await Promise.resolve()
+      // Run timers again to complete any queued operations
+      vi.runAllTimers()
+      await Promise.resolve()
+    })
+  }
+
+  return { hook, socket }
+}
+
+const triggerMessage = async (socket: any, payload: any) => {
+  const handler = socket.getHandlers().message?.[0]
+  expect(handler).toBeDefined()
+  await act(async () => {
+    await handler!(payload)
+  })
+}
 
 // Mock all external dependencies
 vi.mock('socket.io-client', () => ({
-  io: vi.fn(() => ({
-    id: 'mock-socket-id',
-    connected: false,
-    on: vi.fn(),
-    emit: vi.fn(),
-    removeAllListeners: vi.fn(),
-    disconnect: vi.fn()
-  }))
-}));
+  io: vi.fn(() => createMockSocket())
+}))
 
 vi.mock('uuid', () => ({
   validate: vi.fn(() => true)
@@ -35,33 +149,11 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useMarkUpstreamError: vi.fn(() => vi.fn()),
   useMarkBudgetExceeded: vi.fn(() => vi.fn()),
   useFinalizeStream: vi.fn(() => vi.fn()),
-  useSetWebSocketState: vi.fn(() => vi.fn()),
+  useSetWebSocketState: vi.fn(() => mockSetWebSocketState),
   useSetStreamingState: vi.fn(() => vi.fn()),
   useSetIsLoading: vi.fn(() => vi.fn()),
   useStreamingConversationStore: {
-    getState: vi.fn(() => ({
-      streamingState: 'idle',
-      activeStream: null,
-      conversations: [],
-      messages: [],
-      currentAppId: null,
-      updateToolDelta: vi.fn(),
-      // Connection retry state and actions
-      connectionRetry: {
-        isRetrying: false,
-        retryStartedAt: null,
-        wasStreamingOnDisconnect: false,
-        disconnectSocketId: null,
-        escalationTimeoutId: null
-      },
-      startConnectionRetry: vi.fn(),
-      setEscalationTimeout: vi.fn(),
-      clearConnectionRetry: vi.fn(),
-      checkStaleRetry: vi.fn(() => false),
-      setWebSocketState: vi.fn(),
-      setStreamingState: vi.fn(),
-      setIsLoading: vi.fn()
-    })),
+    getState: vi.fn(() => streamingStoreState),
     setState: vi.fn(),
     subscribe: vi.fn(() => vi.fn())
   }
@@ -121,7 +213,11 @@ vi.mock('../config/dynamic-api', () => ({
 
 describe('useStreamingWebSocket', () => {
   beforeEach(() => {
+    streamingStoreState = createStreamingStoreState()
     vi.clearAllMocks();
+    mockSockets.length = 0;
+    sessionStorage.clear();
+    mockSetWebSocketState.mockReset();
 
     // Mock fetch for JWT token
     global.fetch = vi.fn((url) => {
@@ -318,4 +414,140 @@ describe('useStreamingWebSocket', () => {
       expect(unsubscribeMock).toHaveBeenCalled();
     });
   });
+
+  describe('manual recovery housekeeping', () => {
+    it('clears stored socket id after stream completion', async () => {
+      vi.useFakeTimers()
+      const { socket } = await setupWebSocketWithApp('app-123')
+
+      expect(sessionStorage.getItem('socket_id_app-123')).toBe(socket.id)
+
+      await triggerMessage(socket, {
+        type: 'complete',
+        content: '',
+        data: { step: 1 }
+      })
+
+      expect(sessionStorage.getItem('socket_id_app-123')).toBeNull()
+      vi.useRealTimers()
+    })
+
+    it('clears stored socket id after fatal error', async () => {
+      vi.useFakeTimers()
+      const { socket } = await setupWebSocketWithApp('app-456')
+
+      expect(sessionStorage.getItem('socket_id_app-456')).toBe(socket.id)
+
+      await triggerMessage(socket, {
+        type: 'error',
+        content: 'Budget exceeded',
+        data: { errorType: 'BUDGET_EXCEEDED' }
+      })
+
+      expect(sessionStorage.getItem('socket_id_app-456')).toBeNull()
+      vi.useRealTimers()
+    })
+
+    it('sends recovery_ack when replay_complete arrives even if count mismatch', async () => {
+      vi.useFakeTimers()
+      const { socket } = await setupWebSocketWithApp('app-789')
+
+      await triggerMessage(socket, {
+        type: 'recovery_status',
+        data: {
+          requiresAck: true,
+          bufferedEventCount: 2,
+          conversationId: 'conv-1',
+          lastSequence: 18
+        }
+      })
+
+      await triggerMessage(socket, { type: 'chunk', content: 'partial' })
+
+      await triggerMessage(socket, {
+        type: 'replay_complete',
+        data: {
+          conversationId: 'conv-1',
+          lastSequence: 18,
+          eventsReplayed: 2
+        }
+      })
+
+      // Server said replay is complete - ack should be sent even though only 1 event tracked
+      expect(socket.emit).toHaveBeenCalledWith('recovery_ack', {
+        conversationId: 'conv-1',
+        lastSequence: 18
+      })
+
+      act(() => {
+        socket.trigger('disconnect')
+      })
+
+      await triggerMessage(socket, { type: 'chunk', content: 'new data' })
+
+      // After disconnect, pending ack state should be cleared, no duplicate acks
+      const ackCalls = socket.emit.mock.calls.filter(([event]) => event === 'recovery_ack')
+      expect(ackCalls).toHaveLength(1) // Only the one from replay_complete
+      vi.useRealTimers()
+    })
+
+    it('emits catchup_ack after receiving catch-up replay', async () => {
+      vi.useFakeTimers()
+      const { socket } = await setupWebSocketWithApp('app-catchup')
+
+      await triggerMessage(socket, {
+        type: 'catchup_status',
+        data: {
+          requiresAck: true,
+          conversationId: 'conv-catch',
+          lastSequence: 50,
+          pendingCount: 2
+        }
+      })
+
+      await triggerMessage(socket, { type: 'chunk', content: 'delta 1' })
+      await triggerMessage(socket, { type: 'chunk', content: 'delta 2' })
+
+      await triggerMessage(socket, {
+        type: 'catchup_complete',
+        data: {
+          conversationId: 'conv-catch',
+          lastSequence: 52,
+          eventsReplayed: 2
+        }
+      })
+
+      const catchupAck = socket.emit.mock.calls.find(([event]) => event === 'catchup_ack')
+      expect(catchupAck).toEqual([
+        'catchup_ack',
+        {
+          conversationId: 'conv-catch',
+          lastSequence: 52
+        }
+      ])
+      vi.useRealTimers()
+    })
+
+    it('surface warning when lossDetected flag is set', async () => {
+      vi.useFakeTimers()
+      const { socket } = await setupWebSocketWithApp('app-loss')
+
+      await triggerMessage(socket, {
+        type: 'recovery_status',
+        data: {
+          streamCompleted: true,
+          lossDetected: true,
+          conversationId: 'conv-loss'
+        }
+      })
+
+      expect(mockSetWebSocketState).toHaveBeenCalledWith(expect.objectContaining({
+        error: expect.objectContaining({
+          message: expect.stringContaining('could not be recovered'),
+          type: 'DATA_LOSS'
+        })
+      }))
+      vi.useRealTimers()
+    })
+  })
 });

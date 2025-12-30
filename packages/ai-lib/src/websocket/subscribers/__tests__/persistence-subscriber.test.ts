@@ -129,26 +129,49 @@ describe('PersistenceSubscriber', () => {
       expect(event.persisted).toBe(true)
     })
 
-    it('throws error if persistence fails (for fail-fast)', async () => {
+    it('logs error but does not throw when persistence fails (non-blocking)', async () => {
+      // Create a mock logger to verify error logging
+      const mockLogger = {
+        error: vi.fn()
+      }
+      const subscriberWithLogger = new PersistenceSubscriber(persistence, context, mockLogger)
+
       persistence.shouldFail = true
       persistence.failureMessage = 'Database connection failed'
 
       const event = createTestEvent()
 
-      await expect(subscriber.onEvent(event)).rejects.toThrow('Database connection failed')
+      // Should not throw - non-blocking behavior
+      await expect(subscriberWithLogger.onEvent(event)).resolves.toBeUndefined()
 
       // Event should not be marked as persisted
       expect(event.persisted).toBe(false)
+
+      // Error should be logged
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'persistence.streaming_event.failed',
+        expect.objectContaining({
+          conversationId: event.conversationId,
+          eventId: event.id,
+          error: 'Database connection failed'
+        })
+      )
     })
 
-    it('converts non-Error failures to Error instances', async () => {
+    it('handles errors silently when no logger provided', async () => {
+      // Subscriber without logger
+      const subscriberNoLogger = new PersistenceSubscriber(persistence, context)
+
       persistence.shouldFail = true
-      // Simulate non-Error throw
-      vi.spyOn(persistence, 'captureStreamingEvent').mockRejectedValue('String error')
+      persistence.failureMessage = 'Database connection failed'
 
       const event = createTestEvent()
 
-      await expect(subscriber.onEvent(event)).rejects.toThrow('Persistence failed: String error')
+      // Should not throw even without logger
+      await expect(subscriberNoLogger.onEvent(event)).resolves.toBeUndefined()
+
+      // Event should not be marked as persisted
+      expect(event.persisted).toBe(false)
     })
   })
 

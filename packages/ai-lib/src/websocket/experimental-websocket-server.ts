@@ -1,6 +1,7 @@
 import type { ModelMessage } from 'ai'
 import { APICallError, RetryError } from 'ai'
 import { Server as SocketIOServer } from 'socket.io'
+import type { Socket } from 'socket.io'
 import { Server as HTTPServer } from 'http'
 import type { AgentFactory, AgentWrapper } from '../core/agent-factory.js'
 import { createAgentFactory } from '../core/agent-factory.js'
@@ -17,8 +18,14 @@ import type {
   ConversationPersistenceWithCleanup,
   ConversationMessage,
   PersistenceStreamingEvent,
-  ConversationContext
+  ConversationContext,
+  StreamingEvent
 } from './interfaces.js'
+import { ConversationEventChannel } from './conversation-event-channel.js'
+import { WebSocketSubscriber } from './subscribers/websocket-subscriber.js'
+import { PersistenceSubscriber } from './subscribers/persistence-subscriber.js'
+import { APMSubscriber } from './subscribers/apm-subscriber.js'
+import type { DisconnectedStreamState } from './subscribers/websocket-subscriber.js'
 
 /**
  * APM agent type for tool execution tracking
@@ -198,6 +205,18 @@ export interface WebSocketConfig {
 
   /** Socket.IO server options */
   socketOptions?: Partial<import('socket.io').ServerOptions>
+
+  /** Event channel buffer size per conversation (default: 1000) */
+  eventBufferSize?: number
+
+  /** Event channel TTL in ms (default: STREAM_RECOVERY_WINDOW = 5 minutes) */
+  eventBufferTTL?: number
+
+  /** Stream recovery window in ms (default: 5 minutes) - time to allow reconnection before aborting stream */
+  streamRecoveryWindow?: number
+
+  /** ACK timeout in ms (default: 30 seconds) - time to wait for client acknowledgment after replay */
+  ackTimeout?: number
 }
 
 /**
@@ -215,7 +234,7 @@ export interface ChatMessage {
  * WebSocket message types following the normalized event schema
  */
 export interface WebSocketMessage {
-  type: 'step_start' | 'chunk' | 'tool_start' | 'tool_input_delta' | 'tool_call' | 'tool_result' | 'step_complete' | 'complete' | 'error' | 'agents_available' | 'recovery_status'
+  type: 'step_start' | 'chunk' | 'tool_start' | 'tool_input_delta' | 'tool_call' | 'tool_result' | 'step_complete' | 'complete' | 'error' | 'agents_available' | 'recovery_status' | 'replay_complete' | 'catchup_status' | 'catchup_complete' | 'server_config' | 'conversation_info'
   content: string
   data: Record<string, unknown>
 }
@@ -252,6 +271,8 @@ export class WebSocketServer {
     pendingSegments?: any[]
     pendingToolCalls?: Map<string, any>
     accumulatedContent?: string
+    /** Track last sequence delivered to socket for recovery */
+    lastDeliveredSequence: number
   }> = new Map()
 
   /**
@@ -261,29 +282,105 @@ export class WebSocketServer {
   private activeToolSpans: Map<string, APMSpan> = new Map()
 
   /**
-   * Track disconnected sockets with active streams during recovery window
-   * Allows LLM to continue working while client reconnects
+   * Event channel for pub/sub event delivery
+   * Enables decoupled event transport and connection recovery
    */
-  private disconnectedStreams: Map<string, {
-    abortController: AbortController
-    timeoutId: NodeJS.Timeout
-    bufferedEvents: WebSocketMessage[]
-    conversationId: string
-  }> = new Map()
+  private eventChannel: ConversationEventChannel
 
   /**
-   * Recovery window for connection state recovery (5 minutes)
-   * During this time, streams continue and events are buffered
+   * Track disconnected sockets with active streams during recovery window
+   * Allows LLM to continue working while client reconnects
+   * Events are buffered in the event channel, not here - we just track the last delivered sequence
    */
-  private readonly STREAM_RECOVERY_WINDOW = 5 * 60 * 1000
+  private disconnectedStreams: Map<string, DisconnectedStreamState> = new Map()
+
+  /**
+   * Recovery window for connection state recovery (default: 5 minutes)
+   * During this time, streams continue and events are buffered
+   * Configurable via WebSocketConfig.streamRecoveryWindow
+   */
+  private readonly STREAM_RECOVERY_WINDOW: number
+
+  /**
+   * Cleanup interval for event channel memory management
+   * Runs every 60 seconds to remove expired conversations
+   */
+  private cleanupInterval: NodeJS.Timeout | null = null
+
+  /**
+   * ACK timeout for recovery acknowledgment (default: 30 seconds)
+   * Time to wait for client acknowledgment after replay
+   * Configurable via WebSocketConfig.ackTimeout
+   */
+  private readonly ACK_TIMEOUT_MS: number
+
+  /**
+   * Track socket ID migrations during manual recovery
+   * Maps old socket ID -> new socket ID so publishToEventChannel can find the conversation
+   * This handles the case where handleChatMessage is still running with the old socketId
+   * but the conversation has been migrated to a new socket ID
+   */
+  private socketIdMigrations: Map<string, string> = new Map()
+
+  /**
+   * Per-socket message queue to prevent concurrent handleChatMessage races
+   * Maps socket ID -> promise chain to serialize message processing per socket
+   * This prevents duplicate conversation creation when messages arrive rapidly
+   */
+  private socketMessageQueues: Map<string, Promise<void>> = new Map()
+
+  /**
+   * Track sockets where setup is in progress (conversation exists but stream not yet registered)
+   * This handles early disconnect during the gap between activeConversations.set() and activeStreams.set()
+   */
+  private pendingSetup: Map<string, { conversationId: string; timeoutId: NodeJS.Timeout }> = new Map()
+
+  /**
+   * Track sockets being cleaned up to prevent duplicate cleanup and racing map operations
+   * Guards against disconnect + ACK timeout race conditions
+   */
+  private cleanupInProgress: Set<string> = new Set()
 
   constructor(httpServer: HTTPServer, config: WebSocketConfig) {
     this.config = config
+
+    // Initialize configurable timeouts with defaults
+    this.STREAM_RECOVERY_WINDOW = config.streamRecoveryWindow ?? 5 * 60 * 1000 // 5 minutes
+    this.ACK_TIMEOUT_MS = config.ackTimeout ?? 30_000 // 30 seconds
 
     // Validate configuration
     if (!config.agents) {
       throw new Error('WebSocketServer requires an agents object in config')
     }
+
+    // Determine event channel TTL (default to recovery window for consistency)
+    // Clamp to minimum of recovery window to prevent event loss during reconnection
+    const requestedTTL = config.eventBufferTTL ?? this.STREAM_RECOVERY_WINDOW
+    const eventBufferTTL = Math.max(requestedTTL, this.STREAM_RECOVERY_WINDOW)
+
+    // TTL guard: warn if configured TTL was clamped up to recovery window
+    if (config.eventBufferTTL !== undefined && config.eventBufferTTL < this.STREAM_RECOVERY_WINDOW) {
+      this.logger.warn('eventChannel.ttl_clamped_to_recovery_window', {
+        configuredTTL: config.eventBufferTTL,
+        effectiveTTL: eventBufferTTL,
+        recoveryWindow: this.STREAM_RECOVERY_WINDOW,
+        message: 'Event buffer TTL was increased to match recovery window to prevent event loss during reconnection.'
+      })
+    }
+
+    // Initialize event channel for pub/sub event delivery
+    this.eventChannel = new ConversationEventChannel({
+      capacity: config.eventBufferSize ?? 10_000,
+      ttl: eventBufferTTL
+    }, this.logger)
+
+    // Schedule periodic cleanup of expired conversations (every 60 seconds)
+    this.cleanupInterval = setInterval(() => {
+      const removed = this.eventChannel.cleanup()
+      if (removed > 0) {
+        this.logger.debug('eventChannel.cleanup', { removedConversations: removed })
+      }
+    }, 60_000)
 
     // Initialize Socket.IO server with merged configuration
     // Note: config.socketOptions will override any conflicting keys
@@ -334,35 +431,210 @@ export class WebSocketServer {
         })
       }
 
-      // Check if this is a recovered connection with buffered events (automatic recovery)
+      // Check if this is a recovered connection (automatic recovery via Socket.IO)
       if (socket.recovered && this.disconnectedStreams.has(socketId)) {
-        this.logger.info('Socket reconnected during recovery window (automatic), replaying buffered events', { socketId })
+        this.logger.info('Socket reconnected during recovery window (automatic), replaying from event channel', { socketId })
         const streamData = this.disconnectedStreams.get(socketId)!
 
-        // Cancel the abort timeout
+        // Cancel the original abort timeout
         clearTimeout(streamData.timeoutId)
 
-        // Replay all buffered events
-        for (const event of streamData.bufferedEvents) {
-          socket.emit('message', event)
+        const conversation = this.activeConversations.get(socketId)
+        const preReplaySequence = streamData.lastDeliveredSequence
+
+        const events = this.eventChannel.getEventsSince(
+          streamData.conversationId,
+          streamData.lastDeliveredSequence
+        )
+
+        const expectedNextSequence = streamData.lastDeliveredSequence + 1
+        const { lossDetected, lostEventCount } = this.getBufferLossInfo(
+          streamData.conversationId,
+          expectedNextSequence
+        )
+
+        if (lossDetected) {
+          this.logger.warn('websocket.recovery.buffer_loss_detected', {
+            socketId,
+            conversationId: streamData.conversationId,
+            lostEventCount
+          })
         }
 
-        // Move back to active streams
-        this.activeStreams.set(socketId, streamData.abortController)
-        this.disconnectedStreams.delete(socketId)
+        const replayLastSequence = events.length > 0 ? events[events.length - 1]!.sequence : preReplaySequence
 
-        this.logger.info('Replayed buffered events and resumed stream', {
-          socketId,
-          eventCount: streamData.bufferedEvents.length
+        socket.emit('message', {
+          type: 'recovery_status',
+          content: 'Recovering connection...',
+          data: {
+            isRecovering: true,
+            hasBufferedEvents: events.length > 0,
+            bufferedEventCount: events.length,
+            conversationId: conversation?.conversationId,
+            agentName: conversation?.agentName,
+            recoveryMode: 'automatic',
+            requiresAck: true,
+            lastSequence: replayLastSequence,
+            lossDetected,
+            lostEventCount
+          }
+        } as WebSocketMessage)
+
+        for (const event of events) {
+          socket.emit('message', {
+            type: event.type,
+            content: event.content,
+            data: event.data
+          } as WebSocketMessage)
+        }
+
+        socket.emit('message', {
+          type: 'replay_complete',
+          content: 'All buffered events replayed',
+          data: {
+            lastSequence: replayLastSequence,
+            conversationId: conversation?.conversationId,
+            eventsReplayed: events.length
+          }
+        } as WebSocketMessage)
+
+        let handleRecoveryAck: ((ackData: { conversationId: string; lastSequence: number }) => void) | null = null
+
+        const handleAckTimeout = () => {
+          // Always remove the listener first to prevent it from firing after cleanup
+          if (handleRecoveryAck) {
+            socket.off('recovery_ack', handleRecoveryAck)
+          }
+
+          // Guard against cleanup race - if cleanup already in progress, skip
+          if (this.cleanupInProgress.has(socketId)) {
+            this.logger.debug('websocket.ack_timeout.cleanup_in_progress', { socketId })
+            return
+          }
+          this.logger.warn('websocket.recovery.ack_timeout', {
+            socketId,
+            recoveryWindow: this.ACK_TIMEOUT_MS
+          })
+
+          // Clean up event channel subscribers before conversation cleanup
+          const conv = this.activeConversations.get(socketId)
+          if (conv) {
+            this.cleanupEventChannelSubscribers(socketId, conv.conversationId)
+          }
+
+          streamData.abortController.abort()
+          // Explicit synchronous cleanup of maps (for test compatibility)
+          this.disconnectedStreams.delete(socketId)
+          this.activeStreams.delete(socketId)
+          // Additional async cleanup
+          void this.cleanupConversation(socketId).catch((error) => {
+            this.logger.error('websocket.recovery.ack_timeout.cleanup_failed', {
+              socketId,
+              error: error instanceof Error ? error.message : String(error)
+            })
+          })
+        }
+
+        const ackTimeoutId = setTimeout(handleAckTimeout, this.ACK_TIMEOUT_MS)
+
+        this.disconnectedStreams.set(socketId, {
+          abortController: streamData.abortController,
+          timeoutId: ackTimeoutId,
+          conversationId: streamData.conversationId,
+          lastDeliveredSequence: preReplaySequence
         })
+
+        const finalizeAutomaticRecovery = (finalSequence: number, catchUpCount = 0) => {
+          this.activeStreams.set(socketId, streamData.abortController)
+          this.disconnectedStreams.delete(socketId)
+
+          if (conversation) {
+            conversation.lastDeliveredSequence = finalSequence
+            const conversationId = conversation.conversationId
+            this.eventChannel.unsubscribe(conversationId, `websocket-${socketId}`)
+            this.eventChannel.subscribe(
+              conversationId,
+              new WebSocketSubscriber(socket, this.disconnectedStreams)
+            )
+          }
+
+          socket.emit('message', {
+            type: 'recovery_status',
+            content: 'Connection restored',
+            data: {
+              isRecovering: false,
+              eventsReplayed: events.length + catchUpCount,
+              streamStatus: 'active'
+            }
+          } as WebSocketMessage)
+
+          this.logger.info('websocket.reconnect.transfer_complete', {
+            socketId,
+            eventCount: events.length + catchUpCount,
+            fromSequence: preReplaySequence,
+            toSequence: finalSequence,
+            conversationId: conversation?.conversationId
+          })
+        }
+
+        handleRecoveryAck = (ackData: { conversationId: string; lastSequence: number }) => {
+          if (ackData.conversationId !== streamData.conversationId) {
+            this.logger.warn('websocket.recovery.ack_mismatch', {
+              socketId,
+              expectedConversationId: streamData.conversationId,
+              receivedConversationId: ackData.conversationId
+            })
+            return
+          }
+
+          clearTimeout(ackTimeoutId)
+
+          const catchUpEvents = this.eventChannel.getEventsSince(
+            streamData.conversationId,
+            ackData.lastSequence
+          )
+
+          if (catchUpEvents.length === 0) {
+            finalizeAutomaticRecovery(ackData.lastSequence)
+            return
+          }
+
+          this.beginCatchUpHandshake(socket, {
+            conversationId: streamData.conversationId,
+            events: catchUpEvents,
+            onComplete: (finalSequence) => finalizeAutomaticRecovery(finalSequence, catchUpEvents.length),
+            onTimeout: () => {
+              // Clean up event channel subscribers - conversation may be undefined in catch-up context
+              const conv = this.activeConversations.get(socketId)
+              if (conv) {
+                this.cleanupEventChannelSubscribers(socketId, conv.conversationId)
+              }
+
+              streamData.abortController.abort()
+              this.disconnectedStreams.delete(socketId)
+              this.activeStreams.delete(socketId)
+              void this.cleanupConversation(socketId).catch((error) => {
+                this.logger.error('websocket.catchup.timeout.cleanup_failed', {
+                  socketId,
+                  error: error instanceof Error ? error.message : String(error)
+                })
+              })
+            }
+          })
+        }
+
+        socket.once('recovery_ack', handleRecoveryAck)
       }
       // Check for manual recovery after page reload (client sends previousSocketId)
       else if (previousSocketId && this.disconnectedStreams.has(previousSocketId)) {
-        this.logger.info('Manual recovery after page reload, transferring buffered events', {
+        this.logger.info('Manual recovery after page reload, replaying from event channel', {
           newSocketId: socketId,
           previousSocketId
         })
         const streamData = this.disconnectedStreams.get(previousSocketId)!
+
+        // Capture pre-replay sequence - don't advance until client confirms receipt
+        const preReplaySequence = streamData.lastDeliveredSequence
 
         // Cancel the abort timeout
         clearTimeout(streamData.timeoutId)
@@ -370,53 +642,218 @@ export class WebSocketServer {
         // Get conversation info for the client
         const conversation = this.activeConversations.get(previousSocketId)
 
-        // Send recovery status to client BEFORE replaying events
-        socket.emit('message', {
-          type: 'recovery_status',
-          content: '',
-          data: {
-            isRecovering: true,
-            hasBufferedEvents: streamData.bufferedEvents.length > 0,
-            bufferedEventCount: streamData.bufferedEvents.length,
-            conversationId: conversation?.conversationId,
-            agentName: conversation?.agentName
-          }
-        } as WebSocketMessage)
+        // Replay events from event channel since last delivered sequence
+        const events = this.eventChannel.getEventsSince(
+          streamData.conversationId,
+          streamData.lastDeliveredSequence
+        )
 
-        // Replay all buffered events to the new socket
-        for (const event of streamData.bufferedEvents) {
-          socket.emit('message', event)
-        }
+        const expectedNextSequenceManual = streamData.lastDeliveredSequence + 1
+        const { lossDetected: manualLossDetected, lostEventCount: manualLostEventCount } = this.getBufferLossInfo(
+          streamData.conversationId,
+          expectedNextSequenceManual
+        )
 
-        // Move to active streams with NEW socket ID
-        this.activeStreams.set(socketId, streamData.abortController)
-
-        // Update conversation tracking to new socket ID
-        if (conversation) {
-          this.activeConversations.set(socketId, conversation)
-          this.activeConversations.delete(previousSocketId)
-        }
-
-        // Clean up old socket ID
-        this.disconnectedStreams.delete(previousSocketId)
-
-        // Notify agents service to clean up observability sessions for the old socket
-        // This prevents memory leaks in activeObservabilitySessions and activeConversationSessions
-        try {
-          await this.config.onDisconnection?.(previousSocketId)
-        } catch (disconnectError) {
-          this.logger.warn('websocket.reconnect.cleanup_failed', {
+        if (manualLossDetected) {
+          this.logger.warn('websocket.recovery.buffer_loss_detected', {
             previousSocketId,
-            error: disconnectError instanceof Error ? disconnectError.message : String(disconnectError)
+            conversationId: streamData.conversationId,
+            lostEventCount: manualLostEventCount
           })
         }
 
-        this.logger.info('websocket.reconnect.transfer_complete', {
-          newSocketId: socketId,
-          previousSocketId,
-          eventCount: streamData.bufferedEvents.length,
-          conversationId: conversation?.conversationId
+        // Calculate the last sequence we're about to replay
+        const replayLastSequence = events.length > 0 ? events[events.length - 1]!.sequence : preReplaySequence
+
+        socket.emit('message', {
+          type: 'recovery_status',
+          content: 'Recovering connection...',
+          data: {
+            isRecovering: true,
+            hasBufferedEvents: events.length > 0,
+            bufferedEventCount: events.length,
+            conversationId: conversation?.conversationId,
+            agentName: conversation?.agentName,
+            recoveryMode: 'manual',
+            requiresAck: true,
+            lastSequence: replayLastSequence,
+            lossDetected: manualLossDetected,
+            lostEventCount: manualLostEventCount
+          }
+        } as WebSocketMessage)
+
+        for (const event of events) {
+          socket.emit('message', {
+            type: event.type,
+            content: event.content,
+            data: event.data
+          } as WebSocketMessage)
+        }
+
+        socket.emit('message', {
+          type: 'replay_complete',
+          content: 'All buffered events replayed',
+          data: {
+            lastSequence: replayLastSequence,
+            conversationId: conversation?.conversationId,
+            eventsReplayed: events.length
+          }
+        } as WebSocketMessage)
+
+        let handleRecoveryAck: ((ackData: { conversationId: string; lastSequence: number }) => void) | null = null
+
+        const handleAckTimeout = () => {
+          // Always remove the listener first to prevent it from firing after cleanup
+          if (handleRecoveryAck) {
+            socket.off('recovery_ack', handleRecoveryAck)
+          }
+
+          // Guard against cleanup race - if cleanup already in progress, skip
+          if (this.cleanupInProgress.has(previousSocketId)) {
+            this.logger.debug('websocket.ack_timeout.cleanup_in_progress', { socketId, previousSocketId })
+            return
+          }
+          this.logger.warn('websocket.recovery.ack_timeout', {
+            socketId,
+            previousSocketId,
+            recoveryWindow: this.ACK_TIMEOUT_MS
+          })
+
+          // Clean up event channel subscribers before conversation cleanup
+          const conv = this.activeConversations.get(previousSocketId)
+          if (conv) {
+            this.cleanupEventChannelSubscribers(previousSocketId, conv.conversationId)
+          }
+
+          streamData.abortController.abort()
+          // Explicit synchronous cleanup of maps (for test compatibility)
+          this.disconnectedStreams.delete(previousSocketId)
+          this.activeStreams.delete(previousSocketId)
+          // Additional async cleanup
+          void this.cleanupConversation(previousSocketId).catch((error) => {
+            this.logger.error('websocket.recovery.ack_timeout.cleanup_failed', {
+              previousSocketId,
+              error: error instanceof Error ? error.message : String(error)
+            })
+          })
+        }
+
+        const ackTimeoutId = setTimeout(handleAckTimeout, this.ACK_TIMEOUT_MS)
+
+        this.disconnectedStreams.set(previousSocketId, {
+          abortController: streamData.abortController,
+          timeoutId: ackTimeoutId,
+          conversationId: streamData.conversationId,
+          lastDeliveredSequence: preReplaySequence
         })
+
+        const finalizeManualRecovery = (finalSequence: number, catchUpCount = 0) => {
+          this.activeStreams.set(socketId, streamData.abortController)
+
+          if (conversation) {
+            conversation.lastDeliveredSequence = finalSequence
+            this.activeConversations.set(socketId, conversation)
+            this.activeConversations.delete(previousSocketId)
+            this.socketIdMigrations.set(previousSocketId, socketId)
+
+            const conversationId = conversation.conversationId
+            this.eventChannel.unsubscribe(conversationId, `websocket-${previousSocketId}`)
+            this.eventChannel.subscribe(
+              conversationId,
+              new WebSocketSubscriber(socket, this.disconnectedStreams)
+            )
+          }
+
+          this.disconnectedStreams.delete(previousSocketId)
+
+          socket.emit('message', {
+            type: 'recovery_status',
+            content: 'Connection restored',
+            data: {
+              isRecovering: false,
+              eventsReplayed: events.length + catchUpCount,
+              streamStatus: 'active'
+            }
+          } as WebSocketMessage)
+
+          const disconnectResult = this.config.onDisconnection?.(previousSocketId)
+          if (disconnectResult) {
+            disconnectResult.catch((disconnectError: unknown) => {
+              this.logger.warn('websocket.reconnect.cleanup_failed', {
+                previousSocketId,
+                error: disconnectError instanceof Error ? disconnectError.message : String(disconnectError)
+              })
+            })
+          }
+
+          this.logger.info('websocket.reconnect.transfer_complete', {
+            newSocketId: socketId,
+            previousSocketId,
+            eventCount: events.length + catchUpCount,
+            fromSequence: preReplaySequence,
+            toSequence: finalSequence,
+            conversationId: conversation?.conversationId
+          })
+        }
+
+        // Register one-off listener for client acknowledgement
+        // Only transition to active state after client confirms receipt
+        handleRecoveryAck = (ackData: { conversationId: string; lastSequence: number }) => {
+          if (ackData.conversationId !== streamData.conversationId) {
+            this.logger.warn('websocket.recovery.ack_mismatch', {
+              socketId,
+              expectedConversationId: streamData.conversationId,
+              receivedConversationId: ackData.conversationId
+            })
+            return
+          }
+
+          clearTimeout(ackTimeoutId)
+
+          this.logger.info('websocket.recovery.ack_received', {
+            socketId,
+            previousSocketId,
+            lastSequence: ackData.lastSequence
+          })
+
+          const catchUpEventsManual = this.eventChannel.getEventsSince(
+            streamData.conversationId,
+            ackData.lastSequence
+          )
+
+          if (catchUpEventsManual.length === 0) {
+            finalizeManualRecovery(ackData.lastSequence)
+            return
+          }
+
+          this.beginCatchUpHandshake(socket, {
+            conversationId: streamData.conversationId,
+            events: catchUpEventsManual,
+            onComplete: (finalSequence) => finalizeManualRecovery(finalSequence, catchUpEventsManual.length),
+            onTimeout: () => {
+              // Clean up event channel subscribers - conversation may be undefined in catch-up context
+              const conv = this.activeConversations.get(previousSocketId)
+              if (conv) {
+                this.cleanupEventChannelSubscribers(previousSocketId, conv.conversationId)
+              }
+
+              streamData.abortController.abort()
+              this.disconnectedStreams.delete(previousSocketId)
+              this.activeStreams.delete(previousSocketId)
+              void this.cleanupConversation(previousSocketId).catch((error) => {
+                this.logger.error('websocket.catchup.timeout.cleanup_failed', {
+                  previousSocketId,
+                  error: error instanceof Error ? error.message : String(error)
+                })
+              })
+            }
+          })
+        }
+
+        // Set up the ack listener
+        // Stream stays in disconnectedStreams until ack arrives, so WebSocketSubscriber
+        // won't emit and there's no race condition if disconnect happens before ack
+        socket.once('recovery_ack', handleRecoveryAck)
       }
       // Check if client is trying to recover but stream already completed/cleaned up
       else if (previousSocketId) {
@@ -436,12 +873,287 @@ export class WebSocketServer {
           }
         } as WebSocketMessage)
       }
+      // Conversation-based recovery fallback (for tab-closure recovery when socket ID is lost)
+      // This allows recovery using a durable conversationId cookie instead of ephemeral sessionStorage
+      else if (auth.conversationId && !previousSocketId) {
+        // Find disconnectedStream with matching conversationId
+        const entry = Array.from(this.disconnectedStreams.entries()).find(
+          ([_, data]) => data.conversationId === auth.conversationId
+        )
+
+        if (entry) {
+          const [oldSocketId, streamData] = entry
+
+          // SECURITY: Validate conversation belongs to same app/user
+          // Use validated siteId from JWT (set by agents server after JWT validation) instead of untrusted auth.appId
+          // The siteId is stored at socket.handshake.auth.agentContext?.siteId or socket.handshake.auth.decoded?.siteId
+          const authenticatedSiteId = auth.agentContext?.siteId || auth.decoded?.siteId
+          const originalConversation = this.activeConversations.get(oldSocketId)
+          if (originalConversation && authenticatedSiteId && originalConversation.context?.appId !== authenticatedSiteId) {
+            this.logger.warn('websocket.recovery.app_mismatch', {
+              socketId,
+              conversationId: auth.conversationId,
+              authenticatedSiteId,
+              actualAppId: originalConversation.context?.appId
+            })
+            // Reject recovery - send fresh start
+            socket.emit('message', {
+              type: 'recovery_status',
+              content: 'No active stream to recover',
+              data: { recovered: false, hasBufferedEvents: false }
+            } as WebSocketMessage)
+          } else {
+            this.logger.info('websocket.recovery.by_conversation_id', {
+              newSocketId: socketId,
+              oldSocketId,
+              conversationId: auth.conversationId
+            })
+
+            // Perform recovery similar to previousSocketId path
+            const preReplaySequence = streamData.lastDeliveredSequence
+            clearTimeout(streamData.timeoutId)
+
+            const conversation = this.activeConversations.get(oldSocketId)
+            const events = this.eventChannel.getEventsSince(
+              streamData.conversationId,
+              streamData.lastDeliveredSequence
+            )
+
+            const expectedNextSequence = streamData.lastDeliveredSequence + 1
+            const { lossDetected, lostEventCount } = this.getBufferLossInfo(
+              streamData.conversationId,
+              expectedNextSequence
+            )
+
+            if (lossDetected) {
+              this.logger.warn('websocket.recovery.buffer_loss_detected', {
+                oldSocketId,
+                conversationId: streamData.conversationId,
+                lostEventCount
+              })
+            }
+
+            const replayLastSequence = events.length > 0 ? events[events.length - 1]!.sequence : preReplaySequence
+
+            socket.emit('message', {
+              type: 'recovery_status',
+              content: 'Recovering connection...',
+              data: {
+                isRecovering: true,
+                hasBufferedEvents: events.length > 0,
+                bufferedEventCount: events.length,
+                conversationId: conversation?.conversationId,
+                agentName: conversation?.agentName,
+                recoveryMode: 'conversation',
+                requiresAck: true,
+                lastSequence: replayLastSequence,
+                lossDetected,
+                lostEventCount
+              }
+            } as WebSocketMessage)
+
+            for (const event of events) {
+              socket.emit('message', {
+                type: event.type,
+                content: event.content,
+                data: event.data
+              } as WebSocketMessage)
+            }
+
+            socket.emit('message', {
+              type: 'replay_complete',
+              content: 'All buffered events replayed',
+              data: {
+                lastSequence: replayLastSequence,
+                conversationId: conversation?.conversationId,
+                eventsReplayed: events.length
+              }
+            } as WebSocketMessage)
+
+            let handleRecoveryAck: ((ackData: { conversationId: string; lastSequence: number }) => void) | null = null
+
+            const handleAckTimeout = () => {
+              // Always remove the listener first to prevent it from firing after cleanup
+              if (handleRecoveryAck) {
+                socket.off('recovery_ack', handleRecoveryAck)
+              }
+
+              if (this.cleanupInProgress.has(oldSocketId)) {
+                this.logger.debug('websocket.ack_timeout.cleanup_in_progress', { socketId, oldSocketId })
+                return
+              }
+              this.logger.warn('websocket.recovery.ack_timeout', {
+                socketId,
+                oldSocketId,
+                recoveryWindow: this.ACK_TIMEOUT_MS
+              })
+
+              // Clean up event channel subscribers before conversation cleanup
+              const conv = this.activeConversations.get(oldSocketId)
+              if (conv) {
+                this.cleanupEventChannelSubscribers(oldSocketId, conv.conversationId)
+              }
+
+              streamData.abortController.abort()
+              // Explicit synchronous cleanup of maps
+              this.disconnectedStreams.delete(oldSocketId)
+              this.activeStreams.delete(oldSocketId)
+              // Additional async cleanup
+              void this.cleanupConversation(oldSocketId).catch((error) => {
+                this.logger.error('websocket.recovery.ack_timeout.cleanup_failed', {
+                  oldSocketId,
+                  error: error instanceof Error ? error.message : String(error)
+                })
+              })
+            }
+
+            const ackTimeoutId = setTimeout(handleAckTimeout, this.ACK_TIMEOUT_MS)
+
+            this.disconnectedStreams.set(oldSocketId, {
+              abortController: streamData.abortController,
+              timeoutId: ackTimeoutId,
+              conversationId: streamData.conversationId,
+              lastDeliveredSequence: preReplaySequence
+            })
+
+            const finalizeConversationRecovery = (finalSequence: number, catchUpCount = 0) => {
+              this.activeStreams.set(socketId, streamData.abortController)
+
+              if (conversation) {
+                conversation.lastDeliveredSequence = finalSequence
+                this.activeConversations.set(socketId, conversation)
+                this.activeConversations.delete(oldSocketId)
+                this.socketIdMigrations.set(oldSocketId, socketId)
+
+                const conversationId = conversation.conversationId
+                this.eventChannel.unsubscribe(conversationId, `websocket-${oldSocketId}`)
+                this.eventChannel.subscribe(
+                  conversationId,
+                  new WebSocketSubscriber(socket, this.disconnectedStreams)
+                )
+              }
+
+              this.disconnectedStreams.delete(oldSocketId)
+
+              socket.emit('message', {
+                type: 'recovery_status',
+                content: 'Connection restored',
+                data: {
+                  isRecovering: false,
+                  eventsReplayed: events.length + catchUpCount,
+                  streamStatus: 'active'
+                }
+              } as WebSocketMessage)
+
+              const disconnectResult = this.config.onDisconnection?.(oldSocketId)
+              if (disconnectResult) {
+                disconnectResult.catch((disconnectError: unknown) => {
+                  this.logger.warn('websocket.reconnect.cleanup_failed', {
+                    oldSocketId,
+                    error: disconnectError instanceof Error ? disconnectError.message : String(disconnectError)
+                  })
+                })
+              }
+
+              this.logger.info('websocket.reconnect.transfer_complete', {
+                newSocketId: socketId,
+                oldSocketId,
+                eventCount: events.length + catchUpCount,
+                fromSequence: preReplaySequence,
+                toSequence: finalSequence,
+                conversationId: conversation?.conversationId
+              })
+            }
+
+            handleRecoveryAck = (ackData: { conversationId: string; lastSequence: number }) => {
+              if (ackData.conversationId !== streamData.conversationId) {
+                this.logger.warn('websocket.recovery.ack_mismatch', {
+                  socketId,
+                  expectedConversationId: streamData.conversationId,
+                  receivedConversationId: ackData.conversationId
+                })
+                return
+              }
+
+              clearTimeout(ackTimeoutId)
+
+              this.logger.info('websocket.recovery.ack_received', {
+                socketId,
+                oldSocketId,
+                lastSequence: ackData.lastSequence
+              })
+
+              const catchUpEvents = this.eventChannel.getEventsSince(
+                streamData.conversationId,
+                ackData.lastSequence
+              )
+
+              if (catchUpEvents.length === 0) {
+                finalizeConversationRecovery(ackData.lastSequence)
+                return
+              }
+
+              this.beginCatchUpHandshake(socket, {
+                conversationId: streamData.conversationId,
+                events: catchUpEvents,
+                onComplete: (finalSequence) => finalizeConversationRecovery(finalSequence, catchUpEvents.length),
+                onTimeout: () => {
+                  // Clean up event channel subscribers - conversation may be undefined in catch-up context
+                  const conv = this.activeConversations.get(oldSocketId)
+                  if (conv) {
+                    this.cleanupEventChannelSubscribers(oldSocketId, conv.conversationId)
+                  }
+
+                  streamData.abortController.abort()
+                  this.disconnectedStreams.delete(oldSocketId)
+                  this.activeStreams.delete(oldSocketId)
+                  void this.cleanupConversation(oldSocketId).catch((error) => {
+                    this.logger.error('websocket.catchup.timeout.cleanup_failed', {
+                      oldSocketId,
+                      error: error instanceof Error ? error.message : String(error)
+                    })
+                  })
+                }
+              })
+            }
+
+            socket.once('recovery_ack', handleRecoveryAck)
+          }
+        } else {
+          // Stale conversationId - buffer expired or conversation already completed
+          this.logger.info('websocket.recovery.stale_conversation_id', {
+            socketId,
+            conversationId: auth.conversationId
+          })
+          socket.emit('message', {
+            type: 'recovery_status',
+            content: 'Stream already completed',
+            data: {
+              recovered: false,
+              hasBufferedEvents: false,
+              reason: 'stream_completed'
+            }
+          } as WebSocketMessage)
+        }
+      }
 
       // Call connection handler (await to ensure async initialization completes before subsequent handlers)
       await this.config.onConnection?.(socketId)
 
       // Send available agents on connection
       this.sendAvailableAgents(socket)
+
+      // Send server configuration to client for timeout synchronization
+      // This ensures client and server use the same recovery window to avoid client retrying
+      // longer than server will buffer events
+      socket.emit('message', {
+        type: 'server_config',
+        content: 'Server configuration',
+        data: {
+          streamRecoveryWindow: this.STREAM_RECOVERY_WINDOW,
+          ackTimeout: this.ACK_TIMEOUT_MS
+        }
+      } as WebSocketMessage)
 
       // Handle chat messages (supporting both 'chat' and 'chat_message' for compatibility)
       socket.on('chat', async (data: ChatMessage) => {
@@ -486,18 +1198,58 @@ export class WebSocketServer {
             })
           }, this.STREAM_RECOVERY_WINDOW)
 
-          // Move to disconnected streams with empty buffer
+          // Move to disconnected streams, preserving last delivered sequence
+          // Events will continue to be published to event channel during disconnection
           this.disconnectedStreams.set(socketId, {
             abortController: controller,
             timeoutId,
-            bufferedEvents: [],
-            conversationId: conversation.conversationId
+            conversationId: conversation.conversationId,
+            lastDeliveredSequence: conversation.lastDeliveredSequence
           })
 
           // Remove from active streams (but don't abort the controller)
           this.activeStreams.delete(socketId)
+        } else if (conversation && !controller) {
+          // Conversation exists but stream not yet registered - setup still in progress
+          // This handles early disconnect during the gap between activeConversations.set() and activeStreams.set()
+          this.logger.info('websocket.disconnect.during_setup', {
+            socketId,
+            conversationId: conversation.conversationId
+          })
+
+          // Create a placeholder AbortController - there's no stream yet, but we need the structure
+          // for disconnectedStreams so publishToEventChannel won't mark events as delivered
+          const placeholderController = new AbortController()
+
+          const timeoutId = setTimeout(() => {
+            this.logger.warn('websocket.deferred_cleanup.expired', { socketId })
+            placeholderController.abort()
+            this.pendingSetup.delete(socketId)
+            this.disconnectedStreams.delete(socketId)
+            this.activeConversations.delete(socketId)
+            this.cleanupConversation(socketId).catch(err =>
+              this.logger.error('websocket.deferred_cleanup.error', {
+                socketId,
+                error: err instanceof Error ? err.message : String(err)
+              })
+            )
+          }, this.STREAM_RECOVERY_WINDOW)
+
+          // Add to disconnectedStreams so publishToEventChannel won't mark events as delivered
+          // Events will be buffered and replayed when client reconnects
+          this.disconnectedStreams.set(socketId, {
+            abortController: placeholderController,
+            timeoutId,
+            conversationId: conversation.conversationId,
+            lastDeliveredSequence: conversation.lastDeliveredSequence
+          })
+
+          this.pendingSetup.set(socketId, {
+            conversationId: conversation.conversationId,
+            timeoutId
+          })
         } else {
-          // No active stream - clean up immediately
+          // No conversation - safe to cleanup immediately
           if (controller) {
             controller.abort()
             this.activeStreams.delete(socketId)
@@ -537,42 +1289,308 @@ export class WebSocketServer {
   }
 
   /**
-   * Emit message to socket with buffering support for disconnected sockets
+   * Publish event through event channel
    *
-   * If socket is disconnected but stream is active (recovery window),
-   * events are buffered and replayed on reconnection.
+   * Events are published to the event channel which buffers them for recovery.
+   * When the socket is connected, we track the sequence number as "delivered".
+   * When disconnected, events are still published but not marked as delivered
+   * (they'll be replayed on reconnection).
+   *
+   * Also tracks event locally for:
+   * - streamingEvents array (for completeConversation)
+   * - accumulatedContent (for llm_end hook)
+   * - pendingSegments/pendingToolCalls (for updateAgentTurn)
+   *
+   * @returns Promise that resolves to the sequence number, or undefined on failure
    */
-  private emitToSocket(socket: any, event: string, message: WebSocketMessage): void {
-    const socketId = socket.id
+  private async publishToEventChannel(
+    socketId: string,
+    type: WebSocketMessage['type'],
+    content: string,
+    data: Record<string, unknown>,
+    agentName: string
+  ): Promise<number | undefined> {
+    // Get effective socket ID after following migration chain (handles A→B→C)
+    // handleChatMessage may still be using old socketId after migration(s)
+    const effectiveSocketId = this.getEffectiveSocketId(socketId)
+    const conversation = this.activeConversations.get(effectiveSocketId)
+    if (!conversation) {
+      return undefined // No conversation to publish to
+    }
 
-    // Check if socket is disconnected but stream is still active
-    if (this.disconnectedStreams.has(socketId)) {
-      // Buffer the event instead of emitting
-      this.disconnectedStreams.get(socketId)!.bufferedEvents.push(message)
-      this.logger.debug('Buffered event during disconnection', {
-        socketId,
-        eventType: message.type,
-        bufferSize: this.disconnectedStreams.get(socketId)!.bufferedEvents.length
+    try {
+      const event = await this.eventChannel.publish(conversation.conversationId, {
+        conversationId: conversation.conversationId,
+        type,
+        content,
+        data,
+        agentName
       })
-    } else {
-      // Normal emit
-      socket.emit(event, message)
+
+      // Only track as "delivered" if socket is connected
+      // When disconnected, events are buffered but not delivered
+      // Use effectiveSocketId to check the actual current socket
+      if (!this.disconnectedStreams.has(effectiveSocketId)) {
+        conversation.lastDeliveredSequence = event.sequence
+      }
+
+      // Track event locally for conversation state management
+      // This handles: streamingEvents array, content accumulation, segment/tool tracking
+      await this.trackEventForConversation(conversation, type, content, data)
+
+      return event.sequence
+    } catch (err) {
+      // Log as warning - event channel failed but we continue
+      this.logger.warn('eventChannel.publish.failed', {
+        conversationId: conversation.conversationId,
+        type,
+        error: err instanceof Error ? err.message : String(err)
+      })
+      return undefined
+    }
+  }
+
+  /**
+   * Get the effective socket ID after following the migration chain
+   * Handles multiple reconnections (A→B→C) by following the chain to the end
+   *
+   * @param socketId - The original socket ID
+   * @returns The current effective socket ID after all migrations
+   */
+  private getEffectiveSocketId(socketId: string): string {
+    const visited = new Set<string>()
+    let current = socketId
+    let next = this.socketIdMigrations.get(current)
+
+    // Follow the chain until we reach a socket with no further migration
+    while (next !== undefined && !visited.has(current)) {
+      visited.add(current)
+      current = next
+      next = this.socketIdMigrations.get(current)
+    }
+
+    // Cycle detected - break it by removing the circular entries
+    if (visited.has(current)) {
+      this.logger.error('websocket.migration_chain.cycle_detected', {
+        socketId,
+        visited: Array.from(visited),
+        cyclePoint: current
+      })
+
+      // Break the cycle by removing all entries in the visited set
+      // This prevents infinite loops on subsequent lookups
+      for (const id of visited) {
+        this.socketIdMigrations.delete(id)
+      }
+
+      // Return the last valid socket ID before the cycle
+      // (current is the cycle point, so it's still the best answer we have)
+    }
+
+    return current
+  }
+
+  /**
+   * Get the conversation for a socket ID, following migration chain if necessary
+   * This should be used instead of direct activeConversations.get() calls
+   *
+   * @param socketId - The socket ID (may be original or migrated)
+   * @returns The conversation object, or undefined if not found
+   */
+  private getConversation(socketId: string): typeof this.activeConversations extends Map<string, infer V> ? V | undefined : never {
+    const effectiveId = this.getEffectiveSocketId(socketId)
+    return this.activeConversations.get(effectiveId)
+  }
+
+  /**
+   * Remove any socketId migration chain starting from the provided socket ID.
+   * This prevents socketIdMigrations from growing indefinitely across multi-hop recoveries.
+   */
+  private clearSocketMigrationChain(startingSocketId: string): void {
+    const visited = new Set<string>()
+    let current = startingSocketId
+
+    while (!visited.has(current) && this.socketIdMigrations.has(current)) {
+      visited.add(current)
+      const next = this.socketIdMigrations.get(current)!
+      this.socketIdMigrations.delete(current)
+      current = next
+    }
+  }
+
+  private beginCatchUpHandshake(
+    socket: Socket,
+    params: {
+      conversationId: string
+      events: StreamingEvent[]
+      onComplete: (finalSequence: number) => void
+      onTimeout: () => void
+    }
+  ): void {
+    const { conversationId, events, onComplete, onTimeout } = params
+    const finalSequence = events[events.length - 1]!.sequence
+
+    socket.emit('message', {
+      type: 'catchup_status',
+      content: 'Delivering queued events',
+      data: {
+        conversationId,
+        pendingCount: events.length,
+        lastSequence: finalSequence,
+        requiresAck: true
+      }
+    } as WebSocketMessage)
+
+    for (const event of events) {
+      socket.emit('message', {
+        type: event.type,
+        content: event.content,
+        data: event.data
+      } as WebSocketMessage)
+    }
+
+    socket.emit('message', {
+      type: 'catchup_complete',
+      content: 'Catch-up events sent',
+      data: {
+        conversationId,
+        eventsReplayed: events.length,
+        lastSequence: finalSequence
+      }
+    } as WebSocketMessage)
+
+    const cleanupListeners = (handler: (...args: any[]) => void, timeoutId: NodeJS.Timeout) => {
+      socket.off('catchup_ack', handler)
+      socket.off('disconnect', handleDisconnect)
+      clearTimeout(timeoutId)
+    }
+
+    const handleTimeout = () => {
+      cleanupListeners(handleCatchUpAck, timeoutId)
+      onTimeout()
+    }
+
+    const timeoutId = setTimeout(handleTimeout, this.ACK_TIMEOUT_MS)
+
+    const handleCatchUpAck = (ackData: { conversationId: string; lastSequence: number }) => {
+      if (ackData.conversationId !== conversationId) {
+        this.logger.warn('websocket.catchup.ack_mismatch', {
+          expectedConversationId: conversationId,
+          receivedConversationId: ackData.conversationId
+        })
+        return
+      }
+      cleanupListeners(handleCatchUpAck, timeoutId)
+      onComplete(ackData.lastSequence ?? finalSequence)
+    }
+
+    const handleDisconnect = () => {
+      cleanupListeners(handleCatchUpAck, timeoutId)
+      onTimeout()
+    }
+
+    socket.once('catchup_ack', handleCatchUpAck)
+    socket.once('disconnect', handleDisconnect)
+  }
+
+  private getBufferLossInfo(conversationId: string, expectedNextSequence: number): { lossDetected: boolean; lostEventCount: number } {
+    const metadata = this.eventChannel.getMetadata(conversationId)
+    if (!metadata) {
+      return { lossDetected: false, lostEventCount: 0 }
+    }
+
+    const missingEvents = metadata.firstSequence - expectedNextSequence
+    if (missingEvents > 0) {
+      return { lossDetected: true, lostEventCount: missingEvents }
+    }
+
+    return { lossDetected: false, lostEventCount: 0 }
+  }
+
+  /**
+   * Clean up event channel subscribers for a conversation.
+   * Handles socket ID migration: websocket subscriber uses effective (current) socket ID,
+   * while persistence/APM subscribers use the original socket ID they were registered with.
+   *
+   * @param originalSocketId - The socket ID the subscribers were originally registered with
+   * @param conversationId - The conversation ID to unsubscribe from
+   */
+  private cleanupEventChannelSubscribers(
+    originalSocketId: string,
+    conversationId: string
+  ): void {
+    // WebSocket subscriber migrates with socket - use effective ID
+    const effectiveSocketId = this.getEffectiveSocketId(originalSocketId)
+    this.eventChannel.unsubscribe(conversationId, `websocket-${effectiveSocketId}`)
+
+    // Persistence and APM subscribers stay with original socket ID (never re-registered)
+    this.eventChannel.unsubscribe(conversationId, `persistence-${originalSocketId}`)
+    if (this.config.apmAgent) {
+      this.eventChannel.unsubscribe(conversationId, `apm-${originalSocketId}`)
     }
   }
 
   /**
    * Clean up conversation state and persistence
+   * Includes idempotency guard to prevent duplicate cleanup from disconnect + ACK timeout race
    */
   private async cleanupConversation(socketId: string): Promise<void> {
-    const conversation = this.activeConversations.get(socketId)
-    if (conversation && this.config.messagePersistence) {
-      if ('handleDisconnection' in this.config.messagePersistence) {
-        await (this.config.messagePersistence as ConversationPersistenceWithCleanup).handleDisconnection(
-          socketId,
-          [conversation.conversationId]
-        )
+    const effectiveId = this.getEffectiveSocketId(socketId)
+
+    // Idempotency guard - prevents duplicate cleanup from disconnect + ACK timeout race
+    if (this.cleanupInProgress.has(effectiveId)) {
+      this.logger.debug('websocket.cleanup.already_in_progress', { socketId: effectiveId })
+      return
+    }
+    this.cleanupInProgress.add(effectiveId)
+
+    try {
+      // Guard map deletions - check existence before delete to avoid race conditions
+      if (this.disconnectedStreams.has(effectiveId)) {
+        const streamData = this.disconnectedStreams.get(effectiveId)
+        if (streamData?.timeoutId) {
+          clearTimeout(streamData.timeoutId)
+        }
+        this.disconnectedStreams.delete(effectiveId)
       }
-      this.activeConversations.delete(socketId)
+
+      if (this.activeStreams.has(effectiveId)) {
+        const controller = this.activeStreams.get(effectiveId)
+        controller?.abort()
+        this.activeStreams.delete(effectiveId)
+      }
+
+      if (this.pendingSetup.has(effectiveId)) {
+        const pending = this.pendingSetup.get(effectiveId)
+        if (pending?.timeoutId) {
+          clearTimeout(pending.timeoutId)
+        }
+        this.pendingSetup.delete(effectiveId)
+      }
+
+      const conversation = this.activeConversations.get(effectiveId)
+      if (conversation) {
+        if (this.config.messagePersistence && 'handleDisconnection' in this.config.messagePersistence) {
+          await (this.config.messagePersistence as ConversationPersistenceWithCleanup).handleDisconnection(
+            effectiveId,  // Use effective ID for consistency
+            [conversation.conversationId]
+          )
+        }
+        // Always remove the active conversation entry to avoid leaks when persistence is disabled
+        this.activeConversations.delete(effectiveId)
+      }
+
+      // Clean up any migrations that pointed to this socket ID
+      // This handles the case where a migrated socket is being fully cleaned up
+      for (const [oldId, newId] of this.socketIdMigrations) {
+        if (newId === socketId) {
+          this.socketIdMigrations.delete(oldId)
+        }
+      }
+
+      this.clearSocketMigrationChain(socketId)
+    } finally {
+      this.cleanupInProgress.delete(effectiveId)
     }
   }
 
@@ -596,11 +1614,13 @@ export class WebSocketServer {
 
   /**
    * Send available agents to client
+   * Note: This uses socket.emit directly (not event channel) because it's a
+   * one-off message sent on connection, not part of a conversation stream.
    */
   private sendAvailableAgents(socket: any): void {
     const agentList = this.config.agents.list()
 
-    this.emitToSocket(socket, 'message', {
+    socket.emit('message', {
       type: 'agents_available',
       content: '',
       data: {
@@ -642,127 +1662,141 @@ export class WebSocketServer {
   }
 
   /**
-   * Capture streaming event for persistence
+   * Track streaming event for local conversation state
+   *
+   * This handles:
+   * - Adding events to streamingEvents array for completeConversation()
+   * - Accumulating content for llm_end hook
+   * - Managing pending segments and tool calls for updateAgentTurn
+   *
+   * Note: Database persistence is handled by PersistenceSubscriber
    */
-  private async captureStreamingEvent(socketId: string, type: string, content?: string, data?: any): Promise<void> {
-    const conversation = this.activeConversations.get(socketId)
-    if (conversation && this.config.messagePersistence) {
-      const event: PersistenceStreamingEvent = {
-        type,
-        content: content || undefined,
-        data,
-        timestamp: new Date()
+  private async trackEventForConversation(
+    conversation: {
+      conversationId: string
+      context: ConversationContext
+      streamingEvents: PersistenceStreamingEvent[]
+      pendingSegments?: any[]
+      pendingToolCalls?: Map<string, any>
+      accumulatedContent?: string
+    },
+    type: string,
+    content: string,
+    data: Record<string, unknown>
+  ): Promise<void> {
+    const timestamp = new Date()
+    const event: PersistenceStreamingEvent = {
+      type,
+      content: content || undefined,
+      data,
+      timestamp
+    }
+
+    // Add to local tracking for completeConversation()
+    conversation.streamingEvents.push(event)
+
+    this.initializeConversationBuffers(conversation)
+
+    // Always accumulate content for observability - regardless of persistence settings
+    // This ensures llm_end events capture the full streamed text
+    if (type === 'chunk' || type === 'text_chunk') {
+      if (content) {
+        conversation.accumulatedContent += content
       }
+    }
 
-      // Add to local tracking
-      conversation.streamingEvents.push(event)
+    // Handle incremental updates via updateAgentTurn if configured
+    if (!this.config.messagePersistence) return
 
-      // Call persistence capture
-      await this.config.messagePersistence.captureStreamingEvent(
-        conversation.conversationId,
-        event,
-        conversation.context
-      )
+    const agentMessageId = conversation.context.agentMessageId
 
-      this.initializeConversationBuffers(conversation)
+    if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+      this.logger.debug('Event tracked for conversation', {
+        type,
+        hasAgentMessageId: !!agentMessageId,
+        hasUpdateMethod: !!this.config.messagePersistence.updateAgentTurn,
+        willTriggerUpdate: !!(agentMessageId && this.config.messagePersistence.updateAgentTurn && type === 'tool_result'),
+        contentLength: content?.length || 0,
+        accumulatedContentLength: conversation.accumulatedContent.length
+      })
+    }
 
-      const agentMessageId = conversation.context.agentMessageId
-      const timestamp = event.timestamp || new Date()
-
-      // Always accumulate content for observability - regardless of persistence settings
-      // This ensures llm_end events capture the full streamed text
+    if (agentMessageId && this.config.messagePersistence.updateAgentTurn) {
       if (type === 'chunk' || type === 'text_chunk') {
         if (content) {
-          conversation.accumulatedContent += content
-        }
-      }
-
-      if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-        this.logger.debug('Event captured for persistence', {
-          type,
-          hasAgentMessageId: !!agentMessageId,
-          hasUpdateMethod: !!this.config.messagePersistence.updateAgentTurn,
-          willTriggerUpdate: !!(agentMessageId && this.config.messagePersistence.updateAgentTurn && type === 'tool_result'),
-          contentLength: content?.length || 0,
-          accumulatedContentLength: conversation.accumulatedContent.length
-        })
-      }
-
-      if (agentMessageId && this.config.messagePersistence.updateAgentTurn) {
-        if (type === 'chunk' || type === 'text_chunk') {
-          if (content) {
-            conversation.pendingSegments.push({
-              id: `seg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
-              type: 'content',
-              content,
-              timestamp,
-              metadata: undefined
-            })
-          }
-        } else if (type === 'tool_start' && data?.tool) {
-          const toolId = data.tool.id || `tool_${Date.now()}`
-          const toolData = {
-            id: toolId,
-            name: data.tool.name,
-            input: data.tool.input,
-            status: 'running',
-            startTime: timestamp
-          }
-          conversation.pendingToolCalls.set(toolId, toolData)
-
           conversation.pendingSegments.push({
-            id: `seg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            type: 'tool_call',
+            id: `seg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+            type: 'content',
+            content,
             timestamp,
-            toolCall: toolData
+            metadata: undefined
           })
-        } else if (type === 'tool_result' && data?.tool) {
-          const toolId = data.tool.id
-          const existingTool = conversation.pendingToolCalls.get(toolId)
+        }
+      } else if (type === 'tool_start' && data?.tool) {
+        const tool = data.tool as { id?: string; name: string; input: unknown }
+        const toolId = tool.id || `tool_${Date.now()}`
+        const toolData = {
+          id: toolId,
+          name: tool.name,
+          input: tool.input,
+          status: 'running',
+          startTime: timestamp
+        }
+        conversation.pendingToolCalls.set(toolId, toolData)
 
-          if (existingTool) {
-            existingTool.input = data.tool.input || existingTool.input
-            existingTool.result = data.tool.output ?? content ?? data.tool.result
-            existingTool.status = 'completed'
-            existingTool.endTime = timestamp
+        conversation.pendingSegments.push({
+          id: `seg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          type: 'tool_call',
+          timestamp,
+          toolCall: toolData
+        })
+      } else if (type === 'tool_result' && data?.tool) {
+        const tool = data.tool as { id: string; input?: unknown; output?: string; result?: string }
+        const toolId = tool.id
+        const existingTool = conversation.pendingToolCalls.get(toolId)
 
-            if (existingTool.startTime && timestamp) {
-              const startTime = new Date(existingTool.startTime).getTime()
-              const endTime = new Date(timestamp).getTime()
-              existingTool.duration = endTime - startTime
+        if (existingTool) {
+          existingTool.input = tool.input || existingTool.input
+          existingTool.result = tool.output ?? content ?? tool.result
+          existingTool.status = 'completed'
+          existingTool.endTime = timestamp
+
+          if (existingTool.startTime && timestamp) {
+            const startTime = new Date(existingTool.startTime).getTime()
+            const endTime = new Date(timestamp).getTime()
+            existingTool.duration = endTime - startTime
+          }
+
+          const segmentIndex = conversation.pendingSegments.findIndex(s =>
+            s.type === 'tool_call' && s.toolCall?.id === toolId
+          )
+          if (segmentIndex >= 0) {
+            conversation.pendingSegments[segmentIndex].toolCall = existingTool
+          }
+
+          try {
+            if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+              this.logger.debug('Updating agent turn with tool result', {
+                messageId: agentMessageId,
+                toolId,
+                toolName: existingTool.name,
+                contentLength: conversation.accumulatedContent.length,
+                segmentsCount: conversation.pendingSegments.length,
+                toolCallsCount: conversation.pendingToolCalls.size
+              })
             }
-
-            const segmentIndex = conversation.pendingSegments.findIndex(s =>
-              s.type === 'tool_call' && s.toolCall?.id === toolId
+            await this.config.messagePersistence.updateAgentTurn(
+              conversation.conversationId,
+              agentMessageId,
+              {
+                content: conversation.accumulatedContent,
+                segments: [...conversation.pendingSegments],
+                toolCalls: Array.from(conversation.pendingToolCalls.values())
+              },
+              conversation.context
             )
-            if (segmentIndex >= 0) {
-              conversation.pendingSegments[segmentIndex].toolCall = existingTool
-            }
-
-            try {
-              if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-                this.logger.debug('Updating agent turn with tool result', {
-                  messageId: agentMessageId,
-                  toolId,
-                  toolName: existingTool.name,
-                  contentLength: conversation.accumulatedContent.length,
-                  segmentsCount: conversation.pendingSegments.length,
-                  toolCallsCount: conversation.pendingToolCalls.size
-                })
-              }
-              await this.config.messagePersistence.updateAgentTurn(
-                conversation.conversationId,
-                agentMessageId,
-                {
-                  content: conversation.accumulatedContent,
-                  segments: [...conversation.pendingSegments],
-                  toolCalls: Array.from(conversation.pendingToolCalls.values())
-                },
-                conversation.context
-              )
-            } catch (error) {
-              this.logger.warn('Failed to update agent turn with tool result', error)
-            }
+          } catch (error) {
+            this.logger.warn('Failed to update agent turn with tool result', error)
           }
         }
       }
@@ -814,7 +1848,7 @@ export class WebSocketServer {
     // Start observability tool tracking
     if (this.config.onToolStart) {
       try {
-        const activeConversation = this.activeConversations.get(socketId)
+        const activeConversation = this.getConversation(socketId)
         const context = activeConversation?.context
         const appId = context?.appId || (context?.metadata as MetadataRecord)?.appId
         const conversationId = activeConversation?.conversationId
@@ -872,7 +1906,7 @@ export class WebSocketServer {
 
     if (this.config.onToolEnd) {
       try {
-        const activeConversation = this.activeConversations.get(socketId)
+        const activeConversation = this.getConversation(socketId)
         const context = activeConversation?.context
         const appId = context?.appId || (context?.metadata as MetadataRecord)?.appId
         const conversationId = activeConversation?.conversationId
@@ -989,13 +2023,9 @@ export class WebSocketServer {
                 agentId: agentName
               }
 
-              this.emitToSocket(socket, 'message', {
-                type: 'chunk',
-                content: part.text,
-                data: textData
-              } as WebSocketMessage)
-
-              await this.captureStreamingEvent(socket.id, 'chunk', part.text, textData)
+              // Publish to event channel - WebSocketSubscriber delivers to client,
+              // PersistenceSubscriber handles database persistence
+              await this.publishToEventChannel(socketId, 'chunk', part.text, textData, agentName)
               break
             }
 
@@ -1019,13 +2049,8 @@ export class WebSocketServer {
                 this.logger.warn('tool.span.start_failed', { toolId: part.id, error: err instanceof Error ? err.message : String(err) })
               )
 
-              this.emitToSocket(socket, 'message', {
-                type: 'tool_start',
-                content: `Using ${part.toolName}...`,
-                data: toolStartData
-              } as WebSocketMessage)
-
-              await this.captureStreamingEvent(socket.id, 'tool_start', `Using ${part.toolName}...`, toolStartData)
+              // Publish to event channel - subscribers handle delivery and persistence
+              await this.publishToEventChannel(socketId, 'tool_start', `Using ${part.toolName}...`, toolStartData, agentName)
               break
             }
 
@@ -1034,17 +2059,15 @@ export class WebSocketServer {
               const currentInput = accumulatedToolInput.get(part.id) || ''
               accumulatedToolInput.set(part.id, currentInput + part.delta)
 
-              // Emit input delta event for future use
-              this.emitToSocket(socket, 'message', {
-                type: 'tool_input_delta',
-                content: '',
-                data: {
-                  toolId: part.id,
-                  toolName: part.toolName,
-                  delta: part.delta,
-                  agentId: agentName
-                }
-              } as WebSocketMessage)
+              const toolInputDeltaData = {
+                toolId: part.id,
+                toolName: part.toolName,
+                delta: part.delta,
+                agentId: agentName
+              }
+
+              // Publish to event channel - subscribers handle delivery
+              await this.publishToEventChannel(socketId, 'tool_input_delta', '', toolInputDeltaData, agentName)
               break
             }
 
@@ -1070,13 +2093,8 @@ export class WebSocketServer {
                 agentId: agentName
               }
 
-              this.emitToSocket(socket, 'message', {
-                type: 'tool_call',
-                content: `${part.toolName} input ready`,
-                data: toolCallData
-              } as WebSocketMessage)
-
-              await this.captureStreamingEvent(socket.id, 'tool_call', `${part.toolName} input ready`, toolCallData)
+              // Publish to event channel - subscribers handle delivery and persistence
+              await this.publishToEventChannel(socketId, 'tool_call', `${part.toolName} input ready`, toolCallData, agentName)
 
               // Update APM span with input data now that we have it
               const spanKey = `${socket.id}:${toolId}`
@@ -1110,13 +2128,8 @@ export class WebSocketServer {
                 this.logger.warn('tool.span.end_failed', { toolId, error: err instanceof Error ? err.message : String(err) })
               )
 
-              this.emitToSocket(socket, 'message', {
-                type: 'tool_result',
-                content: `${part.toolName} completed`,
-                data: toolResultData
-              } as WebSocketMessage)
-
-              await this.captureStreamingEvent(socket.id, 'tool_result', `${part.toolName} completed`, toolResultData)
+              // Publish to event channel - subscribers handle delivery and persistence
+              await this.publishToEventChannel(socketId, 'tool_result', `${part.toolName} completed`, toolResultData, agentName)
               break
             }
 
@@ -1145,13 +2158,8 @@ export class WebSocketServer {
                 this.logger.warn('tool.span.end_failed', { toolId, error: err instanceof Error ? err.message : String(err) })
               )
 
-              this.emitToSocket(socket, 'message', {
-                type: 'tool_result',
-                content: `${part.toolName} failed: ${errorMessage}`,
-                data: toolErrorData
-              } as WebSocketMessage)
-
-              await this.captureStreamingEvent(socket.id, 'tool_result', `${part.toolName} failed: ${errorMessage}`, toolErrorData)
+              // Publish to event channel - subscribers handle delivery and persistence
+              await this.publishToEventChannel(socketId, 'tool_result', `${part.toolName} failed: ${errorMessage}`, toolErrorData, agentName)
               break
             }
 
@@ -1209,17 +2217,13 @@ export class WebSocketServer {
         }
 
         this.logger.error('Fallback to text-only streaming also failed', fallbackError)
-        // Emit error to client as last resort
-        this.emitToSocket(socket, 'message', {
-          type: 'error',
-          content: `Stream processing failed: ${errorInfo.message}`,
-          data: {
-            timestamp: new Date().toISOString(),
-            errorType: errorInfo.type,
-            step: currentStep,
-            agentId: agentName
-          }
-        } as WebSocketMessage)
+        // Emit error to client as last resort via event channel
+        await this.publishToEventChannel(socketId, 'error', `Stream processing failed: ${errorInfo.message}`, {
+          timestamp: new Date().toISOString(),
+          errorType: errorInfo.type,
+          step: currentStep,
+          agentId: agentName
+        }, agentName)
       }
     } finally {
       // Ensure reader is always cleaned up
@@ -1248,13 +2252,8 @@ export class WebSocketServer {
           agentId: agentName
         }
 
-        this.emitToSocket(socket, 'message', {
-          type: 'chunk',
-          content: chunk,
-          data: chunkData
-        } as WebSocketMessage)
-
-        await this.captureStreamingEvent(socket.id, 'chunk', chunk, chunkData)
+        // Publish to event channel - subscribers handle delivery and persistence
+        await this.publishToEventChannel(socketId, 'chunk', chunk, chunkData, agentName)
       }
     } catch (error: unknown) {
       const errorInfo = this.analyzeStreamError(error)
@@ -1374,12 +2373,45 @@ export class WebSocketServer {
 
   /**
    * Handle incoming chat messages with handoff support
+   * Serializes message processing per socket to prevent concurrent race conditions
    */
   private async handleChatMessage(socket: any, data: ChatMessage): Promise<void> {
+    const socketId = socket.id
+
+    // Queue this message to prevent concurrent handleChatMessage races
+    // Get existing queue promise for this socket (or create resolved promise)
+    const existingQueue = this.socketMessageQueues.get(socketId) ?? Promise.resolve()
+
+    // Chain new work onto the queue
+    const newQueue = existingQueue
+      .catch(() => {
+        // Ignore errors from previous messages - they were already handled
+      })
+      .then(() => this.handleChatMessageInternal(socket, data))
+      .finally(() => {
+        // Clean up if this was the last queued message
+        if (this.socketMessageQueues.get(socketId) === newQueue) {
+          this.socketMessageQueues.delete(socketId)
+        }
+      })
+
+    // Store the new queue promise
+    this.socketMessageQueues.set(socketId, newQueue)
+
+    return newQueue
+  }
+
+  /**
+   * Internal message handler - executes serially per socket via queue
+   */
+  private async handleChatMessageInternal(socket: any, data: ChatMessage): Promise<void> {
     const socketId = socket.id
     const startTime = Date.now()
     let agentName: string | undefined
     let processedContext: Record<string, unknown> | undefined
+    // Capture conversationId early for cleanup in finally block
+    // This ensures we can unsubscribe even if the conversation is deleted in catch
+    let conversationIdForCleanup: string | undefined
 
     try {
       // Validate message
@@ -1399,7 +2431,69 @@ export class WebSocketServer {
       // 3. Setup persistence (conversation ID, tracking)
       await this.setupPersistence(socketId, agentName, data, processedContext)
 
-      // 4. Load conversation history
+      // 4. Register event channel subscribers for this conversation
+      // WebSocketSubscriber: delivers events to client socket (blocking - fail-fast on errors)
+      // PersistenceSubscriber: persists events to database (non-blocking - errors logged)
+      // APMSubscriber: tracks events for observability (non-blocking - errors logged)
+      const conversation = this.getConversation(socketId)
+      if (conversation) {
+        const conversationId = conversation.conversationId
+        // Capture for cleanup in finally block (survives even if catch deletes the conversation)
+        conversationIdForCleanup = conversationId
+
+        // WebSocket delivery (blocking)
+        this.eventChannel.subscribe(
+          conversationId,
+          new WebSocketSubscriber(socket, this.disconnectedStreams)
+        )
+
+        // Persistence (non-blocking)
+        if (this.config.messagePersistence) {
+          this.eventChannel.subscribe(
+            conversationId,
+            new PersistenceSubscriber(
+              this.config.messagePersistence,
+              conversation.context,
+              this.logger
+            )
+          )
+        }
+
+        // APM tracking (non-blocking) - only if APM is available
+        if (this.config.apmAgent) {
+          this.eventChannel.subscribe(
+            conversationId,
+            new APMSubscriber(
+              this.config.apmAgent,
+              this.activeToolSpans,
+              undefined, // getActiveTransaction not available in this context
+              socketId
+            )
+          )
+        }
+
+        // Emit conversationId via dedicated control-plane event with ACK callback
+        // This separates control-plane (cookie seeding) from semantic events (step_start)
+        // ACK callback ensures client has persisted the cookie before we continue
+        socket.emit('message', {
+          type: 'conversation_info',
+          content: '',
+          data: {
+            conversationId,
+            agentId: agentName
+          }
+        } as WebSocketMessage, (ackError?: string) => {
+          if (ackError) {
+            this.logger.warn('websocket.conversation_info.ack_failed', {
+              socketId,
+              conversationId,
+              error: ackError
+            })
+          }
+        })
+      }
+
+      // 5. Load conversation history
       await this.loadConversationHistory(socketId, data, processedContext)
 
       // 5. Call message start handler (await to ensure invocation tracking is set up before LLM calls)
@@ -1408,6 +2502,46 @@ export class WebSocketServer {
       // 6. Create abort controller
       const controller = new AbortController()
       this.activeStreams.set(socketId, controller)
+
+      // Clear pending setup if socket disconnected during setup but stream is now starting
+      // This happens when the agent starts streaming after the client disconnected
+      const pending = this.pendingSetup.get(socketId)
+      if (pending) {
+        clearTimeout(pending.timeoutId)
+        this.pendingSetup.delete(socketId)
+
+        // Socket is still disconnected - update disconnectedStreams with the real controller
+        // Don't set in activeStreams - the socket isn't connected
+        const disconnected = this.disconnectedStreams.get(socketId)
+        if (disconnected) {
+          // Replace placeholder controller with the real stream controller
+          // Reset timeout for the full recovery window
+          const newTimeoutId = setTimeout(() => {
+            this.logger.warn('Recovery window expired after early disconnect', { socketId })
+            controller.abort()
+            this.disconnectedStreams.delete(socketId)
+            this.activeStreams.delete(socketId)
+            this.cleanupConversation(socketId).catch((error) => {
+              this.logger.error('Error cleaning up conversation after recovery timeout', error)
+            })
+          }, this.STREAM_RECOVERY_WINDOW)
+
+          this.disconnectedStreams.set(socketId, {
+            abortController: controller,
+            timeoutId: newTimeoutId,
+            conversationId: disconnected.conversationId,
+            lastDeliveredSequence: disconnected.lastDeliveredSequence
+          })
+          // Remove from activeStreams since socket is disconnected
+          this.activeStreams.delete(socketId)
+          this.logger.info('websocket.pending_setup.converted_to_disconnected', {
+            socketId,
+            conversationId: disconnected.conversationId
+          })
+        } else {
+          this.logger.info('websocket.pending_setup.cleared', { socketId })
+        }
+      }
 
       // 7. Execute agent(s) - loop handles handoffs
       let currentMessage = data.message
@@ -1481,7 +2615,7 @@ export class WebSocketServer {
       }
 
       // 8. Complete the conversation (after all handoffs complete)
-      await this.completeConversation(socketId, socket, agentName, startTime, processedContext)
+      await this.completeConversation(socketId, agentName, startTime, processedContext)
 
     } catch (error: unknown) {
       // Extract error details for UI
@@ -1542,16 +2676,24 @@ export class WebSocketServer {
         errorMetadata.retryReason = retryReason;
       }
 
-      this.emitToSocket(socket, 'message', {
-        type: 'error',
-        content: errorMessage,
-        data: errorMetadata
-      } as WebSocketMessage)
+      // Publish error to event channel - subscribers handle delivery and persistence
+      const published = await this.publishToEventChannel(socketId, 'error', errorMessage, errorMetadata, agentName || this.config.defaultAgent || 'unknown')
+
+      // Fallback: If no conversation was registered (early failures like validation,
+      // auth issues, AppNotFound), emit directly to the socket so the client gets feedback
+      if (published === undefined && socket.connected) {
+        socket.emit('message', {
+          type: 'error',
+          content: errorMessage,
+          data: errorMetadata
+        } as WebSocketMessage)
+      }
 
       await this.config.onError?.(socketId, error instanceof Error ? error : new Error(String(error)), data.message, processedContext)
 
       // Handle persistence error
-      const conversation = this.activeConversations.get(socketId)
+      const effectiveSocketId = this.getEffectiveSocketId(socketId)
+      const conversation = this.activeConversations.get(effectiveSocketId)
       if (conversation && this.config.messagePersistence) {
         await this.config.messagePersistence.handleConversationError(
           conversation.conversationId,
@@ -1559,11 +2701,49 @@ export class WebSocketServer {
           data.message,
           conversation.context
         )
-        this.activeConversations.delete(socketId)
+        this.activeConversations.delete(effectiveSocketId)
       }
     } finally {
-      // Clean up
+      // Clean up stream tracking for BOTH original and effective socket IDs
+      // During manual recovery, the controller is moved to the new socket ID (via activeStreams.set)
+      // so we need to clean up both to prevent phantom streams
+      const effectiveSocketIdForCleanup = this.getEffectiveSocketId(socketId)
       this.activeStreams.delete(socketId)
+      if (effectiveSocketIdForCleanup !== socketId) {
+        this.activeStreams.delete(effectiveSocketIdForCleanup)
+      }
+
+      // Clean up socket ID migration if this was the old socket that got migrated
+      // Now that the old handler is finishing, the migration entry is no longer needed
+      this.clearSocketMigrationChain(socketId)
+
+      // Unsubscribe all subscribers for this conversation
+      // Use conversationIdForCleanup captured earlier - activeConversations may have been
+      // deleted in the catch block, but we still need to unsubscribe
+      if (conversationIdForCleanup) {
+        // WebSocket subscriber: always unsubscribe using EFFECTIVE socket ID
+        // - If migrated (A→B): subscriber was re-registered under new socket ID (B) during recovery
+        // - If not migrated: subscriber was registered under original socket ID
+        // Either way, when the stream completes we must clean up to prevent duplicate delivery
+        this.eventChannel.unsubscribe(conversationIdForCleanup, `websocket-${effectiveSocketIdForCleanup}`)
+
+        // Persistence and APM subscribers: always use ORIGINAL socketId
+        // These are never re-subscribed during recovery, so their IDs remain tied to the original
+        this.eventChannel.unsubscribe(conversationIdForCleanup, `persistence-${socketId}`)
+        if (this.config.apmAgent) {
+          this.eventChannel.unsubscribe(conversationIdForCleanup, `apm-${socketId}`)
+        }
+      }
+
+      // Note: activeConversations is NOT deleted here for successful messages.
+      // It is intentionally kept to allow multiple turns in the same WebSocket session
+      // to share the same conversation state (conversation history, context, etc).
+      // This is critical for multi-turn conversations within a single session.
+      //
+      // Cleanup for completed conversations happens elsewhere in the lifecycle:
+      // - On error: The catch block above deletes the activeConversations entry
+      // - On disconnect: cleanupConversation() removes entries when client disconnects
+      // This keeps state available between turns while ensuring eventual cleanup.
     }
   }
 
@@ -1661,7 +2841,12 @@ export class WebSocketServer {
   }
 
   /**
-   * Setup persistence for this conversation
+   * Setup conversation tracking (and persistence if configured)
+   *
+   * This method ALWAYS creates an activeConversations entry, which is required
+   * for event publishing to work via publishToEventChannel. Persistence is optional -
+   * if messagePersistence is not configured, we generate a local conversation ID
+   * and skip persistence calls, but streaming still works.
    */
   private async setupPersistence(
     socketId: string,
@@ -1669,8 +2854,6 @@ export class WebSocketServer {
     data: ChatMessage,
     processedContext: Record<string, unknown>
   ): Promise<void> {
-    if (!this.config.messagePersistence) return
-
     const metadata = (processedContext?.metadata as any) || {}
 
     const persistenceContext: ConversationContext = {
@@ -1687,7 +2870,7 @@ export class WebSocketServer {
 
     if (existingConversation) {
       // Reuse existing conversation, even if agent changed (handoff scenario)
-      if (this.config.messagePersistence.continueConversation) {
+      if (this.config.messagePersistence?.continueConversation) {
         await this.config.messagePersistence.continueConversation(
           existingConversation.conversationId,
           data.message,
@@ -1699,15 +2882,36 @@ export class WebSocketServer {
       existingConversation.agentName = agentName
       existingConversation.context = persistenceContext
       existingConversation.streamingEvents = []
+      // Reset lastDeliveredSequence for the new turn
+      // The event channel creates a new buffer starting at sequence 0
+      // Without reset, recovery would ask for events after the old high watermark
+      existingConversation.lastDeliveredSequence = -1
+
+      // Explicitly clear all incremental tracking state for the new turn
+      // initializeConversationBuffers only initializes fields if they're undefined,
+      // so we must explicitly clear stale data from the previous turn to prevent
+      // duplicated segments/tool calls from surfacing in persistence and UI
+      existingConversation.pendingSegments = []
+      existingConversation.pendingToolCalls = new Map()
+      existingConversation.accumulatedContent = ''
+
       this.initializeConversationBuffers(existingConversation)
     } else {
-      // Create new conversation (first message only)
-      const conversationId = await this.config.messagePersistence.startConversation(
-        data.message,
-        persistenceContext
-      )
+      // Create new conversation
+      // If persistence is configured, use it to generate the conversation ID
+      // Otherwise, generate a local ID (event publishing still works, just not persisted)
+      let conversationId: string
+      if (this.config.messagePersistence) {
+        conversationId = await this.config.messagePersistence.startConversation(
+          data.message,
+          persistenceContext
+        )
+      } else {
+        // Generate local conversation ID for non-persisted streaming
+        conversationId = `local-${socketId}-${Date.now()}`
+      }
 
-      // Track conversation for streaming events
+      // Track conversation for streaming events (required for publishToEventChannel)
       this.activeConversations.set(socketId, {
         conversationId,
         agentName,
@@ -1716,7 +2920,8 @@ export class WebSocketServer {
         startTime: Date.now(),
         pendingSegments: [],
         pendingToolCalls: new Map(),
-        accumulatedContent: ''
+        accumulatedContent: '',
+        lastDeliveredSequence: -1  // Start at -1 so first event (sequence 0) is captured
       })
     }
   }
@@ -1731,7 +2936,7 @@ export class WebSocketServer {
   ): Promise<void> {
     if (!this.config.messageProvider || data.conversationHistory) return
 
-    const conversation = this.activeConversations.get(socketId)
+    const conversation = this.getConversation(socketId)
     if (!conversation) return
 
     try {
@@ -1780,7 +2985,6 @@ export class WebSocketServer {
    */
   private async completeConversation(
     socketId: string,
-    socket: any,
     agentName: string,
     startTime: number,
     processedContext: Record<string, unknown>
@@ -1790,7 +2994,7 @@ export class WebSocketServer {
     // Complete persistence FIRST (includes git commits) before sending complete event
     // Store commit hash if persistence layer provides it via context
     let commitHash: string | null = null
-    const conversation = this.activeConversations.get(socketId)
+    const conversation = this.getConversation(socketId)
     if (conversation && this.config.messagePersistence) {
       await this.config.messagePersistence.completeConversation(
         conversation.conversationId,
@@ -1806,20 +3010,16 @@ export class WebSocketServer {
       // Only cleanup happens on disconnect or error
     }
 
-    // Emit final completion event to client AFTER persistence completes
+    // Publish final completion event - subscribers handle delivery and persistence
     // Always include commit hash (null if no commit was created)
-    this.emitToSocket(socket, 'message', {
-      type: 'complete',
-      content: '',
-      data: {
-        totalSteps: 1, // We don't track steps across handoffs
-        usage: undefined,
-        toolCalls: [],
-        agentId: agentName,
-        duration,
-        commitHash // null if no commit, hash string if commit was created
-      }
-    } as WebSocketMessage)
+    await this.publishToEventChannel(socketId, 'complete', '', {
+      totalSteps: 1, // We don't track steps across handoffs
+      usage: undefined,
+      toolCalls: [],
+      agentId: agentName,
+      duration,
+      commitHash // null if no commit, hash string if commit was created
+    }, agentName)
 
     // Call completion handler
     this.config.onMessageComplete?.(socketId, {
@@ -1955,7 +3155,8 @@ export class WebSocketServer {
     // Assemble messages using clean interface-based approach
     const { messages, contextMessages } = await this.assembleMessages(data, context)
 
-    const activeConversation = this.activeConversations.get(socket.id)
+    // Use getConversation to handle socket ID migration during reconnection
+    const activeConversation = this.getConversation(socket.id)
     if (activeConversation && this.config.messagePersistence?.startAgentTurn) {
       try {
         const messageId = await this.config.messagePersistence.startAgentTurn(
@@ -2113,17 +3314,13 @@ export class WebSocketServer {
 
       // Check if this is a tool validation error with mock stream
       if (streamResult && (streamResult as any).isToolValidationError) {
-        // Dual-track approach: Emit error event to UI FIRST
-        this.emitToSocket(socket, 'message', {
-          type: 'error',
-          content: 'Tool call failed due to invalid input format. The agent is retrying with corrections.',
-          data: {
-            errorType: 'TOOL_VALIDATION_ERROR',
-            statusCode: 400,
-            timestamp: new Date().toISOString(),
-            details: (streamResult as any).validationErrorMessage
-          }
-        })
+        // Publish error event - subscribers handle delivery and persistence
+        await this.publishToEventChannel(socket.id, 'error', 'Tool call failed due to invalid input format. The agent is retrying with corrections.', {
+          errorType: 'TOOL_VALIDATION_ERROR',
+          statusCode: 400,
+          timestamp: new Date().toISOString(),
+          details: (streamResult as any).validationErrorMessage
+        }, agentName)
 
         // Then continue to process the mock stream normally so LLM can retry
         // (the stream contains corrective feedback for the agent)
@@ -2162,18 +3359,13 @@ export class WebSocketServer {
       if (isToolValidationError) {
         this.logger.error('Tool input validation error', { message: error.message })
 
-        // Emit step start for the failed tool call
+        // Publish step start for the failed tool call - subscribers handle delivery and persistence
         const stepStartData = {
           step: currentStep,
           stepType: 'reasoning',
           agentId: agentName
         }
-        this.emitToSocket(socket, 'message', {
-          type: 'step_start',
-          content: '',
-          data: stepStartData
-        } as WebSocketMessage)
-        await this.captureStreamingEvent(socket.id, 'step_start', '', stepStartData)
+        await this.publishToEventChannel(socket.id, 'step_start', '', stepStartData, agentName)
 
         // Send tool failure result to show the user what went wrong
         const toolErrorData = {
@@ -2187,31 +3379,22 @@ export class WebSocketServer {
           agentId: agentName
         }
 
-        this.emitToSocket(socket, 'message', {
-          type: 'tool_result',
-          content: 'Tool call failed - invalid JSON format',
-          data: toolErrorData
-        } as WebSocketMessage)
+        // Publish tool result - subscribers handle delivery and persistence
+        await this.publishToEventChannel(socket.id, 'tool_result', 'Tool call failed - invalid JSON format', toolErrorData, agentName)
 
-        await this.captureStreamingEvent(socket.id, 'tool_result', 'Tool call failed - invalid JSON format', toolErrorData)
-
-        // Emit step complete to indicate this attempt is done
-        this.emitToSocket(socket, 'message', {
-          type: 'step_complete',
-          content: '',
-          data: {
-            step: currentStep,
-            isFinal: false,
-            toolCalls: [{
-              id: 'failed-tool-call',
-              name: 'tool_validation_failed',
-              input: {},
-              output: `Invalid JSON in tool call: ${error.message}`
-            }],
-            usage: undefined,
-            agentId: agentName
-          }
-        } as WebSocketMessage)
+        // Publish step complete - subscribers handle delivery and persistence
+        await this.publishToEventChannel(socket.id, 'step_complete', '', {
+          step: currentStep,
+          isFinal: false,
+          toolCalls: [{
+            id: 'failed-tool-call',
+            name: 'tool_validation_failed',
+            input: {},
+            output: `Invalid JSON in tool call: ${error.message}`
+          }],
+          usage: undefined,
+          agentId: agentName
+        }, agentName)
 
         // Create an error explanation that helps the LLM understand and retry
         const retryPrompt = `The previous tool call failed due to invalid JSON syntax. Error: ${error.message}
@@ -2264,20 +3447,13 @@ Please try again with corrected formatting.`
       }
     }
 
-    // Emit step start (currentStep was already incremented in error handler if needed)
+    // Publish step start - subscribers handle delivery and persistence
     const stepStartData = {
       step: currentStep,
       stepType: 'reasoning',
       agentId: agentName
     }
-    this.emitToSocket(socket, 'message', {
-      type: 'step_start',
-      content: '',
-      data: stepStartData
-    } as WebSocketMessage)
-
-    // Capture for persistence
-    await this.captureStreamingEvent(socket.id, 'step_start', '', stepStartData)
+    await this.publishToEventChannel(socket.id, 'step_start', '', stepStartData, agentName)
 
     // Reset accumulated content and tool calls for this new LLM call
     // This ensures each LLM call captures only its own streamed output and tool calls, not from previous calls
@@ -2291,7 +3467,8 @@ Please try again with corrected formatting.`
 
     // Get accumulated content from the active conversation (streamed text before/between tool calls)
     // Refresh reference after streaming - the conversation object may have been updated during streaming
-    const conversationAfterStream = this.activeConversations.get(socket.id)
+    // Use getConversation to handle socket ID migration during reconnection
+    const conversationAfterStream = this.getConversation(socket.id)
     const fullContent = conversationAfterStream?.accumulatedContent || ''
 
     // Debug log for accumulated content and tool calls
@@ -2456,33 +3633,25 @@ Please try again with corrected formatting.`
     // Calculate duration
     const duration = `${Date.now() - startTime}ms`
 
-    // Emit step complete
-    this.emitToSocket(socket, 'message', {
-      type: 'step_complete',
-      content: fullContent,
-      data: {
-        step: currentStep,
-        isFinal: true,
-        toolCalls: finalResult.toolCalls || [],
-        usage: this.config.includeUsageData ? usageToTrack : undefined,
-        agentId: agentName
-      }
-    } as WebSocketMessage)
+    // Publish step complete - subscribers handle delivery and persistence
+    await this.publishToEventChannel(socket.id, 'step_complete', fullContent, {
+      step: currentStep,
+      isFinal: true,
+      toolCalls: finalResult.toolCalls || [],
+      usage: this.config.includeUsageData ? usageToTrack : undefined,
+      agentId: agentName
+    }, agentName)
 
     // Only emit completion events if this is the final agent (no handoff pending)
     if (shouldComplete) {
-      // Emit final completion event
-      this.emitToSocket(socket, 'message', {
-        type: 'complete',
-        content: fullContent,
-        data: {
-          totalSteps: currentStep,
-          usage: this.config.includeUsageData ? usageToTrack : undefined,
-          toolCalls: finalResult.toolCalls || [],
-          agentId: agentName,
-          duration
-        }
-      } as WebSocketMessage)
+      // Publish final completion event - subscribers handle delivery and persistence
+      await this.publishToEventChannel(socket.id, 'complete', fullContent, {
+        totalSteps: currentStep,
+        usage: this.config.includeUsageData ? usageToTrack : undefined,
+        toolCalls: finalResult.toolCalls || [],
+        agentId: agentName,
+        duration
+      }, agentName)
     }
 
     // Note: Conversation completion is now handled by completeConversation()
@@ -2500,6 +3669,12 @@ Please try again with corrected formatting.`
    * Close the WebSocket server
    */
   close(): void {
+    // Stop cleanup interval
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval)
+      this.cleanupInterval = null
+    }
+
     // Cancel all active streams
     for (const controller of this.activeStreams.values()) {
       controller.abort()

@@ -182,25 +182,35 @@ interface ConversationState {
  * - TTL-based cleanup
  * - Fail-fast error handling
  */
+/**
+ * Logger interface for event channel error reporting
+ */
+export interface EventChannelLogger {
+  warn(event: string, data: Record<string, unknown>): void
+}
+
 export class ConversationEventChannel {
   private conversations: Map<string, ConversationState> = new Map()
   private config: CircularBufferConfig
+  private logger: EventChannelLogger | undefined
 
   /**
    * Creates a new conversation event channel
    *
    * @param config - Configuration for circular buffers
+   * @param logger - Optional logger for error reporting
    *
    * @example
    * ```typescript
    * const channel = new ConversationEventChannel({
    *   capacity: 1000,        // Buffer up to 1000 events per conversation
    *   ttl: 5 * 60 * 1000     // 5-minute TTL for cleanup
-   * })
+   * }, logger)
    * ```
    */
-  constructor(config: CircularBufferConfig = { capacity: 1000, ttl: 5 * 60 * 1000 }) {
+  constructor(config: CircularBufferConfig = { capacity: 1000, ttl: 5 * 60 * 1000 }, logger?: EventChannelLogger) {
     this.config = config
+    this.logger = logger
   }
 
   /**
@@ -254,31 +264,62 @@ export class ConversationEventChannel {
     state.buffer.push(event)
     state.lastActivity = new Date()
 
-    // Notify all subscribers
-    const subscriberErrors: Error[] = []
-
+    // Notify all subscribers with hybrid dispatch
+    // Blocking subscribers (default) are awaited and can fail-fast
+    // Non-blocking subscribers run fire-and-forget with errors captured via onError()
     for (const subscriber of state.subscribers) {
       // Check if subscriber has a filter
       if (subscriber.filter && !subscriber.filter(event)) {
         continue // Skip this subscriber
       }
 
-      try {
-        await subscriber.onEvent(event)
-        event.deliveredTo?.add(subscriber.id)
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error(String(error))
-        subscriberErrors.push(err)
+      // Default to blocking for backward compatibility
+      const isBlocking = subscriber.blocking !== false
 
-        // Call onError handler
+      if (isBlocking) {
+        // Blocking: await and propagate errors (fail-fast)
         try {
-          subscriber.onError(err)
-        } catch {
-          // Ignore errors in error handler
-        }
+          await subscriber.onEvent(event)
+          event.deliveredTo?.add(subscriber.id)
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error))
 
-        // Fail-fast: throw on first subscriber error
-        throw new Error(`Subscriber ${subscriber.id} failed: ${err.message}`)
+          // Call onError handler
+          try {
+            subscriber.onError(err)
+          } catch (handlerError) {
+            // Log error handler failures to aid debugging
+            this.logger?.warn('eventChannel.subscriber.onError_handler_failed', {
+              subscriberId: subscriber.id,
+              conversationId,
+              originalError: err.message,
+              handlerError: handlerError instanceof Error ? handlerError.message : String(handlerError)
+            })
+          }
+
+          // Fail-fast: throw on blocking subscriber error
+          throw new Error(`Subscriber ${subscriber.id} failed: ${err.message}`)
+        }
+      } else {
+        // Non-blocking: fire-and-forget with error capture
+        // Track delivery synchronously before async work starts to avoid race conditions
+        // where code checking deliveredTo immediately after publish() won't see pending subscribers
+        event.deliveredTo?.add(subscriber.id)
+
+        subscriber.onEvent(event).catch((error) => {
+          const err = error instanceof Error ? error : new Error(String(error))
+          try {
+            subscriber.onError(err)
+          } catch (handlerError) {
+            // Log error handler failures to aid debugging
+            this.logger?.warn('eventChannel.subscriber.onError_handler_failed', {
+              subscriberId: subscriber.id,
+              conversationId,
+              originalError: err.message,
+              handlerError: handlerError instanceof Error ? handlerError.message : String(handlerError)
+            })
+          }
+        })
       }
     }
 

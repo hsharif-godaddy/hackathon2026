@@ -20,6 +20,7 @@ import { Feedback } from '@/components/feedback/Feedback'
 import Header from '@/components/layout/Header'
 import PublishStatusAlert from '@/components/layout/PublishStatusAlert'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import { WebSocketProvider } from '@/contexts/WebSocketContext'
 import { useAppDetails } from '@/hooks/useAppDetails'
 import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
@@ -630,13 +631,14 @@ function DevelopPageContent() {
   };
 
   return (
-    <div
-      className="h-screen flex flex-col"
-      onDragEnter={handleDragEnter}
-    >
-      <Header location="develop" />
+    <WebSocketProvider sendMessage={sendMessage}>
+      <div
+        className="h-screen flex flex-col"
+        onDragEnter={handleDragEnter}
+      >
+        <Header location="develop" />
 
-      {isMobile ? (
+        {isMobile ? (
         // Mobile layout with tabs
         <div className="flex-1 flex flex-col min-h-0 relative">
           <ChatPane
@@ -723,7 +725,8 @@ function DevelopPageContent() {
         show={showIntroTour}
         onClose={() => setShowIntroTour(false)}
       />
-    </div>
+      </div>
+    </WebSocketProvider>
   )
 }
 

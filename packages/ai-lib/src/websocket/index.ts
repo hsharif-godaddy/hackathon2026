@@ -23,6 +23,9 @@ export {
   CircularBuffer
 } from './conversation-event-channel.js'
 export type {
+  EventChannelLogger
+} from './conversation-event-channel.js'
+export type {
   StreamingEvent,
   StreamingEventType,
   EventSubscriber,
@@ -36,6 +39,9 @@ export {
 } from './subscribers/websocket-subscriber.js'
 export {
   PersistenceSubscriber
+} from './subscribers/persistence-subscriber.js'
+export type {
+  PersistenceLogger
 } from './subscribers/persistence-subscriber.js'
 export {
   APMSubscriber

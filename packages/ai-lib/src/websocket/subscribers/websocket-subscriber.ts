@@ -10,22 +10,25 @@ export interface WebSocketMessage {
 }
 
 /**
- * Disconnected stream state for buffering events during connection recovery
+ * Disconnected stream state for tracking recovery during connection window
+ * Note: Events are buffered in the ConversationEventChannel, not here.
+ * This only tracks the last delivered sequence for replay on reconnection.
  */
 export interface DisconnectedStreamState {
   abortController: AbortController
   timeoutId: NodeJS.Timeout
-  bufferedEvents: WebSocketMessage[]
   conversationId: string
+  /** Last sequence number successfully delivered before disconnection */
+  lastDeliveredSequence: number
 }
 
 /**
  * WebSocket subscriber that delivers events to connected Socket.IO clients
- * Buffers events during disconnection for replay on reconnection
+ * Skips events during disconnection (buffering happens in event channel)
  *
  * Key features:
  * - Emits events to connected sockets via Socket.IO
- * - Buffers events during disconnection to disconnectedStreams map
+ * - Skips events during disconnection (event channel buffers them)
  * - Converts StreamingEvent to WebSocketMessage format
  * - Handles socket connection state gracefully
  *
@@ -40,6 +43,14 @@ export interface DisconnectedStreamState {
  */
 export class WebSocketSubscriber implements EventSubscriber {
   id: string
+
+  /**
+   * Blocking subscriber - WebSocket errors should abort the stream.
+   * This ensures we detect socket failures immediately and can handle them
+   * (e.g., buffer for recovery or abort the stream).
+   */
+  blocking = true
+
   private socket: any // Socket.IO socket
   private disconnectedStreams: Map<string, DisconnectedStreamState>
 
@@ -47,7 +58,7 @@ export class WebSocketSubscriber implements EventSubscriber {
    * Creates a new WebSocket subscriber
    *
    * @param socket - Socket.IO socket instance
-   * @param disconnectedStreams - Map of disconnected streams for buffering
+   * @param disconnectedStreams - Map of disconnected streams for skip detection
    *
    * @example
    * ```typescript
@@ -64,8 +75,8 @@ export class WebSocketSubscriber implements EventSubscriber {
   }
 
   /**
-   * Handles a streaming event by emitting to WebSocket or buffering
-   * Checks socket connection state and buffers if disconnected
+   * Handles a streaming event by emitting to WebSocket or skipping
+   * Skips when disconnected (event channel buffers events for later replay)
    *
    * @param event - The streaming event to process
    * @throws Error if event delivery fails (for fail-fast behavior)
@@ -76,17 +87,19 @@ export class WebSocketSubscriber implements EventSubscriber {
    * ```
    */
   async onEvent(event: StreamingEvent): Promise<void> {
-    const message = this.toWebSocketMessage(event)
-
     // Check if socket is disconnected but stream is still active
+    // Skip emitting - events are buffered in the event channel and will be
+    // replayed via getEventsSince() when the socket reconnects
     if (this.disconnectedStreams.has(this.socket.id)) {
-      // Buffer the event for replay on reconnection
-      this.disconnectedStreams.get(this.socket.id)!.bufferedEvents.push(message)
-    } else if (this.socket.connected) {
+      return // No-op: event channel handles buffering
+    }
+
+    if (this.socket.connected) {
       // Normal emit to connected socket
+      const message = this.toWebSocketMessage(event)
       this.socket.emit('message', message)
     }
-    // If not connected and not in recovery, silently skip
+    // If not connected and not in recovery window, silently skip
     // (subscriber should have been unregistered)
   }
 

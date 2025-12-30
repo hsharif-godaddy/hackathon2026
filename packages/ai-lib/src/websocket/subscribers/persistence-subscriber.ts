@@ -1,49 +1,74 @@
 import type { EventSubscriber, StreamingEvent, PersistenceStreamingEvent, ConversationPersistence, ConversationContext } from '../interfaces.js'
 
 /**
+ * Logger interface for persistence subscriber
+ * Allows injection of any logger that supports error/warn methods
+ */
+export interface PersistenceLogger {
+  error(event: string, data: Record<string, unknown>): void
+  warn?(event: string, data: Record<string, unknown>): void
+}
+
+/**
  * Persistence subscriber that writes events to database
  * Wraps existing ConversationPersistence interface for event-driven architecture
  *
  * Key features:
+ * - Non-blocking (fire-and-forget) - errors are logged but don't abort stream
  * - Converts StreamingEvent to PersistenceStreamingEvent format
  * - Calls captureStreamingEvent() for each event
  * - Marks events as persisted on success
- * - Throws error on failure for fail-fast behavior
+ * - Logs errors for monitoring without affecting UX
  *
  * @example
  * ```typescript
  * const subscriber = new PersistenceSubscriber(
  *   persistence,
- *   conversationContext
+ *   conversationContext,
+ *   logger
  * )
  * channel.subscribe(conversationId, subscriber)
  * ```
  */
 export class PersistenceSubscriber implements EventSubscriber {
   id: string
+
+  /**
+   * Non-blocking subscriber - persistence errors are logged but don't abort stream.
+   * This ensures the user sees streaming content even if database writes fail.
+   * The completeConversation() call will still work as it uses the in-memory
+   * streamingEvents array which is populated synchronously.
+   */
+  blocking = false
+
   private persistence: ConversationPersistence
   private context: ConversationContext
+  private logger: PersistenceLogger | undefined
 
   /**
    * Creates a new persistence subscriber
    *
    * @param persistence - ConversationPersistence implementation
    * @param context - Conversation context for persistence operations
+   * @param logger - Optional logger for error reporting
    *
    * @example
    * ```typescript
    * const subscriber = new PersistenceSubscriber(
    *   messagePersistence,
-   *   { socketId: 'socket-123', agentName: 'develop', appId: 'app-456' }
+   *   { socketId: 'socket-123', agentName: 'develop', appId: 'app-456' },
+   *   logger
    * )
    * ```
    */
   constructor(
     persistence: ConversationPersistence,
-    context: ConversationContext
+    context: ConversationContext,
+    logger?: PersistenceLogger
   ) {
     this.persistence = persistence
     this.context = context
+    this.logger = logger
     this.id = `persistence-${context.socketId}`
   }
 
@@ -52,7 +77,9 @@ export class PersistenceSubscriber implements EventSubscriber {
    * Converts to PersistenceStreamingEvent format and calls captureStreamingEvent
    *
    * @param event - The streaming event to persist
-   * @throws Error if persistence fails (for fail-fast behavior)
+   *
+   * Note: This subscriber is non-blocking. Errors are logged but not thrown,
+   * allowing the stream to continue even if persistence fails.
    *
    * @example
    * ```typescript
@@ -72,10 +99,17 @@ export class PersistenceSubscriber implements EventSubscriber {
       // Mark as persisted on success
       event.persisted = true
     } catch (error) {
-      // Re-throw for fail-fast behavior
-      throw error instanceof Error
-        ? error
-        : new Error(`Persistence failed: ${String(error)}`)
+      // Log error but don't throw - stream continues
+      // completeConversation() will still work as it uses in-memory streamingEvents
+      this.logger?.error('persistence.streaming_event.failed', {
+        conversationId: event.conversationId,
+        eventId: event.id,
+        sequence: event.sequence,
+        eventType: event.type,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      })
+      // Don't re-throw - this is a non-blocking subscriber
     }
   }
 
