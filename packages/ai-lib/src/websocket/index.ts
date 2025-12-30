@@ -55,3 +55,28 @@ export type {
   APMSpan,
   APMTransaction
 } from './subscribers/apm-subscriber.js'
+
+// Connection State Management
+export {
+  ConnectionStateManager
+} from './connection-state-manager.js'
+export type {
+  ConnectionState,
+  ConnectionStateData,
+  CreateConnectionParams,
+  TransitionParams,
+  ConnectionStateManagerConfig,
+  StateManagerLogger
+} from './connection-state-manager.js'
+
+// Connection Recovery Management
+export {
+  ConnectionRecoveryManager
+} from './connection-recovery-manager.js'
+export type {
+  RecoveryMode,
+  RecoveryContext,
+  ConnectionRecoveryManagerConfig,
+  ConnectionRecoveryManagerDependencies,
+  RecoveryManagerLogger
+} from './connection-recovery-manager.js'
