@@ -40,6 +40,18 @@ function checkHasInitialPrompt(initialJobId: string | null): boolean {
   return hasPromptPending && inCreationFlow
 }
 
+function getStoredInitialPrompt(initialJobId: string | null, appId: string | null): string | null {
+  if (typeof window === 'undefined') return null
+  if (initialJobId) {
+    const prompt = sessionStorage.getItem(`initial-prompt-text-${initialJobId}`)
+    if (prompt) return prompt
+  }
+  if (appId) {
+    return sessionStorage.getItem(`initial-prompt-text-${appId}`)
+  }
+  return null
+}
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -88,6 +100,7 @@ export interface InitializationContext {
   // Initial creation flow
   hasInitialPrompt: boolean
   initialPromptSent: boolean
+  initialPromptText: string | null
 }
 
 /**
@@ -255,7 +268,7 @@ function computeUIState(
     previewLoaderMessage: 'The AI agent is building your app...',
 
     shouldAutoSendPrompt,
-    autoSendPromptText: context.site?.initial_prompt || null,
+    autoSendPromptText: context.initialPromptText,
 
     hasError,
     errorMessage: creationError || 'Initialization failed',
@@ -363,6 +376,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     hasSeenFirstFileEdit,
     hasInitialPrompt: checkHasInitialPrompt(initialJobId),
     initialPromptSent,
+    initialPromptText: site?.initial_prompt ?? getStoredInitialPrompt(initialJobId, appId),
   }
 
   // -------------------------------------------------------------------------
@@ -405,6 +419,17 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       isActiveCreationSession.current = true
     }
   }, [context.hasInitialPrompt, appId, initialJobId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (site?.initial_prompt && site.id) {
+      const storageKey = `initial-prompt-text-${site.id}`
+      const existingValue = sessionStorage.getItem(storageKey)
+      if (existingValue !== site.initial_prompt) {
+        sessionStorage.setItem(storageKey, site.initial_prompt)
+      }
+    }
+  }, [site?.initial_prompt, site?.id])
 
   // Store initialJobId when first appId is received or when route changes
   // This captures the original job ID for sessionStorage key lookups, persisting across route changes
@@ -466,6 +491,10 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       // This ensures we can retrieve the job ID after the component remounts
       const jobId = appId // appId is the job ID at this point
       sessionStorage.setItem(`initial-job-id-${realAppId}`, jobId)
+      const initialPromptText = sessionStorage.getItem(`initial-prompt-text-${jobId}`)
+      if (initialPromptText) {
+        sessionStorage.setItem(`initial-prompt-text-${realAppId}`, initialPromptText)
+      }
       router.replace(`/develop/${realAppId}`, { scroll: false })
     }
   }, [phase, realAppId, appId, router])
@@ -554,8 +583,15 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   }, [phase, subPhase, isWebSocketConnected, context.hasInitialPrompt, context.initialPromptSent, appId])
 
   // Auto-exit creation flow when app is demonstrably ready
+  // NOTE: This should NOT run during an active creation session where we want to send the initial prompt
+  // Only runs for edge cases like navigation away and back, or reconnection scenarios
   useEffect(() => {
     if (phase !== 'ready' || !context.hasInitialPrompt || context.initialPromptSent || !isWebSocketConnected) {
+      return
+    }
+
+    // Don't auto-exit if we're in an active creation session - let the auto-send handle it
+    if (isActiveCreationSession.current) {
       return
     }
 
@@ -630,6 +666,10 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
         // Clear both flags - creation flow is complete once message is sent
         sessionStorage.removeItem(`initial-prompt-pending-${initialJobId}`)
         sessionStorage.removeItem(`in-creation-flow-${initialJobId}`)
+        sessionStorage.removeItem(`initial-prompt-text-${initialJobId}`)
+      }
+      if (appId) {
+        sessionStorage.removeItem(`initial-prompt-text-${appId}`)
       }
     },
 

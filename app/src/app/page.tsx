@@ -117,6 +117,8 @@ function HomeContent() {
       // Set flags for post-setup actions before redirect
       sessionStorage.setItem(`name-registration-pending-${siteData.id}`, 'true')
       sessionStorage.setItem(`initial-prompt-pending-${siteData.id}`, 'true')
+      sessionStorage.setItem(`in-creation-flow-${siteData.id}`, 'true')
+      sessionStorage.setItem(`initial-prompt-text-${siteData.id}`, promptTextRef.current.trim())
 
       // Immediately redirect to /develop/{siteId} - deployment polling will happen there
       // If the response includes type='job', add query param to indicate this is a temporary job ID
