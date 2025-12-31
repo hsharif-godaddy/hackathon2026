@@ -1,6 +1,4 @@
-name: Upload Knowledge Base to GoKnowB
-
-run-name: "Upload ${{ github.event.inputs.filenames || 'all files' }} from ${{ github.ref_name }} to ${{ github.event.inputs.environment }}"
+name: Update Knowledge Base
 
 on:
   workflow_dispatch:
@@ -18,6 +16,19 @@ on:
         required: false
         type: string
         default: ""
+  workflow_call:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: string
+      filenames:
+        description: "Comma-separated filenames or empty to upload all"
+        required: false
+        type: string
+        default: ""
+
+run-name: "Update ${{ inputs.filenames || 'all files' }} from ${{ github.ref_name }} to ${{ inputs.environment }}"
 
 jobs:
   upload-knowledge-base:
@@ -30,7 +41,7 @@ jobs:
 
     steps:
       - name: Validate branch for PROD
-        if: ${{ github.event.inputs.environment == 'PROD' && github.ref_name != 'main' }}
+        if: ${{ inputs.environment == 'PROD' && github.ref_name != 'main' }}
         run: |
           echo "❌ ERROR: PROD environment only allows main branch"
           echo "Current branch: ${{ github.ref_name }}"
@@ -65,8 +76,8 @@ jobs:
 
       - name: Upload knowledge base files
         env:
-          FILENAMES: ${{ github.event.inputs.filenames }}
-          ENVIRONMENT: ${{ github.event.inputs.environment }}
+          FILENAMES: ${{ inputs.filenames }}
+          ENVIRONMENT: ${{ inputs.environment }}
         run: |
           echo "Starting knowledge base upload..."
           echo "Branch: ${{ github.ref_name }}"
@@ -75,8 +86,8 @@ jobs:
           # Set proxy URL and kbNodeId based on environment
           if [ "$ENVIRONMENT" == "PROD" ]; then
             PROXY_URL="https://airobuilde-proxy-prod-ecs.airobuilde-prod.prod.onkatana.net"
-            KB_NODE_ID="/airo_sys"
-            echo "Target: Production KB (/airo_sys)"
+            KB_NODE_ID="/airo_info"
+            echo "Target: Production KB (/airo_info)"
           else
             PROXY_URL="https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net"
             KB_NODE_ID="/airo_info"
