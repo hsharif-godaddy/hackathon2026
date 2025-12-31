@@ -54,12 +54,24 @@ jobs:
       - name: Fetch GETTY_TOKEN from AWS
         env:
           AWS_REGION: us-west-2
-          AWS_ACCOUNT_ID: "694282668781"
-          SECRET_PATH: /Katana/Secrets/airobuilde/app/dev-private-ecs/GETTY_TOKEN
+          ENVIRONMENT: ${{ inputs.environment }}
         run: |
+          # Determine AWS account ID, secret path, and IAM role based on environment
+          if [ "$ENVIRONMENT" = "PROD" ]; then
+            AWS_ACCOUNT_ID="644094189644"
+            SECRET_PATH="/Katana/Secrets/airobuilde/proxy/prod-ecs/VALID_TOKENS"
+            IAM_ROLE="GD-AWS-USA-GD-AiroBuilde-Prod-Deploy"
+            echo "Fetching PROD token"
+          else
+            AWS_ACCOUNT_ID="694282668781"
+            SECRET_PATH="/Katana/Secrets/airobuilde/app/dev-private-ecs/GETTY_TOKEN"
+            IAM_ROLE="GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy"
+            echo "Fetching TEST token"
+          fi
+
           # Assume role
           export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" $(aws sts assume-role \
-          --role-arn arn:aws:iam::${AWS_ACCOUNT_ID}:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy \
+          --role-arn arn:aws:iam::${AWS_ACCOUNT_ID}:role/${IAM_ROLE} \
           --role-session-name knowledge-base-${GITHUB_RUN_ID} \
           --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
 
@@ -72,7 +84,7 @@ jobs:
 
           echo "::add-mask::$GETTY_TOKEN"
           echo "GETTY_TOKEN=$GETTY_TOKEN" >> $GITHUB_ENV
-          echo "✅ Token retrieved successfully"
+          echo "✅ Token retrieved successfully from $SECRET_PATH using role $IAM_ROLE in account $AWS_ACCOUNT_ID"
 
       - name: Upload knowledge base files
         env:
