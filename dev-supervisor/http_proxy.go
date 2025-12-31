@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -101,6 +102,7 @@ type HTTPProxyStatus struct {
 
 /**
  * responseWriter wraps http.ResponseWriter to capture status code and response size
+ * Implements http.Hijacker to support WebSocket upgrades through the proxy
  */
 type responseWriter struct {
 	http.ResponseWriter
@@ -117,6 +119,25 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 	n, err := rw.ResponseWriter.Write(b)
 	rw.size += n
 	return n, err
+}
+
+// Hijack implements http.Hijacker interface to support WebSocket upgrades
+// This is required for the reverse proxy to upgrade HTTP connections to WebSocket
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := rw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("underlying ResponseWriter does not implement http.Hijacker")
+	}
+	return hijacker.Hijack()
+}
+
+// Flush implements http.Flusher interface to support Server-Sent Events (SSE)
+// and chunked transfer encoding. This is required for streaming responses.
+func (rw *responseWriter) Flush() {
+	flusher, ok := rw.ResponseWriter.(http.Flusher)
+	if ok {
+		flusher.Flush()
+	}
 }
 
 /**
@@ -349,6 +370,12 @@ type retryTransport struct {
  * @returns HTTP response and error
  */
 func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// WebSocket upgrade requests cannot be retried - they require a unique connection
+	// and the Upgrade handshake is stateful. Attempting to retry would fail.
+	if isWebSocketUpgrade(req) {
+		return t.base.RoundTrip(req)
+	}
+
 	var lastErr error
 	backoff := t.initialBackoff
 
@@ -464,6 +491,18 @@ func NewHTTPProxy(config HTTPProxyConfig) *HTTPProxy {
 }
 
 /**
+ * isWebSocketUpgrade checks if a request is attempting a WebSocket upgrade
+ *
+ * @param req - HTTP request to check
+ * @returns true if this is a WebSocket upgrade request
+ */
+func isWebSocketUpgrade(req *http.Request) bool {
+	connHeader := strings.ToLower(req.Header.Get("Connection"))
+	upgradeHeader := strings.ToLower(req.Header.Get("Upgrade"))
+	return strings.Contains(connHeader, "upgrade") && upgradeHeader == "websocket"
+}
+
+/**
  * isRetryableError checks if an error should trigger a retry
  * Returns true for connection errors (backend not ready)
  * Returns false for HTTP errors (backend responded with error)
@@ -542,6 +581,9 @@ func (p *HTTPProxy) Start() error {
 		if err != nil {
 			return fmt.Errorf("failed to load TLS certificates: %w", err)
 		}
+		// Enable HTTP/2 support (includes ALPN negotiation for h2)
+		// This allows clients to negotiate HTTP/2 over TLS
+		tlsConfig.NextProtos = []string{"h2", "http/1.1"}
 	}
 
 	// Create reverse proxy to backend
@@ -561,6 +603,9 @@ func (p *HTTPProxy) Start() error {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
+		// ForceAttemptHTTP2 enables HTTP/2 for non-TLS connections (h2c)
+		// Not enabled by default as backend typically uses HTTP/1.1
+		// ForceAttemptHTTP2: true,
 	}
 
 	// Wrap transport with retry logic
@@ -584,6 +629,34 @@ func (p *HTTPProxy) Start() error {
 			r.Out.Host = r.In.Host
 			r.Out.Header.Set("Host", r.In.Host)
 
+			// Check if this is a WebSocket upgrade request (check once and reuse)
+			isWebSocket := isWebSocketUpgrade(r.In)
+
+			// Preserve WebSocket upgrade headers (critical for Vite HMR)
+			// The Connection and Upgrade headers must be explicitly copied for WebSocket support
+			if isWebSocket {
+				// Copy WebSocket-specific headers using a loop to reduce duplication
+				wsHeadersToCopy := []string{
+					"Connection",
+					"Upgrade",
+					"Sec-WebSocket-Key",
+					"Sec-WebSocket-Version",
+					"Sec-WebSocket-Extensions",
+					"Sec-WebSocket-Protocol",
+				}
+				for _, headerName := range wsHeadersToCopy {
+					if value := r.In.Header.Get(headerName); value != "" {
+						r.Out.Header.Set(headerName, value)
+					}
+				}
+
+				slog.Debug("proxying WebSocket upgrade request",
+					"method", r.In.Method,
+					"path", r.In.URL.Path,
+					"host", r.In.Host,
+					"target", targetURL.String())
+			}
+
 			// Copy X-Forwarded-For unchanged from incoming request (if present)
 			// By default, ReverseProxy removes X-Forwarded-* headers, so we explicitly copy it
 			if xff := r.In.Header.Get("X-Forwarded-For"); xff != "" {
@@ -596,14 +669,19 @@ func (p *HTTPProxy) Start() error {
 			// Note: X-Forwarded-Host is not set (Host header is already correct)
 			// Note: X-Real-IP is not set (only accessible by trusted sources)
 
-			slog.Debug("proxying request",
-				"method", r.In.Method,
-				"path", r.In.URL.Path,
-				"host", r.In.Host,
-				"target", targetURL.String(),
-				"remote_addr", r.In.RemoteAddr)
+			if !isWebSocket {
+				slog.Debug("proxying request",
+					"method", r.In.Method,
+					"path", r.In.URL.Path,
+					"host", r.In.Host,
+					"target", targetURL.String(),
+					"remote_addr", r.In.RemoteAddr)
+			}
 		},
 		Transport: retryTransport,
+		// FlushInterval enables streaming responses and is required for WebSockets
+		// and Server-Sent Events (SSE). Without this, responses are buffered.
+		FlushInterval: -1, // Flush immediately (required for WebSockets)
 	}
 
 	// Custom error handler
@@ -674,11 +752,12 @@ func (p *HTTPProxy) Start() error {
 
 	// Create HTTP server with router (instead of reverse proxy directly)
 	p.server = &http.Server{
-		Handler:      handler,
-		TLSConfig:    tlsConfig,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Handler:     handler,
+		TLSConfig:   tlsConfig,
+		ReadTimeout: 30 * time.Second,
+		// WriteTimeout intentionally omitted - would break WebSockets and SSE
+		// WebSocket and SSE connections are long-lived and can't have write timeouts
+		IdleTimeout: 120 * time.Second,
 	}
 
 	// Create listener (TLS or plain HTTP)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -13,10 +14,186 @@ import (
 	"path"
 	"strings"
 	"testing"
+	"time"
 )
 
 const testProxyResponse = "proxy"
 const testRemoteAddr = "10.0.0.1:12345"
+
+// Test isWebSocketUpgrade helper function
+func TestIsWebSocketUpgrade(t *testing.T) {
+	tests := []struct {
+		name     string
+		headers  map[string]string
+		expected bool
+	}{
+		{
+			name: "valid WebSocket upgrade",
+			headers: map[string]string{
+				"Connection": "Upgrade",
+				"Upgrade":    "websocket",
+			},
+			expected: true,
+		},
+		{
+			name: "case insensitive",
+			headers: map[string]string{
+				"Connection": "upgrade",
+				"Upgrade":    "WebSocket",
+			},
+			expected: true,
+		},
+		{
+			name: "multiple connection values",
+			headers: map[string]string{
+				"Connection": "keep-alive, Upgrade",
+				"Upgrade":    "websocket",
+			},
+			expected: true,
+		},
+		{
+			name: "missing upgrade header",
+			headers: map[string]string{
+				"Connection": "Upgrade",
+			},
+			expected: false,
+		},
+		{
+			name: "missing connection header",
+			headers: map[string]string{
+				"Upgrade": "websocket",
+			},
+			expected: false,
+		},
+		{
+			name: "wrong upgrade value",
+			headers: map[string]string{
+				"Connection": "Upgrade",
+				"Upgrade":    "h2c",
+			},
+			expected: false,
+		},
+		{
+			name:     "no headers",
+			headers:  map[string]string{},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/", nil)
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+
+			result := isWebSocketUpgrade(req)
+			if result != tt.expected {
+				t.Errorf("isWebSocketUpgrade() = %v, expected %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// Test that responseWriter implements http.Hijacker
+func TestResponseWriterImplementsHijacker(t *testing.T) {
+	// Create a test server to get a real ResponseWriter that supports hijacking
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Wrap the response writer
+		rw := &responseWriter{
+			ResponseWriter: w,
+			statusCode:     http.StatusOK,
+			size:           0,
+		}
+
+		// Verify it implements http.Hijacker using type assertion
+		hijacker, ok := interface{}(rw).(http.Hijacker)
+		if !ok {
+			t.Error("responseWriter does not implement http.Hijacker interface")
+			return
+		}
+
+		// Verify the hijacker is not nil
+		if hijacker == nil {
+			t.Error("responseWriter Hijacker interface is nil")
+		}
+
+		w.WriteHeader(http.StatusOK)
+	})
+
+	server := newIPv4TestServer(handler)
+	defer server.Close()
+
+	ctx := context.Background()
+	req, err := http.NewRequestWithContext(ctx, "GET", server.URL, nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to make request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+}
+
+// Test that responseWriter implements http.Flusher
+func TestResponseWriterImplementsFlusher(t *testing.T) {
+	// Create a test server to get a real ResponseWriter that supports flushing
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Wrap the response writer
+		rw := &responseWriter{
+			ResponseWriter: w,
+			statusCode:     http.StatusOK,
+			size:           0,
+		}
+
+		// Verify it implements http.Flusher using type assertion
+		flusher, ok := interface{}(rw).(http.Flusher)
+		if !ok {
+			t.Error("responseWriter does not implement http.Flusher interface")
+			return
+		}
+
+		// Verify the flusher is not nil
+		if flusher == nil {
+			t.Error("responseWriter Flusher interface is nil")
+			return
+		}
+
+		// Test that Flush() doesn't panic
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("test")); err != nil {
+			t.Errorf("Failed to write: %v", err)
+		}
+		flusher.Flush()
+	})
+
+	server := newIPv4TestServer(handler)
+	defer server.Close()
+
+	ctx := context.Background()
+	req, err := http.NewRequestWithContext(ctx, "GET", server.URL, nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to make request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+}
 
 // newIPv4TestServer creates an httptest server that binds to IPv4 only
 // This avoids IPv6 binding issues on macOS which can require elevated privileges
