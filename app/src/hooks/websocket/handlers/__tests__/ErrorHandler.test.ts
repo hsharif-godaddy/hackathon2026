@@ -4,9 +4,9 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { createMockMessageContext } from './testUtils'
 import { ErrorHandler } from '../ErrorHandler'
 import type { WebSocketMessage } from '../types'
-import { createMockMessageContext } from './testUtils'
 
 describe('ErrorHandler', () => {
   const handler = new ErrorHandler()

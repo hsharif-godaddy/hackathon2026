@@ -4,9 +4,9 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { createMockMessageContext } from './testUtils'
 import { CompleteHandler } from '../CompleteHandler'
 import type { WebSocketMessage } from '../types'
-import { createMockMessageContext } from './testUtils'
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useStreamingConversationStore: {

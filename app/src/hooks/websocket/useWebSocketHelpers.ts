@@ -1,0 +1,167 @@
+/**
+ * WebSocket Helper Utilities Hook
+ *
+ * Provides utility functions for WebSocket operations including:
+ * - Session storage management
+ * - Cookie management for conversation IDs
+ * - Commit completion handling
+ * - Tool impression tracking
+ */
+
+import { useCallback } from 'react'
+import { validate as validateUUID } from 'uuid'
+import { useQueryClient } from '@tanstack/react-query'
+
+import { logger } from '@/lib/request-context'
+import { useGitStore } from '@/stores/useGitStore'
+import { logImpressionEvent } from '@/utils/instrumentation'
+
+/**
+ * Get the per-app cookie name for conversationId
+ */
+function getConversationIdCookieName(appId: string): string {
+  return `conversationId_${appId}`
+}
+
+/**
+ * Get conversationId from per-app browser cookie
+ */
+export function getConversationIdFromCookie(appId: string | null): string | null {
+  if (typeof document === 'undefined' || !appId) return null
+
+  const cookieName = getConversationIdCookieName(appId)
+  const cookies = document.cookie.split(';')
+  for (const cookie of cookies) {
+    const [name, value] = cookie.trim().split('=')
+    if (name === cookieName && value) {
+      const decodedValue = decodeURIComponent(value)
+      if (validateUUID(decodedValue)) {
+        return decodedValue
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Set conversationId in per-app browser cookie
+ */
+export function setConversationIdCookie(appId: string, conversationId: string): void {
+  if (typeof document === 'undefined') return
+
+  const cookieName = getConversationIdCookieName(appId)
+  // 7-day expiration for tab-closure recovery
+  document.cookie = `${cookieName}=${encodeURIComponent(conversationId)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`
+}
+
+/**
+ * Delete conversationId cookie from browser
+ */
+export function clearConversationIdCookie(appId: string | null): void {
+  if (typeof document === 'undefined' || !appId) return
+
+  const cookieName = getConversationIdCookieName(appId)
+  // Delete cookie by setting it with past expiration date
+  document.cookie = `${cookieName}=; path=/; max-age=0; SameSite=Lax`
+}
+
+export interface UseWebSocketHelpersReturn {
+  /**
+   * Clear stored socket ID from sessionStorage
+   */
+  clearStoredSocketId: () => void
+
+  /**
+   * Handle commit completion: invalidate git queries, select commit, trigger preview refresh
+   */
+  handleCommitComplete: (commitHash?: string) => Promise<void>
+
+  /**
+   * Send tool impression event for analytics
+   */
+  sendToolImpression: (tool: string) => void
+}
+
+/**
+ * Hook providing utility functions for WebSocket operations
+ */
+export function useWebSocketHelpers(currentAppId: string | null): UseWebSocketHelpersReturn {
+  const queryClient = useQueryClient()
+
+  /**
+   * Helper function to clear stored socket ID from sessionStorage
+   * Called on stream completion, errors, and cleanup to prevent stale recovery attempts
+   */
+  const clearStoredSocketId = useCallback(() => {
+    if (currentAppId) {
+      sessionStorage.removeItem(`socket_id_${currentAppId}`)
+    }
+  }, [currentAppId])
+
+  /**
+   * Handle commit completion: invalidate git history, select commit, trigger preview refresh
+   */
+  const handleCommitComplete = useCallback(
+    async (commitHash?: string) => {
+      if (commitHash && currentAppId) {
+        try {
+          // Invalidate to get fresh commit list
+          await queryClient.invalidateQueries({
+            queryKey: ['git-history', currentAppId],
+            refetchType: 'active',
+          })
+
+          // Select the new commit
+          await useGitStore.getState().selectCommit(currentAppId, commitHash)
+
+          // Now trigger preview refresh - files are synced
+          window.postMessage(
+            {
+              type: 'MESSAGE_COMPLETE',
+              source: 'websocket',
+            },
+            window.location.origin
+          )
+        } catch (error) {
+          logger.error('websocket.commit_selection_error', {
+            appId: currentAppId,
+            commitHash: commitHash.substring(0, 7),
+            error: error instanceof Error ? error.message : String(error),
+          })
+
+          // Still trigger preview refresh on error
+          window.postMessage(
+            {
+              type: 'MESSAGE_COMPLETE',
+              source: 'websocket',
+            },
+            window.location.origin
+          )
+        }
+      } else {
+        // No commit or no appId - trigger preview refresh immediately
+        window.postMessage(
+          {
+            type: 'MESSAGE_COMPLETE',
+            source: 'websocket',
+          },
+          window.location.origin
+        )
+      }
+    },
+    [currentAppId, queryClient]
+  )
+
+  /**
+   * Send tool impression event for analytics
+   */
+  const sendToolImpression = useCallback((tool: string) => {
+    logImpressionEvent(`develop.tool.${tool}`)()
+  }, [])
+
+  return {
+    clearStoredSocketId,
+    handleCommitComplete,
+    sendToolImpression,
+  }
+}

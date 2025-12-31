@@ -2,7 +2,8 @@
  * ToolStartHandler Tests
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
 import { ToolStartHandler } from '../ToolStartHandler'
 import type { MessageContext, WebSocketMessage } from '../types'
 

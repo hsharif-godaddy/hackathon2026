@@ -7,12 +7,9 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { io, Socket } from 'socket.io-client'
-import { validate as validateUUID } from 'uuid'
-import { useQueryClient } from '@tanstack/react-query'
 
 import { logger } from '@/lib/request-context'
-import { getSharedSocket,setSharedSocket } from '@/lib/socketRegistry'
-import { useGitStore } from '@/stores/useGitStore'
+import { getSharedSocket, setSharedSocket } from '@/lib/socketRegistry'
 import {
   useAddToolCallSegment,
   useAddToolResultSegment,
@@ -30,7 +27,15 @@ import {
   useStreamingConversationStore,
   useWebSocketState,
 } from '@/stores/useStreamingConversationStore'
-import { logImpressionEvent } from '@/utils/instrumentation'
+import {
+  clearConversationIdCookie,
+  getConversationIdFromCookie,
+  setConversationIdCookie,
+  useToolDeltaBuffer,
+  useWebSocketHelpers,
+  useWebSocketRecovery,
+  useWebSocketRetry,
+} from './websocket'
 import {
   CatchupCompleteHandler,
   CatchupStatusHandler,
@@ -51,10 +56,9 @@ import {
   ToolStartHandler,
 } from './websocket/handlers'
 import { captureVisualContext } from '../app/develop/components/visualContextCapture'
-import type { AgentsAppChatMessage,AgentsAppContext } from '../types/websocket-context'
+import type { AgentsAppChatMessage, AgentsAppContext } from '../types/websocket-context'
 
 // Constants
-const RAF_FALLBACK_DELAY_MS = 16 // ~60fps frame duration for setTimeout fallback
 const CONNECTION_RETRY_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes - escalation timeout for connection retry
 const INIT_RETRY_MAX_ATTEMPTS = 5 // Maximum number of initialization retry attempts
 const INIT_RETRY_BASE_DELAY_MS = 1000 // Initial retry delay (1 second)
@@ -114,117 +118,18 @@ const getAgentJWTToken = async (siteId: string): Promise<string | null> => {
   }
 };
 
-/**
- * Get the per-app cookie name for conversationId
- * @param appId - The app ID for scoping the cookie
- * @returns Cookie name string
- */
-function getConversationIdCookieName(appId: string): string {
-  return `conversationId_${appId}`
-}
-
-/**
- * Get conversationId from per-app browser cookie
- * @param appId - The app ID for scoping the cookie
- * @returns Conversation ID string or null if not found or invalid
- */
-function getConversationIdFromCookie(appId: string | null): string | null {
-  if (typeof document === 'undefined' || !appId) return null
-
-  const cookieName = getConversationIdCookieName(appId)
-  const cookies = document.cookie.split(';')
-  for (const cookie of cookies) {
-    const [name, value] = cookie.trim().split('=')
-    if (name === cookieName && value) {
-      const decodedValue = decodeURIComponent(value)
-      if (validateUUID(decodedValue)) {
-        return decodedValue
-      }
-    }
-  }
-  return null
-}
-
-/**
- * Set conversationId in per-app browser cookie
- * @param appId - The app ID for scoping the cookie
- * @param conversationId - The conversation ID to store
- */
-function setConversationIdCookie(appId: string, conversationId: string): void {
-  if (typeof document === 'undefined') return
-
-  const cookieName = getConversationIdCookieName(appId)
-  // 7-day expiration for tab-closure recovery
-  document.cookie = `${cookieName}=${encodeURIComponent(conversationId)}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`
-}
-
-/**
- * Delete conversationId cookie from browser
- * @param appId - The app ID for scoping the cookie
- */
-function clearConversationIdCookie(appId: string | null): void {
-  if (typeof document === 'undefined' || !appId) return
-
-  const cookieName = getConversationIdCookieName(appId)
-  // Delete cookie by setting it with past expiration date
-  document.cookie = `${cookieName}=; path=/; max-age=0; SameSite=Lax`
-}
-
 export function useStreamingWebSocket() {
   const socketRef = useRef<Socket | null>(null)
-  const wasRecoveredRef = useRef<boolean>(false)
   const createdHereRef = useRef<boolean>(false) // Track if this instance created the socket
 
-  // Track retry state for APP_NOT_FOUND errors (race condition during app registration)
-  const retryStateRef = useRef<{
-    pendingMessage?: { chatMessage: AgentsAppChatMessage; startTime: number }
-    retryCount: number
-    retryTimer?: NodeJS.Timeout
-  }>({ retryCount: 0 })
   // Guard flag to prevent concurrent initialization attempts
   const initializingRef = useRef<boolean>(false)
   // Timer ref for delayed initialization
   const initTimerRef = useRef<NodeJS.Timeout | null>(null)
-  // Pending recovery acknowledgement tracking
-  const pendingRecoveryAckRef = useRef<{
-    conversationId: string
-    lastSequence: number
-    expectedCount: number
-    receivedCount: number
-    replayComplete: boolean
-    ackEvent: 'recovery_ack' | 'catchup_ack'
-  } | null>(null)
-
-  // Server configuration received during handshake (for timeout synchronization)
-  const serverConfigRef = useRef<{
-    streamRecoveryWindow: number
-    ackTimeout: number
-  } | null>(null)
-
-  /**
-   * Helper function to clear retry timer and reset retry state
-   * Extracted to avoid duplication across multiple cleanup locations
-   */
-  const clearRetryState = useCallback(() => {
-    if (retryStateRef.current.retryTimer) {
-      clearTimeout(retryStateRef.current.retryTimer)
-    }
-      retryStateRef.current = { retryCount: 0 }
-  }, [])
 
   const webSocketState = useWebSocketState()
   const currentAppId = useCurrentAppId()
 
-  /**
-   * Helper function to clear stored socket ID from sessionStorage
-   * Called on stream completion, errors, and cleanup to prevent stale recovery attempts
-   */
-  const clearStoredSocketId = useCallback(() => {
-    if (currentAppId) {
-      sessionStorage.removeItem(`socket_id_${currentAppId}`)
-    }
-  }, [currentAppId])
-  const queryClient = useQueryClient()
   // Hook setters & streaming state (declared early for use in callbacks)
   const startNewStream = useStartNewStream()
   const appendTextSegment = useAppendTextSegment()
@@ -238,153 +143,13 @@ export function useStreamingWebSocket() {
   const setWebSocketState = useSetWebSocketState()
   const setStreamingState = useSetStreamingState()
   const setIsLoading = useSetIsLoading()
-  const sendToolImpression = (tool: string) => logImpressionEvent(`develop.tool.${tool}`)()
-  const toolDeltaBufferRef = useRef<Map<string, { name: string; delta: string; hasExplicitName: boolean }>>(new Map())
-  // hasExplicitName prevents later deltas that omit a tool name from overwriting a previously captured explicit name.
-  const toolDeltaFlushScheduledRef = useRef<boolean>(false)
-  const updateToolDeltaRef = useRef(useStreamingConversationStore.getState().updateToolDelta)
 
-  useEffect(() => {
-    const unsubscribe = useStreamingConversationStore.subscribe((state) => {
-      updateToolDeltaRef.current = state.updateToolDelta
-    })
-
-    return () => {
-      unsubscribe()
-    }
-  }, [])
-
-  const flushToolDeltaBuffer = useCallback(() => {
-    if (toolDeltaBufferRef.current.size === 0) {
-      return
-    }
-
-    const updateToolDeltaFn = updateToolDeltaRef.current
-    if (!updateToolDeltaFn) {
-      logger.warn('websocket.tool_delta.flush_unavailable', {
-        message: 'Tool delta buffer cleared without update function - user-facing output lost',
-        bufferedToolCount: toolDeltaBufferRef.current.size,
-        toolIds: Array.from(toolDeltaBufferRef.current.keys())
-      })
-      toolDeltaBufferRef.current.clear()
-      return
-    }
-
-    try {
-      // hasExplicitName is only needed while accumulating, so we ignore it during flush.
-      toolDeltaBufferRef.current.forEach(({ name, delta }, toolId) => {
-        if (delta.length > 0) {
-          updateToolDeltaFn(toolId, name, delta)
-        }
-      })
-
-      toolDeltaBufferRef.current.clear()
-    } catch (error) {
-      logger.error('websocket.tool_delta.flush_error', {
-        message: 'Failed to flush tool delta buffer',
-        error: error instanceof Error ? error.message : String(error),
-        bufferedToolCount: toolDeltaBufferRef.current.size,
-        toolIds: Array.from(toolDeltaBufferRef.current.keys())
-      })
-      // Clear buffer even on error to prevent permanent stuck state
-      toolDeltaBufferRef.current.clear()
-    }
-  }, [])
-
-  const flushToolDeltaBufferImmediate = useCallback(() => {
-    if (toolDeltaFlushScheduledRef.current) {
-      toolDeltaFlushScheduledRef.current = false
-    }
-    flushToolDeltaBuffer()
-  }, [flushToolDeltaBuffer])
-
-  const maybeSendRecoveryAck = useCallback((socket: Socket | null, force = false) => {
-    const pending = pendingRecoveryAckRef.current
-    if (!pending || !socket) return
-    if (!pending.replayComplete) return
-
-    // Only check counts if not forced - when server says replay is complete, trust it
-    if (!force && pending.expectedCount > 0 && pending.receivedCount < pending.expectedCount) {
-      return
-    }
-
-    socket.emit(pending.ackEvent, {
-      conversationId: pending.conversationId,
-      lastSequence: pending.lastSequence
-    })
-    logger.info('websocket.recovery.ack_sent', {
-      conversationId: pending.conversationId,
-      lastSequence: pending.lastSequence,
-      expectedCount: pending.expectedCount,
-      receivedCount: pending.receivedCount,
-      forced: force
-    })
-    pendingRecoveryAckRef.current = null
-  }, [])
-
-  const trackReplayEventReceipt = useCallback((socket: Socket | null, eventType: string) => {
-    const pending = pendingRecoveryAckRef.current
-    if (!pending || !socket) return
-    if (eventType === 'recovery_status' || eventType === 'replay_complete' || eventType === 'catchup_status' || eventType === 'catchup_complete') return
-
-    pending.receivedCount++
-    maybeSendRecoveryAck(socket)
-  }, [maybeSendRecoveryAck])
-
-  const scheduleToolDeltaFlush = useCallback(() => {
-    if (toolDeltaFlushScheduledRef.current) {
-      return
-    }
-
-    toolDeltaFlushScheduledRef.current = true
-
-    const runFlush = () => {
-      try {
-        toolDeltaFlushScheduledRef.current = false
-        flushToolDeltaBuffer()
-      } catch (error) {
-        logger.error('websocket.tool_delta.flush_execution_error', {
-          message: 'Failed to execute scheduled flush',
-          error: error instanceof Error ? error.message : String(error)
-        })
-        // Reset flag to allow future flush attempts
-        toolDeltaFlushScheduledRef.current = false
-        // Attempt immediate fallback flush
-        try {
-          flushToolDeltaBuffer()
-        } catch (fallbackError) {
-          logger.error('websocket.tool_delta.flush_fallback_error', {
-            message: 'Fallback flush also failed',
-            error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
-          })
-        }
-      }
-    }
-
-    // Try requestAnimationFrame with fallback to setTimeout
-    try {
-      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-        window.requestAnimationFrame(runFlush)
-      } else {
-        setTimeout(runFlush, RAF_FALLBACK_DELAY_MS)
-      }
-    } catch (schedulingError) {
-      logger.error('websocket.tool_delta.flush_scheduling_error', {
-        message: 'Failed to schedule flush, attempting immediate fallback',
-        error: schedulingError instanceof Error ? schedulingError.message : String(schedulingError)
-      })
-      // Reset flag and attempt immediate flush as fallback
-      toolDeltaFlushScheduledRef.current = false
-      try {
-        flushToolDeltaBuffer()
-      } catch (fallbackError) {
-        logger.error('websocket.tool_delta.flush_immediate_fallback_error', {
-          message: 'Immediate fallback flush failed',
-          error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
-        })
-      }
-    }
-  }, [flushToolDeltaBuffer])
+  // Use composable sub-hooks for focused concerns
+  const { wasRecoveredRef, serverConfigRef, pendingRecoveryAckRef, maybeSendRecoveryAck, trackReplayEventReceipt } =
+    useWebSocketRecovery()
+  const { retryStateRef, clearRetryState } = useWebSocketRetry()
+  const { toolDeltaBufferRef, scheduleToolDeltaFlush, flushToolDeltaBufferImmediate } = useToolDeltaBuffer()
+  const { clearStoredSocketId, handleCommitComplete, sendToolImpression } = useWebSocketHelpers(currentAppId)
 
   // Create Socket.IO connection (stable)
   const createConnection = useCallback(async (appId: string): Promise<Socket> => {
@@ -842,45 +607,6 @@ export function useStreamingWebSocket() {
    *
    * @param commitHash - Optional commit hash from the completed message
    */
-  const handleCommitComplete = useCallback(async (commitHash?: string) => {
-    if (commitHash && currentAppId) {
-      try {
-        // Invalidate to get fresh commit list
-        await queryClient.invalidateQueries({
-          queryKey: ['git-history', currentAppId],
-          refetchType: 'active'
-        })
-
-        // Select the new commit
-        await useGitStore.getState().selectCommit(currentAppId, commitHash)
-
-        // Now trigger preview refresh - files are synced
-        window.postMessage({
-          type: 'MESSAGE_COMPLETE',
-          source: 'websocket'
-        }, window.location.origin)
-      } catch (error) {
-        logger.error('websocket.commit_selection_error', {
-          appId: currentAppId,
-          commitHash: commitHash.substring(0, 7),
-          error: error instanceof Error ? error.message : String(error),
-        })
-
-        // Still trigger preview refresh on error
-        window.postMessage({
-          type: 'MESSAGE_COMPLETE',
-          source: 'websocket'
-        }, window.location.origin)
-      }
-    } else {
-      // No commit or no appId - trigger preview refresh immediately
-      window.postMessage({
-        type: 'MESSAGE_COMPLETE',
-        source: 'websocket'
-      }, window.location.origin)
-    }
-  }, [currentAppId, queryClient])
-
   // Set up Socket.IO event handlers for streaming (defined before useEffect to satisfy dependency ordering)
   const setupEventHandlers = useCallback((socket: Socket) => {
     // Create message handler registry for strategy pattern

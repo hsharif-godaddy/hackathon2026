@@ -7,6 +7,7 @@
 
 import type { MutableRefObject } from 'react'
 import type { Socket } from 'socket.io-client'
+
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import type { StructuredError } from '@/types/errors'
 

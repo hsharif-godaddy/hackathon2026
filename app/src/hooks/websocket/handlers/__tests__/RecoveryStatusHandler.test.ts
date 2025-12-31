@@ -4,9 +4,9 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { createMockMessageContext } from './testUtils'
 import { RecoveryStatusHandler } from '../RecoveryStatusHandler'
 import type { WebSocketMessage } from '../types'
-import { createMockMessageContext } from './testUtils'
 
 vi.mock('@/stores/useStreamingConversationStore', () => {
   const getState = vi.fn()
@@ -25,8 +25,8 @@ vi.mock('@/services/AgentService', () => ({
   },
 }))
 
-import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import { AgentService } from '@/services/AgentService'
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 
 const mockStore = useStreamingConversationStore as unknown as {
   getState: ReturnType<typeof vi.fn>
