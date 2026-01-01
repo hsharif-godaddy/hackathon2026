@@ -1,0 +1,239 @@
+/**
+ * ChatMessageBuilder
+ *
+ * Pure service for building AgentsAppChatMessage objects with proper context attachments.
+ * Extracted from useStreamingWebSocket to improve testability and separation of concerns.
+ */
+
+import type { AgentsAppChatMessage, AgentsAppContext } from '@/types/websocket-context'
+import type { ContextAttachment } from '@/types/context-attachment'
+import type { VisualContext } from '@/app/develop/components/visualContextCapture'
+
+export interface Asset {
+  imageUrl: string
+  thumbnailUrl?: string
+  videoUrl?: string
+  [key: string]: unknown
+}
+
+export interface AIEditContext {
+  [key: string]: unknown
+}
+
+export interface TodoContext {
+  [key: string]: unknown
+}
+
+export interface BuildError {
+  error: string
+  details?: string
+  exitCode?: number
+}
+
+export interface CustomContext {
+  type?: string
+  data?: unknown
+  persistence?: 'save' | 'ephemeral'
+  source?: string
+  customAttachments?: ContextAttachment[]
+}
+
+export interface BuildMessageParams {
+  content: string
+  appId: string
+  sessionId: string
+  conversationId?: string | null
+  visualContext?: VisualContext | null
+  aiEditContext?: AIEditContext
+  selectedAsset?: Asset
+  todoListContext?: TodoContext
+  buildErrorContext?: BuildError | null
+  isActionRequest?: boolean
+  customContext?: CustomContext
+}
+
+export class ChatMessageBuilder {
+  // Cache timezone since it rarely changes during a session
+  private static cachedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+  /**
+   * Transform asset URLs to include https protocol
+   */
+  private transformAsset(asset: Asset | undefined): Asset | null {
+    if (!asset) return null
+
+    return {
+      ...asset,
+      imageUrl: asset.imageUrl.startsWith('//')
+        ? `https:${asset.imageUrl}`
+        : asset.imageUrl,
+      ...(asset.thumbnailUrl && {
+        thumbnailUrl: asset.thumbnailUrl.startsWith('//')
+          ? `https:${asset.thumbnailUrl}`
+          : asset.thumbnailUrl
+      }),
+      ...(asset.videoUrl && {
+        videoUrl: asset.videoUrl.startsWith('//')
+          ? `https:${asset.videoUrl}`
+          : asset.videoUrl
+      })
+    }
+  }
+
+  /**
+   * Build context attachments array from various context sources
+   */
+  private buildContextAttachments(params: BuildMessageParams): ContextAttachment[] {
+    const attachments: ContextAttachment[] = []
+    const timestamp = Date.now()
+
+    if (params.aiEditContext) {
+      attachments.push({
+        type: 'ai_edit_context',
+        data: params.aiEditContext,
+        persistence: 'save',
+        renderStrategy: 'before_prompt',
+        metadata: {
+          timestamp,
+          source: 'ai-edit-dialog'
+        }
+      })
+    }
+
+    if (params.visualContext) {
+      attachments.push({
+        type: 'visual_context',
+        data: params.visualContext,
+        persistence: 'ephemeral',
+        renderStrategy: 'before_prompt',
+        metadata: {
+          timestamp,
+          source: 'iframe-capture'
+        }
+      })
+    }
+
+    const transformedAsset = this.transformAsset(params.selectedAsset)
+    if (transformedAsset) {
+      attachments.push({
+        type: 'selected_assets',
+        data: [transformedAsset],
+        persistence: 'ephemeral',
+        renderStrategy: 'before_prompt',
+        metadata: {
+          timestamp,
+          source: 'asset-manager'
+        }
+      })
+    }
+
+    if (params.buildErrorContext) {
+      attachments.push({
+        type: 'build_error',
+        data: {
+          error: params.buildErrorContext.error,
+          details: params.buildErrorContext.details,
+          exitCode: params.buildErrorContext.exitCode
+        },
+        persistence: 'ephemeral',
+        renderStrategy: 'before_prompt',
+        metadata: {
+          timestamp,
+          source: 'publish-failure'
+        }
+      })
+    }
+
+    if (params.todoListContext) {
+      attachments.push({
+        type: 'todo_list_context',
+        data: params.todoListContext,
+        persistence: 'save',
+        renderStrategy: 'before_prompt',
+        metadata: {
+          timestamp,
+          source: 'todo-list-tool'
+        }
+      })
+    }
+
+    if (params.isActionRequest) {
+      attachments.push({
+        type: 'action_request',
+        data: { instruction: '[Action Request] Execute this request immediately. Do not summarize previous work.' },
+        persistence: 'ephemeral',
+        renderStrategy: 'before_prompt',
+        metadata: {
+          timestamp,
+          source: 'suggested_response'
+        }
+      })
+    }
+
+    if (params.customContext) {
+      if (params.customContext.customAttachments && Array.isArray(params.customContext.customAttachments)) {
+        attachments.push(...params.customContext.customAttachments)
+      } else if (params.customContext.type && params.customContext.data) {
+        attachments.push({
+          type: params.customContext.type,
+          data: params.customContext.data,
+          persistence: params.customContext.persistence || 'ephemeral',
+          renderStrategy: 'before_prompt',
+          metadata: {
+            timestamp,
+            source: params.customContext.source || 'custom-context'
+          }
+        })
+      }
+    }
+
+    return attachments
+  }
+
+  /**
+   * Build rich context object with metadata and attachments
+   */
+  private buildRichContext(params: BuildMessageParams, attachments: ContextAttachment[]): AgentsAppContext {
+    const richContext: AgentsAppContext = {
+      metadata: {
+        appId: params.appId,
+        userId: 'current-user',
+        sessionId: params.sessionId,
+        userTimezone: ChatMessageBuilder.cachedTimezone
+      },
+
+      conversation: {
+        conversationId: params.conversationId || undefined,
+        maxMessages: 10,
+        includeHistory: true
+      },
+
+      appContext: {
+        includeDirectoryListing: true,
+        includePackageInfo: true,
+        includeDependencyStatus: true,
+        maxDirectoryDepth: 3
+      }
+    }
+
+    if (attachments.length > 0) {
+      richContext.contextAttachments = attachments
+    }
+
+    return richContext
+  }
+
+  /**
+   * Build complete chat message with context
+   */
+  build(params: BuildMessageParams): AgentsAppChatMessage {
+    const attachments = this.buildContextAttachments(params)
+    const context = this.buildRichContext(params, attachments)
+
+    return {
+      message: params.content,
+      timestamp: new Date().toISOString(),
+      context
+    }
+  }
+}

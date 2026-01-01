@@ -405,6 +405,26 @@ describe('useStreamingWebSocket', () => {
       expect(result.current).toBeDefined();
       expect(result.current.sendMessage).toBeInstanceOf(Function);
     });
+
+    it('should handle visual context capture errors gracefully', async () => {
+      // Regression test for Bug 3: Visual context errors escaping error handling
+      vi.useFakeTimers()
+      const { captureVisualContext } = await import('@/app/develop/components/visualContextCapture');
+
+      // Make captureVisualContext throw an error
+      vi.mocked(captureVisualContext).mockRejectedValue(new Error('Iframe not ready'));
+
+      const { socket } = await setupWebSocketWithApp('app-visual-error')
+
+      // sendMessage should not throw even if visual context capture fails
+      await expect(async () => {
+        const { useStreamingWebSocket } = await import('./useStreamingWebSocket');
+        const { result } = renderHook(() => useStreamingWebSocket());
+        await result.current.sendMessage('Test message');
+      }).not.toThrow();
+
+      vi.useRealTimers()
+    });
   });
 
   describe('Cleanup', () => {
