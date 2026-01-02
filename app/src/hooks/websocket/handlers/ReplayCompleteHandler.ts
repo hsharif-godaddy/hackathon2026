@@ -49,6 +49,9 @@ export class ReplayCompleteHandler implements MessageHandler {
         }
       }
 
+      // Send REPLAY_COMPLETE event to machine
+      context.machine.send({ type: 'REPLAY_COMPLETE' })
+
       // Force send ack - server is authoritative on replay completion
       context.helpers.maybeSendRecoveryAck(context.socket, true)
     }

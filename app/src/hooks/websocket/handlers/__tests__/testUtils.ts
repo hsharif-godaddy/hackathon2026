@@ -40,5 +40,8 @@ export const createMockMessageContext = (
     toolDeltaBuffer: { current: new Map() },
     retryState: { current: { retryCount: 0 } },
   },
+  machine: {
+    send: vi.fn(),
+  } as any,
   ...overrides,
 })

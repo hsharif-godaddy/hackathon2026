@@ -14,23 +14,15 @@ export class ChunkHandler implements MessageHandler {
   async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
     const store = useStreamingConversationStore.getState()
 
-    // Ensure we're in streaming state (important for recovery scenarios)
-    // If we were in 'retrying' or 'error' state and chunks start arriving,
-    // it means the connection was successfully recovered
-    if (store.streamingState === 'retrying' || store.streamingState === 'error') {
-      context.actions.setStreamingState('streaming')
-      context.actions.setWebSocketState({
-        connected: true,
-        status: 'streaming'
-      })
+    // Machine should already be in streaming state when chunks arrive
+    // Adapter syncs streamingState and webSocketState from machine
 
-      // Clear store-based retry state when streaming data arrives
-      if (store.connectionRetry.isRetrying) {
-        store.clearConnectionRetry()
-      }
+    // Clear store-based retry state when streaming data arrives (recovery scenario)
+    if (store.connectionRetry.isRetrying) {
+      store.clearConnectionRetry()
     }
 
-    // Append the text chunk to the active stream
+    // Append the text chunk to the active stream (Tier 2 - transcript data)
     context.actions.appendTextSegment(data.content)
   }
 }

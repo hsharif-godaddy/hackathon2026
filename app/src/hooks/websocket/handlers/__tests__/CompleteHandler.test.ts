@@ -57,9 +57,8 @@ describe('CompleteHandler', () => {
       totalSteps: 3,
     })
     expect(context.helpers.sendToolImpression).toHaveBeenCalledWith('complete')
-    expect(context.actions.setWebSocketState).toHaveBeenCalledWith({ status: 'idle' })
-    expect(context.actions.setStreamingState).toHaveBeenCalledWith('idle')
-    expect(context.actions.setIsLoading).toHaveBeenCalledWith(false)
+    // Machine handles UI state transitions via STREAM_COMPLETE event (Tier 1)
+    // Adapter syncs: setWebSocketState, setStreamingState, setIsLoading
     expect(context.helpers.handleCommitComplete).toHaveBeenCalledWith('abcdef1')
     expect(context.helpers.clearStoredSocketId).toHaveBeenCalled()
     expect(context.helpers.clearConversationIdCookie).toHaveBeenCalledWith('app-123')

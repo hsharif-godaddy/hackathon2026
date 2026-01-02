@@ -79,12 +79,9 @@ describe('ChunkHandler', () => {
 
     await handler.handle(data, mockContext)
 
-    expect(mockContext.actions.setStreamingState).toHaveBeenCalledWith('streaming')
-    expect(mockContext.actions.setWebSocketState).toHaveBeenCalledWith({
-      connected: true,
-      status: 'streaming',
-      error: undefined,
-    })
+    // Machine handles state transitions (Tier 1), handler only processes data (Tier 2)
+    expect(mockContext.actions.setStreamingState).not.toHaveBeenCalled()
+    expect(mockContext.actions.setWebSocketState).not.toHaveBeenCalled()
     expect(mockContext.actions.appendTextSegment).toHaveBeenCalledWith('Hello world')
   })
 
@@ -104,12 +101,9 @@ describe('ChunkHandler', () => {
 
     await handler.handle(data, mockContext)
 
-    expect(mockContext.actions.setStreamingState).toHaveBeenCalledWith('streaming')
-    expect(mockContext.actions.setWebSocketState).toHaveBeenCalledWith({
-      connected: true,
-      status: 'streaming',
-      error: undefined,
-    })
+    // Machine handles state transitions (Tier 1), handler only processes data (Tier 2)
+    expect(mockContext.actions.setStreamingState).not.toHaveBeenCalled()
+    expect(mockContext.actions.setWebSocketState).not.toHaveBeenCalled()
     expect(mockContext.actions.appendTextSegment).toHaveBeenCalledWith('Recovered')
   })
 

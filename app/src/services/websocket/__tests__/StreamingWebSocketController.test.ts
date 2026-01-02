@@ -87,6 +87,11 @@ describe('StreamingWebSocketController', () => {
       setIsLoading: vi.fn(),
       markUpstreamError: vi.fn(),
       finalizeStream: vi.fn(),
+      // Phase 3 additions - machine/adapter integration
+      startStream: vi.fn(),
+      setError: vi.fn(),
+      setRecoveryState: vi.fn(),
+      setRetryState: vi.fn(),
     })
 
     // Mock socket
@@ -161,18 +166,8 @@ describe('StreamingWebSocketController', () => {
       expect(onFailedSpy).toHaveBeenCalledWith({ error })
     })
 
-    it('should update WebSocket state on connection', async () => {
-      await controller.connect('app-123')
-
-      const callbacks = (mockConnectionManager.connect as any).mock.calls[0][1] as ConnectionCallbacks
-
-      callbacks.onConnect?.({ socket: mockSocket, recovered: false })
-
-      expect(mockActions.setWebSocketState).toHaveBeenCalledWith({
-        connected: true,
-        status: 'idle',
-      })
-    })
+    // Lifecycle state updates removed - this test is now redundant with "should emit connection:established event"
+    // StoreSyncAdapter handles all lifecycle state, adapter tests verify state updates
   })
 
   describe('disconnect', () => {
@@ -244,23 +239,15 @@ describe('StreamingWebSocketController', () => {
       )
     })
 
-    it('should set loading and streaming state', async () => {
+    it('should start new stream (Tier 2 action)', async () => {
       await controller.sendMessage({
         content: 'Test',
         visualContext: null,
       })
 
-      expect(mockActions.setIsLoading).toHaveBeenCalledWith(true)
-      expect(mockActions.setStreamingState).toHaveBeenCalledWith('streaming')
-    })
-
-    it('should start new stream', async () => {
-      await controller.sendMessage({
-        content: 'Test',
-        visualContext: null,
-      })
-
+      // Tier 2 action - controller directly calls this
       expect(mockActions.startNewStream).toHaveBeenCalledWith('Test')
+      // Note: Lifecycle state (setIsLoading, setStreamingState) handled by StoreSyncAdapter
     })
 
     it('should emit chat_message via socket', async () => {
@@ -292,22 +279,6 @@ describe('StreamingWebSocketController', () => {
           message: 'Test message',
         }),
       })
-    })
-
-    it('should handle socket not connected error', async () => {
-      mockSocket.connected = false
-
-      await controller.sendMessage({
-        content: 'Test',
-        visualContext: null,
-      })
-
-      expect(mockActions.setWebSocketState).toHaveBeenCalledWith({
-        status: 'error',
-        error: { message: 'WebSocket not connected. Connection may be reconnecting...' },
-      })
-      expect(mockActions.setStreamingState).toHaveBeenCalledWith('error')
-      expect(mockActions.setIsLoading).toHaveBeenCalledWith(false)
     })
 
     it('should emit message:error event on error', async () => {
@@ -387,10 +358,7 @@ describe('StreamingWebSocketController', () => {
       callbacks.onReconnectAttempt?.({ socket: mockSocket, attempt: 1 })
 
       expect(onReconnectAttemptSpy).toHaveBeenCalled()
-      expect(mockActions.setWebSocketState).toHaveBeenCalledWith({
-        connected: false,
-        status: 'connecting',
-      })
+      // Lifecycle state (setWebSocketState) is now handled by StoreSyncAdapter
     })
 
     it('should emit reconnect:success event', async () => {
@@ -403,10 +371,7 @@ describe('StreamingWebSocketController', () => {
       callbacks.onReconnect?.({ socket: mockSocket, attempt: 1 })
 
       expect(onReconnectSpy).toHaveBeenCalled()
-      expect(mockActions.setWebSocketState).toHaveBeenCalledWith({
-        connected: true,
-        status: 'idle',
-      })
+      // Lifecycle state (setWebSocketState) is now handled by StoreSyncAdapter
     })
 
     it('should emit reconnect:failed event', async () => {
@@ -419,11 +384,7 @@ describe('StreamingWebSocketController', () => {
       callbacks.onReconnectFailed?.({ socket: mockSocket })
 
       expect(onReconnectFailedSpy).toHaveBeenCalled()
-      expect(mockActions.setWebSocketState).toHaveBeenCalledWith({
-        connected: false,
-        status: 'error',
-        error: { message: 'Failed to reconnect' },
-      })
+      // Lifecycle state (setWebSocketState) is now handled by StoreSyncAdapter
     })
 
     it('should handle disconnect during streaming', async () => {
@@ -445,6 +406,11 @@ describe('StreamingWebSocketController', () => {
         setIsLoading: vi.fn(),
         markUpstreamError: vi.fn(),
         finalizeStream: vi.fn(),
+        // Phase 3 additions - machine/adapter integration
+        startStream: vi.fn(),
+        setError: vi.fn(),
+        setRecoveryState: vi.fn(),
+        setRetryState: vi.fn(),
       })
 
       await controller.connect('app-123')
@@ -453,15 +419,9 @@ describe('StreamingWebSocketController', () => {
       const storeState = mockGetStoreState()
       callbacks.onDisconnect?.({ reason: 'transport close', socket: mockSocket })
 
+      // Controller initiates retry mechanism (not lifecycle state)
       expect(storeState.startConnectionRetry).toHaveBeenCalledWith('socket-123')
-      expect(mockActions.setWebSocketState).toHaveBeenCalledWith({
-        connected: false,
-        status: 'connecting',
-        error: {
-          message: 'Connection lost (transport close), retrying...',
-          type: 'NETWORK_ERROR',
-        },
-      })
+      // Note: Lifecycle state (setWebSocketState) handled by StoreSyncAdapter
     })
   })
 

@@ -15,6 +15,9 @@ export class CompleteHandler implements MessageHandler {
     // Flush any buffered tool input deltas
     context.actions.flushToolDeltaBufferImmediate()
 
+    // Send STREAM_COMPLETE event to machine
+    context.machine.send({ type: 'STREAM_COMPLETE' })
+
     // Clear store-based retry state on successful completion
     const completeStore = useStreamingConversationStore.getState()
     if (completeStore.connectionRetry.isRetrying) {
@@ -34,10 +37,8 @@ export class CompleteHandler implements MessageHandler {
     // Send analytics
     context.helpers.sendToolImpression('complete')
 
-    // Update UI state
-    context.actions.setWebSocketState({ status: 'idle' })
-    context.actions.setStreamingState('idle')
-    context.actions.setIsLoading(false)
+    // Machine handles UI state transitions via STREAM_COMPLETE event
+    // Adapter syncs: setWebSocketState, setStreamingState, setIsLoading, finalizeStream
 
     // Handle commit selection and preview refresh
     await context.helpers.handleCommitComplete(data.data?.commitHash as string | undefined)

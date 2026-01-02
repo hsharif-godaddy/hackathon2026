@@ -124,6 +124,21 @@ export interface ConnectionRetryState {
   escalationTimeoutId: ReturnType<typeof setTimeout> | null
 }
 
+// Recovery state (for state machine adapter)
+export interface RecoveryState {
+  isRecovering: boolean
+  expectedEvents: number
+  receivedEvents: number
+}
+
+// Retry state (for state machine adapter)
+export interface RetryState {
+  isRetrying: boolean
+  retryCount: number
+  nextRetryMs?: number
+  exhausted?: boolean
+}
+
 // Main store state
 export interface StreamingConversationState {
   // Core data
@@ -162,6 +177,11 @@ export interface StreamingConversationState {
   // Connection retry state - survives component remounts
   connectionRetry: ConnectionRetryState
 
+  // State machine lifecycle state (synced by StoreSyncAdapter)
+  recoveryState: RecoveryState
+  retryState: RetryState
+  lastError: Error | null
+
   // === CORE STREAMING ACTIONS ===
 
   // Stream lifecycle
@@ -197,6 +217,12 @@ export interface StreamingConversationState {
 
   setWebSocketState: (state: Partial<WebSocketState>) => void
   setStreamingState: (state: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error') => void
+
+  // State machine lifecycle actions (called by StoreSyncAdapter)
+  setRecoveryState: (state: RecoveryState) => void
+  setRetryState: (state: RetryState) => void
+  setError: (error: Error) => void
+  startStream: (conversationId: string, messageId: string) => void
 
   // === CONNECTION RETRY ACTIONS ===
 
@@ -255,6 +281,16 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     disconnectSocketId: null,
     escalationTimeoutId: null
   },
+  recoveryState: {
+    isRecovering: false,
+    expectedEvents: 0,
+    receivedEvents: 0
+  },
+  retryState: {
+    isRetrying: false,
+    retryCount: 0
+  },
+  lastError: null,
 
   // === CORE STREAMING ACTIONS ===
 
@@ -703,6 +739,23 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   },
 
   setStreamingState: (state) => set({ streamingState: state }),
+
+  // State machine lifecycle actions (called by StoreSyncAdapter)
+  setRecoveryState: (state) => set({ recoveryState: state }),
+
+  setRetryState: (state) => set({ retryState: state }),
+
+  setError: (error) => set({ lastError: error }),
+
+  startStream: (conversationId, messageId) => {
+    set({
+      streamingState: 'streaming',
+      currentStep: 1,
+      isLoading: true,
+      // Note: Conversation/message management is handled by StreamingWebSocketController
+      // This action is called by StoreSyncAdapter to sync machine state to store
+    })
+  },
 
   // === CONNECTION RETRY ACTIONS ===
 

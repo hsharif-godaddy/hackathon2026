@@ -74,9 +74,8 @@ describe('RecoveryStatusHandler', () => {
     expect(context.actions.finalizeStream).toHaveBeenCalledWith({})
     expect(clearConnectionRetry).toHaveBeenCalled()
     expect(context.helpers.clearRetryState).toHaveBeenCalled()
-    expect(context.actions.setWebSocketState).toHaveBeenCalledWith({ status: 'idle' })
-    expect(context.actions.setStreamingState).toHaveBeenCalledWith('idle')
-    expect(context.actions.setIsLoading).toHaveBeenCalledWith(false)
+    // Machine handles UI state transitions via STREAM_COMPLETE event (Tier 1)
+    // (Already sent by CompleteHandler when stream was completed before recovery)
     expect(context.helpers.clearStoredSocketId).toHaveBeenCalled()
   })
 
@@ -119,6 +118,7 @@ describe('RecoveryStatusHandler', () => {
     })
     expect(context.helpers.maybeSendRecoveryAck).toHaveBeenCalledWith(context.socket)
     expect(mockStore.setState).toHaveBeenCalledWith({ messages: [{ id: 'msg-2' }] })
-    expect(context.actions.setStreamingState).toHaveBeenCalledWith('streaming')
+    // Machine should already be in streaming state during recovery (Tier 1)
+    // Adapter syncs streamingState from machine
   })
 })

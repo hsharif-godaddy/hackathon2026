@@ -41,6 +41,9 @@ export class CatchupCompleteHandler implements MessageHandler {
           })
         }
 
+        // Send CATCHUP_COMPLETE event to machine
+        context.machine.send({ type: 'CATCHUP_COMPLETE' })
+
         // Force send ack - server is authoritative on catchup completion
         context.helpers.maybeSendRecoveryAck(context.socket, true)
       } else if (!pending) {
@@ -53,6 +56,10 @@ export class CatchupCompleteHandler implements MessageHandler {
           replayComplete: true,
           ackEvent: 'catchup_ack',
         }
+
+        // Send CATCHUP_COMPLETE event to machine
+        context.machine.send({ type: 'CATCHUP_COMPLETE' })
+
         context.helpers.maybeSendRecoveryAck(context.socket, true)
       }
     }

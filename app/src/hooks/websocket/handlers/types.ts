@@ -10,6 +10,7 @@ import type { Socket } from 'socket.io-client'
 
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import type { StructuredError } from '@/types/errors'
+import type { ServerConfig, WebSocketActor } from '@/services/websocket/stateMachineTypes'
 
 /**
  * WebSocket message format from server
@@ -20,13 +21,8 @@ export interface WebSocketMessage {
   data?: Record<string, unknown>
 }
 
-/**
- * Server configuration received during handshake
- */
-export interface ServerConfig {
-  streamRecoveryWindow: number
-  ackTimeout: number
-}
+// Re-export ServerConfig for backward compatibility
+export type { ServerConfig }
 
 /**
  * Pending recovery acknowledgement tracking
@@ -118,6 +114,8 @@ export interface MessageContext {
   actions: MessageHandlerActions
   helpers: MessageHandlerHelpers
   refs: MessageHandlerRefs
+  // XState machine actor for sending lifecycle events (Tier 1)
+  machine: WebSocketActor
 }
 
 /**

@@ -52,18 +52,9 @@ describe('ErrorHandler', () => {
       totalSteps: 2,
     })
     expect(context.helpers.sendToolImpression).toHaveBeenCalledWith('error')
-    expect(context.actions.setWebSocketState).toHaveBeenCalledWith({
-      status: 'error',
-      error: {
-        message: 'Budget exceeded',
-        type: 'BUDGET_EXCEEDED',
-        statusCode: 429,
-        timestamp: '123',
-      },
-    })
+    // Machine handles UI state transitions via STREAM_ERROR event (Tier 1)
+    // Adapter syncs: setWebSocketState, setStreamingState, setIsLoading
     expect(context.helpers.clearRetryState).toHaveBeenCalled()
-    expect(context.actions.setStreamingState).toHaveBeenCalledWith('error')
-    expect(context.actions.setIsLoading).toHaveBeenCalledWith(false)
     expect(context.helpers.clearStoredSocketId).toHaveBeenCalled()
     expect(context.refs.pendingRecoveryAck.current).toBeNull()
   })

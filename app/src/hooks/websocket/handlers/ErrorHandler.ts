@@ -88,6 +88,13 @@ export class ErrorHandler implements MessageHandler {
       content: data.content,
     })
 
+    // Send STREAM_ERROR event to machine (not retryable)
+    context.machine.send({
+      type: 'STREAM_ERROR',
+      error: new Error(data.content),
+      retryable: false
+    })
+
     context.helpers.clearRetryState()
     context.actions.markBudgetExceeded()
     context.actions.finalizeStream({
@@ -95,17 +102,10 @@ export class ErrorHandler implements MessageHandler {
       totalSteps: data.data?.step as number | undefined,
     })
     context.helpers.sendToolImpression('error')
-    context.actions.setWebSocketState({
-      status: 'error',
-      error: {
-        message: data.content,
-        type: errorType as 'BUDGET_EXCEEDED' | 'APP_NOT_FOUND' | 'TOOL_VALIDATION_ERROR' | 'UPSTREAM_ERROR' | 'RETRY_ERROR' | 'NETWORK_ERROR' | 'DATA_LOSS' | undefined,
-        statusCode: errorCode,
-        timestamp: errorTimestamp,
-      },
-    })
-    context.actions.setStreamingState('error')
-    context.actions.setIsLoading(false)
+
+    // Machine handles UI state transitions via STREAM_ERROR event
+    // Adapter syncs: setWebSocketState, setStreamingState, setIsLoading
+
     context.helpers.clearStoredSocketId()
     context.refs.pendingRecoveryAck.current = null
   }
@@ -125,6 +125,13 @@ export class ErrorHandler implements MessageHandler {
   ): void {
     retryState.retryCount++
     const retryDelay = Math.min(500 * Math.pow(2, retryState.retryCount - 1), 5000) // Exponential backoff, max 5s
+
+    // Send STREAM_ERROR event to machine (retryable)
+    context.machine.send({
+      type: 'STREAM_ERROR',
+      error: new Error(data.content),
+      retryable: true
+    })
 
     logger.warn('websocket.error.app_not_found.retry', {
       message: 'App not found, will retry',
@@ -200,6 +207,13 @@ export class ErrorHandler implements MessageHandler {
       logger.error('websocket.error', { message: 'Socket.IO error', data })
     }
 
+    // Send STREAM_ERROR event to machine (not retryable)
+    context.machine.send({
+      type: 'STREAM_ERROR',
+      error: new Error(data.content),
+      retryable: false
+    })
+
     // Clear retry state
     context.helpers.clearRetryState()
 
@@ -216,19 +230,10 @@ export class ErrorHandler implements MessageHandler {
       totalSteps: data.data?.step as number | undefined,
     })
     context.helpers.sendToolImpression('error')
-    context.actions.setWebSocketState({
-      status: 'error',
-      error: {
-        message: data.content,
-        type: errorType as 'BUDGET_EXCEEDED' | 'APP_NOT_FOUND' | 'TOOL_VALIDATION_ERROR' | 'UPSTREAM_ERROR' | 'RETRY_ERROR' | 'NETWORK_ERROR' | 'DATA_LOSS' | undefined,
-        statusCode: errorCode,
-        timestamp: errorTimestamp,
-        retryAttempts,
-        retryReason,
-      },
-    })
-    context.actions.setStreamingState('error')
-    context.actions.setIsLoading(false)
+
+    // Machine handles UI state transitions via STREAM_ERROR event (already sent above)
+    // Adapter syncs: setWebSocketState, setStreamingState, setIsLoading
+
     context.helpers.clearStoredSocketId()
     context.refs.pendingRecoveryAck.current = null
   }

@@ -15,15 +15,10 @@ export class StepStartHandler implements MessageHandler {
     // Send tool impression for analytics
     context.helpers.sendToolImpression('start')
 
-    // Clear any retrying/error state and resume streaming
-    // This is important for recovery scenarios where we were in error/retrying state
-    context.actions.setStreamingState('streaming')
-    context.actions.setWebSocketState({
-      connected: true,
-      status: 'streaming'
-    })
+    // Machine should already be in streaming state when step starts
+    // Adapter syncs streamingState and webSocketState from machine
 
-    // Clear store-based retry state when streaming data arrives
+    // Clear store-based retry state when streaming data arrives (recovery scenario)
     const store = useStreamingConversationStore.getState()
     if (store.connectionRetry.isRetrying) {
       store.clearConnectionRetry()

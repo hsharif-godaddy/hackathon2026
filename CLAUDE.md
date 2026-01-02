@@ -195,7 +195,116 @@ Use `./setup.sh` or `pnpm --filter airo-setup start` instead of manual creation.
 
 **App Lifecycle:** `creating` → `created` → `running`/`stopped`/`error`. Async setup, auto recovery, cleanup. DO NOT edit `/tmp/apps/{appId}/app/`.
 
-**WebSocket:** Socket.IO V2, conversation history, bidirectional streaming, hot file tracking
+### WebSocket Architecture
+
+**Overview:** Socket.IO V2-based real-time communication with XState v5 state machine managing all lifecycle state.
+
+**Core Components:**
+
+1. **XState Machine** (`app/src/services/websocket/webSocketMachine.ts`)
+   - Single source of truth for connection + streaming lifecycle
+   - Parallel regions: `transport` (connection) + `stream` (messaging)
+   - Guards, actions, delays for retry/recovery logic
+   - 20 comprehensive tests
+
+2. **StoreSyncAdapter** (`app/src/services/websocket/StoreSyncAdapter.ts`)
+   - Declarative mapping: machine state → Zustand store updates
+   - Subscribes to machine transitions, syncs to store
+   - **Only** place that calls lifecycle store actions
+   - 13 comprehensive tests
+
+3. **StreamingWebSocketController** (`app/src/services/websocket/StreamingWebSocketController.ts`)
+   - Integrates machine, adapter, ConnectionManager, message handlers
+   - Sends machine events on lifecycle changes (CONNECT, DISCONNECT, STREAM_ERROR, etc.)
+   - Passes machine actor to handlers via MessageContext
+
+4. **Message Handlers** (`app/src/hooks/websocket/handlers/`)
+   - Process server messages (chunks, tool deltas, errors, recovery, etc.)
+   - Can send lifecycle events to machine (optional machine actor in context)
+   - Registry pattern for extensibility
+
+**Architecture Principles:**
+
+**Tier 1 (Lifecycle State)** - Machine → Adapter → Store
+
+- Connection states: disconnected, connecting, connected, reconnecting
+- Streaming states: idle, streaming, completed, error
+- Recovery/retry states
+- **Rule:** Handlers NEVER call lifecycle methods directly (setWebSocketState, setStreamingState, setIsLoading)
+
+**Tier 2 (Transcript Data)** - Handlers → Store directly
+
+- Message content: appendTextSegment, addToolCallSegment, etc.
+- Stream finalization: finalizeStream (with metadata)
+- Performance-critical operations bypass machine for efficiency
+
+**Data Flow:**
+
+```
+User Action → Controller Event → Machine Transition → Adapter Sync → Store Update → UI
+```
+
+**Type Safety:**
+
+```typescript
+import { type WebSocketActor } from "@/services/websocket/webSocketMachine";
+
+// In handlers, machine is required and properly typed:
+interface MessageContext {
+  machine: WebSocketActor; // Required, not optional
+}
+
+// Send events with full type checking:
+context.machine.send({ type: "STREAM_ERROR", error, retryable: false });
+```
+
+**Testing Patterns:**
+
+1. **Machine Tests** - Test state transitions in isolation
+
+   ```typescript
+   import { StateMachineTestHarness } from "./StateMachineTestUtils";
+   const harness = new StateMachineTestHarness();
+   harness.machine.simulateConnect("app-123");
+   harness.machine.assertState((s) => s.matches({ transport: "connected" }));
+   ```
+
+2. **Adapter Tests** - Test machine → store mappings
+
+   ```typescript
+   import { StoreSyncAdapterTestHarness } from "./StoreSyncAdapterTestUtils";
+   const harness = new StoreSyncAdapterTestHarness();
+   harness.assertStoreActionCalled("setWebSocketState");
+   ```
+
+3. **Handler Tests** - DO NOT assert lifecycle method calls
+
+   ```typescript
+   // ❌ WRONG - handlers don't call these anymore
+   expect(context.actions.setStreamingState).toHaveBeenCalled();
+
+   // ✅ CORRECT - assert data operations (Tier 2)
+   expect(context.actions.finalizeStream).toHaveBeenCalled();
+   expect(context.actions.appendTextSegment).toHaveBeenCalledWith("text");
+   ```
+
+**Common Patterns:**
+
+- **Adding lifecycle event:** Update `MachineEvent` type in `stateMachineTypes.ts`, add handler for event in machine
+- **Adding store action:** Tier 1 → add to adapter; Tier 2 → call directly from handler
+- **Cleanup:** Always call `controller.destroy()` in cleanup (stops actor, unsubscribes adapter)
+- **Observability:** Machine logs all transitions via structured logging (`logger.info('websocket.machine.*')`)
+
+**Key Files:**
+
+- Machine: `app/src/services/websocket/webSocketMachine.ts` (420 LOC)
+- Adapter: `app/src/services/websocket/StoreSyncAdapter.ts` (232 LOC)
+- Controller: `app/src/services/websocket/StreamingWebSocketController.ts`
+- Types: `app/src/services/websocket/stateMachineTypes.ts`
+- Tests: `app/src/services/websocket/__tests__/`
+- Handlers: `app/src/hooks/websocket/handlers/`
+
+**Documentation:** See `WEBSOCKET_REFACTOR_SUMMARY.md` for complete implementation details.
 
 **Integrations:** OpenAI/Bedrock/GoCode, Git, Docker Compose, Socket.IO, SQLite (agents), MySQL/Prisma (app), Getty, GoDaddy SSO
 

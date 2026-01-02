@@ -25,14 +25,22 @@ export class CatchupStatusHandler implements MessageHandler {
       data.data?.lastSequence !== undefined
     ) {
       const expectedCount = (data.data?.pendingCount as number) ?? 0
+      const catchupId = data.data.conversationId as string
+
       context.refs.pendingRecoveryAck.current = {
-        conversationId: data.data.conversationId as string,
+        conversationId: catchupId,
         lastSequence: data.data.lastSequence as number,
         expectedCount,
         receivedCount: 0,
         replayComplete: expectedCount === 0,
         ackEvent: 'catchup_ack',
       }
+
+      // Send CATCHUP_STATUS event to machine
+      context.machine.send({
+        type: 'CATCHUP_STATUS',
+        catchupId
+      })
 
       if (expectedCount === 0) {
         context.helpers.maybeSendRecoveryAck(context.socket)

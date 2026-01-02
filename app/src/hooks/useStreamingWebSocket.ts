@@ -97,6 +97,8 @@ export function useStreamingWebSocket() {
   }
 
   if (!controllerRef.current) {
+    const store = useStreamingConversationStore.getState()
+
     controllerRef.current = new StreamingWebSocketController({
       connectionManager: connectionManagerRef.current,
       messageBuilder: messageBuilderRef.current,
@@ -118,7 +120,30 @@ export function useStreamingWebSocket() {
       },
       getHelpers: () => helpersRef.current,
       toolDeltaBufferRef,
-      getStoreState: () => useStreamingConversationStore.getState(),
+      getStoreState: () => {
+        const state = useStreamingConversationStore.getState()
+        return {
+          streamingState: state.streamingState,
+          activeStream: state.activeStream,
+          buildErrorContext: state.buildErrorContext,
+          conversations: state.conversations,
+          connectionRetry: state.connectionRetry,
+          // Lifecycle actions (Tier 1)
+          setWebSocketState: state.setWebSocketState,
+          setStreamingState: state.setStreamingState,
+          setIsLoading: state.setIsLoading,
+          markUpstreamError: state.markUpstreamError,
+          finalizeStream: state.finalizeStream,
+          startStream: state.startStream,
+          setError: state.setError,
+          setRecoveryState: state.setRecoveryState,
+          setRetryState: state.setRetryState,
+          // Application-level actions
+          startConnectionRetry: state.startConnectionRetry,
+          clearConnectionRetry: state.clearConnectionRetry,
+          setEscalationTimeout: state.setEscalationTimeout,
+        }
+      },
     })
   }
 
@@ -132,6 +157,7 @@ export function useStreamingWebSocket() {
 
     return () => {
       controller.disconnect()
+      controller.destroy() // Clean up XState actor and adapter subscriptions
     }
   }, [currentAppId, controller])
 

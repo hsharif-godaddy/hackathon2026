@@ -16,14 +16,22 @@ export class ServerConfigHandler implements MessageHandler {
   async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
     // Server sends configuration during handshake for timeout synchronization
     // This ensures client and server use the same recovery window
-    context.refs.serverConfig.current = {
+    const config = {
       streamRecoveryWindow: (data.data?.streamRecoveryWindow as number | undefined) ?? CONNECTION_RETRY_TIMEOUT_MS,
       ackTimeout: (data.data?.ackTimeout as number | undefined) ?? 30000
     }
 
+    context.refs.serverConfig.current = config
+
+    // Send SERVER_CONFIG_RECEIVED event to machine
+    context.machine.send({
+      type: 'SERVER_CONFIG_RECEIVED',
+      config
+    })
+
     logger.info('websocket.server_config.received', {
-      streamRecoveryWindow: context.refs.serverConfig.current.streamRecoveryWindow,
-      ackTimeout: context.refs.serverConfig.current.ackTimeout
+      streamRecoveryWindow: config.streamRecoveryWindow,
+      ackTimeout: config.ackTimeout
     })
   }
 }

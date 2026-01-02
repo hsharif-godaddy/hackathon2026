@@ -28,6 +28,18 @@ export function createInitialStoreState() {
     messages: [] as unknown[],
     conversations: [] as unknown[],
     updateToolDelta: vi.fn(),
+    recoveryState: {
+      isRecovering: false,
+      expectedEvents: 0,
+      receivedEvents: 0,
+    },
+    retryState: {
+      isRetrying: false,
+      retryCount: 0,
+      nextRetryMs: undefined as number | undefined,
+      exhausted: false,
+    },
+    lastError: null as Error | null,
     connectionRetry: {
       isRetrying: false,
       retryStartedAt: null as number | null,
@@ -69,12 +81,49 @@ export function createInitialStoreState() {
     markUpstreamError: vi.fn(),
     markBudgetExceeded: vi.fn(),
     finalizeStream: vi.fn(),
+    startStream: vi.fn(),
+    setRecoveryState: vi.fn(),
+    setRetryState: vi.fn(),
+    setError: vi.fn(),
   }
 
   // Wrap actionable methods with spies so tests can assert call counts
   vi.spyOn(state, 'startConnectionRetry')
   vi.spyOn(state, 'setEscalationTimeout')
   vi.spyOn(state, 'clearConnectionRetry')
+
+  // Add lifecycle-aware helpers so adapter interactions update state + remain spy-able
+  const originalSetRecoveryState = state.setRecoveryState
+  state.setRecoveryState = vi.fn((newState) => {
+    originalSetRecoveryState(newState)
+    state.recoveryState = { ...newState }
+  })
+
+  const originalSetRetryState = state.setRetryState
+  state.setRetryState = vi.fn((newState) => {
+    originalSetRetryState(newState)
+    state.retryState = { ...state.retryState, ...newState }
+  })
+
+  const originalSetError = state.setError
+  state.setError = vi.fn((error) => {
+    originalSetError(error)
+    state.lastError = error
+  })
+
+  const originalStartStream = state.startStream
+  state.startStream = vi.fn((conversationId: string, messageId: string) => {
+    originalStartStream(conversationId, messageId)
+    state.streamingState = 'streaming'
+    state.activeStream = { id: messageId, conversationId }
+  })
+
+  const originalFinalizeStream = state.finalizeStream
+  state.finalizeStream = vi.fn((...args) => {
+    originalFinalizeStream(...args)
+    state.streamingState = 'idle'
+    state.activeStream = null
+  })
 
   return state
 }

@@ -1,6 +1,10 @@
 import { beforeEach,describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 
+const mockSetWebSocketState = vi.fn()
+const mockSetError = vi.fn()
+const mockMarkUpstreamErrorAction = vi.fn()
+
 const createStreamingStoreState = () => ({
   streamingState: 'idle',
   activeStream: null,
@@ -19,16 +23,20 @@ const createStreamingStoreState = () => ({
   setEscalationTimeout: vi.fn(),
   clearConnectionRetry: vi.fn(),
   checkStaleRetry: vi.fn(() => false),
-  setWebSocketState: vi.fn(),
+  setWebSocketState: mockSetWebSocketState,  // Use shared mock for assertions
   setStreamingState: vi.fn(),
   setIsLoading: vi.fn(),
-  markUpstreamError: vi.fn(),
-  finalizeStream: vi.fn()
+  markUpstreamError: mockMarkUpstreamErrorAction,
+  finalizeStream: vi.fn(),
+  // Phase 3 additions - machine/adapter integration
+  startStream: vi.fn(),
+  setError: mockSetError,  // Use shared mock for assertions
+  setRecoveryState: vi.fn(),
+  setRetryState: vi.fn()
 })
 
 let streamingStoreState = createStreamingStoreState()
 const mockSockets: any[] = []
-const mockSetWebSocketState = vi.fn()
 const getLatestMockSocket = () => mockSockets[mockSockets.length - 1]
 
 const createMockSocket = () => {
@@ -155,7 +163,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useAddToolCallSegment: vi.fn(() => vi.fn()),
   useAddToolResultSegment: vi.fn(() => vi.fn()),
   useMarkMaxStepsReached: vi.fn(() => vi.fn()),
-  useMarkUpstreamError: vi.fn(() => vi.fn()),
+  useMarkUpstreamError: vi.fn(() => mockMarkUpstreamErrorAction),
   useMarkBudgetExceeded: vi.fn(() => vi.fn()),
   useFinalizeStream: vi.fn(() => vi.fn()),
   useSetWebSocketState: vi.fn(() => mockSetWebSocketState),
@@ -227,6 +235,7 @@ describe('useStreamingWebSocket', () => {
     mockSockets.length = 0;
     sessionStorage.clear();
     mockSetWebSocketState.mockReset();
+    mockSetError.mockReset();
 
     // Mock fetch for JWT token
     global.fetch = vi.fn((url) => {
@@ -570,11 +579,14 @@ describe('useStreamingWebSocket', () => {
         }
       })
 
-      expect(mockSetWebSocketState).toHaveBeenCalledWith(expect.objectContaining({
-        error: expect.objectContaining({
-          message: expect.stringContaining('could not be recovered'),
-          type: 'DATA_LOSS'
-        })
+      // Wait for machine and adapter to process
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(mockMarkUpstreamErrorAction).toHaveBeenCalledWith(expect.objectContaining({
+        message: expect.stringContaining('could not be recovered')
       }))
       vi.useRealTimers()
     })

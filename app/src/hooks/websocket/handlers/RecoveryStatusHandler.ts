@@ -13,6 +13,8 @@ import { AgentService } from '@/services/AgentService'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
 
+const DATA_LOSS_ERROR_MESSAGE = 'Some earlier data could not be recovered due to buffer limits.'
+
 export class RecoveryStatusHandler implements MessageHandler {
   readonly type = 'recovery_status'
 
@@ -40,11 +42,15 @@ export class RecoveryStatusHandler implements MessageHandler {
     }
 
     if (data.data?.lossDetected) {
-      context.actions.setWebSocketState({
-        error: {
-          message: 'Some earlier data could not be recovered due to buffer limits.',
-          type: 'DATA_LOSS',
-        },
+      context.actions.markUpstreamError({
+        message: DATA_LOSS_ERROR_MESSAGE,
+        type: 'DATA_LOSS',
+      })
+
+      context.machine.send({
+        type: 'STREAM_ERROR',
+        error: new Error(DATA_LOSS_ERROR_MESSAGE),
+        retryable: false
       })
     }
   }
@@ -92,9 +98,9 @@ export class RecoveryStatusHandler implements MessageHandler {
     // Clear APP_NOT_FOUND retry state
     context.helpers.clearRetryState()
 
-    context.actions.setWebSocketState({ status: 'idle' })
-    context.actions.setStreamingState('idle')
-    context.actions.setIsLoading(false)
+    // Machine handles UI state transitions via STREAM_COMPLETE event
+    // (Already sent by CompleteHandler when stream was completed before recovery)
+
     context.helpers.clearStoredSocketId()
   }
 
@@ -103,8 +109,7 @@ export class RecoveryStatusHandler implements MessageHandler {
    */
   private handleRecoveryFinalized(data: WebSocketMessage, context: MessageContext): void {
     // Recovery complete, stream is active again
-    context.actions.setIsLoading(false)
-    context.actions.setStreamingState('streaming')
+    // Machine already in streaming state, adapter handles UI sync
     logger.info('websocket.recovery.finalized', {
       eventsReplayed: data.data?.eventsReplayed,
     })
@@ -126,16 +131,26 @@ export class RecoveryStatusHandler implements MessageHandler {
       data.data?.lastSequence !== undefined
     ) {
       const expectedCount = (data.data?.bufferedEventCount as number) ?? 0
+      const recoveryId = data.data.conversationId as string
+
       context.refs.pendingRecoveryAck.current = {
-        conversationId: data.data.conversationId as string,
+        conversationId: recoveryId,
         lastSequence: data.data.lastSequence as number,
         expectedCount,
         receivedCount: 0,
         replayComplete: expectedCount === 0,
         ackEvent: 'recovery_ack',
       }
+
+      // Send RECOVERY_STATUS event to machine
+      context.machine.send({
+        type: 'RECOVERY_STATUS',
+        recoveryId,
+        expectedEvents: expectedCount
+      })
+
       logger.info('websocket.recovery.ack_pending', {
-        conversationId: data.data.conversationId,
+        conversationId: recoveryId,
         expectedCount,
       })
       if (expectedCount === 0) {
@@ -151,7 +166,8 @@ export class RecoveryStatusHandler implements MessageHandler {
       this.initializeRecoveryStream(context)
     }
 
-    context.actions.setStreamingState('streaming')
+    // Machine should already be in streaming state during recovery
+    // Adapter syncs streamingState from machine
   }
 
   /**
@@ -225,25 +241,34 @@ export class RecoveryStatusHandler implements MessageHandler {
    */
   private handleRequiresAck(data: WebSocketMessage, context: MessageContext): void {
     const expectedCount = (data.data?.bufferedEventCount as number) ?? 0
+    const recoveryId = data.data!.conversationId as string
+
     context.refs.pendingRecoveryAck.current = {
-      conversationId: data.data!.conversationId as string,
+      conversationId: recoveryId,
       lastSequence: data.data!.lastSequence as number,
       expectedCount,
       receivedCount: 0,
       replayComplete: expectedCount === 0,
       ackEvent: 'recovery_ack',
     }
+
+    // Send RECOVERY_STATUS event to machine
+    context.machine.send({
+      type: 'RECOVERY_STATUS',
+      recoveryId,
+      expectedEvents: expectedCount
+    })
+
     logger.info('websocket.recovery.ack_pending', {
-      conversationId: data.data!.conversationId,
+      conversationId: recoveryId,
       expectedCount,
     })
 
     // Restore UI state for recovery with no buffered events
-    // Check if there's an active stream that needs to be restored
+    // Machine should already be in recovering/streaming state
+    // Adapter syncs isLoading and streamingState from machine
     const store = useStreamingConversationStore.getState()
     if (store.activeStream || data.data?.isRecovering) {
-      context.actions.setIsLoading(true)
-      context.actions.setStreamingState('streaming')
       logger.info('websocket.recovery.ui_restored', {
         conversationId: data.data!.conversationId,
         hasActiveStream: !!store.activeStream,
