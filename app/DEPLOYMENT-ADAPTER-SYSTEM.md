@@ -19,8 +19,7 @@ The deployment adapter system provides a flexible, environment-aware approach to
 
 3. **Deployment Adapters**
    - **ProductionDeploymentAdapter**: Nomad + SQS + Ceph (enterprise infrastructure)
-   - **LocalDeploymentAdapter**: Direct agents service calls (development)
-   - **DockerDeploymentAdapter**: TODO - Docker containers via agents service
+   - **DockerDeploymentAdapter**: Docker containers via agents service (development)
 
 4. **AdapterFactory** (`src/lib/deployment/adapter-factory.ts`)
    - Environment detection and adapter selection
@@ -32,7 +31,9 @@ The deployment adapter system provides a flexible, environment-aware approach to
 The system automatically detects the deployment mode:
 
 ### Production Mode
+
 Detected when **any** of these conditions are true:
+
 - `NODE_ENV=production`
 - `MYSQL_DB_USERNAME` is set (MySQL indicates production)
 - `AWS_REGION_NOMAD` is set (AWS/Nomad indicates production)
@@ -40,24 +41,22 @@ Detected when **any** of these conditions are true:
 
 **Infrastructure**: Nomad + SQS + Ceph storage + Production URLs
 
-### Local Development Mode  
-Detected when:
-- `NODE_ENV=development` AND `DOC_APPS=false`
-
-**Infrastructure**: Direct agents service calls + Local URLs (localhost:4000, etc.)
-
 ### Docker Development Mode
-Detected when:
-- `NODE_ENV=development` AND (`DOC_APPS=true` OR `DOC_APPS` unset)
 
-**Infrastructure**: Docker containers via agents service (fallback to local for now)
+Detected when:
+
+- `NODE_ENV=development`
+
+**Infrastructure**: Docker containers via agents service + Local URLs
 
 ### Explicit Override
-- Set `DEPLOYMENT_MODE=local|docker|production` to force a specific mode
+
+- Set `DEPLOYMENT_MODE=docker|production` to force a specific mode
 
 ## Site Creation Flow
 
 ### Before (Broken)
+
 ```
 User clicks "Start Building"
 │
@@ -70,6 +69,7 @@ User clicks "Start Building"
 ```
 
 ### After (Flexible)
+
 ```
 User clicks "Start Building"
 │
@@ -81,8 +81,8 @@ User clicks "Start Building"
 │
 └── Development Mode
     ├── Creates simplified site record
-    ├── Uses LocalDeploymentAdapter
-    ├── Calls agents service directly
+    ├── Uses DockerDeploymentAdapter
+    ├── Calls agents service for Docker container management
     └── Sets localhost URLs
 ```
 
@@ -101,10 +101,9 @@ User clicks "Start Building"
 ```bash
 # Automatic detection (recommended)
 NODE_ENV=development          # or production
-DOC_APPS=false               # local mode (true=docker mode)
 
 # Manual override
-DEPLOYMENT_MODE=local        # force specific mode
+DEPLOYMENT_MODE=docker       # force specific mode
 
 # Agents service (development)
 AGENTS_SERVICE_URL=http://localhost:4000
@@ -118,6 +117,7 @@ PRODUCTION_DOMAIN=...        # custom production domain
 ### Development Setup
 
 For local development, ensure:
+
 1. Agents service is running on port 4000: `cd agents && pnpm run dev`
 2. Main app is running on port 3000: `cd app && pnpm run dev`
 3. Environment variables are set correctly
@@ -125,23 +125,25 @@ For local development, ensure:
 ## Usage
 
 ### In API Routes
+
 ```typescript
-import { getDeploymentAdapter } from '@/lib/deployment';
+import { getDeploymentAdapter } from "@/lib/deployment";
 
 const adapter = getDeploymentAdapter();
 const result = await adapter.deploy({
-  siteId: 'abc123',
-  accountId: 'user123',
-  prompt: 'Build me a website'
+  siteId: "abc123",
+  accountId: "user123",
+  prompt: "Build me a website",
 });
 ```
 
 ### Environment Info
+
 ```typescript
-import { getDeploymentEnvironmentInfo } from '@/lib/deployment';
+import { getDeploymentEnvironmentInfo } from "@/lib/deployment";
 
 const info = getDeploymentEnvironmentInfo();
-console.log('Current mode:', info.mode); // 'local', 'docker', or 'production'
+console.log("Current mode:", info.mode); // 'docker' or 'production'
 ```
 
 ## File Structure
@@ -151,7 +153,7 @@ src/lib/deployment/
 ├── types.ts              # Interfaces and types
 ├── base-adapter.ts       # Common functionality
 ├── production-adapter.ts # Nomad + SQS + Ceph
-├── local-adapter.ts      # Direct agents service
+├── docker-adapter.ts     # Docker containers via agents service
 ├── adapter-factory.ts    # Environment detection
 └── index.ts             # Exports
 ```
@@ -159,15 +161,18 @@ src/lib/deployment/
 ## Migration Notes
 
 ### Updated Files
+
 - `src/app/api/sites/route.ts` - Uses adapter pattern instead of hardcoded production logic
 - `src/lib/database/site-service.ts` - Added `createSiteSimple()` for development mode
 
 ### Removed Dependencies
+
 - Site creation no longer always requires Ceph storage assignment
 - Site creation no longer always generates Nomad job specs
 - Site creation no longer always submits to AWS SQS
 
 ### Backward Compatibility
+
 - Production deployments work exactly as before
 - All existing production sites continue to function
 - Database schema unchanged
@@ -175,6 +180,7 @@ src/lib/deployment/
 ## Testing
 
 The system is designed to work in your current development environment:
+
 1. **Mock Authentication**: Works with the existing mock login system
 2. **Database**: Uses the SQLite database with proper schema initialization
 3. **Agents Service**: Calls `localhost:4000` which should be running your agents service

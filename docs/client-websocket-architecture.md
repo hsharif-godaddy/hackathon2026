@@ -135,23 +135,23 @@ flowchart TD
 
 ## Testing Strategy
 
-**Test Coverage**: 129 WebSocket tests across 7 test files
+**Test Coverage**: 175 WebSocket tests across 6 test files
 
-- 20 machine state transition tests
-- 13 adapter mapping tests
-- 37 supervisor lifecycle tests
-- 22 controller orchestration tests
-- 24 message builder tests
-- 8 connection manager tests
-- 5 end-to-end integration tests
+- 28 machine state transition tests
+- 22 adapter mapping tests
+- 49 supervisor lifecycle tests
+- 33 controller orchestration tests
+- 31 message builder tests
+- 12 connection manager tests
 
-| Layer                                       | Primary tests                                                | Coverage highlights                                                                |
-| ------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| Machine (`webSocketMachine`)                | `StateMachineTestHarness` unit tests                         | Guards, retries, recovery ack, stream transitions                                  |
-| Adapter (`StoreSyncAdapter`)                | `StoreSyncAdapter.test.ts` via harness                       | Transport/stream mappings, controller-event handling                               |
-| Controller (`StreamingWebSocketController`) | `StreamingWebSocketController.test.ts`                       | Delegation, `sendMessage` success/error paths, event emission                      |
-| Supervisor (`TransportSupervisor`)          | `TransportSupervisor.test.ts` (37 tests)                     | Connection callbacks, retry + escalation events, handler wiring, recovery protocol |
-| React Hook (`useStreamingWebSocket`)        | Integration tests (`websocket-recovery.integration.test.ts`) | End-to-end flows: recovery, escalation timeout, replay                             |
+| Layer                                       | Primary tests                                     | Coverage highlights                                                                |
+| ------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Machine (`webSocketMachine`)                | `StateMachineTestHarness` unit tests (28 tests)   | Guards, retries, recovery ack, stream transitions                                  |
+| Adapter (`StoreSyncAdapter`)                | `StoreSyncAdapter.test.ts` via harness (22 tests) | Transport/stream mappings, controller-event handling                               |
+| Controller (`StreamingWebSocketController`) | `StreamingWebSocketController.test.ts` (33 tests) | Delegation, `sendMessage` success/error paths, event emission                      |
+| Supervisor (`TransportSupervisor`)          | `TransportSupervisor.test.ts` (49 tests)          | Connection callbacks, retry + escalation events, handler wiring, recovery protocol |
+| Message Builder (`ChatMessageBuilder`)      | `ChatMessageBuilder.test.ts` (31 tests)           | Message construction, context handling, payload formatting                         |
+| Connection Manager (`ConnectionManager`)    | `ConnectionManager.test.ts` (12 tests)            | Socket lifecycle, connection state management                                      |
 
 ## Recent Updates (Jan 2026)
 

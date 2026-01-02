@@ -136,10 +136,9 @@ interface DeploymentAdapter {
   destroy(siteId: string): Promise<DestroyResult>;
 }
 
-// Three implementations:
-// - LocalDeploymentAdapter (Node.js processes)
-// - DockerDeploymentAdapter (Docker containers)
-// - ProductionDeploymentAdapter (Nomad + SQS + Ceph)
+// Two implementations:
+// - DockerDeploymentAdapter (Docker containers for development)
+// - ProductionDeploymentAdapter (Nomad + SQS + Ceph for production)
 ```
 
 #### Account Adapters
@@ -159,7 +158,7 @@ Environment-aware factories automatically select appropriate implementations:
 ```typescript
 class DeploymentAdapterFactory {
   static getInstance(): DeploymentAdapter {
-    const mode = detectDeploymentMode(); // local | docker | production
+    const mode = detectDeploymentMode(); // docker | production
     return createAdapter(mode);
   }
 }
@@ -180,33 +179,20 @@ Database operations are abstracted through repositories:
 The system automatically detects deployment mode based on environment variables:
 
 ```typescript
-function detectDeploymentMode(): "local" | "docker" | "production" {
+function detectDeploymentMode(): "docker" | "production" {
   // Production indicators
   if (NODE_ENV === "production" || MYSQL_DB_USERNAME || AWS_REGION_NOMAD) {
     return "production";
   }
 
-  // Development mode selection
-  if (NODE_ENV === "development") {
-    // DOC_APPS=true (default) or DOC_APPS=false
-    return process.env.DOC_APPS !== "false" ? "docker" : "local";
-  }
-
-  return "local"; // fallback
+  // Development mode defaults to Docker
+  return "docker";
 }
 ```
 
-### Local Development Mode
-
-- **Command**: `DOC_APPS=false pnpm run dev`
-- **Process Management**: Node.js child processes
-- **Port Allocation**: Dynamic port assignment (3001+)
-- **Storage**: Local filesystem (`/tmp/apps`)
-- **Database**: SQLite
-
 ### Docker Development Mode
 
-- **Command**: `DOC_APPS=true pnpm run dev` (default)
+- **Command**: `pnpm run dev` (default for development)
 - **Container Management**: Docker containers with dev-supervisor service
 - **Port Mapping**: Host port mapping
 - **Storage**: Volume mounts
@@ -238,7 +224,7 @@ sequenceDiagram
     User->>Frontend: Create New App
     Frontend->>DeployFactory: getInstance()
     DeployFactory->>DeployFactory: detectDeploymentMode()
-    DeployFactory-->>Frontend: DevAdapter (local/docker)
+    DeployFactory-->>Frontend: DockerAdapter (docker)
 
     Frontend->>DevAdapter: deploy(config)
     DevAdapter->>FileSystem: Create app directory
@@ -592,8 +578,7 @@ DOC_APPS=true                       # Docker mode (false for local)
 #### Main App Environment
 
 ```bash
-# Development mode selection
-DOC_APPS=true                       # true=Docker, false=Local
+# Development mode
 NODE_ENV=development
 
 # Production mode indicators
@@ -626,8 +611,7 @@ cd app-templates/v8 && pnpm install
 2. Frontend calls deployment adapter factory
 3. Factory detects environment and creates appropriate adapter
 4. Adapter handles app creation:
-   - **Local Mode**: Creates directory, copies template, starts Node.js process
-   - **Docker Mode**: Creates container with mounted template
+   - **Docker Mode (Development)**: Creates container with mounted template
    - **Production Mode**: Submits Nomad job via SQS with Ceph storage
 5. Agents service creates app record for AI interaction
 6. User can now interact with AI agents for development

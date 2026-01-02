@@ -21,12 +21,16 @@ Files under `/tmp/apps/{appId}/app/**` are generated OUTPUT. Fix generation logi
   </code_quality_standards>
 
 <design_system_requirements>
-In `/app` folder ONLY:
+**Design System Boundaries:**
 
-- Use UXCore design system (@ux/\*) - see `/app/uxcore-llm.txt` and `/app/design-guidance.md`
-- NO default Tailwind colors (`bg-white`, `text-blue-600`)
-- Prioritize accessibility and usability
-  </design_system_requirements>
+- **`/app` (Builder UI)**: Use UXCore design system (@ux/\*) exclusively
+  - See `app/uxcore-llm.txt` and `app/design-guidance.md`
+  - NO default Tailwind colors (`bg-white`, `text-blue-600`)
+  - Prioritize accessibility and usability
+- **`/app-templates` (Generated Apps)**: Use Shadcn/ui + Radix + Tailwind
+  - UXCore is NOT available in generated applications
+  - Follow template's existing component patterns
+    </design_system_requirements>
 
 ## Key Commands
 
@@ -54,261 +58,195 @@ pnpm --filter <package> build
 
 ### Core Services
 
-| Service                        | Package                  | Port | Description                                                         |
-| ------------------------------ | ------------------------ | ---- | ------------------------------------------------------------------- |
-| **agents/**                    | `@airo/agents`           | 4000 | Express API, agent registry, app lifecycle, SQLite, WebSocket       |
-| **app/**                       | `website`                | 3000 | Next.js builder UI, Monaco, chat, MySQL/Prisma, GoDaddy SSO, UXCore |
-| **website/**                   | N/A                      | N/A  | Marketing site                                                      |
-| **app-templates/**             | N/A                      | N/A  | v8 (Vite+React+Node), copied for new apps                           |
-| **packages/ai-lib/**           | `@airo/ai-lib`           | N/A  | Shared AI utilities (build before agents)                           |
-| **packages/design-extractor/** | `@airo/design-extractor` | N/A  | PDF design extraction for RAG                                       |
-| **setup/**                     | `airo-setup`             | N/A  | Interactive config utility                                          |
-| **e2e/**                       | `airo-app-builder-e2e`   | N/A  | E2E tests (Cypress/Testla)                                          |
+| Service             | Package        | Port | Purpose                                                             |
+| ------------------- | -------------- | ---- | ------------------------------------------------------------------- |
+| **agents/**         | `@airo/agents` | 4000 | Express API, agent registry, app lifecycle, SQLite, WebSocket       |
+| **app/**            | `website`      | 3000 | Next.js builder UI, Monaco, chat, MySQL/Prisma, GoDaddy SSO, UXCore |
+| **proxy/**          | `airo-proxy`   | N/A  | Getty Images API proxy with SSO authentication                      |
+| **dev-supervisor/** | N/A            | N/A  | Go-based process supervisor with HTTP proxy, TLS, PID1 management   |
+
+_Additional services:_ `website/` (marketing), `app-templates/` (v8 template), `packages/ai-lib/` (shared AI utils), `packages/design-extractor/` (PDF RAG), `setup/` (config utility), `e2e/` (E2E tests)
+
+**See:** Root `package.json` workspaces for complete service list
 
 ### Key Patterns
 
-**Deployment:** Docker Compose (dev/local), enterprise adapter (prod) via adapter pattern for environment abstraction. Key: `app/src/lib/dev-environment/adapters/DockerAppService.ts`
+**Deployment:** Docker Compose (dev/local), enterprise adapter (prod) via adapter pattern
+
+- Implementation: `app/src/lib/dev-environment/adapters/DockerAppService.ts`
+- See: `app/DEPLOYMENT-ADAPTER-SYSTEM.md`
 
 **Container Orchestration:**
 
-- `docker-compose-generator.ts` - Creates compose files per app
-- `docker-compose-manager.ts` - Lifecycle, logs, health
-- `docker-container-manager.ts` - Operations, recovery, cleanup
+- Location: `app/src/lib/dev-environment/`
+- Files: `docker-compose-generator.ts`, `docker-compose-manager.ts`, `docker-container-manager.ts`
 - Generated: `/tmp/apps/{appId}/docker-compose.yml`
+- Structure: `/tmp/apps/{appId}/app/` (code), `/tmp/apps/{appId}/alloc/` (config)
 
 **HTTP Proxy (dev-supervisor):**
 
-- **Ports**: 5000+ (HTTPS), 8877+ (API)
-- **TLS termination**, reverse proxy :8080, WebSocket, retry backoff
-- **Static Serving**: Auto-serves static files from `dist/client/` in production mode (configurable)
-- **SPA Fallback**: For GET requests to extensionless paths, tries serving real file first (e.g., `/.well-known/apple-app-site-association`), then falls back to `index.html`. HEAD/OPTIONS on non-existent extensionless paths return 404 when SPA mode is on; otherwise they proxy to backend (for health checks, CORS preflight).
-- **Modes**:
-  - **Dev mode** (SERVE_STATIC=false): Forwards all non-API to backend Vite (maintains HMR)
-  - **Production mode** (SERVE_STATIC=true): Serves static files directly with cache headers
-- **Config**:
-  - Basic: `DEV_SUPERVISOR_ENABLE_PROXY`, `*_PROXY_PORT`, `*_TARGET_HOST/PORT`, `*_CERT/KEY_PATH`
-  - Static: `DEV_SUPERVISOR_SERVE_STATIC=false` (default), `*_STATIC_ROOT` (default: `/app/dist/client`), `*_SPA_MODE=true`, `*_API_PREFIX=/api`
-  - Advanced: `*_ROUTING_CONFIG=/path/to/config.json` (optional JSON config for cache settings; forward_rules not yet implemented)
-  - Retry: `*_MAX_RETRIES=10`, `*_INITIAL_BACKOFF_MS=200`, `*_MAX_BACKOFF_MS=5000`
-- **Cache Headers**: 1 year for content-hashed assets (.js/.css), 30 days for images, no-cache for index.html
-- **HTTP Methods**: Supports GET, HEAD, OPTIONS for static assets (browser cache validation)
-- **Errors**: 503 (backend starting, retries with backoff: ~31s dev/~4s prod), 502 (proxy error)
-- **Files**: `dev-supervisor/{http_proxy,main,api}.go`
+- **Purpose**: TLS termination, reverse proxy, WebSocket support, static asset serving
+- **Location**: `dev-supervisor/` (Go service)
+- **Key files**: `http_proxy.go`, `main.go`, `api.go`, `pid1_manager_unix.go`
+- **Features**: Configurable retry/backoff, static serving with cache headers, SPA fallback
+- **Config**: Environment variables (`DEV_SUPERVISOR_*` prefix) - see `dev-supervisor/main.go` for options
 
-**App Structure:**
+**App Lifecycle:** `creating` → `created` → `running`/`stopped`/`error`
 
-```
-/tmp/apps/{appId}/
-  ├── app/              # Code
-  ├── alloc/            # Config (config.json)
-  └── docker-compose.yml
-```
-
-Docker bind mounts: `{basePath}/app:/app`, `{basePath}/alloc:/alloc`
-
-**Dependencies:** Build `packages/ai-lib` before `agents`, install `app-templates/v8` deps, use `pnpm --filter <pkg>`
+- Async setup with auto recovery and cleanup
+- **DO NOT edit** `/tmp/apps/{appId}/app/` (generated output)
 
 ### AI Agent System
 
-- Base: `agents/src/base/base-agent.ts`
+**Registry & Base:**
+
+- Base class: `agents/src/base/base-agent.ts`
 - Registry: `agents/src/registry/agent-registry.ts`
 - Factory: `agents/src/agents/ai-lib-agents/index.ts`
-- Agents: InitialAgent, DevelopAgent, ColorSchemeAgent, MarketingAgent, CommerceAgent (opt-in), ExampleAgent
 - Prompts: `agents/src/prompts/`
 
-**Feature Flags (`agents/src/services/features.ts`):**
+**Available Agents:** InitialAgent, DevelopAgent, DesignAgent, ColorSchemeAgent, MarketingAgent, CommerceAgent, ExampleAgent
+_Explore `agents/src/agents/` directory for implementations_
 
-- `ENABLE_COMMERCE_AGENT=true` - GoDaddy Commerce (dev/test only)
-- `ENABLE_SOCIAL_PLATFORM=true` - Social tools in MarketingAgent (dev/test only)
-- Check: `agents.isEnabled("commerce")` / `agents.isEnabled("social")`
+**Feature Flags:**
+
+- Configuration: `agents/src/services/features.ts`
+- Key flags: `ENABLE_COMMERCE_AGENT`, `ENABLE_SOCIAL_PLATFORM`
+- Usage: `agents.isEnabled("commerce")` / `agents.isEnabled("social")`
+
+### Tools
+
+**Location:** `agents/src/tools/`
+
+**Categories:**
+
+- File operations: file-edit, read-file, directory-listing
+- Development: git-tool, terminal, grep-tool
+- Code manipulation: ast-style-editor, ast-text-editor, ast-editor-base
+- Infrastructure: server-management-tool, mysql-tool, secrets-management-tool, view-logs-tool
+- AI: memory-tool, rag-tool, skill-loader-tool
+- Media: media-search-tool (Getty/DALL-E integration)
+- Specialized: commerce-product-tool, website-scraper-tool, app-plan-tool, css-color-tool, todo-list-tool, icons-validator
+
+_Explore the tools directory for complete list and implementations_
+
+### WebSocket Architecture
+
+**Overview:** Socket.IO V2 + XState v5 state machine for lifecycle management
+
+**Core Pattern:**
+
+- **Tier 1 (Lifecycle)**: Machine → Adapter → Store (connection/streaming states)
+- **Tier 2 (Data)**: Handlers → Store directly (transcript, tool calls)
+
+**Key Files:**
+
+- Machine: `app/src/services/websocket/webSocketMachine.ts`
+- Adapter: `app/src/services/websocket/StoreSyncAdapter.ts`
+- Controller: `app/src/services/websocket/StreamingWebSocketController.ts`
+- Types: `app/src/services/websocket/stateMachineTypes.ts`
+- Handlers: `app/src/hooks/websocket/handlers/`
+
+**Critical Rules:**
+
+- Handlers NEVER call lifecycle methods directly (setWebSocketState, setStreamingState, setIsLoading)
+- Lifecycle changes flow through: Machine → Adapter → Store
+- Machine is REQUIRED in handler context (not optional)
+- Always call `controller.destroy()` in cleanup
+
+**Documentation:** See `docs/client-websocket-architecture.md` for complete architecture details
+
+**Testing:** 129 tests across 7 files - see `app/src/services/websocket/__tests__/`
 
 ### Database
 
-**App (MySQL/Prisma):** Docker Compose container, `app/.env`: `DATABASE_URL`, schema: `app/prisma/`, package: `website`
+**App (MySQL/Prisma):**
+
+- Schema: `app/prisma/schema.prisma`
+- Package: `website`
+- Config: `app/.env` (`DATABASE_URL`)
 
 ```bash
 pnpm --filter website exec prisma migrate dev / generate / studio
 ```
 
-### Tools
-
-In `agents/src/tools/`:
-
-- File: `file-edit`, `read-file`, `directory-listing`
-- Dev: `git-tool`, `terminal`, `grep-tool`
-- Code: `ast-style-editor`, `ast-text-editor`, `ast-editor-base`
-- Media: `media-search-tool` (image/video search, AI generation via Getty/DALL-E)
-- Infra: `server-management-tool`, `mysql-tool`, `secrets-management-tool`, `view-logs-tool`
-- AI: `memory-tool`, `rag-tool`, `skill-loader-tool`
-- Specialized: `commerce-product-tool`, `website-scraper-tool`, `app-plan-tool`, `css-color-tool`, `todo-list-tool`, `icons-validator`
-
-### Screenshot Capture
-
-Flow: Conversation end → preview → screenshot → postMessage → upload → `{appId}-screenshot.png`
-
-- API: `GET/POST /api/apps/:id/screenshot`
-- Config: `SCREENSHOT_DIR` (default: `/tmp/apps/{appId}/`), 512px PNG
-
 ## Environment Config
 
-**agents/.env:**
+**Configuration files:**
 
-```bash
-OPENAI_API_KEY=key
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-4
-APP_TEMPLATE_DIR=app-templates/v8
-SHOW_USAGE_COST=true
+- Agents: `agents/.env.example`
+- App: `app/.env.example`
 
-MYSQL_ROOT_HOST=localhost
-MYSQL_ROOT_PORT=3306
-MYSQL_ROOT_USER=root
-MYSQL_ROOT_PASS=
+**Key variables:**
 
-GETTY_API_URL=<url>
-GETTY_TOKEN=<token>
-IMAGE_SEARCH_DRIVER=getty
+- AI: `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL`
+- Database: `MYSQL_ROOT_*` (agents), `DATABASE_URL` (app)
+- Logging: `LOG_LEVEL`, `LOG_DOMAINS`, `LOG_DISABLED_DOMAINS`
+- Features: `ENABLE_COMMERCE_AGENT`, `ENABLE_SOCIAL_PLATFORM`
+- Media: `GETTY_API_URL`, `GETTY_TOKEN`, `IMAGE_SEARCH_DRIVER`
 
-LOG_LEVEL=debug
-LOG_FORMAT=dev
-LOG_DOMAINS=app,agent,websocket
-LOG_DISABLED_DOMAINS=compression,memory
-LOG_OPT_IN_DOMAINS=compression.hot_files
+**Setup:** Use `./setup.sh` or `pnpm --filter airo-setup start` - don't create manually
 
-SCREENSHOT_DIR=/tmp/screenshots
-ENABLE_COMMERCE_AGENT=true
-ENABLE_SOCIAL_PLATFORM=false
-```
+_See `.env.example` files and `agents/src/services/features.ts` for complete configuration options_
 
-**app/.env:**
+## Logging Standards
 
-```bash
-NODE_ENV=development
-PORT=3000
-DATABASE_URL=mysql://airo:airopassword@localhost:3306/airo_app?sslaccept=accept_invalid_certs
-NEXT_PUBLIC_USE_MOCK_LOGIN=true
-```
+<structured_logging_requirements>
+Use `logger.info/warn/error("event.name", { data })` with typed interfaces and hierarchical names (`domain.operation.lifecycle`). No emojis. Enables production monitoring, filtering, aggregation.
+</structured_logging_requirements>
 
-Use `./setup.sh` or `pnpm --filter airo-setup start` instead of manual creation.
-
-## Important Patterns
-
-**App Lifecycle:** `creating` → `created` → `running`/`stopped`/`error`. Async setup, auto recovery, cleanup. DO NOT edit `/tmp/apps/{appId}/app/`.
-
-### WebSocket Architecture
-
-**Overview:** Socket.IO V2-based real-time communication with XState v5 state machine managing all lifecycle state.
-
-**Core Components:**
-
-1. **XState Machine** (`app/src/services/websocket/webSocketMachine.ts`)
-   - Single source of truth for connection + streaming lifecycle
-   - Parallel regions: `transport` (connection) + `stream` (messaging)
-   - Guards, actions, delays for retry/recovery logic
-   - 20 comprehensive tests
-
-2. **StoreSyncAdapter** (`app/src/services/websocket/StoreSyncAdapter.ts`)
-   - Declarative mapping: machine state → Zustand store updates
-   - Subscribes to machine transitions, syncs to store
-   - **Only** place that calls lifecycle store actions
-   - 13 comprehensive tests
-
-3. **StreamingWebSocketController** (`app/src/services/websocket/StreamingWebSocketController.ts`)
-   - Integrates machine, adapter, ConnectionManager, message handlers
-   - Sends machine events on lifecycle changes (CONNECT, DISCONNECT, STREAM_ERROR, etc.)
-   - Passes machine actor to handlers via MessageContext
-
-4. **Message Handlers** (`app/src/hooks/websocket/handlers/`)
-   - Process server messages (chunks, tool deltas, errors, recovery, etc.)
-   - Can send lifecycle events to machine (optional machine actor in context)
-   - Registry pattern for extensibility
-
-**Architecture Principles:**
-
-**Tier 1 (Lifecycle State)** - Machine → Adapter → Store
-
-- Connection states: disconnected, connecting, connected, reconnecting
-- Streaming states: idle, streaming, completed, error
-- Recovery/retry states
-- **Rule:** Handlers NEVER call lifecycle methods directly (setWebSocketState, setStreamingState, setIsLoading)
-
-**Tier 2 (Transcript Data)** - Handlers → Store directly
-
-- Message content: appendTextSegment, addToolCallSegment, etc.
-- Stream finalization: finalizeStream (with metadata)
-- Performance-critical operations bypass machine for efficiency
-
-**Data Flow:**
-
-```
-User Action → Controller Event → Machine Transition → Adapter Sync → Store Update → UI
-```
-
-**Type Safety:**
+**Pattern:**
 
 ```typescript
-import { type WebSocketActor } from "@/services/websocket/webSocketMachine";
-
-// In handlers, machine is required and properly typed:
-interface MessageContext {
-  machine: WebSocketActor; // Required, not optional
-}
-
-// Send events with full type checking:
-context.machine.send({ type: "STREAM_ERROR", error, retryable: false });
+logger.info("app.create.begin", { appId, name, templateVersion });
+logger.error("conversation.load.failure", {
+  appId,
+  conversationId,
+  error: getErrorMessage(error),
+});
 ```
 
-**Testing Patterns:**
+**Event Categories:** `agents/src/logging/events/index.ts`
 
-1. **Machine Tests** - Test state transitions in isolation
+- appCreationEvents, appServerEvents, appDockerEvents, conversationHistoryEvents,
+- webSocketConnectionEvents, toolGitEvents, toolFileEditEvents, llmEvents, and more
 
-   ```typescript
-   import { StateMachineTestHarness } from "./StateMachineTestUtils";
-   const harness = new StateMachineTestHarness();
-   harness.machine.simulateConnect("app-123");
-   harness.machine.assertState((s) => s.matches({ transport: "connected" }));
-   ```
+**Control:**
 
-2. **Adapter Tests** - Test machine → store mappings
+```bash
+LOG_LEVEL=debug|info|warn|error|fatal
+LOG_DOMAINS=app,websocket               # Allowlist
+LOG_DISABLED_DOMAINS=compression,memory # Blocklist
+LOG_OPT_IN_DOMAINS=compression.hot_files # Override hidden defaults
+```
 
-   ```typescript
-   import { StoreSyncAdapterTestHarness } from "./StoreSyncAdapterTestUtils";
-   const harness = new StoreSyncAdapterTestHarness();
-   harness.assertStoreActionCalled("setWebSocketState");
-   ```
+**See:** `LOGGING-GUIDE.md` for complete documentation
 
-3. **Handler Tests** - DO NOT assert lifecycle method calls
+## Coding Standards
 
-   ```typescript
-   // ❌ WRONG - handlers don't call these anymore
-   expect(context.actions.setStreamingState).toHaveBeenCalled();
+<code_comments>
+Prefer self-documenting code. Comment only for: WHY, WTF moments, complex regex, external constraints. Comments rot, code doesn't.
+</code_comments>
 
-   // ✅ CORRECT - assert data operations (Tier 2)
-   expect(context.actions.finalizeStream).toHaveBeenCalled();
-   expect(context.actions.appendTextSegment).toHaveBeenCalledWith("text");
-   ```
+<dependency_validation>
+Declare in `package.json` BEFORE import. `dependencies` (runtime), `devDependencies` (dev/test). Node.js core (`node:`) exempt. Ensures reproducible builds, prevents production errors.
+</dependency_validation>
 
-**Common Patterns:**
+<react_component_architecture>
+**app/ only:** Extract complex UI (>5-10 JSX lines) to `components/` with clear names and TypeScript props. Improves reusability, testability, maintainability.
+</react_component_architecture>
 
-- **Adding lifecycle event:** Update `MachineEvent` type in `stateMachineTypes.ts`, add handler for event in machine
-- **Adding store action:** Tier 1 → add to adapter; Tier 2 → call directly from handler
-- **Cleanup:** Always call `controller.destroy()` in cleanup (stops actor, unsubscribes adapter)
-- **Observability:** Machine logs all transitions via structured logging (`logger.info('websocket.machine.*')`)
+<pnpm_requirement>
+Use **pnpm** only (never `npm`). Better performance, stricter resolution, efficient workspaces.
 
-**Key Files:**
+```bash
+pnpm --filter @airo/agents add <pkg>       # Workspace dependency
+pnpm --filter website add -D <pkg>         # Dev dependency
+```
 
-- Machine: `app/src/services/websocket/webSocketMachine.ts` (420 LOC)
-- Adapter: `app/src/services/websocket/StoreSyncAdapter.ts` (232 LOC)
-- Controller: `app/src/services/websocket/StreamingWebSocketController.ts`
-- Types: `app/src/services/websocket/stateMachineTypes.ts`
-- Tests: `app/src/services/websocket/__tests__/`
-- Handlers: `app/src/hooks/websocket/handlers/`
+</pnpm_requirement>
 
-**Documentation:** See `WEBSOCKET_REFACTOR_SUMMARY.md` for complete implementation details.
-
-**Integrations:** OpenAI/Bedrock/GoCode, Git, Docker Compose, Socket.IO, SQLite (agents), MySQL/Prisma (app), Getty, GoDaddy SSO
-
-## Working with Claude 4.5
+## Working with Claude
 
 <default_to_action>
 Implement changes by default, not suggestions. When asked for improvements, make them directly. If unclear, infer best action and proceed. Only suggest when explicitly asked.
@@ -333,75 +271,16 @@ Minimum complexity for current task only:
 Context auto-compacts at limits. Complete tasks fully regardless of budget. Save progress to memory before refresh. Never stop early.
 </context_awareness>
 
-## Logging Standards
+## Additional Documentation
 
-<structured_logging_requirements>
-Use `logger.info/warn/error("event.name", { data })` with typed interfaces and hierarchical names (`domain.operation.lifecycle`). No emojis. Enables production monitoring, filtering, aggregation.
-</structured_logging_requirements>
-
-**Examples:**
-
-```typescript
-logger.info("app.create.begin", {
-  appId,
-  name,
-  templateVersion,
-  baseDir,
-  port,
-});
-logger.error("conversation.load.failure", {
-  appId,
-  conversationId,
-  error: getErrorMessage(error),
-});
-```
-
-**Categories:** `src/logging/events/index.js` - appCreationEvents, appServerEvents, appDockerEvents, conversationHistoryEvents, webSocketConnectionEvents, toolGitEvents, toolFileEditEvents, llmEvents
-
-**Control:**
-
-```bash
-LOG_LEVEL=debug|info|warn|error|fatal
-LOG_DOMAINS=app,websocket               # Allowlist
-LOG_DISABLED_DOMAINS=compression,memory # Blocklist
-LOG_OPT_IN_DOMAINS=compression.hot_files # Override hidden defaults
-
-# Hidden defaults: compression.{hot_files.load,file_edit,file_edit_input,message}, file-cleanup.run, memory.hook
-```
-
-**Patterns:**
-
-- App: Simple names, mixed context - `logger.info("develop-store.init.start", { message, appId })`
-- Agents: Hierarchical, rich context - `logger.warn("conversation.history.tool_call.skipped", { conversationId, toolCallId, reason })`
-
-**Exclusions:** `app-templates/v8/`, `**/*.test.{ts,tsx}`, `**/__tests__/**`, `src/generated/`
-
-## Coding Standards
-
-<code_comments>
-Prefer self-documenting code. Comment only for: WHY, WTF moments, complex regex, external constraints. Comments rot, code doesn't. See `.cursor/rules/comments.mdc`.
-</code_comments>
-
-<dependency_validation>
-Declare in `package.json` BEFORE import. `dependencies` (runtime), `devDependencies` (dev/test). Node.js core (`node:`) exempt. Ensures reproducible builds, prevents production errors.
-</dependency_validation>
-
-<react_component_architecture>
-**website/ only:** Extract complex UI (>5-10 JSX lines) to `components/` with clear names and TypeScript props. Improves reusability, testability, maintainability.
-</react_component_architecture>
-
-## Package Management
-
-<pnpm_requirement>
-Use **pnpm** only (never `npm`). Better performance (content-addressable), stricter resolution (no phantom deps), efficient workspaces. Lockfile is pnpm-specific.
-
-```bash
-pnpm install / run dev / test / run lint
-pnpm --filter @airo/agents add <pkg>       # Workspace dependency
-pnpm --filter website add -D <pkg>         # Dev dependency
-```
-
-</pnpm_requirement>
+- Architecture: `ARCHITECTURE_DOCUMENTATION.md`
+- WebSocket: `docs/client-websocket-architecture.md`
+- OAuth: `docs/oauth-architecture.md`
+- Deployment: `app/DEPLOYMENT-ADAPTER-SYSTEM.md`
+- Testing: `app/TESTING.md`
+- Logging: `LOGGING-GUIDE.md`
+- Local setup: `app/LOCAL_SETUP.md`
+- Mock auth: `app/MOCK-AUTH-SETUP.md`
 
 ## Pull Request Guidelines
 
