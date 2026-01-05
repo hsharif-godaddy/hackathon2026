@@ -888,6 +888,9 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         : null
     })
 
+    // Restore streamingState: 'streaming' if stream still active, else 'idle'
+    const restoredStreamingState = currentState.activeStream ? 'streaming' : 'idle'
+
     set({
       connectionRetry: {
         isRetrying: false,
@@ -895,7 +898,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         wasStreamingOnDisconnect: false,
         disconnectSocketId: null,
         escalationTimeoutId: null
-      }
+      },
+      streamingState: restoredStreamingState
     })
   },
 
