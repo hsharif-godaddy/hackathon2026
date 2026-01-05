@@ -6,6 +6,7 @@ import { nanoid } from 'nanoid';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { ImportJobRepository } from '../../database/repositories/ImportJobRepository.js';
 import { GitTool } from '../../tools/git-tool.js';
+import { GitUtils } from '../../utils/git.js';
 import { Logger, log } from '../../logging/index.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { projectImportService } from '../../services/ProjectImportService.js';
@@ -106,6 +107,7 @@ router.get('/apps/:id/git/history', async (req, res) => {
     // Create git tool with dev-supervisor for this specific app
     const devSupervisor = DevSupervisorClientFactory.createForApp(id)
     const gitTool = new GitTool(devSupervisor || undefined)
+    const gitUtils = new GitUtils(devSupervisor || undefined)
 
     // Get commit history - always get all commits
     const result = await gitTool.executeGitOperation(app.path, {
@@ -123,13 +125,27 @@ router.get('/apps/:id/git/history', async (req, res) => {
     }
 
     const commits = result.commits || [];
+
+    // Get current commit (HEAD)
+    let currentCommit: string | null = null;
+    try {
+      currentCommit = await gitUtils.getCurrentCommit(app.path);
+    } catch (error) {
+      // Log but don't fail - current commit is optional
+      contextLogger.warn('route.git.history.current-commit-failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     contextLogger.info('route.git.history.success', {
       commitCount: commits.length,
+      currentCommit: currentCommit?.substring(0, 7),
     });
 
     return res.json({
       success: true,
-      commits: commits
+      commits: commits,
+      currentCommit: currentCommit
     });
   } catch (error) {
     const contextLogger = log.forApp(req.params.id);

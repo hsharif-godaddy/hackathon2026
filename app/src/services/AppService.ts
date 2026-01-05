@@ -219,7 +219,7 @@ export class AppService {
   /**
    * Get git commit history for an app
    */
-  async getGitHistory(appId: string): Promise<{ commits: GitCommit[] }> {
+  async getGitHistory(appId: string): Promise<{ commits: GitCommit[]; currentCommit: string | null }> {
     const apiUrl = await buildDynamicApiUrl(`git/history`, appId)
     const response = await agentFetch(apiUrl, { siteId: appId })
 
@@ -227,7 +227,13 @@ export class AppService {
       throw new Error(`Failed to load commit history: ${response.status}`)
     }
 
-    return response.json()
+    const data = await response.json()
+
+    // Ensure backward compatibility with agents that don't return currentCommit
+    return {
+      commits: data.commits || [],
+      currentCommit: data.currentCommit ?? null
+    }
   }
 
   /**

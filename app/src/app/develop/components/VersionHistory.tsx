@@ -33,19 +33,23 @@ export default function VersionHistory() {
   const isSelectingCommit = useGitStore((state) => state.isSelectingCommit)
   const commitSelectionError = useGitStore((state) => state.commitSelectionError)
   const selectCommitAction = useGitStore((state) => state.selectCommit)
+  const setSelectedCommitHash = useGitStore((state) => state.setSelectedCommitHash)
   const setCommitSelectionError = useGitStore((state) => state.setCommitSelectionError)
 
   const site = useSiteStore((state) => appId ? state.getSite(appId) : null)
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button')
 
   const {
-    data: commits = [],
+    data,
     isLoading: loading,
     error: queryError
   } = useGitHistoryQuery({
     appId: appId || '',
     enabled: !!appId
   })
+
+  const commits = data?.commits || []
+  const currentCommit = data?.currentCommit || null
 
   // NOTE: commits array is ordered from NEWEST to OLDEST (chronologically descending)
   // Index 0 = most recent commit, higher indices = older commits
@@ -75,18 +79,26 @@ export default function VersionHistory() {
     return commits.findIndex(c => c.hash === mostRecentDeployment.gitHash);
   }, [deployments, commits])
 
-  // Auto-select latest commit when commits load or when a new commit is created
-  // Auto-select latest commit on initial load
+  // Auto-select current commit on initial load
+  // Uses lightweight state sync (no checkout) when server provides currentCommit
   useEffect(() => {
     if (commits.length === 0 || !appId || isSelectingCommit || commitSelectionError) return
-    
+
     // Only auto-select if no commit is currently selected (initial load)
     // Agent-created commits are handled directly in useStreamingWebSocket
     // User manual selections should always be respected
     if (!selectedCommitHash) {
-      selectCommitAction(appId, commits[0].hash)
+      if (currentCommit && commits.some(c => c.hash === currentCommit)) {
+        // Use lightweight setter - just sync UI state, don't trigger checkout
+        // The server already has this commit checked out (it's HEAD)
+        setSelectedCommitHash(appId, currentCommit)
+      } else {
+        // Fallback: When currentCommit is null (old backend or git failure),
+        // use the latest commit to maintain backward compatibility
+        setSelectedCommitHash(appId, commits[0].hash)
+      }
     }
-  }, [commits, selectedCommitHash, isSelectingCommit, commitSelectionError, appId, selectCommitAction])
+  }, [commits, selectedCommitHash, currentCommit, isSelectingCommit, commitSelectionError, appId])
 
   // Handle commit selection using global store
   const handleSelectCommit = async (commit: Commit) => {

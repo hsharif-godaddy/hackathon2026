@@ -45,6 +45,7 @@ describe('useRestoreCommitMutation', () => {
     vi.mocked(appService.restoreCommit).mockResolvedValue(undefined);
     vi.mocked(appService.getGitHistory).mockResolvedValue({
       commits: [{ hash: 'new-hash', message: 'Restored', author: 'Test', date: '2024-01-01' }],
+      currentCommit: 'new-hash',
     });
 
     const { result } = renderHook(() => useRestoreCommitMutation(), {

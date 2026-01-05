@@ -305,6 +305,18 @@ export class GitUtils {
   }
 
   /**
+   * Get the currently checked out commit hash
+   * Returns the full SHA-1 hash (40 characters) of HEAD
+   */
+  async getCurrentCommit(repoPath: string, options: GitCommandOptions = {}): Promise<string> {
+    const result = await this.executeGitCommand(['rev-parse', 'HEAD'], repoPath, options);
+    if (!result.success) {
+      throw new Error(`Failed to get current commit: ${result.stderr}`);
+    }
+    return result.stdout.trim();
+  }
+
+  /**
    * Configure Git user information for the repository
    */
   async configureUser(

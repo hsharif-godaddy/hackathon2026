@@ -76,27 +76,27 @@ export function useRestoreCommitMutation() {
       });
 
       // Now fetch the fresh data to get the new commit hash for selection
-      const gitHistory = await queryClient.fetchQuery<GitCommit[]>({
+      const gitHistory = await queryClient.fetchQuery({
         queryKey: ['git-history', variables.appId],
         queryFn: async () => {
-          const { commits } = await appService.getGitHistory(variables.appId);
-          return commits || [];
+          const { commits, currentCommit } = await appService.getGitHistory(variables.appId);
+          return { commits: commits || [], currentCommit: currentCommit || null };
         }
       });
       
       logger.info('restore-commit-mutation.refetch-complete', {
         message: 'Git history refetched',
         appId: variables.appId,
-        commitCount: gitHistory.length,
+        commitCount: gitHistory.commits.length,
       });
-      
+
       // Now that all components have fresh data, select the new commit
-      if (gitHistory && gitHistory.length > 0) {
-        await selectCommit(variables.appId, gitHistory[0].hash);
+      if (gitHistory && gitHistory.commits.length > 0) {
+        await selectCommit(variables.appId, gitHistory.commits[0].hash);
         logger.info('restore-commit-mutation.new-commit-selected', {
           message: 'Selected newly restored commit',
           appId: variables.appId,
-          commitHash: gitHistory[0].hash.substring(0, 7),
+          commitHash: gitHistory.commits[0].hash.substring(0, 7),
         });
       }
       

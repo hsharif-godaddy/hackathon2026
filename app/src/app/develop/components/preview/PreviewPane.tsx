@@ -63,10 +63,11 @@ export default function PreviewPane({
   const selectedCommitHash = useGitStore((state) => appId ? state.getSelectedCommitHash(appId) : null)
 
   // Get commits to determine if selected commit is the latest
-  const { data: commits = [] } = useGitHistoryQuery({
+  const { data } = useGitHistoryQuery({
     appId: appId || '',
     enabled: !!appId
   });
+  const commits = data?.commits || []
 
   // Derive selected commit object from hash
   const selectedCommit = useMemo(() => {

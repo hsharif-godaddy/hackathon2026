@@ -77,16 +77,18 @@ export function usePublishApp() {
     mutationFn: async ({ appId, commitHash }) => {
       let hashToPublish = commitHash;
 
-      // If no commit hash provided, fetch the latest from git history
+      // If no commit hash provided, fetch the current commit (HEAD) from git history
       if (!hashToPublish) {
         const historyData = await appService.getGitHistory(appId);
-        const currentCommit = historyData.commits?.[0];
+        // Use actual current commit (HEAD) instead of latest commit (commits[0])
+        // This ensures we publish what's actually checked out, not necessarily the tip
+        const currentCommitHash = historyData.currentCommit || historyData.commits?.[0]?.hash;
 
-        if (!currentCommit?.hash) {
+        if (!currentCommitHash) {
           throw new Error('No commit found in git history');
         }
 
-        hashToPublish = currentCommit.hash;
+        hashToPublish = currentCommitHash;
       }
 
       // Store the commit hash for retry functionality

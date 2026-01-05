@@ -111,19 +111,23 @@ export default function AppPublish({ location }: { location?: string }) {
   });
 
   const {
-    data: gitCommits = [],
+    data: gitHistoryData,
     isLoading: isLoadingGitHistory,
   } = useGitHistoryQuery({
     appId: currentAppId || '',
     enabled: queryEnabled,
   });
+  const gitCommits = gitHistoryData?.commits || []
+  const currentCommit = gitHistoryData?.currentCommit
 
   const mostRecentDeployment = deployments[0];
 
   // Check if deployment is in progress (not in terminal state)
   const isDeploymentInProgress = mostRecentDeployment &&
     ![DeploymentStatus.DEPLOYED, DeploymentStatus.FAILED].includes(mostRecentDeployment.status as DeploymentStatus);
-  const currentCommitHash = gitCommits[0]?.hash;
+  // Use actual current commit (HEAD) instead of latest commit (commits[0])
+  // Falls back to commits[0] for backward compatibility with old backends
+  const currentCommitHash = currentCommit || gitCommits[0]?.hash;
   const isCurrentCommitDeployed = currentCommitHash &&
     mostRecentDeployment?.gitHash === currentCommitHash &&
     mostRecentDeployment?.status === DeploymentStatus.DEPLOYED;

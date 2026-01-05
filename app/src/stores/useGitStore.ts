@@ -53,13 +53,28 @@ interface GitStore {
    * Clear any commit selection error
    */
   setCommitSelectionError: (error: string | null) => void
-  
+
+  /**
+   * Set the selected commit hash without triggering a checkout
+   * Lightweight state update for hydration from server state
+   *
+   * @param appId - Application ID
+   * @param commitHash - Git commit hash to set as selected
+   *
+   * @example
+   * ```typescript
+   * const setSelectedCommitHash = useGitStore((state) => state.setSelectedCommitHash)
+   * setSelectedCommitHash('app-123', 'abc123def456')
+   * ```
+   */
+  setSelectedCommitHash: (appId: string, commitHash: string) => void
+
   /**
    * Get the selected commit hash for an app
-   * 
+   *
    * @param appId - Application ID
    * @returns Selected commit hash or null if none selected
-   * 
+   *
    * @example
    * ```typescript
    * const getSelectedCommitHash = useGitStore((state) => state.getSelectedCommitHash)
@@ -67,10 +82,10 @@ interface GitStore {
    * ```
    */
   getSelectedCommitHash: (appId: string) => string | null
-  
+
   /**
    * Clear selection state for an app (cleanup)
-   * 
+   *
    * @param appId - Application ID
    */
   clearAppState: (appId: string) => void
@@ -126,11 +141,19 @@ export const useGitStore = create<GitStore>()(
       setCommitSelectionError: (error) => {
         set({ commitSelectionError: error })
       },
-      
+
+      setSelectedCommitHash: (appId, commitHash) => {
+        set((state) => {
+          state.selectedCommitHashByApp[appId] = commitHash
+          // Note: Direct mutation is safe here because immer middleware (line 95)
+          // converts this to an immutable update behind the scenes
+        })
+      },
+
       getSelectedCommitHash: (appId) => {
         return get().selectedCommitHashByApp[appId] ?? null
       },
-      
+
       clearAppState: (appId) => {
         set((state) => {
           delete state.selectedCommitHashByApp[appId]
