@@ -453,6 +453,9 @@ importers:
       "@ux/flyout":
         specifier: ^2500.3.2
         version: 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/growl":
+        specifier: ^2500.7.0
+        version: 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       "@ux/icon":
         specifier: ^2500.3.2
         version: 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -987,7 +990,7 @@ importers:
         version: 7.1.4
       ts-jest:
         specifier: ^29.2.5
-        version: 29.4.4(@babel/core@7.28.5)(@jest/transform@29.7.0)(@jest/types@29.6.3)(babel-jest@29.7.0(@babel/core@7.28.5))(jest-util@29.7.0)(jest@29.7.0(@types/node@22.18.12)(ts-node@10.9.2(@types/node@22.18.12)(typescript@5.9.2)))(typescript@5.9.2)
+        version: 29.4.4(@babel/core@7.28.4)(@jest/transform@29.7.0)(@jest/types@29.6.3)(babel-jest@29.7.0(@babel/core@7.28.4))(jest-util@29.7.0)(jest@29.7.0(@types/node@22.18.12)(ts-node@10.9.2(@types/node@22.18.12)(typescript@5.9.2)))(typescript@5.9.2)
       ts-node:
         specifier: ^10.9.2
         version: 10.9.2(@types/node@22.18.12)(typescript@5.9.2)
@@ -8493,6 +8496,18 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
+  "@ux/box@2500.7.0":
+    resolution:
+      {
+        integrity: sha512-gofrzeP3QHsueQ0OHOwAOXc/1EVJ5I+e4P6Wire4G2n9+61kp40Dd9Ax0affFdqm4Tua/dPXLyOOMtqGdSB6bw==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/box/-/@ux/box-2500.7.0.tgz,
+      }
+    engines: { node: ">= 18" }
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
   "@ux/button@2400.18.1":
     resolution:
       {
@@ -8534,6 +8549,18 @@ packages:
       {
         integrity: sha512-FlFE1GfqW37NoBWFlFRpNLD/xd+x4JkB8x2+LFodqzpj/6iyo9j6fgzysK6dRp+MSwUWRqfMgTPGP4vx6E5cBA==,
         tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/button/-/@ux/button-2500.5.5.tgz,
+      }
+    engines: { node: ">= 18" }
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
+  "@ux/button@2500.7.0":
+    resolution:
+      {
+        integrity: sha512-/YSrqtEHCCCtlEvi3Fu7WmngVBzZwebsVY4XQ7EDcpX2+5kTo+0IskDAgZuFO9OzT1JeLvPV36T/qt81anwLFA==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/button/-/@ux/button-2500.7.0.tgz,
       }
     engines: { node: ">= 18" }
     peerDependencies:
@@ -8661,6 +8688,26 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
+  "@ux/corner-actions@2500.7.0":
+    resolution:
+      {
+        integrity: sha512-lklcimixcbrFNueuyDFRhYdLY6WUfylsD7Fm5FMw6MCCjjeOKZe2L0YRV7mQQe2VnSItK+xVdyYP9wVnzpm+Sw==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/corner-actions/-/@ux/corner-actions-2500.7.0.tgz,
+      }
+    engines: { node: ">= 18" }
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
+  "@ux/data-version@2500.7.0":
+    resolution:
+      {
+        integrity: sha512-d/7xipJ89CeClfycc3inKSwu1SS/yKtCj9/YjpH+ob8G8dU3DRWusCtnTvScPUvUC5b5l4g0VRNXCoxh6NSXHw==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/data-version/-/@ux/data-version-2500.7.0.tgz,
+      }
+    engines: { node: ">= 18" }
+
   "@ux/deploy-assets@3.4.0":
     resolution:
       {
@@ -8669,11 +8716,11 @@ packages:
       }
     hasBin: true
 
-  "@ux/dialog@2500.3.5":
+  "@ux/dialog@2500.7.0":
     resolution:
       {
-        integrity: sha512-onFsoePiPjqnTYqRtYG5Vqxr/7S2NjbXAjGeCD7x9OQAnO4AInKCXPTC+Qc+ufnUTcox+SKRJsCTe7aHy9f9ew==,
-        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/dialog/-/@ux/dialog-2500.3.5.tgz,
+        integrity: sha512-ColMOPFMaIM3T6nFClykPFXMkqMXFCT7nrxEDIMSGOcROi+dLGmklaD6HQHeJbRW9FyA/zEFQGO3ihu5cpf6qA==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/dialog/-/@ux/dialog-2500.7.0.tgz,
       }
     engines: { node: ">= 18" }
     peerDependencies:
@@ -8789,6 +8836,18 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
+  "@ux/growl@2500.7.0":
+    resolution:
+      {
+        integrity: sha512-VuCxDXrejOYdXAUpC6lrcnmLvco+UM6NgRYanus4U9ZQqVz0wuxq9lLFwX0OHwjqD0OfCSP/6C22heoUhyEXPw==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/growl/-/@ux/growl-2500.7.0.tgz,
+      }
+    engines: { node: ">= 18" }
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
   "@ux/icon@2400.18.1":
     resolution:
       {
@@ -8861,6 +8920,18 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
+  "@ux/icon@2500.7.0":
+    resolution:
+      {
+        integrity: sha512-BfZw81tlvChp66wwxHGfuXhmYTi0aLGT/S2hY+y0FXidqeg++JvjCyEyLQ/Y0kErDoD80ef++9FEullZANYKgw==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/icon/-/@ux/icon-2500.7.0.tgz,
+      }
+    engines: { node: ">= 18" }
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
   "@ux/intents@2400.11.0":
     resolution:
       {
@@ -8893,6 +8964,14 @@ packages:
       }
     engines: { node: ">= 18" }
 
+  "@ux/intents@2500.7.0":
+    resolution:
+      {
+        integrity: sha512-EhEmfUlgse/SodrIsmfQfhvkMSJ0LoQDV68VpKKKD/QLFSX/B0+bXIEmFIVGo6kTDkAnt0/bZlbe6VZLzDU/Gw==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/intents/-/@ux/intents-2500.7.0.tgz,
+      }
+    engines: { node: ">= 18" }
+
   "@ux/label@2500.4.0":
     resolution:
       {
@@ -8922,6 +9001,18 @@ packages:
       {
         integrity: sha512-ROq2xsD3qE+/esWINOVNhcYV0YLy7K3k3KcEggMQAiQ8XNRVu9jSFtxhVkIicj6p0knbqULiFH7Oln7YKMSLJA==,
         tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/label/-/@ux/label-2500.5.7.tgz,
+      }
+    engines: { node: ">= 18" }
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
+  "@ux/label@2500.7.0":
+    resolution:
+      {
+        integrity: sha512-GcztptX9XbcJjLGHHm/pPxQ5eF23d2fCeqAOH7UbbL0SnVApRCPJMsbOmmYnsZ5ICzrjuMDAnZGf/dvFFjiXog==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/label/-/@ux/label-2500.7.0.tgz,
       }
     engines: { node: ">= 18" }
     peerDependencies:
@@ -9103,6 +9194,14 @@ packages:
       }
     engines: { node: ">= 18" }
 
+  "@ux/short-css-vars@2500.7.0":
+    resolution:
+      {
+        integrity: sha512-iuIPXtwXluWwnkhvnM/ZbTlRH/HZ+BAZamypx7y3z9PutGfkLW4GXIAdxqYEjURQM9mfZTzKV74kmkfhYBCWOQ==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/short-css-vars/-/@ux/short-css-vars-2500.7.0.tgz,
+      }
+    engines: { node: ">= 18" }
+
   "@ux/sibling-set@2500.3.5":
     resolution:
       {
@@ -9121,6 +9220,19 @@ packages:
       {
         integrity: sha512-fRQQWVrvTAn8Pwl2l8z6ZS/OXP9JCs0WqTD8zAKno2/BJhZ1atwN9V+hHYlOM4ZEAznVFY1FKDsyVqSRCfPfbw==,
         tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/sibling-set/-/@ux/sibling-set-2500.5.2.tgz,
+      }
+    engines: { node: ">= 18" }
+    deprecated: This component has been deprecated since v2500. Please consider using the  component instead.
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
+  "@ux/sibling-set@2500.7.0":
+    resolution:
+      {
+        integrity: sha512-m+FlOzYpuPiJHDhejGHjRk+4ohss4vP3LU4gOuOCfPBThShb4D8leiWFoERBu8umvLhCXGYjLsIFAvAJK72auQ==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/sibling-set/-/@ux/sibling-set-2500.7.0.tgz,
       }
     engines: { node: ">= 18" }
     deprecated: This component has been deprecated since v2500. Please consider using the  component instead.
@@ -9158,6 +9270,18 @@ packages:
       {
         integrity: sha512-XhZHx52CP+KtGx7qncbu6GFYCsPvrsJLaD4iplPS4J5Hl0g5Ed6/HkC34dX9n8RVCt1lXtAAv+zr4CZcwzWg8w==,
         tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/space/-/@ux/space-2500.5.5.tgz,
+      }
+    engines: { node: ">= 18" }
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
+  "@ux/space@2500.7.0":
+    resolution:
+      {
+        integrity: sha512-jQAWHWJ4Xw4pk0d9oI1nF473/ZXxWRkg6WdAv5/tMwmxiR6f7/IUpsmpyk5kui+OcrDXlezYpWVdtkBNey4OcQ==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/space/-/@ux/space-2500.7.0.tgz,
       }
     engines: { node: ">= 18" }
     peerDependencies:
@@ -9308,6 +9432,18 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
+  "@ux/text-lockup@2500.7.0":
+    resolution:
+      {
+        integrity: sha512-fMKzE58KazN5kAywwdzqQzTDcQp8KK1++uilJTyk1VfgoIh4c6kHXZweJKBWRzPIvcp1AomSw7Og9mxGfmvdSQ==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-lockup/-/@ux/text-lockup-2500.7.0.tgz,
+      }
+    engines: { node: ">= 18" }
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
   "@ux/text@2400.18.1":
     resolution:
       {
@@ -9361,6 +9497,18 @@ packages:
       {
         integrity: sha512-sZ3DwK9oesl70MOTCsSN9XU+UUBvEtj4b15FbcA7tS5GJPa9UgejWc8IOSPd8sUclhVWCUof0/S62svI6bxF1Q==,
         tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text/-/@ux/text-2500.5.7.tgz,
+      }
+    engines: { node: ">= 18" }
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
+  "@ux/text@2500.7.0":
+    resolution:
+      {
+        integrity: sha512-Y5c6xZLeSEmZaa11Ggz+ZnYIYzelCmZEKkv9O6hd/KWOpRP1JTfzzD7Tjhn6TCD3EwuK5OC46E20eubC5hKOqA==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text/-/@ux/text-2500.7.0.tgz,
       }
     engines: { node: ">= 18" }
     peerDependencies:
@@ -18093,6 +18241,14 @@ packages:
     engines: { node: ">=10" }
     hasBin: true
 
+  semver@7.7.3:
+    resolution:
+      {
+        integrity: sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q==,
+      }
+    engines: { node: ">=10" }
+    hasBin: true
+
   send@0.19.0:
     resolution:
       {
@@ -21820,44 +21976,20 @@ snapshots:
       "@babel/core": 7.28.4
       "@babel/helper-plugin-utils": 7.27.1
 
-  "@babel/plugin-syntax-async-generators@7.8.4(@babel/core@7.28.5)":
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/helper-plugin-utils": 7.27.1
-    optional: true
-
   "@babel/plugin-syntax-bigint@7.8.3(@babel/core@7.28.4)":
     dependencies:
       "@babel/core": 7.28.4
       "@babel/helper-plugin-utils": 7.27.1
-
-  "@babel/plugin-syntax-bigint@7.8.3(@babel/core@7.28.5)":
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/helper-plugin-utils": 7.27.1
-    optional: true
 
   "@babel/plugin-syntax-class-properties@7.12.13(@babel/core@7.28.4)":
     dependencies:
       "@babel/core": 7.28.4
       "@babel/helper-plugin-utils": 7.27.1
 
-  "@babel/plugin-syntax-class-properties@7.12.13(@babel/core@7.28.5)":
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/helper-plugin-utils": 7.27.1
-    optional: true
-
   "@babel/plugin-syntax-class-static-block@7.14.5(@babel/core@7.28.4)":
     dependencies:
       "@babel/core": 7.28.4
       "@babel/helper-plugin-utils": 7.27.1
-
-  "@babel/plugin-syntax-class-static-block@7.14.5(@babel/core@7.28.5)":
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/helper-plugin-utils": 7.27.1
-    optional: true
 
   "@babel/plugin-syntax-import-assertions@7.27.1(@babel/core@7.28.4)":
     dependencies:
@@ -21869,33 +22001,15 @@ snapshots:
       "@babel/core": 7.28.4
       "@babel/helper-plugin-utils": 7.27.1
 
-  "@babel/plugin-syntax-import-attributes@7.27.1(@babel/core@7.28.5)":
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/helper-plugin-utils": 7.27.1
-    optional: true
-
   "@babel/plugin-syntax-import-meta@7.10.4(@babel/core@7.28.4)":
     dependencies:
       "@babel/core": 7.28.4
       "@babel/helper-plugin-utils": 7.27.1
 
-  "@babel/plugin-syntax-import-meta@7.10.4(@babel/core@7.28.5)":
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/helper-plugin-utils": 7.27.1
-    optional: true
-
   "@babel/plugin-syntax-json-strings@7.8.3(@babel/core@7.28.4)":
     dependencies:
       "@babel/core": 7.28.4
       "@babel/helper-plugin-utils": 7.27.1
-
-  "@babel/plugin-syntax-json-strings@7.8.3(@babel/core@7.28.5)":
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/helper-plugin-utils": 7.27.1
-    optional: true
 
   "@babel/plugin-syntax-jsx@7.27.1(@babel/core@7.28.4)":
     dependencies:
@@ -21907,88 +22021,40 @@ snapshots:
       "@babel/core": 7.28.4
       "@babel/helper-plugin-utils": 7.27.1
 
-  "@babel/plugin-syntax-logical-assignment-operators@7.10.4(@babel/core@7.28.5)":
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/helper-plugin-utils": 7.27.1
-    optional: true
-
   "@babel/plugin-syntax-nullish-coalescing-operator@7.8.3(@babel/core@7.28.4)":
     dependencies:
       "@babel/core": 7.28.4
       "@babel/helper-plugin-utils": 7.27.1
-
-  "@babel/plugin-syntax-nullish-coalescing-operator@7.8.3(@babel/core@7.28.5)":
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/helper-plugin-utils": 7.27.1
-    optional: true
 
   "@babel/plugin-syntax-numeric-separator@7.10.4(@babel/core@7.28.4)":
     dependencies:
       "@babel/core": 7.28.4
       "@babel/helper-plugin-utils": 7.27.1
 
-  "@babel/plugin-syntax-numeric-separator@7.10.4(@babel/core@7.28.5)":
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/helper-plugin-utils": 7.27.1
-    optional: true
-
   "@babel/plugin-syntax-object-rest-spread@7.8.3(@babel/core@7.28.4)":
     dependencies:
       "@babel/core": 7.28.4
       "@babel/helper-plugin-utils": 7.27.1
-
-  "@babel/plugin-syntax-object-rest-spread@7.8.3(@babel/core@7.28.5)":
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/helper-plugin-utils": 7.27.1
-    optional: true
 
   "@babel/plugin-syntax-optional-catch-binding@7.8.3(@babel/core@7.28.4)":
     dependencies:
       "@babel/core": 7.28.4
       "@babel/helper-plugin-utils": 7.27.1
 
-  "@babel/plugin-syntax-optional-catch-binding@7.8.3(@babel/core@7.28.5)":
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/helper-plugin-utils": 7.27.1
-    optional: true
-
   "@babel/plugin-syntax-optional-chaining@7.8.3(@babel/core@7.28.4)":
     dependencies:
       "@babel/core": 7.28.4
       "@babel/helper-plugin-utils": 7.27.1
-
-  "@babel/plugin-syntax-optional-chaining@7.8.3(@babel/core@7.28.5)":
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/helper-plugin-utils": 7.27.1
-    optional: true
 
   "@babel/plugin-syntax-private-property-in-object@7.14.5(@babel/core@7.28.4)":
     dependencies:
       "@babel/core": 7.28.4
       "@babel/helper-plugin-utils": 7.27.1
 
-  "@babel/plugin-syntax-private-property-in-object@7.14.5(@babel/core@7.28.5)":
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/helper-plugin-utils": 7.27.1
-    optional: true
-
   "@babel/plugin-syntax-top-level-await@7.14.5(@babel/core@7.28.4)":
     dependencies:
       "@babel/core": 7.28.4
       "@babel/helper-plugin-utils": 7.27.1
-
-  "@babel/plugin-syntax-top-level-await@7.14.5(@babel/core@7.28.5)":
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/helper-plugin-utils": 7.27.1
-    optional: true
 
   "@babel/plugin-syntax-typescript@7.27.1(@babel/core@7.28.4)":
     dependencies:
@@ -26620,6 +26686,15 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
+  "@ux/box@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
+    dependencies:
+      "@ux/intents": 2500.7.0
+      "@ux/space": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
   "@ux/button@2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
     dependencies:
       "@ux/icon": 2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -26655,6 +26730,16 @@ snapshots:
       "@ux/icon": 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       "@ux/intents": 2500.5.5
       "@ux/text": 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
+  "@ux/button@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
+    dependencies:
+      "@ux/icon": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/intents": 2500.7.0
+      "@ux/text": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -26762,12 +26847,25 @@ snapshots:
 
   "@ux/corner-actions@2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
     dependencies:
-      "@ux/box": 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      "@ux/intents": 2500.5.5
+      "@ux/box": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/intents": 2500.7.0
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
+
+  "@ux/corner-actions@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
+    dependencies:
+      "@ux/box": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/intents": 2500.7.0
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
+  "@ux/data-version@2500.7.0":
+    dependencies:
+      semver: 7.7.3
 
   "@ux/deploy-assets@3.4.0":
     dependencies:
@@ -26781,14 +26879,14 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  "@ux/dialog@2500.3.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
+  "@ux/dialog@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
     dependencies:
-      "@ux/box": 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      "@ux/button": 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      "@ux/icon": 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      "@ux/intents": 2500.3.2
-      "@ux/sibling-set": 2500.3.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      "@ux/text": 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/box": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/button": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/icon": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/intents": 2500.7.0
+      "@ux/sibling-set": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/text": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -26807,7 +26905,7 @@ snapshots:
 
   "@ux/disrupt@2500.5.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
     dependencies:
-      "@ux/intents": 2500.3.2
+      "@ux/intents": 2500.7.0
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -26837,7 +26935,7 @@ snapshots:
 
   "@ux/field-frame@2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
     dependencies:
-      "@ux/intents": 2500.3.2
+      "@ux/intents": 2500.7.0
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -26874,9 +26972,24 @@ snapshots:
   "@ux/flyout@2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
     dependencies:
       "@floating-ui/react-dom": 1.3.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      "@ux/box": 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      "@ux/intents": 2500.5.5
+      "@ux/box": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/intents": 2500.7.0
       classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
+  "@ux/growl@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
+    dependencies:
+      "@ux/box": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/button": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/corner-actions": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/data-version": 2500.7.0
+      "@ux/dialog": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/icon": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/intents": 2500.7.0
+      "@ux/text": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/text-lockup": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
@@ -26917,6 +27030,12 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
+  "@ux/icon@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
+    dependencies:
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
   "@ux/intents@2400.11.0":
     dependencies:
       "@ux/short-css-vars": 2400.11.0
@@ -26945,6 +27064,13 @@ snapshots:
       obj-dot-props: 1.1.0
       string-hash: 1.1.3
 
+  "@ux/intents@2500.7.0":
+    dependencies:
+      "@ux/short-css-vars": 2500.7.0
+      camelcase: 6.3.0
+      obj-dot-props: 1.1.0
+      string-hash: 1.1.3
+
   "@ux/label@2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
     dependencies:
       "@ux/text": 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -26969,10 +27095,18 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
+  "@ux/label@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
+    dependencies:
+      "@ux/text": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
   "@ux/listbox@2500.5.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
     dependencies:
-      "@ux/button": 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      "@ux/intents": 2500.3.2
+      "@ux/button": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/intents": 2500.7.0
       classnames: 2.5.1
       merge-refs: 2.0.0(@types/react@19.1.13)
       prop-types: 15.8.1
@@ -27015,7 +27149,7 @@ snapshots:
     dependencies:
       "@ux/box": 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       "@ux/corner-actions": 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      "@ux/dialog": 2500.3.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/dialog": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       "@ux/disrupt": 2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       "@ux/icon": 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       "@ux/intents": 2500.3.2
@@ -27147,6 +27281,10 @@ snapshots:
     dependencies:
       string-hash: 1.1.3
 
+  "@ux/short-css-vars@2500.7.0":
+    dependencies:
+      string-hash: 1.1.3
+
   "@ux/sibling-set@2500.3.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
     dependencies:
       "@ux/intents": 2500.3.2
@@ -27162,6 +27300,16 @@ snapshots:
       "@ux/intents": 2500.3.2
       "@ux/label": 2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       "@ux/text": 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
+  "@ux/sibling-set@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
+    dependencies:
+      "@ux/intents": 2500.7.0
+      "@ux/label": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/text": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -27185,7 +27333,15 @@ snapshots:
 
   "@ux/space@2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
     dependencies:
-      "@ux/intents": 2500.5.5
+      "@ux/intents": 2500.7.0
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
+  "@ux/space@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
+    dependencies:
+      "@ux/intents": 2500.7.0
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -27301,10 +27457,21 @@ snapshots:
 
   "@ux/text-lockup@2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
     dependencies:
-      "@ux/box": 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      "@ux/icon": 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      "@ux/intents": 2500.5.5
-      "@ux/text": 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/box": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/icon": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/intents": 2500.7.0
+      "@ux/text": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
+  "@ux/text-lockup@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
+    dependencies:
+      "@ux/box": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/icon": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/intents": 2500.7.0
+      "@ux/text": 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -27345,6 +27512,14 @@ snapshots:
   "@ux/text@2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
     dependencies:
       "@ux/intents": 2500.5.6
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
+  "@ux/text@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
+    dependencies:
+      "@ux/intents": 2500.7.0
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -28055,20 +28230,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  babel-jest@29.7.0(@babel/core@7.28.5):
-    dependencies:
-      "@babel/core": 7.28.5
-      "@jest/transform": 29.7.0
-      "@types/babel__core": 7.20.5
-      babel-plugin-istanbul: 6.1.1
-      babel-preset-jest: 29.6.3(@babel/core@7.28.5)
-      chalk: 4.1.2
-      graceful-fs: 4.2.11
-      slash: 3.0.0
-    transitivePeerDependencies:
-      - supports-color
-    optional: true
-
   babel-plugin-istanbul@6.1.1:
     dependencies:
       "@babel/helper-plugin-utils": 7.27.1
@@ -28129,38 +28290,11 @@ snapshots:
       "@babel/plugin-syntax-private-property-in-object": 7.14.5(@babel/core@7.28.4)
       "@babel/plugin-syntax-top-level-await": 7.14.5(@babel/core@7.28.4)
 
-  babel-preset-current-node-syntax@1.2.0(@babel/core@7.28.5):
-    dependencies:
-      "@babel/core": 7.28.5
-      "@babel/plugin-syntax-async-generators": 7.8.4(@babel/core@7.28.5)
-      "@babel/plugin-syntax-bigint": 7.8.3(@babel/core@7.28.5)
-      "@babel/plugin-syntax-class-properties": 7.12.13(@babel/core@7.28.5)
-      "@babel/plugin-syntax-class-static-block": 7.14.5(@babel/core@7.28.5)
-      "@babel/plugin-syntax-import-attributes": 7.27.1(@babel/core@7.28.5)
-      "@babel/plugin-syntax-import-meta": 7.10.4(@babel/core@7.28.5)
-      "@babel/plugin-syntax-json-strings": 7.8.3(@babel/core@7.28.5)
-      "@babel/plugin-syntax-logical-assignment-operators": 7.10.4(@babel/core@7.28.5)
-      "@babel/plugin-syntax-nullish-coalescing-operator": 7.8.3(@babel/core@7.28.5)
-      "@babel/plugin-syntax-numeric-separator": 7.10.4(@babel/core@7.28.5)
-      "@babel/plugin-syntax-object-rest-spread": 7.8.3(@babel/core@7.28.5)
-      "@babel/plugin-syntax-optional-catch-binding": 7.8.3(@babel/core@7.28.5)
-      "@babel/plugin-syntax-optional-chaining": 7.8.3(@babel/core@7.28.5)
-      "@babel/plugin-syntax-private-property-in-object": 7.14.5(@babel/core@7.28.5)
-      "@babel/plugin-syntax-top-level-await": 7.14.5(@babel/core@7.28.5)
-    optional: true
-
   babel-preset-jest@29.6.3(@babel/core@7.28.4):
     dependencies:
       "@babel/core": 7.28.4
       babel-plugin-jest-hoist: 29.6.3
       babel-preset-current-node-syntax: 1.2.0(@babel/core@7.28.4)
-
-  babel-preset-jest@29.6.3(@babel/core@7.28.5):
-    dependencies:
-      "@babel/core": 7.28.5
-      babel-plugin-jest-hoist: 29.6.3
-      babel-preset-current-node-syntax: 1.2.0(@babel/core@7.28.5)
-    optional: true
 
   backo@1.1.0: {}
 
@@ -29327,8 +29461,8 @@ snapshots:
       "@typescript-eslint/parser": 6.21.0(eslint@8.57.1)(typescript@5.9.2)
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1)
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1)
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint@8.57.1))(eslint@8.57.1)
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
       eslint-plugin-jsx-a11y: 6.10.2(eslint@8.57.1)
       eslint-plugin-react: 7.37.5(eslint@8.57.1)
       eslint-plugin-react-hooks: 5.2.0(eslint@8.57.1)
@@ -29351,7 +29485,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1):
+  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint@8.57.1))(eslint@8.57.1):
     dependencies:
       "@nolyfill/is-core-module": 1.0.39
       debug: 4.4.3(supports-color@5.5.0)
@@ -29362,22 +29496,22 @@ snapshots:
       tinyglobby: 0.2.15
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1)
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.12.1(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1):
+  eslint-module-utils@2.12.1(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
       "@typescript-eslint/parser": 6.21.0(eslint@8.57.1)(typescript@5.9.2)
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1)
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint@8.57.1))(eslint@8.57.1)
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1):
+  eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1):
     dependencies:
       "@rtsao/scc": 1.1.0
       array-includes: 3.1.9
@@ -29388,7 +29522,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-module-utils: 2.12.1(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1)
+      eslint-module-utils: 2.12.1(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.2))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
       hasown: 2.0.2
       is-core-module: 2.16.1
       is-glob: 4.0.3
@@ -33593,6 +33727,8 @@ snapshots:
 
   semver@7.7.2: {}
 
+  semver@7.7.3: {}
+
   send@0.19.0:
     dependencies:
       debug: 2.6.9
@@ -34324,7 +34460,7 @@ snapshots:
 
   ts-deepmerge@6.2.1: {}
 
-  ts-jest@29.4.4(@babel/core@7.28.5)(@jest/transform@29.7.0)(@jest/types@29.6.3)(babel-jest@29.7.0(@babel/core@7.28.5))(jest-util@29.7.0)(jest@29.7.0(@types/node@22.18.12)(ts-node@10.9.2(@types/node@22.18.12)(typescript@5.9.2)))(typescript@5.9.2):
+  ts-jest@29.4.4(@babel/core@7.28.4)(@jest/transform@29.7.0)(@jest/types@29.6.3)(babel-jest@29.7.0(@babel/core@7.28.4))(jest-util@29.7.0)(jest@29.7.0(@types/node@22.18.12)(ts-node@10.9.2(@types/node@22.18.12)(typescript@5.9.2)))(typescript@5.9.2):
     dependencies:
       bs-logger: 0.2.6
       fast-json-stable-stringify: 2.1.0
@@ -34338,10 +34474,10 @@ snapshots:
       typescript: 5.9.2
       yargs-parser: 21.1.1
     optionalDependencies:
-      "@babel/core": 7.28.5
+      "@babel/core": 7.28.4
       "@jest/transform": 29.7.0
       "@jest/types": 29.6.3
-      babel-jest: 29.7.0(@babel/core@7.28.5)
+      babel-jest: 29.7.0(@babel/core@7.28.4)
       jest-util: 29.7.0
 
   ts-node-dev@2.0.0(@types/node@22.18.12)(typescript@5.9.2):

@@ -20,7 +20,7 @@ export default function BigCard({ children, title, description, status, button, 
       gap="lg"
       className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-3 @md:p-4 @lg:p-6"
     >
-      <div className="flex flex-col-reverse @md:flex-row justify-between items-start gap-1 @md:gap-3">
+      <div className="flex flex-col-reverse @md:flex-row justify-between items-center @md:items-start gap-1 @md:gap-3">
         <Box gap="sm">
           { title && (
             <text.h3 as="title" size={2}>{title}</text.h3>

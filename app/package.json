@@ -98,6 +98,7 @@
     "@ux/collapsible": "^2500.3.2",
     "@ux/disrupt": "^2500.3.3",
     "@ux/flyout": "^2500.3.2",
+    "@ux/growl": "^2500.7.0",
     "@ux/icon": "^2500.3.2",
     "@ux/intents": "^2500.3.2",
     "@ux/menu": "^2500.3.3",

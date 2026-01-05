@@ -1,13 +1,17 @@
 'use client'
 
 import React, { useEffect, useRef,useState } from 'react';
+import Alert from '@ux/alert';
 import Box from '@ux/box';
 import Button from '@ux/button';
+import Growl from '@ux/growl';
 import EditIcon from '@ux/icon/edit';
 import LockIcon from '@ux/icon/locked';
 import DeleteIcon from '@ux/icon/x-thick';
 import Spinner from '@ux/spinner';
+import Tag from '@ux/tag';
 import text from '@ux/text';
+import TextInput from '@ux/text-input';
 
 import IconButton from '@/app/develop/components/IconButton';
 import BigCard from '@/components/layout/BigCard';
@@ -56,8 +60,6 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
     { name: '', value: '' }
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [focusedSecretIndex, setFocusedSecretIndex] = useState<number | null>(null);
   const textareaRefs = useRef<{ [secretName: string]: HTMLTextAreaElement | null }>({});
 
@@ -215,10 +217,39 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
     return true;
   };
 
+  const getNewSecretNameError = (newSecret: { name: string; value: string }, index: number) => {
+    if (!newSecret.name && isValueValid(newSecret.value)) {
+      return t('builder_common_required_field_err');
+    }
+    if (newSecret.name && !isValidSecretName(newSecret.name)) {
+      return newSecret.name.length < 2
+        ? t('builder_common_field_req_min_characters', { number: 2 })
+        : !/^[A-Z_]/.test(newSecret.name)
+        ? t('builder_common_field_req_start_with')
+        : t('builder_common_field_req_invalid_characters');
+    }
+    if (newSecret.name && isValidSecretName(newSecret.name) && !isSecretNameUnique(newSecret.name, index)) {
+      return t('builder_settings_secrets_key_name_exists');
+    }
+    return null;
+  };
+
+  const getNewSecretNameHelp = (newSecret: { name: string; value: string }, index: number) => {
+    if (focusedSecretIndex === index && !newSecret.name) {
+      return t('builder_settings_secrets_key_name_allowed_characters');
+    }
+    return null;
+  };
+
+  const getNewSecretValueError = (newSecret: { name: string; value: string }, index: number) => {
+    if (newSecret.name && isValidSecretName(newSecret.name) && isSecretNameUnique(newSecret.name, index) && !isValueValid(newSecret.value)) {
+      return t('builder_common_required_field_err');
+    }
+    return null;
+  };
+
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    setSubmitError(null);
-    setSubmitSuccess(null);
     try {
       const validNewSecrets = newSecrets.filter(
         (s, index) => isValidSecretName(s.name) && isSecretNameUnique(s.name, index) && isValueValid(s.value)
@@ -245,15 +276,25 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
       // Reset new secrets form
       setNewSecrets([{ name: '', value: '' }]);
 
-      // Show success message
-      setSubmitSuccess(`Secrets updated successfully!`);
+      // Reset form secrets to clear change flags (prevents brief button re-enable)
+      setFormSecrets((prev) =>
+        prev
+          .filter((s) => !s.markedForDeletion)
+          .map((s) => ({
+            ...s,
+            isEditing: false,
+            editedValue: undefined,
+          }))
+      );
 
-      // Auto-dismiss success message after 5 seconds
-      setTimeout(() => {
-        setSubmitSuccess(null);
-      }, 5000);
-
-      setSubmitError(null);
+      // Show success growl notification
+      Growl.addGrowlMessage({
+        id: 'secrets-success',
+        title: t('builder_status_success'),
+        children: t('builder_settings_secrets_success_saving_description'),
+        emphasis: 'success',
+        lifetime: 5000
+      });
     } catch (err) {
       logger.error('secrets.submit.failed', {
         appId,
@@ -262,7 +303,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
       });
 
       // Extract error message from the error object
-      let errorMessage = 'Failed to save secrets. Please try again.';
+      let errorMessage = t('builder_settings_secrets_error_saving_description');
 
       if (err instanceof Error) {
         errorMessage = err.message;
@@ -270,8 +311,13 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
         errorMessage = err;
       }
 
-      setSubmitError(errorMessage);
-      setSubmitSuccess(null);
+      // Show error growl notification
+      Growl.addGrowlMessage({
+        id: 'secrets-error',
+        title: t('builder_status_failed'),
+        children: errorMessage,
+        emphasis: 'critical'
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -346,10 +392,12 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
     return (
       <div className='flex flex-col justify-center items-center h-[calc(100vh-40rem)] gap-2'>
         <Spinner size='md'/>
-        <text.p>Loading secrets...</text.p>
-        <text.p className="text-sm text-muted-foreground">
-          This may take a few seconds...
-        </text.p>
+        <div className='flex flex-col items-center gap-0.5'>
+          <text.div as='title' size={ -1 }>{t('builder_common_loading')}</text.div>
+          <text.div emphasis='passive' size={ -1 }>
+            {t('builder_common_loading_description')}
+          </text.div>
+        </div>
       </div>
     );
   }
@@ -358,9 +406,9 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
     return (
       <EmptyStateCard
         icon={<LockIcon width={48} height={48} />}
-        title="Error Loading Secrets"
-        description="An error occurred while loading secrets. Please try again."
-        ctaLabel="Retry"
+        title={t('builder_settings_secrets_error_loading_title')}
+        description={t('builder_settings_secrets_error_loading_description')}
+        ctaLabel={t('builder_common_retry')}
         onCtaClick={() => refetch()}
       />
     );
@@ -370,122 +418,58 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
     <Box gap="lg" className="@container">
       <BigCard
         title={t('builder_settings_secrets_title')}
-        button={hasChanges ? (
+        button={(
           <Button
             design="primary"
             onClick={handleSubmit}
-            disabled={isSubmitting}
+            disabled={!hasChanges || isSubmitting}
           >
             {isSubmitting ? t('builder_settings_secrets_saving') : t('builder_settings_secrets_save')}
           </Button>
-        ) : null}
+        )}
+        hideStatus={true}
       >
       {!error && (
         <div className="space-y-2">
-          {submitError && (
-            <div className="border rounded-lg p-2 flex items-start justify-between" style={{ backgroundColor: '#fee8e89c', borderColor: '#db1802' }}>
-              <div className="flex items-start gap-1.5">
-                <div className="mt-0.5" style={{ color: '#ef4444'}}>⚠️</div>
-                <div>
-                  <div className="font-semibold mb-0.5" style={{ color: '#ef4444'}}>{t('builder_status_failed')}</div>
-                  <text.p className="text-sm" style={{ color: '#ef4444'}}>{submitError}</text.p>
-                </div>
-              </div>
-              <button
-                onClick={() => setSubmitError(null)}
-                className="transition-colors"
-                style={{ color: '#ef4444', cursor: 'pointer'}}
-                aria-label="Dismiss error"
-              >
-                <DeleteIcon width={20} height={20} />
-              </button>
-            </div>
-          )}
-
-          {submitSuccess && (
-            <div className="border rounded-lg p-2 flex items-start justify-between" style={{ backgroundColor: '#f0fdf4', borderColor: '#22c55e' }}>
-              <div className="flex items-start gap-1.5">
-                <div className="mt-0.5" style={{ color: '#22c55e'}}>✓</div>
-                <div>
-                  <div className="font-semibold mb-0.5" style={{ color: '#16a34a'}}>Successful!</div>
-                  <text.p className="text-sm" style={{ color: '#15803d'}}>{submitSuccess}</text.p>
-                </div>
-              </div>
-              <button
-                onClick={() => setSubmitSuccess(null)}
-                className="transition-colors"
-                style={{ color: '#22c55e', cursor: 'pointer'}}
-                aria-label="Dismiss success"
-              >
-                <DeleteIcon width={20} height={20} />
-              </button>
-            </div>
-          )}
-
           {/* New secrets section - moved to top */}
           <div className="space-y-1">
-            <div className="border-2 border-dashed rounded-lg bg-gray-50 overflow-hidden">
+            <div className="border-2 border-dashed border-intents-ux-box-borderColor rounded-lg overflow-hidden">
               {newSecrets.map((newSecret, index) => (
                 <div
                   key={index}
                   className={`flex items-start gap-1.5 p-2 ${
-                    index !== newSecrets.length - 1 ? 'border-b' : ''
+                    index !== newSecrets.length - 1 ? 'border-b border-intents-ux-box-borderColor ' : ''
                   }`}
                 >
                   <div className="flex-1 grid grid-cols-2 gap-1.5 items-start">
                     <div>
-                      <input
-                        type="text"
+                      <TextInput
+                        id={`newSecretName-${index}`}
                         value={newSecret.name}
-                        onChange={(e) => handleNewSecretChange(index, 'name', e.target.value)}
+                        onChange={(value: string) => handleNewSecretChange(index, 'name', value)}
                         onFocus={() => setFocusedSecretIndex(index)}
                         onBlur={() => setFocusedSecretIndex(null)}
-                        placeholder="NEW_SECRET_KEY_NAME"
-                        className="w-full px-1.5 py-1 h-[38px] border rounded-md font-mono text-sm bg-intents-ux-box-backgroundColor leading-none"
+                        placeholder={t('builder_settings_secrets_placeholder_key_name')}
+                        label={null}
+                        visualSize="sm"
+                        errorMessage={getNewSecretNameError(newSecret, index)}
+                        helpMessage={getNewSecretNameHelp(newSecret, index)}
                       />
-                      {!newSecret.name && isValueValid(newSecret.value) && (
-                        <text.p className="mt-0.5" style={{ fontSize: '0.875rem', color: '#ef4444'}}>
-                          Secret name is required
-                        </text.p>
-                      )}
-                      {newSecret.name && !isValidSecretName(newSecret.name) && (
-                        <text.p className="mt-0.5" style={{ fontSize: '0.875rem', color: '#ef4444'}}>
-                          {newSecret.name.length < 2
-                            ? 'Min 2 characters'
-                            : !/^[A-Z_]/.test(newSecret.name)
-                            ? 'Must start with A-Z or _'
-                            : 'Invalid characters'}
-                        </text.p>
-                      )}
-                      {newSecret.name && isValidSecretName(newSecret.name) && !isSecretNameUnique(newSecret.name, index) && (
-                        <text.p className="mt-0.5" style={{ fontSize: '0.875rem', color: '#ef4444'}}>
-                          Secret name already exists
-                        </text.p>
-                      )}
-                      {focusedSecretIndex === 0 && index === 0 && !newSecret.name && (
-                        <text.p className="mt-0.5" style={{ fontSize: '0.875rem', color: '#6b7280'}}>
-                          Allowed: A-Z, 0-9, / _ + = . @ - (2-128 chars, must start with letter or _)
-                        </text.p>
-                      )}
                     </div>
                     <div>
-                      <textarea
+                      <TextInput
+                        id={`newSecretValue-${index}`}
+                        label={null}
+                        visualSize="sm"
+                        multiline={true}
                         value={newSecret.value}
-                        onChange={(e) => handleNewSecretChange(index, 'value', e.target.value)}
-                        placeholder="Enter secret value"
-                        rows={calculateRows(newSecret.value)}
-                        className="w-full px-1.5 py-1 border rounded-md font-mono text-sm bg-intents-ux-box-backgroundColor resize-none overflow-y-auto min-h-[38px]"
-                        style={{ maxHeight: '144px' }}
+                        onChange={(value: string) => handleNewSecretChange(index, 'value', value)}
+                        placeholder={t('builder_settings_secrets_placeholder_key_value')}
+                        size={calculateRows(newSecret.value)}
+                        errorMessage={getNewSecretValueError(newSecret, index)}
                       />
-                      {newSecret.name && isValidSecretName(newSecret.name) && isSecretNameUnique(newSecret.name, index) && !isValueValid(newSecret.value) && (
-                        <text.p className="mt-0.5" style={{ fontSize: '0.875rem', color: '#ef4444'}}>
-                          Secret value is required
-                        </text.p>
-                      )}
                       {newSecret.name && isValidSecretName(newSecret.name) && isSecretNameUnique(newSecret.name, index) && isValueValid(newSecret.value) && (
-                        <div className="mt-0.5 px-1 rounded inline-block" style={{ backgroundColor: '#dbeafe', borderColor: '#3b82f6' }}>
-                          <text.p style={{ fontSize: '0.875rem', color: '#2563eb'}}>Unsaved new secret</text.p>
-                        </div>
+                        <Tag emphasis="warning" className="mt-1">{t('builder_settings_secrets_tag_unsaved_new')}</Tag>
                       )}
                     </div>
                   </div>
@@ -496,53 +480,43 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
 
           {formSecrets.length > 0 && (
             <>
-              <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
+              <div className="border border-intents-ux-box-borderColor rounded-lg overflow-hidden">
                 {formSecrets.map((secret, index) => (
                   <div
                     key={secret.name}
                     className={`flex items-start gap-1.5 p-2 ${
-                      index !== formSecrets.length - 1 ? 'border-b border-gray-200' : ''
-                    }`} style={{ opacity: secret.markedForDeletion ? 0.8 : 1, backgroundColor: secret.markedForDeletion ? '#ef44444d' : undefined }}
+                      index !== formSecrets.length - 1 ? 'border-b' : ''
+                    } ${secret.markedForDeletion ? 'bg-intents-ux-feedbackCritical-feedbackColor' : ''}`}
+                    style={{ opacity: secret.markedForDeletion ? 0.8 : 1 }}
                   >
                     <div className="flex-1 grid grid-cols-2 gap-1.5 items-start">
                       <div>
-                        <input
-                          type="text"
+                        <TextInput
+                          id={`secretName-${index}`}
                           value={secret.name}
                           disabled
-                          className="w-full px-1.5 py-1 h-[38px] border border-gray-300 rounded-md bg-gray-50 text-gray-600 font-mono text-sm leading-none"
+                          label={null}
+                          visualSize="sm"
                         />
                         {/* System managed and sync status tags */}
-                        <div className="mt-0.5 flex gap-1 flex-wrap">
+                        <div className="mt-1 flex gap-1 flex-wrap">
                           {secret.systemManaged ? (
-                            <div className="px-1 py-0.5 rounded inline-block" style={{ backgroundColor: '#f3f4f6', borderColor: '#9ca3af' }}>
-                              <text.p style={{ fontSize: '0.75rem', color: '#6b7280'}}>System managed</text.p>
-                            </div>
+                              <Tag emphasis="info">{t('builder_settings_secrets_tag_system')}</Tag>
                           ) : (
                             <>
                               {secret.syncStatus === 'synced' && (
-                                <div className="px-1 py-0.5 rounded inline-block" style={{ backgroundColor: '#d1fae5', borderColor: '#10b981' }}>
-                                  <text.p style={{ fontSize: '0.75rem', color: '#059669'}}>Deployed</text.p>
-                                </div>
+                                <Tag emphasis="success">{t('builder_settings_secrets_tag_deployed')}</Tag>
                               )}
                               {secret.syncStatus === 'added' && (
                                 <>
-                                  <div className="px-1 py-0.5 rounded inline-block" style={{ backgroundColor: '#dbeafe', borderColor: '#3b82f6' }}>
-                                    <text.p style={{ fontSize: '0.75rem', color: '#2563eb'}}>Newly added</text.p>
-                                  </div>
-                                  <div className="px-1 py-0.5 rounded inline-block" style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
-                                    <text.p style={{ fontSize: '0.75rem', color: '#d97706'}}>Not deployed</text.p>
-                                  </div>
+                                  <Tag emphasis="info">{t('builder_settings_secrets_tag_new')}</Tag>
+                                  <Tag emphasis="warning">{t('builder_settings_secrets_tag_not_deployed')}</Tag>
                                 </>
                               )}
                               {secret.syncStatus === 'updated' && (
                                 <>
-                                  <div className="px-1 py-0.5 rounded inline-block" style={{ backgroundColor: '#e0e7ff', borderColor: '#6366f1' }}>
-                                    <text.p style={{ fontSize: '0.75rem', color: '#4f46e5'}}>Updated</text.p>
-                                  </div>
-                                  <div className="px-1 py-0.5 rounded inline-block" style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
-                                    <text.p style={{ fontSize: '0.75rem', color: '#d97706'}}>Not deployed</text.p>
-                                  </div>
+                                  <Tag emphasis="info">{t('builder_settings_secrets_tag_updated')}</Tag>
+                                  <Tag emphasis="warning">{t('builder_settings_secrets_tag_not_deployed')}</Tag>
                                 </>
                               )}
                             </>
@@ -550,33 +524,31 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                         </div>
                       </div>
                       <div>
-                        <textarea
+                        <TextInput
+                          id={`secretValue-${index}`}
+                          label={null}
                           ref={(el) => { textareaRefs.current[secret.name] = el; }}
                           value={secret.isEditing ? (secret.editedValue ?? '') : ''}
-                          onChange={(e) => handleValueChange(secret.name, e.target.value)}
+                          onChange={(value: string) => handleValueChange(secret.name, value)}
                           onBlur={() => handleValueBlur(secret.name)}
                           disabled={!secret.isEditing}
-                          rows={secret.isEditing ? calculateRows(secret.editedValue) : 1}
-                          className="w-full px-1.5 py-1 border border-gray-300 rounded-md font-mono text-sm disabled:bg-gray-50 disabled:text-gray-600 resize-none overflow-y-auto min-h-[38px]"
-                          placeholder={secret.isEditing ? 'Enter the updated secret value' : '••••••••••••'}
-                          style={{ maxHeight: '144px' }}
+                          size={secret.isEditing ? calculateRows(secret.editedValue) : 1}
+                          placeholder={secret.isEditing ? t('builder_settings_secrets_placeholder_key_value') : '••••••••••••'}
+                          visualSize="sm"
+                          multiline={true}
                         />
                         {secret.isEditing && secret.editedValue && isValueValid(secret.editedValue) && (
-                          <div className="mt-0.5 px-1 rounded inline-block" style={{ backgroundColor: '#fefce8', borderColor: '#facc15' }}>
-                            <text.p style={{ fontSize: '0.875rem', color: '#eab308'}}>Unsaved edit</text.p>
-                          </div>
+                          <Tag emphasis="warning" className="mt-1">{t('builder_settings_secrets_tag_unsaved_edit')}</Tag>
                         )}
                         {secret.markedForDeletion && (
-                          <div className="mt-0.5 px-1 rounded inline-block" style={{ backgroundColor: '#ef4444', borderColor: '#fda4af' }}>
-                            <text.p style={{ fontSize: '0.875rem', color: 'black'}}>Unsaved delete</text.p>
-                          </div>
+                          <Tag emphasis="critical" className="mt-1">{t('builder_settings_secrets_tag_unsaved_delete')}</Tag>
                         )}
                       </div>
                     </div>
                     <div className="flex items-center gap-0.5">
                       <IconButton
                         icon={<EditIcon />}
-                        label={secret.isEditing ? 'Cancel' : 'Edit secret'}
+                        label={secret.isEditing ? t('builder_common_cancel') : t('builder_common_edit')}
                         onClick={() => handleEdit(secret.name)}
                         onMouseDown={(e: React.MouseEvent) => {
                           // Prevent blur from firing before onClick when canceling with empty value
@@ -590,7 +562,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                       />
                       <IconButton
                         icon={<DeleteIcon />}
-                        label={secret.markedForDeletion ? 'Undo' : 'Delete secret'}
+                        label={secret.markedForDeletion ? t('builder_common_undo') : t('builder_common_delete')}
                         onClick={() => handleDelete(secret.name)}
                         active={secret.markedForDeletion}
                         disabled={secret.systemManaged || secret.isEditing}
@@ -605,7 +577,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
 
           {formSecrets.length === 0 && (
             <div className="text-center py-4">
-              <text.p className="text-sm text-muted-foreground">
+              <text.p emphasis='passive' size={ -1 }>
                 {t('builder_settings_secrets_no_secrets')}
               </text.p>
             </div>
@@ -613,25 +585,16 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
 
           {/* Not deployed secrets notice */}
           {formSecrets.some(s => s.syncStatus === 'added' || s.syncStatus === 'updated') && (
-            <div className="border-l-4 rounded-r-lg p-2 flex items-start gap-1.5" style={{ backgroundColor: '#fffbeb', borderColor: '#f59e0b' }}>
-              <div className="mt-0.5" style={{ color: '#f59e0b'}}>ℹ️</div>
-              <div>
-                <div className="font-semibold mb-0.5 flex items-center gap-1" style={{ color: '#d97706'}}>
-                  <span className="px-1 py-0.5 rounded text-xs" style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
-                    Not deployed
-                  </span>
-                  <span>secrets</span>
-                </div>
-                <text.p className="text-sm" style={{ color: '#92400e'}}>
-                  These secrets are available in the {variant} environment for development and testing.
-                  They will be deployed to the final app after the next publish.
-                </text.p>
-              </div>
-            </div>
+            <Alert title={t('builder_settings_secrets_alert_notdeployed_title')} emphasis='info'>
+              {t('builder_settings_secrets_alert_notdeployed_children', 
+                {variant: variant === 'preview' ? t('builder_settings_secrets_env_preview') : t('builder_settings_secrets_env_publish')}
+              )}
+            </Alert>
           )}
         </div>
       )}
       </BigCard>
+      <Growl />
     </Box>
   );
 }

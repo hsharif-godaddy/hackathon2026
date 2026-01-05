@@ -136,7 +136,8 @@ export default function SecurityPanel() {
             onClick={handleRunAnalysis}
             text={isLoading ? t('builder_settings_security_analysis_running') : t('builder_settings_security_analysis_run')}
           />
-        }>
+        }
+        hideStatus={true}>
         <Box>
           {error && (
             <div className="mb-2">
