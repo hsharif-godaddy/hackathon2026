@@ -212,6 +212,68 @@ export class TokenUsageRepository {
   }
 
   /**
+   * Get daily token usage for an app (resets at 00:10 UTC)
+   * Matches GoCode's daily reset time for consistency
+   */
+  getDailyUsage(appId: string): {
+    totalCost: number;
+    totalTokens: number;
+    operationBreakdown: Array<{
+      operation: string;
+      cost: number;
+      count: number;
+    }>;
+    resetTime: string;
+  } {
+    const now = new Date();
+    const todayReset = new Date(now);
+    todayReset.setUTCHours(0, 10, 0, 0);
+
+    // if before today's reset, use yesterday's reset as period start
+    const periodStart = now < todayReset
+      ? new Date(todayReset.getTime() - 24 * 60 * 60 * 1000)
+      : todayReset;
+
+    // next reset time
+    const nextReset = now < todayReset
+      ? todayReset
+      : new Date(todayReset.getTime() + 24 * 60 * 60 * 1000);
+
+    const stmt = this.db.prepare(`
+      SELECT
+        operation,
+        SUM(cost) as total_cost,
+        SUM(total_tokens) as total_tokens,
+        COUNT(*) as count
+      FROM token_usage
+      WHERE app_id = ? AND created_at >= ?
+      GROUP BY operation
+    `);
+
+    const results = stmt.all(appId, periodStart.toISOString()) as Array<{
+      operation: string;
+      total_cost: number;
+      total_tokens: number;
+      count: number;
+    }>;
+
+    const totalCost = results.reduce((sum, r) => sum + (r.total_cost || 0), 0);
+    const totalTokens = results.reduce((sum, r) => sum + (r.total_tokens || 0), 0);
+    const operationBreakdown = results.map(r => ({
+      operation: r.operation,
+      cost: r.total_cost || 0,
+      count: r.count || 0
+    }));
+
+    return {
+      totalCost,
+      totalTokens,
+      operationBreakdown,
+      resetTime: nextReset.toISOString()
+    };
+  }
+
+  /**
    * Get token usage statistics by time period
    */
   getUsageByPeriod(

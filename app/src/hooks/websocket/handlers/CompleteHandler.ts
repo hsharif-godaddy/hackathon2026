@@ -43,6 +43,9 @@ export class CompleteHandler implements MessageHandler {
     // Handle commit selection and preview refresh
     await context.helpers.handleCommitComplete(data.data?.commitHash as string | undefined)
 
+    // Trigger usage refresh after message completes
+    window.dispatchEvent(new CustomEvent('usage-refresh'))
+
     // Clean up recovery state
     context.helpers.clearStoredSocketId()
     context.helpers.clearConversationIdCookie(context.currentAppId)

@@ -20,6 +20,7 @@ import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitStore } from '@/stores/useGitStore'
 import { generateClickEID } from '@/utils/instrumentation'
+
 interface ChatToolbarProps {
   isProcessing?: boolean
   onAssetSelect?: (items: AssetManagerItem[]) => void

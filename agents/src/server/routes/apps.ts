@@ -13,6 +13,7 @@ import { TokenUsageRepository } from '../../database/index.js';
 import { ServerManagementTool } from '../../tools/server-management-tool.js';
 import { getNameSuggestionService } from '../../services/name-suggestion.js';
 import { Logger, log } from '../../logging/index.js';
+import { getFeatures } from '../../services/features.js';
 
 const router: IRouter = Router();
 const appRepo = new AppRepository();
@@ -854,6 +855,37 @@ router.get('/:id/usage', async (req: Request, res: Response) => {
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
     log.error(contextLogger, 'route.apps.usage.get.error', error as Error, {});
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /apps/:id/usage/daily - Get daily token usage with budget info (resets 00:10 UTC)
+ */
+router.get('/:id/usage/daily', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const usage = tokenUsageRepo.getDailyUsage(id);
+    const limit = getFeatures().dailyPriceLimit;
+    const percentage = limit > 0 ? (usage.totalCost / limit) * 100 : 0;
+
+    return res.json({
+      percentage: Math.min(percentage, 100),
+      resetTime: usage.resetTime
+    });
+  } catch (error) {
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.usage.daily.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -529,6 +529,7 @@ export default function ChatPane({
               </div>
             </div>
           )}
+
           <ChatInput
             inputValue={safeInputValue}
             isDisabled={isProcessing}

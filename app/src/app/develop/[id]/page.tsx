@@ -11,6 +11,7 @@ import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
 import { AppIntroTour } from '@/app/develop/components/tour/AppIntroTour'
 import { ChatTab, SettingsSection } from '@/app/develop/components/types'
+import UsageToast from '@/app/develop/components/UsageToast'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { handlePreviewRefresh } from '@/app/develop/components/utils'
 import { clearExpiredWidgetStates } from '@/app/develop/components/widgets'
@@ -676,6 +677,7 @@ function DevelopPageContent() {
         onDragEnter={handleDragEnter}
       >
         <Header location="develop" />
+        <UsageToast />
 
         {isMobile ? (
         // Mobile layout with tabs

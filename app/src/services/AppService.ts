@@ -77,6 +77,11 @@ export interface TokenUsage {
   lastUsed: string | null
 }
 
+export interface DailyUsageInfo {
+  percentage: number
+  resetTime: string
+}
+
 export interface FileNode {
   name: string
   path: string
@@ -425,6 +430,20 @@ export class AppService {
 
     if (!response.ok) {
       throw new Error(`Failed to fetch usage data: ${response.status}`)
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Get daily usage for an app (resets at 00:10 UTC)
+   */
+  async getDailyUsage(appId: string): Promise<DailyUsageInfo> {
+    const apiUrl = await buildDynamicApiUrl(`usage/daily`, appId)
+    const response = await agentFetch(apiUrl, { siteId: appId })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch daily usage: ${response.status}`)
     }
 
     return response.json()
