@@ -14,6 +14,7 @@ import {
   useLoadMoreConversations,
   useMessages,
 } from '@/stores/useStreamingConversationStore'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import StreamingMessage from './StreamingMessage'
 
 export default function StreamingMessageList() {
@@ -32,6 +33,7 @@ export default function StreamingMessageList() {
   const pagination = useConversationPagination()
   const currentAppId = useCurrentAppId()
   const isLoadingMessages = useIsLoading()
+  const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
 
   // Combine messages with useMemo to prevent infinite loops
   const allMessages = useMemo(() => {
@@ -155,10 +157,13 @@ export default function StreamingMessageList() {
   }, [])
 
   if (allMessages.length === 0) {
+    const isPageLoading = loadingPhase !== 'ready'
+    const showSpinner = isLoadingMessages || isPageLoading
+
     return (
       <div ref={containerRef} className="flex-1 overflow-y-auto p-2 space-y-2">
         <div className="flex items-center justify-center h-full flex-col gap-0.5">
-          {isLoadingMessages ? (
+          {showSpinner ? (
             <Spinner size="md" />
           ) : (
             <div className="opacity-50 text-center">
