@@ -108,14 +108,21 @@ export class RuntimeErrorContextRenderer implements ContextAttachmentRenderer<Ru
         sections.push('')
       }
 
-      sections.push('The user encountered the above runtime error and needs help fixing it.')
+      sections.push('The user needs this error fixed and verified.')
       sections.push('')
-      sections.push('**Analysis Steps:**')
-      sections.push('1. Identify the root cause from the stack trace (check the topmost relevant stack frame)')
-      sections.push('2. Review the component stack to understand which React components were rendering')
-      sections.push('3. Look for common issues: undefined variables, null references, type errors, missing imports')
-      sections.push('4. Use the file-edit or read-file tools to inspect and fix the problematic code')
-
+      sections.push('**Required Workflow:**')
+      sections.push('')
+      sections.push('1. Analyze: Examine stack trace (topmost frame = error location), review component stack, identify root cause')
+      sections.push('')
+      sections.push('2. Fix: Make minimal changes following existing patterns')
+      sections.push('')
+      sections.push('3. **Verify (REQUIRED):** Run `npm run type-check` and `npm run build`')
+      sections.push('   - If verification fails: analyze, fix, re-verify')
+      sections.push('   - Iterate until both pass with zero errors')
+      sections.push('')
+      sections.push('4. Complete only when: original error fixed + type-check passes + build succeeds + no new errors')
+      sections.push('')
+      
       const content = sections.join('\n')
 
       return {
