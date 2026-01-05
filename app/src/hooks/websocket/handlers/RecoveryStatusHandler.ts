@@ -10,7 +10,7 @@
 
 import { logger } from '@/lib/request-context'
 import { AgentService } from '@/services/AgentService'
-import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+import { normalizeConversationMessages, useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
 
 const DATA_LOSS_ERROR_MESSAGE = 'Some earlier data could not be recovered due to buffer limits.'
@@ -73,8 +73,9 @@ export class RecoveryStatusHandler implements MessageHandler {
         )
 
         if (conversation.messages && conversation.messages.length > 0) {
-          // Set messages in store - they're already complete from DB
-          useStreamingConversationStore.setState({ messages: conversation.messages as any[] })
+          // Normalize messages so the UI keeps segment metadata for formatting
+          const normalized = normalizeConversationMessages(conversation.messages)
+          useStreamingConversationStore.setState({ messages: normalized })
         }
       } catch (error) {
         logger.error('websocket.recovery.history_load_failed', {
@@ -158,12 +159,13 @@ export class RecoveryStatusHandler implements MessageHandler {
       }
     }
 
-    // Stream is still active - load history then prepare for replay
+    // Stream is still active - initialize placeholder immediately so replayed
+    // chunks have somewhere to land regardless of whether history loading is
+    // still in flight, fails, or is skipped due to missing conversationId/appId.
+    this.initializeRecoveryStream(context)
+
     if (data.data?.conversationId && context.currentAppId) {
       await this.loadConversationHistory(data, context)
-    } else {
-      // No conversation history - still initialize stream for buffered events
-      this.initializeRecoveryStream(context)
     }
 
     // Machine should already be in streaming state during recovery
@@ -186,8 +188,9 @@ export class RecoveryStatusHandler implements MessageHandler {
 
       // Add messages to store if we have them
       if (conversation.messages && conversation.messages.length > 0) {
-        // Set messages directly in the store (they're already complete messages from DB)
-        useStreamingConversationStore.setState({ messages: conversation.messages as any[] })
+        // Normalize messages before hydrating store so segment metadata survives replay
+        const normalized = normalizeConversationMessages(conversation.messages)
+        useStreamingConversationStore.setState({ messages: normalized })
 
         // Initialize an empty activeStream to receive buffered events
         // Guard: only create if not already streaming (avoid overwriting on duplicate recovery)

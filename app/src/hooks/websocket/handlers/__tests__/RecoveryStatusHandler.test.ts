@@ -8,10 +8,12 @@ import { createMockMessageContext } from './testUtils'
 import { RecoveryStatusHandler } from '../RecoveryStatusHandler'
 import type { WebSocketMessage } from '../types'
 
-vi.mock('@/stores/useStreamingConversationStore', () => {
+vi.mock('@/stores/useStreamingConversationStore', async () => {
+  const actual = await vi.importActual('@/stores/useStreamingConversationStore')
   const getState = vi.fn()
   const setState = vi.fn()
   return {
+    ...actual,
     useStreamingConversationStore: {
       getState,
       setState,
@@ -54,7 +56,7 @@ describe('RecoveryStatusHandler', () => {
     mockStore.setState.mockImplementation(() => undefined)
 
     const getConversation = vi.fn().mockResolvedValue({
-      messages: [{ id: 'msg-1' }],
+      messages: [{ id: 'msg-1', sender: 'assistant', content: 'test', createdAt: new Date().toISOString() }],
     })
     mockAgentService.mockReturnValue({ getConversation })
 
@@ -70,7 +72,11 @@ describe('RecoveryStatusHandler', () => {
     await handler.handle(data, context)
 
     expect(getConversation).toHaveBeenCalledWith('app-123', 'conv-1')
-    expect(mockStore.setState).toHaveBeenCalledWith({ messages: [{ id: 'msg-1' }] })
+    expect(mockStore.setState).toHaveBeenCalledWith({
+      messages: expect.arrayContaining([
+        expect.objectContaining({ id: 'msg-1', role: 'assistant', content: 'test' })
+      ])
+    })
     expect(context.actions.finalizeStream).toHaveBeenCalledWith({})
     expect(clearConnectionRetry).toHaveBeenCalled()
     expect(context.helpers.clearRetryState).toHaveBeenCalled()
@@ -90,7 +96,7 @@ describe('RecoveryStatusHandler', () => {
     mockStore.setState.mockImplementation(() => undefined)
 
     const getConversation = vi.fn().mockResolvedValue({
-      messages: [{ id: 'msg-2' }],
+      messages: [{ id: 'msg-2', sender: 'user', content: 'hello', createdAt: new Date().toISOString() }],
     })
     mockAgentService.mockReturnValue({ getConversation })
 
@@ -117,7 +123,14 @@ describe('RecoveryStatusHandler', () => {
       ackEvent: 'recovery_ack',
     })
     expect(context.helpers.maybeSendRecoveryAck).toHaveBeenCalledWith(context.socket)
-    expect(mockStore.setState).toHaveBeenCalledWith({ messages: [{ id: 'msg-2' }] })
+    // Should set both activeStream (from initializeRecoveryStream) and messages (from loadConversationHistory)
+    expect(mockStore.setState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({ id: 'msg-2', role: 'user', content: 'hello' })
+        ])
+      })
+    )
     // Machine should already be in streaming state during recovery (Tier 1)
     // Adapter syncs streamingState from machine
   })

@@ -9,6 +9,7 @@ import { create } from 'zustand'
 
 import { logger } from '@/lib/request-context'
 import type { StructuredError } from '@/types/errors'
+import type { AgentConversationMessagePayload, AgentSegmentPayload, AgentToolCallPayload } from '@/types/agent-conversation'
 import type { AiEditContext } from '../app/develop/components/types'
 
 // Development plan item
@@ -247,6 +248,96 @@ export interface StreamingConversationState {
 
 // Helper function to generate unique IDs
 const generateId = () => `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+const parseDateValue = (value: unknown, fallback: Date | number = Date.now()): Date => {
+  if (!value) return new Date(fallback)
+  const date = new Date(value as string | number | Date)
+  return Number.isNaN(date.getTime()) ? new Date(fallback) : date
+}
+
+const normalizeToolCall = (toolCall?: AgentToolCallPayload): ToolCall | undefined => {
+  if (!toolCall) return undefined
+
+  return {
+    id: toolCall.id ?? generateId(),
+    name: toolCall.name ?? toolCall.toolName ?? 'unknown-tool',
+    input: toolCall.input ?? {},
+    result: toolCall.result,
+    status: (toolCall.status ?? 'running') as ToolCall['status'],
+    error: toolCall.error,
+    startTime: toolCall.startTime ?? toolCall.start_time,
+    endTime: toolCall.endTime ?? toolCall.end_time,
+    duration: toolCall.duration,
+    partialInput: toolCall.partialInput ?? toolCall.partial_input
+  }
+}
+
+const normalizeSegments = (
+  segments: AgentSegmentPayload[] | undefined,
+  fallbackDate: Date
+): StreamSegment[] => {
+  if (!Array.isArray(segments)) return []
+
+  return segments.map((segment) => {
+    const normalizedToolCall = normalizeToolCall(segment.toolCall ?? segment.tool_call)
+
+    return {
+      id: segment.id ?? `${generateId()}_segment`,
+      type: (segment.type ?? 'text') as StreamSegment['type'],
+      content: segment.content ?? '',
+      timestamp: parseDateValue(segment.timestamp ?? segment.createdAt, fallbackDate),
+      ...(normalizedToolCall ? { toolCall: normalizedToolCall } : {})
+    }
+  })
+}
+
+const normalizeToolCalls = (toolCalls: AgentToolCallPayload[] | undefined): ToolCall[] => {
+  if (!Array.isArray(toolCalls)) return []
+
+  return toolCalls
+    .map((toolCall) => normalizeToolCall(toolCall))
+    .filter((toolCall): toolCall is ToolCall => Boolean(toolCall))
+}
+
+/**
+ * Normalize backend conversation payloads into the shape the chat UI expects.
+ */
+export const normalizeConversationMessages = (
+  rawMessages: AgentConversationMessagePayload[] | undefined
+): ChatMessage[] => {
+  if (!Array.isArray(rawMessages)) return []
+
+  return rawMessages.map((msg) => {
+    const role = msg.sender === 'user' || msg.role === 'user' ? 'user' : 'assistant'
+    const createdAtValue = msg.createdAt ?? msg.timestamp ?? Date.now()
+    const createdAtDate = parseDateValue(createdAtValue)
+
+    const normalizedSegments = normalizeSegments(msg.segments, createdAtDate)
+    const normalizedToolCalls = normalizeToolCalls(msg.toolCalls ?? msg.tool_calls)
+
+    return {
+      id: msg.id ?? generateId(),
+      role,
+      content: msg.content ?? '',
+      timestamp: createdAtDate,
+      toolCalls: normalizedToolCalls,
+      segments: normalizedSegments,
+      metadata: msg.metadata,
+      maxStepsReached: msg.maxStepsReached ?? (
+        typeof msg.metadata?.maxStepsReached === 'boolean'
+          ? msg.metadata.maxStepsReached
+          : undefined
+      ),
+      upstreamError: msg.upstreamError,
+      budgetExceeded: msg.budgetExceeded,
+      error: msg.error,
+      errorType: msg.errorType,
+      errorCode: msg.errorCode,
+      retryAttempts: msg.retryAttempts,
+      retryReason: msg.retryReason
+    }
+  })
+}
 
 // Create the store
 export const useStreamingConversationStore = create<StreamingConversationState>()((set, get) => ({
@@ -973,23 +1064,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       const messages = conversationData.messages || []
 
       // Convert backend messages to frontend format (no normalization needed - backend uses correct field names)
-      const convertedMessages: ChatMessage[] = messages.map((msg: any) => ({
-        id: msg.id,
-        role: msg.sender === 'user' ? 'user' : 'assistant',
-        type: msg.sender === 'user' ? 'user' : 'assistant',
-        sender: msg.sender, // Preserve original sender field for Message.tsx compatibility
-        content: msg.content,
-        timestamp: new Date(msg.createdAt),
-        toolCalls: msg.toolCalls || [],
-        segments: (msg.segments || []).map((segment: any) => ({
-          id: segment.id,
-          type: segment.type,
-          content: segment.content || '',
-          timestamp: new Date(segment.timestamp || segment.createdAt || msg.createdAt),
-          toolCall: segment.toolCall // Backend now uses correct camelCase field names
-        })),
-        metadata: msg.metadata
-      }))
+      const convertedMessages = normalizeConversationMessages(messages)
 
       // Convert conversation dates from strings to Date objects
       const convertedConversations: Conversation[] = conversations.map((conv: any) => ({
@@ -1111,25 +1186,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       const messagesData = await messagesResponse.json()
       const newMessages = messagesData.messages || []
 
-
       // Convert backend messages to frontend format
-      const convertedNewMessages: ChatMessage[] = newMessages.map((msg: any) => ({
-        id: msg.id,
-        role: msg.sender === 'user' ? 'user' : 'assistant',
-        type: msg.sender === 'user' ? 'user' : 'assistant',
-        sender: msg.sender,
-        content: msg.content,
-        timestamp: new Date(msg.createdAt),
-        toolCalls: msg.toolCalls || [],
-        segments: (msg.segments || []).map((segment: any) => ({
-          id: segment.id,
-          type: segment.type,
-          content: segment.content || '',
-          timestamp: new Date(segment.timestamp || segment.createdAt || msg.createdAt),
-          toolCall: segment.toolCall
-        })),
-        metadata: msg.metadata
-      }))
+      const convertedNewMessages = normalizeConversationMessages(newMessages)
 
       // Update store with new conversations and messages
       set((state) => {

@@ -1,6 +1,7 @@
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
+import type { AgentConversationMessagePayload } from '@/types/agent-conversation'
 
 export interface Conversation {
   id: string
@@ -12,7 +13,7 @@ export interface Conversation {
 export interface ConversationDetail {
   id: string
   appId: string
-  messages: unknown[] // Using unknown[] to match existing message types
+  messages?: AgentConversationMessagePayload[]
   createdAt: string
   updatedAt: string
 }
