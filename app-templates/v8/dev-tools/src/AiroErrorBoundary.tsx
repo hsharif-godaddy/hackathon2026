@@ -7,26 +7,34 @@ interface Props {
 
 interface State {
   error: Error | null;
+  errorInfo: React.ErrorInfo | null;
 }
 
 export default class AiroErrorBoundary extends Component<Props, State> {
-  state: State = { error: null };
+  state: State = { error: null, errorInfo: null };
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('Error caught by AiroErrorBoundary:', error, errorInfo);
-    this.setState({ error });
+    this.setState({ error, errorInfo });
   }
 
   private handleAskAiroToFix = () => {
-    const { error } = this.state;
-    const message = error?.message || 'An unexpected error occurred';
-    const errorMessage = `Runtime Error: ${message}`;
+    const { error, errorInfo } = this.state;
 
-    console.log('Sending runtime error to parent from AiroErrorBoundary:', errorMessage);
+    const errorData = {
+      message: error?.message || 'An unexpected error occurred',
+      name: error?.name || 'Error',
+      stack: error?.stack,
+      componentStack: errorInfo?.componentStack,
+      url: window.location.href,
+      timestamp: Date.now(),
+    };
+
+    console.log('Sending runtime error to parent from AiroErrorBoundary:', errorData);
     try {
       safePostMessage(window.parent, {
         type: 'error-fix-request',
-        errorMessage,
+        errorData,
       });
     } catch (err) {
       console.error('Failed to send message to parent from AiroErrorBoundary:', err);

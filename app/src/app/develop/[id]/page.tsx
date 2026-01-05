@@ -441,8 +441,47 @@ function DevelopPageContent() {
           }, 500) // Small delay to ensure any file changes are processed
           break
         case 'error-fix-request':
-          if (event.data.errorMessage) {
+          // Handle runtime error fix requests from AiroErrorBoundary (new format with errorData)
+          if (event.data.errorData) {
+            const { message, name, stack, componentStack, url, timestamp } = event.data.errorData
             logger.info('develop-page.error-fix-request', {
+              appId,
+              errorName: name,
+              errorMessage: message,
+              hasStack: !!stack,
+              hasComponentStack: !!componentStack
+            })
+
+            // Set a helpful message in the input
+            setInputValue('Please analyze and fix this runtime error.')
+
+            // Auto-send with runtime error context attached (6th parameter: customContext)
+            setTimeout(() => {
+              sendMessage(
+                'Please analyze and fix this runtime error.',
+                null, // aiEditContext
+                null, // selectedAsset
+                null, // todoListContext
+                false, // isActionRequest
+                {
+                  type: 'runtime_error',
+                  data: {
+                    message,
+                    name,
+                    stack,
+                    componentStack,
+                    url,
+                    timestamp
+                  },
+                  persistence: 'ephemeral',
+                  source: 'error-boundary'
+                }
+              )
+            }, 500)
+          }
+          // Handle legacy compile error fix requests (old format with errorMessage string)
+          else if (event.data.errorMessage) {
+            logger.info('develop-page.error-fix-request.legacy', {
               appId,
               errorMessage: event.data.errorMessage
             })
