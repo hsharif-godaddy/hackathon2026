@@ -24,13 +24,14 @@ function formatStackTrace(stack: string): string {
     if (!trimmed) continue
 
     // Extract file location (file:line:column) from stack trace
-    const locationMatch = trimmed.match(/\(([^)]+):(\d+):(\d+)\)/)
+    // Support multiple formats: Chrome (file:line:col), Firefox functionName@file:line:col, and without parentheses
+    const locationMatch = trimmed.match(/(?:[@(]|at\s+)([^)@\s]+):(\d+):(\d+)/)
     if (locationMatch && locationMatch[1]) {
       const file = locationMatch[1]
       const lineNum = locationMatch[2]
       const colNum = locationMatch[3]
-      // Extract just the filename from the full path for readability
-      const fileName = file.split('/').pop() || file
+      // Extract just the filename from the full path for readability (handle both Unix and Windows paths)
+      const fileName = file.split(/[/\\]/).pop() || file
       formattedLines.push(`  ${trimmed}`)
       formattedLines.push(`    → ${fileName}:${lineNum}:${colNum}`)
     } else {

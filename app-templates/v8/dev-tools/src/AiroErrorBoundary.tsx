@@ -1,5 +1,6 @@
 import React, { Component, ReactNode } from 'react';
 import { safePostMessage } from './utils/postMessage';
+import type { RuntimeErrorData } from './types';
 
 interface Props {
   children: ReactNode;
@@ -21,11 +22,17 @@ export default class AiroErrorBoundary extends Component<Props, State> {
   private handleAskAiroToFix = () => {
     const { error, errorInfo } = this.state;
 
-    const errorData = {
-      message: error?.message || 'An unexpected error occurred',
-      name: error?.name || 'Error',
-      stack: error?.stack,
-      componentStack: errorInfo?.componentStack,
+    // Defensive check - should not happen but prevents runtime errors
+    if (!error) {
+      console.error('handleAskAiroToFix called with no error in state');
+      return;
+    }
+
+    const errorData: RuntimeErrorData = {
+      message: error.message || 'An unexpected error occurred',
+      name: error.name || 'Error',
+      stack: error.stack ?? undefined,
+      componentStack: errorInfo?.componentStack ?? undefined,
       url: window.location.href,
       timestamp: Date.now(),
     };

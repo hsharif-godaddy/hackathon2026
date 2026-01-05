@@ -75,3 +75,16 @@ export function isContextAttachment(value: unknown): value is ContextAttachment 
     typeof (value as ContextAttachment).type === 'string'
   )
 }
+
+/**
+ * Runtime error data structure from AiroErrorBoundary
+ * This matches the interface in app-templates/v8/dev-tools/src/types.ts
+ */
+export interface RuntimeErrorData {
+  message: string
+  name: string
+  stack?: string
+  componentStack?: string
+  url?: string
+  timestamp?: number
+}

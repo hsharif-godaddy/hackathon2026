@@ -4,6 +4,9 @@ export { default as ElementEditor } from './components/ElementEditor'
 export { default as DevToolsProvider } from './DevToolsProvider'
 export { useDevelopmentMode } from './hooks/useDevelopmentMode'
 
+// Types
+export type { RuntimeErrorData, ErrorFixRequestMessage } from './types'
+
 // Vite plugin for auto-injection
 export { devToolsPlugin } from './vite-plugin'
 
