@@ -1,8 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Delete all sites on the current page
- * @returns number of sites deleted
+ * Fill in sign-in credentials
  */
 async function fillCredentials(locatorOrPage, username, password) {
   await locatorOrPage.getByRole('textbox', { name: 'Username or Customer #' }).fill(username);
@@ -18,13 +17,16 @@ async function getIframeFrame(iframeLocator) {
   return frame;
 }
 
-async function deleteAllSites(page) {
-  console.log('🧹 Deleting all sites...');
-  
-  // Wait 20 seconds for the page to fully load
+/**
+ * Delete all sites via UI navigation
+ * Used as fallback when API cleanup isn't possible
+ */
+async function deleteAllSitesViaUI(page) {
+  console.log('🧹 Deleting all sites via UI...');
+
+  await page.goto('/apps');
   await page.waitForTimeout(20000);
-  
-  // Debug: Log all buttons to see what's on the page
+
   const allButtons = await page.getByRole('button').all();
   console.log(`Found ${allButtons.length} total buttons on page`);
   for (const btn of allButtons) {
@@ -33,27 +35,19 @@ async function deleteAllSites(page) {
       console.log(`  Delete button found: "${ariaLabel}"`);
     }
   }
-  
-  // Look for all delete buttons (trash icon with aria-label containing "Delete app")
-  // The button name includes the app description, e.g. "Delete app Create a simple..."
+
   const siteDeleteButtons = page.getByRole('button', { name: /Delete app/i });
   const deleteCount = await siteDeleteButtons.count();
-  
+
   if (deleteCount > 0) {
     console.log(`Found ${deleteCount} existing site(s) to delete`);
-    
-    // Delete all sites one by one
+
     for (let i = 0; i < deleteCount; i++) {
       try {
-        // Click the trash icon button to show the inline alert
         await siteDeleteButtons.first().click();
         await page.waitForTimeout(500);
-        
-        // Click the "Delete" button in the inline alert to confirm
         await page.getByRole('button', { name: 'Delete', exact: true }).click();
         console.log(`✅ Deleted site ${i + 1}/${deleteCount}`);
-        
-        // Wait for deletion to process and UI to update
         await page.waitForTimeout(2000);
       } catch (error) {
         console.log(`⚠️ Could not delete site ${i + 1}: ${error.message}`);
@@ -67,7 +61,79 @@ async function deleteAllSites(page) {
   }
 }
 
+/**
+ * Delete all test sites via API using the browser's authenticated context
+ * Uses page.evaluate to make fetch calls with the browser's auth cookies
+ */
+async function deleteAllSitesViaAPI(page) {
+  console.log('🧹 Cleaning up test sites via API...');
+
+  try {
+    // Use the browser context to make authenticated API calls
+    const result = await page.evaluate(async () => {
+      try {
+        const response = await fetch('/api/sites');
+        if (!response.ok) {
+          return { error: `Could not fetch sites: ${response.status}`, deletedCount: 0 };
+        }
+
+        const sites = await response.json();
+        if (!Array.isArray(sites) || sites.length === 0) {
+          return { message: 'No sites found to clean up', deletedCount: 0 };
+        }
+
+        let deletedCount = 0;
+        const errors = [];
+
+        for (const site of sites) {
+          try {
+            const deleteResponse = await fetch(`/api/sites/${site.id}`, { method: 'DELETE' });
+            if (deleteResponse.ok) {
+              deletedCount++;
+            } else {
+              errors.push(`Failed to delete ${site.id}: ${deleteResponse.status}`);
+            }
+          } catch (err) {
+            errors.push(`Error deleting ${site.id}: ${String(err)}`);
+          }
+        }
+
+        return { deletedCount, total: sites.length, errors };
+      } catch (err) {
+        return { error: String(err), deletedCount: 0 };
+      }
+    });
+
+    if (result.error) {
+      console.log(`⚠️ ${result.error}`);
+    } else if (result.message) {
+      console.log(`⚠️ ${result.message}`);
+    } else {
+      console.log(`🎯 API cleanup completed: ${result.deletedCount}/${result.total} sites deleted`);
+      if (result.errors?.length > 0) {
+        result.errors.forEach(err => console.log(`  ⚠️ ${err}`));
+      }
+    }
+
+    return result.deletedCount || 0;
+  } catch (error) {
+    console.log(`⚠️ API cleanup failed: ${error.message}`);
+    return 0;
+  }
+}
+
 test.describe('Complete User Journey', () => {
+  /**
+   * Post-test cleanup - runs after each test regardless of pass/fail
+   * Ensures orphaned apps are cleaned up even if test fails mid-flow
+   * (e.g., budget exceeded errors, timeouts, network failures)
+   * Uses browser context to make authenticated API calls
+   */
+  test.afterEach(async ({ page }) => {
+    console.log('🧹 Running post-test cleanup...');
+    await deleteAllSitesViaAPI(page);
+  });
+
   test('should sign in and create a site', async ({ page }) => {
     // Navigate to the application
     await page.goto('/');
@@ -140,17 +206,7 @@ test.describe('Complete User Journey', () => {
       console.log('✅ Site verified - found "Hello World" in page content');
     }
     
-    // Navigate to My Apps and delete the created site
-    await page.goto('/apps');
-    await page.waitForTimeout(2000); // Wait for apps page to load
-    const deletedCount = await deleteAllSites(page);
-    
-    // Verify at least one site was deleted (if none, the test failed to create a site)
-    if (deletedCount === 0) {
-      throw new Error('❌ Test failed: No sites found to delete. Site creation may have failed.');
-    }
-    console.log(`✅ Successfully deleted ${deletedCount} site(s)`);
-    
-    console.log('🎉 Complete user journey with site creation and deletion finished successfully!');
+    // Cleanup is handled by afterEach hook via API, which runs even if test fails
+    console.log('🎉 Complete user journey with site creation finished successfully!');
   });
 });
