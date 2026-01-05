@@ -6,4 +6,5 @@ packages:
   - "cdk"
   - "proxy"
   - "bedrock-log-viewer"
+  - "debug-console"
   - "!app-templates/**"
