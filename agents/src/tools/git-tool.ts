@@ -885,23 +885,7 @@ export class GitTool {
         capture_output: true
       });
 
-      // If main branch doesn't exist, try master
-      if (!checkoutResult.success && checkoutResult.stderr.includes('did not match any file(s)')) {
-        const masterCheckoutResult = await this.devSupervisor!.exec({
-          command: 'git checkout master',
-          working_dir: '/app',
-          timeout: 30,
-          capture_output: true
-        });
-
-        if (!masterCheckoutResult.success) {
-          return {
-            success: false,
-            operation: 'restore',
-            error: `Failed to checkout main or master branch: ${masterCheckoutResult.stderr}`,
-          };
-        }
-      } else if (!checkoutResult.success) {
+      if (!checkoutResult.success) {
         return {
           success: false,
           operation: 'restore',

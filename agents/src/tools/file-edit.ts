@@ -438,7 +438,7 @@ export class FileEditTool {
     }
 
     // Batch git commit if enabled and we have completed operations
-    if (options.autoCommit && !options.dryRun && result.completedOperations > 0 && context?.appId) {
+    if (!options.dryRun && result.completedOperations > 0 && context?.appId) {
       const commitResult = await this.batchCommitChanges(
         appPath,
         modifiedFilePaths,

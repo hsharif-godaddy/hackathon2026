@@ -11,31 +11,22 @@ import {
 } from '@airo/ai-lib'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
-import { GitTool } from '../tools/git-tool.js'
-import { AppRepository } from '../database/repositories/AppRepository.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 import { logger, log } from '../logging/index.js'
 import { agents as featureAgents } from '../services/features.js'
 import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
+import { GitHookService } from '../services/git-hook-service.js'
 
 /**
  * Develop Agent - AI developer for building web applications
  */
 
-
-// Initialize app repository for branch safety checks
-const appRepo = new AppRepository();
-
-// Helper function to create git tool with dev-supervisor for specific app
-function createGitToolForApp(appId: string): GitTool {
-  const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-  return new GitTool(devSupervisor || undefined);
-}
+const gitHookService = new GitHookService()
 
 /**
- * Git branch safety hook (from original develop-agent)
+ * Tool execution logging hook
+ * Git operations are now handled automatically by git hooks
  */
 const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, args: unknown, context?: AgentContext): Promise<unknown> => {
   const appId = context?.metadata?.appId as string
@@ -44,95 +35,6 @@ const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, ar
   contextLogger.info('develop_agent.tool.execution.start', {
     toolName
   });
-
-  // File-modifying tools that need git branch check
-  const fileModifyingTools = ['fileEdit', 'terminalCommand']
-
-  if (fileModifyingTools.includes(toolName)) {
-    contextLogger.info('develop_agent.git.branch_check.start', {
-      toolName,
-      reason: 'file_modifying_tool_detected'
-    });
-
-    try {
-      if (!appId) {
-        contextLogger.warn('develop_agent.git.branch_check.skipped', {
-          toolName,
-          reason: 'no_app_id'
-        });
-        return args
-      }
-
-      // Look up app path using AppRepository
-      const app = appRepo.findById(appId)
-      if (!app) {
-        contextLogger.error('develop_agent.git.branch_check.app_not_found', {
-          toolName
-        });
-        return args
-      }
-
-      const appPath = app.path;
-      contextLogger.info('develop_agent.git.branch_check.app_path', {
-        toolName,
-        appPath
-      });
-
-      // Check current git branch using the actual git tool with dev-supervisor
-      const gitTool = createGitToolForApp(appId);
-      const branchResult = await gitTool.executeGitOperation(appPath, {
-        operation: 'branch'
-      });
-
-      if (branchResult.success && branchResult.currentBranch) {
-        const currentBranch = branchResult.currentBranch;
-
-        if (currentBranch !== 'main') {
-          contextLogger.warn('develop_agent.git.branch_check.not_on_main', {
-            toolName,
-            currentBranch,
-            targetBranch: 'main'
-          });
-
-          // Execute git checkout main
-          const checkoutResult = await gitTool.executeGitOperation(appPath, {
-            operation: 'checkout',
-            branch: 'main'
-          });
-
-          if (checkoutResult.success) {
-            contextLogger.info('develop_agent.git.branch_check.switch_success', {
-              toolName,
-              fromBranch: currentBranch,
-              toBranch: 'main'
-            });
-          } else {
-            contextLogger.warn('develop_agent.git.branch_check.switch_failed', {
-              toolName,
-              currentBranch,
-              targetBranch: 'main',
-              error: checkoutResult.error
-            });
-          }
-        } else {
-          contextLogger.info('develop_agent.git.branch_check.on_main', {
-            toolName,
-            currentBranch: 'main'
-          });
-        }
-      } else {
-        contextLogger.warn('develop_agent.git.branch_check.branch_unknown', {
-          toolName,
-          error: branchResult.error || 'Unknown error'
-        });
-      }
-    } catch (error) {
-      contextLogger.error('develop_agent.git.branch_check.error', {
-        toolName,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  }
 
   return args;
 }
@@ -184,6 +86,18 @@ const afterToolExecution: AfterToolExecutionHook = async (
 
   if (toolName === 'serverRestart' && resultObj?.success) {
     contextLogger.info('develop_agent.tool.server_restart.success', {});
+  }
+
+  // Git hook: Commit changes after tool execution
+  if (appId) {
+    try {
+      await gitHookService.handleToolCallComplete(appId, toolName);
+    } catch (error) {
+      contextLogger.warn('develop_agent.git_hook.tool_call.error', {
+        toolName,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
 
   return result

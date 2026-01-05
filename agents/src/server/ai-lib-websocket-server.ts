@@ -41,10 +41,9 @@ import { jwtAuthMiddleware } from './middleware/jwt-auth.js'
 import { MAX_PROMPT_LENGTH, getAgentConfig } from '../services/features.js'
 import type { AgentsAppContext } from '../types/websocket-context.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
-import { GitTool } from '../tools/git-tool.js'
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
 import { initializeContextRegistry } from '../services/initializeContextRegistry.js'
 import { KnowBDriver } from '../tools/ai-lib-tools/drivers/knowb-driver.js'
+import { GitHookService } from '../services/git-hook-service.js'
 
 /**
  * Shared AppRepository instance to avoid repeated initialization
@@ -74,6 +73,11 @@ function mapFinishReason(reason: string | undefined): 'stop' | 'length' | 'conte
 
   return undefined
 }
+
+/**
+ * Shared GitHookService instance for tracking feature branches across connections
+ */
+const gitHookService = new GitHookService()
 
 /**
  * Map to track active WebSocket transactions for APM
@@ -1274,34 +1278,26 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           })
         }
 
-        // Ensure we're on the latest commit (main branch) before starting chat
+        // Git hook: ALWAYS check git state at message start (recovery + branch management)
+        // CRITICAL: This ensures if previous squash merge failed, we recover before processing
         try {
-          const appRepository = new AppRepository();
-          const app = appRepository.findById(siteId);
+          // Extract conversationId if available for better tracking
+          const conversationId = typedContext?.conversation?.conversationId;
           
-          if (app) {
-            const devSupervisor = DevSupervisorClientFactory.createForApp(siteId);
-            const gitTool = new GitTool(devSupervisor || undefined);
-            
-            const result = await gitTool.executeGitOperation(app.path, {
-              operation: 'checkout',
-              branch: 'main'
-            });
-
-            if (result.success) {
-              contextLogger.debug('websocket.git.checkout.success', {
-                message: 'Checked out main branch before starting chat'
-              });
-            } else {
-              contextLogger.warn('websocket.git.checkout.failure', {
-                message: 'Failed to checkout main branch (non-blocking)',
-                error: result.error
-              });
-            }
-          }
+          await gitHookService.handleMessageStart(
+            siteId,
+            conversationId,
+            socketId,
+            message // Pass user prompt for commit message generation
+          );
+          
+          contextLogger.debug('websocket.git_hook.message_start.success', {
+            message: 'Git hook message start completed (recovery check and branch management)',
+            conversationId
+          });
         } catch (error) {
-          contextLogger.warn('websocket.git.checkout.error', {
-            message: 'Error checking out main branch (non-blocking)',
+          contextLogger.warn('websocket.git_hook.message_start.error', {
+            message: 'Git hook message start failed (non-blocking)',
             error: error instanceof Error ? error.message : String(error)
           });
         }
@@ -1345,6 +1341,31 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         contextLogger.info('websocket.request.site_completed', {
           message: 'WebSocket request completed for site'
         });
+
+        // Git hook: Final commit and squash merge to main on message completion
+        try {
+          // Extract conversationId for better tracking
+          const conversationId = typedContext?.conversation?.conversationId;
+          
+          await gitHookService.handleConnectionEnd(
+            siteId,
+            'complete',
+            conversationId,
+            socketId
+          );
+          
+          contextLogger.debug('websocket.git_hook.connection_end.success', {
+            message: 'Git hook connection end completed (squash merge to main)',
+            conversationId,
+            reason: 'complete'
+          });
+        } catch (error) {
+          contextLogger.warn('websocket.git_hook.connection_end.error', {
+            message: 'Git hook connection end failed (non-blocking)',
+            reason: 'complete',
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
 
         // Complete observability tracking for this invocation
         const observability = getObservabilityService()
@@ -1504,6 +1525,46 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           })
         }
 
+        // Git hook: Squash merge to main on disconnection
+        // Try to find appId from active branches using socketId (conversationId not available here)
+        const appId = gitHookService.findAppIdBySocketId(socketId);
+        
+        if (appId) {
+          try {
+            // Get branch info to extract conversationId if available
+            const branchInfo = gitHookService.getAppBranch(appId);
+            const conversationId = branchInfo?.conversationId;
+            
+            await gitHookService.handleConnectionEnd(
+              appId,
+              'disconnection',
+              conversationId,
+              socketId
+            );
+            
+            logger.debug('websocket.git_hook.connection_end.success', {
+              message: 'Git hook connection end completed on disconnection',
+              appId,
+              conversationId,
+              socketId,
+              reason: 'disconnection'
+            });
+          } catch (error) {
+            logger.warn('websocket.git_hook.connection_end.error', {
+              message: 'Git hook connection end failed (non-blocking)',
+              appId,
+              socketId,
+              reason: 'disconnection',
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+        } else {
+          logger.debug('websocket.git_hook.connection_end.no_app', {
+            message: 'No active branch found for disconnected socket',
+            socketId
+          });
+        }
+
         // End APM transaction for connection lifecycle
         const connectionTransaction = activeWebSocketTransactions.get(socketId)
         if (connectionTransaction) {
@@ -1536,18 +1597,24 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
       },
 
-      onError: async (socketId: string, error: Error, message?: string) => {
+      onError: async (socketId: string, error: Error, message?: string, context?: Record<string, unknown>) => {
+        // Extract appId from context for git operations
+        const typedContext = context as AgentsAppContext;
+        const appId = typedContext?.metadata?.appId;
+
         // Check if this is a customer context error (auth-related)
         if (error.message.includes('customer context') ||
           error.message.includes('authentication may have failed')) {
           logger.error('websocket.error.context', {
             socketId,
+            appId,
             error: error.message,
             message: message ? message.substring(0, 100) : undefined
           });
         } else {
           logger.error('websocket.error.general', {
             socketId,
+            appId,
             error: error.message,
             message: message ? message.substring(0, 100) : undefined
           });
@@ -1600,6 +1667,36 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         for (const key of activeObservabilitySessions.keys()) {
           if (key.startsWith(socketPrefix)) {
             activeObservabilitySessions.delete(key)
+          }
+        }
+
+        // Git hook: Squash merge to main on error (if we have appId)
+        if (appId) {
+          try {
+            const conversationId = typedContext?.conversation?.conversationId;
+            
+            await gitHookService.handleConnectionEnd(
+              appId,
+              'error',
+              conversationId,
+              socketId
+            );
+            
+            logger.debug('websocket.git_hook.connection_end.success', {
+              message: 'Git hook connection end completed on error',
+              appId,
+              conversationId,
+              socketId,
+              reason: 'error'
+            });
+          } catch (gitError) {
+            logger.warn('websocket.git_hook.connection_end.error', {
+              message: 'Git hook connection end failed (non-blocking)',
+              appId,
+              socketId,
+              reason: 'error',
+              error: gitError instanceof Error ? gitError.message : String(gitError)
+            });
           }
         }
 

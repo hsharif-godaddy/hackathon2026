@@ -213,17 +213,17 @@ git merge --squash {previous_branch}
 git commit -m "{generated_message}"
 ```
 
-## Git Revert Operations
+## Git Restore Operations
 
 ### Commit Preview System
 
-Customers can preview commits before reverting:
+Customers can preview commits before restoring:
 
 1. **Temporary Checkout**: Application shows state at selected commit
 2. **Chat Disabled**: Interface clearly indicates preview mode
 3. **Easy Return**: Customer can return to current state without changes
 
-### Revert Implementation
+### Restore Implementation
 
 ```mermaid
 sequenceDiagram
@@ -235,37 +235,36 @@ sequenceDiagram
     Agent->>DevSupervisor: git checkout {commit_id}
     Agent->>Customer: Show preview (chat disabled)
 
-    alt Customer confirms revert
-        Customer->>Agent: Confirm revert
-        Agent->>Agent: Calculate commits to revert
+    alt Customer confirms restore
+        Customer->>Agent: Confirm restore
         Agent->>DevSupervisor: git checkout main
-        Agent->>DevSupervisor: git revert --no-commit {commit_list}
-        Agent->>DevSupervisor: git commit -m "Reverted commits: {commit_ids}"
-        Agent->>Customer: Revert complete
+        Agent->>DevSupervisor: git restore --source={commit_id} --staged --worktree .
+        Agent->>DevSupervisor: git commit -m "Restore: Changes from commit {hash}"
+        Agent->>Customer: Restore complete
     else Customer cancels
-        Customer->>Agent: Cancel revert
+        Customer->>Agent: Cancel restore
         Agent->>DevSupervisor: git checkout main
         Agent->>Customer: Back to current state
     end
 ```
 
-### Revert Process
+### Restore Process
 
-1. **Commit Range Calculation**: Identify commits from newest to target (excluding target)
-2. **Revert Execution**: Execute revert without auto-commit
-3. **Custom Commit Message**: Create descriptive revert commit
+1. **Checkout Main**: Ensure we're on main branch
+2. **Restore Files**: Copy files from target commit to working directory and staging area
+3. **Auto-Commit**: Create commit with restored changes
 
-**Revert Commands:**
+**Restore Commands:**
 
 ```bash
-# Calculate commits to revert (newest to target, excluding target)
-git log --oneline main
+# Checkout main branch
+git checkout main
 
-# Execute revert without committing
-git revert --no-commit commit_id_1 commit_id_2 commit_id_3
+# Restore files from target commit
+git restore --source={commit_hash} --staged --worktree .
 
-# Create descriptive commit
-git commit -m "Reverted commits: commit_id_1 commit_id_2 commit_id_3"
+# Auto-commit the restored state
+git commit -m "Restore: Changes from commit {hash}"
 ```
 
 ## Error Handling and Recovery
@@ -348,7 +347,7 @@ flowchart TD
 - **Comprehensive Audit Trail**: Every tool call tracked in git history
 - **Safe Experimentation**: Feature branches protect main development line
 - **Automatic Recovery**: Handles interrupted sessions gracefully
-- **Granular Rollbacks**: Revert to any point in development history
+- **Granular Rollbacks**: Restore to any point in development history
 - **Troubleshooting**: Pinpoint exact operations that caused issues
 
 ### Operational Benefits
@@ -371,47 +370,51 @@ flowchart TD
 
 - **Smart Commit Detection**: Only commit when files actually change
 - **Read-Only Tool Filtering**: Skip commits for tools that don't modify files
-- **Repository Maintenance**: Periodic garbage collection and optimization
-- **Branch Retention**: Feature branches preserved for debugging and troubleshooting
-- **Periodic Cleanup**: Automatic removal of oldest feature branches to manage disk space
+- **Branch Retention Strategy**: Feature branches retained for debugging and audit
+- **Automatic Cleanup**: Old branches cleaned up when count exceeds threshold
+- **Repository Maintenance**: Automatic garbage collection after branch cleanup
 
 ### Branch Management Strategy
 
-#### Feature Branch Retention
+#### Branch Retention and Cleanup
 
-Feature branches are preserved after merging to main for debugging and troubleshooting purposes:
+Feature branches are retained after squash merge to provide debugging history and audit trail:
 
-- **Debugging Benefits**: Ability to examine exact state during specific development sessions
-- **Troubleshooting**: Investigate tool call sequences that caused issues
-- **Performance Analysis**: Analyze LLM behavior and tool execution patterns
-- **Customer Support**: Reference exact changes for support investigations
+**Retention Policy:**
 
-#### Automated Branch Cleanup
+- Feature branches remain after merge to main
+- Maximum branch count threshold: 50 branches
+- When threshold exceeded: Delete oldest 25 branches
+- Cleanup triggered automatically during merge operations
 
-To manage repository size and performance, the system implements automated cleanup:
+**Cleanup Workflow:**
 
-**Cleanup Triggers:**
+1. Squash merge feature branch to main
+2. Check total branch count (excluding main)
+3. If count > 50: Delete oldest 25 branches (sorted by commit date)
+4. Run `git gc --auto` to optimize repository
+5. Continue normal operations
 
-- Daily scheduled maintenance
-- Repository size thresholds
-- Branch count limits
+**Benefits:**
 
-**Cleanup Strategy:**
+- **Debugging History**: Recent feature branches available for investigation
+- **Audit Trail**: Historical branches preserved temporarily
+- **Automatic Management**: No manual intervention required
+- **Storage Optimization**: Git garbage collection after bulk deletions
 
-- Preserve branches from last 30 days (configurable)
-- Keep minimum of 50 most recent branches (configurable)
-- Prioritize retention of branches with significant changes
-- Never delete branches referenced in support tickets
-
-**Cleanup Commands:**
+**Commands:**
 
 ```bash
-# List branches older than 30 days
-git for-each-ref --format='%(refname:short) %(committerdate)' refs/heads/ |
-  awk '$2 < "'$(date -d '30 days ago' -I)'"'
+# After successful merge
+git checkout main
+git merge --squash {feature_branch}
+git commit -m "{user_prompt}"
 
-# Delete old feature branches (preserve main and recent branches)
-git branch -D old_feature_branch_name
+# Automatic cleanup if branch count > 50
+git for-each-ref --sort=committerdate --format='%(refname:short)' refs/heads/
+# Delete oldest 25 branches
+git branch -D {old_branch_1} {old_branch_2} ... {old_branch_25}
+git gc --auto  # Optimize repository
 ```
 
 ### Monitoring and Observability

@@ -1,6 +1,8 @@
-import { resolve } from 'path';
-import { existsSync } from 'fs';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
+import { logger } from '../logging/index.js';
 import { buildShellCommand, escapeShellArg } from './shell-utils.js';
 
 export interface GitCommandOptions {
@@ -270,6 +272,128 @@ export class GitUtils {
   }
 
   /**
+   * Delete a branch
+   * Uses -D flag to force delete (even if not fully merged, since we've already squash merged)
+   * 
+   * @throws {Error} If attempting to delete main or master branch
+   */
+  async deleteBranch(
+    repoPath: string,
+    branchName: string,
+    options: GitCommandOptions = {}
+  ): Promise<GitCommandResult> {
+    if (branchName === 'main') {
+      return {
+        command: `git branch -D ${branchName}`,
+        workingDir: repoPath,
+        success: false,
+        stdout: '',
+        stderr: `Cannot delete protected branch '${branchName}'.`,
+        exitCode: 1,
+        executionTime: 0,
+        timedOut: false
+      };
+    }
+    return this.executeGitCommand(['branch', '-D', branchName], repoPath, options);
+  }
+
+  /**
+   * Run git garbage collection to optimize repository
+   * Uses --auto flag for automatic optimization decisions
+   */
+  async garbageCollect(
+    repoPath: string,
+    options: GitCommandOptions = {}
+  ): Promise<GitCommandResult> {
+    return this.executeGitCommand(['gc', '--auto'], repoPath, options);
+  }
+
+  /**
+   * Get branches sorted by commit date (oldest first)
+   * Returns branch names excluding main and master
+   */
+  async getBranchesSortedByDate(
+    repoPath: string,
+    options: GitCommandOptions = {}
+  ): Promise<string[]> {
+    // Get branches with commit date, sorted by date (oldest first)
+    // Using git for-each-ref is more efficient than calling listBranches + sorting
+    const result = await this.executeGitCommand(
+      ['for-each-ref', '--sort=committerdate', '--format=%(refname:short)', 'refs/heads/'],
+      repoPath,
+      options
+    );
+
+    if (!result.success) {
+      throw new Error(`Failed to list branches by date: ${result.stderr}`);
+    }
+
+    return result.stdout
+      .split('\n')
+      .map(line => line.trim())
+      .filter(branch => branch && branch !== 'main');
+  }
+
+  /**
+   * Check branch count and clean up old branches if needed
+   * If branch count > 50, deletes oldest 25 branches (excluding main)
+   * 
+   * @returns Object with cleanup stats
+   */
+  async cleanupOldBranches(
+    repoPath: string,
+    options: GitCommandOptions = {}
+  ): Promise<{ needed: boolean; deleted: number; failed: string[]; gcPerformed: boolean }> {
+    try {
+      // Get all branches sorted by date
+      const branches = await this.getBranchesSortedByDate(repoPath, options);
+      
+      // Check if cleanup is needed
+      if (branches.length <= 50) {
+        return { needed: false, deleted: 0, failed: [], gcPerformed: false };
+      }
+
+      // Delete oldest 25 branches
+      const branchesToDelete = branches.slice(0, 25);
+      const failed: string[] = [];
+      let deleted = 0;
+
+      for (const branchName of branchesToDelete) {
+        try {
+          const result = await this.deleteBranch(repoPath, branchName, options);
+          if (result.success) {
+            deleted++;
+          } else {
+            failed.push(branchName);
+          }
+        } catch (error) {
+          failed.push(branchName);
+        }
+      }
+
+      // Run garbage collection after deleting branches
+      let gcPerformed = false;
+      if (deleted > 0) {
+        try {
+          const gcResult = await this.garbageCollect(repoPath, options);
+          gcPerformed = gcResult.success;
+        } catch (gcError) {
+          // Log but don't fail - GC is optional optimization
+        }
+      }
+
+      return {
+        needed: true,
+        deleted,
+        failed,
+        gcPerformed
+      };
+    } catch (error) {
+      throw new Error(`Failed to cleanup old branches: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
    * List all branches
    */
   async listBranches(repoPath: string, options: GitCommandOptions = {}): Promise<string[]> {
@@ -511,6 +635,70 @@ export class GitUtils {
   }
 
   /**
+   * Perform a squash merge from a branch into the current branch
+   *
+   * @param repoPath - Path to the git repository
+   * @param branchName - Name of the branch to squash merge
+   * @param commitMessage - Commit message for the squash merge
+   * @param options - Git command options
+   * @returns GitCommandResult from the commit operation
+   * @throws Error if merge or commit fails
+   */
+  async squashMerge(
+    repoPath: string,
+    branchName: string,
+    commitMessage: string,
+    options: GitCommandOptions = {}
+  ): Promise<GitCommandResult> {
+    // Execute squash merge
+    const mergeResult = await this.executeGitCommand(
+      ['merge', '--squash', branchName],
+      repoPath,
+      options
+    );
+
+    if (!mergeResult.success) {
+      throw new Error(`Failed to squash merge branch '${branchName}': ${mergeResult.stderr}`);
+    }
+
+    // Commit the squashed changes
+    const commitResult = await this.commit(repoPath, commitMessage, options);
+
+    if (!commitResult.success) {
+      throw new Error(`Failed to commit squash merge: ${commitResult.stderr}`);
+    }
+
+    return commitResult;
+  }
+
+  /**
+   * Get diff between current branch and target branch
+   *
+   * @param repoPath - Path to the git repository
+   * @param targetBranch - Branch to compare against (e.g., 'main')
+   * @param options - Git command options
+   * @returns Diff output as string
+   * @throws Error if diff command fails
+   */
+  async getDiffFromBranch(
+    repoPath: string,
+    targetBranch: string,
+    options: GitCommandOptions = {}
+  ): Promise<string> {
+    const result = await this.executeGitCommand(
+      ['diff', targetBranch],
+      repoPath,
+      options
+    );
+
+    if (!result.success) {
+      throw new Error(`Failed to get diff from branch '${targetBranch}': ${result.stderr}`);
+    }
+
+    return result.stdout;
+  }
+
+  /**
    * Check if dev-supervisor is available for command execution
    */
   private isDevSupervisorAvailable(): boolean {
@@ -518,7 +706,159 @@ export class GitUtils {
   }
 
   /**
-   * Execute a git command
+   * Attempt to recover from a git command failure
+   * Implements the error recovery workflow from git-operations-architecture.md
+   *
+   * @param error - The error that occurred
+   * @param repoPath - Path to the repository
+   * @param command - The git command that failed
+   * @returns Object indicating if recovery was attempted and if retry should happen
+   */
+  private async attemptGitRecovery(
+    error: string,
+    repoPath: string,
+    command: string
+  ): Promise<{ recovered: boolean; shouldRetry: boolean; escalate: boolean }> {
+    const errorLower = error.toLowerCase();
+
+    logger.info('git.util.recovery.begin', {
+      repoPath,
+      command,
+      error: error.substring(0, 200)
+    });
+
+    // Check for lock file error
+    if (errorLower.includes('index.lock') || errorLower.includes('.lock')) {
+      logger.info('git.util.recovery.lock.detected', { repoPath });
+
+      try {
+        // Wait 2 seconds to allow any in-progress git operation to complete
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        if (this.isDevSupervisorAvailable()) {
+          // Check if lock file still exists after wait
+          const checkLockResult = await this.devSupervisor!.exec({
+            command: buildShellCommand(['test', '-f', '.git/index.lock']),
+            working_dir: '/app',
+            timeout: 5,
+            capture_output: true
+          });
+
+          if (checkLockResult.success) {
+            // Lock file still exists, remove it
+            logger.info('git.util.recovery.lock.removing', { repoPath });
+            
+            const lockRemovalResult = await this.devSupervisor!.exec({
+              command: buildShellCommand(['rm', '-f', '.git/index.lock']),
+              working_dir: '/app',
+              timeout: 10,
+              capture_output: true
+            });
+
+            if (lockRemovalResult.success) {
+              logger.info('git.util.recovery.lock.removed', { repoPath });
+              return { recovered: true, shouldRetry: true, escalate: false };
+            } else {
+              logger.warn('git.util.recovery.lock.removal_failed', {
+                repoPath,
+                stderr: lockRemovalResult.stderr
+              });
+            }
+          } else {
+            // Lock file was auto-removed during wait, can retry
+            logger.info('git.util.recovery.lock.auto_removed', { repoPath });
+            return { recovered: true, shouldRetry: true, escalate: false };
+          }
+        }
+      } catch (lockError) {
+        logger.warn('git.util.recovery.lock.error', {
+          repoPath,
+          error: lockError instanceof Error ? lockError.message : String(lockError)
+        });
+      }
+    }
+
+    // Check for configuration error
+    if (errorLower.includes('user.name') || errorLower.includes('user.email') || 
+        errorLower.includes('config') || errorLower.includes('author identity')) {
+      logger.info('git.util.recovery.config.detected', { repoPath });
+
+      try {
+        // Set default git configuration
+        await this.configureUser(repoPath, 'Airo Agent', 'agent@airo.platform');
+        logger.info('git.util.recovery.config.set', { repoPath });
+        return { recovered: true, shouldRetry: true, escalate: false };
+      } catch (configError) {
+        logger.warn('git.util.recovery.config.failed', {
+          repoPath,
+          error: configError instanceof Error ? configError.message : String(configError)
+        });
+      }
+    }
+
+    // Check for repository corruption
+    if (errorLower.includes('corrupt') || errorLower.includes('broken') || 
+        errorLower.includes('damaged') || errorLower.includes('invalid object')) {
+      logger.warn('git.util.recovery.corruption.detected', { repoPath });
+
+      try {
+        if (this.isDevSupervisorAvailable()) {
+          // Run git fsck to check and repair
+          logger.info('git.util.recovery.corruption.fsck_running', { repoPath });
+          
+          const fsckResult = await this.devSupervisor!.exec({
+            command: buildShellCommand(['git', 'fsck', '--full']),
+            working_dir: '/app',
+            timeout: 60,
+            capture_output: true
+          });
+
+          if (fsckResult.success) {
+            logger.info('git.util.recovery.corruption.fsck_success', { repoPath });
+            return { recovered: true, shouldRetry: true, escalate: false };
+          } else {
+            logger.error('git.util.recovery.corruption.fsck_failed', {
+              repoPath,
+              stderr: fsckResult.stderr
+            });
+          }
+        }
+
+        // If fsck fails, escalate for backup restoration
+        logger.error('git.util.recovery.corruption.escalate', { repoPath });
+        return { recovered: false, shouldRetry: false, escalate: true };
+      } catch (corruptError) {
+        logger.error('git.util.recovery.corruption.error', {
+          repoPath,
+          error: corruptError instanceof Error ? corruptError.message : String(corruptError)
+        });
+        return { recovered: false, shouldRetry: false, escalate: true };
+      }
+    }
+
+    // Check for missing .git directory
+    if (errorLower.includes('not a git repository') || errorLower.includes('no such file or directory')) {
+      const gitDirPath = resolve(repoPath, '.git');
+      if (!existsSync(gitDirPath)) {
+        // Critical error - missing .git directory requires escalation
+        logger.error('git.util.recovery.missing_git_dir.escalate', {
+          repoPath,
+          gitDirPath
+        });
+        return { recovered: false, shouldRetry: false, escalate: true };
+      }
+    }
+
+    // Unknown error - no recovery attempted
+    logger.warn('git.util.recovery.unknown_error', {
+      repoPath,
+      error: error.substring(0, 200)
+    });
+    return { recovered: false, shouldRetry: false, escalate: false };
+  }
+
+  /**
+   * Execute a git command with automatic error recovery
    */
   private async executeGitCommand(
     args: string[],
@@ -572,6 +912,58 @@ export class GitUtils {
       result.timedOut = false; // dev-supervisor handles timeout internally
       result.executionTime = Date.now() - startTime;
       result.success = execResult.success;
+
+      // If command failed, attempt recovery
+      if (!result.success && result.stderr) {
+        const recovery = await this.attemptGitRecovery(result.stderr, workingDir, command);
+
+        if (recovery.escalate) {
+          logger.error('git.util.execute.escalate', {
+            command,
+            workingDir,
+            error: result.stderr
+          });
+          throw new Error(
+            `Critical git error requiring escalation: ${result.stderr}\n` +
+            'This issue requires manual intervention. Please contact support.'
+          );
+        }
+
+        if (recovery.shouldRetry) {
+          // Retry the command after recovery
+          logger.info('git.util.execute.retry', {
+            command,
+            workingDir,
+            recovered: recovery.recovered
+          });
+
+          const retryResult = await this.devSupervisor!.exec({
+            command,
+            working_dir: '/app',
+            timeout: Math.floor(timeout / 1000),
+            capture_output: true
+          });
+
+          result.exitCode = retryResult.exit_code;
+          result.stdout = retryResult.stdout;
+          result.stderr = retryResult.stderr;
+          result.success = retryResult.success;
+          result.executionTime = Date.now() - startTime;
+
+          if (retryResult.success) {
+            logger.info('git.util.execute.retry_success', {
+              command,
+              workingDir
+            });
+          } else {
+            logger.warn('git.util.execute.retry_failed', {
+              command,
+              workingDir,
+              error: retryResult.stderr
+            });
+          }
+        }
+      }
     } catch (error) {
       result.stderr = error instanceof Error ? error.message : String(error);
       result.executionTime = Date.now() - startTime;
