@@ -275,7 +275,7 @@ The todo list tool is designed to complement your development process:
 2. Write LoginForm.tsx (don't mark complete yet ❌)
 3. Write /api/login endpoint (don't mark complete yet ❌)
 4. Add form submission logic (don't mark complete yet ❌)
-5. Prepare to commit → mark all 3 complete at once ❌ TOO LATE!
+5. Mark all 3 complete at once ❌ TOO LATE!
 ```
 
 ### Persistence and Context

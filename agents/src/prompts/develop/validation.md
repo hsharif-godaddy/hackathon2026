@@ -72,7 +72,6 @@ A task is only complete when ALL of the following are true:
 - ✅ Responsive design verified
 - ✅ No regressions introduced
 - ✅ Code follows project conventions
-- ✅ Changes committed with clear message
 
 #### Failure Conditions
 
