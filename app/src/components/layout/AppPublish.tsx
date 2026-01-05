@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { useIntl } from 'react-intl';
+import Alert from '@ux/alert';
 import Button from '@ux/button';
 import Collapsible from '@ux/collapsible';
 import Tag from '@ux/tag';
@@ -230,12 +231,10 @@ export default function AppPublish({ location }: { location?: string }) {
 
   // Button is disabled when:
   // - Initial loading (deployments or git history)
-  // - Publishing request in progress (before deployment shows up)
-  // - Any deployment is in progress (not in terminal state)
-  // - A conversation is in progress (AI is actively processing)
-  // - Current commit is already successfully deployed (nothing new to publish)
-  //   Note: Button remains enabled if deployment failed, allowing retry
-  const isButtonDisabled = isLoading || isLoadingGitHistory || isPublishing || isDeploymentInProgress || isConversationInProgress || isCurrentCommitDeployed || isPollingEntitlements || entitlementsPollingFailed;
+  // - Polling entitlements after purchase
+  // - Entitlements polling failed
+  // Note: Publishing, deployment, conversation in progress, and current commit deployed are now shown as warnings in the modal
+  const isButtonDisabled = isLoading || isLoadingGitHistory || isPollingEntitlements || entitlementsPollingFailed;
 
   const publishWidget = isFirstTimePublishing ? 'app_first_publish' : 'app_publish';
 
@@ -267,6 +266,56 @@ export default function AppPublish({ location }: { location?: string }) {
       )}
     </>
   );
+
+  // Determine which status alert to show (priority order)
+  const getPublishStatusAlert = () => {
+    if (isPublishing) {
+      return (
+        <Alert emphasis="warning">
+          {t('builder_publish_in_progress_warning')}
+        </Alert>
+      );
+    }
+
+    if (isDeploymentInProgress) {
+      return (
+        <Alert emphasis="warning">
+          {t('builder_publish_deployment_in_progress_warning')}
+        </Alert>
+      );
+    }
+
+    if (isConversationInProgress) {
+      return (
+        <Alert emphasis="warning">
+          {t('builder_publish_conversation_warning')}
+        </Alert>
+      );
+    }
+
+    if (isCurrentCommitDeployed) {
+      return (
+        <Alert emphasis="info">
+          {t('builder_publish_no_changes_info')}
+        </Alert>
+      );
+    }
+
+    return null;
+  };
+
+  // Determine button text based on current state
+  const getPublishButtonText = () => {
+    if (isPublishing || isDeploymentInProgress) {
+      return t('builder_publish_button_publishing');
+    }
+
+    if (isCurrentCommitDeployed) {
+      return t('builder_publish_button_republish');
+    }
+
+    return t('builder_publish_button');
+  };
 
   const handlePublish = async (open: boolean) => {
     // Reset polling failure state when attempting to publish
@@ -317,10 +366,7 @@ export default function AppPublish({ location }: { location?: string }) {
           data-partial='componentAiro'
           data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
           disabled={isButtonDisabled}
-          text={isPublishing || isDeploymentInProgress
-            ? t('builder_publish_button_publishing')
-            : t('builder_publish_button')
-          }
+          text={getPublishButtonText()}
         />
       </PopoverTrigger>
       <PopoverContent align='end' className='w-[400px] p-3'>
@@ -399,6 +445,9 @@ export default function AppPublish({ location }: { location?: string }) {
               </div>
             </Collapsible>
 
+          {/* Status alert (shows most relevant state) */}
+          {getPublishStatusAlert()}
+
           <Separator />
 
           <Button
@@ -407,13 +456,10 @@ export default function AppPublish({ location }: { location?: string }) {
             size='sm'
             data-partial='componentAiro'
             data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
-            disabled={isButtonDisabled}
+            disabled={isButtonDisabled || isPublishing || isDeploymentInProgress || isConversationInProgress}
             onClick={handleDeploy}
           >
-            {isPublishing || isDeploymentInProgress
-              ? t('builder_publish_button_publishing')
-              : t('builder_publish_button')
-            }
+            {getPublishButtonText()}
           </Button>
 
           {!isAiroPlusPaywallEnabled && (
