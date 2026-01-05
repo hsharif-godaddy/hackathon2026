@@ -6,54 +6,57 @@ import type { ILogger } from '../types.js';
 import { log } from '../index.js';
 import { AppEvents } from './app.js';
 import type {
-  AppRepositoryInitData,
-  AppProcessRecoveryData,
-  AppCreationBeginData,
-  AppNameSuggestionData,
-  AppTemplateOperationData,
-  AppDirectoryOperationData,
-  AppSetupOperationData,
-  AppServerOperationData,
-  AppDockerOperationData,
-  AppLifecycleData,
-  AppTransactionData,
-  AppProcessManagementData,
-  AppCleanupOperationData,
-  ToolImageSearchData,
-  ToolCacheOperationData,
-  ToolFileEditData,
-  ToolBuildOperationData,
-  ToolServerHealthData,
-  ToolDirectoryListingData,
-  ToolDirectoryWalkData,
-  ToolGrepSearchData,
-  ToolGitOperationData,
-  ToolImageGenerationData,
-  ToolAstEditData,
-  ToolMySqlData,
-  ToolLogReaderData,
-  ToolMemoryOperationData,
-  HttpRequestData,
-
-  WebSocketChatData,
-  DockerContainerData,
-  LLMRequestData,
-  LLMResponseData,
-  LLMTokenUsageData,
-  LLMRetryData,
-  TracingEventData,
-  ConversationContextLoadData,
-  ConversationContextBuildData,
-  ConversationHistoryProcessData,
-  ConversationTokenLimitData,
+  AnalyticsFetchData,
+  AnalyticsFetchResultData,
+  AnalyticsGraphQLRetryData,
+  AnalyticsRoutesData,
+  AppContextDirectoryData,
   AppContextGenerationData,
   AppContextPackageData,
-  AppContextDirectoryData,
-  FileUploadProcessData,
-  FileUploadValidationData,
-  FileUploadRetrievalData,
+  AppCleanupOperationData,
+  AppCreationBeginData,
+  AppDirectoryOperationData,
+  AppDockerOperationData,
+  AppLifecycleData,
+  AppNameSuggestionData,
+  AppProcessManagementData,
+  AppProcessRecoveryData,
+  AppRepositoryInitData,
+  AppServerOperationData,
+  AppSetupOperationData,
+  AppTemplateOperationData,
+  AppTransactionData,
+  ConversationContextBuildData,
+  ConversationContextLoadData,
+  ConversationHistoryProcessData,
+  ConversationTokenLimitData,
+  DockerContainerData,
   FileUploadCleanupData,
   FileUploadDirectoryData,
+  FileUploadProcessData,
+  FileUploadRetrievalData,
+  FileUploadValidationData,
+  HttpRequestData,
+  LLMRequestData,
+  LLMResponseData,
+  LLMRetryData,
+  LLMTokenUsageData,
+  ToolAstEditData,
+  ToolBuildOperationData,
+  ToolCacheOperationData,
+  ToolDirectoryListingData,
+  ToolDirectoryWalkData,
+  ToolFileEditData,
+  ToolGitOperationData,
+  ToolGrepSearchData,
+  ToolImageGenerationData,
+  ToolImageSearchData,
+  ToolLogReaderData,
+  ToolMemoryOperationData,
+  ToolMySqlData,
+  ToolServerHealthData,
+  TracingEventData,
+  WebSocketChatData,
 } from './app.js';
 
 /**
@@ -111,7 +114,7 @@ export const appCreationEvents = {
 };
 
 /**
- * App Name Suggestion logging helpers  
+ * App Name Suggestion logging helpers
  */
 export const appNameEvents = {
   suggestBegin: (logger: ILogger, data: Pick<AppNameSuggestionData, 'appId' | 'originalName' | 'hasPrompt'>) => {
@@ -1117,5 +1120,70 @@ export const fileUploadEvents = {
 
   fileSaved: (logger: ILogger, data: FileUploadProcessData & { originalName: string; size: number; mimeType: string }) => {
     logger.debug(AppEvents.fileUpload.file.saved, data);
+  },
+};
+
+/**
+ * Analytics logging helpers
+ */
+export const analyticsEvents = {
+  fetchStart: (logger: ILogger, data: AnalyticsFetchData) => {
+    logger.debug(AppEvents.analytics.fetch.start, data);
+  },
+
+  dailyPageViewsBegin: (logger: ILogger, data: AnalyticsFetchData) => {
+    logger.debug(AppEvents.analytics.fetch.dailyPageViews.begin, data);
+  },
+
+  dailyPageViewsSuccess: (logger: ILogger, data: AnalyticsFetchResultData) => {
+    logger.debug(AppEvents.analytics.fetch.dailyPageViews.success, data);
+  },
+
+  dailyPageViewsFailure: (logger: ILogger, error: Error, data: AnalyticsFetchData) => {
+    log.error(logger, AppEvents.analytics.fetch.dailyPageViews.failure, error, data);
+  },
+
+  visitorsBegin: (logger: ILogger, data: AnalyticsFetchData) => {
+    logger.debug(AppEvents.analytics.fetch.visitors.begin, data);
+  },
+
+  visitorsSuccess: (logger: ILogger, data: AnalyticsFetchResultData) => {
+    logger.debug(AppEvents.analytics.fetch.visitors.success, data);
+  },
+
+  visitorsFailure: (logger: ILogger, error: Error, data: AnalyticsFetchData) => {
+    logger.debug(AppEvents.analytics.fetch.visitors.failure, error);
+  },
+
+  transform: (logger: ILogger, data: AnalyticsFetchResultData) => {
+    logger.debug(AppEvents.analytics.fetch.transform, data);
+  },
+
+  refreshStart: (logger: ILogger, data: AnalyticsFetchData) => {
+    logger.debug(AppEvents.analytics.refresh.start, data);
+  },
+
+  refreshSuccess: (logger: ILogger, data: AnalyticsFetchResultData) => {
+    logger.debug(AppEvents.analytics.refresh.success, data);
+  },
+
+  refreshFailure: (logger: ILogger, error: Error, data: AnalyticsFetchData) => {
+    logger.debug(AppEvents.analytics.refresh.failure, error);
+  },
+
+  graphqlRetry: (logger: ILogger, data: AnalyticsGraphQLRetryData) => {
+    logger.warn(AppEvents.analytics.graphql.retry, data);
+  },
+
+  graphqlRetrySuccess: (logger: ILogger, data: AnalyticsGraphQLRetryData) => {
+    logger.info(AppEvents.analytics.graphql.retrySuccess, data);
+  },
+
+  graphqlRetryExhausted: (logger: ILogger, data: AnalyticsGraphQLRetryData) => {
+    logger.error(AppEvents.analytics.graphql.retryExhausted, data);
+  },
+
+  routesDiscoveryFailed: (logger: ILogger, data: AnalyticsRoutesData) => {
+    logger.debug(AppEvents.analytics.routes.discoveryFailed, data);
   },
 };

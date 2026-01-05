@@ -10,10 +10,11 @@ interface BigCardProps {
   title?: string
   description?: string
   status?: StatusValue
+  hideStatus?: boolean
   button?: React.ReactNode
 }
 
-export default function BigCard({ children, title, description, status, button }: BigCardProps) {
+export default function BigCard({ children, title, description, status, button, hideStatus }: BigCardProps) {
   return (
     <Box
       gap="lg"
@@ -30,7 +31,8 @@ export default function BigCard({ children, title, description, status, button }
         </Box>
         { (status || button) && (
           <Box gap="md" inlineAlignChildren="end">
-            { status ? <BigCardStatus status={status} /> : <div className="hidden @md:block h-3" /> }
+            { status && !hideStatus && <BigCardStatus status={status} /> }
+            { !status && !hideStatus && <div className="hidden @md:block h-3" /> }
             { button && button }
           </Box>
         )}

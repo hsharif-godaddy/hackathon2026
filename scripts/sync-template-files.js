@@ -37,7 +37,23 @@ const SYNC_MANIFEST = [
     description: 'Server configuration with SPA fallback middleware for client-side routing',
     known_hashes: [
       '42ba9f4178f0125d150e0453b18aace0', // 0d42af30 - fix: various improvements to local development
-      '2accfb4db2acca217a56610abbeff409'  // 8c779b55 - feat: changes to support app publish
+      '2accfb4db2acca217a56610abbeff409', // 8c779b55 - feat: changes to support app publish
+      '4e602bf93117af87df4621edc156282c'  // Current version - adds express.static("client") middleware
+    ],
+    force: false
+  },
+  {
+    file: 'public/analytics.js',
+    description: 'GoDaddy Signals analytics library initialization script',
+    known_hashes: [],
+    force: false
+  },
+  {
+    file: 'index.html',
+    description: 'Main HTML file that loads the React app and analytics script',
+    known_hashes: [
+      '2b36ce7723f0a17d0a735b65079f3e7c', // 072cb636 - Before analytics was added
+      '5a13fd960f9e484c4b92e2fc927518b3'  // f482954c - Current version with refactored analytics
     ],
     force: false
   }

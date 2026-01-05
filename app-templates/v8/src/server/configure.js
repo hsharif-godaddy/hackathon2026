@@ -42,6 +42,8 @@ export const serverBefore = (server) => {
 
   server.use(express.json());
   server.use(express.urlencoded({ extended: true }));
+
+  server.use(express.static("client"));
 };
 
 export const serverAfter = (server) => {

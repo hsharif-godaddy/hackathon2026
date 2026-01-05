@@ -144,6 +144,36 @@ export interface AppTransactionData extends AppEventData {
   itemsAffected?: number;
 }
 
+// Analytics Events
+export interface AnalyticsFetchData {
+  publishedUrl?: string;
+  days?: number;
+  route?: string;
+  routeUrl?: string;
+  operation?: 'start' | 'daily-page-views' | 'visitors' | 'transform' | 'refresh' | 'route' | 'visitors-no-data' | 'route-no-data';
+  error?: string;
+}
+
+export interface AnalyticsFetchResultData extends AnalyticsFetchData {
+  total?: number;
+  dailyBreakdownCount?: number;
+  visitorsCount?: number;
+}
+
+export interface AnalyticsGraphQLRetryData {
+  operationName: string;
+  attempt: number;
+  maxAttempts: number;
+  errorCategory?: string;
+  errorMessage?: string;
+  delayMs?: number;
+}
+
+export interface AnalyticsRoutesData {
+  appId: string;
+  error?: string;
+}
+
 // File Upload Events
 export interface FileUploadProcessData extends AppEventData {
   uploadId: string;
@@ -1076,6 +1106,41 @@ export const AppEvents = {
         success: 'app.context.directory.success' as const,
         failure: 'app.context.directory.failure' as const,
       },
+    },
+  },
+
+  // Analytics events: analytics.{fetch|graphql}.{operation}.{begin|success|failure}
+  analytics: {
+    fetch: {
+      start: 'analytics.fetch.start' as const,
+      dailyPageViews: {
+        begin: 'analytics.fetch.daily-page-views.begin' as const,
+        success: 'analytics.fetch.daily-page-views.success' as const,
+        failure: 'analytics.fetch.daily-page-views.failure' as const,
+      },
+      visitors: {
+        begin: 'analytics.fetch.visitors.begin' as const,
+        success: 'analytics.fetch.visitors.success' as const,
+        failure: 'analytics.fetch.visitors.failure' as const,
+        noData: 'analytics.fetch.visitors.no-data' as const,
+      },
+      route: {
+        noData: 'analytics.fetch.route.no-data' as const,
+      },
+      transform: 'analytics.fetch.transform' as const,
+    },
+    refresh: {
+      start: 'analytics.refresh.start' as const,
+      success: 'analytics.refresh.success' as const,
+      failure: 'analytics.refresh.failure' as const,
+    },
+    graphql: {
+      retry: 'analytics.graphql.retry' as const,
+      retrySuccess: 'analytics.graphql.retry-success' as const,
+      retryExhausted: 'analytics.graphql.retry-exhausted' as const,
+    },
+    routes: {
+      discoveryFailed: 'analytics.routes.discovery-failed' as const,
     },
   },
 } as const;

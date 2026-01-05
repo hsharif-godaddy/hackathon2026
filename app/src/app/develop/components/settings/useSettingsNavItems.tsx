@@ -5,6 +5,7 @@ import ClipboardIcon from '@ux/icon/clipboard';
 import CommentsIcon from '@ux/icon/comments';
 import ContentIcon from '@ux/icon/content';
 import DatabaseIcon from '@ux/icon/database';
+import GraphIcon from '@ux/icon/graph';
 import HistoryIcon from '@ux/icon/history';
 import LinkIcon from '@ux/icon/link';
 import LockedIcon from '@ux/icon/locked';
@@ -47,6 +48,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
   const { data: isSocialEnabled } = useSwitchboard('appbuilder-settings-social');
+  const { data: isAnalyticsEnabled } = useSwitchboard('appbuilder-settings-analytics');
   const { data: isLogsEnabled } = useSwitchboard('appbuilder-settings-logs');
   const { data: isConversationsEnabled } = useSwitchboard('appbuilder-settings-conversations');
 
@@ -104,6 +106,12 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       icon: <ContentIcon />,
       disabled: isVisualScanEnabled !== true,
     }] : []),
+    {
+      id: SettingsSection.ANALYTICS,
+      label: 'Analytics',
+      icon: <GraphIcon />,
+      disabled: isAnalyticsEnabled !== true,
+    },
     ...(isLogsEnabled ? [{
       id: SettingsSection.LOGS,
       label: t('builder_settings_nav_logs'),

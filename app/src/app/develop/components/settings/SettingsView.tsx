@@ -14,6 +14,7 @@ import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { SecretsPanel } from './SecretsPanel'
+import AnalyticsPanel from '@/app/develop/components/settings/Analytics/AnalyticsPanel'
 
 export default function SettingsView() {
   const { activeSettingsSection } = useChatTabs()
@@ -27,6 +28,7 @@ export default function SettingsView() {
   const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
   const { data: isSocialEnabled } = useSwitchboard('appbuilder-settings-social');
+  const { data: isAnalyticsEnabled } = useSwitchboard('appbuilder-settings-analytics');
   const { data: isLogsEnabled } = useSwitchboard('appbuilder-settings-logs');
   const { data: isConversationsEnabled } = useSwitchboard('appbuilder-settings-conversations');
 
@@ -48,6 +50,8 @@ export default function SettingsView() {
         return isSocialEnabled ? <SocialPanel siteId={appId} /> : null;
       case SettingsSection.VISUAL_SCAN:
         return isVisualScanEnabled ? <VisualScanPanel /> : null;
+      case SettingsSection.ANALYTICS:
+        return isAnalyticsEnabled ? <AnalyticsPanel /> : null;
       case SettingsSection.LOGS:
         return isLogsEnabled ? <LogsPanel /> : null;
       case SettingsSection.CONVERSATIONS:
