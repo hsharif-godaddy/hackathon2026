@@ -1,4 +1,6 @@
 // Initialize Elastic APM first - must be before any other imports
+// Import OpenTelemetry API first so APM can register as the TracerProvider
+import '@opentelemetry/api';
 import apmAgent from 'elastic-apm-node';
 import { Logger } from '../logging/index.js';
 
@@ -140,8 +142,21 @@ const apm = apmAgent.start({
   spanCompressionSameKindMaxDuration: '0ms',
   // Capture full URL paths in external HTTP spans for better dependency tracking
   spanStackTraceMinDuration: '0ms',
+  // Enable OpenTelemetry bridge to receive spans from Vercel AI SDK experimental_telemetry
+  opentelemetryBridgeEnabled: true,
   // Enable automatic HTTP client instrumentation for http, https, and undici
   // disableInstrumentations: ['http', 'https', 'undici']
+});
+
+// Filter out CSP event bus spans from WebSocket transactions (all environments)
+apm.addSpanFilter((span) => {
+  const url = span.context?.http?.url;
+  // Drop spans for CSP event bus calls - these are internal observability HTTP calls
+  // Matches: csp.dev-godaddy.com, csp.test-godaddy.com, csp.godaddy.com (prod)
+  if (url && /csp\.(dev-|test-)?godaddy\.com/.test(url)) {
+    return false;
+  }
+  return span;
 });
 
 // Now import other modules after APM is initialized

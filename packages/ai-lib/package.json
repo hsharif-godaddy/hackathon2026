@@ -58,6 +58,7 @@
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.0-beta.87",
+    "@opentelemetry/api": "^1.9.0",
     "@ai-sdk/openai": "^3.0.0-beta.88",
     "@ai-sdk/provider": "^3.0.0-beta.26",
     "@anthropic-ai/tokenizer": "^0.0.4",

@@ -40,7 +40,8 @@ export class NameSuggestionService {
           - Just return the name and nothing else`,
         prompt: `Suggest a name for this app: ${prompt.trim()}`,
         temperature: 0.5,
-        maxOutputTokens: 50
+        maxOutputTokens: 50,
+        experimental_telemetry: { isEnabled: true, functionId: 'name-suggestion' },
       })
 
       let suggestedName = result.text

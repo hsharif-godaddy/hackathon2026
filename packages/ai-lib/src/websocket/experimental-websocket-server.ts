@@ -22,7 +22,6 @@ import type {
 import { ConversationEventChannel } from './conversation-event-channel.js'
 import { WebSocketSubscriber } from './subscribers/websocket-subscriber.js'
 import { PersistenceSubscriber } from './subscribers/persistence-subscriber.js'
-import { APMSubscriber } from './subscribers/apm-subscriber.js'
 import { ConnectionStateManager, type ConnectionStateData } from './connection-state-manager.js'
 import { ConnectionRecoveryManager } from './connection-recovery-manager.js'
 
@@ -999,38 +998,12 @@ export class WebSocketServer {
   /**
    * Start APM span for tool execution
    *
-   * Creates a span as a child of the active WebSocket transaction if available,
-   * otherwise creates a standalone span. Tool input is added later via the tool-call event.
+   * NOTE: Manual APM tool spans are disabled because AI SDK experimental_telemetry
+   * creates ai.toolCall spans automatically via OpenTelemetry bridge.
+   * This avoids duplicate spans in Elastic APM.
    */
   private async startToolSpan(socketId: string, toolId: string, toolName: string, toolInput?: Record<string, unknown>): Promise<void> {
-    // Start APM span
-    if (this.config.apmAgent || this.config.getActiveTransaction) {
-      try {
-        const apmAgent = this.config.apmAgent
-        const transaction = this.config.getActiveTransaction?.(socketId)
-
-        if (apmAgent) {
-          // Create span as child of transaction if available, otherwise standalone
-          // In Elastic APM, transaction.startSpan() creates a child span
-          const span = transaction
-            ? transaction.startSpan(`Tool: ${toolName}`, 'tool_execution', 'agent')
-            : apmAgent.startSpan(`Tool: ${toolName}`, 'tool_execution', 'agent')
-
-          if (span) {
-            span.addLabels({
-              tool_id: toolId,
-              tool_name: toolName,
-              socket_id: socketId
-            })
-
-            const spanKey = `${socketId}:${toolId}`
-            this.activeToolSpans.set(spanKey, span)
-          }
-        }
-      } catch {
-        // Silently fail - APM tracking should not break the application
-      }
-    }
+    // Manual APM tool spans disabled - AI SDK experimental_telemetry creates ai.toolCall spans
 
     // Start observability tool tracking
     if (this.config.onToolStart) {
@@ -1628,18 +1601,7 @@ export class WebSocketServer {
           )
         }
 
-        // APM tracking (non-blocking) - only if APM is available
-        if (this.config.apmAgent) {
-          this.eventChannel.subscribe(
-            conversationId,
-            new APMSubscriber(
-              this.config.apmAgent,
-              this.activeToolSpans,
-              undefined, // getActiveTransaction not available in this context
-              socketId
-            )
-          )
-        }
+        // APM tool tracking disabled - AI SDK experimental_telemetry creates ai.toolCall spans via OpenTelemetry
 
         // Emit conversationId via dedicated control-plane event with ACK callback
         // This separates control-plane (cookie seeding) from semantic events (step_start)

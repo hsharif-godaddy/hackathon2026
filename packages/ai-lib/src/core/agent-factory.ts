@@ -208,6 +208,8 @@ export class AgentWrapper {
       // Pass provider-specific options (e.g., disableParallelToolUse for Anthropic)
       ...(config.providerOptions && { providerOptions: config.providerOptions as any }),
       maxRetries,
+      // Enable OpenTelemetry telemetry for Elastic APM integration
+      experimental_telemetry: { isEnabled: true, functionId: `agent-${config.name}` },
       ...(telemetryHooks.prepareStep ? { prepareStep: telemetryHooks.prepareStep } : {}),
       ...(telemetryHooks.onStepFinish ? { onStepFinish: telemetryHooks.onStepFinish } : {}),
       ...(telemetryHooks.onFinish ? { onFinish: telemetryHooks.onFinish } : {}),

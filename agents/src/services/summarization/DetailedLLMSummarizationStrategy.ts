@@ -243,6 +243,7 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
       prompt: userPrompt,
       temperature: 0.3,
       maxOutputTokens: 2500,
+      experimental_telemetry: { isEnabled: true, functionId: 'summarization-detailed-llm' },
     });
 
     const summaryText = result.text;

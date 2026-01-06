@@ -44,6 +44,7 @@ export class LLMSummarizationStrategy implements SummarizationStrategy {
         prompt: userPrompt,
         temperature: 0.3, // Lower temperature for more consistent summaries
         maxOutputTokens: 5000, // Allow larger summaries for complex projects
+        experimental_telemetry: { isEnabled: true, functionId: 'summarization-llm' },
       });
 
       const summaryText = result.text.trim();
