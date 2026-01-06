@@ -134,7 +134,8 @@ export class AILibContextManager {
             conversationContextMessages.push({
                 role: 'system',
                 content: appContextMessages.map(msg => msg.content).join('\n\n'),
-                insertionOrder: 'before_history'
+                insertionOrder: 'before_history',
+                cachePoint: { type: 'ephemeral' }
             })
         }
 

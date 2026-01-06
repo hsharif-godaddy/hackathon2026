@@ -1,6 +1,6 @@
 /**
  * Unified Provider Helper
- * 
+ *
  * Single provider function that handles both OpenAI and Bedrock with short names,
  * automatic environment variable validation, and proxy support.
  */
@@ -12,9 +12,9 @@ import type { LanguageModel } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 
 const logger = createLogger('unified-provider')
-import { 
-  normalizeModelName, 
-  getLegacyModelMappings, 
+import {
+  normalizeModelName,
+  getLegacyModelMappings,
   getAvailableModels as getAvailableModelsFromNormalization,
   isModelSupported as isModelSupportedFromNormalization,
   getFullModelName as getFullModelNameFromNormalization
@@ -67,7 +67,16 @@ export interface ProviderConfig {
   anthropicBaseUrl?: string
   /** S2S authentication configuration */
   s2sAuth?: S2SAuthConfig
+  /**
+   * List of anthropic-beta header values to block for proxy compatibility.
+   * If not specified or empty, all beta headers pass through.
+   * Example: ['max-tokens-3-5-sonnet-2022-07-15']
+   */
+  blockedAnthropicBetaHeaders?: string[]
 }
+
+// Default anthropic-beta headers to block for compatibility with downstream proxies
+const DEFAULT_BLOCKED_ANTHROPIC_BETA_HEADERS: string[] = ['structured-outputs-2025-11-13']
 
 /**
  * Validate OpenAI configuration
@@ -78,9 +87,9 @@ function validateOpenAIConfig(config?: ProviderConfig): void {
   if (isS2SAuthEnabled()) {
     return;
   }
-  
+
   const apiKey = config?.openaiApiKey || process.env.OPENAI_API_KEY
-  
+
   if (!apiKey) {
     throw new Error('OpenAI API key is required. Set OPENAI_API_KEY environment variable or pass openaiApiKey in config.')
   }
@@ -93,13 +102,13 @@ function hasAWSCredentials(config?: ProviderConfig): boolean {
   // Check for explicit credentials
   const hasExplicitCredentials = !!(config?.awsAccessKeyId || process.env.AWS_ACCESS_KEY_ID) &&
                                 !!(config?.awsSecretAccessKey || process.env.AWS_SECRET_ACCESS_KEY)
-  
+
   // Check for AWS profile
   const hasProfile = !!(config?.awsProfile || process.env.AWS_PROFILE)
-  
+
   // Check for IAM role or web identity token (ECS/EKS environments)
   const hasIAMRole = !!(process.env.AWS_ROLE_ARN || process.env.AWS_WEB_IDENTITY_TOKEN_FILE)
-  
+
   // Only return true if we have actual credentials or a profile, not just AWS_REGION
   return hasExplicitCredentials || hasProfile || hasIAMRole
 }
@@ -132,21 +141,21 @@ function getClaudeProxyType(modelName: string, config?: ProviderConfig): 'openai
   if (hasAWS) {
     return null
   }
-  
+
   // Check available proxy options
   const hasAnthropicCreds = hasAnthropicCredentials(config)
   const hasOpenAIProxy = !!(config?.openaiBaseUrl || process.env.OPENAI_BASE_URL)
-  
+
   // Prefer Anthropic direct access if available
   if (hasAnthropicCreds) {
     return 'anthropic'
   }
-  
+
   // Fall back to OpenAI proxy if available
   if (hasOpenAIProxy) {
     return 'openai'
   }
-  
+
   return null
 }
 
@@ -164,10 +173,10 @@ function validateBedrockConfig(config?: ProviderConfig): void {
   // Check for explicit credentials or AWS profile
   const hasExplicitCredentials = (config?.awsAccessKeyId || process.env.AWS_ACCESS_KEY_ID) &&
                                 (config?.awsSecretAccessKey || process.env.AWS_SECRET_ACCESS_KEY)
-  
+
   const hasProfile = config?.awsProfile || process.env.AWS_PROFILE
   const hasRegion = config?.awsRegion || process.env.AWS_REGION
-  
+
   if (!hasExplicitCredentials && !hasProfile) {
     throw new Error(`AWS credentials are required for Bedrock. Either:
 1. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables
@@ -175,7 +184,7 @@ function validateBedrockConfig(config?: ProviderConfig): void {
 3. Configure AWS CLI with 'aws configure'
 4. Pass awsAccessKeyId/awsSecretAccessKey in config`)
   }
-  
+
   // Only warn about region if no profile is configured (profile can provide region)
   if (!hasRegion && !hasProfile) {
     logger.warn('No AWS region specified and no profile configured. Using default: us-east-1')
@@ -201,10 +210,10 @@ function getProviderType(modelName: string, config?: ProviderConfig): 'openai' |
     process.env.AWS_PROFILE ||
     process.env.AWS_REGION
   )
-  
+
   // Use unified model normalization to determine provider - prefer Bedrock if AWS available
   const modelInfo = normalizeModelName(modelName, hasAwsCredentials)
-  
+
   // Map unified provider types to legacy types
   switch (modelInfo.provider) {
     case 'bedrock-claude':
@@ -268,9 +277,9 @@ let cachedLitellmMetadata: { user?: string; tags?: string[] } | null = null
  * Set litellm metadata for cost tracking
  * In production, each agent is locked to a single site, so this is called once
  * and the values remain constant for the lifetime of the agent process
- * 
+ *
  * @param metadata - Object containing user (subscriptionId) and tags (customerId)
- * 
+ *
  * @example
  * ```typescript
  * // Called once when agent initializes
@@ -294,9 +303,9 @@ export function setLitellmMetadata(metadata: { user?: string; tags?: string[] } 
  * Create a fetch wrapper that injects current S2S token on every request
  * and handles token refresh on authentication errors
  * Also injects litellm_metadata for cost tracking when available
- * CRITICAL: Removes anthropic-beta header for GoCode proxy compatibility
+ * Optionally blocks specific anthropic-beta headers for proxy compatibility
  */
-function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { stripBetaHeaders?: boolean }): typeof fetch {
+function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blockedBetaHeaders?: string[] }): typeof fetch {
   return async (url: RequestInfo | URL, init?: RequestInit) => {
     // Convert to Headers instance for consistent API
     const headers = new Headers(init?.headers)
@@ -305,14 +314,7 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { stripB
     const currentToken = await getS2SToken(s2sAuthConfig)
     headers.set('Authorization', `Bearer ${currentToken}`)
 
-    // CRITICAL: Remove anthropic-beta header for GoCode proxy
-    // GoCode proxy does not support Anthropic's beta headers and will return 400 error
-    if (options?.stripBetaHeaders !== false) {
-      if (headers.has('anthropic-beta')) {
-        headers.delete('anthropic-beta')
-        logger.debug('Removed anthropic-beta header for GoCode proxy compatibility')
-      }
-    }
+    filterAnthropicBetaHeaders(headers, options?.blockedBetaHeaders)
 
     // Inject litellm_metadata into request body if available
     const modifiedInit = { ...init, headers }
@@ -359,24 +361,51 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { stripB
 
 
 /**
- * Create a fetch wrapper that strips beta headers for GoCode proxy compatibility
+ * Create a fetch wrapper that selectively blocks specific anthropic-beta headers for proxy compatibility
  * Used for non-S2S Anthropic API calls through GoCode proxy
  */
-function createBetaHeaderStripperFetch(): typeof fetch {
+function createSelectiveBetaHeaderFetch(blockedHeaders?: string[]): typeof fetch {
   return async (url: RequestInfo | URL, init?: RequestInit) => {
     // Convert to Headers instance for consistent API
     const headers = new Headers(init?.headers)
 
-    // CRITICAL: Remove anthropic-beta header for GoCode proxy
-    // GoCode proxy does not support Anthropic's beta headers and will return 400 error
-    if (headers.has('anthropic-beta')) {
-      headers.delete('anthropic-beta')
-      logger.debug('Removed anthropic-beta header for GoCode proxy compatibility')
-    }
+    filterAnthropicBetaHeaders(headers, blockedHeaders)
 
     // Make request with modified headers
     return await fetch(url, { ...init, headers })
   }
+}
+
+function filterAnthropicBetaHeaders(headers: Headers, blockedHeaders?: string[]) {
+  if (!blockedHeaders?.length || !headers.has('anthropic-beta')) {
+    return
+  }
+
+  const betaValue = headers.get('anthropic-beta')
+  if (!betaValue) {
+    return
+  }
+
+  const values = betaValue.split(',').map(v => v.trim())
+  const filteredValues = values.filter(value =>
+    !blockedHeaders.some(blocked => value.includes(blocked))
+  )
+
+  if (filteredValues.length === 0) {
+    headers.delete('anthropic-beta')
+  } else if (filteredValues.length !== values.length) {
+    headers.set('anthropic-beta', filteredValues.join(','))
+  }
+}
+
+function createAnthropicFetch(options: { useS2S: boolean; s2sAuthConfig?: S2SAuthConfig; blockedBetaHeaders: string[] }): typeof fetch {
+  if (options.useS2S) {
+    return createS2SFetchWrapper(options.s2sAuthConfig, {
+      blockedBetaHeaders: options.blockedBetaHeaders
+    })
+  }
+
+  return createSelectiveBetaHeaderFetch(options.blockedBetaHeaders)
 }
 
 /**
@@ -387,7 +416,7 @@ function createBetaHeaderStripperFetch(): typeof fetch {
 async function createOpenAIProvider(config?: ProviderConfig) {
   // Check if S2S authentication is enabled and get config
   const s2sConfig = await getS2SProviderConfig(config?.s2sAuth)
-  
+
   if (s2sConfig) {
     // Use S2S authentication with GoCode endpoint
     const openaiConfig: any = {
@@ -395,10 +424,10 @@ async function createOpenAIProvider(config?: ProviderConfig) {
       baseURL: s2sConfig.baseURL.endsWith('/v1') ? s2sConfig.baseURL : s2sConfig.baseURL + '/v1', // Ensure /v1 suffix
       fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token injection and refresh
     }
-    
+
     logger.info(`Using S2S authentication with GoCode endpoint: ${openaiConfig.baseURL}`)
     return createOpenAI(openaiConfig)
-    
+
   } else {
     // Use regular OpenAI authentication
     const fallbackApiKey = config?.openaiApiKey || process.env.OPENAI_API_KEY || ''
@@ -425,10 +454,10 @@ async function createBedrockProvider(config?: ProviderConfig) {
   // Only set region if explicitly provided
   // Let AWS SDK handle region resolution from profiles automatically
   const bedrockConfig: any = {}
-  
+
   const explicitRegion = config?.awsRegion || process.env.AWS_REGION
   const hasProfile = config?.awsProfile || process.env.AWS_PROFILE
-  
+
   if (explicitRegion) {
     // Use explicit region if provided
     bedrockConfig.region = explicitRegion
@@ -439,16 +468,16 @@ async function createBedrockProvider(config?: ProviderConfig) {
   }
   // If profile is configured but no explicit region, don't set region
   // Let AWS SDK resolve region from profile configuration
-  
+
   // Check if explicit credentials are provided
   const hasExplicitCredentials = (config?.awsAccessKeyId || process.env.AWS_ACCESS_KEY_ID) &&
                                 (config?.awsSecretAccessKey || process.env.AWS_SECRET_ACCESS_KEY)
-  
+
   if (hasExplicitCredentials) {
     // Use explicit credentials
     bedrockConfig.accessKeyId = config?.awsAccessKeyId || process.env.AWS_ACCESS_KEY_ID
     bedrockConfig.secretAccessKey = config?.awsSecretAccessKey || process.env.AWS_SECRET_ACCESS_KEY
-    
+
     if (config?.awsSessionToken || process.env.AWS_SESSION_TOKEN) {
       bedrockConfig.sessionToken = config?.awsSessionToken || process.env.AWS_SESSION_TOKEN
     }
@@ -456,23 +485,23 @@ async function createBedrockProvider(config?: ProviderConfig) {
     // Use AWS credential provider chain (supports profiles, IAM roles, etc.)
     try {
       const { fromNodeProviderChain } = await import('@aws-sdk/credential-providers')
-      
+
       const credentialOptions: any = {}
-      
+
       // Add profile if specified
       const profile = config?.awsProfile || process.env.AWS_PROFILE
       if (profile) {
         credentialOptions.profile = profile
       }
-      
+
       // Resolve credentials immediately to validate they work
       const credentialProvider = fromNodeProviderChain(credentialOptions)
       const resolvedCredentials = await credentialProvider()
-      
+
       // Set the resolved credentials
       bedrockConfig.accessKeyId = resolvedCredentials.accessKeyId
       bedrockConfig.secretAccessKey = resolvedCredentials.secretAccessKey
-     
+
       if (resolvedCredentials.sessionToken) {
         bedrockConfig.sessionToken = resolvedCredentials.sessionToken
       }
@@ -483,35 +512,35 @@ async function createBedrockProvider(config?: ProviderConfig) {
       throw new Error(`Failed to resolve AWS credentials: ${credentialError instanceof Error ? credentialError.message : String(credentialError)}`)
     }
   }
-  
+
   return createAmazonBedrock(bedrockConfig)
 }
 
 /**
  * Unified model provider function
- * 
+ *
  * @param modelName - Short model name or full model identifier
  * @param config - Optional configuration overrides
  * @returns Language model instance
- * 
+ *
  * @example
  * ```typescript
  * // OpenAI models (with proxy support)
  * const gpt4 = await getModel('gpt4o')
- * const gpt4WithProxy = await getModel('gpt4o', { 
- *   openaiBaseUrl: 'https://proxy.example.com' 
+ * const gpt4WithProxy = await getModel('gpt4o', {
+ *   openaiBaseUrl: 'https://proxy.example.com'
  * })
- * 
+ *
  * // Claude through OpenAI proxy (when AWS not configured)
  * // Automatically routes to proxy if OPENAI_BASE_URL is set and AWS credentials are not available
  * const claudeViaProxy = await getModel('claude4')  // Uses OpenAI proxy
- * 
+ *
  * // Bedrock models (when AWS is configured)
  * const claude = await getModel('claude4')  // Uses Bedrock when AWS credentials available
- * const claudeWithProfile = await getModel('sonnet4', { 
+ * const claudeWithProfile = await getModel('sonnet4', {
  *   awsProfile: 'my-profile'  // Region will come from profile
  * })
- * 
+ *
  * // Bedrock with explicit region
  * const claudeExplicit = await getModel('claude4', {
  *   awsRegion: 'us-west-2'
@@ -519,11 +548,11 @@ async function createBedrockProvider(config?: ProviderConfig) {
  * ```
  */
 export async function getModel(
-  modelName: string, 
+  modelName: string,
   config?: ProviderConfig
 ): Promise<LanguageModel> {
   const providerType = getProviderType(modelName, config)
-  
+
   try {
     if (providerType === 'openai') {
       // Validate OpenAI configuration
@@ -544,24 +573,24 @@ export async function getModel(
       // Create OpenAI provider
       const provider = await createOpenAIProvider(config)
       return provider(modelNameToUse)
-      
+
     } else if (providerType === 'bedrock') {
       // Validate Bedrock configuration
       validateBedrockConfig(config)
-      
+
       // Use Bedrock model mapping
       const fullModelName = MODEL_MAPPINGS[modelName as ModelShortName] || modelName
-      
+
       // Create Bedrock provider
       const provider = await createBedrockProvider(config)
       return provider(fullModelName)
     } else if (providerType === 'anthropic') {
       // Validate Anthropic configuration
       validateAnthropicConfig(config)
-      
+
       // Determine the model name to use
       let modelNameToUse: string
-      
+
       // Check if this is a Claude model that we're routing to Anthropic
       if (modelName in CLAUDE_PROXY_MODELS) {
         // Use Claude proxy model name for Anthropic API
@@ -571,11 +600,11 @@ export async function getModel(
         // Use regular model mapping
         modelNameToUse = MODEL_MAPPINGS[modelName as ModelShortName] || modelName
       }
-      
+
       // Create Anthropic provider
       const provider = await createAnthropicProvider(config)
       return provider(modelNameToUse)
-      
+
     } else {
       throw new Error(`Unsupported provider type: ${providerType}`)
     }
@@ -610,7 +639,7 @@ export function getFullModelName(shortName: string): string {
  */
 export function validateModelEnvironment(modelName: string, config?: ProviderConfig): boolean {
   const providerType = getProviderType(modelName, config)
-  
+
   try {
     if (providerType === 'openai') {
       validateOpenAIConfig(config)
@@ -634,7 +663,7 @@ function validateAnthropicConfig(config?: ProviderConfig): void {
   if (isS2SAuthEnabled()) {
     return;
   }
-  
+
   const apiKey = config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     throw new Error('Anthropic API key is required. Set ANTHROPIC_API_KEY environment variable or pass anthropicApiKey in config.')
@@ -647,19 +676,26 @@ function validateAnthropicConfig(config?: ProviderConfig): void {
  * Includes automatic token refresh on authentication failures
  */
 async function createAnthropicProvider(config?: ProviderConfig) {
+  const blockedAnthropicBetaHeaders = config?.blockedAnthropicBetaHeaders ?? DEFAULT_BLOCKED_ANTHROPIC_BETA_HEADERS
+
   // Check if S2S authentication is enabled and get config
   const s2sConfig = await getS2SProviderConfig(config?.s2sAuth)
+
+  const anthropicFetch = createAnthropicFetch({
+    useS2S: !!s2sConfig,
+    ...(config?.s2sAuth ? { s2sAuthConfig: config.s2sAuth } : {}),
+    blockedBetaHeaders: blockedAnthropicBetaHeaders
+  })
 
   if (s2sConfig) {
     // Use S2S authentication with GoCode endpoint
     const anthropicConfig: any = {
       apiKey: s2sConfig.apiKey, // Placeholder API key
       baseURL: s2sConfig.baseURL.endsWith('/v1') ? s2sConfig.baseURL : s2sConfig.baseURL + '/v1', // Ensure /v1 suffix
-      fetch: createS2SFetchWrapper(config?.s2sAuth, { stripBetaHeaders: true }) // Custom fetch with token injection, refresh, and beta header removal
+      fetch: anthropicFetch
     }
 
     logger.info(`Using S2S authentication with GoCode endpoint (Anthropic): ${anthropicConfig.baseURL}`)
-    logger.info('Beta headers will be stripped for GoCode proxy compatibility')
     return createAnthropic(anthropicConfig)
 
   } else {
@@ -677,10 +713,8 @@ async function createAnthropicProvider(config?: ProviderConfig) {
       anthropicConfig.baseURL = baseURL.endsWith('/v1') ? baseURL : baseURL + '/v1'
       logger.info(`Using Anthropic proxy endpoint: ${anthropicConfig.baseURL}`)
 
-      // CRITICAL: Use custom fetch to strip beta headers for GoCode proxy
-      // GoCode proxy does not support Anthropic's beta headers and will return 400 error
-      anthropicConfig.fetch = createBetaHeaderStripperFetch()
-      logger.info('Beta headers will be stripped for GoCode proxy compatibility')
+      // Use custom fetch to selectively block anthropic-beta headers for proxy compatibility
+      anthropicConfig.fetch = anthropicFetch
     }
 
     return createAnthropic(anthropicConfig)
@@ -694,11 +728,11 @@ async function createAnthropicProvider(config?: ProviderConfig) {
 export function getModelInfo(modelName: string, config?: ProviderConfig) {
   const providerType = getProviderType(modelName, config)
   const proxyType = getClaudeProxyType(modelName, config)
-  
+
   let fullModelName: string
   let usingProxy = false
   let proxyReason = ''
-  
+
   if (proxyType) {
     fullModelName = CLAUDE_PROXY_MODELS[modelName as keyof typeof CLAUDE_PROXY_MODELS]
     usingProxy = true
@@ -710,7 +744,7 @@ export function getModelInfo(modelName: string, config?: ProviderConfig) {
   } else {
     fullModelName = getFullModelNameFromNormalization(modelName)
   }
-  
+
   return {
     shortName: modelName,
     fullName: fullModelName,
@@ -739,19 +773,19 @@ type EmbeddingModelShortName = keyof typeof EMBEDDING_MODEL_MAPPINGS
 
 /**
  * Get an embedding model instance
- * 
+ *
  * @param modelName - Short model name or full model identifier
  * @param config - Optional configuration overrides
  * @returns Embedding model instance compatible with AI SDK
- * 
+ *
  * @example
  * ```typescript
  * // Get Titan embedding model (Bedrock)
  * const titanModel = await getEmbeddingModel('titan-embed-v2')
- * 
+ *
  * // Get OpenAI embedding model
  * const openaiModel = await getEmbeddingModel('text-embedding-3-small')
- * 
+ *
  * // Use with embeddings utility
  * import { generateEmbeddings } from '@airo/ai-lib'
  * const result = await generateEmbeddings(['text to embed'], titanModel)
@@ -762,7 +796,7 @@ export async function getEmbeddingModel(
   config?: ProviderConfig
 ): Promise<any> {
   const fullModelName = EMBEDDING_MODEL_MAPPINGS[modelName as EmbeddingModelShortName] || modelName
-  
+
   if (fullModelName.startsWith('amazon.') || fullModelName.startsWith('cohere.')) {
     validateBedrockConfig(config)
     const provider = await createBedrockProvider(config)

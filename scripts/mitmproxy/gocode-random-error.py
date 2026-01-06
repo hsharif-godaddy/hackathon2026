@@ -30,13 +30,13 @@ ERROR_SCENARIOS = {
 
     # Response corruption (handled in response phase - after proxy)
     'corrupt_content_length': {'probability': 0.0, 'enabled': True},
-    'invalid_json': {'probability': 0.2, 'enabled': True},
+    'invalid_json': {'probability': 0.0, 'enabled': True},
     'empty_200_response': {'probability': 0.0, 'enabled': True},
     'wrong_content_type': {'probability': 0.0, 'enabled': True},
     'truncate_response': {'probability': 0.0, 'enabled': True},
 
     # Streaming-specific errors (handled in responseheaders phase)
-    'drop_during_stream': {'probability': 0.25, 'enabled': True},
+    'drop_during_stream': {'probability': 0.0, 'enabled': True},
     'slow_stream_chunks': {'probability': 0.0, 'enabled': True, 'delay_seconds': 2},
 
     # Timing issues
