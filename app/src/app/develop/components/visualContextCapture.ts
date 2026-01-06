@@ -43,7 +43,7 @@ export interface VisualContext {
  */
 export async function captureVisualContext(): Promise<VisualContext | null> {
   const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
-  
+
   if (!iframe || !iframe.contentWindow) {
     return createFallbackContext()
   }
@@ -51,12 +51,20 @@ export async function captureVisualContext(): Promise<VisualContext | null> {
   try {
     const contextPromise = new Promise<VisualContext>((resolve) => {
       const timeout = setTimeout(() => {
+        console.warn('[VisualContext] Timeout: No response from iframe after 500ms - check VITE_PARENT_ORIGIN is set correctly')
         resolve(createFallbackContext())
-      }, 3000)
+      }, 500) // Reduced from 3s to 500ms - context is now cached in iframe
 
       const handleMessage = (event: MessageEvent) => {
-        if (event.source !== iframe.contentWindow || !isValidOrigin(event.origin)) return
-        
+        if (event.source !== iframe.contentWindow) {
+          return
+        }
+
+        if (!isValidOrigin(event.origin)) {
+          console.warn('[VisualContext] Message rejected: Invalid origin', event.origin)
+          return
+        }
+
         if (event.data.type === 'VISUAL_CONTEXT_RESPONSE') {
           clearTimeout(timeout)
           window.removeEventListener('message', handleMessage)
@@ -74,6 +82,7 @@ export async function captureVisualContext(): Promise<VisualContext | null> {
     return await contextPromise
 
   } catch (error) {
+    console.error('[VisualContext] Error:', error)
     return createFallbackContext()
   }
 }

@@ -174,6 +174,15 @@ export function useStreamingWebSocket() {
       isActionRequest?: boolean,
       customContext?: any
     ) => {
+      const hasContent = Boolean(content?.trim())
+      const { currentAppId: activeAppId } = useStreamingConversationStore.getState()
+
+      if (!hasContent || !activeAppId) {
+        return
+      }
+
+      setIsLoading(true)
+
       // Capture visual context from iframe (with error handling)
       let visualContext: ReturnType<typeof captureVisualContext> extends Promise<infer T> ? T : never = null
       try {
@@ -185,17 +194,24 @@ export function useStreamingWebSocket() {
         })
       }
 
-      await controller.sendMessage({
-        content,
-        visualContext,
-        aiEditContext,
-        selectedAsset,
-        todoListContext,
-        isActionRequest,
-        customContext,
-      })
+      try {
+        await controller.sendMessage({
+          content,
+          visualContext,
+          aiEditContext,
+          selectedAsset,
+          todoListContext,
+          isActionRequest,
+          customContext,
+        })
+      } catch (error) {
+        logger.error('websocket.send_message.invoke_failed', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+        setIsLoading(false)
+      }
     },
-    [controller]
+    [controller, setIsLoading]
   )
 
   return {

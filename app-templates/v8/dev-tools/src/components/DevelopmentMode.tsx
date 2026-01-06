@@ -32,6 +32,34 @@ export default function DevelopmentMode() {
     let sectionsObserver: IntersectionObserver | null = null
     let isScriptReady = false
 
+    // Cached visual context for instant responses
+    let cachedContext = {
+      page: window.location.pathname + window.location.search,
+      scroll_position: { x: 0, y: 0 },
+      active_section: 'unknown',
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      timestamp: Date.now(),
+      script_ready: false
+    }
+
+    // Update cached context
+    const updateCachedContext = () => {
+      cachedContext = {
+        page: window.location.pathname + window.location.search,
+        scroll_position: {
+          x: window.scrollX || window.pageXOffset || 0,
+          y: window.scrollY || window.pageYOffset || 0
+        },
+        active_section: activeSection,
+        viewport: {
+          width: window.innerWidth,
+          height: window.innerHeight
+        },
+        timestamp: Date.now(),
+        script_ready: isScriptReady
+      }
+    }
+
     // Set up intersection observer for section detection
     function setupSectionObserver() {
       try {
@@ -76,6 +104,7 @@ export default function DevelopmentMode() {
 
             if (sectionName && sectionName !== activeSection) {
               activeSection = sectionName
+              updateCachedContext()
             }
           }
         }, {
@@ -85,11 +114,33 @@ export default function DevelopmentMode() {
 
         sections.forEach(section => sectionsObserver?.observe(section))
         isScriptReady = true
+        updateCachedContext()
 
       } catch (error) {
         activeSection = 'content'
         isScriptReady = true
+        updateCachedContext()
       }
+    }
+
+    // Update cache on scroll (throttled to avoid performance issues)
+    let scrollTimeout: ReturnType<typeof setTimeout> | null = null
+    const handleScroll = () => {
+      if (scrollTimeout) return
+      scrollTimeout = setTimeout(() => {
+        updateCachedContext()
+        scrollTimeout = null
+      }, 150) // Throttle to every 150ms
+    }
+
+    // Update cache on resize
+    let resizeTimeout: ReturnType<typeof setTimeout> | null = null
+    const handleResize = () => {
+      if (resizeTimeout) return
+      resizeTimeout = setTimeout(() => {
+        updateCachedContext()
+        resizeTimeout = null
+      }, 150)
     }
 
     // Initialize when DOM is ready
@@ -99,11 +150,16 @@ export default function DevelopmentMode() {
       setupSectionObserver()
     }
 
+    // Listen for scroll and resize to keep cache fresh
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    window.addEventListener('resize', handleResize)
+
     // Listen for visual context requests from parent window
     const handleMessage = (event: MessageEvent) => {
       try {
         // Validate origin for security
         if (!isOriginAllowed(event)) {
+          console.warn('[DevTools] Message rejected - origin not allowed:', event.origin, 'VITE_PARENT_ORIGIN:', import.meta.env.VITE_PARENT_ORIGIN)
           return
         }
 
@@ -144,26 +200,14 @@ export default function DevelopmentMode() {
             }, 100)
           }
         } else if (event.data && event.data.type === 'REQUEST_VISUAL_CONTEXT') {
-          const context = {
-            page: window.location.pathname + window.location.search,
-            scroll_position: {
-              x: window.scrollX || window.pageXOffset || 0,
-              y: window.scrollY || window.pageYOffset || 0
-            },
-            active_section: activeSection,
-            viewport: {
-              width: window.innerWidth,
-              height: window.innerHeight
-            },
-            timestamp: Date.now(),
-            script_ready: isScriptReady
-          }
+          // Update cache one final time to ensure freshness, then send immediately
+          updateCachedContext()
 
-          // Send response back to parent
+          // Send cached response back to parent (near-instant response)
           if (window.parent !== window) {
             safePostMessage(window.parent, {
               type: 'VISUAL_CONTEXT_RESPONSE',
-              context: context
+              context: cachedContext
             })
           }
         } else if (event.data && event.data.type === 'REQUEST_SCREENSHOT') {
@@ -212,6 +256,10 @@ export default function DevelopmentMode() {
         sectionsObserver.disconnect()
       }
       window.removeEventListener('message', handleMessage)
+      window.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('resize', handleResize)
+      if (scrollTimeout) clearTimeout(scrollTimeout)
+      if (resizeTimeout) clearTimeout(resizeTimeout)
     }
   }, [])
 

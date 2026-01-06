@@ -70,5 +70,6 @@ export function postMessageToIframe(iframe: HTMLIFrameElement, message: any): vo
     return
   }
 
-  iframe.contentWindow.postMessage(message, getTargetOrigin())
+  const targetOrigin = getTargetOrigin()
+  iframe.contentWindow.postMessage(message, targetOrigin)
 }

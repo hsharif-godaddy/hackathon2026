@@ -83,6 +83,9 @@ export class DockerComposeGenerator {
 			"http://localhost:3000"
 		].join(",");
 
+		// Parent origin for postMessage communication (iframe security)
+		env.VITE_PARENT_ORIGIN = process.env.NEXT_PUBLIC_APP_URL || "https://local.gasket.dev-godaddy.com:8443";
+
 		// GoDaddy API base URL (if configured)
 		if (process.env.GODADDY_API_BASE_URL) {
 			env.GODADDY_API_BASE_URL = process.env.GODADDY_API_BASE_URL;

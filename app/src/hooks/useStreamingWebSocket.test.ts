@@ -5,6 +5,8 @@ const mockSetWebSocketState = vi.fn()
 const mockSetError = vi.fn()
 const mockMarkUpstreamErrorAction = vi.fn()
 
+const mockSetIsLoadingAction = vi.fn()
+
 const createStreamingStoreState = () => ({
   streamingState: 'idle',
   activeStream: null,
@@ -25,7 +27,7 @@ const createStreamingStoreState = () => ({
   checkStaleRetry: vi.fn(() => false),
   setWebSocketState: mockSetWebSocketState,  // Use shared mock for assertions
   setStreamingState: vi.fn(),
-  setIsLoading: vi.fn(),
+  setIsLoading: mockSetIsLoadingAction,
   markUpstreamError: mockMarkUpstreamErrorAction,
   finalizeStream: vi.fn(),
   // Phase 3 additions - machine/adapter integration
@@ -168,7 +170,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useFinalizeStream: vi.fn(() => vi.fn()),
   useSetWebSocketState: vi.fn(() => mockSetWebSocketState),
   useSetStreamingState: vi.fn(() => vi.fn()),
-  useSetIsLoading: vi.fn(() => vi.fn()),
+  useSetIsLoading: vi.fn(() => mockSetIsLoadingAction),
   useStreamingConversationStore: {
     getState: vi.fn(() => streamingStoreState),
     setState: vi.fn(),
@@ -232,6 +234,7 @@ describe('useStreamingWebSocket', () => {
   beforeEach(() => {
     streamingStoreState = createStreamingStoreState()
     vi.clearAllMocks();
+    mockSetIsLoadingAction.mockReset();
     mockSockets.length = 0;
     sessionStorage.clear();
     mockSetWebSocketState.mockReset();
@@ -286,6 +289,7 @@ describe('useStreamingWebSocket', () => {
       const { useCurrentAppId } = await import('@/stores/useStreamingConversationStore');
 
       vi.mocked(useCurrentAppId).mockReturnValue('test-app-123');
+      streamingStoreState.currentAppId = 'test-app-123';
 
       const { result } = renderHook(() => useStreamingWebSocket());
 
@@ -298,6 +302,7 @@ describe('useStreamingWebSocket', () => {
 
       // Verify no state changes occurred for empty messages
       expect(result.current.webSocketState).toBeDefined();
+      expect(mockSetIsLoadingAction).not.toHaveBeenCalled();
     });
 
     it('should require appId to send messages', async () => {
@@ -313,6 +318,39 @@ describe('useStreamingWebSocket', () => {
 
       // Should not proceed without appId
       expect(result.current.webSocketState).toBeDefined();
+      expect(mockSetIsLoadingAction).not.toHaveBeenCalled();
+    });
+
+    it('should optimistically set loading state before async work', async () => {
+      vi.useFakeTimers();
+      const { hook } = await setupWebSocketWithApp('test-app-optimistic');
+
+      await act(async () => {
+        await hook.result.current.sendMessage('Test message');
+      });
+
+      expect(mockSetIsLoadingAction).toHaveBeenCalledWith(true);
+      vi.useRealTimers();
+    });
+
+    it('should reset loading state when controller.sendMessage throws synchronously', async () => {
+      vi.useFakeTimers();
+      const { StreamingWebSocketController } = await import('@/services/websocket/StreamingWebSocketController');
+      const controllerSpy = vi.spyOn(StreamingWebSocketController.prototype, 'sendMessage').mockImplementationOnce(() => {
+        throw new Error('sync failure');
+      });
+
+      const { hook } = await setupWebSocketWithApp('test-app-sync-error');
+
+      await act(async () => {
+        await hook.result.current.sendMessage('Trigger failure');
+      });
+
+      expect(mockSetIsLoadingAction).toHaveBeenCalledWith(true);
+      expect(mockSetIsLoadingAction).toHaveBeenCalledWith(false);
+
+      controllerSpy.mockRestore();
+      vi.useRealTimers();
     });
   });
 
