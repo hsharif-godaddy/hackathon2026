@@ -24,7 +24,6 @@ export interface FileEditOptions {
   edits?: Array<{
     old: string;
     new: string;
-    replaceAll?: boolean;
   }>;
   /** Full content for rewrite or create operations */
   content?: string;
@@ -77,7 +76,6 @@ export interface FileBatchEditOptions {
     edits?: Array<{
       old: string;
       new: string;
-      replaceAll?: boolean;
     }>;
     /** Full content for rewrite or create operations */
     content?: string;
@@ -92,8 +90,6 @@ export interface FileBatchEditOptions {
   autoCommit?: boolean;
   /** Custom commit message for auto-commit (if not provided, a default message will be generated) */
   commitMessage?: string;
-  /** Continue executing operations even if some fail (default: false = stop on first error) */
-  continueOnError?: boolean;
 }
 
 /**
@@ -339,12 +335,7 @@ export class FileEditTool {
               ...(context?.appId && { appId: context.appId }),
             });
 
-            // Check continueOnError flag
-            if (!options.continueOnError) {
-              break; // Fail-fast (current behavior)
-            }
-            // Otherwise, continue to next operation
-            continue;
+            break; // Fail-fast
           }
         }
 
@@ -420,11 +411,7 @@ export class FileEditTool {
             ...(context?.appId && { appId: context.appId }),
           });
 
-          // Check continueOnError flag
-          if (!options.continueOnError) {
-            break; // Fail-fast (current behavior)
-          }
-          // Otherwise, continue to next operation
+          break; // Fail-fast
         }
       } catch (error) {
         // Handle unexpected errors
@@ -446,31 +433,8 @@ export class FileEditTool {
           ...(context?.appId && { appId: context.appId }),
         });
 
-        // Check continueOnError flag
-        if (!options.continueOnError) {
-          break; // Fail-fast (current behavior)
-        }
-        // Otherwise, continue to next operation
+        break; // Fail-fast
       }
-    }
-
-    // Update final success determination
-    if (options.continueOnError) {
-      // Success if at least one operation completed
-      result.success = result.completedOperations > 0;
-
-      // Build detailed error message for partial success
-      if (result.completedOperations < result.totalOperations) {
-        const succeeded = result.results.filter(r => r.success);
-        const failed = result.results.filter(r => !r.success);
-
-        result.error = `Partial success: ${succeeded.length}/${result.totalOperations} operations completed\n\n` +
-          `Failed operations:\n${failed.map(f => `- ${f.path}: ${f.error}`).join('\n')}\n\n` +
-          `Successful operations:\n${succeeded.map(s => `- ${s.path}`).join('\n')}`;
-      }
-    } else {
-      // Success only if all operations completed (current behavior)
-      result.success = result.completedOperations === result.totalOperations;
     }
 
     // Batch git commit if enabled and we have completed operations
@@ -589,12 +553,7 @@ export class FileEditTool {
       }
 
       // Generate commit message if not provided
-      let commitMessage = customMessage || this.generateBatchCommitMessage(result);
-
-      // Append partial success indicator if continueOnError was used and not all operations succeeded
-      if (!customMessage && result.completedOperations < result.totalOperations) {
-        commitMessage += ` (${result.completedOperations}/${result.totalOperations} operations)`;
-      }
+      const commitMessage = customMessage || this.generateBatchCommitMessage(result);
 
       // Commit the changes
       const commitResult = await gitTool.executeGitOperation(appPath, {
@@ -1017,10 +976,10 @@ export class FileEditTool {
     const originalContent = content;
 
     // Apply edits
-    const failedEdits: Array<{ oldText: string; error: string }> = [];
+    const failedEdits: string[] = [];
     for (const edit of options.edits) {
       if (!edit.old || edit.old === undefined) {
-        failedEdits.push({ oldText: 'Invalid edit', error: "missing 'old' value" });
+        failedEdits.push(`Failed: Invalid edit - missing 'old' value`);
         continue;
       }
 
@@ -1028,9 +987,7 @@ export class FileEditTool {
       if (result.success) {
         content = result.content;
       } else {
-        const truncatedOld = edit.old.substring(0, EDIT_RESULT_TRUNCATION_LENGTH) +
-          (edit.old.length > EDIT_RESULT_TRUNCATION_LENGTH ? '...' : '');
-        failedEdits.push({ oldText: truncatedOld, error: result.error || 'Unknown error' });
+        failedEdits.push(`Failed: ${edit.old.substring(0, EDIT_RESULT_TRUNCATION_LENGTH)}${edit.old.length > EDIT_RESULT_TRUNCATION_LENGTH ? '...' : ''} - ${result.error}`);
       }
     }
 
@@ -1052,20 +1009,12 @@ export class FileEditTool {
         ...(context?.appId && { appId: context.appId }),
       });
 
-      // Use specific error from first failed edit if available
-      let errorMessage = 'No changes were applied. Check that search text exists in the file.';
-      if (failedEdits.length > 0 && failedEdits[0]) {
-        errorMessage = failedEdits[0].error;
-      }
-
       return {
         success: false,
         path: options.path,
         mode: 'edit',
-        error: errorMessage,
-        ...(failedEdits.length > 0 && {
-          warning: failedEdits.map(f => `Failed: ${f.oldText} - ${f.error}`).join('\n')
-        }),
+        error: 'No changes were applied. Check that search text exists in the file.',
+        ...(failedEdits.length > 0 && { warning: failedEdits.join('\n') }),
       };
     }
 
@@ -1155,7 +1104,7 @@ export class FileEditTool {
   /**
    * Apply a single edit operation
    */
-  private applyEdit(content: string, edit: { old: string; new: string; replaceAll?: boolean }, fuzzyMatch: boolean): { success: boolean; content: string; error?: string } {
+  private applyEdit(content: string, edit: { old: string; new: string }, fuzzyMatch: boolean): { success: boolean; content: string; error?: string } {
     // Check if old and new text are identical
     if (edit.old === edit.new) {
       // Check if the text exists in the file
@@ -1176,75 +1125,20 @@ export class FileEditTool {
 
     // Try exact match first
     if (content.includes(edit.old)) {
-      if (edit.replaceAll) {
-        // Global replacement
-        return {
-          success: true,
-          content: content.replaceAll(edit.old, edit.new),
-        };
-      } else {
-        // Check for multiple occurrences
-        const occurrences = this.countOccurrences(content, edit.old);
-        if (occurrences > 1) {
-          return {
-            success: false,
-            content,
-            error: `Text appears ${occurrences} times in the file. Either:\n1. Set replaceAll: true to replace all occurrences, or\n2. Provide more surrounding context to make the match unique`,
-          };
-        }
-
-        // Single occurrence - replace it
-        return {
-          success: true,
-          content: content.replace(edit.old, edit.new),
-        };
-      }
+      return {
+        success: true,
+        content: content.replace(edit.old, edit.new),
+      };
     }
 
     // Try fuzzy matching if enabled
     if (fuzzyMatch) {
-      const fuzzyMatches = this.fuzzySearchAll(content, edit.old);
-      if (fuzzyMatches.length > 0) {
-        if (edit.replaceAll) {
-          // Replace all fuzzy matches
-          let modifiedContent = content;
-          // Replace from end to start to maintain correct positions
-          for (let i = fuzzyMatches.length - 1; i >= 0; i--) {
-            const match = fuzzyMatches[i];
-            if (!match) continue;
-            modifiedContent =
-              modifiedContent.substring(0, match.start) +
-              edit.new +
-              modifiedContent.substring(match.end);
-          }
-          return {
-            success: true,
-            content: modifiedContent,
-          };
-        } else {
-          // Check for multiple fuzzy matches
-          if (fuzzyMatches.length > 1) {
-            return {
-              success: false,
-              content,
-              error: `Text appears ${fuzzyMatches.length} times in the file (with whitespace differences). Either:\n1. Set replaceAll: true to replace all occurrences, or\n2. Provide more surrounding context to make the match unique`,
-            };
-          }
-
-          // Single fuzzy match - replace it
-          const match = fuzzyMatches[0];
-          if (!match) {
-            return {
-              success: false,
-              content,
-              error: 'Search text not found',
-            };
-          }
-          return {
-            success: true,
-            content: content.substring(0, match.start) + edit.new + content.substring(match.end),
-          };
-        }
+      const fuzzyResult = this.fuzzySearch(content, edit.old);
+      if (fuzzyResult.found) {
+        return {
+          success: true,
+          content: content.replace(fuzzyResult.match, edit.new),
+        };
       }
     }
 
@@ -1253,14 +1147,6 @@ export class FileEditTool {
       content,
       error: 'Search text not found',
     };
-  }
-
-  /**
-   * Count occurrences of search text in content
-   */
-  private countOccurrences(content: string, searchText: string): number {
-    if (searchText === '') return 0;
-    return content.split(searchText).length - 1;
   }
 
   /**
@@ -1286,47 +1172,6 @@ export class FileEditTool {
     }
 
     return { found: false, match: '' };
-  }
-
-  /**
-   * Find all fuzzy matches with their positions
-   * Returns array of matches with start and end positions in the content string
-   */
-  private fuzzySearchAll(content: string, searchText: string): Array<{ start: number; end: number; match: string }> {
-    const matches: Array<{ start: number; end: number; match: string }> = [];
-    const lines = content.split('\n');
-    const searchLines = searchText.split('\n');
-
-    // Simple fuzzy matching: ignore leading/trailing whitespace
-    const normalizedSearch = searchLines.map(line => line.trim()).join('\n');
-
-    for (let i = 0; i <= lines.length - searchLines.length; i++) {
-      const candidateLines = lines.slice(i, i + searchLines.length);
-      const normalizedCandidate = candidateLines.map(line => line.trim()).join('\n');
-
-      if (normalizedCandidate === normalizedSearch) {
-        // Calculate start position (sum of all previous lines + newlines)
-        let start = 0;
-        for (let j = 0; j < i; j++) {
-          const line = lines[j];
-          if (line !== undefined) {
-            start += line.length + 1; // +1 for newline
-          }
-        }
-
-        // Calculate end position
-        const matchText = candidateLines.join('\n');
-        const end = start + matchText.length;
-
-        matches.push({
-          start,
-          end,
-          match: matchText,
-        });
-      }
-    }
-
-    return matches;
   }
 
 

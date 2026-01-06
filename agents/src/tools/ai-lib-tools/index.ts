@@ -6,7 +6,7 @@
 import type { Tool } from '@airo/ai-lib';
 
 // Import all individual tools
-export { fileEdit } from './file-edit.js';
+export { fileEditAITool } from './file-edit.js';
 export { directoryListingAITool } from './directory-listing.js';
 export { terminalCommandAITool } from './terminal-command.js';
 export { readFileAITool } from './read-file.js';
@@ -50,7 +50,7 @@ export { skillAITool } from './skill-loader.js';
 export { websiteScraperAITool } from './website-scraper.js';
 
 // Re-import for registry
-import { fileEdit } from './file-edit.js';
+import { fileEditAITool } from './file-edit.js';
 import { directoryListingAITool } from './directory-listing.js';
 import { terminalCommandAITool } from './terminal-command.js';
 import { readFileAITool } from './read-file.js';
@@ -97,7 +97,7 @@ import { websiteScraperAITool } from './website-scraper.js';
  * Use this for agents that need access to all tools
  */
 export const allAILibTools: Record<string, Tool> = {
-  fileEdit: fileEdit,
+  fileEdit: fileEditAITool,
   directoryListing: directoryListingAITool,
   terminalCommand: terminalCommandAITool,
   readFile: readFileAITool,
@@ -143,7 +143,7 @@ export const allAILibTools: Record<string, Tool> = {
 export const toolGroups: Record<string, Record<string, Tool>> = {
   // Core development tools
   core: {
-    fileEdit: fileEdit,
+    fileEdit: fileEditAITool,
     directoryListing: directoryListingAITool,
     readFile: readFileAITool,
     grepSearch: grepSearchAITool,
