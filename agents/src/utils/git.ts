@@ -127,15 +127,25 @@ export class GitUtils {
     let ahead = 0;
     let behind = 0;
     try {
-      const trackingResult = await this.executeGitCommand(
-        ['rev-list', '--left-right', '--count', `${branch}...origin/${branch}`],
+      // First check if remote tracking branch exists
+      const remoteCheckResult = await this.executeGitCommand(
+        ['rev-parse', '--verify', '--quiet', `origin/${branch}`],
         repoPath,
         options
       );
-      if (trackingResult.success && trackingResult.stdout.trim()) {
-        const [behindStr, aheadStr] = trackingResult.stdout.trim().split('\t');
-        ahead = parseInt(aheadStr || '0') || 0;
-        behind = parseInt(behindStr || '0') || 0;
+      
+      // Only attempt comparison if remote branch exists
+      if (remoteCheckResult.success) {
+        const trackingResult = await this.executeGitCommand(
+          ['rev-list', '--left-right', '--count', `${branch}...origin/${branch}`],
+          repoPath,
+          options
+        );
+        if (trackingResult.success && trackingResult.stdout.trim()) {
+          const [behindStr, aheadStr] = trackingResult.stdout.trim().split('\t');
+          ahead = parseInt(aheadStr || '0') || 0;
+          behind = parseInt(behindStr || '0') || 0;
+        }
       }
     } catch {
       // Remote tracking might not be set up
