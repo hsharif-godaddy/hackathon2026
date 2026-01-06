@@ -44,6 +44,7 @@ export { oauthConnect } from './oauth-tool.js';
 export { socialConnect } from './social-connect.js';
 export { socialStatus } from './social-status.js';
 export { socialPostCreateAITool } from './social-post-create.js';
+export { colorSchemeAITool } from './color-scheme.js';
 
 export { skillAITool } from './skill-loader.js';
 export { websiteScraperAITool } from './website-scraper.js';
@@ -87,6 +88,7 @@ import { oauthConnect } from './oauth-tool.js';
 import { socialConnect } from './social-connect.js';
 import { socialStatus } from './social-status.js';
 import { socialPostCreateAITool } from './social-post-create.js';
+import { colorSchemeAITool } from './color-scheme.js';
 import { skillAITool } from './skill-loader.js';
 import { websiteScraperAITool } from './website-scraper.js';
 
@@ -115,6 +117,7 @@ export const allAILibTools: Record<string, Tool> = {
   ragSearch: ragSearchAITool,
   knowBSearch: knowBSearchAITool,
   widgetRender: widgetRenderAITool,
+  colorScheme: colorSchemeAITool,
   cssColor: cssColorAITool,
   cssSuggest: cssSuggestAITool,
   suggestedResponse: suggestedResponseAITool,

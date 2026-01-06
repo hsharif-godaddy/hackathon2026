@@ -15,13 +15,11 @@ import {
 } from '@airo/ai-lib'
 import {
   createDevelopAgent,
-  createColorSchemeAgent,
   createMarketingAgent,
   createInitialAgent,
   createCommerceAgent,
   createExampleAgent,
   DevelopAgent,
-  ColorSchemeAgent,
   MarketingAgent,
   CommerceAgent,
   ExampleAgent
@@ -62,7 +60,6 @@ export async function createUnifiedAgentFactory(options?: {
   })
 
   const developConfig = await createDevelopAgent()
-  const colorSchemeConfig = await createColorSchemeAgent()
   const marketingConfig = await createMarketingAgent()
   const initialConfig = await createInitialAgent(stateManager)
 
@@ -78,12 +75,6 @@ export async function createUnifiedAgentFactory(options?: {
     stateManager
   })
 
-  const colorSchemeHandoffTool = createHandoffTool({
-    sourceAgentId: 'color-scheme',
-    validTargets: (colorSchemeConfig.handoffs || []).map(h => h.agentName),
-    stateManager
-  })
-
   const endConversationTool = createEndConversationTool({
     stateManager,
     defaultAgentId: 'develop'
@@ -96,14 +87,6 @@ export async function createUnifiedAgentFactory(options?: {
   }
   // Stop execution after handoff or suggestedResponse tool is called
   developConfig.stopAfterTools = ['handoff', 'suggestedResponse']
-
-  colorSchemeConfig.tools = {
-    ...(colorSchemeConfig.tools || {}),
-    handoff: colorSchemeHandoffTool,
-    end_conversation: endConversationTool
-  }
-  // Stop execution after handoff, end_conversation, suggestedResponse, or cssSuggest tool is called
-  colorSchemeConfig.stopAfterTools = ['handoff', 'end_conversation', 'suggestedResponse', 'cssSuggest']
 
   const marketingHandoffTool = createHandoffTool({
     sourceAgentId: 'marketing',
@@ -122,7 +105,6 @@ export async function createUnifiedAgentFactory(options?: {
   const agentDefinitions: Record<string, AgentConfig> = {
     initial: initialConfig,
     develop: developConfig,
-    'color-scheme': colorSchemeConfig,
     marketing: marketingConfig,
   }
 
@@ -156,11 +138,6 @@ export async function createUnifiedAgentFactory(options?: {
 export const aiLibAgentFactories = {
   develop: async (_context?: EnhancedAgentContext) => {
     const agent = new DevelopAgent()
-    await agent.initialize()
-    return agent.getAgent()
-  },
-  'color-scheme': async (_context?: EnhancedAgentContext) => {
-    const agent = new ColorSchemeAgent()
     await agent.initialize()
     return agent.getAgent()
   },
@@ -208,14 +185,6 @@ export const aiLibAgentMetadata: Record<string, AILibAgentMetadata> = {
     version: '2.0.0',
     tags: ['example', 'demo', 'testing'],
     toolGroups: ['core'],
-  },
-  'color-scheme': {
-    id: 'color-scheme',
-    name: 'Color Scheme Designer',
-    description: 'Interactive color palette designer that helps users create beautiful, accessible color schemes through guided discovery and visual selection.',
-    version: '2.0.0',
-    tags: ['design', 'color', 'ui', 'themes', 'accessibility'],
-    toolGroups: ['core', 'planning', 'design'],
   },
   marketing: {
     id: 'marketing',

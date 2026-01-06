@@ -126,6 +126,7 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     .file(paths.getAgentFile('develop', 'skills.md')) // CRITICAL: Load skills system immediately after core
     .file(paths.getSharedFile('communication.md')) // CRITICAL: Load communication style EARLY
     .file(paths.getSharedFile('filesystem.md'))
+    .file(paths.getAgentFile('develop', 'color-scheme.md')) // Color scheme tool documentation
     .file(paths.getAgentFile('develop', 'handoff.md')) // Agent handoff rules (always available agents)
     .file(paths.getAgentFile('develop', 'backend.md'))
 
@@ -162,6 +163,40 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
 }
 
 /**
+ * Custom stop condition: Stop after colorScheme tool with mode='suggest'
+ * This prevents the agent from outputting text after showing color palette options
+ */
+function shouldStopAfterColorSchemeSuggest(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return false
+  
+  const stepResult = result as any
+  
+  // The result has a 'steps' array, we need to check the last step
+  if (!stepResult.steps || !Array.isArray(stepResult.steps) || stepResult.steps.length === 0) {
+    return false
+  }
+  
+  const lastStep = stepResult.steps[stepResult.steps.length - 1]
+  if (!lastStep.content || !Array.isArray(lastStep.content)) return false
+  // Check if any tool call in this step is colorScheme with mode='suggest'
+  for (const item of lastStep.content) {
+    if (item.type === 'tool-call' && item.toolName === 'colorScheme') {
+      // Check if the args have mode: 'suggest'
+      const args = item.input as any
+      if (args && args.mode === 'suggest') {
+        logger.info('develop_agent.stop.color_scheme_suggest', {
+          toolCallId: item.toolCallId,
+          message: 'Stopping after colorScheme suggest mode to prevent text output'
+        })
+        return true
+      }
+    }
+  }
+  
+  return false
+}
+
+/**
  * Create the Develop Agent configuration
  */
 export async function createDevelopAgent(options?: { appPath?: string }): Promise<AgentConfig> {
@@ -195,8 +230,10 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
 
       // Specialized development tools
       mediaSearch: allAILibTools.mediaSearch,
-      imageGenerate: allAILibTools.imageGenerate,
       websiteScraper: allAILibTools.websiteScraper,
+
+      // Color scheme tool
+      colorScheme: allAILibTools.colorScheme,
 
       // Widget rendering
       //widgetRender: allAILibTools.widgetRender,
@@ -216,10 +253,6 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     // Handoff configuration (conditionally include commerce agent based on feature flags)
     handoffs: [
       {
-        agentName: 'color-scheme',
-        description: 'Color palette design and visual branding for applications',
-      },
-      {
         agentName: 'marketing',
         description: 'SEO optimization and marketing strategy for websites',
       },
@@ -232,6 +265,9 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     maxSteps: 100,
     temperature: 0.3,
     maxOutputTokens: 16000,
+
+    // Custom stop conditions
+    stopWhen: [shouldStopAfterColorSchemeSuggest],
 
     metadata: {
       contextPreferences: {

@@ -7,6 +7,7 @@
  * Tools not in the registry will use the DefaultToolRenderer.
  */
 
+import ColorSchemeToolRenderer from './ColorSchemeToolRenderer'
 import CssColorToolRenderer from './CssColorToolRenderer'
 import CssSuggestToolRenderer from './CssSuggestToolRenderer'
 import DefaultToolRenderer, { type DefaultToolRendererProps } from './DefaultToolRenderer'
@@ -40,6 +41,7 @@ export type ToolRendererProps = DefaultToolRendererProps
  *   'image_search': ImageSearchToolRenderer,
  */
 export const toolRendererRegistry = {
+  colorScheme: ColorSchemeToolRenderer,
   cssColor: CssColorToolRenderer,
   cssSuggest: CssSuggestToolRenderer,
   socialPostCreate: SocialPostCreateToolRenderer,
@@ -91,6 +93,7 @@ export function getToolRenderer(toolName: string) {
  * Export tool renderer components
  */
 export {
+  ColorSchemeToolRenderer,
   CssColorToolRenderer,
   CssSuggestToolRenderer,
   DefaultToolRenderer,
