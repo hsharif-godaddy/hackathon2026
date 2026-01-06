@@ -3,6 +3,13 @@
 # fail immediately if anything fails
 set -e
 
+# Unified job mode: select preview config and remove publish config for security
+if [ -f "${NOMAD_ALLOC_DIR}/preview-config.json" ]; then
+    mv "${NOMAD_ALLOC_DIR}/preview-config.json" "${NOMAD_ALLOC_DIR}/config.json"
+    rm -f "${NOMAD_ALLOC_DIR}/publish-config.json"
+    echo "Configured secrets at ${NOMAD_ALLOC_DIR}/config.json"
+fi
+
 # add the customer app directory to the git safe directory
 git config --global --add safe.directory "${CUSTOMER_APP_DIR}"
 git config --global user.name "Airo AI Builder"
