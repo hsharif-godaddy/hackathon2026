@@ -3,10 +3,6 @@ name: E2E Tests
 run-name: "E2E Tests - ${{ inputs.environment || 'prod' }} (by ${{ github.actor }})"
 
 on:
-  # Run every hour
-  schedule:
-    - cron: "0 * * * *" # At minute 0 of every hour
-
   # Allow manual triggering and post-promotion triggering
   workflow_dispatch:
     inputs:
