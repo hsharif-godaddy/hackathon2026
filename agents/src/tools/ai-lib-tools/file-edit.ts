@@ -1,32 +1,30 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
-import { FileEditTool, FileBatchEditOptions } from '../file-edit.js'
+import { FileEditTool } from '../file-edit.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
-
-// Constants for error message formatting
-const ERROR_TEXT_TRUNCATION_LENGTH = 100
 
 // Initialize tool instances
 const fileEditTool = new FileEditTool()
 const appRepo = new AppRepository()
 
+// Schema for batch operations
 const fileOperationSchema = z.object({
-  path: z.string().describe('Path to the file (relative to app root)'),
-  mode: z.enum(['edit', 'rewrite', 'create', 'delete']).optional().describe('Operation mode: edit for partial changes, rewrite for full replacement, create for new files, delete to remove files. Auto-detected if not specified (except delete, which must be explicit)'),
+  path: z.string().describe('File path relative to app root'),
+  mode: z.enum(['edit', 'rewrite', 'create', 'delete']).optional()
+    .describe('Auto-detected if omitted (except delete must be explicit)'),
   edits: z.array(z.object({
-    old: z.string().describe('The EXACT text currently in the file to search for and replace. MUST match the file content exactly - read the file first if you are unsure!'),
-    new: z.string().describe('The new text to replace with')
-  })).optional().describe('Array of search-and-replace operations for partial edits. Each "old" value MUST be the exact current content from the file.'),
-  content: z.string().optional().describe('Full content for rewrite or create operations')
+    old: z.string().describe('EXACT text to replace (read file first!)'),
+    new: z.string().describe('Replacement text'),
+    replaceAll: z.boolean().optional().describe('Replace all occurrences')
+  })).optional().describe('For edit mode'),
+  content: z.string().optional().describe('For create/rewrite modes')
 })
-
-type FileOperation = z.infer<typeof fileOperationSchema>
 
 /**
  * Parse operations from string or return array as-is.
  * Handles cases where LLMs send operations as a JSON string instead of an array.
  */
-function parseOperations(value: string | FileOperation[]): FileOperation[] {
+function parseOperations(value: string | z.infer<typeof fileOperationSchema>[]): z.infer<typeof fileOperationSchema>[] {
   if (Array.isArray(value)) {
     return value
   }
@@ -72,37 +70,47 @@ const operationsSchema = z.union([
 )
 
 /**
- * File Edit Tool for AI-Lib
- * Batch file operations: edit, create, rewrite, or delete multiple files in one call
+ * Unified File Edit Tool - Supports single file or batch operations
  */
-export const fileEditAITool: Tool = createTool(
-  `Perform multiple file operations (edit, create, rewrite, delete) in a single batch operation.
-Operations execute sequentially and stop on first error (fail-fast), returning all completed operations plus the error.
+export const fileEdit: Tool = createTool(
+  `Edit files - supports single or batch mode.
 
-CRITICAL RULES:
-1. For 'edit' mode, you MUST provide the EXACT text that you want to replace in the file for the 'old' field.
-   - DO NOT guess or assume what the old content is
-   - DO NOT use placeholders like "existing content" or "current value"
-   - You MUST read the file, search it, or check the context to get the actual current content
-   - The 'old' field must match the file contents you want to replace EXACTLY (whitespace, indentation, etc.)
-   - If you don't know the current content, read the file first
+SINGLE FILE: { path, old, new, replaceAll }
+BATCH: { operations: [{ path, mode, edits/content }], continueOnError }
 
-2. For 'delete' operations, you MUST explicitly set mode: 'delete'.
-   - Delete mode is NEVER auto-detected for safety
-   - Simply omitting content/edits will NOT delete a file
+CRITICAL: Read files first. Match text exactly including whitespace.
+If text appears multiple times, use replaceAll: true or add more context.
 
-3. Batch behavior:
-   - Operations execute in the order provided
-   - Execution stops on first error (fail-fast)
-   - All successful operations before the error are preserved
-   - If autoCommit is enabled, all successful operations are committed together in a single commit`,
-  z.object({
-    operations: operationsSchema,
-    createDirs: z.boolean().default(true).describe('Create parent directories if they don\'t exist'),
-    fuzzyMatch: z.boolean().default(true).describe('Use fuzzy matching for search text if exact match fails'),
-    autoCommit: z.boolean().default(false).describe('Automatically commit all successful changes using git in a single batch commit'),
-    commitMessage: z.string().optional().describe('Custom commit message for auto-commit (if not provided, a default message will be generated based on the operations)')
-  }),
+Use batch for: features, refactors, coordinated changes (single commit).
+Use single for: simple edits, independent changes.`,
+
+  z.union([
+    // Single file mode
+    z.object({
+      path: z.string().describe('File path relative to app root'),
+      old: z.string().describe('EXACT text from file to replace (read file first!)'),
+      new: z.string().describe('Replacement text'),
+      replaceAll: z.boolean().default(false).describe(
+        'Replace ALL occurrences. If false and multiple matches exist, fails with error.'
+      ),
+      dryRun: z.boolean().default(false).describe('Preview without applying'),
+      autoCommit: z.boolean().default(false).describe('Auto-commit changes'),
+      commitMessage: z.string().optional().describe('Custom commit message')
+    }),
+    // Batch mode
+    z.object({
+      operations: operationsSchema,
+      createDirs: z.boolean().default(true).describe('Create parent dirs'),
+      fuzzyMatch: z.boolean().default(true).describe('Fuzzy whitespace matching'),
+      dryRun: z.boolean().default(false).describe('Preview without applying'),
+      autoCommit: z.boolean().default(false).describe('Single batch commit'),
+      commitMessage: z.string().optional().describe('Custom commit message'),
+      continueOnError: z.boolean().default(false).describe(
+        'Continue on error (default: false = stop on first error)'
+      )
+    })
+  ]),
+
   async (input, context) => {
     const appId = context?.metadata?.appId as string
     if (!appId) {
@@ -114,46 +122,108 @@ CRITICAL RULES:
       throw new Error(`App '${appId}' not found`)
     }
 
-    // Normalize operations - handle case where LLM sends as JSON string
-    const normalizedInput = {
-      ...input,
-      operations: parseOperations(input.operations)
-    } as FileBatchEditOptions
+    // Detect mode: single file or batch
+    const isSingleMode = 'old' in input && 'new' in input
 
-    const result = await fileEditTool.editFiles(app.path, normalizedInput, {
-      appId,
-      conversationId: context?.metadata?.conversationId as string
-    })
-
-    // CRITICAL: If the batch operation failed, throw an error with details about partial completion
-    if (!result.success) {
-      let errorMessage = `Batch file operation failed after ${result.completedOperations}/${result.totalOperations} operations: ${result.error || 'Unknown error'}`;
-
-      // Include details about failed operation if available
-      // The failed operation is at index result.completedOperations (0-indexed)
-      const failedResult = result.results[result.completedOperations];
-      if (failedResult && !failedResult.success && failedResult.error) {
-        errorMessage += `\nFailed operation: ${failedResult.mode} ${failedResult.path}`;
-        errorMessage += `\nError details: ${failedResult.error}`;
-        if (failedResult.warning) {
-          errorMessage += `\nAttempts: ${failedResult.warning}`;
-        }
+    if (isSingleMode) {
+      // SINGLE FILE MODE
+      const singleInput = input as {
+        path: string
+        old: string
+        new: string
+        replaceAll?: boolean
+        dryRun?: boolean
+        autoCommit?: boolean
+        commitMessage?: string
       }
 
-      // Include details about the specific operation that failed
-      if (normalizedInput.operations && result.completedOperations < normalizedInput.operations.length) {
-        const failedOp = normalizedInput.operations[result.completedOperations];
-        if (failedOp && failedOp.edits && failedOp.edits.length > 0) {
-          errorMessage += `\nRequested edits (${failedOp.edits.length}):\n`;
-          failedOp.edits.forEach((edit, index) => {
-            errorMessage += `${index + 1}. Replace: "${edit.old.substring(0, ERROR_TEXT_TRUNCATION_LENGTH)}${edit.old.length > ERROR_TEXT_TRUNCATION_LENGTH ? '...' : ''}" with: "${edit.new.substring(0, ERROR_TEXT_TRUNCATION_LENGTH)}${edit.new.length > ERROR_TEXT_TRUNCATION_LENGTH ? '...' : ''}"\n`;
-          });
-        }
+      const options: any = {
+        path: singleInput.path,
+        mode: 'edit' as const,
+        edits: [{
+          old: singleInput.old,
+          new: singleInput.new,
+          replaceAll: singleInput.replaceAll ?? false
+        }],
+        dryRun: singleInput.dryRun ?? false,
+        createDirs: true,
+        fuzzyMatch: true,
+        autoCommit: singleInput.autoCommit ?? false,
       }
 
-      throw new Error(errorMessage);
+      if (singleInput.commitMessage) {
+        options.commitMessage = singleInput.commitMessage
+      }
+
+      const result = await fileEditTool.editFile(app.path, options, {
+        appId,
+        conversationId: context?.metadata?.conversationId as string
+      })
+
+      if (!result.success) {
+        let error = `Failed to edit ${result.path}: ${result.error}`
+
+        if (result.error?.includes('not found')) {
+          error += `\n\n💡 Tips: Read file first, match whitespace exactly, copy exact text`
+        } else if (result.error?.includes('appears') && result.error?.includes('times')) {
+          error += `\n\n💡 Set replaceAll: true to replace all occurrences`
+        }
+
+        throw new Error(error)
+      }
+
+      return fileEditTool.formatResult(result)
+
+    } else {
+      // BATCH MODE
+      const batchInput = input as {
+        operations: string | z.infer<typeof fileOperationSchema>[]
+        createDirs?: boolean
+        fuzzyMatch?: boolean
+        dryRun?: boolean
+        autoCommit?: boolean
+        commitMessage?: string
+        continueOnError?: boolean
+      }
+
+      const normalizedOperations = parseOperations(batchInput.operations)
+
+      const options: any = {
+        operations: normalizedOperations,
+        createDirs: batchInput.createDirs ?? true,
+        fuzzyMatch: batchInput.fuzzyMatch ?? true,
+        dryRun: batchInput.dryRun ?? false,
+        autoCommit: batchInput.autoCommit ?? false,
+        continueOnError: batchInput.continueOnError ?? false
+      }
+
+      if (batchInput.commitMessage) {
+        options.commitMessage = batchInput.commitMessage
+      }
+
+      const result = await fileEditTool.editFiles(app.path, options, {
+        appId,
+        conversationId: context?.metadata?.conversationId as string
+      })
+
+      if (!result.success) {
+        const failedOp = result.results[result.completedOperations]
+        let error = `Batch failed after ${result.completedOperations}/${result.totalOperations} ops`
+
+        if (failedOp) {
+          error += `\n\nFailed: ${failedOp.mode} ${failedOp.path}`
+          error += `\nError: ${failedOp.error}`
+          if (failedOp.warning) error += `\nDetails: ${failedOp.warning}`
+        }
+
+        if (batchInput.continueOnError && result.error) {
+          error = result.error
+        }
+
+        throw new Error(error)
+      }
+
+      return fileEditTool.formatResult(result)
     }
-
-    return fileEditTool.formatResult(result)
   }
 )

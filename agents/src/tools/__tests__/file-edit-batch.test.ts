@@ -485,4 +485,252 @@ describe('FileEditTool - Batch Operations', () => {
       expect(result.results[0]).toBeDefined();
     });
   });
+
+  describe('replaceAll feature', () => {
+    it('should error when multiple occurrences exist without replaceAll', async () => {
+      writeFileSync(join(testAppDir, 'file.ts'), 'foo\nfoo\nfoo');
+
+      const result = await fileEditTool.editFiles(testAppDir, {
+        operations: [{
+          path: 'file.ts',
+          mode: 'edit',
+          edits: [{ old: 'foo', new: 'bar', replaceAll: false }]
+        }]
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.results[0].error).toContain('appears 3 times');
+      expect(result.results[0].error).toContain('Set replaceAll: true');
+    });
+
+    it('should replace all when replaceAll is true', async () => {
+      writeFileSync(join(testAppDir, 'file.ts'), 'foo\nfoo\nfoo');
+
+      const result = await fileEditTool.editFiles(testAppDir, {
+        operations: [{
+          path: 'file.ts',
+          mode: 'edit',
+          edits: [{ old: 'foo', new: 'bar', replaceAll: true }]
+        }]
+      });
+
+      expect(result.success).toBe(true);
+      const content = readFileSync(join(testAppDir, 'file.ts'), 'utf-8');
+      expect(content).toBe('bar\nbar\nbar');
+    });
+
+    it('should allow single replacement when text appears once', async () => {
+      writeFileSync(join(testAppDir, 'file.ts'), 'foo\nbar\nbaz');
+
+      const result = await fileEditTool.editFiles(testAppDir, {
+        operations: [{
+          path: 'file.ts',
+          mode: 'edit',
+          edits: [{ old: 'foo', new: 'qux', replaceAll: false }]
+        }]
+      });
+
+      expect(result.success).toBe(true);
+      const content = readFileSync(join(testAppDir, 'file.ts'), 'utf-8');
+      expect(content).toBe('qux\nbar\nbaz');
+    });
+
+    it('should handle multiple edits with replaceAll in batch', async () => {
+      writeFileSync(join(testAppDir, 'file1.ts'), 'console.log\nconsole.log');
+      writeFileSync(join(testAppDir, 'file2.ts'), 'console.log\nconsole.log\nconsole.log');
+
+      const result = await fileEditTool.editFiles(testAppDir, {
+        operations: [
+          {
+            path: 'file1.ts',
+            mode: 'edit',
+            edits: [{ old: 'console.log', new: 'logger.info', replaceAll: true }]
+          },
+          {
+            path: 'file2.ts',
+            mode: 'edit',
+            edits: [{ old: 'console.log', new: 'logger.info', replaceAll: true }]
+          }
+        ]
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.completedOperations).toBe(2);
+
+      const content1 = readFileSync(join(testAppDir, 'file1.ts'), 'utf-8');
+      const content2 = readFileSync(join(testAppDir, 'file2.ts'), 'utf-8');
+
+      expect(content1).toBe('logger.info\nlogger.info');
+      expect(content2).toBe('logger.info\nlogger.info\nlogger.info');
+    });
+  });
+
+  describe('continueOnError feature', () => {
+    it('should stop on first error by default (fail-fast)', async () => {
+      writeFileSync(join(testAppDir, 'exists.ts'), 'content');
+
+      const result = await fileEditTool.editFiles(testAppDir, {
+        operations: [
+          { path: 'success1.ts', mode: 'create', content: 'ok' },
+          { path: 'exists.ts', mode: 'edit', edits: [{ old: 'MISSING', new: 'x' }] },
+          { path: 'success2.ts', mode: 'create', content: 'ok' }
+        ],
+        continueOnError: false
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.completedOperations).toBe(1); // Only success1
+      expect(result.results).toHaveLength(2); // success1 + failed edit
+      expect(existsSync(join(testAppDir, 'success2.ts'))).toBe(false); // Never attempted
+    });
+
+    it('should continue when continueOnError is true', async () => {
+      writeFileSync(join(testAppDir, 'exists.ts'), 'content');
+
+      const result = await fileEditTool.editFiles(testAppDir, {
+        operations: [
+          { path: 'success1.ts', mode: 'create', content: 'ok' },
+          { path: 'exists.ts', mode: 'edit', edits: [{ old: 'MISSING', new: 'x' }] },
+          { path: 'success2.ts', mode: 'create', content: 'ok' }
+        ],
+        continueOnError: true
+      });
+
+      expect(result.completedOperations).toBe(2); // success1 and success2
+      expect(result.results).toHaveLength(3); // All three attempted
+      expect(result.results[1].success).toBe(false); // Middle one failed
+      expect(existsSync(join(testAppDir, 'success1.ts'))).toBe(true);
+      expect(existsSync(join(testAppDir, 'success2.ts'))).toBe(true);
+    });
+
+    it('should consider partial success when continueOnError is true', async () => {
+      const result = await fileEditTool.editFiles(testAppDir, {
+        operations: [
+          { path: 'fail1.ts', mode: 'edit', edits: [{ old: 'MISSING', new: 'x' }] },
+          { path: 'success.ts', mode: 'create', content: 'ok' },
+          { path: 'fail2.ts', mode: 'edit', edits: [{ old: 'MISSING', new: 'x' }] }
+        ],
+        continueOnError: true
+      });
+
+      expect(result.success).toBe(true); // At least one succeeded
+      expect(result.completedOperations).toBe(1);
+      expect(result.error).toContain('Partial success');
+      expect(result.error).toContain('1/3 operations completed');
+    });
+
+    it('should build detailed error message for partial success', async () => {
+      writeFileSync(join(testAppDir, 'exists.ts'), 'content');
+
+      const result = await fileEditTool.editFiles(testAppDir, {
+        operations: [
+          { path: 'success1.ts', mode: 'create', content: 'ok' },
+          { path: 'exists.ts', mode: 'edit', edits: [{ old: 'MISSING', new: 'x' }] },
+          { path: 'success2.ts', mode: 'create', content: 'ok' }
+        ],
+        continueOnError: true
+      });
+
+      expect(result.error).toContain('Partial success');
+      expect(result.error).toContain('Failed operations:');
+      expect(result.error).toContain('Successful operations:');
+      expect(result.error).toContain('exists.ts');
+      expect(result.error).toContain('success1.ts');
+      expect(result.error).toContain('success2.ts');
+    });
+
+    it('should still fail if all operations fail with continueOnError', async () => {
+      const result = await fileEditTool.editFiles(testAppDir, {
+        operations: [
+          { path: 'fail1.ts', mode: 'edit', edits: [{ old: 'MISSING', new: 'x' }] },
+          { path: 'fail2.ts', mode: 'edit', edits: [{ old: 'MISSING', new: 'x' }] }
+        ],
+        continueOnError: true
+      });
+
+      expect(result.success).toBe(false); // Zero succeeded
+      expect(result.completedOperations).toBe(0);
+    });
+
+    it('should respect continueOnError when encountering immutable files', async () => {
+      // Create an immutable file
+      writeFileSync(join(testAppDir, 'immutable.ts'), '// TREAT AS IMMUTABLE\ncontent');
+
+      const result = await fileEditTool.editFiles(testAppDir, {
+        operations: [
+          { path: 'success1.ts', mode: 'create', content: 'ok' },
+          { path: 'immutable.ts', mode: 'edit', edits: [{ old: 'content', new: 'modified' }] },
+          { path: 'success2.ts', mode: 'create', content: 'ok' }
+        ],
+        continueOnError: true
+      });
+
+      expect(result.completedOperations).toBe(2); // success1 and success2
+      expect(result.results).toHaveLength(3); // All three attempted
+      expect(result.results[1].success).toBe(false); // Middle one failed (immutable)
+      expect(result.results[1].error).toContain('immutable');
+      expect(existsSync(join(testAppDir, 'success1.ts'))).toBe(true);
+      expect(existsSync(join(testAppDir, 'success2.ts'))).toBe(true);
+    });
+  });
+
+  describe('replaceAll with fuzzy matching', () => {
+    it('should detect multiple fuzzy matches without replaceAll', async () => {
+      // Create file with same content but different whitespace (all fuzzy, no exact matches)
+      // Use different indentation for each function so none match exactly
+      writeFileSync(join(testAppDir, 'file.ts'), '  function foo() {\n    return 1;\n  }\n\n    function foo() {\n      return 1;\n    }\n\n      function foo() {\n        return 1;\n      }');
+
+      const result = await fileEditTool.editFiles(testAppDir, {
+        operations: [{
+          path: 'file.ts',
+          mode: 'edit',
+          edits: [{ old: 'function foo() {\nreturn 1;\n}', new: 'function bar() {\nreturn 1;\n}', replaceAll: false }]
+        }],
+        fuzzyMatch: true
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.results[0].error).toContain('appears 3 times');
+      expect(result.results[0].error).toContain('whitespace differences');
+    });
+
+    it('should replace all fuzzy matches when replaceAll is true', async () => {
+      // Create file with same content but different whitespace (all fuzzy, no exact matches)
+      // Note: fuzzy matching does NOT preserve indentation - replacement uses exact new text
+      writeFileSync(join(testAppDir, 'file.ts'), '  function foo() {\n    return 1;\n  }\n\n    function foo() {\n      return 1;\n    }\n\n      function foo() {\n        return 1;\n      }');
+
+      const result = await fileEditTool.editFiles(testAppDir, {
+        operations: [{
+          path: 'file.ts',
+          mode: 'edit',
+          edits: [{ old: 'function foo() {\nreturn 1;\n}', new: 'function bar() {\nreturn 1;\n}', replaceAll: true }]
+        }],
+        fuzzyMatch: true
+      });
+
+      expect(result.success).toBe(true);
+      const content = readFileSync(join(testAppDir, 'file.ts'), 'utf-8');
+      // All three function definitions should be replaced (without preserving indentation)
+      expect(content).toContain('function bar()');
+      expect(content.match(/function bar\(\)/g)?.length).toBe(3);
+    });
+
+    it('should handle single fuzzy match without replaceAll', async () => {
+      writeFileSync(join(testAppDir, 'file.ts'), '  function foo() {\n    return 1;\n  }\nbar\nbaz');
+
+      const result = await fileEditTool.editFiles(testAppDir, {
+        operations: [{
+          path: 'file.ts',
+          mode: 'edit',
+          edits: [{ old: 'function foo() {\nreturn 1;\n}', new: 'function qux() {\nreturn 1;\n}', replaceAll: false }]
+        }],
+        fuzzyMatch: true
+      });
+
+      expect(result.success).toBe(true);
+      const content = readFileSync(join(testAppDir, 'file.ts'), 'utf-8');
+      expect(content).toContain('function qux()');
+      expect(content).not.toContain('function foo()');
+    });
+  });
 });
