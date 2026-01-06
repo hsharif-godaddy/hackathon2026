@@ -41,6 +41,9 @@ importers:
       "@ai-sdk/anthropic":
         specifier: ^3.0.0-beta.77
         version: 3.0.0-beta.77(zod@3.25.76)
+      "@ai-sdk/devtools":
+        specifier: ^0.0.3
+        version: 0.0.3
       "@ai-sdk/openai":
         specifier: ^3.0.0-beta.88
         version: 3.0.0-beta.88(zod@3.25.76)
@@ -1076,6 +1079,13 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
+  "@ai-sdk/devtools@0.0.3":
+    resolution:
+      {
+        integrity: sha512-bkkYTuEDqK70bXC30yJLmRH+9xKvo9HCneGH44MKJFssYfwXjyz64G++uEgb+bV2+E/qd/81YNHT+9gcI9q6IA==,
+      }
+    hasBin: true
+
   "@ai-sdk/gateway@2.0.0-beta.73":
     resolution:
       {
@@ -1124,6 +1134,13 @@ packages:
     resolution:
       {
         integrity: sha512-UQyOlrpahFL1CZ/QA0ZpFhAkE32fw1XXBx+6gu23YWSCMJCjaf/fiJUPV7xUhp/nXqVO/IC+PIIfLomx55D16A==,
+      }
+    engines: { node: ">=18" }
+
+  "@ai-sdk/provider@3.0.1":
+    resolution:
+      {
+        integrity: sha512-2lR4w7mr9XrydzxBSjir4N6YMGdXD+Np1Sh0RXABh7tWdNFFwIeRI1Q+SaYZMbfL8Pg8RRLcrxQm51yxTLhokg==,
       }
     engines: { node: ">=18" }
 
@@ -3901,6 +3918,15 @@ packages:
       }
     peerDependencies:
       react: 19.1.0
+
+  "@hono/node-server@1.19.7":
+    resolution:
+      {
+        integrity: sha512-vUcD0uauS7EU2caukW8z5lJKtoGMokxNbJtBiwHgpqxEXokaHCBkQUmCHhjFB1VUTWdqj25QoMkMKzgjq+uhrw==,
+      }
+    engines: { node: ">=18.14.1" }
+    peerDependencies:
+      hono: ^4
 
   "@humanfs/core@0.19.1":
     resolution:
@@ -13831,6 +13857,13 @@ packages:
       }
     engines: { node: ">=0.10.0" }
 
+  hono@4.11.3:
+    resolution:
+      {
+        integrity: sha512-PmQi306+M/ct/m5s66Hrg+adPnkD5jiO6IjA7WhWw0gSBSo1EcRegwuI1deZ+wd5pzCGynCcn2DprnE4/yEV4w==,
+      }
+    engines: { node: ">=16.9.0" }
+
   html-dom-parser@5.1.1:
     resolution:
       {
@@ -20717,6 +20750,12 @@ snapshots:
       - arktype
       - effect
 
+  "@ai-sdk/devtools@0.0.3":
+    dependencies:
+      "@ai-sdk/provider": 3.0.1
+      "@hono/node-server": 1.19.7(hono@4.11.3)
+      hono: 4.11.3
+
   "@ai-sdk/gateway@2.0.0-beta.73(zod@3.25.76)":
     dependencies:
       "@ai-sdk/provider": 3.0.0-beta.25
@@ -20750,6 +20789,10 @@ snapshots:
       json-schema: 0.4.0
 
   "@ai-sdk/provider@3.0.0-beta.26":
+    dependencies:
+      json-schema: 0.4.0
+
+  "@ai-sdk/provider@3.0.1":
     dependencies:
       json-schema: 0.4.0
 
@@ -23517,6 +23560,10 @@ snapshots:
   "@heroicons/react@2.2.0(react@19.1.0)":
     dependencies:
       react: 19.1.0
+
+  "@hono/node-server@1.19.7(hono@4.11.3)":
+    dependencies:
+      hono: 4.11.3
 
   "@humanfs/core@0.19.1": {}
 
@@ -30938,6 +30985,8 @@ snapshots:
   homedir-polyfill@1.0.3:
     dependencies:
       parse-passwd: 1.0.0
+
+  hono@4.11.3: {}
 
   html-dom-parser@5.1.1:
     dependencies:

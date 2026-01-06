@@ -1,13 +1,45 @@
 /**
  * Model Selection Helper for Agents
- * 
+ *
  * Provides intelligent model selection based on performance requirements
  * and available providers (Bedrock vs OpenAI)
  */
 
 import type { LanguageModel } from 'ai'
+import { wrapLanguageModel } from 'ai'
+import { devToolsMiddleware } from '@ai-sdk/devtools'
 import { getModel, getModelInfo } from '@airo/ai-lib'
 import { logger } from '../logging/index.js'
+
+/**
+ * Check if DevTools should be enabled (development mode only)
+ */
+function isDevToolsEnabled(): boolean {
+  const enableDevTools = process.env.ENABLE_AI_DEVTOOLS
+  return enableDevTools === 'true' ||
+    (process.env.NODE_ENV === 'development' && enableDevTools !== 'false')
+}
+
+/**
+ * Wrap model with DevTools middleware when enabled
+ */
+function wrapWithDevTools(model: LanguageModel): LanguageModel {
+  if (!isDevToolsEnabled()) {
+    return model
+  }
+
+  logger.info('devtools.enabled', {
+    message: 'AI SDK DevTools middleware enabled - view at http://localhost:4983'
+  })
+
+  // Type assertions required: @ai-sdk/devtools uses @ai-sdk/provider@3.0.1
+  // while ai@6.0.0-beta uses @ai-sdk/provider@3.0.0-beta.25. The APIs are
+  // compatible but TypeScript sees them as different types.
+  return wrapLanguageModel({
+    model: model as any,
+    middleware: devToolsMiddleware() as any
+  })
+}
 
 export type ModelTier = 'full' | 'fast'
 
@@ -137,7 +169,7 @@ export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
   
   try {
     const model = await getModel(selectedModel)
-    
+
     // Log final model info
     const modelInfo = getModelInfo(selectedModel)
     logger.info('model.selection.success', {
@@ -150,8 +182,8 @@ export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
         usingProxy: modelInfo.usingProxy
       }
     })
-    
-    return model
+
+    return wrapWithDevTools(model)
   } catch (error) {
     logger.error('model.selection.failure', {
       tier,
@@ -227,7 +259,7 @@ export async function getAgentModelWithName(tier: ModelTier): Promise<{model: an
   
   try {
     const model = await getModel(selectedModel)
-    
+
     // Log final model info
     const modelInfo = getModelInfo(selectedModel)
     logger.info('model.selection.with_name.success', {
@@ -240,8 +272,8 @@ export async function getAgentModelWithName(tier: ModelTier): Promise<{model: an
         usingProxy: modelInfo.usingProxy
       }
     })
-    
-    return { model, modelName: selectedModel }
+
+    return { model: wrapWithDevTools(model), modelName: selectedModel }
   } catch (error) {
     logger.error('model.selection.with_name.failure', {
       tier,

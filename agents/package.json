@@ -31,13 +31,13 @@
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write src",
-    "format:check": "prettier --check src"
+    "format:check": "prettier --check src",
+    "devtools": "npx @ai-sdk/devtools"
   },
   "dependencies": {
-    "@godaddy/agent-observability-events": "^1.3.1",
-    "@opentelemetry/api": "^1.9.0",
     "@ai-sdk/amazon-bedrock": "^4.0.0-beta.87",
     "@ai-sdk/anthropic": "^3.0.0-beta.77",
+    "@ai-sdk/devtools": "^0.0.3",
     "@ai-sdk/openai": "^3.0.0-beta.88",
     "@airo/ai-lib": "workspace:*",
     "@anthropic-ai/tokenizer": "^0.0.4",
@@ -46,7 +46,9 @@
     "@babel/parser": "^7.28.0",
     "@babel/traverse": "^7.28.0",
     "@babel/types": "^7.28.0",
+    "@godaddy/agent-observability-events": "^1.3.1",
     "@openai/agents": "^0.0.17",
+    "@opentelemetry/api": "^1.9.0",
     "@qdrant/js-client-rest": "^1.15.1",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",

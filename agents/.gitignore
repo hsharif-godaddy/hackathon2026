@@ -39,3 +39,4 @@ coverage/
 
 # Local dbs
 data/
+.devtools/
