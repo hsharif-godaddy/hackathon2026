@@ -53,7 +53,7 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ] && [ ! -f "$CUSTOMER_APP_DIR/package.j
     # sync database and server configuration files from base app template if they don't exist
     # this ensures apps have the latest db client, schema, and server configuration
     # this can be removed once all apps are reloaded in dev and prod
-    for file in "src/server/configure.js" "bundle.js" "drizzle.config.ts" "src/server/db/client.ts" "src/server/db/schema.ts"; do
+    for file in "src/server/configure.js" "bundle.js" "drizzle.config.ts" "src/server/db/client.ts" "src/server/db/schema.ts" "src/server/db/config.ts"; do
         if [ ! -f "$file" ]; then
             echo "Syncing missing file: $file"
             mkdir -p "$(dirname "$file")"
