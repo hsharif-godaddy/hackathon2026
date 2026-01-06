@@ -60,6 +60,16 @@ export function getAppUrl(env: string) {
 }
 
 /**
+ * Get the spec prefix for the current spec file.
+ * Used to identify apps created by this spec for cleanup.
+ * Must match the cleanup logic in e2e.ts and cypress.config.ts
+ */
+export function getSpecPrefix(): string {
+  const specName = Cypress.spec.name.replace('.cy.ts', '').replace('.cy.js', '');
+  return `[e2e:${specName}]`;
+}
+
+/**
  * Complete SSO login flow
  * Use this when SSO modal appears or user is redirected to SSO page.
  * Navigates directly to SSO page, logs in, and redirects back to app.

@@ -13,7 +13,9 @@
  * - Independent of other develop-page test files
  */
 
-const SPEC_PREFIX = '[e2e:develop-header]';
+import { getSpecPrefix } from '../support/utils/helpers';
+
+const SPEC_PREFIX = getSpecPrefix();
 
 describe('Develop Page - Header', () => {
   let appId: string;

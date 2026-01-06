@@ -15,7 +15,9 @@
 
 import { DEPLOYMENT_POLL_INTERVAL_MS, DEPLOYMENT_TIMEOUT_MS } from '../support/constants';
 
-const SPEC_PREFIX = '[e2e:develop-publish]';
+import { getSpecPrefix } from '../support/utils/helpers';
+
+const SPEC_PREFIX = getSpecPrefix();
 
 describe('Develop Page - Publishing', () => {
   let appId: string;

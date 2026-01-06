@@ -13,8 +13,9 @@
  */
 
 import { AI_RESPONSE_TIMEOUT_MS } from '../support/constants';
+import { getSpecPrefix } from '../support/utils/helpers';
 
-const SPEC_PREFIX = '[e2e:develop-chat]';
+const SPEC_PREFIX = getSpecPrefix();
 
 describe('Develop Page - Chat', () => {
   let appId: string;

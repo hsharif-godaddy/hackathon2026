@@ -7,7 +7,7 @@
 
 // Import commands.js using ES2015 syntax:
 import './commands';
-import { dismissPrivacyBanners, getCredentials, getDomainCookie } from './utils/helpers';
+import { dismissPrivacyBanners, getCredentials, getDomainCookie, getSpecPrefix } from './utils/helpers';
 
 // Ignore React hydration errors (common in SSR/Next.js apps),
 // cross-origin errors from SSO redirects, and transient server errors
@@ -80,15 +80,6 @@ function setupAuth() {
 }
 
 /**
- * Get the spec prefix for the current spec file.
- * Used to identify apps created by this spec for cleanup.
- */
-function getSpecPrefix(): string {
-  const specName = Cypress.spec.name.replace('.cy.ts', '').replace('.cy.js', '');
-  return `[e2e:${specName}]`;
-}
-
-/**
  * Clean up apps created by this spec (identified by prompt prefix).
  * This is parallel-safe: only deletes apps matching this spec's prefix.
  */
@@ -106,10 +97,12 @@ function cleanupSpecApps(context: string) {
       return;
     }
 
-    const apps = response.body as Array<{ id: string; name?: string; prompt?: string }>;
+    const apps = response.body as Array<{ id: string; name?: string; initial_prompt?: string }>;
 
-    // Only delete apps created by THIS spec (matching prefix in prompt)
-    const myApps = apps.filter((app) => app.prompt?.startsWith(specPrefix));
+    // Only delete apps created by THIS spec (matching prefix in name or initial_prompt)
+    const myApps = apps.filter((app) => 
+      app.initial_prompt?.startsWith(specPrefix) || app.name?.includes(specPrefix)
+    );
 
     if (myApps.length === 0) {
       cy.log(`${context}: No apps from ${specPrefix} to clean up`);
@@ -124,7 +117,9 @@ function cleanupSpecApps(context: string) {
         url: `${baseUrl}/api/sites/${app.id}`,
         failOnStatusCode: false,
       }).then((deleteResponse) => {
-        if (deleteResponse.status === 200 || deleteResponse.status === 204) {
+        if (deleteResponse.status === 200 && deleteResponse.body?.success) {
+          cy.log(`✓ Deleted: ${app.name || app.id}`);
+        } else if (deleteResponse.status === 204) {
           cy.log(`✓ Deleted: ${app.name || app.id}`);
         } else {
           cy.log(`⚠ Failed to delete ${app.id}: ${deleteResponse.status}`);

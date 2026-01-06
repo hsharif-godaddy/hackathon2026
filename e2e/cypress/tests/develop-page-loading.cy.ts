@@ -11,7 +11,9 @@
  * - Independent of other develop-page test files
  */
 
-const SPEC_PREFIX = '[e2e:develop-loading]';
+import { getSpecPrefix } from '../support/utils/helpers';
+
+const SPEC_PREFIX = getSpecPrefix();
 
 describe('Develop Page - Loading', () => {
   let appId: string;

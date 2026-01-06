@@ -255,7 +255,7 @@ Cypress.Commands.add('deleteApp', (appId: string) => {
     url: `/api/sites/${appId}`,
     failOnStatusCode: false,
   }).then((response) => {
-    if (response.status === 200) {
+    if (response.status === 200 && response.body?.success) {
       cy.log(`✓ Deleted app: ${appId}`);
     } else {
       cy.log(`⚠ Could not delete app ${appId}: ${response.status}`);
@@ -303,8 +303,13 @@ Cypress.Commands.add('deleteAppsWithPrefix', (prefix: string) => {
         url: `/api/sites/${app.id}`,
         failOnStatusCode: false,
       }).then((deleteResponse) => {
-        if (deleteResponse.status === 200) {
+        if (
+          (deleteResponse.status === 200 && deleteResponse.body?.success) ||
+          deleteResponse.status === 204
+        ) {
           cy.log(`✓ Cleaned up: ${app.name || app.initial_prompt} (${app.id})`);
+        } else {
+          cy.log(`⚠ Failed to delete ${app.id}: ${deleteResponse.status}`);
         }
       });
     });
