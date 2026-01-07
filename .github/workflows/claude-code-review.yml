@@ -11,7 +11,7 @@ concurrency:
 jobs:
   claude-review:
     if: github.event.pull_request.draft == false
-    uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@v2.1.0
+    uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@v2.1.2
     with:
       runner_group: ${{ vars.CLAUDE_RUNNER_GROUP }}
       runner_labels_json: '["self-hosted"]'
