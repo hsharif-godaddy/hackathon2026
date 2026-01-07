@@ -224,6 +224,7 @@ export type StreamingEventType =
   | 'catchup_status'
   | 'catchup_complete'
   | 'server_config'
+  | 'client_action'
 
 /**
  * Normalized streaming event structure for event channel

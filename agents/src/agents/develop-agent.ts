@@ -137,7 +137,6 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
 
   promptBuilder
     // .file(paths.getAgentFile('develop', 'email.md'))
-    // .file(paths.getAgentFile('develop', 'deployment.md'))
     .file(paths.getAgentFile('develop', 'decision-matrix.md'))
 
   // Conditionally load commerce decision matrix and checkout guide if commerce agent is enabled
@@ -227,6 +226,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       serverRestart: allAILibTools.serverRestart,
       //serverStatus: allAILibTools.serverStatus,
       viewLogs: allAILibTools.viewLogs,
+      publishClient: allAILibTools.publishClient,
 
       // Specialized development tools
       mediaSearch: allAILibTools.mediaSearch,

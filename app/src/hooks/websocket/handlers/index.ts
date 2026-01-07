@@ -7,6 +7,7 @@
 export * from './CatchupCompleteHandler'
 export * from './CatchupStatusHandler'
 export * from './ChunkHandler'
+export * from './ClientActionHandler'
 export * from './CompleteHandler'
 export * from './ConversationInfoHandler'
 export * from './ErrorHandler'

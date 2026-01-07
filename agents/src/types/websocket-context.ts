@@ -5,6 +5,7 @@
 
 import type { ChatMessage } from '@airo/ai-lib'
 import type { ContextAttachment } from './context-attachment.js'
+import type { ClientActionService } from '../services/ClientActionService.js'
 
 /**
  * App-specific context structure for agents application
@@ -17,6 +18,7 @@ export interface AgentsAppContext {
     appId?: string
     userId?: string
     sessionId?: string
+    clientActionService?: ClientActionService
     [key: string]: unknown
   }
 

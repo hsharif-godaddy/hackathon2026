@@ -44,6 +44,7 @@ import { AppRepository } from '../database/repositories/AppRepository.js'
 import { initializeContextRegistry } from '../services/initializeContextRegistry.js'
 import { KnowBDriver } from '../tools/ai-lib-tools/drivers/knowb-driver.js'
 import { GitHookService } from '../services/git-hook-service.js'
+import { ClientActionService } from '../services/ClientActionService.js'
 
 /**
  * Shared AppRepository instance to avoid repeated initialization
@@ -115,6 +116,76 @@ const activeConversationSessions = new Map<string, {
  * Exported for use in other services (e.g., OAuth result notifications)
  */
 let ioInstance: any = null
+
+/**
+ * Client Action Service registry
+ * Maps socketId -> ClientActionService for client-side tool execution
+ */
+const clientActionServices = new Map<string, ClientActionService>()
+
+/**
+ * Get or create ClientActionService for a socket
+ */
+function getOrCreateClientActionService(
+  socketId: string,
+  conversationId: string
+): ClientActionService | null {
+  // Get existing service
+  let service = clientActionServices.get(socketId)
+  if (service) {
+    return service
+  }
+
+  // Create new service
+  if (!ioInstance) {
+    logger.warn('client-action-service.no_io_instance', {
+      socketId,
+      conversationId,
+    })
+    return null
+  }
+
+  const socket = ioInstance.sockets.sockets.get(socketId)
+  if (!socket) {
+    logger.warn('client-action-service.socket_not_found', {
+      socketId,
+      conversationId,
+    })
+    return null
+  }
+
+  service = new ClientActionService(socket, conversationId)
+  clientActionServices.set(socketId, service)
+
+  logger.info('client-action-service.created', {
+    socketId,
+    conversationId,
+  })
+
+  return service
+}
+
+/**
+ * Get existing ClientActionService for a socket
+ * Used by tools to access the service without it being in context
+ */
+export function getClientActionService(socketId: string): ClientActionService | null {
+  return clientActionServices.get(socketId) || null
+}
+
+/**
+ * Cleanup ClientActionService for a socket
+ */
+function cleanupClientActionService(socketId: string): void {
+  const service = clientActionServices.get(socketId)
+  if (service) {
+    service.cleanup()
+    clientActionServices.delete(socketId)
+    logger.info('client-action-service.cleaned_up', {
+      socketId,
+    })
+  }
+}
 
 /**
  * Build dynamic data message for system prompt enrichment
@@ -1216,6 +1287,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           || typedContext?.conversation?.conversationId
           || crypto.randomUUID()
 
+        // Create/get ClientActionService for this socket (don't inject into context)
+        // Tools will access it via the global registry when needed
+        getOrCreateClientActionService(socketId, conversationId)
+
         // startInvocation is synchronous - IDs generated locally, event sent in background
         // This is guaranteed to happen before onLlmStart because ai-lib awaits onMessageStart
         if (observability.isEnabled()) {
@@ -1471,6 +1546,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           message: 'WebSocket client disconnected',
           socketId
         })
+
+        // Cleanup ClientActionService
+        cleanupClientActionService(socketId)
 
         // End observability conversation tracking
         const observability = getObservabilityService()

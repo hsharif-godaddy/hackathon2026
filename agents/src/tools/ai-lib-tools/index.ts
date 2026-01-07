@@ -48,6 +48,7 @@ export { colorSchemeAITool } from './color-scheme.js';
 
 export { skillAITool } from './skill-loader.js';
 export { websiteScraperAITool } from './website-scraper.js';
+export { publishClientAITool } from './publish-client.js';
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js';
@@ -91,6 +92,7 @@ import { socialPostCreateAITool } from './social-post-create.js';
 import { colorSchemeAITool } from './color-scheme.js';
 import { skillAITool } from './skill-loader.js';
 import { websiteScraperAITool } from './website-scraper.js';
+import { publishClientAITool } from './publish-client.js';
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -135,6 +137,7 @@ export const allAILibTools: Record<string, Tool> = {
   skill: skillAITool,
   commerceSkuGroupMedia: commerceSkuGroupMedia,
   websiteScraper: websiteScraperAITool,
+  publishClient: publishClientAITool,
 };
 
 /**
@@ -159,6 +162,7 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
     terminalCommand: terminalCommandAITool,
     serverRestart: serverRestartAITool,
     serverStatus: serverStatusAITool,
+    publishClient: publishClientAITool,
   },
 
   // Backend tools (empty - database operations removed)

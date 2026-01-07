@@ -29,6 +29,7 @@ import {
   CatchupCompleteHandler,
   CatchupStatusHandler,
   ChunkHandler,
+  ClientActionHandler,
   CompleteHandler,
   ConversationInfoHandler,
   ErrorHandler,
@@ -265,6 +266,7 @@ export class TransportSupervisor extends EventEmitter {
     registry.register(new StepCompleteHandler())
     registry.register(new CompleteHandler())
     registry.register(new ErrorHandler())
+    registry.register(new ClientActionHandler())
 
     const messageContext: MessageContext = {
       socket,
