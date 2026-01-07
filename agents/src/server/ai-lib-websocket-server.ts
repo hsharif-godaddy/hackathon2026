@@ -1266,13 +1266,25 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           })
         }
 
-        // Don't start observability conversation tracking here - we don't have conversationId yet
-        // It will be started in onMessageStart when we have the actual conversationId from context
+        // Start observability conversation tracking
+        // startConversation is synchronous - IDs generated locally, event sent in background
         const observability = getObservabilityService()
         logger.info('observability.service.check', {
           socketId,
           enabled: observability.isEnabled()
         })
+        if (observability.isEnabled()) {
+          const session = observability.startConversation({})
+          activeConversationSessions.set(socketId, {
+            conversationId: session.conversationId
+          })
+
+          logger.info('observability.conversation.started', {
+            socketId,
+            conversationId: session.conversationId,
+            traceId: session.traceId
+          })
+        }
       },
 
       // Optional event handlers (persistence is now handled automatically)
@@ -1289,28 +1301,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         // Start observability tracking for this invocation
         const observability = getObservabilityService()
-        // Use the conversation ID from context (must be UUID format per Event Bus schema)
-        const conversationId = typedContext?.conversation?.conversationId
-
-        if (!conversationId) {
-          throw new Error('conversationId is required in context.conversation.conversationId but was not provided')
-        }
-
-        // Start conversation session if not already started
-        let conversationSession = activeConversationSessions.get(socketId)
-        if (!conversationSession && observability.isEnabled()) {
-          const session = observability.startConversation(conversationId, {})
-          conversationSession = {
-            conversationId: session.conversationId
-          }
-          activeConversationSessions.set(socketId, conversationSession)
-
-          logger.info('observability.conversation.started', {
-            socketId,
-            conversationId: session.conversationId,
-            traceId: session.traceId
-          })
-        }
+        // Use the observability conversation ID (must be UUID format per Event Bus schema)
+        // Fall back to conversation context ID, or generate a new UUID if not available
+        const conversationSession = activeConversationSessions.get(socketId)
+        const conversationId = conversationSession?.conversationId
+          || typedContext?.conversation?.conversationId
+          || crypto.randomUUID()
 
         // Create/get ClientActionService for this socket (don't inject into context)
         // Tools will access it via the global registry when needed
@@ -1471,10 +1467,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const observability = getObservabilityService()
         const invocationKey = `${socketId}:invocation`
         const invocationSession = activeObservabilitySessions.get(invocationKey)
-        // Use the conversation ID from context for correlation
-        // Falls back to stored invocation conversationId or siteId if context doesn't have one
-        const conversationId = typedContext?.conversation?.conversationId
-          || invocationSession?.conversationId
+        // Use the stored conversationId from invocation start to ensure correlation
+        // Falls back to context or siteId only if session doesn't have one
+        const conversationId = invocationSession?.conversationId
+          || typedContext?.conversation?.conversationId
           || siteId
 
         if (observability.isEnabled() && invocationSession) {
@@ -1735,10 +1731,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           const errorPhase = isAuthError ? 'init' : 'execution'
           const isRetryable = !isAuthError
 
-          // Use conversation ID from context, fallback to invocation session, then socketId
-          const errorConversationId = typedContext?.conversation?.conversationId
-            || invocationSession.conversationId
-            || socketId
+          // Use stored conversationId from invocation session, fallback to socketId
+          const errorConversationId = invocationSession.conversationId || socketId
 
           try {
             // Await error tracking to complete before cleanup to prevent race conditions
