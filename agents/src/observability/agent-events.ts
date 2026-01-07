@@ -97,7 +97,8 @@ export function generateSpanId(): string {
  * })
  *
  * // Start a conversation (synchronous - IDs generated locally)
- * const session = service.startConversation({
+ * const conversationId = 'conversation-uuid-from-context'; // or undefined to generate
+ * const session = service.startConversation(conversationId, {
  *   privateLabelId: 1,
  *   userType: 'c1',
  *   visitorId: 'visitor-uuid'
@@ -185,14 +186,15 @@ export class AgentObservabilityService {
   /**
    * Start a new conversation session (non-blocking)
    *
-   * Creates a unique conversation ID and initializes session tracking.
+   * Uses provided conversationId or generates one if not provided.
    * IDs are generated locally and returned immediately.
    * Event is sent to Event Bus in background (fire-and-forget).
    *
+   * @param conversationId - Optional conversation ID from context (preferred)
    * @param context - Session context data
    * @returns Session state with generated IDs
    */
-  startConversation(context: {
+  startConversation(conversationId: string | undefined, context: {
     privateLabelId?: number
     userType?: string
     visitorId?: string
@@ -200,25 +202,25 @@ export class AgentObservabilityService {
     customerId?: string
     market?: string
   }): SessionState {
-    const conversationId = randomUUID()
+    const actualConversationId = conversationId || randomUUID()
     const traceId = generateTraceId()
     const spanId = generateSpanId()
     const startTime = Date.now()
 
     const session: SessionState = {
-      conversationId,
+      conversationId: actualConversationId,
       traceId,
       spanId,
       startTime,
       invocationCount: 0
     }
 
-    this.sessions.set(conversationId, session)
+    this.sessions.set(actualConversationId, session)
 
     // Return session immediately - IDs are generated locally, no need to wait for Event Bus
     // Send event to Event Bus in background (fire-and-forget)
     if (this.isEnabled()) {
-      this.sendConversationStartInBackground(conversationId, traceId, spanId, context)
+      this.sendConversationStartInBackground(actualConversationId, traceId, spanId, context)
     }
 
     return session

@@ -136,7 +136,10 @@ if (!observability.isEnabled()) {
 }
 
 // Start a conversation (synchronous - IDs generated locally, event sent in background)
-const session = observability.startConversation({
+// Pass conversationId from your context (e.g., database conversation ID)
+// If not available, pass undefined to generate a random UUID
+const conversationId = 'conversation-uuid-from-context';
+const session = observability.startConversation(conversationId, {
   privateLabelId: 1,
   userType: 'c1',
   visitorId: 'visitor-uuid',
