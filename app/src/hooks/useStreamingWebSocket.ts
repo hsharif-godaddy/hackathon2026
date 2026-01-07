@@ -157,9 +157,15 @@ export function useStreamingWebSocket() {
 
     return () => {
       controller.disconnect()
-      controller.destroy() // Clean up XState actor and adapter subscriptions
     }
   }, [currentAppId, controller])
+
+  useEffect(() => {
+    return () => {
+      controllerRef.current?.destroy()
+      controllerRef.current = null
+    }
+  }, [])
 
 
   /**
