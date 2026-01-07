@@ -889,13 +889,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         try {
           // Build input array for LLM tracking
-          // Keep minimal - 200 chars worked, 1000 failed
-          const MAX_CONTENT = 200
-          const MAX_MSGS = 5
+          const MAX_CONTENT = 5000
 
           const inputMessages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string }> = []
 
-          for (const msg of (data.input || []).slice(0, MAX_MSGS)) {
+          for (const msg of (data.input || [])) {
             if (!msg?.role || !msg?.content) continue
             const role = msg.role as 'system' | 'user' | 'assistant' | 'tool'
             if (!['system', 'user', 'assistant', 'tool'].includes(role)) continue

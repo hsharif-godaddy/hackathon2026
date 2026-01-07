@@ -311,8 +311,7 @@ This is **expected behavior** when the LLM responds with only tool calls:
 
 1. Check PCI sanitization settings (`AGENT_OBSERVABILITY_SANITIZE_PCI`)
 2. Verify sensitive data mode is disabled (`AGENT_OBSERVABILITY_SENSITIVE_MODE`)
-3. Content is truncated to 200 chars for `llm_start` inputs
-4. Maximum 5 messages sent in `llm_start` input array
+3. Content is truncated to 5000 chars for `llm_start` inputs
 
 ### Performance Concerns
 
