@@ -129,6 +129,7 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     //.file(paths.getAgentFile('develop', 'design.md'))
     .file(paths.getAgentFile('develop', 'handoff.md'))
     .file(paths.getAgentFile('develop', 'backend.md'))
+    .file(paths.getAgentFile('develop', 'secrets.md')) // Secrets management for API keys and credentials
 
   // Conditionally load commerce rules if commerce agent is enabled
   if (featureAgents.isEnabled('commerce')) {
@@ -223,6 +224,9 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       // User interaction
       nextAction: allAILibTools.nextAction,
       suggestedResponse: allAILibTools.suggestedResponse,
+
+      // Secrets management (for API keys, credentials)
+      requestSecrets: allAILibTools.requestSecrets,
 
       // Handoff and conversation control tools will be added by the factory when needed
     },

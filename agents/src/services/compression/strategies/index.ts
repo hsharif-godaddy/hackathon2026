@@ -8,3 +8,4 @@ export { TodoListRemovalStrategy } from './TodoListRemovalStrategy.js';
 export { HotFileInclusionStrategy } from './HotFileInclusionStrategy.js';
 export { FileEditCompressionStrategy } from './FileEditCompressionStrategy.js';
 export { FileEditInputCompressionStrategy } from './FileEditInputCompressionStrategy.js';
+export { SecretOperationCompressionStrategy } from './SecretOperationCompressionStrategy.js';

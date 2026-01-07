@@ -40,7 +40,7 @@ export class AppContextRemovalStrategy implements CompressionStrategy {
       /^📝 How to use these secrets in backend code/m,   // Secrets list instructions
       /^NO SECRETS CURRENTLY CONFIGURED/m,                        // Empty secrets state
       /^CURRENTLY CONFIGURED SECRETS:/m,          // Secrets list confirmation
-      /^[Current Project Context]/m,               // Project context header
+      /^\[Current Project Context\]/m,               // Project context header (escaped brackets)
       /^Directory Structure:/m,                   // Directory structure header
     ];
 

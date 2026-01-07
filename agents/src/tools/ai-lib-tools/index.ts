@@ -41,6 +41,7 @@ export {
   commerceSkuGroupMedia,
 } from './commerce-tools.js';
 export { oauthConnect } from './oauth-tool.js';
+export { requestSecrets } from './secrets-tool.js';
 export { socialConnect } from './social-connect.js';
 export { socialStatus } from './social-status.js';
 export { socialPostCreateAITool } from './social-post-create.js';
@@ -86,6 +87,7 @@ import {
   commerceSkuGroupMedia,
 } from './commerce-tools.js';
 import { oauthConnect } from './oauth-tool.js';
+import { requestSecrets } from './secrets-tool.js';
 import { socialConnect } from './social-connect.js';
 import { socialStatus } from './social-status.js';
 import { socialPostCreateAITool } from './social-post-create.js';
@@ -125,6 +127,7 @@ export const allAILibTools: Record<string, Tool> = {
   suggestedResponse: suggestedResponseAITool,
   seoAnalysis: seoAnalyze,
   oauthConnect: oauthConnect,
+  requestSecrets: requestSecrets,
   commerceSetupIntegration: commerceSetupIntegration,
   commerceStore: commerceStore,
   commerceSearchSkuGroups: commerceSearchSkuGroups,

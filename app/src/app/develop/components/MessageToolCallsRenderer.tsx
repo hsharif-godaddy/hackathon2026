@@ -39,7 +39,7 @@ function renderToolCall(toolCall: ToolCall, index?: number, isActiveStream?: boo
           className="my-2"
         />
       ) : (
-        <ToolRenderer toolCall={toolCall} />
+        <ToolRenderer toolCall={toolCall} isLastAssistantMessage={isLastAssistantMessage} />
       )}
     </div>
   )
@@ -64,4 +64,3 @@ function MessageToolCallsRenderer({ toolCalls, isActiveStream = false, isLastAss
 }
 
 export default React.memo(MessageToolCallsRenderer)
-

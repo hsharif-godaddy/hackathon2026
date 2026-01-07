@@ -9,19 +9,21 @@ import { getToolRenderer } from './tool-renderers'
 interface ToolRendererProps {
   toolCall: ToolCall
   className?: string
+  /** Whether this tool is in the last assistant message */
+  isLastAssistantMessage?: boolean
 }
 
 /**
  * Renders a tool call using the appropriate renderer
- * 
+ *
  * Dynamically loads and renders the appropriate tool renderer component based on
  * the tool name. Falls back to DefaultToolRenderer if no custom renderer exists.
- * 
+ *
  * @param toolCall - The tool call data to render
  * @param className - Optional CSS classes to apply to the container
  * @returns The rendered tool component
  */
-function ToolRenderer({ toolCall, className = '' }: ToolRendererProps) {
+function ToolRenderer({ toolCall, className = '', isLastAssistantMessage = false }: ToolRendererProps) {
 
   const ToolRendererComponent = getToolRenderer(toolCall.name)
 
@@ -37,10 +39,10 @@ function ToolRenderer({ toolCall, className = '' }: ToolRendererProps) {
         startTime={toolCall.startTime}
         endTime={toolCall.endTime}
         partialInput={toolCall.partialInput}
+        isLastAssistantMessage={isLastAssistantMessage}
       />
     </div>
   )
 }
 
 export default ToolRenderer
-

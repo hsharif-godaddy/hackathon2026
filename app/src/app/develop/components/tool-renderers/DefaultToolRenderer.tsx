@@ -22,6 +22,8 @@ export interface DefaultToolRendererProps {
   startTime?: number
   endTime?: number
   partialInput?: string
+  /** Whether this tool is in the last assistant message (used to disable interactive forms after user responds) */
+  isLastAssistantMessage?: boolean
 }
 
 /**

@@ -17,6 +17,7 @@ import {
   DuplicateFileReadStrategy,
   AppContextRemovalStrategy,
   TodoListRemovalStrategy,
+  SecretOperationCompressionStrategy,
 } from './compression/strategies/index.js';
 import { CssSuggestCompressionStrategy } from './compression/strategies/CssSuggestCompressionStrategy.js';
 import { ContextFormatter } from './helpers/ContextFormatter.js';
@@ -76,6 +77,8 @@ export class ConversationContextManager {
     this.historyLoader.registerCompressionStrategy(new AppContextRemovalStrategy());
     // Remove all todoList entries from history - persistent [Current Todo List] section is the single source of truth
     this.historyLoader.registerCompressionStrategy(new TodoListRemovalStrategy());
+    // Annotate secret operation messages to prevent LLM from using stale secret info
+    this.historyLoader.registerCompressionStrategy(new SecretOperationCompressionStrategy());
     // TEMPORARILY DISABLED: Tool message compression strategies need to be updated for AI SDK v6 format
     // this.historyLoader.registerCompressionStrategy(new CssSuggestCompressionStrategy());
   }

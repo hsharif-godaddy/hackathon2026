@@ -19,6 +19,7 @@ import ImageSearchToolRenderer from './ImageSearchToolRenderer'
 import MediaSearchToolRenderer from './MediaSearchToolRenderer'
 import OAuthToolRenderer from './OAuthToolRenderer'
 import ReadFileToolRenderer from './ReadFileToolRenderer'
+import SecretsToolRenderer from './SecretsToolRenderer'
 import SkillToolRenderer from './SkillToolRenderer'
 import SocialConnectToolRenderer from './SocialConnectToolRenderer'
 import SocialPostCreateToolRenderer from './SocialPostCreateToolRenderer'
@@ -56,6 +57,7 @@ export const toolRendererRegistry = {
   todoList: TodoListToolRenderer,
   suggestedResponse: SuggestedResponseToolRenderer,
   oauthConnect: OAuthToolRenderer,
+  requestSecrets: SecretsToolRenderer,
   socialStatus: SocialStatusToolRenderer,
   socialConnect: SocialConnectToolRenderer,
   skill: SkillToolRenderer,
@@ -105,6 +107,7 @@ export {
   MediaSearchToolRenderer,
   OAuthToolRenderer,
   ReadFileToolRenderer,
+  SecretsToolRenderer,
   SkillToolRenderer,
   SocialPostCreateToolRenderer,
   SuggestedResponseToolRenderer,
