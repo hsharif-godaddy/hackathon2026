@@ -26,6 +26,7 @@ export * from './utils/errors.js'
 export * from './utils/retry-with-backoff.js'
 export * from './utils/logger.js'
 export * from './utils/tool-llm-helper.js'
+export * from './utils/prompt-caching.js'
 
 // Convenience re-exports
 export {

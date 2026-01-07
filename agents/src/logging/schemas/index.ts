@@ -22,7 +22,7 @@ export function validateLogEvent(event: LogEvent): LogEvent {
   // Then validate against domain-specific schema if available
   const domain = event.event.split('.')[0] as keyof typeof EVENT_SCHEMAS;
   const domainSchema = EVENT_SCHEMAS[domain];
-  
+
   if (domainSchema) {
     const domainResult = domainSchema.safeParse(event);
     if (!domainResult.success) {
@@ -71,12 +71,12 @@ export function errorToLogError(error: Error | any): import('./base.js').LogErro
  */
 export function sanitizeLogEvent(event: LogEvent): LogEvent {
   const sanitized = { ...event };
-  
+
   // Remove or mask sensitive fields
   if (sanitized.data) {
     sanitized.data = sanitizeSensitiveData(sanitized.data);
   }
-  
+
   if (sanitized.meta) {
     sanitized.meta = sanitizeSensitiveData(sanitized.meta);
   }
@@ -92,21 +92,22 @@ function sanitizeSensitiveData(obj: Record<string, any>): Record<string, any> {
     'password', 'token', 'secret', 'key', 'apikey', 'api_key',
     'authorization', 'auth', 'credential', 'credentials'
   ];
-  
+
   // Keys that should NOT be redacted even if they contain sensitive keywords
   const allowedKeys = [
     'promptTokens', 'completionTokens', 'totalTokens', 'tokens',
     'tokenCount', 'tokenUsage', 'tokenType', 'inputTokens', 'outputTokens',
     'originalTokenCount', 'summaryTokenCount', 'tokenThreshold', 'maxTokensPerBatch',
     'cacheReadTokens', 'cacheWriteTokens', 'batchTokenCount', 'batchTokens',
-    'totalSummaryTokens', 'originalTokens', 'summaryTokens'
+    'totalSummaryTokens', 'originalTokens', 'summaryTokens', 'reasoningTokens',
+    'cachedInputTokens'
   ];
-  
+
   const sanitized = { ...obj };
-  
+
   for (const [key, value] of Object.entries(sanitized)) {
     const lowerKey = key.toLowerCase();
-    
+
     // Skip redaction for allowed token usage fields
     if (allowedKeys.some(allowed => lowerKey === allowed.toLowerCase())) {
       // Still recursively sanitize nested objects
@@ -115,18 +116,18 @@ function sanitizeSensitiveData(obj: Record<string, any>): Record<string, any> {
       }
       continue;
     }
-    
+
     // Check if key is sensitive
     if (sensitiveKeys.some(sensitive => lowerKey.includes(sensitive))) {
       sanitized[key] = '[REDACTED]';
       continue;
     }
-    
+
     // Recursively sanitize nested objects
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       sanitized[key] = sanitizeSensitiveData(value);
     }
   }
-  
+
   return sanitized;
 }

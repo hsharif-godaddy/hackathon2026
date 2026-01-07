@@ -1,9 +1,12 @@
 import type { LanguageModel, Tool, ModelMessage } from 'ai'
 import type { z } from 'zod'
 
+// Re-export AI SDK types for convenience
+export type { ModelMessage, LanguageModel, Tool } from 'ai'
+
 /**
  * Agents collection returned from AgentFactory.defineAgents()
- * 
+ *
  * This is the standard interface for accessing agents in a type-safe way.
  */
 export interface AgentsCollection {
@@ -90,6 +93,13 @@ export interface AgentConfig {
   }
   /** Agent-specific metadata for custom configuration */
   metadata?: Record<string, unknown>
+  /** Enable automatic prompt caching for this agent */
+  enablePromptCaching?: boolean | {
+    /** Cache system prompts (default: true) */
+    cacheSystemPrompts?: boolean
+    /** Maximum cache breakpoints to use (Anthropic limit: 4, default: 2) */
+    maxBreakpoints?: number
+  }
 }
 
 /**

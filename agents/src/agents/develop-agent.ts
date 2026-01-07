@@ -269,6 +269,10 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     // Custom stop conditions
     stopWhen: [shouldStopAfterColorSchemeSuggest],
 
+    // Enable prompt caching for cost savings and performance
+    // The develop agent has a large system prompt (~10K+ tokens) making it ideal for caching
+    enablePromptCaching: true,
+
     metadata: {
       contextPreferences: {
         includeAppContext: true,

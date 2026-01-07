@@ -86,6 +86,10 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     maxOutputTokens: 8000,
     logger: createAgentTelemetryLogger('marketing'),
 
+    // Enable prompt caching for cost savings
+    // Marketing agent benefits from caching during multi-turn SEO analysis and content optimization conversations
+    enablePromptCaching: true,
+
     metadata: {
       contextPreferences: {
         includeAppContext: true,
