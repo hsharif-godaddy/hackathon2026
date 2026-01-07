@@ -46,10 +46,10 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
   const hasSegments = hasValidSegments(message)
   const isComplete = isStreamingMessage(message) ? message.isComplete : true
 
-  // Calculate formatted reset time as "today at [time]" or "tomorrow at [time]"
+  // Calculate formatted reset time as "today at [time] [timezone]" or "tomorrow at [time] [timezone]"
   const resetTime = useMemo(() => {
     const { date, isTomorrow } = getNextResetInfo();
-    const time = intl.formatDate(date, { hour: 'numeric', minute: '2-digit' });
+    const time = intl.formatDate(date, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
     return isTomorrow
       ? t('builder_usage_limit_reset_tomorrow', { time }, `tomorrow at ${time}`)
       : t('builder_usage_limit_reset_today', { time }, `today at ${time}`);
