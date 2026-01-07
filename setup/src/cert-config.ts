@@ -86,7 +86,7 @@ export class CertConfigSetup {
    *
    * @returns AWS profile name if setup successful, null otherwise
    */
-  async setupAWSCredentials(): Promise<string | null> {
+  async setupAWSCredentials(yesToAll: boolean = false): Promise<string | null> {
     console.log(chalk.blue('🔧 Setting up AWS credentials for certificate access...'));
     console.log('');
     console.log('To access certificates from AWS Secrets Manager, you need:');
@@ -94,6 +94,11 @@ export class CertConfigSetup {
     console.log('• PowerUser role permissions');
     console.log('• Access to us-west-2 region');
     console.log('');
+
+    if (yesToAll) {
+      console.log(chalk.gray('Automated mode: skipping AWS SSO setup prompt'));
+      return null;
+    }
 
     const { setupSSO } = await inquirer.prompt([
       {
@@ -264,7 +269,7 @@ TESTPILOT_CLIENT_KEY="${escapeForEnv(certificates.testpilotKey)}"`;
    *
    * @returns Setup result with success status and optional env config
    */
-  async setup(): Promise<{ success: boolean; envConfig?: string }> {
+  async setup(yesToAll: boolean = false): Promise<{ success: boolean; envConfig?: string }> {
     console.log(chalk.cyan.bold('🔐 Client Certificate Setup'));
     console.log(chalk.gray('============================'));
     console.log('');
@@ -275,14 +280,20 @@ TESTPILOT_CLIENT_KEY="${escapeForEnv(certificates.testpilotKey)}"`;
     console.log(`Certificate source: AWS Secrets Manager (${this.config.region})`);
     console.log('');
 
-    const { proceed } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'proceed',
-        message: 'Continue with certificate configuration?',
-        default: true
-      }
-    ]);
+    let proceed = yesToAll;
+    if (!yesToAll) {
+      const response = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'proceed',
+          message: 'Continue with certificate configuration?',
+          default: true
+        }
+      ]);
+      proceed = response.proceed;
+    } else {
+      console.log(chalk.gray('Automated mode: attempting certificate configuration...'));
+    }
 
     if (!proceed) {
       console.log(chalk.yellow('Certificate configuration cancelled.'));
@@ -294,7 +305,7 @@ TESTPILOT_CLIENT_KEY="${escapeForEnv(certificates.testpilotKey)}"`;
 
     // Step 2: Set up AWS credentials if needed
     if (!awsProfile) {
-      awsProfile = await this.setupAWSCredentials();
+      awsProfile = await this.setupAWSCredentials(yesToAll);
 
       if (!awsProfile) {
         console.log(chalk.red('❌ Cannot proceed without AWS credentials'));

@@ -62,7 +62,7 @@ export class GettyConfigSetup {
     }
   }
 
-  async setupAWSCredentials(): Promise<string | null> {
+  async setupAWSCredentials(yesToAll: boolean = false): Promise<string | null> {
     console.log(chalk.blue('🔧 Setting up AWS credentials for Getty token access...'));
     console.log('');
     console.log('To access the Getty token from AWS Secrets Manager, you need:');
@@ -70,6 +70,11 @@ export class GettyConfigSetup {
     console.log('• PowerUser role permissions');
     console.log('• Access to us-west-2 region');
     console.log('');
+
+    if (yesToAll) {
+      console.log(chalk.gray('Automated mode: skipping AWS SSO setup prompt'));
+      return null;
+    }
 
     const { setupSSO } = await inquirer.prompt([
       {
@@ -152,7 +157,7 @@ IMAGE_SEARCH_DRIVER=getty`;
     return envConfig;
   }
 
-  async setup(): Promise<{ success: boolean; envConfig?: string }> {
+  async setup(yesToAll: boolean = false): Promise<{ success: boolean; envConfig?: string }> {
     console.log(chalk.cyan.bold('🖼️  Getty Images Proxy Setup'));
     console.log(chalk.gray('============================'));
     console.log('');
@@ -162,14 +167,20 @@ IMAGE_SEARCH_DRIVER=getty`;
     console.log(`Token source: AWS Secrets Manager (${this.config.secretPath})`);
     console.log('');
 
-    const { proceed } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'proceed',
-        message: 'Continue with Getty configuration?',
-        default: true
-      }
-    ]);
+    let proceed = yesToAll;
+    if (!yesToAll) {
+      const response = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'proceed',
+          message: 'Continue with Getty configuration?',
+          default: true
+        }
+      ]);
+      proceed = response.proceed;
+    } else {
+      console.log(chalk.gray('Automated mode: attempting Getty configuration...'));
+    }
 
     if (!proceed) {
       console.log(chalk.yellow('Getty configuration cancelled.'));
@@ -181,7 +192,7 @@ IMAGE_SEARCH_DRIVER=getty`;
 
     // Step 2: Set up AWS credentials if needed
     if (!awsProfile) {
-      awsProfile = await this.setupAWSCredentials();
+      awsProfile = await this.setupAWSCredentials(yesToAll);
       
       if (!awsProfile) {
         console.log(chalk.red('❌ Cannot proceed without AWS credentials'));

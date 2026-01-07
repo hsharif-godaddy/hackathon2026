@@ -17,6 +17,33 @@ import { CASetup } from './ca-setup.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '../..');
 
+// Global warnings/follow-ups collection
+const setupWarnings: string[] = [];
+
+function addSetupWarning(message: string): void {
+  setupWarnings.push(message);
+}
+
+function displaySetupWarnings(): void {
+  if (setupWarnings.length === 0) {
+    return;
+  }
+
+  console.log('');
+  console.log(chalk.yellow('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+  console.log(chalk.yellow.bold('⚠️  IMPORTANT: Setup Warnings & Follow-ups'));
+  console.log(chalk.yellow('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+  console.log('');
+
+  setupWarnings.forEach((warning, index) => {
+    console.log(chalk.yellow(`${index + 1}. ${warning}`));
+  });
+
+  console.log('');
+  console.log(chalk.yellow('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+  console.log('');
+}
+
 function printHeader() {
   console.clear();
   console.log(chalk.cyan.bold('🚀 Airo Builder Setup Utility'));
@@ -275,8 +302,16 @@ async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyC
   }
 }
 
-async function fullSetup(): Promise<void> {
+async function fullSetup(yesToAll: boolean = false): Promise<void> {
+  // Clear any previous warnings
+  setupWarnings.length = 0;
+
   printHeader();
+
+  if (yesToAll) {
+    console.log(chalk.green('🚀 Running full automated setup with defaults...'));
+    console.log('');
+  }
 
   console.log(chalk.yellow('This full setup will:'));
   console.log('• Check Docker and Docker Compose installation');
@@ -298,18 +333,20 @@ async function fullSetup(): Promise<void> {
   console.log('• Configure client certificates for GraphQL and TestPilot APIs');
   console.log('');
 
-  const { proceed } = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'proceed',
-      message: 'Continue with full setup?',
-      default: true
-    }
-  ]);
+  if (!yesToAll) {
+    const { proceed } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'proceed',
+        message: 'Continue with full setup?',
+        default: true
+      }
+    ]);
 
-  if (!proceed) {
-    console.log(chalk.yellow('Setup cancelled.'));
-    return;
+    if (!proceed) {
+      console.log(chalk.yellow('Setup cancelled.'));
+      return;
+    }
   }
 
   // Step 1: Check Docker dependencies
@@ -319,6 +356,11 @@ async function fullSetup(): Promise<void> {
   if (!dockerOk) {
     console.log(chalk.red('\n❌ Docker dependencies not satisfied.'));
     console.log('Please install missing dependencies and run this setup again.');
+
+    if (yesToAll) {
+      console.log(chalk.red('Automated mode requires Docker. Exiting...'));
+      process.exit(1);
+    }
 
     const { continueAnyway } = await inquirer.prompt([
       {
@@ -341,29 +383,37 @@ async function fullSetup(): Promise<void> {
   console.log(chalk.cyan('🔒 Development Certificate Authority Setup'));
   console.log('Setting up CA for trusted HTTPS certificates...\n');
 
-  await caSetup.setup();
+  await caSetup.setup(yesToAll);
 
   printSeparator();
 
   // Step 3: Commerce Configuration (ask once for full setup)
   console.log(chalk.cyan('🛒 GoDaddy Commerce Configuration'));
 
-  const { configureCommerce } = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'configureCommerce',
-      message: 'Would you like to enable and configure GoDaddy Commerce?',
-      default: true
-    }
-  ]);
+  let configureCommerce = yesToAll;
+  if (!yesToAll) {
+    const response = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'configureCommerce',
+        message: 'Would you like to enable and configure GoDaddy Commerce?',
+        default: true
+      }
+    ]);
+    configureCommerce = response.configureCommerce;
+  } else {
+    console.log(chalk.gray('Automated mode: attempting Commerce configuration...'));
+  }
 
   let commerceResult = null;
   if (configureCommerce) {
     const commerceSetup = new CommerceConfigSetup();
-    commerceResult = await commerceSetup.setup();
+    commerceResult = await commerceSetup.setup(yesToAll);
 
     if (!commerceResult.success) {
-      console.log(chalk.yellow('Commerce configuration failed, will skip Commerce for environment files...'));
+      const warningMsg = 'Commerce configuration failed. You can configure it later by running setup again.';
+      setupWarnings.push(warningMsg);
+      console.log(chalk.yellow(`⚠️  ${warningMsg}`));
       commerceResult = null;
     }
   }
@@ -371,35 +421,47 @@ async function fullSetup(): Promise<void> {
   printSeparator();
 
   // Step 4: Environment Configuration
-  const envGenerator = new EnvGenerator(projectRoot);
+  const envGenerator = new EnvGenerator(projectRoot, setupWarnings);
 
   console.log(chalk.cyan('🔧 Environment Configuration'));
   console.log('Configuring .env files for the application...\n');
 
-  const { configureApp } = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'configureApp',
-      message: 'Generate app/.env configuration?',
-      default: true
-    }
-  ]);
-
-  if (configureApp) {
-    await envGenerator.generateAppEnv(false, commerceResult); // Pass Commerce result, skip prompt
+  let configureApp = yesToAll;
+  if (!yesToAll) {
+    const response = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'configureApp',
+        message: 'Generate app/.env configuration?',
+        default: true
+      }
+    ]);
+    configureApp = response.configureApp;
+  } else {
+    console.log(chalk.gray('Generating app/.env with defaults...'));
   }
 
-  const { configureAgents } = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'configureAgents',
-      message: 'Generate agents/.env configuration?',
-      default: true
-    }
-  ]);
+  if (configureApp) {
+    await envGenerator.generateAppEnv(yesToAll, commerceResult);
+  }
+
+  let configureAgents = yesToAll;
+  if (!yesToAll) {
+    const response = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'configureAgents',
+        message: 'Generate agents/.env configuration?',
+        default: true
+      }
+    ]);
+    configureAgents = response.configureAgents;
+  } else {
+    console.log(chalk.gray('Generating agents/.env with defaults...'));
+  }
 
   if (configureAgents) {
-    await envGenerator.generateAgentsEnv(false, commerceResult); // Pass Commerce result, skip prompt
+    await envGenerator.generateAgentsEnv(yesToAll, commerceResult);
   }
 
   printSeparator();
@@ -414,27 +476,37 @@ async function fullSetup(): Promise<void> {
   if (jwtStatus.app && jwtStatus.agents) {
     console.log(chalk.green('✅ JWT keys already configured'));
 
-    const { regenerateKeys } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'regenerateKeys',
-        message: 'Regenerate JWT keys?',
-        default: false
-      }
-    ]);
+    if (!yesToAll) {
+      const { regenerateKeys } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'regenerateKeys',
+          message: 'Regenerate JWT keys?',
+          default: false
+        }
+      ]);
 
-    if (regenerateKeys) {
-      await jwtGenerator.generateAndConfigureKeys();
+      if (regenerateKeys) {
+        await jwtGenerator.generateAndConfigureKeys();
+      }
+    } else {
+      console.log(chalk.gray('Keeping existing JWT keys...'));
     }
   } else {
-    const { generateKeys } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'generateKeys',
-        message: 'Generate JWT keys now?',
-        default: true
-      }
-    ]);
+    let generateKeys = yesToAll;
+    if (!yesToAll) {
+      const response = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'generateKeys',
+          message: 'Generate JWT keys now?',
+          default: true
+        }
+      ]);
+      generateKeys = response.generateKeys;
+    } else {
+      console.log(chalk.gray('Generating JWT keys...'));
+    }
 
     if (generateKeys) {
       await jwtGenerator.generateAndConfigureKeys();
@@ -451,14 +523,20 @@ async function fullSetup(): Promise<void> {
     console.log(chalk.cyan('🐳 Docker Container Status'));
     await envGenerator.checkMySQLConnection();
 
-    const { startMySQL } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'startMySQL',
-        message: 'Start MySQL container now?',
-        default: true
-      }
-    ]);
+    let startMySQL = yesToAll;
+    if (!yesToAll) {
+      const response = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'startMySQL',
+          message: 'Start MySQL container now?',
+          default: true
+        }
+      ]);
+      startMySQL = response.startMySQL;
+    } else {
+      console.log(chalk.gray('Starting MySQL container...'));
+    }
 
     if (startMySQL) {
       try {
@@ -478,14 +556,20 @@ async function fullSetup(): Promise<void> {
   printSeparator();
 
   // Step 4: Certificate Configuration
-  const { configureCerts } = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'configureCerts',
-      message: 'Configure client certificates for GraphQL and TestPilot APIs?',
-      default: true
-    }
-  ]);
+  let configureCerts = false;
+  if (!yesToAll) {
+    const response = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'configureCerts',
+        message: 'Configure client certificates for GraphQL and TestPilot APIs?',
+        default: true
+      }
+    ]);
+    configureCerts = response.configureCerts;
+  } else {
+    console.log(chalk.gray('Skipping client certificates configuration in automated mode...'));
+  }
 
   if (configureCerts) {
     const certSetup = new CertConfigSetup();
@@ -494,45 +578,57 @@ async function fullSetup(): Promise<void> {
 
   printSeparator();
 
-  // Step 5: Next Steps
-  console.log(chalk.green.bold('🎉 Setup Complete!'));
-  console.log('');
-  console.log(chalk.cyan('📋 Next Steps:'));
-  console.log('');
-  console.log('1. Install dependencies:');
-  console.log(chalk.gray('   pnpm install  # Install all workspace dependencies'));
-  console.log('');
-  console.log('2. Run database migrations:');
-  console.log(chalk.gray('   pnpm --filter website exec prisma migrate dev'));
-  console.log('');
-  console.log('3. Start the services:');
-  console.log(chalk.gray('   pnpm run dev  # Start both services concurrently'));
-  console.log(chalk.gray('   # Or start individually:'));
-  console.log(chalk.gray('   pnpm run dev:agents  # Backend (port 4000)'));
-  console.log(chalk.gray('   pnpm run dev:app     # Frontend (port 3000)'));
-  console.log('');
-  console.log('4. Access the application:');
-  console.log(chalk.gray('   http://localhost:3000'));
-  console.log('');
-
-  if (dockerOk) {
-    console.log('5. MySQL is available at:');
-    console.log(chalk.gray('   Host: localhost:3306'));
-    console.log(chalk.gray('   Database: airo_app'));
-    console.log(chalk.gray('   User: airo'));
-    console.log(chalk.gray('   Password: airopassword'));
+  // Step 5: Next Steps (only in interactive mode, bash script handles it in automated mode)
+  if (!yesToAll) {
+    console.log(chalk.green.bold('🎉 Setup Complete!'));
     console.log('');
+    console.log(chalk.cyan('📋 Next Steps:'));
+    console.log('');
+    console.log('1. Install dependencies:');
+    console.log(chalk.gray('   pnpm install  # Install all workspace dependencies'));
+    console.log('');
+    console.log('2. Run database migrations:');
+    console.log(chalk.gray('   pnpm --filter website exec prisma migrate dev'));
+    console.log('');
+    console.log('3. Start the services:');
+    console.log(chalk.gray('   pnpm run dev  # Start both services concurrently'));
+    console.log(chalk.gray('   # Or start individually:'));
+    console.log(chalk.gray('   pnpm run dev:agents  # Backend (port 4000)'));
+    console.log(chalk.gray('   pnpm run dev:app     # Frontend (port 3000)'));
+    console.log('');
+    console.log('4. Access the application:');
+    console.log(chalk.gray('   http://localhost:3000'));
+    console.log('');
+
+    if (dockerOk) {
+      console.log('5. MySQL is available at:');
+      console.log(chalk.gray('   Host: localhost:3306'));
+      console.log(chalk.gray('   Database: airo_app'));
+      console.log(chalk.gray('   User: airo'));
+      console.log(chalk.gray('   Password: airopassword'));
+      console.log('');
+    }
   }
+
+  // Display warnings at the end (before bash script takes over)
+  displaySetupWarnings();
 }
 
 async function main() {
   try {
-    const mode = await selectMode();
+    const args = process.argv.slice(2);
+    const yesToAll = args.includes('--yes-to-all');
 
-    if (mode === 'selective') {
-      await selectiveConfiguration();
+    if (yesToAll) {
+      await fullSetup(true);
     } else {
-      await fullSetup();
+      const mode = await selectMode();
+
+      if (mode === 'selective') {
+        await selectiveConfiguration();
+      } else {
+        await fullSetup(false);
+      }
     }
   } catch (error) {
     console.error(chalk.red('❌ Setup failed:'), error);

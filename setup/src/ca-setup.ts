@@ -17,7 +17,7 @@ export class CASetup {
     this.caKeyPath = path.join(this.caDir, 'ca-key.pem');
   }
 
-  async setup(): Promise<void> {
+  async setup(yesToAll: boolean = false): Promise<void> {
     console.log(chalk.cyan('🔒 Development Certificate Authority Setup'));
     console.log('');
 
@@ -29,6 +29,12 @@ export class CASetup {
         console.log(chalk.green('✅ CA is already trusted in system'));
       }
       console.log('');
+
+      if (yesToAll) {
+        console.log(chalk.gray('Automated mode: skipping CA setup...'));
+        console.log('');
+        return;
+      }
 
       const choices = [
         { name: 'Trust the existing CA', value: 'trust' },
@@ -49,17 +55,17 @@ export class CASetup {
       if (action === 'skip') {
         return;
       } else if (action === 'trust') {
-        await this.trustCA();
+        await this.trustCA(false);
         return;
       } else if (action === 'regenerate') {
         await this.generateCA();
-        await this.trustCA();
+        await this.trustCA(false);
         return;
       }
     }
 
     await this.generateCA();
-    await this.trustCA();
+    await this.trustCA(yesToAll);
   }
 
   private async caExists(): Promise<boolean> {
@@ -180,15 +186,22 @@ export class CASetup {
     }
   }
 
-  private async trustCA(): Promise<void> {
-    const { shouldTrust } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'shouldTrust',
-        message: 'Would you like to trust the CA certificate now?',
-        default: true
-      }
-    ]);
+  private async trustCA(yesToAll: boolean = false): Promise<void> {
+    let shouldTrust = yesToAll;
+
+    if (!yesToAll) {
+      const response = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'shouldTrust',
+          message: 'Would you like to trust the CA certificate now?',
+          default: true
+        }
+      ]);
+      shouldTrust = response.shouldTrust;
+    } else {
+      console.log(chalk.gray('Automated mode: trusting CA certificate...'));
+    }
 
     if (!shouldTrust) {
       console.log('');
@@ -199,14 +212,14 @@ export class CASetup {
     }
 
     console.log('');
-    await this.installCAToSystem();
+    await this.installCAToSystem(yesToAll);
   }
 
-  private async installCAToSystem(): Promise<void> {
+  private async installCAToSystem(yesToAll: boolean = false): Promise<void> {
     const platform = process.platform;
 
     if (platform === 'linux') {
-      await this.installCALinux();
+      await this.installCALinux(yesToAll);
     } else if (platform === 'darwin') {
       await this.installCAMacOS();
     } else {
@@ -219,7 +232,7 @@ export class CASetup {
     }
   }
 
-  private async installCALinux(): Promise<void> {
+  private async installCALinux(yesToAll: boolean = false): Promise<void> {
     console.log(chalk.blue('📋 Installing CA to Linux/WSL2 system trust store...'));
     console.log('');
 
@@ -237,7 +250,7 @@ export class CASetup {
 
       const isWSL = await this.isWSL2();
       if (isWSL) {
-        await this.installCAWindowsHost();
+        await this.installCAWindowsHost(yesToAll);
       }
 
       console.log(chalk.yellow('⚠️  Browser-specific trust:'));
@@ -325,7 +338,7 @@ export class CASetup {
     }
   }
 
-  private async installCAWindowsHost(): Promise<void> {
+  private async installCAWindowsHost(yesToAll: boolean = false): Promise<void> {
     console.log('');
     console.log(chalk.blue('📋 Detected WSL2 - Windows host certificate installation available'));
     console.log('');
@@ -337,14 +350,21 @@ export class CASetup {
       return;
     }
 
-    const { shouldInstallWindows } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'shouldInstallWindows',
-        message: 'Install CA to Windows host as well? (Recommended for Windows browsers)',
-        default: true
-      }
-    ]);
+    let shouldInstallWindows = yesToAll;
+
+    if (!yesToAll) {
+      const response = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'shouldInstallWindows',
+          message: 'Install CA to Windows host as well? (Recommended for Windows browsers)',
+          default: true
+        }
+      ]);
+      shouldInstallWindows = response.shouldInstallWindows;
+    } else {
+      console.log(chalk.gray('Automated mode: installing to Windows host...'));
+    }
 
     if (!shouldInstallWindows) {
       console.log('');

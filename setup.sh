@@ -29,6 +29,10 @@ print_header() {
     echo "  5. AI model provider setup"
     echo "  6. MySQL container configuration"
     echo ""
+    echo -e "${BLUE}Usage:${NC}"
+    echo "  ./setup.sh                  # Interactive mode"
+    echo "  ./setup.sh --yes-to-all     # Full automated setup (use defaults)"
+    echo ""
 }
 
 print_step() {
@@ -47,12 +51,28 @@ print_error() {
 }
 
 confirm_continue() {
+    if [ "$FULL_SETUP" = true ]; then
+        echo ""
+        echo -e "${GREEN}Full setup mode: continuing automatically...${NC}"
+        echo ""
+        return
+    fi
     echo ""
     read -p "Press Enter to continue or Ctrl+C to exit..."
     echo ""
 }
 
 main() {
+    # Parse command line arguments
+    FULL_SETUP=false
+    for arg in "$@"; do
+        case $arg in
+            --yes-to-all)
+                FULL_SETUP=true
+                ;;
+        esac
+    done
+
     if [ -n "$AWS_PROFILE" ]; then
         print_error "AWS_PROFILE is set in your environment. Please remove it before running the setup, app & agents."
         exit 1
@@ -60,16 +80,22 @@ main() {
 
     print_header
 
-    # Confirm user wants to proceed
-    echo -e "${YELLOW}⚠️  This setup will check and potentially modify your system configuration.${NC}"
-    echo ""
-    read -p "Do you want to continue? [Y/n]: " -r
-    if [[ $REPLY =~ ^[Nn]$ ]]; then
-        echo -e "${YELLOW}Setup cancelled by user.${NC}"
-        exit 0
+    if [ "$FULL_SETUP" = true ]; then
+        echo -e "${GREEN}🚀 Running full automated setup - using defaults for all prompts${NC}"
+        echo ""
     fi
 
-    echo ""
+    # Confirm user wants to proceed
+    if [ "$FULL_SETUP" = false ]; then
+        echo -e "${YELLOW}⚠️  This setup will check and potentially modify your system configuration.${NC}"
+        echo ""
+        read -p "Do you want to continue? [Y/n]: " -r
+        if [[ $REPLY =~ ^[Nn]$ ]]; then
+            echo -e "${YELLOW}Setup cancelled by user.${NC}"
+            exit 0
+        fi
+        echo ""
+    fi
 
     # Step 1: Basic Dependencies
     print_step "1" "Basic Dependency Check"
@@ -109,11 +135,20 @@ main() {
     fi
 
     # Run the advanced setup
-    if pnpm --filter airo-setup start; then
-        print_success "Advanced setup completed successfully"
+    if [ "$FULL_SETUP" = true ]; then
+        if pnpm --filter airo-setup start -- --yes-to-all; then
+            print_success "Advanced setup completed successfully"
+        else
+            print_error "Advanced setup failed"
+            exit 1
+        fi
     else
-        print_error "Advanced setup failed"
-        exit 1
+        if pnpm --filter airo-setup start; then
+            print_success "Advanced setup completed successfully"
+        else
+            print_error "Advanced setup failed"
+            exit 1
+        fi
     fi
 
     # Step 3: Final Summary

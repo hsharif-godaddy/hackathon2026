@@ -88,7 +88,7 @@ export class CommerceConfigSetup {
     }
   }
 
-  async setupAWSCredentials(): Promise<string | null> {
+  async setupAWSCredentials(yesToAll: boolean = false): Promise<string | null> {
     console.log(
       chalk.blue(
         "🔧 Setting up AWS credentials for Commerce credentials access...",
@@ -102,6 +102,11 @@ export class CommerceConfigSetup {
     console.log("• PowerUser role permissions");
     console.log("• Access to us-west-2 region");
     console.log("");
+
+    if (yesToAll) {
+      console.log(chalk.gray("Automated mode: skipping AWS SSO setup prompt"));
+      return null;
+    }
 
     const { setupSSO } = await inquirer.prompt([
       {
@@ -262,7 +267,7 @@ GODADDY_API_BASE_URL=${this.config.apiBaseUrl}`;
     return appEnvConfig;
   }
 
-  async setup(): Promise<{
+  async setup(yesToAll: boolean = false): Promise<{
     success: boolean;
     agentsEnvConfig?: string;
     appEnvConfig?: string;
@@ -284,7 +289,7 @@ GODADDY_API_BASE_URL=${this.config.apiBaseUrl}`;
     let awsProfile = await this.checkAWSCredentials();
 
     if (!awsProfile) {
-      awsProfile = await this.setupAWSCredentials();
+      awsProfile = await this.setupAWSCredentials(yesToAll);
 
       if (!awsProfile) {
         console.log(chalk.red("❌ Cannot proceed without AWS credentials"));
