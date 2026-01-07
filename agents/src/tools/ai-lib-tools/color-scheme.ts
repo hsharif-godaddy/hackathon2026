@@ -221,6 +221,12 @@ WHEN TO USE SUGGEST MODE:
 - User asks for color options: "show me some purple color schemes"
 - User wants to explore: "what colors would work for a bakery?"
 - User requests variety: "give me 4 dark theme options"
+- IMPORTANT: Only suggest colors AFTER content exists - users need to see colors applied to actual UI
+
+WHEN NOT TO USE SUGGEST MODE:
+- At the start of a project before any content exists
+- Before building the initial page/layout
+- User should see colors on actual content, not empty pages
 
 WHEN TO USE APPLY MODE:
 - User selects a palette from the widget (by clicking "Apply")

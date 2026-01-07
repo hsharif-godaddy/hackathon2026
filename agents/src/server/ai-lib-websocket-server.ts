@@ -690,6 +690,23 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
       // Agent routing hook - select initial agent for new apps
       agentRouter: (socketId: string, data: any) => {
+        // Check for manual agent override in message content
+        // Format: /agent <agent-name> on first line
+        if (data.message && typeof data.message === 'string') {
+          const firstLine = data.message.split('\n')[0].trim()
+          const agentOverrideMatch = firstLine.match(/^\/agent\s+(\w+)$/i)
+          
+          if (agentOverrideMatch) {
+            const requestedAgent = agentOverrideMatch[1].toLowerCase()
+            logger.info('websocket.agent_router.manual_override', {
+              socketId,
+              requestedAgent,
+              message: 'Manual agent override detected in message'
+            })
+            return requestedAgent
+          }
+        }
+
         const metadata = data.context?.metadata as any
         const appId = metadata?.appId
         

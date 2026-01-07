@@ -119,41 +119,23 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     ? skillsResult.skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')
     : '(No skills available)';
 
-  // Load all modular prompt sections in order
+  // Load consolidated prompt sections
   promptBuilder
     .file(paths.getAgentFile('develop', 'core.md'))
     .text(`\n## Available Skills\n\n${skillsList}\n\n`)
-    .file(paths.getAgentFile('develop', 'skills.md')) // CRITICAL: Load skills system immediately after core
-    .file(paths.getSharedFile('communication.md')) // CRITICAL: Load communication style EARLY
+    .file(paths.getAgentFile('develop', 'claude-behavior.md'))
+    .file(paths.getSharedFile('communication.md'))
     .file(paths.getSharedFile('filesystem.md'))
-    .file(paths.getAgentFile('develop', 'color-scheme.md')) // Color scheme tool documentation
-    .file(paths.getAgentFile('develop', 'handoff.md')) // Agent handoff rules (always available agents)
+    //.file(paths.getAgentFile('develop', 'design.md'))
+    .file(paths.getAgentFile('develop', 'handoff.md'))
     .file(paths.getAgentFile('develop', 'backend.md'))
 
-  // Conditionally load commerce handoff rules if commerce agent is enabled
+  // Conditionally load commerce rules if commerce agent is enabled
   if (featureAgents.isEnabled('commerce')) {
-    promptBuilder.file(paths.getAgentFile('develop', 'handoff-commerce.md'))
+    promptBuilder.file(paths.getAgentFile('develop', 'commerce.md'))
   }
 
-  promptBuilder
-    // .file(paths.getAgentFile('develop', 'email.md'))
-    .file(paths.getAgentFile('develop', 'decision-matrix.md'))
-
-  // Conditionally load commerce decision matrix and checkout guide if commerce agent is enabled
-  if (featureAgents.isEnabled('commerce')) {
-    promptBuilder
-      .file(paths.getAgentFile('develop', 'decision-matrix-commerce.md'))
-      .file(paths.getAgentFile('develop', 'commerce-checkout-guide.md'))
-  }
-
-  promptBuilder
-    .file(paths.getAgentFile('develop', 'approach.md'))
-    .file(paths.getAgentFile('develop', 'visual-context.md'))
-    .file(paths.getAgentFile('develop', 'validation.md'))
-    .file(paths.getAgentFile('develop', 'design.md'))
-    //.file(paths.getAgentFile('develop', 'widgets.md')) // purposely disabled for now
-    .file(paths.getAgentFile('develop', 'planning.md'))
-    .file(paths.getSharedFile('security.md'));
+  promptBuilder.file(paths.getSharedFile('security.md'));
 
   // Template descriptions are now dynamically injected during conversation execution
   // via AILibContextManager.buildContextMessages() based on app context

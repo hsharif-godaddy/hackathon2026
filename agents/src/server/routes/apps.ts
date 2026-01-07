@@ -994,10 +994,17 @@ router.delete('/:id/usage', async (req: Request, res: Response) => {
  */
 router.post('/suggest-name', async (req: Request, res: Response) => {
   try {
-    const { prompt } = req.body;
+    let { prompt } = req.body;
 
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
       return res.status(400).json({ error: 'Prompt is required and must be a non-empty string' });
+    }
+
+    // Strip /agent command from first line if present
+    const firstLine = prompt.split('\n')[0]?.trim();
+    if (firstLine && firstLine.match(/^\/agent\s+\w+$/i)) {
+      const lines = prompt.split('\n');
+      prompt = lines.slice(1).join('\n').trimStart();
     }
 
     logger.info('route.apps.name-suggest.begin', {

@@ -1567,6 +1567,16 @@ export class WebSocketServer {
         throw new Error('No agent specified and no default agent configured')
       }
 
+      // 1.5. Strip /agent marker from message if present
+      if (data.message && typeof data.message === 'string') {
+        const firstLine = data.message.split('\n')[0]?.trim()
+        if (firstLine && firstLine.match(/^\/agent\s+\w+$/i)) {
+          // Remove first line and any leading newline
+          const lines = data.message.split('\n')
+          data.message = lines.slice(1).join('\n').trimStart()
+        }
+      }
+
       // 2. Process context (add socketId for tools)
       processedContext = await this.processContext(data, socketId)
 
