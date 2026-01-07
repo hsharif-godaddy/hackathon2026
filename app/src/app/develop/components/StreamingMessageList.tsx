@@ -24,6 +24,8 @@ export default function StreamingMessageList() {
   const prevMessagesLength = useRef(0)
   const prevLastMessageId = useRef<string | null>(null)
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const [userHasScrolledUp, setUserHasScrolledUp] = useState(false)
+  const scrollThrottleRef = useRef<NodeJS.Timeout | null>(null)
 
   // Get all visible messages (completed + active stream)
   const messages = useMessages()
@@ -49,6 +51,38 @@ export default function StreamingMessageList() {
     }
     return null
   }, [allMessages])
+
+  // Check if user is near bottom of scroll
+  const checkIfNearBottom = useCallback(() => {
+    if (!containerRef.current) return true
+
+    const container = containerRef.current
+    const threshold = 150 // pixels from bottom
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+
+    return distanceFromBottom < threshold
+  }, [])
+
+  // Handle scroll events to detect user scroll (throttled for performance)
+  const handleScroll = useCallback(() => {
+    // Throttle to max once per 100ms
+    if (scrollThrottleRef.current) return
+
+    scrollThrottleRef.current = setTimeout(() => {
+      scrollThrottleRef.current = null
+
+      const isNearBottom = checkIfNearBottom()
+
+      // If user scrolled up (away from bottom), pause auto-scroll
+      if (!isNearBottom && !userHasScrolledUp) {
+        setUserHasScrolledUp(true)
+      }
+      // If user scrolled back to bottom, resume auto-scroll
+      else if (isNearBottom && userHasScrolledUp) {
+        setUserHasScrolledUp(false)
+      }
+    }, 100)
+  }, [checkIfNearBottom, userHasScrolledUp])
 
   // Handle load more conversations
   const handleLoadMore = async () => {
@@ -103,13 +137,26 @@ export default function StreamingMessageList() {
       // Initial load - scroll immediately
       scrollToBottom(false)
       setIsInitialLoad(false)
+      setUserHasScrolledUp(false) // Reset scroll state on initial load
     } else if (messagesChanged) {
       // Check if the last message changed (new message at end) or just length changed (prepended messages)
       const lastMessageChanged = currentLastMessageId !== prevLastMessageId.current
 
       if (lastMessageChanged) {
-        // New message added at the end - auto scroll
-        scrollToBottom(true)
+        const currentLastMessageRole = currentLastMessage?.role
+
+        // New message added (user sent OR assistant started responding)
+        // ALWAYS scroll to bottom and reset scroll state
+        setUserHasScrolledUp(false)
+
+        if (currentLastMessageRole === 'user') {
+          // User message - immediate aggressive scroll
+          scrollToBottom(false, true)
+          requestAnimationFrame(() => scrollToBottom(false, true))
+        } else {
+          // Assistant message starting - smooth scroll
+          scrollToBottom(true)
+        }
       }
       // If only length changed but last message is the same, it means older messages were prepended
       // In that case, don't auto-scroll to maintain user's position
@@ -117,27 +164,27 @@ export default function StreamingMessageList() {
 
     prevMessagesLength.current = allMessages.length
     prevLastMessageId.current = currentLastMessageId
-  }, [allMessages, isInitialLoad, scrollToBottom])
+  }, [allMessages, isInitialLoad, scrollToBottom, userHasScrolledUp])
 
-  // Handle streaming content updates - more aggressive for better UX
+  // Handle streaming content updates - only if user hasn't scrolled up
   useEffect(() => {
-    if (isStreaming) {
+    if (isStreaming && !userHasScrolledUp) {
       // More frequent scroll updates for streaming content
       scrollToBottom(true)
     }
-  }, [isStreaming, activeStream, scrollToBottom]) // Also depend on activeStream changes
+  }, [isStreaming, activeStream, scrollToBottom, userHasScrolledUp]) // Also depend on activeStream changes
 
   // Additional scroll trigger for content changes that might cause layout shifts
   useEffect(() => {
-    if (isStreaming && activeStream) {
+    if (isStreaming && activeStream && !userHasScrolledUp) {
       // Use immediate scroll for layout-changing content to prevent jumping
       scrollToBottom(true, true)
     }
-  }, [isStreaming, activeStream, scrollToBottom])
+  }, [isStreaming, activeStream, scrollToBottom, userHasScrolledUp])
 
   // Handle thinking indicator appearance with immediate scroll
   useEffect(() => {
-    if (isStreaming && activeStream && !activeStream.isComplete) {
+    if (isStreaming && activeStream && !activeStream.isComplete && !userHasScrolledUp) {
       // Delay scroll slightly to catch thinking indicator appearance
       const thinkingScrollTimeout = setTimeout(() => {
         scrollToBottom(false, true) // Instant scroll when thinking indicator appears
@@ -145,13 +192,16 @@ export default function StreamingMessageList() {
 
       return () => clearTimeout(thinkingScrollTimeout)
     }
-  }, [isStreaming, activeStream, scrollToBottom])
+  }, [isStreaming, activeStream, scrollToBottom, userHasScrolledUp])
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (scrollTimeoutRef.current) {
         clearTimeout(scrollTimeoutRef.current)
+      }
+      if (scrollThrottleRef.current) {
+        clearTimeout(scrollThrottleRef.current)
       }
     }
   }, [])
@@ -161,7 +211,7 @@ export default function StreamingMessageList() {
     const showSpinner = isLoadingMessages || isPageLoading
 
     return (
-      <div ref={containerRef} className="flex-1 overflow-y-auto p-2 space-y-2">
+      <div ref={containerRef} className="flex-1 overflow-y-auto p-2 space-y-2" onScroll={handleScroll}>
         <div className="flex items-center justify-center h-full flex-col gap-0.5">
           {showSpinner ? (
             <Spinner size="md" />
@@ -178,7 +228,7 @@ export default function StreamingMessageList() {
   }
 
   return (
-    <div ref={containerRef} className="flex flex-1 flex-col overflow-y-auto px-2 sm:px-3 md:px-0 pt-1.5 md:pt-0 gap-1">
+    <div ref={containerRef} className="flex flex-1 flex-col overflow-y-auto px-2 sm:px-3 md:px-0 pt-1.5 md:pt-0 gap-1" onScroll={handleScroll}>
       {/* Load More Button */}
       {pagination.hasMore && (
         <div className="flex justify-center mb-2">
