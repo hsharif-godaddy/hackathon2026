@@ -325,19 +325,25 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     const setupLitellmMetadata = () => {
       const allApps = appRepo.findAll(1, 0) // limit=1, offset=0 (fetch first app)
       const app = allApps[0]
-      if (app && (app.subscriptionId || app.customerId)) {
+      if (app && (app.subscriptionId || app.customerId || app.id)) {
+        const tags: string[] = []
+        if (app.customerId) {
+          tags.push(app.customerId)
+        }
+        if (app.id) {
+          tags.push(app.id)
+        }
         const metadata: { user?: string; tags?: string[] } = {}
         if (app.subscriptionId) {
           metadata.user = app.subscriptionId
         }
-        if (app.customerId) {
-          metadata.tags = [app.customerId]
+        if (tags.length > 0) {
+          metadata.tags = tags
         }
         setLitellmMetadata(metadata)
         logger.info('websocket.litellm_metadata.initialized', {
-          appId: app.id,
           subscriptionId: metadata.user || 'not-set',
-          customerId: metadata.tags?.[0] || 'not-set'
+          litellmTags: metadata.tags || []
         })
       }
     }

@@ -268,33 +268,41 @@ export async function createOpenAIClient(config?: ProviderConfig): Promise<any> 
 }
 
 /**
- * Cached litellm metadata (subscriptionId, customerId) for this agent instance
+ * LiteLLM metadata structure for cost tracking and attribution
+ */
+export interface LitellmMetadata {
+  user?: string       // subscriptionId for budget tracking
+  tags?: string[]     // customerId and appId for tagging/filtering
+}
+
+/**
+ * Cached litellm metadata (subscriptionId, customerId, appId) for this agent instance
  * Since each agent serves a single site, these values are constant and set once
  */
-let cachedLitellmMetadata: { user?: string; tags?: string[] } | null = null
+let cachedLitellmMetadata: LitellmMetadata | null = null
 
 /**
  * Set litellm metadata for cost tracking
  * In production, each agent is locked to a single site, so this is called once
  * and the values remain constant for the lifetime of the agent process
  *
- * @param metadata - Object containing user (subscriptionId) and tags (customerId)
+ * @param metadata - Object containing user (subscriptionId) and tags (customerId, appId)
  *
  * @example
  * ```typescript
  * // Called once when agent initializes
  * setLitellmMetadata({
  *   user: 'airo-build:sid:sub123',
- *   tags: ['cust456']
+ *   tags: ['cust456', 'kjtp706kgh']  // customerId, appId
  * })
  * ```
  */
-export function setLitellmMetadata(metadata: { user?: string; tags?: string[] } | null): void {
+export function setLitellmMetadata(metadata: LitellmMetadata | null): void {
   cachedLitellmMetadata = metadata
   if (metadata) {
     logger.info('litellm_metadata configured', {
       subscriptionId: metadata.user || 'not-set',
-      customerId: metadata.tags?.[0] || 'not-set'
+      tags: metadata.tags || []
     })
   }
 }
