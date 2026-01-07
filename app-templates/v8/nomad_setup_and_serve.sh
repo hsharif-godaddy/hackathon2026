@@ -3,11 +3,11 @@
 # fail immediately if anything fails
 set -e
 
-# Unified job mode: select preview config and remove publish config for security
+# Unified job mode: move preview config to task-local directory and create symlink
 if [ -f "${NOMAD_ALLOC_DIR}/preview-config.json" ]; then
-    mv "${NOMAD_ALLOC_DIR}/preview-config.json" "${NOMAD_ALLOC_DIR}/config.json"
-    rm -f "${NOMAD_ALLOC_DIR}/publish-config.json"
-    echo "Configured secrets at ${NOMAD_ALLOC_DIR}/config.json"
+    mv "${NOMAD_ALLOC_DIR}/preview-config.json" "${NOMAD_TASK_DIR}/config.json"
+    ln -sf "${NOMAD_TASK_DIR}/config.json" "${NOMAD_ALLOC_DIR}/config.json"
+    echo "Configured secrets at ${NOMAD_TASK_DIR}/config.json (symlinked from ${NOMAD_ALLOC_DIR}/config.json)"
 fi
 
 # add the customer app directory to the git safe directory
