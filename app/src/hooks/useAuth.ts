@@ -60,6 +60,7 @@ export function useAuth(options: UseAuthOptions = {}) {
   const [jwtAuthValid, setJwtAuthValid] = useState<boolean | null>(null);
   const [authRefreshTrigger, setAuthRefreshTrigger] = useState(0);
   const isValidatingRef = useRef(false);
+  const latestValidationRequestIdRef = useRef(0);
 
   // Memoize auth configuration to prevent unnecessary re-renders
   const authType = useMemo(() => config?.auth?.authType || auth.getType(), [config?.auth?.authType]);
@@ -85,17 +86,28 @@ export function useAuth(options: UseAuthOptions = {}) {
 
   // Load configuration from API
   useEffect(() => {
+    let cancelled = false;
+
     async function loadConfig() {
       try {
         const response = await fetch('/api/config');
+
+        // Check if component unmounted during fetch
+        if (cancelled) return;
+
         if (response.ok) {
           const appConfig = await response.json();
-          setConfig(appConfig);
-          setConfigError(null);
+          // Check again after JSON parsing (async operation) - component could unmount during parsing
+          if (!cancelled) {
+            setConfig(appConfig);
+            setConfigError(null);
+          }
         } else {
           throw new Error(`Config API returned ${response.status}: ${response.statusText}`);
         }
       } catch (error) {
+        if (cancelled) return;
+
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         logger.error('auth.config.load.error', {
           message: 'Failed to load configuration - application cannot start',
@@ -103,10 +115,17 @@ export function useAuth(options: UseAuthOptions = {}) {
         });
         setConfigError(`Configuration loading failed: ${errorMessage}`);
       } finally {
-        setConfigLoading(false);
+        if (!cancelled) {
+          setConfigLoading(false);
+        }
       }
     }
+
     loadConfig();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Check JWT authentication and authorization
@@ -124,10 +143,23 @@ export function useAuth(options: UseAuthOptions = {}) {
         return;
       }
 
+      // Generate unique request ID to track latest request
+      const requestId = ++latestValidationRequestIdRef.current;
       isValidatingRef.current = true;
 
       try {
         const response = await fetch('/api/auth/validate');
+
+        // Only update state if this is still the latest request
+        if (requestId !== latestValidationRequestIdRef.current) {
+          logger.debug('auth.jwt.stale_response_ignored', {
+            message: 'Ignoring stale JWT validation response',
+            requestId,
+            latestRequestId: latestValidationRequestIdRef.current
+          });
+          return;
+        }
+
         if (response.ok) {
           const data = await response.json();
           setJwtAuthValid(data.valid);
@@ -138,6 +170,16 @@ export function useAuth(options: UseAuthOptions = {}) {
           setJwtAuthValid(false);
         }
       } catch (error) {
+        // Only update error state if this is still the latest request
+        if (requestId !== latestValidationRequestIdRef.current) {
+          logger.debug('auth.jwt.stale_error_ignored', {
+            message: 'Ignoring stale JWT validation error',
+            requestId,
+            latestRequestId: latestValidationRequestIdRef.current
+          });
+          return;
+        }
+
         logger.error('auth.jwt.check.error', {
           message: 'Failed to check JWT authentication',
           error: error as Error

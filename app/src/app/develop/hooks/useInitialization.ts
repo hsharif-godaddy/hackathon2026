@@ -522,6 +522,9 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       hasInitialized.current = true
       initializingAppIdRef.current = effectiveAppId
 
+      // Reset error states before starting new initialization
+      setSiteNotFound(false)
+
       initializePage(effectiveAppId)
         .then(() => {
           // Only proceed if we're still on the same appId (handles rapid navigation)

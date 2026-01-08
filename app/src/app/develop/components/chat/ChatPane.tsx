@@ -85,11 +85,16 @@ export default function ChatPane({
 
   // Fetch ventureId on component mount
   useEffect(function fetchVentureId() {
+    let cancelled = false;
+
     async function load() {
       try {
         const response = await fetch('/api/venture', {
           credentials: 'include',
         })
+
+        // Check if component unmounted during fetch
+        if (cancelled) return;
 
         if (!response.ok) {
           logger.error('chat-pane.venture-fetch-error', {
@@ -101,13 +106,15 @@ export default function ChatPane({
 
         const data = await response.json()
 
-        if (data.success && data.ventureId) {
+        if (!cancelled && data.success && data.ventureId) {
           setVentureId(data.ventureId)
           logger.debug('chat-pane.venture-fetched', {
             message: 'Venture ID fetched successfully'
           })
         }
       } catch (err) {
+        if (cancelled) return;
+
         logger.error('chat-pane.venture-fetch-exception', {
           message: 'Exception fetching venture ID',
           error: err instanceof Error ? err.message : 'Unknown error'
@@ -116,6 +123,10 @@ export default function ChatPane({
     }
 
     load()
+
+    return () => {
+      cancelled = true;
+    };
   }, [])
 
   // Combine messages and activeStream with useMemo to prevent infinite loops

@@ -99,12 +99,16 @@ export default function PreviewPane({
   } | null>(null)
   const [isWaitingForIframeReady, setIsWaitingForIframeReady] = useState(false)
 
-  // Track fallback timer to ensure proper cleanup
+  // Track fallback timer to ensure proper cleanup (from PR #1054)
   const fallbackTimerRef = useRef<NodeJS.Timeout | null>(null)
   // Use ref for isWaitingForIframeReady to avoid stale closures in timeout
   const isWaitingForIframeReadyRef = useRef(false)
   // Use ref for attemptStateRestoration to avoid circular dependency
   const attemptStateRestorationRef = useRef<(() => void) | null>(null)
+
+  // Track message handler timers for proper cleanup (from PR #1056)
+  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const scrollRestoreTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Sync ref with state to avoid stale closures
   useEffect(() => {
@@ -247,14 +251,24 @@ export default function PreviewPane({
           setPendingStateRestore(event.data.preserveState)
         }
 
+        // Clear any existing timers from previous message events
+        // Both timers need clearing: refresh timer (immediate) and scroll timer (nested inside refresh)
+        // If a previous event created both timers and this new event arrives, we want to cancel both
+        if (refreshTimerRef.current) {
+          clearTimeout(refreshTimerRef.current)
+        }
+        if (scrollRestoreTimerRef.current) {
+          clearTimeout(scrollRestoreTimerRef.current)
+        }
+
         // Debounce refreshes to avoid too many reloads
-        setTimeout(() => {
+        refreshTimerRef.current = setTimeout(() => {
           if (iframeRef.current) {
             iframeRef.current.src = iframeRef.current.src
 
             // If we have scroll position to restore, do it after iframe loads
             if (event.data.preserveState?.scrollPosition) {
-              setTimeout(() => {
+              scrollRestoreTimerRef.current = setTimeout(() => {
                 try {
                   const contentWindow = iframeRef.current?.contentWindow
                   if (contentWindow) {
@@ -272,15 +286,28 @@ export default function PreviewPane({
                     })
                   }
                 }
+                scrollRestoreTimerRef.current = null
               }, 500) // Wait for iframe to load
             }
           }
+          refreshTimerRef.current = null
         }, REFRESH_DEBOUNCE_MS)
       }
     }
 
     window.addEventListener('message', handleMessage)
-    return () => window.removeEventListener('message', handleMessage)
+    return () => {
+      window.removeEventListener('message', handleMessage)
+      // Clean up any pending timers
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current)
+        refreshTimerRef.current = null
+      }
+      if (scrollRestoreTimerRef.current) {
+        clearTimeout(scrollRestoreTimerRef.current)
+        scrollRestoreTimerRef.current = null
+      }
+    }
   }, [serverState?.isReady, isWaitingForIframeReady, attemptStateRestoration])
 
   const handleManualRetry = () => {

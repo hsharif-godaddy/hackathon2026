@@ -127,6 +127,7 @@ export function usePageTiming(
   const transactionRef = useRef<ApmTransaction | null>(null);
   const startTimeRef = useRef<number>(0);
   const initAttemptedRef = useRef<boolean>(false);
+  const initTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Helper to get consistent global storage key
   const getGlobalKey = useCallback(() => `__apm_page_timing_${pageName}`, [pageName]);
@@ -192,41 +193,48 @@ export function usePageTiming(
 
     const initTransaction = () => {
       // Wait a bit for RUM to initialize
-      setTimeout(() => {
-        const apm = getApmAgent();
-
-        if (!apm) return;
-
-        // Start custom transaction for page timing
-        const transactionName = `page-${pageName}`;
-
-        startTimeRef.current = Date.now();
-
+      initTimerRef.current = setTimeout(() => {
         try {
-          const transaction = apm.startTransaction(transactionName, 'page-timing');
+          const apm = getApmAgent();
 
-          if (transaction) {
-            transactionRef.current = transaction;
+          if (!apm) {
+            return;
+          }
 
-            // Store globally to survive remounts
-            window[globalKey] = {
-              transaction,
-              startTime: startTimeRef.current
-            };
+          // Start custom transaction for page timing
+          const transactionName = `page-${pageName}`;
 
-            // Add labels for filtering in Kibana
-            // Note: Only pageName and pageId are used as labels since additionalLabels
-            // cannot be tracked in the dependency array (would cause infinite re-renders)
-            transaction.addLabels({
+          startTimeRef.current = Date.now();
+
+          try {
+            const transaction = apm.startTransaction(transactionName, 'page-timing');
+
+            if (transaction) {
+              transactionRef.current = transaction;
+
+              // Store globally to survive remounts
+              window[globalKey] = {
+                transaction,
+                startTime: startTimeRef.current
+              };
+
+              // Add labels for filtering in Kibana
+              // Note: Only pageName and pageId are used as labels since additionalLabels
+              // cannot be tracked in the dependency array (would cause infinite re-renders)
+              transaction.addLabels({
+                page_name: pageName,
+                ...(pageId && { app_id: pageId })
+              });
+            }
+          } catch (error) {
+            logger.error('hooks.usePageTiming.transaction.error', {
               page_name: pageName,
-              ...(pageId && { app_id: pageId })
+              error: error instanceof Error ? error.message : String(error)
             });
           }
-        } catch (error) {
-          logger.error('hooks.usePageTiming.transaction.error', {
-            page_name: pageName,
-            error: error instanceof Error ? error.message : String(error)
-          });
+        } finally {
+          // Always clear timer ref, even if error occurs
+          initTimerRef.current = null;
         }
       }, 1000);
     };
@@ -255,6 +263,13 @@ export function usePageTiming(
     // Transaction stays alive in global storage for reuse
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
+
+      // Clear initialization timer if component unmounts before it fires
+      if (initTimerRef.current) {
+        clearTimeout(initTimerRef.current);
+        initTimerRef.current = null;
+      }
+
       // Note: We don't end the transaction here because component might remount
       // Transaction will be ended via:
       // 1. Manual endTransaction() call, or
