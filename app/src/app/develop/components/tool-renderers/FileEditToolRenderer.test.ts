@@ -234,6 +234,30 @@ describe('FileEditToolRenderer', function packageTests() {
       expect(parsed.operations[3].success).toBe(false)
       expect(parsed.operations[3].error).toBe('File not found')
     })
+
+    it('should handle single-file batch operation result', function singleFileBatch() {
+      // Single-file batches should be treated as a simple result format
+      // rather than showing "Files: 1 created"
+      const input = JSON.stringify({
+        success: true,
+        totalOperations: 1,
+        completedOperations: 1,
+        operations: [
+          {
+            path: 'src/components/Button.tsx',
+            mode: 'create',
+            success: true,
+            changes: { additions: 25, deletions: 0, totalLines: 25 }
+          }
+        ]
+      })
+
+      const parsed = JSON.parse(input)
+      expect(parsed.operations).toHaveLength(1)
+      expect(parsed.operations[0].path).toBe('src/components/Button.tsx')
+      expect(parsed.operations[0].mode).toBe('create')
+      expect(parsed.operations[0].changes.additions).toBe(25)
+    })
   })
 
   describe('#parseStreamingInput', function parseTests() {

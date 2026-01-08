@@ -472,8 +472,8 @@ export default function FileEditToolRenderer({
   // Build compact display message
   let displayMessage = '' as string | React.ReactNode
 
-  if (normalizedToBatch) {
-    // Batch operation: show summary
+  if (normalizedToBatch && batchOperations.length > 1) {
+    // Multi-file batch operation: show summary
     if (error) {
       // Partial failure: show completed/total
       displayMessage = <FormattedMessage id='builder_tools_file_edit_completed_total' values={{ completedOperations, totalOperations }} />
@@ -491,6 +491,23 @@ export default function FileEditToolRenderer({
       if (deleted > 0) parts.push(`${deleted} deleted`)
 
       displayMessage = `${t('builder_common_files')}: ${parts.join(', ')}`
+    }
+  } else if (normalizedToBatch && batchOperations.length === 1) {
+    // Single-file batch: display as single operation for cleaner UX
+    const operation = batchOperations[0]
+    const singleFilename = getFilename(operation.path || '')
+    const singleMode = operation.mode || 'edit'
+    const singleVerb = getModeVerb(singleMode, t)
+
+    displayMessage = `${singleVerb}: ${singleFilename}`
+
+    // Add line changes if available
+    if (operation.changes) {
+      if (singleMode === 'create') {
+        displayMessage += ` +${operation.changes.additions}`
+      } else if (singleMode !== 'delete') {
+        displayMessage += ` +${operation.changes.additions} -${operation.changes.deletions}`
+      }
     }
   } else if (displayAsBatch) {
     // Streaming batch operation: show individual operations with details
