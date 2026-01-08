@@ -15,6 +15,8 @@
 /** Prefix used to identify apps created by this spec file */
 const SPEC_PREFIX = '[e2e:apps-page]';
 
+let appId: string;
+
 /**
  * Navigate to /apps and wait for page to be ready by checking DOM elements.
  * More reliable than waiting for XHR requests which can race with intercept setup.
@@ -25,6 +27,11 @@ function visitAppsPage(): void {
 }
 
 describe('Apps Page', () => {
+  before(function createIsolatedApp() {
+    cy.setupIsolatedApp(SPEC_PREFIX, 'Single page app that displays hello world').then((id) => {
+      appId = id;
+    });
+  });
   it('should display page content and status tags', () => {
     visitAppsPage();
 

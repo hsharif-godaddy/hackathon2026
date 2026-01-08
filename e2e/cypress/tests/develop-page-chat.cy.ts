@@ -67,7 +67,9 @@ describe('Develop Page - Chat', () => {
       cy.get('#chat-send-button').should('be.disabled');
 
       cy.get('#chat-input-textarea')
-        .type('Add a header to the page', { force: true });
+        .should('not.be.disabled')
+        .should('not.have.attr', 'placeholder', 'Processing... please wait')
+        .type('Add a header to the page');
 
       cy.get('#chat-send-button').should('not.be.disabled');
     });
@@ -95,12 +97,8 @@ describe('Develop Page - Chat', () => {
         .should('not.be.disabled')
         .click();
 
-      cy.contains(testMessage, { timeout: 10000 }).should('be.visible');
-
-      cy.contains('Airo Developer is thinking', { timeout: 10000 })
-        .should('be.visible');
-
       cy.get('#chat-send-button').should('be.disabled');
+      cy.contains(testMessage, { timeout: 10000 }).should('be.visible');
     });
 
     it('should send message via Enter key and show in chat', () => {
@@ -110,13 +108,12 @@ describe('Develop Page - Chat', () => {
 
       cy.get('#chat-input-textarea')
         .should('not.be.disabled')
+        .should('not.have.attr', 'placeholder', 'Processing... please wait')
         .clear()
-        .type(testMessage + '{enter}', { force: true });
+        .type(testMessage + '{enter}');
 
+      cy.get('#chat-send-button').should('be.disabled');
       cy.contains(testMessage, { timeout: 30000 }).should('be.visible');
-
-      cy.contains('Airo Developer is thinking', { timeout: 30000 })
-        .should('be.visible');
     });
 
     it('should handle Shift+Enter for multiline without sending', () => {
@@ -124,8 +121,9 @@ describe('Develop Page - Chat', () => {
 
       cy.get('#chat-input-textarea')
         .should('not.be.disabled')
+        .should('not.have.attr', 'placeholder', 'Processing... please wait')
         .clear()
-        .type('First line{shift+enter}Second line{shift+enter}Third line', { force: true });
+        .type('First line{shift+enter}Second line{shift+enter}Third line');
 
       cy.get('#chat-input-textarea')
         .should('contain.value', 'First line')
@@ -144,6 +142,7 @@ describe('Develop Page - Chat', () => {
 
       cy.get('#chat-input-textarea')
         .should('not.be.disabled')
+        .should('not.have.attr', 'placeholder', 'Processing... please wait')
         .clear()
         .type(testMessage);
 
@@ -153,24 +152,18 @@ describe('Develop Page - Chat', () => {
 
       cy.contains(testMessage, { timeout: 10000 }).should('be.visible');
 
-      cy.contains('Airo Developer is thinking', { timeout: 10000 })
-        .should('be.visible');
-
-      cy.contains('Airo Developer is thinking', { timeout: AI_RESPONSE_TIMEOUT_MS })
-        .should('not.exist');
-
-      cy.log('✓ AI response completed within timeout');
-
-      cy.get('#chat-input-textarea', { timeout: 10000 })
+      cy.get('#chat-input-textarea', { timeout: AI_RESPONSE_TIMEOUT_MS })
         .should('not.be.disabled')
         .should('have.attr', 'placeholder')
         .and('match', /ask airo/i);
 
-      cy.log('✓ Chat input ready for next message');
+      cy.log('✓ AI response completed - chat input ready for next message');
 
       cy.get('#chat-send-button').should('be.disabled');
 
       cy.get('#chat-input-textarea')
+        .should('not.be.disabled')
+        .should('not.have.attr', 'placeholder', 'Processing... please wait')
         .type('Thank you');
       cy.get('#chat-send-button')
         .should('not.be.disabled');

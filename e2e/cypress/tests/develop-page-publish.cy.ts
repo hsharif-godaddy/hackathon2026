@@ -31,47 +31,47 @@ describe('Develop Page - Publishing', () => {
   describe('Publishing', () => {
     /**
      * Tests the complete publish flow via UI:
-     * 1. Verify publish button is disabled while chat is processing
-     * 2. Wait for chat ready, then verify button becomes enabled
-     * 3. Click publish button and verify progress alert
-     * 4. Wait for deployment completion (up to 5 minutes)
-     * 5. Verify success alert with published URL
-     * 6. Verify published URL is accessible
-     * 7. Verify publish button is disabled after successful publish (current commit deployed)
+     * - Header button stays enabled throughout (only disabled during initial loading)
+     * - Button text changes to "Publishing" then "Republish"
+     * - Modal shows changes and deployment history
+     * - Deployment completes successfully
+     * - Published URL is accessible
      */
-    it('should open publish popover, show changes and history, complete publish flow, and verify disabled states', () => {
+    it('should open publish popover, show changes and history, complete publish flow, and verify states', () => {
       cy.intercept('POST', '**/api/apps/*/publish').as('publishApp');
       cy.intercept('GET', '**/api/apps/*/deployments*').as('getDeployments');
 
       cy.openDevelop(appId);
       cy.waitForDevelopPage();
       cy.waitForChatInput();
-      cy.wait(1000);
 
+      // Header button should be enabled after loading completes
       cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 30000 })
         .should('be.visible')
+        .should('not.be.disabled')
         .should('contain.text', 'Publish')
-        .should('not.be.disabled');
+        .click();
 
-      cy.get('[data-eid*="header"][data-eid*="publish"]').click();
-
+      // Modal opens showing changes
       cy.get('[data-radix-popper-content-wrapper]', { timeout: 10000 })
         .should('be.visible')
         .within(() => {
           cy.get('#publish-changes').should('exist');
+          cy.contains(/\bchanges?\b/i).should('exist');
 
-          cy.contains('change').should('exist');
-
-          cy.contains('button', 'Publish').click();
+          // Click modal publish button
+          cy.contains('button', 'Publish')
+            .should('be.visible')
+            .should('not.be.disabled')
+            .click();
         });
 
-      cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 10000 })
-        .should('be.disabled')
+      // After clicking publish, header button stays enabled but text changes to "Publishing"
+      cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 15000 })
+        .should('not.be.disabled')
         .should('contain.text', 'Publishing');
 
-      cy.get('[class*="alert"], [role="alert"]', { timeout: 10000 })
-        .should('be.visible');
-
+      // Wait for publish API
       cy.wait('@publishApp', { timeout: 60000 }).then((publishInterception) => {
         expect(publishInterception.response?.statusCode).to.be.oneOf([200, 201]);
 
@@ -86,6 +86,7 @@ describe('Develop Page - Publishing', () => {
             cy.get('[data-eid*="publish-alert.success.custom_domain"]', { timeout: 30000 })
               .should('be.visible');
 
+            // Verify published URL accessible
             cy.get('[class*="alert"]').first().within(() => {
               cy.get('a[href*="http"]').first().invoke('attr', 'href').then((publishedUrl) => {
                 if (publishedUrl) {
@@ -102,6 +103,7 @@ describe('Develop Page - Publishing', () => {
               });
             });
 
+            // Close success alert
             cy.get('[class*="alert"]').first().within(() => {
               cy.get('button[aria-label*="close"], button[aria-label*="dismiss"], [class*="close"]')
                 .first()
@@ -111,8 +113,10 @@ describe('Develop Page - Publishing', () => {
             cy.get('[data-eid*="publish-alert.success.custom_domain"]', { timeout: 5000 })
               .should('not.exist');
 
+            // After successful deploy, button stays enabled but text changes to "Republish"
             cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 10000 })
-              .should('be.disabled');
+              .should('not.be.disabled')
+              .should('contain.text', 'Republish');
 
           } else if (result.status === 'failed') {
             cy.contains('button', /try again/i, { timeout: 30000 }).should('exist');
@@ -121,26 +125,27 @@ describe('Develop Page - Publishing', () => {
       });
     });
 
-    it('should disable publish button while AI is processing and re-enable after completion', () => {
+    /**
+     * Tests button behavior during AI conversation with real-time modal updates:
+     * - Header button stays enabled during conversation
+     * - Modal shows warning alert when conversation is in progress
+     * - Modal button is disabled during conversation
+     * - Modal button updates to enabled in real-time when AI completes (without closing/reopening)
+     */
+    it('should keep header enabled but disable modal button during AI conversation with real-time updates', () => {
       cy.intercept('POST', '**/api/chat/stream').as('chatStream');
 
       cy.visit(`/develop/${appId}`);
-
       cy.waitForDevelopPage();
 
       cy.get('body').type('{esc}');
-      cy.wait(500);
-
-      cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 30000 })
-        .should('be.visible')
-        .should('contain.text', 'Publish');
 
       cy.waitForChatInput();
-      cy.wait(1000);
 
+      // Start AI conversation
       cy.get('#chat-input-textarea')
-        .should('be.visible')
         .should('not.be.disabled')
+        .should('not.have.attr', 'placeholder', 'Processing... please wait')
         .clear()
         .type('Add a small footer with copyright notice');
 
@@ -155,20 +160,31 @@ describe('Develop Page - Publishing', () => {
       cy.get('#chat-send-button', { timeout: 10000 })
         .should('be.disabled');
 
+      // During AI conversation, header button stays ENABLED
       cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 10000 })
-        .should('be.disabled');
+        .should('not.be.disabled')
+        .click();
 
-      cy.log('✓ Publish button disabled while AI processes');
+      // Verify modal state during AI conversation
+      cy.get('[data-radix-popper-content-wrapper]', { timeout: 10000 })
+        .should('be.visible')
+        .within(() => {
+          // Warning alert should be visible
+          cy.get('[class*="alert"], [role="alert"]').should('exist');
 
+          // Modal button IS disabled during conversation
+          cy.contains('button', /Publish|Republish/).should('be.disabled');
+        });
+
+      // Wait for AI to complete while keeping modal open
       cy.waitForChatInput();
 
-      cy.log('✓ AI processing completed');
-
-      cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 30000 })
-        .should('not.be.disabled')
-        .should('contain.text', 'Publish');
-
-      cy.log('✓ Publish button re-enabled after AI completion');
+      // Verify modal button becomes enabled in real-time (same modal instance)
+      cy.get('[data-radix-popper-content-wrapper]')
+        .should('be.visible')
+        .within(() => {
+          cy.contains('button', /Publish|Republish/, { timeout: 10000 }).should('not.be.disabled');
+        });
     });
   });
 });

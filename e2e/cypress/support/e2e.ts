@@ -7,7 +7,7 @@
 
 // Import commands.js using ES2015 syntax:
 import './commands';
-import { dismissPrivacyBanners, getCredentials, getDomainCookie, getSpecPrefix } from './utils/helpers';
+import { dismissPrivacyBanners, getSpecPrefix } from './utils/helpers';
 
 // Ignore React hydration errors (common in SSR/Next.js apps),
 // cross-origin errors from SSO redirects, and transient server errors
@@ -55,29 +55,6 @@ Cypress.on('uncaught:exception', (err) => {
   return true;
 });
 
-/**
- * Helper to set up authentication cookies
- */
-function setupAuth() {
-  const { env, username, password } = getCredentials();
-
-  return cy.session(String(username), () => {
-    cy.task('auth:getIDPToken', { env, username, password })
-      .then((token) => {
-        expect(token).to.be.a('string');
-        expect(token).not.to.be.empty;
-
-        cy.setCookie('auth_idp', token as string, {
-          domain: getDomainCookie(env),
-          path: '/',
-          expiry: Math.floor(Date.now() / 1000) + 43200,
-          httpOnly: true,
-          secure: true
-        });
-        cy.setCookie('market', 'en-US');
-      });
-  }, { cacheAcrossSpecs: true });
-}
 
 /**
  * Clean up apps created by this spec (identified by prompt prefix).
@@ -135,8 +112,7 @@ function cleanupSpecApps(context: string) {
  * This is parallel-safe: specs don't interfere with each other's apps
  */
 before(() => {
-  setupAuth();
-  cleanupSpecApps('Pre-test');
+  cy.ensureAuth();
 });
 
 /**
@@ -144,7 +120,7 @@ before(() => {
  * Uses cached session from before() hook
  */
 beforeEach(() => {
-  setupAuth();
+  cy.ensureAuth();
 
   const url = Cypress.env('baseUrl');
   cy.log('Visiting URL:', url);

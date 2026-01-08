@@ -14,6 +14,43 @@ Cypress.Commands.add('clearAuthState', () => {
 });
 
 /**
+ * Ensure authentication is established before making API requests.
+ * Uses cy.session() which will restore cached session or create new one.
+ * Call this before any command that needs auth cookies.
+ */
+Cypress.Commands.add('ensureAuth', () => {
+  const env = Cypress.env('environment') || 'prod';
+  const username = Cypress.env(`${env.toUpperCase()}_USERNAME`);
+  const password = Cypress.env(`${env.toUpperCase()}_PASSWORD`);
+
+  if (!username || !password) {
+    throw new Error(`${env.toUpperCase()}_USERNAME and ${env.toUpperCase()}_PASSWORD must be set`);
+  }
+
+  const domainPrefix = ['dev', 'test', 'prod'].includes(env)
+    ? (env === 'prod' ? '' : `${env}-`)
+    : '';
+  const cookieDomain = `.${domainPrefix}godaddy.com`;
+
+  cy.session(String(username), () => {
+    cy.task('auth:getIDPToken', { env, username, password })
+      .then((token) => {
+        expect(token).to.be.a('string');
+        expect(token).not.to.be.empty;
+
+        cy.setCookie('auth_idp', token as string, {
+          domain: cookieDomain,
+          path: '/',
+          expiry: Math.floor(Date.now() / 1000) + 43200,
+          httpOnly: true,
+          secure: true
+        });
+        cy.setCookie('market', 'en-US');
+      });
+  }, { cacheAcrossSpecs: true });
+});
+
+/**
  * Open the user menu in the header
  * Clicks the user icon to reveal the dropdown menu
  * Target the Radix Popover trigger that contains only an SVG icon (no text)
@@ -224,10 +261,31 @@ Cypress.Commands.add('sendChatMessage', (message: string) => {
 
 /**
  * Wait for chat input to be ready for interaction.
- * Ensures textarea is visible, enabled, and not showing "Processing" placeholder.
+ * Ensures:
+ * 1. Loading spinner is gone (chat history loaded)
+ * 2. Preview iframe is loaded
+ * 3. Textarea is visible, enabled, and not showing "Processing" placeholder
  */
 Cypress.Commands.add('waitForChatInput', () => {
-  // Wait for chat input to be ready - not disabled and not showing "Processing..."
+  // Wait for loading spinner to disappear and chat to be ready
+  // The spinner appears during page/history loading
+  cy.get('body', { timeout: 180000 }).should(($body) => {
+    // Check spinner is gone (uses ux-spinner class from @ux/spinner)
+    const hasSpinner = $body.find('[class*="ux-spinner"], [class*="Spinner"]').length > 0;
+    expect(hasSpinner, 'loading spinner should be gone').to.be.false;
+
+    // Check either messages exist or empty state is shown
+    const hasMessages = $body.find('[class*="StreamingMessage"]').length > 0;
+    const hasEmptyState = $body.text().includes('No messages yet') || $body.text().includes('Start a conversation');
+    expect(hasMessages || hasEmptyState, 'chat history should be loaded').to.be.true;
+  });
+
+  // Wait for preview iframe to be loaded
+  cy.get('#preview-iframe', { timeout: 180000 })
+    .should('be.visible')
+    .should('have.attr', 'src');
+
+  // Then wait for chat input to be ready - not disabled and not showing "Processing..."
   // Use should() with custom assertion for proper retry behavior
   cy.get('#chat-input-textarea', { timeout: 180000 })
     .should(($el) => {
@@ -330,7 +388,7 @@ Cypress.Commands.add('cleanupAllE2eApps', () => {
  * Call this in a `before` hook to create one app per spec file.
  */
 Cypress.Commands.add('setupIsolatedApp', (specPrefix: string, appDescription?: string) => {
-  cy.deleteAppsWithPrefix(specPrefix);
+  cy.ensureAuth();
 
   const appName = appDescription
     ? `${specPrefix} ${appDescription}`
@@ -351,9 +409,20 @@ Cypress.Commands.add('setupIsolatedApp', (specPrefix: string, appDescription?: s
   return cy.wait('@setupQuickCreate', { timeout: 60000 }).then((interception) => {
     const status = interception.response?.statusCode;
     expect(status).to.be.oneOf([200, 201]);
-    const appId = interception.response?.body?.id as string;
-    cy.log(`✓ Created isolated app: ${appId}`);
-    return cy.wrap(appId);
+    const initialId = interception.response?.body?.id as string;
+    const idType = interception.response?.body?.type as string;
+
+    // If this is a job ID (V2), wait for the URL to change to the real app ID
+    // Job IDs are 7-8 chars, real app IDs are 10+ chars
+    if (idType === 'job' || initialId.length <= 8) {
+      return cy.url({ timeout: 120000 }).should('match', /\/develop\/[a-zA-Z0-9]{9,}/).then((url) => {
+        const match = url.match(/\/develop\/([a-zA-Z0-9]+)/);
+        const realAppId = match ? match[1] : initialId;
+        return cy.wrap(realAppId);
+      });
+    }
+
+    return cy.wrap(initialId);
   });
 });
 
@@ -454,6 +523,13 @@ declare global {
        * @example cy.clearAuthState()
        */
       clearAuthState(): Chainable<void>;
+
+      /**
+       * Ensure authentication is established before making API requests
+       * Uses cy.session() which will restore cached session or create new one
+       * @example cy.ensureAuth()
+       */
+      ensureAuth(): Chainable<void>;
 
       /**
        * Open the user menu dropdown in the header
