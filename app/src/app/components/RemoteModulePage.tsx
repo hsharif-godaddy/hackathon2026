@@ -59,22 +59,39 @@ export default function RemoteModulePage({
 
   useEffect(
     function loadConfig() {
+      // Reset state when moduleName or version changes to prevent stale data
+      setModuleConfig(null);
+      setError(null);
+
+      let cancelled = false;
+
       loadRemoteComponentConfig(moduleName, version)
         .then(function handleConfig(config) {
-          setModuleConfig(config);
-          logger.info("remote.module.config.load.success", {
-            moduleName,
-            version,
-          });
+          // Only update if not cancelled (component still mounted or same effect)
+          if (!cancelled) {
+            setModuleConfig(config);
+            logger.info("remote.module.config.load.success", {
+              moduleName,
+              version,
+            });
+          }
         })
         .catch(function handleError(err) {
-          logger.error("remote.module.config.load.failure", {
-            moduleName,
-            version,
-            error: err.message,
-          });
-          setError(err);
+          // Only update if not cancelled
+          if (!cancelled) {
+            logger.error("remote.module.config.load.failure", {
+              moduleName,
+              version,
+              error: err.message,
+            });
+            setError(err);
+          }
         });
+
+      // Cleanup function to prevent state updates after unmount or prop change
+      return () => {
+        cancelled = true;
+      };
     },
     [moduleName, version],
   );

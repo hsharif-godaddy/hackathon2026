@@ -7,7 +7,7 @@
 
 'use client'
 
-import React, { createContext, useCallback, useContext, useEffect,useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 
 import { type DynamicApiConfig,dynamicApiConfigService } from '@/config/dynamic-api'
 import { useSubscriptionCache } from '@/hooks/useSubscriptionCache'
@@ -65,15 +65,33 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
   const [apiConfig, setApiConfig] = useState<DynamicApiConfig | null>(null)
   const [isSiteReady, setIsSiteReady] = useState(false)
 
+  // Track latest request to prevent race conditions when siteId changes rapidly
+  const latestRequestIdRef = useRef(0)
+
   // Initialize subscription cache for performance optimization
   const jwt = getAuthTokenFromCookie()
   const cacheStatus = useSubscriptionCache(jwt)
 
   // Update API configuration when site ID changes
   const updateConfig = useCallback(async (newSiteId: string | null) => {
+    // Generate unique request ID and track it as the latest
+    const requestId = ++latestRequestIdRef.current
+
     if (newSiteId) {
       try {
         const config = await dynamicApiConfigService.getConfigForSite(newSiteId)
+
+        // Only update state if this is still the latest request
+        // This prevents stale responses from overwriting current state
+        if (requestId !== latestRequestIdRef.current) {
+          logger.debug('site.context.stale_response_ignored', {
+            siteId: newSiteId,
+            requestId,
+            latestRequestId: latestRequestIdRef.current
+          })
+          return
+        }
+
         setApiConfig(config)
         setIsSiteReady(!config.isStatic && dynamicApiConfigService.isSiteReady(newSiteId))
 
@@ -83,6 +101,16 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
           isReady: !config.isStatic && dynamicApiConfigService.isSiteReady(newSiteId)
         })
       } catch (error) {
+        // Only update error state if this is still the latest request
+        if (requestId !== latestRequestIdRef.current) {
+          logger.debug('site.context.stale_error_ignored', {
+            siteId: newSiteId,
+            requestId,
+            latestRequestId: latestRequestIdRef.current
+          })
+          return
+        }
+
         logger.error('site.context.update.failed', {
           error: error instanceof Error ? error.message : String(error),
           siteId: newSiteId

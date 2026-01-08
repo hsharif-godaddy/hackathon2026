@@ -99,6 +99,28 @@ export default function PreviewPane({
   } | null>(null)
   const [isWaitingForIframeReady, setIsWaitingForIframeReady] = useState(false)
 
+  // Track fallback timer to ensure proper cleanup
+  const fallbackTimerRef = useRef<NodeJS.Timeout | null>(null)
+  // Use ref for isWaitingForIframeReady to avoid stale closures in timeout
+  const isWaitingForIframeReadyRef = useRef(false)
+  // Use ref for attemptStateRestoration to avoid circular dependency
+  const attemptStateRestorationRef = useRef<(() => void) | null>(null)
+
+  // Sync ref with state to avoid stale closures
+  useEffect(() => {
+    isWaitingForIframeReadyRef.current = isWaitingForIframeReady
+  }, [isWaitingForIframeReady])
+
+  // Cleanup fallback timer on unmount
+  useEffect(() => {
+    return () => {
+      if (fallbackTimerRef.current) {
+        clearTimeout(fallbackTimerRef.current)
+        fallbackTimerRef.current = null
+      }
+    }
+  }, [])
+
   // Start polling when component mounts
   useEffect(() => {
     if (!appId) return
@@ -114,6 +136,12 @@ export default function PreviewPane({
   const handleIframeLoad = useCallback(() => {
     setIframeError(false)
 
+    // Clear any existing fallback timer before starting a new one
+    if (fallbackTimerRef.current) {
+      clearTimeout(fallbackTimerRef.current)
+      fallbackTimerRef.current = null
+    }
+
     // Check if we have scroll position to restore and URL matches
     if (pendingStateRestore?.scrollPosition && iframeRef.current) {
       // Check if the current iframe URL matches the saved URL
@@ -127,15 +155,13 @@ export default function PreviewPane({
           setIsWaitingForIframeReady(true)
 
           // Fallback timeout in case iframe doesn't send ready signal
-          const fallbackTimer = setTimeout(() => {
-            if (isWaitingForIframeReady) {
+          fallbackTimerRef.current = setTimeout(() => {
+            if (isWaitingForIframeReadyRef.current && attemptStateRestorationRef.current) {
               logger.warn('preview-pane.iframe.timeout', { message: 'Iframe ready timeout, attempting state restoration anyway' })
-              attemptStateRestoration()
+              attemptStateRestorationRef.current()
             }
+            fallbackTimerRef.current = null
           }, STATE_RESTORE_FALLBACK_MS)
-
-          // Clear timer when component unmounts or state changes
-          return () => clearTimeout(fallbackTimer)
         } else {
           logger.debug('preview-pane.state-restore.url-mismatch', { message: 'URL mismatch, clearing pending state restoration' })
           setPendingStateRestore(null)
@@ -145,7 +171,7 @@ export default function PreviewPane({
         setPendingStateRestore(null)
       }
     }
-  }, [appId, pendingStateRestore, isWaitingForIframeReady]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pendingStateRestore]) // attemptStateRestoration removed to avoid circular dependency
 
   // Attempt to restore iframe state (scroll position, etc.)
   const attemptStateRestoration = useCallback(() => {
@@ -198,13 +224,20 @@ export default function PreviewPane({
     setIsWaitingForIframeReady(false)
   }, [pendingStateRestore])
 
+  // Sync ref with callback to avoid circular dependency
+  useEffect(() => {
+    attemptStateRestorationRef.current = attemptStateRestoration
+  }, [attemptStateRestoration])
+
   // Listen for file save events and preview refresh requests to auto-refresh preview
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       // Handle iframe ready signal for immediate state restoration
       if (event.data.type === 'IFRAME_READY' && isWaitingForIframeReady) {
         logger.debug('preview-pane.iframe.ready', { message: 'Iframe ready signal received, restoring state immediately' })
-        attemptStateRestoration()
+        if (attemptStateRestorationRef.current) {
+          attemptStateRestorationRef.current()
+        }
         return
       }
 
