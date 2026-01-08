@@ -86,7 +86,7 @@ export function useLogs(params: LogsQueryParams) {
       urlParams.set('from', (page * pageSize).toString());
 
       if (level !== 'all') {
-        urlParams.set('level', level);
+        urlParams.set('level', level.toLowerCase());
       }
 
       if (query) {
@@ -119,4 +119,3 @@ export function useLogs(params: LogsQueryParams) {
     gcTime: 2 * 60 * 1000, // 2 minutes
   });
 }
-

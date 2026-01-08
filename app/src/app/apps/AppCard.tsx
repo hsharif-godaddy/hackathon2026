@@ -45,7 +45,7 @@ function getStatusConfig(status: string): { key: string; emphasis: 'success' | '
   }
 }
 
-export default function AppCard({site}: {site: SiteInfo}) {
+export default function AppCard({ site }: { site: SiteInfo }) {
   const router = useRouter();
   const t = useTranslations();
 
@@ -226,7 +226,7 @@ export default function AppCard({site}: {site: SiteInfo}) {
         </div>
 
         <Button
-          onClick={() => showDeleteAlert(site.id, site.name ||  t('builder_apps_alert_delete_untitled'))}
+          onClick={() => showDeleteAlert(site.id, site.name || t('builder_apps_alert_delete_untitled'))}
           data-eid={generateClickEID('apps.app.delete')}
           aria-label={`Delete app ${site.name || t('builder_apps_alert_delete_untitled')}`}
           icon={<TrashIcon />}

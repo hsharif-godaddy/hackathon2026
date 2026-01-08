@@ -1,20 +1,18 @@
 'use client'
 
+import AnalyticsPanel from '@/app/develop/components/settings/Analytics/AnalyticsPanel'
 import BackupsPanel from '@/app/develop/components/settings/BackupsPanel'
-import ConversationsPanel from '@/app/develop/components/settings/ConversationsPanel'
 import { DatabasePanel } from '@/app/develop/components/settings/Database/DatabasePanel'
 import DomainPanel from '@/app/develop/components/settings/DomainPanel'
-import LogsPanel from '@/app/develop/components/settings/LogsPanel'
 import ProjectPanel from '@/app/develop/components/settings/ProjectPanel'
 import SecurityPanel from '@/app/develop/components/settings/SecurityPanel'
+import { SecretsPanel } from '@/app/develop/components/settings/SecretsPanel'
 import SocialPanel from '@/app/develop/components/settings/social/SocialPanel'
 import VisualScanPanel from '@/app/develop/components/settings/VisualScanPanel'
 import { SettingsSection } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useChatTabs } from '@/hooks/useChatTabs'
-import { useSwitchboard } from '@/hooks/useSwitchboard';
-import { SecretsPanel } from './SecretsPanel'
-import AnalyticsPanel from '@/app/develop/components/settings/Analytics/AnalyticsPanel'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 
 export default function SettingsView() {
   const { activeSettingsSection } = useChatTabs()
@@ -29,8 +27,6 @@ export default function SettingsView() {
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
   const { data: isSocialEnabled } = useSwitchboard('appbuilder-settings-social');
   const { data: isAnalyticsEnabled } = useSwitchboard('appbuilder-settings-analytics');
-  const { data: isLogsEnabled } = useSwitchboard('appbuilder-settings-logs');
-  const { data: isConversationsEnabled } = useSwitchboard('appbuilder-settings-conversations');
 
   const renderSection = () => {
     switch (activeSettingsSection) {
@@ -52,10 +48,6 @@ export default function SettingsView() {
         return isVisualScanEnabled ? <VisualScanPanel /> : null;
       case SettingsSection.ANALYTICS:
         return isAnalyticsEnabled ? <AnalyticsPanel /> : null;
-      case SettingsSection.LOGS:
-        return isLogsEnabled ? <LogsPanel /> : null;
-      case SettingsSection.CONVERSATIONS:
-        return isConversationsEnabled ? <ConversationsPanel /> : null;
       case SettingsSection.FEEDBACK:
       default:
         return isProjectEnabled ? <ProjectPanel /> : null;

@@ -1,0 +1,118 @@
+name: AWS Deploy Debug Console
+on:
+  # Automatic build on push to debug_console_auth branch for testing
+  push:
+    branches:
+      - debug_console_auth
+  # Manual deployment with environment choice
+  workflow_dispatch:
+    inputs:
+      DEPLOY_TO_ENV:
+        description: "Environment to deploy the artifact"
+        required: true
+        default: "test"
+        type: choice
+        options:
+          - "dev-private"
+          - "test"
+          - "NA"
+
+run-name: "[Env: ${{ inputs.DEPLOY_TO_ENV || 'dev-private' }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
+
+permissions:
+  id-token: write # required for artifactory token login
+  contents: read
+
+jobs:
+  continuous-integration:
+    name: "[Env: ${{ inputs.DEPLOY_TO_ENV || 'dev-private' }}] branch: ${{ github.ref_name }} "
+    runs-on:
+      group: 8606-awsx64
+      labels:
+        - self-hosted
+
+    env:
+      DEPLOY_TO_ENV: ${{ inputs.DEPLOY_TO_ENV || 'dev-private' }}
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+
+      # Retrieve Katana application info with the katana-get-app GitHub Action
+      - id: katana-app
+        name: Get Katana App Info
+        uses: gdcorp-actions/katana-get-app@v1
+        with:
+          path: /debug-console
+
+      - name: Get Artifactory Token # This action retrieves the Artifactory token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@88e9eba31c07e31beefa4cef5c0e93d1af9535d7 # v4.6.1
+        env:
+          JF_URL: ${{ vars.JF_URL }} # Stored at the org level so you don't have to worry about it
+        with:
+          oidc-provider-name: github
+
+      - name: Setup Artifactory Creds
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }} # Use the token as you'd normally use a token or password
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          rm -rf debug-console/.npmrc
+          echo "always-auth=true" > debug-console/.npmrc
+          echo "progress=false" >> debug-console/.npmrc
+          echo registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ >> debug-console/.npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=${OIDC_TOKEN}" >> debug-console/.npmrc
+
+      # Sets up authentication with Amazon ECR in the chosen region. Note that the URL can be obtained from GoDaddy's Golden Containers Registry at `https://gcr.katana.int.gdcorp.tools/`.
+      - name: Golden Container Registry Login
+        run: |
+          aws ecr get-login-password --region us-west-2 | docker login 764525110978.dkr.ecr.us-west-2.amazonaws.com -u AWS --password-stdin
+
+      # Execute the necessary commands to build your application's Docker container image. Place any further build commands under `run:`
+      - name: Build Container
+        env:
+          NODE_ENV: production
+        run: |
+          docker build --platform linux/amd64 -f debug-console/Dockerfile -t ${{ steps.katana-app.outputs.app }}:${{ github.sha }} .
+
+      # Publish the built container image to Katana with the katana-publish-artifact GitHub Action
+      - id: katana-publish
+        name: Publish Katana Artifact
+        uses: gdcorp-actions/katana-publish-artifact@v1
+        with:
+          namespace: ${{ steps.katana-app.outputs.namespace }}
+          app: ${{ steps.katana-app.outputs.app }}
+          image_name: ${{ steps.katana-app.outputs.app }}:${{ github.sha }}
+          artifact_kind: ecs
+          artifact_options_json: |
+            {
+              "protocol": "https",
+              "ports": [8443],
+              "healthcheckPath": "/api/health",
+              "healthcheckGracePeriod": 30
+            }
+
+      # Promote the published artifact to the selected environment with the katana-promote-artifact GitHub Action
+      - name: Promote to ${{ env.DEPLOY_TO_ENV }} Environment
+        if: ${{ env.DEPLOY_TO_ENV != 'NA' }}
+        uses: gdcorp-actions/katana-promote-artifact@v1
+        with:
+          namespace: ${{ steps.katana-app.outputs.namespace }}
+          app: ${{ steps.katana-app.outputs.app }}
+          environment: ${{ env.DEPLOY_TO_ENV }}
+          artifact_id: ${{ steps.katana-publish.outputs.artifact_id }}
+
+      # Publish summary
+      - name: Publish Summary
+        run: |
+          {
+            printf '**Build Summary:**\n\n```\n'
+            echo "Artifact ID: ${{ steps.katana-publish.outputs.artifact_id }}"
+            echo "Deployed to: ${{ env.DEPLOY_TO_ENV }}"
+            echo "Image: ${{ steps.katana-publish.outputs.image_uri }}"
+            echo "Commit: ${{ github.sha }}"
+            echo "Branch: ${{ github.ref_name }}"
+            echo "Actor: ${{ github.actor }}"
+            printf '\n```\n\n'
+          } >> $GITHUB_STEP_SUMMARY

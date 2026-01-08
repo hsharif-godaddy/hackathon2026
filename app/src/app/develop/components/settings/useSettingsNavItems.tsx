@@ -2,11 +2,9 @@
 
 import { ReactNode } from 'react';
 import ClipboardIcon from '@ux/icon/clipboard';
-import CommentsIcon from '@ux/icon/comments';
 import ContentIcon from '@ux/icon/content';
 import DatabaseIcon from '@ux/icon/database';
 import GraphIcon from '@ux/icon/graph';
-import HistoryIcon from '@ux/icon/history';
 import LinkIcon from '@ux/icon/link';
 import LockedIcon from '@ux/icon/locked';
 import RevertIcon from '@ux/icon/revert';
@@ -49,8 +47,6 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
   const { data: isSocialEnabled } = useSwitchboard('appbuilder-settings-social');
   const { data: isAnalyticsEnabled } = useSwitchboard('appbuilder-settings-analytics');
-  const { data: isLogsEnabled } = useSwitchboard('appbuilder-settings-logs');
-  const { data: isConversationsEnabled } = useSwitchboard('appbuilder-settings-conversations');
 
   const handleFeedbackClick = () => {
     localStorage.removeItem('airo-feedback-shown:airo#app-builder');
@@ -112,18 +108,6 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       icon: <GraphIcon />,
       disabled: isAnalyticsEnabled !== true,
     },
-    ...(isLogsEnabled ? [{
-      id: SettingsSection.LOGS,
-      label: t('builder_settings_nav_logs'),
-      icon: <HistoryIcon />,
-      disabled: isLogsEnabled !== true,
-    }] : []),
-    ...(isConversationsEnabled ? [{
-      id: SettingsSection.CONVERSATIONS,
-      label: t('builder_settings_nav_conversations'),
-      icon: <CommentsIcon />,
-      disabled: isConversationsEnabled !== true,
-    }] : []),
     ...(!isMobile ? [{
       id: SettingsSection.FEEDBACK,
       label: t('builder_settings_nav_feedback'),
