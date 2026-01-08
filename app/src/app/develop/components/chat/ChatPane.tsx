@@ -368,7 +368,7 @@ export default function ChatPane({
               animate={{ opacity: activeChatTab === ChatTab.CHAT ? 1 : 0.3 }}
               transition={{ duration: 0.2 }}
             >
-              <StreamingMessageList />
+              <StreamingMessageList allMessages={visibleMessages} />
 
               {safeAiEditContext && (
                 <div className="mx-2 rounded-md overflow-hidden bg-white">
@@ -467,7 +467,7 @@ export default function ChatPane({
 
       {activeChatTab === ChatTab.CHAT && (
         <>
-          <StreamingMessageList />
+          <StreamingMessageList allMessages={visibleMessages} />
 
           {safeAiEditContext && (
             <div className="mx-2 rounded-md overflow-hidden bg-white">

@@ -15,8 +15,6 @@ vi.mock('./StreamingMessage', () => ({
 }));
 
 const mockStreamingStore = {
-  messages: [],
-  activeStream: null,
   isActivelyStreaming: false,
   pagination: {
     total: 0,
@@ -34,8 +32,6 @@ const mockDevelopPageStore = {
 };
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
-  useMessages: () => mockStreamingStore.messages,
-  useActiveStream: () => mockStreamingStore.activeStream,
   useIsActivelyStreaming: () => mockStreamingStore.isActivelyStreaming,
   useConversationPagination: () => mockStreamingStore.pagination,
   useCurrentAppId: () => mockStreamingStore.currentAppId,
@@ -55,8 +51,6 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 describe('StreamingMessageList', function packageTests() {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockStreamingStore.messages = [];
-    mockStreamingStore.activeStream = null;
     mockStreamingStore.isLoading = false;
     mockDevelopPageStore.loadingPhase = 'ready';
   });
@@ -65,7 +59,7 @@ describe('StreamingMessageList', function packageTests() {
     it('should show spinner when page is loading', function showSpinnerOnPageLoad() {
       mockDevelopPageStore.loadingPhase = 'loading-history';
 
-      renderWithProviders(<StreamingMessageList />);
+      renderWithProviders(<StreamingMessageList allMessages={[]} />);
 
       expect(screen.getByRole('status')).toBeInTheDocument();
       expect(screen.queryByText('No messages yet.')).not.toBeInTheDocument();
@@ -74,7 +68,7 @@ describe('StreamingMessageList', function packageTests() {
     it('should show spinner when messages are loading', function showSpinnerOnMessageLoad() {
       mockStreamingStore.isLoading = true;
 
-      renderWithProviders(<StreamingMessageList />);
+      renderWithProviders(<StreamingMessageList allMessages={[]} />);
 
       expect(screen.getByRole('status')).toBeInTheDocument();
       expect(screen.queryByText('No messages yet.')).not.toBeInTheDocument();
@@ -84,7 +78,7 @@ describe('StreamingMessageList', function packageTests() {
       mockDevelopPageStore.loadingPhase = 'ready';
       mockStreamingStore.isLoading = false;
 
-      renderWithProviders(<StreamingMessageList />);
+      renderWithProviders(<StreamingMessageList allMessages={[]} />);
 
       expect(screen.getByText('No messages yet.')).toBeInTheDocument();
       expect(screen.getByText('Start a conversation!')).toBeInTheDocument();
@@ -97,7 +91,7 @@ describe('StreamingMessageList', function packageTests() {
       phases.forEach((phase) => {
         mockDevelopPageStore.loadingPhase = phase as any;
 
-        const { unmount } = renderWithProviders(<StreamingMessageList />);
+        const { unmount } = renderWithProviders(<StreamingMessageList allMessages={[]} />);
 
         expect(screen.getByRole('status')).toBeInTheDocument();
         expect(screen.queryByText('No messages yet.')).not.toBeInTheDocument();
@@ -109,22 +103,22 @@ describe('StreamingMessageList', function packageTests() {
 
   describe('with messages', function withMessages() {
     it('should render messages when available', function renderMessages() {
-      mockStreamingStore.messages = [
+      const messages = [
         {
           id: 'msg-1',
-          role: 'user',
+          role: 'user' as const,
           content: 'Hello',
           timestamp: new Date(),
         },
         {
           id: 'msg-2',
-          role: 'assistant',
+          role: 'assistant' as const,
           content: 'Hi there!',
           timestamp: new Date(),
         },
       ];
 
-      renderWithProviders(<StreamingMessageList />);
+      renderWithProviders(<StreamingMessageList allMessages={messages} />);
 
       expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
       expect(screen.getByTestId('message-msg-2')).toBeInTheDocument();
@@ -132,25 +126,25 @@ describe('StreamingMessageList', function packageTests() {
     });
 
     it('should include active stream in message list', function includeActiveStream() {
-      mockStreamingStore.messages = [
+      const messages = [
         {
           id: 'msg-1',
-          role: 'user',
+          role: 'user' as const,
           content: 'Hello',
           timestamp: new Date(),
         },
+        {
+          id: 'stream-1',
+          role: 'assistant' as const,
+          content: 'Thinking...',
+          segments: [],
+          toolCalls: [],
+          timestamp: new Date(),
+          isComplete: false,
+        },
       ];
-      mockStreamingStore.activeStream = {
-        id: 'stream-1',
-        role: 'assistant',
-        content: 'Thinking...',
-        segments: [],
-        toolCalls: [],
-        timestamp: new Date(),
-        isComplete: false,
-      };
 
-      renderWithProviders(<StreamingMessageList />);
+      renderWithProviders(<StreamingMessageList allMessages={messages} />);
 
       expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
       expect(screen.getByTestId('message-stream-1')).toBeInTheDocument();
@@ -159,10 +153,10 @@ describe('StreamingMessageList', function packageTests() {
 
   describe('pagination', function pagination() {
     it('should show load more button when has more conversations', function showLoadMore() {
-      mockStreamingStore.messages = [
+      const messages = [
         {
           id: 'msg-1',
-          role: 'user',
+          role: 'user' as const,
           content: 'Hello',
           timestamp: new Date(),
         },
@@ -174,16 +168,16 @@ describe('StreamingMessageList', function packageTests() {
         isLoading: false,
       };
 
-      renderWithProviders(<StreamingMessageList />);
+      renderWithProviders(<StreamingMessageList allMessages={messages} />);
 
       expect(screen.getByText('Load previous conversations')).toBeInTheDocument();
     });
 
     it('should not show load more button when no more conversations', function hideLoadMore() {
-      mockStreamingStore.messages = [
+      const messages = [
         {
           id: 'msg-1',
-          role: 'user',
+          role: 'user' as const,
           content: 'Hello',
           timestamp: new Date(),
         },
@@ -195,7 +189,7 @@ describe('StreamingMessageList', function packageTests() {
         isLoading: false,
       };
 
-      renderWithProviders(<StreamingMessageList />);
+      renderWithProviders(<StreamingMessageList allMessages={messages} />);
 
       expect(screen.queryByText('Load previous conversations')).not.toBeInTheDocument();
     });

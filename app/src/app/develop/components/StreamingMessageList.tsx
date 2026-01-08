@@ -5,19 +5,23 @@ import Box from '@ux/box'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
 
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import {
-  useActiveStream,
+  type ChatMessage,
+  type StreamingMessage as StreamingMessageType,
   useConversationPagination,
   useCurrentAppId,
   useIsActivelyStreaming,
   useIsLoading,
   useLoadMoreConversations,
-  useMessages,
 } from '@/stores/useStreamingConversationStore'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import StreamingMessage from './StreamingMessage'
 
-export default function StreamingMessageList() {
+interface StreamingMessageListProps {
+  allMessages: (ChatMessage | StreamingMessageType)[]
+}
+
+export default function StreamingMessageList({ allMessages }: StreamingMessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
@@ -27,9 +31,7 @@ export default function StreamingMessageList() {
   const [userHasScrolledUp, setUserHasScrolledUp] = useState(false)
   const scrollThrottleRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Get all visible messages (completed + active stream)
-  const messages = useMessages()
-  const activeStream = useActiveStream()
+  // Store hooks for pagination and loading state
   const isStreaming = useIsActivelyStreaming()
   const loadMoreConversations = useLoadMoreConversations()
   const pagination = useConversationPagination()
@@ -37,10 +39,15 @@ export default function StreamingMessageList() {
   const isLoadingMessages = useIsLoading()
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
 
-  // Combine messages with useMemo to prevent infinite loops
-  const allMessages = useMemo(() => {
-    return activeStream ? [...messages, activeStream] : messages
-  }, [messages, activeStream])
+  // Derive activeStream from allMessages for scroll behavior
+  const activeStream = useMemo(() => {
+    const lastMessage = allMessages[allMessages.length - 1]
+    // Check if it's a streaming message (has isComplete property set to false)
+    if (lastMessage && 'isComplete' in lastMessage && !lastMessage.isComplete) {
+      return lastMessage as StreamingMessageType
+    }
+    return null
+  }, [allMessages])
 
   // Find the last assistant message ID for suggested response rendering
   const lastAssistantMessageId = useMemo(() => {
