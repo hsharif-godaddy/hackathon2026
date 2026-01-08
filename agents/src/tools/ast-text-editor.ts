@@ -286,7 +286,7 @@ export class ASTTextEditor extends ASTEditorBase {
    * @returns Commit message
    */
   protected generateCommitMessage(changes: any, request: TextEditRequest): string {
-    return `Update text in ${request.devContext.componentName || 'component'}`;
+    return `Update text in ${request.devContext.fileName || 'component'}`;
   }
 
   /**
@@ -294,14 +294,17 @@ export class ASTTextEditor extends ASTEditorBase {
    *
    * @param appPath - Path to the app directory
    * @param request - Text edit request
+   * @param appId - Optional app ID for git operations
    * @returns Text edit result with old and new text
    */
-  async editElementText(appPath: string, request: TextEditRequest): Promise<TextEditResult> {
+  async editElementText(appPath: string, request: TextEditRequest, appId?: string): Promise<TextEditResult> {
     const baseResult = await this.editTemplate<TextEditRequest, TextEditResult>(
       appPath,
       request,
       (req) => req.devContext.fileName,
-      true
+      true,
+      'generic',
+      appId
     );
 
     return {

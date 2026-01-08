@@ -78,6 +78,7 @@ const mockDevelopPageStore = {
   expandedPlan: false,
   isMobile: false,
   toggleExpandedPlan: vi.fn(),
+  setIsVersionHistoryOpen: vi.fn(),
 };
 const mockChatTabs = {
   activeChatTab: ChatTab.CHAT,

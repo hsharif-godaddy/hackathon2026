@@ -16,6 +16,7 @@ const mockDevelopStore = {
   hasUnsavedChanges: false,
   isSelectMode: false,
   isChatPaneCollapsed: false,
+  isVersionHistoryOpen: false,
   site: { name: 'Test App' },
   handleViewModeChange: vi.fn(),
   setPreviewViewMode: vi.fn(),
@@ -200,5 +201,23 @@ describe('PreviewHeader', () => {
     const buttons = container.querySelectorAll('button');
     // Collapse, Preview, Code, Select, Refresh, Desktop, Mobile, New Tab = 8 buttons
     expect(buttons.length).toBe(8);
+  });
+
+  it('should disable code button when version history is open', () => {
+    mockDevelopStore.isVersionHistoryOpen = true;
+
+    renderWithProviders(<PreviewHeader {...defaultProps} />);
+
+    const codeButton = screen.getByLabelText('builder_preview_button_code');
+    expect(codeButton).toBeDisabled();
+  });
+
+  it('should disable select mode button when version history is open', () => {
+    mockDevelopStore.isVersionHistoryOpen = true;
+
+    renderWithProviders(<PreviewHeader {...defaultProps} />);
+
+    const selectButton = screen.getByLabelText('builder_preview_button_select');
+    expect(selectButton).toBeDisabled();
   });
 });

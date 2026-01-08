@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
+
 import Box from '@ux/box'
 import CommentsIcon from '@ux/icon/comments'
 import HistoryIcon from '@ux/icon/history'
@@ -10,7 +12,7 @@ import WebsiteIcon from '@ux/icon/website'
 import AssetManagerModal, { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
 import IconButton from '@/app/develop/components/IconButton'
 import SettingsMenu from '@/app/develop/components/settings/SettingsMenu'
-import { ChatTab } from '@/app/develop/components/types'
+import { ChatTab, ViewMode } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
@@ -32,15 +34,56 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
   const appId = useAppIdFromParams()
   const { activeChatTab, setActiveChatTab, activeSettingsSection, setActiveSettingsSection } = useChatTabs()
   const isMobile = useDevelopPageStore((state) => state.isMobile);
+  const isVersionHistoryOpen = useDevelopPageStore((state) => state.isVersionHistoryOpen);
+  const viewMode = useDevelopPageStore((state) => state.viewMode);
+  const isSelectMode = useDevelopPageStore((state) => state.isSelectMode);
   const isSelectingCommit = useGitStore((state) => state.isSelectingCommit);
+  const returnToMain = useGitStore((state) => state.returnToMain);
 
   const { data: isAssetManagerEnabled } = useSwitchboard('appbuilder-image-manager');
   const { data: isSettingsEnabled } = useSwitchboard('appbuilder-settings');
 
-  const { isFetching: isFetchingCommits } = useGitHistoryQuery({
+  const { data: gitHistoryData, isFetching: isFetchingCommits } = useGitHistoryQuery({
     appId: appId || '',
     enabled: !!appId
   })
+
+  const latestCommitHash = gitHistoryData?.commits?.[0]?.hash || null
+
+  // Track previous values to detect mode changes
+  const prevViewModeRef = useRef<ViewMode>(viewMode)
+  const prevSelectModeRef = useRef<boolean>(isSelectMode)
+  const prevChatTabRef = useRef<ChatTab>(activeChatTab)
+
+  // Auto-return to main branch when:
+  useEffect(function autoReturnToMain() {
+    const prevViewMode = prevViewModeRef.current
+    const prevSelectMode = prevSelectModeRef.current
+    const prevChatTab = prevChatTabRef.current
+
+    // Update refs for next comparison
+    prevViewModeRef.current = viewMode
+    prevSelectModeRef.current = isSelectMode
+    prevChatTabRef.current = activeChatTab
+
+    if (!appId || !latestCommitHash) {
+      logger.debug('chat_toolbar.auto_return_to_main.skip', {
+        reason: !appId ? 'no_app_id' : 'no_latest_commit',
+        appId,
+        latestCommitHash
+      })
+      return
+    }
+
+    // Detect when mode CHANGES to code editor or select mode
+    const codeEditorJustOpened = viewMode === ViewMode.CODE && prevViewMode !== ViewMode.CODE
+    const selectModeJustActivated = isSelectMode && !prevSelectMode
+    const historyTabJustClosed = prevChatTab === ChatTab.HISTORY && activeChatTab !== ChatTab.HISTORY
+
+    if (codeEditorJustOpened || selectModeJustActivated || historyTabJustClosed) {
+      returnToMain(appId, latestCommitHash)
+    }
+  }, [appId, viewMode, isSelectMode, activeChatTab, latestCommitHash, returnToMain])
 
   const isAssetManagerOpen = useDevelopPageStore((state) => state.isAssetManagerOpen);
   const setIsAssetManagerOpen = useDevelopPageStore((state) => state.setIsAssetManagerOpen);
@@ -120,7 +163,7 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
         onClick={() => handleTabClick(ChatTab.HISTORY)}
         label={t('builder_chat_toolbar_button_history')}
         active={activeChatTab === ChatTab.HISTORY}
-        disabled={isProcessing || isFetchingCommits || isSelectingCommit}
+        disabled={isProcessing || isFetchingCommits || isSelectingCommit || viewMode === ViewMode.CODE || isSelectMode}
       />
       {isMobile ? (
         isSettingsEnabled && <SettingsMenu />
@@ -134,6 +177,7 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
           className="ml-auto"
           label={t('builder_chat_toolbar_button_settings')}
           active={activeChatTab === ChatTab.SETTINGS}
+          disabled={isVersionHistoryOpen}
         />
       )}
       {isAssetManagerEnabled && (

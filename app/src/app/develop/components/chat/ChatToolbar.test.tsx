@@ -11,6 +11,9 @@ const mockRouter = { push: vi.fn() };
 const mockParams = { id: 'app-123' };
 const mockDevelopStore = {
   isMobile: false,
+  isVersionHistoryOpen: false,
+  isAssetManagerOpen: false,
+  setIsAssetManagerOpen: vi.fn(),
 };
 const mockChatTabs = {
   activeChatTab: ChatTab.CHAT,
@@ -68,6 +71,8 @@ describe('ChatToolbar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDevelopStore.isMobile = false;
+    mockDevelopStore.isVersionHistoryOpen = false;
+    mockDevelopStore.isAssetManagerOpen = false;
     mockChatTabs.activeChatTab = ChatTab.CHAT;
     mockChatTabs.activeSettingsSection = SettingsSection.DOMAIN;
     mockGitStore.isSelectingCommit = false;
@@ -219,5 +224,15 @@ describe('ChatToolbar', () => {
 
     const settingsButton = container.querySelector('[data-eid="develop.chat_toolbar.settings"]');
     expect(settingsButton).toBeInTheDocument();
+  });
+
+  it('should disable settings button when version history is open', () => {
+    mockDevelopStore.isVersionHistoryOpen = true;
+
+    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
+    const buttons = container.querySelectorAll('button');
+    const settingsButton = Array.from(buttons).find(btn => btn.textContent?.includes('builder_chat_toolbar_button_settings'));
+
+    expect(settingsButton).toBeDisabled();
   });
 });

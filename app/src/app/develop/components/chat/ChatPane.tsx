@@ -66,6 +66,7 @@ export default function ChatPane({
   const expandedPlan = useDevelopPageStore((state) => state.expandedPlan)
   const toggleExpandedPlan = useDevelopPageStore((state) => state.toggleExpandedPlan)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
+  const setIsVersionHistoryOpen = useDevelopPageStore((state) => state.setIsVersionHistoryOpen)
   const { activeChatTab, setActiveChatTab } = useChatTabs()
 
   const appId = useAppIdFromParams()
@@ -76,6 +77,11 @@ export default function ChatPane({
       setActiveChatTab(ChatTab.CHAT)
     }
   }, [isMobile, activeChatTab, setActiveChatTab])
+
+  // Sync isVersionHistoryOpen with activeChatTab
+  useEffect(() => {
+    setIsVersionHistoryOpen(activeChatTab === ChatTab.HISTORY)
+  }, [activeChatTab, setIsVersionHistoryOpen])
 
   // State for selected asset from AssetManager
   const [selectedAsset, setSelectedAsset] = useState<AssetManagerItem | null>(null)

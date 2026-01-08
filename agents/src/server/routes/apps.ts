@@ -716,7 +716,7 @@ router.post('/:id/text/edit', async (req: Request, res: Response) => {
       oldText,
       newText,
       devContext
-    });
+    }, id);
 
     if (!editResult.success) {
       contextLogger.error('route.apps.text-edit.failed', {

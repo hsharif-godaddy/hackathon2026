@@ -89,6 +89,15 @@ interface GitStore {
    * @param appId - Application ID
    */
   clearAppState: (appId: string) => void
+
+  /**
+   * Return to main branch (latest commit)
+   * Checks out main branch and updates selection to latest commit
+   *
+   * @param appId - Application ID
+   * @param latestCommitHash - Hash of the latest commit to set as selected
+   */
+  returnToMain: (appId: string, latestCommitHash: string) => Promise<void>
 }
 
 export const useGitStore = create<GitStore>()(
@@ -158,6 +167,36 @@ export const useGitStore = create<GitStore>()(
         set((state) => {
           delete state.selectedCommitHashByApp[appId]
         })
+      },
+
+      returnToMain: async (appId, latestCommitHash) => {
+        set({ isSelectingCommit: true, commitSelectionError: null })
+
+        try {
+          await appService.returnToMainBranch(appId)
+
+          set((state) => {
+            state.selectedCommitHashByApp[appId] = latestCommitHash
+            state.isSelectingCommit = false
+          })
+
+          logger.info('git-store.return-to-main.success', {
+            appId,
+            commitHash: latestCommitHash.substring(0, 7),
+          })
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Failed to return to main'
+
+          logger.error('git-store.return-to-main.error', {
+            appId,
+            error: errorMessage,
+          })
+
+          set({
+            commitSelectionError: errorMessage,
+            isSelectingCommit: false
+          })
+        }
       },
     })),
     { name: 'GitStore' }

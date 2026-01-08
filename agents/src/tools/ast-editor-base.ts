@@ -212,13 +212,11 @@ export abstract class ASTEditorBase {
     request: TRequest,
     getFilePath: (request: TRequest) => string,
     shouldCommit = false,
-    editType: 'style' | 'component' | 'generic' = 'generic'
+    editType: 'style' | 'component' | 'generic' = 'generic',
+    appId?: string
   ): Promise<TResult> {
     const startTime = Date.now();
     const filePath = this.resolveFilePath(appPath, getFilePath(request));
-    
-    // Extract app ID from path (basic implementation)
-    const appId = appPath.split('/').pop();
     
     // Build logging data
     const logData = {

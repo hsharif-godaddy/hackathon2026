@@ -29,6 +29,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
   const isSelectMode = useDevelopPageStore((state) => state.isSelectMode)
   const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed)
+  const isVersionHistoryOpen = useDevelopPageStore((state) => state.isVersionHistoryOpen)
   const site = useDevelopPageStore((state) => state.site)
   const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange)
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
@@ -81,13 +82,14 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         onClick={() => handleViewModeChange(ViewMode.CODE, hasUnsavedChanges)}
         data-eid={ generateClickEID('develop.preview.code_editor') }
         active={viewMode === ViewMode.CODE}
+        disabled={isVersionHistoryOpen}
         label={t('builder_preview_button_code')}
         showLabelWhenActive={false}
       />
       {!isMobile && (
         <IconButton
           icon={<EditIcon />}
-          disabled={viewMode === ViewMode.CODE}
+          disabled={viewMode === ViewMode.CODE || isVersionHistoryOpen}
           onClick={toggleSelectMode}
           data-eid={ generateClickEID('develop.preview.select_mode') }
           active={isSelectMode}
