@@ -18,6 +18,7 @@ import HandoffToolRenderer from './HandoffToolRenderer'
 import ImageSearchToolRenderer from './ImageSearchToolRenderer'
 import MediaSearchToolRenderer from './MediaSearchToolRenderer'
 import OAuthToolRenderer from './OAuthToolRenderer'
+import PublishClientToolRenderer from './PublishClientToolRenderer'
 import ReadFileToolRenderer from './ReadFileToolRenderer'
 import SecretsToolRenderer from './SecretsToolRenderer'
 import SkillToolRenderer from './SkillToolRenderer'
@@ -61,6 +62,7 @@ export const toolRendererRegistry = {
   socialStatus: SocialStatusToolRenderer,
   socialConnect: SocialConnectToolRenderer,
   skill: SkillToolRenderer,
+  publishClient: PublishClientToolRenderer,
 } as const
 
 /**
@@ -106,6 +108,7 @@ export {
   ImageSearchToolRenderer,
   MediaSearchToolRenderer,
   OAuthToolRenderer,
+  PublishClientToolRenderer,
   ReadFileToolRenderer,
   SecretsToolRenderer,
   SkillToolRenderer,
