@@ -16,6 +16,7 @@ import {
   createExperimentalWebSocketServer,
   createSingleAgentWebSocketServer
 } from '../src/websocket/experimental-websocket-server.js'
+import { createNoOpPersistence } from '../src/websocket/noop-persistence.js'
 import { createTool } from '../src/tools/base-tool.js'
 import { z } from 'zod'
 
@@ -93,6 +94,7 @@ async function singleAgentDemo() {
       {
         // Optional configuration
         includeUsageData: true,
+        messagePersistence: createNoOpPersistence(),
         cors: {
           origin: "*",
           methods: ["GET", "POST"]
@@ -237,6 +239,7 @@ async function multiAgentDemo() {
       agentFactory,
       defaultAgent: 'general',
       includeUsageData: true,
+      messagePersistence: createNoOpPersistence(),
       contextExtractor: (rawContext) => {
         // Extract and process custom context
         return {

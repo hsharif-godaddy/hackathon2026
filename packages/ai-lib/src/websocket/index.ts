@@ -33,6 +33,12 @@ export type {
   CircularBufferConfig
 } from './interfaces.js'
 
+// No-op Persistence for Tests/Examples
+export {
+  NoOpPersistence,
+  createNoOpPersistence
+} from './noop-persistence.js'
+
 // Event Subscribers
 export {
   WebSocketSubscriber

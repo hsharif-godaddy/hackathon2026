@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Server as HTTPServer } from 'http'
 import { WebSocketServer } from '../experimental-websocket-server.js'
+import { createNoOpPersistence } from '../noop-persistence.js'
 import type { ExperimentalAgentWrapper } from '../../core/agent-factory.js'
 
 /**
@@ -56,7 +57,8 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
     // Create test server
     const testServer = new WebSocketServer(httpServer, {
       agents: mockAgents,
-      defaultAgent: 'test-agent'
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
     })
 
     const eventChannel = (testServer as any).eventChannel
@@ -261,7 +263,8 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
 
     const testServer = new WebSocketServer(httpServer, {
       agents: mockAgents,
-      defaultAgent: 'test-agent'
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
     })
 
     const eventChannel = (testServer as any).eventChannel

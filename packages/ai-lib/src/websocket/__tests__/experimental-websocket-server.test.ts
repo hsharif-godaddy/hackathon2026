@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Server as HTTPServer } from 'http'
 import { WebSocketServer } from '../experimental-websocket-server.js'
+import { createNoOpPersistence } from '../noop-persistence.js'
 import type { ExperimentalAgentWrapper } from '../../core/agent-factory.js'
 
 // Mock Socket.IO
@@ -65,18 +66,6 @@ function createDisconnectedConnectionState(
 }
 
 /**
- * Creates a default mock persistence for tests that need event publishing
- */
-function createMockPersistence() {
-  return {
-    startConversation: vi.fn().mockResolvedValue('test-conv-id'),
-    captureStreamingEvent: vi.fn().mockResolvedValue(undefined),
-    completeConversation: vi.fn().mockResolvedValue(undefined),
-    handleConversationError: vi.fn().mockResolvedValue(undefined)
-  }
-}
-
-/**
  * Helper to set up server with proper async connection handling
  * Returns the captured chat message handler after async connection setup completes
  */
@@ -92,10 +81,10 @@ async function setupServerWithConnection(
     }
   })
 
-  // Add default mock persistence if not provided - required for event publishing
+  // Add default no-op persistence if not provided
   const configWithPersistence = {
     ...config,
-    messagePersistence: config.messagePersistence ?? createMockPersistence()
+    messagePersistence: config.messagePersistence ?? createNoOpPersistence()
   }
 
   const server = new WebSocketServer(httpServer, configWithPersistence)
@@ -124,7 +113,8 @@ describe('WebSocketServer - Error Handling', () => {
 
     server = new WebSocketServer(httpServer, {
       agents: mockAgents,
-      defaultAgent: 'test-agent'
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
     })
   })
 
@@ -218,7 +208,8 @@ describe('WebSocketServer - Error Handling', () => {
 
       const testServer = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       const eventChannel = (testServer as any).eventChannel
@@ -320,7 +311,8 @@ describe('WebSocketServer - Error Handling', () => {
 
       const testServer = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       const eventChannel = (testServer as any).eventChannel
@@ -394,7 +386,8 @@ describe('WebSocketServer - Error Handling', () => {
 
       const testServer = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       const eventChannel = (testServer as any).eventChannel
@@ -1043,7 +1036,8 @@ describe('WebSocketServer - Error Handling', () => {
 
       const testServer = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       const stateManager = (testServer as any).stateManager
@@ -1079,7 +1073,8 @@ describe('WebSocketServer - Error Handling', () => {
 
       const testServer = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       // Set up the event channel with some events
@@ -1121,7 +1116,8 @@ describe('WebSocketServer - Error Handling', () => {
       // Re-create server to get fresh connection handler
       const testServer2 = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       // Set up the same state on new server
@@ -1222,7 +1218,8 @@ describe('WebSocketServer - Error Handling', () => {
       // Create server and trigger connection to capture handlers
       const testServer2 = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       if (connectionHandler) {
@@ -1312,7 +1309,8 @@ describe('WebSocketServer - Error Handling', () => {
 
       const testServer2 = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       const eventChannel2 = (testServer2 as any).eventChannel
@@ -1378,7 +1376,8 @@ describe('WebSocketServer - Error Handling', () => {
 
       const testServer = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       const stateManager = (testServer as any).stateManager
@@ -1413,7 +1412,8 @@ describe('WebSocketServer - Error Handling', () => {
 
       const testServer = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       const stateManager = (testServer as any).stateManager
@@ -1448,7 +1448,8 @@ describe('WebSocketServer - Error Handling', () => {
 
       const testServer = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       const stateManager = (testServer as any).stateManager
@@ -1481,7 +1482,8 @@ describe('WebSocketServer - Error Handling', () => {
 
       const testServer = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       const eventChannel = (testServer as any).eventChannel
@@ -1531,7 +1533,8 @@ describe('WebSocketServer - Error Handling', () => {
 
       const testServer = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       const eventChannel = (testServer as any).eventChannel
@@ -1564,7 +1567,8 @@ describe('WebSocketServer - Error Handling', () => {
 
       const testServer = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       const eventChannel = (testServer as any).eventChannel
@@ -1617,7 +1621,8 @@ describe('WebSocketServer - Error Handling', () => {
 
       const testServer = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       const stateManager = (testServer as any).stateManager
@@ -1658,7 +1663,8 @@ describe('WebSocketServer - Error Handling', () => {
 
       const testServer = new WebSocketServer(httpServer, {
         agents: mockAgents,
-        defaultAgent: 'test-agent'
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
       })
 
       const eventChannel = (testServer as any).eventChannel
