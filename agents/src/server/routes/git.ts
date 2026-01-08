@@ -19,6 +19,7 @@ import {
   type ImportProgress,
   type ValidationError,
 } from '../../types/import.js';
+import { validateAppOwnership } from '../middleware/app-ownership.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -525,6 +526,7 @@ function getStageInfo(status: ImportJobStatus): ImportProgress {
 router.post(
   '/apps/:id/git/replace',
   requireZipImportFeature,
+  validateAppOwnership,
   async (req: Request, res: Response) => {
     const { id: appId } = req.params;
     const contentType = req.headers['content-type'] || '';
@@ -738,7 +740,7 @@ async function handleGitImport(req: Request, res: Response, appId: string): Prom
  *
  * @returns {ImportStatusResponse} 200 - Replacement status
  */
-router.get('/apps/:id/git/replace/status', requireZipImportFeature, async (req: Request, res: Response) => {
+router.get('/apps/:id/git/replace/status', requireZipImportFeature, validateAppOwnership, async (req: Request, res: Response) => {
   try {
     const { id: appId } = req.params;
 
@@ -807,7 +809,7 @@ router.get('/apps/:id/git/replace/status', requireZipImportFeature, async (req: 
  *
  * Currently returns 501 Not Implemented.
  */
-router.delete('/apps/:id/git/replace', requireZipImportFeature, async (_req: Request, res: Response) => {
+router.delete('/apps/:id/git/replace', requireZipImportFeature, validateAppOwnership, async (_req: Request, res: Response) => {
   return res.status(501).json({
     error: 'Import cancellation not yet implemented',
     message: 'This feature is planned for a future release',

@@ -349,3 +349,14 @@ export function validateConfiguration(): void {
     throw new Error(`Configuration validation failed:\n${errors.join('\n')}`)
   }
 }
+
+/**
+ * List of site IDs that are allowed to bypass authentication checks.
+ */
+export const BYPASS_SITE_IDS = [
+  'bypass-site',
+  'default-site',
+  'local-dev-site',
+  'mock-site-id',
+  'unknown-site'
+];
