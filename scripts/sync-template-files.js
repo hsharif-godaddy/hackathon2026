@@ -43,6 +43,20 @@ const SYNC_MANIFEST = [
     force: false
   },
   {
+    file: 'src/components/CookieBanner.tsx',
+    description: 'cookie consent banner for C2 analytics',
+    known_hashes: [],
+    force: false
+  },
+  {
+    file: 'src/layouts/RootLayout.tsx',
+    description: 'Root layout with CookieBanner component',
+    known_hashes: [
+      'a4956fef6d7b07ada0017265268436ad'  // Version without CookieBanner
+    ],
+    force: false
+  },
+  {
     file: 'public/analytics.js',
     description: 'GoDaddy Signals analytics library initialization script',
     known_hashes: [],

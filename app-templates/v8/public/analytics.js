@@ -1,9 +1,6 @@
 // Analytics initialization
-// This script loads the GoDaddy Signals analytics library
+// C2 analytics loading is now managed by CookieBanner component
+// to ensure GDPR/CCPA compliance with user consent.
+// The script will only load after user accepts analytics cookies.
 (window._signalsDataLayer=window._signalsDataLayer||[]);
-(function(s){
-  s.src=(location.hostname.includes('test-')||location.hostname.includes('dev-'))?'https://img1.test-wsimg.com/signals/js/clients/scc-c2/scc-c2.min.js':'https://img1.wsimg.com/signals/js/clients/scc-c2/scc-c2.min.js';
-  s.async=true;
-  document.head.appendChild(s);
-})(document.createElement('script'));
 

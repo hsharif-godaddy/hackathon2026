@@ -1,7 +1,9 @@
 import { ReactElement } from 'react';
-import Website from '@/layouts/Website';
-import Header from '@/layouts/parts/Header';
+
+import CookieBanner from '@/components/CookieBanner';
 import Footer from '@/layouts/parts/Footer';
+import Header from '@/layouts/parts/Header';
+import Website from '@/layouts/Website';
 
 /**
  * Root layout component that wraps all pages with consistent header and footer
@@ -32,6 +34,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
       <Header />
       {children}
       <Footer />
+      <CookieBanner />
     </Website>
   );
 }
