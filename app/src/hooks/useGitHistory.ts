@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
 
 import { appService } from '@/services/AppService';
 
@@ -51,6 +52,17 @@ export interface GitHistoryQueryResult {
  */
 export function useGitHistoryQuery(options: UseGitHistoryQueryOptions) {
   const { appId, enabled = true } = options;
+  const queryClient = useQueryClient();
+  const prevAppIdRef = useRef(appId);
+
+  // Cancel in-flight queries for the PREVIOUS appId when appId changes
+  // This prevents "old appId with new agent URL" race condition during app transitions
+  useEffect(() => {
+    if (prevAppIdRef.current && prevAppIdRef.current !== appId) {
+      queryClient.cancelQueries({ queryKey: ['git-history', prevAppIdRef.current] });
+    }
+    prevAppIdRef.current = appId;
+  }, [appId, queryClient]);
 
   return useQuery({
     queryKey: ['git-history', appId],

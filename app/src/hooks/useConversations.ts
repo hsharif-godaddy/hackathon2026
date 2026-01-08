@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
 
 import { buildDynamicAgentUrl } from '@/config/dynamic-api';
 import { agentFetch } from '@/lib/agent-fetch';
@@ -70,6 +71,17 @@ interface MessagesResponse {
  * @returns Query result with conversations data, loading, error states
  */
 export function useConversations(appId: string | undefined) {
+  const queryClient = useQueryClient();
+  const prevAppIdRef = useRef(appId);
+
+  // Cancel in-flight queries for the PREVIOUS appId when appId changes
+  useEffect(() => {
+    if (prevAppIdRef.current && prevAppIdRef.current !== appId) {
+      queryClient.cancelQueries({ queryKey: ['conversations', prevAppIdRef.current] });
+    }
+    prevAppIdRef.current = appId;
+  }, [appId, queryClient]);
+
   return useQuery({
     queryKey: ['conversations', appId],
     queryFn: async (): Promise<{ conversations: Conversation[]; total: number }> => {
@@ -110,6 +122,25 @@ export function useConversationMessages(
   conversationId: string | null,
   enabled = true
 ) {
+  const queryClient = useQueryClient();
+  const prevAppIdRef = useRef(appId);
+  const prevConversationIdRef = useRef(conversationId);
+
+  // Cancel in-flight queries for the PREVIOUS appId/conversationId when they change
+  useEffect(() => {
+    const appIdChanged = prevAppIdRef.current && prevAppIdRef.current !== appId;
+    const conversationIdChanged = prevConversationIdRef.current && prevConversationIdRef.current !== conversationId;
+
+    if (appIdChanged || conversationIdChanged) {
+      queryClient.cancelQueries({
+        queryKey: ['conversation-messages', prevAppIdRef.current, prevConversationIdRef.current]
+      });
+    }
+
+    prevAppIdRef.current = appId;
+    prevConversationIdRef.current = conversationId;
+  }, [appId, conversationId, queryClient]);
+
   return useQuery({
     queryKey: ['conversation-messages', appId, conversationId],
     queryFn: async (): Promise<ConversationMessage[]> => {

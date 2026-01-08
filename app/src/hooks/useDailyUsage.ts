@@ -54,6 +54,15 @@ export interface UseDailyUsageOptions {
 export function useDailyUsage(options: UseDailyUsageOptions) {
   const { appId, enabled = true } = options
   const queryClient = useQueryClient()
+  const prevAppIdRef = useRef(appId)
+
+  // Cancel in-flight queries for the PREVIOUS appId when appId changes
+  useEffect(() => {
+    if (prevAppIdRef.current && prevAppIdRef.current !== appId) {
+      queryClient.cancelQueries({ queryKey: ['daily-usage', prevAppIdRef.current] })
+    }
+    prevAppIdRef.current = appId
+  }, [appId, queryClient])
 
   const query = useQuery({
     queryKey: ['daily-usage', appId],

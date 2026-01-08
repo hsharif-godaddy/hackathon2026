@@ -319,6 +319,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   const [phase, setPhase] = useState<InitializationPhase>('idle')
   const [subPhase, setSubPhase] = useState<InitializationSubPhase | null>(null)
   const hasInitialized = useRef(false)
+  const initializingAppIdRef = useRef<string | null>(null)
 
   // Initialize initialJobId from sessionStorage on mount
   const [initialJobId, setInitialJobId] = useState<string | null>(() => {
@@ -453,6 +454,13 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     }
   }, [appId, isJobId, initialJobId])
 
+  // Reset initialization flag when appId changes
+  // This ensures that when transitioning from job ID → real app ID,
+  // the initialization flow (initializePage + loadConversationHistory) runs for the new appId
+  useEffect(() => {
+    hasInitialized.current = false
+  }, [appId])
+
   // Step 1: Check if this is a new site creation
   useEffect(() => {
     if (!appId) {
@@ -512,15 +520,23 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     if (phase === 'initializing-page' && appId && !hasInitialized.current) {
       const effectiveAppId = realAppId || appId
       hasInitialized.current = true
+      initializingAppIdRef.current = effectiveAppId
 
       initializePage(effectiveAppId)
         .then(() => {
-          // Wait for page to be fully ready (loadingPhase === 'ready')
-          setPhase('loading-history')
+          // Only proceed if we're still on the same appId (handles rapid navigation)
+          if (initializingAppIdRef.current === effectiveAppId) {
+            setPhase('loading-history')
+          }
         })
         .catch(error => {
           const errorMessage = error instanceof Error ? error.message : String(error)
           logger.error('initialization.page.error', { appId: effectiveAppId, error: errorMessage })
+
+          // Only update state if we're still on the same appId
+          if (initializingAppIdRef.current !== effectiveAppId) {
+            return
+          }
 
           if (errorMessage === AppErrorCode.SITE_NOT_FOUND) {
             setSiteNotFound(true);
@@ -543,6 +559,11 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       })
       loadConversationHistory(effectiveAppId)
         .then(() => {
+          // Only proceed if we're still on the same appId
+          if (initializingAppIdRef.current !== effectiveAppId) {
+            return
+          }
+
           setPhase('ready')
           // Determine initial subPhase based on context
           if (context.hasInitialPrompt && !context.initialPromptSent) {
@@ -553,6 +574,12 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
         })
         .catch(error => {
           logger.error('initialization.history.error', { appId: effectiveAppId, error })
+
+          // Only update state if we're still on the same appId
+          if (initializingAppIdRef.current !== effectiveAppId) {
+            return
+          }
+
           // Don't fail - history is optional
           setPhase('ready')
           if (context.hasInitialPrompt && !context.initialPromptSent) {
