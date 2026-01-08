@@ -260,4 +260,58 @@ describe('PublishStatusAlert', () => {
       });
     }
   });
+
+  it('should not render success alert with empty domains', () => {
+    mockDevelopStore.publishStates = {
+      'app-123': { showSuccessAlert: true },
+    };
+    // Site with no domains configured and empty published_url
+    // hasBeenPublished returns false for empty published_url
+    mockSiteStore.getSite.mockReturnValue({
+      id: 'app-123',
+      domains: [],
+      published_url: '', // Empty - not published
+    });
+
+    const { container } = renderWithProviders(<PublishStatusAlert />);
+
+    // Should NOT render success alert when site hasn't been published
+    expect(screen.queryByText('builder_publish_success_title')).not.toBeInTheDocument();
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('should not render success alert with undefined domains', () => {
+    mockDevelopStore.publishStates = {
+      'app-123': { showSuccessAlert: true },
+    };
+    // Site with undefined domains and published_url
+    mockSiteStore.getSite.mockReturnValue({
+      id: 'app-123',
+      domains: undefined,
+      published_url: undefined,
+    });
+
+    const { container } = renderWithProviders(<PublishStatusAlert />);
+
+    // Should NOT render when not published
+    expect(screen.queryByText('builder_publish_success_title')).not.toBeInTheDocument();
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('should render success alert with custom domain', () => {
+    mockDevelopStore.publishStates = {
+      'app-123': { showSuccessAlert: true },
+    };
+    mockSiteStore.getSite.mockReturnValue({
+      id: 'app-123',
+      published_url: 'https://example.com', // Needed for hasBeenPublished check
+      domains: [{ fqdn: 'custom.example.com', domainType: 'custom' }],
+    });
+
+    renderWithProviders(<PublishStatusAlert />);
+
+    // Success alert should render when site has been published
+    expect(screen.getByText('builder_publish_success_title')).toBeInTheDocument();
+    expect(screen.getByText('builder_publish_success_button_domain')).toBeInTheDocument();
+  });
 });

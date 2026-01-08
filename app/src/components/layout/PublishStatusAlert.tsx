@@ -157,7 +157,15 @@ export default function PublishStatusAlert() {
     const prefixDomain = site?.domains?.find(d => d.domainType === 'prefix');
     const publishedFqdn = site?.published_url;
 
-    const fqdn = customDomain?.fqdn || prefixDomain?.fqdn || publishedFqdn || '';
+    const rawFqdn = customDomain?.fqdn || prefixDomain?.fqdn || publishedFqdn || '';
+
+    // Ensure FQDN has https:// protocol for external link
+    // Handle empty string to avoid creating invalid 'https://' URL
+    const fqdn = !rawFqdn
+      ? ''
+      : (rawFqdn.startsWith('http://') || rawFqdn.startsWith('https://')
+          ? rawFqdn
+          : `https://${rawFqdn}`);
 
     return (
       <div className='px-2 py-2'>
