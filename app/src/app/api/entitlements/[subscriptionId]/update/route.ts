@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { type CustomerAuthContext,withCustomerAuth } from '@/lib/customer-auth';
-import { AiroMgmtClient } from '@/lib/mgmt-airo';
+import { AiroHttpError,AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
+import { VentureService } from '@/lib/venture-service';
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
@@ -18,6 +19,34 @@ export const dynamic = 'force-dynamic';
  * Request Body:
  * - entitlementId: The new entitlement ID (required)
  */
+async function customerOwnsEntitlement(
+  ventureService: VentureService,
+  customerId: string,
+  entitlementId: string
+): Promise<boolean> {
+  let after: string | undefined;
+
+  while (true) {
+    const projectsResponse = await ventureService.getCustomerProjects(customerId, after);
+    const edges = projectsResponse?.projects?.edges ?? [];
+
+    const ownsEntitlement = edges.some(edge => edge?.node?.billing?.id === entitlementId);
+    if (ownsEntitlement) {
+      return true;
+    }
+
+    const pageInfo = projectsResponse?.projects?.pageInfo;
+    if (pageInfo?.hasNextPage && pageInfo?.endCursor) {
+      after = pageInfo.endCursor;
+      continue;
+    }
+
+    break;
+  }
+
+  return false;
+}
+
 export const PUT = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext, { params }: { params: { subscriptionId: string } }): Promise<NextResponse> => {
   try {
     // JWT required
@@ -37,12 +66,50 @@ export const PUT = withCustomerAuth(async (request: NextRequest, authContext: Cu
 
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
     const client = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt });
+    const ventureService = new VentureService(authContext.jwt);
+    const { user } = authContext;
 
     logger.info('entitlements.api.update.start', {
       subscriptionId,
       entitlementId,
       ...(appId && { appId })
     });
+
+    const subscription = await client.getEntitlements(subscriptionId);
+    if (!subscription || !subscription.id) {
+      logger.warn('entitlements.api.update.subscription-not-found', {
+        subscriptionId
+      });
+      return NextResponse.json(
+        { error: 'Subscription not found' },
+        { status: 404 }
+      );
+    }
+
+    if (subscription.customerId !== user.customerId) {
+      logger.warn('entitlements.api.update.unauthorized', {
+        subscriptionId,
+        subscriptionCustomerId: subscription.customerId,
+        customerId: user.customerId
+      });
+      return NextResponse.json(
+        { error: 'Forbidden' },
+        { status: 403 }
+      );
+    }
+
+    const entitlementOwned = await customerOwnsEntitlement(ventureService, user.customerId, entitlementId);
+    if (!entitlementOwned) {
+      logger.warn('entitlements.api.update.entitlement-unauthorized', {
+        subscriptionId,
+        entitlementId,
+        customerId: user.customerId
+      });
+      return NextResponse.json(
+        { error: 'Entitlement does not belong to this customer' },
+        { status: 403 }
+      );
+    }
 
     // Call updateEntitlement method
     const updatedSubscription = await client.updateEntitlement(subscriptionId, { entitlementId });
@@ -75,6 +142,12 @@ export const PUT = withCustomerAuth(async (request: NextRequest, authContext: Cu
       message: 'Failed to update entitlement',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
+    if (error instanceof AiroHttpError) {
+      return NextResponse.json(
+        { error: error.status === 404 ? 'Subscription not found' : 'Failed to update entitlement' },
+        { status: error.status }
+      );
+    }
     return NextResponse.json({ error: 'Failed to update entitlement' }, { status: 500 });
   }
 });
