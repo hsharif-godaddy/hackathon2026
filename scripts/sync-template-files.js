@@ -52,14 +52,18 @@ const SYNC_MANIFEST = [
     file: 'src/layouts/RootLayout.tsx',
     description: 'Root layout with CookieBanner component',
     known_hashes: [
-      'a4956fef6d7b07ada0017265268436ad'  // Version without CookieBanner
+      'a4956fef6d7b07ada0017265268436ad', // Version without CookieBanner
+      '3b60b06116874cd0632eb47ea5f96f80', // 8c484796 - Simplify Header and Footer
+      '278eb10635f8543359cfa77a47fb4122'  // 153b8e50 - Add dynamic context
     ],
     force: false
   },
   {
     file: 'public/analytics.js',
     description: 'GoDaddy Signals analytics library initialization script',
-    known_hashes: [],
+    known_hashes: [
+      '37c4e2e42c74028b41d692b990bd3883'  // e4b56fd8 - Original version that auto-loads analytics
+    ],
     force: false
   },
   {
