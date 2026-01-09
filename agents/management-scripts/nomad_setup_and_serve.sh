@@ -3,6 +3,13 @@
 # fail immediately if anything fails
 set -e
 
+# Unified job mode: move agent config to task-local directory and create symlink
+if [ -f "${NOMAD_ALLOC_DIR}/agent-config.json" ]; then
+    mv "${NOMAD_ALLOC_DIR}/agent-config.json" "${NOMAD_TASK_DIR}/config.json"
+    ln -sf "${NOMAD_TASK_DIR}/config.json" "${NOMAD_ALLOC_DIR}/config.json"
+    echo "Configured agent secrets at ${NOMAD_TASK_DIR}/config.json (symlinked from ${NOMAD_ALLOC_DIR}/config.json)"
+fi
+
 # add the customer app directory to the git safe directory
 git config --global --add safe.directory "${CUSTOMER_APP_DIR}"
 
