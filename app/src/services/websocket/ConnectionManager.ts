@@ -157,8 +157,9 @@ export class ConnectionManager {
 
     const sharedSocket = getSharedSocket()
     if (sharedSocket) {
-      // Check if shared socket is for the same app
-      const socketAppId = sharedSocket.io?.opts?.query?.appId
+      // Check if shared socket is for the same app (appId is in auth, not query)
+      const opts = sharedSocket.io?.opts as { auth?: { appId?: string } } | undefined
+      const socketAppId = opts?.auth?.appId
       if (socketAppId === appId) {
         // Reuse shared socket for same app
         this.socket = sharedSocket

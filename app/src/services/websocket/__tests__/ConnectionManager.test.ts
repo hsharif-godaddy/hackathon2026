@@ -104,8 +104,8 @@ describe('ConnectionManager', () => {
 
   it('reuses shared socket when available for same app', async () => {
     const sharedSocket = new MockSocket('shared-socket')
-    // Set up the appId in the socket's query so it matches the connect call
-    ;(sharedSocket as any).io = { opts: { query: { appId: 'app-abc' } } }
+    // Set up the appId in the socket's auth so it matches the connect call
+    ;(sharedSocket as any).io = { opts: { auth: { appId: 'app-abc' } } }
     setSharedSocket(sharedSocket as unknown as any)
 
     const { manager, createSocket } = createManager()
@@ -123,7 +123,7 @@ describe('ConnectionManager', () => {
   it('does not reuse shared socket for different app', async () => {
     const sharedSocket = new MockSocket('shared-socket')
     // Shared socket is for a different app
-    ;(sharedSocket as any).io = { opts: { query: { appId: 'app-old' } } }
+    ;(sharedSocket as any).io = { opts: { auth: { appId: 'app-old' } } }
     setSharedSocket(sharedSocket as unknown as any)
 
     const { manager, createSocket, sockets } = createManager()
