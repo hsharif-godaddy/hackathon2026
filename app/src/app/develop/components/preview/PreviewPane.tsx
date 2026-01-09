@@ -308,7 +308,7 @@ export default function PreviewPane({
         scrollRestoreTimerRef.current = null
       }
     }
-  }, [serverState?.isReady, isWaitingForIframeReady, attemptStateRestoration])
+  }, [serverState?.isReady, isWaitingForIframeReady])
 
   const handleManualRetry = () => {
     logger.info('preview-pane.retry', { message: 'Manual retry for server', appId })
