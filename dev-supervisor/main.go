@@ -19,7 +19,7 @@ import (
 
 const (
 	Version            = "0.2.0"
-	AppName            = "dev-supervisor"
+	AppName            = "airo-supervisor"
 	defaultTimeout     = 30 * time.Second
 	serverReadyTimeout = 5 * time.Second
 )
@@ -102,7 +102,12 @@ func parseGodebugSettings() map[string]string {
 }
 
 func getSocketPath() string {
-	return getEnvStringWithDefault("DEV_SUPERVISOR_SOCKET_PATH", "/tmp/dev-supervisor.sock")
+	// Check v4 environment variable first (AIRO_SUPERVISOR_SOCKET_PATH)
+	if value := getEnvStringWithDefault("AIRO_SUPERVISOR_SOCKET_PATH", ""); value != "" {
+		return value
+	}
+	// Fall back to v3 environment variable (DEV_SUPERVISOR_SOCKET_PATH) for backward compatibility
+	return getEnvStringWithDefault("DEV_SUPERVISOR_SOCKET_PATH", "/tmp/airo-supervisor.sock")
 }
 
 func getProcessLoggingToStdout() bool {
@@ -213,6 +218,9 @@ func (s *Server) setupRoutes() {
 	proxyRouter := s.router.PathPrefix("/proxy").Subrouter()
 	proxyRouter.HandleFunc("/status", s.handleProxyStatus).Methods("GET")
 	proxyRouter.HandleFunc("/config", s.handleProxyConfig).Methods("GET")
+
+	// Publish endpoint (V4 unified job architecture)
+	s.router.HandleFunc("/publish", s.handlePublish).Methods("POST")
 }
 
 func (s *Server) getConfiguredAddress() string {

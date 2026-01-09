@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -455,6 +456,87 @@ func (s *Server) handleProxyConfig(w http.ResponseWriter, _ *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(config); err != nil {
+		slog.Error("failed to encode JSON response", "error", err)
+	}
+}
+
+func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		CommitHash string `json:"commitHash"`
+		Force      bool   `json:"force"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+		return
+	}
+
+	if req.CommitHash == "" {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", "commitHash is required")
+		return
+	}
+
+	slog.Info("publish.request.received", "commit_hash", req.CommitHash, "force", req.Force)
+
+	// Get dist directory from environment
+	distDir := getEnvStringWithDefault("DIST_DIR", "/dist")
+
+	// Construct the commit hash path (archive file)
+	commitHashPath := fmt.Sprintf("%s/%s.tar.gz", distDir, req.CommitHash)
+
+	// Check if commit hash archive file exists
+	if _, err := os.Stat(commitHashPath); os.IsNotExist(err) {
+		slog.Error("publish.version.not_found", "commit_hash", req.CommitHash, "path", commitHashPath)
+		s.sendError(w, http.StatusNotFound, "version_not_found", fmt.Sprintf("Version %s not found", req.CommitHash))
+		return
+	}
+
+	// Update the 'current' symlink to point to the archive file
+	currentSymlink := fmt.Sprintf("%s/current", distDir)
+
+	// Remove existing symlink if it exists
+	if _, err := os.Lstat(currentSymlink); err == nil {
+		if err := os.Remove(currentSymlink); err != nil {
+			slog.Error("publish.symlink.remove_failed", "error", err)
+			s.sendError(w, http.StatusInternalServerError, "symlink_failed", "Failed to remove existing symlink")
+			return
+		}
+	}
+
+	// Create new symlink pointing to the archive file
+	if err := os.Symlink(commitHashPath, currentSymlink); err != nil {
+		slog.Error("publish.symlink.create_failed", "error", err, "target", commitHashPath)
+		s.sendError(w, http.StatusInternalServerError, "symlink_failed", "Failed to create symlink to new version")
+		return
+	}
+
+	slog.Info("publish.success", "commit_hash", req.CommitHash, "symlink_updated", currentSymlink)
+
+	// Restart the Node.js application to load the new version
+	slog.Info("publish.restart.begin", "commit_hash", req.CommitHash)
+	restartReq := ProcessRestartRequest{Graceful: true}
+
+	restartStartTime := time.Now()
+	if err := s.procMgr.Restart(restartReq); err != nil {
+		slog.Error("publish.restart.failed", "error", err, "commit_hash", req.CommitHash)
+		s.sendError(w, http.StatusInternalServerError, "restart_failed", fmt.Sprintf("Symlink updated but process restart failed: %s", err.Error()))
+		return
+	}
+
+	restartDuration := time.Since(restartStartTime)
+	slog.Info("publish.restart.success",
+		"commit_hash", req.CommitHash,
+		"restart_duration", restartDuration.String())
+
+	response := map[string]interface{}{
+		"status":      "success",
+		"version":     req.CommitHash,
+		"startupTime": restartDuration.String(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		slog.Error("failed to encode JSON response", "error", err)
 	}
 }

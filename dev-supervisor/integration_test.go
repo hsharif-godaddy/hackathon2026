@@ -241,8 +241,8 @@ func TestInfoEndpoint(t *testing.T) {
 		}
 	}
 
-	if info["name"] != "dev-supervisor" {
-		t.Errorf("Expected name 'dev-supervisor', got '%v'", info["name"])
+	if info["name"] != "airo-supervisor" {
+		t.Errorf("Expected name 'airo-supervisor', got '%v'", info["name"])
 	}
 }
 

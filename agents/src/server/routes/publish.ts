@@ -1,8 +1,11 @@
+import { existsSync } from 'node:fs';
+
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { GitUtils } from '../../utils/git.js';
 import { log } from '../../logging/index.js';
 import { Router } from 'express';
+import type { PublishResponse, PublishSuccessResponse } from '../../services/DevSupervisorClient.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -16,7 +19,7 @@ const appRepository = new AppRepository();
  * 2. Check git status to verify repository state
  * 3. Get commit details from git log to validate the commit exists
  * 4. Build verification - run `npm run build` to ensure project is buildable
- * 5. Create archive at /publish/dist/{fullCommitHash}.tar.gz using git archive
+ * 5. Create archive at {DIST_DIR}/{fullCommitHash}.tar.gz using git archive
  *
  * Note: Database migrations are handled during development by the develop agent
  * and are committed to the repository before publish. This step no longer
@@ -199,24 +202,17 @@ router.post('/apps/:id/publish', async (req, res) => {
       commitHash: fullCommitHash.substring(0, 7),
     });
 
+    let archivePath: string;
     try {
       const archiveResult = await gitUtils.createArchive(
         app.path,
         fullCommitHash
       );
+      archivePath = archiveResult.path;
 
-      contextLogger.info('route.publish.success', {
+      contextLogger.info('route.publish.git-archive.success', {
         commitHash: fullCommitHash.substring(0, 7),
-        fullCommitHash: fullCommitHash,
-        archivePath: archiveResult.path,
-      });
-
-      return res.json({
-        success: true,
-        commitHash: fullCommitHash,
-        archive: {
-          path: archiveResult.path,
-        },
+        archivePath,
       });
     } catch (error) {
       contextLogger.error('route.publish.git-archive.failed', {
@@ -228,6 +224,84 @@ router.post('/apps/:id/publish', async (req, res) => {
         details: error instanceof Error ? error.message : String(error),
       });
     }
+
+    // Step 5 (v4 unified only): Call publish supervisor to update symlink and reload app
+    // Detect if this is a V4 unified job by checking for publish supervisor socket
+    const publishSocketPath = process.env.AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH;
+    const isUnifiedJob = publishSocketPath && existsSync(publishSocketPath);
+
+    let publishResult: PublishSuccessResponse | null = null;
+    if (isUnifiedJob) {
+      contextLogger.info('route.publish.supervisor.begin', {
+        commitHash: fullCommitHash.substring(0, 7),
+        socketPath: publishSocketPath,
+      });
+
+      try {
+        const publishSupervisor = DevSupervisorClientFactory.createForSocketPath(publishSocketPath, id);
+        if (!publishSupervisor) {
+          throw new Error('Failed to create publish supervisor client');
+        }
+
+        const publishResponse: PublishResponse = await publishSupervisor.publish({
+          commitHash: fullCommitHash,
+          force: false
+        });
+
+        if (publishResponse.status === 'error') {
+          contextLogger.error('route.publish.supervisor.failed', {
+            commitHash: fullCommitHash.substring(0, 7),
+            error: publishResponse.error,
+          });
+          return res.status(500).json({
+            error: 'Publish supervisor failed',
+            details: publishResponse.error,
+            logs: publishResponse.logs,
+            exitCode: publishResponse.exitCode
+          });
+        }
+
+        publishResult = publishResponse;
+
+        contextLogger.info('route.publish.supervisor.success', {
+          commitHash: fullCommitHash.substring(0, 7),
+          version: publishResult.version,
+        });
+      } catch (error) {
+        contextLogger.error('route.publish.supervisor.failed', {
+          commitHash: fullCommitHash.substring(0, 7),
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return res.status(500).json({
+          error: 'Failed to call publish supervisor',
+          details: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    contextLogger.info('route.publish.success', {
+      commitHash: fullCommitHash.substring(0, 7),
+      fullCommitHash,
+      archivePath,
+      isUnifiedJob,
+    });
+
+    const response: any = {
+      success: true,
+      commitHash: fullCommitHash,
+      archive: {
+        path: archivePath,
+      },
+    };
+
+    if (publishResult) {
+      response.supervisor = {
+        version: publishResult.version,
+        startupTime: publishResult.startupTime
+      };
+    }
+
+    return res.json(response);
   } catch (error) {
     const contextLogger = log.forApp(req.params.id);
     log.error(contextLogger, 'route.publish.error', error as Error, {});

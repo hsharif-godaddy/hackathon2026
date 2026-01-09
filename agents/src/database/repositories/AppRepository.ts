@@ -18,7 +18,8 @@ export interface RegisterAppParams {
   port?: number;
   initialPrompt?: string;
   previewUrl?: string;
-  socketPath?: string; // Dev-supervisor connection path (TCP URL or Unix socket path)
+  socketPath?: string; // Preview supervisor connection path (TCP URL or Unix socket path)
+  publishSupervisorPath?: string; // Publish supervisor connection path (TCP URL) for V4 unified job
   subscriptionId?: string; // Subscription ID from main app
   customerId?: string; // Customer ID from main app
 }
@@ -98,7 +99,7 @@ export class AppRepository {
    * ```
    */
   async registerOrUpdateApp(params: RegisterAppParams): Promise<RegisterAppResult> {
-    const { siteId, name, appPath, port, initialPrompt, previewUrl, socketPath, subscriptionId, customerId } = params;
+    const { siteId, name, appPath, port, initialPrompt, previewUrl, socketPath, publishSupervisorPath, subscriptionId, customerId } = params;
 
     const sanitizedSiteId = siteId.trim();
     const sanitizedName = name?.trim();
@@ -168,6 +169,11 @@ export class AppRepository {
         values.push(socketPath);
       }
 
+      if (publishSupervisorPath !== undefined) {
+        updates.push('publish_supervisor_path = ?');
+        values.push(publishSupervisorPath);
+      }
+
       if (sanitizedSubscriptionId !== undefined) {
         updates.push('subscription_id = ?');
         values.push(sanitizedSubscriptionId);
@@ -220,8 +226,36 @@ export class AppRepository {
     const now = new Date().toISOString();
     const finalPort = port || 3000;
     const finalName = sanitizedName || `App ${sanitizedSiteId}`;
-    // Use provided socketPath if available, otherwise generate default path
-    const finalSocketPath = socketPath || (process.env.NOMAD_ALLOC_DIR ? `${process.env.NOMAD_ALLOC_DIR}/tmp/${sanitizedSiteId}-dev-supervisor.sock` : `/tmp/dev-supervisor-${sanitizedSiteId}/dev-supervisor.sock`);
+    // Use provided socketPath if available, otherwise generate default path for nomad/prod
+    // V4 unified jobs use preview-supervisor.sock and publish-supervisor.sock
+    // V3 uses dev-supervisor.sock only
+    // For local development with TCP mode, socketPath should be provided by caller
+    let finalSocketPath: string | undefined;
+    let finalPublishSupervisorPath: string | undefined = publishSupervisorPath;
+
+    if (process.env.NOMAD_ALLOC_DIR) {
+      // Nomad/prod: Detect v4 unified job by checking for environment variables
+      const previewSocketPathEnv = process.env.AIRO_SUPERVISOR_PREVIEW_SOCKET_PATH;
+      const publishSocketPathEnv = process.env.AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH;
+      const isV4Unified = !!(previewSocketPathEnv && publishSocketPathEnv);
+
+      // Set socket paths based on architecture
+      if (isV4Unified) {
+        // V4: Use environment variables directly (no hardcoded fallback)
+        finalSocketPath = socketPath || previewSocketPathEnv;
+        if (!finalPublishSupervisorPath) {
+          finalPublishSupervisorPath = publishSocketPathEnv;
+        }
+      } else {
+        // V3: Use dev supervisor socket path (hardcoded fallback for v3 only)
+        finalSocketPath = socketPath || path.join(process.env.NOMAD_ALLOC_DIR, 'tmp', `${sanitizedSiteId}-dev-supervisor.sock`);
+        // V3 doesn't have publish supervisor path
+      }
+    } else if (socketPath) {
+      // Local development: Use provided socketPath
+      finalSocketPath = socketPath;
+    }
+    // Local development: Leave undefined if not provided (TCP mode will be used)
 
     this.logger.info('app.register.create', {
       appId: sanitizedSiteId,
@@ -229,13 +263,14 @@ export class AppRepository {
       path: finalAppPath,
       port: finalPort,
       socketPath: finalSocketPath,
+      publishSupervisorPath: finalPublishSupervisorPath,
       customerId: sanitizedCustomerId || 'not-set',
       subscriptionId: sanitizedSubscriptionId || 'not-set'
     });
 
     const stmt = this.db.prepare(`
-      INSERT INTO apps (id, name, path, port, socket_path, preview_url, initial_prompt, subscription_id, customer_id, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO apps (id, name, path, port, socket_path, publish_supervisor_path, preview_url, initial_prompt, subscription_id, customer_id, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -244,6 +279,7 @@ export class AppRepository {
       finalAppPath,
       finalPort,
       finalSocketPath,
+      finalPublishSupervisorPath || null,
       previewUrl || null,
       initialPrompt || null,
       sanitizedSubscriptionId || null,
@@ -348,7 +384,7 @@ export class AppRepository {
    */
   findById(id: string): App | null {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, preview_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
       FROM apps
       WHERE id = ?
     `);
@@ -362,6 +398,7 @@ export class AppRepository {
       path: row.path,
       port: row.port,
       socketPath: row.socket_path,
+      publishSupervisorPath: row.publish_supervisor_path,
       previewUrl: row.preview_url,
       initialPrompt: row.initial_prompt,
       templateVersion: row.template_version,
@@ -379,7 +416,7 @@ export class AppRepository {
    */
   findByPath(path: string): App | null {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, preview_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
       FROM apps
       WHERE path = ?
     `);
@@ -393,6 +430,7 @@ export class AppRepository {
       path: row.path,
       port: row.port,
       socketPath: row.socket_path,
+      publishSupervisorPath: row.publish_supervisor_path,
       previewUrl: row.preview_url,
       initialPrompt: row.initial_prompt,
       templateVersion: row.template_version,
@@ -410,7 +448,7 @@ export class AppRepository {
    */
   findAll(limit = 50, offset = 0): App[] {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, preview_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
       FROM apps
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
@@ -424,6 +462,7 @@ export class AppRepository {
       path: row.path,
       port: row.port,
       socketPath: row.socket_path,
+      publishSupervisorPath: row.publish_supervisor_path,
       previewUrl: row.preview_url,
       initialPrompt: row.initial_prompt,
       templateVersion: row.template_version,

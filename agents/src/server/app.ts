@@ -161,6 +161,8 @@ apm.addSpanFilter((span) => {
 });
 
 // Now import other modules after APM is initialized
+import path from 'node:path';
+
 import express, { Express } from 'express';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -291,6 +293,38 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 /**
+ * Generate socket paths based on architecture (v3 vs v4)
+ * Detects v4 unified job by checking for environment variables or socket file
+ */
+function generateSocketPaths(siteId: string): {
+  socketPath?: string;
+  publishSupervisorPath?: string;
+} {
+  if (!process.env.NOMAD_ALLOC_DIR) {
+    // Local development - return undefined (TCP mode)
+    return {};
+  }
+
+  // Detect v4 unified job by checking for environment variables
+  const previewSocketPathEnv = process.env.AIRO_SUPERVISOR_PREVIEW_SOCKET_PATH;
+  const publishSocketPathEnv = process.env.AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH;
+  const isV4Unified = !!(previewSocketPathEnv && publishSocketPathEnv);
+
+  if (isV4Unified) {
+    // V4: Use environment variables directly (no hardcoded fallback)
+    return {
+      socketPath: previewSocketPathEnv,
+      publishSupervisorPath: publishSocketPathEnv
+    };
+  } else {
+    // V3: Use dev supervisor socket path (hardcoded fallback for v3 only)
+    return {
+      socketPath: path.join(process.env.NOMAD_ALLOC_DIR, 'tmp', `${siteId}-dev-supervisor.sock`)
+    };
+  }
+}
+
+/**
  * Initialize the application
  */
 async function initialize() {
@@ -341,10 +375,37 @@ async function initialize() {
           });
         }
       } else {
-        logger.info('server.app.autoregister.skipped', {
+        // App exists - update socket paths to ensure they're correct
+        logger.info('server.app.autoregister.update_sockets', {
           siteId: process.env.SITE_ID,
-          reason: 'App already exists'
+          reason: 'App exists, updating socket paths'
         });
+
+        try {
+          // Generate correct socket paths based on v4 detection
+          const socketPaths = generateSocketPaths(process.env.SITE_ID);
+
+          const result = await appRepo.registerOrUpdateApp({
+            siteId: process.env.SITE_ID,
+            previewUrl: process.env.PREVIEW_URL,
+            ...(process.env.CUSTOMER_APP_DIR && { path: process.env.CUSTOMER_APP_DIR }),
+            ...(socketPaths.socketPath && { socketPath: socketPaths.socketPath }),
+            ...(socketPaths.publishSupervisorPath && { publishSupervisorPath: socketPaths.publishSupervisorPath })
+          });
+
+          logger.info('server.app.autoregister.sockets_updated', {
+            siteId: process.env.SITE_ID,
+            path: process.env.CUSTOMER_APP_DIR,
+            socketPath: socketPaths.socketPath,
+            publishSupervisorPath: socketPaths.publishSupervisorPath,
+            updated: !result.created
+          });
+        } catch (error) {
+          logger.error('server.app.autoregister.socket_update_failed', {
+            siteId: process.env.SITE_ID,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
       }
     }
 

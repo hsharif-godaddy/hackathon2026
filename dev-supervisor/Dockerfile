@@ -31,7 +31,9 @@ RUN mkdir -p /tmp/supervisor && chmod 755 /tmp/supervisor
 COPY --from=builder /build/dev-supervisor /usr/local/bin/dev-supervisor
 RUN chmod +x /usr/local/bin/dev-supervisor
 
-# Set default socket path for when used standalone
+# Set default socket paths for when used standalone
+ENV AIRO_SUPERVISOR_PREVIEW_SOCKET_PATH=/tmp/supervisor/dev-supervisor-preview.sock
+ENV AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH=/tmp/supervisor/dev-supervisor-publish.sock
 ENV DEV_SUPERVISOR_SOCKET_PATH=/tmp/supervisor/dev-supervisor.sock
 
 # This image is primarily used as a source for COPY --from in app templates

@@ -80,7 +80,7 @@ func TestGetSocketPathFromEnv(t *testing.T) {
 		{
 			name:     "default path when env not set",
 			envValue: "",
-			expected: "/tmp/dev-supervisor.sock",
+			expected: "/tmp/airo-supervisor.sock",
 		},
 		{
 			name:     "custom path from environment",
@@ -91,7 +91,23 @@ func TestGetSocketPathFromEnv(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			os.Setenv("DEV_SUPERVISOR_SOCKET_PATH", tt.envValue)
+			// Save and restore original value
+			originalValue := os.Getenv("AIRO_SUPERVISOR_SOCKET_PATH")
+			defer func() {
+				if originalValue == "" {
+					os.Unsetenv("AIRO_SUPERVISOR_SOCKET_PATH")
+				} else {
+					os.Setenv("AIRO_SUPERVISOR_SOCKET_PATH", originalValue)
+				}
+			}()
+
+			// Set test value
+			if tt.envValue == "" {
+				os.Unsetenv("AIRO_SUPERVISOR_SOCKET_PATH")
+			} else {
+				os.Setenv("AIRO_SUPERVISOR_SOCKET_PATH", tt.envValue)
+			}
+
 			result := getSocketPath()
 			if result != tt.expected {
 				t.Errorf("Expected %s, got %s", tt.expected, result)
@@ -107,8 +123,8 @@ func TestVersionAndAppName(t *testing.T) {
 	if AppName == "" {
 		t.Error("AppName should not be empty")
 	}
-	if AppName != "dev-supervisor" {
-		t.Errorf("Expected AppName to be 'dev-supervisor', got %s", AppName)
+	if AppName != "airo-supervisor" {
+		t.Errorf("Expected AppName to be 'airo-supervisor', got %s", AppName)
 	}
 }
 
@@ -121,7 +137,7 @@ func TestServerGetConfiguredSocketPath(t *testing.T) {
 		{
 			name:     "nil config falls back to env",
 			config:   nil,
-			expected: "/tmp/dev-supervisor.sock",
+			expected: "/tmp/airo-supervisor.sock",
 		},
 		{
 			name: "config with socket path",
@@ -135,12 +151,25 @@ func TestServerGetConfiguredSocketPath(t *testing.T) {
 			config: &Config{
 				SocketPath: "",
 			},
-			expected: "/tmp/dev-supervisor.sock",
+			expected: "/tmp/airo-supervisor.sock",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Save and restore original value to avoid test pollution
+			originalValue := os.Getenv("AIRO_SUPERVISOR_SOCKET_PATH")
+			defer func() {
+				if originalValue == "" {
+					os.Unsetenv("AIRO_SUPERVISOR_SOCKET_PATH")
+				} else {
+					os.Setenv("AIRO_SUPERVISOR_SOCKET_PATH", originalValue)
+				}
+			}()
+
+			// Reset to default for this test
+			os.Unsetenv("AIRO_SUPERVISOR_SOCKET_PATH")
+
 			server := NewServer()
 			server.config = tt.config
 

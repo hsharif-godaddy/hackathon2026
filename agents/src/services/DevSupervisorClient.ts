@@ -183,6 +183,47 @@ export interface ProxyStatus {
 }
 
 /**
+ * Request to publish a new version
+ */
+export interface PublishRequest {
+  /** Commit hash to publish */
+  commitHash: string;
+  /** Force publish even if version exists (optional) */
+  force?: boolean;
+}
+
+/**
+ * Success response from publish endpoint
+ */
+export interface PublishSuccessResponse {
+  /** Status of the publish operation */
+  status: 'success';
+  /** Version that was published (commit hash) */
+  version: string;
+  /** Startup time of the new version */
+  startupTime?: string;
+}
+
+/**
+ * Error response from publish endpoint
+ */
+export interface PublishErrorResponse {
+  /** Status of the publish operation */
+  status: 'error';
+  /** Error message */
+  error: string;
+  /** Detailed error logs (optional) */
+  logs?: string[];
+  /** Exit code if applicable */
+  exitCode?: number;
+}
+
+/**
+ * Combined publish response type
+ */
+export type PublishResponse = PublishSuccessResponse | PublishErrorResponse;
+
+/**
  * Client for communicating with dev-supervisor over Unix domain socket or TCP
  */
 export class DevSupervisorClient {
@@ -503,6 +544,45 @@ export class DevSupervisorClient {
       return response;
     } catch (error) {
       this.logger.error('dev_supervisor.proxy.status.failure', {
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Publish a new version
+   * 
+   * Tells the publish supervisor to switch to serving a new version from dist/
+   * This is used in V4 unified job architecture where the publish task runs continuously
+   * and switches versions on demand without redeploying the job.
+   * 
+   * @param request - Publish request with commitHash and optional force flag
+   * @returns Publish response with status and version info
+   * @throws Error if publish fails
+   */
+  async publish(request: PublishRequest): Promise<PublishResponse> {
+    this.logger.info('dev_supervisor.publish.begin', {
+      commitHash: request.commitHash,
+      force: request.force
+    });
+
+    try {
+      const response = await this.makeRequest('POST', '/publish', {
+        commitHash: request.commitHash,
+        force: request.force || false
+      });
+
+      this.logger.info('dev_supervisor.publish.success', {
+        commitHash: request.commitHash,
+        status: response.status,
+        version: response.version
+      });
+
+      return response as PublishResponse;
+    } catch (error) {
+      this.logger.error('dev_supervisor.publish.failure', {
+        commitHash: request.commitHash,
         error: getErrorMessage(error)
       });
       throw error;

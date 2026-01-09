@@ -177,10 +177,13 @@ export const POST = withCustomerAuth(
       logger.info('site.publish.agent-success', {
         siteId,
         commitHash: commitHash.substring(0, 7),
+        method: data.method,
         archivePath: data.archive?.path,
       });
 
-      // Step 2: Notify mgmt-airo to trigger deployment
+      // Step 2: Notify mgmt-airo to trigger deployment (or track for V4)
+      // V4 (supervisor): Already published instantly, but notify for tracking
+      // V3 (archive): Control plane will deploy the archive
       if (site.subscription_id && site.system_id) {
         logger.info('site.publish.mgmt-airo-notify.begin', {
           siteId,

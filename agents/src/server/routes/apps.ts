@@ -172,7 +172,7 @@ router.post('/create', async (req: Request, res: Response) => {
  */
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { siteId, name, appPath, port, initialPrompt, previewUrl, socketPath, subscriptionId, customerId } = req.body;
+    const { siteId, name, appPath, port, initialPrompt, previewUrl, socketPath, publishSupervisorPath, subscriptionId, customerId } = req.body;
 
     logger.info('route.apps.register.request', {
       siteId,
@@ -211,6 +211,10 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'socketPath must be a string if provided' });
     }
 
+    if (publishSupervisorPath !== undefined && typeof publishSupervisorPath !== 'string') {
+      return res.status(400).json({ error: 'publishSupervisorPath must be a string if provided' });
+    }
+
     if (subscriptionId !== undefined && (typeof subscriptionId !== 'string' || subscriptionId.trim().length === 0)) {
       return res.status(400).json({ error: 'subscriptionId must be a non-empty string if provided' });
     }
@@ -227,6 +231,7 @@ router.post('/register', async (req: Request, res: Response) => {
       initialPrompt,
       previewUrl,
       socketPath,
+      publishSupervisorPath,
       subscriptionId,
       customerId
     });

@@ -510,7 +510,7 @@ export class GitUtils {
 
   /**
    * Create a git archive tarball of the repository at a specific commit
-   * Archives are created in /publish/dist/{commitHash}.tar.gz
+   * Archives are created in {DIST_DIR}/{commitHash}.tar.gz
    * The output directory will be created if it doesn't exist.
    *
    * This method uses a multi-stage process to include both Git-tracked files
@@ -522,7 +522,7 @@ export class GitUtils {
    *
    * @param repoPath - Path to the git repository
    * @param commitHash - The commit hash to archive (short or full)
-   * @param outputDir - Directory to store the archive (default: '/publish/dist'). Will be created if it doesn't exist.
+   * @param outputDir - Directory to store the archive (default: DIST_DIR env var or '/publish/dist'). Will be created if it doesn't exist.
    * @param options - Git command options
    * @returns GitArchiveResult with the archive path and commit hash
    * @throws Error if dev-supervisor is not available or command fails
@@ -530,7 +530,7 @@ export class GitUtils {
   async createArchive(
     repoPath: string,
     commitHash: string,
-    outputDir: string = '/publish/dist',
+    outputDir: string = process.env.DIST_DIR || '/publish/dist',
     options: GitCommandOptions = {}
   ): Promise<GitArchiveResult> {
     const timeout = options.timeout || 60000; // 60 seconds for large repos

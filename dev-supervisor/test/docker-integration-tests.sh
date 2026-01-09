@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-SOCKET_PATH="/tmp/dev-supervisor.sock"
+SOCKET_PATH="/tmp/airo-supervisor.sock"
 TEST_TIMEOUT=30
 
 echo "=== Docker Integration Tests for dev-supervisor ==="
@@ -48,7 +48,7 @@ if [ "$PID1_COMM" != "dev-supervisor" ]; then
     echo "❌ FAIL: Process with PID 1 is '$PID1_COMM', expected 'dev-supervisor'"
     exit 1
 fi
-echo "✓ PASS: dev-supervisor is running as PID 1"
+echo "✓ PASS: dev-supervisor (airo-supervisor) is running as PID 1"
 
 # Wait for socket before running other tests
 wait_for_socket

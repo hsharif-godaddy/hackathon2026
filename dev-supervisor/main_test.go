@@ -15,7 +15,7 @@ func TestGetSocketPath(t *testing.T) {
 		{
 			name:     "default path when env not set",
 			envValue: "",
-			expected: "/tmp/dev-supervisor.sock",
+			expected: "/tmp/airo-supervisor.sock",
 		},
 		{
 			name:     "custom path from environment",
@@ -32,20 +32,20 @@ func TestGetSocketPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Save original value
-			originalValue := os.Getenv("DEV_SUPERVISOR_SOCKET_PATH")
+			originalValue := os.Getenv("AIRO_SUPERVISOR_SOCKET_PATH")
 			defer func() {
 				if originalValue == "" {
-					os.Unsetenv("DEV_SUPERVISOR_SOCKET_PATH")
+					os.Unsetenv("AIRO_SUPERVISOR_SOCKET_PATH")
 				} else {
-					os.Setenv("DEV_SUPERVISOR_SOCKET_PATH", originalValue)
+					os.Setenv("AIRO_SUPERVISOR_SOCKET_PATH", originalValue)
 				}
 			}()
 
 			// Set test value
 			if tt.envValue == "" {
-				os.Unsetenv("DEV_SUPERVISOR_SOCKET_PATH")
+				os.Unsetenv("AIRO_SUPERVISOR_SOCKET_PATH")
 			} else {
-				os.Setenv("DEV_SUPERVISOR_SOCKET_PATH", tt.envValue)
+				os.Setenv("AIRO_SUPERVISOR_SOCKET_PATH", tt.envValue)
 			}
 
 			// Test function
