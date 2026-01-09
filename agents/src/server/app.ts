@@ -1,6 +1,7 @@
-// Initialize Elastic APM first - must be before any other imports
-// Import OpenTelemetry API first so APM can register as the TracerProvider
-import '@opentelemetry/api';
+// Initialize OpenTelemetry with Langfuse (imported from instrumentation.ts)
+import './instrumentation.js';
+
+// Initialize Elastic APM
 import apmAgent from 'elastic-apm-node';
 import { Logger } from '../logging/index.js';
 

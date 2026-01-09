@@ -4,6 +4,7 @@
  * Provides agentic loop control, streaming, tool management, and agent handoffs.
  */
 
+import { propagateAttributes } from '@langfuse/tracing'
 import { ToolLoopAgent, stepCountIs, hasToolCall, tool } from 'ai'
 import { APICallError } from '@ai-sdk/provider'
 import type {
@@ -246,7 +247,7 @@ export class AgentWrapper {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ...(config.providerOptions && { providerOptions: config.providerOptions as any }),
       maxRetries,
-      // Enable OpenTelemetry telemetry for Elastic APM integration
+      // Enable OpenTelemetry telemetry for Elastic APM and Langfuse integration
       experimental_telemetry: { isEnabled: true, functionId: `agent-${config.name}` },
       ...(telemetryHooks.prepareStep ? { prepareStep: telemetryHooks.prepareStep } : {}),
       ...(telemetryHooks.onStepFinish ? { onStepFinish: telemetryHooks.onStepFinish } : {}),
@@ -857,7 +858,23 @@ export class AgentWrapper {
       if (options?.files && options.files.length > 0) {
         callOptions.files = options.files
       }
-      streamResult = await this.agent.stream({ prompt, options: callOptions })
+
+      // Extract userId (appId/siteId) and sessionId from execution context for Langfuse tracing
+      const metadata = (options?.executionContext as any)?.metadata
+      const userId = metadata?.appId as string | undefined
+      const sessionId = metadata?.sessionId as string | undefined
+
+      // Wrap stream call with Langfuse attribute propagation
+      const attributes: { userId?: string; sessionId?: string } = {}
+      if (userId) attributes.userId = userId
+      if (sessionId) attributes.sessionId = sessionId
+
+      streamResult = await propagateAttributes(
+        attributes,
+        async () => {
+          return await this.agent.stream({ prompt, options: callOptions })
+        }
+      )
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
       // Handle API call errors (like tool input validation failures)

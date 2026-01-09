@@ -1,4 +1,6 @@
 import { basename } from 'node:path';
+
+import { propagateAttributes } from '@langfuse/tracing';
 import { generateText, type LanguageModel } from 'ai';
 import { logCachingStats } from '@airo/ai-lib';
 import { getAgentModelWithName } from '../../utils/model-selection.js';
@@ -129,14 +131,22 @@ export class LLMSummarizationStrategy implements SummarizationStrategy {
       mode: 'incremental',
     });
 
-    const llmResult = await generateText({
-      model,
-      system: systemPrompt,
-      prompt: userPrompt,
-      temperature: 0.3,
-      maxOutputTokens: 5000,
-      experimental_telemetry: { isEnabled: true, functionId: 'summarization-llm' },
-    });
+    const attributes: { userId: string; sessionId?: string } = { userId: appId };
+    if (context.sessionId) attributes.sessionId = context.sessionId;
+
+    const llmResult = await propagateAttributes(
+      attributes,
+      async () => {
+        return await generateText({
+          model,
+          system: systemPrompt,
+          prompt: userPrompt,
+          temperature: 0.3,
+          maxOutputTokens: 5000,
+          experimental_telemetry: { isEnabled: true, functionId: 'summarization-llm' },
+        });
+      }
+    );
     this.logAndExtractCaching(llmResult.usage);
 
     const summaryText = llmResult.text.trim();

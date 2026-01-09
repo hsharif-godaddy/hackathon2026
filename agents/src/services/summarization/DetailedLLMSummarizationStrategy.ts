@@ -1,4 +1,6 @@
 import { basename } from 'node:path';
+
+import { propagateAttributes } from '@langfuse/tracing';
 import { generateText } from 'ai';
 import type { LLMMessage } from '../ConversationHistoryLoader.js';
 import { isOpenAIMessage, isAIToolMessage, getMessageContent } from '../ConversationHistoryLoader.js';
@@ -29,7 +31,7 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
   private readonly maxTokensPerBatch = 25000;
 
   async summarize(context: SummarizationContext): Promise<SummarizationResult> {
-    const { appId, messageRange, originalTokenCount } = context;
+    const { appId, sessionId, messageRange, originalTokenCount } = context;
     let { existingSummary } = context;
 
     // Check if we should force full re-summarization
@@ -317,19 +319,27 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
     modelName: string,
     existingSummary?: string
   ): Promise<SummarizationResult> {
-    const { messages, messageRange, originalTokenCount, operationLog } = context;
+    const { messages, messageRange, originalTokenCount, operationLog, appId, sessionId } = context;
 
     const systemPrompt = this.buildSystemPrompt(existingSummary);
     const userPrompt = this.buildUserPrompt(messages, operationLog);
 
-    const llmResult = await generateText({
-      model,
-      system: systemPrompt,
-      prompt: userPrompt,
-      temperature: 0.3,
-      maxOutputTokens: 2500,
-      experimental_telemetry: { isEnabled: true, functionId: 'summarization-detailed-llm' },
-    });
+    const attributes: { userId: string; sessionId?: string } = { userId: appId };
+    if (sessionId) attributes.sessionId = sessionId;
+
+    const llmResult = await propagateAttributes(
+      attributes,
+      async () => {
+        return await generateText({
+          model,
+          system: systemPrompt,
+          prompt: userPrompt,
+          temperature: 0.3,
+          maxOutputTokens: 2500,
+          experimental_telemetry: { isEnabled: true, functionId: 'summarization-detailed-llm' },
+        });
+      }
+    );
 
     const summaryText = llmResult.text;
     const summaryTokenCount = countTokens(summaryText, modelName).tokenCount;

@@ -18,7 +18,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from './jwt-auth.js';
 import { Logger } from '../../logging/index.js';
-import { BYPASS_SITE_IDS } from "../../services";
+import { BYPASS_SITE_IDS } from '../../services/features.js';
 
 const logger = Logger.create({ service: 'app-ownership-middleware' });
 

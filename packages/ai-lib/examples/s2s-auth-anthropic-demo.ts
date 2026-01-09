@@ -223,7 +223,8 @@ async function demonstrateS2SAnthropicAuth() {
         const result = await generateText({
           model,
           prompt: `As ${modelInfo.displayName}, say "Hello from S2S authenticated Anthropic!" in a creative way.`,
-          maxTokens: 100
+          maxTokens: 100,
+          experimental_telemetry: { isEnabled: true },
         })
         
         console.log(`✅ ${modelInfo.displayName} response:`, result.text)
@@ -270,7 +271,8 @@ async function demonstrateRegularAnthropicAuth() {
     const result = await generateText({
       model,
       prompt: 'Say "Hello from regular Anthropic API key authentication!" briefly.',
-      maxTokens: 50
+      maxTokens: 50,
+      experimental_telemetry: { isEnabled: true },
     })
     
     console.log('✅ Generated text:', result.text)

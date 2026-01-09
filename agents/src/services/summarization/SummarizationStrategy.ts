@@ -6,6 +6,8 @@ import type { LLMMessage } from '../ConversationHistoryLoader.js';
 export interface SummarizationContext {
   /** ID of the app */
   appId: string;
+  /** Session ID (optional, for Langfuse tracking) */
+  sessionId?: string;
   /**
    * New/unsummarized messages to process.
    * Used for incremental fallbacks when caching isn't available.

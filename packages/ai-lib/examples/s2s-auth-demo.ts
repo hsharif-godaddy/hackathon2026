@@ -200,7 +200,8 @@ async function demonstrateS2SAuth() {
     const result = await generateText({
       model,
       prompt: 'Say "Hello from S2S authenticated AI!" in a creative way.',
-      maxTokens: 100
+      maxTokens: 100,
+      experimental_telemetry: { isEnabled: true },
     })
     
     console.log('✅ Generated text:', result.text)
@@ -240,7 +241,8 @@ async function demonstrateRegularAuth() {
     const result = await generateText({
       model,
       prompt: 'Say "Hello from regular API key authentication!" briefly.',
-      maxTokens: 50
+      maxTokens: 50,
+      experimental_telemetry: { isEnabled: true },
     })
     
     console.log('✅ Generated text:', result.text)
