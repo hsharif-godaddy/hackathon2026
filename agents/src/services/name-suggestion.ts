@@ -1,4 +1,4 @@
-import { getModel } from '@airo/ai-lib'
+import { getModel, llmMetadataContext, type LitellmMetadata } from '@airo/ai-lib'
 import { generateText } from 'ai'
 import { Logger, log } from '../logging/index.js'
 
@@ -24,24 +24,31 @@ export class NameSuggestionService {
       // Get the model using ai-lib's unified provider
       const model = await getModel('haiku')
 
-      // Generate name using AI
-      const result = await generateText({
-        model,
-        system: `You are an expert app name generator. Your task is to suggest a short, catchy, and appropriate name for an app based on the description provided.
+      // Create minimal metadata for name suggestions (no appId available yet)
+      const metadata: LitellmMetadata = {
+        tags: ['source:name-suggestion']
+      }
 
-          IMPORTANT:
-          - If the user has already mentioned a specific name in their prompt (like "called TaskMaster", "named TodoApp", "called MyProject"), extract and use EXACTLY that name
-          - If no specific name is mentioned, then generate general project name, not exactly title name
-          - Name should be 1-3 words maximum
-          - Use title case (capitalize first letter of each word)
-          - Do not use quotes in your response
-          - Avoid generic words like "App" or "Solution" unless specifically mentioned
-          - Do not explain your choice or add any other text
-          - Just return the name and nothing else`,
-        prompt: `Suggest a name for this app: ${prompt.trim()}`,
-        temperature: 0.5,
-        maxOutputTokens: 50,
-        experimental_telemetry: { isEnabled: true, functionId: 'name-suggestion' },
+      // Generate name using AI with metadata context
+      const result = await llmMetadataContext.run(metadata, async () => {
+        return await generateText({
+          model,
+          system: `You are an expert app name generator. Your task is to suggest a short, catchy, and appropriate name for an app based on the description provided.
+
+            IMPORTANT:
+            - If the user has already mentioned a specific name in their prompt (like "called TaskMaster", "named TodoApp", "called MyProject"), extract and use EXACTLY that name
+            - If no specific name is mentioned, then generate general project name, not exactly title name
+            - Name should be 1-3 words maximum
+            - Use title case (capitalize first letter of each word)
+            - Do not use quotes in your response
+            - Avoid generic words like "App" or "Solution" unless specifically mentioned
+            - Do not explain your choice or add any other text
+            - Just return the name and nothing else`,
+          prompt: `Suggest a name for this app: ${prompt.trim()}`,
+          temperature: 0.5,
+          maxOutputTokens: 50,
+          experimental_telemetry: { isEnabled: true, functionId: 'name-suggestion' },
+        })
       })
 
       let suggestedName = result.text

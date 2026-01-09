@@ -5,6 +5,7 @@
  * automatic environment variable validation, and proxy support.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { createLogger } from '../utils/logger.js'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
@@ -276,36 +277,11 @@ export interface LitellmMetadata {
 }
 
 /**
- * Cached litellm metadata (subscriptionId, customerId, appId) for this agent instance
- * Since each agent serves a single site, these values are constant and set once
+ * AsyncLocalStorage context for per-request LLM metadata
+ * Each LLM request can have isolated metadata for accurate cost tracking and attribution
+ * This prevents cross-tenant metadata leakage in concurrent request scenarios
  */
-let cachedLitellmMetadata: LitellmMetadata | null = null
-
-/**
- * Set litellm metadata for cost tracking
- * In production, each agent is locked to a single site, so this is called once
- * and the values remain constant for the lifetime of the agent process
- *
- * @param metadata - Object containing user (subscriptionId) and tags (customerId, appId)
- *
- * @example
- * ```typescript
- * // Called once when agent initializes
- * setLitellmMetadata({
- *   user: 'airo-build:sid:sub123',
- *   tags: ['cust456', 'kjtp706kgh']  // customerId, appId
- * })
- * ```
- */
-export function setLitellmMetadata(metadata: LitellmMetadata | null): void {
-  cachedLitellmMetadata = metadata
-  if (metadata) {
-    logger.info('litellm_metadata configured', {
-      subscriptionId: metadata.user || 'not-set',
-      tags: metadata.tags || []
-    })
-  }
-}
+export const llmMetadataContext = new AsyncLocalStorage<LitellmMetadata>()
 
 /**
  * Create a fetch wrapper that injects current S2S token on every request
@@ -324,25 +300,31 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
 
     filterAnthropicBetaHeaders(headers, options?.blockedBetaHeaders)
 
-    // Inject litellm_metadata into request body if available
+    // Inject litellm_metadata into request body if available from AsyncLocalStorage context
     const modifiedInit = { ...init, headers }
+    const metadata = llmMetadataContext.getStore()
 
-    if (cachedLitellmMetadata && init?.body) {
+    if (metadata && init?.body) {
       try {
         const body = JSON.parse(init.body as string)
-        body.litellm_metadata = cachedLitellmMetadata
+        body.litellm_metadata = metadata
         modifiedInit.body = JSON.stringify(body)
 
         // Log successful injection
         logger.debug('litellm_metadata injected into API request', {
-          user: cachedLitellmMetadata.user,
-          tags: cachedLitellmMetadata.tags,
+          user: metadata.user,
+          tags: metadata.tags,
           url: typeof url === 'string' ? url : url.toString()
         })
       } catch (error) {
         // If body parsing fails, proceed without litellm_metadata
         logger.warn('Failed to inject litellm_metadata', { error: error instanceof Error ? error.message : String(error) })
       }
+    } else if (!metadata && init?.body) {
+      // Warn if no metadata available - indicates missing context wrapping
+      logger.warn('No litellm_metadata in AsyncLocalStorage context - cost tracking may be incomplete', {
+        url: typeof url === 'string' ? url : url.toString()
+      })
     }
 
     // Make request with Headers instance and modified body

@@ -5,6 +5,7 @@
 
 import { createLogger } from './logger.js'
 import type { EmbeddingOptions, EmbeddingsResult } from '../core/types.js'
+import { llmMetadataContext, type LitellmMetadata } from '../providers/unified-provider.js'
 
 const logger = createLogger('embeddings')
 
@@ -16,26 +17,39 @@ export interface EmbeddingModel {
 
 /**
  * Generate embeddings using the appropriate provider implementation
+ * @param values - String or array of strings to generate embeddings for
+ * @param model - Embedding model to use
+ * @param options - Embedding options
+ * @param metadata - Optional LiteLLM metadata for cost tracking (wraps call with AsyncLocalStorage)
  */
 export async function generateEmbeddings(
   values: string | string[],
   model: EmbeddingModel | any, // Support both our interface and raw AI SDK models
-  options: EmbeddingOptions = {}
+  options: EmbeddingOptions = {},
+  metadata?: LitellmMetadata
 ): Promise<EmbeddingsResult> {
   const textsArray = Array.isArray(values) ? values : [values]
-  
+
   // Detect model type and handle accordingly
   const modelInfo = analyzeModel(model)
-  
-  switch (modelInfo.provider) {
-    case 'bedrock':
-      return await generateBedrockEmbeddings(textsArray, modelInfo, options)
-    case 'openai':
-      return await generateOpenAIEmbeddings(textsArray, modelInfo, options)
-    default:
-      // Try to use AI SDK directly for other providers
-      return await generateGenericEmbeddings(textsArray, model, options)
+
+  // Wrap with metadata context if provided
+  const generateFn = async () => {
+    switch (modelInfo.provider) {
+      case 'bedrock':
+        return await generateBedrockEmbeddings(textsArray, modelInfo, options)
+      case 'openai':
+        return await generateOpenAIEmbeddings(textsArray, modelInfo, options)
+      default:
+        // Try to use AI SDK directly for other providers
+        return await generateGenericEmbeddings(textsArray, model, options)
+    }
   }
+
+  // Run with metadata context if provided
+  return metadata
+    ? await llmMetadataContext.run(metadata, generateFn)
+    : await generateFn()
 }
 
 /**

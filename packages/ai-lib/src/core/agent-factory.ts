@@ -23,6 +23,7 @@ import type { ContentBlock, TextContentBlock, ImageContentBlock } from '../utils
 import { createLogger } from '../utils/logger.js'
 import { serializeError } from '../utils/errors.js'
 import { addCacheControlToMessages, addCacheControlToSystemPrompt, logCachingStats } from '../utils/prompt-caching.js'
+import { llmMetadataContext, type LitellmMetadata } from '../providers/unified-provider.js'
 
 const logger = createLogger('agent-factory')
 
@@ -35,6 +36,60 @@ const logger = createLogger('agent-factory')
  * Most providers use ~2s initial delay with exponential backoff.
  */
 const DEFAULT_MAX_RETRY_ATTEMPTS = 5
+
+/**
+ * Extract LiteLLM metadata from execution context for per-request cost tracking
+ * @param executionContext - The execution context passed from the caller
+ * @param agentName - The name of the current agent
+ * @returns LiteLLM metadata object with subscriptionId, customerId, appId, and source tags
+ */
+function extractLitellmMetadata(
+  executionContext?: Record<string, unknown>,
+  agentName?: string
+): LitellmMetadata | null {
+  if (!executionContext || !executionContext.metadata) {
+    return null
+  }
+
+  const metadata = executionContext.metadata as Record<string, unknown>
+  const appId = metadata.appId as string | undefined
+  const subscriptionId = metadata.subscriptionId as string | undefined
+  const customerId = metadata.customerId as string | undefined
+
+  // Must have at least appId to create metadata
+  if (!appId) {
+    return null
+  }
+
+  const tags: string[] = []
+
+  // Add customerId if available
+  if (customerId) {
+    tags.push(customerId)
+  }
+
+  // Add appId
+  tags.push(appId)
+
+  // Add source tag for distinguishing user-triggered vs background operations
+  tags.push('source:user-chat')
+
+  // Add agent name (low cardinality - only ~6 agents)
+  if (agentName) {
+    tags.push(`agent:${agentName}`)
+  }
+
+  const litellmMetadata: LitellmMetadata = {
+    tags
+  }
+
+  // Add subscriptionId for budget tracking
+  if (subscriptionId) {
+    litellmMetadata.user = subscriptionId
+  }
+
+  return litellmMetadata
+}
 
 /**
  * Extended stream result type for tool validation errors
@@ -775,7 +830,15 @@ export class AgentWrapper {
       callOptions.files = options.files
     }
 
-    const result = await this.agent.generate({ prompt, options: callOptions })
+    // Extract and set LiteLLM metadata for cost tracking
+    const litellmMetadata = extractLitellmMetadata(options?.executionContext, this.config.name)
+
+    // Wrap LLM call with AsyncLocalStorage context for per-request metadata
+    const result = await (litellmMetadata
+      ? llmMetadataContext.run(litellmMetadata, async () => {
+          return await this.agent.generate({ prompt, options: callOptions })
+        })
+      : this.agent.generate({ prompt, options: callOptions }))
 
     // Await all promises from ToolLoopAgent
     const [usage, finishReason, toolCalls] = await Promise.all([
@@ -869,12 +932,25 @@ export class AgentWrapper {
       if (userId) attributes.userId = userId
       if (sessionId) attributes.sessionId = sessionId
 
-      streamResult = await propagateAttributes(
-        attributes,
-        async () => {
-          return await this.agent.stream({ prompt, options: callOptions })
-        }
-      )
+      // Extract and set LiteLLM metadata for cost tracking
+      const litellmMetadata = extractLitellmMetadata(options?.executionContext, this.config.name)
+
+      // Wrap LLM call with AsyncLocalStorage context for per-request metadata
+      streamResult = await (litellmMetadata
+        ? llmMetadataContext.run(litellmMetadata, async () => {
+            return await propagateAttributes(
+              attributes,
+              async () => {
+                return await this.agent.stream({ prompt, options: callOptions })
+              }
+            )
+          })
+        : propagateAttributes(
+            attributes,
+            async () => {
+              return await this.agent.stream({ prompt, options: callOptions })
+            }
+          ))
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
       // Handle API call errors (like tool input validation failures)

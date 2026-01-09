@@ -231,30 +231,6 @@ router.post('/register', async (req: Request, res: Response) => {
       customerId
     });
 
-    // Update litellm metadata if subscription/customer IDs are provided
-    if (subscriptionId || customerId || siteId) {
-      const { setLitellmMetadata } = await import('@airo/ai-lib');
-      const tags: string[] = [];
-      if (customerId) {
-        tags.push(customerId);
-      }
-      if (siteId) {
-        tags.push(siteId);
-      }
-      const metadata: { user?: string; tags?: string[] } = {};
-      if (subscriptionId) {
-        metadata.user = subscriptionId;
-      }
-      if (tags.length > 0) {
-        metadata.tags = tags;
-      }
-      setLitellmMetadata(metadata);
-      logger.info('route.apps.register.litellm_metadata_updated', {
-        subscriptionId: subscriptionId || 'not-set',
-        litellmTags: tags
-      });
-    }
-
     return res.status(result.created ? 201 : 200).json(result);
 
   } catch (error) {

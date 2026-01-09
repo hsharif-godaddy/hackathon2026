@@ -7,7 +7,6 @@ import { Server as HTTPServer } from 'node:http'
 import {
   calculateCostEstimate,
   createWebSocketServer,
-  setLitellmMetadata,
   type MessageProvider,
   type ContextProvider,
   type ConversationMessage
@@ -349,37 +348,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
     // Create token-based conversation history provider using singleton repository
     const conversationContextManager = new ConversationContextManager(conversationRepository, 10) // Max 10 messages
-
-    // Set up litellm metadata once (constant for this agent instance)
-    // In production, each agent serves a single site with constant subscription/customer IDs
-    const setupLitellmMetadata = () => {
-      const allApps = appRepo.findAll(1, 0) // limit=1, offset=0 (fetch first app)
-      const app = allApps[0]
-      if (app && (app.subscriptionId || app.customerId || app.id)) {
-        const tags: string[] = []
-        if (app.customerId) {
-          tags.push(app.customerId)
-        }
-        if (app.id) {
-          tags.push(app.id)
-        }
-        const metadata: { user?: string; tags?: string[] } = {}
-        if (app.subscriptionId) {
-          metadata.user = app.subscriptionId
-        }
-        if (tags.length > 0) {
-          metadata.tags = tags
-        }
-        setLitellmMetadata(metadata)
-        logger.info('websocket.litellm_metadata.initialized', {
-          subscriptionId: metadata.user || 'not-set',
-          litellmTags: metadata.tags || []
-        })
-      }
-    }
-
-    // Initialize metadata on startup
-    setupLitellmMetadata()
 
     // Create context provider implementation for app context and templates
     const contextProvider: ContextProvider = {

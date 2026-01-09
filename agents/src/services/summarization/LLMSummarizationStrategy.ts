@@ -2,12 +2,13 @@ import { basename } from 'node:path';
 
 import { propagateAttributes } from '@langfuse/tracing';
 import { generateText, type LanguageModel } from 'ai';
-import { logCachingStats } from '@airo/ai-lib';
+import { logCachingStats, llmMetadataContext, type LitellmMetadata } from '@airo/ai-lib';
 import { getAgentModelWithName } from '../../utils/model-selection.js';
 import { countTokens } from '../../utils/token-counter.js';
 import { logger } from '../../logging/index.js';
 import type { SummarizationContext, SummarizationResult, SummarizationStrategy } from './SummarizationStrategy.js';
 import { type LLMMessage, isOpenAIMessage, isAIToolMessage, getMessageContent } from '../ConversationHistoryLoader.js';
+import { AppRepository } from '../../database/repositories/AppRepository.js';
 
 /**
  * LLM-based summarization strategy using AI SDK
@@ -31,6 +32,11 @@ export class LLMSummarizationStrategy implements SummarizationStrategy {
    */
   private readonly maxToolResultLength = 300; // vs 500 in detailed strategy
   private readonly maxCommandLength = 80; // vs 100 in detailed strategy
+
+  /**
+   * Singleton AppRepository instance to avoid creating new instances on every summarization
+   */
+  private static readonly appRepo = new AppRepository()
 
   /**
    * Summarize messages using LLM
@@ -134,19 +140,38 @@ export class LLMSummarizationStrategy implements SummarizationStrategy {
     const attributes: { userId: string; sessionId?: string } = { userId: appId };
     if (context.sessionId) attributes.sessionId = context.sessionId;
 
-    const llmResult = await propagateAttributes(
-      attributes,
-      async () => {
-        return await generateText({
+    // Look up app details for LiteLLM metadata
+    const app = LLMSummarizationStrategy.appRepo.findById(appId);
+
+    // Create LiteLLM metadata for cost tracking
+    const litellmMetadata: LitellmMetadata | null = app
+      ? {
+          ...(app.subscriptionId ? { user: app.subscriptionId } : {}),
+          tags: [
+            app.customerId,
+            appId,
+            'source:summarization'
+          ].filter((tag): tag is string => !!tag)
+        }
+      : null;
+
+    // Extract generateText call to avoid duplication
+    const generateTextWithAttributes = async () =>
+      propagateAttributes(attributes, async () =>
+        generateText({
           model,
           system: systemPrompt,
           prompt: userPrompt,
           temperature: 0.3,
           maxOutputTokens: 5000,
           experimental_telemetry: { isEnabled: true, functionId: 'summarization-llm' },
-        });
-      }
-    );
+        })
+      );
+
+    // Wrap with metadata context if available
+    const llmResult = litellmMetadata
+      ? await llmMetadataContext.run(litellmMetadata, generateTextWithAttributes)
+      : await generateTextWithAttributes();
     this.logAndExtractCaching(llmResult.usage);
 
     const summaryText = llmResult.text.trim();

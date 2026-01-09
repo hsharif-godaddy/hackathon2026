@@ -1,4 +1,4 @@
-import { createTool, generateTextWithTracking, calculateCostEstimate, type Tool } from '@airo/ai-lib'
+import { createTool, generateTextWithTracking, calculateCostEstimate, llmMetadataContext, type LitellmMetadata, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 
 import { generatePalette, updateCssColorPalette, type ColorPalette } from '../css-color-tool.js'
@@ -140,14 +140,31 @@ Return ONLY the JSON object with the palettes array. No markdown, no code blocks
   if (appId) contextData.appId = appId
   if (sessionId) contextData.conversationId = sessionId
 
-  const result = await generateTextWithTracking({
-    model,
-    modelName,
-    system: COLOR_GENERATION_PROMPT,
-    prompt: userPrompt,
-    temperature: 0.8,
-    context: contextData,
-    onUsage: async function trackUsage(usage) {
+  // Look up app details for LiteLLM metadata
+  const app = appId ? appRepo.findById(appId) : null
+
+  // Create LiteLLM metadata for cost tracking
+  const litellmMetadata: LitellmMetadata | null = app
+    ? {
+        ...(app.subscriptionId ? { user: app.subscriptionId } : {}),
+        tags: [
+          app.customerId,
+          appId,
+          'source:tool-llm'
+        ].filter((tag): tag is string => !!tag)
+      }
+    : null
+
+  const result = await (litellmMetadata
+    ? llmMetadataContext.run(litellmMetadata, async () => {
+        return await generateTextWithTracking({
+          model,
+          modelName,
+          system: COLOR_GENERATION_PROMPT,
+          prompt: userPrompt,
+          temperature: 0.8,
+          context: contextData,
+          onUsage: async function trackUsage(usage) {
       if (!appId) return
 
       const costEstimate = calculateCostEstimate(
@@ -175,6 +192,42 @@ Return ONLY the JSON object with the palettes array. No markdown, no code blocks
       )
     }
   })
+      })
+    : generateTextWithTracking({
+        model,
+        modelName,
+        system: COLOR_GENERATION_PROMPT,
+        prompt: userPrompt,
+        temperature: 0.8,
+        context: contextData,
+        onUsage: async function trackUsage(usage) {
+          if (!appId) return
+
+          const costEstimate = calculateCostEstimate(
+            {
+              inputTokens: usage.promptTokens,
+              outputTokens: usage.completionTokens,
+              totalTokens: usage.totalTokens,
+              ...(usage.cachedTokens && { cachedInputTokensRead: usage.cachedTokens })
+            },
+            modelName
+          )
+
+          await tokenUsageRepo.recordUsage(
+            appId,
+            'llm_request',
+            usage.promptTokens,
+            usage.completionTokens,
+            {
+              model: modelName,
+              conversationId: sessionId,
+              description: 'Color scheme generation (tool-initiated LLM call)',
+              cost: costEstimate.totalCost,
+              cacheReadTokens: usage.cachedTokens
+            }
+          )
+        }
+      }))
 
   let cleanedText = result.text.trim()
   if (cleanedText.startsWith('```json')) {
