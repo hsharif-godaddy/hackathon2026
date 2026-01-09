@@ -177,7 +177,7 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
           className="ml-auto"
           label={t('builder_chat_toolbar_button_settings')}
           active={activeChatTab === ChatTab.SETTINGS}
-          disabled={isVersionHistoryOpen}
+          disabled={isProcessing || isVersionHistoryOpen}
         />
       )}
       {isAssetManagerEnabled && (
