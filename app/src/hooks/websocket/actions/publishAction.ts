@@ -167,11 +167,17 @@ export const publishAction: ClientActionExecutor = async (params, context) => {
       }
 
       // Set error state and clear publishing state (matches UI behavior)
+      // EXCEPT when paywall modal is showing - in that case, don't show error alert
       try {
         const store = useDevelopPageStore.getState()
+        const showPaywallModal = store.publishStates[appId]?.showPaywallModal ?? false
 
-        // Perform both state updates atomically
-        store.setPublishError(appId, true)
+        // Only set publish error if paywall modal is not showing
+        // This prevents showing both paywall modal and error alert
+        if (!showPaywallModal) {
+          store.setPublishError(appId, true)
+        }
+
         store.setIsPublishing(appId, false)
       } catch (storeError) {
         logger.warn('websocket.client-action.publish.error-state-update-failed', {
@@ -245,11 +251,17 @@ export const publishAction: ClientActionExecutor = async (params, context) => {
     }
   } catch (error) {
     // Set error state and clear publishing state (matches UI behavior)
+    // EXCEPT when paywall modal is showing - in that case, don't show error alert
     try {
       const store = useDevelopPageStore.getState()
+      const showPaywallModal = store.publishStates[appId]?.showPaywallModal ?? false
 
-      // Perform both state updates atomically
-      store.setPublishError(appId, true)
+      // Only set publish error if paywall modal is not showing
+      // This prevents showing both paywall modal and error alert
+      if (!showPaywallModal) {
+        store.setPublishError(appId, true)
+      }
+
       store.setIsPublishing(appId, false)
     } catch (storeError) {
       logger.warn('websocket.client-action.publish.error-state-update-failed', {

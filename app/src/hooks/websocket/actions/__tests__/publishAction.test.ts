@@ -525,6 +525,18 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
+      // Mock store state with no paywall modal showing
+      vi.mocked(useDevelopPageStore.getState).mockReturnValue({
+        ...mockStoreActions,
+        publishStates: {
+          'app-123': {
+            showPaywallModal: false,
+            isPublishing: false,
+            publishError: false,
+          },
+        },
+      })
+
       vi.mocked(appFetch).mockResolvedValue({
         ok: false,
         status: 500,
@@ -541,6 +553,18 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
+      // Mock store state with no paywall modal showing
+      vi.mocked(useDevelopPageStore.getState).mockReturnValue({
+        ...mockStoreActions,
+        publishStates: {
+          'app-123': {
+            showPaywallModal: false,
+            isPublishing: false,
+            publishError: false,
+          },
+        },
+      })
+
       vi.mocked(appFetch).mockRejectedValue(new Error('Network error'))
 
       await expect(publishAction(params, context)).rejects.toThrow('Network error')
@@ -549,9 +573,174 @@ describe('publishAction', () => {
       expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', false)
     })
 
+    it('should NOT set error state when paywall modal is showing on API error', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      // Mock store state to show paywall modal is active
+      vi.mocked(useDevelopPageStore.getState).mockReturnValue({
+        ...mockStoreActions,
+        publishStates: {
+          'app-123': {
+            showPaywallModal: true,
+            isPublishing: false,
+            publishError: false,
+          },
+        },
+      })
+
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: 'Server error' }),
+      } as Response)
+
+      await expect(publishAction(params, context)).rejects.toThrow()
+
+      // Should NOT set publish error when paywall modal is showing
+      expect(mockStoreActions.setPublishError).not.toHaveBeenCalled()
+      // But should still clear publishing state
+      expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', false)
+    })
+
+    it('should NOT set error state when paywall modal is showing on exception', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      // Mock store state to show paywall modal is active
+      vi.mocked(useDevelopPageStore.getState).mockReturnValue({
+        ...mockStoreActions,
+        publishStates: {
+          'app-123': {
+            showPaywallModal: true,
+            isPublishing: false,
+            publishError: false,
+          },
+        },
+      })
+
+      vi.mocked(appFetch).mockRejectedValue(new Error('Network error'))
+
+      await expect(publishAction(params, context)).rejects.toThrow('Network error')
+
+      // Should NOT set publish error when paywall modal is showing
+      expect(mockStoreActions.setPublishError).not.toHaveBeenCalled()
+      // But should still clear publishing state
+      expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', false)
+    })
+
+    it('should NOT set error state when paywall blocks publish', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      // Mock paywall blocking access
+      vi.mocked(checkPaywallEligibility).mockResolvedValue({
+        hasAccess: false,
+        reason: 'Airo Plus subscription required',
+        details: {
+          hasSubscription: false,
+          hasEntitlements: false,
+          hasMatchingProject: false,
+        },
+      })
+
+      // Mock store state so that showPaywallModal is initially false, and becomes true after setShowPaywallModal is called
+      let showPaywallModal = false
+      const originalSetShowPaywallModal = mockStoreActions.setShowPaywallModal
+      const statefulSetShowPaywallModal = vi.fn((appId: string, value: boolean) => {
+        showPaywallModal = value
+        return originalSetShowPaywallModal(appId, value)
+      })
+
+      vi.mocked(useDevelopPageStore.getState).mockImplementation(() => ({
+        ...mockStoreActions,
+        setShowPaywallModal: statefulSetShowPaywallModal,
+        publishStates: {
+          'app-123': {
+            showPaywallModal,
+            isPublishing: false,
+            publishError: false,
+          },
+        },
+      }))
+
+      await expect(publishAction(params, context)).rejects.toThrow('Airo Plus subscription required')
+
+      // Paywall modal should be shown
+      expect(mockStoreActions.setShowPaywallModal).toHaveBeenCalledWith('app-123', true)
+      // Should NOT set publish error when paywall modal is showing
+      expect(mockStoreActions.setPublishError).not.toHaveBeenCalled()
+      // But should still clear publishing state
+      expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', false)
+    })
+
+    it('should set error state when paywall modal is NOT showing', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      // Mock store state to show paywall modal is NOT active
+      vi.mocked(useDevelopPageStore.getState).mockReturnValue({
+        ...mockStoreActions,
+        publishStates: {
+          'app-123': {
+            showPaywallModal: false,
+            isPublishing: false,
+            publishError: false,
+          },
+        },
+      })
+
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: 'Server error' }),
+      } as Response)
+
+      await expect(publishAction(params, context)).rejects.toThrow()
+
+      // Should set publish error when paywall modal is NOT showing
+      expect(mockStoreActions.setPublishError).toHaveBeenCalledWith('app-123', true)
+      expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', false)
+    })
+
+    it('should set error state when publishStates is empty', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      // Mock store state with no publishStates for this app
+      vi.mocked(useDevelopPageStore.getState).mockReturnValue({
+        ...mockStoreActions,
+        publishStates: {},
+      })
+
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: 'Server error' }),
+      } as Response)
+
+      await expect(publishAction(params, context)).rejects.toThrow()
+
+      // Should set publish error when no state exists (defaults to no paywall modal)
+      expect(mockStoreActions.setPublishError).toHaveBeenCalledWith('app-123', true)
+      expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', false)
+    })
+
     it('should continue if error state update fails', async () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      // Mock store state with no paywall modal showing
+      vi.mocked(useDevelopPageStore.getState).mockReturnValue({
+        ...mockStoreActions,
+        publishStates: {
+          'app-123': {
+            showPaywallModal: false,
+            isPublishing: false,
+            publishError: false,
+          },
+        },
+      })
 
       mockStoreActions.setPublishError.mockImplementation(() => {
         throw new Error('Store error')
