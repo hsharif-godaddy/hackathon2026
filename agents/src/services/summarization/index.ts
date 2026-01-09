@@ -5,4 +5,6 @@ export { DetailedLLMSummarizationStrategy } from './DetailedLLMSummarizationStra
 export { BackgroundSummarizer } from './BackgroundSummarizer.js';
 export type { BackgroundSummarizerConfig } from './BackgroundSummarizer.js';
 export { initializeBackgroundSummarization, getBackgroundSummarizer, isBackgroundSummarizationInitialized } from './initialize.js';
+export { OperationLogExtractor } from './OperationLogExtractor.js';
+export type { OperationLogEntry } from './OperationLogExtractor.js';
 

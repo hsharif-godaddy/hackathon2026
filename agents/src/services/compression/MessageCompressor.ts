@@ -1,4 +1,4 @@
-import type { LLMMessage } from '../ConversationHistoryLoader.js';
+import { type LLMMessage, isOpenAIMessage, getMessageContent } from '../ConversationHistoryLoader.js';
 import { logger } from '../../logging/index.js';
 
 /**
@@ -24,6 +24,13 @@ export interface CompressionResult {
 }
 
 /**
+ * Strategy type determines when the strategy runs:
+ * - 'removal': Always runs - ensures correctness by removing stale/redundant data
+ * - 'compression': Only runs when summarization is inactive - reduces token count
+ */
+export type CompressionStrategyType = 'removal' | 'compression';
+
+/**
  * Base interface for compression strategies
  */
 export interface CompressionStrategy {
@@ -31,6 +38,14 @@ export interface CompressionStrategy {
    * Name of the strategy for logging/debugging
    */
   readonly name: string;
+
+  /**
+   * Type of strategy - determines when it runs relative to summarization
+   * - 'removal': Always runs (correctness) - removes stale context, todoList entries, etc.
+   * - 'compression': Only when no summarization (token savings) - compresses file edits, etc.
+   * Defaults to 'compression' if not specified for backward compatibility.
+   */
+  readonly strategyType?: CompressionStrategyType;
 
   /**
    * Optional: Pre-analyze all messages before compression
@@ -71,9 +86,10 @@ export class MessageCompressor {
   /**
    * Compress a batch of LLM messages
    * @param messages - Array of LLM messages to compress
+   * @param strategyTypeFilter - Optional filter to only run strategies of a specific type
    * @returns Compressed messages with compression statistics
    */
-  compressMessages(messages: LLMMessage[]): {
+  compressMessages(messages: LLMMessage[], strategyTypeFilter?: CompressionStrategyType): {
     messages: LLMMessage[];
     stats: {
       totalMessages: number;
@@ -84,13 +100,19 @@ export class MessageCompressor {
       strategiesUsed: Record<string, number>;
     };
   } {
+    // Filter strategies based on type if specified
+    const activeStrategies = strategyTypeFilter
+      ? this.strategies.filter(s => (s.strategyType || 'compression') === strategyTypeFilter)
+      : this.strategies;
+
     logger.debug('compression.batch.begin', {
       totalMessages: messages.length,
-      strategiesAvailable: this.strategies.length,
+      strategiesAvailable: activeStrategies.length,
+      strategyTypeFilter: strategyTypeFilter || 'all',
     });
 
     // Phase 1: Allow strategies to analyze all messages
-    for (const strategy of this.strategies) {
+    for (const strategy of activeStrategies) {
       if (strategy.analyzeMessages) {
         logger.debug('compression.analysis.running', {
           strategyName: strategy.name,
@@ -119,20 +141,28 @@ export class MessageCompressor {
       let compressedMessage: LLMMessage | null = message;
       let usedStrategy: string | undefined;
 
-      // CRITICAL: Never compress summary messages
-      // Summaries are identified by the [CONVERSATION SUMMARY] prefix
-      const isSummary = message.role === 'user' && 
-                        typeof message.content === 'string' && 
-                        message.content.startsWith('[CONVERSATION SUMMARY]');
+      // CRITICAL: Never compress summary or operation log messages
+      // Check metadata first, fall back to content prefix for backward compatibility
+      const isSummary =
+        (isOpenAIMessage(message) && message.metadata?.isSummary) ||
+        (message.role === 'user' &&
+         typeof message.content === 'string' &&
+         message.content.startsWith('[CONVERSATION SUMMARY]'));
 
-      if (isSummary) {
+      const isOperationLog =
+        (isOpenAIMessage(message) && message.metadata?.isOperationLog) ||
+        (message.role === 'user' &&
+         typeof message.content === 'string' &&
+         message.content.startsWith('[OPERATION LOG'));
+
+      if (isSummary || isOperationLog) {
         logger.debug('compression.message.skipped', {
           messageIndex: i,
           messageRole: message.role,
-          reason: 'summary_message',
+          reason: isSummary ? 'summary_message' : 'operation_log_message',
         });
       } else {
-        for (const strategy of this.strategies) {
+        for (const strategy of activeStrategies) {
           if (strategy.canCompress(context)) {
             const result = strategy.compress(context);
             if (result !== undefined) {
@@ -209,9 +239,9 @@ export class MessageCompressor {
    * Get the total length of a message for compression metrics
    */
   private getMessageLength(message: LLMMessage): number {
-    let length = message.content?.length || 0;
+    let length = getMessageContent(message).length;
 
-    if (message.tool_calls) {
+    if (isOpenAIMessage(message) && message.tool_calls) {
       for (const toolCall of message.tool_calls) {
         length += toolCall.function.name.length;
         length += toolCall.function.arguments.length;

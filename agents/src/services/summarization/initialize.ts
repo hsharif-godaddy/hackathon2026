@@ -34,12 +34,24 @@ export async function initializeBackgroundSummarization(config?: {
   }
 
   const strategyType = config?.strategy || 'llm';
-  
+
+  // Build config object only with explicitly provided values
+  // This allows BackgroundSummarizer's tuned defaults (35k tokens, 30s debounce, 4 turns) to apply
+  const summarizerConfig: Partial<{
+    tokenThreshold: number;
+    debounceMs: number;
+    keepRecentTurns: number;
+  }> = {};
+  if (config?.tokenThreshold !== undefined) summarizerConfig.tokenThreshold = config.tokenThreshold;
+  if (config?.debounceMs !== undefined) summarizerConfig.debounceMs = config.debounceMs;
+  if (config?.keepRecentTurns !== undefined) summarizerConfig.keepRecentTurns = config.keepRecentTurns;
+
   logger.info('summarization.initialize.begin', {
-    tokenThreshold: config?.tokenThreshold || 10000,
-    debounceMs: config?.debounceMs || 5000,
-    keepRecentTurns: config?.keepRecentTurns || 3,
+    tokenThreshold: config?.tokenThreshold ?? 35000,
+    debounceMs: config?.debounceMs ?? 30000,
+    keepRecentTurns: config?.keepRecentTurns ?? 4,
     strategy: strategyType,
+    usingDefaults: Object.keys(summarizerConfig).length === 0,
   });
 
   const summaryRepo = new SummaryRepository();
@@ -68,11 +80,7 @@ export async function initializeBackgroundSummarization(config?: {
     conversationRepository,
     summaryRepo,
     summarizationStrategy,
-    {
-      tokenThreshold: config?.tokenThreshold || 10000,
-      debounceMs: config?.debounceMs || 5000,
-      keepRecentTurns: config?.keepRecentTurns || 3,
-    }
+    summarizerConfig
   );
 
   // Register hook on the singleton conversation repository

@@ -16,6 +16,7 @@ import type { LLMMessage } from '../../ConversationHistoryLoader.js';
  */
 export class SecretOperationCompressionStrategy implements CompressionStrategy {
   readonly name = 'secret-operation-compression';
+  readonly strategyType = 'removal' as const;
 
   /**
    * Check if this message is about secret operations

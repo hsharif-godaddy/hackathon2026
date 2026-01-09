@@ -17,11 +17,7 @@ import { ConversationHistoryLoader } from '../src/services/ConversationHistoryLo
 import {
   HotFileInclusionStrategy,
   FileEditCompressionStrategy,
-  FileEditInputCompressionStrategy,
   DuplicateFileReadStrategy,
-  DuplicateTodoCreateStrategy,
-  TodoCreateResultSummarizer,
-  TodoMarkDoneAggregator,
 } from '../src/services/compression/strategies/index.js';
 import { AppRepository } from '../src/database/repositories/AppRepository.js';
 
@@ -173,16 +169,11 @@ async function main() {
     
     const hotFileStrategy = new HotFileInclusionStrategy(appPath);
     const fileEditStrategy = new FileEditCompressionStrategy(hotFileStrategy);
-    const fileEditInputStrategy = new FileEditInputCompressionStrategy(hotFileStrategy);
     const duplicateFileReadStrategy = new DuplicateFileReadStrategy(hotFileStrategy);
-    
+
     loader.registerCompressionStrategy(hotFileStrategy);
     loader.registerCompressionStrategy(duplicateFileReadStrategy);
     loader.registerCompressionStrategy(fileEditStrategy);
-    loader.registerCompressionStrategy(fileEditInputStrategy);
-    loader.registerCompressionStrategy(new DuplicateTodoCreateStrategy());
-    loader.registerCompressionStrategy(new TodoCreateResultSummarizer());
-    loader.registerCompressionStrategy(new TodoMarkDoneAggregator());
 
     const dbMessages = await loader.loadDatabaseMessages(appId, agentId);
     

@@ -198,4 +198,118 @@ describe('MessageCompressor', () => {
       expect(compressor.getStrategies()).toHaveLength(0);
     });
   });
+
+  describe('strategyTypeFilter', () => {
+    class RemovalStrategy implements CompressionStrategy {
+      readonly name = 'removal-strategy';
+      readonly strategyType = 'removal' as const;
+      canCompress(context: CompressionContext): boolean {
+        return context.message.content?.includes('REMOVE_ME') || false;
+      }
+      compress(): LLMMessage | null {
+        return null; // Remove the message
+      }
+    }
+
+    class CompressionOnlyStrategy implements CompressionStrategy {
+      readonly name = 'compression-strategy';
+      readonly strategyType = 'compression' as const;
+      canCompress(context: CompressionContext): boolean {
+        return context.message.content?.includes('COMPRESS_ME') || false;
+      }
+      compress(context: CompressionContext): LLMMessage | null {
+        return { ...context.message, content: '[COMPRESSED]' };
+      }
+    }
+
+    class DefaultStrategy implements CompressionStrategy {
+      readonly name = 'default-strategy';
+      // No strategyType - defaults to 'compression'
+      canCompress(context: CompressionContext): boolean {
+        return context.message.content?.includes('DEFAULT_ME') || false;
+      }
+      compress(context: CompressionContext): LLMMessage | null {
+        return { ...context.message, content: '[DEFAULT]' };
+      }
+    }
+
+    it('should only run removal strategies when filtered by removal', () => {
+      compressor.registerStrategy(new RemovalStrategy());
+      compressor.registerStrategy(new CompressionOnlyStrategy());
+
+      const messages: LLMMessage[] = [
+        { role: 'user', content: 'REMOVE_ME' },
+        { role: 'assistant', content: 'COMPRESS_ME' },
+        { role: 'user', content: 'Normal' },
+      ];
+
+      const result = compressor.compressMessages(messages, 'removal');
+
+      // REMOVE_ME should be removed, COMPRESS_ME should NOT be compressed
+      expect(result.messages).toHaveLength(2);
+      expect(result.messages[0].content).toBe('COMPRESS_ME'); // Not compressed
+      expect(result.messages[1].content).toBe('Normal');
+      expect(result.stats.strategiesUsed).toHaveProperty('removal-strategy', 1);
+      expect(result.stats.strategiesUsed).not.toHaveProperty('compression-strategy');
+    });
+
+    it('should only run compression strategies when filtered by compression', () => {
+      compressor.registerStrategy(new RemovalStrategy());
+      compressor.registerStrategy(new CompressionOnlyStrategy());
+
+      const messages: LLMMessage[] = [
+        { role: 'user', content: 'REMOVE_ME' },
+        { role: 'assistant', content: 'COMPRESS_ME' },
+        { role: 'user', content: 'Normal' },
+      ];
+
+      const result = compressor.compressMessages(messages, 'compression');
+
+      // REMOVE_ME should NOT be removed, COMPRESS_ME should be compressed
+      expect(result.messages).toHaveLength(3);
+      expect(result.messages[0].content).toBe('REMOVE_ME'); // Not removed
+      expect(result.messages[1].content).toBe('[COMPRESSED]');
+      expect(result.messages[2].content).toBe('Normal');
+      expect(result.stats.strategiesUsed).not.toHaveProperty('removal-strategy');
+      expect(result.stats.strategiesUsed).toHaveProperty('compression-strategy', 1);
+    });
+
+    it('should run all strategies when no filter is specified', () => {
+      compressor.registerStrategy(new RemovalStrategy());
+      compressor.registerStrategy(new CompressionOnlyStrategy());
+
+      const messages: LLMMessage[] = [
+        { role: 'user', content: 'REMOVE_ME' },
+        { role: 'assistant', content: 'COMPRESS_ME' },
+        { role: 'user', content: 'Normal' },
+      ];
+
+      const result = compressor.compressMessages(messages);
+
+      // REMOVE_ME should be removed, COMPRESS_ME should be compressed
+      expect(result.messages).toHaveLength(2);
+      expect(result.messages[0].content).toBe('[COMPRESSED]');
+      expect(result.messages[1].content).toBe('Normal');
+      expect(result.stats.strategiesUsed).toHaveProperty('removal-strategy', 1);
+      expect(result.stats.strategiesUsed).toHaveProperty('compression-strategy', 1);
+    });
+
+    it('should treat strategies without strategyType as compression type', () => {
+      compressor.registerStrategy(new DefaultStrategy());
+
+      const messages: LLMMessage[] = [
+        { role: 'user', content: 'DEFAULT_ME' },
+      ];
+
+      // When filtering by removal, default strategy should NOT run
+      const removalResult = compressor.compressMessages(messages, 'removal');
+      expect(removalResult.messages[0].content).toBe('DEFAULT_ME');
+      expect(removalResult.stats.strategiesUsed).not.toHaveProperty('default-strategy');
+
+      // When filtering by compression, default strategy SHOULD run
+      const compressionResult = compressor.compressMessages(messages, 'compression');
+      expect(compressionResult.messages[0].content).toBe('[DEFAULT]');
+      expect(compressionResult.stats.strategiesUsed).toHaveProperty('default-strategy', 1);
+    });
+  });
 });

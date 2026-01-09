@@ -1,9 +1,11 @@
 /**
  * Tool Call Renderer
- * 
+ *
  * Renders tool call results in a structured, readable format for conversation history.
  * This helps the LLM understand what actions were taken and what information was gathered.
  */
+
+import { basename } from 'node:path';
 
 export interface ToolCallResult {
   id: string
@@ -71,7 +73,7 @@ export class ToolCallRenderer {
       return `No content found for file: ${filePath}`;
     }
 
-    const fileName = filePath.split('/').pop() || filePath;
+    const fileName = basename(filePath);
     const lines = result.split('\n');
     const lineCount = lines.length;
     const charCount = result.length;
@@ -92,6 +94,9 @@ export class ToolCallRenderer {
 
   /**
    * Render file_edit tool call results as summary
+   *
+   * Preserves file names and operation details for better summarization context.
+   * Groups operations by mode for readability while keeping specific file information.
    */
   private static renderFileEditSummary(toolCall: ToolCallResult): string {
     if (toolCall.error) {
@@ -123,24 +128,54 @@ export class ToolCallRenderer {
         return `Batch file operation failed after ${completedOperations}/${totalOperations} operations: ${error}`;
       }
 
-      // Count operations by mode
-      const created = operations.filter((op: any) => op.success && op.mode === 'create').length;
-      const edited = operations.filter((op: any) => op.success && op.mode === 'edit').length;
-      const rewritten = operations.filter((op: any) => op.success && op.mode === 'rewrite').length;
-      const deleted = operations.filter((op: any) => op.success && op.mode === 'delete').length;
+      // Group successful operations by mode with file names preserved
+      const created: string[] = [];
+      const edited: string[] = [];
+      const rewritten: string[] = [];
+      const deleted: string[] = [];
 
+      for (const op of operations) {
+        if (!op.success) continue;
+        const filePath = op.path || op.target_file || 'unknown';
+        const fileName = basename(filePath);
+
+        switch (op.mode) {
+          case 'create':
+            created.push(fileName);
+            break;
+          case 'edit':
+            edited.push(fileName);
+            break;
+          case 'rewrite':
+            rewritten.push(fileName);
+            break;
+          case 'delete':
+            deleted.push(fileName);
+            break;
+        }
+      }
+
+      // Build detailed summary with file names
       const parts: string[] = [];
-      if (created > 0) parts.push(`${created} created`);
-      if (edited > 0) parts.push(`${edited} edited`);
-      if (rewritten > 0) parts.push(`${rewritten} rewritten`);
-      if (deleted > 0) parts.push(`${deleted} deleted`);
+      if (created.length > 0) {
+        parts.push(`Created: ${created.join(', ')}`);
+      }
+      if (edited.length > 0) {
+        parts.push(`Edited: ${edited.join(', ')}`);
+      }
+      if (rewritten.length > 0) {
+        parts.push(`Rewrote: ${rewritten.join(', ')}`);
+      }
+      if (deleted.length > 0) {
+        parts.push(`Deleted: ${deleted.join(', ')}`);
+      }
 
-      return `Files: ${parts.join(', ')}`;
+      return `File operations:\n${parts.join('\n')}`;
     }
 
     // Handle single operation (legacy schema)
     const filePath = (args?.path as string) || 'unknown';
-    const fileName = filePath.split('/').pop() || filePath;
+    const fileName = basename(filePath);
     const mode = (args?.mode as string) || (result?.mode as string) || 'edit';
 
     if (!result || !(result.success as boolean)) {

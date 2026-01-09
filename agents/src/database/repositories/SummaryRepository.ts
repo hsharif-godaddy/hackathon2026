@@ -29,9 +29,10 @@ export class SummaryRepository {
       INSERT INTO conversation_summaries (
         id, app_id, conversation_id, summary_text,
         message_range_start, message_range_end, message_count,
-        original_token_count, summary_token_count, model_used, created_at
+        original_token_count, summary_token_count, model_used,
+        operation_log, incremental_update_count, last_full_summarization_at, created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -45,6 +46,11 @@ export class SummaryRepository {
       summary.originalTokenCount,
       summary.summaryTokenCount,
       summary.modelUsed,
+      summary.operationLog || null,
+      summary.incrementalUpdateCount ?? 0,
+      // For initial summaries, set to 'now' to indicate they represent a complete "full"
+      // summarization. This timestamp is updated when summaries are regenerated from scratch.
+      summary.lastFullSummarizationAt || now,
       now
     );
 
@@ -65,6 +71,18 @@ export class SummaryRepository {
       result.conversationId = conversationId;
     }
 
+    if (summary.operationLog) {
+      result.operationLog = summary.operationLog;
+    }
+
+    if (summary.incrementalUpdateCount !== undefined) {
+      result.incrementalUpdateCount = summary.incrementalUpdateCount;
+    }
+
+    if (summary.lastFullSummarizationAt) {
+      result.lastFullSummarizationAt = new Date(summary.lastFullSummarizationAt);
+    }
+
     return result;
   }
 
@@ -82,19 +100,31 @@ export class SummaryRepository {
     `);
     const rows = stmt.all(appId) as any[];
 
-    return rows.map(row => ({
-      id: row.id,
-      appId: row.app_id,
-      conversationId: row.conversation_id || undefined,
-      summaryText: row.summary_text,
-      messageRangeStart: row.message_range_start,
-      messageRangeEnd: row.message_range_end,
-      messageCount: row.message_count,
-      originalTokenCount: row.original_token_count,
-      summaryTokenCount: row.summary_token_count,
-      modelUsed: row.model_used,
-      createdAt: new Date(row.created_at),
-    }));
+    return rows.map(row => {
+      const summary: ConversationSummary = {
+        id: row.id,
+        appId: row.app_id,
+        conversationId: row.conversation_id || undefined,
+        summaryText: row.summary_text,
+        messageRangeStart: row.message_range_start,
+        messageRangeEnd: row.message_range_end,
+        messageCount: row.message_count,
+        originalTokenCount: row.original_token_count,
+        summaryTokenCount: row.summary_token_count,
+        modelUsed: row.model_used,
+        createdAt: new Date(row.created_at),
+      };
+      if (row.operation_log) {
+        summary.operationLog = row.operation_log;
+      }
+      if (row.incremental_update_count !== null && row.incremental_update_count !== undefined) {
+        summary.incrementalUpdateCount = row.incremental_update_count;
+      }
+      if (row.last_full_summarization_at) {
+        summary.lastFullSummarizationAt = new Date(row.last_full_summarization_at);
+      }
+      return summary;
+    });
   }
 
   /**
@@ -115,7 +145,7 @@ export class SummaryRepository {
 
     if (!row) return null;
 
-    return {
+    const summary: ConversationSummary = {
       id: row.id,
       appId: row.app_id,
       conversationId: row.conversation_id || undefined,
@@ -128,6 +158,16 @@ export class SummaryRepository {
       modelUsed: row.model_used,
       createdAt: new Date(row.created_at),
     };
+    if (row.operation_log) {
+      summary.operationLog = row.operation_log;
+    }
+    if (row.incremental_update_count !== null && row.incremental_update_count !== undefined) {
+      summary.incrementalUpdateCount = row.incremental_update_count;
+    }
+    if (row.last_full_summarization_at) {
+      summary.lastFullSummarizationAt = new Date(row.last_full_summarization_at);
+    }
+    return summary;
   }
 
   /**
@@ -147,7 +187,7 @@ export class SummaryRepository {
 
     if (!row) return null;
 
-    return {
+    const summary: ConversationSummary = {
       id: row.id,
       appId: row.app_id,
       conversationId: row.conversation_id || undefined,
@@ -160,6 +200,16 @@ export class SummaryRepository {
       modelUsed: row.model_used,
       createdAt: new Date(row.created_at),
     };
+    if (row.operation_log) {
+      summary.operationLog = row.operation_log;
+    }
+    if (row.incremental_update_count !== null && row.incremental_update_count !== undefined) {
+      summary.incrementalUpdateCount = row.incremental_update_count;
+    }
+    if (row.last_full_summarization_at) {
+      summary.lastFullSummarizationAt = new Date(row.last_full_summarization_at);
+    }
+    return summary;
   }
 
   /**

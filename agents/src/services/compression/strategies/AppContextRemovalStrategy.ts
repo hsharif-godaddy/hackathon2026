@@ -15,6 +15,7 @@ import type { LLMMessage } from '../../ConversationHistoryLoader.js';
  */
 export class AppContextRemovalStrategy implements CompressionStrategy {
   readonly name = 'app-context-removal';
+  readonly strategyType = 'removal' as const;
 
   /**
    * Check if this message is an app context message from a previous turn

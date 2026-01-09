@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { FileEditCompressionStrategy } from '../FileEditCompressionStrategy.js';
 import { HotFileInclusionStrategy } from '../HotFileInclusionStrategy.js';
 import type { CompressionContext } from '../../MessageCompressor.js';
-import type { LLMMessage } from '../../../../types/llm.js';
+import { type LLMMessage, getMessageContent } from '../../../ConversationHistoryLoader.js';
 import type { ToolModelMessage } from 'ai';
 
 describe('FileEditCompressionStrategy', () => {
@@ -247,6 +247,75 @@ describe('FileEditCompressionStrategy', () => {
 
       expect(fileEditStrategy.canCompress(context)).toBe(false);
     });
+
+    it('should handle OpenAI-format tool results for hot files', () => {
+      const messages: LLMMessage[] = [
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: {
+                name: 'readFile',
+                arguments: JSON.stringify({ path: 'src/index.ts' }),
+              },
+            },
+          ],
+        },
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'call_2',
+              type: 'function',
+              function: {
+                name: 'readFile',
+                arguments: JSON.stringify({ path: 'src/index.ts' }),
+              },
+            },
+          ],
+        },
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'call_3',
+              type: 'function',
+              function: {
+                name: 'fileEdit',
+                arguments: JSON.stringify({
+                  path: 'src/index.ts',
+                  old_string: 'old',
+                  new_string: 'new',
+                }),
+              },
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          content: 'File edited successfully',
+          tool_call_id: 'call_3',
+          name: 'fileEdit',
+        },
+      ];
+
+      hotFileStrategy.analyzeMessages(messages);
+
+      const context: CompressionContext = {
+        messageIndex: 3,
+        totalMessages: 4,
+        message: messages[3]!,
+        previousMessage: messages[2],
+        nextMessage: undefined,
+      };
+
+      expect(fileEditStrategy.canCompress(context)).toBe(true);
+    });
   });
 
   describe('compress', () => {
@@ -322,8 +391,86 @@ describe('FileEditCompressionStrategy', () => {
       const compressed = fileEditStrategy.compress(context);
 
       expect(compressed).not.toBeNull();
-      expect(compressed?.content).toContain('File edited: src/index.ts');
-      expect(compressed?.content).toContain('[Full file content available in hot files context]');
+      const content = getMessageContent(compressed!);
+      expect(content).toContain('File edited: src/index.ts');
+      expect(content).toContain('[Full file content available in hot files context]');
+    });
+
+    it('should compress OpenAI-format tool results and keep metadata', () => {
+      const messages: LLMMessage[] = [
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: {
+                name: 'readFile',
+                arguments: JSON.stringify({ path: 'src/index.ts' }),
+              },
+            },
+          ],
+        },
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'call_2',
+              type: 'function',
+              function: {
+                name: 'readFile',
+                arguments: JSON.stringify({ path: 'src/index.ts' }),
+              },
+            },
+          ],
+        },
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'call_3',
+              type: 'function',
+              function: {
+                name: 'fileEdit',
+                arguments: JSON.stringify({
+                  path: 'src/index.ts',
+                  old_string: 'old code',
+                  new_string: 'new code',
+                }),
+              },
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          content: 'Successfully edited src/index.ts - 42 lines changed',
+          tool_call_id: 'call_3',
+          name: 'fileEdit',
+        },
+      ];
+
+      hotFileStrategy.analyzeMessages(messages);
+
+      const context: CompressionContext = {
+        messageIndex: 3,
+        totalMessages: 4,
+        message: messages[3]!,
+        previousMessage: messages[2],
+        nextMessage: undefined,
+      };
+
+      const compressed = fileEditStrategy.compress(context);
+
+      expect(compressed).not.toBeNull();
+      const toolMessage = compressed as LLMMessage & { tool_call_id: string; name: string };
+      expect(toolMessage.tool_call_id).toBe('call_3');
+      expect(toolMessage.name).toBe('fileEdit');
+      const content = getMessageContent(toolMessage);
+      expect(content).toContain('File edited: src/index.ts');
+      expect(content).toContain('Lines changed: 42');
     });
 
     it('should handle different argument formats (file_path)', () => {
@@ -398,7 +545,8 @@ describe('FileEditCompressionStrategy', () => {
       const compressed = fileEditStrategy.compress(context);
 
       expect(compressed).not.toBeNull();
-      expect(compressed?.content).toContain('src/app.ts');
+      const content = getMessageContent(compressed!);
+      expect(content).toContain('src/app.ts');
     });
 
     it('should return null if no valid filePath found', () => {
@@ -575,7 +723,8 @@ describe('FileEditCompressionStrategy', () => {
       const coldCompressed = fileEditStrategy.compress(coldEditContext);
 
       expect(hotCompressed).not.toBeNull();
-      expect(hotCompressed?.content).toContain('src/hot.ts');
+      const hotContent = getMessageContent(hotCompressed!);
+      expect(hotContent).toContain('src/hot.ts');
       expect(coldCompressed).toBeNull();
     });
   });

@@ -6,14 +6,33 @@ import type { LLMMessage } from '../ConversationHistoryLoader.js';
 export interface SummarizationContext {
   /** ID of the app */
   appId: string;
-  /** Messages to summarize */
+  /**
+   * New/unsummarized messages to process.
+   * Used for incremental fallbacks when caching isn't available.
+   */
   messages: LLMMessage[];
+  /**
+   * Complete message history (excluding the most recent turns) when available.
+   * Enables full-regeneration summaries that rely on prompt caching.
+   */
+  fullMessageHistory?: LLMMessage[];
   /** Existing summary to update (for incremental summarization) */
   existingSummary?: string;
   /** Range of message IDs being summarized */
   messageRange: { startId: string; endId: string };
-  /** Original token count before summarization */
+  /** Token count for the full message history represented by the summary */
   originalTokenCount: number;
+  /** Token count for the newly added messages (incremental delta) */
+  incrementalTokenCount?: number;
+  /**
+   * Structured operation log extracted from all messages (including compressed ones).
+   * This provides a cumulative record of operations that survives compression.
+   */
+  operationLog?: string;
+  /** Number of times the summary has been incrementally updated */
+  incrementalUpdateCount?: number;
+  /** ISO timestamp when summary was last fully regenerated from scratch */
+  lastFullSummarizationAt?: string;
 }
 
 /**
@@ -32,6 +51,15 @@ export interface SummarizationResult {
   messageCount: number;
   /** Original token count before summarization */
   originalTokenCount: number;
+  /**
+   * Cumulative operation log extracted from all messages.
+   * This survives compression and provides visibility into what was done.
+   */
+  operationLog?: string;
+  /** Number of times the summary has been incrementally updated */
+  incrementalUpdateCount?: number;
+  /** ISO timestamp when summary was last fully regenerated from scratch */
+  lastFullSummarizationAt?: string;
 }
 
 /**
@@ -52,4 +80,3 @@ export interface SummarizationStrategy {
    */
   summarize(context: SummarizationContext): Promise<SummarizationResult>;
 }
-

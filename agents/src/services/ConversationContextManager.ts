@@ -13,7 +13,6 @@ import { ConversationHistoryLoader } from './ConversationHistoryLoader.js';
 import {
   HotFileInclusionStrategy,
   FileEditCompressionStrategy,
-  FileEditInputCompressionStrategy,
   DuplicateFileReadStrategy,
   AppContextRemovalStrategy,
   TodoListRemovalStrategy,
@@ -21,24 +20,7 @@ import {
 } from './compression/strategies/index.js';
 import { CssSuggestCompressionStrategy } from './compression/strategies/CssSuggestCompressionStrategy.js';
 import { ContextFormatter } from './helpers/ContextFormatter.js';
-
-/**
- * LLM message format for OpenAI-style APIs
- */
-interface LLMMessage {
-  role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string;
-  tool_calls?: Array<{
-    id: string;
-    type: string;
-    function: {
-      name: string;
-      arguments: string;
-    };
-  }>;
-  tool_call_id?: string;
-  name?: string;
-}
+import { type LLMMessage, type OpenAIMessage, isOpenAIMessage, getMessageContent } from './ConversationHistoryLoader.js';
 
 /**
  * Manages conversation context for LLM interactions
@@ -66,21 +48,19 @@ export class ConversationContextManager {
 
     const hotFileStrategy = new HotFileInclusionStrategy();
     const fileEditStrategy = new FileEditCompressionStrategy(hotFileStrategy);
-    const fileEditInputStrategy = new FileEditInputCompressionStrategy(hotFileStrategy);
     const duplicateFileReadStrategy = new DuplicateFileReadStrategy(hotFileStrategy);
 
     this.historyLoader.registerCompressionStrategy(hotFileStrategy);
     this.historyLoader.registerCompressionStrategy(duplicateFileReadStrategy);
     this.historyLoader.registerCompressionStrategy(fileEditStrategy);
-    this.historyLoader.registerCompressionStrategy(fileEditInputStrategy);
     // Remove all app context entries from history - fresh context is injected before history on every turn
     this.historyLoader.registerCompressionStrategy(new AppContextRemovalStrategy());
     // Remove all todoList entries from history - persistent [Current Todo List] section is the single source of truth
     this.historyLoader.registerCompressionStrategy(new TodoListRemovalStrategy());
     // Annotate secret operation messages to prevent LLM from using stale secret info
     this.historyLoader.registerCompressionStrategy(new SecretOperationCompressionStrategy());
-    // TEMPORARILY DISABLED: Tool message compression strategies need to be updated for AI SDK v6 format
-    // this.historyLoader.registerCompressionStrategy(new CssSuggestCompressionStrategy());
+    // Compress verbose cssSuggest results to just palette names
+    this.historyLoader.registerCompressionStrategy(new CssSuggestCompressionStrategy());
   }
 
   /**
@@ -177,11 +157,12 @@ export class ConversationContextManager {
 
     // Final validation - ensure no message has empty content
     const validatedMessages = messages.filter(msg => {
-      if (!msg.content || msg.content.trim() === '') {
+      const content = getMessageContent(msg);
+      if (!content || content.trim() === '') {
         logger.warn('conversation.context.empty_message_filtered', {
           role: msg.role,
-          hasToolCalls: !!(msg as any).tool_calls,
-          hasToolCallId: !!(msg as any).tool_call_id
+          hasToolCalls: isOpenAIMessage(msg) && !!msg.tool_calls,
+          hasToolCallId: isOpenAIMessage(msg) && !!msg.tool_call_id
         });
         return false;
       }
@@ -193,8 +174,8 @@ export class ConversationContextManager {
     }
 
     // Structured logging
-    const hasAppContext = executionContext && validatedMessages.some(msg => msg.content?.startsWith('[Current Project Structure]'));
-    const hasTodoContext = !!(executionContext && validatedMessages.some(msg => msg.content?.startsWith('[Current Todo List]')));
+    const hasAppContext = executionContext && validatedMessages.some(msg => getMessageContent(msg).startsWith('[Current Project Structure]'));
+    const hasTodoContext = !!(executionContext && validatedMessages.some(msg => getMessageContent(msg).startsWith('[Current Todo List]')));
     conversationContextEvents.buildSuccess(logger, {
       conversationId,
       totalMessages: validatedMessages.length,

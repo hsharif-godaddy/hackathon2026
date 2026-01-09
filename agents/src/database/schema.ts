@@ -180,6 +180,9 @@ export interface ConversationSummary {
   originalTokenCount: number;
   summaryTokenCount: number;
   modelUsed: string;
+  operationLog?: string; // cumulative log of operations that survives compression
+  incrementalUpdateCount?: number; // track how many times summary has been incrementally updated
+  lastFullSummarizationAt?: Date; // when summary was last regenerated from scratch
   createdAt: Date;
 }
 
@@ -444,6 +447,12 @@ function createConversationSummariesTable(db: Database): void {
       original_token_count INTEGER NOT NULL,
       summary_token_count INTEGER NOT NULL,
       model_used TEXT NOT NULL,
+      operation_log TEXT,
+      incremental_update_count INTEGER DEFAULT 0,
+      -- last_full_summarization_at: Set to CURRENT_TIMESTAMP for initial summaries
+      -- because they represent a complete "full" summarization of the conversation at that point.
+      -- This is updated when summaries are regenerated from scratch after N incremental updates.
+      last_full_summarization_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
     )
@@ -823,6 +832,12 @@ function applyMigrations(db: Database): void {
   } catch (err) {
     // Column might already exist, that's fine
   }
+
+  // Add operation_log column to conversation_summaries if it doesn't exist
+  migrateSummariesOperationLog(db);
+
+  // Add quality tracking columns to conversation_summaries if they don't exist
+  migrateSummariesQualityTracking(db);
 }
 
 /**
@@ -849,7 +864,7 @@ function migrateImportJobsNullableColumns(db: Database): void {
 
     // Check if columns exist with NOT NULL constraints using PRAGMA table_info
     const columnInfo = db.prepare(`
-      SELECT name, notnull FROM pragma_table_info('import_jobs')
+      SELECT name, "notnull" FROM pragma_table_info('import_jobs')
       WHERE name IN ('zip_file_name', 'zip_file_size')
     `).all() as Array<{ name: string; notnull: number }>;
 
@@ -904,6 +919,144 @@ function migrateImportJobsNullableColumns(db: Database): void {
     });
   } catch (err) {
     logger.error('database.migration.import-jobs-nullable-zip-columns.failed', {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    // Don't throw - migration failures shouldn't break app startup
+  }
+}
+
+/**
+ * Migrate conversation_summaries table to add operation_log column
+ * This column stores a cumulative log of operations that survives compression
+ *
+ * NOTE: This migration is more robust than the standard try/catch pattern used
+ * elsewhere in applyMigrations(). It explicitly checks for column existence
+ * using pragma_table_info before attempting the ALTER TABLE, providing better
+ * error isolation and clearer logging. The try/catch at the end handles
+ * unexpected errors without breaking app startup.
+ */
+function migrateSummariesOperationLog(db: Database): void {
+  try {
+    // Check if conversation_summaries table exists
+    const tableExists = db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='conversation_summaries'
+    `).get() as { name: string } | undefined;
+
+    if (!tableExists) {
+      logger.info('database.migration.summaries-operation-log.skipped', {
+        reason: 'conversation_summaries table does not exist yet',
+      });
+      return;
+    }
+
+    // Check if operation_log column already exists
+    const columnInfo = db.prepare(`
+      SELECT name FROM pragma_table_info('conversation_summaries')
+      WHERE name = 'operation_log'
+    `).get() as { name: string } | undefined;
+
+    if (columnInfo) {
+      logger.info('database.migration.summaries-operation-log.skipped', {
+        reason: 'operation_log column already exists',
+      });
+      return;
+    }
+
+    logger.info('database.migration.summaries-operation-log.start', {
+      reason: 'Adding operation_log column for cumulative operation tracking',
+    });
+
+    // Add operation_log column
+    db.exec(`ALTER TABLE conversation_summaries ADD COLUMN operation_log TEXT`);
+
+    logger.info('database.migration.summaries-operation-log.complete', {
+      success: true,
+      migrated: true,
+    });
+  } catch (err) {
+    logger.error('database.migration.summaries-operation-log.failed', {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    // Don't throw - migration failures shouldn't break app startup
+  }
+}
+
+/**
+ * Migration: Add quality tracking fields to conversation_summaries
+ *
+ * Adds incremental_update_count and last_full_summarization_at columns
+ * to track summary quality and trigger re-summarization when needed.
+ *
+ * Quality tracking prevents summary degradation by:
+ * - Counting incremental updates (re-summarization after 10 updates)
+ * - Recording when summary was last fully regenerated from scratch
+ *
+ * @param db - Database instance
+ */
+function migrateSummariesQualityTracking(db: Database): void {
+  try {
+    // Check if conversation_summaries table exists
+    const tableExists = db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='conversation_summaries'
+    `).get() as { name: string } | undefined;
+
+    if (!tableExists) {
+      logger.info('database.migration.summaries-quality-tracking.skipped', {
+        reason: 'conversation_summaries table does not exist yet',
+      });
+      return;
+    }
+
+    // Check if columns already exist
+    const columns = db.prepare(`
+      SELECT name FROM pragma_table_info('conversation_summaries')
+    `).all() as Array<{ name: string }>;
+
+    const columnNames = columns.map(c => c.name);
+    const needsUpdateCount = !columnNames.includes('incremental_update_count');
+    const needsFullSummarizationAt = !columnNames.includes('last_full_summarization_at');
+
+    if (!needsUpdateCount && !needsFullSummarizationAt) {
+      logger.info('database.migration.summaries-quality-tracking.skipped', {
+        reason: 'quality tracking columns already exist',
+      });
+      return;
+    }
+
+    logger.info('database.migration.summaries-quality-tracking.start', {
+      addingUpdateCount: needsUpdateCount,
+      addingFullSummarizationAt: needsFullSummarizationAt,
+    });
+
+    if (needsUpdateCount) {
+      db.exec(`ALTER TABLE conversation_summaries ADD COLUMN incremental_update_count INTEGER DEFAULT 0`);
+    }
+
+    if (needsFullSummarizationAt) {
+      // SQLite doesn't allow non-constant defaults in ALTER TABLE, so we add the column
+      // without a default and update existing rows to set the timestamp to created_at
+      db.exec(`ALTER TABLE conversation_summaries ADD COLUMN last_full_summarization_at DATETIME`);
+
+      // For existing summaries, set last_full_summarization_at to created_at
+      // (treating existing summaries as if they were "fully" summarized at creation time)
+      db.exec(`
+        UPDATE conversation_summaries
+        SET last_full_summarization_at = created_at
+        WHERE last_full_summarization_at IS NULL
+      `);
+    }
+
+    logger.info('database.migration.summaries-quality-tracking.complete', {
+      success: true,
+      columnsAdded: {
+        updateCount: needsUpdateCount,
+        fullSummarizationAt: needsFullSummarizationAt,
+      },
+    });
+  } catch (err) {
+    logger.error('database.migration.summaries-quality-tracking.failed', {
       error: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,
     });

@@ -4,18 +4,30 @@ import { logger } from '../../logging/index.js';
 import { countTokens } from '../../utils/token-counter.js';
 import { getAgentModelWithName } from '../../utils/model-selection.js';
 import type { SummarizationStrategy, SummarizationContext } from './SummarizationStrategy.js';
-import type { LLMMessage } from '../ConversationHistoryLoader.js';
-import type { DatabaseMessage } from '../ConversationHistoryLoader.js';
+import {
+  type LLMMessage,
+  type DatabaseMessage,
+  isAIToolMessage,
+  isOpenAIMessage,
+  getMessageContent,
+} from '../ConversationHistoryLoader.js';
+import { OperationLogExtractor } from './OperationLogExtractor.js';
 
 /**
  * Configuration for background summarization
+ *
+ * Tuned for conversational agentic platforms where users interact with
+ * seconds-to-minutes between messages:
+ * - Higher debounce (30s) waits for natural conversation lulls
+ * - Higher token threshold (35k) reduces summarization frequency
+ * - More recent turns (4) preserves immediate context
  */
 export interface BackgroundSummarizerConfig {
-  /** Token threshold to trigger summarization (default: 50000) */
+  /** Token threshold to trigger summarization (default: 35000) */
   tokenThreshold: number;
-  /** Debounce delay in milliseconds (default: 5000) */
+  /** Debounce delay in milliseconds (default: 30000) */
   debounceMs: number;
-  /** Number of recent user/assistant message pairs to keep unsummarized (default: 3) */
+  /** Number of recent user/assistant message pairs to keep unsummarized (default: 4) */
   keepRecentTurns: number;
 }
 
@@ -44,9 +56,9 @@ export class BackgroundSummarizer {
     this.summaryRepo = summaryRepo;
     this.strategy = strategy;
     this.config = {
-      tokenThreshold: config.tokenThreshold ?? 50000,
-      debounceMs: config.debounceMs ?? 5000,
-      keepRecentTurns: config.keepRecentTurns ?? 3,
+      tokenThreshold: config.tokenThreshold ?? 35000,
+      debounceMs: config.debounceMs ?? 30000,
+      keepRecentTurns: config.keepRecentTurns ?? 4,
     };
   }
 
@@ -112,8 +124,8 @@ export class BackgroundSummarizer {
       // Convert to LLM messages for token counting
       const llmMessages = this.convertToLLMMessages(allMessages);
 
-      // Get the actual model name for token counting (resolves 'fast' to 'sonnet' etc.)
-      const { modelName } = await getAgentModelWithName('fast');
+      // Use the same model tier as summarization ('full' tier, currently Claude Sonnet) for accurate token estimates
+      const { modelName } = await getAgentModelWithName('full');
 
       // Get existing summary if any
       const existingSummary = await this.summaryRepo.findLatestForApp(appId);
@@ -159,14 +171,21 @@ export class BackgroundSummarizer {
         return;
       }
 
-      // Determine message range to summarize
-      let messagesToSummarize: LLMMessage[];
-      let startMessageId: string;
-      let endMessageId: string;
+      // Capture full history to summarize (everything before recent turns)
+      const fullHistoryMessagesDb = allMessages.slice(0, summarizableMessageCount);
+      const fullHistoryMessages = this.convertToLLMMessages(fullHistoryMessagesDb);
+      const fullHistoryTokenCount = this.countTokensForMessages(fullHistoryMessages, modelName);
+
+      if (fullHistoryMessages.length === 0) {
+        logger.debug('summarization.background.no_messages_to_summarize', { appId });
+        return;
+      }
+
+      // Determine incremental slice since last summary for thresholding/fallbacks
+      let incrementalMessagesDb = fullHistoryMessagesDb;
 
       if (existingSummary) {
-        // Incremental: summarize messages between last summary and recent cutoff
-        const lastSummaryEndIndex = allMessages.findIndex(
+        const lastSummaryEndIndex = fullHistoryMessagesDb.findIndex(
           (msg) => msg.id === existingSummary.messageRangeEnd
         );
 
@@ -175,84 +194,90 @@ export class BackgroundSummarizer {
             appId,
             summaryId: existingSummary.id,
           });
-          return;
+        } else {
+          const startIndex = lastSummaryEndIndex + 1;
+          if (startIndex < fullHistoryMessagesDb.length) {
+            incrementalMessagesDb = fullHistoryMessagesDb.slice(startIndex);
+          } else {
+            incrementalMessagesDb = [];
+          }
         }
-
-        const startIndex = lastSummaryEndIndex + 1;
-        const endIndex = summarizableMessageCount;
-
-        if (startIndex >= endIndex) {
-          // No new messages to summarize
-          logger.debug('summarization.background.no_new_messages_to_summarize', {
-            appId,
-            lastSummaryEndIndex,
-            summarizableMessageCount,
-          });
-          return;
-        }
-
-        const newMessages = allMessages.slice(startIndex, endIndex);
-        messagesToSummarize = this.convertToLLMMessages(newMessages);
-        startMessageId = newMessages[0]?.id || '';
-        endMessageId = newMessages[newMessages.length - 1]?.id || '';
-      } else {
-        // Initial: summarize all messages except recent turns
-        const messagesToSummarizeDb = allMessages.slice(0, summarizableMessageCount);
-        messagesToSummarize = this.convertToLLMMessages(messagesToSummarizeDb);
-        startMessageId = messagesToSummarizeDb[0]?.id || '';
-        endMessageId = messagesToSummarizeDb[messagesToSummarizeDb.length - 1]?.id || '';
       }
 
-      if (messagesToSummarize.length === 0) {
-        logger.debug('summarization.background.no_messages_to_summarize', { appId });
+      if (incrementalMessagesDb.length === 0) {
+        logger.debug('summarization.background.no_new_messages_to_summarize', {
+          appId,
+          summarizableMessageCount,
+        });
         return;
       }
 
-      // Count tokens for messages to summarize (unsummarized portion only)
-      let unsummarizedTokenCount = 0;
-      for (const msg of messagesToSummarize) {
-        const serialized = this.serializeMessage(msg);
-        const result = countTokens(serialized, modelName);
-        unsummarizedTokenCount += result.tokenCount;
-      }
+      const incrementalMessages = this.convertToLLMMessages(incrementalMessagesDb);
+      const incrementalTokenCount = this.countTokensForMessages(incrementalMessages, modelName);
 
       logger.debug('summarization.background.token_check', {
         appId,
-        messagesToSummarize: messagesToSummarize.length,
-        unsummarizedTokenCount,
+        newMessages: incrementalMessages.length,
+        incrementalTokenCount,
         threshold: this.config.tokenThreshold,
+        fullHistoryTokenCount,
       });
 
       // Check if threshold exceeded for unsummarized messages
-      if (unsummarizedTokenCount <= this.config.tokenThreshold) {
+      if (incrementalTokenCount <= this.config.tokenThreshold) {
         logger.debug('summarization.background.threshold_not_exceeded', {
           appId,
-          unsummarizedTokenCount,
+          incrementalTokenCount,
           threshold: this.config.tokenThreshold,
         });
         return;
       }
 
+      // Extract operation log from ALL messages (cumulative record)
+      // This captures everything done in the conversation, even if some messages
+      // have been summarized away
+      // Prune to prevent unbounded growth (keep last 500 operations)
+      const operationLogEntries = OperationLogExtractor.extractAndPrune(llmMessages, 500);
+      const operationLog = OperationLogExtractor.format(operationLogEntries);
+
       // Perform summarization
       logger.info('summarization.background.begin', {
         appId,
-        messageCount: messagesToSummarize.length,
-        tokenCount: unsummarizedTokenCount,
+        messageCount: fullHistoryMessages.length,
+        incrementalMessageCount: incrementalMessages.length,
+        tokenCount: fullHistoryTokenCount,
+        incrementalTokenCount,
         hasExistingSummary: !!existingSummary,
+        operationLogEntries: operationLogEntries.length,
       });
 
       const context: SummarizationContext = {
         appId,
-        messages: messagesToSummarize,
+        messages: incrementalMessages,
+        fullMessageHistory: fullHistoryMessages,
         messageRange: {
-          startId: startMessageId,
-          endId: endMessageId,
+          startId: fullHistoryMessagesDb[0]?.id || '',
+          endId: fullHistoryMessagesDb[fullHistoryMessagesDb.length - 1]?.id || '',
         },
-        originalTokenCount: unsummarizedTokenCount,
+        originalTokenCount: fullHistoryTokenCount,
+        incrementalTokenCount,
       };
+
+      // Only add operationLog if it has content
+      if (operationLog) {
+        context.operationLog = operationLog;
+      }
 
       if (existingSummary?.summaryText) {
         context.existingSummary = existingSummary.summaryText;
+      }
+
+      if (existingSummary?.incrementalUpdateCount !== undefined) {
+        context.incrementalUpdateCount = existingSummary.incrementalUpdateCount;
+      }
+
+      if (existingSummary?.lastFullSummarizationAt) {
+        context.lastFullSummarizationAt = existingSummary.lastFullSummarizationAt.toISOString();
       }
 
       const summaryResult = await this.strategy.summarize(context);
@@ -275,6 +300,19 @@ export class BackgroundSummarizer {
     } finally {
       this.processingJobs.delete(appId);
     }
+  }
+
+  /**
+   * Count tokens for a set of messages using the configured model
+   */
+  private countTokensForMessages(messages: LLMMessage[], modelName: string): number {
+    let tokenCount = 0;
+    for (const msg of messages) {
+      const serialized = this.serializeMessage(msg);
+      const result = countTokens(serialized, modelName);
+      tokenCount += result.tokenCount;
+    }
+    return tokenCount;
   }
 
   /**
@@ -343,9 +381,9 @@ export class BackgroundSummarizer {
    * Serialize LLM message for token counting
    */
   private serializeMessage(message: LLMMessage): string {
-    let serialized = message.content || '';
+    let serialized = getMessageContent(message);
 
-    if (message.tool_calls && message.tool_calls.length > 0) {
+    if (isOpenAIMessage(message) && message.tool_calls && message.tool_calls.length > 0) {
       serialized += '\n[Tool Calls]\n';
       for (const toolCall of message.tool_calls) {
         serialized += `${toolCall.function.name}: ${toolCall.function.arguments}\n`;
@@ -353,10 +391,14 @@ export class BackgroundSummarizer {
     }
 
     if (message.role === 'tool') {
-      serialized += `\n[Tool Result: ${message.name}]\n${message.content}`;
+      if (isAIToolMessage(message)) {
+        const toolResult = message.content[0];
+        serialized += `\n[Tool Result: ${toolResult?.toolName}]\n${getMessageContent(message)}`;
+      } else if (isOpenAIMessage(message)) {
+        serialized += `\n[Tool Result: ${message.name}]\n${message.content}`;
+      }
     }
 
     return serialized;
   }
 }
-

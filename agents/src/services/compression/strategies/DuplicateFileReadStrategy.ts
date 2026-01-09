@@ -1,7 +1,12 @@
 import type { CompressionStrategy, CompressionContext } from '../MessageCompressor.js';
-import type { LLMMessage } from '../../ConversationHistoryLoader.js';
+import {
+  type LLMMessage,
+  type AIToolMessage,
+  type ToolResultPart,
+  isAIToolMessage,
+  isOpenAIMessage,
+} from '../../ConversationHistoryLoader.js';
 import type { HotFileInclusionStrategy } from './HotFileInclusionStrategy.js';
-import type { ToolModelMessage } from 'ai';
 
 /**
  * Compresses duplicate file reads by keeping only the most recent read of each file
@@ -30,37 +35,50 @@ export class DuplicateFileReadStrategy implements CompressionStrategy {
       return null;
     }
 
-    // Check AI SDK v6 ModelMessage format
-    const toolMessage = message as unknown as ToolModelMessage;
-    if (Array.isArray(toolMessage.content) && toolMessage.content[0]?.type === 'tool-result') {
-      const toolResult = toolMessage.content[0];
-      if (toolResult.toolName !== 'readFile') {
+    let toolCallId: string | undefined;
+    let contentToSearch: string | undefined;
+
+    // Check AI SDK v6 format
+    if (isAIToolMessage(message)) {
+      const toolResult = message.content[0];
+      if (!toolResult || toolResult.toolName !== 'readFile') {
         return null;
       }
-
-      // Try to get file path from tool call arguments in previous assistant message
-      if (previousMessage?.role === 'assistant' && previousMessage.tool_calls) {
-        const matchingToolCall = previousMessage.tool_calls.find(
-          (tc) => tc.id === toolResult.toolCallId
-        );
-        
-        if (matchingToolCall) {
-          try {
-            const args = JSON.parse(matchingToolCall.function.arguments);
-            return args.file_path || args.path || args.filePath || null;
-          } catch {
-            // Ignore parse errors
-          }
-        }
-      }
-
-      // Fallback: try to extract from output content
+      toolCallId = toolResult.toolCallId;
       const output = toolResult.output;
       if (output && typeof output === 'object' && 'type' in output && output.type === 'text' && 'value' in output) {
-        const match = output.value.match(/(?:File|Path|file_path|path):\s*([^\n]+)/i);
-        if (match && match[1]) {
-          return match[1].trim();
+        contentToSearch = (output as { type: 'text'; value: string }).value;
+      }
+    }
+    // Check OpenAI format (from convertToLLMMessages)
+    else if (isOpenAIMessage(message) && message.name === 'readFile') {
+      toolCallId = message.tool_call_id;
+      contentToSearch = message.content;
+    } else {
+      return null;
+    }
+
+    // Try to get file path from tool call arguments in previous assistant message
+    if (toolCallId && previousMessage?.role === 'assistant' && isOpenAIMessage(previousMessage) && previousMessage.tool_calls) {
+      const matchingToolCall = previousMessage.tool_calls.find(
+        (tc) => tc.id === toolCallId
+      );
+
+      if (matchingToolCall) {
+        try {
+          const args = JSON.parse(matchingToolCall.function.arguments);
+          return args.file_path || args.path || args.filePath || null;
+        } catch {
+          // Ignore parse errors
         }
+      }
+    }
+
+    // Fallback: try to extract from output content
+    if (contentToSearch) {
+      const match = contentToSearch.match(/(?:File|Path|file_path|path):\s*([^\n]+)/i);
+      if (match && match[1]) {
+        return match[1].trim();
       }
     }
 
@@ -99,13 +117,17 @@ export class DuplicateFileReadStrategy implements CompressionStrategy {
       return false;
     }
 
-    // Check AI SDK v6 ModelMessage format
-    const toolMessage = message as unknown as ToolModelMessage;
-    if (!Array.isArray(toolMessage.content) || toolMessage.content[0]?.type !== 'tool-result') {
-      return false;
+    // Check AI SDK v6 format
+    if (isAIToolMessage(message)) {
+      const toolResult = message.content[0];
+      if (!toolResult || toolResult.toolName !== 'readFile') {
+        return false;
+      }
     }
-    
-    if (toolMessage.content[0].toolName !== 'readFile') {
+    // Check OpenAI format (from convertToLLMMessages)
+    else if (isOpenAIMessage(message) && message.name === 'readFile') {
+      // Valid OpenAI format readFile message
+    } else {
       return false;
     }
 
@@ -114,6 +136,8 @@ export class DuplicateFileReadStrategy implements CompressionStrategy {
       return false;
     }
 
+    // CRITICAL: Hot files are already included in hot files context
+    // Remove ALL reads of hot files, even if it's the only read
     if (this.hotFileStrategy?.isHotFile(filePath)) {
       return true;
     }
@@ -123,6 +147,7 @@ export class DuplicateFileReadStrategy implements CompressionStrategy {
       return false;
     }
 
+    // Always keep the most recent read, compress older ones
     const mostRecentIndex = Math.max(...reads);
     return messageIndex < mostRecentIndex;
   }
@@ -132,26 +157,45 @@ export class DuplicateFileReadStrategy implements CompressionStrategy {
    */
   compress(context: CompressionContext): LLMMessage | null {
     const { message, previousMessage } = context;
-    
+
     const filePath = this.extractFilePath(message, previousMessage);
     if (!filePath) {
       return null;
     }
 
+    let compressedText: string;
     if (this.hotFileStrategy?.isHotFile(filePath)) {
+      compressedText = `[File "${filePath}" is included in hot files context - redundant read removed]`;
+    } else {
+      const reads = this.fileReads.get(filePath);
+      const mostRecentIndex = reads ? Math.max(...reads) : -1;
+      compressedText = `[Duplicate file read removed - see message #${mostRecentIndex + 1} for most recent read of: ${filePath}]`;
+    }
+
+    // Return in same format as input
+    if (isAIToolMessage(message)) {
+      const toolResult = message.content[0];
+      if (!toolResult) {
+        return null;
+      }
+      const compressedResult: ToolResultPart = {
+        type: 'tool-result',
+        toolCallId: toolResult.toolCallId,
+        toolName: toolResult.toolName,
+        output: { type: 'text', value: compressedText },
+      };
+      return { role: 'tool', content: [compressedResult] } as AIToolMessage;
+    } else if (isOpenAIMessage(message) && message.role === 'tool' && message.tool_call_id && message.name) {
+      // Return OpenAI format for OpenAI input
       return {
-        ...message,
-        content: `[File "${filePath}" is included in hot files context - redundant read removed]`,
+        role: 'tool',
+        content: compressedText,
+        tool_call_id: message.tool_call_id,
+        name: message.name,
       };
     }
 
-    const reads = this.fileReads.get(filePath);
-    const mostRecentIndex = reads ? Math.max(...reads) : -1;
-
-    return {
-      ...message,
-      content: `[Duplicate file read removed - see message #${mostRecentIndex + 1} for most recent read of: ${filePath}]`,
-    };
+    return null;
   }
 
   /**

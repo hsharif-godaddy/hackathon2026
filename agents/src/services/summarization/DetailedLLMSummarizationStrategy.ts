@@ -1,5 +1,7 @@
+import { basename } from 'node:path';
 import { generateText } from 'ai';
 import type { LLMMessage } from '../ConversationHistoryLoader.js';
+import { isOpenAIMessage, isAIToolMessage, getMessageContent } from '../ConversationHistoryLoader.js';
 import { getAgentModelWithName } from '../../utils/model-selection.js';
 import { countTokens } from '../../utils/token-counter.js';
 import type { SummarizationStrategy, SummarizationContext, SummarizationResult } from './SummarizationStrategy.js';
@@ -27,19 +29,49 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
   private readonly maxTokensPerBatch = 25000;
 
   async summarize(context: SummarizationContext): Promise<SummarizationResult> {
-    const { appId, messages, existingSummary, messageRange, originalTokenCount } = context;
+    const { appId, messageRange, originalTokenCount } = context;
+    let { existingSummary } = context;
+
+    // Check if we should force full re-summarization
+    const isIncremental = !!existingSummary;
+    const previousUpdateCount = context.incrementalUpdateCount ?? 0;
+    // Regenerate from scratch every 5 incremental updates to maintain quality
+    // This balances cost (incremental is 5-10x cheaper) with quality (fresh regeneration)
+    const shouldRegenerateFromScratch = previousUpdateCount >= 5;
+
+    // Determine which messages to use:
+    // - For regeneration: use fullMessageHistory (complete history before recent turns)
+    // - For incremental: use messages (just the new delta)
+    // CRITICAL: Without this, regeneration would only summarize the delta, losing all earlier context
+    const messagesToSummarize = shouldRegenerateFromScratch && context.fullMessageHistory
+      ? context.fullMessageHistory
+      : context.messages;
+
+    if (shouldRegenerateFromScratch) {
+      logger.info('summarization.detailed_llm.regenerate_from_scratch', {
+        appId,
+        previousUpdateCount,
+        reason: 'Exceeded incremental update threshold (5)',
+        usingFullHistory: !!context.fullMessageHistory,
+        messageCount: messagesToSummarize.length,
+      });
+      // Clear existingSummary to force full re-summarization
+      existingSummary = undefined;
+    }
 
     logger.debug('summarization.detailed_llm.begin', {
       appId,
-      messageCount: messages.length,
+      messageCount: messagesToSummarize.length,
       hasExistingSummary: !!existingSummary,
+      isIncremental: isIncremental && !shouldRegenerateFromScratch,
+      regeneratingFromScratch: shouldRegenerateFromScratch,
       messageRangeStart: messageRange.startId,
       messageRangeEnd: messageRange.endId,
       originalTokenCount,
     });
 
     try {
-      const { model, modelName } = await getAgentModelWithName('fast');
+      const { model, modelName } = await getAgentModelWithName('full');
 
       // Check if we need to batch
       if (originalTokenCount > this.maxTokensPerBatch) {
@@ -47,21 +79,50 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
           appId,
           originalTokenCount,
           maxTokensPerBatch: this.maxTokensPerBatch,
-          messageCount: messages.length,
+          messageCount: messagesToSummarize.length,
+          regeneratingFromScratch: shouldRegenerateFromScratch,
         });
-        
-        return await this.summarizeInBatches(context, model, modelName);
+
+        // Build context with the correct messages (full history for regeneration, delta for incremental)
+        // CRITICAL: Also clear existingSummary when regenerating to force fresh summarization
+        const batchContext: SummarizationContext = {
+          ...context,
+          messages: messagesToSummarize,
+          ...(shouldRegenerateFromScratch ? {} : { existingSummary }),
+        };
+
+        return await this.summarizeInBatches(batchContext, model, modelName);
       }
 
-      // Single batch processing
-      const result = await this.summarizeSingleBatch(context, model, modelName, existingSummary);
+      // Single batch processing - build context with correct messages
+      const singleBatchContext: SummarizationContext = {
+        ...context,
+        messages: messagesToSummarize,
+      };
+      const result = await this.summarizeSingleBatch(singleBatchContext, model, modelName, existingSummary);
+
+      // Calculate new update count
+      const newUpdateCount = shouldRegenerateFromScratch ? 0 : (previousUpdateCount + (isIncremental ? 1 : 0));
+      const now = new Date().toISOString();
+
+      // Set lastFullSummarizationAt timestamp
+      if (shouldRegenerateFromScratch) {
+        result.lastFullSummarizationAt = now;
+      } else if (context.lastFullSummarizationAt) {
+        result.lastFullSummarizationAt = context.lastFullSummarizationAt;
+      }
+
+      // Update incremental count in result
+      result.incrementalUpdateCount = newUpdateCount;
 
       logger.info('summarization.detailed_llm.complete', {
         appId,
-        messageCount: messages.length,
+        messageCount: messagesToSummarize.length,
         summaryTokenCount: result.summaryTokenCount,
         originalTokenCount,
         compressionRatio: result.summaryTokenCount / originalTokenCount,
+        incrementalUpdateCount: newUpdateCount,
+        regeneratedFromScratch: shouldRegenerateFromScratch,
         modelUsed: modelName,
       });
 
@@ -152,24 +213,48 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
 
     const totalDuration = Date.now() - startTime;
 
+    // Calculate new update count and timestamps
+    const isIncremental = !!existingSummary;
+    const previousUpdateCount = context.incrementalUpdateCount ?? 0;
+    const shouldRegenerateFromScratch = previousUpdateCount >= 5;
+    const newUpdateCount = shouldRegenerateFromScratch ? 0 : (previousUpdateCount + (isIncremental ? 1 : 0));
+    const now = new Date().toISOString();
+
     logger.info('summarization.detailed_llm.batches_complete', {
       appId,
       batchCount: batches.length,
       totalSummaryTokens,
       originalTokenCount,
       compressionRatio: totalSummaryTokens / originalTokenCount,
+      incrementalUpdateCount: newUpdateCount,
+      regeneratedFromScratch: shouldRegenerateFromScratch,
       totalDurationMs: totalDuration,
       avgDurationPerBatchMs: Math.round(totalDuration / batches.length),
     });
 
-    return {
+    const result: SummarizationResult = {
       summaryText: cumulativeSummary,
       summaryTokenCount: totalSummaryTokens,
       modelUsed: modelName,
       messageRange,
       messageCount: messages.length,
       originalTokenCount,
+      incrementalUpdateCount: newUpdateCount,
     };
+
+    // Set lastFullSummarizationAt timestamp
+    if (shouldRegenerateFromScratch) {
+      result.lastFullSummarizationAt = now;
+    } else if (context.lastFullSummarizationAt) {
+      result.lastFullSummarizationAt = context.lastFullSummarizationAt;
+    }
+
+    // Include operation log if provided
+    if (context.operationLog) {
+      result.operationLog = context.operationLog;
+    }
+
+    return result;
   }
 
   /**
@@ -232,12 +317,12 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
     modelName: string,
     existingSummary?: string
   ): Promise<SummarizationResult> {
-    const { messages, messageRange, originalTokenCount } = context;
+    const { messages, messageRange, originalTokenCount, operationLog } = context;
 
     const systemPrompt = this.buildSystemPrompt(existingSummary);
-    const userPrompt = this.buildUserPrompt(messages);
+    const userPrompt = this.buildUserPrompt(messages, operationLog);
 
-    const result = await generateText({
+    const llmResult = await generateText({
       model,
       system: systemPrompt,
       prompt: userPrompt,
@@ -246,7 +331,7 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
       experimental_telemetry: { isEnabled: true, functionId: 'summarization-detailed-llm' },
     });
 
-    const summaryText = result.text;
+    const summaryText = llmResult.text;
     const summaryTokenCount = countTokens(summaryText, modelName).tokenCount;
 
     if (summaryTokenCount > 2000) {
@@ -259,7 +344,7 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
       });
     }
 
-    return {
+    const result: SummarizationResult = {
       summaryText,
       summaryTokenCount,
       modelUsed: modelName,
@@ -267,6 +352,13 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
       messageCount: messages.length,
       originalTokenCount,
     };
+
+    // Include operation log if provided
+    if (context.operationLog) {
+      result.operationLog = context.operationLog;
+    }
+
+    return result;
   }
 
   /**
@@ -277,9 +369,23 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
 
 Your task is to create a comprehensive summary that captures the essential context needed for an AI development agent to continue working on this project without access to the full conversation history.
 
-${existingSummary ? `EXISTING SUMMARY:\n${existingSummary}\n\nIntegrate the new conversation below with the existing summary. Merge and deduplicate information. When conflicts exist, prefer the most recent information. Remove completed items from "Next Steps" if they were addressed.
+${existingSummary ? `EXISTING SUMMARY:
+${existingSummary}
 
-CRITICAL: If the new conversation contains only trivial exchanges (greetings, acknowledgments, off-topic chat) with NO substantive development work (no code changes, no feature discussions, no technical decisions), you MUST return the existing summary verbatim without modification. Do not generate casual responses or acknowledgments. Maintain the structured format.` : 'This is the initial summary for this conversation.'}
+CRITICAL MERGE INSTRUCTIONS:
+1. DO NOT duplicate section headers (e.g., if "## Current State" exists in EXISTING SUMMARY, update it in place - do NOT create a second "## Current State" header)
+2. For each section in the output format below:
+   - Check if it exists in EXISTING SUMMARY
+   - If it exists: UPDATE the content under that header with merged information
+   - If it doesn't exist: ADD the new section with its header
+3. Use exact header text from the output format - do not modify headers (e.g., "## Current State" NOT "## Current State (Updated)")
+4. Merge and deduplicate information across sections
+5. When conflicts exist, prefer the most recent information
+6. Remove completed items from "Next Steps" if they were addressed in new messages
+
+CRITICAL: If the new conversation contains only trivial exchanges (greetings, acknowledgments, off-topic chat) with NO substantive development work (no code changes, no feature discussions, no technical decisions), you MUST return the existing summary verbatim without modification. Do not generate casual responses or acknowledgments. Maintain the structured format.
+
+Integrate the new conversation below with the existing summary following the merge rules above.` : 'This is the initial summary for this conversation.'}
 
 ## STRICT TOKEN BUDGET: 2000 tokens maximum
 
@@ -353,13 +459,181 @@ Outstanding tasks if mentioned
   }
 
   /**
-   * Build user prompt from messages
+   * Build user prompt from messages with enhanced tool call extraction
+   *
+   * Extracts structured information from tool calls to preserve:
+   * - Which files were read/edited
+   * - What operations were performed
+   * - Tool arguments that provide context
+   *
+   * @param messages - Messages to include in the prompt
+   * @param operationLog - Cumulative operation log from all messages
    */
-  private buildUserPrompt(messages: LLMMessage[]): string {
-    return messages.map(msg => {
-      const roleLabel = msg.role === 'user' ? 'User' : msg.role === 'assistant' ? 'Assistant' : 'System';
-      return `${roleLabel}: ${msg.content}`;
-    }).join('\n\n');
+  private buildUserPrompt(messages: LLMMessage[], operationLog?: string): string {
+    const parts: string[] = [];
+
+    // Include operation log at the start for comprehensive context
+    if (operationLog) {
+      parts.push(`=== CUMULATIVE OPERATION LOG ===\n${operationLog}\n===`);
+    }
+
+    for (const msg of messages) {
+      if (msg.role === 'user') {
+        const content = getMessageContent(msg);
+        if (content) {
+          parts.push(`User: ${content}`);
+        }
+      } else if (msg.role === 'assistant') {
+        const content = getMessageContent(msg);
+        if (content) {
+          parts.push(`Assistant: ${content}`);
+        }
+
+        // Extract tool calls with structured details
+        if (isOpenAIMessage(msg) && msg.tool_calls && msg.tool_calls.length > 0) {
+          const toolDetails = this.extractToolCallDetails(msg.tool_calls);
+          if (toolDetails) {
+            parts.push(`Assistant actions:\n${toolDetails}`);
+          }
+        }
+      } else if (msg.role === 'tool') {
+        // Handle tool results - extract meaningful content
+        const toolContent = this.extractToolResultContent(msg);
+        if (toolContent) {
+          parts.push(`Tool result: ${toolContent}`);
+        }
+      } else if (msg.role === 'system') {
+        const content = getMessageContent(msg);
+        if (content) {
+          parts.push(`System: ${content}`);
+        }
+      }
+    }
+
+    return parts.join('\n\n');
+  }
+
+  /**
+   * Extract structured details from tool calls
+   */
+  private extractToolCallDetails(toolCalls: Array<{
+    id: string;
+    type: string;
+    function: { name: string; arguments: string };
+  }>): string {
+    const details: string[] = [];
+
+    for (const tc of toolCalls) {
+      const name = tc.function?.name || 'unknown';
+      let args: Record<string, unknown> = {};
+
+      try {
+        args = JSON.parse(tc.function?.arguments || '{}');
+      } catch {
+        // Ignore parse errors
+      }
+
+      // Extract meaningful details based on tool type
+      switch (name) {
+        case 'file_edit':
+        case 'fileEdit': {
+          const operations = args.operations as Array<{ path?: string; mode?: string }> | undefined;
+          if (operations && Array.isArray(operations)) {
+            const fileOps = operations.map(op => {
+              const fileName = op.path ? basename(op.path) : 'unknown';
+              return `${op.mode || 'edit'}: ${fileName}`;
+            });
+            details.push(`File operations: ${fileOps.join(', ')}`);
+          } else {
+            const path = args.path || args.target_file;
+            const mode = args.mode || 'edit';
+            if (path) {
+              const fileName = basename(String(path));
+              details.push(`${mode} file: ${fileName}`);
+            }
+          }
+          break;
+        }
+        case 'read_file':
+        case 'readFile': {
+          const path = args.target_file || args.file_path || args.path;
+          if (path) {
+            const fileName = basename(String(path));
+            details.push(`Read: ${fileName}`);
+          }
+          break;
+        }
+        case 'terminal':
+        case 'run_terminal_cmd': {
+          const cmd = args.command || args.cmd;
+          if (cmd) {
+            // Truncate long commands
+            const cmdStr = String(cmd).length > 100 ? String(cmd).substring(0, 100) + '...' : String(cmd);
+            details.push(`Terminal: ${cmdStr}`);
+          }
+          break;
+        }
+        case 'list_dir':
+        case 'directoryListing': {
+          const path = args.target_directory || args.path;
+          if (path) {
+            details.push(`Listed directory: ${path}`);
+          }
+          break;
+        }
+        case 'grep':
+        case 'grep_tool': {
+          const pattern = args.pattern || args.search;
+          if (pattern) {
+            details.push(`Searched for: "${pattern}"`);
+          }
+          break;
+        }
+        default:
+          // For other tools, just note the tool name
+          details.push(`Used ${name}`);
+      }
+    }
+
+    return details.join('\n');
+  }
+
+  /**
+   * Type guard for text tool output in AI SDK v6 format
+   */
+  private isTextToolOutput(output: unknown): output is { type: 'text'; value?: string } {
+    return (
+      typeof output === 'object' &&
+      output !== null &&
+      'type' in output &&
+      (output as { type: unknown }).type === 'text'
+    );
+  }
+
+  /**
+   * Extract meaningful content from tool results
+   */
+  private extractToolResultContent(msg: LLMMessage): string {
+    if (isAIToolMessage(msg)) {
+      // AI SDK v6 format - extract from first tool result
+      const firstResult = msg.content[0];
+      if (firstResult?.output && this.isTextToolOutput(firstResult.output)) {
+        if (firstResult.output.value) {
+          // Truncate long results
+          return firstResult.output.value.length > 500
+            ? firstResult.output.value.substring(0, 500) + '...'
+            : firstResult.output.value;
+        }
+      }
+      return '';
+    }
+
+    // OpenAI format
+    const content = getMessageContent(msg);
+    if (content) {
+      return content.length > 500 ? content.substring(0, 500) + '...' : content;
+    }
+    return '';
   }
 
   /**
@@ -370,4 +644,3 @@ Outstanding tasks if mentioned
     return `${roleLabel}: ${message.content}`;
   }
 }
-

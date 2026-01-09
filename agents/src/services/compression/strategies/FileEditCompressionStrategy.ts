@@ -1,8 +1,13 @@
 import type { CompressionStrategy, CompressionContext } from '../MessageCompressor.js';
-import type { LLMMessage } from '../../ConversationHistoryLoader.js';
+import {
+  type LLMMessage,
+  type AIToolMessage,
+  type ToolResultPart,
+  isAIToolMessage,
+  isOpenAIMessage,
+} from '../../ConversationHistoryLoader.js';
 import type { HotFileInclusionStrategy } from './HotFileInclusionStrategy.js';
 import { logger } from '../../../logging/index.js';
-import type { ToolModelMessage } from 'ai';
 
 export class FileEditCompressionStrategy implements CompressionStrategy {
   readonly name = 'file-edit-compression';
@@ -20,72 +25,82 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
   canCompress(context: CompressionContext): boolean {
     const { message, previousMessage } = context;
 
-    if (message.role !== 'tool') {
-      return false;
-    }
-
-    // Check AI SDK v6 ModelMessage format
-    const toolMessage = message as unknown as ToolModelMessage;
-    if (!Array.isArray(toolMessage.content) || toolMessage.content[0]?.type !== 'tool-result') {
-      return false;
-    }
-    
-    if (toolMessage.content[0].toolName !== 'fileEdit') {
-      return false;
-    }
-
     if (!this.hotFileStrategy) {
       return false;
     }
 
-    if (previousMessage?.role === 'assistant' && previousMessage.tool_calls) {
-      // Get tool call ID from AI SDK v6 format
-      const toolCallId = toolMessage.content[0].toolCallId;
-      const matchingToolCall = previousMessage.tool_calls.find(
-        (tc) => tc.id === toolCallId
-      );
+    // Handle AI SDK v6 format tool messages
+    if (isAIToolMessage(message)) {
+      const toolResult = message.content[0];
+      if (!toolResult || toolResult.toolName !== 'fileEdit') {
+        return false;
+      }
+      return this.checkToolCallForHotFiles(previousMessage, toolResult.toolCallId);
+    }
 
-      if (matchingToolCall) {
-        // Parse arguments - this can legitimately fail with malformed JSON
-        let args;
-        try {
-          args = JSON.parse(matchingToolCall.function.arguments);
-        } catch (error) {
-          // JSON parse failures may indicate integration issues
-          logger.warn('compression.file.edit.parse.failed', {
-            toolCallId: matchingToolCall.id,
-            error: error instanceof Error ? error.message : String(error),
-          });
-          return false;
-        }
+    // Handle OpenAI format tool messages (from convertToLLMMessages)
+    if (message.role === 'tool' && isOpenAIMessage(message) && message.name === 'fileEdit') {
+      const toolCallId = message.tool_call_id;
+      if (toolCallId) {
+        return this.checkToolCallForHotFiles(previousMessage, toolCallId);
+      }
+    }
 
-        // Check if compression is applicable - this should not fail
-        try {
-          // Check batch operations format (new format)
-          if (args.operations && Array.isArray(args.operations)) {
-            for (const op of args.operations) {
-              const filePath: string | undefined = op.path || op.file_path || op.filePath;
-              if (filePath && this.hotFileStrategy.isHotFile(filePath)) {
-                return true;
-              }
-            }
-          } else {
-            // Check single operation format (legacy format from old conversations)
-            const filePath: string | undefined = args.path || args.file_path || args.filePath;
-            if (filePath && this.hotFileStrategy.isHotFile(filePath)) {
-              return true;
-            }
+    return false;
+  }
+
+  /**
+   * Check if the tool call arguments reference a hot file
+   */
+  private checkToolCallForHotFiles(previousMessage: LLMMessage | undefined, toolCallId: string): boolean {
+    if (!previousMessage || previousMessage.role !== 'assistant' || !isOpenAIMessage(previousMessage) || !previousMessage.tool_calls) {
+      return false;
+    }
+
+    const matchingToolCall = previousMessage.tool_calls.find(
+      (tc) => tc.id === toolCallId
+    );
+
+    if (!matchingToolCall) {
+      return false;
+    }
+
+    // Parse arguments - this can legitimately fail with malformed JSON
+    let args;
+    try {
+      args = JSON.parse(matchingToolCall.function.arguments);
+    } catch (error) {
+      logger.warn('compression.file.edit.parse.failed', {
+        toolCallId: matchingToolCall.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+
+    // Check if compression is applicable
+    try {
+      // Check batch operations format (new format)
+      if (args.operations && Array.isArray(args.operations)) {
+        for (const op of args.operations) {
+          const filePath: string | undefined = op.path || op.file_path || op.filePath;
+          if (filePath && this.hotFileStrategy?.isHotFile(filePath)) {
+            return true;
           }
-        } catch (error) {
-          // This shouldn't happen - indicates a bug in canCompress logic
-          logger.error('compression.file.edit.can.compress.error', {
-            toolCallId: matchingToolCall.id,
-            error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-          });
-          return false;
+        }
+      } else {
+        // Check single operation format (legacy format from old conversations)
+        const filePath: string | undefined = args.path || args.file_path || args.filePath;
+        if (filePath && this.hotFileStrategy?.isHotFile(filePath)) {
+          return true;
         }
       }
+    } catch (error) {
+      logger.error('compression.file.edit.can.compress.error', {
+        toolCallId: matchingToolCall.id,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      return false;
     }
 
     return false;
@@ -94,17 +109,32 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
   compress(context: CompressionContext): LLMMessage | null {
     const { message, previousMessage } = context;
 
-    if (!previousMessage?.tool_calls) {
+    if (!previousMessage || !isOpenAIMessage(previousMessage) || !previousMessage.tool_calls) {
       return null;
     }
 
-    // Get tool call ID from AI SDK v6 format
-    const toolMessage = message as unknown as ToolModelMessage;
-    if (!Array.isArray(toolMessage.content) || toolMessage.content[0]?.type !== 'tool-result') {
+    // Get toolCallId and original content based on message format
+    let toolCallId: string;
+    let originalContent: string;
+    const isV6Format = isAIToolMessage(message);
+
+    if (isV6Format) {
+      const toolResult = message.content[0];
+      if (!toolResult) {
+        return null;
+      }
+      toolCallId = toolResult.toolCallId;
+      const output = toolResult.output;
+      originalContent = output && typeof output === 'object' && 'type' in output && output.type === 'text' && 'value' in output
+        ? (output as { type: 'text'; value: string }).value
+        : '';
+    } else if (isOpenAIMessage(message) && message.role === 'tool' && message.tool_call_id) {
+      toolCallId = message.tool_call_id;
+      originalContent = message.content;
+    } else {
       return null;
     }
-    
-    const toolCallId = toolMessage.content[0].toolCallId;
+
     const matchingToolCall = previousMessage.tool_calls.find(
       (tc) => tc.id === toolCallId
     );
@@ -118,7 +148,6 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
     try {
       args = JSON.parse(matchingToolCall.function.arguments);
     } catch (error) {
-      // JSON parse failures may indicate integration issues
       logger.warn('compression.file.edit.parse.failed', {
         toolCallId: matchingToolCall.id,
         error: error instanceof Error ? error.message : String(error),
@@ -126,8 +155,10 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
       return null;
     }
 
-    // Process the compression logic - this should not fail, but handle defensively
+    // Process the compression logic
     try {
+      let summary: string;
+
       // Handle batch operations format (new format)
       if (args.operations && Array.isArray(args.operations)) {
         const hotFileOps = args.operations.filter((op: any) => {
@@ -139,7 +170,7 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
           return null;
         }
 
-        const summary =
+        summary =
           `Files edited (${hotFileOps.length} hot files):\n` +
           hotFileOps.map((op: any) => {
             const filePath = op.path || op.file_path || op.filePath;
@@ -149,22 +180,11 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
           `\n\n[Full file content available in hot files context]\n` +
           `[Edit details compressed - files are included in hot files]`;
 
-        // Calculate original length from AI SDK v6 format
-        const output = toolMessage.content[0].output;
-        const originalLength = output && typeof output === 'object' && 'type' in output && output.type === 'text' && 'value' in output
-          ? output.value.length
-          : 0;
-        
         logger.debug('compression.file.edit.compressed', {
           fileCount: hotFileOps.length,
-          originalLength,
+          originalLength: originalContent.length,
           compressedLength: summary.length,
         });
-
-        return {
-          ...message,
-          content: summary,
-        };
       } else {
         // Handle single operation format (legacy format from old conversations)
         const filePath: string | undefined = args.path || args.file_path || args.filePath;
@@ -180,41 +200,49 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
         }
 
         let linesChanged = 0;
-        // Extract output content from AI SDK v6 format
-        const output = toolMessage.content[0].output;
-        if (output && typeof output === 'object' && 'type' in output && output.type === 'text' && 'value' in output) {
-          const linesMatch = output.value.match(/(\d+)\s+lines?\s+changed/i);
-          if (linesMatch && linesMatch[1]) {
-            linesChanged = parseInt(linesMatch[1], 10);
-          }
+        const linesMatch = originalContent.match(/(\d+)\s+lines?\s+changed/i);
+        if (linesMatch && linesMatch[1]) {
+          linesChanged = parseInt(linesMatch[1], 10);
         }
 
-        const summary =
+        summary =
           `File edited: ${filePath}\n` +
           `Mode: ${mode}\n` +
           `Lines changed: ${linesChanged > 0 ? linesChanged : 'unknown'}\n\n` +
           `[Full file content available in hot files context]\n` +
           `[Edit details compressed - file is included in hot files]`;
 
-        const outputLength = output && typeof output === 'object' && 'type' in output && output.type === 'text' && 'value' in output
-          ? output.value.length
-          : 0;
-        
         logger.debug('compression.file.edit.compressed', {
           filePath,
           mode,
           linesChanged,
-          originalLength: outputLength,
+          originalLength: originalContent.length,
           compressedLength: summary.length,
         });
+      }
 
+      // Return in same format as input
+      if (isV6Format && isAIToolMessage(message)) {
+        const toolResult = message.content[0];
+        const compressedResult: ToolResultPart = {
+          type: 'tool-result',
+          toolCallId: toolResult!.toolCallId,
+          toolName: toolResult!.toolName,
+          output: { type: 'text', value: summary }
+        };
+        return { role: 'tool', content: [compressedResult] } as AIToolMessage;
+      } else if (isOpenAIMessage(message) && message.name) {
+        // Return OpenAI format for OpenAI input
         return {
-          ...message,
+          role: 'tool',
           content: summary,
+          tool_call_id: toolCallId,
+          name: message.name,
         };
       }
+
+      return null;
     } catch (error) {
-      // This shouldn't happen - indicates a bug in compression logic
       logger.error('compression.file.edit.unexpected.error', {
         toolCallId: matchingToolCall.id,
         error: error instanceof Error ? error.message : String(error),

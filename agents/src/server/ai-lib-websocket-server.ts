@@ -308,12 +308,20 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     const { initializeBackgroundSummarization } = await import('../services/summarization/index.js')
     
     // Initialize background summarization once at startup
-    // Lower threshold (10k tokens) + keep recent 3 turns = more aggressive summarization
-    // Uses 'fast' model for summarization automatically
+    // Aggressive settings for timely summarization:
+    // - 5k token threshold (down from 10k): Triggers summarization sooner to capture
+    //   file-level details before they're lost in compression. Earlier summarization
+    //   means better context preservation with the new tool call extraction.
+    // - keepRecentTurns: 2 (down from 3): With improved summarization quality (file names,
+    //   structured tool details), we can safely keep fewer unsummarized turns while
+    //   maintaining context quality. This balances token budget with context freshness.
+    // - Uses 'full' model tier (Sonnet) for high-quality, cost-effective summarization
+    //   (Sonnet produces 6x better compression than Haiku, cheaper overall)
+    // - Trade-off: More frequent summarization calls vs. better context preservation
     await initializeBackgroundSummarization({
-      tokenThreshold: 10000,
+      tokenThreshold: 5000,
       debounceMs: 10000,
-      keepRecentTurns: 3, // Keep last 3 user prompts + responses unsummarized
+      keepRecentTurns: 2, // Keep last 2 user prompts + responses unsummarized
       strategy: 'detailed-llm', // Options: 'llm' (baseline), 'detailed-llm' (structured with API/DB/Pages)
     })
 

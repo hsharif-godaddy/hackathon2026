@@ -5,6 +5,7 @@
 
 import type { ModelMessage, ToolModelMessage, UserModelMessage, AssistantModelMessage } from 'ai'
 import { ConversationContextManager } from '../../services/ConversationContextManager.js'
+import { isAIToolMessage, isOpenAIMessage, getMessageContent } from '../../services/ConversationHistoryLoader.js'
 import { AppContextManager } from '../../services/AppContextManager.js'
 import { conversationRepository } from '../../database/repositories/index.js'
 import type { EnhancedAgentContext, ContextMessage, ContextGenerationConfig, AgentContextPreferences } from './types.js'
@@ -209,39 +210,66 @@ export class AILibContextManager {
 
                 // Convert tool messages to AI SDK v6 ToolModelMessage format
                 if (msg.role === 'tool') {
-                    // Skip tool messages with empty content
-                    if (!msg.content || msg.content.trim() === '') {
-                        logger.warn('context.conversation_history.skipping_empty_tool_message', {
-                            toolCallId: msg.tool_call_id,
-                            toolName: msg.name
-                        })
+                    // If already in AI SDK v6 format
+                    if (isAIToolMessage(msg)) {
+                        const toolResult = msg.content[0]
+                        const content = getMessageContent(msg)
+                        if (!content || content.trim() === '') {
+                            logger.warn('context.conversation_history.skipping_empty_tool_message', {
+                                toolCallId: toolResult?.toolCallId,
+                                toolName: toolResult?.toolName
+                            })
+                            continue
+                        }
+                        const toolMessage: ToolModelMessage = {
+                            role: 'tool',
+                            content: [{
+                                type: 'tool-result',
+                                toolCallId: toolResult?.toolCallId ?? '',
+                                toolName: toolResult?.toolName ?? '',
+                                output: { type: 'text', value: content }
+                            }]
+                        }
+                        messages.push(toolMessage)
                         continue
                     }
-                    
-                    // Skip tool messages without required IDs
-                    if (!msg.tool_call_id || !msg.name) {
-                        logger.warn('context.conversation_history.skipping_tool_message_missing_ids', {
-                            toolCallId: msg.tool_call_id,
-                            toolName: msg.name,
-                            reason: 'Tool message missing required tool_call_id or name'
-                        })
+
+                    // Handle OpenAI format tool messages
+                    if (isOpenAIMessage(msg)) {
+                        // Skip tool messages with empty content
+                        if (!msg.content || msg.content.trim() === '') {
+                            logger.warn('context.conversation_history.skipping_empty_tool_message', {
+                                toolCallId: msg.tool_call_id,
+                                toolName: msg.name
+                            })
+                            continue
+                        }
+
+                        // Skip tool messages without required IDs
+                        if (!msg.tool_call_id || !msg.name) {
+                            logger.warn('context.conversation_history.skipping_tool_message_missing_ids', {
+                                toolCallId: msg.tool_call_id,
+                                toolName: msg.name,
+                                reason: 'Tool message missing required tool_call_id or name'
+                            })
+                            continue
+                        }
+
+                        const toolMessage: ToolModelMessage = {
+                            role: 'tool',
+                            content: [{
+                                type: 'tool-result',
+                                toolCallId: msg.tool_call_id,
+                                toolName: msg.name,
+                                output: {
+                                    type: 'text',
+                                    value: msg.content
+                                }
+                            }]
+                        }
+                        messages.push(toolMessage)
                         continue
                     }
-                    
-                    const toolMessage: ToolModelMessage = {
-                        role: 'tool',
-                        content: [{
-                            type: 'tool-result',
-                            toolCallId: msg.tool_call_id,
-                            toolName: msg.name,
-                            output: {
-                                type: 'text',
-                                value: msg.content
-                            }
-                        }]
-                    }
-                    messages.push(toolMessage)
-                    continue
                 }
 
                 // Handle assistant messages with tool calls

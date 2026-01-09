@@ -1,5 +1,6 @@
 import type { SummarizationContext, SummarizationResult, SummarizationStrategy } from './SummarizationStrategy.js';
 import { countTokens } from '../../utils/token-counter.js';
+import { type LLMMessage, isOpenAIMessage, getMessageContent } from '../ConversationHistoryLoader.js';
 
 /**
  * Simple non-LLM summarization strategy for testing
@@ -48,26 +49,27 @@ export class SimpleSummarizationStrategy implements SummarizationStrategy {
 
   /**
    * Format messages into a readable summary text
-   * 
+   *
    * @param messages - Messages to format
    * @returns Formatted text string
    */
-  private formatMessages(messages: Array<{ role: string; content?: string; tool_calls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }> }>): string {
+  private formatMessages(messages: LLMMessage[]): string {
     const parts: string[] = [];
 
     for (const msg of messages) {
-      if (msg.role === 'user' && msg.content) {
-        parts.push(`User: ${msg.content.trim()}`);
+      const content = getMessageContent(msg);
+      if (msg.role === 'user' && content) {
+        parts.push(`User: ${content.trim()}`);
       } else if (msg.role === 'assistant') {
-        if (msg.content) {
-          parts.push(`Assistant: ${msg.content.trim()}`);
+        if (content) {
+          parts.push(`Assistant: ${content.trim()}`);
         }
-        if (msg.tool_calls && msg.tool_calls.length > 0) {
-          const toolNames = msg.tool_calls.map((tc: any) => tc.function?.name || 'unknown').join(', ');
+        if (isOpenAIMessage(msg) && msg.tool_calls && msg.tool_calls.length > 0) {
+          const toolNames = msg.tool_calls.map((tc) => tc.function?.name || 'unknown').join(', ');
           parts.push(`Assistant used tools: ${toolNames}`);
         }
-      } else if (msg.role === 'tool' && msg.content) {
-        parts.push(`Tool result: ${msg.content.substring(0, 200)}${msg.content.length > 200 ? '...' : ''}`);
+      } else if (msg.role === 'tool' && content) {
+        parts.push(`Tool result: ${content.substring(0, 200)}${content.length > 200 ? '...' : ''}`);
       }
     }
 

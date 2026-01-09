@@ -10,9 +10,27 @@ import type { SummarizationStrategy } from './summarization/SummarizationStrateg
 import { LLMSummarizationStrategy } from './summarization/LLMSummarizationStrategy.js';
 
 /**
- * LLM message format for OpenAI-style APIs
+ * Tool result part in AI SDK v6 format
  */
-export interface LLMMessage {
+export interface ToolResultPart {
+  type: 'tool-result';
+  toolCallId: string;
+  toolName: string;
+  output: { type: 'text'; value: string } | unknown;
+}
+
+/**
+ * Tool message in AI SDK v6 format
+ */
+export interface AIToolMessage {
+  role: 'tool';
+  content: ToolResultPart[];
+}
+
+/**
+ * OpenAI-style message format (used for user/assistant/system messages)
+ */
+export interface OpenAIMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
   tool_calls?: Array<{
@@ -25,6 +43,58 @@ export interface LLMMessage {
   }>;
   tool_call_id?: string;
   name?: string;
+  metadata?: {
+    isSummary?: boolean;
+    isOperationLog?: boolean;
+  };
+}
+
+/**
+ * LLM message format - union of OpenAI format and AI SDK v6 tool format
+ * Tool messages at runtime use AIToolMessage format, others use OpenAIMessage
+ */
+export type LLMMessage = OpenAIMessage | AIToolMessage;
+
+/**
+ * Type guard for AI SDK v6 tool messages
+ */
+export function isAIToolMessage(message: LLMMessage): message is AIToolMessage {
+  return message.role === 'tool' &&
+    Array.isArray(message.content) &&
+    message.content.length > 0 &&
+    message.content[0]?.type === 'tool-result';
+}
+
+/**
+ * Type guard for tool-result parts
+ */
+export function isToolResultPart(part: unknown): part is ToolResultPart {
+  return typeof part === 'object' &&
+    part !== null &&
+    'type' in part &&
+    part.type === 'tool-result';
+}
+
+/**
+ * Type guard for OpenAI-style messages (non-tool or legacy tool format)
+ */
+export function isOpenAIMessage(message: LLMMessage): message is OpenAIMessage {
+  return typeof message.content === 'string';
+}
+
+/**
+ * Get content as string from either message format
+ */
+export function getMessageContent(message: LLMMessage): string {
+  if (isOpenAIMessage(message)) {
+    return message.content;
+  }
+  // For AI tool messages, extract text from first tool result
+  const firstResult = message.content[0];
+  if (firstResult?.output && typeof firstResult.output === 'object' && 'type' in firstResult.output && firstResult.output.type === 'text') {
+    return (firstResult.output as { type: 'text'; value: string }).value;
+  }
+  return '';
 }
 
 /**
@@ -357,14 +427,18 @@ export class ConversationHistoryLoader {
     });
 
     // Separate summary messages from regular messages
-    // Summaries are user messages that start with [CONVERSATION SUMMARY]
+    // Check metadata first, fall back to content prefix for backward compatibility
     const summaryMessages: LLMMessage[] = [];
     const regularMessages: LLMMessage[] = [];
-    
+
     for (const message of llmMessages) {
-      if (message.role === 'user' && 
-          typeof message.content === 'string' && 
-          message.content.startsWith('[CONVERSATION SUMMARY]')) {
+      const isSummary =
+        (isOpenAIMessage(message) && (message.metadata?.isSummary || message.metadata?.isOperationLog)) ||
+        (message.role === 'user' &&
+         typeof message.content === 'string' &&
+         (message.content.startsWith('[CONVERSATION SUMMARY]') || message.content.startsWith('[OPERATION LOG')));
+
+      if (isSummary) {
         summaryMessages.push(message);
       } else {
         regularMessages.push(message);
@@ -388,7 +462,17 @@ export class ConversationHistoryLoader {
       } else {
         messageTokens = estimateTokens(messageContent);
       }
-      
+
+      // SAFETY CHECK: Warn if summary exceeds 50% of token limit
+      if (messageTokens > maxTokens * 0.5) {
+        logger.warn('conversation.history.summary_too_large', {
+          summaryTokens: messageTokens,
+          maxTokens,
+          percentageOfLimit: Math.round((messageTokens / maxTokens) * 100),
+          recommendation: 'Consider increasing maxTokens or forcing full re-summarization',
+        });
+      }
+
       limitedMessages.push(message);
       currentTokenCount += messageTokens;
     }
@@ -461,9 +545,9 @@ export class ConversationHistoryLoader {
    * Includes content, tool calls, and tool results
    */
   private serializeMessageForTokenCount(message: LLMMessage): string {
-    let serialized = message.content || '';
+    let serialized = getMessageContent(message);
 
-    if (message.tool_calls && message.tool_calls.length > 0) {
+    if (isOpenAIMessage(message) && message.tool_calls && message.tool_calls.length > 0) {
       serialized += '\n[Tool Calls]\n';
       for (const toolCall of message.tool_calls) {
         serialized += `${toolCall.function.name}: ${toolCall.function.arguments}\n`;
@@ -471,7 +555,12 @@ export class ConversationHistoryLoader {
     }
 
     if (message.role === 'tool') {
-      serialized += `\n[Tool Result: ${message.name}]\n${message.content}`;
+      if (isAIToolMessage(message)) {
+        const toolResult = message.content[0];
+        serialized += `\n[Tool Result: ${toolResult?.toolName}]\n${getMessageContent(message)}`;
+      } else if (isOpenAIMessage(message)) {
+        serialized += `\n[Tool Result: ${message.name}]\n${message.content}`;
+      }
     }
 
     return serialized;
@@ -758,6 +847,16 @@ export class ConversationHistoryLoader {
     let messageIndex = 0;
 
     if (latestSummary && summaryEndIndex !== -1) {
+      // Add operation log first (if available) - provides cumulative record of all operations
+      // This survives compression and ensures the agent sees what files were touched
+      if (latestSummary.operationLog) {
+        llmMessages.push({
+          role: 'user',
+          content: `[OPERATION LOG - Cumulative record of all work done]\n${latestSummary.operationLog}`,
+          metadata: { isOperationLog: true },
+        });
+      }
+
       // Add summary as user message (Anthropic doesn't support multiple system messages)
       // The latest summary contains the full cumulative summary text. Incremental summarization
       // updates this summary by including only new messages since the last summary, so the latest
@@ -765,6 +864,7 @@ export class ConversationHistoryLoader {
       llmMessages.push({
         role: 'user',
         content: `[CONVERSATION SUMMARY]\n${latestSummary.summaryText}`,
+        metadata: { isSummary: true },
       });
 
       // Skip all messages covered by the summary
@@ -798,67 +898,47 @@ export class ConversationHistoryLoader {
       messagesCovered: latestSummary ? summaryEndIndex + 1 : 0,
     });
 
-    // Disable compression when using summarization to avoid conflicts
-    if (latestSummary) {
-      logger.info('conversation.history.compression.disabled', {
-        appId,
-        reason: 'summarization_active',
-        message: 'Compression disabled when summarization is active to prevent conflicts',
-      });
-    } else if (enableCompression) {
-      const hotFileStrategy = this.getStrategy('hot-file-inclusion');
+    // CRITICAL: Hot files must ALWAYS be loaded and injected, regardless of summarization status
+    // The agent relies on hot file context for code edits - without it, edits become impossible
+    const hotFileStrategy = this.getStrategy('hot-file-inclusion');
+    let compressedMessages = llmMessages;
+
+    if (hotFileStrategy && appPath) {
+      (hotFileStrategy as any).setAppPath(appPath);
+
+      // Analyze ALL messages (including those before summary) to identify hot files
+      // This ensures files heavily accessed early in conversation are still included
+      const allLlmMessages = this.convertToLLMMessages(allMessages);
+      (hotFileStrategy as any).analyzeMessages(allLlmMessages);
 
       logger.debug('conversation.history.hot_files.strategy_check', {
         appId,
-        hasStrategy: !!hotFileStrategy,
-        hasAppPath: !!appPath,
+        hasStrategy: true,
+        hasAppPath: true,
         appPath,
+        hasSummary: !!latestSummary,
       });
+    }
 
-      if (hotFileStrategy && appPath) {
-        (hotFileStrategy as any).setAppPath(appPath);
-      }
+    // Apply compression strategies based on summarization status
+    if (latestSummary) {
+      // When summarization is active, only run removal strategies for correctness
+      // (removes stale app context, todoList entries, etc.)
+      const removalResult = this.compressor.compressMessages(llmMessages, 'removal');
+      compressedMessages = removalResult.messages;
 
+      logger.info('conversation.history.removal_only.applied', {
+        appId,
+        reason: 'summarization_active',
+        originalMessages: removalResult.stats.totalMessages,
+        afterRemoval: removalResult.messages.length,
+        removedMessages: removalResult.stats.totalMessages - removalResult.messages.length,
+        strategiesUsed: removalResult.stats.strategiesUsed,
+      });
+    } else if (enableCompression) {
+      // When summarization is not active, run all compression strategies
       const compressionResult = this.compressor.compressMessages(llmMessages);
-      const compressedMessages = compressionResult.messages;
-
-      if (hotFileStrategy && appPath) {
-        await (hotFileStrategy as any).loadHotFilesContent();
-        const hotFilesList = (hotFileStrategy as any).getHotFilesList();
-        const hotFilesMessage = (hotFileStrategy as any).getHotFilesMessage();
-
-        logger.debug('conversation.history.hot_files.load_result', {
-          appId,
-          totalHotFiles: hotFilesList.length,
-          hasMessage: !!hotFilesMessage,
-          messageLength: hotFilesMessage?.length || 0,
-        });
-
-        if (hotFilesMessage) {
-          compressedMessages.unshift({
-            role: 'user',
-            content: hotFilesMessage,
-          });
-
-          logger.info('conversation.history.hot_files.injected', {
-            appId,
-            hotFiles: hotFilesList.length,
-            messageLength: hotFilesMessage.length,
-          });
-        } else if (hotFilesList.length > 0) {
-          logger.warn('conversation.history.hot_files.no_message', {
-            appId,
-            hotFilesCount: hotFilesList.length,
-            reason: 'Hot files identified but no message generated',
-          });
-        }
-      } else {
-        logger.warn('conversation.history.hot_files.skipped', {
-          appId,
-          hasStrategy: !!hotFileStrategy,
-          hasAppPath: !!appPath,
-        });
-      }
+      compressedMessages = compressionResult.messages;
 
       logger.info('conversation.history.compression.applied', {
         appId,
@@ -870,11 +950,51 @@ export class ConversationHistoryLoader {
         savedBytes: compressionResult.stats.originalTotalLength - compressionResult.stats.compressedTotalLength,
         strategiesUsed: compressionResult.stats.strategiesUsed,
       });
-
-      return this.applyTokenLimit(compressedMessages, maxTokens, modelName);
     }
 
-    return this.applyTokenLimit(llmMessages, maxTokens, modelName);
+    // ALWAYS inject hot files context (regardless of summarization status)
+    // This provides the agent with current file contents for making edits
+    if (hotFileStrategy && appPath) {
+      await (hotFileStrategy as any).loadHotFilesContent();
+      const hotFilesList = (hotFileStrategy as any).getHotFilesList();
+      const hotFilesMessage = (hotFileStrategy as any).getHotFilesMessage();
+
+      logger.debug('conversation.history.hot_files.load_result', {
+        appId,
+        totalHotFiles: hotFilesList.length,
+        hasMessage: !!hotFilesMessage,
+        messageLength: hotFilesMessage?.length || 0,
+        hasSummary: !!latestSummary,
+      });
+
+      if (hotFilesMessage) {
+        compressedMessages.unshift({
+          role: 'user',
+          content: hotFilesMessage,
+        });
+
+        logger.info('conversation.history.hot_files.injected', {
+          appId,
+          hotFiles: hotFilesList.length,
+          messageLength: hotFilesMessage.length,
+          hasSummary: !!latestSummary,
+        });
+      } else if (hotFilesList.length > 0) {
+        logger.warn('conversation.history.hot_files.no_message', {
+          appId,
+          hotFilesCount: hotFilesList.length,
+          reason: 'Hot files identified but no message generated',
+        });
+      }
+    } else if (appPath) {
+      logger.warn('conversation.history.hot_files.skipped', {
+        appId,
+        hasStrategy: !!hotFileStrategy,
+        hasAppPath: !!appPath,
+      });
+    }
+
+    return this.applyTokenLimit(compressedMessages, maxTokens, modelName);
   }
 
   /**
@@ -986,46 +1106,79 @@ export class ConversationHistoryLoader {
     for (let i = 0; i < llmMessages.length; i++) {
       const msg = llmMessages[i];
       if (!msg) continue;
-      
+
       // Convert tool messages to AI SDK v6 ToolModelMessage format
       if (msg.role === 'tool') {
-        // Skip tool messages with empty content
-        if (!msg.content || msg.content.trim() === '') {
-          logger.warn('conversation.history.loader.skipping_empty_tool_message', {
-            appId,
-            agentId,
-            toolCallId: msg.tool_call_id,
-            toolName: msg.name
-          });
+        // Normalize AI SDK v6 tool message into canonical ToolModelMessage format for type safety
+        if (isAIToolMessage(msg)) {
+          const toolResult = msg.content[0];
+          const content = getMessageContent(msg);
+          if (!content || content.trim() === '') {
+            logger.warn('conversation.history.loader.skipping_empty_tool_message', {
+              appId,
+              agentId,
+              toolCallId: toolResult?.toolCallId,
+              toolName: toolResult?.toolName
+            });
+            continue;
+          }
+          // Convert to AI SDK ToolModelMessage to ensure type compatibility
+          const toolMessage: ToolModelMessage = {
+            role: 'tool',
+            content: [{
+              type: 'tool-result',
+              toolCallId: toolResult?.toolCallId ?? '',
+              toolName: toolResult?.toolName ?? '',
+              output: {
+                type: 'text',
+                value: content
+              }
+            }]
+          };
+          formattedMessages.push(toolMessage);
           continue;
         }
-        
-        // Skip tool messages without required IDs
-        if (!msg.tool_call_id || !msg.name) {
-          logger.warn('conversation.history.loader.skipping_tool_message_missing_ids', {
-            appId,
-            agentId,
-            toolCallId: msg.tool_call_id,
-            toolName: msg.name,
-            reason: 'Tool message missing required tool_call_id or name'
-          });
+
+        // Handle OpenAI format tool messages
+        if (isOpenAIMessage(msg)) {
+          // Skip tool messages with empty content
+          if (!msg.content || msg.content.trim() === '') {
+            logger.warn('conversation.history.loader.skipping_empty_tool_message', {
+              appId,
+              agentId,
+              toolCallId: msg.tool_call_id,
+              toolName: msg.name
+            });
+            continue;
+          }
+
+          // Skip tool messages without required IDs
+          if (!msg.tool_call_id || !msg.name) {
+            logger.warn('conversation.history.loader.skipping_tool_message_missing_ids', {
+              appId,
+              agentId,
+              toolCallId: msg.tool_call_id,
+              toolName: msg.name,
+              reason: 'Tool message missing required tool_call_id or name'
+            });
+            continue;
+          }
+
+          const toolMessage: ToolModelMessage = {
+            role: 'tool',
+            content: [{
+              type: 'tool-result',
+              toolCallId: msg.tool_call_id,
+              toolName: msg.name,
+              output: {
+                type: 'text',
+                value: msg.content
+              }
+            }]
+          };
+          formattedMessages.push(toolMessage);
           continue;
         }
-        
-        const toolMessage: ToolModelMessage = {
-          role: 'tool',
-          content: [{
-            type: 'tool-result',
-            toolCallId: msg.tool_call_id,
-            toolName: msg.name,
-            output: {
-              type: 'text',
-              value: msg.content
-            }
-          }]
-        };
-        formattedMessages.push(toolMessage);
-        continue;
       }
       
       // Handle system messages
