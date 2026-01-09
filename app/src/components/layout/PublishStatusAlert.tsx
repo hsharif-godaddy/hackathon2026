@@ -233,8 +233,8 @@ export default function PublishStatusAlert() {
           onClose={handleDismiss}
           actions={
             <div className='flex gap-1'>
-              <Button design='secondary' onClick={handleTryAgain}>{t('builder_publish_error_button_try_again')}</Button>
-              <Button design='primary' onClick={handleFixBuildError}>{t('builder_publish_error_button_fix')}</Button>
+              <Button design='secondary' onClick={handleTryAgain} text={t('builder_publish_error_button_try_again')} />
+              <Button design='primary' onClick={handleFixBuildError} text={t('builder_publish_error_button_fix')} />
             </div>
           }
         >
@@ -259,7 +259,7 @@ export default function PublishStatusAlert() {
         <Alert
           emphasis='critical'
           onClose={handleDismiss}
-          actions={<Button design='primary' onClick={handleTryAgain}>{t('builder_publish_error_button_try_again')}</Button>}
+          actions={<Button design='primary' onClick={handleTryAgain} text={t('builder_publish_error_button_try_again')} />}
         >
           <div className='font-semibold'>{t('builder_publish_failed_title')}</div>
           <div className='text-sm mt-0.5'>{t('builder_publish_failed_message')}</div>

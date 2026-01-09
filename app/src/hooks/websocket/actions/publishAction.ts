@@ -7,6 +7,8 @@
 
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
+import { checkPaywallEligibility } from '@/lib/paywall/core'
+import { ClientPaywallProvider } from '@/lib/paywall/client-provider'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
@@ -21,6 +23,25 @@ export const publishAction: ClientActionExecutor = async (params, context) => {
   }
 
   try {
+    // Check paywall eligibility using core algorithm with client provider
+    const provider = new ClientPaywallProvider()
+    const { hasAccess, reason } = await checkPaywallEligibility(appId, provider)
+    if (!hasAccess) {
+      logger.warn('publish-action.access-denied', { appId, reason })
+
+      // Show paywall modal
+      try {
+        const store = useDevelopPageStore.getState()
+        store.setShowPaywallModal(appId, true)
+      } catch (storeError) {
+        logger.warn('publish-action.paywall-modal-trigger-failed', {
+          appId,
+          error: storeError instanceof Error ? storeError.message : String(storeError),
+        })
+      }
+
+      throw new Error(reason || 'You need an Airo Plus subscription to publish. Upgrade to continue.')
+    }
     // Clear any previous publish errors and set publishing state (matches UI behavior)
     // This immediately updates the button text to "Publishing..."
     try {

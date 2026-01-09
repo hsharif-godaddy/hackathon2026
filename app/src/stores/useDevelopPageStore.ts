@@ -51,6 +51,7 @@ interface DevelopPageStore {
     deploymentsRefetch: (() => Promise<any>) | null
     deploymentInProgressId: string | null
     showSuccessAlert: boolean
+    showPaywallModal: boolean
   }>
 
   // Page loading orchestration
@@ -95,6 +96,7 @@ interface DevelopPageStore {
   setPublishSuccess: (appId: string, showSuccess: boolean) => void
   dismissPublishSuccess: (appId: string) => void
   clearPublishStatus: (appId: string) => void
+  setShowPaywallModal: (appId: string, show: boolean) => void
   getPublishState: (appId: string) => {
     isPublishing: boolean
     publishError: boolean
@@ -271,6 +273,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         deploymentsRefetch: null,
         deploymentInProgressId: null,
         showSuccessAlert: false,
+        showPaywallModal: false,
       };
     },
     setIsPublishing: (appId: string, isPublishing: boolean) => set((state) => {
@@ -283,6 +286,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           deploymentsRefetch: null,
           deploymentInProgressId: null,
           showSuccessAlert: false,
+          showPaywallModal: false,
         };
       }
       state.publishStates[appId].isPublishing = isPublishing;
@@ -297,6 +301,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           deploymentsRefetch: null,
           deploymentInProgressId: null,
           showSuccessAlert: false,
+          showPaywallModal: false,
         };
       }
       state.publishStates[appId].publishError = hasError;
@@ -311,6 +316,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           deploymentsRefetch: null,
           deploymentInProgressId: null,
           showSuccessAlert: false,
+          showPaywallModal: false,
         };
       }
       state.publishStates[appId].buildErrorDetails = errorDetails;
@@ -325,6 +331,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           deploymentsRefetch: null,
           deploymentInProgressId: null,
           showSuccessAlert: false,
+          showPaywallModal: false,
         };
       }
       state.publishStates[appId].lastPublishedCommitHash = commitHash;
@@ -339,6 +346,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           deploymentsRefetch: null,
           deploymentInProgressId: null,
           showSuccessAlert: false,
+          showPaywallModal: false,
         };
       }
       state.publishStates[appId].deploymentsRefetch = refetch;
@@ -353,6 +361,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           deploymentsRefetch: null,
           deploymentInProgressId: null,
           showSuccessAlert: false,
+          showPaywallModal: false,
         };
       }
       state.publishStates[appId].deploymentInProgressId = deploymentId;
@@ -367,6 +376,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           deploymentsRefetch: null,
           deploymentInProgressId: null,
           showSuccessAlert: false,
+          showPaywallModal: false,
         };
       }
       state.publishStates[appId].showSuccessAlert = showSuccess;
@@ -387,6 +397,21 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId].showSuccessAlert = false;
         // Keep lastPublishedCommitHash and deploymentsRefetch for retry functionality
       }
+    }),
+    setShowPaywallModal: (appId: string, show: boolean) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = {
+          isPublishing: false,
+          publishError: false,
+          buildErrorDetails: null,
+          lastPublishedCommitHash: null,
+          deploymentsRefetch: null,
+          deploymentInProgressId: null,
+          showSuccessAlert: false,
+          showPaywallModal: false,
+        };
+      }
+      state.publishStates[appId].showPaywallModal = show;
     }),
 
     // Page loading orchestration

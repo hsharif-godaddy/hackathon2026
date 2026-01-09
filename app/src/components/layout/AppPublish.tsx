@@ -41,6 +41,12 @@ export default function AppPublish({ location }: { location?: string }) {
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
   const clearPublishStatus = useDevelopPageStore((state) => state.clearPublishStatus);
   const setDeploymentsRefetch = useDevelopPageStore((state) => state.setDeploymentsRefetch);
+  const setShowPaywallModal = useDevelopPageStore((state) => state.setShowPaywallModal);
+  const showPaywallModalFromStore = useDevelopPageStore((state) =>
+    currentAppId && state.publishStates[currentAppId]
+      ? state.publishStates[currentAppId].showPaywallModal
+      : false
+  );
   const [hasCompletedPurchase, setHasCompletedPurchase] = useState(false);
   const isPollingEntitlements = useDevelopPageStore((state) => state.isPollingEntitlements);
   const setIsPollingEntitlements = useDevelopPageStore((state) => state.setIsPollingEntitlements);
@@ -61,6 +67,9 @@ export default function AppPublish({ location }: { location?: string }) {
 
   const handlePurchaseSuccess = async () => {
     setShowAiroPlusPaywall(false);
+    if (currentAppId) {
+      setShowPaywallModal(currentAppId, false);
+    }
     setIsPollingEntitlements(true);
     const result = await entitlementPollingService.pollForEntitlements(currentAppId);
     setIsPollingEntitlements(false);
@@ -226,6 +235,17 @@ export default function AppPublish({ location }: { location?: string }) {
     }
   }, [currentAppId, refetch, setDeploymentsRefetch]);
 
+  // Sync store paywall modal state with local state
+  useEffect(() => {
+    setShowAiroPlusPaywall(showPaywallModalFromStore);
+    if (showPaywallModalFromStore) {
+      logger.info('app-publish.paywall-modal.triggered-from-store', {
+        appId: currentAppId,
+        message: 'Paywall modal triggered by AI publish action',
+      });
+    }
+  }, [showPaywallModalFromStore, currentAppId]);
+
   if (!isPublishButtonEnabled || !isDevelopPage || !currentAppId || !site?.agent_url) {
     return null;
   }
@@ -328,6 +348,7 @@ export default function AppPublish({ location }: { location?: string }) {
 
     // Show paywall only if not completed purchase and showPaywall is true
     const shouldShowPaywall = !hasCompletedPurchase && showPaywall;
+
     if (isAiroPlusPaywallEnabled && isPaywallEnabledInMarket && shouldShowPaywall && open) {
       setShowAiroPlusPaywall(true);
       shipAnalyticsLog('airoplus.paywall.shown', {
@@ -345,6 +366,9 @@ export default function AppPublish({ location }: { location?: string }) {
       <SinglePlanUpgradeContainer
         onErrorClick={async () => {
           setShowAiroPlusPaywall(false);
+          if (currentAppId) {
+            setShowPaywallModal(currentAppId, false);
+          }
           shipAnalyticsLog('airoplus.paywall.error', {
             appId: currentAppId,
             appName: site?.name
@@ -352,6 +376,9 @@ export default function AppPublish({ location }: { location?: string }) {
         }}
         onClose={() => {
           setShowAiroPlusPaywall(false);
+          if (currentAppId) {
+            setShowPaywallModal(currentAppId, false);
+          }
           shipAnalyticsLog('airoplus.paywall.dismissed', {
             appId: currentAppId,
             appName: site?.name

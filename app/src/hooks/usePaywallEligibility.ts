@@ -1,10 +1,9 @@
-import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
+import { ClientPaywallProvider } from '@/lib/paywall/client-provider';
+import { checkPaywallEligibility } from '@/lib/paywall/core';
 import { shipAnalyticsLog } from '@/lib/logging';
-import { useEntitlementsBySubscriptionId } from './useEntitlementsBySubscriptionId';
-import { useMatchingProject } from './useMatchingProject';
-import { useSubscriptionByAppId } from './useSubscriptionByAppId';
 import { useUpdateEntitlement } from './useUpdateEntitlement';
 
 interface PaywallEligibilityResult {
@@ -14,34 +13,60 @@ interface PaywallEligibilityResult {
 }
 
 export const usePaywallEligibility = (appId: string | undefined): PaywallEligibilityResult => {
-  // Use the individual React Query hooks
-  const { data: subscriptionData, isError: isSubscriptionError, error: subscriptionError } = useSubscriptionByAppId(appId);
-  const subscriptionId = subscriptionData?.subscription?.id;
+  // Use consolidated paywall check
+  const {
+    data: paywallResult,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: ['paywall-eligibility', appId],
+    queryFn: async () => {
+      if (!appId) {
+        return {
+          hasAccess: false,
+          details: {
+            hasSubscription: false,
+            hasEntitlements: false,
+            hasMatchingProject: false,
+          },
+        };
+      }
 
-  const { data: entitlementsData, isError: isEntitlementsError, error: entitlementsError } = useEntitlementsBySubscriptionId(subscriptionId);
-  const hasEntitlements = !!entitlementsData?.entitlementId;
-  const entitlementId = entitlementsData?.entitlementId;
-
-  const { data: matchingProjectData, isError: isMatchingProjectError, error: matchingProjectError } = useMatchingProject();
+      const provider = new ClientPaywallProvider();
+      const result = await checkPaywallEligibility(appId, provider);
+      return result;
+    },
+    enabled: !!appId,
+    staleTime: 30000, // Consider data fresh for 30 seconds
+    refetchOnWindowFocus: true,
+  });
 
   const {
     mutate: updateEntitlement,
     isPending: isUpdating,
     isSuccess: hasUpdated,
-    isError: updateFailed
+    isError: updateFailed,
   } = useUpdateEntitlement();
 
+  // Extract details from result
+  const hasEntitlements = paywallResult?.details.hasEntitlements ?? false;
+  const hasMatchingProject = paywallResult?.details.hasMatchingProject ?? false;
+  const subscriptionId = paywallResult?.details.subscriptionId;
+  const entitlementId = paywallResult?.details.entitlementId;
+  const billingId = paywallResult?.details.billingId;
+
   // Determine overall error state
-  const isError = isSubscriptionError || isEntitlementsError || isMatchingProjectError || updateFailed;
-  const error = subscriptionError || entitlementsError || matchingProjectError || null;
+  const hasError = isError || updateFailed;
+  const finalError = error || null;
 
   // Determine if we should trigger the auto-update
-  // All conditions must be met AND mutation must be idle (not pending, not completed, not failed)
+  // User has subscription + matching project but no entitlements yet
   const shouldAutoUpdate =
-    !!matchingProjectData?.billingId &&
+    !!billingId &&
     !!subscriptionId &&
     !hasEntitlements &&
-    !isError &&
+    hasMatchingProject &&
+    !hasError &&
     !isUpdating &&
     !hasUpdated &&
     !updateFailed;
@@ -53,7 +78,7 @@ export const usePaywallEligibility = (appId: string | undefined): PaywallEligibi
         appId,
         subscriptionId,
         entitlementId,
-        source: 'existing-entitlement'
+        source: 'existing-entitlement',
       });
     }
   }, [hasEntitlements, subscriptionId, appId, entitlementId]);
@@ -64,24 +89,22 @@ export const usePaywallEligibility = (appId: string | undefined): PaywallEligibi
     if (shouldAutoUpdate) {
       updateEntitlement({
         subscriptionId: subscriptionId!,
-        entitlementId: matchingProjectData!.billingId!,
-        appId
+        entitlementId: billingId!,
+        appId,
       });
     }
-  }, [shouldAutoUpdate, appId, subscriptionId, matchingProjectData, updateEntitlement]);
+  }, [shouldAutoUpdate, appId, subscriptionId, billingId, updateEntitlement]);
 
   // Determine if paywall should be shown
-  const hasValidSubscription = !!subscriptionData;
-  const hasMatchingProject = !!(matchingProjectData?.billingId && subscriptionId);
+  // Trust the consolidated check result, but allow in-progress updates
   const entitlementUpdateInProgress = isUpdating || hasUpdated;
+  const hasAccess = paywallResult?.hasAccess || entitlementUpdateInProgress;
 
-  // Show paywall unless user has access
-  const hasAccess = hasValidSubscription && (hasEntitlements || entitlementUpdateInProgress || hasMatchingProject);
-  const showPaywall = isError || !hasAccess;
+  const showPaywall = hasError || !hasAccess;
 
   return {
     showPaywall,
-    isError,
-    error: error as Error | null
+    isError: hasError,
+    error: finalError as Error | null,
   };
 };

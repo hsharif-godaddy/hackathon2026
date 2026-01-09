@@ -10,6 +10,8 @@ import {
   withCustomerAuth} from '@/lib/customer-auth';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
+import { checkPaywallEligibility } from '@/lib/paywall/core';
+import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
 
 /**
  * POST /api/apps/[id]/publish
@@ -94,6 +96,39 @@ export const POST = withCustomerAuth(
         return NextResponse.json(
           { error: 'Site not found' },
           { status: 404 }
+        );
+      }
+
+      // Check Airo Plus subscription eligibility (server-side enforcement)
+      // This prevents bypassing client-side checks via direct API calls
+      // Done AFTER ownership verification to prevent abuse
+      if (!authContext.jwt) {
+        return NextResponse.json(
+          { error: 'Authentication token required' },
+          { status: 401 }
+        );
+      }
+
+      const provider = new ServerPaywallProvider(authContext.jwt, user.customerId, request.headers);
+      const paywallCheck = await checkPaywallEligibility(siteId, provider);
+
+      if (!paywallCheck.hasAccess) {
+        logger.warn('site.publish.paywall-blocked', {
+          siteId,
+          reason: paywallCheck.reason,
+          details: paywallCheck.details,
+        });
+
+        // Determine status code based on check results
+        // 500 for server errors, 402 for subscription/payment issues
+        const statusCode = paywallCheck.reason === 'Unable to verify subscription status' ? 500 : 402;
+
+        return NextResponse.json(
+          {
+            error: paywallCheck.reason || 'Airo Plus subscription required',
+            details: paywallCheck.details,
+          },
+          { status: statusCode }
         );
       }
 

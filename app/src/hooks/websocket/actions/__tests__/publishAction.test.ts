@@ -39,10 +39,19 @@ vi.mock('@/lib/request-context', () => ({
   },
 }))
 
+vi.mock('@/lib/paywall/core', () => ({
+  checkPaywallEligibility: vi.fn(),
+}))
+
+vi.mock('@/lib/paywall/client-provider', () => ({
+  ClientPaywallProvider: vi.fn().mockImplementation(() => ({})),
+}))
+
 import { appFetch } from '@/lib/gasket-config'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
+import { checkPaywallEligibility } from '@/lib/paywall/core'
 
 describe('publishAction', () => {
   let mockStoreActions: any
@@ -59,6 +68,7 @@ describe('publishAction', () => {
       setPublishError: vi.fn(),
       setBuildErrorDetails: vi.fn(),
       setDeploymentInProgressId: vi.fn(),
+      setShowPaywallModal: vi.fn(),
     }
 
     vi.mocked(useDevelopPageStore.getState).mockReturnValue(mockStoreActions)
@@ -69,6 +79,16 @@ describe('publishAction', () => {
     }
 
     vi.mocked(getQueryClient).mockReturnValue(mockQueryClient)
+
+    // Default paywall eligibility - allow access
+    vi.mocked(checkPaywallEligibility).mockResolvedValue({
+      hasAccess: true,
+      details: {
+        hasSubscription: true,
+        hasEntitlements: true,
+        hasMatchingProject: false,
+      },
+    })
   })
 
   describe('parameter validation', () => {
@@ -101,6 +121,110 @@ describe('publishAction', () => {
       } as Response)
 
       await expect(publishAction(params, context)).resolves.toBeDefined()
+    })
+  })
+
+  describe('paywall eligibility', () => {
+    it('should check paywall eligibility before publishing', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ commitHash: 'abc123' }),
+      } as Response)
+
+      await publishAction(params, context)
+
+      expect(checkPaywallEligibility).toHaveBeenCalledWith('app-123', expect.any(Object))
+    })
+
+    it('should allow publish when user has access', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      vi.mocked(checkPaywallEligibility).mockResolvedValue({
+        hasAccess: true,
+        details: {
+          hasSubscription: true,
+          hasEntitlements: true,
+          hasMatchingProject: false,
+        },
+      })
+
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ commitHash: 'abc123' }),
+      } as Response)
+
+      await expect(publishAction(params, context)).resolves.toBeDefined()
+      expect(mockStoreActions.setShowPaywallModal).not.toHaveBeenCalled()
+    })
+
+    it('should block publish and show modal when user lacks access', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      vi.mocked(checkPaywallEligibility).mockResolvedValue({
+        hasAccess: false,
+        reason: 'Airo Plus subscription required',
+        details: {
+          hasSubscription: false,
+          hasEntitlements: false,
+          hasMatchingProject: false,
+        },
+      })
+
+      await expect(publishAction(params, context)).rejects.toThrow('Airo Plus subscription required')
+
+      // Verify modal was triggered
+      expect(mockStoreActions.setShowPaywallModal).toHaveBeenCalledWith('app-123', true)
+
+      // Verify publish API was NOT called
+      expect(appFetch).not.toHaveBeenCalledWith(
+        expect.stringContaining('/publish'),
+        expect.anything()
+      )
+    })
+
+    it('should show modal and throw error when no subscription found', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      vi.mocked(checkPaywallEligibility).mockResolvedValue({
+        hasAccess: false,
+        reason: 'No active subscription found',
+        details: {
+          hasSubscription: false,
+          hasEntitlements: false,
+          hasMatchingProject: false,
+        },
+      })
+
+      await expect(publishAction(params, context)).rejects.toThrow('No active subscription found')
+      expect(mockStoreActions.setShowPaywallModal).toHaveBeenCalledWith('app-123', true)
+    })
+
+    it('should continue gracefully if modal trigger fails', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      mockStoreActions.setShowPaywallModal.mockImplementation(() => {
+        throw new Error('Store error')
+      })
+
+      vi.mocked(checkPaywallEligibility).mockResolvedValue({
+        hasAccess: false,
+        reason: 'Airo Plus subscription required',
+        details: {
+          hasSubscription: false,
+          hasEntitlements: false,
+          hasMatchingProject: false,
+        },
+      })
+
+      // Should still throw the paywall error, not the store error
+      await expect(publishAction(params, context)).rejects.toThrow('Airo Plus subscription required')
     })
   })
 
