@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getAppDetails, init } from '@/lib/analytics/es-db';
+import { withAuth } from '@/lib/api-auth';
 
 let initialized = false;
 
@@ -11,14 +12,11 @@ async function ensureInitialized() {
   }
 }
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ appId: string }> }
-) {
+export const GET = withAuth<{ appId: string }>(async (request, auth, context) => {
   await ensureInitialized();
 
   try {
-    const { appId } = await params;
+    const { appId } = await context.params;
     const details = await getAppDetails(appId);
     return NextResponse.json(details);
   } catch (error) {
@@ -28,5 +26,4 @@ export async function GET(
       { status: 500 }
     );
   }
-}
-
+});

@@ -1,10 +1,31 @@
+// Track if we've already logged the bypass warning to avoid log spam
+let bypassWarningLogged = false;
+
 /**
- * Check if we're in local development environment
+ * Check if auth bypass is allowed
+ *
+ * Security: BYPASS_AUTH is ignored in production to prevent accidental exposure.
+ * Only NODE_ENV=development allows bypass, and we log a warning when it happens.
  */
-function isLocalEnv(): boolean {
+function shouldBypassAuth(): boolean {
     const nodeEnv = process.env.NODE_ENV;
     const bypassAuth = process.env.BYPASS_AUTH;
-    return nodeEnv === 'development' || bypassAuth === 'true' || bypassAuth === '1';
+
+    // Never allow bypass in production, regardless of BYPASS_AUTH setting
+    if (nodeEnv === 'production') {
+        if (bypassAuth === 'true' || bypassAuth === '1') {
+            console.error('[SECURITY] BYPASS_AUTH is set but ignored in production environment');
+        }
+        return false;
+    }
+
+    // In development, allow bypass
+    if (nodeEnv === 'development') {
+        return true;
+    }
+
+    // For test environment, only allow explicit bypass
+    return bypassAuth === 'true' || bypassAuth === '1';
 }
 
 /**
@@ -39,7 +60,11 @@ export class GdAuthService {
 
     async authenticate(token: string): Promise<{ valid: boolean; payload?: any; reason?: string }> {
         // Bypass auth in local development
-        if (isLocalEnv()) {
+        if (shouldBypassAuth()) {
+            if (!bypassWarningLogged) {
+                console.warn('[SECURITY] GdAuthService: Authentication bypass enabled. This should only occur in development.');
+                bypassWarningLogged = true;
+            }
             return {
                 valid: true,
                 payload: {
@@ -76,7 +101,7 @@ export class GdAuthService {
 
     extractTokenFromRequest(request: any): string | null {
         // In local env, return a dummy token to satisfy the flow
-        if (isLocalEnv()) {
+        if (shouldBypassAuth()) {
             return 'local-dev-token';
         }
 

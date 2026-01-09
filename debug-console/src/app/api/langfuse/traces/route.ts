@@ -1,10 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+
+import { withAuth } from '@/lib/api-auth';
 
 const LANGFUSE_BASE_URL = process.env.LANGFUSE_BASE_URL;
 const LANGFUSE_PUBLIC_KEY = process.env.LANGFUSE_PUBLIC_KEY;
 const LANGFUSE_SECRET_KEY = process.env.LANGFUSE_SECRET_KEY;
 
-export async function GET(request: NextRequest) {
+export const GET = withAuth(async (request) => {
   try {
     if (!LANGFUSE_BASE_URL || !LANGFUSE_PUBLIC_KEY || !LANGFUSE_SECRET_KEY) {
       return NextResponse.json(
@@ -52,4 +54,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
+import { withAuth } from '@/lib/api-auth';
 import { getAllLogSources } from '@/lib/log-sources';
 
 export const dynamic = 'force-dynamic';
@@ -464,7 +465,7 @@ async function fetchAPMTraces(
   }
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withAuth(async (request) => {
   try {
     const { searchParams } = new URL(request.url);
     const appId = searchParams.get('appId');
@@ -717,4 +718,4 @@ export async function GET(request: NextRequest) {
       }
     );
   }
-}
+});

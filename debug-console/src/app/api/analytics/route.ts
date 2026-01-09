@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getSummary, getAllApps, getToolStats, getHealthMetrics, init } from '@/lib/analytics/es-db';
 import { getSchedulerStatus, startScheduler } from '@/lib/analytics/scheduler';
+import { withAuth } from '@/lib/api-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,7 @@ async function ensureInitialized() {
   }
 }
 
-export async function GET(request: Request) {
+export const GET = withAuth(async (request) => {
   await ensureInitialized();
 
   const { searchParams } = new URL(request.url);
@@ -50,4 +51,4 @@ export async function GET(request: Request) {
       { status: 500 }
     );
   }
-}
+});

@@ -493,7 +493,8 @@ export default function LangfusePanel({ globalAppId, onRemove, onSessionClick }:
         alignItems: 'center',
         marginBottom: '1rem',
         flexWrap: 'wrap',
-        gap: '0.75rem'
+        gap: '0.75rem',
+        paddingLeft: '36px'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <h2 style={{

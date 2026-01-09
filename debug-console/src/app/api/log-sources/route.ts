@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 
+import { withAuth } from '@/lib/api-auth';
 import { getAllLogSources } from '@/lib/log-sources';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export const GET = withAuth(async () => {
   try {
     const sources = getAllLogSources();
 
@@ -25,5 +26,4 @@ export async function GET() {
       { status: 500 }
     );
   }
-}
-
+});

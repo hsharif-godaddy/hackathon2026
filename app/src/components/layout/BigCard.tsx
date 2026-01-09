@@ -20,24 +20,35 @@ export default function BigCard({ children, title, description, status, button, 
       gap="lg"
       className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-3 @md:p-4 @lg:p-6"
     >
-      <div className="flex flex-col-reverse @md:flex-row justify-between items-center @md:items-start gap-1 @md:gap-3">
-        <Box gap="sm">
-          { title && (
-            <text.h3 as="title" size={2}>{title}</text.h3>
-          )}
-          { description && (
+      <div
+        className="flex flex-col-reverse @md:flex-row justify-between items-center @md:items-start gap-1 @md:gap-3"
+      >
+        <Box gap="sm" className="flex-1">
+          <div className="flex items-center gap-2">
+            <div className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-gray-400 hover:text-gray-600 hidden @md:block" title="Drag to move">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="9" cy="5" r="1" /><circle cx="9" cy="12" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="19" r="1" />
+              </svg>
+            </div>
+            {title && (
+              <text.h3 as="title" size={2}>{title}</text.h3>
+            )}
+          </div>
+          {description && (
             <text.p>{description}</text.p>
           )}
         </Box>
-        { (status || button) && (
-          <Box gap="md" inlineAlignChildren="end">
-            { status && !hideStatus && <BigCardStatus status={status} /> }
-            { !status && !hideStatus && <div className="hidden @md:block h-3" /> }
-            { button && button }
+        {(status || button) && (
+          <Box gap="md" inlineAlignChildren="end" onDragStart={(e) => e.stopPropagation()} className="cursor-default">
+            {status && !hideStatus && <BigCardStatus status={status} />}
+            {!status && !hideStatus && <div className="hidden @md:block h-3" />}
+            {button && button}
           </Box>
         )}
       </div>
-      { children }
+      <div onDragStart={(e) => e.stopPropagation()}>
+        {children}
+      </div>
     </Box>
   )
 }

@@ -1,13 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+
+import { withAuth } from '@/lib/api-auth';
 
 const LANGFUSE_BASE_URL = process.env.LANGFUSE_BASE_URL;
 const LANGFUSE_PUBLIC_KEY = process.env.LANGFUSE_PUBLIC_KEY;
 const LANGFUSE_SECRET_KEY = process.env.LANGFUSE_SECRET_KEY;
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ traceId: string }> }
-) {
+export const GET = withAuth<{ traceId: string }>(async (request, auth, context) => {
   try {
     if (!LANGFUSE_BASE_URL || !LANGFUSE_PUBLIC_KEY || !LANGFUSE_SECRET_KEY) {
       return NextResponse.json(
@@ -16,7 +15,7 @@ export async function GET(
       );
     }
 
-    const { traceId } = await params;
+    const { traceId } = await context.params;
 
     const authHeader = `Basic ${Buffer.from(`${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}`).toString('base64')}`;
 
@@ -43,4 +42,4 @@ export async function GET(
       { status: 500 }
     );
   }
-}
+});

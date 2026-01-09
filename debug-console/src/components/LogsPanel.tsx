@@ -132,13 +132,62 @@ interface LogsPanelProps {
   onAppIdClick?: (appId: string) => void;
 }
 
+const INITIAL_COLUMN_WIDTHS = {
+  timestamp: 160,
+  level: 80,
+  appId: 120,
+  event: 200
+};
+
+// Source-specific field mappings - defines which field to show in the "ID" column for each source
+// Key is the source ID, value is the field configuration
+const SOURCE_FIELD_MAPPINGS: Record<string, { idField: string; idLabel: string; getIdValue: (log: LogEntry) => string | undefined }> = {
+  'airo-app-builder': {
+    idField: 'customerId',
+    idLabel: 'Customer ID',
+    getIdValue: (log) => (log.raw?.customerId as string) || (log.raw?.['customer.id'] as string)
+  },
+  'airo-builder': {
+    idField: 'customerId',
+    idLabel: 'Customer ID',
+    getIdValue: (log) => (log.raw?.customerId as string) || (log.raw?.['customer.id'] as string)
+  }
+};
+
+// Default mapping for sources not in the list
+const DEFAULT_FIELD_MAPPING = {
+  idField: 'appId',
+  idLabel: 'App ID',
+  getIdValue: (log: LogEntry) => log.appId
+};
+
+// Helper to format date for datetime-local input
+function formatDateForInput(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+// Get initial time values (1 hour ago to now)
+function getInitialTimeRange(): { start: string; end: string } {
+  const now = new Date();
+  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+  return {
+    start: formatDateForInput(oneHourAgo),
+    end: formatDateForInput(now)
+  };
+}
+
 export default function LogsPanel({ sources, defaultSource, isWidget, globalAppId, onRemove, onAppIdClick }: LogsPanelProps) {
   const [selectedSource, setSelectedSource] = useState<string>(defaultSource || sources[0]?.id || '');
   const [level, setLevel] = useState<string>('all');
-  const [timeRange, setTimeRange] = useState<string>('6h');
-  const [useCustomTime, setUseCustomTime] = useState<boolean>(false);
-  const [customStartTime, setCustomStartTime] = useState<string>('');
-  const [customEndTime, setCustomEndTime] = useState<string>('');
+  const [timeRange, setTimeRange] = useState<string>('15m');
+  const [useCustomTime, setUseCustomTime] = useState<boolean>(true);
+  const [customStartTime, setCustomStartTime] = useState<string>(() => getInitialTimeRange().start);
+  const [customEndTime, setCustomEndTime] = useState<string>(() => getInitialTimeRange().end);
   const [query, setQuery] = useState<string>('');
   const [searchInput, setSearchInput] = useState<string>('');
   const [appIdFilter, setAppIdFilter] = useState<string>('');
@@ -155,6 +204,73 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
   const [isResizing, setIsResizing] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const resizeHandleRef = useRef<HTMLDivElement>(null);
+
+  // Get field mapping for current source
+  const fieldMapping = SOURCE_FIELD_MAPPINGS[selectedSource] || DEFAULT_FIELD_MAPPING;
+
+  // Column resizing state
+  const [columnWidths, setColumnWidths] = useState(INITIAL_COLUMN_WIDTHS);
+  const resizingColumnRef = useRef<keyof typeof INITIAL_COLUMN_WIDTHS | null>(null);
+  const startXRef = useRef<number>(0);
+  const startWidthRef = useRef<number>(0);
+
+  // Column resize handlers
+  const handleColumnMouseMove = useCallback((e: MouseEvent) => {
+    if (!resizingColumnRef.current) return;
+    const deltaX = e.clientX - startXRef.current;
+    const newWidth = Math.max(50, startWidthRef.current + deltaX);
+    setColumnWidths(prev => ({
+      ...prev,
+      [resizingColumnRef.current as string]: newWidth
+    }));
+  }, []);
+
+  const handleColumnMouseUp = useCallback(() => {
+    resizingColumnRef.current = null;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', handleColumnMouseMove);
+    document.removeEventListener('mouseup', handleColumnMouseUp);
+  }, [handleColumnMouseMove]);
+
+  const handleColumnMouseDown = useCallback((column: keyof typeof INITIAL_COLUMN_WIDTHS, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingColumnRef.current = column;
+    startXRef.current = e.clientX;
+    startWidthRef.current = columnWidths[column];
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', handleColumnMouseMove);
+    document.addEventListener('mouseup', handleColumnMouseUp);
+  }, [columnWidths, handleColumnMouseMove, handleColumnMouseUp]);
+
+  // Keyboard handler for column resize
+  const handleColumnKeyDown = useCallback((column: keyof typeof INITIAL_COLUMN_WIDTHS, e: React.KeyboardEvent) => {
+    const step = e.shiftKey ? 20 : 5;
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      setColumnWidths(prev => ({
+        ...prev,
+        [column]: Math.max(50, prev[column] - step)
+      }));
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      setColumnWidths(prev => ({
+        ...prev,
+        [column]: prev[column] + step
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleColumnMouseMove);
+      document.removeEventListener('mouseup', handleColumnMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [handleColumnMouseMove, handleColumnMouseUp]);
 
   // Compute the effective appId filter
   const effectiveAppId = globalAppId || appIdFilter;
@@ -377,7 +493,8 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: '1.5rem'
+        marginBottom: '1.5rem',
+        paddingLeft: isWidget ? '36px' : '0'
       }}>
         <div>
           <h2 style={{
@@ -452,13 +569,13 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
       <div style={{
         display: 'flex',
         flexWrap: 'wrap',
-        gap: '0.75rem',
-        padding: '0.75rem',
+        gap: '0.5rem',
+        padding: '0.5rem',
         border: '1px solid #e5e7eb',
-        borderRadius: '8px',
-        marginBottom: '1rem',
+        borderRadius: '6px',
+        marginBottom: '0.75rem',
         backgroundColor: '#f9fafb',
-        alignItems: 'flex-start'
+        alignItems: 'flex-end'
       }}>
         {!isWidget && (
           <LogSourceSelector
@@ -468,12 +585,12 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
           />
         )}
 
-        <form onSubmit={handleSearch} style={{ flex: '1 1 200px', minWidth: '150px' }}>
+        <form onSubmit={handleSearch} style={{ flex: '0 1 200px', minWidth: '120px', maxWidth: '200px' }}>
           <label style={{
             display: 'block',
-            fontSize: '0.75rem',
+            fontSize: '0.65rem',
             fontWeight: 500,
-            marginBottom: '0.25rem',
+            marginBottom: '0.15rem',
             color: '#374151'
           }}>
             Search
@@ -485,32 +602,25 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
             placeholder="Search logs..."
             style={{
               width: '100%',
-              padding: '0.4rem',
+              padding: '0.3rem 0.4rem',
               border: '1px solid #d1d5db',
-              borderRadius: '6px',
-              fontSize: '0.75rem'
+              borderRadius: '4px',
+              fontSize: '0.7rem'
             }}
           />
         </form>
 
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.5rem',
-          flex: useCustomTime ? '1 1 100%' : '0 0 auto',
-          minWidth: '200px',
-          width: useCustomTime ? '100%' : 'auto',
-          order: useCustomTime ? 999 : 'auto'
-        }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.15rem', marginLeft: 'auto' }}>
           <label style={{
-            fontSize: '0.75rem',
+            fontSize: '0.65rem',
             fontWeight: 500,
             color: '#374151',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '0.25rem',
             cursor: 'pointer',
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap',
+            marginBottom: '0.3rem'
           }}>
             <input
               type="checkbox"
@@ -535,113 +645,98 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
                   setCustomEndTime(formatForInput(now));
                 }
               }}
-              style={{ cursor: 'pointer', flexShrink: 0 }}
+              style={{ cursor: 'pointer', flexShrink: 0, width: '12px', height: '12px' }}
             />
-            <span>Use Custom Time Range</span>
+            <span>Custom Time</span>
           </label>
-          {useCustomTime ? (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.75rem',
-              padding: '0.75rem',
-              backgroundColor: '#f9fafb',
-              borderRadius: '6px',
-              border: '1px solid #e5e7eb',
-              width: '100%',
-              minWidth: '280px'
-            }}>
-              <div>
-                <label htmlFor="custom-start-time" style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 500,
-                  color: '#374151',
-                  display: 'block',
-                  marginBottom: '0.375rem'
-                }}>
-                  Start Time
-                </label>
-                <input
-                  id="custom-start-time"
-                  type="datetime-local"
-                  value={customStartTime}
-                  onChange={(e) => setCustomStartTime(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '0.875rem',
-                    backgroundColor: 'white',
-                    cursor: 'text'
-                  }}
-                />
-              </div>
-              <div>
-                <label htmlFor="custom-end-time" style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 500,
-                  color: '#374151',
-                  display: 'block',
-                  marginBottom: '0.375rem'
-                }}>
-                  End Time
-                </label>
-                <input
-                  id="custom-end-time"
-                  type="datetime-local"
-                  value={customEndTime}
-                  onChange={(e) => setCustomEndTime(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '0.875rem',
-                    backgroundColor: 'white',
-                    cursor: 'text'
-                  }}
-                />
-              </div>
-            </div>
-          ) : (
-            <div style={{ width: '100%' }}>
-              <label htmlFor="time-range" style={{
-                fontSize: '0.75rem',
-                fontWeight: 500,
-                color: '#374151',
-                display: 'block',
-                marginBottom: '0.25rem'
-              }}>
-                Time Range
-              </label>
-              <select
-                id="time-range"
-                value={timeRange}
-                onChange={(e) => setTimeRange(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.4rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                  fontSize: '0.75rem',
-                  cursor: 'pointer',
-                  backgroundColor: 'white'
-                }}
-              >
-                {TIME_RANGES.map((range) => (
-                  <option key={range.value} value={range.value}>
-                    {range.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        {useCustomTime ? (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+              <label htmlFor="custom-start-time" style={{
+                fontSize: '0.65rem',
+                fontWeight: 500,
+                color: '#374151'
+              }}>
+                Start
+              </label>
+              <input
+                id="custom-start-time"
+                type="datetime-local"
+                value={customStartTime}
+                onChange={(e) => setCustomStartTime(e.target.value)}
+                style={{
+                  padding: '0.25rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  fontSize: '0.65rem',
+                  backgroundColor: 'white',
+                  cursor: 'text',
+                  width: '140px'
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+              <label htmlFor="custom-end-time" style={{
+                fontSize: '0.65rem',
+                fontWeight: 500,
+                color: '#374151'
+              }}>
+                End
+              </label>
+              <input
+                id="custom-end-time"
+                type="datetime-local"
+                value={customEndTime}
+                onChange={(e) => setCustomEndTime(e.target.value)}
+                style={{
+                  padding: '0.25rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  fontSize: '0.65rem',
+                  backgroundColor: 'white',
+                  cursor: 'text',
+                  width: '140px'
+                }}
+              />
+            </div>
+          </>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+            <label htmlFor="time-range" style={{
+              fontSize: '0.65rem',
+              fontWeight: 500,
+              color: '#374151'
+            }}>
+              Time Range
+            </label>
+            <select
+              id="time-range"
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value)}
+              style={{
+                padding: '0.3rem',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                fontSize: '0.7rem',
+                cursor: 'pointer',
+                backgroundColor: 'white',
+                width: '120px'
+              }}
+            >
+              {TIME_RANGES.map((range) => (
+                <option key={range.value} value={range.value}>
+                  {range.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
           <label htmlFor="log-level" style={{
-            fontSize: '0.75rem',
+            fontSize: '0.65rem',
             fontWeight: 500,
             color: '#374151'
           }}>
@@ -652,10 +747,10 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
             value={level}
             onChange={(e) => setLevel(e.target.value)}
             style={{
-              padding: '0.4rem',
+              padding: '0.3rem',
               border: '1px solid #d1d5db',
-              borderRadius: '6px',
-              fontSize: '0.75rem',
+              borderRadius: '4px',
+              fontSize: '0.7rem',
               cursor: 'pointer',
               backgroundColor: 'white'
             }}
@@ -668,13 +763,13 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
           </select>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
           <label htmlFor="app-id" style={{
-            fontSize: '0.75rem',
+            fontSize: '0.65rem',
             fontWeight: 500,
             color: '#374151'
           }}>
-            App ID {globalAppId && <span style={{ color: '#3b82f6', fontSize: '0.65rem' }}>(Global Active)</span>}
+            {fieldMapping.idLabel} {globalAppId && <span style={{ color: '#3b82f6', fontSize: '0.55rem' }}>(Global)</span>}
           </label>
           <input
             id="app-id"
@@ -682,14 +777,15 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
             value={appIdFilter}
             onChange={(e) => setAppIdFilter(e.target.value)}
             disabled={!!globalAppId}
-            placeholder={globalAppId ? globalAppId : "Filter by app ID..."}
+            placeholder={globalAppId ? globalAppId : `Filter...`}
             style={{
-              padding: '0.4rem',
+              padding: '0.3rem',
               border: '1px solid #d1d5db',
-              borderRadius: '6px',
-              fontSize: '0.75rem',
+              borderRadius: '4px',
+              fontSize: '0.7rem',
               backgroundColor: globalAppId ? '#f3f4f6' : 'white',
-              cursor: globalAppId ? 'not-allowed' : 'text'
+              cursor: globalAppId ? 'not-allowed' : 'text',
+              width: '100px'
             }}
           />
         </div>
@@ -814,7 +910,8 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
             <table style={{
               width: '100%',
               fontSize: isWidget ? '0.75rem' : '0.875rem',
-              borderCollapse: 'collapse'
+              borderCollapse: 'collapse',
+              tableLayout: 'fixed'
             }}>
               <thead style={{
                 backgroundColor: '#f9fafb',
@@ -828,37 +925,141 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
                     textAlign: 'left',
                     padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
                     fontWeight: 600,
-                    width: isWidget ? '130px' : '160px',
-                    color: '#374151'
+                    width: `${columnWidths.timestamp}px`,
+                    color: '#374151',
+                    position: 'relative',
+                    borderRight: '1px solid #e5e7eb'
                   }}>
                     Timestamp
+                    <button
+                      type="button"
+                      onMouseDown={(e) => handleColumnMouseDown('timestamp', e)}
+                      onKeyDown={(e) => handleColumnKeyDown('timestamp', e)}
+                      style={{
+                        position: 'absolute',
+                        right: -3,
+                        top: 0,
+                        bottom: 0,
+                        width: '6px',
+                        cursor: 'col-resize',
+                        backgroundColor: 'transparent',
+                        zIndex: 10,
+                        border: 'none',
+                        padding: 0
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      onFocus={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
+                      onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      aria-label="Resize timestamp column. Use left/right arrow keys to resize."
+                      role="separator"
+                      aria-orientation="vertical"
+                    />
                   </th>
                   <th style={{
                     textAlign: 'left',
                     padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
                     fontWeight: 600,
-                    width: isWidget ? '60px' : '80px',
-                    color: '#374151'
+                    width: `${columnWidths.level}px`,
+                    color: '#374151',
+                    position: 'relative',
+                    borderRight: '1px solid #e5e7eb'
                   }}>
                     Level
+                    <button
+                      type="button"
+                      onMouseDown={(e) => handleColumnMouseDown('level', e)}
+                      onKeyDown={(e) => handleColumnKeyDown('level', e)}
+                      style={{
+                        position: 'absolute',
+                        right: -3,
+                        top: 0,
+                        bottom: 0,
+                        width: '6px',
+                        cursor: 'col-resize',
+                        backgroundColor: 'transparent',
+                        zIndex: 10,
+                        border: 'none',
+                        padding: 0
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      onFocus={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
+                      onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      aria-label="Resize level column. Use left/right arrow keys to resize."
+                      role="separator"
+                      aria-orientation="vertical"
+                    />
                   </th>
                   <th style={{
                     textAlign: 'left',
                     padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
                     fontWeight: 600,
-                    width: isWidget ? '100px' : '120px',
-                    color: '#374151'
+                    width: `${columnWidths.appId}px`,
+                    color: '#374151',
+                    position: 'relative',
+                    borderRight: '1px solid #e5e7eb'
                   }}>
-                    App ID
+                    {fieldMapping.idLabel}
+                    <button
+                      type="button"
+                      onMouseDown={(e) => handleColumnMouseDown('appId', e)}
+                      onKeyDown={(e) => handleColumnKeyDown('appId', e)}
+                      style={{
+                        position: 'absolute',
+                        right: -3,
+                        top: 0,
+                        bottom: 0,
+                        width: '6px',
+                        cursor: 'col-resize',
+                        backgroundColor: 'transparent',
+                        zIndex: 10,
+                        border: 'none',
+                        padding: 0
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      onFocus={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
+                      onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      aria-label="Resize ID column. Use left/right arrow keys to resize."
+                      role="separator"
+                      aria-orientation="vertical"
+                    />
                   </th>
                   <th style={{
                     textAlign: 'left',
                     padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
                     fontWeight: 600,
-                    width: isWidget ? '100px' : '200px',
-                    color: '#374151'
+                    width: `${columnWidths.event}px`,
+                    color: '#374151',
+                    position: 'relative',
+                    borderRight: '1px solid #e5e7eb'
                   }}>
                     Event
+                    <button
+                      type="button"
+                      onMouseDown={(e) => handleColumnMouseDown('event', e)}
+                      onKeyDown={(e) => handleColumnKeyDown('event', e)}
+                      style={{
+                        position: 'absolute',
+                        right: -3,
+                        top: 0,
+                        bottom: 0,
+                        width: '6px',
+                        cursor: 'col-resize',
+                        backgroundColor: 'transparent',
+                        zIndex: 10,
+                        border: 'none',
+                        padding: 0
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      onFocus={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
+                      onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      aria-label="Resize event column. Use left/right arrow keys to resize."
+                      role="separator"
+                      aria-orientation="vertical"
+                    />
                   </th>
                   <th style={{
                     textAlign: 'left',
@@ -902,52 +1103,34 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
                         </span>
                       </td>
                       <td style={{ padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem' }}>
-                        {log.appId ? (
-                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const appIdStr = safeRender(log.appId);
-                                setAppIdFilter(appIdStr !== '-' ? appIdStr : '');
-                              }}
-                              style={{
-                                fontFamily: 'monospace',
-                                fontSize: isWidget ? '0.7rem' : '0.75rem',
-                                background: 'none',
-                                border: 'none',
-                                color: '#3b82f6',
-                                cursor: 'pointer',
-                                textDecoration: 'underline'
-                              }}
-                              title="Filter by this app ID"
-                            >
-                              {safeRender(log.appId)}
-                            </button>
-                            {onAppIdClick && (
+                        {(() => {
+                          const idValue = fieldMapping.getIdValue(log);
+                          return idValue ? (
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  const appIdStr = safeRender(log.appId);
-                                  onAppIdClick(appIdStr !== '-' ? appIdStr : '');
+                                  const idStr = safeRender(idValue);
+                                  setAppIdFilter(idStr !== '-' ? idStr : '');
                                 }}
                                 style={{
-                                  fontSize: '0.65rem',
-                                  padding: '0.125rem 0.375rem',
-                                  backgroundColor: '#f3f4f6',
-                                  border: '1px solid #d1d5db',
-                                  borderRadius: '4px',
+                                  fontFamily: 'monospace',
+                                  fontSize: isWidget ? '0.7rem' : '0.75rem',
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#3b82f6',
                                   cursor: 'pointer',
-                                  color: '#374151'
+                                  textDecoration: 'underline'
                                 }}
-                                title="View app context"
+                                title={`Filter by this ${fieldMapping.idLabel}`}
                               >
-                                Context
+                                {safeRender(idValue)}
                               </button>
-                            )}
-                          </div>
-                        ) : (
-                          <span style={{ color: '#9ca3af' }}>-</span>
-                        )}
+                            </div>
+                          ) : (
+                            <span style={{ color: '#9ca3af' }}>-</span>
+                          );
+                        })()}
                       </td>
                       <td style={{
                         padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
@@ -1010,10 +1193,10 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
                               gap: '0.75rem',
                               fontSize: isWidget ? '0.75rem' : '0.875rem'
                             }}>
-                              {log.appId && (
+                              {fieldMapping.getIdValue(log) && (
                                 <div>
-                                  <span style={{ fontWeight: 500 }}>App ID:</span>{' '}
-                                  <span style={{ fontFamily: 'monospace' }}>{safeRender(log.appId)}</span>
+                                  <span style={{ fontWeight: 500 }}>{fieldMapping.idLabel}:</span>{' '}
+                                  <span style={{ fontFamily: 'monospace' }}>{safeRender(fieldMapping.getIdValue(log))}</span>
                                 </div>
                               )}
                               {log.service && (

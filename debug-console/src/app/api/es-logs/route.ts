@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
+import { withAuth } from '@/lib/api-auth';
 import { getLogSourceConfig } from '@/lib/log-sources';
 
 export const dynamic = 'force-dynamic';
@@ -31,7 +32,7 @@ interface ESSearchResponse {
   };
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withAuth(async (request) => {
   try {
     const { searchParams } = new URL(request.url);
     const sourceId = searchParams.get('source') || 'airo-agents';
@@ -78,7 +79,7 @@ export async function GET(request: NextRequest) {
       mustClauses.push({
         multi_match: {
           query,
-          fields: ['message^2', 'event', 'logger', 'service'],
+          fields: ['message^2', 'event', 'logger', 'service', 'app_id', 'appId', 'customerId', 'customer.id', 'hostname', 'environment', 'region', 'version', 'data.message'],
           type: 'best_fields',
           fuzziness: 'AUTO'
         }
@@ -87,7 +88,15 @@ export async function GET(request: NextRequest) {
 
     if (appId) {
       mustClauses.push({
-        match: { app_id: appId }
+        bool: {
+          should: [
+            { match: { app_id: appId } },
+            { match: { appId: appId } },
+            { match: { customerId: appId } },
+            { match: { 'customer.id': appId } }
+          ],
+          minimum_should_match: 1
+        }
       });
     }
 
@@ -203,4 +212,4 @@ export async function GET(request: NextRequest) {
       }
     );
   }
-}
+});

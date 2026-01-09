@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 
+import ProtectedRoute from '@/components/ProtectedRoute';
+
 interface AppData {
   app_id: string;
   run_count: number;
@@ -128,7 +130,7 @@ function formatDateInput(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-export default function AnalyticsPage() {
+function AnalyticsContent() {
   const [apps, setApps] = useState<AppData[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
@@ -977,5 +979,13 @@ export default function AnalyticsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AnalyticsPage() {
+  return (
+    <ProtectedRoute>
+      <AnalyticsContent />
+    </ProtectedRoute>
   );
 }
