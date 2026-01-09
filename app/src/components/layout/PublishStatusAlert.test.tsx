@@ -6,7 +6,7 @@ import { screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '@/tests/test-utils';
 import PublishStatusAlert from './PublishStatusAlert';
 
-const mockRouter = { push: vi.fn() };
+const mockRouter = { push: vi.fn(), replace: vi.fn() };
 const mockDevelopStore = {
   currentAppId: 'app-123',
   publishStates: {},
@@ -21,6 +21,8 @@ const mockSiteStore = {
 
 vi.mock('next/navigation', () => ({
   useRouter: () => mockRouter,
+  usePathname: () => '/develop/app-123',
+  useSearchParams: () => new URLSearchParams(),
 }));
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string) => key,

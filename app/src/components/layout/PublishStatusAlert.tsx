@@ -9,11 +9,13 @@ import text from '@ux/text';
 
 import { usePublishApp } from '@/hooks/usePublishApp';
 import { useTranslations } from '@/hooks/useTranslations';
+import { useChatTabs } from '@/hooks/useChatTabs';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { generateClickEID } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
+import { ChatTab } from '@/app/develop/components/types';
 
 /**
  * PublishStatusAlert Component
@@ -34,6 +36,7 @@ import { hasBeenPublished } from '@/utils/site';
 export default function PublishStatusAlert() {
   const t = useTranslations();
   const router = useRouter();
+  const { setActiveChatTab } = useChatTabs();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
@@ -122,6 +125,9 @@ export default function PublishStatusAlert() {
       appId: currentAppId,
     });
 
+    // Switch to chat tab so user sees the AI response
+    setActiveChatTab(ChatTab.CHAT);
+
     // Dispatch event to trigger the fix flow - similar to 404 error fix pattern
     window.postMessage({
       type: 'build-error-fix-request',
@@ -130,7 +136,7 @@ export default function PublishStatusAlert() {
       errorDetails: buildErrorDetails.details,
       exitCode: buildErrorDetails.exitCode,
     }, window.location.origin);
-  }, [currentAppId, buildErrorDetails]);
+  }, [currentAppId, buildErrorDetails, setActiveChatTab]);
 
   const handleViewSettings = useCallback(() => {
     if (!currentAppId) return;
