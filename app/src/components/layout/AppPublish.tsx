@@ -114,6 +114,7 @@ export default function AppPublish({ location }: { location?: string }) {
   const {
     data: gitHistoryData,
     isLoading: isLoadingGitHistory,
+    refetch: refetchGitHistory,
   } = useGitHistoryQuery({
     appId: currentAppId || '',
     enabled: queryEnabled,
@@ -321,6 +322,8 @@ export default function AppPublish({ location }: { location?: string }) {
     // Reset polling failure state when attempting to publish
     if (open) {
       setEntitlementsPollingFailed(false);
+      // Refetch git history to ensure commit count is accurate
+      refetchGitHistory();
     }
 
     // Show paywall only if not completed purchase and showPaywall is true
