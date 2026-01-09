@@ -3,6 +3,7 @@
 import { useCallback,useEffect, useMemo, useRef, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
+import Skeleton from '@ux/skeleton'
 import Spinner from '@ux/spinner'
 
 import { useAppIdFromParams } from '@/app/develop/components/utils'
@@ -249,16 +250,72 @@ export default function StreamingMessageList({ allMessages }: StreamingMessageLi
 
     return (
       <div ref={containerRef} className="flex-1 overflow-y-auto p-2 space-y-2" onScroll={handleScroll}>
-        <div className="flex items-center justify-center h-full flex-col gap-0.5">
-          {showSpinner ? (
-            <Spinner size="md" />
-          ) : (
+        {showSpinner ? (
+          <Box orientation="vertical" gap="lg" className="pt-2">
+            {/* User message skeleton */}
+            <Box orientation="horizontal" gap="sm" inlineAlignChildren="end">
+              <div className="flex-1" />
+              <Box orientation="vertical" gap="sm" className="max-w-[80%]">
+                <Skeleton width="180px" height="16px" />
+                <Skeleton width="240px" height="16px" />
+              </Box>
+            </Box>
+
+            {/* Assistant message skeleton */}
+            <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
+              <Skeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
+              <Box orientation="vertical" gap="sm" className="flex-1">
+                <Skeleton width="280px" height="16px" />
+                <Skeleton width="320px" height="16px" />
+                <Skeleton width="240px" height="16px" />
+                <Skeleton width="180px" height="16px" />
+              </Box>
+            </Box>
+
+            {/* User message skeleton */}
+            <Box orientation="horizontal" gap="sm" inlineAlignChildren="end">
+              <div className="flex-1" />
+              <Box orientation="vertical" gap="sm" className="max-w-[80%]">
+                <Skeleton width="200px" height="16px" />
+              </Box>
+            </Box>
+
+            {/* Assistant message skeleton */}
+            <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
+              <Skeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
+              <Box orientation="vertical" gap="sm" className="flex-1">
+                <Skeleton width="260px" height="16px" />
+                <Skeleton width="300px" height="16px" />
+              </Box>
+            </Box>
+
+            {/* User message skeleton */}
+            <Box orientation="horizontal" gap="sm" inlineAlignChildren="end">
+              <div className="flex-1" />
+              <Box orientation="vertical" gap="sm" className="max-w-[80%]">
+                <Skeleton width="160px" height="16px" />
+                <Skeleton width="220px" height="16px" />
+              </Box>
+            </Box>
+
+            {/* Assistant message skeleton */}
+            <Box orientation="horizontal" gap="sm" inlineAlignChildren="start">
+              <Skeleton rounding="full" width="24px" height="24px" className="flex-shrink-0 mt-0.5" />
+              <Box orientation="vertical" gap="sm" className="flex-1">
+                <Skeleton width="290px" height="16px" />
+                <Skeleton width="310px" height="16px" />
+                <Skeleton width="270px" height="16px" />
+              </Box>
+            </Box>
+          </Box>
+        ) : (
+          <div className="flex items-center justify-center h-full">
             <div className="opacity-50 text-center">
               <p>{t('builder_messages_empty_title')}</p>
               <p>{t('builder_messages_empty_subtitle')}</p>
             </div>
-          )}
-        </div>
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
     )

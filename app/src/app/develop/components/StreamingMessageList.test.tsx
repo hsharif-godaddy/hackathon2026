@@ -65,21 +65,23 @@ describe('StreamingMessageList', function packageTests() {
   });
 
   describe('empty state', function emptyState() {
-    it('should show spinner when page is loading', function showSpinnerOnPageLoad() {
+    it('should show skeleton loaders when page is loading', function showSkeletonOnPageLoad() {
       mockDevelopPageStore.loadingPhase = 'loading-history';
 
-      renderWithProviders(<StreamingMessageList allMessages={[]} />);
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={[]} />);
 
-      expect(screen.getByRole('status')).toBeInTheDocument();
+      // Check for skeleton elements
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
       expect(screen.queryByText('builder_messages_empty_title')).not.toBeInTheDocument();
     });
 
-    it('should show spinner when messages are loading', function showSpinnerOnMessageLoad() {
+    it('should show skeleton loaders when messages are loading', function showSkeletonOnMessageLoad() {
       mockStreamingStore.isLoading = true;
 
-      renderWithProviders(<StreamingMessageList allMessages={[]} />);
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={[]} />);
 
-      expect(screen.getByRole('status')).toBeInTheDocument();
+      // Check for skeleton elements
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
       expect(screen.queryByText('builder_messages_empty_title')).not.toBeInTheDocument();
     });
 
@@ -87,22 +89,24 @@ describe('StreamingMessageList', function packageTests() {
       mockDevelopPageStore.loadingPhase = 'ready';
       mockStreamingStore.isLoading = false;
 
-      renderWithProviders(<StreamingMessageList allMessages={[]} />);
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={[]} />);
 
       expect(screen.getByText('builder_messages_empty_title')).toBeInTheDocument();
       expect(screen.getByText('builder_messages_empty_subtitle')).toBeInTheDocument();
-      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      // No skeleton loaders when in empty state
+      expect(container.querySelector('.ux-skeleton')).not.toBeInTheDocument();
     });
 
-    it('should show spinner during initialization phases', function showSpinnerDuringInit() {
+    it('should show skeleton loaders during initialization phases', function showSkeletonDuringInit() {
       const phases = ['idle', 'checking-creation', 'creating', 'initializing-page', 'loading-history'];
 
       phases.forEach((phase) => {
         mockDevelopPageStore.loadingPhase = phase as any;
 
-        const { unmount } = renderWithProviders(<StreamingMessageList allMessages={[]} />);
+        const { unmount, container } = renderWithProviders(<StreamingMessageList allMessages={[]} />);
 
-        expect(screen.getByRole('status')).toBeInTheDocument();
+        // Check for skeleton elements
+        expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
         expect(screen.queryByText('builder_messages_empty_title')).not.toBeInTheDocument();
 
         unmount();
@@ -408,10 +412,10 @@ describe('StreamingMessageList', function packageTests() {
         },
       ];
 
-      renderWithProviders(<StreamingMessageList allMessages={messages} />);
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
 
-      // Should show spinner during transition, not the old messages
-      expect(screen.getByRole('status')).toBeInTheDocument();
+      // Should show skeleton loaders during transition, not the old messages
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
       expect(screen.queryByTestId('message-msg-1')).not.toBeInTheDocument();
     });
 
@@ -428,10 +432,10 @@ describe('StreamingMessageList', function packageTests() {
         },
       ];
 
-      renderWithProviders(<StreamingMessageList allMessages={messages} />);
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
 
       // Should show messages when IDs match
-      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(container.querySelector('.ux-skeleton')).not.toBeInTheDocument();
       expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
     });
 
@@ -440,10 +444,10 @@ describe('StreamingMessageList', function packageTests() {
       mockAppIdFromParams = 'new-app-456';
       mockStreamingStore.isLoading = true;
 
-      renderWithProviders(<StreamingMessageList allMessages={[]} />);
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={[]} />);
 
-      // Should show spinner for loading state during transition
-      expect(screen.getByRole('status')).toBeInTheDocument();
+      // Should show skeleton loaders for loading state during transition
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
       expect(screen.queryByText('No messages yet.')).not.toBeInTheDocument();
     });
 
@@ -453,10 +457,10 @@ describe('StreamingMessageList', function packageTests() {
       mockStreamingStore.isLoading = false;
       mockDevelopPageStore.loadingPhase = 'ready';
 
-      renderWithProviders(<StreamingMessageList allMessages={[]} />);
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={[]} />);
 
-      // Should show spinner during transition, not the empty state
-      expect(screen.getByRole('status')).toBeInTheDocument();
+      // Should show skeleton loaders during transition, not the empty state
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
       expect(screen.queryByText('No messages yet.')).not.toBeInTheDocument();
     });
   });
