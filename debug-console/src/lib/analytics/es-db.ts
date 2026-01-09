@@ -321,7 +321,8 @@ export async function getSummary(startDate?: string, endDate?: string) {
           date_histogram: { field: 'timestamp', calendar_interval: '1d' },
           aggs: {
             unique_apps: { cardinality: { field: 'app_id' } },
-            cost: { sum: { field: 'cost' } }
+            cost: { sum: { field: 'cost' } },
+            steps: { sum: { field: 'steps' } }
           }
         },
         agent_totals: {
@@ -353,7 +354,7 @@ export async function getSummary(startDate?: string, endDate?: string) {
   const totalApps = (aggs.total_apps as { value: number }).value || 0;
 
   // Calculate apps per day and build daily stats
-  const dayBuckets = (aggs.apps_by_day as { buckets: Array<{ key_as_string: string; unique_apps: { value: number }; cost: { value: number } }> })?.buckets || [];
+  const dayBuckets = (aggs.apps_by_day as { buckets: Array<{ key_as_string: string; doc_count: number; unique_apps: { value: number }; cost: { value: number }; steps: { value: number } }> })?.buckets || [];
   const numDays = dayBuckets.length || 1;
   const appsPerDay = totalApps / numDays;
 
@@ -361,7 +362,10 @@ export async function getSummary(startDate?: string, endDate?: string) {
     date: b.key_as_string,
     apps: b.unique_apps.value,
     cost: b.cost.value,
-    avg_cost_per_app: b.unique_apps.value > 0 ? b.cost.value / b.unique_apps.value : 0
+    runs: b.doc_count,
+    steps: b.steps.value,
+    avg_cost_per_app: b.unique_apps.value > 0 ? b.cost.value / b.unique_apps.value : 0,
+    avg_steps_per_run: b.doc_count > 0 ? b.steps.value / b.doc_count : 0
   }));
 
   const modelCosts = {
@@ -401,6 +405,53 @@ export async function getSummary(startDate?: string, endDate?: string) {
     model_costs: modelCosts,
     current_model: CURRENT_MODEL,
     daily_stats: dailyStats
+  };
+}
+
+export async function getHourlyStats(date: string) {
+  const startOfDay = new Date(date);
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const endOfDay = new Date(date);
+  endOfDay.setUTCHours(23, 59, 59, 999);
+
+  const result = await writeClient.search({
+    index: INDICES.AGENT_RUNS,
+    size: 0,
+    body: {
+      query: {
+        range: {
+          timestamp: {
+            gte: startOfDay.toISOString(),
+            lte: endOfDay.toISOString()
+          }
+        }
+      },
+      aggs: {
+        by_hour: {
+          date_histogram: { field: 'timestamp', calendar_interval: '1h' },
+          aggs: {
+            unique_apps: { cardinality: { field: 'app_id' } },
+            cost: { sum: { field: 'cost' } },
+            steps: { sum: { field: 'steps' } }
+          }
+        }
+      }
+    }
+  });
+
+  const aggs = result.aggregations as Record<string, unknown>;
+  const hourBuckets = (aggs.by_hour as { buckets: Array<{ key_as_string: string; doc_count: number; unique_apps: { value: number }; cost: { value: number }; steps: { value: number } }> })?.buckets || [];
+
+  return {
+    date,
+    hourly_stats: hourBuckets.map(b => ({
+      hour: new Date(b.key_as_string).getUTCHours(),
+      apps: b.unique_apps.value,
+      runs: b.doc_count,
+      cost: b.cost.value,
+      steps: b.steps.value,
+      avg_steps_per_run: b.doc_count > 0 ? b.steps.value / b.doc_count : 0
+    }))
   };
 }
 

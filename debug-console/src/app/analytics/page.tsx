@@ -24,7 +24,10 @@ interface DailyStat {
   date: string;
   apps: number;
   cost: number;
+  runs: number;
+  steps: number;
   avg_cost_per_app: number;
+  avg_steps_per_run: number;
 }
 
 interface Summary {
@@ -130,13 +133,35 @@ function formatDateInput(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+const MAX_DATE_RANGE_DAYS = 31;
+
+function isDateRangeValid(start: string, end: string): boolean {
+  if (!start || !end) return false;
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  const diffMs = endDate.getTime() - startDate.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  return diffDays >= 0 && diffDays <= MAX_DATE_RANGE_DAYS;
+}
+
+function getDateRangeError(start: string, end: string): string | null {
+  if (!start || !end) return null;
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  const diffMs = endDate.getTime() - startDate.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  if (diffDays < 0) return 'End date must be after start date';
+  if (diffDays > MAX_DATE_RANGE_DAYS) return `Date range cannot exceed ${MAX_DATE_RANGE_DAYS} days`;
+  return null;
+}
+
 function AnalyticsContent() {
   const [apps, setApps] = useState<AppData[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sortCol, setSortCol] = useState<keyof AppData | 'steps_per_run'>('total_cost');
+  const [sortCol, setSortCol] = useState<keyof AppData | 'steps_per_run'>('last_event');
   const [sortAsc, setSortAsc] = useState(false);
   const [filter, setFilter] = useState('');
   const [selectedApp, setSelectedApp] = useState<AppDetails | null>(null);
@@ -146,6 +171,14 @@ function AnalyticsContent() {
   const [datePreset, setDatePreset] = useState<DatePreset>('1d');
   const [customStart, setCustomStart] = useState<string>('');
   const [customEnd, setCustomEnd] = useState<string>('');
+
+  // Hourly drilldown state
+  const [hourlyData, setHourlyData] = useState<{ date: string; hourly_stats: Array<{ hour: number; apps: number; runs: number; cost: number; steps: number; avg_steps_per_run: number }> } | null>(null);
+  const [hourlyLoading, setHourlyLoading] = useState(false);
+
+  // Pagination state
+  const [displayCount, setDisplayCount] = useState(100);
+  const tableContainerRef = React.useRef<HTMLDivElement>(null);
 
   const fetchData = useCallback(async function fetchData() {
     try {
@@ -221,6 +254,20 @@ function AnalyticsContent() {
     setSelectedApp(null);
   }
 
+  async function fetchHourlyData(date: string) {
+    setHourlyLoading(true);
+    try {
+      const res = await fetch(`/api/analytics?action=hourly&date=${encodeURIComponent(date)}`);
+      if (res.ok) {
+        setHourlyData(await res.json());
+      }
+    } catch (err) {
+      console.error('Failed to fetch hourly data:', err);
+    } finally {
+      setHourlyLoading(false);
+    }
+  }
+
   function formatBytes(bytes: number) {
     if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + ' GB';
     if (bytes >= 1e6) return (bytes / 1e6).toFixed(2) + ' MB';
@@ -294,6 +341,23 @@ function AnalyticsContent() {
     }
     return sortAsc ? (av as number) - (bv as number) : (bv as number) - (av as number);
   });
+
+  // Paginated display
+  const displayed = sorted.slice(0, displayCount);
+  const hasMore = displayCount < sorted.length;
+
+  // Handle scroll to load more
+  const handleTableScroll = useCallback(function handleScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 100 && hasMore) {
+      setDisplayCount(prev => Math.min(prev + 100, sorted.length));
+    }
+  }, [hasMore, sorted.length]);
+
+  // Reset display count when filter/sort changes
+  useEffect(() => {
+    setDisplayCount(100);
+  }, [filter, sortCol, sortAsc, datePreset, customStart, customEnd]);
 
   // Preset button style
   const presetBtn = (preset: DatePreset, label: string) => (
@@ -481,20 +545,25 @@ function AnalyticsContent() {
             />
             <button
               onClick={fetchData}
-              disabled={!customStart || !customEnd}
+              disabled={!customStart || !customEnd || !isDateRangeValid(customStart, customEnd)}
               style={{
                 padding: '0.4rem 1rem',
-                backgroundColor: customStart && customEnd ? '#1d4ed8' : '#94a3b8',
+                backgroundColor: customStart && customEnd && isDateRangeValid(customStart, customEnd) ? '#1d4ed8' : '#94a3b8',
                 color: 'white',
                 border: 'none',
                 borderRadius: '6px',
-                cursor: customStart && customEnd ? 'pointer' : 'not-allowed',
+                cursor: customStart && customEnd && isDateRangeValid(customStart, customEnd) ? 'pointer' : 'not-allowed',
                 fontSize: '0.8rem',
                 fontWeight: 500
               }}
             >
               Apply
             </button>
+            {getDateRangeError(customStart, customEnd) && (
+              <span style={{ color: '#dc2626', fontSize: '0.75rem', fontWeight: 500 }}>
+                {getDateRangeError(customStart, customEnd)}
+              </span>
+            )}
           </div>
         )}
 
@@ -502,7 +571,7 @@ function AnalyticsContent() {
         {summary && summary.daily_stats.length > 0 && (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(2, 1fr)',
+            gridTemplateColumns: 'repeat(3, 1fr)',
             gap: '1rem',
             marginBottom: '1.25rem'
           }}>
@@ -515,34 +584,73 @@ function AnalyticsContent() {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                 <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
-                  Apps/Day
+                  Apps/Day {hourlyData && <span style={{ fontSize: '0.65rem', color: '#3b82f6', cursor: 'pointer' }} onClick={() => setHourlyData(null)}>(← back)</span>}
                 </div>
                 <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#3b82f6' }}>
                   Avg: {summary.apps_per_day.toFixed(1)}
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '80px' }}>
-                {(() => {
-                  const maxApps = Math.max(...summary.daily_stats.map(d => d.apps), 1);
-                  return summary.daily_stats.map((day, i) => (
-                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <div
-                        style={{
-                          width: '100%',
-                          height: `${(day.apps / maxApps) * 70}px`,
-                          backgroundColor: '#3b82f6',
-                          borderRadius: '2px 2px 0 0',
-                          minHeight: day.apps > 0 ? '4px' : '0'
-                        }}
-                        title={`${formatShortDay(day.date)}: ${day.apps} apps`}
-                      />
-                      <div style={{ fontSize: '0.55rem', color: '#94a3b8', marginTop: '2px' }}>
-                        {formatShortDay(day.date)}
+              {hourlyLoading ? (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80px', color: '#64748b' }}>
+                  Loading hourly data...
+                </div>
+              ) : hourlyData ? (
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '80px' }}>
+                  {(() => {
+                    const maxApps = Math.max(...hourlyData.hourly_stats.map(h => h.apps), 1);
+                    return Array.from({ length: 24 }, (_, hour) => {
+                      const stat = hourlyData.hourly_stats.find(h => h.hour === hour) || { apps: 0 };
+                      return (
+                        <div key={hour} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                          <div
+                            style={{
+                              width: '100%',
+                              height: `${(stat.apps / maxApps) * 70}px`,
+                              backgroundColor: '#60a5fa',
+                              borderRadius: '2px 2px 0 0',
+                              minHeight: stat.apps > 0 ? '4px' : '0'
+                            }}
+                            title={`${hour}:00 - ${stat.apps} apps`}
+                          />
+                          {hour % 4 === 0 && (
+                            <div style={{ fontSize: '0.5rem', color: '#94a3b8', marginTop: '2px' }}>
+                              {hour}h
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '80px' }}>
+                  {(() => {
+                    const maxApps = Math.max(...summary.daily_stats.map(d => d.apps), 1);
+                    return summary.daily_stats.map((day, i) => (
+                      <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <div
+                          onClick={() => fetchHourlyData(day.date)}
+                          style={{
+                            width: '100%',
+                            height: `${(day.apps / maxApps) * 70}px`,
+                            backgroundColor: '#3b82f6',
+                            borderRadius: '2px 2px 0 0',
+                            minHeight: day.apps > 0 ? '4px' : '0',
+                            cursor: 'pointer',
+                            transition: 'opacity 0.15s'
+                          }}
+                          title={`${formatShortDay(day.date)}: ${day.apps} apps (click for hourly)`}
+                          onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
+                          onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+                        />
+                        <div style={{ fontSize: '0.55rem', color: '#94a3b8', marginTop: '2px' }}>
+                          {formatShortDay(day.date)}
+                        </div>
                       </div>
-                    </div>
-                  ));
-                })()}
-              </div>
+                    ));
+                  })()}
+                </div>
+              )}
             </div>
 
             {/* Avg Cost/App Chart */}
@@ -574,6 +682,45 @@ function AnalyticsContent() {
                           minHeight: day.avg_cost_per_app > 0 ? '4px' : '0'
                         }}
                         title={`${formatShortDay(day.date)}: ${formatCost(day.avg_cost_per_app)}`}
+                      />
+                      <div style={{ fontSize: '0.55rem', color: '#94a3b8', marginTop: '2px' }}>
+                        {formatShortDay(day.date)}
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+
+            {/* Avg Steps/Run Chart */}
+            <div style={{
+              backgroundColor: 'rgba(255,255,255,0.97)',
+              padding: '1rem 1.25rem',
+              borderRadius: '10px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.08)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
+                  Avg Steps/Run
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#8b5cf6' }}>
+                  Avg: {(summary.daily_stats.reduce((sum, d) => sum + d.avg_steps_per_run, 0) / summary.daily_stats.length).toFixed(1)}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '80px' }}>
+                {(() => {
+                  const maxSteps = Math.max(...summary.daily_stats.map(d => d.avg_steps_per_run), 1);
+                  return summary.daily_stats.map((day, i) => (
+                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <div
+                        style={{
+                          width: '100%',
+                          height: `${(day.avg_steps_per_run / maxSteps) * 70}px`,
+                          backgroundColor: '#8b5cf6',
+                          borderRadius: '2px 2px 0 0',
+                          minHeight: day.avg_steps_per_run > 0 ? '4px' : '0'
+                        }}
+                        title={`${formatShortDay(day.date)}: ${day.avg_steps_per_run.toFixed(1)} steps/run`}
                       />
                       <div style={{ fontSize: '0.55rem', color: '#94a3b8', marginTop: '2px' }}>
                         {formatShortDay(day.date)}
@@ -617,48 +764,48 @@ function AnalyticsContent() {
           boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
           overflow: 'hidden'
         }}>
-          <div style={{ overflowX: 'auto' }}>
+          <div ref={tableContainerRef} onScroll={handleTableScroll} style={{ overflowX: 'auto', maxHeight: '600px', overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                 <tr style={{ backgroundColor: '#f8fafc' }}>
-                  <th style={thStyle} onClick={() => handleSort('first_event')}>
+                  <th style={thStyle} onClick={() => handleSort('first_event')} title="First agent activity timestamp for this app">
                     First {sortCol === 'first_event' && (sortAsc ? '↑' : '↓')}
                   </th>
-                  <th style={thStyle} onClick={() => handleSort('last_event')}>
+                  <th style={thStyle} onClick={() => handleSort('last_event')} title="Most recent agent activity timestamp for this app">
                     Last {sortCol === 'last_event' && (sortAsc ? '↑' : '↓')}
                   </th>
-                  <th style={thStyle} onClick={() => handleSort('app_id')}>
+                  <th style={thStyle} onClick={() => handleSort('app_id')} title="Unique application identifier">
                     App ID {sortCol === 'app_id' && (sortAsc ? '↑' : '↓')}
                   </th>
-                  <th style={{ ...thStyle, cursor: 'default' }}>Link</th>
-                  <th style={thStyle} onClick={() => handleSort('run_count')}>
+                  <th style={{ ...thStyle, cursor: 'default' }} title="Link to open app in builder">Link</th>
+                  <th style={thStyle} onClick={() => handleSort('run_count')} title="Total number of agent runs (conversations)">
                     Runs {sortCol === 'run_count' && (sortAsc ? '↑' : '↓')}
                   </th>
-                  <th style={thStyle} onClick={() => handleSort('total_steps')}>
+                  <th style={thStyle} onClick={() => handleSort('total_steps')} title="Total LLM inference steps across all runs">
                     Steps {sortCol === 'total_steps' && (sortAsc ? '↑' : '↓')}
                   </th>
-                  <th style={thStyle} onClick={() => handleSort('steps_per_run')}>
+                  <th style={thStyle} onClick={() => handleSort('steps_per_run')} title="Average steps per run (total_steps / run_count)">
                     Steps/Run {sortCol === 'steps_per_run' && (sortAsc ? '↑' : '↓')}
                   </th>
-                  <th style={thStyle} onClick={() => handleSort('total_cost')}>
+                  <th style={thStyle} onClick={() => handleSort('total_cost')} title="Total estimated LLM cost in USD">
                     Cost {sortCol === 'total_cost' && (sortAsc ? '↑' : '↓')}
                   </th>
-                  <th style={thStyle} onClick={() => handleSort('summarizations')}>
+                  <th style={thStyle} onClick={() => handleSort('summarizations')} title="Number of context summarization events (memory optimization)">
                     Sums {sortCol === 'summarizations' && (sortAsc ? '↑' : '↓')}
                   </th>
-                  <th style={thStyle} onClick={() => handleSort('token_limits')}>
+                  <th style={thStyle} onClick={() => handleSort('token_limits')} title="Number of token limit warnings hit">
                     Limits {sortCol === 'token_limits' && (sortAsc ? '↑' : '↓')}
                   </th>
-                  <th style={thStyle} onClick={() => handleSort('budget_errors')}>
+                  <th style={thStyle} onClick={() => handleSort('budget_errors')} title="Number of budget exceeded errors">
                     Budget {sortCol === 'budget_errors' && (sortAsc ? '↑' : '↓')}
                   </th>
-                  <th style={thStyle} onClick={() => handleSort('errors')}>
+                  <th style={thStyle} onClick={() => handleSort('errors')} title="Total error count across all runs">
                     Errors {sortCol === 'errors' && (sortAsc ? '↑' : '↓')}
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((app, idx) => (
+                {displayed.map((app, idx) => (
                   <tr key={app.app_id} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#fafbfc' }}>
                     <td style={{ ...tdStyle, fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace' }}>
                       {formatTimestamp(app.first_event)}
@@ -713,7 +860,7 @@ function AnalyticsContent() {
           )}
           {sorted.length > 0 && (
             <div style={{ padding: '0.75rem 1rem', backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0', fontSize: '0.75rem', color: '#64748b' }}>
-              Showing {sorted.length} of {apps.length} apps
+              Showing {displayed.length} of {sorted.length} apps{filter && ` (filtered from ${apps.length})`}{hasMore && ' — scroll for more'}
             </div>
           )}
         </div>
