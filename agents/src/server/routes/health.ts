@@ -34,6 +34,7 @@ router.get('/', async (req, res) => {
     // Remove dev_app_version once we have switched to preview_app_version
     dev_app_version: process.env.DEV_APP_IMAGE_TAG || 'unknown',
     preview_app_version: process.env.PREVIEW_APP_IMAGE_TAG || process.env.DEV_APP_IMAGE_TAG || 'unknown',
+    publish_app_version: process.env.PUBLISH_APP_IMAGE_TAG || 'unknown',
     pre_start_version: process.env.PRE_START_IMAGE_TAG || 'unknown',
     last_message_at: lastMessage,
   });
