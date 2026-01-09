@@ -21,6 +21,7 @@ import OAuthToolRenderer from './OAuthToolRenderer'
 import PublishClientToolRenderer from './PublishClientToolRenderer'
 import ReadFileToolRenderer from './ReadFileToolRenderer'
 import SecretsToolRenderer from './SecretsToolRenderer'
+import SetProjectNameToolRenderer from './SetProjectNameToolRenderer'
 import SkillToolRenderer from './SkillToolRenderer'
 import SocialConnectToolRenderer from './SocialConnectToolRenderer'
 import SocialPostCreateToolRenderer from './SocialPostCreateToolRenderer'
@@ -59,6 +60,7 @@ export const toolRendererRegistry = {
   suggestedResponse: SuggestedResponseToolRenderer,
   oauthConnect: OAuthToolRenderer,
   requestSecrets: SecretsToolRenderer,
+  setProjectName: SetProjectNameToolRenderer,
   socialStatus: SocialStatusToolRenderer,
   socialConnect: SocialConnectToolRenderer,
   skill: SkillToolRenderer,
@@ -111,6 +113,7 @@ export {
   PublishClientToolRenderer,
   ReadFileToolRenderer,
   SecretsToolRenderer,
+  SetProjectNameToolRenderer,
   SkillToolRenderer,
   SocialPostCreateToolRenderer,
   SuggestedResponseToolRenderer,

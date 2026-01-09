@@ -16,40 +16,24 @@ import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
  * It creates a minimal todo list for a single-page preview and hands off to develop agent.
  * 
  * Prompt structure:
- * - core.md: Core role, workflow, and rules (always included)
- * - guidelines.md: Detailed planning instructions (optional, enabled by default)
- * - examples.md: Pattern demonstrations (optional, enabled by default)
+ * - core.md: Core role, workflow, and rules
+ * - attributes.md: Attribute discovery for personalization
+ * - guidelines.md: Detailed planning instructions
+ * - examples.md: Pattern demonstrations
+ * - security.md: Content restrictions
  */
 
 /**
  * Build the system prompt for the Initial Agent
  */
-async function buildInitialSystemPrompt(options?: {
-  includeGuidelines?: boolean
-  includeExamples?: boolean
-}): Promise<string> {
-  const {
-    includeGuidelines = true,
-    includeExamples = true
-  } = options || {}
-
+async function buildInitialSystemPrompt(): Promise<string> {
   const promptBuilder = createPromptBuilder()
   const paths = getModularPromptPaths(import.meta.url)
 
-  // Core role and workflow (always included)
   promptBuilder.file(paths.getAgentFile('initial', 'core.md'))
-
-  // Guidelines (optional - detailed planning instructions)
-  if (includeGuidelines) {
-    promptBuilder.file(paths.getAgentFile('initial', 'guidelines.md'))
-  }
-
-  // Examples (optional - pattern demonstrations)
-  if (includeExamples) {
-    promptBuilder.file(paths.getAgentFile('initial', 'examples.md'))
-  }
-
-  // Security guidelines (always included - contains content restrictions)
+  promptBuilder.file(paths.getAgentFile('initial', 'attributes.md'))
+  promptBuilder.file(paths.getAgentFile('initial', 'guidelines.md'))
+  promptBuilder.file(paths.getAgentFile('initial', 'examples.md'))
   promptBuilder.file(paths.getSharedFile('security.md'))
 
   return await promptBuilder.build()
@@ -59,13 +43,9 @@ async function buildInitialSystemPrompt(options?: {
  * Create the Initial Agent configuration
  */
 export async function createInitialAgent(
-  stateManager?: SessionStateManager,
-  options?: {
-    includeGuidelines?: boolean
-    includeExamples?: boolean
-  }
+  stateManager?: SessionStateManager
 ): Promise<AgentConfig> {
-  const systemPrompt = await buildInitialSystemPrompt(options)
+  const systemPrompt = await buildInitialSystemPrompt()
   const { model, modelName } = await getAgentModelWithName('fast')
 
   const handoffTool = stateManager
@@ -78,6 +58,7 @@ export async function createInitialAgent(
 
   const tools: Record<string, unknown> = {
     todoList: allAILibTools.todoList,
+    setProjectName: allAILibTools.setProjectName,
   }
 
   if (handoffTool) {

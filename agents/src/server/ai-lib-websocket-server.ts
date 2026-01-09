@@ -745,6 +745,36 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           return 'develop'
         }
 
+        // Check if session already has an active agent (set by previous routing or handoff)
+        // This check happens BEFORE conversation history check so that the initial agent
+        // can receive follow-up messages (like attribute answers) until it hands off
+        const currentAgent = stateManager.getCurrentAgent?.(socketId)
+        const sessionAppId = stateManager.getSessionMetadata?.(socketId)?.appId
+        
+        // If session has an agent AND it's for the same app, use it
+        if (currentAgent && sessionAppId === appId) {
+          logger.debug('websocket.agent_router.session_agent', {
+            socketId,
+            appId,
+            currentAgent,
+            message: 'Using agent from session state'
+          })
+          return currentAgent
+        }
+
+        // If session exists but app changed, clear it
+        if (currentAgent && sessionAppId && sessionAppId !== appId) {
+          logger.info('websocket.agent_router.app_changed', {
+            socketId,
+            oldAppId: sessionAppId,
+            newAppId: appId,
+            oldAgent: currentAgent,
+            message: 'App changed, clearing session state'
+          })
+          stateManager.clearSession?.(socketId)
+        }
+
+        // Check conversation history to determine if this is a new app
         const conversations = conversationRepository.getByAppIdSync(appId)
         const isNewApp = conversations.length === 0
         
@@ -752,8 +782,24 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           logger.info('websocket.agent_router.initial_selected', {
             socketId,
             appId,
-            message: 'New app detected, routing to initial agent'
+            message: 'New app detected, routing to initial agent and setting session state'
           })
+          
+          // Set the initial agent in session state so subsequent messages continue with it
+          // This ensures the initial agent receives follow-up messages (like attribute answers)
+          // until it explicitly hands off to develop agent
+          stateManager.switchAgent(socketId, 'initial').catch(error => {
+            logger.error('websocket.agent_router.session_state_error', {
+              socketId,
+              appId,
+              error: error instanceof Error ? error.message : String(error),
+              message: 'Failed to set initial agent in session state'
+            })
+          })
+          
+          // Also set the appId in session metadata for tracking
+          stateManager.setSessionMetadata?.(socketId, { appId })
+          
           return 'initial'
         }
         

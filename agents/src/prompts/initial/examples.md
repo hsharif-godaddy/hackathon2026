@@ -1,25 +1,37 @@
 # Design-Focused Example Patterns
 
-These examples show how to analyze product ideas and create design-focused single-page preview plans.
-
-**Remember:**
-
-- These are PATTERNS to adapt, not templates to copy. Always tailor to the user's specific request.
-- **ALWAYS defer features requiring APIs or database to future phases** (auth, forms, dynamic data, etc.)
-- Focus on creating distinctive design direction, not just feature lists
+<context>
+These examples show the complete workflow from analysis to handoff. They are PATTERNS to adapt, not templates to copy. Always tailor to the user's specific request and discovered attributes.
+</context>
 
 ---
 
 ## Example 1: SaaS Project Management Tool
 
-**User wants:** "A project management tool for small teams"
+**User:** "A project management tool for small teams"
+
+### Attribute Discovery
+
+**Selected attributes:** Tech savviness, B2B vs. B2C, Mobile vs. desktop
+**Can infer:** Tech-savvy (project management users), B2B (teams), desktop-primary (PM workflows)
+**Action:** Continue without asking—document assumptions
+
+### Set Project Name (Use `setProjectName` tool)
+
+```json
+{
+  "name": "TaskFlow"
+}
+```
 
 ### Design Analysis
 
-**Product category:** SaaS productivity tool  
-**Target audience:** Small team leads, project managers, startup teams  
-**Emotional positioning:** Organized, approachable, efficient, trustworthy  
-**Key content needs:** Product benefits, feature showcase, integrations, pricing preview, testimonials from teams
+| Aspect                | Decision                                                       |
+| --------------------- | -------------------------------------------------------------- |
+| Product category      | SaaS productivity tool                                         |
+| Target audience       | Small team leads, project managers, startups                   |
+| Emotional positioning | Organized, approachable, efficient, trustworthy                |
+| Key content needs     | Product benefits, feature showcase, integrations, testimonials |
 
 ### Design Direction
 
@@ -27,36 +39,40 @@ These examples show how to analyze product ideas and create design-focused singl
 
 **Visual direction:**
 
-- **Color:** Light base (off-white) with ONE vibrant accent color (consider warm tones like coral or teal, NOT default blue). Use accent sparingly for CTAs and highlights to create focus.
-- **Typography:** Friendly but professional—approachable without being playful. Mix weights confidently (light for large display, medium/bold for emphasis).
-- **Layout:** DO NOT use icon grids for features. Use staggered two-column layout with alternating product screenshots and text. Hero should have text left, product UI screenshot right.
+- **Color:** Light base (off-white) with ONE vibrant accent color (warm tones like coral or teal, NOT default blue). Use accent sparingly.
+- **Typography:** Friendly but professional—approachable without being playful. Mix weights confidently.
+- **Layout:** DO NOT use icon grids. Staggered two-column with alternating product screenshots and text.
 
-**Section-specific:**
+**Differentiation:** Oversized typography in hero that breaks the grid for immediate impact.
 
-- **Hero:** Include small teams logo bar or stat below fold ("Trusted by 500+ small teams")
-- **Features:** Show through actual UI examples or inline screenshots, not icon cards
-- **Social proof:** Small team testimonials with company names
-- **CTA:** Asymmetric layout with visual element, not centered-text-on-band
+### Todo List (Use `todoList` tool)
 
-**Differentiation:** Include oversized typography in hero—display text that breaks the grid for immediate impact.
-
-**Consistency:** Footer should maintain the friendly-professional tone, not fade to generic links.
-
-### Todo List
-
-1. Apply design direction: Clean, capable aesthetic for small teams with staggered layout and oversized hero typography. Color: Light base with ONE vibrant accent (not blue). Typography: Friendly but professional. Avoid icon grids.
-2. Search for product UI screenshots showing project management interface in action
-3. Build homepage (index.tsx) with asymmetric hero (text left, UI right), features via alternating screenshot sections (not icon grid), small team testimonials, and asymmetric CTA. Include oversized typography.
-4. Add product screenshots to hero and feature sections with proper context
-5. Update header, footer, and page title with clean, friendly styling that maintains design quality
-6. Choose color scheme that matches organized, approachable aesthetic for small teams
-7. Ask user if they want to build: pricing page, integrations page, about page
-
-**Deferred:** Pricing page, integrations page, about page, contact page
-
-### Handoff Prompt
-
+```json
+{
+  "todos": [
+    "Apply design direction: Clean, capable aesthetic with staggered layout and oversized hero typography. Color: Light base with ONE vibrant accent (not blue). Typography: Friendly but professional. Avoid icon grids.",
+    "Search for product UI screenshots showing project management interface in action",
+    "Build homepage (index.tsx) with asymmetric hero (text left, UI right), features via alternating screenshot sections (not icon grid), small team testimonials, and asymmetric CTA. Include oversized typography.",
+    "Add product screenshots to hero and feature sections with proper context",
+    "Update header, footer, and page title with clean, friendly styling that maintains design quality",
+    "Choose color scheme that matches organized, approachable aesthetic for small teams",
+    "Ask user if they want to build: pricing page, integrations page, about page"
+  ]
+}
 ```
+
+### Handoff (Use `handoff` tool)
+
+```json
+{
+  "targetAgent": "develop",
+  "prompt": "Build a single-page preview with this design direction:
+
+KEY ATTRIBUTES:
+- Tech savviness: High (software teams)
+- B2B vs. B2C: B2B
+- Mobile vs. desktop: Desktop-primary
+
 DESIGN DIRECTION: Clean, capable aesthetic for small teams. Modern with purposeful whitespace. Well-funded startup feel, not generic template.
 
 VISUAL DIRECTION:
@@ -64,25 +80,48 @@ VISUAL DIRECTION:
 - Typography: Friendly but professional. Mix weights confidently.
 - Layout: NO icon grids. Staggered two-column with alternating screenshots/text.
 
-SECTION-SPECIFIC: Hero with text left/UI right, oversized typography. Features via actual UI screenshots. Asymmetric CTA. Maintain quality through footer.
+SECTION-SPECIFIC:
+- Hero: Text left, product UI right, oversized typography breaking grid
+- Features: Actual UI screenshots, not icon cards
+- CTA: Asymmetric layout, not centered-on-band
+- Footer: Maintain friendly-professional tone
 
 DIFFERENTIATION: Oversized typography in hero breaks grid for impact.
 
-After color-scheme handoff, ask about: pricing page, integrations page, about page.
+CONSISTENCY: Maintain quality through footer—don't let design get safer.
+
+After color-scheme handoff, ask about: pricing page, integrations page, about page."
+}
 ```
 
 ---
 
 ## Example 2: Creative Portfolio
 
-**User wants:** "Personal portfolio to showcase my design work"
+**User:** "Personal portfolio to showcase my design work"
+
+### Attribute Discovery
+
+**Selected attributes:** Visual showcase intensity, Brand personality, Target audience
+**Can infer:** Portfolio-heavy (design work), bold/creative (designer), professional audience (clients/hiring managers)
+**Action:** Continue without asking
+
+### Set Project Name (Use `setProjectName` tool)
+
+```json
+{
+  "name": "Creative Portfolio"
+}
+```
 
 ### Design Analysis
 
-**Product category:** Creative portfolio  
-**Target audience:** Potential clients, hiring managers, creative directors  
-**Emotional positioning:** Bold, confident, creative, distinctive  
-**Key content needs:** Project showcase, brief about section, skills/services, contact method
+| Aspect                | Decision                                                |
+| --------------------- | ------------------------------------------------------- |
+| Product category      | Creative portfolio                                      |
+| Target audience       | Potential clients, hiring managers, creative directors  |
+| Emotional positioning | Bold, confident, creative, distinctive                  |
+| Key content needs     | Project showcase, brief about, skills/services, contact |
 
 ### Design Direction
 
@@ -90,123 +129,140 @@ After color-scheme handoff, ask about: pricing page, integrations page, about pa
 
 **Visual direction:**
 
-- **Color:** Start with monochrome base (true black #0A0A0A and white) with ONE bold accent color used as punctuation. Let the work be the color.
-- **Typography:** Bold and confident with dramatic size contrasts. Mix weights and sizes creatively—oversized headings, tight leading on display text.
-- **Layout:** Bento-style grid for projects with varied card sizes. DO NOT use uniform grid. Asymmetric compositions throughout.
+- **Color:** Monochrome base (true black and white) with ONE bold accent used as punctuation. Let the work be the color.
+- **Typography:** Bold with dramatic size contrasts. Mix weights and sizes creatively—oversized headings, tight leading.
+- **Layout:** Bento-style grid for projects with varied card sizes. DO NOT use uniform grid.
 
-**Section-specific:**
-
-- **Hero:** Oversized name/title with distinctive typographic treatment. Minimal text, maximum impact.
-- **Projects:** Bento grid with varied sizes (some projects larger than others). Hover states should be distinctive, not generic fades.
-- **About:** Integrated into page flow, not separate section. Could be overlaid on project grid or between projects.
-- **Footer:** Should be as bold as hero, not an afterthought
-
-**Differentiation:** Use an unusual grid structure—bento layout where project card sizes vary significantly based on project importance.
-
-**Consistency:** CRITICAL: Maintain creative energy throughout. Footer should be as intentional as hero.
+**Differentiation:** Bento layout where project card sizes vary significantly, creating hierarchy through asymmetry.
 
 ### Todo List
 
-1. Apply design direction: Bold creative portfolio with bento grid layout and dramatic typography. Color: Monochrome base with ONE bold accent. Typography: Oversized with dramatic contrasts. Avoid uniform project grids.
-2. Search for portfolio project images with varied compositions and aspect ratios
-3. Build homepage (index.tsx) with oversized typographic hero, bento-style project grid (varied sizes), integrated about section, and bold footer. Include distinctive hover states.
-4. Add project images to bento grid with varied sizes based on project importance
-5. Update header, footer, and page title with bold, minimal styling that matches creative energy
-6. Choose color scheme that matches bold, confident creative aesthetic
-7. Ask user if they want to build: individual project case study pages, contact page
-
-**Deferred:** Individual project detail pages, contact page
-
-### Handoff Prompt
-
+```json
+{
+  "todos": [
+    "Apply design direction: Bold creative portfolio with bento grid and dramatic typography. Color: Monochrome base with ONE bold accent. Typography: Oversized with dramatic contrasts. Avoid uniform project grids.",
+    "Search for portfolio project images with varied compositions and aspect ratios",
+    "Build homepage (index.tsx) with oversized typographic hero, bento-style project grid (varied sizes), integrated about section, and bold footer. Include distinctive hover states.",
+    "Add project images to bento grid with varied sizes based on project importance",
+    "Update header, footer, and page title with bold, minimal styling that matches creative energy",
+    "Choose color scheme that matches bold, confident creative aesthetic",
+    "Ask user if they want to build: individual project case study pages, contact page"
+  ]
+}
 ```
+
+### Handoff
+
+```json
+{
+  "targetAgent": "develop",
+  "prompt": "Build a single-page preview with this design direction:
+
+KEY ATTRIBUTES:
+- Visual showcase: Portfolio-heavy
+- Brand personality: Bold/creative
+- Target audience: Professional (clients, hiring managers)
+
 DESIGN DIRECTION: Bold creative portfolio with strong hierarchy. Designer's portfolio feel, not template. Confident whitespace use.
 
 VISUAL DIRECTION:
-- Color: Monochrome base (black/white) with ONE bold accent for punctuation. Let work provide color.
+- Color: Monochrome base (black/white) with ONE bold accent for punctuation.
 - Typography: Bold with dramatic size contrasts. Oversized headings, tight leading.
-- Layout: NO uniform grid. Bento-style with varied card sizes (some 2x larger).
+- Layout: NO uniform grid. Bento-style with varied card sizes.
 
-SECTION-SPECIFIC: Oversized name/title hero with grid-breaking typography. Bento grid with varied sizes. Distinctive hover states. Integrated about section. Bold footer matching hero energy.
+SECTION-SPECIFIC:
+- Hero: Oversized name/title with grid-breaking typography
+- Projects: Bento grid with varied sizes, distinctive hover states
+- About: Integrated into page flow, not separate section
+- Footer: As bold as hero, not an afterthought
 
-DIFFERENTIATION: Bento layout creates hierarchy through asymmetry, not uniform repetition.
+DIFFERENTIATION: Bento layout creates hierarchy through asymmetry.
 
 CRITICAL: Maintain creative energy throughout. Footer as bold as hero.
 
-After color-scheme handoff, ask about: project case study pages, contact page.
+After color-scheme handoff, ask about: project case study pages, contact page."
+}
 ```
 
 ---
 
-## Example 3: E-commerce Product Showcase
+## Example 3: Local Business (Needs to Ask)
 
-**User wants:** "Online store for handmade ceramics"
+**User:** "Website for my coffee shop"
+
+### Attribute Discovery
+
+**Selected attributes:** Business Name, Geographic location, Scheduling dependency
+**Cannot infer:** Name not provided, location not provided, unclear if needs ordering/reservations
+**Action:** Ask ONE question
+
+**Response:** "To personalize your coffee shop site, I need to know:
+
+1. What's your business name?
+2. Where are you located?
+3. Do you need online ordering or table reservations?"
+
+### After User Responds
+
+**User:** "It's called 'Morning Grounds,' we're in Portland, and yes we want online ordering"
+
+### Set Project Name (Use `setProjectName` tool)
+
+```json
+{
+  "name": "Morning Grounds"
+}
+```
 
 ### Design Analysis
 
-**Product category:** E-commerce, artisan goods  
-**Target audience:** Design-conscious consumers, gift buyers, home decor enthusiasts  
-**Emotional positioning:** Warm, artisanal, premium-but-approachable, crafted  
-**Key content needs:** Product showcase, artist story, trust signals, shopping features preview
+| Aspect                | Decision                                                               |
+| --------------------- | ---------------------------------------------------------------------- |
+| Product category      | Local business, food service                                           |
+| Target audience       | Local coffee lovers, regulars, tourists                                |
+| Emotional positioning | Warm, welcoming, artisanal, community-focused                          |
+| Key content needs     | Menu preview, location/hours, online ordering CTA, atmosphere showcase |
 
 ### Design Direction
 
-**Overall aesthetic:** Warm and artisanal with generous whitespace. Premium without being pretentious. Should feel handcrafted and intentional, not mass-market.
+**Overall aesthetic:** Warm and inviting with generous whitespace. Should feel like stepping into a cozy coffee shop. Local and artisanal, not corporate chain.
 
 **Visual direction:**
 
-- **Color:** Warm neutrals (cream, terracotta, warm grays) as base. Earth tones that feel natural and handmade. Avoid pure white—use warm off-white (#FAF8F5).
-- **Typography:** Elegant but approachable. Serif for headings (warmth and craft), sans-serif for body (clarity). Generous spacing.
-- **Layout:** Asymmetric product grid with varied image sizes. DO NOT use standard e-commerce grid. Full-bleed imagery sections.
+- **Color:** Warm neutrals (cream, warm browns, terracotta). Avoid pure white—use warm off-white.
+- **Typography:** Friendly and approachable. Mix serif (warmth) and sans-serif (clarity).
+- **Layout:** Full-bleed imagery sections. Asymmetric product/atmosphere photos.
 
-**Section-specific:**
-
-- **Hero:** Full-bleed product photography with overlaid text. Should feel editorial, not commercial.
-- **Products:** Asymmetric grid with varied sizes. Some products featured larger. Include pricing and brief descriptions on cards.
-- **Story:** Integrated section about the artist/process. Could include process photos.
-- **Trust:** Subtle trust signals (shipping, returns) integrated into design, not badge section
-
-**Differentiation:** Full-bleed imagery sections that break the vertical rhythm. Product photography should feel editorial and artistic.
-
-**Consistency:** Maintain warm, artisanal feel throughout. Footer should feel as crafted as hero.
+**Differentiation:** Full-bleed imagery that breaks vertical rhythm, creating an editorial feel.
 
 ### Todo List
 
-1. Apply design direction: Warm artisanal aesthetic with asymmetric product grid and full-bleed imagery. Color: Warm neutrals and earth tones. Typography: Elegant serif headings. Avoid standard e-commerce grids.
-2. Search for artisanal ceramic product photos with natural lighting and editorial quality
-3. Build homepage (index.tsx) with full-bleed hero image, asymmetric product grid (varied sizes), integrated artist story section, and crafted footer. Include warm, generous spacing.
-4. Add ceramic product photos to hero and asymmetric grid with varied prominence
-5. Update header, footer, and page title with elegant, minimal styling using warm neutrals
-6. Choose color scheme that matches warm, artisanal aesthetic
-7. Ask user if they want to build: individual product pages, shopping cart, checkout flow
-
-**Deferred:** Individual product pages, shopping cart, checkout, about page
-
-### Handoff Prompt
-
-```
-DESIGN DIRECTION: Warm, artisanal aesthetic. Premium without pretentious. Handcrafted feel, not mass-market template.
-
-VISUAL DIRECTION:
-- Color: Warm neutrals (cream, terracotta, warm grays). Earth tones. NO pure white.
-- Typography: Elegant but approachable. Serif headings (warmth), sans body (clarity).
-- Layout: NO standard e-commerce grid. Asymmetric with varied sizes (some 2x larger).
-
-SECTION-SPECIFIC: Full-bleed hero with editorial product photography. Asymmetric product grid with pricing. Integrated artist story. Subtle trust signals. Crafted footer.
-
-DIFFERENTIATION: Full-bleed imagery breaks vertical rhythm. Editorial, not commercial photography.
-
-Maintain warm, artisanal feel throughout. Generous whitespace consistent.
-
-After color-scheme handoff, ask about: product pages, shopping cart, checkout flow.
+```json
+{
+  "todos": [
+    "Apply design direction: Warm, inviting aesthetic for local coffee shop with full-bleed imagery and friendly typography. Color: Warm neutrals (cream, browns). Typography: Serif headings, sans body. Avoid corporate chain feel.",
+    "Search for artisanal coffee shop interior and product photos with warm natural lighting",
+    "Build homepage (index.tsx) with full-bleed hero image, menu highlights section, location/hours with map, and prominent online ordering CTA. Include warm, generous spacing.",
+    "Add coffee shop atmosphere and product photos with editorial treatment",
+    "Update header, footer, and page title with 'Morning Grounds' branding and Portland location",
+    "Choose color scheme that matches warm, welcoming coffee shop aesthetic",
+    "Ask user if they want to build: full menu page, about/story page, online ordering integration"
+  ]
+}
 ```
 
 ---
 
-## Key Patterns to Apply
+## Key Patterns
 
-**Always include:** Design analysis, specific visual direction, cliché avoidance, section guidance, differentiation element, consistency requirements.
+| Pattern                       | Application                                                  |
+| ----------------------------- | ------------------------------------------------------------ |
+| **Attribute inference**       | When context is clear, document assumptions and continue     |
+| **Single question**           | When asking, use numbered list for all needed attributes     |
+| **Set project name**          | Always use `setProjectName` tool after gathering information |
+| **Specific design direction** | Always include what to avoid AND what to use instead         |
+| **Differentiation element**   | Every design needs one unexpected element                    |
+| **Consistent quality**        | Explicitly note that footer should match hero quality        |
+| **Deferred features**         | Always list what to build in future phases                   |
 
-**Always defer:** Additional pages, API/database features, e-commerce checkout, user accounts, backend integrations.
-
-These are patterns to adapt, not templates to copy. Analyze each request and create tailored design direction.
+These are patterns to adapt. Analyze each request and create tailored design direction that avoids AI clichés while matching the user's specific needs and discovered attributes.

@@ -50,6 +50,7 @@ export { colorSchemeAITool } from './color-scheme.js';
 export { skillAITool } from './skill-loader.js';
 export { websiteScraperAITool } from './website-scraper.js';
 export { publishClientAITool } from './publish-client.js';
+export { setProjectNameAITool } from './set-project-name.js';
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js';
@@ -95,6 +96,7 @@ import { colorSchemeAITool } from './color-scheme.js';
 import { skillAITool } from './skill-loader.js';
 import { websiteScraperAITool } from './website-scraper.js';
 import { publishClientAITool } from './publish-client.js';
+import { setProjectNameAITool } from './set-project-name.js';
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -141,6 +143,7 @@ export const allAILibTools: Record<string, Tool> = {
   commerceSkuGroupMedia: commerceSkuGroupMedia,
   websiteScraper: websiteScraperAITool,
   publishClient: publishClientAITool,
+  setProjectName: setProjectNameAITool,
 };
 
 /**
