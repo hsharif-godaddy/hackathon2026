@@ -35,10 +35,10 @@
     "devtools": "npx @ai-sdk/devtools"
   },
   "dependencies": {
-    "@ai-sdk/amazon-bedrock": "^4.0.0-beta.87",
-    "@ai-sdk/anthropic": "^3.0.0-beta.77",
-    "@ai-sdk/devtools": "^0.0.3",
-    "@ai-sdk/openai": "^3.0.0-beta.88",
+    "@ai-sdk/amazon-bedrock": "^4.0.12",
+    "@ai-sdk/anthropic": "^3.0.9",
+    "@ai-sdk/devtools": "^0.0.4",
+    "@ai-sdk/openai": "^3.0.7",
     "@airo/ai-lib": "workspace:*",
     "@anthropic-ai/tokenizer": "^0.0.4",
     "@aws-sdk/credential-providers": "^3.888.0",
@@ -54,7 +54,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
     "@types/socket.io": "^3.0.2",
-    "ai": "^6.0.0-beta.138",
+    "ai": "^6.0.23",
     "axios": "^1.12.0",
     "better-sqlite3": "^12.2.0",
     "compression": "^1.7.4",
