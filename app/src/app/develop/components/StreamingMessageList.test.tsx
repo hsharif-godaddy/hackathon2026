@@ -31,6 +31,13 @@ const mockDevelopPageStore = {
   loadingPhase: 'ready',
 };
 
+// Mock the appIdFromParams to simulate URL param matching
+let mockAppIdFromParams = 'test-app-123';
+
+vi.mock('./utils', () => ({
+  useAppIdFromParams: () => mockAppIdFromParams,
+}));
+
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: () => mockStreamingStore.isActivelyStreaming,
   useConversationPagination: () => mockStreamingStore.pagination,
@@ -52,6 +59,8 @@ describe('StreamingMessageList', function packageTests() {
   beforeEach(() => {
     vi.clearAllMocks();
     mockStreamingStore.isLoading = false;
+    mockStreamingStore.currentAppId = 'test-app-123';
+    mockAppIdFromParams = 'test-app-123';
     mockDevelopPageStore.loadingPhase = 'ready';
   });
 
@@ -381,6 +390,74 @@ describe('StreamingMessageList', function packageTests() {
 
       // Should be considered "near bottom" and resume auto-scroll
       expect(scrollContainer).toBeInTheDocument();
+    });
+  });
+
+  describe('app switching', function appSwitching() {
+    it('should show spinner during app transition when store appId differs from URL', function showSpinnerDuringTransition() {
+      // Simulate app transition: URL changed but store hasn't updated yet
+      mockStreamingStore.currentAppId = 'old-app-123';
+      mockAppIdFromParams = 'new-app-456';
+
+      const messages = [
+        {
+          id: 'msg-1',
+          role: 'user' as const,
+          content: 'Hello from old app',
+          timestamp: new Date(),
+        },
+      ];
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      // Should show spinner during transition, not the old messages
+      expect(screen.getByRole('status')).toBeInTheDocument();
+      expect(screen.queryByTestId('message-msg-1')).not.toBeInTheDocument();
+    });
+
+    it('should show messages when app IDs match', function showMessagesWhenMatched() {
+      mockStreamingStore.currentAppId = 'test-app-123';
+      mockAppIdFromParams = 'test-app-123';
+
+      const messages = [
+        {
+          id: 'msg-1',
+          role: 'user' as const,
+          content: 'Hello',
+          timestamp: new Date(),
+        },
+      ];
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      // Should show messages when IDs match
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
+    });
+
+    it('should handle empty messages during app transition gracefully', function handleEmptyDuringTransition() {
+      mockStreamingStore.currentAppId = 'old-app-123';
+      mockAppIdFromParams = 'new-app-456';
+      mockStreamingStore.isLoading = true;
+
+      renderWithProviders(<StreamingMessageList allMessages={[]} />);
+
+      // Should show spinner for loading state during transition
+      expect(screen.getByRole('status')).toBeInTheDocument();
+      expect(screen.queryByText('No messages yet.')).not.toBeInTheDocument();
+    });
+
+    it('should not show "No messages yet" during app transition even with empty messages', function noEmptyStateDuringTransition() {
+      mockStreamingStore.currentAppId = 'old-app-123';
+      mockAppIdFromParams = 'new-app-456';
+      mockStreamingStore.isLoading = false;
+      mockDevelopPageStore.loadingPhase = 'ready';
+
+      renderWithProviders(<StreamingMessageList allMessages={[]} />);
+
+      // Should show spinner during transition, not the empty state
+      expect(screen.getByRole('status')).toBeInTheDocument();
+      expect(screen.queryByText('No messages yet.')).not.toBeInTheDocument();
     });
   });
 });

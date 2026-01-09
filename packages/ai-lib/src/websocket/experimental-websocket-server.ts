@@ -475,7 +475,8 @@ export class WebSocketServer {
             isRecovering: true,
             hasBufferedEvents: false,
             bufferedEventCount: 0,
-            streamCompleted: true
+            streamCompleted: true,
+            conversationId: auth.conversationId
           }
         } as WebSocketMessage)
       }

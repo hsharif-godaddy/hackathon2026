@@ -327,15 +327,18 @@ export const webSocketMachine = setup({
     transport: {
       initial: 'disconnected',
 
+      // Handle CONNECT from ANY state (enables app switching)
+      on: {
+        CONNECT: {
+          target: '.connecting',
+          actions: ['setAppId', 'logConnectionStart'],
+        },
+      },
+
       states: {
         disconnected: {
           entry: ['clearSocketId', 'clearError'],
-          on: {
-            CONNECT: {
-              target: 'connecting',
-              actions: ['setAppId', 'logConnectionStart'],
-            },
-          },
+          // CONNECT is now handled at parent level
         },
 
         connecting: {
@@ -516,6 +519,13 @@ export const webSocketMachine = setup({
           states: {
             receiving: {
               on: {
+                // Allow starting a new stream even if one was active
+                // This handles app switching where the previous stream was interrupted
+                SEND_MESSAGE: {
+                  target: 'receiving',
+                  actions: ['setConversationId', 'savePendingMessage', 'logStreamStart'],
+                },
+
                 STREAM_COMPLETE: {
                   target: 'completing',
                   actions: 'logStreamComplete',

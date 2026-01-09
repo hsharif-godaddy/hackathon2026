@@ -14,17 +14,6 @@
 import { EventEmitter } from 'events'
 import type { Socket } from 'socket.io-client'
 
-import { logger } from '@/lib/request-context'
-import type { ConnectionManager, ConnectionCallbacks } from './ConnectionManager'
-import type { WebSocketActor } from './stateMachineTypes'
-import type {
-  MessageHandlerActions,
-  MessageHandlerHelpers,
-  MessageHandlerRefs,
-  MessageContext,
-  RecoveryAck,
-  ServerConfig,
-} from '@/hooks/websocket/handlers/types'
 import {
   CatchupCompleteHandler,
   CatchupStatusHandler,
@@ -45,8 +34,20 @@ import {
   ToolStartHandler,
 } from '@/hooks/websocket/handlers'
 import {
+  type MessageContext,
+  type MessageHandlerActions,
+  type MessageHandlerHelpers,
+  type MessageHandlerRefs,
+  RECOVERY_CONTROL_MESSAGE_TYPES,
+  type RecoveryAck,
+  type ServerConfig,
+} from '@/hooks/websocket/handlers/types'
+import {
   setConversationIdCookie,
 } from '@/hooks/websocket/useWebSocketHelpers'
+import { logger } from '@/lib/request-context'
+import type { ConnectionCallbacks,ConnectionManager } from './ConnectionManager'
+import type { WebSocketActor } from './stateMachineTypes'
 
 /**
  * Events emitted by TransportSupervisor for controller/adapter to consume
@@ -81,6 +82,8 @@ export interface TransportSupervisorDeps {
     streamingState: string
     activeStream: unknown
   }
+  // Dynamic app ID getter for validating incoming messages
+  getCurrentAppId?: () => string | null
 }
 
 const CONNECTION_RETRY_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
@@ -270,7 +273,7 @@ export class TransportSupervisor extends EventEmitter {
 
     const messageContext: MessageContext = {
       socket,
-      currentAppId: this.currentAppId,
+      currentAppId: this.deps.getCurrentAppId?.() ?? this.currentAppId,
       actions: this.deps.actions,
       helpers: {
         ...this.deps.getHelpers(),
@@ -280,15 +283,15 @@ export class TransportSupervisor extends EventEmitter {
       },
       refs: this.deps.refs,
       machine: this.deps.machine,
-    }
+    };
 
     socket.on('status', (data) => {
       if (data.data?.status === 'thinking') {
         logger.debug('websocket.status.thinking', {
-          appId: this.currentAppId,
-        })
+          appId: messageContext.currentAppId,
+        });
       }
-    })
+    });
 
     socket.on('message', async (data: { type: string; content: string; data?: any }, ack?: () => void) => {
       if (data.data?.conversationId && messageContext.currentAppId && typeof data.data.conversationId === 'string') {
@@ -325,19 +328,16 @@ export class TransportSupervisor extends EventEmitter {
   }
 
   private trackReplayEventReceipt(socket: Socket | null, eventType: string): void {
-    const pending = this.deps.refs.pendingRecoveryAck.current
-    if (!pending || !socket) return
+    const pending = this.deps.refs.pendingRecoveryAck.current;
+    if (!pending || !socket) return;
 
-    if (
-      eventType === 'recovery_status' ||
-      eventType === 'replay_complete' ||
-      eventType === 'catchup_status' ||
-      eventType === 'catchup_complete'
-    )
-      return
+    // Skip recovery control messages - they don't count toward replay
+    if (RECOVERY_CONTROL_MESSAGE_TYPES.includes(eventType as typeof RECOVERY_CONTROL_MESSAGE_TYPES[number])) {
+      return;
+    }
 
-    pending.receivedCount++
-    this.maybeSendRecoveryAck(socket)
+    pending.receivedCount++;
+    this.maybeSendRecoveryAck(socket);
   }
 
   private clearEscalationTimeout(): void {

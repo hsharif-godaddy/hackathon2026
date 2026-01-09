@@ -25,6 +25,19 @@ export interface WebSocketMessage {
 export type { ServerConfig }
 
 /**
+ * Recovery control message types - these are protocol messages that shouldn't be counted
+ * as replay events during recovery.
+ */
+export const RECOVERY_CONTROL_MESSAGE_TYPES = [
+  'recovery_status',
+  'replay_complete',
+  'catchup_status',
+  'catchup_complete',
+] as const;
+
+export type RecoveryControlMessageType = typeof RECOVERY_CONTROL_MESSAGE_TYPES[number];
+
+/**
  * Pending recovery acknowledgement tracking
  */
 export interface RecoveryAck {

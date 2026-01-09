@@ -157,10 +157,19 @@ export class ConnectionManager {
 
     const sharedSocket = getSharedSocket()
     if (sharedSocket) {
-      this.socket = sharedSocket
-      this.createdHere = false
-      callbacks.onSocketReady?.(sharedSocket, { isNew: false })
-      return Promise.resolve()
+      // Check if shared socket is for the same app
+      const socketAppId = sharedSocket.io?.opts?.query?.appId
+      if (socketAppId === appId) {
+        // Reuse shared socket for same app
+        this.socket = sharedSocket
+        this.createdHere = false
+        callbacks.onSocketReady?.(sharedSocket, { isNew: false })
+        return Promise.resolve()
+      }
+
+      // Different app - clear stale shared socket
+      sharedSocket.disconnect()
+      setSharedSocket(null)
     }
 
     if (this.initTimer) {
@@ -190,6 +199,9 @@ export class ConnectionManager {
    * Reused shared sockets remain untouched to avoid disrupting other consumers.
    */
   disconnect(): void {
+    // Clear currentAppId first to signal any in-flight async operations to abort
+    this.currentAppId = null
+
     if (this.initTimer) {
       clearTimeout(this.initTimer)
       this.initTimer = null
@@ -220,11 +232,28 @@ export class ConnectionManager {
   }
 
   private async initializeSocket(appId: string): Promise<void> {
+    // Guard: If appId changed during async operations, abort this initialization
+    // This prevents creating a socket for a stale appId
+    if (appId !== this.currentAppId) {
+      return
+    }
+
     try {
       const config = await this.deps.getConfigForSite(appId)
+
+      // Re-check after async operation
+      if (appId !== this.currentAppId) {
+        return
+      }
+
       this.socketUrl = config.baseUrl
 
       const token = await this.deps.fetchAgentToken(appId)
+
+      // Re-check after async operation
+      if (appId !== this.currentAppId) {
+        return
+      }
 
       if (!token) {
         this.callbacks?.onConnectionFailed?.(new Error('Failed to acquire authentication token'))
@@ -380,13 +409,6 @@ export class ConnectionManager {
     }
 
     this.tokenRefreshCount += 1
-
-    logger.info('websocket.token.expired', {
-      message: 'JWT token expired, refetching and retrying connection',
-      appId,
-      attempt: this.tokenRefreshCount,
-      originalError: error.message,
-    })
 
     const newToken = await this.deps.fetchAgentToken(appId)
 

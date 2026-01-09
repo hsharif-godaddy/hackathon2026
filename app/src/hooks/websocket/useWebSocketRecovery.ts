@@ -7,10 +7,11 @@
  * - Recovery state management
  */
 
-import { type MutableRefObject,useCallback, useRef } from 'react'
-import type { Socket } from 'socket.io-client'
+import { type MutableRefObject, useCallback, useRef } from 'react';
+import type { Socket } from 'socket.io-client';
 
-import { logger } from '@/lib/request-context'
+import { RECOVERY_CONTROL_MESSAGE_TYPES } from '@/hooks/websocket/handlers/types';
+import { logger } from '@/lib/request-context';
 
 /**
  * Pending recovery acknowledgement tracking
@@ -101,22 +102,19 @@ export function useWebSocketRecovery(): UseWebSocketRecoveryReturn {
    */
   const trackReplayEventReceipt = useCallback(
     (socket: Socket | null, eventType: string) => {
-      const pending = pendingRecoveryAckRef.current
-      if (!pending || !socket) return
-      // Skip control messages - these don't count toward replay
-      if (
-        eventType === 'recovery_status' ||
-        eventType === 'replay_complete' ||
-        eventType === 'catchup_status' ||
-        eventType === 'catchup_complete'
-      )
-        return
+      const pending = pendingRecoveryAckRef.current;
+      if (!pending || !socket) return;
 
-      pending.receivedCount++
-      maybeSendRecoveryAck(socket)
+      // Skip recovery control messages - they don't count toward replay
+      if (RECOVERY_CONTROL_MESSAGE_TYPES.includes(eventType as typeof RECOVERY_CONTROL_MESSAGE_TYPES[number])) {
+        return;
+      }
+
+      pending.receivedCount++;
+      maybeSendRecoveryAck(socket);
     },
     [maybeSendRecoveryAck]
-  )
+  );
 
   return {
     wasRecoveredRef,

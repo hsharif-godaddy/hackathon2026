@@ -230,7 +230,7 @@ export class ConnectionRecoveryManager {
         socketId,
         conversationId
       })
-      this.sendStreamCompletedStatus(socket)
+      this.sendStreamCompletedStatus(socket, conversationId)
       return
     }
 
@@ -242,7 +242,7 @@ export class ConnectionRecoveryManager {
         socketId,
         conversationId
       })
-      this.sendStreamCompletedStatus(socket)
+      this.sendStreamCompletedStatus(socket, conversationId)
       return
     }
 
@@ -273,7 +273,7 @@ export class ConnectionRecoveryManager {
   /**
    * Send "stream completed" message when recovery attempted but no buffered events
    */
-  sendStreamCompletedStatus(socket: Socket): void {
+  sendStreamCompletedStatus(socket: Socket, conversationId?: string): void {
     socket.emit('message', {
       type: 'recovery_status',
       content: '',
@@ -281,7 +281,8 @@ export class ConnectionRecoveryManager {
         isRecovering: true,
         hasBufferedEvents: false,
         bufferedEventCount: 0,
-        streamCompleted: true
+        streamCompleted: true,
+        conversationId
       }
     } as WebSocketMessage)
   }

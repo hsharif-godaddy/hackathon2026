@@ -45,6 +45,9 @@ describe('RecoveryStatusHandler', () => {
 
   it('handles completed streams by loading history and finalizing state', async () => {
     const clearConnectionRetry = vi.fn()
+    const clearActiveStream = vi.fn()
+    const setStreamingState = vi.fn()
+    const setIsLoading = vi.fn()
     const context = createMockMessageContext()
 
     mockStore.getState.mockReturnValue({
@@ -52,6 +55,9 @@ describe('RecoveryStatusHandler', () => {
       activeStream: { id: 'stream-1' },
       connectionRetry: { isRetrying: true },
       clearConnectionRetry,
+      clearActiveStream,
+      setStreamingState,
+      setIsLoading,
     })
     mockStore.setState.mockImplementation(() => undefined)
 
@@ -77,12 +83,60 @@ describe('RecoveryStatusHandler', () => {
         expect.objectContaining({ id: 'msg-1', role: 'assistant', content: 'test' })
       ])
     })
-    expect(context.actions.finalizeStream).toHaveBeenCalledWith({})
+    expect(clearActiveStream).toHaveBeenCalled()
+    expect(setStreamingState).toHaveBeenCalledWith('idle')
+    expect(setIsLoading).toHaveBeenCalledWith(false)
     expect(clearConnectionRetry).toHaveBeenCalled()
     expect(context.helpers.clearRetryState).toHaveBeenCalled()
-    // Machine handles UI state transitions via STREAM_COMPLETE event (Tier 1)
-    // (Already sent by CompleteHandler when stream was completed before recovery)
     expect(context.helpers.clearStoredSocketId).toHaveBeenCalled()
+  })
+
+  it('preserves activeStream by finalizing when history load fails', async () => {
+    const clearConnectionRetry = vi.fn()
+    const clearActiveStream = vi.fn()
+    const setStreamingState = vi.fn()
+    const setIsLoading = vi.fn()
+    const context = createMockMessageContext()
+
+    const activeStreamData = {
+      id: 'stream-1',
+      content: 'Important assistant response that should not be lost',
+      segments: [{ id: 'seg-1', type: 'text', content: 'test' }],
+      toolCalls: [],
+    }
+
+    mockStore.getState.mockReturnValue({
+      currentAppId: 'app-123',
+      activeStream: activeStreamData,
+      connectionRetry: { isRetrying: false },
+      clearConnectionRetry,
+      clearActiveStream,
+      setStreamingState,
+      setIsLoading,
+    })
+    mockStore.setState.mockImplementation(() => undefined)
+
+    // Simulate history load failure
+    const getConversation = vi.fn().mockRejectedValue(new Error('Network error'))
+    mockAgentService.mockReturnValue({ getConversation })
+
+    const data: WebSocketMessage = {
+      type: 'recovery_status',
+      content: '',
+      data: {
+        streamCompleted: true,
+        conversationId: 'conv-1',
+      },
+    }
+
+    await handler.handle(data, context)
+
+    // Should NOT call clearActiveStream - that would lose data
+    expect(clearActiveStream).not.toHaveBeenCalled()
+    // Should call finalizeStream to preserve the in-memory response
+    expect(context.actions.finalizeStream).toHaveBeenCalledWith({})
+    expect(setStreamingState).toHaveBeenCalledWith('idle')
+    expect(setIsLoading).toHaveBeenCalledWith(false)
   })
 
   it('prepares buffered event replay and sets pending ack', async () => {
@@ -90,8 +144,11 @@ describe('RecoveryStatusHandler', () => {
     mockStore.getState.mockReturnValue({
       currentAppId: 'app-123',
       activeStream: null,
+      messages: [],
       connectionRetry: { isRetrying: false },
       clearConnectionRetry: vi.fn(),
+      setStreamingState: vi.fn(),
+      setIsLoading: vi.fn(),
     })
     mockStore.setState.mockImplementation(() => undefined)
 
@@ -123,7 +180,7 @@ describe('RecoveryStatusHandler', () => {
       ackEvent: 'recovery_ack',
     })
     expect(context.helpers.maybeSendRecoveryAck).toHaveBeenCalledWith(context.socket)
-    // Should set both activeStream (from initializeRecoveryStream) and messages (from loadConversationHistory)
+    // Should set messages directly (from loadConversationHistory - server data is authoritative)
     expect(mockStore.setState).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.arrayContaining([

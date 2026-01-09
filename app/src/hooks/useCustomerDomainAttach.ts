@@ -30,13 +30,6 @@ export function useCustomerDomainAttach(
   const attachMutation = useDomainAttach();
   const hasCalledAttachRef = useRef<Set<string>>(new Set());
 
-  logger.info('domain-attach.hook.called', {
-    message: 'useCustomerDomainAttach hook called',
-    appDetailsProvided: !!appDetails,
-    domainsCount: appDetails?.domains?.length || 0,
-    customerDomainsCount: customerDomains.length,
-  });
-
   /**
    * Get the currently pending customer domain
    *
@@ -84,25 +77,10 @@ export function useCustomerDomainAttach(
    * If it fails after all retries, we don't attempt again.
    */
   useEffect(() => {
-    logger.info('domain-attach.effect.triggered', {
-      message: 'Attach effect triggered',
-      isReadyForAttach,
-      hasPendingDomain: !!pendingCustomerDomain,
-      pendingDomainFqdn: pendingCustomerDomain?.fqdn,
-    });
-
     if (!isReadyForAttach || !pendingCustomerDomain) return;
 
     const domainName = pendingCustomerDomain.fqdn;
     const anycastIp = pendingCustomerDomain.anycastIp!;
-
-    logger.info('domain-attach.anycast-ip.received', {
-      message: 'Anycast IP received for customer domain, calling attach API',
-      domainName,
-      anycastIp,
-      status: pendingCustomerDomain.status,
-      cdnStatus: pendingCustomerDomain.cdnStatus,
-    });
 
     // Mark as called to prevent duplicate calls
     hasCalledAttachRef.current.add(domainName);
@@ -133,13 +111,6 @@ export function useCustomerDomainAttach(
       pendingCustomerDomain.cdnStatus === CdnStatus.ACTIVE;
 
     if (isFullyActive) {
-      logger.info('domain-attach.fully-active', {
-        message: 'Customer domain is fully active',
-        domainName: pendingCustomerDomain.fqdn,
-        status: pendingCustomerDomain.status,
-        cdnStatus: pendingCustomerDomain.cdnStatus,
-      });
-
       hasCalledAttachRef.current.delete(pendingCustomerDomain.fqdn);
     }
   }, [pendingCustomerDomain]);

@@ -91,7 +91,7 @@ export interface ChatMessage {
   toolCalls?: ToolCall[]
   timestamp: Date
   maxStepsReached?: boolean        // True when agent hit max steps limit
-  upstreamError?: boolean           // True if an error from upstream service, if any
+  upstreamError?: boolean          // True if an error from upstream service, if any
   budgetExceeded?: boolean         // True if user exceeded their usage budget
   error?: string                   // Error message
   errorType?: string               // Structured error type (e.g., 'RETRY_ERROR', 'NETWORK_ERROR')
@@ -169,8 +169,8 @@ export interface StreamingConversationState {
     isLoading: boolean
   }
 
-  // Per-app chat history cache (for future enhancement)
-  appChatHistory: Record<string, ChatMessage[]>
+  // Per-app chat cache: messages and active streams
+  appChatHistory: Record<string, { messages: ChatMessage[], activeStream: StreamingMessage | null }>
 
   // WebSocket state
   websocket: WebSocketState
@@ -709,7 +709,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   },
 
   finalizeStream: (metadata?: any) => {
-    const { activeStream, messages } = get()
+    const { activeStream } = get()
     if (!activeStream) return
 
     logger.debug('streaming-store.stream.finalize', {
@@ -744,12 +744,12 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       }
     }
 
-    set({
-      messages: [...messages, completedMessage],
+    set((state) => ({
+      messages: [...state.messages, completedMessage],
       activeStream: null,
       streamingState: 'idle',
       isLoading: false
-    })
+    }))
   },
 
   clearActiveStream: () => {
@@ -763,44 +763,43 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   // === APP CONTEXT ACTIONS ===
 
   setCurrentAppId: (appId) => {
-    const currentState = get()
-
-    // If switching to a different app, save current chat and load new app's chat
-    if (currentState.currentAppId !== appId) {
-      const newAppChatHistory = { ...currentState.appChatHistory }
-
-      // Save current app's chat history if we have one
-      if (currentState.currentAppId && currentState.messages.length > 0) {
-        newAppChatHistory[currentState.currentAppId] = currentState.messages
+    set((state) => {
+      if (state.currentAppId === appId) {
+        return state; // Same app, no-op
       }
 
-      // Load new app's chat history (or empty array if new app)
-      const newAppMessages = appId ? (newAppChatHistory[appId] || []) : []
+      const newAppChatHistory = { ...state.appChatHistory };
 
-      // Clear escalation timeout before resetting retry state when switching apps
-      if (currentState.connectionRetry.escalationTimeoutId) {
-        clearTimeout(currentState.connectionRetry.escalationTimeoutId)
+      // Save current app's messages and active stream
+      if (state.currentAppId) {
+        newAppChatHistory[state.currentAppId] = {
+          messages: state.messages,
+          activeStream: state.activeStream
+        };
       }
 
-      set({
+      // Clear escalation timeout when switching apps
+      if (state.connectionRetry.escalationTimeoutId) {
+        clearTimeout(state.connectionRetry.escalationTimeoutId);
+      }
+
+      // Get saved state for the new app (or defaults)
+      const savedState = appId ? newAppChatHistory[appId] : null;
+
+      return {
         currentAppId: appId,
-        messages: newAppMessages,
-        activeStream: null,
-        streamingState: 'idle',
+        messages: savedState?.messages ?? [],
+        activeStream: null, // Always null - let recovery determine stream state
+        streamingState: 'idle' as const, // Always idle - recovery will set streaming if needed
+        isLoading: false, // Always false - recovery will set loading if needed
         currentStep: 0,
         inputValue: '',
-        // Don't reset isLoading - let loadConversationHistory manage it
         aiEditContext: null,
         buildErrorContext: null,
         conversations: [],
-        conversationPagination: {
-          total: 0,
-          loaded: 0,
-          hasMore: false,
-          isLoading: false
-        },
+        conversationPagination: { total: 0, loaded: 0, hasMore: false, isLoading: false },
         appChatHistory: newAppChatHistory,
-        websocket: { connected: false, status: 'idle' },
+        websocket: { connected: false, status: 'idle' as const },
         connectionRetry: {
           isRetrying: false,
           retryStartedAt: null,
@@ -808,11 +807,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
           disconnectSocketId: null,
           escalationTimeoutId: null
         }
-      })
-    } else {
-      // Same app, just update the ID
-      set({ currentAppId: appId })
-    }
+      };
+    });
   },
   setInputValue: (value) => set({ inputValue: value }),
   setIsLoading: (loading) => set({ isLoading: loading }),
@@ -838,7 +834,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   setError: (error) => set({ lastError: error }),
 
-  startStream: (conversationId, messageId) => {
+  startStream: (_conversationId, _messageId) => {
     set({
       streamingState: 'streaming',
       currentStep: 1,
@@ -874,11 +870,11 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   },
 
   clearConnectionRetry: () => {
-    const currentState = get()
+    const currentState = get();
 
     // Clear escalation timeout if active
     if (currentState.connectionRetry.escalationTimeoutId) {
-      clearTimeout(currentState.connectionRetry.escalationTimeoutId)
+      clearTimeout(currentState.connectionRetry.escalationTimeoutId);
     }
 
     logger.info('streaming-store.connection-retry.clear', {
@@ -886,12 +882,9 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       elapsedMs: currentState.connectionRetry.retryStartedAt
         ? Date.now() - currentState.connectionRetry.retryStartedAt
         : null
-    })
+    });
 
-    // Restore streamingState: 'streaming' if stream still active, else 'idle'
-    const restoredStreamingState = currentState.activeStream ? 'streaming' : 'idle'
-
-    set({
+    set((state) => ({
       connectionRetry: {
         isRetrying: false,
         retryStartedAt: null,
@@ -899,8 +892,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         disconnectSocketId: null,
         escalationTimeoutId: null
       },
-      streamingState: restoredStreamingState
-    })
+      streamingState: state.activeStream ? 'streaming' : 'idle'
+    }));
   },
 
   checkStaleRetry: () => {
@@ -969,7 +962,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         disconnectSocketId: null,
         escalationTimeoutId: null
       }
-    })
+    });
   },
 
   // === UTILITY FUNCTIONS ===
@@ -999,17 +992,19 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   // Load conversation history from backend
   loadConversationHistory: async (appId: string) => {
-    const state = get()
+    const currentState = get();
 
     // Don't load if already loading
-    if (state.isLoading) return
+    if (currentState.isLoading) return;
 
-    // Don't load if we already have messages for this app in cache AND they're not just empty
-    const cachedMessages = state.appChatHistory[appId]
-    if (state.currentAppId === appId && cachedMessages && cachedMessages.length > 0) return
+    // Don't load if we already have messages (either in current state or cache)
+    if (currentState.currentAppId === appId && currentState.messages.length > 0) return;
+
+    const cached = currentState.appChatHistory[appId];
+    if (cached?.messages?.length > 0) return;
 
     try {
-      set({ isLoading: true })
+      set({ isLoading: true });
 
       // Add timeout protection
       const timeoutPromise = new Promise((_, reject) => {
@@ -1038,7 +1033,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       const conversations = data.conversations || []
 
       if (conversations.length === 0) {
-        set({
+        set((state) => ({
           isLoading: false,
           conversationPagination: {
             total: data.pagination?.total || 0,
@@ -1047,8 +1042,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
             isLoading: false
           },
           // Ensure we cache empty results to prevent repeated attempts
-          appChatHistory: { ...get().appChatHistory, [appId]: [] }
-        })
+          appChatHistory: { ...state.appChatHistory, [appId]: { messages: [], activeStream: null } }
+        }))
         return
       }
 
@@ -1078,24 +1073,21 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       }))
 
       // Update the store with loaded messages and cache them
-      set((state) => {
-        // Update both the current messages and the app cache
-        const newAppChatHistory = { ...state.appChatHistory }
-        newAppChatHistory[appId] = convertedMessages
-
-        return {
-          messages: convertedMessages,
-          conversations: convertedConversations,
-          conversationPagination: {
-            total: data.pagination?.total || 0,
-            loaded: convertedConversations.length,
-            hasMore: data.pagination?.hasMore || false,
-            isLoading: false
-          },
-          appChatHistory: newAppChatHistory,
+      set((state) => ({
+        messages: convertedMessages,
+        conversations: convertedConversations,
+        conversationPagination: {
+          total: data.pagination?.total || 0,
+          loaded: convertedConversations.length,
+          hasMore: data.pagination?.hasMore || false,
           isLoading: false
-        }
-      })
+        },
+        appChatHistory: {
+          ...state.appChatHistory,
+          [appId]: { messages: convertedMessages, activeStream: null }
+        },
+        isLoading: false
+      }));
 
       logger.debug('streaming-store.load-history.success', {
         appId,
@@ -1108,7 +1100,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         appId,
         error: error instanceof Error ? error.message : String(error),
       })
-      set({
+      set((state) => ({
         isLoading: false,
         conversationPagination: {
           total: 0,
@@ -1117,8 +1109,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
           isLoading: false
         },
         // Cache empty result to prevent repeated failed attempts
-        appChatHistory: { ...get().appChatHistory, [appId]: [] }
-      })
+        appChatHistory: { ...state.appChatHistory, [appId]: { messages: [], activeStream: null } }
+      }))
 
       // Don't throw - just log and continue with empty history
       logger.warn('streaming-store.load-history.continue-empty', { appId })
@@ -1197,10 +1189,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       set((state) => {
         const combinedMessages = [...convertedNewMessages, ...state.messages].sort(
           (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
-        )
-
-        const newAppChatHistory = { ...state.appChatHistory }
-        newAppChatHistory[appId] = combinedMessages
+        );
 
         return {
           messages: combinedMessages,
@@ -1211,9 +1200,12 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
             hasMore: data.pagination?.hasMore || false,
             isLoading: false
           },
-          appChatHistory: newAppChatHistory
-        }
-      })
+          appChatHistory: {
+            ...state.appChatHistory,
+            [appId]: { messages: combinedMessages, activeStream: state.activeStream }
+          }
+        };
+      });
 
     } catch (error) {
       logger.error('streaming-store.load-more.failure', { error: error instanceof Error ? error.message : String(error) })

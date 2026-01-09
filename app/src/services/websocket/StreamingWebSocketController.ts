@@ -131,6 +131,8 @@ export class StreamingWebSocketController extends EventEmitter {
           activeStream: store.activeStream,
         }
       },
+      // Provide dynamic app ID getter for message validation
+      getCurrentAppId: () => this.currentAppId,
     })
 
     // Forward supervisor events to controller events (for adapter consumption)
@@ -188,6 +190,10 @@ export class StreamingWebSocketController extends EventEmitter {
    * Disconnect WebSocket
    */
   disconnect(): void {
+    // Tell the machine we're disconnecting so it transitions to disconnected state
+    // This allows subsequent CONNECT events to be handled
+    this.machine.send({ type: 'DISCONNECT', reason: 'app_switch' })
+
     this.supervisor.disconnect()
     this.supervisor.clearRetryState()
   }
@@ -215,7 +221,9 @@ export class StreamingWebSocketController extends EventEmitter {
   }): Promise<void> {
     const { content } = params
 
-    if (!content.trim() || !this.currentAppId) return
+    if (!content.trim() || !this.currentAppId) {
+      return
+    }
 
     try {
       const socket = this.supervisor.getSocket()

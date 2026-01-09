@@ -8,8 +8,8 @@
 import { useCallback, useEffect, useRef } from 'react'
 
 import { logger } from '@/lib/request-context'
-import { ConnectionManager } from '@/services/websocket/ConnectionManager'
 import { ChatMessageBuilder } from '@/services/websocket/ChatMessageBuilder'
+import { ConnectionManager } from '@/services/websocket/ConnectionManager'
 import { StreamingWebSocketController } from '@/services/websocket/StreamingWebSocketController'
 import {
   useAddToolCallSegment,
@@ -32,17 +32,19 @@ import {
   useToolDeltaBuffer,
   useWebSocketHelpers,
 } from './websocket'
-import { captureVisualContext } from '../app/develop/components/visualContextCapture'
 import {
+  clearConversationIdCookie,
   getConversationIdFromCookie,
   setConversationIdCookie,
-  clearConversationIdCookie,
 } from './websocket/useWebSocketHelpers'
+import { captureVisualContext } from '../app/develop/components/visualContextCapture'
 
 export function useStreamingWebSocket() {
   const controllerRef = useRef<StreamingWebSocketController | null>(null)
   const connectionManagerRef = useRef<ConnectionManager | null>(null)
   const messageBuilderRef = useRef<ChatMessageBuilder | null>(null)
+  const previousAppIdRef = useRef<string | null>(null)
+  const isTransitioningRef = useRef(false)
 
   const webSocketState = useWebSocketState()
   const currentAppId = useCurrentAppId()
@@ -149,15 +151,29 @@ export function useStreamingWebSocket() {
 
   const controller = controllerRef.current
 
-  // Connect/disconnect on appId change
   useEffect(() => {
     if (!currentAppId) return
 
-    void controller.connect(currentAppId)
+    const previousAppId = previousAppIdRef.current
+
+    // Handle app switching - disconnect before connecting to new app
+    if (previousAppId && previousAppId !== currentAppId) {
+      isTransitioningRef.current = true;
+      controller.disconnect();
+    }
+
+    // Connect to the new app
+    void controller.connect(currentAppId).then(() => {
+      if (isTransitioningRef.current) {
+        isTransitioningRef.current = false;
+      }
+    });
+
+    previousAppIdRef.current = currentAppId;
 
     return () => {
-      controller.disconnect()
-    }
+      controller.disconnect();
+    };
   }, [currentAppId, controller])
 
   useEffect(() => {

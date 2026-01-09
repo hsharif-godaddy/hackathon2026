@@ -5,6 +5,7 @@ import Box from '@ux/box'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
 
+import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import {
@@ -28,6 +29,7 @@ export default function StreamingMessageList({ allMessages }: StreamingMessageLi
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const prevMessagesLength = useRef(0)
   const prevLastMessageId = useRef<string | null>(null)
+  const prevAppIdRef = useRef<string | null>(null)
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [userHasScrolledUp, setUserHasScrolledUp] = useState(false)
   const scrollThrottleRef = useRef<NodeJS.Timeout | null>(null)
@@ -38,8 +40,31 @@ export default function StreamingMessageList({ allMessages }: StreamingMessageLi
   const loadMoreConversations = useLoadMoreConversations()
   const pagination = useConversationPagination()
   const currentAppId = useCurrentAppId()
+  const appIdFromParams = useAppIdFromParams()
   const isLoadingMessages = useIsLoading()
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
+
+  // Reset scroll state when app changes to ensure fresh UX
+  useEffect(() => {
+    if (prevAppIdRef.current !== currentAppId) {
+      // App has changed, reset all scroll tracking
+      setIsInitialLoad(true)
+      setUserHasScrolledUp(false)
+      prevMessagesLength.current = 0
+      prevLastMessageId.current = null
+      prevAppIdRef.current = currentAppId
+
+      // Clear any pending scroll timeouts
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+        scrollTimeoutRef.current = null
+      }
+      if (scrollThrottleRef.current) {
+        clearTimeout(scrollThrottleRef.current)
+        scrollThrottleRef.current = null
+      }
+    }
+  }, [currentAppId])
 
   // Derive activeStream from allMessages for scroll behavior
   const activeStream = useMemo(() => {
@@ -215,9 +240,12 @@ export default function StreamingMessageList({ allMessages }: StreamingMessageLi
     }
   }, [])
 
-  if (allMessages.length === 0) {
+  // Show loading state during app transitions to prevent showing stale messages
+  const isAppTransitioning = currentAppId !== appIdFromParams
+
+  if (allMessages.length === 0 || isAppTransitioning) {
     const isPageLoading = loadingPhase !== 'ready'
-    const showSpinner = isLoadingMessages || isPageLoading
+    const showSpinner = isLoadingMessages || isPageLoading || isAppTransitioning
 
     return (
       <div ref={containerRef} className="flex-1 overflow-y-auto p-2 space-y-2" onScroll={handleScroll}>

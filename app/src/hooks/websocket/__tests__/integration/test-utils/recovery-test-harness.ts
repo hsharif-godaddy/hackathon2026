@@ -58,7 +58,7 @@ export function createInitialStoreState() {
     setEscalationTimeout(timeoutId: ReturnType<typeof setTimeout>) {
       state.connectionRetry.escalationTimeoutId = timeoutId
     },
-    clearConnectionRetry() {
+    clearConnectionRetry: vi.fn(() => {
       if (state.connectionRetry.escalationTimeoutId) {
         clearTimeout(state.connectionRetry.escalationTimeoutId)
       }
@@ -67,7 +67,7 @@ export function createInitialStoreState() {
       state.connectionRetry.disconnectSocketId = null
       state.connectionRetry.retryStartedAt = null
       state.connectionRetry.escalationTimeoutId = null
-    },
+    }),
     checkStaleRetry: vi.fn(() => false),
     setWebSocketState: vi.fn(),
     setStreamingState: vi.fn(),
@@ -90,7 +90,6 @@ export function createInitialStoreState() {
   // Wrap actionable methods with spies so tests can assert call counts
   vi.spyOn(state, 'startConnectionRetry')
   vi.spyOn(state, 'setEscalationTimeout')
-  vi.spyOn(state, 'clearConnectionRetry')
 
   // Add lifecycle-aware helpers so adapter interactions update state + remain spy-able
   const originalSetRecoveryState = state.setRecoveryState
