@@ -78,6 +78,8 @@ interface LangfusePanelProps {
   globalAppId?: string;
   onRemove?: () => void;
   onSessionClick?: (sessionId: string) => void;
+  langfuseBaseUrl?: string;
+  langfuseProjectId?: string;
 }
 
 function formatTimestamp(timestamp: string): string {
@@ -111,7 +113,7 @@ function extractConversationId(sessionId: string | null): string {
   return match ? match[1] : sessionId;
 }
 
-export default function LangfusePanel({ globalAppId, onRemove, onSessionClick }: LangfusePanelProps) {
+export default function LangfusePanel({ globalAppId, onRemove, onSessionClick, langfuseBaseUrl, langfuseProjectId }: LangfusePanelProps) {
   const [traces, setTraces] = useState<LangfuseTrace[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +127,21 @@ export default function LangfusePanel({ globalAppId, onRemove, onSessionClick }:
   const [timeRange, setTimeRange] = useState<string>('6h');
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const PAGE_SIZE = 25;
+
+  // Check if Langfuse links are available
+  const hasLangfuseLinks = !!(langfuseBaseUrl && langfuseProjectId);
+
+  // Generate Langfuse user (App ID) URL - links to user's traces page
+  const getLangfuseUserUrl = (userId: string): string | null => {
+    if (!hasLangfuseLinks) return null;
+    return `${langfuseBaseUrl}/project/${langfuseProjectId}/users/${userId}`;
+  };
+
+  // Generate Langfuse trace URL
+  const getLangfuseTraceUrl = (traceId: string): string | null => {
+    if (!hasLangfuseLinks) return null;
+    return `${langfuseBaseUrl}/project/${langfuseProjectId}/traces/${traceId}`;
+  };
 
   // Effective app ID for filtering (global takes precedence)
   const effectiveAppId = globalAppId || appIdFilter;
@@ -166,10 +183,12 @@ export default function LangfusePanel({ globalAppId, onRemove, onSessionClick }:
         });
       }
 
-      // Filter by app ID if provided (check sessionId and metadata)
+      // Filter by app ID if provided (check userId, sessionId, and metadata)
       if (effectiveAppId) {
         const filterLower = effectiveAppId.toLowerCase();
         filteredTraces = filteredTraces.filter(trace => {
+          // Check userId (this is the AppId in Langfuse)
+          const userIdMatch = trace.userId?.toLowerCase().includes(filterLower);
           // Check sessionId (contains "Conversation ID: xxx")
           const sessionMatch = trace.sessionId?.toLowerCase().includes(filterLower);
           // Check metadata conversationId
@@ -177,7 +196,7 @@ export default function LangfusePanel({ globalAppId, onRemove, onSessionClick }:
           const metadataMatch = metadataConvId?.toLowerCase().includes(filterLower);
           // Check trace ID itself
           const traceIdMatch = trace.id.toLowerCase().includes(filterLower);
-          return sessionMatch || metadataMatch || traceIdMatch;
+          return userIdMatch || sessionMatch || metadataMatch || traceIdMatch;
         });
       }
 
@@ -276,6 +295,49 @@ export default function LangfusePanel({ globalAppId, onRemove, onSessionClick }:
             </span>
           </td>
           <td style={{ padding: '0.75rem', fontSize: '0.75rem', fontFamily: 'monospace' }}>
+            {trace.userId ? (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                <span
+                  style={{
+                    backgroundColor: '#fef3c7',
+                    color: '#92400e',
+                    padding: '0.125rem 0.5rem',
+                    borderRadius: '4px',
+                    fontSize: '0.7rem',
+                    cursor: 'pointer'
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!globalAppId) {
+                      setAppIdFilter(trace.userId || '');
+                    }
+                  }}
+                  title={`Click to filter by App ID: ${trace.userId}`}
+                >
+                  {trace.userId}
+                </span>
+                {hasLangfuseLinks && (
+                  <a
+                    href={getLangfuseUserUrl(trace.userId) || '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      color: '#8b5cf6',
+                      textDecoration: 'none',
+                      fontSize: '0.875rem'
+                    }}
+                    title="View user in Langfuse"
+                  >
+                    🔗
+                  </a>
+                )}
+              </span>
+            ) : (
+              <span style={{ color: '#9ca3af' }}>-</span>
+            )}
+          </td>
+          <td style={{ padding: '0.75rem', fontSize: '0.75rem', fontFamily: 'monospace' }}>
             <span
               style={{ cursor: onSessionClick ? 'pointer' : 'default', color: '#3b82f6' }}
               onClick={(e) => {
@@ -297,11 +359,29 @@ export default function LangfusePanel({ globalAppId, onRemove, onSessionClick }:
           <td style={{ padding: '0.75rem', fontSize: '0.813rem', textAlign: 'center' }}>
             {trace.scores?.length || 0}
           </td>
+          {hasLangfuseLinks && (
+            <td style={{ padding: '0.75rem', fontSize: '0.813rem', textAlign: 'center' }}>
+              <a
+                href={getLangfuseTraceUrl(trace.id) || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  color: '#8b5cf6',
+                  textDecoration: 'none',
+                  fontSize: '1rem'
+                }}
+                title="Open trace in Langfuse"
+              >
+                📊
+              </a>
+            </td>
+          )}
         </tr>
 
         {isExpanded && (
           <tr>
-            <td colSpan={7} style={{ padding: 0, backgroundColor: '#f8fafc' }}>
+            <td colSpan={hasLangfuseLinks ? 9 : 8} style={{ padding: 0, backgroundColor: '#f8fafc' }}>
               <div style={{ padding: '1rem', borderTop: '1px solid #e5e7eb' }}>
                 {!details ? (
                   <div style={{ textAlign: 'center', padding: '1rem', color: '#6b7280' }}>
@@ -689,10 +769,12 @@ export default function LangfusePanel({ globalAppId, onRemove, onSessionClick }:
                   <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>ID</th>
                   <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Timestamp</th>
                   <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Agent</th>
+                  <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>App ID</th>
                   <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Conversation</th>
                   <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Latency</th>
                   <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 600, color: '#374151' }}>Obs.</th>
                   <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 600, color: '#374151' }}>Scores</th>
+                  {hasLangfuseLinks && <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 600, color: '#374151' }}>Trace</th>}
                 </tr>
               </thead>
               <tbody>

@@ -24,6 +24,8 @@ export default function Dashboard() {
   const [contextAppId, setContextAppId] = useState('');
   const [showContextPanel, setShowContextPanel] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const [langfuseBaseUrl, setLangfuseBaseUrl] = useState<string | undefined>(undefined);
+  const [langfuseProjectId, setLangfuseProjectId] = useState<string | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<string | null>(null);
 
   // Refs for scrolling to widgets
@@ -92,6 +94,28 @@ export default function Dashboard() {
 
     fetchSources();
   }, [widgets.length, initialized]);
+
+  // Fetch Langfuse config
+  useEffect(() => {
+    async function fetchLangfuseConfig() {
+      try {
+        const response = await fetch('/api/langfuse/config');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.baseUrl) {
+            setLangfuseBaseUrl(data.baseUrl);
+          }
+          if (data.projectId) {
+            setLangfuseProjectId(data.projectId);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch Langfuse config:', error);
+      }
+    }
+
+    fetchLangfuseConfig();
+  }, []);
 
   const addLogsWidget = (sourceId: string) => {
     if (!sourceId) return;
@@ -484,6 +508,8 @@ export default function Dashboard() {
                         setContextAppId(sessionId);
                         setShowContextPanel(true);
                       }}
+                      langfuseBaseUrl={langfuseBaseUrl}
+                      langfuseProjectId={langfuseProjectId}
                     />
                   ) : (
                     <LogsPanel
