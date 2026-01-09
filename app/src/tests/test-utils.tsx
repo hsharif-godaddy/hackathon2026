@@ -48,16 +48,17 @@ export function renderWithProviders(
 ) {
   const testQueryClient = queryClient ?? createTestQueryClient();
 
+  const Wrapper = ({ children }: { children: React.ReactNode }) => (
+    <IntlProvider locale="en" messages={{}}>
+      <QueryClientProvider client={testQueryClient}>
+        {children}
+      </QueryClientProvider>
+    </IntlProvider>
+  );
+
   return {
     user: userEvent.setup(),
-    ...render(
-      <IntlProvider locale="en" messages={{}}>
-        <QueryClientProvider client={testQueryClient}>
-          {ui}
-        </QueryClientProvider>
-      </IntlProvider>,
-      renderOptions
-    ),
+    ...render(ui, { wrapper: Wrapper, ...renderOptions }),
   };
 }
 

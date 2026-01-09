@@ -62,7 +62,7 @@ describe('StreamingMessageList', function packageTests() {
       renderWithProviders(<StreamingMessageList allMessages={[]} />);
 
       expect(screen.getByRole('status')).toBeInTheDocument();
-      expect(screen.queryByText('No messages yet.')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_messages_empty_title')).not.toBeInTheDocument();
     });
 
     it('should show spinner when messages are loading', function showSpinnerOnMessageLoad() {
@@ -71,7 +71,7 @@ describe('StreamingMessageList', function packageTests() {
       renderWithProviders(<StreamingMessageList allMessages={[]} />);
 
       expect(screen.getByRole('status')).toBeInTheDocument();
-      expect(screen.queryByText('No messages yet.')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_messages_empty_title')).not.toBeInTheDocument();
     });
 
     it('should show empty state when ready and no messages', function showEmptyState() {
@@ -80,8 +80,8 @@ describe('StreamingMessageList', function packageTests() {
 
       renderWithProviders(<StreamingMessageList allMessages={[]} />);
 
-      expect(screen.getByText('No messages yet.')).toBeInTheDocument();
-      expect(screen.getByText('Start a conversation!')).toBeInTheDocument();
+      expect(screen.getByText('builder_messages_empty_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_messages_empty_subtitle')).toBeInTheDocument();
       expect(screen.queryByRole('status')).not.toBeInTheDocument();
     });
 
@@ -94,7 +94,7 @@ describe('StreamingMessageList', function packageTests() {
         const { unmount } = renderWithProviders(<StreamingMessageList allMessages={[]} />);
 
         expect(screen.getByRole('status')).toBeInTheDocument();
-        expect(screen.queryByText('No messages yet.')).not.toBeInTheDocument();
+        expect(screen.queryByText('builder_messages_empty_title')).not.toBeInTheDocument();
 
         unmount();
       });
@@ -122,7 +122,7 @@ describe('StreamingMessageList', function packageTests() {
 
       expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
       expect(screen.getByTestId('message-msg-2')).toBeInTheDocument();
-      expect(screen.queryByText('No messages yet.')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_messages_empty_title')).not.toBeInTheDocument();
     });
 
     it('should include active stream in message list', function includeActiveStream() {
@@ -197,7 +197,6 @@ describe('StreamingMessageList', function packageTests() {
 
   describe('scroll behavior', function scrollBehavior() {
     let scrollIntoViewMock: any;
-    let mockContainer: HTMLElement;
 
     beforeEach(() => {
       // Mock scrollIntoView
@@ -221,20 +220,20 @@ describe('StreamingMessageList', function packageTests() {
     });
 
     it('should scroll to bottom when user sends a message', async function scrollOnUserMessage() {
-      mockStreamingStore.messages = [];
-      const { rerender } = renderWithProviders(<StreamingMessageList />);
+      const initialMessages: any[] = [];
+      const { rerender } = renderWithProviders(<StreamingMessageList allMessages={initialMessages} />);
 
       // Add user message
-      mockStreamingStore.messages = [
+      const updatedMessages = [
         {
           id: 'msg-1',
-          role: 'user',
+          role: 'user' as const,
           content: 'Hello',
           timestamp: new Date(),
         },
       ];
 
-      rerender(<StreamingMessageList />);
+      rerender(<StreamingMessageList allMessages={updatedMessages} />);
 
       // Wait for scroll effects to execute
       await vi.waitFor(() => {
@@ -243,31 +242,31 @@ describe('StreamingMessageList', function packageTests() {
     });
 
     it('should scroll to bottom when assistant response starts', async function scrollOnAssistantMessage() {
-      mockStreamingStore.messages = [
+      const initialMessages = [
         {
           id: 'msg-1',
-          role: 'user',
+          role: 'user' as const,
           content: 'Hello',
           timestamp: new Date(),
         },
       ];
-      const { rerender } = renderWithProviders(<StreamingMessageList />);
+      const { rerender } = renderWithProviders(<StreamingMessageList allMessages={initialMessages} />);
 
       // Clear previous calls
       scrollIntoViewMock.mockClear();
 
       // Add assistant message
-      mockStreamingStore.messages = [
-        ...mockStreamingStore.messages,
+      const updatedMessages = [
+        ...initialMessages,
         {
           id: 'msg-2',
-          role: 'assistant',
+          role: 'assistant' as const,
           content: 'Hi there!',
           timestamp: new Date(),
         },
       ];
 
-      rerender(<StreamingMessageList />);
+      rerender(<StreamingMessageList allMessages={updatedMessages} />);
 
       await vi.waitFor(() => {
         expect(scrollIntoViewMock).toHaveBeenCalled();
@@ -275,16 +274,16 @@ describe('StreamingMessageList', function packageTests() {
     });
 
     it('should throttle scroll event handler', async function throttleScrollHandler() {
-      mockStreamingStore.messages = [
+      const messages = [
         {
           id: 'msg-1',
-          role: 'user',
+          role: 'user' as const,
           content: 'Hello',
           timestamp: new Date(),
         },
       ];
 
-      const { container } = renderWithProviders(<StreamingMessageList />);
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
       const scrollContainer = container.querySelector('.overflow-y-auto');
 
       if (!scrollContainer) {
@@ -303,26 +302,26 @@ describe('StreamingMessageList', function packageTests() {
     });
 
     it('should handle user scroll during streaming', async function pauseOnUserScroll() {
-      mockStreamingStore.messages = [
+      const messages = [
         {
           id: 'msg-1',
-          role: 'user',
+          role: 'user' as const,
           content: 'Hello',
           timestamp: new Date(),
         },
+        {
+          id: 'stream-1',
+          role: 'assistant' as const,
+          content: 'Thinking...',
+          segments: [],
+          toolCalls: [],
+          timestamp: new Date(),
+          isComplete: false,
+        },
       ];
-      mockStreamingStore.activeStream = {
-        id: 'stream-1',
-        role: 'assistant',
-        content: 'Thinking...',
-        segments: [],
-        toolCalls: [],
-        timestamp: new Date(),
-        isComplete: false,
-      };
       mockStreamingStore.isActivelyStreaming = true;
 
-      const { container } = renderWithProviders(<StreamingMessageList />);
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
 
       // Wait for initial render
       await vi.waitFor(() => {
@@ -354,17 +353,17 @@ describe('StreamingMessageList', function packageTests() {
     });
 
     it('should resume auto-scroll when user scrolls back to bottom', async function resumeOnScrollToBottom() {
-      mockStreamingStore.messages = [
+      const messages = [
         {
           id: 'msg-1',
-          role: 'user',
+          role: 'user' as const,
           content: 'Hello',
           timestamp: new Date(),
         },
       ];
       mockStreamingStore.isActivelyStreaming = true;
 
-      const { container } = renderWithProviders(<StreamingMessageList />);
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
       const scrollContainer = container.querySelector('.overflow-y-auto');
 
       if (!scrollContainer) {

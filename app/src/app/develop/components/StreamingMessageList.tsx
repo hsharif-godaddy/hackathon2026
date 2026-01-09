@@ -5,6 +5,7 @@ import Box from '@ux/box'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
 
+import { useTranslations } from '@/hooks/useTranslations'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import {
   type ChatMessage,
@@ -30,6 +31,7 @@ export default function StreamingMessageList({ allMessages }: StreamingMessageLi
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [userHasScrolledUp, setUserHasScrolledUp] = useState(false)
   const scrollThrottleRef = useRef<NodeJS.Timeout | null>(null)
+  const t = useTranslations();
 
   // Store hooks for pagination and loading state
   const isStreaming = useIsActivelyStreaming()
@@ -224,8 +226,8 @@ export default function StreamingMessageList({ allMessages }: StreamingMessageLi
             <Spinner size="md" />
           ) : (
             <div className="opacity-50 text-center">
-              <p>No messages yet.</p>
-              <p>Start a conversation!</p>
+              <p>{t('builder_messages_empty_title')}</p>
+              <p>{t('builder_messages_empty_subtitle')}</p>
             </div>
           )}
         </div>
