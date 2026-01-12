@@ -1,10 +1,16 @@
 import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
-import { getAllLogSources } from '@/lib/log-sources';
+import { buildAppIdQuery, getAllLogSources, getNestedValue } from '@/lib/log-sources';
+import type { FieldMapping } from '@/lib/log-sources';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+interface LogSourceData {
+  message?: string;
+  [key: string]: unknown;
+}
 
 interface LogEntry {
   _id: string;
@@ -23,6 +29,7 @@ interface LogEntry {
     environment?: string;
     region?: string;
     version?: string;
+    data?: LogSourceData;
     [key: string]: unknown;
   };
 }
@@ -60,6 +67,15 @@ interface APMTracesResult {
     page: number;
     pageSize: number;
   };
+}
+
+interface LifetimeActivityStats {
+  totalLogs: number;
+  byLevel: Record<string, number>;
+  byService: Record<string, number>;
+  byEvent: Record<string, number>;
+  firstActivity?: string;
+  lastActivity?: string;
 }
 
 interface AppContext {
@@ -101,6 +117,7 @@ interface AppContext {
     byService: Record<string, number>;
     byEvent: Record<string, number>;
   };
+  lifetimeStats: LifetimeActivityStats;
   conversations: Array<{
     conversationId: string;
     lastActivity: string;
@@ -123,8 +140,9 @@ interface AppContext {
   };
 }
 
-interface LogEntryWithSource extends LogEntry {
+interface LogEntryWithSourceConfig extends LogEntry {
   _sourceId?: string;
+  _fieldMapping?: FieldMapping;
 }
 
 async function fetchLogsForApp(
@@ -133,8 +151,8 @@ async function fetchLogsForApp(
   timeRange: string = '24h',
   customStartTime?: string,
   customEndTime?: string
-): Promise<LogEntryWithSource[]> {
-  const allLogs: LogEntryWithSource[] = [];
+): Promise<LogEntryWithSourceConfig[]> {
+  const allLogs: LogEntryWithSourceConfig[] = [];
   const sources = getAllLogSources();
 
   let startTime: Date;
@@ -166,24 +184,34 @@ async function fetchLogsForApp(
     const sourceConfig = sources.find((s) => s.id === sourceId);
     if (!sourceConfig || !sourceConfig.apiKey) continue;
 
+    const { fieldMapping } = sourceConfig;
+
+    // Build query conditions
+    const mustClauses: Record<string, unknown>[] = [
+      {
+        range: {
+          [fieldMapping.timestampField]: {
+            gte: startTime.toISOString(),
+            lte: endTime.toISOString()
+          }
+        }
+      }
+    ];
+
+    // Add app ID filter if this source supports it
+    const appIdQuery = buildAppIdQuery(appId, fieldMapping);
+    if (appIdQuery) {
+      mustClauses.push(appIdQuery);
+    }
+
     try {
       const esQuery = {
         size: 1000,
         from: 0,
-        sort: [{ '@timestamp': { order: 'desc' } }],
+        sort: [{ [fieldMapping.timestampField]: { order: 'desc' } }],
         query: {
           bool: {
-            must: [
-              { match: { app_id: appId } },
-              {
-                range: {
-                  '@timestamp': {
-                    gte: startTime.toISOString(),
-                    lte: endTime.toISOString()
-                  }
-                }
-              }
-            ]
+            must: mustClauses
           }
         }
       };
@@ -204,7 +232,8 @@ async function fetchLogsForApp(
         const data: ESSearchResponse = await response.json();
         const logsWithSource = data.hits.hits.map((log) => ({
           ...log,
-          _sourceId: sourceId
+          _sourceId: sourceId,
+          _fieldMapping: fieldMapping
         }));
         allLogs.push(...logsWithSource);
       }
@@ -218,6 +247,136 @@ async function fetchLogsForApp(
       new Date(b._source['@timestamp']).getTime() -
       new Date(a._source['@timestamp']).getTime()
   );
+}
+
+async function fetchLifetimeStats(
+  appId: string,
+  sourceIds: string[]
+): Promise<LifetimeActivityStats> {
+  const sources = getAllLogSources();
+  let totalLogs = 0;
+  const levelCounts: Record<string, number> = {};
+  const serviceCounts: Record<string, number> = {};
+  const eventCounts: Record<string, number> = {};
+  let firstActivity: string | undefined;
+  let lastActivity: string | undefined;
+
+  for (const sourceId of sourceIds) {
+    const sourceConfig = sources.find((s) => s.id === sourceId);
+    if (!sourceConfig || !sourceConfig.apiKey) continue;
+
+    const { fieldMapping } = sourceConfig;
+
+    // Build query with app ID filter if supported
+    const mustClauses: Record<string, unknown>[] = [];
+    const appIdQuery = buildAppIdQuery(appId, fieldMapping);
+    if (appIdQuery) {
+      mustClauses.push(appIdQuery);
+    }
+
+    try {
+      const esQuery = {
+        size: 0,
+        query: mustClauses.length > 0 ? {
+          bool: {
+            must: mustClauses
+          }
+        } : { match_all: {} },
+        aggs: {
+          by_level: {
+            terms: {
+              field: fieldMapping.levelKeywordField,
+              size: 50
+            }
+          },
+          by_service: {
+            terms: {
+              field: fieldMapping.serviceKeywordField,
+              size: 100
+            }
+          },
+          by_event: {
+            terms: {
+              field: fieldMapping.eventKeywordField,
+              size: 100
+            }
+          },
+          first_activity: {
+            min: {
+              field: fieldMapping.timestampField
+            }
+          },
+          last_activity: {
+            max: {
+              field: fieldMapping.timestampField
+            }
+          }
+        }
+      };
+
+      const response = await fetch(
+        `${sourceConfig.endpoint}/${sourceConfig.index}/_search`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `ApiKey ${sourceConfig.apiKey}`
+          },
+          body: JSON.stringify(esQuery)
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+
+        totalLogs += data.hits?.total?.value || 0;
+
+        if (data.aggregations?.by_level?.buckets) {
+          for (const bucket of data.aggregations.by_level.buckets) {
+            levelCounts[bucket.key] = (levelCounts[bucket.key] || 0) + bucket.doc_count;
+          }
+        }
+
+        if (data.aggregations?.by_service?.buckets) {
+          for (const bucket of data.aggregations.by_service.buckets) {
+            serviceCounts[bucket.key] = (serviceCounts[bucket.key] || 0) + bucket.doc_count;
+          }
+        }
+
+        if (data.aggregations?.by_event?.buckets) {
+          for (const bucket of data.aggregations.by_event.buckets) {
+            eventCounts[bucket.key] = (eventCounts[bucket.key] || 0) + bucket.doc_count;
+          }
+        }
+
+        const sourceFirstActivity = data.aggregations?.first_activity?.value_as_string;
+        const sourceLastActivity = data.aggregations?.last_activity?.value_as_string;
+
+        if (sourceFirstActivity) {
+          if (!firstActivity || new Date(sourceFirstActivity) < new Date(firstActivity)) {
+            firstActivity = sourceFirstActivity;
+          }
+        }
+
+        if (sourceLastActivity) {
+          if (!lastActivity || new Date(sourceLastActivity) > new Date(lastActivity)) {
+            lastActivity = sourceLastActivity;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching lifetime stats from source:', sourceId, error);
+    }
+  }
+
+  return {
+    totalLogs,
+    byLevel: levelCounts,
+    byService: serviceCounts,
+    byEvent: eventCounts,
+    firstActivity,
+    lastActivity
+  };
 }
 
 async function fetchAPMTraces(
@@ -336,7 +495,7 @@ async function fetchAPMTraces(
     const traceIdsData = await traceIdsResponse.json();
     const traceIds: string[] = [];
     const seenTraceIds = new Set<string>();
-    const totalTraceIds = traceIdsData.hits?.total?.value || traceIdsData.hits?.total || 0;
+    const totalTraceIds = traceIdsData.hits?.total?.value ?? 0;
     const hasMoreTraceIds = (traceIdsPage + 1) * traceIdsPageSize < totalTraceIds;
 
     if (traceIdsData.hits?.hits && Array.isArray(traceIdsData.hits.hits)) {
@@ -427,7 +586,7 @@ async function fetchAPMTraces(
 
     const spansData = await spansResponse.json();
     const traces: APMTrace[] = [];
-    const totalSpans = spansData.hits?.total?.value || spansData.hits?.total || 0;
+    const totalSpans = spansData.hits?.total?.value ?? 0;
     const hasMoreSpans = (spansPage + 1) * spansPageSize < totalSpans;
 
     if (spansData.hits?.hits && Array.isArray(spansData.hits.hits)) {
@@ -509,14 +668,15 @@ export const GET = withAuth(async (request) => {
 
     const sourceIds = sourcesParam
       ? sourcesParam.split(',')
-      : ['airo-agents', 'airo-app'];
+      : ['airo-agents', 'control-plane'];
 
     const customStartTime = startTimeParam || undefined;
     const customEndTime = endTimeParam || undefined;
 
-    const [logs, apmTracesResult] = await Promise.all([
+    const [logs, apmTracesResult, lifetimeStats] = await Promise.all([
       fetchLogsForApp(appId, sourceIds, timeRange, customStartTime, customEndTime),
-      fetchAPMTraces(appId, timeRange, traceIdsPage, traceIdsPageSize, spansPage, spansPageSize, customStartTime, customEndTime)
+      fetchAPMTraces(appId, timeRange, traceIdsPage, traceIdsPageSize, spansPage, spansPageSize, customStartTime, customEndTime),
+      fetchLifetimeStats(appId, sourceIds)
     ]);
 
     if (logs.length === 0) {
@@ -524,7 +684,8 @@ export const GET = withAuth(async (request) => {
         appId,
         metadata: {
           name: appId,
-          lastActivity: null
+          lastActivity: lifetimeStats.lastActivity || null,
+          createdAt: lifetimeStats.firstActivity || null
         },
         recentActivity: [],
         errorSummary: {
@@ -538,6 +699,7 @@ export const GET = withAuth(async (request) => {
           byService: {},
           byEvent: {}
         },
+        lifetimeStats,
         conversations: [],
         apmTraces: {
           total: 0,
@@ -565,7 +727,7 @@ export const GET = withAuth(async (request) => {
     const errorMessages = new Map<string, number>();
     errors.forEach((log) => {
       const message =
-        (log._source.data as any)?.message ||
+        log._source.data?.message ||
         log._source.message ||
         log._source.event ||
         'Unknown error';
@@ -635,7 +797,7 @@ export const GET = withAuth(async (request) => {
         ? {
           timestamp: errors[0]._source['@timestamp'],
           message:
-            (errors[0]._source.data as any)?.message ||
+            errors[0]._source.data?.message ||
             errors[0]._source.message ||
             errors[0]._source.event ||
             'Unknown error',
@@ -643,23 +805,44 @@ export const GET = withAuth(async (request) => {
         }
         : undefined;
 
-    const recentActivity = logs.slice(0, 50).map((log) => ({
-      id: log._id,
-      timestamp: log._source['@timestamp'],
-      level: log._source.level || 'INFO',
-      message:
-        (log._source.data as any)?.message ||
-        log._source.message ||
-        log._source.event ||
-        '',
-      event: log._source.event,
-      service: log._source.service,
-      source: (log as LogEntryWithSource)._sourceId,
-      raw: log._source
-    }));
+    const recentActivity = logs.slice(0, 50).map((log) => {
+      const fieldMapping = log._fieldMapping;
+
+      // Extract values using field mapping if available
+      const level = fieldMapping
+        ? String(getNestedValue(log._source, fieldMapping.levelField) || 'INFO')
+        : (log._source.level || 'INFO');
+
+      const message = fieldMapping
+        ? String(
+          getNestedValue(log._source, 'data.message') ||
+          getNestedValue(log._source, fieldMapping.messageField) ||
+          getNestedValue(log._source, fieldMapping.eventField) ||
+          ''
+        )
+        : (log._source.data?.message || log._source.message || log._source.event || '');
+
+      const event = fieldMapping
+        ? String(getNestedValue(log._source, fieldMapping.eventField) || '')
+        : log._source.event;
+
+      const service = fieldMapping
+        ? String(getNestedValue(log._source, fieldMapping.serviceField) || '')
+        : log._source.service;
+
+      return {
+        id: log._id,
+        timestamp: log._source['@timestamp'],
+        level,
+        message,
+        event: event || undefined,
+        service: service || undefined,
+        source: log._sourceId,
+        raw: log._source
+      };
+    });
 
     const lastActivityLog = logs[0];
-    const firstActivityLog = logs[logs.length - 1];
 
     const formattedTraces = apmTracesResult.traces.map((trace) => ({
       timestamp: trace['@timestamp'],
@@ -676,7 +859,8 @@ export const GET = withAuth(async (request) => {
         name: appId,
         lastActivity: lastActivityLog?._source['@timestamp'],
         version: lastActivityLog?._source.version,
-        status: 'active'
+        status: 'active',
+        createdAt: lifetimeStats.firstActivity
       },
       recentActivity,
       errorSummary: {
@@ -691,6 +875,7 @@ export const GET = withAuth(async (request) => {
         byService: serviceCounts,
         byEvent: eventCounts
       },
+      lifetimeStats,
       conversations,
       apmTraces: {
         total: apmTracesResult.pagination.total,

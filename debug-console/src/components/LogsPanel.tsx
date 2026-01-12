@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
+import LogDetailPanel from './LogDetailPanel';
 import LogSourceSelector, { type LogSource } from './LogSourceSelector';
 
 const LOG_LEVELS = ['all', 'DEBUG', 'INFO', 'WARN', 'ERROR'] as const;
@@ -141,16 +142,30 @@ const INITIAL_COLUMN_WIDTHS = {
 
 // Source-specific field mappings - defines which field to show in the "ID" column for each source
 // Key is the source ID, value is the field configuration
-const SOURCE_FIELD_MAPPINGS: Record<string, { idField: string; idLabel: string; getIdValue: (log: LogEntry) => string | undefined }> = {
-  'airo-app-builder': {
-    idField: 'customerId',
-    idLabel: 'Customer ID',
-    getIdValue: (log) => (log.raw?.customerId as string) || (log.raw?.['customer.id'] as string)
+// supportsAppIdFilter: whether this source filters by app ID on the backend
+const SOURCE_FIELD_MAPPINGS: Record<string, {
+  idField: string;
+  idLabel: string;
+  getIdValue: (log: LogEntry) => string | undefined;
+  supportsAppIdFilter: boolean;
+}> = {
+  'airo-agents': {
+    idField: 'appId',
+    idLabel: 'App ID',
+    getIdValue: (log) => log.appId,
+    supportsAppIdFilter: true // Filters by app_id
   },
-  'airo-builder': {
+  'airo-app': {
     idField: 'customerId',
     idLabel: 'Customer ID',
-    getIdValue: (log) => (log.raw?.customerId as string) || (log.raw?.['customer.id'] as string)
+    getIdValue: (log) => (log.raw?.customerId as string) || (log.raw?.['customer.id'] as string) || (log.raw?.['user.id'] as string),
+    supportsAppIdFilter: false // No app ID filtering - shows all logs
+  },
+  'control_plane': {
+    idField: 'appId',
+    idLabel: 'App ID',
+    getIdValue: (log) => log.appId,
+    supportsAppIdFilter: true // Filters by app_id
   }
 };
 
@@ -158,7 +173,8 @@ const SOURCE_FIELD_MAPPINGS: Record<string, { idField: string; idLabel: string; 
 const DEFAULT_FIELD_MAPPING = {
   idField: 'appId',
   idLabel: 'App ID',
-  getIdValue: (log: LogEntry) => log.appId
+  getIdValue: (log: LogEntry) => log.appId,
+  supportsAppIdFilter: true
 };
 
 // Helper to format date for datetime-local input
@@ -181,7 +197,7 @@ function getInitialTimeRange(): { start: string; end: string } {
   };
 }
 
-export default function LogsPanel({ sources, defaultSource, isWidget, globalAppId, onRemove, onAppIdClick }: LogsPanelProps) {
+export default function LogsPanel({ sources, defaultSource, isWidget, globalAppId, onRemove, onAppIdClick: _onAppIdClick }: LogsPanelProps) {
   const [selectedSource, setSelectedSource] = useState<string>(defaultSource || sources[0]?.id || '');
   const [level, setLevel] = useState<string>('all');
   const [timeRange, setTimeRange] = useState<string>('15m');
@@ -191,8 +207,11 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
   const [query, setQuery] = useState<string>('');
   const [searchInput, setSearchInput] = useState<string>('');
   const [appIdFilter, setAppIdFilter] = useState<string>('');
-  const [expandedLog, setExpandedLog] = useState<string | null>(null);
+  const [selectedLogIndex, setSelectedLogIndex] = useState<number | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [detailPanelWidth, setDetailPanelWidth] = useState<number>(450);
+  const [isResizingDetailPanel, setIsResizingDetailPanel] = useState(false);
+  const [viewMode, setViewMode] = useState<'split' | 'drawer'>('drawer');
   const [page, setPage] = useState(0);
   const [accumulatedLogs, setAccumulatedLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -204,6 +223,8 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
   const [isResizing, setIsResizing] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const resizeHandleRef = useRef<HTMLDivElement>(null);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const selectedRowRef = useRef<HTMLTableRowElement>(null);
 
   // Get field mapping for current source
   const fieldMapping = SOURCE_FIELD_MAPPINGS[selectedSource] || DEFAULT_FIELD_MAPPING;
@@ -305,7 +326,8 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
         urlParams.set('query', query);
       }
 
-      if (effectiveAppId) {
+      // Only send appId for sources that support filtering
+      if (effectiveAppId && fieldMapping.supportsAppIdFilter) {
         urlParams.set('appId', effectiveAppId);
       }
 
@@ -372,7 +394,7 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
     } finally {
       setLoading(false);
     }
-  }, [selectedSource, level, timeRange, useCustomTime, customStartTime, customEndTime, query, effectiveAppId, page]);
+  }, [selectedSource, level, timeRange, useCustomTime, customStartTime, customEndTime, query, effectiveAppId, page, fieldMapping]);
 
   useEffect(() => {
     fetchLogs();
@@ -416,9 +438,98 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
     }
   };
 
-  const toggleExpand = (id: string) => {
-    setExpandedLog(expandedLog === id ? null : id);
+  const selectLog = (index: number) => {
+    setSelectedLogIndex(index);
   };
+
+  const closeDetailPanel = () => {
+    setSelectedLogIndex(null);
+  };
+
+  const selectPreviousLog = useCallback(() => {
+    if (selectedLogIndex !== null && selectedLogIndex > 0) {
+      setSelectedLogIndex(selectedLogIndex - 1);
+    }
+  }, [selectedLogIndex]);
+
+  const selectNextLog = useCallback(() => {
+    if (selectedLogIndex !== null && selectedLogIndex < accumulatedLogs.length - 1) {
+      setSelectedLogIndex(selectedLogIndex + 1);
+    }
+  }, [selectedLogIndex, accumulatedLogs.length]);
+
+  // Scroll selected row into view
+  useEffect(() => {
+    if (selectedRowRef.current && tableContainerRef.current) {
+      selectedRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [selectedLogIndex]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (selectedLogIndex === null) return;
+
+      // Don't interfere with input fields
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      switch (e.key) {
+        case 'ArrowUp':
+          e.preventDefault();
+          selectPreviousLog();
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          selectNextLog();
+          break;
+        case 'Escape':
+          e.preventDefault();
+          closeDetailPanel();
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [selectedLogIndex, selectPreviousLog, selectNextLog]);
+
+  // Detail panel resize handler
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizingDetailPanel || !panelRef.current) return;
+
+      const rect = panelRef.current.getBoundingClientRect();
+      const newWidth = rect.right - e.clientX;
+      const minWidth = 300;
+      const maxWidth = rect.width * 0.7;
+
+      if (newWidth >= minWidth && newWidth <= maxWidth) {
+        setDetailPanelWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingDetailPanel(false);
+    };
+
+    if (isResizingDetailPanel) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      if (!isResizing) {
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    };
+  }, [isResizingDetailPanel, isResizing]);
+
+  const selectedLog = selectedLogIndex !== null ? accumulatedLogs[selectedLogIndex] : null;
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -515,7 +626,61 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
             </p>
           )}
         </div>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          {/* View mode toggle */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.125rem',
+            backgroundColor: '#e5e7eb',
+            borderRadius: '8px',
+            padding: '0.25rem',
+            border: '1px solid #9ca3af'
+          }}>
+            <button
+              onClick={() => setViewMode('split')}
+              title="Split View - Show details in side panel"
+              style={{
+                padding: '0.35rem 0.65rem',
+                backgroundColor: viewMode === 'split' ? '#3b82f6' : 'transparent',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                color: viewMode === 'split' ? 'white' : '#4b5563',
+                boxShadow: viewMode === 'split' ? '0 2px 4px rgba(59,130,246,0.3)' : 'none',
+                transition: 'all 0.15s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem'
+              }}
+            >
+              <span style={{ fontSize: '0.9rem' }}>⬓</span> Split
+            </button>
+            <button
+              onClick={() => setViewMode('drawer')}
+              title="Drawer View - Show details in overlay drawer"
+              style={{
+                padding: '0.35rem 0.65rem',
+                backgroundColor: viewMode === 'drawer' ? '#3b82f6' : 'transparent',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                color: viewMode === 'drawer' ? 'white' : '#4b5563',
+                boxShadow: viewMode === 'drawer' ? '0 2px 4px rgba(59,130,246,0.3)' : 'none',
+                transition: 'all 0.15s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem'
+              }}
+            >
+              <span style={{ fontSize: '0.9rem' }}>⧉</span> Drawer
+            </button>
+          </div>
+
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
             <input
               type="checkbox"
@@ -763,32 +928,50 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
           </select>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-          <label htmlFor="app-id" style={{
+        {/* Only show App ID filter for sources that support it */}
+        {fieldMapping.supportsAppIdFilter && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+            <label htmlFor="app-id" style={{
+              fontSize: '0.65rem',
+              fontWeight: 500,
+              color: '#374151'
+            }}>
+              {fieldMapping.idLabel} {globalAppId && <span style={{ color: '#3b82f6', fontSize: '0.55rem' }}>(Global)</span>}
+            </label>
+            <input
+              id="app-id"
+              type="text"
+              value={appIdFilter}
+              onChange={(e) => setAppIdFilter(e.target.value)}
+              disabled={!!globalAppId}
+              placeholder={globalAppId ? globalAppId : `Filter...`}
+              style={{
+                padding: '0.3rem',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                fontSize: '0.7rem',
+                backgroundColor: globalAppId ? '#f3f4f6' : 'white',
+                cursor: globalAppId ? 'not-allowed' : 'text',
+                width: '100px'
+              }}
+            />
+          </div>
+        )}
+        {/* Show indicator for sources that don't filter by app ID */}
+        {!fieldMapping.supportsAppIdFilter && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0.3rem 0.5rem',
+            backgroundColor: '#fef3c7',
+            border: '1px solid #fcd34d',
+            borderRadius: '4px',
             fontSize: '0.65rem',
-            fontWeight: 500,
-            color: '#374151'
+            color: '#92400e'
           }}>
-            {fieldMapping.idLabel} {globalAppId && <span style={{ color: '#3b82f6', fontSize: '0.55rem' }}>(Global)</span>}
-          </label>
-          <input
-            id="app-id"
-            type="text"
-            value={appIdFilter}
-            onChange={(e) => setAppIdFilter(e.target.value)}
-            disabled={!!globalAppId}
-            placeholder={globalAppId ? globalAppId : `Filter...`}
-            style={{
-              padding: '0.3rem',
-              border: '1px solid #d1d5db',
-              borderRadius: '4px',
-              fontSize: '0.7rem',
-              backgroundColor: globalAppId ? '#f3f4f6' : 'white',
-              cursor: globalAppId ? 'not-allowed' : 'text',
-              width: '100px'
-            }}
-          />
-        </div>
+            ⚠️ No App ID filter for this source
+          </div>
+        )}
       </div>
 
       {/* Stats bar */}
@@ -803,7 +986,8 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
         <span>
           Showing {accumulatedLogs.length} of {total.toLocaleString()} logs
           {selectedSource && ` from ${sources.find(s => s.id === selectedSource)?.name}`}
-          {effectiveAppId && ` for App: ${effectiveAppId}`}
+          {effectiveAppId && fieldMapping.supportsAppIdFilter && ` for App: ${effectiveAppId}`}
+          {!fieldMapping.supportsAppIdFilter && ' (all logs - no app filter)'}
         </span>
         {autoRefresh && (
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -895,18 +1079,26 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
         </div>
       )}
 
-      {/* Logs table */}
+      {/* Logs table with split-view detail panel */}
       {accumulatedLogs.length > 0 && (
         <div style={{
+          display: 'flex',
           border: '1px solid #9ca3af',
           borderRadius: '8px',
           overflow: 'hidden',
-          maxHeight: panelHeight ? `${Math.max(200, panelHeight - 450)}px` : (isWidget ? '400px' : 'none'),
-          overflowY: panelHeight || isWidget ? 'auto' : 'visible',
           flex: panelHeight ? '1 1 auto' : '0 0 auto',
-          minHeight: panelHeight ? '200px' : 'auto'
+          minHeight: panelHeight ? '200px' : '400px',
+          maxHeight: panelHeight ? `${Math.max(200, panelHeight - 300)}px` : (isWidget ? '400px' : '600px')
         }}>
-          <div style={{ overflowX: 'auto' }}>
+          {/* Left side - Logs table */}
+          <div
+            ref={tableContainerRef}
+            style={{
+              flex: 1,
+              overflow: 'auto',
+              minWidth: 0
+            }}
+          >
             <table style={{
               width: '100%',
               fontSize: isWidget ? '0.75rem' : '0.875rem',
@@ -916,7 +1108,7 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
               <thead style={{
                 backgroundColor: '#f9fafb',
                 borderBottom: '1px solid #e5e7eb',
-                position: isWidget ? 'sticky' : 'static',
+                position: 'sticky',
                 top: 0,
                 zIndex: 5
               }}>
@@ -1072,20 +1264,29 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
                 </tr>
               </thead>
               <tbody>
-                {accumulatedLogs.map((log) => (
-                  <React.Fragment key={log.id}>
+                {accumulatedLogs.map((log, index) => {
+                  const isSelected = selectedLogIndex === index;
+                  return (
                     <tr
-                      onClick={() => toggleExpand(log.id)}
+                      key={log.id}
+                      ref={isSelected ? selectedRowRef : null}
+                      onClick={() => selectLog(index)}
                       style={{
                         cursor: 'pointer',
-                        transition: 'background-color 0.2s',
-                        borderBottom: '1px solid #f3f4f6'
+                        transition: 'background-color 0.15s',
+                        borderBottom: '1px solid #f3f4f6',
+                        backgroundColor: isSelected ? '#eff6ff' : 'transparent',
+                        borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent'
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = '#f9fafb';
+                        if (!isSelected) {
+                          e.currentTarget.style.backgroundColor = '#f9fafb';
+                        }
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent';
+                        if (!isSelected) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                        }
                       }}
                     >
                       <td style={{
@@ -1093,7 +1294,7 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
                         fontFamily: 'monospace',
                         whiteSpace: 'nowrap',
                         fontSize: isWidget ? '0.7rem' : '0.75rem',
-                        color: '#6b7280'
+                        color: isSelected ? '#1e40af' : '#6b7280'
                       }}>
                         {formatTimestamp(log.timestamp)}
                       </td>
@@ -1150,169 +1351,133 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
                         maxWidth: isWidget ? '200px' : '400px',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
+                        whiteSpace: 'nowrap',
+                        color: isSelected ? '#1e40af' : 'inherit'
                       }}>
                         {safeRender(log?.data?.message || log.message)}
                       </td>
                     </tr>
-                    {expandedLog === log.id && (
-                      <tr>
-                        <td colSpan={5} style={{
-                          padding: isWidget ? '0.75rem' : '1rem',
-                          backgroundColor: '#f9fafb',
-                          borderBottom: '1px solid #e5e7eb'
-                        }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                            <div>
-                              <div style={{
-                                fontSize: '0.7rem',
-                                fontWeight: 600,
-                                textTransform: 'uppercase',
-                                marginBottom: '0.25rem',
-                                color: '#6b7280'
-                              }}>
-                                Full Message
-                              </div>
-                              <pre style={{
-                                fontSize: isWidget ? '0.75rem' : '0.875rem',
-                                padding: '0.5rem',
-                                borderRadius: '6px',
-                                border: '1px solid #e5e7eb',
-                                backgroundColor: 'white',
-                                overflowX: 'auto',
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word',
-                                margin: 0
-                              }}>
-                                {safeRender(log?.data?.message || log.message)}
-                              </pre>
-                            </div>
-                            <div style={{
-                              display: 'grid',
-                              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                              gap: '0.75rem',
-                              fontSize: isWidget ? '0.75rem' : '0.875rem'
-                            }}>
-                              {fieldMapping.getIdValue(log) && (
-                                <div>
-                                  <span style={{ fontWeight: 500 }}>{fieldMapping.idLabel}:</span>{' '}
-                                  <span style={{ fontFamily: 'monospace' }}>{safeRender(fieldMapping.getIdValue(log))}</span>
-                                </div>
-                              )}
-                              {log.service && (
-                                <div>
-                                  <span style={{ fontWeight: 500 }}>Service:</span>{' '}
-                                  <span style={{ fontFamily: 'monospace' }}>{safeRender(log.service)}</span>
-                                </div>
-                              )}
-                              {log.hostname && (
-                                <div>
-                                  <span style={{ fontWeight: 500 }}>Host:</span>{' '}
-                                  <span style={{ fontFamily: 'monospace' }}>{safeRender(log.hostname)}</span>
-                                </div>
-                              )}
-                              {log.version && (
-                                <div>
-                                  <span style={{ fontWeight: 500 }}>Version:</span>{' '}
-                                  <span style={{ fontFamily: 'monospace' }}>{safeRender(log.version)}</span>
-                                </div>
-                              )}
-                              {log.environment && (
-                                <div>
-                                  <span style={{ fontWeight: 500 }}>Environment:</span>{' '}
-                                  <span style={{ fontFamily: 'monospace' }}>{safeRender(log.environment)}</span>
-                                </div>
-                              )}
-                              {log.region && (
-                                <div>
-                                  <span style={{ fontWeight: 500 }}>Region:</span>{' '}
-                                  <span style={{ fontFamily: 'monospace' }}>{safeRender(log.region)}</span>
-                                </div>
-                              )}
-                            </div>
-                            <div>
-                              <div style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                marginBottom: '0.25rem'
-                              }}>
-                                <div style={{
-                                  fontSize: '0.7rem',
-                                  fontWeight: 600,
-                                  textTransform: 'uppercase',
-                                  color: '#6b7280'
-                                }}>
-                                  Raw JSON
-                                </div>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigator.clipboard.writeText(JSON.stringify(log.raw, null, 2));
-                                  }}
-                                  style={{
-                                    fontSize: '0.65rem',
-                                    padding: '0.1rem 0.4rem',
-                                    backgroundColor: '#f3f4f6',
-                                    border: '1px solid #d1d5db',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    color: '#374151'
-                                  }}
-                                >
-                                  Copy
-                                </button>
-                              </div>
-                              <pre style={{
-                                fontSize: isWidget ? '0.7rem' : '0.75rem',
-                                padding: isWidget ? '0.5rem' : '0.75rem',
-                                borderRadius: '6px',
-                                border: '1px solid #e5e7eb',
-                                backgroundColor: 'white',
-                                overflowX: 'auto',
-                                maxHeight: isWidget ? '200px' : '300px',
-                                overflowY: 'auto',
-                                margin: 0,
-                                fontFamily: 'monospace'
-                              }}>
-                                {JSON.stringify(log.raw, null, 2)}
-                              </pre>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
+
+            {/* Load more */}
+            {accumulatedLogs.length < total && (
+              <div style={{
+                padding: '1rem',
+                borderTop: '1px solid #e5e7eb',
+                textAlign: 'center',
+                backgroundColor: '#fafafa'
+              }}>
+                <button
+                  onClick={loadMore}
+                  disabled={loading}
+                  style={{
+                    padding: '0.5rem 1.5rem',
+                    backgroundColor: '#f3f4f6',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    fontSize: '0.875rem',
+                    fontWeight: 500
+                  }}
+                >
+                  {loading ? 'Loading...' : `Load More (${total - accumulatedLogs.length} remaining)`}
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Load more */}
-          {accumulatedLogs.length < total && (
-            <div style={{
-              padding: '1rem',
-              borderTop: '1px solid #e5e7eb',
-              textAlign: 'center'
-            }}>
-              <button
-                onClick={loadMore}
-                disabled={loading}
-                style={{
-                  padding: '0.5rem 1.5rem',
-                  backgroundColor: '#f3f4f6',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  fontSize: '0.875rem',
-                  fontWeight: 500
+          {/* Right side - Detail panel (Split View mode) */}
+          {selectedLog && viewMode === 'split' && (
+            <>
+              {/* Resize handle */}
+              <div
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setIsResizingDetailPanel(true);
                 }}
-              >
-                {loading ? 'Loading...' : `Load More (${total - accumulatedLogs.length} remaining)`}
-              </button>
-            </div>
+                style={{
+                  width: '6px',
+                  cursor: 'col-resize',
+                  backgroundColor: isResizingDetailPanel ? '#3b82f6' : '#e5e7eb',
+                  transition: isResizingDetailPanel ? 'none' : 'background-color 0.15s',
+                  flexShrink: 0
+                }}
+                onMouseEnter={(e) => {
+                  if (!isResizingDetailPanel) {
+                    e.currentTarget.style.backgroundColor = '#3b82f6';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isResizingDetailPanel) {
+                    e.currentTarget.style.backgroundColor = '#e5e7eb';
+                  }
+                }}
+              />
+
+              {/* Detail panel */}
+              <div style={{
+                width: `${detailPanelWidth}px`,
+                flexShrink: 0,
+                overflow: 'hidden'
+              }}>
+                <LogDetailPanel
+                  log={selectedLog}
+                  fieldMapping={fieldMapping}
+                  onClose={closeDetailPanel}
+                  onPrevious={selectPreviousLog}
+                  onNext={selectNextLog}
+                  hasPrevious={selectedLogIndex !== null && selectedLogIndex > 0}
+                  hasNext={selectedLogIndex !== null && selectedLogIndex < accumulatedLogs.length - 1}
+                />
+              </div>
+            </>
           )}
         </div>
+      )}
+
+      {/* Drawer overlay (Drawer View mode) */}
+      {selectedLog && viewMode === 'drawer' && (
+        <>
+          {/* Drawer panel */}
+          <div
+            style={{
+              position: 'fixed',
+              top: '60px',
+              right: 0,
+              bottom: 0,
+              width: '500px',
+              maxWidth: '90vw',
+              backgroundColor: 'white',
+              boxShadow: '-4px 0 20px rgba(0, 0, 0, 0.15)',
+              zIndex: 50,
+              animation: 'slideIn 0.25s ease-out',
+              display: 'flex',
+              flexDirection: 'column',
+              borderTopLeftRadius: '8px'
+            }}
+          >
+            <LogDetailPanel
+              log={selectedLog}
+              fieldMapping={fieldMapping}
+              onClose={closeDetailPanel}
+              onPrevious={selectPreviousLog}
+              onNext={selectNextLog}
+              hasPrevious={selectedLogIndex !== null && selectedLogIndex > 0}
+              hasNext={selectedLogIndex !== null && selectedLogIndex < accumulatedLogs.length - 1}
+            />
+          </div>
+
+          {/* CSS animations */}
+          <style>{`
+            @keyframes slideIn {
+              from { transform: translateX(100%); }
+              to { transform: translateX(0); }
+            }
+          `}</style>
+        </>
       )}
 
       {/* Resize handle - only show when not in widget mode */}

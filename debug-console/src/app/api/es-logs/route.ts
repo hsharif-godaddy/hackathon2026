@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
-import { getLogSourceConfig } from '@/lib/log-sources';
+import { buildAppIdQuery, getLogSourceConfig } from '@/lib/log-sources';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -86,18 +86,12 @@ export const GET = withAuth(async (request) => {
       });
     }
 
-    if (appId) {
-      mustClauses.push({
-        bool: {
-          should: [
-            { match: { app_id: appId } },
-            { match: { appId: appId } },
-            { match: { customerId: appId } },
-            { match: { 'customer.id': appId } }
-          ],
-          minimum_should_match: 1
-        }
-      });
+    // Only apply app ID filter if the source supports it
+    if (appId && sourceConfig.fieldMapping.appIdField) {
+      const appIdQuery = buildAppIdQuery(appId, sourceConfig.fieldMapping);
+      if (appIdQuery) {
+        mustClauses.push(appIdQuery);
+      }
     }
 
     if (startTime) {
