@@ -6,8 +6,8 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { publishAction } from '../publishAction'
 import { createMockMessageContext } from '../../handlers/__tests__/testUtils'
+import { publishAction } from '../publishAction'
 
 // Mock dependencies
 vi.mock('@/lib/gasket-config', () => ({
@@ -47,11 +47,28 @@ vi.mock('@/lib/paywall/client-provider', () => ({
   ClientPaywallProvider: vi.fn().mockImplementation(() => ({})),
 }))
 
+vi.mock('@/stores/useSiteStore', () => ({
+  useSiteStore: {
+    getState: vi.fn(),
+  },
+}))
+
+vi.mock('@/utils/instrumentation', () => ({
+  logAiroHQEvent: vi.fn(),
+}))
+
+vi.mock('@/utils/site', () => ({
+  hasBeenPublished: vi.fn(),
+}))
+
+import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { appFetch } from '@/lib/gasket-config'
+import { checkPaywallEligibility } from '@/lib/paywall/core'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { getQueryClient } from '@/components/providers/QueryClientProvider'
-import { checkPaywallEligibility } from '@/lib/paywall/core'
+import { useSiteStore } from '@/stores/useSiteStore'
+import { logAiroHQEvent } from '@/utils/instrumentation'
+import { hasBeenPublished } from '@/utils/site'
 
 describe('publishAction', () => {
   let mockStoreActions: any
@@ -89,6 +106,21 @@ describe('publishAction', () => {
         hasMatchingProject: false,
       },
     })
+
+    // Default site store - mock site with publish variant (not first time)
+    vi.mocked(useSiteStore.getState).mockReturnValue({
+      getSite: vi.fn().mockReturnValue({
+        id: 'app-123',
+        name: 'Test Site',
+        variants: ['publish'], // Site has been published before
+      }),
+    } as any)
+
+    // Default has been published - false for first-time publishing
+    vi.mocked(hasBeenPublished).mockReturnValue(false)
+
+    // Default analytics logging - mock to return a function
+    vi.mocked(logAiroHQEvent).mockReturnValue(() => {})
   })
 
   describe('parameter validation', () => {
@@ -866,6 +898,96 @@ describe('publishAction', () => {
       } as Response)
 
       // Should not throw - continues despite query error
+      await expect(publishAction(params, context)).resolves.toBeDefined()
+    })
+  })
+
+  describe('analytics tracking', () => {
+    it('should log analytics event for first-time publish', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123' }
+
+      // Mock first-time publishing
+      vi.mocked(hasBeenPublished).mockReturnValue(false)
+
+      vi.mocked(appService.getGitHistory).mockResolvedValue({
+        currentCommit: 'abc123',
+        commits: [],
+      })
+
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          commitHash: 'abc123',
+          deployment: { deploymentId: 'deploy-123' },
+        }),
+      } as Response)
+
+      await publishAction(params, context)
+
+      // Verify analytics logging
+      expect(logAiroHQEvent).toHaveBeenCalledWith({
+        category: 'click',
+        recommendation_task: 'builder_project_first_published',
+        recommendation_type: 'publish',
+        recommendation_id: 'app-123',
+      })
+    })
+
+    it('should log analytics event for subsequent publish', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123' }
+
+      // Mock subsequent publishing (site has been published before)
+      vi.mocked(hasBeenPublished).mockReturnValue(true)
+
+      vi.mocked(appService.getGitHistory).mockResolvedValue({
+        currentCommit: 'abc123',
+        commits: [],
+      })
+
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          commitHash: 'abc123',
+          deployment: { deploymentId: 'deploy-123' },
+        }),
+      } as Response)
+
+      await publishAction(params, context)
+
+      // Verify analytics logging
+      expect(logAiroHQEvent).toHaveBeenCalledWith({
+        category: 'click',
+        recommendation_task: 'builder_project_published',
+        recommendation_type: 'publish',
+        recommendation_id: 'app-123',
+      })
+    })
+
+    it('should continue publish if analytics logging fails', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123' }
+
+      // Mock analytics failure
+      vi.mocked(logAiroHQEvent).mockImplementation(() => {
+        throw new Error('Analytics error')
+      })
+
+      vi.mocked(appService.getGitHistory).mockResolvedValue({
+        currentCommit: 'abc123',
+        commits: [],
+      })
+
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          commitHash: 'abc123',
+          deployment: { deploymentId: 'deploy-123' },
+        }),
+      } as Response)
+
+      // Should not throw - continues despite analytics error
       await expect(publishAction(params, context)).resolves.toBeDefined()
     })
   })

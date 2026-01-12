@@ -5,13 +5,16 @@
  * This is triggered by agents when the user requests to publish their site.
  */
 
+import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { appFetch } from '@/lib/gasket-config'
-import { logger } from '@/lib/request-context'
-import { checkPaywallEligibility } from '@/lib/paywall/core'
 import { ClientPaywallProvider } from '@/lib/paywall/client-provider'
+import { checkPaywallEligibility } from '@/lib/paywall/core'
+import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { getQueryClient } from '@/components/providers/QueryClientProvider'
+import { useSiteStore } from '@/stores/useSiteStore'
+import { logAiroHQEvent } from '@/utils/instrumentation'
+import { hasBeenPublished } from '@/utils/site'
 import type { ClientActionExecutor } from './types'
 
 export const publishAction: ClientActionExecutor = async (params, context) => {
@@ -42,6 +45,35 @@ export const publishAction: ClientActionExecutor = async (params, context) => {
 
       throw new Error(reason || 'You need an Airo Plus subscription to publish. Upgrade to continue.')
     }
+
+    // Log publish analytics event (matches UI behavior)
+    try {
+      const site = useSiteStore.getState().getSite(appId)
+      const isFirstTimePublishing = !hasBeenPublished(site)
+      const airoHQTask = isFirstTimePublishing
+        ? 'builder_project_first_published'
+        : 'builder_project_published'
+
+      logAiroHQEvent({
+        category: 'click',
+        recommendation_task: airoHQTask,
+        recommendation_type: 'publish',
+        recommendation_id: appId,
+      })()
+
+      logger.info('websocket.client-action.publish.analytics-logged', {
+        appId,
+        task: airoHQTask,
+        isFirstTime: isFirstTimePublishing,
+      })
+    } catch (analyticsError) {
+      // Non-critical - log but continue with publish
+      logger.warn('websocket.client-action.publish.analytics-failed', {
+        appId,
+        error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError),
+      })
+    }
+
     // Clear any previous publish errors and set publishing state (matches UI behavior)
     // This immediately updates the button text to "Publishing..."
     try {
