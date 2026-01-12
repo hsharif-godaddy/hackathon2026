@@ -174,14 +174,30 @@ export class AppRepository {
         values.push(publishSupervisorPath);
       }
 
-      if (sanitizedSubscriptionId !== undefined) {
+      // Only set subscription_id if not already set (immutable once stored)
+      if (sanitizedSubscriptionId && !existingApp.subscriptionId) {
         updates.push('subscription_id = ?');
         values.push(sanitizedSubscriptionId);
+      } else if (existingApp.subscriptionId && sanitizedSubscriptionId && sanitizedSubscriptionId !== existingApp.subscriptionId) {
+        this.logger.warn('app.register.subscription_id_change_rejected', {
+          appId: sanitizedSiteId,
+          reason: 'Cannot change subscription_id once set',
+          existingSubscriptionId: existingApp.subscriptionId,
+          attemptedSubscriptionId: sanitizedSubscriptionId,
+        });
       }
 
-      if (sanitizedCustomerId !== undefined) {
+      // Only set customer_id if not already set (immutable once stored)
+      if (sanitizedCustomerId && !existingApp.customerId) {
         updates.push('customer_id = ?');
         values.push(sanitizedCustomerId);
+      } else if (existingApp.customerId && sanitizedCustomerId && sanitizedCustomerId !== existingApp.customerId) {
+        this.logger.warn('app.register.customer_id_change_rejected', {
+          appId: sanitizedSiteId,
+          reason: 'Cannot change customer_id once set',
+          existingCustomerId: existingApp.customerId,
+          attemptedCustomerId: sanitizedCustomerId,
+        });
       }
 
       if (updates.length > 0) {
