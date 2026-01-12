@@ -8,6 +8,7 @@ import Spinner from '@ux/spinner'
 
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useTranslations } from '@/hooks/useTranslations'
+import { shipAnalyticsLog } from '@/lib/logging'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import {
   type ChatMessage,
@@ -22,9 +23,10 @@ import StreamingMessage from './StreamingMessage'
 
 interface StreamingMessageListProps {
   allMessages: (ChatMessage | StreamingMessageType)[]
+  isCreateFlowSession?: boolean
 }
 
-export default function StreamingMessageList({ allMessages }: StreamingMessageListProps) {
+export default function StreamingMessageList({ allMessages, isCreateFlowSession = false }: StreamingMessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
@@ -34,6 +36,7 @@ export default function StreamingMessageList({ allMessages }: StreamingMessageLi
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [userHasScrolledUp, setUserHasScrolledUp] = useState(false)
   const scrollThrottleRef = useRef<NodeJS.Timeout | null>(null)
+  const hasLoggedFirstResponseRef = useRef(false)
   const t = useTranslations();
 
   // Store hooks for pagination and loading state
@@ -54,6 +57,7 @@ export default function StreamingMessageList({ allMessages }: StreamingMessageLi
       prevMessagesLength.current = 0
       prevLastMessageId.current = null
       prevAppIdRef.current = currentAppId
+      hasLoggedFirstResponseRef.current = false
 
       // Clear any pending scroll timeouts
       if (scrollTimeoutRef.current) {
@@ -66,6 +70,29 @@ export default function StreamingMessageList({ allMessages }: StreamingMessageLi
       }
     }
   }, [currentAppId])
+
+  // Funnel event: Track when first assistant response is rendered (visible to user)
+  // Only during create flow from homepage
+  useEffect(() => {
+    if (hasLoggedFirstResponseRef.current || !currentAppId || !isCreateFlowSession) return
+
+    // Find first assistant message that has actual content
+    const firstAssistantWithContent = allMessages.find(
+      msg => msg.role === 'assistant' &&
+             (msg.content || msg.segments?.length || msg.toolCalls?.length)
+    )
+
+    if (firstAssistantWithContent) {
+      shipAnalyticsLog('funnel.first_response.rendered', {
+        appId: currentAppId,
+        messageId: firstAssistantWithContent.id,
+        hasContent: !!firstAssistantWithContent.content,
+        hasSegments: !!('segments' in firstAssistantWithContent && firstAssistantWithContent.segments?.length),
+        hasToolCalls: !!('toolCalls' in firstAssistantWithContent && firstAssistantWithContent.toolCalls?.length),
+      })
+      hasLoggedFirstResponseRef.current = true
+    }
+  }, [allMessages, currentAppId, isCreateFlowSession])
 
   // Derive activeStream from allMessages for scroll behavior
   const activeStream = useMemo(() => {

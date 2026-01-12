@@ -43,11 +43,13 @@ import { postMessageToIframe } from '@/utils/postMessage'
 interface ChatPaneProps {
   onPreviewRefresh?: () => void
   sendMessage: (content: string, aiEditContext?: any, selectedAsset?: AssetManagerItem | null, todoListContext?: any, isActionRequest?: boolean) => Promise<void>
+  isCreateFlowSession?: boolean
 }
 
 export default function ChatPane({
   onPreviewRefresh,
-  sendMessage
+  sendMessage,
+  isCreateFlowSession = false
 }: ChatPaneProps) {
   const t = useTranslations();
   const messages = useMessages()
@@ -63,6 +65,8 @@ export default function ChatPane({
   const setAiEditContext = useSetAiEditContext()
   const setBuildErrorContext = useSetBuildErrorContext()
   const setCurrentAppId = useSetCurrentAppId()
+
+  const hasLoggedFirstUserMessageRef = useRef(false)
 
   const expandedPlan = useDevelopPageStore((state) => state.expandedPlan)
   const toggleExpandedPlan = useDevelopPageStore((state) => state.toggleExpandedPlan)
@@ -83,6 +87,11 @@ export default function ChatPane({
   useEffect(() => {
     setIsVersionHistoryOpen(activeChatTab === ChatTab.HISTORY)
   }, [activeChatTab, setIsVersionHistoryOpen])
+
+  // Reset funnel tracking when app changes
+  useEffect(() => {
+    hasLoggedFirstUserMessageRef.current = false
+  }, [appId])
 
   // State for selected asset from AssetManager
   const [selectedAsset, setSelectedAsset] = useState<AssetManagerItem | null>(null)
@@ -214,6 +223,24 @@ export default function ChatPane({
         hasSelectedAsset: !!selectedAsset,
         hasBuildErrorContext: !!safeBuildErrorContext
       });
+
+      // Funnel event: Track first user-initiated message after create
+      // Only log if this is part of a create flow from homepage (not a returning visit)
+      if (!hasLoggedFirstUserMessageRef.current && appId && isCreateFlowSession) {
+        // Count user messages with early exit (we only care if <= 1)
+        let userCount = 0
+        for (const msg of messages) {
+          if (msg.role === 'user' && ++userCount > 1) break
+        }
+        // If there's 0 or 1 user message (the auto-sent one), this is the first manual interaction
+        if (userCount <= 1) {
+          shipAnalyticsLog('funnel.user_first_message.sent', {
+            appId,
+            promptLength: messageToSend.length,
+          })
+          hasLoggedFirstUserMessageRef.current = true
+        }
+      }
 
       // Ensure we're connected to the right app
       if (currentAppId !== appId) {
@@ -369,7 +396,7 @@ export default function ChatPane({
               animate={{ opacity: activeChatTab === ChatTab.CHAT ? 1 : 0.3 }}
               transition={{ duration: 0.2 }}
             >
-              <StreamingMessageList allMessages={visibleMessages} />
+              <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
 
               {safeAiEditContext && (
                 <div className="mx-2 rounded-md overflow-hidden bg-white">
@@ -470,7 +497,7 @@ export default function ChatPane({
 
       {activeChatTab === ChatTab.CHAT && (
         <>
-          <StreamingMessageList allMessages={visibleMessages} />
+          <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
 
           {safeAiEditContext && (
             <div className="mx-2 rounded-md overflow-hidden bg-white">

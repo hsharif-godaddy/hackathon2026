@@ -142,6 +142,25 @@ function DevelopPageContent() {
   }>({})
   const pendingAutoSendRef = useRef<string | null>(null)
   const autoSendInFlightRef = useRef(false)
+  const [isCreateFlowSession, setIsCreateFlowSession] = useState(false)
+  const prevShowChatLoaderRef = useRef(init.ui.showChatLoader)
+
+  // Funnel event: Track when chat loader hides (user can now see chat)
+  // Only during create flow from homepage
+  useEffect(() => {
+    const wasShowing = prevShowChatLoaderRef.current
+    const isShowing = init.ui.showChatLoader
+
+    if (wasShowing && !isShowing && appId && isCreateFlowSession) {
+      shipAnalyticsLog('funnel.chat_loader.hidden', {
+        appId,
+        phase: init.phase,
+        subPhase: init.subPhase,
+      })
+    }
+
+    prevShowChatLoaderRef.current = isShowing
+  }, [init.ui.showChatLoader, appId, init.phase, init.subPhase, isCreateFlowSession])
 
   useEffect(() => {
     logImpressionEvent('develop.page.view')();
@@ -584,10 +603,17 @@ function DevelopPageContent() {
 
       if (wasTriggered) {
         pendingAutoSendRef.current = init.ui.autoSendPromptText
+        setIsCreateFlowSession(true)
         logger.info('develop-page.auto-send.triggered', {
           message: 'Auto-sending initial message for new app',
           appId,
           promptPreview: init.ui.autoSendPromptText.substring(0, 50) + '...'
+        })
+
+        // Funnel event: Initial prompt sent from client - correlate with APM using appId
+        shipAnalyticsLog('funnel.initial_prompt.sent', {
+          appId,
+          promptLength: init.ui.autoSendPromptText.length,
         })
       }
     }
@@ -687,6 +713,7 @@ function DevelopPageContent() {
         <div className="flex-1 flex flex-col min-h-0 relative">
           <ChatPane
             sendMessage={sendMessage}
+            isCreateFlowSession={isCreateFlowSession}
           />
         </div>
       ) : (
@@ -723,6 +750,7 @@ function DevelopPageContent() {
                 <ChatPane
                   onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                   sendMessage={sendMessage}
+                  isCreateFlowSession={isCreateFlowSession}
                 />
               )}
             </div>

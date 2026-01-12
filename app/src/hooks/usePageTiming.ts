@@ -87,7 +87,7 @@ function getApmAgent(): ApmAgent | null {
  * - Component remounts (reuses existing transaction)
  *
  * @param pageName - Name of the page (e.g., 'create-page', 'develop-page')
- * @param pageId - Optional app ID to add as app_id label (can be updated later via updateLabels)
+ * @param pageId - Optional app ID to add as appId label (can be updated later via updateLabels)
  *   Adding object parameters to useEffect dependencies causes infinite re-renders.
  *   Labels are captured at component mount time only.
  * @returns Object with endTransaction and updateLabels functions
@@ -96,7 +96,7 @@ function getApmAgent(): ApmAgent | null {
  *
  * Labels added to transaction:
  * - page_name: The pageName parameter
- * - app_id: The pageId parameter (if provided, can be updated dynamically)
+ * - appId: The pageId parameter (if provided, can be updated dynamically)
  *
  * @example
  * ```tsx
@@ -107,7 +107,7 @@ function getApmAgent(): ApmAgent | null {
  *   // Update labels when real app ID becomes available
  *   useEffect(() => {
  *     if (realAppId) {
- *       updateLabels({ app_id: realAppId, updated_from_job_id: true });
+ *       updateLabels({ appId: realAppId, updatedFromJobId: true });
  *     }
  *   }, [realAppId, updateLabels]);
  *
@@ -223,7 +223,7 @@ export function usePageTiming(
               // cannot be tracked in the dependency array (would cause infinite re-renders)
               transaction.addLabels({
                 page_name: pageName,
-                ...(pageId && { app_id: pageId })
+                ...(pageId && { appId: pageId })
               });
             }
           } catch (error) {

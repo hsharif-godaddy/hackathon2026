@@ -5,6 +5,8 @@ import {
   createCustomerAuthError,
   type CustomerAuthContext,
   customerHasAccount,
+  setSpanAppId,
+  setSpanJobId,
   withCustomerAuth} from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 
@@ -52,7 +54,22 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       throw new Error(result.error || 'Failed to create site');
     }
 
-    logger.info('sites.quick-create.success', { siteId: result.siteId });
+    logger.info('sites.quick-create.success', { appId: result.siteId, type: result.type });
+
+    // Note: quick-create returns a jobId (type: 'job'), real appId is resolved later via polling
+    if (result.type === 'job') {
+      setSpanJobId(result.siteId!);
+    } else {
+      setSpanAppId(result.siteId!);
+    }
+
+    // Funnel event: App creation initiated - correlate with APM transactions
+    logger.info('funnel.create_app.initiated', {
+      jobId: result.type === 'job' ? result.siteId : undefined,
+      appId: result.type !== 'job' ? result.siteId : undefined,
+      customerId: user.customerId,
+      promptLength: projectPrompt.trim().length,
+    });
 
     return NextResponse.json({
       id: result.siteId,

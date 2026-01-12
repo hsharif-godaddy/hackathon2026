@@ -217,7 +217,7 @@ if (isApmEnabled) {
       // Add site_id label for distinguishing transactions
       const siteId = auth.getSiteId();
       if (siteId) {
-        transaction.setLabel('site_id', siteId);
+        transaction.setLabel('appId', siteId);
       }
 
       res.on('finish', () => {

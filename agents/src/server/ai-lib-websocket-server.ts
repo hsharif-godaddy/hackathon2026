@@ -953,6 +953,19 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           siteId
         });
 
+        // Check if this is the initial prompt (no existing conversations for this app)
+        // This is used for funnel tracking to correlate with client-side logs
+        const existingConversations = conversationRepository.getByAppIdSync(siteId)
+        const isInitialPrompt = existingConversations?.[0]?.agentId === 'initial'
+        const app = appRepo.findById(siteId)
+        const customerId = app?.customerId
+
+        // Calculate time since app creation for initial prompts
+        let timeSinceCreationMs: number | null = null
+        if (isInitialPrompt && app?.createdAt) {
+          timeSinceCreationMs = Date.now() - new Date(app.createdAt).getTime()
+        }
+
         // Start APM transaction for message processing
         const messageTransaction = apm.startTransaction(
           'WebSocket Message',
@@ -960,20 +973,31 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         )
         if (messageTransaction) {
           messageTransaction.setLabel('socket_id', socketId)
-          messageTransaction.setLabel('app_id', siteId)
+          messageTransaction.setLabel('appId', siteId)
           messageTransaction.setLabel('agent_name', agentName || 'default')
           messageTransaction.setLabel('message_length', message.length)
           messageTransaction.setLabel('event', 'message_start')
+          messageTransaction.setLabel('isInitialPrompt', String(isInitialPrompt))
+
+          // Add time since creation for initial prompts (key funnel metric)
+          if (timeSinceCreationMs !== null) {
+            messageTransaction.setLabel('timeSinceCreationMs', timeSinceCreationMs)
+          }
+
+          // Add customerId for correlation with logs (required for funnel analysis)
+          if (customerId) {
+            messageTransaction.setLabel('customerId', customerId)
+          }
 
           // Add session and conversation IDs if available
           if (typedContext?.metadata?.sessionId) {
-            messageTransaction.setLabel('session_id', typedContext.metadata.sessionId)
+            messageTransaction.setLabel('sessionId', typedContext.metadata.sessionId)
           }
           if (typedContext?.metadata?.userId) {
-            messageTransaction.setLabel('user_id', typedContext.metadata.userId)
+            messageTransaction.setLabel('userId', typedContext.metadata.userId)
           }
           if (typedContext?.conversation?.conversationId) {
-            messageTransaction.setLabel('conversation_id', typedContext.conversation.conversationId)
+            messageTransaction.setLabel('conversationId', typedContext.conversation.conversationId)
           }
 
           // Store transaction with a message-specific key
@@ -1022,6 +1046,18 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           messagePreview: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
           agentName
         });
+
+        // Funnel event: Log initial prompt processing with timing metric
+        if (isInitialPrompt) {
+          logger.info('funnel.initial_prompt.processing', {
+            appId: siteId,
+            customerId: customerId,
+            timeSinceCreationMs: timeSinceCreationMs,
+            messageLength: message.length,
+            sessionId: typedContext?.metadata?.sessionId,
+            conversationId: typedContext?.conversation?.conversationId
+          });
+        }
       },
 
       onMessageComplete: async (socketId: string, result: any, context?: Record<string, unknown>) => {

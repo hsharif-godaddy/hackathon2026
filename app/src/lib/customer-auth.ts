@@ -3,6 +3,7 @@
  * Uses Gasket shopper tokens for customer access control
  */
 
+import { context as otelContext, trace } from '@opentelemetry/api';
 import { NextRequest, NextResponse } from 'next/server';
 
 // Lazy import to avoid initializing gd-auth during module loading
@@ -12,6 +13,44 @@ import { isFeatureEnabled } from '@/lib/features';
 import { isAuthDisabled } from '@/lib/gasket-config';
 import { MOCK_USER } from '@/lib/mock-auth';
 import { logger,type RequestContext, RequestContextService } from '@/lib/request-context';
+
+/**
+ * Set OpenTelemetry span attribute for APM correlation
+ * Safe to call even if OTel is not initialized
+ */
+function setSpanAttribute(key: string, value: string | number | boolean): void {
+  try {
+    const span = trace.getSpan(otelContext.active());
+    if (span) {
+      span.setAttribute(key, value);
+    }
+  } catch {
+    // Silently fail if OTel is not available
+  }
+}
+
+/**
+ * Set appId on the current OpenTelemetry span for APM correlation
+ * Call this from API routes that have access to appId
+ */
+export function setSpanAppId(appId: string): void {
+  setSpanAttribute('appId', appId);
+}
+
+/**
+ * Set customerId on the current OpenTelemetry span for APM correlation
+ */
+export function setSpanCustomerId(customerId: string): void {
+  setSpanAttribute('customerId', customerId);
+}
+
+/**
+ * Set jobId on the current OpenTelemetry span for APM correlation
+ * Used when appId is not yet available (e.g., during async job creation)
+ */
+export function setSpanJobId(jobId: string): void {
+  setSpanAttribute('jobId', jobId);
+}
 
 /**
  * Error message for shopper ID authorization failure
@@ -237,6 +276,33 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
 }
 
 /**
+ * Extract appId from URL path if present
+ * Matches app-related routes with [id] or [appId] parameters
+ */
+function extractAppIdFromPath(url: string): string | null {
+  try {
+    const pathname = new URL(url).pathname;
+
+    // Routes with [id] or [appId] that represent appId
+    // Excludes: quick-create, create (these create new apps, ID comes from response)
+    // Note: database and secrets routes use [appId] param name instead of [id]
+    const idRouteMatch = pathname.match(/\/api\/(?:sites|apps|servers|develop|conversations|database|secrets)\/([a-zA-Z0-9-]+)(?:\/|$)/);
+    if (idRouteMatch && idRouteMatch[1] && !['quick-create', 'create'].includes(idRouteMatch[1])) {
+      return idRouteMatch[1];
+    }
+
+    // Routes with explicit [appId] parameter
+    const appIdRouteMatch = pathname.match(/\/api\/(?:database|secrets)\/([a-zA-Z0-9-]+)(?:\/|$)/);
+    if (appIdRouteMatch && appIdRouteMatch[1]) {
+      return appIdRouteMatch[1];
+    }
+  } catch {
+    // Ignore URL parsing errors
+  }
+  return null;
+}
+
+/**
  * Middleware wrapper for API routes requiring customer authentication
  */
 export function withCustomerAuth<T extends unknown[]>(
@@ -262,6 +328,15 @@ export function withCustomerAuth<T extends unknown[]>(
     const requestContext: RequestContext = {
       customerId: authContext.user.customerId
     };
+
+    // Set customerId on OpenTelemetry span for APM correlation
+    setSpanCustomerId(authContext.user.customerId);
+
+    // Auto-extract and set appId from URL path if present (e.g., /api/sites/[id]/...)
+    const appIdFromPath = extractAppIdFromPath(request.url);
+    if (appIdFromPath) {
+      setSpanAppId(appIdFromPath);
+    }
 
     // Run the handler within the request context
     return RequestContextService.run(requestContext, () => {

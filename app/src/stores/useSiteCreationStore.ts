@@ -4,6 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 
 import { agentFetch } from '@/lib/agent-fetch'
 import { appFetch } from '@/lib/gasket-config'
+import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useSiteStore } from './useSiteStore'
@@ -317,6 +318,13 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
             // We've detected a job ID → app ID transition
             // Keep original siteId but also store the real app ID
             state.realAppId = newSiteId
+
+            // Funnel event: Job ID resolved to real app ID - critical for correlation
+            shipAnalyticsLog('job_to_app.resolved', {
+              jobId: previousSiteId,
+              appId: newSiteId,
+              status: finalSiteData.status,
+            })
           } else {
             // No transition detected, update siteId normally
             state.siteId = newSiteId

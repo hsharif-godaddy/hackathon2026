@@ -195,6 +195,22 @@ _See `.env.example` files and `agents/src/services/features.ts` for complete con
 Use `logger.info/warn/error("event.name", { data })` with typed interfaces and hierarchical names (`domain.operation.lifecycle`). No emojis. Enables production monitoring, filtering, aggregation.
 </structured_logging_requirements>
 
+<field_naming_conventions>
+**ALWAYS use camelCase for all logging fields and APM labels:**
+
+- ✅ `appId`, `customerId`, `jobId`, `pageName`, `promptLength`
+- ❌ `app_id`, `customer_id`, `job_id`, `page_name`, `prompt_length`
+
+This applies to:
+
+- Logger data fields: `logger.info("event", { appId, customerId })`
+- APM span attributes: `setSpanAttribute('appId', value)`
+- APM transaction labels: `transaction.addLabels({ appId, pageName })`
+- Client log shipping: `shipAnalyticsLog("event", { appId })`
+
+**Exception:** Database columns and Elasticsearch query fields may use snake_case per their external conventions.
+</field_naming_conventions>
+
 **Pattern:**
 
 ```typescript
