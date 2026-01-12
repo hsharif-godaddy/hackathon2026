@@ -341,9 +341,11 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 		return err
 	}
 
-	// Start SMTP proxy
-	if err := s.smtpProxy.Start(); err != nil {
-		slog.Warn("failed to start SMTP proxy", "error", err)
+	// Start SMTP proxy (skip for preview task in unified job)
+	if os.Getenv("NOMAD_TASK_NAME") != "preview" {
+		if err := s.smtpProxy.Start(); err != nil {
+			slog.Warn("failed to start SMTP proxy", "error", err)
+		}
 	}
 
 	// Create HTTP server
@@ -456,9 +458,11 @@ func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) erro
 		return err
 	}
 
-	// Start SMTP proxy
-	if err := s.smtpProxy.Start(); err != nil {
-		slog.Warn("failed to start SMTP proxy", "error", err)
+	// Start SMTP proxy (skip for preview task in unified job)
+	if os.Getenv("NOMAD_TASK_NAME") != "preview" {
+		if err := s.smtpProxy.Start(); err != nil {
+			slog.Warn("failed to start SMTP proxy", "error", err)
+		}
 	}
 
 	// Create HTTP server
