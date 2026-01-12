@@ -20,6 +20,7 @@ import {
   type ValidationError,
 } from '../../types/import.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
+import {importType, validateGitImport} from '../middleware/git-import-validation.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -527,6 +528,7 @@ router.post(
   '/apps/:id/git/replace',
   requireZipImportFeature,
   validateAppOwnership,
+  validateGitImport,
   async (req: Request, res: Response) => {
     const { id: appId } = req.params;
     const contentType = req.headers['content-type'] || '';
@@ -549,11 +551,10 @@ router.post(
       }
 
       // Detect input type based on content-type
-      const isZipUpload = contentType.toLowerCase().startsWith('multipart/form-data');
-      const isGitImport = contentType.toLowerCase().startsWith('application/json');
+      const importTypeReq = importType(req);
 
 
-      if (!isZipUpload && !isGitImport) {
+      if (!importTypeReq) {
         return res.status(400).json({
           success: false,
           error: 'Must provide either zipFile (multipart/form-data) or gitUrl (application/json)',
@@ -570,7 +571,7 @@ router.post(
         });
       }
 
-      if (isGitImport) {
+      if (importTypeReq === 'git') {
         // Handle Git import
         return handleGitImport(req, res, appId);
       } else {
@@ -680,18 +681,12 @@ async function handleZipImport(req: Request, res: Response, appId: string): Prom
 
 /**
  * Handle git repository import
+ *
+ * Note: gitUrl and gitToken are pre-validated by validateGitImport middleware
  */
 async function handleGitImport(req: Request, res: Response, appId: string): Promise<Response> {
   try {
     const { gitUrl, gitToken, gitBranch } = req.body;
-
-    // Validate required fields
-    if (!gitUrl || !gitToken) {
-      return res.status(400).json({
-        success: false,
-        error: 'gitUrl and gitToken are required for git import',
-      } as CreateImportResponse);
-    }
 
     importLogger.info('route.git.replace.git.start', {
       appId,
