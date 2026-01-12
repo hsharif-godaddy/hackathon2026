@@ -150,8 +150,8 @@ const MAPPINGS = {
       app_id: { type: 'keyword' },
       event_type: { type: 'keyword' },
       success: { type: 'boolean' },
-      duration_ms: { type: 'integer' },
-      error_message: { type: 'text' }
+      error_message: { type: 'text' },
+      commit_hash: { type: 'keyword' }
     }
   },
   [INDICES.MODEL_SELECTIONS]: {

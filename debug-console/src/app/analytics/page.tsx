@@ -19,6 +19,9 @@ interface AppData {
   token_limits: number;
   budget_errors: number;
   ws_errors: number;
+  publish_total: number;
+  publish_success: number;
+  publish_failed: number;
 }
 
 interface DailyStat {
@@ -97,6 +100,24 @@ interface Last24HoursSummarizationStats {
   start: string;
   end: string;
   hourly_stats: Array<{ hoursAgo: number; timestamp: string; total: number; successful: number; failed: number; apps: number }>;
+}
+
+interface PublishStats {
+  total: number;
+  successes: number;
+  failures: number;
+  daily_stats: Array<{ date: string; successes: number; failures: number; begins: number; build_failed: number; archive_failed: number }>;
+}
+
+interface HourlyPublishStats {
+  date: string;
+  hourly_stats: Array<{ hour: string; begins: number; successes: number; failures: number }>;
+}
+
+interface Last24HoursPublishStats {
+  start: string;
+  end: string;
+  hourly_stats: Array<{ hoursAgo: number; timestamp: string; begins: number; successes: number; failures: number }>;
 }
 
 // Chart density thresholds for label frequency
@@ -414,12 +435,14 @@ function TimelineTable({ timeline, formatFullTimestamp, formatNumber, formatByte
     summarization: '#8b5cf6',
     compression: '#0284c7',
     tool: '#ea580c',
-    conversation: '#0891b2'
+    conversation: '#0891b2',
+    publish: '#22c55e'
   };
 
   function renderRow(t: TimelineEntry, idx: number, isToolRow = false, parentIdx?: number) {
     const isError = t.type === 'error' || (t.type === 'summarization' && t.detail === 'failed') ||
-      (t.type === 'conversation' && (t.detail === 'token_limit_reached' || t.detail === 'budget_exceeded'));
+      (t.type === 'conversation' && (t.detail === 'token_limit_reached' || t.detail === 'budget_exceeded')) ||
+      (t.type === 'publish' && (t.detail === 'build_failed' || t.detail === 'archive_failed'));
 
     let col4 = '-';
     let col5 = '-';
@@ -444,6 +467,8 @@ function TimelineTable({ timeline, formatFullTimestamp, formatNumber, formatByte
     } else if (t.type === 'conversation' && t.detail === 'token_limit_reached') {
       col5 = (t.input_tokens || 0) + ' proc';
       col6 = (t.output_tokens || 0) + ' drop';
+    } else if (t.type === 'publish') {
+      col7 = t.extra_info || '-';
     }
 
     const grouped = t as GroupedTimelineEntry;
@@ -454,7 +479,7 @@ function TimelineTable({ timeline, formatFullTimestamp, formatNumber, formatByte
       <tr
         key={isToolRow ? `${parentIdx}-tool-${idx}` : idx}
         style={{
-          backgroundColor: isError ? 'rgba(239, 68, 68, 0.05)' : isToolRow ? '#fff8f0' : idx % 2 === 0 ? 'white' : '#fafbfc',
+          backgroundColor: isError ? 'rgba(239, 68, 68, 0.15)' : isToolRow ? '#fff8f0' : idx % 2 === 0 ? 'white' : '#fafbfc',
           cursor: hasTools ? 'pointer' : 'default'
         }}
         onClick={hasTools ? () => toggleRun(idx) : undefined}
@@ -632,6 +657,12 @@ function AnalyticsContent() {
   const [hourlySummarizationLoading, setHourlySummarizationLoading] = useState(false);
   const [last24hSummarizations, setLast24hSummarizations] = useState<Last24HoursSummarizationStats | null>(null);
 
+  // Publish stats
+  const [publishStats, setPublishStats] = useState<PublishStats | null>(null);
+  const [hourlyPublishData, setHourlyPublishData] = useState<HourlyPublishStats | null>(null);
+  const [hourlyPublishLoading, setHourlyPublishLoading] = useState(false);
+  const [last24hPublish, setLast24hPublish] = useState<Last24HoursPublishStats | null>(null);
+
   // Pagination state
   const [displayCount, setDisplayCount] = useState(100);
   const tableContainerRef = React.useRef<HTMLDivElement>(null);
@@ -654,12 +685,13 @@ function AnalyticsContent() {
 
       const params = new URLSearchParams({ start, end });
 
-      const [appsRes, summaryRes, statusRes, errorsRes, sumRes] = await Promise.all([
+      const [appsRes, summaryRes, statusRes, errorsRes, sumRes, pubRes] = await Promise.all([
         fetch(`/api/analytics?action=apps&${params}`),
         fetch(`/api/analytics?action=summary&${params}`),
         fetch('/api/analytics?action=scheduler-status'),
         fetch(`/api/analytics?action=errors&${params}`),
-        fetch(`/api/analytics?action=summarizations&${params}`)
+        fetch(`/api/analytics?action=summarizations&${params}`),
+        fetch(`/api/analytics?action=publish&${params}`)
       ]);
 
       if (!appsRes.ok || !summaryRes.ok) {
@@ -675,25 +707,31 @@ function AnalyticsContent() {
       if (sumRes.ok) {
         setSummarizationStats(await sumRes.json());
       }
+      if (pubRes.ok) {
+        setPublishStats(await pubRes.json());
+      }
       setError(null);
 
       // Auto-fetch rolling 24h hourly data when 24h is selected
       if (datePreset === '1d') {
-        const [last24hRes, last24hWsRes, last24hBudgetRes, last24hSumRes] = await Promise.all([
+        const [last24hRes, last24hWsRes, last24hBudgetRes, last24hSumRes, last24hPubRes] = await Promise.all([
           fetch('/api/analytics?action=last-24h'),
           fetch('/api/analytics?action=last-24h-errors&errorType=websocket'),
           fetch('/api/analytics?action=last-24h-errors&errorType=budget'),
-          fetch('/api/analytics?action=last-24h-summarizations')
+          fetch('/api/analytics?action=last-24h-summarizations'),
+          fetch('/api/analytics?action=last-24h-publish')
         ]);
         if (last24hRes.ok) setLast24hStats(await last24hRes.json());
         if (last24hWsRes.ok) setLast24hWsErrors(await last24hWsRes.json());
         if (last24hBudgetRes.ok) setLast24hBudgetErrors(await last24hBudgetRes.json());
         if (last24hSumRes.ok) setLast24hSummarizations(await last24hSumRes.json());
+        if (last24hPubRes.ok) setLast24hPublish(await last24hPubRes.json());
         // Clear day-based hourly data
         setHourlyData(null);
         setHourlyWsErrorData(null);
         setHourlyBudgetErrorData(null);
         setHourlySummarizationData(null);
+        setHourlyPublishData(null);
       } else {
         // Clear rolling 24h data for non-24h views
         setLast24hStats(null);
@@ -815,6 +853,20 @@ function AnalyticsContent() {
       console.error('Failed to fetch hourly summarization data:', err);
     } finally {
       setHourlySummarizationLoading(false);
+    }
+  }
+
+  async function fetchHourlyPublishData(date: string) {
+    setHourlyPublishLoading(true);
+    try {
+      const res = await fetch(`/api/analytics?action=hourly-publish&date=${encodeURIComponent(date)}`);
+      if (res.ok) {
+        setHourlyPublishData(await res.json());
+      }
+    } catch (err) {
+      console.error('Failed to fetch hourly publish data:', err);
+    } finally {
+      setHourlyPublishLoading(false);
     }
   }
 
@@ -1357,6 +1409,70 @@ function AnalyticsContent() {
               }
               return <ChartEmptyState message="No summarization data" />;
             })()}
+
+            {/* Publish Success Rate Chart */}
+            {(() => {
+              const calcRate = (successes: number, begins: number) => begins > 0 ? Math.round((successes / begins) * 100) : 0;
+
+              if (hourlyPublishLoading) {
+                return <ChartLoadingState />;
+              }
+              if (hourlyPublishData?.hourly_stats) {
+                const hourlyStats = hourlyPublishData.hourly_stats.map(h => ({
+                  hour: new Date(h.hour).getHours(),
+                  begins: h.begins,
+                  successes: h.successes,
+                  failures: h.failures,
+                  rate: calcRate(h.successes, h.begins)
+                }));
+                const totalBegins = hourlyStats.reduce((a, h) => a + h.begins, 0);
+                const totalSuccesses = hourlyStats.reduce((a, h) => a + h.successes, 0);
+                return (
+                  <MiniChart
+                    title={`Publish Rate/Hour (${hourlyPublishData.date.split('T')[0]})`}
+                    value={`${calcRate(totalSuccesses, totalBegins)}% (${totalSuccesses}/${totalBegins})`}
+                    valueColor="#22c55e"
+                    data={buildHourlyChartData(hourlyStats, h => h.rate, (hr, h) => `${hr}:00 - ${h.rate}% (${h.successes}/${h.begins})`)}
+                    barColor="#22c55e"
+                    barColorLight="#4ade80"
+                    showBack
+                    backAction={() => setHourlyPublishData(null)}
+                  />
+                );
+              }
+              if (datePreset === '1d' && last24hPublish?.hourly_stats) {
+                const totalBegins = last24hPublish.hourly_stats.reduce((a, h) => a + h.begins, 0);
+                const totalSuccesses = last24hPublish.hourly_stats.reduce((a, h) => a + h.successes, 0);
+                const overallRate = calcRate(totalSuccesses, totalBegins);
+                return (
+                  <MiniChart
+                    title="Publish Rate/24h"
+                    value={`${overallRate}% (${totalSuccesses}/${totalBegins})`}
+                    valueColor="#22c55e"
+                    data={buildRolling24hChartData(last24hPublish.hourly_stats, h => calcRate(h.successes, h.begins), (hr, s) => `${hr}h ago: ${calcRate(s.successes, s.begins)}% (${s.successes}/${s.begins})`)}
+                    barColor="#22c55e"
+                    barColorLight="#4ade80"
+                  />
+                );
+              }
+              if (publishStats?.daily_stats && publishStats.daily_stats.length > 0) {
+                const totalBegins = publishStats.daily_stats.reduce((a, s) => a + s.begins, 0);
+                const totalSuccesses = publishStats.successes;
+                const overallRate = calcRate(totalSuccesses, totalBegins);
+                return (
+                  <MiniChart
+                    title="Publish Rate/Day"
+                    value={`${overallRate}% (${totalSuccesses}/${totalBegins})`}
+                    valueColor="#22c55e"
+                    data={buildDailyChartData(publishStats.daily_stats, s => calcRate(s.successes, s.begins), (d, s) => `${formatShortDay(d)}: ${calcRate(s.successes, s.begins)}% (${s.successes}/${s.begins})`, formatShortDay)}
+                    barColor="#22c55e"
+                    barColorLight="#4ade80"
+                    onClick={(i) => fetchHourlyPublishData(publishStats.daily_stats[i].date)}
+                  />
+                );
+              }
+              return <ChartEmptyState message="No publish data" />;
+            })()}
           </div>
         )}
 
@@ -1429,6 +1545,9 @@ function AnalyticsContent() {
                   <th style={thStyle} onClick={() => handleSort('ws_errors')} title="Number of WebSocket errors">
                     WS Err {sortCol === 'ws_errors' && (sortAsc ? '↑' : '↓')}
                   </th>
+                  <th style={thStyle} onClick={() => handleSort('publish_failed')} title="Publish build/archive failures">
+                    Pub Err {sortCol === 'publish_failed' && (sortAsc ? '↑' : '↓')}
+                  </th>
                   <th style={thStyle} onClick={() => handleSort('errors')} title="Total error count across all runs">
                     Errors {sortCol === 'errors' && (sortAsc ? '↑' : '↓')}
                   </th>
@@ -1477,6 +1596,9 @@ function AnalyticsContent() {
                     </td>
                     <td style={{ ...tdStyle, color: app.ws_errors > 0 ? '#dc2626' : '#94a3b8', fontWeight: app.ws_errors > 0 ? 600 : 400 }}>
                       {app.ws_errors}
+                    </td>
+                    <td style={{ ...tdStyle, color: app.publish_failed > 0 ? '#dc2626' : '#94a3b8', fontWeight: app.publish_failed > 0 ? 600 : 400 }}>
+                      {app.publish_total > 0 ? `${app.publish_failed}/${app.publish_total}` : '-'}
                     </td>
                     <td style={{ ...tdStyle, color: app.errors > 0 ? '#dc2626' : '#94a3b8' }}>
                       {app.errors}

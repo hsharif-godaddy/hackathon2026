@@ -275,6 +275,30 @@ export function insertCommandExecution(cmd: {
   });
 }
 
+export function insertPublishEvent(pub: {
+  es_id: string;
+  timestamp: string;
+  app_id: string;
+  event_type: 'begin' | 'success' | 'build_failed' | 'archive_failed' | 'other_failed';
+  success: boolean;
+  error_message?: string;
+  commit_hash?: string;
+}) {
+  pendingDocs.push({
+    index: INDICES.PUBLISH_EVENTS,
+    id: pub.es_id,
+    doc: {
+      es_id: pub.es_id,
+      timestamp: pub.timestamp,
+      app_id: pub.app_id,
+      event_type: pub.event_type,
+      success: pub.success,
+      error_message: pub.error_message || null,
+      commit_hash: pub.commit_hash || null
+    }
+  });
+}
+
 // Flush pending documents to ES in batches
 const BATCH_SIZE = 5000;
 
@@ -820,6 +844,179 @@ export async function getRollingHourlySummarizations() {
   };
 }
 
+// Publish event stats
+export async function getPublishStats(startDate: string, endDate: string) {
+  const result = await writeClient.search({
+    index: INDICES.PUBLISH_EVENTS,
+    size: 0,
+    body: {
+      query: {
+        bool: {
+          filter: [{ range: { timestamp: { gte: startDate, lte: endDate } } }]
+        }
+      },
+      aggs: {
+        by_day: {
+          date_histogram: { field: 'timestamp', calendar_interval: 'day' },
+          aggs: {
+            unique_apps: { cardinality: { field: 'app_id' } },
+            begins: { filter: { term: { event_type: 'begin' } } },
+            successes: { filter: { term: { event_type: 'success' } } },
+            build_failed: { filter: { term: { event_type: 'build_failed' } } },
+            archive_failed: { filter: { term: { event_type: 'archive_failed' } } }
+          }
+        }
+      }
+    }
+  });
+
+  const aggs = result.aggregations as Record<string, unknown>;
+  const dayBuckets = (aggs.by_day as { buckets: Array<{
+    key_as_string: string;
+    doc_count: number;
+    unique_apps: { value: number };
+    begins: { doc_count: number };
+    successes: { doc_count: number };
+    build_failed: { doc_count: number };
+    archive_failed: { doc_count: number };
+  }> })?.buckets || [];
+
+  let total = 0, successes = 0, failures = 0;
+  const daily_stats = dayBuckets.map(b => {
+    const daySuccesses = b.successes.doc_count;
+    const dayFailures = b.build_failed.doc_count + b.archive_failed.doc_count;
+    total += daySuccesses + dayFailures;
+    successes += daySuccesses;
+    failures += dayFailures;
+    return {
+      date: b.key_as_string,
+      apps: b.unique_apps.value,
+      begins: b.begins.doc_count,
+      successes: daySuccesses,
+      build_failed: b.build_failed.doc_count,
+      archive_failed: b.archive_failed.doc_count,
+      failures: dayFailures
+    };
+  });
+
+  return { total, successes, failures, daily_stats };
+}
+
+export async function getHourlyPublishStats(date: string) {
+  const startDate = new Date(date);
+  startDate.setHours(0, 0, 0, 0);
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + 1);
+
+  const result = await writeClient.search({
+    index: INDICES.PUBLISH_EVENTS,
+    size: 0,
+    body: {
+      query: {
+        bool: {
+          filter: [{ range: { timestamp: { gte: startDate.toISOString(), lt: endDate.toISOString() } } }]
+        }
+      },
+      aggs: {
+        by_hour: {
+          date_histogram: { field: 'timestamp', fixed_interval: '1h' },
+          aggs: {
+            begins: { filter: { term: { event_type: 'begin' } } },
+            successes: { filter: { term: { event_type: 'success' } } },
+            build_failed: { filter: { term: { event_type: 'build_failed' } } },
+            archive_failed: { filter: { term: { event_type: 'archive_failed' } } }
+          }
+        }
+      }
+    }
+  });
+
+  const aggs = result.aggregations as Record<string, unknown>;
+  const hourBuckets = (aggs.by_hour as { buckets: Array<{
+    key_as_string: string;
+    begins: { doc_count: number };
+    successes: { doc_count: number };
+    build_failed: { doc_count: number };
+    archive_failed: { doc_count: number };
+  }> })?.buckets || [];
+
+  return {
+    date,
+    hourly_stats: hourBuckets.map(b => ({
+      hour: b.key_as_string,
+      begins: b.begins.doc_count,
+      successes: b.successes.doc_count,
+      failures: b.build_failed.doc_count + b.archive_failed.doc_count
+    }))
+  };
+}
+
+export async function getRollingHourlyPublish() {
+  const now = new Date();
+  const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  const result = await writeClient.search({
+    index: INDICES.PUBLISH_EVENTS,
+    size: 0,
+    body: {
+      query: {
+        bool: {
+          filter: [{ range: { timestamp: { gte: start.toISOString(), lte: now.toISOString() } } }]
+        }
+      },
+      aggs: {
+        by_hour: {
+          date_histogram: { field: 'timestamp', fixed_interval: '1h' },
+          aggs: {
+            begins: { filter: { term: { event_type: 'begin' } } },
+            successes: { filter: { term: { event_type: 'success' } } },
+            build_failed: { filter: { term: { event_type: 'build_failed' } } },
+            archive_failed: { filter: { term: { event_type: 'archive_failed' } } }
+          }
+        }
+      }
+    }
+  });
+
+  const aggs = result.aggregations as Record<string, unknown>;
+  const hourBuckets = (aggs.by_hour as { buckets: Array<{
+    key_as_string: string;
+    begins: { doc_count: number };
+    successes: { doc_count: number };
+    build_failed: { doc_count: number };
+    archive_failed: { doc_count: number };
+  }> })?.buckets || [];
+
+  const statsMap = new Map<number, { begins: number; successes: number; failures: number; timestamp: string }>();
+  for (const b of hourBuckets) {
+    const bucketTime = new Date(b.key_as_string);
+    const hoursAgo = Math.floor((now.getTime() - bucketTime.getTime()) / (60 * 60 * 1000));
+    if (hoursAgo >= 0 && hoursAgo < 24) {
+      statsMap.set(hoursAgo, {
+        begins: b.begins.doc_count,
+        successes: b.successes.doc_count,
+        failures: b.build_failed.doc_count + b.archive_failed.doc_count,
+        timestamp: b.key_as_string
+      });
+    }
+  }
+
+  return {
+    start: start.toISOString(),
+    end: now.toISOString(),
+    hourly_stats: Array.from({ length: 24 }, (_, i) => {
+      const stat = statsMap.get(i);
+      return {
+        hoursAgo: i,
+        timestamp: stat?.timestamp || '',
+        begins: stat?.begins || 0,
+        successes: stat?.successes || 0,
+        failures: stat?.failures || 0
+      };
+    })
+  };
+}
+
 // Helper to scroll through documents for an app with a safety limit
 const MAX_SCROLL_DOCS = 10000;
 
@@ -924,13 +1121,14 @@ export async function getAppDetails(appId: string) {
   });
 
   // Scroll through all documents for timeline (parallel fetches)
-  const [runsDocs, errorsDocs, sumDocs, compDocs, toolDocs, convDocs] = await Promise.all([
+  const [runsDocs, errorsDocs, sumDocs, compDocs, toolDocs, convDocs, publishDocs] = await Promise.all([
     scrollAllDocs(INDICES.AGENT_RUNS, appFilter),
     scrollAllDocs(INDICES.ERRORS, appFilter),
     scrollAllDocs(INDICES.SUMMARIZATIONS, appFilter),
     scrollAllDocs(INDICES.COMPRESSIONS, appFilter),
     scrollAllDocs(INDICES.TOOL_EXECUTIONS, appFilter),
-    scrollAllDocs(INDICES.CONVERSATIONS, appFilter)
+    scrollAllDocs(INDICES.CONVERSATIONS, appFilter),
+    scrollAllDocs(INDICES.PUBLISH_EVENTS, appFilter)
   ]);
 
   const agentBuckets = (runsAggs.agent_breakdown as { buckets: Array<{ key: string; doc_count: number; input_tokens: { value: number }; output_tokens: { value: number }; steps: { value: number }; cost: { value: number } }> }).buckets;
@@ -1008,6 +1206,16 @@ export async function getAppDetails(appId: string) {
       input_tokens: s.processed_messages as number,
       output_tokens: s.dropped_messages as number,
       extra_info: s.socket_id as string
+    });
+  }
+
+  // Add publish events
+  for (const s of publishDocs) {
+    timeline.push({
+      timestamp: s.timestamp as string,
+      type: 'publish',
+      detail: s.event_type as string,
+      extra_info: s.commit_hash as string || s.error_message as string
     });
   }
 
@@ -1136,13 +1344,16 @@ export async function getAllApps(startDate?: string, endDate?: string) {
   });
 
   // Get counts from other indices with composite pagination
-  const [sumMap, compMap, errMap, tokenLimitMap, budgetMap, wsErrorMap] = await Promise.all([
+  const [sumMap, compMap, errMap, tokenLimitMap, budgetMap, wsErrorMap, publishMap, publishSuccessMap, publishFailedMap] = await Promise.all([
     getAppCountsComposite(INDICES.SUMMARIZATIONS),
     getAppCountsComposite(INDICES.COMPRESSIONS),
     getAppCountsComposite(INDICES.ERRORS),
     getAppCountsComposite(INDICES.CONVERSATIONS, { term: { event_type: 'token_limit_reached' } }),
     getAppCountsComposite(INDICES.CONVERSATIONS, { term: { event_type: 'budget_exceeded' } }),
-    getAppCountsComposite(INDICES.ERRORS, { term: { event_type: 'websocket.conversation.error' } })
+    getAppCountsComposite(INDICES.ERRORS, { term: { event_type: 'websocket.conversation.error' } }),
+    getAppCountsComposite(INDICES.PUBLISH_EVENTS, { term: { event_type: 'begin' } }),
+    getAppCountsComposite(INDICES.PUBLISH_EVENTS, { term: { event_type: 'success' } }),
+    getAppCountsComposite(INDICES.PUBLISH_EVENTS, { bool: { should: [{ term: { event_type: 'build_failed' } }, { term: { event_type: 'archive_failed' } }], minimum_should_match: 1 } })
   ]);
 
   // Map and sort by cost descending
@@ -1160,7 +1371,10 @@ export async function getAllApps(startDate?: string, endDate?: string) {
     errors: errMap.get(b.key.app_id) || 0,
     token_limits: tokenLimitMap.get(b.key.app_id) || 0,
     budget_errors: budgetMap.get(b.key.app_id) || 0,
-    ws_errors: wsErrorMap.get(b.key.app_id) || 0
+    ws_errors: wsErrorMap.get(b.key.app_id) || 0,
+    publish_total: publishMap.get(b.key.app_id) || 0,
+    publish_success: publishSuccessMap.get(b.key.app_id) || 0,
+    publish_failed: publishFailedMap.get(b.key.app_id) || 0
   }));
 
   // Sort by cost descending

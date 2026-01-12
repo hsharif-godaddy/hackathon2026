@@ -11,6 +11,7 @@ import {
   insertToolFailure,
   insertModelSelection,
   insertCommandExecution,
+  insertPublishEvent,
   flushPendingDocs,
   getMaxTimestamp
 } from './es-db';
@@ -36,7 +37,11 @@ const EVENTS = [
   'conversation.continue',
   'model.provider.selected',
   'dev_supervisor.exec.success',
-  'dev_supervisor.exec.failure'
+  'dev_supervisor.exec.failure',
+  'route.publish.begin',
+  'route.publish.success',
+  'route.publish.build.failed',
+  'route.publish.git-archive.failed'
 ];
 
 interface LogEntry {
@@ -376,6 +381,57 @@ function processLogs(logs: LogEntry[]) {
         });
         break;
       }
+
+      case 'route.publish.begin': {
+        insertPublishEvent({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          event_type: 'begin',
+          success: true
+        });
+        break;
+      }
+
+      case 'route.publish.success': {
+        const d = log.data as { commitHash?: string };
+        insertPublishEvent({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          event_type: 'success',
+          success: true,
+          commit_hash: d.commitHash
+        });
+        break;
+      }
+
+      case 'route.publish.build.failed': {
+        const d = log.data as { stderr?: string; commitHash?: string };
+        insertPublishEvent({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          event_type: 'build_failed',
+          success: false,
+          error_message: d.stderr?.slice(0, 2000),
+          commit_hash: d.commitHash
+        });
+        break;
+      }
+
+      case 'route.publish.git-archive.failed': {
+        const d = log.data as { error?: string };
+        insertPublishEvent({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          event_type: 'archive_failed',
+          success: false,
+          error_message: d.error?.slice(0, 2000)
+        });
+        break;
+      }
     }
   }
 
@@ -429,9 +485,12 @@ async function fetchEventsRange(startTime: Date, endTime: Date, event: string): 
   return results;
 }
 
-async function getMaxTimestampFromIndices(): Promise<Date | null> {
+// Get max timestamp per index, returns the minimum of all max timestamps
+// This ensures new/empty indices get backfilled from the earliest point needed
+async function getMinMaxTimestampFromIndices(): Promise<Date | null> {
   const indices = Object.values(INDICES);
-  let maxDate: Date | null = null;
+  let minMaxDate: Date | null = null;
+  const DEFAULT_BACKFILL_DAYS = 30;
 
   for (const index of indices) {
     try {
@@ -447,16 +506,27 @@ async function getMaxTimestampFromIndices(): Promise<Date | null> {
       const maxTs = (result.aggregations?.max_ts as { value_as_string?: string })?.value_as_string;
       if (maxTs) {
         const date = new Date(maxTs);
-        if (!maxDate || date > maxDate) {
-          maxDate = date;
+        // Track the minimum of all max timestamps (oldest index needs backfill from there)
+        if (!minMaxDate || date < minMaxDate) {
+          minMaxDate = date;
+        }
+      } else {
+        // Empty index - needs full backfill, use default start
+        const backfillStart = new Date(Date.now() - DEFAULT_BACKFILL_DAYS * 24 * 60 * 60 * 1000);
+        if (!minMaxDate || backfillStart < minMaxDate) {
+          minMaxDate = backfillStart;
         }
       }
     } catch {
-      // Index might not exist yet
+      // Index might not exist yet - needs full backfill
+      const backfillStart = new Date(Date.now() - DEFAULT_BACKFILL_DAYS * 24 * 60 * 60 * 1000);
+      if (!minMaxDate || backfillStart < minMaxDate) {
+        minMaxDate = backfillStart;
+      }
     }
   }
 
-  return maxDate;
+  return minMaxDate;
 }
 
 async function fetchTimeRange(startTime: Date, endTime: Date): Promise<Record<string, number>> {
@@ -479,13 +549,14 @@ export async function runFetch(): Promise<{ startTime: Date; endTime: Date; coun
   const endTime = new Date();
   let startTime: Date;
 
-  // Auto-detect from max timestamp in indices
-  const maxTs = await getMaxTimestampFromIndices();
-  if (maxTs) {
-    startTime = maxTs;
+  // Auto-detect from min of max timestamps across all indices
+  // This ensures new/empty indices get backfilled properly
+  const minMaxTs = await getMinMaxTimestampFromIndices();
+  if (minMaxTs) {
+    startTime = minMaxTs;
   } else {
-    // Default to 1 day if no data exists
-    startTime = new Date(endTime.getTime() - 24 * 60 * 60 * 1000);
+    // Default to 30 days if no data exists
+    startTime = new Date(endTime.getTime() - 30 * 24 * 60 * 60 * 1000);
   }
 
   const totalCounts: Record<string, number> = {};
