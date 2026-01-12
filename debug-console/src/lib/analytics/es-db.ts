@@ -455,8 +455,375 @@ export async function getHourlyStats(date: string) {
   };
 }
 
-// Helper to scroll through all documents for an app
-async function scrollAllDocs(index: string, query: Record<string, unknown>): Promise<Array<Record<string, unknown>>> {
+export async function getLast24HoursStats() {
+  const now = new Date();
+  const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  const result = await writeClient.search({
+    index: INDICES.AGENT_RUNS,
+    size: 0,
+    body: {
+      query: {
+        range: {
+          timestamp: {
+            gte: start.toISOString(),
+            lte: now.toISOString()
+          }
+        }
+      },
+      aggs: {
+        by_hour: {
+          date_histogram: { field: 'timestamp', fixed_interval: '1h' },
+          aggs: {
+            unique_apps: { cardinality: { field: 'app_id' } },
+            cost: { sum: { field: 'cost' } },
+            steps: { sum: { field: 'steps' } }
+          }
+        }
+      }
+    }
+  });
+
+  const aggs = result.aggregations as Record<string, unknown>;
+  const hourBuckets = (aggs.by_hour as { buckets: Array<{ key_as_string: string; doc_count: number; unique_apps: { value: number }; cost: { value: number }; steps: { value: number } }> })?.buckets || [];
+
+  // Build a map of hour offsets (0 = now, 1 = 1 hour ago, etc.)
+  const hourlyStats: Array<{ hoursAgo: number; timestamp: string; apps: number; runs: number; cost: number; steps: number }> = [];
+
+  for (const b of hourBuckets) {
+    const bucketTime = new Date(b.key_as_string);
+    const hoursAgo = Math.floor((now.getTime() - bucketTime.getTime()) / (60 * 60 * 1000));
+    hourlyStats.push({
+      hoursAgo,
+      timestamp: b.key_as_string,
+      apps: b.unique_apps.value,
+      runs: b.doc_count,
+      cost: b.cost.value,
+      steps: b.steps.value
+    });
+  }
+
+  return {
+    start: start.toISOString(),
+    end: now.toISOString(),
+    hourly_stats: hourlyStats.sort((a, b) => b.hoursAgo - a.hoursAgo) // oldest first (23 hours ago to now)
+  };
+}
+
+export async function getLast24HoursErrorStats(errorType: 'websocket' | 'budget') {
+  const now = new Date();
+  const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const eventType = errorType === 'websocket' ? 'websocket.conversation.error' : 'budget_exceeded';
+
+  const result = await writeClient.search({
+    index: INDICES.ERRORS,
+    size: 0,
+    body: {
+      query: {
+        bool: {
+          filter: [
+            { range: { timestamp: { gte: start.toISOString(), lte: now.toISOString() } } },
+            { term: { event_type: eventType } }
+          ]
+        }
+      },
+      aggs: {
+        by_hour: {
+          date_histogram: { field: 'timestamp', fixed_interval: '1h' },
+          aggs: { unique_apps: { cardinality: { field: 'app_id' } } }
+        }
+      }
+    }
+  });
+
+  const aggs = result.aggregations as Record<string, unknown>;
+  const hourBuckets = (aggs.by_hour as { buckets: Array<{ key_as_string: string; doc_count: number; unique_apps: { value: number } }> })?.buckets || [];
+
+  const hourlyStats: Array<{ hoursAgo: number; timestamp: string; errors: number; apps: number }> = [];
+
+  for (const b of hourBuckets) {
+    const bucketTime = new Date(b.key_as_string);
+    const hoursAgo = Math.floor((now.getTime() - bucketTime.getTime()) / (60 * 60 * 1000));
+    hourlyStats.push({
+      hoursAgo,
+      timestamp: b.key_as_string,
+      errors: b.doc_count,
+      apps: b.unique_apps.value
+    });
+  }
+
+  return {
+    errorType,
+    start: start.toISOString(),
+    end: now.toISOString(),
+    hourly_stats: hourlyStats.sort((a, b) => b.hoursAgo - a.hoursAgo)
+  };
+}
+
+export async function getErrorStats(startDate?: string, endDate?: string) {
+  const filter = buildDateFilter(startDate, endDate);
+
+  // Query for websocket errors (excluding budget_exceeded)
+  const wsQuery = filter
+    ? { bool: { filter: [filter, { term: { event_type: 'websocket.conversation.error' } }] } }
+    : { term: { event_type: 'websocket.conversation.error' } };
+
+  // Query for budget errors
+  const budgetQuery = filter
+    ? { bool: { filter: [filter, { term: { event_type: 'budget_exceeded' } }] } }
+    : { term: { event_type: 'budget_exceeded' } };
+
+  const [wsResult, budgetResult] = await Promise.all([
+    writeClient.search({
+      index: INDICES.ERRORS,
+      size: 0,
+      body: {
+        query: wsQuery,
+        aggs: {
+          by_day: {
+            date_histogram: { field: 'timestamp', calendar_interval: '1d' },
+            aggs: { unique_apps: { cardinality: { field: 'app_id' } } }
+          }
+        }
+      }
+    }),
+    writeClient.search({
+      index: INDICES.ERRORS,
+      size: 0,
+      body: {
+        query: budgetQuery,
+        aggs: {
+          by_day: {
+            date_histogram: { field: 'timestamp', calendar_interval: '1d' },
+            aggs: { unique_apps: { cardinality: { field: 'app_id' } } }
+          }
+        }
+      }
+    })
+  ]);
+
+  const wsAggs = wsResult.aggregations as Record<string, unknown>;
+  const budgetAggs = budgetResult.aggregations as Record<string, unknown>;
+
+  const wsDayBuckets = (wsAggs.by_day as { buckets: Array<{ key_as_string: string; doc_count: number; unique_apps: { value: number } }> })?.buckets || [];
+  const budgetDayBuckets = (budgetAggs.by_day as { buckets: Array<{ key_as_string: string; doc_count: number; unique_apps: { value: number } }> })?.buckets || [];
+
+  return {
+    websocket: {
+      total: (wsResult.hits.total as { value: number }).value,
+      daily_stats: wsDayBuckets.map(b => ({
+        date: b.key_as_string,
+        errors: b.doc_count,
+        apps: b.unique_apps.value
+      }))
+    },
+    budget: {
+      total: (budgetResult.hits.total as { value: number }).value,
+      daily_stats: budgetDayBuckets.map(b => ({
+        date: b.key_as_string,
+        errors: b.doc_count,
+        apps: b.unique_apps.value
+      }))
+    }
+  };
+}
+
+export async function getHourlyErrorStats(date: string, errorType: 'websocket' | 'budget') {
+  const startOfDay = new Date(date);
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const endOfDay = new Date(date);
+  endOfDay.setUTCHours(23, 59, 59, 999);
+
+  const eventType = errorType === 'websocket' ? 'websocket.conversation.error' : 'budget_exceeded';
+
+  const result = await writeClient.search({
+    index: INDICES.ERRORS,
+    size: 0,
+    body: {
+      query: {
+        bool: {
+          filter: [
+            { range: { timestamp: { gte: startOfDay.toISOString(), lte: endOfDay.toISOString() } } },
+            { term: { event_type: eventType } }
+          ]
+        }
+      },
+      aggs: {
+        by_hour: {
+          date_histogram: { field: 'timestamp', calendar_interval: '1h' },
+          aggs: { unique_apps: { cardinality: { field: 'app_id' } } }
+        }
+      }
+    }
+  });
+
+  const aggs = result.aggregations as Record<string, unknown>;
+  const hourBuckets = (aggs.by_hour as { buckets: Array<{ key_as_string: string; doc_count: number; unique_apps: { value: number } }> })?.buckets || [];
+
+  return {
+    date,
+    errorType,
+    hourly_stats: hourBuckets.map(b => ({
+      hour: new Date(b.key_as_string).getUTCHours(),
+      errors: b.doc_count,
+      apps: b.unique_apps.value
+    }))
+  };
+}
+
+export async function getSummarizationStats(startDate?: string, endDate?: string) {
+  const filter = buildDateFilter(startDate, endDate);
+  const query = filter ? { bool: { filter: [filter] } } : { match_all: {} };
+
+  const result = await writeClient.search({
+    index: INDICES.SUMMARIZATIONS,
+    size: 0,
+    track_total_hits: true,
+    body: {
+      query,
+      aggs: {
+        by_day: {
+          date_histogram: { field: 'timestamp', calendar_interval: '1d' },
+          aggs: {
+            unique_apps: { cardinality: { field: 'app_id' } },
+            successful: { filter: { term: { success: true } } },
+            failed: { filter: { term: { success: false } } }
+          }
+        }
+      }
+    }
+  });
+
+  const aggs = result.aggregations as Record<string, unknown>;
+  const dayBuckets = (aggs.by_day as { buckets: Array<{ key_as_string: string; doc_count: number; unique_apps: { value: number }; successful: { doc_count: number }; failed: { doc_count: number } }> })?.buckets || [];
+
+  // Sum from aggregations for accurate total (avoids track_total_hits issues)
+  const totalFromAggs = dayBuckets.reduce((sum, b) => sum + b.doc_count, 0);
+
+  return {
+    total: totalFromAggs,
+    daily_stats: dayBuckets.map(b => ({
+      date: b.key_as_string,
+      total: b.doc_count,
+      successful: b.successful.doc_count,
+      failed: b.failed.doc_count,
+      apps: b.unique_apps.value
+    }))
+  };
+}
+
+export async function getHourlySummarizationStats(date: string) {
+  const startOfDay = new Date(date);
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const endOfDay = new Date(date);
+  endOfDay.setUTCHours(23, 59, 59, 999);
+
+  const result = await writeClient.search({
+    index: INDICES.SUMMARIZATIONS,
+    size: 0,
+    body: {
+      query: {
+        bool: {
+          filter: [
+            { range: { timestamp: { gte: startOfDay.toISOString(), lte: endOfDay.toISOString() } } }
+          ]
+        }
+      },
+      aggs: {
+        by_hour: {
+          date_histogram: { field: 'timestamp', calendar_interval: '1h' },
+          aggs: {
+            unique_apps: { cardinality: { field: 'app_id' } },
+            successful: { filter: { term: { success: true } } },
+            failed: { filter: { term: { success: false } } }
+          }
+        }
+      }
+    }
+  });
+
+  const aggs = result.aggregations as Record<string, unknown>;
+  const hourBuckets = (aggs.by_hour as { buckets: Array<{ key_as_string: string; doc_count: number; unique_apps: { value: number }; successful: { doc_count: number }; failed: { doc_count: number } }> })?.buckets || [];
+
+  return {
+    date,
+    hourly_stats: hourBuckets.map(b => ({
+      hour: new Date(b.key_as_string).getUTCHours(),
+      total: b.doc_count,
+      successful: b.successful.doc_count,
+      failed: b.failed.doc_count,
+      apps: b.unique_apps.value
+    }))
+  };
+}
+
+export async function getRollingHourlySummarizations() {
+  const now = new Date();
+  const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  const result = await writeClient.search({
+    index: INDICES.SUMMARIZATIONS,
+    size: 0,
+    body: {
+      query: {
+        bool: {
+          filter: [{ range: { timestamp: { gte: start.toISOString(), lte: now.toISOString() } } }]
+        }
+      },
+      aggs: {
+        by_hour: {
+          date_histogram: { field: 'timestamp', fixed_interval: '1h' },
+          aggs: {
+            unique_apps: { cardinality: { field: 'app_id' } },
+            successful: { filter: { term: { success: true } } },
+            failed: { filter: { term: { success: false } } }
+          }
+        }
+      }
+    }
+  });
+
+  const aggs = result.aggregations as Record<string, unknown>;
+  const hourBuckets = (aggs.by_hour as { buckets: Array<{ key_as_string: string; doc_count: number; unique_apps: { value: number }; successful: { doc_count: number }; failed: { doc_count: number } }> })?.buckets || [];
+
+  // Build a map of hours ago to stats
+  const statsMap = new Map<number, { total: number; successful: number; failed: number; apps: number; timestamp: string }>();
+  for (const b of hourBuckets) {
+    const bucketTime = new Date(b.key_as_string);
+    const hoursAgo = Math.floor((now.getTime() - bucketTime.getTime()) / (60 * 60 * 1000));
+    if (hoursAgo >= 0 && hoursAgo < 24) {
+      statsMap.set(hoursAgo, {
+        total: b.doc_count,
+        successful: b.successful.doc_count,
+        failed: b.failed.doc_count,
+        apps: b.unique_apps.value,
+        timestamp: b.key_as_string
+      });
+    }
+  }
+
+  return {
+    start: start.toISOString(),
+    end: now.toISOString(),
+    hourly_stats: Array.from({ length: 24 }, (_, i) => {
+      const hoursAgo = i;
+      const stat = statsMap.get(hoursAgo);
+      return {
+        hoursAgo,
+        timestamp: stat?.timestamp || '',
+        total: stat?.total || 0,
+        successful: stat?.successful || 0,
+        failed: stat?.failed || 0,
+        apps: stat?.apps || 0
+      };
+    })
+  };
+}
+
+// Helper to scroll through documents for an app with a safety limit
+const MAX_SCROLL_DOCS = 10000;
+
+async function scrollAllDocs(index: string, query: Record<string, unknown>, maxDocs = MAX_SCROLL_DOCS): Promise<Array<Record<string, unknown>>> {
   const allDocs: Array<Record<string, unknown>> = [];
   const response = await writeClient.search({
     index,
@@ -468,7 +835,7 @@ async function scrollAllDocs(index: string, query: Record<string, unknown>): Pro
   let scrollId = response._scroll_id;
   allDocs.push(...response.hits.hits.map(h => h._source as Record<string, unknown>));
 
-  while (response.hits.hits.length > 0) {
+  while (response.hits.hits.length > 0 && allDocs.length < maxDocs) {
     const scrollResponse = await writeClient.scroll({ scroll_id: scrollId, scroll: '1m' });
     if (scrollResponse.hits.hits.length === 0) break;
     allDocs.push(...scrollResponse.hits.hits.map(h => h._source as Record<string, unknown>));
@@ -476,7 +843,15 @@ async function scrollAllDocs(index: string, query: Record<string, unknown>): Pro
   }
 
   if (scrollId) {
-    try { await writeClient.clearScroll({ scroll_id: scrollId }); } catch { /* ignore */ }
+    try {
+      await writeClient.clearScroll({ scroll_id: scrollId });
+    } catch (err) {
+      console.warn('es.scroll.clear.failed', { index, error: String(err) });
+    }
+  }
+
+  if (allDocs.length >= maxDocs) {
+    console.warn('es.scroll.limit.reached', { index, maxDocs, actualDocs: allDocs.length });
   }
 
   return allDocs;
@@ -761,12 +1136,13 @@ export async function getAllApps(startDate?: string, endDate?: string) {
   });
 
   // Get counts from other indices with composite pagination
-  const [sumMap, compMap, errMap, tokenLimitMap, budgetMap] = await Promise.all([
+  const [sumMap, compMap, errMap, tokenLimitMap, budgetMap, wsErrorMap] = await Promise.all([
     getAppCountsComposite(INDICES.SUMMARIZATIONS),
     getAppCountsComposite(INDICES.COMPRESSIONS),
     getAppCountsComposite(INDICES.ERRORS),
     getAppCountsComposite(INDICES.CONVERSATIONS, { term: { event_type: 'token_limit_reached' } }),
-    getAppCountsComposite(INDICES.CONVERSATIONS, { term: { event_type: 'budget_exceeded' } })
+    getAppCountsComposite(INDICES.CONVERSATIONS, { term: { event_type: 'budget_exceeded' } }),
+    getAppCountsComposite(INDICES.ERRORS, { term: { event_type: 'websocket.conversation.error' } })
   ]);
 
   // Map and sort by cost descending
@@ -783,7 +1159,8 @@ export async function getAllApps(startDate?: string, endDate?: string) {
     compressions: compMap.get(b.key.app_id) || 0,
     errors: errMap.get(b.key.app_id) || 0,
     token_limits: tokenLimitMap.get(b.key.app_id) || 0,
-    budget_errors: budgetMap.get(b.key.app_id) || 0
+    budget_errors: budgetMap.get(b.key.app_id) || 0,
+    ws_errors: wsErrorMap.get(b.key.app_id) || 0
   }));
 
   // Sort by cost descending

@@ -18,6 +18,7 @@ interface AppData {
   errors: number;
   token_limits: number;
   budget_errors: number;
+  ws_errors: number;
 }
 
 interface DailyStat {
@@ -51,6 +52,242 @@ interface SchedulerStatus {
     endTime: string;
     counts: Record<string, number>;
   } | null;
+}
+
+interface ErrorTypeStats {
+  total: number;
+  daily_stats: Array<{ date: string; errors: number; apps: number }>;
+}
+
+interface ErrorStats {
+  websocket: ErrorTypeStats;
+  budget: ErrorTypeStats;
+}
+
+interface HourlyErrorStats {
+  date: string;
+  errorType: 'websocket' | 'budget';
+  hourly_stats: Array<{ hour: number; errors: number; apps: number }>;
+}
+
+interface Last24HoursStats {
+  start: string;
+  end: string;
+  hourly_stats: Array<{ hoursAgo: number; timestamp: string; apps: number; runs: number; cost: number; steps: number }>;
+}
+
+interface Last24HoursErrorStats {
+  errorType: 'websocket' | 'budget';
+  start: string;
+  end: string;
+  hourly_stats: Array<{ hoursAgo: number; timestamp: string; errors: number; apps: number }>;
+}
+
+interface SummarizationStats {
+  total: number;
+  daily_stats: Array<{ date: string; total: number; successful: number; failed: number; apps: number }>;
+}
+
+interface HourlySummarizationStats {
+  date: string;
+  hourly_stats: Array<{ hour: number; total: number; successful: number; failed: number; apps: number }>;
+}
+
+interface Last24HoursSummarizationStats {
+  start: string;
+  end: string;
+  hourly_stats: Array<{ hoursAgo: number; timestamp: string; total: number; successful: number; failed: number; apps: number }>;
+}
+
+// Chart density thresholds for label frequency
+const DAILY_VIEW_MAX_POINTS = 7;   // Weekly view: show all labels
+const WEEKLY_VIEW_MAX_POINTS = 14; // Bi-weekly view: show every other label
+
+// Bar sizing for visual density at different data point counts
+const BAR_WIDTH_DAILY = '40px';   // Wide bars for ≤7 points
+const BAR_WIDTH_WEEKLY = '28px';  // Medium bars for 8-14 points
+const BAR_WIDTH_HOURLY = '14px';  // Narrow bars for >14 points
+const BAR_GAP_SPARSE = '3px';     // Gap for ≤14 points
+const BAR_GAP_DENSE = '1px';      // Gap for >14 points
+
+const chartLoadingStyle: React.CSSProperties = {
+  backgroundColor: 'rgba(255,255,255,0.97)',
+  padding: '1rem 1.25rem',
+  borderRadius: '10px',
+  boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  height: '120px',
+  color: '#64748b'
+};
+
+const chartEmptyStyle: React.CSSProperties = {
+  ...chartLoadingStyle,
+  color: '#94a3b8',
+  fontSize: '0.75rem'
+};
+
+function ChartLoadingState() {
+  return <div style={chartLoadingStyle}>Loading...</div>;
+}
+
+function ChartEmptyState({ message }: { message: string }) {
+  return <div style={chartEmptyStyle}>{message}</div>;
+}
+
+interface MiniChartProps {
+  title: string;
+  value: string;
+  valueColor: string;
+  data: Array<{ value: number; label: string; tooltip: string }>;
+  barColor: string;
+  barColorLight?: string;
+  onClick?: (index: number) => void;
+  backAction?: () => void;
+  showBack?: boolean;
+}
+
+function MiniChart({ title, value, valueColor, data, barColor, barColorLight, onClick, backAction, showBack }: MiniChartProps) {
+  const maxValue = Math.max(...data.map(d => d.value), 1);
+  const barHeight = 70;
+
+  const labelInterval = data.length <= DAILY_VIEW_MAX_POINTS ? 1 : data.length <= WEEKLY_VIEW_MAX_POINTS ? 2 : 4;
+  const barMaxWidth = data.length <= DAILY_VIEW_MAX_POINTS ? BAR_WIDTH_DAILY : data.length <= WEEKLY_VIEW_MAX_POINTS ? BAR_WIDTH_WEEKLY : BAR_WIDTH_HOURLY;
+  const barGap = data.length <= WEEKLY_VIEW_MAX_POINTS ? BAR_GAP_SPARSE : BAR_GAP_DENSE;
+
+  return (
+    <div style={{
+      backgroundColor: 'rgba(255,255,255,0.97)',
+      padding: '1rem 1.25rem',
+      borderRadius: '10px',
+      boxShadow: '0 2px 10px rgba(0,0,0,0.08)'
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+        <div style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {title}
+          {showBack && backAction && (
+            <span style={{ fontSize: '0.6rem', color: valueColor, cursor: 'pointer', fontWeight: 500 }} onClick={backAction}>← back</span>
+          )}
+        </div>
+        <div style={{ fontSize: '1rem', fontWeight: 700, color: valueColor }}>
+          {value}
+        </div>
+      </div>
+
+      {/* Chart Area */}
+      <div style={{ position: 'relative', height: `${barHeight + 20}px` }}>
+        {/* Grid lines */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: barHeight, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', pointerEvents: 'none' }}>
+          {[0, 1, 2].map(i => (
+            <div key={i} style={{ borderBottom: '1px solid #f1f5f9', width: '100%' }} />
+          ))}
+        </div>
+
+        {/* Bars */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', height: barHeight, gap: barGap, position: 'relative', zIndex: 1 }}>
+          {data.map((d, i) => (
+            <div
+              key={i}
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                cursor: onClick ? 'pointer' : 'default'
+              }}
+              onClick={onClick ? () => onClick(i) : undefined}
+            >
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: barMaxWidth,
+                  height: `${(d.value / maxValue) * barHeight}px`,
+                  backgroundColor: onClick ? barColor : (barColorLight || barColor),
+                  borderRadius: '2px 2px 0 0',
+                  minHeight: d.value > 0 ? '3px' : '0',
+                  transition: 'opacity 0.15s, transform 0.1s',
+                  transformOrigin: 'bottom'
+                }}
+                title={d.tooltip}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.opacity = '0.85';
+                  e.currentTarget.style.transform = 'scaleY(1.02)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.opacity = '1';
+                  e.currentTarget.style.transform = 'scaleY(1)';
+                }}
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* X-axis labels */}
+        <div style={{ display: 'flex', height: '20px', alignItems: 'flex-start', paddingTop: '4px' }}>
+          {data.map((d, i) => (
+            <div key={i} style={{ flex: 1, textAlign: 'center' }}>
+              {i % labelInterval === 0 && (
+                <span style={{ fontSize: '0.55rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                  {d.label}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Helper to build chart data for rolling 24h hourly view
+function buildRolling24hChartData<T>(
+  hourlyStats: Array<T & { hoursAgo: number }>,
+  getValue: (stat: T) => number,
+  getTooltip: (hoursAgo: number, stat: T) => string
+): Array<{ value: number; label: string; tooltip: string }> {
+  return Array.from({ length: 24 }, (_, i) => {
+    const hoursAgo = 23 - i;
+    const stat = hourlyStats.find(h => h.hoursAgo === hoursAgo);
+    const value = stat ? getValue(stat) : 0;
+    return {
+      value,
+      label: hoursAgo === 0 ? 'now' : hoursAgo === 12 ? '-12h' : hoursAgo === 23 ? '-23h' : '',
+      tooltip: stat ? getTooltip(hoursAgo, stat) : `${hoursAgo}h ago: 0`
+    };
+  });
+}
+
+// Helper to build chart data for hourly drilldown (specific day)
+function buildHourlyChartData<T>(
+  hourlyStats: Array<T & { hour: number }>,
+  getValue: (stat: T) => number,
+  getTooltip: (hour: number, stat: T) => string
+): Array<{ value: number; label: string; tooltip: string }> {
+  return Array.from({ length: 24 }, (_, hour) => {
+    const stat = hourlyStats.find(h => h.hour === hour);
+    const value = stat ? getValue(stat) : 0;
+    return {
+      value,
+      label: hour === 0 ? '0h' : hour === 12 ? '12h' : hour === 23 ? '23h' : '',
+      tooltip: stat ? getTooltip(hour, stat) : `${hour}:00 - 0`
+    };
+  });
+}
+
+// Helper to build chart data for daily view
+function buildDailyChartData<T>(
+  dailyStats: Array<T & { date: string }>,
+  getValue: (stat: T) => number,
+  getTooltip: (date: string, stat: T) => string,
+  formatDate: (date: string) => string
+): Array<{ value: number; label: string; tooltip: string }> {
+  return dailyStats.map((stat, i) => ({
+    value: getValue(stat),
+    label: i === 0 || i === dailyStats.length - 1 || i === Math.floor(dailyStats.length / 2) ? formatDate(stat.date) : '',
+    tooltip: getTooltip(stat.date, stat)
+  }));
 }
 
 interface TimelineEntry {
@@ -104,6 +341,207 @@ interface AppDetails {
 
 type DatePreset = '1d' | '7d' | '14d' | '30d' | 'custom';
 
+interface TimelineTableProps {
+  timeline: TimelineEntry[];
+  formatFullTimestamp: (dateStr: string) => string;
+  formatNumber: (n: number) => string;
+  formatBytes: (bytes: number) => string;
+  thStyle: React.CSSProperties;
+  tdStyle: React.CSSProperties;
+}
+
+interface GroupedTimelineEntry extends TimelineEntry {
+  toolCalls?: TimelineEntry[];
+  toolCount?: number;
+}
+
+function groupTimelineEntries(timeline: TimelineEntry[]): GroupedTimelineEntry[] {
+  const result: GroupedTimelineEntry[] = [];
+  let currentRunEntry: GroupedTimelineEntry | null = null;
+  const pendingToolCalls: TimelineEntry[] = [];
+
+  for (const entry of timeline) {
+    if (entry.type === 'run') {
+      // Save any pending tool calls to previous run
+      if (currentRunEntry && pendingToolCalls.length > 0) {
+        currentRunEntry.toolCalls = [...pendingToolCalls];
+        currentRunEntry.toolCount = pendingToolCalls.length;
+        pendingToolCalls.length = 0;
+      }
+      currentRunEntry = { ...entry, toolCalls: [] };
+      result.push(currentRunEntry);
+    } else if (entry.type === 'tool') {
+      pendingToolCalls.push(entry);
+    } else {
+      // Non-run, non-tool entries - flush pending tools to current run
+      if (currentRunEntry && pendingToolCalls.length > 0) {
+        currentRunEntry.toolCalls = [...pendingToolCalls];
+        currentRunEntry.toolCount = pendingToolCalls.length;
+        pendingToolCalls.length = 0;
+      }
+      result.push(entry);
+    }
+  }
+
+  // Handle remaining tool calls
+  if (currentRunEntry && pendingToolCalls.length > 0) {
+    currentRunEntry.toolCalls = [...pendingToolCalls];
+    currentRunEntry.toolCount = pendingToolCalls.length;
+  }
+
+  return result;
+}
+
+function TimelineTable({ timeline, formatFullTimestamp, formatNumber, formatBytes, thStyle, tdStyle }: TimelineTableProps) {
+  const [expandedRuns, setExpandedRuns] = useState<Set<number>>(new Set());
+  const groupedTimeline = groupTimelineEntries(timeline);
+
+  function toggleRun(idx: number) {
+    setExpandedRuns(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) {
+        next.delete(idx);
+      } else {
+        next.add(idx);
+      }
+      return next;
+    });
+  }
+
+  const typeColors: Record<string, string> = {
+    run: '#2563eb',
+    error: '#dc2626',
+    summarization: '#8b5cf6',
+    compression: '#0284c7',
+    tool: '#ea580c',
+    conversation: '#0891b2'
+  };
+
+  function renderRow(t: TimelineEntry, idx: number, isToolRow = false, parentIdx?: number) {
+    const isError = t.type === 'error' || (t.type === 'summarization' && t.detail === 'failed') ||
+      (t.type === 'conversation' && (t.detail === 'token_limit_reached' || t.detail === 'budget_exceeded'));
+
+    let col4 = '-';
+    let col5 = '-';
+    let col6 = '-';
+    let col7 = '-';
+
+    if (t.type === 'run') {
+      col4 = String(t.steps || 0);
+      col5 = formatNumber(t.input_tokens || 0);
+      col6 = formatNumber(t.output_tokens || 0);
+      col7 = '$' + (t.cost || 0).toFixed(4);
+    } else if (t.type === 'summarization') {
+      col5 = formatNumber(t.input_tokens || 0) + ' tok';
+      col6 = formatNumber(t.output_tokens || 0) + ' tok';
+      col7 = ((t.cost || 0) * 100).toFixed(1) + '%';
+    } else if (t.type === 'compression') {
+      col5 = formatBytes(t.input_tokens || 0);
+      col6 = formatBytes(t.output_tokens || 0);
+      col7 = ((t.cost || 0) * 100).toFixed(1) + '%';
+    } else if (t.type === 'error') {
+      col7 = t.extra_info || '-';
+    } else if (t.type === 'conversation' && t.detail === 'token_limit_reached') {
+      col5 = (t.input_tokens || 0) + ' proc';
+      col6 = (t.output_tokens || 0) + ' drop';
+    }
+
+    const grouped = t as GroupedTimelineEntry;
+    const hasTools = (grouped.toolCount ?? 0) > 0;
+    const isExpanded = hasTools && expandedRuns.has(idx);
+
+    return (
+      <tr
+        key={isToolRow ? `${parentIdx}-tool-${idx}` : idx}
+        style={{
+          backgroundColor: isError ? 'rgba(239, 68, 68, 0.05)' : isToolRow ? '#fff8f0' : idx % 2 === 0 ? 'white' : '#fafbfc',
+          cursor: hasTools ? 'pointer' : 'default'
+        }}
+        onClick={hasTools ? () => toggleRun(idx) : undefined}
+      >
+        <td style={{ ...tdStyle, fontSize: '0.7rem', fontFamily: 'monospace', color: '#64748b', paddingLeft: isToolRow ? '1.5rem' : tdStyle.padding }}>
+          {formatFullTimestamp(t.timestamp)}
+        </td>
+        <td style={tdStyle}>
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.25rem',
+            padding: '0.1rem 0.4rem',
+            borderRadius: '4px',
+            fontSize: '0.6rem',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            backgroundColor: `${typeColors[t.type] || '#64748b'}15`,
+            color: typeColors[t.type] || '#64748b'
+          }}>
+            {hasTools && (
+              <span style={{ fontSize: '0.7rem' }}>{isExpanded ? '▼' : '▶'}</span>
+            )}
+            {t.type}
+          </span>
+        </td>
+        <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
+          {t.detail === 'budget_exceeded' ? '⚠️ BUDGET' : t.detail || '-'}
+          {hasTools && !isExpanded && (
+            <span style={{
+              marginLeft: '0.5rem',
+              backgroundColor: '#fed7aa',
+              color: '#c2410c',
+              padding: '0.1rem 0.35rem',
+              borderRadius: '4px',
+              fontSize: '0.55rem',
+              fontWeight: 600
+            }}>
+              {grouped.toolCount} tools
+            </span>
+          )}
+        </td>
+        <td style={{ ...tdStyle, fontSize: '0.75rem' }}>{col4}</td>
+        <td style={{ ...tdStyle, fontSize: '0.7rem', color: '#64748b' }}>{col5}</td>
+        <td style={{ ...tdStyle, fontSize: '0.7rem', color: '#64748b' }}>{col6}</td>
+        <td style={{ ...tdStyle, fontSize: '0.7rem', color: '#059669' }}>{col7}</td>
+      </tr>
+    );
+  }
+
+  return (
+    <div>
+      <h3 style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', color: '#374151' }}>Timeline</h3>
+      <div style={{ maxHeight: '350px', overflowY: 'auto', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ backgroundColor: '#f8fafc', position: 'sticky', top: 0 }}>
+              <th style={{ ...thStyle, fontSize: '0.65rem' }}>Timestamp</th>
+              <th style={{ ...thStyle, fontSize: '0.65rem' }}>Type</th>
+              <th style={{ ...thStyle, fontSize: '0.65rem' }}>Detail</th>
+              <th style={{ ...thStyle, fontSize: '0.65rem' }}>Steps</th>
+              <th style={{ ...thStyle, fontSize: '0.65rem' }}>Input</th>
+              <th style={{ ...thStyle, fontSize: '0.65rem' }}>Output</th>
+              <th style={{ ...thStyle, fontSize: '0.65rem' }}>Cost/Info</th>
+            </tr>
+          </thead>
+          <tbody>
+            {groupedTimeline.map((t, idx) => {
+              const rows = [renderRow(t, idx)];
+              const grouped = t as GroupedTimelineEntry;
+              if (grouped.toolCalls && expandedRuns.has(idx)) {
+                grouped.toolCalls.forEach((tool, toolIdx) => {
+                  rows.push(renderRow(tool, toolIdx, true, idx));
+                });
+              }
+              return rows;
+            })}
+          </tbody>
+        </table>
+        {timeline.length === 0 && (
+          <p style={{ textAlign: 'center', color: '#94a3b8', padding: '1.5rem' }}>No timeline data</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function getDateRange(preset: DatePreset): { start: Date; end: Date } {
   const now = new Date();
   const end = now;
@@ -114,13 +552,13 @@ function getDateRange(preset: DatePreset): { start: Date; end: Date } {
       start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       break;
     case '7d':
-      start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      start = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000); // 6 days back + today = 7 total
       break;
     case '14d':
-      start = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+      start = new Date(now.getTime() - 13 * 24 * 60 * 60 * 1000); // 13 days back + today = 14 total
       break;
     case '30d':
-      start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      start = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000); // 29 days back + today = 30 total
       break;
     default:
       start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -176,6 +614,24 @@ function AnalyticsContent() {
   const [hourlyData, setHourlyData] = useState<{ date: string; hourly_stats: Array<{ hour: number; apps: number; runs: number; cost: number; steps: number; avg_steps_per_run: number }> } | null>(null);
   const [hourlyLoading, setHourlyLoading] = useState(false);
 
+  // Error stats state
+  const [errorStats, setErrorStats] = useState<ErrorStats | null>(null);
+  const [hourlyWsErrorData, setHourlyWsErrorData] = useState<HourlyErrorStats | null>(null);
+  const [hourlyBudgetErrorData, setHourlyBudgetErrorData] = useState<HourlyErrorStats | null>(null);
+  const [hourlyWsErrorLoading, setHourlyWsErrorLoading] = useState(false);
+  const [hourlyBudgetErrorLoading, setHourlyBudgetErrorLoading] = useState(false);
+
+  // Last 24 hours rolling window stats
+  const [last24hStats, setLast24hStats] = useState<Last24HoursStats | null>(null);
+  const [last24hWsErrors, setLast24hWsErrors] = useState<Last24HoursErrorStats | null>(null);
+  const [last24hBudgetErrors, setLast24hBudgetErrors] = useState<Last24HoursErrorStats | null>(null);
+
+  // Summarization stats
+  const [summarizationStats, setSummarizationStats] = useState<SummarizationStats | null>(null);
+  const [hourlySummarizationData, setHourlySummarizationData] = useState<HourlySummarizationStats | null>(null);
+  const [hourlySummarizationLoading, setHourlySummarizationLoading] = useState(false);
+  const [last24hSummarizations, setLast24hSummarizations] = useState<Last24HoursSummarizationStats | null>(null);
+
   // Pagination state
   const [displayCount, setDisplayCount] = useState(100);
   const tableContainerRef = React.useRef<HTMLDivElement>(null);
@@ -198,10 +654,12 @@ function AnalyticsContent() {
 
       const params = new URLSearchParams({ start, end });
 
-      const [appsRes, summaryRes, statusRes] = await Promise.all([
+      const [appsRes, summaryRes, statusRes, errorsRes, sumRes] = await Promise.all([
         fetch(`/api/analytics?action=apps&${params}`),
         fetch(`/api/analytics?action=summary&${params}`),
-        fetch('/api/analytics?action=scheduler-status')
+        fetch('/api/analytics?action=scheduler-status'),
+        fetch(`/api/analytics?action=errors&${params}`),
+        fetch(`/api/analytics?action=summarizations&${params}`)
       ]);
 
       if (!appsRes.ok || !summaryRes.ok) {
@@ -211,7 +669,42 @@ function AnalyticsContent() {
       setApps(await appsRes.json());
       setSummary(await summaryRes.json());
       setSchedulerStatus(await statusRes.json());
+      if (errorsRes.ok) {
+        setErrorStats(await errorsRes.json());
+      }
+      if (sumRes.ok) {
+        setSummarizationStats(await sumRes.json());
+      }
       setError(null);
+
+      // Auto-fetch rolling 24h hourly data when 24h is selected
+      if (datePreset === '1d') {
+        const [last24hRes, last24hWsRes, last24hBudgetRes, last24hSumRes] = await Promise.all([
+          fetch('/api/analytics?action=last-24h'),
+          fetch('/api/analytics?action=last-24h-errors&errorType=websocket'),
+          fetch('/api/analytics?action=last-24h-errors&errorType=budget'),
+          fetch('/api/analytics?action=last-24h-summarizations')
+        ]);
+        if (last24hRes.ok) setLast24hStats(await last24hRes.json());
+        if (last24hWsRes.ok) setLast24hWsErrors(await last24hWsRes.json());
+        if (last24hBudgetRes.ok) setLast24hBudgetErrors(await last24hBudgetRes.json());
+        if (last24hSumRes.ok) setLast24hSummarizations(await last24hSumRes.json());
+        // Clear day-based hourly data
+        setHourlyData(null);
+        setHourlyWsErrorData(null);
+        setHourlyBudgetErrorData(null);
+        setHourlySummarizationData(null);
+      } else {
+        // Clear rolling 24h data for non-24h views
+        setLast24hStats(null);
+        setLast24hWsErrors(null);
+        setLast24hBudgetErrors(null);
+        setLast24hSummarizations(null);
+        setHourlyData(null);
+        setHourlyWsErrorData(null);
+        setHourlyBudgetErrorData(null);
+        setHourlySummarizationData(null);
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -220,21 +713,36 @@ function AnalyticsContent() {
   }, [datePreset, customStart, customEnd]);
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchSchedulerStatus, 30000);
-    return () => clearInterval(interval);
+    let isMounted = true;
+    const abortController = new AbortController();
+
+    async function initFetch() {
+      await fetchData();
+    }
+
+    initFetch();
+
+    const interval = setInterval(async function refreshStatus() {
+      if (!isMounted) return;
+      try {
+        const res = await fetch('/api/analytics?action=scheduler-status', { signal: abortController.signal });
+        if (res.ok && isMounted) {
+          setSchedulerStatus(await res.json());
+        }
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          console.warn('analytics.scheduler.status.failed', { error: String(err) });
+        }
+      }
+    }, 30000);
+
+    return () => {
+      isMounted = false;
+      abortController.abort();
+      clearInterval(interval);
+    };
   }, [fetchData]);
 
-  async function fetchSchedulerStatus() {
-    try {
-      const res = await fetch('/api/analytics?action=scheduler-status');
-      if (res.ok) {
-        setSchedulerStatus(await res.json());
-      }
-    } catch {
-      // Ignore status fetch errors
-    }
-  }
 
   async function showAppDetails(appId: string) {
     setModalLoading(true);
@@ -265,6 +773,48 @@ function AnalyticsContent() {
       console.error('Failed to fetch hourly data:', err);
     } finally {
       setHourlyLoading(false);
+    }
+  }
+
+  async function fetchHourlyWsErrorData(date: string) {
+    setHourlyWsErrorLoading(true);
+    try {
+      const res = await fetch(`/api/analytics?action=hourly-errors&date=${encodeURIComponent(date)}&errorType=websocket`);
+      if (res.ok) {
+        setHourlyWsErrorData(await res.json());
+      }
+    } catch (err) {
+      console.error('Failed to fetch hourly websocket error data:', err);
+    } finally {
+      setHourlyWsErrorLoading(false);
+    }
+  }
+
+  async function fetchHourlyBudgetErrorData(date: string) {
+    setHourlyBudgetErrorLoading(true);
+    try {
+      const res = await fetch(`/api/analytics?action=hourly-errors&date=${encodeURIComponent(date)}&errorType=budget`);
+      if (res.ok) {
+        setHourlyBudgetErrorData(await res.json());
+      }
+    } catch (err) {
+      console.error('Failed to fetch hourly budget error data:', err);
+    } finally {
+      setHourlyBudgetErrorLoading(false);
+    }
+  }
+
+  async function fetchHourlySummarizationData(date: string) {
+    setHourlySummarizationLoading(true);
+    try {
+      const res = await fetch(`/api/analytics?action=hourly-summarizations&date=${encodeURIComponent(date)}`);
+      if (res.ok) {
+        setHourlySummarizationData(await res.json());
+      }
+    } catch (err) {
+      console.error('Failed to fetch hourly summarization data:', err);
+    } finally {
+      setHourlySummarizationLoading(false);
     }
   }
 
@@ -400,8 +950,8 @@ function AnalyticsContent() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '2rem' }}>
-        <div style={{ maxWidth: '1500px', margin: '0 auto' }}>
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '1rem 2vw' }}>
+        <div style={{ width: '100%', maxWidth: '98vw', margin: '0 auto' }}>
           <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '12px', padding: '3rem', textAlign: 'center' }}>
             <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>⏳</div>
             <p style={{ color: '#64748b', margin: 0 }}>Loading analytics data...</p>
@@ -413,8 +963,8 @@ function AnalyticsContent() {
 
   if (error) {
     return (
-      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '2rem' }}>
-        <div style={{ maxWidth: '1500px', margin: '0 auto' }}>
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '1rem 2vw' }}>
+        <div style={{ width: '100%', maxWidth: '98vw', margin: '0 auto' }}>
           <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '12px', padding: '2rem', borderLeft: '4px solid #ef4444' }}>
             <h2 style={{ margin: '0 0 0.5rem 0', color: '#dc2626' }}>Error</h2>
             <p style={{ margin: 0, color: '#666' }}>{error}</p>
@@ -439,8 +989,8 @@ function AnalyticsContent() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '1.5rem' }}>
-      <div style={{ maxWidth: '1500px', margin: '0 auto' }}>
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '1rem 2vw' }}>
+      <div style={{ width: '100%', maxWidth: '98vw', margin: '0 auto' }}>
         {/* Header */}
         <header style={{
           backgroundColor: 'rgba(255,255,255,0.97)',
@@ -571,165 +1121,242 @@ function AnalyticsContent() {
         {summary && summary.daily_stats.length > 0 && (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
             gap: '1rem',
             marginBottom: '1.25rem'
           }}>
             {/* Apps/Day Chart */}
-            <div style={{
-              backgroundColor: 'rgba(255,255,255,0.97)',
-              padding: '1rem 1.25rem',
-              borderRadius: '10px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.08)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
-                  Apps/Day {hourlyData && <span style={{ fontSize: '0.65rem', color: '#3b82f6', cursor: 'pointer' }} onClick={() => setHourlyData(null)}>(← back)</span>}
-                </div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#3b82f6' }}>
-                  Avg: {summary.apps_per_day.toFixed(1)}
-                </div>
-              </div>
-              {hourlyLoading ? (
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80px', color: '#64748b' }}>
-                  Loading hourly data...
-                </div>
-              ) : hourlyData ? (
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '80px' }}>
-                  {(() => {
-                    const maxApps = Math.max(...hourlyData.hourly_stats.map(h => h.apps), 1);
-                    return Array.from({ length: 24 }, (_, hour) => {
-                      const stat = hourlyData.hourly_stats.find(h => h.hour === hour) || { apps: 0 };
-                      return (
-                        <div key={hour} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                          <div
-                            style={{
-                              width: '100%',
-                              height: `${(stat.apps / maxApps) * 70}px`,
-                              backgroundColor: '#60a5fa',
-                              borderRadius: '2px 2px 0 0',
-                              minHeight: stat.apps > 0 ? '4px' : '0'
-                            }}
-                            title={`${hour}:00 - ${stat.apps} apps`}
-                          />
-                          {hour % 4 === 0 && (
-                            <div style={{ fontSize: '0.5rem', color: '#94a3b8', marginTop: '2px' }}>
-                              {hour}h
-                            </div>
-                          )}
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '80px' }}>
-                  {(() => {
-                    const maxApps = Math.max(...summary.daily_stats.map(d => d.apps), 1);
-                    return summary.daily_stats.map((day, i) => (
-                      <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                        <div
-                          onClick={() => fetchHourlyData(day.date)}
-                          style={{
-                            width: '100%',
-                            height: `${(day.apps / maxApps) * 70}px`,
-                            backgroundColor: '#3b82f6',
-                            borderRadius: '2px 2px 0 0',
-                            minHeight: day.apps > 0 ? '4px' : '0',
-                            cursor: 'pointer',
-                            transition: 'opacity 0.15s'
-                          }}
-                          title={`${formatShortDay(day.date)}: ${day.apps} apps (click for hourly)`}
-                          onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
-                          onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
-                        />
-                        <div style={{ fontSize: '0.55rem', color: '#94a3b8', marginTop: '2px' }}>
-                          {formatShortDay(day.date)}
-                        </div>
-                      </div>
-                    ));
-                  })()}
-                </div>
-              )}
-            </div>
+            {(() => {
+              if (hourlyLoading) {
+                return <ChartLoadingState />;
+              }
+              if (datePreset === '1d' && last24hStats) {
+                return (
+                  <MiniChart
+                    title="Apps (Last 24h)"
+                    value={`Total: ${last24hStats.hourly_stats.reduce((sum, h) => sum + h.apps, 0)}`}
+                    valueColor="#3b82f6"
+                    data={buildRolling24hChartData(last24hStats.hourly_stats, s => s.apps, (h, s) => `${h}h ago: ${s.apps} apps`)}
+                    barColor="#60a5fa"
+                  />
+                );
+              }
+              if (hourlyData) {
+                return (
+                  <MiniChart
+                    title="Apps/Hour"
+                    value={`Total: ${hourlyData.hourly_stats.reduce((sum, h) => sum + h.apps, 0)}`}
+                    valueColor="#3b82f6"
+                    data={buildHourlyChartData(hourlyData.hourly_stats, s => s.apps, (h, s) => `${h}:00 - ${s.apps} apps`)}
+                    barColor="#60a5fa"
+                    showBack={true}
+                    backAction={() => setHourlyData(null)}
+                  />
+                );
+              }
+              return (
+                <MiniChart
+                  title="Apps/Day"
+                  value={`Avg: ${summary.apps_per_day.toFixed(1)}`}
+                  valueColor="#3b82f6"
+                  data={buildDailyChartData(summary.daily_stats, s => s.apps, (d, s) => `${formatShortDay(d)}: ${s.apps} apps`, formatShortDay)}
+                  barColor="#3b82f6"
+                  barColorLight="#60a5fa"
+                  onClick={(i) => fetchHourlyData(summary.daily_stats[i].date)}
+                />
+              );
+            })()}
 
             {/* Avg Cost/App Chart */}
-            <div style={{
-              backgroundColor: 'rgba(255,255,255,0.97)',
-              padding: '1rem 1.25rem',
-              borderRadius: '10px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.08)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
-                  Avg Cost/App
-                </div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#059669' }}>
-                  Avg: {formatCost(summary.avg_cost_per_app)}
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '80px' }}>
-                {(() => {
-                  const maxCost = Math.max(...summary.daily_stats.map(d => d.avg_cost_per_app), 0.01);
-                  return summary.daily_stats.map((day, i) => (
-                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <div
-                        style={{
-                          width: '100%',
-                          height: `${(day.avg_cost_per_app / maxCost) * 70}px`,
-                          backgroundColor: '#059669',
-                          borderRadius: '2px 2px 0 0',
-                          minHeight: day.avg_cost_per_app > 0 ? '4px' : '0'
-                        }}
-                        title={`${formatShortDay(day.date)}: ${formatCost(day.avg_cost_per_app)}`}
-                      />
-                      <div style={{ fontSize: '0.55rem', color: '#94a3b8', marginTop: '2px' }}>
-                        {formatShortDay(day.date)}
-                      </div>
-                    </div>
-                  ));
-                })()}
-              </div>
-            </div>
+            {(() => {
+              if (datePreset === '1d' && last24hStats) {
+                const totalCost = last24hStats.hourly_stats.reduce((sum, h) => sum + h.cost, 0);
+                const totalApps = last24hStats.hourly_stats.reduce((sum, h) => sum + h.apps, 0);
+                const avgCost = totalApps > 0 ? totalCost / totalApps : 0;
+                return (
+                  <MiniChart
+                    title="Avg Cost/App (Last 24h)"
+                    value={`Avg: ${formatCost(avgCost)}`}
+                    valueColor="#059669"
+                    data={buildRolling24hChartData(last24hStats.hourly_stats, s => s.apps > 0 ? s.cost / s.apps : 0, (h, s) => `${h}h ago: ${formatCost(s.apps > 0 ? s.cost / s.apps : 0)} (${s.apps} apps)`)}
+                    barColor="#10b981"
+                  />
+                );
+              }
+              return (
+                <MiniChart
+                  title="Avg Cost/App"
+                  value={`Avg: ${formatCost(summary.avg_cost_per_app)}`}
+                  valueColor="#059669"
+                  data={buildDailyChartData(summary.daily_stats, s => s.avg_cost_per_app, (d, s) => `${formatShortDay(d)}: ${formatCost(s.avg_cost_per_app)}`, formatShortDay)}
+                  barColor="#059669"
+                  barColorLight="#10b981"
+                />
+              );
+            })()}
 
             {/* Avg Steps/Run Chart */}
-            <div style={{
-              backgroundColor: 'rgba(255,255,255,0.97)',
-              padding: '1rem 1.25rem',
-              borderRadius: '10px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.08)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
-                  Avg Steps/Run
-                </div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#8b5cf6' }}>
-                  Avg: {(summary.daily_stats.reduce((sum, d) => sum + d.avg_steps_per_run, 0) / summary.daily_stats.length).toFixed(1)}
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '80px' }}>
-                {(() => {
-                  const maxSteps = Math.max(...summary.daily_stats.map(d => d.avg_steps_per_run), 1);
-                  return summary.daily_stats.map((day, i) => (
-                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <div
-                        style={{
-                          width: '100%',
-                          height: `${(day.avg_steps_per_run / maxSteps) * 70}px`,
-                          backgroundColor: '#8b5cf6',
-                          borderRadius: '2px 2px 0 0',
-                          minHeight: day.avg_steps_per_run > 0 ? '4px' : '0'
-                        }}
-                        title={`${formatShortDay(day.date)}: ${day.avg_steps_per_run.toFixed(1)} steps/run`}
-                      />
-                      <div style={{ fontSize: '0.55rem', color: '#94a3b8', marginTop: '2px' }}>
-                        {formatShortDay(day.date)}
-                      </div>
-                    </div>
-                  ));
-                })()}
-              </div>
-            </div>
+            {(() => {
+              if (datePreset === '1d' && last24hStats) {
+                const totalSteps = last24hStats.hourly_stats.reduce((sum, h) => sum + h.steps, 0);
+                const totalRuns = last24hStats.hourly_stats.reduce((sum, h) => sum + h.runs, 0);
+                const avgSteps = totalRuns > 0 ? totalSteps / totalRuns : 0;
+                return (
+                  <MiniChart
+                    title="Avg Steps/Run (Last 24h)"
+                    value={`Avg: ${avgSteps.toFixed(1)}`}
+                    valueColor="#8b5cf6"
+                    data={buildRolling24hChartData(last24hStats.hourly_stats, s => s.runs > 0 ? s.steps / s.runs : 0, (h, s) => `${h}h ago: ${(s.runs > 0 ? s.steps / s.runs : 0).toFixed(1)} steps/run (${s.runs} runs)`)}
+                    barColor="#a78bfa"
+                  />
+                );
+              }
+              return (
+                <MiniChart
+                  title="Avg Steps/Run"
+                  value={`Avg: ${(summary.daily_stats.reduce((sum, d) => sum + d.avg_steps_per_run, 0) / summary.daily_stats.length).toFixed(1)}`}
+                  valueColor="#8b5cf6"
+                  data={buildDailyChartData(summary.daily_stats, s => s.avg_steps_per_run, (d, s) => `${formatShortDay(d)}: ${s.avg_steps_per_run.toFixed(1)} steps/run`, formatShortDay)}
+                  barColor="#8b5cf6"
+                  barColorLight="#a78bfa"
+                />
+              );
+            })()}
+
+            {/* WebSocket Errors/Day Chart */}
+            {(() => {
+              if (hourlyWsErrorLoading) {
+                return <ChartLoadingState />;
+              }
+              if (datePreset === '1d' && last24hWsErrors) {
+                return (
+                  <MiniChart
+                    title="WS Errors (Last 24h)"
+                    value={`Total: ${last24hWsErrors.hourly_stats.reduce((sum, h) => sum + h.errors, 0)}`}
+                    valueColor="#dc2626"
+                    data={buildRolling24hChartData(last24hWsErrors.hourly_stats, s => s.errors, (h, s) => `${h}h ago: ${s.errors} WS errors`)}
+                    barColor="#f87171"
+                  />
+                );
+              }
+              if (hourlyWsErrorData) {
+                return (
+                  <MiniChart
+                    title="WS Errors/Hour"
+                    value={`Total: ${hourlyWsErrorData.hourly_stats.reduce((sum, h) => sum + h.errors, 0)}`}
+                    valueColor="#dc2626"
+                    data={buildHourlyChartData(hourlyWsErrorData.hourly_stats, s => s.errors, (h, s) => `${h}:00 - ${s.errors} WS errors`)}
+                    barColor="#f87171"
+                    showBack={true}
+                    backAction={() => setHourlyWsErrorData(null)}
+                  />
+                );
+              }
+              if (errorStats?.websocket?.daily_stats && errorStats.websocket.daily_stats.length > 0) {
+                return (
+                  <MiniChart
+                    title="WS Errors/Day"
+                    value={`Total: ${errorStats.websocket.total}`}
+                    valueColor="#dc2626"
+                    data={buildDailyChartData(errorStats.websocket.daily_stats, s => s.errors, (d, s) => `${formatShortDay(d)}: ${s.errors} WS errors`, formatShortDay)}
+                    barColor="#dc2626"
+                    barColorLight="#f87171"
+                    onClick={(i) => fetchHourlyWsErrorData(errorStats.websocket.daily_stats[i].date)}
+                  />
+                );
+              }
+              return <ChartEmptyState message="No WS error data" />;
+            })()}
+
+            {/* Budget Errors/Day Chart */}
+            {(() => {
+              if (hourlyBudgetErrorLoading) {
+                return <ChartLoadingState />;
+              }
+              if (datePreset === '1d' && last24hBudgetErrors) {
+                return (
+                  <MiniChart
+                    title="Budget Errors (Last 24h)"
+                    value={`Total: ${last24hBudgetErrors.hourly_stats.reduce((sum, h) => sum + h.errors, 0)}`}
+                    valueColor="#f59e0b"
+                    data={buildRolling24hChartData(last24hBudgetErrors.hourly_stats, s => s.errors, (h, s) => `${h}h ago: ${s.errors} budget errors`)}
+                    barColor="#fbbf24"
+                  />
+                );
+              }
+              if (hourlyBudgetErrorData) {
+                return (
+                  <MiniChart
+                    title="Budget Errors/Hour"
+                    value={`Total: ${hourlyBudgetErrorData.hourly_stats.reduce((sum, h) => sum + h.errors, 0)}`}
+                    valueColor="#f59e0b"
+                    data={buildHourlyChartData(hourlyBudgetErrorData.hourly_stats, s => s.errors, (h, s) => `${h}:00 - ${s.errors} budget errors`)}
+                    barColor="#fbbf24"
+                    showBack={true}
+                    backAction={() => setHourlyBudgetErrorData(null)}
+                  />
+                );
+              }
+              if (errorStats?.budget?.daily_stats && errorStats.budget.daily_stats.length > 0) {
+                return (
+                  <MiniChart
+                    title="Budget Errors/Day"
+                    value={`Total: ${errorStats.budget.total}`}
+                    valueColor="#f59e0b"
+                    data={buildDailyChartData(errorStats.budget.daily_stats, s => s.errors, (d, s) => `${formatShortDay(d)}: ${s.errors} budget errors`, formatShortDay)}
+                    barColor="#f59e0b"
+                    barColorLight="#fbbf24"
+                    onClick={(i) => fetchHourlyBudgetErrorData(errorStats.budget.daily_stats[i].date)}
+                  />
+                );
+              }
+              return <ChartEmptyState message="No budget error data" />;
+            })()}
+
+            {/* Summarizations Chart */}
+            {(() => {
+              if (hourlySummarizationLoading) {
+                return <ChartLoadingState />;
+              }
+              if (datePreset === '1d' && last24hSummarizations) {
+                return (
+                  <MiniChart
+                    title="Summarizations (Last 24h)"
+                    value={`Total: ${last24hSummarizations.hourly_stats.reduce((sum, h) => sum + h.total, 0)}`}
+                    valueColor="#0ea5e9"
+                    data={buildRolling24hChartData(last24hSummarizations.hourly_stats, s => s.total, (h, s) => `${h}h ago: ${s.total} (${s.failed} failed)`)}
+                    barColor="#38bdf8"
+                  />
+                );
+              }
+              if (hourlySummarizationData) {
+                return (
+                  <MiniChart
+                    title="Summarizations/Hour"
+                    value={`Total: ${hourlySummarizationData.hourly_stats.reduce((sum, h) => sum + h.total, 0)}`}
+                    valueColor="#0ea5e9"
+                    data={buildHourlyChartData(hourlySummarizationData.hourly_stats, s => s.total, (h, s) => `${h}:00 - ${s.total} (${s.failed} failed)`)}
+                    barColor="#38bdf8"
+                    showBack={true}
+                    backAction={() => setHourlySummarizationData(null)}
+                  />
+                );
+              }
+              if (summarizationStats?.daily_stats && summarizationStats.daily_stats.length > 0) {
+                return (
+                  <MiniChart
+                    title="Summarizations/Day"
+                    value={`Total: ${summarizationStats.total}`}
+                    valueColor="#0ea5e9"
+                    data={buildDailyChartData(summarizationStats.daily_stats, s => s.total, (d, s) => `${formatShortDay(d)}: ${s.total} (${s.failed} failed)`, formatShortDay)}
+                    barColor="#0ea5e9"
+                    barColorLight="#38bdf8"
+                    onClick={(i) => fetchHourlySummarizationData(summarizationStats.daily_stats[i].date)}
+                  />
+                );
+              }
+              return <ChartEmptyState message="No summarization data" />;
+            })()}
           </div>
         )}
 
@@ -799,6 +1426,9 @@ function AnalyticsContent() {
                   <th style={thStyle} onClick={() => handleSort('budget_errors')} title="Number of budget exceeded errors">
                     Budget {sortCol === 'budget_errors' && (sortAsc ? '↑' : '↓')}
                   </th>
+                  <th style={thStyle} onClick={() => handleSort('ws_errors')} title="Number of WebSocket errors">
+                    WS Err {sortCol === 'ws_errors' && (sortAsc ? '↑' : '↓')}
+                  </th>
                   <th style={thStyle} onClick={() => handleSort('errors')} title="Total error count across all runs">
                     Errors {sortCol === 'errors' && (sortAsc ? '↑' : '↓')}
                   </th>
@@ -844,6 +1474,9 @@ function AnalyticsContent() {
                     </td>
                     <td style={{ ...tdStyle, color: app.budget_errors > 0 ? '#dc2626' : '#94a3b8', fontWeight: app.budget_errors > 0 ? 600 : 400 }}>
                       {app.budget_errors}
+                    </td>
+                    <td style={{ ...tdStyle, color: app.ws_errors > 0 ? '#dc2626' : '#94a3b8', fontWeight: app.ws_errors > 0 ? 600 : 400 }}>
+                      {app.ws_errors}
                     </td>
                     <td style={{ ...tdStyle, color: app.errors > 0 ? '#dc2626' : '#94a3b8' }}>
                       {app.errors}
@@ -1030,96 +1663,7 @@ function AnalyticsContent() {
                 </div>
 
                 {/* Timeline */}
-                <div>
-                  <h3 style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', color: '#374151' }}>Timeline</h3>
-                  <div style={{ maxHeight: '350px', overflowY: 'auto', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ backgroundColor: '#f8fafc', position: 'sticky', top: 0 }}>
-                          <th style={{ ...thStyle, fontSize: '0.65rem' }}>Timestamp</th>
-                          <th style={{ ...thStyle, fontSize: '0.65rem' }}>Type</th>
-                          <th style={{ ...thStyle, fontSize: '0.65rem' }}>Detail</th>
-                          <th style={{ ...thStyle, fontSize: '0.65rem' }}>Steps</th>
-                          <th style={{ ...thStyle, fontSize: '0.65rem' }}>Input</th>
-                          <th style={{ ...thStyle, fontSize: '0.65rem' }}>Output</th>
-                          <th style={{ ...thStyle, fontSize: '0.65rem' }}>Cost/Info</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedApp.timeline.map((t, idx) => {
-                          const isError = t.type === 'error' || (t.type === 'summarization' && t.detail === 'failed') ||
-                            (t.type === 'conversation' && (t.detail === 'token_limit_reached' || t.detail === 'budget_exceeded'));
-
-                          const typeColors: Record<string, string> = {
-                            run: '#2563eb',
-                            error: '#dc2626',
-                            summarization: '#8b5cf6',
-                            compression: '#0284c7',
-                            tool: '#ea580c',
-                            conversation: '#0891b2'
-                          };
-
-                          let col4 = '-';
-                          let col5 = '-';
-                          let col6 = '-';
-                          let col7 = '-';
-
-                          if (t.type === 'run') {
-                            col4 = String(t.steps || 0);
-                            col5 = formatNumber(t.input_tokens || 0);
-                            col6 = formatNumber(t.output_tokens || 0);
-                            col7 = '$' + (t.cost || 0).toFixed(4);
-                          } else if (t.type === 'summarization') {
-                            col5 = formatNumber(t.input_tokens || 0) + ' tok';
-                            col6 = formatNumber(t.output_tokens || 0) + ' tok';
-                            col7 = ((t.cost || 0) * 100).toFixed(1) + '%';
-                          } else if (t.type === 'compression') {
-                            col5 = formatBytes(t.input_tokens || 0);
-                            col6 = formatBytes(t.output_tokens || 0);
-                            col7 = ((t.cost || 0) * 100).toFixed(1) + '%';
-                          } else if (t.type === 'error') {
-                            col7 = t.extra_info || '-';
-                          } else if (t.type === 'conversation' && t.detail === 'token_limit_reached') {
-                            col5 = (t.input_tokens || 0) + ' proc';
-                            col6 = (t.output_tokens || 0) + ' drop';
-                          }
-
-                          return (
-                            <tr key={idx} style={{ backgroundColor: isError ? 'rgba(239, 68, 68, 0.05)' : idx % 2 === 0 ? 'white' : '#fafbfc' }}>
-                              <td style={{ ...tdStyle, fontSize: '0.7rem', fontFamily: 'monospace', color: '#64748b' }}>
-                                {formatFullTimestamp(t.timestamp)}
-                              </td>
-                              <td style={tdStyle}>
-                                <span style={{
-                                  display: 'inline-block',
-                                  padding: '0.1rem 0.4rem',
-                                  borderRadius: '4px',
-                                  fontSize: '0.6rem',
-                                  fontWeight: 600,
-                                  textTransform: 'uppercase',
-                                  backgroundColor: `${typeColors[t.type] || '#64748b'}15`,
-                                  color: typeColors[t.type] || '#64748b'
-                                }}>
-                                  {t.type}
-                                </span>
-                              </td>
-                              <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
-                                {t.detail === 'budget_exceeded' ? '⚠️ BUDGET' : t.detail || '-'}
-                              </td>
-                              <td style={{ ...tdStyle, fontSize: '0.75rem' }}>{col4}</td>
-                              <td style={{ ...tdStyle, fontSize: '0.7rem', color: '#64748b' }}>{col5}</td>
-                              <td style={{ ...tdStyle, fontSize: '0.7rem', color: '#64748b' }}>{col6}</td>
-                              <td style={{ ...tdStyle, fontSize: '0.7rem', color: '#059669' }}>{col7}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    {selectedApp.timeline.length === 0 && (
-                      <p style={{ textAlign: 'center', color: '#94a3b8', padding: '1.5rem' }}>No timeline data</p>
-                    )}
-                  </div>
-                </div>
+                <TimelineTable timeline={selectedApp.timeline} formatFullTimestamp={formatFullTimestamp} formatNumber={formatNumber} formatBytes={formatBytes} thStyle={thStyle} tdStyle={tdStyle} />
               </>
             )}
           </div>

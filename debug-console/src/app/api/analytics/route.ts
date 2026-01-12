@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { getSummary, getAllApps, getToolStats, getHealthMetrics, getHourlyStats, init } from '@/lib/analytics/es-db';
+import { getSummary, getAllApps, getToolStats, getHealthMetrics, getHourlyStats, getErrorStats, getHourlyErrorStats, getLast24HoursStats, getLast24HoursErrorStats, getSummarizationStats, getHourlySummarizationStats, getRollingHourlySummarizations, init } from '@/lib/analytics/es-db';
 import { getSchedulerStatus, startScheduler } from '@/lib/analytics/scheduler';
 import { withAuth } from '@/lib/api-auth';
 
@@ -69,6 +69,46 @@ export const GET = withAuth(async (request) => {
         }
         return NextResponse.json(await getHourlyStats(date));
       }
+
+      case 'errors':
+        return NextResponse.json(await getErrorStats(start, end));
+
+      case 'hourly-errors': {
+        const date = searchParams.get('date');
+        const errorType = searchParams.get('errorType') as 'websocket' | 'budget' | null;
+        if (!date) {
+          return NextResponse.json({ error: 'date parameter required' }, { status: 400 });
+        }
+        if (!errorType || !['websocket', 'budget'].includes(errorType)) {
+          return NextResponse.json({ error: 'errorType parameter required (websocket or budget)' }, { status: 400 });
+        }
+        return NextResponse.json(await getHourlyErrorStats(date, errorType));
+      }
+
+      case 'last-24h':
+        return NextResponse.json(await getLast24HoursStats());
+
+      case 'last-24h-errors': {
+        const errorType = searchParams.get('errorType') as 'websocket' | 'budget' | null;
+        if (!errorType || !['websocket', 'budget'].includes(errorType)) {
+          return NextResponse.json({ error: 'errorType parameter required (websocket or budget)' }, { status: 400 });
+        }
+        return NextResponse.json(await getLast24HoursErrorStats(errorType));
+      }
+
+      case 'summarizations':
+        return NextResponse.json(await getSummarizationStats(start, end));
+
+      case 'hourly-summarizations': {
+        const date = searchParams.get('date');
+        if (!date) {
+          return NextResponse.json({ error: 'date parameter required' }, { status: 400 });
+        }
+        return NextResponse.json(await getHourlySummarizationStats(date));
+      }
+
+      case 'last-24h-summarizations':
+        return NextResponse.json(await getRollingHourlySummarizations());
 
       default:
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
