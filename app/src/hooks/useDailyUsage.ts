@@ -1,31 +1,35 @@
 'use client'
 
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { appService, type DailyUsageInfo } from '@/services/AppService'
+import { WarningLevel } from '@/types/usage'
 
 const WARNING_THRESHOLD = 50
 const CRITICAL_THRESHOLD = 75
 export const TOAST_THRESHOLD = 90
 
-export type WarningLevel = 'none' | 'caution' | 'warning' | 'exceeded'
+export interface FormattedResetTime {
+  dayKey: 'today' | 'tomorrow'
+  timeString: string
+}
 
-export function formatResetTime(resetTime: string | null): string | null {
+export function formatResetTime(resetTime: string | null): FormattedResetTime | null {
   if (!resetTime) return null
   const resetDate = new Date(resetTime)
   const now = new Date()
 
   const isToday = resetDate.toDateString() === now.toDateString()
-  const relativeDay = isToday ? 'today' : 'tomorrow'
+  const dayKey = isToday ? 'today' : 'tomorrow'
 
-  const timeStr = resetDate.toLocaleTimeString([], {
+  const timeString = resetDate.toLocaleTimeString([], {
     hour: 'numeric',
     minute: '2-digit',
     timeZoneName: 'short'
   })
 
-  return `${relativeDay} at ${timeStr}`
+  return { dayKey, timeString }
 }
 
 function getToastShownKey(appId: string): string {
@@ -115,12 +119,12 @@ export function useDailyUsage(options: UseDailyUsageOptions) {
   }, [appId, query.data])
 
   const warningLevel = useMemo<WarningLevel>(() => {
-    if (!query.data) return 'none'
+    if (!query.data) return WarningLevel.NONE
     const { percentage } = query.data
-    if (percentage >= 100) return 'exceeded'
-    if (percentage >= CRITICAL_THRESHOLD) return 'warning'
-    if (percentage >= WARNING_THRESHOLD) return 'caution'
-    return 'none'
+    if (percentage >= 100) return WarningLevel.EXCEEDED
+    if (percentage >= CRITICAL_THRESHOLD) return WarningLevel.WARNING
+    if (percentage >= WARNING_THRESHOLD) return WarningLevel.CAUTION
+    return WarningLevel.NONE
   }, [query.data])
 
   const formattedResetTime = useMemo(() => {

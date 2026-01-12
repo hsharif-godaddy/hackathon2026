@@ -42,6 +42,10 @@ interface DevelopPageStore {
   // Asset Manager UI
   isAssetManagerOpen: boolean
 
+  // Upgrade Modal UI
+  showUpgradeModal: boolean
+  upgradeModalSource: string | null
+
   // Publish status UI (per-app state keyed by appId)
   publishStates: Record<string, {
     isPublishing: boolean
@@ -85,6 +89,10 @@ interface DevelopPageStore {
 
   // Asset Manager actions
   setIsAssetManagerOpen: (open: boolean) => void
+
+  // Upgrade Modal actions
+  openUpgradeModal: (source: string) => void
+  closeUpgradeModal: () => void
 
   // Publish status actions (per-app)
   setIsPublishing: (appId: string, isPublishing: boolean) => void
@@ -152,6 +160,10 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // Asset Manager state
     isAssetManagerOpen: false,
+
+    // Upgrade Modal state
+    showUpgradeModal: false,
+    upgradeModalSource: null,
 
     // Publish status state (per-app, keyed by appId)
     publishStates: {},
@@ -260,6 +272,16 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // Asset Manager actions
     setIsAssetManagerOpen: (open: boolean) => set((state) => {
       state.isAssetManagerOpen = open
+    }),
+
+    // Upgrade Modal actions
+    openUpgradeModal: (source: string) => set((state) => {
+      state.showUpgradeModal = true
+      state.upgradeModalSource = source
+    }),
+    closeUpgradeModal: () => set((state) => {
+      state.showUpgradeModal = false
+      state.upgradeModalSource = null
     }),
 
     // Publish status actions (per-app)

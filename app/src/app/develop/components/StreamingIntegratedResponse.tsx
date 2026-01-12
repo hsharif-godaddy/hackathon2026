@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import { useIntl } from 'react-intl'
+import Button from '@ux/button'
 import text from '@ux/text'
 
 import MessageContentRenderer, { type ContentBlock } from '@/app/develop/components/MessageContentRenderer'
@@ -9,7 +10,9 @@ import MessageToolCallsRenderer from '@/app/develop/components/MessageToolCallsR
 import ResponseMetadata from '@/app/develop/components/ResponseMetadata'
 import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessage'
 import { hasValidSegments,isStreamingMessage } from '@/app/develop/components/utils'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
 
@@ -43,6 +46,8 @@ function getNextResetInfo(): { date: Date; isTomorrow: boolean } {
 export default function StreamingIntegratedResponse({ message, isActiveStream = false, isLastAssistantMessage = false, startTime, streamingState }: StreamingIntegratedResponseProps) {
   const t = useTranslations();
   const intl = useIntl();
+  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
+  const { data: purchaseEnabled } = useSwitchboard('appbuilder-usage-purchase')
   const hasSegments = hasValidSegments(message)
   const isComplete = isStreamingMessage(message) ? message.isComplete : true
 
@@ -255,6 +260,22 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                 t('builder_usage_limit_message_no_reset_time')
               )
             }
+            actions={purchaseEnabled && (
+              <div className="flex gap-2">
+                <Button
+                  design="primary"
+                  size="sm"
+                  onClick={() => openUpgradeModal('budget_exceeded.upgrade')}
+                  text={t('builder_usage_gauge_upgrade')}
+                />
+                <Button
+                  design="secondary"
+                  size="sm"
+                  onClick={() => openUpgradeModal('budget_exceeded.buy_credits')}
+                  text={t('builder_usage_gauge_buy_tokens')}
+                />
+              </div>
+            )}
           />
         )}
 

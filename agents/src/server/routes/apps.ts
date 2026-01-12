@@ -1,6 +1,7 @@
 import { Router, Request, Response, IRouter } from 'express';
 import { existsSync, writeFileSync } from 'fs';
 import { join as pathJoin } from 'path';
+import apm from 'elastic-apm-node';
 import multer from 'multer';
 import { AppRepository } from '../../database/index.js';
 import type { CreateAppRequest, UpdateAppRequest } from '../../database/index.js';
@@ -865,9 +866,20 @@ router.get('/:id/usage/daily', async (req: Request, res: Response) => {
     const usage = tokenUsageRepo.getDailyUsage(id);
     const limit = getFeatures().dailyPriceLimit;
     const percentage = limit > 0 ? (usage.totalCost / limit) * 100 : 0;
+    const cappedPercentage = Math.min(percentage, 100);
+
+    if (cappedPercentage >= 90) {
+      const transaction = apm.currentTransaction;
+      if (transaction) {
+        transaction.setLabel('threshold_90_reached', true);
+        transaction.setLabel('usage_percentage', cappedPercentage);
+        transaction.setLabel('daily_limit', limit);
+        transaction.setLabel('total_cost', usage.totalCost);
+      }
+    }
 
     return res.json({
-      percentage: Math.min(percentage, 100),
+      percentage: cappedPercentage,
       resetTime: usage.resetTime
     });
   } catch (error) {

@@ -7,6 +7,7 @@ import { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModa
 import { ChatContext } from '@/app/develop/components/chat/ChatContext'
 import ChatInput from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
+import UsageWarningBanner from '@/app/develop/components/chat/UsageWarningBanner'
 import PersistentTodoList from '@/app/develop/components/PersistentTodoList'
 import PlanTracker from '@/app/develop/components/PlanTracker'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
@@ -416,7 +417,9 @@ export default function ChatPane({
                 </div>
               )}
 
+              <UsageWarningBanner appId={appId} />
               <ChatInput
+                appId={appId}
                 inputValue={safeInputValue}
                 isDisabled={isProcessing}
                 onInputChange={setInputValue}
@@ -547,12 +550,16 @@ export default function ChatPane({
             </div>
           )}
 
-          <ChatInput
-            inputValue={safeInputValue}
-            isDisabled={isProcessing}
-            onInputChange={setInputValue}
-            onSendMessage={handleSendMessage}
-          />
+          <div className="px-2 sm:px-3 md:px-0">
+            <UsageWarningBanner appId={appId} />
+            <ChatInput
+              appId={appId}
+              inputValue={safeInputValue}
+              isDisabled={isProcessing}
+              onInputChange={setInputValue}
+              onSendMessage={handleSendMessage}
+            />
+          </div>
         </>
       )}
 

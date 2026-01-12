@@ -9,9 +9,9 @@ import ChatPaneLoader, { ResumeLoaderPhase } from '@/app/develop/components/chat
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
+import SinglePlanUpgradeContainer from '@/app/develop/components/SinglePlanUpgradeContainer'
 import { AppIntroTour } from '@/app/develop/components/tour/AppIntroTour'
-import { ChatTab, SettingsSection } from '@/app/develop/components/types'
-import UsageToast from '@/app/develop/components/UsageToast'
+import { ChatTab } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { handlePreviewRefresh } from '@/app/develop/components/utils'
 import { clearExpiredWidgetStates } from '@/app/develop/components/widgets'
@@ -31,6 +31,7 @@ import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
+import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -119,6 +120,9 @@ function DevelopPageContent() {
   const site = useDevelopPageStore((state) => state.site);
   const isAssetManagerOpen = useDevelopPageStore((state) => state.isAssetManagerOpen);
   const setIsAssetManagerOpen = useDevelopPageStore((state) => state.setIsAssetManagerOpen);
+  const showUpgradeModal = useDevelopPageStore((state) => state.showUpgradeModal);
+  const upgradeModalSource = useDevelopPageStore((state) => state.upgradeModalSource);
+  const closeUpgradeModal = useDevelopPageStore((state) => state.closeUpgradeModal);
 
   useGitHistoryQuery({
     appId: appId || '',
@@ -677,7 +681,6 @@ function DevelopPageContent() {
         onDragEnter={handleDragEnter}
       >
         <Header location="develop" />
-        <UsageToast />
 
         {isMobile ? (
         // Mobile layout with tabs
@@ -766,6 +769,26 @@ function DevelopPageContent() {
         show={showIntroTour}
         onClose={() => setShowIntroTour(false)}
       />
+
+      {showUpgradeModal && (
+        <SinglePlanUpgradeContainer
+          onSuccessClick={() => {
+            const source = upgradeModalSource ?? 'unknown'
+            closeUpgradeModal()
+            shipAnalyticsLog(`${source}.success`, { appId })
+          }}
+          onClose={() => {
+            const source = upgradeModalSource ?? 'unknown'
+            closeUpgradeModal()
+            shipAnalyticsLog(`${source}.dismissed`, { appId })
+          }}
+          onErrorClick={() => {
+            const source = upgradeModalSource ?? 'unknown'
+            closeUpgradeModal()
+            shipAnalyticsLog(`${source}.error`, { appId })
+          }}
+        />
+      )}
       </div>
     </WebSocketProvider>
   )
