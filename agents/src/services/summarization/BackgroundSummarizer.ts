@@ -215,23 +215,37 @@ export class BackgroundSummarizer {
       const incrementalMessages = this.convertToLLMMessages(incrementalMessagesDb);
       const incrementalTokenCount = this.countTokensForMessages(incrementalMessages, modelName);
 
-      logger.debug('summarization.background.token_check', {
+      // Log token check at info level for visibility
+      logger.info('summarization.background.token_check', {
         appId,
-        newMessages: incrementalMessages.length,
-        incrementalTokenCount,
+        newMessagesCount: incrementalMessages.length,
+        incrementalTokens: incrementalTokenCount,
         threshold: this.config.tokenThreshold,
-        fullHistoryTokenCount,
+        thresholdExceeded: incrementalTokenCount > this.config.tokenThreshold,
+        fullHistoryTokens: fullHistoryTokenCount,
+        totalMessagesCount: allMessages.length,
       });
 
       // Check if threshold exceeded for unsummarized messages
       if (incrementalTokenCount <= this.config.tokenThreshold) {
-        logger.debug('summarization.background.threshold_not_exceeded', {
+        logger.info('summarization.background.threshold_not_exceeded', {
           appId,
-          incrementalTokenCount,
+          incrementalTokens: incrementalTokenCount,
           threshold: this.config.tokenThreshold,
+          tokensRemaining: this.config.tokenThreshold - incrementalTokenCount,
+          message: `${incrementalTokenCount} tokens < ${this.config.tokenThreshold} threshold - no summarization needed`,
         });
         return;
       }
+
+      // Log when threshold IS exceeded and summarization will be triggered
+      logger.info('summarization.background.threshold_exceeded_triggering', {
+        appId,
+        incrementalTokens: incrementalTokenCount,
+        threshold: this.config.tokenThreshold,
+        tokensOverThreshold: incrementalTokenCount - this.config.tokenThreshold,
+        message: `SUMMARIZATION TRIGGERED: ${incrementalTokenCount} tokens > ${this.config.tokenThreshold} threshold`,
+      });
 
       // Extract operation log from ALL messages (cumulative record)
       // This captures everything done in the conversation, even if some messages
@@ -243,12 +257,14 @@ export class BackgroundSummarizer {
       // Perform summarization
       logger.info('summarization.background.begin', {
         appId,
-        messageCount: fullHistoryMessages.length,
-        incrementalMessageCount: incrementalMessages.length,
-        tokenCount: fullHistoryTokenCount,
-        incrementalTokenCount,
+        totalMessagesToSummarize: fullHistoryMessages.length,
+        newMessagesSinceLastSummary: incrementalMessages.length,
+        totalTokens: fullHistoryTokenCount,
+        incrementalTokens: incrementalTokenCount,
         hasExistingSummary: !!existingSummary,
         operationLogEntries: operationLogEntries.length,
+        strategy: this.strategy.name,
+        message: `STARTING SUMMARIZATION: ${fullHistoryMessages.length} messages, ${fullHistoryTokenCount} tokens`,
       });
 
       const context: SummarizationContext = {
@@ -285,12 +301,19 @@ export class BackgroundSummarizer {
       // Save summary to database
       await this.summaryRepo.create(summaryResult, appId);
 
+      const compressionRatio = summaryResult.summaryTokenCount / summaryResult.originalTokenCount;
+      const tokensSaved = summaryResult.originalTokenCount - summaryResult.summaryTokenCount;
+
       logger.info('summarization.background.complete', {
         appId,
-        summaryId: summaryResult.summaryText.substring(0, 50),
         originalTokens: summaryResult.originalTokenCount,
         summaryTokens: summaryResult.summaryTokenCount,
-        compressionRatio: summaryResult.summaryTokenCount / summaryResult.originalTokenCount,
+        tokensSaved,
+        compressionRatio: compressionRatio.toFixed(3),
+        compressionPercent: `${((1 - compressionRatio) * 100).toFixed(1)}%`,
+        messagesProcessed: summaryResult.messageCount,
+        strategy: this.strategy.name,
+        message: `SUMMARIZATION COMPLETE: ${summaryResult.originalTokenCount} → ${summaryResult.summaryTokenCount} tokens (saved ${tokensSaved} tokens, ${((1 - compressionRatio) * 100).toFixed(1)}% compression)`,
       });
     } catch (error) {
       logger.error('summarization.background.failure', {

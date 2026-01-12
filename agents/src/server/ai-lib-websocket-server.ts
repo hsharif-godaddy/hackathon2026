@@ -328,23 +328,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     const { conversationRepository } = await import('../database/repositories/index.js')
     const { initializeBackgroundSummarization } = await import('../services/summarization/index.js')
     
-    // Initialize background summarization once at startup
-    // Aggressive settings for timely summarization:
-    // - 5k token threshold (down from 10k): Triggers summarization sooner to capture
-    //   file-level details before they're lost in compression. Earlier summarization
-    //   means better context preservation with the new tool call extraction.
-    // - keepRecentTurns: 2 (down from 3): With improved summarization quality (file names,
-    //   structured tool details), we can safely keep fewer unsummarized turns while
-    //   maintaining context quality. This balances token budget with context freshness.
-    // - Uses 'full' model tier (Sonnet) for high-quality, cost-effective summarization
-    //   (Sonnet produces 6x better compression than Haiku, cheaper overall)
-    // - Trade-off: More frequent summarization calls vs. better context preservation
-    await initializeBackgroundSummarization({
-      tokenThreshold: 5000,
-      debounceMs: 10000,
-      keepRecentTurns: 2, // Keep last 2 user prompts + responses unsummarized
-      strategy: 'detailed-llm', // Options: 'llm' (baseline), 'detailed-llm' (structured with API/DB/Pages)
-    })
+    // Use default summarization settings from BackgroundSummarizer:
+    // - tokenThreshold: 35000 (triggers when unsummarized messages exceed 35k tokens)
+    // - debounceMs: 30000 (30s wait for conversation lulls)
+    // - keepRecentTurns: 4 (keeps last 4 user/assistant pairs unsummarized)
+    // - strategy: 'detailed-llm' (structured summaries with API/DB/Pages sections)
+    await initializeBackgroundSummarization()
 
     // Create token-based conversation history provider using singleton repository
     const conversationContextManager = new ConversationContextManager(conversationRepository, 10) // Max 10 messages

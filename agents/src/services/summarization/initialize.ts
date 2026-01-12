@@ -33,7 +33,7 @@ export async function initializeBackgroundSummarization(config?: {
     return backgroundSummarizer;
   }
 
-  const strategyType = config?.strategy || 'llm';
+  const strategyType = config?.strategy || 'detailed-llm';
 
   // Build config object only with explicitly provided values
   // This allows BackgroundSummarizer's tuned defaults (35k tokens, 30s debounce, 4 turns) to apply
