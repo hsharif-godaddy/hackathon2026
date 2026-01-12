@@ -1,7 +1,11 @@
-import type { SocialConnection } from '@/types/social'
+import { logger } from '@/lib/request-context'
+import type { SocialConnection, SocialPublishResult } from '@/types/social'
+import { SocialPlatformKey } from '@/types/social'
+import { getRootDomain } from '@/utils/getRootDomain'
 
-const SOCIAL_V2_BASE_URL = process.env.NEXT_PUBLIC_SOCIAL_V2_API_URL || 'https://social-v2.api.dev-godaddy.com'
-const SOCIAL_AUTH_BASE_URL = process.env.NEXT_PUBLIC_SOCIAL_AUTH_API_URL || 'https://social-auth.api.dev-godaddy.com'
+const SOCIAL_V2_BASE_URL = `https://social-v2.api.${getRootDomain() || 'godaddy.com'}`
+const SOCIAL_AUTH_BASE_URL = `https://social-auth.api.${getRootDomain() || 'godaddy.com'}`
+const FB_API_VERSION = 'v23.0'
 
 /**
  * Time constants for social platform integration
@@ -170,7 +174,7 @@ export class SocialV2Client {
   }
 
   async getInstagramAccount(userTokenId: string, igAccountId: string): Promise<{ username: string; name?: string; biography?: string; profile_picture_url?: string }> {
-    const url = `${SOCIAL_V2_BASE_URL}/facebook/proxy/v18.0/${igAccountId}?fields=biography,username,profile_picture_url,name`
+    const url = `${SOCIAL_V2_BASE_URL}/facebook/proxy/${FB_API_VERSION}/${igAccountId}?fields=biography,username,profile_picture_url,name`
 
     const response = await fetch(url, {
       method: 'GET',
@@ -190,7 +194,7 @@ export class SocialV2Client {
 
   async getFacebookPages(userTokenId: string): Promise<FacebookPage[]> {
     const response = await fetch(
-      `${SOCIAL_V2_BASE_URL}/facebook/proxy/v18.0/me/accounts?fields=id,name,category,picture{url},instagram_business_account{id,username,name,profile_picture_url}`,
+      `${SOCIAL_V2_BASE_URL}/facebook/proxy/${FB_API_VERSION}/me/accounts?fields=id,name,category,picture{url},instagram_business_account{id,username,name,profile_picture_url}`,
       {
         credentials: 'include',
         headers: {
@@ -300,14 +304,14 @@ export class SocialV2Client {
   }
 
   async createConnection(params: {
-    platform: 'FACEBOOK' | 'GOOGLE_BUSINESS_PROFILE' | 'TIKTOK' | 'YELP' | 'WHATSAPP' | 'INSTAGRAM'
+    platform: SocialPlatformKey
     userTokenId: string
     pageId?: string
     pageTokenId?: string
     locationId?: string
     userId: string
   }): Promise<{ socialId: string }> {
-    const body = params.platform === 'FACEBOOK'
+    const body = params.platform === SocialPlatformKey.FACEBOOK
       ? {
           platform: params.platform,
           pageId: params.pageId,
@@ -354,7 +358,9 @@ export class SocialV2Client {
       `${SOCIAL_V2_BASE_URL}/social_connections/${socialId}`,
       {
         credentials: 'include',
-        headers: { 'Accept': 'application/json' }
+        headers: { 'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        }
       }
     )
 
@@ -364,6 +370,244 @@ export class SocialV2Client {
     }
 
     return response.json()
+  }
+
+  async fetchPermalink(params: {
+    mediaId: string
+    tokenId: string
+    platform: 'facebook' | 'instagram'
+    maxTimeoutMs?: number
+    initialBackoffDelay?: number
+    maxBackoffDelay?: number
+    backoffMultiplier?: number
+  }): Promise<string | null> {
+    const maxTimeoutMs = params.maxTimeoutMs ?? 60000
+    const initialBackoffDelay = params.initialBackoffDelay ?? 1000
+    const maxBackoffDelay = params.maxBackoffDelay ?? 3000
+    const backoffMultiplier = params.backoffMultiplier ?? 2
+
+    const startTime = Date.now()
+    let backoffDelay = initialBackoffDelay
+    let attempt = 0
+
+    const field = params.platform === 'instagram' ? 'permalink' : 'permalink_url'
+
+    while (Date.now() - startTime < maxTimeoutMs) {
+      attempt++
+
+      try {
+        const response = await fetch(
+          `${SOCIAL_V2_BASE_URL}/facebook/proxy/${FB_API_VERSION}/${params.mediaId}?fields=${field}`,
+          {
+            credentials: 'include',
+            headers: {
+              'Accept': 'application/json',
+              'X-Token-Id': params.tokenId
+            }
+          }
+        )
+
+        if (response.ok) {
+          const data = await response.json()
+          let permalink = data[field]
+
+          if (permalink) {
+            if (params.platform === 'facebook' && permalink.startsWith('/')) {
+              permalink = `https://www.facebook.com${permalink}`
+            }
+
+            logger.info('social.permalink.success', {
+              mediaId: params.mediaId,
+              platform: params.platform,
+              attempts: attempt
+            })
+
+            return permalink
+          }
+        }
+
+        await new Promise(resolve => setTimeout(resolve, backoffDelay))
+        backoffDelay = Math.min(backoffDelay * backoffMultiplier, maxBackoffDelay)
+      } catch (error) {
+        logger.debug('social.permalink.attempt.failed', {
+          mediaId: params.mediaId,
+          platform: params.platform,
+          attempt,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        })
+
+        await new Promise(resolve => setTimeout(resolve, backoffDelay))
+        backoffDelay = Math.min(backoffDelay * backoffMultiplier, maxBackoffDelay)
+      }
+    }
+
+    logger.warn('social.permalink.timeout', {
+      mediaId: params.mediaId,
+      platform: params.platform,
+      attempts: attempt,
+      timeoutMs: maxTimeoutMs
+    })
+
+    return null
+  }
+
+  async publishToFacebook(params: {
+    pageId: string
+    tokenId: string
+    message: string
+    imageUrls: string[]
+    scheduledAt?: Date
+  }): Promise<SocialPublishResult> {
+    const body: any = {
+      url: params.imageUrls.length > 0 ? params.imageUrls[0] : undefined,
+      caption: params.message
+    }
+
+    if (params.scheduledAt) {
+      body.published = false
+      body.scheduled_publish_time = Math.floor(params.scheduledAt.getTime() / 1000)
+    }
+
+    const response = await fetch(
+      `${SOCIAL_V2_BASE_URL}/facebook/proxy/${FB_API_VERSION}/${params.pageId}/photos`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'X-Token-Id': params.tokenId
+        },
+        body: JSON.stringify(body)
+      }
+    )
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error?.message || `Failed to publish to Facebook: ${response.status}`)
+    }
+
+    const data = await response.json()
+
+    if (!params.scheduledAt && data.id) {
+      const permalink = await this.fetchPermalink({
+        mediaId: data.id,
+        tokenId: params.tokenId,
+        platform: 'facebook'
+      })
+
+      if (permalink) {
+        data.platformUrl = permalink
+      }
+    }
+
+    return data
+  }
+
+  async publishToInstagram(params: {
+    igAccountId: string
+    tokenId: string
+    imageUrl: string
+    caption: string
+    scheduledAt?: Date
+  }): Promise<SocialPublishResult> {
+    logger.info('social.instagram.publish.start', {
+      igAccountId: params.igAccountId,
+      hasScheduledAt: !!params.scheduledAt,
+      scheduledAt: params.scheduledAt
+    })
+
+    const createBody: any = {
+      image_url: params.imageUrl,
+      caption: params.caption
+    }
+
+    if (params.scheduledAt) {
+      createBody.publish_time = Math.floor(params.scheduledAt.getTime() / 1000)
+    }
+
+    logger.debug('social.instagram.publish.container.create', {
+      igAccountId: params.igAccountId
+    })
+    const createResponse = await fetch(
+      `${SOCIAL_V2_BASE_URL}/facebook/proxy/${FB_API_VERSION}/${params.igAccountId}/media`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'X-Token-Id': params.tokenId
+        },
+        body: JSON.stringify(createBody)
+      }
+    )
+
+    if (!createResponse.ok) {
+      const errorData = await createResponse.json().catch(() => ({}))
+      throw new Error(errorData.error?.message || `Failed to create Instagram media: ${createResponse.status}`)
+    }
+
+    const createData = await createResponse.json()
+    const containerId = createData.id
+    logger.debug('social.instagram.publish.container.success', {
+      containerId
+    })
+
+    if (params.scheduledAt) {
+      logger.info('social.instagram.publish.scheduled', {
+        containerId,
+        scheduledAt: params.scheduledAt
+      })
+      return {
+        id: containerId
+      }
+    }
+
+    logger.debug('social.instagram.publish.media.publish', {
+      containerId,
+      igAccountId: params.igAccountId
+    })
+    const publishResponse = await fetch(
+      `${SOCIAL_V2_BASE_URL}/facebook/proxy/${FB_API_VERSION}/${params.igAccountId}/media_publish`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'X-Token-Id': params.tokenId
+        },
+        body: JSON.stringify({
+          creation_id: containerId
+        })
+      }
+    )
+
+    if (!publishResponse.ok) {
+      const errorData = await publishResponse.json().catch(() => ({}))
+      throw new Error(errorData.error?.message || `Failed to publish Instagram media: ${publishResponse.status}`)
+    }
+
+    const publishData = await publishResponse.json()
+    logger.info('social.instagram.publish.success', {
+      postId: publishData.id,
+      igAccountId: params.igAccountId
+    })
+
+    if (publishData.id) {
+      const permalink = await this.fetchPermalink({
+        mediaId: publishData.id,
+        tokenId: params.tokenId,
+        platform: 'instagram'
+      })
+
+      if (permalink) {
+        publishData.platformUrl = permalink
+      }
+    }
+
+    return publishData
   }
 }
 

@@ -1,7 +1,6 @@
 /* eslint-disable react/display-name */
 'use client'
 
-import clsx from 'clsx'
 import { memo,useCallback, useMemo, useState } from 'react'
 import Button from '@ux/button'
 import Modal from '@ux/modal'
@@ -10,10 +9,11 @@ import text from '@ux/text'
 import TextInput from '@ux/text-input'
 
 import { PostCardPreview } from '@/app/develop/components/widgets/PostCardPreview'
+import { useWebSocketContext } from '@/contexts/WebSocketContext'
+import { useSiteAssociations } from '@/hooks/useSocial'
 import { useTranslations } from '@/hooks/useTranslations'
-import { SocialPostData } from '@/types/social-posts'
-import { getCharacterCount, getPlatformLimits, isPostOverLimit } from '@/utils/social-post-validation'
-
+import { SocialPostData, SocialPostState } from '@/types/social-posts'
+import { formatHashtags, formatPlatformName, getCharacterCount, getPlatformLimits, isPostOverLimit } from '@/utils/social'
 
 interface HashtagEditorProps {
   hashtags: string[]
@@ -86,9 +86,9 @@ interface CharacterCounterProps {
 const CharacterCounter = memo(({ charCount, maxChars, isOverLimit, platform }: CharacterCounterProps) => (
   <div className="mt-1">
     <text.span as="label" size={-1} className="block mb-0.5 capitalize">{platform} Character Limits</text.span>
-    <div className={clsx('text-xs', isOverLimit ? 'text-red-500' : 'text-gray-400')}>
+    <text.span as="paragraph" size={-2} emphasis={isOverLimit ? 'warning' : 'passive'}>
       {charCount}/{maxChars} characters
-    </div>
+    </text.span>
   </div>
 ))
 
@@ -162,18 +162,23 @@ const PostEditorForm = memo(({
 
 interface SocialPostModalProps {
   post: SocialPostData
+  appId: string
   onClose: () => void
   onSave?: (updatedPost: SocialPostData) => void
+  onPublish?: (post: SocialPostData) => void
 }
 
 /**
  * Modal component for viewing and editing a social post
  * Combines preview, edit, and form functionality in a single component
  */
-export const SocialPostModal = memo(({ post, onClose, onSave }: SocialPostModalProps) => {
+export const SocialPostModal = memo(({ post, appId, onClose, onSave, onPublish }: SocialPostModalProps) => {
   const t = useTranslations();
+  const { sendMessage } = useWebSocketContext()
+  const { data: associationsData } = useSiteAssociations(appId)
 
   const [isEditMode, setIsEditMode] = useState(false)
+  const [isPublishing, setIsPublishing] = useState(false)
   const [editedPost, setEditedPost] = useState<SocialPostData>(post)
   const [hashtagInput, setHashtagInput] = useState('')
 
@@ -228,12 +233,87 @@ export const SocialPostModal = memo(({ post, onClose, onSave }: SocialPostModalP
     setHashtagInput('')
   }, [post])
 
+  const handlePublish = useCallback(async () => {
+    setIsPublishing(true)
+
+    try {
+      const associations = associationsData?.associations || []
+      const hasConnection = associations.some(a =>
+        a.platform.toLowerCase() === editedPost.platform.toLowerCase()
+      )
+
+      const platformName = formatPlatformName(editedPost.platform)
+
+      // Save edits to post list before publishing (so history shows edited version)
+      if (onSave) {
+        onSave(editedPost)
+      }
+
+      // Transform post data for publishing
+      const pendingPublish = {
+        platform: editedPost.platform as 'facebook' | 'instagram',
+        message: [editedPost.content, editedPost.callToAction, formatHashtags(editedPost.hashtags)].filter(Boolean).join('\n\n'),
+        imageUrls: editedPost.images?.map(img => img.url) || [],
+      }
+
+      if (hasConnection) {
+        await sendMessage(
+          `Publish ${editedPost.styleLabel} to ${platformName}`,
+          undefined,
+          undefined,
+          undefined,
+          false,
+          {
+            type: 'social_publish_ready',
+            data: {
+              platform: editedPost.platform,
+              connectionVerified: true,
+              pendingPublish,
+              postData: editedPost
+            },
+            persistence: 'ephemeral'
+          }
+        )
+      } else {
+        await sendMessage(
+          `Connect to ${platformName}`,
+          undefined,
+          undefined,
+          undefined,
+          false,
+          {
+            type: 'social_connect_with_post',
+            data: {
+              platform: editedPost.platform,
+              pendingPublish,
+              postData: editedPost
+            },
+            persistence: 'ephemeral'
+          }
+        )
+      }
+
+      if (onPublish) {
+        onPublish(editedPost)
+      }
+
+      onClose()
+    } finally {
+      setIsPublishing(false)
+    }
+  }, [editedPost, associationsData, sendMessage, onSave, onPublish, onClose])
+
+  const isPublished = editedPost.publishedState === SocialPostState.PUBLISHED
+
   return (
     <Modal
       title={post.styleLabel}
       onClose={onClose}
       actions={
-        isEditMode ? (
+        isPublished ? (
+          // Published state: Only show close button (no edit/publish)
+          null
+        ) : isEditMode ? (
           <SiblingSet gap="md">
             <Button
               design="secondary"
@@ -256,6 +336,14 @@ export const SocialPostModal = memo(({ post, onClose, onSave }: SocialPostModalP
               text={t('builder_common_edit')}
               size='sm'
               onClick={handleEditClick}
+              disabled={isPublishing}
+            />
+            <Button
+              design="primary"
+              text={isPublishing ? t('builder_common_loading', undefined, 'Loading...') : t('builder_widgets_socialpublish_publish', undefined, 'Publish')}
+              size='sm'
+              onClick={handlePublish}
+              disabled={isPublishing}
             />
           </SiblingSet>
         )

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useIsFullscreen } from '@/hooks/useFullscreen'
 import { socialV2Client } from '@/lib/social'
-import { getPlatformStrategy, PLATFORM_CONFIG, PLATFORM_TRANSFORMS, PlatformConfig } from '@/lib/social-platforms'
+import { getPlatformStrategy, PLATFORM_CONFIG, PLATFORM_TRANSFORMS, PlatformConfig, SocialPlatform } from '@/lib/social-platforms'
 import { getErrorMessage } from '@/lib/social-utils'
 import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
 import { SocialFlowAction } from '@/types/social'
@@ -122,7 +122,7 @@ export function useSocialConnectFlowOrchestrator({
     platformPages,
     isPagesLoading,
   } = useSocialOAuthFlow({
-    platform,
+    platform: normalizedPlatform as SocialPlatform,
     appId,
     state: generatedState,
     enabled: shouldProceedToOAuth,

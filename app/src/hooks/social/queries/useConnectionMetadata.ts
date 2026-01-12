@@ -31,30 +31,15 @@ interface PlatformRequirements {
   needsYelp: boolean
 }
 
-// Empty result to prevent infinite re-renders
-const EMPTY_RESULT: UseConnectionMetadataResult = {
-  enrichedConnections: [],
-  isLoadingAnyMetadata: false,
-  connectionsLoadingMetadata: new Set()
-}
 
 export function useConnectionMetadata(
   connections: SocialConnection[],
   platform: string,
   enabled: boolean
 ): UseConnectionMetadataResult {
-  // Create stable connection identifier to prevent query array from changing
-  const connectionIds = useMemo(() =>
-    connections.map(c => c.socialId).join(','),
-    [connections]
-  )
-
-  // Stabilize connections array reference
-  const stableConnections = useMemo(() => connections, [connectionIds])
-
   const platformRequirements = useMemo<PlatformRequirements>(() => ({
     needsFacebook: platform === SocialPlatform.FACEBOOK || platform === SocialPlatform.INSTAGRAM,
-    needsGoogle: platform === SocialPlatform.GOOGLE_BUSINESS_PROFILE,
+    needsGoogle: platform === SocialPlatform.GOOGLE,
     needsYelp: platform === SocialPlatform.YELP
   }), [platform])
 
@@ -87,7 +72,7 @@ export function useConnectionMetadata(
   }, [])
 
   const queries = useMemo(() => {
-    return stableConnections.map(conn => {
+    return connections.map(conn => {
       const isFb = isFacebookConnection(conn)
       const isInsta = isInstagramConnection(conn)
       const isGoog = isGoogleConnection(conn)
@@ -148,7 +133,7 @@ export function useConnectionMetadata(
         ...METADATA_QUERY_CONFIG
       }
     })
-  }, [stableConnections, enabled, platformRequirements, fetchFacebookMetadata, fetchInstagramMetadata, fetchGoogleMetadata, fetchYelpMetadata])
+  }, [connections, enabled, platformRequirements, fetchFacebookMetadata, fetchInstagramMetadata, fetchGoogleMetadata, fetchYelpMetadata])
 
   const metadataQueries = useQueries({ queries })
 
@@ -166,7 +151,7 @@ export function useConnectionMetadata(
 
   // Enrich connections with fetched metadata
   const enrichedConnections = useMemo(() => {
-    return stableConnections.map((conn, index) => {
+    return connections.map((conn, index) => {
       const queryState = queryStates[index]
 
       if (queryState?.isLoading) {
@@ -179,17 +164,17 @@ export function useConnectionMetadata(
 
       return conn
     })
-  }, [stableConnections, queryStates])
+  }, [connections, queryStates])
 
   const connectionsLoadingMetadata = useMemo(() => {
     const loading = new Set<string>()
-    stableConnections.forEach((conn, index) => {
+    connections.forEach((conn, index) => {
       if (queryStates[index]?.isLoading) {
         loading.add(conn.socialId)
       }
     })
     return loading
-  }, [stableConnections, queryStates])
+  }, [connections, queryStates])
 
   return {
     enrichedConnections,

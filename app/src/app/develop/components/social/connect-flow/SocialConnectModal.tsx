@@ -4,7 +4,7 @@ import { useEffect,useMemo, useState } from 'react'
 import Modal from '@ux/modal'
 
 import { FlowStep } from '@/hooks/social/connect-flow/useSocialConnectFlowStateMachine'
-import { useSocialConnections } from '@/hooks/social/queries/useSocialV2'
+import { useSocialConnections } from '@/hooks/useSocial'
 import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import SocialConnectFlow from './SocialConnectFlow'
 

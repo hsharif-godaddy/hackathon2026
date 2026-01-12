@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { isFullscreen } from '@/hooks/useFullscreen'
+import { getRootDomain } from '@/utils/getRootDomain'
 
 interface PopupPosition {
   left: number
@@ -82,7 +83,7 @@ export function useAuthPopup(
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      const socialAuthBaseUrl = process.env.NEXT_PUBLIC_SOCIAL_AUTH_API_URL || 'https://social-auth.api.dev-godaddy.com'
+      const socialAuthBaseUrl = `https://social-auth.api.${getRootDomain() || 'godaddy.com'}`
       const expectedOrigin = new URL(socialAuthBaseUrl).origin
       if (event.origin !== expectedOrigin) {
         return

@@ -43,7 +43,7 @@ export function useSocialPanelActions({
 
   const refreshConnections = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['social-connections'] })
-    queryClient.invalidateQueries({ queryKey: ['site-links', siteId] })
+    queryClient.invalidateQueries({ queryKey: ['site-associations', siteId] })
   }, [queryClient, siteId])
 
   const handleConnectPlatform = useCallback((platform: string) => {
@@ -68,7 +68,7 @@ export function useSocialPanelActions({
     setIsModalOpen(false)
     setSelectedPlatform('')
     setSelectedConnectionId(undefined)
-    queryClient.invalidateQueries({ queryKey: ['site-links', siteId] })
+    queryClient.invalidateQueries({ queryKey: ['site-associations', siteId] })
   }, [queryClient, siteId])
 
   const handleUnlinkConnection = useCallback(async (socialId: string) => {

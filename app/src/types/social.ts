@@ -6,7 +6,7 @@
 export enum SocialPlatform {
   FACEBOOK = 'facebook',
   INSTAGRAM = 'instagram',
-  GOOGLE_BUSINESS_PROFILE = 'google',
+  GOOGLE = 'google',
   TIKTOK = 'tiktok',
   YELP = 'yelp',
   WHATSAPP = 'whatsapp',
@@ -165,6 +165,29 @@ export interface SocialConnectResult {
   appId?: string
   error?: string
   message?: string
+}
+
+/**
+ * Result from publishing a post to a social platform
+ */
+export interface SocialPublishResult {
+  id: string
+  platformUrl?: string
+  permalink?: string
+  permalink_url?: string
+  post_id?: string
+  [key: string]: any
+}
+
+/**
+ * Association between a site and a social connection
+ */
+export interface SiteAssociation {
+  id: string
+  site_id: string
+  social_id: string
+  platform: string
+  created_at: string
 }
 
 export interface SocialPlatformStatus {

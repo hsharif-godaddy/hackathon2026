@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { SOCIAL_CACHE_CONFIG,SocialV2Client } from '@/lib/social'
+import { SocialPlatformKey } from '@/types/social'
 
 const socialV2Client = new SocialV2Client()
 
@@ -114,7 +115,7 @@ export function useCreateSocialConnection() {
 
   return useMutation({
     mutationFn: (params: {
-      platform: 'FACEBOOK' | 'GOOGLE_BUSINESS_PROFILE' | 'TIKTOK'
+      platform: SocialPlatformKey
       userTokenId: string
       pageId?: string
       pageTokenId?: string
@@ -142,6 +143,30 @@ export function useSocialConnections(enabled = true) {
     queryFn: () => socialV2Client.getSocialConnections(),
     enabled,
     ...QUERY_CONFIG.METADATA,
+  })
+}
+
+export function usePublishToFacebook() {
+  return useMutation({
+    mutationFn: (params: {
+      pageId: string
+      tokenId: string
+      message: string
+      imageUrls: string[]
+      scheduledAt?: Date
+    }) => socialV2Client.publishToFacebook(params),
+  })
+}
+
+export function usePublishToInstagram() {
+  return useMutation({
+    mutationFn: (params: {
+      igAccountId: string
+      tokenId: string
+      imageUrl: string
+      caption: string
+      scheduledAt?: Date
+    }) => socialV2Client.publishToInstagram(params),
   })
 }
 

@@ -1,13 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useRef,useState } from 'react'
 import Chat from '@ux/icon/chat'
 
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
 import { SocialPostList } from '@/app/develop/components/widgets/SocialPostList'
+import { useToolResultSync } from '@/hooks/useToolResultSync'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { SocialPostData } from '@/types/social-posts'
+import { SocialPostState } from '@/types/social-posts'
+import { onPostPublished } from '@/utils/social'
 
 /**
  * Custom renderer for socialPostCreate tool
@@ -17,29 +21,77 @@ import type { SocialPostData } from '@/types/social-posts'
 export default function SocialPostCreateToolRenderer({
   toolName: _toolName,
   toolStatus,
-  result
+  result,
+  toolId,
+  conversationId
 }: DefaultToolRendererProps) {
-  const t = useTranslations();
+  const t = useTranslations()
+  const currentAppId = useStreamingConversationStore(state => state.currentAppId)
 
   const [isVisible] = useState(true)
 
-  if (!isVisible) {
-    return null
-  }
+  const [posts, setPosts] = useState<SocialPostData[]>([])
+  const initializedRef = useRef(false)
 
-  // Extract posts from result
-  let posts: SocialPostData[] = []
+  // Initialize posts from result when it arrives
+  useEffect(() => {
+    if (initializedRef.current || toolStatus !== 'completed' || !result || typeof result !== 'object') return
 
-  if (toolStatus === 'completed' && result && typeof result === 'object') {
     const resultObj = result as any
+    let postsFromResult: SocialPostData[] = []
 
     if (resultObj.widget?.widgetData?.posts && Array.isArray(resultObj.widget.widgetData.posts)) {
-      posts = resultObj.widget.widgetData.posts
+      postsFromResult = resultObj.widget.widgetData.posts
+    } else if (resultObj.posts && Array.isArray(resultObj.posts)) {
+      postsFromResult = resultObj.posts
     }
-    // Fallback to direct posts array
-    else if (resultObj.posts && Array.isArray(resultObj.posts)) {
-      posts = resultObj.posts
+
+    if (postsFromResult.length > 0) {
+      initializedRef.current = true
+      setPosts(postsFromResult)
     }
+  }, [toolStatus, result])
+
+  // Listen for post published events to mark posts as published
+  useEffect(() => {
+    const unsubscribe = onPostPublished((postId) => {
+      setPosts(prevPosts =>
+        prevPosts.map(p =>
+          p.id === postId
+            ? { ...p, publishedState: SocialPostState.PUBLISHED }
+            : p
+        )
+      )
+    })
+    return unsubscribe
+  }, [])
+
+  // Handle post edits from modal (updates posts state for history sync)
+  const handlePostUpdate = useCallback((updatedPost: SocialPostData) => {
+    setPosts(prevPosts =>
+      prevPosts.map(p => p.id === updatedPost.id ? updatedPost : p)
+    )
+  }, [])
+
+  // Sync updated posts back to tool result for history preservation
+  useToolResultSync(
+    {
+      widget: {
+        widgetData: {
+          posts
+        }
+      }
+    },
+    { conversationId: conversationId || null, toolId: toolId || '', appId: currentAppId || '' },
+    {
+      debounceMs: 200,
+      enabled: toolStatus === 'completed' && posts.length > 0 && !!conversationId && !!toolId && !!currentAppId
+    }
+  )
+
+
+  if (!isVisible) {
+    return null
   }
 
   const hasPosts = posts.length > 0
@@ -72,7 +124,7 @@ export default function SocialPostCreateToolRenderer({
             </svg>
             <span className="text-sm"> {t('builder_tools_social_create_svg_text')}</span>
           </div>
-          <SocialPostList posts={posts} />
+          <SocialPostList posts={posts} appId={currentAppId || undefined} onPostUpdate={handlePostUpdate} />
         </div>
       )}
     </div>

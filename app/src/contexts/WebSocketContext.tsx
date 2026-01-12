@@ -10,7 +10,15 @@ import { createContext, useContext } from 'react'
  */
 
 interface WebSocketContextValue {
-  sendMessage: (content: string) => Promise<void>
+  // Type must match the sendMessage signature returned by useStreamingWebSocket
+  sendMessage: (
+    content: string,
+    aiEditContext?: any,
+    selectedAsset?: any,
+    todoListContext?: any,
+    isActionRequest?: boolean,
+    customContext?: any
+  ) => Promise<void>
 }
 
 const WebSocketContext = createContext<WebSocketContextValue | null>(null)
@@ -20,7 +28,15 @@ export function WebSocketProvider({
   sendMessage
 }: {
   children: React.ReactNode
-  sendMessage: (content: string) => Promise<void>
+  // Type must match the sendMessage signature returned by useStreamingWebSocket
+  sendMessage: (
+    content: string,
+    aiEditContext?: any,
+    selectedAsset?: any,
+    todoListContext?: any,
+    isActionRequest?: boolean,
+    customContext?: any
+  ) => Promise<void>
 }) {
   return (
     <WebSocketContext.Provider value={{ sendMessage }}>

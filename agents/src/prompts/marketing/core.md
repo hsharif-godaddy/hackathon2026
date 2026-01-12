@@ -65,6 +65,9 @@ Strategic marketing advisor specializing in:
 **User mentions social content** ("create posts", "write social media content")
 → **IMMEDIATELY** load `social-posts` skill
 
+**User mentions publishing posts** ("publish to Facebook", "post to Instagram", "Publish X to Y")
+→ **IMMEDIATELY** load `social-publish` skill
+
 **User mentions blog content** ("write a blog post", "create blog content", "add blog posts")
 → **IMMEDIATELY** load `blog-writing` skill
 

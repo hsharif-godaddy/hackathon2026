@@ -25,6 +25,7 @@ import SetProjectNameToolRenderer from './SetProjectNameToolRenderer'
 import SkillToolRenderer from './SkillToolRenderer'
 import SocialConnectToolRenderer from './SocialConnectToolRenderer'
 import SocialPostCreateToolRenderer from './SocialPostCreateToolRenderer'
+import SocialPublishToolRenderer from './SocialPublishToolRenderer'
 import SocialStatusToolRenderer from './SocialStatusToolRenderer'
 import SuggestedResponseToolRenderer from './SuggestedResponseToolRenderer'
 import TerminalCommandToolRenderer from './TerminalCommandToolRenderer'
@@ -48,6 +49,7 @@ export const toolRendererRegistry = {
   cssColor: CssColorToolRenderer,
   cssSuggest: CssSuggestToolRenderer,
   socialPostCreate: SocialPostCreateToolRenderer,
+  socialPostPublish: SocialPublishToolRenderer,
   end_conversation: EndConversationToolRenderer,
   grepSearch: GrepSearchToolRenderer,
   handoff: HandoffToolRenderer,
@@ -116,6 +118,7 @@ export {
   SetProjectNameToolRenderer,
   SkillToolRenderer,
   SocialPostCreateToolRenderer,
+  SocialPublishToolRenderer,
   SuggestedResponseToolRenderer,
   TerminalCommandToolRenderer,
   TodoListToolRenderer,

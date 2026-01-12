@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
 import { logger } from '../logging/index.js';
-import { buildShellCommand, escapeShellArg } from './shell-utils.js';
+import { buildShellCommand } from './shell-utils.js';
 
 export interface GitCommandOptions {
   /** Working directory for the git command */

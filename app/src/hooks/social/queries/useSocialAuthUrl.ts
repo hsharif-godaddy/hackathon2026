@@ -4,6 +4,7 @@ import { SOCIAL_CACHE_CONFIG } from '@/lib/social'
 import { getPlatformStrategy } from '@/lib/social-platforms'
 import { SocialPlatform } from '@/types/social'
 import { DEFAULT_SCOPES } from '@/types/social-scopes'
+import { getRootDomain } from '@/utils/getRootDomain'
 
 interface AuthUrlParams {
   platform: SocialPlatform | string
@@ -41,7 +42,7 @@ export function useSocialAuthUrl(
       const { platform, appId, state, scopes, popup } = params
       const strategy = getPlatformStrategy(platform)
 
-      const socialAuthBaseUrl = process.env.NEXT_PUBLIC_SOCIAL_AUTH_API_URL || 'https://social-auth.api.dev-godaddy.com'
+      const socialAuthBaseUrl = `https://social-auth.api.${getRootDomain() || 'godaddy.com'}`
       const requestedScopes = scopes || DEFAULT_SCOPES[platform] || []
       const authUrlEndpoint = `${socialAuthBaseUrl}/platforms/${strategy.authEndpoint}/authorization_url`
 

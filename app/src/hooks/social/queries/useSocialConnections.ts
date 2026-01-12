@@ -1,10 +1,10 @@
 import { useMemo } from 'react'
 
+import { useSocialConnections } from '@/hooks/useSocial'
 import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
-import { SocialPlatformKey } from '@/types/social'
+import { SocialPlatform,SocialPlatformKey } from '@/types/social'
 import { useConnectionMetadata } from './useConnectionMetadata'
-import { useSocialConnections } from './useSocialV2'
 
 interface UseSocialConnectionsWithMetadataResult {
   connections: Array<SocialConnection | EnrichedSocialConnection>
@@ -54,7 +54,7 @@ export function useSocialConnectionsWithMetadata(
     if (normalizedPlatformFilter) {
       return [normalizedPlatformFilter]
     }
-    return ['facebook', 'instagram', 'google', 'yelp']
+    return [SocialPlatform.FACEBOOK, SocialPlatform.INSTAGRAM, SocialPlatform.GOOGLE, SocialPlatform.YELP]
   }, [normalizedPlatformFilter])
 
   // Group connections by platform for metadata fetching
@@ -82,34 +82,34 @@ export function useSocialConnectionsWithMetadata(
   }, [filteredConnections])
 
   // Conditionally fetch metadata for each platform
-  const shouldFetchFacebook = platformsToEnrich.includes('facebook') && connectionsByPlatform.facebook.length > 0
-  const shouldFetchInstagram = platformsToEnrich.includes('instagram') && connectionsByPlatform.instagram.length > 0
-  const shouldFetchGoogle = platformsToEnrich.includes('google') && connectionsByPlatform.google.length > 0
-  const shouldFetchYelp = platformsToEnrich.includes('yelp') && connectionsByPlatform.yelp.length > 0
+  const shouldFetchFacebook = platformsToEnrich.includes(SocialPlatform.FACEBOOK) && connectionsByPlatform.facebook.length > 0
+  const shouldFetchInstagram = platformsToEnrich.includes(SocialPlatform.INSTAGRAM) && connectionsByPlatform.instagram.length > 0
+  const shouldFetchGoogle = platformsToEnrich.includes(SocialPlatform.GOOGLE) && connectionsByPlatform.google.length > 0
+  const shouldFetchYelp = platformsToEnrich.includes(SocialPlatform.YELP) && connectionsByPlatform.yelp.length > 0
 
   const {
     enrichedConnections: facebookEnriched,
     isLoadingAnyMetadata: isLoadingFacebookMetadata,
     connectionsLoadingMetadata: facebookLoading
-  } = useConnectionMetadata(connectionsByPlatform.facebook, 'facebook', enabled && shouldFetchFacebook)
+  } = useConnectionMetadata(connectionsByPlatform.facebook, SocialPlatform.FACEBOOK, enabled && shouldFetchFacebook)
 
   const {
     enrichedConnections: instagramEnriched,
     isLoadingAnyMetadata: isLoadingInstagramMetadata,
     connectionsLoadingMetadata: instagramLoading
-  } = useConnectionMetadata(connectionsByPlatform.instagram, 'instagram', enabled && shouldFetchInstagram)
+  } = useConnectionMetadata(connectionsByPlatform.instagram, SocialPlatform.INSTAGRAM, enabled && shouldFetchInstagram)
 
   const {
     enrichedConnections: googleEnriched,
     isLoadingAnyMetadata: isLoadingGoogleMetadata,
     connectionsLoadingMetadata: googleLoading
-  } = useConnectionMetadata(connectionsByPlatform.google, 'google', enabled && shouldFetchGoogle)
+  } = useConnectionMetadata(connectionsByPlatform.google, SocialPlatform.GOOGLE, enabled && shouldFetchGoogle)
 
   const {
     enrichedConnections: yelpEnriched,
     isLoadingAnyMetadata: isLoadingYelpMetadata,
     connectionsLoadingMetadata: yelpLoading
-  } = useConnectionMetadata(connectionsByPlatform.yelp, 'yelp', enabled && shouldFetchYelp)
+  } = useConnectionMetadata(connectionsByPlatform.yelp, SocialPlatform.YELP, enabled && shouldFetchYelp)
 
   // Combine enriched connections
   const enrichedConnections = useMemo(() => {

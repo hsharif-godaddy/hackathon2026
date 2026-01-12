@@ -214,23 +214,31 @@ Decide emoji usage based on business type:
 - Focus on most relevant, popular hashtags
 - Less is more on Facebook
 
+## Platform Requirements
+
+| Platform  | Min Images | Max Images | Max Characters | Max Image Width | Max File Size |
+| --------- | ---------- | ---------- | -------------- | --------------- | ------------- |
+| Instagram | 1          | 20         | 2,200          | 1440px          | 8MB           |
+| Facebook  | 0          | 9          | 63,206         | -               | -             |
+
+**Important:** Instagram posts require at least 1 image. Facebook posts can be text-only.
+
 ## Platform Optimization
 
 **Instagram**:
 
-- Visual-first content
+- Visual-first content (image required)
 - Emojis are expected
-- More hashtags work better
+- More hashtags work better (10-20)
 - Stories and Reels friendly
-- Character limit: 2,200
 
 **Facebook**:
 
 - Text can be longer and more detailed
-- Fewer hashtags
+- Fewer hashtags (3-5)
 - Better for link sharing
 - More conversational tone
-- Character limit: 63,206
+- Images optional but recommended
 
 **Both**:
 

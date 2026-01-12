@@ -4,12 +4,13 @@ import { EMPTY_SOCIAL_ARRAYS } from '@/lib/social'
 import { getPlatformStrategy } from '@/lib/social-platforms'
 import { isRetryableError } from '@/lib/social-utils'
 import { SocialFlowAction } from '@/types/social'
+import { SocialPlatform } from '@/types/social'
 import { FlowAction, FlowStep } from './useSocialConnectFlowStateMachine'
 import { useSocialAuthUrl } from '../queries/useSocialAuthUrl'
 import { useFacebookPages, useGoogleLocations, useValidatePermissions } from '../queries/useSocialV2'
 
 interface UseSocialOAuthFlowParams {
-  platform: string
+  platform: SocialPlatform,
   appId: string
   state: string
   enabled: boolean
@@ -110,7 +111,7 @@ export function useSocialOAuthFlow({
     error: facebookPagesError
   } = useFacebookPages(
     userTokenId,
-    shouldFetchPages && strategy.pagesType === 'facebook',
+    shouldFetchPages && strategy.pagesType === SocialPlatform.FACEBOOK,
     state,
     { onSuccess: onPagesSuccess, onError: onPagesError }
   )
@@ -121,26 +122,26 @@ export function useSocialOAuthFlow({
     error: googleLocationsError
   } = useGoogleLocations(
     userTokenId,
-    shouldFetchPages && strategy.pagesType === 'google',
+    shouldFetchPages && strategy.pagesType === SocialPlatform.GOOGLE,
     state,
     { onSuccess: onPagesSuccess, onError: onPagesError }
   )
 
-  const platformPages = strategy.pagesType === 'facebook'
+  const platformPages = strategy.pagesType === SocialPlatform.FACEBOOK
     ? facebookPages
-    : strategy.pagesType === 'google'
+    : strategy.pagesType === SocialPlatform.GOOGLE
       ? googleLocations
       : []
 
-  const isPagesLoading = strategy.pagesType === 'facebook'
+  const isPagesLoading = strategy.pagesType === SocialPlatform.FACEBOOK
     ? isLoadingFacebookPages
-    : strategy.pagesType === 'google'
+    : strategy.pagesType === SocialPlatform.GOOGLE
       ? isLoadingGoogleLocations
       : false
 
-  const pagesError = strategy.pagesType === 'facebook'
+  const pagesError = strategy.pagesType === SocialPlatform.FACEBOOK
     ? facebookPagesError
-    : strategy.pagesType === 'google'
+    : strategy.pagesType === SocialPlatform.GOOGLE
       ? googleLocationsError
       : null
 

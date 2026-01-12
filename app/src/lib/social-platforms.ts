@@ -7,7 +7,7 @@ import WhatsappIcon from '@ux/icon/whatsapp'
 import YelpIcon from '@ux/icon/yelp'
 
 import { Status } from '@/app/develop/components/settings/social/StatusBadge'
-import { SocialConnection, SocialPlatform } from '@/types/social'
+import { SocialConnection, SocialPlatform, SocialPlatformKey } from '@/types/social'
 
 export interface PlatformConfig {
   name: string
@@ -17,7 +17,7 @@ export interface PlatformConfig {
 export const PLATFORM_CONFIG: Record<string, PlatformConfig> = {
   [SocialPlatform.FACEBOOK]: { name: 'Facebook', Icon: FacebookIcon },
   [SocialPlatform.INSTAGRAM]: { name: 'Instagram', Icon: InstagramIcon },
-  [SocialPlatform.GOOGLE_BUSINESS_PROFILE]: { name: 'Google', Icon: GoogleIcon },
+  [SocialPlatform.GOOGLE]: { name: 'Google', Icon: GoogleIcon },
   [SocialPlatform.TIKTOK]: { name: 'TikTok Shop', Icon: TiktokIcon },
 }
 
@@ -25,7 +25,7 @@ export const PLATFORM_CONFIG: Record<string, PlatformConfig> = {
 export const ALL_PLATFORM_CONFIG: Record<SocialPlatform, PlatformConfig> = {
   [SocialPlatform.FACEBOOK]: { name: 'Facebook', Icon: FacebookIcon },
   [SocialPlatform.INSTAGRAM]: { name: 'Instagram', Icon: InstagramIcon },
-  [SocialPlatform.GOOGLE_BUSINESS_PROFILE]: { name: 'Google', Icon: GoogleIcon },
+  [SocialPlatform.GOOGLE]: { name: 'Google', Icon: GoogleIcon },
   [SocialPlatform.TIKTOK]: { name: 'TikTok Shop', Icon: TiktokIcon },
   [SocialPlatform.YELP]: { name: 'Yelp', Icon: YelpIcon },
   [SocialPlatform.WHATSAPP]: { name: 'WhatsApp', Icon: WhatsappIcon },
@@ -34,13 +34,11 @@ export const ALL_PLATFORM_CONFIG: Record<SocialPlatform, PlatformConfig> = {
 export const PLATFORM_KEY_MAP: Record<string, SocialPlatform> = {
   facebook: SocialPlatform.FACEBOOK,
   instagram: SocialPlatform.INSTAGRAM,
-  google: SocialPlatform.GOOGLE_BUSINESS_PROFILE,
+  google: SocialPlatform.GOOGLE,
   tiktok: SocialPlatform.TIKTOK,
   yelp: SocialPlatform.YELP,
   whatsapp: SocialPlatform.WHATSAPP
 }
-
-export type SocialPlatformKey = keyof typeof PLATFORM_CONFIG
 
 /**
  * Platform name transformations for different contexts
@@ -61,16 +59,16 @@ export const PLATFORM_TRANSFORMS = {
    * google → GOOGLE_BUSINESS_PROFILE
    * facebook → FACEBOOK
    */
-  toApiEnum: (platform: string): 'FACEBOOK' | 'GOOGLE_BUSINESS_PROFILE' | 'TIKTOK' | 'YELP' | 'WHATSAPP' | 'INSTAGRAM' => {
-    const map: Record<string, any> = {
-      google: 'GOOGLE_BUSINESS_PROFILE',
-      facebook: 'FACEBOOK',
-      tiktok: 'TIKTOK',
-      yelp: 'YELP',
-      whatsapp: 'WHATSAPP',
-      instagram: 'INSTAGRAM',
+  toApiEnum: (platform: string): SocialPlatformKey => {
+    const map: Record<string, SocialPlatformKey> = {
+      [SocialPlatform.GOOGLE]: SocialPlatformKey.GOOGLE_BUSINESS_PROFILE,
+      [SocialPlatform.FACEBOOK]: SocialPlatformKey.FACEBOOK,
+      [SocialPlatform.TIKTOK]: SocialPlatformKey.TIKTOK,
+      [SocialPlatform.YELP]: SocialPlatformKey.YELP,
+      [SocialPlatform.WHATSAPP]: SocialPlatformKey.WHATSAPP,
+      [SocialPlatform.INSTAGRAM]: SocialPlatformKey.INSTAGRAM,
     }
-    return map[platform.toLowerCase()] || platform.toUpperCase()
+    return map[platform.toLowerCase()] || (platform.toUpperCase() as SocialPlatformKey)
   },
 
   /**
@@ -78,7 +76,7 @@ export const PLATFORM_TRANSFORMS = {
    * Instagram uses Facebook's permissions API
    */
   forValidation: (platform: string): string => {
-    return platform.toLowerCase() === 'instagram' ? 'facebook' : platform.toLowerCase()
+    return platform.toLowerCase() === SocialPlatform.INSTAGRAM ? SocialPlatform.FACEBOOK : platform.toLowerCase()
   },
 
   /**
@@ -220,7 +218,7 @@ export function getDetailedPlatformStatuses<T extends SocialConnection = SocialC
  * Platform strategy for OAuth connect flow
  * Encapsulates platform-specific behavior to avoid scattered conditionals
  */
-export type PagesType = 'facebook' | 'google' | 'none'
+export type PagesType = SocialPlatform.FACEBOOK | SocialPlatform.GOOGLE | 'none'
 
 export interface PlatformStrategy {
   validationPlatform: SocialPlatform | 'unknown'
@@ -233,40 +231,40 @@ export interface PlatformStrategy {
 export const PLATFORM_STRATEGIES: Record<SocialPlatform, PlatformStrategy> = {
   [SocialPlatform.FACEBOOK]: {
     validationPlatform: SocialPlatform.FACEBOOK,
-    pagesType: 'facebook',
+    pagesType: SocialPlatform.FACEBOOK,
     requiresPageSelection: true,
-    authEndpoint: 'facebook',
+    authEndpoint: SocialPlatform.FACEBOOK,
   },
   [SocialPlatform.INSTAGRAM]: {
     validationPlatform: SocialPlatform.FACEBOOK,
-    pagesType: 'facebook',
+    pagesType: SocialPlatform.FACEBOOK,
     requiresPageSelection: true,
-    authEndpoint: 'facebook',
+    authEndpoint: SocialPlatform.FACEBOOK,
   },
-  [SocialPlatform.GOOGLE_BUSINESS_PROFILE]: {
-    validationPlatform: SocialPlatform.GOOGLE_BUSINESS_PROFILE,
-    pagesType: 'google',
+  [SocialPlatform.GOOGLE]: {
+    validationPlatform: SocialPlatform.GOOGLE,
+    pagesType: SocialPlatform.GOOGLE,
     requiresPageSelection: true,
-    authEndpoint: 'google',
+    authEndpoint: SocialPlatform.GOOGLE,
   },
   [SocialPlatform.TIKTOK]: {
     validationPlatform: SocialPlatform.TIKTOK,
     pagesType: 'none',
     requiresPageSelection: false,
-    authEndpoint: 'tiktok',
+    authEndpoint: SocialPlatform.TIKTOK,
     oauthParams: { integration_type: 'SHOP' },
   },
   [SocialPlatform.YELP]: {
     validationPlatform: SocialPlatform.YELP,
     pagesType: 'none',
     requiresPageSelection: false,
-    authEndpoint: 'yelp',
+    authEndpoint: SocialPlatform.YELP,
   },
   [SocialPlatform.WHATSAPP]: {
     validationPlatform: SocialPlatform.WHATSAPP,
     pagesType: 'none',
     requiresPageSelection: false,
-    authEndpoint: 'whatsapp',
+    authEndpoint: SocialPlatform.WHATSAPP,
   },
 }
 

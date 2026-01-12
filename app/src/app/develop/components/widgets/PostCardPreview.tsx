@@ -3,7 +3,7 @@
 'use client'
 
 import clsx from 'clsx'
-import { memo,useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import AlertIcon from '@ux/icon/alert'
 import CommentIcon from '@ux/icon/chat'
 import FacebookIcon from '@ux/icon/facebook'
@@ -14,8 +14,9 @@ import { text } from '@ux/text'
 
 import { useAppImageUrl } from '@/app/develop/hooks/useAppImageUrl'
 import { useTranslations } from '@/hooks/useTranslations'
+import { SocialPlatform } from '@/types/social'
 import { SocialPostData } from '@/types/social-posts'
-import { SocialPlatform } from '@/types/social-posts'
+import { formatHashtags } from '@/utils/social'
 
 /**
  * Platform icon mapping
@@ -30,9 +31,9 @@ const PlatformIcon = {
  * @param post - The social post data
  * @returns Text content with hashtags and call-to-action
  */
-const PostCardText = memo(({ post }: { post: SocialPostData }) => {
+const PostCardText = ({ post }: { post: SocialPostData }) => {
   return (
-    <div className={clsx('px-2 mx-1 mb-1', post.platform === SocialPlatform.Instagram ? 'order-3': 'order-2')}>
+    <div className={clsx('px-2 mx-1 mb-1', post.platform === SocialPlatform.INSTAGRAM ? 'order-3': 'order-2')}>
       <div className="text-sm">
         {post.content}{' '}
         {post.callToAction && (
@@ -42,13 +43,13 @@ const PostCardText = memo(({ post }: { post: SocialPostData }) => {
         )}
         {post.hashtags && post.hashtags.length > 0 && (
           <span style={{ color: '#145FA9' }}>
-            {post.hashtags.map(tag => `#${tag}`).join(' ')}
+            {formatHashtags(post.hashtags)}
           </span>
         )}
       </div>
     </div>
   )
-})
+}
 
 /**
  * Props for PostImage component
@@ -76,7 +77,7 @@ const PostImage = memo(({ postImage, imageAspectRatio, imagesRequested , platfor
   }
 
   return (
-    <div className={ clsx("mx-0.5 flex items-center justify-center relative mt-0.5", platform === SocialPlatform.Instagram ? 'order-2 mb-1' : 'order-3') } style={{ aspectRatio: imageAspectRatio }}>
+    <div className={ clsx("mx-0.5 flex items-center justify-center relative mt-0.5", platform === SocialPlatform.INSTAGRAM ? 'order-2 mb-1' : 'order-3') } style={{ aspectRatio: imageAspectRatio }}>
       {postImage && imageUrl ? (
         <img
           src={imageUrl}
@@ -151,9 +152,9 @@ const PreviewFooter = memo(() => {
  * @param post - The social post data to preview
  * @returns Social media post preview card
  */
-export const PostCardPreview = memo(({ post }: { post: SocialPostData; }) => {
+export const PostCardPreview = ({ post }: { post: SocialPostData }) => {
   const imageAspectRatio = useMemo(() => {
-    if (post.platform === SocialPlatform.Instagram) return '1 / 1';
+    if (post.platform === SocialPlatform.INSTAGRAM) return '1 / 1';
     return '16 / 9';
   }, [post.platform]);
 
@@ -183,4 +184,4 @@ export const PostCardPreview = memo(({ post }: { post: SocialPostData; }) => {
       <PreviewFooter />
     </div>
   )
-})
+}

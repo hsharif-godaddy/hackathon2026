@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { socialV2Client } from '@/lib/social'
 import { getPlatformStrategy, PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import { findPageToken, parseUserId } from '@/lib/social-utils'
+import { SocialPlatform } from '@/types/social'
 import { useLinkConnection } from './useLinkConnection'
 
 interface CreateAndLinkConnectionParams {
@@ -34,9 +35,9 @@ export function useCreateAndLinkConnection() {
       const { socialId } = await socialV2Client.createConnection({
         platform: platformUpper,
         userTokenId,
-        pageId: strategy.pagesType === 'facebook' ? pageId : undefined,
-        pageTokenId: strategy.pagesType === 'facebook' ? matchingPageTokenId : undefined,
-        locationId: strategy.pagesType === 'google' ? pageId : undefined,
+        pageId: strategy.pagesType === SocialPlatform.FACEBOOK ? pageId : undefined,
+        pageTokenId: strategy.pagesType === SocialPlatform.FACEBOOK ? matchingPageTokenId : undefined,
+        locationId: strategy.pagesType === SocialPlatform.GOOGLE ? pageId : undefined,
         userId
       })
 

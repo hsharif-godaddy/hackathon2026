@@ -27,8 +27,8 @@ export function useUnlinkConnection() {
       return { siteId, associationId }
     },
     onSuccess: (_, { siteId }) => {
-      // Invalidate both site links and connections to refresh UI
-      queryClient.invalidateQueries({ queryKey: ['site-links', siteId] })
+      // Invalidate both site associations and connections to refresh UI
+      queryClient.invalidateQueries({ queryKey: ['site-associations', siteId] })
       queryClient.invalidateQueries({ queryKey: ['social-connections'] })
     },
   })

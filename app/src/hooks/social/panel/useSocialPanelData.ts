@@ -1,10 +1,9 @@
 import { useMemo } from 'react'
-
-import { SOCIAL_FLOW_CONFIG } from '@/lib/social'
-import { getDetailedPlatformStatuses } from '@/lib/social-platforms'
-import type { EnrichedSocialConnection } from '@/types/social'
-import { useSiteLinks } from '../queries/useSiteLinks'
 import { useSocialConnectionsWithMetadata } from '../queries/useSocialConnections'
+import { useSiteAssociations } from '@/hooks/useSocial'
+import { getDetailedPlatformStatuses } from '@/lib/social-platforms'
+import { SOCIAL_FLOW_CONFIG } from '@/lib/social'
+import type { EnrichedSocialConnection } from '@/types/social'
 
 interface UseSocialPanelDataResult {
   allConnections: EnrichedSocialConnection[]
@@ -29,8 +28,8 @@ export function useSocialPanelData(siteId: string): UseSocialPanelDataResult {
   } = useSocialConnectionsWithMetadata()
 
   // Fetch site links
-  const siteLinksQuery = useSiteLinks(siteId)
-  const siteLinks = useMemo(() => siteLinksQuery.data ?? [], [siteLinksQuery.data])
+  const siteLinksQuery = useSiteAssociations(siteId)
+  const siteLinks = useMemo(() => siteLinksQuery.data?.associations ?? [], [siteLinksQuery.data])
   const isLoadingSiteLinks = siteLinksQuery.isLoading
 
   // Create a set of linked connection IDs for quick lookup

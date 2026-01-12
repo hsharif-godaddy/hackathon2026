@@ -6,11 +6,12 @@ import clsx from 'clsx'
 import { memo,useCallback, useEffect, useMemo, useState } from 'react'
 import AlertIcon from '@ux/icon/alert'
 import EditIcon from '@ux/icon/edit'
+import EyeIcon from '@ux/icon/show'
 import ImageIcon from '@ux/icon/image'
 import text from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
-import { SocialPostData } from '@/types/social-posts'
+import { SocialPostData, SocialPostState } from '@/types/social-posts'
 import { SocialPostModal } from './SocialPostModal'
 
 interface PostImageThumbnailProps {
@@ -73,29 +74,48 @@ interface PostListItemProps {
   onClick: (post: SocialPostData) => void
 }
 
-const PostListItem = memo(({ post, onClick }: PostListItemProps) => (
-  <div
-    className="border rounded-sm hover:bg-intents-ux-boxLowContrast-backgroundColor hover:border-intents-ux-border-borderColorHover transition-all cursor-pointer relative group"
-    onClick={() => onClick(post)}
-  >
-    <div className="absolute mt-3 bottom-1 right-1 block">
-      <EditIcon className="w-2 h-2 text-gray-400" />
-    </div>
+const PostListItem = memo(({ post, onClick }: PostListItemProps) => {
+  const t = useTranslations()
+  const isPublished = post.publishedState === SocialPostState.PUBLISHED
+  const Icon = isPublished ? EyeIcon : EditIcon
 
-    <div className="p-1">
-      <div className="flex gap-1.5 items-start">
-        <PostImageThumbnail post={post} />
+  return (
+    <div
+      className="border rounded-sm hover:bg-intents-ux-boxLowContrast-backgroundColor hover:border-intents-ux-border-borderColorHover transition-all cursor-pointer relative group"
+      onClick={() => onClick(post)}
+    >
+      <div className="p-1">
+        <div className="flex gap-1.5 items-start">
+          <PostImageThumbnail post={post} />
 
-        <div className="flex-grow min-w-0">
-          <PostContentPreview content={post.content}/>
+          <div className="flex-grow min-w-0">
+            <PostContentPreview content={post.content}/>
+            <div className="flex items-center justify-between mt-1">
+              <text.span
+                as="label"
+                size={-2}
+                emphasis={isPublished ? 'success' : 'passive'}
+                className="px-1 py-0.5 rounded uppercase bg-intents-ux-boxLowContrast-backgroundColor"
+              >
+                {isPublished
+                  ? t('builder_social_post_status_published', undefined, 'Published')
+                  : t('builder_social_post_status_draft', undefined, 'Draft')
+                }
+              </text.span>
+              <Icon className="w-2 h-2 text-intents-ux-textSubtle-textColor" />
+            </div>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-))
+  )
+})
 
 interface SocialPostListProps {
   posts?: SocialPostData[]
+  appId?: string
+  onPublish?: (post: SocialPostData) => void
+  onPostUpdate?: (updatedPost: SocialPostData) => void
 }
 
 /**
@@ -104,10 +124,15 @@ interface SocialPostListProps {
  * Displays social posts in a list view with preview modal for editing
  *
  * @param posts - Array of social posts to display
+ * @param appId - Application ID for publishing
+ * @param onPublish - Callback when post is published
  * @returns List widget component with post management interface
  */
 export function SocialPostList({
-  posts: propsPosts = []
+  posts: propsPosts = [],
+  appId,
+  onPublish,
+  onPostUpdate
 }: SocialPostListProps = {}) {
 
   const [localPosts, setLocalPosts] = useState<SocialPostData[]>([])
@@ -132,7 +157,11 @@ export function SocialPostList({
     setLocalPosts(prevPosts =>
       prevPosts.map(p => p.id === updatedPost.id ? updatedPost : p)
     )
-  }, [])
+    setSelectedPost(updatedPost)
+    if (onPostUpdate) {
+      onPostUpdate(updatedPost)
+    }
+  }, [onPostUpdate])
 
   return (
     <>
@@ -154,11 +183,13 @@ export function SocialPostList({
         </div>
       </div>
 
-      {selectedPost && (
+      {selectedPost && appId && (
         <SocialPostModal
           post={selectedPost}
+          appId={appId}
           onClose={() => setSelectedPost(null)}
           onSave={handleSaveEdit}
+          onPublish={onPublish}
         />
       )}
     </>

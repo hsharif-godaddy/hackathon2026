@@ -15,6 +15,8 @@ import { getToolDisplayName } from '@/utils/toolNameMapping'
 export interface DefaultToolRendererProps {
   toolName: string
   toolStatus: 'running' | 'completed' | 'error'
+  toolId?: string
+  conversationId?: string | null
   duration?: number
   input?: Record<string, unknown>
   result?: Record<string, unknown> | string

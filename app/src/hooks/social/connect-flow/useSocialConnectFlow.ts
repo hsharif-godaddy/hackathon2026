@@ -1,10 +1,9 @@
 import { useMemo } from 'react'
 
 import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
-import type { EnrichedSocialConnection,SocialConnection } from '@/types/social'
-import { useSiteLinks } from '../queries/useSiteLinks'
+import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
 import { useSocialConnectionsWithMetadata } from '../queries/useSocialConnections'
-import { useConnectionById } from '../queries/useSocialV2'
+import { useSiteAssociations, useConnectionById } from '@/hooks/useSocial'
 
 interface UseSocialConnectFlowParams {
   platform: string
@@ -43,8 +42,8 @@ export function useSocialConnectFlow({
   } = useSocialConnectionsWithMetadata({ platform, enabled })
 
   // Fetch site links
-  const siteLinksQuery = useSiteLinks(appId, enabled)
-  const siteLinks = siteLinksQuery.data ?? []
+  const siteLinksQuery = useSiteAssociations(appId, enabled)
+  const siteLinks = siteLinksQuery.data?.associations ?? []
   const isLoadingSiteLinks = siteLinksQuery.isLoading
   const isFetchingSiteLinks = siteLinksQuery.isFetching
 
