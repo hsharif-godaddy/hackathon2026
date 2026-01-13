@@ -19,6 +19,17 @@
 
 ### Internal Changes
 
+- **Video Generation Tool**: Added AI video generation capability using OpenAI Sora-2 model
+  - Added `VideoGenerationTool`: Generate videos from text prompts with customizable duration and resolution
+  - Supports video durations: 4, 8, or 12 seconds
+  - Supports resolutions: 720x1280, 1280x720, 1080x1920, 1920x1080 (portrait and landscape)
+  - Automatic polling for video generation completion (max 5 minutes)
+  - Videos saved to app's `/public/images` directory for easy serving
+  - Integrated with ai-lib unified provider for S2S authentication or direct OpenAI API key
+  - Added structured logging events: `tool.video.generation.begin/success/failure`
+  - Comprehensive documentation in `VIDEO_GENERATION_TOOL.md`
+  - Test suite included with vitest
+
 - **KnowB Knowledge Base Integration**: Added semantic search capability for querying GoDaddy documentation and knowledge bases
   - Added `KnowBSearchTool`: AI-lib compatible tool for semantic document search with configurable result limits and score thresholds
   - Added `knowb-client` to proxy service: HTTP client with mTLS certificate authentication for KnowB API

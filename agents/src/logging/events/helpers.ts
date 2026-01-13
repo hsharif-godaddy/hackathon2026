@@ -55,6 +55,7 @@ import type {
   ToolMemoryOperationData,
   ToolMySqlData,
   ToolServerHealthData,
+  ToolVideoGenerationData,
   TracingEventData,
   WebSocketChatData,
 } from './app.js';
@@ -636,6 +637,23 @@ export const toolImageGenerationEvents = {
 
   failure: (logger: ILogger, error: Error, data: { toolName: string; appId: string; prompt: string }) => {
     log.error(logger, AppEvents.tool.imageGeneration.failure, error, data);
+  },
+};
+
+/**
+ * Tool Video Generation logging helpers
+ */
+export const toolVideoGenerationEvents = {
+  begin: (logger: ILogger, data: { toolName: string; appId: string; prompt: string; options?: any }) => {
+    logger.info(AppEvents.tool.videoGeneration.begin, data);
+  },
+
+  success: (logger: ILogger, data: ToolVideoGenerationData) => {
+    logger.info(AppEvents.tool.videoGeneration.success, data);
+  },
+
+  failure: (logger: ILogger, error: Error, data: { toolName: string; appId: string; prompt: string }) => {
+    log.error(logger, AppEvents.tool.videoGeneration.failure, error, data);
   },
 };
 

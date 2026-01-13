@@ -169,7 +169,7 @@ import compression from 'compression';
 import { createServer } from 'http';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter, debugRouter, filesRouter, publishRouter, downloadRouter, dbRouter, todoListRouter, securityScanRouter, oauthRouter, conversationsRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter, debugRouter, filesRouter, publishRouter, downloadRouter, dbRouter, todoListRouter, securityScanRouter, oauthRouter, videoRouter, conversationsRouter } from './routes/index.js';
 import { auth } from '../services/features.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
@@ -278,6 +278,7 @@ app.get('/', (req, res) => {
 // Protected routes requiring authentication
 app.use('/agents', jwtAuthMiddleware.authenticate, agentsRouter);
 app.use('/apps', jwtAuthMiddleware.authenticate, appsRouter);
+app.use('/apps', jwtAuthMiddleware.authenticate, videoRouter);
 app.use('/', jwtAuthMiddleware.authenticate, dbRouter);
 app.use('/agent', jwtAuthMiddleware.authenticate, chatRouter);
 app.use('/agent', jwtAuthMiddleware.authenticate, todoListRouter);

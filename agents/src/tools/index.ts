@@ -6,6 +6,7 @@ export { ReadFileTool } from './read-file.js';
 export { GrepTool } from './grep-tool.js';
 export { MySQLTool } from './mysql-tool.js';
 export { MediaSearchTool, findMedia } from './media-search-tool.js';
+export { VideoGenerationTool, generateVideo } from './video-generation-tool.js';
 export { GettyMediaDriver } from './ai-lib-tools/drivers/getty-media-driver.js';
 export { WebsiteScraperDriver } from './ai-lib-tools/drivers/website-scraper-driver.js';
 export { scrapeWebsite, websiteScraperToolDefinition } from './website-scraper-tool.js';
@@ -54,6 +55,13 @@ export type {
   MediaSearchResult,
   MediaType
 } from './media-search-tool.js';
+
+export type {
+  VideoGenerationOptions,
+  VideoGenerationResult,
+  VideoResolution,
+  VideoDuration
+} from './video-generation-tool.js';
 
 export type {
   GettyMediaOptions,

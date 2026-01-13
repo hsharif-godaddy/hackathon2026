@@ -49,6 +49,7 @@ export {
   toolMemoryEvents,
   toolMySqlEvents,
   toolServerHealthEvents,
+  toolVideoGenerationEvents,
   toolVideoSearchEvents,
   tracingEvents,
   webSocketChatEvents,

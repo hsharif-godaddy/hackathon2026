@@ -359,6 +359,25 @@ export interface ToolImageGenerationData {
   };
 }
 
+export interface ToolVideoGenerationData {
+  toolName: string;
+  appId: string;
+  prompt: string;
+  options?: {
+    duration?: 4 | 8 | 12;
+    resolution?: '720x1280' | '1280x720' | '1024x1792' | '1792x1024';
+    filename?: string;
+  };
+  resultStats?: {
+    success: boolean;
+    filePath?: string;
+    publicPath?: string;
+    fileSize?: number;
+    executionTime?: number;
+    jobId?: string;
+  };
+}
+
 export interface ToolAstEditData {
   toolName: string;
   appId?: string;
@@ -919,6 +938,11 @@ export const AppEvents = {
       begin: 'tool.image.generation.begin' as const,
       success: 'tool.image.generation.success' as const,
       failure: 'tool.image.generation.failure' as const,
+    },
+    videoGeneration: {
+      begin: 'tool.video.generation.begin' as const,
+      success: 'tool.video.generation.success' as const,
+      failure: 'tool.video.generation.failure' as const,
     },
     astEdit: {
       begin: 'tool.ast.edit.begin' as const,

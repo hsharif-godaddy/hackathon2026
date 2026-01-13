@@ -30,7 +30,6 @@ import { ServerManagementTool } from '../../tools/server-management-tool.js';
 import { getNameSuggestionService } from '../../services/name-suggestion.js';
 import { Logger, log } from '../../logging/index.js';
 import { getFeatures } from '../../services/features.js';
-import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 
 const router: IRouter = Router();
 const appRepo = new AppRepository();
@@ -1128,7 +1127,6 @@ router.post('/:id/screenshot', upload.single('screenshot'), (req: Request, res: 
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
-
 
 // Docker-specific routes have been moved to the app service
 

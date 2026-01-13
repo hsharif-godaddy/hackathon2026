@@ -116,4 +116,3 @@ export const mediaSearchAITool: Tool = createTool(
     return JSON.stringify(response, null, 2);
   }
 );
-
