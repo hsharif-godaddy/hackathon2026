@@ -9,6 +9,8 @@ description: Install and activate the blog system (routes, pages, components)
 
 **This skill is ONLY for setting up the blog system. For creating blog post content, use the `blog-writing` skill.**
 
+> **Note:** This skill provides templates only. Some skills may also provide specialized tools that are automatically loaded when you activate the skill. Tools are prefixed with the skill name (e.g., `skillname__toolname`) to prevent naming conflicts. You can unload a skill's tools with `skill({ action: 'unload', skill: 'name' })` when no longer needed.
+
 ---
 
 ## When to Use This Skill

@@ -5,6 +5,7 @@ import { LLMSummarizationStrategy } from './LLMSummarizationStrategy.js';
 import { DetailedLLMSummarizationStrategy } from './DetailedLLMSummarizationStrategy.js';
 import type { SummarizationStrategy } from './SummarizationStrategy.js';
 import { logger } from '../../logging/index.js';
+import { skillToolManager } from '../../tools/skill-tool-manager.js';
 
 let backgroundSummarizer: BackgroundSummarizer | null = null;
 let isInitialized = false;
@@ -93,7 +94,42 @@ export async function initializeBackgroundSummarization(config?: {
           appId: conversation.appId,
           messageId: message.id,
         });
+
+        // Trigger summarization check
         await backgroundSummarizer?.checkAndSummarize(conversation.appId);
+
+        // NEW: Trigger skill auto-unload check in parallel
+        try {
+          // Get all messages for token counting
+          const messages = await conversationRepository.getMessages(conversationId);
+
+          // Estimate token count based on message count
+          // This is a rough approximation: ~500 tokens per message
+          const estimatedTokenCount = messages.length * 500;
+
+          // Check and unload inactive skills
+          const unloadedSkills = await skillToolManager.checkAndUnloadInactiveSkills(
+            conversationId,
+            estimatedTokenCount
+          );
+
+          if (unloadedSkills.length > 0) {
+            logger.info('conversation.skills.auto_unloaded', {
+              conversationId,
+              appId: conversation.appId,
+              skills: unloadedSkills,
+              estimatedTokenCount,
+              messageCount: messages.length
+            });
+          }
+        } catch (skillError) {
+          logger.error('skill.auto_unload.failure', {
+            conversationId,
+            appId: conversation.appId,
+            error: skillError instanceof Error ? skillError.message : String(skillError)
+          });
+          // Don't throw - allow summarization to continue even if skill unload fails
+        }
       }
     } catch (error) {
       logger.error('summarization.hook.failure', {

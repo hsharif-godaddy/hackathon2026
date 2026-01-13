@@ -7,6 +7,8 @@ description: Intelligent SEO analysis and optimization for websites
 
 **Purpose:** Provide expert SEO strategy and implementation guidance for optimizing websites.
 
+> **Note:** This skill provides SEO analysis and optimization instructions. Some skills may also provide specialized tools that are automatically loaded when you activate the skill. Tools are prefixed with the skill name (e.g., `skillname__toolname`) to prevent naming conflicts. You can unload a skill's tools with `skill({ action: 'unload', skill: 'name' })` when no longer needed.
+
 ---
 
 ## When to Use This Skill

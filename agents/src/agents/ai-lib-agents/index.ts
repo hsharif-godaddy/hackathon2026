@@ -26,6 +26,7 @@ import {
 } from '../index.js'
 import type { EnhancedAgentContext } from './types.js'
 import { agents as featureAgents } from '../../services/features.js'
+import { skillToolManager } from '../../tools/skill-tool-manager.js'
 
 /**
  * Agent metadata for discovery and management
@@ -50,7 +51,8 @@ export async function createUnifiedAgentFactory(options?: {
   stateManager: SessionStateManager
 }> {
   const factory = createAgentFactory({
-    globalTools: []
+    globalTools: [],
+    skillToolProvider: skillToolManager
   })
 
   // Create or use provided state manager

@@ -7,6 +7,8 @@ description: Create blog post content for sites with blog system installed
 
 **Purpose:** Create blog post content for sites that already have a blog system installed.
 
+> **Note:** This skill provides instructions for blog content creation. Some skills may also provide specialized tools that are automatically loaded when you activate the skill. Tools are prefixed with the skill name (e.g., `skillname__toolname`) to prevent naming conflicts. You can unload a skill's tools with `skill({ action: 'unload', skill: 'name' })` when no longer needed.
+
 ---
 
 ## CRITICAL FIELD NAMES - MUST BE EXACT

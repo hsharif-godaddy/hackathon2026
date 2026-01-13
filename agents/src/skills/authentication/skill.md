@@ -7,6 +7,12 @@ dependencies:
 
 # BetterAuth Authentication Skill
 
+**Purpose:** Add BetterAuth authentication system with Email/Password, OAuth providers, or both.
+
+> **Note:** This skill provides authentication setup instructions. Some skills may also provide specialized tools that are automatically loaded when you activate the skill. Tools are prefixed with the skill name (e.g., `skillname__toolname`) to prevent naming conflicts. You can unload a skill's tools with `skill({ action: 'unload', skill: 'name' })` when no longer needed.
+
+---
+
 ## Ask User First
 
 > "What authentication method: Email/Password, OAuth (Google/GitHub/etc.), or both?"

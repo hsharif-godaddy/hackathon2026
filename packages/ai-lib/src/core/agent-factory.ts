@@ -245,9 +245,11 @@ export class AgentWrapper {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private agent: ToolLoopAgent<AgentCallOptions, any, any>
   private config: AgentConfig
+  private skillToolProvider?: GlobalAgentConfig['skillToolProvider']
 
-  constructor(config: AgentConfig) {
+  constructor(config: AgentConfig, skillToolProvider?: GlobalAgentConfig['skillToolProvider']) {
     this.config = config
+    this.skillToolProvider = skillToolProvider
 
     // Build stopWhen conditions
     const stopWhen = []
@@ -453,6 +455,55 @@ export class AgentWrapper {
 
         if (callOptions.executionContext) {
           ;(preparedCall as typeof preparedCall & { experimental_context?: unknown }).experimental_context = callOptions.executionContext
+        }
+
+        // NEW: Inject skill tools for dynamic skill tool loading
+        const executionContext = callOptions.executionContext as Record<string, any> | undefined
+        const conversationId = executionContext?.metadata?.conversationId as string | undefined
+
+        if (conversationId && this.skillToolProvider) {
+          try {
+            // Estimate current token count based on message count
+            // This is a rough approximation; actual token counting would be more accurate
+            // but requires access to the model's tokenizer
+            const estimatedTokenCount = Math.max(
+              allMessages.length * 500, // Rough estimate: 500 tokens per message
+              (executionContext?.metadata?.tokenCount as number) || 0
+            )
+
+            // Get dynamicTool instances for active skills
+            const skillTools = await this.skillToolProvider.getToolsForSkills(
+              conversationId,
+              estimatedTokenCount,
+              callOptions.executionContext
+            )
+
+            // Merge skill tools with base tools if any skill tools exist
+            if (Object.keys(skillTools).length > 0) {
+              const mergedPreparedCall = {
+                ...preparedCall,
+                tools: {
+                  ...wrappedTools,
+                  ...skillTools
+                }
+              }
+
+              logger.info('agent.skill_tools.injected', {
+                conversationId,
+                skillToolCount: Object.keys(skillTools).length,
+                skillTools: Object.keys(skillTools),
+                estimatedTokenCount
+              })
+
+              return mergedPreparedCall
+            }
+          } catch (error) {
+            logger.error('agent.skill_tools.injection_failed', {
+              conversationId,
+              error: error instanceof Error ? error.message : String(error)
+            })
+            // Continue with base tools only on error
+          }
         }
 
         return preparedCall
@@ -1076,7 +1127,7 @@ export class AgentFactory {
           throw new Error(`Agent config not found for id: ${stringId}`)
         }
         const mergedConfig = this.mergeWithGlobalConfig(config)
-        this.agents.set(stringId, new AgentWrapper(mergedConfig))
+        this.agents.set(stringId, new AgentWrapper(mergedConfig, this.globalConfig.skillToolProvider))
       }
 
       return this.agents.get(stringId)!
@@ -1124,7 +1175,7 @@ export class AgentFactory {
    */
   createAgent(config: AgentConfig & { id: string }): AgentWrapper {
     const mergedConfig = this.mergeWithGlobalConfig(config)
-    const agent = new AgentWrapper(mergedConfig)
+    const agent = new AgentWrapper(mergedConfig, this.globalConfig.skillToolProvider)
 
     // Cache the agent
     this.agents.set(config.id, agent)
@@ -1166,7 +1217,7 @@ export class AgentFactory {
         throw new Error(`Source agent configuration not found: ${sourceAgentId}`)
       }
       const mergedConfig = this.mergeWithGlobalConfig(sourceConfig)
-      sourceAgent = new AgentWrapper(mergedConfig)
+      sourceAgent = new AgentWrapper(mergedConfig, this.globalConfig.skillToolProvider)
       this.agents.set(sourceAgentId, sourceAgent)
     }
 
@@ -1178,7 +1229,7 @@ export class AgentFactory {
         throw new Error(`Target agent configuration not found: ${targetAgentId}`)
       }
       const mergedConfig = this.mergeWithGlobalConfig(targetConfig)
-      targetAgent = new AgentWrapper(mergedConfig)
+      targetAgent = new AgentWrapper(mergedConfig, this.globalConfig.skillToolProvider)
       this.agents.set(targetAgentId, targetAgent)
     }
 

@@ -8,6 +8,8 @@ enablementId: social
 
 **Purpose:** Help users connect and manage their social media platform accounts.
 
+> **Note:** This skill provides social platform integration instructions. Some skills may also provide specialized tools that are automatically loaded when you activate the skill. Tools are prefixed with the skill name (e.g., `skillname__toolname`) to prevent naming conflicts. You can unload a skill's tools with `skill({ action: 'unload', skill: 'name' })` when no longer needed.
+
 ---
 
 ## When to Use This Skill

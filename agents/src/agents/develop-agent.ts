@@ -101,6 +101,22 @@ const afterToolExecution: AfterToolExecutionHook = async (
     }
   }
 
+  // NEW: Detect auto-continuation flag for skill tool loading
+  if (resultObj?.__autoContinue === true) {
+    const continuationPrompt = resultObj.__continuationPrompt || 'Continue processing';
+
+    // Store flags in context metadata for auto-continuation detection
+    if (context?.metadata) {
+      (context.metadata as any).__autoContinue = true;
+      (context.metadata as any).__continuationPrompt = continuationPrompt;
+    }
+
+    contextLogger.info('develop_agent.tool.auto_continue.detected', {
+      toolName,
+      continuationPrompt
+    });
+  }
+
   return result
 }
 

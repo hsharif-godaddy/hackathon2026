@@ -296,3 +296,496 @@ const result = await skillLoader.installTemplates({ skill: 'blog', appPath: '/pa
 - No cross-service file reads needed (agent can't access agents service files)
 - Agent has direct access to template contents in memory
 - Works from any execution context
+
+## Adding Custom Tools to Skills
+
+Skills can provide their own custom tools that are dynamically loaded when the skill is activated. This allows skills to extend agent capabilities with specialized operations.
+
+### Custom Tool Architecture
+
+**Key Features:**
+
+- **Dynamic Loading**: Tools are loaded on-demand when a skill is activated
+- **Automatic Prefixing**: Tool names are prefixed with the skill name to prevent collisions (e.g., `database__query`)
+- **Lifecycle Management**: Tools are automatically unloaded after inactivity or when manually unloaded
+- **Type Safety**: Tools use Zod schemas for input validation
+- **Context Aware**: Tools receive AgentContext for accessing app metadata
+
+### Directory Structure for Tools
+
+```
+agents/src/skills/
+└── my-skill/
+    ├── skill.md           # Skill instructions (required)
+    ├── templates/         # Code templates (optional)
+    └── tools/             # Custom tools (optional)
+        └── index.ts       # Tool definitions export file
+```
+
+### Tool Definition Interface
+
+Each tool must follow the `SkillToolDefinition` interface:
+
+```typescript
+import type { SkillToolDefinition } from '../skill-tool-manager.js';
+import type { AgentContext } from '@airo/ai-lib';
+import { z } from 'zod';
+
+export interface SkillToolDefinition<TInput = any, TOutput = any> {
+  /**
+   * Unique tool name within the skill (e.g., 'query')
+   * Will be prefixed with skill name: my-skill__query
+   */
+  name: string;
+
+  /** Description for LLM tool selection */
+  description: string;
+
+  /** Zod schema for input validation */
+  parameters: z.ZodSchema<TInput>;
+
+  /**
+   * Tool execution function
+   * Receives validated input and optional context
+   */
+  execute: (input: TInput, context?: AgentContext) => Promise<TOutput> | TOutput;
+
+  /** Optional: Tool-specific configuration */
+  config?: {
+    /** Timeout in milliseconds (default: 30000) */
+    timeout?: number;
+
+    /** Whether tool requires app context (default: true) */
+    requiresApp?: boolean;
+
+    /** Custom validation function (runs after schema validation) */
+    validate?: (input: TInput, context?: AgentContext) => Promise<void> | void;
+  };
+}
+```
+
+### Example 1: Simple Tool (Query Tool)
+
+Create `agents/src/skills/database/tools/index.ts`:
+
+```typescript
+import type { SkillToolDefinition } from '../../skill-tool-manager.js';
+import type { AgentContext } from '@airo/ai-lib';
+import { z } from 'zod';
+import { logger } from '../../../logging/index.js';
+
+/**
+ * Database query tool - executes SQL queries
+ */
+export const queryTool: SkillToolDefinition = {
+  name: 'query',
+  description:
+    'Execute a SQL query against the application database. Returns query results as JSON.',
+
+  parameters: z.object({
+    sql: z.string().describe('SQL query to execute'),
+    params: z.array(z.any()).optional().describe('Query parameters for prepared statements'),
+  }),
+
+  async execute(input, context) {
+    const appId = context?.metadata?.appId as string;
+
+    if (!appId) {
+      throw new Error('App ID required for database queries');
+    }
+
+    logger.info('skill.database.query.execute', {
+      appId,
+      queryLength: input.sql.length,
+    });
+
+    // Execute query logic here
+    const results = await executeQuery(appId, input.sql, input.params);
+
+    return {
+      success: true,
+      rowCount: results.length,
+      data: results,
+    };
+  },
+
+  config: {
+    timeout: 10000, // 10 second timeout
+    requiresApp: true,
+  },
+};
+
+// Helper function (implementation details)
+async function executeQuery(appId: string, sql: string, params?: any[]) {
+  // Your query execution logic
+  return [];
+}
+```
+
+**Agent Usage:**
+
+```javascript
+// After skill is loaded with: skill({ action: "load", skill: "database" })
+// Tool becomes available as: database__query
+
+database__query({
+  sql: 'SELECT * FROM users WHERE status = ?',
+  params: ['active'],
+});
+```
+
+### Example 2: Tool with Custom Validation
+
+Create `agents/src/skills/analytics/tools/index.ts`:
+
+```typescript
+import type { SkillToolDefinition } from '../../skill-tool-manager.js';
+import { z } from 'zod';
+
+/**
+ * Analytics report tool with custom validation
+ */
+export const reportTool: SkillToolDefinition = {
+  name: 'report',
+  description: 'Generate analytics reports for specified date ranges and metrics',
+
+  parameters: z.object({
+    startDate: z.string().describe('Start date in ISO format (YYYY-MM-DD)'),
+    endDate: z.string().describe('End date in ISO format (YYYY-MM-DD)'),
+    metrics: z
+      .array(z.enum(['pageviews', 'users', 'sessions', 'conversions']))
+      .describe('Metrics to include in report'),
+  }),
+
+  async execute(input, context) {
+    const appId = context?.metadata?.appId as string;
+
+    // Generate report
+    const report = await generateReport(appId, {
+      startDate: new Date(input.startDate),
+      endDate: new Date(input.endDate),
+      metrics: input.metrics,
+    });
+
+    return {
+      success: true,
+      period: `${input.startDate} to ${input.endDate}`,
+      metrics: report,
+    };
+  },
+
+  config: {
+    // Custom validation runs after Zod schema validation
+    validate: async (input) => {
+      const start = new Date(input.startDate);
+      const end = new Date(input.endDate);
+
+      if (start > end) {
+        throw new Error('Start date must be before end date');
+      }
+
+      const daysDiff = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+      if (daysDiff > 90) {
+        throw new Error('Date range cannot exceed 90 days');
+      }
+    },
+    timeout: 30000,
+  },
+};
+
+async function generateReport(appId: string, options: any) {
+  // Report generation logic
+  return {};
+}
+```
+
+### Example 3: Multiple Tools in One Skill
+
+Create `agents/src/skills/email/tools/index.ts`:
+
+```typescript
+import type { SkillToolDefinition } from '../../skill-tool-manager.js';
+import { z } from 'zod';
+
+/**
+ * Send email tool
+ */
+export const sendTool: SkillToolDefinition = {
+  name: 'send',
+  description: 'Send an email to specified recipients',
+
+  parameters: z.object({
+    to: z.array(z.string().email()).describe('Recipient email addresses'),
+    subject: z.string().describe('Email subject line'),
+    body: z.string().describe('Email body content'),
+    html: z.boolean().optional().describe('Whether body is HTML (default: false)'),
+  }),
+
+  async execute(input, context) {
+    // Send email logic
+    return {
+      success: true,
+      messageId: 'msg-123',
+      recipients: input.to.length,
+    };
+  },
+};
+
+/**
+ * Email template tool
+ */
+export const templateTool: SkillToolDefinition = {
+  name: 'template',
+  description: 'List available email templates or render a template with data',
+
+  parameters: z.object({
+    action: z.enum(['list', 'render']).describe('List templates or render one'),
+    templateId: z.string().optional().describe('Template ID (required for render)'),
+    data: z.record(z.any()).optional().describe('Template variables (required for render)'),
+  }),
+
+  async execute(input, context) {
+    if (input.action === 'list') {
+      return {
+        templates: [
+          { id: 'welcome', name: 'Welcome Email' },
+          { id: 'reset', name: 'Password Reset' },
+        ],
+      };
+    }
+
+    if (!input.templateId || !input.data) {
+      throw new Error('templateId and data required for render action');
+    }
+
+    const rendered = await renderTemplate(input.templateId, input.data);
+    return {
+      success: true,
+      subject: rendered.subject,
+      body: rendered.body,
+    };
+  },
+};
+
+async function renderTemplate(templateId: string, data: any) {
+  // Template rendering logic
+  return { subject: '', body: '' };
+}
+
+// Export both tools - they become:
+// - email__send
+// - email__template
+```
+
+### Tool Loading and Lifecycle
+
+**1. Loading Tools:**
+
+When an agent calls `skill({ action: "load", skill: "database" })`:
+
+1. Skill instructions are loaded from `skill.md`
+2. Tools are discovered by importing `tools/index.ts`
+3. All exported tool definitions are registered
+4. Tools are prefixed with skill name
+5. Tools become available immediately
+
+**2. Using Tools:**
+
+```javascript
+// Agent uses prefixed tool names
+database__query({ sql: 'SELECT * FROM users' });
+email__send({ to: ['user@example.com'], subject: 'Hello', body: 'Message' });
+analytics__report({ startDate: '2024-01-01', endDate: '2024-01-31', metrics: ['users'] });
+```
+
+**3. Automatic Unloading:**
+
+Tools are automatically unloaded when:
+
+- **Inactivity**: No tool use after 3000 tokens (configurable via `SKILL_INACTIVITY_THRESHOLD_TOKENS`)
+- **LRU Eviction**: More than 3 skills active (configurable via `SKILL_MAX_ACTIVE_SKILLS`)
+- **Manual Unload**: Agent calls `skill({ action: "unload", skill: "database" })`
+
+**4. Configuration:**
+
+Environment variables control tool lifecycle:
+
+```bash
+# agents/.env
+SKILL_INACTIVITY_THRESHOLD_TOKENS=3000  # Tokens before auto-unload
+SKILL_MAX_ACTIVE_SKILLS=3               # Max concurrent skills per conversation
+SKILL_LRU_ENABLED=true                  # Enable LRU eviction
+```
+
+### Best Practices for Custom Tools
+
+**1. Tool Naming:**
+
+- Use descriptive, action-oriented names (`query`, `send`, `report`)
+- Keep names short (they'll be prefixed with skill name)
+- Use consistent naming across related tools
+
+**2. Error Handling:**
+
+```typescript
+execute: async (input, context) => {
+  try {
+    const result = await performOperation(input);
+    return { success: true, data: result };
+  } catch (error) {
+    logger.error('skill.tool.error', {
+      skillName: 'my-skill',
+      toolName: 'operation',
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw new Error(`Operation failed: ${error.message}`);
+  }
+};
+```
+
+**3. Context Usage:**
+
+```typescript
+execute: async (input, context) => {
+  // Extract metadata from context
+  const appId = context?.metadata?.appId as string;
+  const conversationId = context?.metadata?.conversationId as string;
+
+  if (!appId) {
+    throw new Error('App context required for this operation');
+  }
+
+  // Use context for logging
+  logger.info('tool.executed', { appId, conversationId, input });
+
+  // Perform operation with context
+  return await operationWithContext(appId, input);
+};
+```
+
+**4. Validation:**
+
+Use Zod schemas for type validation and custom validators for business logic:
+
+```typescript
+parameters: z.object({
+  email: z.string().email(),           // Type validation
+  age: z.number().min(18).max(120)     // Range validation
+}),
+
+config: {
+  validate: async (input, context) => {
+    // Business logic validation
+    const user = await findUser(input.email);
+    if (!user) {
+      throw new Error('User not found');
+    }
+  }
+}
+```
+
+**5. Timeouts:**
+
+Set appropriate timeouts based on operation complexity:
+
+```typescript
+config: {
+  timeout: 5000,    // Quick operations (queries, lookups)
+  timeout: 30000,   // Standard operations (API calls, processing)
+  timeout: 60000    // Long operations (reports, bulk operations)
+}
+```
+
+### Testing Custom Tools
+
+Create tests in `agents/src/skills/my-skill/tools/__tests__/`:
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { queryTool } from '../index.js';
+
+describe('database queryTool', () => {
+  it('should execute valid queries', async () => {
+    const result = await queryTool.execute(
+      {
+        sql: 'SELECT * FROM users',
+        params: [],
+      },
+      {
+        metadata: { appId: 'test-app' },
+      }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data).toBeDefined();
+  });
+
+  it('should validate input schema', () => {
+    expect(() => {
+      queryTool.parameters.parse({ sql: 123 }); // Invalid type
+    }).toThrow();
+  });
+});
+```
+
+### Documenting Tools in skill.md
+
+Update your `skill.md` to document available tools:
+
+```markdown
+---
+name: database
+description: SQL database operations for application data
+---
+
+# Database Skill
+
+This skill provides specialized tools for database operations.
+
+## Available Tools
+
+When you load this skill with `skill({ action: "load", skill: "database" })`, the following tools become available:
+
+### `database__query`
+
+Execute SQL queries against the application database.
+
+**Parameters:**
+
+- `sql` (string): SQL query to execute
+- `params` (array, optional): Query parameters for prepared statements
+
+**Example:**
+\`\`\`javascript
+database\_\_query({
+sql: "SELECT \* FROM users WHERE status = ?",
+params: ["active"]
+})
+\`\`\`
+
+**Returns:**
+\`\`\`json
+{
+"success": true,
+"rowCount": 5,
+"data": [...]
+}
+\`\`\`
+
+## Usage Guidelines
+
+...
+```
+
+### Summary
+
+Custom tools enable skills to:
+
+- ✅ Extend agent capabilities with specialized operations
+- ✅ Provide domain-specific functionality (database, email, analytics, etc.)
+- ✅ Maintain type safety with Zod schemas
+- ✅ Automatically manage lifecycle (loading, unloading, eviction)
+- ✅ Prevent naming collisions with automatic prefixing
+- ✅ Access app context for contextual operations
+
+Tools are the perfect complement to skill instructions - instructions teach agents _what_ to do, while tools give them _how_ to do it.

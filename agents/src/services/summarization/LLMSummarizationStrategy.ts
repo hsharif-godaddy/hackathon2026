@@ -9,6 +9,7 @@ import { logger } from '../../logging/index.js';
 import type { SummarizationContext, SummarizationResult, SummarizationStrategy } from './SummarizationStrategy.js';
 import { type LLMMessage, isOpenAIMessage, isAIToolMessage, getMessageContent } from '../ConversationHistoryLoader.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
+import { filterInactiveSkillInstructions } from './SkillInstructionFilter.js';
 
 /**
  * LLM-based summarization strategy using AI SDK
@@ -61,9 +62,16 @@ export class LLMSummarizationStrategy implements SummarizationStrategy {
     // - For regeneration: use fullMessageHistory (complete history before recent turns)
     // - For incremental: use messages (just the new delta)
     // CRITICAL: Without this, regeneration would only summarize the delta, losing all earlier context
-    const messagesToSummarize = shouldRegenerateFromScratch && context.fullMessageHistory
+    let messagesToSummarize = shouldRegenerateFromScratch && context.fullMessageHistory
       ? context.fullMessageHistory
       : context.messages;
+
+    // NEW: Filter inactive skill instructions before summarization
+    // This removes large skill markdown content (5-15KB) for skills that are no longer active,
+    // replacing them with small stubs (~100 bytes) to prevent context bloat
+    if (context.sessionId) {
+      messagesToSummarize = filterInactiveSkillInstructions(messagesToSummarize, context.sessionId);
+    }
 
     if (shouldRegenerateFromScratch) {
       logger.info('summarization.llm.regenerate_from_scratch', {

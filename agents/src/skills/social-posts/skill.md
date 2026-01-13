@@ -8,6 +8,8 @@ enablementId: socialPosts
 
 **Purpose:** Help users create engaging social media posts for Facebook and Instagram.
 
+> **Note:** This skill provides social post creation instructions. Some skills may also provide specialized tools that are automatically loaded when you activate the skill. Tools are prefixed with the skill name (e.g., `skillname__toolname`) to prevent naming conflicts. You can unload a skill's tools with `skill({ action: 'unload', skill: 'name' })` when no longer needed.
+
 ---
 
 ## When to Use This Skill

@@ -1811,7 +1811,7 @@ export class WebSocketServer {
 
           // Reload conversation history for the new agent
           // This is critical - the new agent needs the full conversation history
-          const { conversationHistory, ...dataWithoutHistory } = data
+          const { conversationHistory: _conversationHistory, ...dataWithoutHistory } = data
           const iterationData: ChatMessage = {
             ...dataWithoutHistory,
             message: currentMessage
@@ -1833,10 +1833,39 @@ export class WebSocketServer {
         // Never emit completion during the loop - we'll handle it after
         await this.streamAgentResponse(socket, agent, iterationData, processedContext, agentName, startTime, false)
 
+        // Check for auto-continuation FIRST (takes precedence - allows skill tools to load before handoff)
+        // Get updated context from conversation state (includes flags set by afterToolExecution hook)
+        const conversationAfterStream = this.getConversation(socketId)
+        const updatedContext = conversationAfterStream?.context
+
+        if (updatedContext?.metadata?.__autoContinue === true) {
+          const continuationPrompt = (updatedContext.metadata.__continuationPrompt as string) || 'Continue processing'
+
+          // Clear the flags so they're not reused in subsequent iterations
+          delete (updatedContext.metadata as any).__autoContinue
+          delete (updatedContext.metadata as any).__continuationPrompt
+
+          this.logger.info('websocket.auto_continuation.detected', {
+            socketId,
+            agentName,
+            conversationId: conversationAfterStream?.conversationId,
+            continuationPromptPreview: continuationPrompt.substring(0, 100)
+          })
+
+          // Update message for next iteration (agent stays the same)
+          currentMessage = continuationPrompt
+
+          // Update processedContext with the updated context from conversation
+          processedContext = updatedContext
+
+          // Continue the loop without checking for handoff
+          continue
+        }
+
         // Check if handoff occurred
         const handoffDetails = this.getHandoffDetails(socketId, agentName)
         if (!handoffDetails) {
-          // No handoff - we're done, exit loop
+          // No handoff and no auto-continuation - we're done, exit loop
           break
         }
 

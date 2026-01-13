@@ -23,6 +23,18 @@ export interface AgentsCollection {
 }
 
 /**
+ * Skill tool provider interface for dynamic skill tool injection
+ */
+export interface SkillToolProvider {
+  /** Get tool instances for active skills in a conversation */
+  getToolsForSkills: (
+    conversationId: string,
+    estimatedTokenCount: number,
+    executionContext?: Record<string, unknown>
+  ) => Promise<Record<string, Tool>>
+}
+
+/**
  * Global configuration for the agent factory
  */
 export interface GlobalAgentConfig {
@@ -38,6 +50,8 @@ export interface GlobalAgentConfig {
   defaultTemperature?: number
   /** Global max tokens setting */
   defaultMaxTokens?: number
+  /** Dynamic skill tool provider for runtime tool injection */
+  skillToolProvider?: SkillToolProvider
 }
 
 /**
