@@ -128,7 +128,6 @@ export function useStreamingWebSocket() {
           streamingState: state.streamingState,
           activeStream: state.activeStream,
           buildErrorContext: state.buildErrorContext,
-          conversations: state.conversations,
           connectionRetry: state.connectionRetry,
           // Lifecycle actions (Tier 1)
           setWebSocketState: state.setWebSocketState,

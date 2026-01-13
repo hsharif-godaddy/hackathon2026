@@ -94,7 +94,14 @@ export function useWebSocketHelpers(currentAppId: string | null): UseWebSocketHe
    */
   const clearStoredSocketId = useCallback(() => {
     if (currentAppId) {
-      sessionStorage.removeItem(`socket_id_${currentAppId}`)
+      const key = `socket_id_${currentAppId}`
+      const existingValue = sessionStorage.getItem(key)
+      sessionStorage.removeItem(key)
+      logger.debug('websocket.socket_id.cleared', {
+        appId: currentAppId,
+        key,
+        previousValue: existingValue
+      })
     }
   }, [currentAppId])
 

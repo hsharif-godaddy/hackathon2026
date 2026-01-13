@@ -193,6 +193,8 @@ export class ConversationEventChannel {
   private conversations: Map<string, ConversationState> = new Map()
   private config: CircularBufferConfig
   private logger: EventChannelLogger | undefined
+  // NEW: Track which messages are actively streaming (incomplete)
+  private pendingMessages: Map<string, Set<string>> = new Map()  // conversationId → Set<messageId>
 
   /**
    * Creates a new conversation event channel
@@ -211,6 +213,39 @@ export class ConversationEventChannel {
   constructor(config: CircularBufferConfig = { capacity: 1000, ttl: 5 * 60 * 1000 }, logger?: EventChannelLogger) {
     this.config = config
     this.logger = logger
+  }
+
+  /**
+   * Add a message ID to the pending set for a conversation
+   * @private
+   */
+  private addPendingMessage(conversationId: string, messageId: string): void {
+    if (!this.pendingMessages.has(conversationId)) {
+      this.pendingMessages.set(conversationId, new Set())
+    }
+    this.pendingMessages.get(conversationId)!.add(messageId)
+  }
+
+  /**
+   * Remove a message ID from the pending set for a conversation
+   * @private
+   */
+  private removePendingMessage(conversationId: string, messageId: string): void {
+    const pending = this.pendingMessages.get(conversationId)
+    if (pending) {
+      pending.delete(messageId)
+      if (pending.size === 0) {
+        this.pendingMessages.delete(conversationId)
+      }
+    }
+  }
+
+  /**
+   * Get all pending message IDs for a conversation
+   * @private
+   */
+  private getPendingMessageIds(conversationId: string): string[] {
+    return Array.from(this.pendingMessages.get(conversationId) || [])
   }
 
   /**
@@ -258,6 +293,24 @@ export class ConversationEventChannel {
       timestamp: new Date(),
       deliveredTo: new Set(),
       persisted: false
+    }
+
+    // NEW: Track message lifecycle for pending message detection
+    // Extract messageId from event data
+    const messageId = event.data?.messageId as string | undefined
+
+    if (messageId) {
+      // Mark message as pending on streaming events (chunk, tool_*, step_*)
+      const streamingTypes = ['chunk', 'tool_start', 'tool_input_delta', 'step_start']
+      if (streamingTypes.includes(event.type)) {
+        this.addPendingMessage(conversationId, messageId)
+      }
+
+      // Remove from pending on completion events
+      const completionTypes = ['step_complete', 'complete']
+      if (completionTypes.includes(event.type)) {
+        this.removePendingMessage(conversationId, messageId)
+      }
     }
 
     // Buffer the event
@@ -383,6 +436,7 @@ export class ConversationEventChannel {
     // Clean up if no subscribers remain
     if (state.subscribers.size === 0) {
       this.conversations.delete(conversationId)
+      this.pendingMessages.delete(conversationId)  // NEW: Clean up pending message tracking
     }
   }
 
@@ -446,7 +500,8 @@ export class ConversationEventChannel {
       lastSequence: events[events.length - 1]!.sequence,
       totalEvents: events.length,
       oldestTimestamp: events[0]!.timestamp,
-      newestTimestamp: events[events.length - 1]!.timestamp
+      newestTimestamp: events[events.length - 1]!.timestamp,
+      pendingMessageIds: this.getPendingMessageIds(conversationId)
     }
   }
 
@@ -485,6 +540,7 @@ export class ConversationEventChannel {
 
     for (const conversationId of conversationsToRemove) {
       this.conversations.delete(conversationId)
+      this.pendingMessages.delete(conversationId)  // NEW: Clean up pending message tracking
     }
 
     return conversationsToRemove.length

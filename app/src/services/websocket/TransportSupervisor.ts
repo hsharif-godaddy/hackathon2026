@@ -15,6 +15,7 @@ import { EventEmitter } from 'events'
 import type { Socket } from 'socket.io-client'
 
 import {
+  AgentsAvailableHandler,
   CatchupCompleteHandler,
   CatchupStatusHandler,
   ChunkHandler,
@@ -22,6 +23,8 @@ import {
   CompleteHandler,
   ConversationInfoHandler,
   ErrorHandler,
+  HistoryCompleteHandler,
+  HistoryMessageHandler,
   MessageHandlerRegistry,
   RecoveryStatusHandler,
   ReplayCompleteHandler,
@@ -77,6 +80,29 @@ export interface TransportSupervisorDeps {
     pendingRecoveryAck: { current: RecoveryAck | null }
     toolDeltaBuffer: { current: Map<string, { name: string; delta: string; hasExplicitName: boolean }> }
     retryState: { current: { pendingMessage?: { chatMessage: unknown; startTime: number }; retryCount: number; retryTimer?: NodeJS.Timeout } }
+    /**
+     * Controller reference for deduplication during recovery replay
+     * Optional to maintain backwards compatibility with tests
+     */
+    controller?: {
+      isInReplayMode(): boolean
+      startReplayDeduplication(): void
+      clearReplayDeduplication(): void
+      hasSeenEvent(eventKey: string | undefined): boolean
+      markEventSeen(eventKey: string | undefined): void
+    }
+    /**
+     * Batch buffer for incremental history loading
+     */
+    historyBatch?: { current: any[] }
+    /**
+     * Timer for flushing history batch
+     */
+    historyBatchTimer?: { current: NodeJS.Timeout | null }
+    /**
+     * Tracks if we've received history for current recovery session
+     */
+    historyReceivedForRecovery?: { current: boolean }
   }
   getStreamingState: () => {
     streamingState: string
@@ -254,9 +280,12 @@ export class TransportSupervisor extends EventEmitter {
   private setupEventHandlers(socket: Socket): void {
     const registry = new MessageHandlerRegistry()
 
+    registry.register(new AgentsAvailableHandler())
     registry.register(new ServerConfigHandler())
     registry.register(new ConversationInfoHandler())
     registry.register(new RecoveryStatusHandler())
+    registry.register(new HistoryMessageHandler())
+    registry.register(new HistoryCompleteHandler())
     registry.register(new ReplayCompleteHandler())
     registry.register(new CatchupStatusHandler())
     registry.register(new CatchupCompleteHandler())
@@ -296,6 +325,32 @@ export class TransportSupervisor extends EventEmitter {
     socket.on('message', async (data: { type: string; content: string; data?: any }, ack?: () => void) => {
       if (data.data?.conversationId && messageContext.currentAppId && typeof data.data.conversationId === 'string') {
         setConversationIdCookie(messageContext.currentAppId, data.data.conversationId)
+      }
+
+      // Event deduplication during recovery replay
+      // Generate event key from sequence number or fallback to type:messageId
+      const controller = this.deps.refs.controller
+      if (controller?.isInReplayMode()) {
+        const eventKey = data.data?.sequence !== undefined
+          ? `seq:${data.data.sequence}`
+          : data.data?.messageId
+            ? `${data.type}:${data.data.messageId}`
+            : undefined
+
+        if (eventKey && controller.hasSeenEvent(eventKey)) {
+          logger.debug('websocket.transport.duplicate_event_skipped', {
+            eventType: data.type,
+            eventKey,
+            sequence: data.data?.sequence,
+            messageId: data.data?.messageId
+          })
+          return // Skip duplicate event
+        }
+
+        // Mark as seen before processing
+        if (eventKey) {
+          controller.markEventSeen(eventKey)
+        }
       }
 
       messageContext.helpers.trackReplayEventReceipt(socket, data.type)

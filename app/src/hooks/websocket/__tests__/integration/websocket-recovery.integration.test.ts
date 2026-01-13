@@ -123,9 +123,7 @@ vi.mock('@/lib/socketRegistry', () => ({
 
 vi.mock('@/services/AgentService', () => ({
   AgentService: {
-    getInstance: vi.fn(() => ({
-      getConversation: vi.fn().mockResolvedValue({ messages: [] }),
-    })),
+    getInstance: vi.fn(() => ({})),
   },
 }))
 

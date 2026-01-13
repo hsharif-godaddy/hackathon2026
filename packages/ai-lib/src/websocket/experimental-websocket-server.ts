@@ -13,11 +13,13 @@ import { createLogger } from '../utils/logger.js'
 import type {
   MessageProvider,
   ContextProvider,
+  HistoryProvider,
   ConversationPersistence,
   ConversationPersistenceWithCleanup,
   ConversationMessage,
   PersistenceStreamingEvent,
-  ConversationContext
+  ConversationContext,
+  StreamingEventType
 } from './interfaces.js'
 import { ConversationEventChannel } from './conversation-event-channel.js'
 import { WebSocketSubscriber } from './subscribers/websocket-subscriber.js'
@@ -94,6 +96,9 @@ export interface WebSocketConfig {
 
   /** Message provider for loading conversation history */
   messageProvider?: MessageProvider
+
+  /** History provider for loading raw UI history (not LLM context) */
+  historyProvider?: HistoryProvider
 
   /** Context provider for loading system context and other contextual messages */
   contextProvider?: ContextProvider
@@ -232,7 +237,7 @@ export interface ChatMessage {
  * WebSocket message types following the normalized event schema
  */
 export interface WebSocketMessage {
-  type: 'step_start' | 'chunk' | 'tool_start' | 'tool_input_delta' | 'tool_call' | 'tool_result' | 'step_complete' | 'complete' | 'error' | 'agents_available' | 'recovery_status' | 'replay_complete' | 'catchup_status' | 'catchup_complete' | 'server_config' | 'conversation_info'
+  type: 'step_start' | 'chunk' | 'tool_start' | 'tool_input_delta' | 'tool_call' | 'tool_result' | 'step_complete' | 'complete' | 'error' | 'agents_available' | 'recovery_status' | 'replay_complete' | 'catchup_status' | 'catchup_complete' | 'history_complete' | 'server_config' | 'conversation_info'
   content: string
   data: Record<string, unknown>
 }
@@ -354,7 +359,8 @@ export class WebSocketServer {
       {
         stateManager: this.stateManager,
         eventChannel: this.eventChannel,
-        logger: this.logger
+        logger: this.logger,
+        ...(config.historyProvider && { historyProvider: config.historyProvider })
       },
       {
         ackTimeout: this.ACK_TIMEOUT_MS,
@@ -399,6 +405,89 @@ export class WebSocketServer {
       const socketId = socket.id
       const auth = socket.handshake.auth || {}
       const previousSocketId = auth.previousSocketId
+
+      // CRITICAL: Register event handlers IMMEDIATELY after connection
+      // This ensures handlers are attached even for recovery paths that return early
+      // Without this, messages sent after recovery are silently dropped
+      socket.on('chat', async (data: ChatMessage) => {
+        await this.handleChatMessage(socket, data)
+      })
+
+      socket.on('chat_message', async (data: ChatMessage) => {
+        await this.handleChatMessage(socket, data)
+      })
+
+      socket.on('get_agents', () => {
+        this.sendAvailableAgents(socket)
+      })
+
+      socket.on('disconnect', async (reason) => {
+        this.logger.info('Socket disconnected', { socketId, reason })
+
+        // Check if there's an active stream for this socket via state manager
+        const stateData = this.stateManager.getStateData(socketId)
+        const hasActiveStream = this.stateManager.hasActiveStream(socketId)
+
+        if (hasActiveStream && stateData) {
+          // Don't abort immediately - transition to disconnected state with timeout
+          this.logger.info('Active stream detected, starting recovery window', {
+            socketId,
+            recoveryWindow: `${this.STREAM_RECOVERY_WINDOW}ms`,
+            conversationId: stateData.conversationId
+          })
+
+          // Set timeout to abort if client doesn't reconnect
+          const timeoutId = setTimeout(() => {
+            this.logger.warn('Recovery window expired, aborting stream', { socketId })
+            stateData.abortController?.abort()
+
+            // Clean up conversation (handles persistence and state cleanup)
+            this.cleanupConversation(socketId).catch((error) => {
+              this.logger.error('Error cleaning up conversation after recovery timeout', error)
+            })
+          }, this.STREAM_RECOVERY_WINDOW)
+
+          // Transition to disconnected state
+          this.stateManager.transitionTo(socketId, 'disconnected', {
+            recoveryTimeoutId: timeoutId
+          })
+        } else if (stateData && !hasActiveStream) {
+          // Conversation exists but stream not yet registered - setup still in progress
+          this.logger.info('websocket.disconnect.during_setup', {
+            socketId,
+            conversationId: stateData.conversationId
+          })
+
+          // Create a placeholder AbortController for the disconnected state
+          const placeholderController = new AbortController()
+
+          const timeoutId = setTimeout(() => {
+            this.logger.warn('websocket.deferred_cleanup.expired', { socketId })
+            placeholderController.abort()
+            this.cleanupConversation(socketId).catch((error) => {
+              this.logger.error('websocket.deferred_cleanup.error', error)
+            })
+          }, this.STREAM_RECOVERY_WINDOW)
+
+          // Transition to disconnected state with placeholder controller
+          this.stateManager.transitionTo(socketId, 'disconnected', {
+            recoveryTimeoutId: timeoutId,
+            abortController: placeholderController
+          })
+        } else {
+          // No state - connection closed before chat started
+          this.logger.info('Socket disconnected with no active conversation', { socketId })
+        }
+
+        // Clean up APM spans (these can't be recovered)
+        this.cleanupToolSpans(socketId)
+
+        try {
+          await this.config.onDisconnection?.(socketId)
+        } catch (error) {
+          this.logger.error('Error in onDisconnection handler', error)
+        }
+      })
 
       // Debug logging for all connections
       this.logger.info('Socket connection established', {
@@ -462,23 +551,41 @@ export class WebSocketServer {
       }
 
       // Check if client is trying to recover but stream already completed/cleaned up
+      // This handles edge case where previousSocketId exists but no conversationId
       if (previousSocketId && !detectedRecoveryMode) {
         this.logger.info('Recovery attempted but no buffered events found', {
           newSocketId: socketId,
-          previousSocketId
+          previousSocketId,
+          hasConversationId: !!auth.conversationId
         })
-        // Send recovery status indicating stream already completed
-        socket.emit('message', {
-          type: 'recovery_status',
-          content: '',
-          data: {
-            isRecovering: true,
-            hasBufferedEvents: false,
-            bufferedEventCount: 0,
-            streamCompleted: true,
-            conversationId: auth.conversationId
-          }
-        } as WebSocketMessage)
+
+        // Extract appId from auth for history loading
+        // Same logic as connection-recovery-manager.ts extractAppId()
+        const extractAppId = (auth: unknown): string | undefined => {
+          if (!auth || typeof auth !== 'object') return undefined
+          const authRecord = auth as Record<string, unknown>
+
+          // Try direct appId first (most common)
+          if (typeof authRecord.appId === 'string') return authRecord.appId
+
+          // Try agentContext.appId (JWT auth)
+          const agentContext = authRecord.agentContext as Record<string, unknown> | undefined
+          if (agentContext && typeof agentContext.appId === 'string') return agentContext.appId
+
+          // Try decoded.appId (JWT auth fallback)
+          const decoded = authRecord.decoded as Record<string, unknown> | undefined
+          if (decoded && typeof decoded.appId === 'string') return decoded.appId
+
+          return undefined
+        }
+
+        // Use sendStreamCompletedStatus for consistent history handling
+        // This will load and stream persisted history if conversationId exists
+        await this.recoveryManager.sendStreamCompletedStatus(
+          socket,
+          auth.conversationId,
+          extractAppId(auth)
+        )
       }
       // Conversation-based recovery fallback (for tab-closure recovery when socket ID is lost)
       // This allows recovery using a durable conversationId cookie instead of ephemeral sessionStorage
@@ -497,7 +604,7 @@ export class WebSocketServer {
           decoded?: { siteId?: string }
           siteId?: string
         }
-        const validateAppId = (_conversationId: string, authData: Record<string, unknown>): boolean => {
+        const validateAppId = (conversationId: string, authData: Record<string, unknown>): boolean => {
           const typedAuth = authData as AuthDataWithSiteId
           const authenticatedSiteId =
             typedAuth.agentContext?.siteId ||
@@ -508,7 +615,7 @@ export class WebSocketServer {
           if (!authenticatedSiteId) {
             this.logger.warn('recovery.conversation.no_site_id', {
               socketId,
-              conversationId: auth.conversationId,
+              conversationId,
               authKeys: Object.keys(authData)
             })
             return false
@@ -518,7 +625,7 @@ export class WebSocketServer {
           if (stateData && stateData.context?.appId !== authenticatedSiteId) {
             this.logger.warn('recovery.conversation.site_mismatch', {
               socketId,
-              conversationId: auth.conversationId,
+              conversationId,
               authenticatedSiteId,
               conversationAppId: stateData.context?.appId
             })
@@ -531,6 +638,61 @@ export class WebSocketServer {
         await this.recoveryManager.handleConversationRecovery(socket, auth.conversationId, validateAppId, {
           onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
             // State manager handles all state updates including socket ID migration
+            // No local Map updates needed
+          },
+          onRecoveryFailed: (_failedSocketId, _reason) => {
+            // State manager handles cleanup via recoveryManager.cleanupAfterRecoveryFailure
+            // No additional cleanup needed
+          },
+          createWebSocketSubscriber: (sock) => new WebSocketSubscriber(
+            sock,
+            (id) => this.stateManager.isDisconnected(id)
+          )
+        })
+        return // Recovery handled, skip fresh connection setup
+      }
+
+      // Initial recovery (conversationId exists but no disconnected state)
+      // Triggered on: initial load with existing conversation OR page reload after recovery window
+      if (detectedRecoveryMode === 'initial') {
+        // Validation function for security check (same logic as conversation recovery)
+        interface AuthDataWithSiteId {
+          agentContext?: { siteId?: string }
+          decoded?: { siteId?: string }
+          siteId?: string
+        }
+        const validateAppId = (conversationId: string, authData: Record<string, unknown>): boolean => {
+          const typedAuth = authData as AuthDataWithSiteId
+          const authenticatedSiteId =
+            typedAuth.agentContext?.siteId ||
+            typedAuth.decoded?.siteId ||
+            typedAuth.siteId
+
+          // Block recovery if we can't determine the authenticated site
+          if (!authenticatedSiteId) {
+            this.logger.warn('recovery.initial.no_site_id', {
+              socketId,
+              conversationId,
+              authKeys: Object.keys(authData)
+            })
+            return false
+          }
+
+          // For initial recovery, we can't validate against stateData (it doesn't exist)
+          // The authentication middleware has already validated the user's access to the appId
+          // We return true if we have a valid authenticated site ID, as the conversationId
+          // cookie is already scoped to the authenticated domain
+          this.logger.debug('recovery.initial.validation', {
+            socketId,
+            conversationId,
+            authenticatedSiteId
+          })
+          return true
+        }
+
+        await this.recoveryManager.handleInitialRecovery(socket, auth.conversationId, validateAppId, {
+          onRecoveryComplete: (_completedSocketId, _events, _finalSequence) => {
+            // State manager handles all state updates
             // No local Map updates needed
           },
           onRecoveryFailed: (_failedSocketId, _reason) => {
@@ -563,91 +725,15 @@ export class WebSocketServer {
         }
       } as WebSocketMessage)
 
-      // Handle chat messages (supporting both 'chat' and 'chat_message' for compatibility)
-      socket.on('chat', async (data: ChatMessage) => {
-        await this.handleChatMessage(socket, data)
-      })
-
-      socket.on('chat_message', async (data: ChatMessage) => {
-        await this.handleChatMessage(socket, data)
-      })
-
-      // Handle agent list requests
-      socket.on('get_agents', () => {
-        this.sendAvailableAgents(socket)
-      })
-
-      // Handle disconnection with graceful recovery window
-      socket.on('disconnect', async (reason) => {
-        this.logger.info('Socket disconnected', { socketId, reason })
-
-        // Check if there's an active stream for this socket via state manager
-        const stateData = this.stateManager.getStateData(socketId)
-        const hasActiveStream = this.stateManager.hasActiveStream(socketId)
-
-        if (hasActiveStream && stateData) {
-          // Don't abort immediately - transition to disconnected state with timeout
-          this.logger.info('Active stream detected, starting recovery window', {
-            socketId,
-            recoveryWindow: `${this.STREAM_RECOVERY_WINDOW}ms`,
-            conversationId: stateData.conversationId
-          })
-
-          // Set timeout to abort if client doesn't reconnect
-          const timeoutId = setTimeout(() => {
-            this.logger.warn('Recovery window expired, aborting stream', { socketId })
-            stateData.abortController?.abort()
-
-            // Clean up conversation (handles persistence and state cleanup)
-            this.cleanupConversation(socketId).catch((error) => {
-              this.logger.error('Error cleaning up conversation after recovery timeout', error)
-            })
-          }, this.STREAM_RECOVERY_WINDOW)
-
-          // Transition to disconnected state
-          this.stateManager.transitionTo(socketId, 'disconnected', {
-            recoveryTimeoutId: timeoutId
-          })
-        } else if (stateData && !hasActiveStream) {
-          // Conversation exists but stream not yet registered - setup still in progress
-          this.logger.info('websocket.disconnect.during_setup', {
-            socketId,
-            conversationId: stateData.conversationId
-          })
-
-          // Create a placeholder AbortController for the disconnected state
-          const placeholderController = new AbortController()
-
-          const timeoutId = setTimeout(() => {
-            this.logger.warn('websocket.deferred_cleanup.expired', { socketId })
-            placeholderController.abort()
-            this.cleanupConversation(socketId).catch(err =>
-              this.logger.error('websocket.deferred_cleanup.error', {
-                socketId,
-                error: err instanceof Error ? err.message : String(err)
-              })
-            )
-          }, this.STREAM_RECOVERY_WINDOW)
-
-          // Update state with placeholder controller and transition to disconnected
-          this.stateManager.updateConnection(socketId, {
-            abortController: placeholderController,
-            setupTimeoutId: timeoutId
-          })
-          this.stateManager.transitionTo(socketId, 'disconnected', {
-            recoveryTimeoutId: timeoutId
-          })
-        } else {
-          // No conversation - safe to cleanup immediately
-          await this.cleanupConversation(socketId)
+      // Send history_complete for fresh connections (no history to load)
+      // This ensures client initialization completes immediately for new users
+      socket.emit('message', {
+        type: 'history_complete',
+        content: '',
+        data: {
+          messageCount: 0
         }
-
-        // Clean up APM spans (these can't be recovered)
-        this.cleanupToolSpans(socketId)
-
-        // Await disconnection handler to ensure async cleanup completes
-        await this.config.onDisconnection?.(socketId)
-      })
+      } as WebSocketMessage)
 
       // Handle explicit stream cancellation (user clicked cancel button)
       socket.on('cancel', () => {
@@ -694,7 +780,7 @@ export class WebSocketServer {
    */
   private async publishToEventChannel(
     socketId: string,
-    type: WebSocketMessage['type'],
+    type: StreamingEventType,
     content: string,
     data: Record<string, unknown>,
     agentName: string
@@ -1111,6 +1197,10 @@ export class WebSocketServer {
     const socketId = socket.id
     const abortController = this.stateManager.getAbortController(socketId)
 
+    // Get agent message ID for event tracking
+    const activeConversation = this.getConversation(socketId)
+    const agentMessageId = activeConversation?.context?.agentMessageId
+
     try {
       reader = baseStream.getReader()
       const accumulatedToolInput = new Map<string, string>() // Track tool input deltas
@@ -1179,7 +1269,8 @@ export class WebSocketServer {
               const textData = {
                 step: currentStep,
                 source: 'ai_response',
-                agentId: agentName
+                agentId: agentName,
+                messageId: agentMessageId  // NEW: Include message ID for pending message tracking
               }
 
               // Publish to event channel - WebSocketSubscriber delivers to client,
@@ -1199,7 +1290,8 @@ export class WebSocketServer {
                   name: part.toolName,
                   input: {} // Will be populated as deltas arrive
                 },
-                agentId: agentName
+                agentId: agentName,
+                messageId: agentMessageId  // NEW: Include message ID for pending message tracking
               }
 
               // Start APM span and observability tracking for tool execution
@@ -1222,7 +1314,8 @@ export class WebSocketServer {
                 toolId: part.id,
                 toolName: part.toolName,
                 delta: part.delta,
-                agentId: agentName
+                agentId: agentName,
+                messageId: agentMessageId  // NEW: Include message ID for pending message tracking
               }
 
               // Publish to event channel - subscribers handle delivery
@@ -1397,6 +1490,10 @@ export class WebSocketServer {
     const socketId = socket.id
     const abortController = this.stateManager.getAbortController(socketId)
 
+    // Get agent message ID for event tracking
+    const activeConversation = this.getConversation(socketId)
+    const agentMessageId = activeConversation?.context?.agentMessageId
+
     try {
       for await (const chunk of streamResult.textStream) {
         // Check if the stream was cancelled
@@ -1408,7 +1505,8 @@ export class WebSocketServer {
         const chunkData = {
           step: currentStep,
           source: 'ai_response',
-          agentId: agentName
+          agentId: agentName,
+          messageId: agentMessageId  // NEW: Include message ID for pending message tracking
         }
 
         // Publish to event channel - subscribers handle delivery and persistence
@@ -1536,6 +1634,14 @@ export class WebSocketServer {
    */
   private async handleChatMessage(socket: any, data: ChatMessage): Promise<void> {
     const socketId = socket.id
+
+    // Diagnostic: Log that message was received
+    this.logger.info('websocket.chat_message.received', {
+      socketId,
+      messageLength: data.message?.length ?? 0,
+      hasContext: !!data.context,
+      conversationId: (data.context as any)?.conversation?.conversationId
+    })
 
     // Queue this message to prevent concurrent handleChatMessage races
     // StateManager handles the queue chain, cleanup, and error isolation
@@ -2122,13 +2228,15 @@ export class WebSocketServer {
 
     // Publish final completion event - subscribers handle delivery and persistence
     // Always include commit hash (null if no commit was created)
+    const handoffConversation = this.getConversation(socketId)
     await this.publishToEventChannel(socketId, 'complete', '', {
       totalSteps: 1, // We don't track steps across handoffs
       usage: undefined,
       toolCalls: [],
       agentId: agentName,
       duration,
-      commitHash // null if no commit, hash string if commit was created
+      commitHash, // null if no commit, hash string if commit was created
+      messageId: handoffConversation?.context?.agentMessageId  // NEW: Include message ID for pending message tracking
     }, agentName)
 
     // Call completion handler
@@ -2473,7 +2581,8 @@ export class WebSocketServer {
         const stepStartData = {
           step: currentStep,
           stepType: 'reasoning',
-          agentId: agentName
+          agentId: agentName,
+          messageId: activeConversation?.context?.agentMessageId  // NEW: Include message ID for pending message tracking
         }
         await this.publishToEventChannel(socket.id, 'step_start', '', stepStartData, agentName)
 
@@ -2502,6 +2611,7 @@ export class WebSocketServer {
             input: {},
             output: `Invalid JSON in tool call: ${error.message}`
           }],
+          messageId: activeConversation?.context?.agentMessageId,  // NEW: Include message ID for pending message tracking
           usage: undefined,
           agentId: agentName
         }, agentName)
@@ -2561,7 +2671,8 @@ Please try again with corrected formatting.`
     const stepStartData = {
       step: currentStep,
       stepType: 'reasoning',
-      agentId: agentName
+      agentId: agentName,
+      messageId: activeConversation?.context?.agentMessageId  // NEW: Include message ID for pending message tracking
     }
     await this.publishToEventChannel(socket.id, 'step_start', '', stepStartData, agentName)
 
@@ -2749,7 +2860,8 @@ Please try again with corrected formatting.`
       isFinal: true,
       toolCalls: finalResult.toolCalls || [],
       usage: this.config.includeUsageData ? usageToTrack : undefined,
-      agentId: agentName
+      agentId: agentName,
+      messageId: activeConversation?.context?.agentMessageId  // NEW: Include message ID for pending message tracking
     }, agentName)
 
     // Only emit completion events if this is the final agent (no handoff pending)
@@ -2760,7 +2872,8 @@ Please try again with corrected formatting.`
         usage: this.config.includeUsageData ? usageToTrack : undefined,
         toolCalls: finalResult.toolCalls || [],
         agentId: agentName,
-        duration
+        duration,
+        messageId: activeConversation?.context?.agentMessageId  // NEW: Include message ID for pending message tracking
       }, agentName)
     }
 

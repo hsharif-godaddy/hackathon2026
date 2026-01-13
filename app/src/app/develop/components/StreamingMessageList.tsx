@@ -2,9 +2,7 @@
 
 import { useCallback,useEffect, useMemo, useRef, useState } from 'react'
 import Box from '@ux/box'
-import Button from '@ux/button'
 import Skeleton from '@ux/skeleton'
-import Spinner from '@ux/spinner'
 
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -13,11 +11,9 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import {
   type ChatMessage,
   type StreamingMessage as StreamingMessageType,
-  useConversationPagination,
   useCurrentAppId,
   useIsActivelyStreaming,
   useIsLoading,
-  useLoadMoreConversations,
 } from '@/stores/useStreamingConversationStore'
 import StreamingMessage from './StreamingMessage'
 
@@ -39,10 +35,8 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   const hasLoggedFirstResponseRef = useRef(false)
   const t = useTranslations();
 
-  // Store hooks for pagination and loading state
+  // Store hooks for loading state
   const isStreaming = useIsActivelyStreaming()
-  const loadMoreConversations = useLoadMoreConversations()
-  const pagination = useConversationPagination()
   const currentAppId = useCurrentAppId()
   const appIdFromParams = useAppIdFromParams()
   const isLoadingMessages = useIsLoading()
@@ -146,12 +140,6 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     }, 100)
   }, [checkIfNearBottom, userHasScrolledUp])
 
-  // Handle load more conversations
-  const handleLoadMore = async () => {
-    if (currentAppId && pagination.hasMore && !pagination.isLoading) {
-      await loadMoreConversations(currentAppId)
-    }
-  }
 
   // Reliable scroll to bottom function
   const scrollToBottom = useCallback((smooth = true, immediate = false) => {
@@ -350,28 +338,6 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
 
   return (
     <div ref={containerRef} className="flex flex-1 flex-col overflow-y-auto px-2 sm:px-3 md:px-0 pt-1.5 md:pt-0 gap-1" onScroll={handleScroll}>
-      {/* Load More Button */}
-      {pagination.hasMore && (
-        <div className="flex justify-center mb-2">
-          <Button
-            design="tertiary"
-            size="sm"
-            disabled={pagination.isLoading}
-            onClick={handleLoadMore}
-          >
-            <Box orientation="horizontal" gap="sm">
-              {pagination.isLoading ? (
-                <>
-                  <Spinner size="sm" /> Loading...
-                </>
-              ) : (
-                'Load previous conversations'
-              )}
-            </Box>
-          </Button>
-        </div>
-      )}
-
       {allMessages.map((message, index) => {
         let startTime: Date | undefined
 

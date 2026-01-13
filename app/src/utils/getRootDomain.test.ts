@@ -12,7 +12,6 @@ describe('getRootDomain', () => {
 
   describe('server-side rendering', () => {
     it('should return null when window is undefined', () => {
-      // @ts-expect-error - Intentionally setting window to undefined
       global.window = undefined;
       expect(getRootDomain()).toBeNull();
     });

@@ -60,7 +60,6 @@ describe('CompleteHandler', () => {
     // Machine handles UI state transitions via STREAM_COMPLETE event (Tier 1)
     // Adapter syncs: setWebSocketState, setStreamingState, setIsLoading
     expect(context.helpers.handleCommitComplete).toHaveBeenCalledWith('abcdef1')
-    expect(context.helpers.clearStoredSocketId).toHaveBeenCalled()
-    expect(context.helpers.clearConversationIdCookie).toHaveBeenCalledWith('app-123')
+    // Note: We no longer clear the stored socket ID on completion to enable recovery on page reload
   })
 })

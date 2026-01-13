@@ -210,9 +210,7 @@ vi.mock('@/lib/socketRegistry', () => ({
 
 vi.mock('@/services/AgentService', () => ({
   AgentService: {
-    getInstance: vi.fn(() => ({
-      getConversation: vi.fn()
-    }))
+    getInstance: vi.fn(() => ({}))
   }
 }));
 
@@ -492,7 +490,7 @@ describe('useStreamingWebSocket', () => {
   });
 
   describe('manual recovery housekeeping', () => {
-    it('clears stored socket id after stream completion', async () => {
+    it('preserves stored socket id after stream completion for recovery', async () => {
       vi.useFakeTimers()
       const { socket } = await setupWebSocketWithApp('app-123')
 
@@ -504,11 +502,12 @@ describe('useStreamingWebSocket', () => {
         data: { step: 1 }
       })
 
-      expect(sessionStorage.getItem('socket_id_app-123')).toBeNull()
+      // Socket ID should be preserved to enable recovery on page reload
+      expect(sessionStorage.getItem('socket_id_app-123')).toBe(socket.id)
       vi.useRealTimers()
     })
 
-    it('clears stored socket id after fatal error', async () => {
+    it('preserves stored socket id after fatal error for recovery', async () => {
       vi.useFakeTimers()
       const { socket } = await setupWebSocketWithApp('app-456')
 
@@ -520,7 +519,8 @@ describe('useStreamingWebSocket', () => {
         data: { errorType: 'BUDGET_EXCEEDED' }
       })
 
-      expect(sessionStorage.getItem('socket_id_app-456')).toBeNull()
+      // Socket ID should be preserved to enable recovery attempts
+      expect(sessionStorage.getItem('socket_id_app-456')).toBe(socket.id)
       vi.useRealTimers()
     })
 

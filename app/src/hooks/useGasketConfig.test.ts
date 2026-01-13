@@ -8,9 +8,23 @@ import { useGasketConfig, useGasketConfigSection } from './useGasketConfig';
 vi.mock('@/lib/gasket-config', () => ({
   getGasketConfig: vi.fn(),
   gasketConfig: {
-    env: 'test',
-    appUrl: 'https://test.com',
-    apiUrl: 'https://api.test.com',
+    auth: {
+      realm: 'idp',
+      risk: 'low',
+      type: ['basic'],
+      authType: 'mock',
+      isDisabled: false,
+      isMock: true,
+      isJWT: false,
+    },
+    sso: {
+      loginUrl: 'https://sso.test.com/login',
+      logoutUrl: 'https://sso.test.com/logout',
+    },
+    redirects: {
+      loginRedirectUrl: 'https://test.com/',
+      logoutRedirectUrl: 'https://test.com/',
+    },
   },
 }));
 
@@ -41,9 +55,23 @@ describe('useGasketConfig', () => {
 
   it('should load runtime config on client', async () => {
     const runtimeConfig = {
-      env: 'production',
-      appUrl: 'https://prod.com',
-      apiUrl: 'https://api.prod.com',
+      auth: {
+        realm: 'idp',
+        risk: 'low',
+        type: ['basic'],
+        authType: 'production',
+        isDisabled: false,
+        isMock: false,
+        isJWT: false,
+      },
+      sso: {
+        loginUrl: 'https://sso.prod.com/login',
+        logoutUrl: 'https://sso.prod.com/logout',
+      },
+      redirects: {
+        loginRedirectUrl: 'https://prod.com/',
+        logoutRedirectUrl: 'https://prod.com/',
+      },
     };
 
     vi.mocked(getGasketConfig).mockResolvedValue(runtimeConfig);
@@ -124,44 +152,72 @@ describe('useGasketConfigSection', () => {
   });
 
   it('should return specific config section', () => {
-    const { result } = renderHook(() => useGasketConfigSection('env'));
+    const { result } = renderHook(() => useGasketConfigSection('auth'));
 
-    expect(result.current.sectionConfig).toBe('test');
+    expect(result.current.sectionConfig).toEqual({
+      realm: 'idp',
+      risk: 'low',
+      type: ['basic'],
+      authType: 'mock',
+      isDisabled: false,
+      isMock: true,
+      isJWT: false,
+    });
     expect(result.current.config).toEqual(gasketConfig);
   });
 
-  it('should return appUrl section', () => {
-    const { result } = renderHook(() => useGasketConfigSection('appUrl'));
+  it('should return sso section', () => {
+    const { result } = renderHook(() => useGasketConfigSection('sso'));
 
-    expect(result.current.sectionConfig).toBe('https://test.com');
+    expect(result.current.sectionConfig).toEqual({
+      loginUrl: 'https://sso.test.com/login',
+      logoutUrl: 'https://sso.test.com/logout',
+    });
   });
 
-  it('should return apiUrl section', () => {
-    const { result } = renderHook(() => useGasketConfigSection('apiUrl'));
+  it('should return redirects section', () => {
+    const { result } = renderHook(() => useGasketConfigSection('redirects'));
 
-    expect(result.current.sectionConfig).toBe('https://api.test.com');
+    expect(result.current.sectionConfig).toEqual({
+      loginRedirectUrl: 'https://test.com/',
+      logoutRedirectUrl: 'https://test.com/',
+    });
   });
 
   it('should update section config when runtime config loads', async () => {
     const runtimeConfig = {
-      env: 'production',
-      appUrl: 'https://prod.com',
-      apiUrl: 'https://api.prod.com',
+      auth: {
+        realm: 'idp',
+        risk: 'low',
+        type: ['basic'],
+        authType: 'production',
+        isDisabled: false,
+        isMock: false,
+        isJWT: false,
+      },
+      sso: {
+        loginUrl: 'https://sso.prod.com/login',
+        logoutUrl: 'https://sso.prod.com/logout',
+      },
+      redirects: {
+        loginRedirectUrl: 'https://prod.com/',
+        logoutRedirectUrl: 'https://prod.com/',
+      },
     };
 
     vi.mocked(getGasketConfig).mockResolvedValue(runtimeConfig);
 
-    const { result } = renderHook(() => useGasketConfigSection('env'));
+    const { result } = renderHook(() => useGasketConfigSection('auth'));
 
-    expect(result.current.sectionConfig).toBe('test');
+    expect(result.current.sectionConfig.authType).toBe('mock');
 
     await waitFor(() => {
-      expect(result.current.sectionConfig).toBe('production');
+      expect(result.current.sectionConfig.authType).toBe('production');
     });
   });
 
   it('should include all useGasketConfig return values', () => {
-    const { result } = renderHook(() => useGasketConfigSection('env'));
+    const { result } = renderHook(() => useGasketConfigSection('auth'));
 
     expect(result.current).toHaveProperty('config');
     expect(result.current).toHaveProperty('isLoading');

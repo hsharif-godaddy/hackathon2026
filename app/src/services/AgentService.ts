@@ -1,21 +1,12 @@
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
-import type { AgentConversationMessagePayload } from '@/types/agent-conversation'
 
 export interface Conversation {
   id: string
   appId: string
   updatedAt: string
   messageCount?: number
-}
-
-export interface ConversationDetail {
-  id: string
-  appId: string
-  messages?: AgentConversationMessagePayload[]
-  createdAt: string
-  updatedAt: string
 }
 
 export class AgentService {
@@ -72,26 +63,6 @@ export class AgentService {
       });
       return []
     }
-  }
-
-  /**
-   * Load a specific conversation
-   */
-  async getConversation(appId: string, conversationId: string): Promise<ConversationDetail> {
-    // Conversations endpoint is global under /agent/, not app-specific
-    const { dynamicApiConfigService } = await import('@/config/dynamic-api')
-    const config = await dynamicApiConfigService.getConfigForSite(appId)
-    // Remove the app-specific path and use the base agent URL
-    const baseAgentUrl = config.agentUrl.replace(`/apps/${appId}`, '')
-    const apiUrl = `${baseAgentUrl}/agent/conversations/${appId}/${conversationId}`
-    
-    const response = await agentFetch(apiUrl, { siteId: appId })
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch conversation: ${response.status}`)
-    }
-    
-    return response.json()
   }
 
   /**

@@ -13,6 +13,14 @@ import {
 import type { ConnectionManager, ConnectionCallbacks } from '../ConnectionManager'
 import type { ChatMessageBuilder } from '../ChatMessageBuilder'
 import type { Socket } from 'socket.io-client'
+import { getConversationIdFromCookie } from '@/hooks/websocket/useWebSocketHelpers'
+
+// Mock conversation ID helpers
+vi.mock('@/hooks/websocket/useWebSocketHelpers', () => ({
+  getConversationIdFromCookie: vi.fn(),
+  clearConversationIdCookie: vi.fn(),
+  setConversationIdCookie: vi.fn(),
+}))
 
 describe('StreamingWebSocketController', () => {
   let controller: StreamingWebSocketController
@@ -20,10 +28,13 @@ describe('StreamingWebSocketController', () => {
   let mockMessageBuilder: ChatMessageBuilder
   let mockActions: any
   let mockHelpers: any
-  let mockGetStoreState: () => any
+  let mockGetStoreState: ReturnType<typeof vi.fn>
   let mockSocket: Socket
 
   beforeEach(() => {
+    // Reset conversation ID helper mocks
+    vi.mocked(getConversationIdFromCookie).mockReturnValue(null)
+
     // Mock ConnectionManager
     mockConnectionManager = {
       connect: vi.fn().mockResolvedValue(undefined),
@@ -78,7 +89,6 @@ describe('StreamingWebSocketController', () => {
         retryStartedAt: null,
       },
       buildErrorContext: null,
-      conversations: [],
       startConnectionRetry: vi.fn(),
       clearConnectionRetry: vi.fn(),
       setEscalationTimeout: vi.fn(),
@@ -211,7 +221,6 @@ describe('StreamingWebSocketController', () => {
           retryStartedAt: null,
         },
         buildErrorContext: null,
-        conversations: [{ appId: 'app-123', id: 'conv-456' }],
         startConnectionRetry: vi.fn(),
         clearConnectionRetry: vi.fn(),
         setEscalationTimeout: vi.fn(),
@@ -224,6 +233,9 @@ describe('StreamingWebSocketController', () => {
     })
 
     it('should build message using ChatMessageBuilder', async () => {
+      // Mock cookie to return conversationId
+      vi.mocked(getConversationIdFromCookie).mockReturnValue('conv-456')
+
       await controller.sendMessage({
         content: 'Hello world',
         visualContext: null,
@@ -397,7 +409,6 @@ describe('StreamingWebSocketController', () => {
           retryStartedAt: null,
         },
         buildErrorContext: null,
-        conversations: [],
         startConnectionRetry: vi.fn(),
         clearConnectionRetry: vi.fn(),
         setEscalationTimeout: vi.fn(),
@@ -422,6 +433,26 @@ describe('StreamingWebSocketController', () => {
       // Controller initiates retry mechanism (not lifecycle state)
       expect(storeState.startConnectionRetry).toHaveBeenCalledWith('socket-123')
       // Note: Lifecycle state (setWebSocketState) handled by StoreSyncAdapter
+    })
+  })
+
+  describe('replay deduplication', () => {
+    it('forces cleanup after timeout to prevent leaks', () => {
+      vi.useFakeTimers()
+      ;(controller as any).serverConfigRef.current = {
+        ackTimeout: 1000,
+        streamRecoveryWindow: 60_000,
+      }
+
+      controller.startReplayDeduplication()
+      expect(controller.isInReplayMode()).toBe(true)
+
+      // Timeout should fire at max(ackTimeout * 2, 60s) → 60s here
+      vi.advanceTimersByTime(61_000)
+
+      expect(controller.isInReplayMode()).toBe(false)
+
+      vi.useRealTimers()
     })
   })
 
@@ -455,15 +486,15 @@ describe('StreamingWebSocketController', () => {
 
       const firstHelper = vi.fn()
       const secondHelper = vi.fn()
-      mockHelpers.clearStoredSocketId = firstHelper
+      mockHelpers.handleCommitComplete = firstHelper
 
       // First connection - sets up handlers with first helper
       await controller.connect('app-123')
       const callbacks1 = (mockConnectionManager.connect as any).mock.calls[0][1] as ConnectionCallbacks
       callbacks1.onSocketReady?.(mockSocket, { isNew: true })
 
-      // Simulate 'complete' message which calls clearStoredSocketId
-      const messageHandler = mockSocket.on.mock.calls.find((call: any) => call[0] === 'message')?.[1]
+      // Simulate 'complete' message which calls handleCommitComplete
+      const messageHandler = (mockSocket.on as any).mock.calls.find((call: any) => call[0] === 'message')?.[1]
       expect(messageHandler).toBeDefined()
       await messageHandler({ type: 'complete', content: '', data: {} })
 
@@ -474,7 +505,7 @@ describe('StreamingWebSocketController', () => {
       // Now simulate reconnection with updated helpers (as would happen with appId change)
       firstHelper.mockClear()
       secondHelper.mockClear()
-      mockHelpers.clearStoredSocketId = secondHelper
+      mockHelpers.handleCommitComplete = secondHelper
 
       // Create new socket to simulate reconnection
       const newSocket = {

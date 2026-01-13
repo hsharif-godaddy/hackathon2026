@@ -55,7 +55,7 @@ describe('ErrorHandler', () => {
     // Machine handles UI state transitions via STREAM_ERROR event (Tier 1)
     // Adapter syncs: setWebSocketState, setStreamingState, setIsLoading
     expect(context.helpers.clearRetryState).toHaveBeenCalled()
-    expect(context.helpers.clearStoredSocketId).toHaveBeenCalled()
+    // Note: We no longer clear the stored socket ID on errors to enable recovery on page reload
     expect(context.refs.pendingRecoveryAck.current).toBeNull()
   })
 

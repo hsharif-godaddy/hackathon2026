@@ -52,6 +52,11 @@ export class ReplayCompleteHandler implements MessageHandler {
       // Send REPLAY_COMPLETE event to machine
       context.machine.send({ type: 'REPLAY_COMPLETE' })
 
+      // NEW: Clear deduplication tracking via controller
+      if (context.refs.controller) {
+        context.refs.controller.clearReplayDeduplication()
+      }
+
       // Force send ack - server is authoritative on replay completion
       context.helpers.maybeSendRecoveryAck(context.socket, true)
     }

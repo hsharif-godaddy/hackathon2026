@@ -6,7 +6,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { cleanupSiteCreationStore,useSiteCreationStore } from '@/stores/useSiteCreationStore'
 import type { Site } from '@/stores/useSitesStore'
 import {
-  useLoadConversationHistory,
+  useHistoryLoadingComplete,
   useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
 import { AppErrorCode } from '@/types/error-codes'
@@ -336,6 +336,9 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // even after sessionStorage is cleared (for showing preview loader until first edit)
   const isActiveCreationSession = useRef(false)
 
+  // Timeout for history loading to prevent indefinite hanging
+  const historyLoadingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   // -------------------------------------------------------------------------
   // STORE SUBSCRIPTIONS (Read-only)
   // -------------------------------------------------------------------------
@@ -360,7 +363,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   const isStreamingMessage = useStreamingConversationStore((state) => state.isLoading)
   const messages = useStreamingConversationStore((state) => state.messages)
   const activeStream = useStreamingConversationStore((state) => state.activeStream)
-  const loadConversationHistory = useLoadConversationHistory()
+  const historyLoadingComplete = useHistoryLoadingComplete()
 
   // -------------------------------------------------------------------------
   // DERIVED STATE (Context)
@@ -552,47 +555,127 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     }
   }, [phase, appId, realAppId, initializePage, router])
 
-  // Step 6: Wait for page loading to complete, then load conversation history
+  // Step 6: Wait for page loading to complete, then wait for WebSocket history to load
+  // History is now loaded via WebSocket (not HTTP) during connection/recovery
   useEffect(() => {
     if (phase === 'loading-history' && appId && loadingPhase === 'ready') {
       const effectiveAppId = realAppId || appId
-      logger.debug('initialization.history.loading', {
+      logger.debug('initialization.history.waiting', {
         appId: effectiveAppId,
-        message: 'Loading conversation history'
+        message: 'Waiting for WebSocket history to complete'
       })
-      loadConversationHistory(effectiveAppId)
-        .then(() => {
-          // Only proceed if we're still on the same appId
-          if (initializingAppIdRef.current !== effectiveAppId) {
-            return
-          }
-
-          setPhase('ready')
-          // Determine initial subPhase based on context
-          if (context.hasInitialPrompt && !context.initialPromptSent) {
-            setSubPhase('waiting-for-websocket')
-          } else {
-            setSubPhase('active')
-          }
-        })
-        .catch(error => {
-          logger.error('initialization.history.error', { appId: effectiveAppId, error })
-
-          // Only update state if we're still on the same appId
-          if (initializingAppIdRef.current !== effectiveAppId) {
-            return
-          }
-
-          // Don't fail - history is optional
-          setPhase('ready')
-          if (context.hasInitialPrompt && !context.initialPromptSent) {
-            setSubPhase('waiting-for-websocket')
-          } else {
-            setSubPhase('active')
-          }
-        })
+      // History loading happens via WebSocket - just wait for the flag
+      // No HTTP call needed
     }
-  }, [phase, appId, realAppId, loadingPhase, loadConversationHistory, context.hasInitialPrompt, context.initialPromptSent])
+  }, [phase, appId, realAppId, loadingPhase])
+
+  // Step 7: Wait for history loading to complete (via WebSocket)
+  useEffect(() => {
+    if (phase === 'loading-history' && historyLoadingComplete) {
+      const effectiveAppId = realAppId || appId
+
+      logger.debug('initialization.history.complete', {
+        appId: effectiveAppId,
+        message: 'WebSocket history loading complete'
+      })
+
+      // Clear timeout if history completes normally
+      if (historyLoadingTimeoutRef.current) {
+        clearTimeout(historyLoadingTimeoutRef.current)
+        historyLoadingTimeoutRef.current = null
+      }
+
+      // Only proceed if we're still on the same appId
+      if (initializingAppIdRef.current !== effectiveAppId) {
+        return
+      }
+
+      setPhase('ready')
+      // Determine initial subPhase based on context
+      if (context.hasInitialPrompt && !context.initialPromptSent) {
+        setSubPhase('waiting-for-websocket')
+      } else {
+        setSubPhase('active')
+      }
+    }
+  }, [phase, historyLoadingComplete, appId, realAppId, context.hasInitialPrompt, context.initialPromptSent])
+
+  // Step 7a: Set timeout for history loading (30 seconds)
+  useEffect(() => {
+    if (phase === 'loading-history' && appId && loadingPhase === 'ready') {
+      const effectiveAppId = realAppId || appId
+
+      // Clear any existing timeout
+      if (historyLoadingTimeoutRef.current) {
+        clearTimeout(historyLoadingTimeoutRef.current)
+      }
+
+      // Set 30-second timeout
+      historyLoadingTimeoutRef.current = setTimeout(() => {
+        logger.warn('initialization.history.timeout', {
+          appId: effectiveAppId,
+          message: 'History loading timed out after 30s, proceeding without history'
+        })
+
+        // Only proceed if we're still on the same appId
+        if (initializingAppIdRef.current !== effectiveAppId) {
+          return
+        }
+
+        // Proceed to ready state even without history
+        setPhase('ready')
+        if (context.hasInitialPrompt && !context.initialPromptSent) {
+          setSubPhase('waiting-for-websocket')
+        } else {
+          setSubPhase('active')
+        }
+      }, 30000) // 30 seconds
+
+      return () => {
+        if (historyLoadingTimeoutRef.current) {
+          clearTimeout(historyLoadingTimeoutRef.current)
+          historyLoadingTimeoutRef.current = null
+        }
+      }
+    }
+  }, [phase, appId, realAppId, loadingPhase, context.hasInitialPrompt, context.initialPromptSent])
+
+  // Step 7b: Handle WebSocket errors during history loading
+  useEffect(() => {
+    if (phase === 'loading-history' && webSocketError) {
+      const effectiveAppId = realAppId || appId
+
+      logger.error('initialization.history.websocket_error', {
+        appId: effectiveAppId,
+        errorType: webSocketError.type,
+        message: 'WebSocket error during history loading, proceeding without history'
+      })
+
+      // Clear timeout
+      if (historyLoadingTimeoutRef.current) {
+        clearTimeout(historyLoadingTimeoutRef.current)
+        historyLoadingTimeoutRef.current = null
+      }
+
+      // Only proceed if we're still on the same appId
+      if (initializingAppIdRef.current !== effectiveAppId) {
+        return
+      }
+
+      // Handle APP_NOT_FOUND specially - already handled by other effect
+      if (webSocketError.type === 'APP_NOT_FOUND') {
+        return
+      }
+
+      // For other errors, proceed to ready state with degraded functionality
+      setPhase('ready')
+      if (context.hasInitialPrompt && !context.initialPromptSent) {
+        setSubPhase('waiting-for-websocket')
+      } else {
+        setSubPhase('active')
+      }
+    }
+  }, [phase, webSocketError, appId, realAppId, context.hasInitialPrompt, context.initialPromptSent])
 
   // NEW: Track WebSocket connection state transitions
   useEffect(() => {
@@ -670,6 +753,12 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
         cleanupSiteCreationStore()
       }
       hasInitialized.current = false
+
+      // Clear history loading timeout
+      if (historyLoadingTimeoutRef.current) {
+        clearTimeout(historyLoadingTimeoutRef.current)
+        historyLoadingTimeoutRef.current = null
+      }
     }
   }, [isJobId])
 

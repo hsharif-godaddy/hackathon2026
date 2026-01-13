@@ -14,7 +14,7 @@ vi.mock('@monaco-editor/react', () => ({
 // Mock AppService
 vi.mock('@/services/AppService', () => ({
   appService: {
-    getFileTree: vi.fn(),
+    getFiles: vi.fn(),
     getFileContents: vi.fn(),
     saveFile: vi.fn(),
     ensureAppIsRunning: vi.fn(),
@@ -52,7 +52,7 @@ describe('PreviewCode', () => {
   it('should render without crashing', async () => {
     const { appService } = await import('@/services/AppService');
     vi.mocked(appService.ensureAppIsRunning).mockResolvedValue(undefined);
-    vi.mocked(appService.getFileTree).mockResolvedValue([]);
+    vi.mocked(appService.getFiles).mockResolvedValue({ entries: [] });
 
     renderWithProviders(<PreviewCode appId="test-app-123" />);
 
@@ -63,7 +63,7 @@ describe('PreviewCode', () => {
 
   it('should show loading state initially', async () => {
     const { appService } = await import('@/services/AppService');
-    vi.mocked(appService.getFileTree).mockImplementation(
+    vi.mocked(appService.getFiles).mockImplementation(
       () => new Promise(() => {}) // Never resolves
     );
 

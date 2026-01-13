@@ -8,6 +8,7 @@
 import { create } from 'zustand'
 
 import { logger } from '@/lib/request-context'
+import { clearConversationIdCookie, setConversationIdCookie } from '@/hooks/websocket/useWebSocketHelpers'
 import type { StructuredError } from '@/types/errors'
 import type { AgentConversationMessagePayload, AgentSegmentPayload, AgentToolCallPayload } from '@/types/agent-conversation'
 import type { AiEditContext } from '../app/develop/components/types'
@@ -52,6 +53,12 @@ export interface ToolCall {
   endTime?: number
   duration?: number
   partialInput?: string  // Accumulated partial input from deltas
+}
+
+export interface AgentSummary {
+  id: string
+  name?: string
+  description?: string
 }
 
 // Streaming message (actively being built)
@@ -158,16 +165,9 @@ export interface StreamingConversationState {
   // Additional context
   aiEditContext: AiEditContext | null
   buildErrorContext: { error: string; details: string; exitCode?: number } | null
+  availableAgents: AgentSummary[]
+  defaultAgentId: string | null
   developmentPlan: PlanItem[]
-  conversations: Conversation[]
-
-  // Pagination state
-  conversationPagination: {
-    total: number
-    loaded: number
-    hasMore: boolean
-    isLoading: boolean
-  }
 
   // Per-app chat cache: messages and active streams
   appChatHistory: Record<string, { messages: ChatMessage[], activeStream: StreamingMessage | null }>
@@ -182,6 +182,9 @@ export interface StreamingConversationState {
   recoveryState: RecoveryState
   retryState: RetryState
   lastError: Error | null
+
+  // History loading state (for WebSocket history streaming)
+  historyLoadingComplete: boolean
 
   // === CORE STREAMING ACTIONS ===
 
@@ -211,8 +214,8 @@ export interface StreamingConversationState {
   setIsLoading: (loading: boolean) => void
   setAiEditContext: (context: AiEditContext | null) => void
   setBuildErrorContext: (context: { error: string; details: string; exitCode?: number } | null) => void
+  setAgentCatalog: (agents: AgentSummary[], defaultAgentId: string | null) => void
   setDevelopmentPlan: (plan: PlanItem[]) => void
-  setConversations: (conversations: Conversation[]) => void
 
   // === WEBSOCKET ACTIONS ===
 
@@ -224,6 +227,9 @@ export interface StreamingConversationState {
   setRetryState: (state: RetryState) => void
   setError: (error: Error) => void
   startStream: (conversationId: string, messageId: string) => void
+
+  // History loading actions
+  setHistoryLoadingComplete: (complete: boolean) => void
 
   // === CONNECTION RETRY ACTIONS ===
 
@@ -242,8 +248,22 @@ export interface StreamingConversationState {
 
   getMessageCount: () => number
   autoSendInitialMessage: (message: string, appId: string) => boolean
-  loadConversationHistory: (appId: string) => Promise<void>
-  loadMoreConversations: (appId: string) => Promise<void>
+
+  // === UNIFIED HISTORY PERSISTENCE ===
+
+  persistHistory: (params: {
+    appId: string
+    messages: ChatMessage[]
+    activeStream?: StreamingMessage | null
+    mode: 'replace' | 'append' | 'prepend'
+  }) => void
+
+  loadAndPersistHistory: (params: {
+    appId: string
+    rawMessages: any[]
+    mode: 'replace' | 'append' | 'prepend'
+    detectInProgress?: boolean
+  }) => void
 }
 
 // Helper function to generate unique IDs
@@ -352,14 +372,9 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   isLoading: false,
   aiEditContext: null,
   buildErrorContext: null,
+  availableAgents: [],
+  defaultAgentId: null,
   developmentPlan: [],
-  conversations: [],
-  conversationPagination: {
-    total: 0,
-    loaded: 0,
-    hasMore: false,
-    isLoading: false
-  },
   appChatHistory: {},
   websocket: {
     connected: false,
@@ -382,6 +397,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     retryCount: 0
   },
   lastError: null,
+  historyLoadingComplete: false,
 
   // === CORE STREAMING ACTIONS ===
 
@@ -796,8 +812,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         inputValue: '',
         aiEditContext: null,
         buildErrorContext: null,
-        conversations: [],
-        conversationPagination: { total: 0, loaded: 0, hasMore: false, isLoading: false },
+        availableAgents: [],
+        defaultAgentId: null,
         appChatHistory: newAppChatHistory,
         websocket: { connected: false, status: 'idle' as const },
         connectionRetry: {
@@ -806,7 +822,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
           wasStreamingOnDisconnect: false,
           disconnectSocketId: null,
           escalationTimeoutId: null
-        }
+        },
+        historyLoadingComplete: false
       };
     });
   },
@@ -814,8 +831,11 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   setIsLoading: (loading) => set({ isLoading: loading }),
   setAiEditContext: (context) => set({ aiEditContext: context }),
   setBuildErrorContext: (context) => set({ buildErrorContext: context }),
+  setAgentCatalog: (agents, defaultAgentId) => set({
+    availableAgents: agents,
+    defaultAgentId: defaultAgentId ?? null
+  }),
   setDevelopmentPlan: (plan) => set({ developmentPlan: plan }),
-  setConversations: (conversations) => set({ conversations }),
 
   // === WEBSOCKET ACTIONS ===
 
@@ -843,6 +863,9 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       // This action is called by StoreSyncAdapter to sync machine state to store
     })
   },
+
+  // History loading actions
+  setHistoryLoadingComplete: (complete) => set({ historyLoadingComplete: complete }),
 
   // === CONNECTION RETRY ACTIONS ===
 
@@ -946,13 +969,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       inputValue: '',
       isLoading: false,
       aiEditContext: null,
-      conversations: [],
-      conversationPagination: {
-        total: 0,
-        loaded: 0,
-        hasMore: false,
-        isLoading: false
-      },
       appChatHistory: {},
       websocket: { connected: false, status: 'idle' },
       connectionRetry: {
@@ -990,233 +1006,115 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     return false
   },
 
-  // Load conversation history from backend
-  loadConversationHistory: async (appId: string) => {
-    const currentState = get();
+  // === UNIFIED HISTORY PERSISTENCE ===
 
-    // Don't load if already loading
-    if (currentState.isLoading) return;
+  /**
+   * Unified action for persisting history to both messages and appChatHistory
+   * Used by HTTP loaders and WebSocket handlers to maintain consistency
+   */
+  persistHistory: (params: {
+    appId: string
+    messages: ChatMessage[]
+    activeStream?: StreamingMessage | null
+    mode: 'replace' | 'append' | 'prepend'
+  }) => {
+    const { appId, messages, activeStream = null, mode } = params
 
-    // Don't load if we already have messages (either in current state or cache)
-    if (currentState.currentAppId === appId && currentState.messages.length > 0) return;
+    set((state) => {
+      let updatedMessages: ChatMessage[]
 
-    const cached = currentState.appChatHistory[appId];
-    if (cached?.messages?.length > 0) return;
-
-    try {
-      set({ isLoading: true });
-
-      // Add timeout protection
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Conversation history request timeout')), 10000)
-      })
-
-      // Import buildDynamicAgentUrl dynamically to avoid circular imports
-      const { buildDynamicAgentUrl } = await import('../config/dynamic-api')
-
-      // Build dynamic agent URL for conversations endpoint (no /apps/{appId}/ prefix)
-      const conversationsUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}?limit=1&offset=0`, appId)
-
-      // Import agentFetch dynamically to avoid circular imports
-      const { agentFetch } = await import('../lib/agent-fetch')
-
-      // Fetch conversations for this app with timeout protection
-      const response = await Promise.race([
-        agentFetch(conversationsUrl, { siteId: appId }),
-        timeoutPromise
-      ]) as Response
-      if (!response.ok) {
-        throw new Error(`Failed to fetch conversations: ${response.status}`)
+      switch (mode) {
+        case 'replace':
+          updatedMessages = messages
+          break
+        case 'append':
+          updatedMessages = [...state.messages, ...messages]
+          break
+        case 'prepend':
+          // Prepend and sort by timestamp (for loading older messages)
+          updatedMessages = [...messages, ...state.messages].sort(
+            (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
+          )
+          break
       }
 
-      const data = await response.json()
-      const conversations = data.conversations || []
-
-      if (conversations.length === 0) {
-        set((state) => ({
-          isLoading: false,
-          conversationPagination: {
-            total: data.pagination?.total || 0,
-            loaded: 0,
-            hasMore: false,
-            isLoading: false
-          },
-          // Ensure we cache empty results to prevent repeated attempts
-          appChatHistory: { ...state.appChatHistory, [appId]: { messages: [], activeStream: null } }
-        }))
-        return
-      }
-
-      // Get the most recent conversation (conversations are ordered by updated_at DESC)
-      const latestConversation = conversations[0]
-
-      // Build dynamic agent URL for messages endpoint (no /apps/{appId}/ prefix)
-      const messagesUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}/${latestConversation.id}`, appId)
-
-      // Fetch messages for the latest conversation
-      const messagesResponse = await agentFetch(messagesUrl, { siteId: appId })
-      if (!messagesResponse.ok) {
-        throw new Error(`Failed to fetch messages: ${messagesResponse.status}`)
-      }
-
-      const conversationData = await messagesResponse.json()
-      const messages = conversationData.messages || []
-
-      // Convert backend messages to frontend format (no normalization needed - backend uses correct field names)
-      const convertedMessages = normalizeConversationMessages(messages)
-
-      // Convert conversation dates from strings to Date objects
-      const convertedConversations: Conversation[] = conversations.map((conv: any) => ({
-        ...conv,
-        createdAt: new Date(conv.createdAt),
-        updatedAt: new Date(conv.updatedAt)
-      }))
-
-      // Update the store with loaded messages and cache them
-      set((state) => ({
-        messages: convertedMessages,
-        conversations: convertedConversations,
-        conversationPagination: {
-          total: data.pagination?.total || 0,
-          loaded: convertedConversations.length,
-          hasMore: data.pagination?.hasMore || false,
-          isLoading: false
-        },
+      return {
+        messages: updatedMessages,
         appChatHistory: {
           ...state.appChatHistory,
-          [appId]: { messages: convertedMessages, activeStream: null }
-        },
-        isLoading: false
-      }));
+          [appId]: {
+            messages: updatedMessages,
+            activeStream: activeStream ?? state.activeStream
+          }
+        }
+      }
+    })
 
-      logger.debug('streaming-store.load-history.success', {
-        appId,
-        conversationCount: convertedConversations.length,
-        messageCount: convertedMessages.length
-      })
-
-    } catch (error) {
-      logger.error('streaming-store.load-history.failure', {
-        appId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      set((state) => ({
-        isLoading: false,
-        conversationPagination: {
-          total: 0,
-          loaded: 0,
-          hasMore: false,
-          isLoading: false
-        },
-        // Cache empty result to prevent repeated failed attempts
-        appChatHistory: { ...state.appChatHistory, [appId]: { messages: [], activeStream: null } }
-      }))
-
-      // Don't throw - just log and continue with empty history
-      logger.warn('streaming-store.load-history.continue-empty', { appId })
-    }
+    logger.debug('streaming-store.history-persisted', {
+      appId,
+      messageCount: messages.length,
+      totalMessages: get().messages.length,
+      mode
+    })
   },
 
-  // Load more conversations from previous history
-  loadMoreConversations: async (appId: string) => {
-    const state = get()
+  /**
+   * Unified action for normalizing and persisting history
+   * Handles in-progress message detection and extraction
+   */
+  loadAndPersistHistory: (params: {
+    appId: string
+    rawMessages: any[]
+    mode: 'replace' | 'append' | 'prepend'
+    detectInProgress?: boolean
+  }) => {
+    const { appId, rawMessages, mode, detectInProgress = false } = params
+    const normalized = normalizeConversationMessages(rawMessages)
 
-    // Don't load if already loading or no more to load
-    if (state.conversationPagination.isLoading || !state.conversationPagination.hasMore) return
+    let messages = normalized
+    let activeStream: StreamingMessage | null = null
 
-    try {
-      set((state) => ({
-        conversationPagination: {
-          ...state.conversationPagination,
-          isLoading: true
+    // Extract in-progress message if requested
+    if (detectInProgress && normalized.length > 0) {
+      const lastMsg = normalized[normalized.length - 1]
+      const isInProgress = lastMsg.role === 'assistant' &&
+        (lastMsg.metadata as any)?.inProgress === true
+
+      if (isInProgress) {
+        activeStream = {
+          id: lastMsg.id,
+          role: 'assistant',
+          content: lastMsg.content || '',
+          segments: lastMsg.segments || [],
+          toolCalls: lastMsg.toolCalls || [],
+          timestamp: lastMsg.timestamp,
+          isComplete: false,
         }
-      }))
+        messages = normalized.slice(0, -1)
 
-      // Import buildDynamicAgentUrl dynamically to avoid circular imports
-      const { buildDynamicAgentUrl } = await import('../config/dynamic-api')
-
-      const offset = state.conversationPagination.loaded
-      const limit = 5 // Load 5 more conversations at a time
-
-      // Import agentFetch dynamically to avoid circular imports
-      const { agentFetch } = await import('../lib/agent-fetch')
-
-      // Fetch older conversations
-      const conversationsUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}?limit=${limit}&offset=${offset}`, appId)
-
-      const response = await agentFetch(conversationsUrl, { siteId: appId })
-      if (!response.ok) {
-        throw new Error(`Failed to fetch more conversations: ${response.status}`)
+        logger.debug('streaming-store.in-progress-detected', {
+          messageId: activeStream.id,
+          contentLength: activeStream.content.length
+        })
       }
-
-      const data = await response.json()
-      const newConversations = data.conversations || []
-
-      if (newConversations.length === 0) {
-        set((state) => ({
-          conversationPagination: {
-            ...state.conversationPagination,
-            hasMore: false,
-            isLoading: false
-          }
-        }))
-        return
-      }
-
-      // Convert conversations
-      const convertedNewConversations = newConversations.map((conv: any) => ({
-        ...conv,
-        createdAt: new Date(conv.createdAt),
-        updatedAt: new Date(conv.updatedAt)
-      }))
-
-      // Load messages for all new conversations
-      const conversationIds = newConversations.map((conv: any) => conv.id).join(',')
-      const messagesUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}/messages?conversationIds=${conversationIds}`, appId)
-
-      const messagesResponse = await agentFetch(messagesUrl, { siteId: appId })
-      if (!messagesResponse.ok) {
-        throw new Error(`Failed to fetch conversation messages: ${messagesResponse.status}`)
-      }
-
-      const messagesData = await messagesResponse.json()
-      const newMessages = messagesData.messages || []
-
-      // Convert backend messages to frontend format
-      const convertedNewMessages = normalizeConversationMessages(newMessages)
-
-      // Update store with new conversations and messages
-      set((state) => {
-        const combinedMessages = [...convertedNewMessages, ...state.messages].sort(
-          (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
-        );
-
-        return {
-          messages: combinedMessages,
-          conversations: [...state.conversations, ...convertedNewConversations],
-          conversationPagination: {
-            total: data.pagination?.total || state.conversationPagination.total,
-            loaded: state.conversationPagination.loaded + convertedNewConversations.length,
-            hasMore: data.pagination?.hasMore || false,
-            isLoading: false
-          },
-          appChatHistory: {
-            ...state.appChatHistory,
-            [appId]: { messages: combinedMessages, activeStream: state.activeStream }
-          }
-        };
-      });
-
-    } catch (error) {
-      logger.error('streaming-store.load-more.failure', { error: error instanceof Error ? error.message : String(error) })
-      set((state) => ({
-        conversationPagination: {
-          ...state.conversationPagination,
-          isLoading: false
-        }
-      }))
     }
-  }
+
+    get().persistHistory({
+      appId,
+      messages,
+      activeStream,
+      mode
+    })
+
+    // If we detected an in-progress message, also update the streaming state
+    if (activeStream) {
+      set({
+        activeStream,
+        streamingState: 'streaming',
+        isLoading: true,
+      })
+    }
+  },
 }))
 
 // === SELECTORS ===
@@ -1249,20 +1147,21 @@ export const useMarkUpstreamError = () => useStreamingConversationStore(state =>
 export const useMarkBudgetExceeded = () => useStreamingConversationStore(state => state.markBudgetExceeded)
 export const useFinalizeStream = () => useStreamingConversationStore(state => state.finalizeStream)
 export const useAutoSendInitialMessage = () => useStreamingConversationStore(state => state.autoSendInitialMessage)
-export const useLoadConversationHistory = () => useStreamingConversationStore(state => state.loadConversationHistory)
-export const useLoadMoreConversations = () => useStreamingConversationStore(state => state.loadMoreConversations)
-export const useConversationPagination = () => useStreamingConversationStore(state => state.conversationPagination)
 
 export const useSetCurrentAppId = () => useStreamingConversationStore(state => state.setCurrentAppId)
 export const useSetInputValue = () => useStreamingConversationStore(state => state.setInputValue)
 export const useSetIsLoading = () => useStreamingConversationStore(state => state.setIsLoading)
 export const useSetAiEditContext = () => useStreamingConversationStore(state => state.setAiEditContext)
 export const useSetBuildErrorContext = () => useStreamingConversationStore(state => state.setBuildErrorContext)
+export const useSetAgentCatalog = () => useStreamingConversationStore(state => state.setAgentCatalog)
 export const useSetDevelopmentPlan = () => useStreamingConversationStore(state => state.setDevelopmentPlan)
-export const useSetConversations = () => useStreamingConversationStore(state => state.setConversations)
 
 export const useSetWebSocketState = () => useStreamingConversationStore(state => state.setWebSocketState)
 export const useSetStreamingState = () => useStreamingConversationStore(state => state.setStreamingState)
+
+// History loading selectors
+export const useHistoryLoadingComplete = () => useStreamingConversationStore(state => state.historyLoadingComplete)
+export const useSetHistoryLoadingComplete = () => useStreamingConversationStore(state => state.setHistoryLoadingComplete)
 
 // Connection retry selectors
 export const useConnectionRetry = () => useStreamingConversationStore(state => state.connectionRetry)
@@ -1274,4 +1173,5 @@ export const useCheckStaleRetry = () => useStreamingConversationStore(state => s
 export const useDevelopmentPlan = () => useStreamingConversationStore(state => state.developmentPlan)
 export const useAiEditContext = () => useStreamingConversationStore(state => state.aiEditContext)
 export const useBuildErrorContext = () => useStreamingConversationStore(state => state.buildErrorContext)
-export const useConversations = () => useStreamingConversationStore(state => state.conversations)
+export const useAvailableAgents = () => useStreamingConversationStore(state => state.availableAgents)
+export const useDefaultAgentId = () => useStreamingConversationStore(state => state.defaultAgentId)

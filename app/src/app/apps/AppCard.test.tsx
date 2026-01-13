@@ -195,7 +195,7 @@ describe('AppCard', () => {
     });
 
     it('should show deleting state while delete is in progress', async () => {
-      const deleteSite = vi.fn(() => new Promise(() => {}));
+      const deleteSite = vi.fn((): Promise<boolean> => new Promise(() => {}));
       useSitesStore.setState({ deleteSite });
 
       const { user } = renderWithProviders(<AppCard site={mockSite} />);

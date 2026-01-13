@@ -33,6 +33,8 @@ export const RECOVERY_CONTROL_MESSAGE_TYPES = [
   'replay_complete',
   'catchup_status',
   'catchup_complete',
+  'history_message',
+  'history_complete',
 ] as const;
 
 export type RecoveryControlMessageType = typeof RECOVERY_CONTROL_MESSAGE_TYPES[number];
@@ -115,6 +117,33 @@ export interface MessageHandlerRefs {
     retryCount: number
     retryTimer?: NodeJS.Timeout
   }>
+  /**
+   * Controller reference for deduplication during recovery replay
+   * Optional to maintain backwards compatibility with tests
+   */
+  controller?: {
+    isInReplayMode(): boolean
+    startReplayDeduplication(): void
+    clearReplayDeduplication(): void
+    hasSeenEvent(eventKey: string | undefined): boolean
+    markEventSeen(eventKey: string | undefined): void
+  }
+  /**
+   * Batch buffer for incremental history loading
+   * Accumulates history messages before flushing to store
+   */
+  historyBatch?: MutableRefObject<any[]>
+  /**
+   * Timer for flushing history batch
+   * Ensures batch flushes even if threshold not reached
+   */
+  historyBatchTimer?: MutableRefObject<NodeJS.Timeout | null>
+  /**
+   * Tracks if we've received and flushed history for the current recovery session
+   * Reset when recovery starts, set to true after first flush
+   * This prevents duplicate history appends when store is pre-populated
+   */
+  historyReceivedForRecovery?: MutableRefObject<boolean>
 }
 
 /**

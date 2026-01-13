@@ -9,8 +9,7 @@
  */
 
 import { logger } from '@/lib/request-context'
-import { AgentService } from '@/services/AgentService'
-import { normalizeConversationMessages, useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
 
 const DATA_LOSS_ERROR_MESSAGE = 'Some earlier data could not be recovered due to buffer limits.'
@@ -69,49 +68,31 @@ export class RecoveryStatusHandler implements MessageHandler {
     data: WebSocketMessage,
     context: MessageContext
   ): Promise<void> {
-    let conversationId = data.data?.conversationId as string | undefined
-
-    // If server didn't provide conversationId, try to get it from store's conversations
-    if (!conversationId && context.currentAppId) {
-      const store = useStreamingConversationStore.getState()
-      const currentConversation = store.conversations.find(
-        (conv: { appId: string; id: string }) => conv.appId === context.currentAppId
-      )
-      conversationId = currentConversation?.id
-    }
+    const conversationId = data.data?.conversationId as string | undefined
 
     let historyLoadSucceeded = false
 
-    // Load conversation history to get the final assistant message
-    if (conversationId && context.currentAppId) {
-      // Show loading state while fetching history
-      useStreamingConversationStore.getState().setIsLoading(true)
+    // Reset history received flag for this recovery session
+    if (context.refs.historyReceivedForRecovery) {
+      context.refs.historyReceivedForRecovery.current = false
+    }
 
-      try {
-        const agentService = AgentService.getInstance()
-        const conversation = await agentService.getConversation(
-          context.currentAppId,
-          conversationId
-        )
-
-        if (conversation.messages && conversation.messages.length > 0) {
-          // Normalize messages so the UI keeps segment metadata for formatting
-          const normalized = normalizeConversationMessages(conversation.messages)
-          useStreamingConversationStore.setState({ messages: normalized })
-          historyLoadSucceeded = true
-        }
-      } catch (error) {
-        logger.error('websocket.recovery.history_load_failed', {
-          conversationId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    } else {
-      logger.warn('websocket.recovery.no_conversation_id', {
-        hasServerConversationId: !!data.data?.conversationId,
-        hasStoreConversationId: !!conversationId,
-        appId: context.currentAppId,
-      });
+    // Check if history is being streamed
+    if (data.data?.historyStreaming) {
+      // History will arrive via history_message events
+      // history_complete will be sent when done (even if no messages)
+      logger.debug('websocket.recovery.history_streaming', {
+        conversationId,
+        expectedMessages: data.data.historyMessageCount
+      })
+      historyLoadSucceeded = true // History handler will populate messages
+    } else if (conversationId && context.currentAppId) {
+      // No history available
+      // Server will still send history_complete for consistency
+      logger.warn('websocket.recovery.no_history', {
+        conversationId,
+        appId: context.currentAppId
+      })
     }
 
     // Handle activeStream based on whether history load succeeded
@@ -126,7 +107,7 @@ export class RecoveryStatusHandler implements MessageHandler {
         context.actions.finalizeStream({})
         logger.info('websocket.recovery.finalized_on_history_failure', {
           messageId: store.activeStream.id,
-          contentLength: store.activeStream.content.length,
+          contentLength: store.activeStream.content?.length || 0,
         })
       }
     }
@@ -140,15 +121,17 @@ export class RecoveryStatusHandler implements MessageHandler {
 
     // Clear APP_NOT_FOUND retry state
     context.helpers.clearRetryState()
-    context.helpers.clearStoredSocketId()
+    // Note: We no longer clear the stored socket ID to enable recovery on page reload
   }
 
   /**
    * Handle scenario where recovery is complete and stream is active again
    */
-  private handleRecoveryFinalized(data: WebSocketMessage, _context: MessageContext): void {
+  private handleRecoveryFinalized(data: WebSocketMessage, context: MessageContext): void {
     // Recovery complete, stream is active again
-    // Machine already in streaming state, adapter handles UI sync
+    // Send CATCHUP_COMPLETE to transition machine back to idle state
+    context.machine.send({ type: 'CATCHUP_COMPLETE' })
+
     logger.info('websocket.recovery.finalized', {
       eventsReplayed: data.data?.eventsReplayed,
     })
@@ -172,6 +155,21 @@ export class RecoveryStatusHandler implements MessageHandler {
       const expectedCount = (data.data?.bufferedEventCount as number) ?? 0
       const recoveryId = data.data.conversationId as string
 
+      // Initialize deduplication BEFORE ACK tracking so transport can drop duplicates immediately
+      if (expectedCount > 0 && context.refs.controller) {
+        context.refs.controller.startReplayDeduplication()
+        logger.debug('websocket.recovery.deduplication_enabled', {
+          conversationId: recoveryId,
+          expectedCount
+        })
+      }
+
+      // Reset history received flag for this new recovery session
+      // This ensures first batch replaces instead of appends, preventing duplicates
+      if (context.refs.historyReceivedForRecovery) {
+        context.refs.historyReceivedForRecovery.current = false
+      }
+
       context.refs.pendingRecoveryAck.current = {
         conversationId: recoveryId,
         lastSequence: data.data.lastSequence as number,
@@ -188,9 +186,9 @@ export class RecoveryStatusHandler implements MessageHandler {
         expectedEvents: expectedCount
       })
 
-      if (expectedCount === 0) {
-        context.helpers.maybeSendRecoveryAck(context.socket)
-      }
+      // Don't send ack immediately - wait for replay_complete
+      // Server ALWAYS sends replay_complete after recovery_status,
+      // which is the authoritative signal that replay is done
     }
 
     // Only skip recovery if there's an active stream (user just sent a new message)
@@ -202,51 +200,35 @@ export class RecoveryStatusHandler implements MessageHandler {
       return
     }
 
-    // Create placeholder stream and load history from server
-    // Server is source of truth - always fetch even if we have cached messages
+    // Create placeholder stream and load history from WebSocket
     this.initializeRecoveryStream(context)
 
-    if (data.data?.conversationId && context.currentAppId) {
-      await this.loadConversationHistory(data, context)
-
-      // Check if stream completed - clear placeholder to stop "thinking" indicator
-      const currentStore = useStreamingConversationStore.getState()
-      const lastAssistantMsg = this.findLastAssistantMessage(currentStore.messages)
-      const streamIsComplete = lastAssistantMsg && !('isComplete' in lastAssistantMsg && !lastAssistantMsg.isComplete)
-
-      if (streamIsComplete && currentStore.activeStream) {
-        currentStore.clearActiveStream()
-        currentStore.setStreamingState('idle')
-        currentStore.setIsLoading(false)
-      }
-    }
-  }
-
-  /**
-   * Load conversation history for recovery
-   */
-  private async loadConversationHistory(
-    data: WebSocketMessage,
-    context: MessageContext
-  ): Promise<void> {
-    try {
-      const agentService = AgentService.getInstance()
-      const conversation = await agentService.getConversation(
-        context.currentAppId!,
-        data.data!.conversationId as string
-      )
-
-      // Add messages to store if we have them
-      if (conversation.messages && conversation.messages.length > 0) {
-        // Normalize messages before hydrating store so segment metadata survives replay
-        const normalized = normalizeConversationMessages(conversation.messages)
-        useStreamingConversationStore.setState({ messages: normalized })
-        // Don't create activeStream here - already created by handleBufferedEvents
-      }
-    } catch (error) {
-      logger.error('websocket.recovery.history_failed', {
-        error: error instanceof Error ? error.message : String(error),
+    // Check if history is being streamed
+    if (data.data?.historyStreaming) {
+      // History will arrive via history_message events
+      // history_complete will be sent when done (even if no messages)
+      logger.debug('websocket.recovery.history_streaming_buffered', {
+        conversationId: data.data.conversationId,
+        expectedMessages: data.data.historyMessageCount
       })
+    } else if (data.data?.conversationId && context.currentAppId) {
+      // No history available
+      // Server will still send history_complete for consistency
+      logger.warn('websocket.recovery.no_history_buffered', {
+        conversationId: data.data.conversationId,
+        appId: context.currentAppId
+      })
+    }
+
+    // Check if stream completed - clear placeholder to stop "thinking" indicator
+    const currentStore = useStreamingConversationStore.getState()
+    const lastAssistantMsg = this.findLastAssistantMessage(currentStore.messages)
+    const streamIsComplete = lastAssistantMsg && !('isComplete' in lastAssistantMsg && !lastAssistantMsg.isComplete)
+
+    if (streamIsComplete && currentStore.activeStream) {
+      currentStore.clearActiveStream()
+      currentStore.setStreamingState('idle')
+      currentStore.setIsLoading(false)
     }
   }
 
@@ -302,6 +284,11 @@ export class RecoveryStatusHandler implements MessageHandler {
       ackEvent: 'recovery_ack',
     }
 
+    // Reset history received flag for this recovery session
+    if (context.refs.historyReceivedForRecovery) {
+      context.refs.historyReceivedForRecovery.current = false
+    }
+
     // Send RECOVERY_STATUS event to machine
     context.machine.send({
       type: 'RECOVERY_STATUS',
@@ -313,12 +300,18 @@ export class RecoveryStatusHandler implements MessageHandler {
     if (expectedCount === 0 && recoveryId && context.currentAppId) {
       const store = useStreamingConversationStore.getState()
 
-      // If we already have cached messages, DON'T replace them with API data.
-      // The cache (from appChatHistory) contains segments/tool calls that may
-      // not be in the API yet if the stream is still writing to the database.
-      if (store.messages.length > 0) {
-        // Check if the last assistant message was incomplete (stream was active)
-        // If so, recreate the activeStream so new events can be processed
+      // Check if history is being streamed
+      if (data.data?.historyStreaming) {
+        // History will arrive via history_message events
+        // history_complete will be sent when done (even if no messages)
+        logger.debug('websocket.recovery.history_streaming_requires_ack', {
+          conversationId: recoveryId,
+          expectedMessages: data.data.historyMessageCount
+        })
+        // History handler will populate messages and determine streaming state
+      } else if (store.messages.length > 0) {
+        // Use cached messages if available (existing logic)
+        // Server will still send history_complete for consistency
         const lastMsg = this.findLastAssistantMessage(store.messages)
         const wasStreaming = lastMsg && 'isComplete' in lastMsg && lastMsg.isComplete === false
 
@@ -347,29 +340,14 @@ export class RecoveryStatusHandler implements MessageHandler {
           currentStore.setIsLoading(false)
         }
       } else {
-        // No cached messages - load from API
-        // Show loading state while fetching history
-        useStreamingConversationStore.getState().setIsLoading(true)
+        // No history from WebSocket, no cached messages
+        // Server will still send history_complete for consistency
+        logger.warn('websocket.recovery.no_history_available', {
+          conversationId: recoveryId,
+          appId: context.currentAppId
+        })
 
-        try {
-          const agentService = AgentService.getInstance()
-          const conversation = await agentService.getConversation(
-            context.currentAppId,
-            recoveryId
-          )
-
-          if (conversation.messages && conversation.messages.length > 0) {
-            const normalized = normalizeConversationMessages(conversation.messages)
-            useStreamingConversationStore.setState({ messages: normalized })
-          }
-        } catch (error) {
-          logger.error('websocket.recovery.history_load_failed_no_buffer', {
-            conversationId: recoveryId,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        }
-
-        // Clear loading states since there are no buffered events and we loaded from API
+        // Clear loading states
         const currentStore = useStreamingConversationStore.getState()
         if (currentStore.activeStream) {
           currentStore.clearActiveStream()
@@ -379,9 +357,9 @@ export class RecoveryStatusHandler implements MessageHandler {
       }
     }
 
-    if (expectedCount === 0) {
-      context.helpers.maybeSendRecoveryAck(context.socket)
-    }
+    // Don't send ack immediately - wait for replay_complete
+    // Server ALWAYS sends replay_complete after recovery_status,
+    // which is the authoritative signal that replay is done
   }
 
   /**

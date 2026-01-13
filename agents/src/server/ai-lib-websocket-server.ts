@@ -9,7 +9,9 @@ import {
   createWebSocketServer,
   type MessageProvider,
   type ContextProvider,
-  type ConversationMessage
+  type ConversationMessage,
+  type HistoryProvider,
+  type PersistedMessage
 } from '@airo/ai-lib'
 import { auth, AuthType } from '../services/features.js'
 import apm from 'elastic-apm-node'
@@ -33,6 +35,7 @@ import { AILibContextManager } from '../agents/ai-lib-agents/context-manager.js'
 import { AgentsMessagePersistence } from './conversation-persistence.js'
 import { ConversationContextManager } from '../services/ConversationContextManager.js'
 import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js'
+import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
 import { fileContextRegistry } from '../services/FileContextRegistry.js'
 import { fileUploadService } from '../services/FileUploadService.js'
 import { logger, log } from '../logging/index.js'
@@ -643,6 +646,74 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       }
     }
 
+    // Create history provider for UI display (raw database rows)
+    const historyProvider: HistoryProvider = {
+      async loadHistory(conversationId: string, appId: string): Promise<PersistedMessage[]> {
+        const conversationRepo = new ConversationRepository()
+
+        try {
+          const messages = await conversationRepo.getMessages(conversationId)
+
+          // Convert database format to PersistedMessage format
+          // IMPORTANT: Database uses 'agent' but client expects 'assistant' - normalize here
+          return messages.map(msg => {
+            // Validate and normalize sender field
+            // Database schema uses 'agent', normalize to 'assistant' for client
+            let normalizedSender: 'user' | 'assistant'
+            if (msg.sender === 'agent') {
+              normalizedSender = 'assistant'
+            } else if (msg.sender === 'user') {
+              normalizedSender = 'user'
+            } else {
+              // Handle unexpected sender values explicitly (defensive programming)
+              logger.warn('websocket.history.provider.unexpected_sender', {
+                message: 'Unexpected sender value in conversation history, defaulting to assistant',
+                conversationId: msg.conversationId,
+                messageId: msg.id,
+                sender: msg.sender
+              })
+              normalizedSender = 'assistant'
+            }
+
+            const persistedMsg: PersistedMessage = {
+              id: msg.id,
+              conversationId: msg.conversationId,
+              sender: normalizedSender,
+              content: msg.content,
+              createdAt: msg.createdAt.toISOString()
+            }
+
+            // Only include optional properties if they're not null/undefined
+            if (msg.messageType != null) {
+              persistedMsg.messageType = msg.messageType
+            }
+            if (msg.toolCalls != null) {
+              persistedMsg.toolCalls = msg.toolCalls
+            }
+            if (msg.segments != null) {
+              persistedMsg.segments = msg.segments
+            }
+            if (msg.metadata != null) {
+              persistedMsg.metadata = msg.metadata
+            }
+            if (msg.contextAttachments != null) {
+              persistedMsg.contextAttachments = msg.contextAttachments
+            }
+
+            return persistedMsg
+          })
+        } catch (error) {
+          logger.error('websocket.history.provider.failure', {
+            message: 'Error in HistoryProvider',
+            conversationId,
+            appId,
+            error: error instanceof Error ? error.message : String(error)
+          })
+          return []
+        }
+      }
+    }
+
     // Create the WebSocket server with the agent factory and built-in persistence
     const wsServerConfig = {
       agents: agentFactory.agents,
@@ -655,6 +726,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
       // Message provider for conversation history
       messageProvider,
+
+      // History provider for raw UI history (not LLM context)
+      historyProvider,
 
       // Context provider for app context and templates
       contextProvider,

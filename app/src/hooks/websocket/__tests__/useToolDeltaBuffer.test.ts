@@ -176,7 +176,6 @@ describe('useToolDeltaBuffer', () => {
 
     it('falls back to setTimeout if requestAnimationFrame is not available', async () => {
       const originalRAF = window.requestAnimationFrame
-      // @ts-expect-error - Intentionally deleting RAF to test fallback
       delete window.requestAnimationFrame
 
       const setTimeoutSpy = vi.spyOn(global, 'setTimeout')

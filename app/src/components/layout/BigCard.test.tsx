@@ -119,7 +119,7 @@ describe('BigCard', () => {
   it('should apply error color for error status', () => {
     const status: StatusValue = {
       type: 'error',
-      label: 'Failed',
+      label: 'Error',
     };
 
     const { container } = renderWithProviders(

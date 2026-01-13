@@ -164,50 +164,6 @@ describe('StreamingMessageList', function packageTests() {
     });
   });
 
-  describe('pagination', function pagination() {
-    it('should show load more button when has more conversations', function showLoadMore() {
-      const messages = [
-        {
-          id: 'msg-1',
-          role: 'user' as const,
-          content: 'Hello',
-          timestamp: new Date(),
-        },
-      ];
-      mockStreamingStore.pagination = {
-        total: 10,
-        loaded: 1,
-        hasMore: true,
-        isLoading: false,
-      };
-
-      renderWithProviders(<StreamingMessageList allMessages={messages} />);
-
-      expect(screen.getByText('Load previous conversations')).toBeInTheDocument();
-    });
-
-    it('should not show load more button when no more conversations', function hideLoadMore() {
-      const messages = [
-        {
-          id: 'msg-1',
-          role: 'user' as const,
-          content: 'Hello',
-          timestamp: new Date(),
-        },
-      ];
-      mockStreamingStore.pagination = {
-        total: 1,
-        loaded: 1,
-        hasMore: false,
-        isLoading: false,
-      };
-
-      renderWithProviders(<StreamingMessageList allMessages={messages} />);
-
-      expect(screen.queryByText('Load previous conversations')).not.toBeInTheDocument();
-    });
-  });
-
   describe('scroll behavior', function scrollBehavior() {
     let scrollIntoViewMock: any;
 

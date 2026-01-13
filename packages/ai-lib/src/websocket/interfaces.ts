@@ -40,9 +40,65 @@ export interface MessageProvider {
    * @returns Array of conversation messages in chronological order
    */
   loadMessages(
-    conversationId: string, 
+    conversationId: string,
     context: Record<string, unknown>
   ): Promise<ConversationMessage[]>
+}
+
+/**
+ * Persisted message format for UI display (raw database rows)
+ * Different from ConversationMessage which is AI SDK format for LLM
+ * Database schema stores sender as 'user' or 'agent'; HistoryProvider normalizes 'agent' to 'assistant'
+ * before mapping records into this interface.
+ */
+export interface PersistedMessage {
+  id: string
+  conversationId: string
+  sender: 'user' | 'assistant'  // Value already normalized by HistoryProvider from DB's 'agent' → 'assistant'
+  content: string
+  messageType?: string
+  toolCalls?: any[]
+  segments?: any[]
+  metadata?: Record<string, unknown>
+  contextAttachments?: any[]
+  createdAt: string
+}
+
+/**
+ * Provider for loading raw conversation history for UI display
+ * Separate from MessageProvider which returns summarized LLM context
+ */
+export interface HistoryProvider {
+  /**
+   * Load raw conversation messages for UI display
+   * Returns complete database rows without summarization or truncation
+   * @param conversationId - The conversation ID
+   * @param appId - The app ID (required for repository lookup)
+   * @returns Array of persisted messages in chronological order
+   */
+  loadHistory(conversationId: string, appId: string): Promise<PersistedMessage[]>
+}
+
+/**
+ * Data structure for recovery_status WebSocket message
+ */
+export interface RecoveryStatusData {
+  isRecovering: boolean
+  hasBufferedEvents: boolean
+  bufferedEventCount: number
+  streamCompleted?: boolean
+  conversationId?: string
+  agentName?: string
+  recoveryMode?: string
+  requiresAck?: boolean
+  lastSequence?: number
+  lossDetected?: boolean
+  lostEventCount?: number
+  eventsReplayed?: number
+
+  // History streaming
+  historyStreaming?: boolean
+  historyMessageCount?: number
 }
 
 /**
@@ -287,6 +343,9 @@ export interface EventMetadata {
 
   /** Timestamp of newest event */
   newestTimestamp: Date
+
+  /** NEW: Track which messages are actively streaming (incomplete) */
+  pendingMessageIds: string[]
 }
 
 /**

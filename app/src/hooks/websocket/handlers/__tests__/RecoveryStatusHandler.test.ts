@@ -21,20 +21,12 @@ vi.mock('@/stores/useStreamingConversationStore', async () => {
   }
 })
 
-vi.mock('@/services/AgentService', () => ({
-  AgentService: {
-    getInstance: vi.fn(),
-  },
-}))
-
-import { AgentService } from '@/services/AgentService'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 
 const mockStore = useStreamingConversationStore as unknown as {
   getState: ReturnType<typeof vi.fn>
   setState: ReturnType<typeof vi.fn>
 }
-const mockAgentService = AgentService.getInstance as unknown as ReturnType<typeof vi.fn>
 
 describe('RecoveryStatusHandler', () => {
   const handler = new RecoveryStatusHandler()
@@ -43,7 +35,7 @@ describe('RecoveryStatusHandler', () => {
     vi.clearAllMocks()
   })
 
-  it('handles completed streams by loading history and finalizing state', async () => {
+  it('handles completed streams by loading history from WebSocket and finalizing state', async () => {
     const clearConnectionRetry = vi.fn()
     const clearActiveStream = vi.fn()
     const setStreamingState = vi.fn()
@@ -52,7 +44,7 @@ describe('RecoveryStatusHandler', () => {
 
     mockStore.getState.mockReturnValue({
       currentAppId: 'app-123',
-      activeStream: { id: 'stream-1' },
+      activeStream: { id: 'stream-1', content: 'test content' },
       connectionRetry: { isRetrying: true },
       clearConnectionRetry,
       clearActiveStream,
@@ -61,37 +53,30 @@ describe('RecoveryStatusHandler', () => {
     })
     mockStore.setState.mockImplementation(() => undefined)
 
-    const getConversation = vi.fn().mockResolvedValue({
-      messages: [{ id: 'msg-1', sender: 'assistant', content: 'test', createdAt: new Date().toISOString() }],
-    })
-    mockAgentService.mockReturnValue({ getConversation })
-
     const data: WebSocketMessage = {
       type: 'recovery_status',
       content: '',
       data: {
         streamCompleted: true,
         conversationId: 'conv-1',
+        historyStreaming: true,
+        historyMessageCount: 1,
       },
     }
 
     await handler.handle(data, context)
 
-    expect(getConversation).toHaveBeenCalledWith('app-123', 'conv-1')
-    expect(mockStore.setState).toHaveBeenCalledWith({
-      messages: expect.arrayContaining([
-        expect.objectContaining({ id: 'msg-1', role: 'assistant', content: 'test' })
-      ])
-    })
+    // When historyStreaming: true, history arrives via history_message events
+    // so no messages are set directly here
     expect(clearActiveStream).toHaveBeenCalled()
     expect(setStreamingState).toHaveBeenCalledWith('idle')
     expect(setIsLoading).toHaveBeenCalledWith(false)
     expect(clearConnectionRetry).toHaveBeenCalled()
     expect(context.helpers.clearRetryState).toHaveBeenCalled()
-    expect(context.helpers.clearStoredSocketId).toHaveBeenCalled()
+    // Note: We no longer clear the stored socket ID to enable recovery on page reload
   })
 
-  it('preserves activeStream by finalizing when history load fails', async () => {
+  it('preserves activeStream by finalizing when history not included', async () => {
     const clearConnectionRetry = vi.fn()
     const clearActiveStream = vi.fn()
     const setStreamingState = vi.fn()
@@ -116,16 +101,13 @@ describe('RecoveryStatusHandler', () => {
     })
     mockStore.setState.mockImplementation(() => undefined)
 
-    // Simulate history load failure
-    const getConversation = vi.fn().mockRejectedValue(new Error('Network error'))
-    mockAgentService.mockReturnValue({ getConversation })
-
     const data: WebSocketMessage = {
       type: 'recovery_status',
       content: '',
       data: {
         streamCompleted: true,
         conversationId: 'conv-1',
+        // No historyStreaming flag means history is not available
       },
     }
 
@@ -139,7 +121,7 @@ describe('RecoveryStatusHandler', () => {
     expect(setIsLoading).toHaveBeenCalledWith(false)
   })
 
-  it('prepares buffered event replay and sets pending ack', async () => {
+  it('prepares buffered event replay and sets pending ack with WebSocket history', async () => {
     const context = createMockMessageContext()
     mockStore.getState.mockReturnValue({
       currentAppId: 'app-123',
@@ -152,11 +134,6 @@ describe('RecoveryStatusHandler', () => {
     })
     mockStore.setState.mockImplementation(() => undefined)
 
-    const getConversation = vi.fn().mockResolvedValue({
-      messages: [{ id: 'msg-2', sender: 'user', content: 'hello', createdAt: new Date().toISOString() }],
-    })
-    mockAgentService.mockReturnValue({ getConversation })
-
     const data: WebSocketMessage = {
       type: 'recovery_status',
       content: '',
@@ -166,6 +143,8 @@ describe('RecoveryStatusHandler', () => {
         bufferedEventCount: 0,
         conversationId: 'conv-2',
         lastSequence: 42,
+        historyStreaming: true,
+        historyMessageCount: 1,
       },
     }
 
@@ -179,16 +158,95 @@ describe('RecoveryStatusHandler', () => {
       replayComplete: true,
       ackEvent: 'recovery_ack',
     })
-    expect(context.helpers.maybeSendRecoveryAck).toHaveBeenCalledWith(context.socket)
-    // Should set messages directly (from loadConversationHistory - server data is authoritative)
+    // Don't send ack immediately - wait for replay_complete
+    // This prevents sending recovery_ack twice (once on recovery_status, once on replay_complete)
+    expect(context.helpers.maybeSendRecoveryAck).not.toHaveBeenCalled()
+    // When historyStreaming: true, history arrives via history_message events
+    // A placeholder activeStream is created for buffered event replay
     expect(mockStore.setState).toHaveBeenCalledWith(
       expect.objectContaining({
-        messages: expect.arrayContaining([
-          expect.objectContaining({ id: 'msg-2', role: 'user', content: 'hello' })
-        ])
+        activeStream: expect.objectContaining({
+          role: 'assistant',
+          content: '',
+          isComplete: false,
+        }),
+        streamingState: 'streaming',
+        isLoading: true,
       })
     )
     // Machine should already be in streaming state during recovery (Tier 1)
     // Adapter syncs streamingState from machine
+  })
+
+  it('initializes replay deduplication before ACK tracking to avoid race conditions', async () => {
+    const baseContext = createMockMessageContext()
+    const order: string[] = []
+
+    const pendingRef: any = {}
+    let ackValue: any = null
+    Object.defineProperty(pendingRef, 'current', {
+      configurable: true,
+      get() {
+        return ackValue
+      },
+      set(value) {
+        order.push('ack')
+        ackValue = value
+      }
+    })
+
+    const controllerMock = {
+      isInReplayMode: vi.fn().mockReturnValue(false),
+      startReplayDeduplication: vi.fn(() => {
+        order.push('dedup')
+      }),
+      clearReplayDeduplication: vi.fn(),
+      hasSeenEvent: vi.fn(),
+      markEventSeen: vi.fn(),
+    }
+
+    const context = {
+      ...baseContext,
+      refs: {
+        ...baseContext.refs,
+        pendingRecoveryAck: pendingRef,
+        controller: controllerMock,
+      },
+    }
+
+    mockStore.getState.mockReturnValue({
+      currentAppId: 'app-123',
+      activeStream: null,
+      messages: [],
+      connectionRetry: { isRetrying: false },
+      clearConnectionRetry: vi.fn(),
+      setStreamingState: vi.fn(),
+      setIsLoading: vi.fn(),
+    })
+    mockStore.setState.mockImplementation(() => undefined)
+
+    const data: WebSocketMessage = {
+      type: 'recovery_status',
+      content: '',
+      data: {
+        hasBufferedEvents: true,
+        requiresAck: true,
+        bufferedEventCount: 2,
+        conversationId: 'conv-race',
+        lastSequence: 99,
+        historyStreaming: true,
+        historyMessageCount: 1,
+      },
+    }
+
+    await handler.handle(data, context)
+
+    expect(order[0]).toBe('dedup')
+    expect(order[1]).toBe('ack')
+    expect(controllerMock.startReplayDeduplication).toHaveBeenCalledTimes(1)
+    expect(pendingRef.current).toMatchObject({
+      conversationId: 'conv-race',
+      expectedCount: 2,
+    })
   })
 })

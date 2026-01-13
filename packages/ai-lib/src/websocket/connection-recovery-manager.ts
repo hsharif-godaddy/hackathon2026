@@ -1,14 +1,59 @@
 import type { Socket } from 'socket.io'
-import type { StreamingEvent } from './interfaces.js'
+import type {
+  StreamingEvent,
+  HistoryProvider,
+  PersistedMessage,
+  ConversationContext,
+  EventMetadata
+} from './interfaces.js'
 import type { ConversationEventChannel } from './conversation-event-channel.js'
 import type { ConnectionStateManager, ConnectionStateData } from './connection-state-manager.js'
 import { WebSocketSubscriber } from './subscribers/websocket-subscriber.js'
 import { createLogger } from '../utils/logger.js'
 
 /**
+ * Default agent name used when no agent is specified
+ * Used for initial recovery when agent context doesn't exist yet
+ */
+const DEFAULT_AGENT_NAME = 'develop'
+
+/**
+ * Helper to safely extract appId from auth object
+ * Auth can have appId in various locations depending on auth mode:
+ * - Direct: auth.appId (most common)
+ * - AgentContext: auth.agentContext.appId (JWT auth)
+ * - Decoded: auth.decoded.appId (JWT auth fallback)
+ */
+function extractAppId(auth: unknown): string | undefined {
+  if (!auth || typeof auth !== 'object') {
+    return undefined
+  }
+  const authRecord = auth as Record<string, unknown>
+
+  // Try direct appId first (most common)
+  if (typeof authRecord.appId === 'string') {
+    return authRecord.appId
+  }
+
+  // Try agentContext.appId (JWT auth)
+  const agentContext = authRecord.agentContext as Record<string, unknown> | undefined
+  if (agentContext && typeof agentContext.appId === 'string') {
+    return agentContext.appId
+  }
+
+  // Try decoded.appId (JWT auth fallback)
+  const decoded = authRecord.decoded as Record<string, unknown> | undefined
+  if (decoded && typeof decoded.appId === 'string') {
+    return decoded.appId
+  }
+
+  return undefined
+}
+
+/**
  * Recovery modes for connection recovery
  */
-export type RecoveryMode = 'automatic' | 'manual' | 'conversation'
+export type RecoveryMode = 'automatic' | 'manual' | 'conversation' | 'initial'
 
 /**
  * Context for a recovery operation
@@ -58,6 +103,7 @@ export interface ConnectionRecoveryManagerDependencies {
   stateManager: ConnectionStateManager
   eventChannel: ConversationEventChannel
   logger?: RecoveryManagerLogger
+  historyProvider?: HistoryProvider
 }
 
 /**
@@ -74,6 +120,7 @@ export class ConnectionRecoveryManager {
   private readonly eventChannel: ConversationEventChannel
   private readonly config: ConnectionRecoveryManagerConfig
   private readonly logger: RecoveryManagerLogger
+  private readonly historyProvider?: HistoryProvider
 
   constructor(
     dependencies: ConnectionRecoveryManagerDependencies,
@@ -83,6 +130,9 @@ export class ConnectionRecoveryManager {
     this.eventChannel = dependencies.eventChannel
     this.config = config
     this.logger = dependencies.logger ?? createLogger('recovery')
+    if (dependencies.historyProvider) {
+      this.historyProvider = dependencies.historyProvider
+    }
   }
 
   // ===== Public Recovery Methods =====
@@ -107,10 +157,24 @@ export class ConnectionRecoveryManager {
     }
 
     // Check conversation-based recovery (conversationId cookie)
-    if (auth.conversationId && !previousSocketId) {
+    if (auth.conversationId) {
       const entry = this.stateManager.findDisconnectedByConversationId(auth.conversationId)
-      if (entry) {
-        return 'conversation'
+
+      // If state exists in memory and no previousSocketId, use conversation recovery
+      if (entry && !previousSocketId) {
+        return 'conversation'  // State exists in memory
+      }
+
+      // If state exists but previousSocketId was provided, prefer manual recovery
+      // (already handled above, this is just documentation)
+
+      // No disconnected state (or previousSocketId state expired)
+      // Trigger initial recovery to load persisted history from database
+      // This handles:
+      // 1. Initial connection with existing conversationId
+      // 2. Page reload after recovery window expired (previousSocketId + conversationId but no state)
+      if (!entry || (previousSocketId && !this.stateManager.isDisconnected(previousSocketId))) {
+        return 'initial'
       }
     }
 
@@ -225,12 +289,15 @@ export class ConnectionRecoveryManager {
     // Find disconnected stream by conversationId
     const entry = this.stateManager.findDisconnectedByConversationId(conversationId)
 
+    // Extract appId from auth for sendStreamCompletedStatus
+    const appId = extractAppId(auth)
+
     if (!entry) {
       this.logger.warn('recovery.conversation.no_stream_found', {
         socketId,
         conversationId
       })
-      this.sendStreamCompletedStatus(socket, conversationId)
+      await this.sendStreamCompletedStatus(socket, conversationId, appId)
       return
     }
 
@@ -242,7 +309,7 @@ export class ConnectionRecoveryManager {
         socketId,
         conversationId
       })
-      this.sendStreamCompletedStatus(socket, conversationId)
+      await this.sendStreamCompletedStatus(socket, conversationId, appId)
       return
     }
 
@@ -271,9 +338,170 @@ export class ConnectionRecoveryManager {
   }
 
   /**
+   * Handle initial recovery (conversationId exists but no previous socket state)
+   * Triggered on: initial load with existing conversation OR page reload after recovery window
+   */
+  async handleInitialRecovery(
+    socket: Socket,
+    conversationId: string,
+    validateAppId: (conversationId: string, auth: Record<string, unknown>) => boolean,
+    callbacks: {
+      onRecoveryComplete: (socketId: string, events: StreamingEvent[], finalSequence: number) => void
+      onRecoveryFailed: (socketId: string, reason: string) => void
+      createWebSocketSubscriber: (socket: Socket) => WebSocketSubscriber
+    }
+  ): Promise<void> {
+    const socketId = socket.id
+    const auth = socket.handshake.auth || {}
+
+    // Extract appId for history loading (needed for sendStreamCompletedStatus on validation failure)
+    const appId = extractAppId(auth)
+
+    // Security validation
+    if (!validateAppId(conversationId, auth)) {
+      this.logger.warn('recovery.initial.app_mismatch', {
+        socketId,
+        conversationId
+      })
+      // Send stream completed status to unblock client initialization
+      // Even though validation failed, we still send history_complete to prevent hanging
+      await this.sendStreamCompletedStatus(socket, conversationId, appId)
+      return
+    }
+
+    this.logger.info('recovery.initial.started', {
+      socketId,
+      conversationId
+    })
+
+    // Determine lastDeliveredSequence based on event buffer state
+    // ConnectionStateManager treats -1 as "no events delivered yet"
+    // Use actual buffer watermark, not sentinel values that break future recoveries
+    const metadata = this.eventChannel.getMetadata(conversationId)
+    const lastDeliveredSequence = metadata?.lastSequence ?? -1
+
+    if (!metadata || metadata.totalEvents === 0) {
+      // No buffered events - all messages are complete and persisted
+      // Use -1 to indicate "replay all" (getEventsSince handles negative sentinels)
+      this.logger.debug('recovery.initial.no_buffered_events', {
+        socketId,
+        conversationId,
+        hasMetadata: !!metadata,
+        lastDeliveredSequence
+      })
+    } else {
+      // Buffered events exist - use actual lastSequence from buffer
+      // This ensures subsequent recoveries have a real watermark
+      this.logger.debug('recovery.initial.has_buffered_events', {
+        socketId,
+        conversationId,
+        bufferedEventCount: metadata.totalEvents,
+        firstSequence: metadata.firstSequence,
+        lastSequence: metadata.lastSequence,
+        lastDeliveredSequence
+      })
+    }
+
+    // appId already extracted above for validation failure handling
+
+    const abortController = new AbortController()
+
+    // Create full state data
+    // ConnectionStateData has no index signature - must provide all required fields
+    const conversationContext: ConversationContext = {
+      socketId,
+      agentName: DEFAULT_AGENT_NAME,
+      ...auth,  // Include auth data
+      ...(appId && { appId })  // Only include appId if it exists
+    }
+
+    const stateData: ConnectionStateData = {
+      conversationId,
+      agentName: DEFAULT_AGENT_NAME,
+      context: conversationContext,
+      streamingEvents: [],
+      startTime: Date.now(),
+      pendingSegments: [],
+      pendingToolCalls: new Map(),
+      accumulatedContent: '',
+      lastDeliveredSequence,
+      abortController,
+      recoveryTimeoutId: null,
+      setupTimeoutId: null,
+      state: 'connected'
+    }
+
+    const context: RecoveryContext = {
+      mode: 'initial',
+      newSocketId: socketId,
+      oldSocketId: socketId,  // No previous socket
+      conversationId,
+      lastDeliveredSequence,
+      abortController
+    }
+
+    let stateRegistered = false
+
+    try {
+      // Register state with ConnectionStateManager before executing recovery flow.
+      // This MUST be wrapped in the try/catch so failures don't leave orphaned state.
+      this.stateManager.createConnection(socketId, stateData)
+      this.stateManager.transitionTo(socketId, 'recovering')
+      stateRegistered = true
+
+      this.logger.debug('recovery.initial.state_registered', {
+        socketId,
+        conversationId,
+        lastDeliveredSequence
+      })
+
+      await this.executeRecoveryFlow(socket, context, stateData, callbacks)
+    } catch (error) {
+      // If recovery fails after state registration, clean up to prevent leaks
+      if (stateRegistered) {
+        this.stateManager.cleanup(socketId).catch((err) => {
+          this.logger.error('recovery.initial.cleanup_failed', {
+            socketId,
+            error: err instanceof Error ? err.message : String(err)
+          })
+        })
+      }
+      throw error
+    }
+  }
+
+  /**
    * Send "stream completed" message when recovery attempted but no buffered events
    */
-  sendStreamCompletedStatus(socket: Socket, conversationId?: string): void {
+  async sendStreamCompletedStatus(
+    socket: Socket,
+    conversationId?: string,
+    appId?: string
+  ): Promise<void> {
+    let fullHistory: PersistedMessage[] = []
+    let historyStreaming = false
+
+    if (conversationId && appId && this.historyProvider) {
+      try {
+        // Load raw database messages (not summarized LLM context)
+        fullHistory = await this.historyProvider.loadHistory(conversationId, appId)
+        historyStreaming = fullHistory.length > 0
+
+        this.logger.debug('recovery.history_fetched_completed', {
+          conversationId,
+          appId,
+          messageCount: fullHistory.length
+        })
+      } catch (error) {
+        this.logger.warn('recovery.history_fetch_failed_completed', {
+          conversationId,
+          appId,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+
+    // Send recovery status
     socket.emit('message', {
       type: 'recovery_status',
       content: '',
@@ -282,7 +510,33 @@ export class ConnectionRecoveryManager {
         hasBufferedEvents: false,
         bufferedEventCount: 0,
         streamCompleted: true,
-        conversationId
+        conversationId,
+        historyStreaming,
+        historyMessageCount: fullHistory.length
+      }
+    } as WebSocketMessage)
+
+    // Stream history messages
+    if (historyStreaming && fullHistory.length > 0) {
+      let historySequence = -1000 // Use negative sequences for history to avoid collision
+      for (const msg of fullHistory) {
+        socket.emit('message', {
+          type: 'history_message',
+          content: '',
+          data: {
+            ...msg,
+            sequence: historySequence-- // Assign sequence for deduplication
+          }
+        } as WebSocketMessage)
+      }
+    }
+
+    // Always send history_complete (even when empty) for consistent client-side handling
+    socket.emit('message', {
+      type: 'history_complete',
+      content: '',
+      data: {
+        messageCount: fullHistory.length
       }
     } as WebSocketMessage)
   }
@@ -309,12 +563,84 @@ export class ConnectionRecoveryManager {
       context.conversationId,
       context.lastDeliveredSequence
     )
+    const replayMetadata = this.eventChannel.getMetadata(context.conversationId)
+
+    // NEW: Fetch full conversation history via historyProvider
+    let fullHistory: PersistedMessage[] = []
+    let historyIncluded = false
+
+    // Extract appId from stateData context
+    const appId = stateData?.context?.appId
+
+    if (this.historyProvider && appId) {
+      try {
+        // Load raw messages from database (not summarized LLM context)
+        const rawMessages = await this.historyProvider.loadHistory(
+          context.conversationId,
+          appId
+        )
+
+        // Use messages directly - they're already in the correct format.
+        // IMPORTANT: Derive in-progress message IDs from event metadata so we only
+        // strip content for messages that are actually pending in the buffer.
+        const pendingMessageIdsFromMetadata = replayMetadata?.pendingMessageIds ?? []
+        const inProgressMessageIds = new Set<string>(pendingMessageIdsFromMetadata)
+
+        fullHistory = rawMessages.map((msg: PersistedMessage) => {
+          // Strip content/segments for ANY message being rebuilt by buffered events
+          if (inProgressMessageIds.has(msg.id)) {
+            this.logger.debug('recovery.strip_in_progress_message_content', {
+              messageId: msg.id,
+              sender: msg.sender,
+              originalContentLength: msg.content?.length || 0,
+              bufferedEventCount: events.length,
+              totalInProgressMessages: inProgressMessageIds.size
+            })
+
+            // Return copy with empty content/segments
+            return {
+              ...msg,
+              content: '',
+              segments: [],
+              toolCalls: []  // Also strip tool calls to prevent duplication
+            }
+          }
+
+          return msg
+        })
+
+        historyIncluded = true
+
+        this.logger.debug('recovery.history_fetched', {
+          conversationId: context.conversationId,
+          appId,
+          messageCount: fullHistory.length,
+          willReplayEvents: events.length > 0,
+          strippedMessageCount: inProgressMessageIds.size,
+          pendingMetadataCount: pendingMessageIdsFromMetadata.length
+        })
+      } catch (error) {
+        this.logger.warn('recovery.history_fetch_failed', {
+          conversationId: context.conversationId,
+          appId,
+          error: error instanceof Error ? error.message : String(error)
+        })
+        // Continue without history - client can still work with buffered events
+      }
+    } else {
+      this.logger.debug('recovery.no_history_provider', {
+        conversationId: context.conversationId,
+        hasProvider: !!this.historyProvider,
+        hasAppId: !!appId
+      })
+    }
 
     // Check for buffer loss
     const expectedNextSequence = context.lastDeliveredSequence + 1
     const { lossDetected, lostEventCount } = this.getBufferLossInfo(
       context.conversationId,
-      expectedNextSequence
+      expectedNextSequence,
+      replayMetadata
     )
 
     if (lossDetected) {
@@ -329,7 +655,7 @@ export class ConnectionRecoveryManager {
       ? events[events.length - 1]!.sequence
       : preReplaySequence
 
-    // Send recovery status (use stateData parameter for agent name)
+    // Send recovery status - history will be streamed separately
     socket.emit('message', {
       type: 'recovery_status',
       content: 'Recovering connection...',
@@ -343,11 +669,39 @@ export class ConnectionRecoveryManager {
         requiresAck: true,
         lastSequence: replayLastSequence,
         lossDetected,
-        lostEventCount
+        lostEventCount,
+        // NEW: Indicate history will be streamed
+        historyStreaming: historyIncluded && fullHistory.length > 0,
+        historyMessageCount: fullHistory.length
       }
     } as WebSocketMessage)
 
-    // Replay events
+    // Stream history messages
+    if (historyIncluded && fullHistory.length > 0) {
+      let historySequence = -1000 // Use negative sequences for history to avoid collision
+      for (const msg of fullHistory) {
+        socket.emit('message', {
+          type: 'history_message',
+          content: '',
+          data: {
+            ...msg,
+            sequence: historySequence-- // Assign sequence for deduplication
+          }
+        } as WebSocketMessage)
+      }
+    }
+
+    // Always send history_complete (even when empty) for consistent client-side handling
+    // This simplifies client logic - can just wait for one event type instead of three scenarios
+    socket.emit('message', {
+      type: 'history_complete',
+      content: '',
+      data: {
+        messageCount: fullHistory.length
+      }
+    } as WebSocketMessage)
+
+    // Replay buffered events
     for (const event of events) {
       socket.emit('message', {
         type: event.type,
@@ -599,9 +953,10 @@ export class ConnectionRecoveryManager {
    */
   getBufferLossInfo(
     conversationId: string,
-    expectedNextSequence: number
+    expectedNextSequence: number,
+    metadataOverride?: EventMetadata | null
   ): { lossDetected: boolean; lostEventCount: number } {
-    const metadata = this.eventChannel.getMetadata(conversationId)
+    const metadata = metadataOverride ?? this.eventChannel.getMetadata(conversationId)
     if (!metadata) {
       return { lossDetected: false, lostEventCount: 0 }
     }

@@ -103,7 +103,7 @@ describe('useMockAuth', () => {
   it('should return authenticated state', () => {
     const authenticatedState = {
       isAuthenticated: true,
-      user: { id: '123', name: 'Test User' },
+      user: { id: '123', name: 'Test User', email: 'test@example.com', plan: 'free' },
       isLoading: false,
     };
 
@@ -112,7 +112,7 @@ describe('useMockAuth', () => {
     const { result } = renderHook(() => useMockAuth());
 
     expect(result.current.isAuthenticated).toBe(true);
-    expect(result.current.user).toEqual({ id: '123', name: 'Test User' });
+    expect(result.current.user).toEqual({ id: '123', name: 'Test User', email: 'test@example.com', plan: 'free' });
   });
 
   it('should return loading state', () => {

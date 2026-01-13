@@ -114,7 +114,17 @@ export function createInitialStoreState() {
   state.startStream = vi.fn((conversationId: string, messageId: string) => {
     originalStartStream(conversationId, messageId)
     state.streamingState = 'streaming'
-    state.activeStream = { id: messageId, conversationId }
+    const streamMessage: any = {
+      id: messageId,
+      role: 'assistant' as const,
+      content: '',
+      segments: [],
+      toolCalls: [],
+      timestamp: new Date(),
+      isComplete: false,
+      metadata: { agentId: conversationId }
+    }
+    state.activeStream = streamMessage
   })
 
   const originalFinalizeStream = state.finalizeStream

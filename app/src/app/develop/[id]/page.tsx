@@ -39,8 +39,6 @@ import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import {
   useActiveStream,
   useAutoSendInitialMessage,
-  useConversations,
-  useLoadConversationHistory,
   useMessages,
   useSetAiEditContext,
   useSetBuildErrorContext,
@@ -64,24 +62,16 @@ function DevelopPageContent() {
   // Hibernation handling - auto-resume when app is hibernated
   const appDetails = useAppDetails(appId);
   const hibernation = useAppHibernation(appDetails.data, appId, true);
-  const loadConversationHistory = useLoadConversationHistory();
 
-  // Track if we've completed post-resume loading
-  const hasCompletedPostResumeRef = useRef(false)
-
-  // Load conversation history when resume completes (hook waits for server to be healthy)
+  // Log when resume completes - history will be loaded via WebSocket
   useEffect(() => {
-    if (hibernation.resumeComplete && appId && !hasCompletedPostResumeRef.current) {
-      hasCompletedPostResumeRef.current = true;
-      logger.info('app-hibernation.post-resume-ready', { appId });
-      loadConversationHistory(appId);
+    if (hibernation.resumeComplete && appId) {
+      logger.info('app-hibernation.post-resume-ready', {
+        appId,
+        message: 'Resume complete, WebSocket will stream history'
+      });
     }
-  }, [hibernation.resumeComplete, appId, loadConversationHistory]);
-
-  // Reset the post-resume tracking when app changes
-  useEffect(() => {
-    hasCompletedPostResumeRef.current = false;
-  }, [appId]);
+  }, [hibernation.resumeComplete, appId]);
 
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
 
@@ -90,8 +80,7 @@ function DevelopPageContent() {
   const stopPollingForServer = useServerPollingStore((state) => state.stopPollingForServer)
   const cleanupServerPolling = useServerPollingStore((state) => state.cleanup)
 
-  // Streaming conversation store - for conversations and messages
-  const conversations = useConversations()
+  // Streaming conversation store - for messages and active stream
   const messages = useMessages()
   const activeStream = useActiveStream()
   const setInputValue = useSetInputValue()
@@ -580,7 +569,8 @@ function DevelopPageContent() {
     if (loadingPhase !== 'ready') return
 
     const message = searchParams.get('message')
-    if (message && conversations.length === 0) {
+    // Only auto-fill if there's no conversation history (check messages instead of conversations)
+    if (message && messages.length === 0) {
       const decodedMessage = decodeURIComponent(message)
       setInputValue(decodedMessage)
 
@@ -591,7 +581,7 @@ function DevelopPageContent() {
         router.replace(url.pathname + url.search, { scroll: false })
       }, 500)
     }
-  }, [loadingPhase, searchParams, conversations.length, router, setInputValue])
+  }, [loadingPhase, searchParams, messages.length, router, setInputValue])
 
   // Handle auto-send initial message for new apps (driven by init.ui.shouldAutoSendPrompt)
   useEffect(() => {

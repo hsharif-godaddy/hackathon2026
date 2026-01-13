@@ -72,7 +72,6 @@ export interface StreamingWebSocketControllerDeps {
     streamingState: string
     activeStream: unknown
     buildErrorContext: unknown
-    conversations: Array<{ appId: string; id: string }>
     // Lifecycle actions - called by adapter via events
     setWebSocketState: (state: WebSocketStateUpdate) => void
     setStreamingState: (state: string) => void
@@ -87,6 +86,10 @@ export interface StreamingWebSocketControllerDeps {
 }
 
 export class StreamingWebSocketController extends EventEmitter {
+  private static readonly DEFAULT_ACK_TIMEOUT_MS = 30_000
+  private static readonly MIN_REPLAY_DEDUP_TIMEOUT_MS = 60_000
+  private static readonly REPLAY_DEDUP_TIMEOUT_MULTIPLIER = 2
+
   private currentAppId: string | null = null
 
   // XState machine and adapter
@@ -100,6 +103,17 @@ export class StreamingWebSocketController extends EventEmitter {
   private serverConfigRef: { current: ServerConfig | null } = { current: null }
   private pendingRecoveryAckRef: { current: RecoveryAck | null } = { current: null }
   private retryStateRef: { current: { pendingMessage?: { chatMessage: AgentsAppChatMessage; startTime: number }; retryCount: number; retryTimer?: NodeJS.Timeout } } = { current: { retryCount: 0 } }
+
+  // Event deduplication for recovery replay
+  // Track seen event IDs during recovery replay to prevent duplicate processing
+  private seenEventIds: Set<string> | null = null
+  private isReplaying: boolean = false
+  private replayDedupCleanupTimer: NodeJS.Timeout | null = null
+
+  // History batch refs for incremental history loading
+  private historyBatchRef: { current: any[] } = { current: [] }
+  private historyBatchTimerRef: { current: NodeJS.Timeout | null } = { current: null }
+  private historyReceivedForRecoveryRef: { current: boolean } = { current: false }
 
   constructor(private deps: StreamingWebSocketControllerDeps) {
     super()
@@ -123,6 +137,10 @@ export class StreamingWebSocketController extends EventEmitter {
         pendingRecoveryAck: this.pendingRecoveryAckRef,
         toolDeltaBuffer: this.deps.toolDeltaBufferRef,
         retryState: this.retryStateRef,
+        controller: this, // Pass controller reference for deduplication
+        historyBatch: this.historyBatchRef,
+        historyBatchTimer: this.historyBatchTimerRef,
+        historyReceivedForRecovery: this.historyReceivedForRecoveryRef,
       },
       getStreamingState: () => {
         const store = this.deps.getStoreState()
@@ -190,6 +208,15 @@ export class StreamingWebSocketController extends EventEmitter {
    * Disconnect WebSocket
    */
   disconnect(): void {
+    // Clear any active replay state on disconnect to prevent memory leaks
+    if (this.isReplaying) {
+      logger.warn('websocket.controller.replay_interrupted', {
+        message: 'Replay interrupted by disconnect',
+        trackedEventCount: this.seenEventIds?.size ?? 0
+      })
+      this.clearReplayDeduplication()
+    }
+
     // Tell the machine we're disconnecting so it transitions to disconnected state
     // This allows subsequent CONNECT events to be handled
     this.machine.send({ type: 'DISCONNECT', reason: 'app_switch' })
@@ -205,6 +232,92 @@ export class StreamingWebSocketController extends EventEmitter {
     this.adapter.destroy()
     this.machine.stop()
     this.disconnect()
+  }
+
+  // ===== Event Deduplication Methods =====
+
+  /**
+   * Check if currently in replay mode
+   */
+  isInReplayMode(): boolean {
+    return this.isReplaying
+  }
+
+  /**
+   * Initialize deduplication tracking when recovery replay starts
+   */
+  startReplayDeduplication(): void {
+    if (this.seenEventIds !== null) {
+      logger.warn('websocket.controller.replay_dedup_already_active', {
+        message: 'Replay deduplication already active, clearing previous state',
+        previousEventCount: this.seenEventIds.size
+      })
+      this.clearReplayDeduplication()
+    }
+    this.seenEventIds = new Set<string>()
+    this.isReplaying = true
+    logger.debug('websocket.controller.replay_dedup_started', {
+      message: 'Started event deduplication tracking for recovery replay'
+    })
+    this.scheduleReplayDeduplicationCleanup()
+  }
+
+  /**
+   * Clear deduplication tracking after replay completes
+   */
+  clearReplayDeduplication(): void {
+    const count = this.seenEventIds?.size ?? 0
+    this.seenEventIds = null
+    this.isReplaying = false
+    this.clearReplayDeduplicationTimeout()
+    logger.debug('websocket.controller.replay_dedup_cleared', {
+      message: 'Cleared event deduplication tracking',
+      trackedEventCount: count
+    })
+  }
+
+  private scheduleReplayDeduplicationCleanup(): void {
+    this.clearReplayDeduplicationTimeout()
+    const ackTimeout = this.serverConfigRef.current?.ackTimeout ?? StreamingWebSocketController.DEFAULT_ACK_TIMEOUT_MS
+    const timeoutMs = Math.max(
+      ackTimeout * StreamingWebSocketController.REPLAY_DEDUP_TIMEOUT_MULTIPLIER,
+      StreamingWebSocketController.MIN_REPLAY_DEDUP_TIMEOUT_MS
+    )
+
+    this.replayDedupCleanupTimer = setTimeout(() => {
+      logger.warn('websocket.controller.replay_dedup_timeout', {
+        message: 'Replay deduplication timeout elapsed, forcing cleanup',
+        timeoutMs,
+        trackedEventCount: this.seenEventIds?.size ?? 0
+      })
+      this.clearReplayDeduplication()
+    }, timeoutMs)
+  }
+
+  private clearReplayDeduplicationTimeout(): void {
+    if (this.replayDedupCleanupTimer) {
+      clearTimeout(this.replayDedupCleanupTimer)
+      this.replayDedupCleanupTimer = null
+    }
+  }
+
+  /**
+   * Check if event has been seen during replay
+   */
+  hasSeenEvent(eventKey: string | undefined): boolean {
+    if (!eventKey || !this.seenEventIds) {
+      return false
+    }
+    return this.seenEventIds.has(eventKey)
+  }
+
+  /**
+   * Mark event as seen during replay
+   */
+  markEventSeen(eventKey: string | undefined): void {
+    if (eventKey && this.seenEventIds) {
+      this.seenEventIds.add(eventKey)
+    }
   }
 
   /**
@@ -240,17 +353,14 @@ export class StreamingWebSocketController extends EventEmitter {
       this.deps.actions.startNewStream(content)
 
       const store = this.deps.getStoreState()
-      const { conversations, buildErrorContext } = store
+      const { buildErrorContext } = store
 
-      const currentConversation = conversations.find((conv: { appId: string }) => conv.appId === this.currentAppId)
-      let conversationId = currentConversation?.id
-
-      if (!conversationId) {
-        conversationId = getConversationIdFromCookie(this.currentAppId)
-        if (conversationId) {
-          clearConversationIdCookie(this.currentAppId)
-        }
+      // Check for conversationId in cookie (used for page reload recovery)
+      const conversationId = getConversationIdFromCookie(this.currentAppId)
+      if (conversationId) {
+        clearConversationIdCookie(this.currentAppId)
       }
+      // If no conversationId found, server will create a new conversation
 
       const messageParams: BuildMessageParams = {
         content,
@@ -286,7 +396,20 @@ export class StreamingWebSocketController extends EventEmitter {
         conversationId: conversationId ?? ''
       })
 
+      // Diagnostic logging before emit
+      logger.info('websocket.message.emitting', {
+        socketId: socket.id,
+        connected: socket.connected,
+        conversationId: conversationId ?? 'new',
+        messageLength: content.length
+      })
+
       socket.emit('chat_message', chatMessage, (response: any) => {
+        logger.info('websocket.message.ack_received', {
+          socketId: socket.id,
+          hasError: !!response?.error,
+          error: response?.error
+        })
         if (response?.error) {
           logger.error('websocket.message.ack_error', { error: response.error })
         }

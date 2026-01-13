@@ -72,7 +72,7 @@ describe('TransportSupervisor', () => {
   let mockHelpers: any
   let mockSocket: Socket
   let mockRefs: any
-  let mockGetStreamingState: () => { streamingState: string; activeStream: unknown }
+  let mockGetStreamingState: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     vi.useFakeTimers()
@@ -629,11 +629,11 @@ describe('TransportSupervisor', () => {
 
       // First setup
       callbacks.onSocketReady?.(mockSocket, { isNew: true })
-      const firstCallCount = mockSocket.on.mock.calls.length
+      const firstCallCount = (mockSocket.on as any).mock.calls.length
 
       // Second call with same socket (should not set up handlers again)
       callbacks.onSocketReady?.(mockSocket, { isNew: false })
-      const secondCallCount = mockSocket.on.mock.calls.length
+      const secondCallCount = (mockSocket.on as any).mock.calls.length
 
       expect(secondCallCount).toBe(firstCallCount)
     })
@@ -662,7 +662,7 @@ describe('TransportSupervisor', () => {
 
       callbacks.onSocketReady?.(mockSocket, { isNew: true })
 
-      const handlerTypes = mockSocket.on.mock.calls.map((call: any) => call[0])
+      const handlerTypes = (mockSocket.on as any).mock.calls.map((call: any) => call[0])
       expect(handlerTypes).toContain('message')
       expect(handlerTypes).toContain('status')
     })
@@ -674,7 +674,7 @@ describe('TransportSupervisor', () => {
       callbacks.onSocketReady?.(mockSocket, { isNew: true })
 
       // Find the message handler
-      const messageHandlerCall = mockSocket.on.mock.calls.find((call: any) => call[0] === 'message')
+      const messageHandlerCall = (mockSocket.on as any).mock.calls.find((call: any) => call[0] === 'message')
       expect(messageHandlerCall).toBeDefined()
 
       // The handler should be a function
@@ -700,7 +700,7 @@ describe('TransportSupervisor', () => {
       }
 
       // Simulate message receipt
-      const messageHandler = mockSocket.on.mock.calls.find((call: any) => call[0] === 'message')?.[1]
+      const messageHandler = (mockSocket.on as any).mock.calls.find((call: any) => call[0] === 'message')?.[1]
       await messageHandler({ type: 'chunk', content: 'test' })
 
       // Should not emit recovery_ack
@@ -726,7 +726,7 @@ describe('TransportSupervisor', () => {
       }
 
       // Simulate one more message receipt (reaches expected count)
-      const messageHandler = mockSocket.on.mock.calls.find((call: any) => call[0] === 'message')?.[1]
+      const messageHandler = (mockSocket.on as any).mock.calls.find((call: any) => call[0] === 'message')?.[1]
       await messageHandler({ type: 'chunk', content: 'test' })
 
       // Should emit recovery_ack
@@ -745,12 +745,12 @@ describe('TransportSupervisor', () => {
       callbacks.onSocketReady?.(mockSocket, { isNew: true })
 
       // Verify message handler was registered
-      const messageHandlerCall = mockSocket.on.mock.calls.find((call: any) => call[0] === 'message')
+      const messageHandlerCall = (mockSocket.on as any).mock.calls.find((call: any) => call[0] === 'message')
       expect(messageHandlerCall).toBeDefined()
       expect(typeof messageHandlerCall![1]).toBe('function')
 
       // Verify status handler was registered
-      const statusHandlerCall = mockSocket.on.mock.calls.find((call: any) => call[0] === 'status')
+      const statusHandlerCall = (mockSocket.on as any).mock.calls.find((call: any) => call[0] === 'status')
       expect(statusHandlerCall).toBeDefined()
       expect(typeof statusHandlerCall![1]).toBe('function')
     })
@@ -771,7 +771,7 @@ describe('TransportSupervisor', () => {
       }
 
       // Trigger check (any message will do)
-      const messageHandler = mockSocket.on.mock.calls.find((call: any) => call[0] === 'message')?.[1]
+      const messageHandler = (mockSocket.on as any).mock.calls.find((call: any) => call[0] === 'message')?.[1]
       await messageHandler({ type: 'complete', data: {} })
 
       // Should emit immediately since no events are expected

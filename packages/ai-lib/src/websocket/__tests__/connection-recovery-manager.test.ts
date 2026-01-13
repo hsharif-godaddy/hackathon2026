@@ -680,11 +680,12 @@ describe('ConnectionRecoveryManager', () => {
   })
 
   describe('sendStreamCompletedStatus', () => {
-    it('emits recovery_status with streamCompleted flag', () => {
+    it('emits recovery_status with streamCompleted flag and history_complete', async () => {
       const socket = createMockSocket({ id: 'socket-1' })
 
-      manager.sendStreamCompletedStatus(socket)
+      await manager.sendStreamCompletedStatus(socket)
 
+      // Should emit recovery_status first
       expect(socket.emit).toHaveBeenCalledWith('message', {
         type: 'recovery_status',
         content: '',
@@ -692,7 +693,19 @@ describe('ConnectionRecoveryManager', () => {
           isRecovering: true,
           hasBufferedEvents: false,
           bufferedEventCount: 0,
-          streamCompleted: true
+          streamCompleted: true,
+          conversationId: undefined,
+          historyStreaming: false,
+          historyMessageCount: 0
+        }
+      })
+
+      // Should always emit history_complete (even when empty) for consistent client-side handling
+      expect(socket.emit).toHaveBeenCalledWith('message', {
+        type: 'history_complete',
+        content: '',
+        data: {
+          messageCount: 0
         }
       })
     })

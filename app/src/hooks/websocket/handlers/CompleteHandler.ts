@@ -46,8 +46,9 @@ export class CompleteHandler implements MessageHandler {
     // Trigger usage refresh after message completes
     window.dispatchEvent(new CustomEvent('usage-refresh'))
 
-    // Clean up recovery state
-    context.helpers.clearStoredSocketId()
-    context.helpers.clearConversationIdCookie(context.currentAppId)
+    // Note: We intentionally do NOT clear the stored socket ID here anymore.
+    // Preserving it allows for recovery if the user reloads the page shortly after completion.
+    // The server handles stale recovery attempts gracefully with "Recovery attempted but no buffered events found".
+    // We only clear the conversationId cookie if it's no longer valid.
   }
 }

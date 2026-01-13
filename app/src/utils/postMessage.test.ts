@@ -200,7 +200,11 @@ describe('postMessage utilities', () => {
     });
 
     it('should handle null contentWindow', () => {
-      mockIframe.contentWindow = null as any;
+      Object.defineProperty(mockIframe, 'contentWindow', {
+        value: null,
+        writable: true,
+        configurable: true
+      });
       const message = { type: 'test' };
 
       postMessageToIframe(mockIframe, message);
@@ -215,7 +219,11 @@ describe('postMessage utilities', () => {
     });
 
     it('should handle undefined contentWindow', () => {
-      mockIframe.contentWindow = undefined as any;
+      Object.defineProperty(mockIframe, 'contentWindow', {
+        value: undefined,
+        writable: true,
+        configurable: true
+      });
       const message = { type: 'test' };
 
       postMessageToIframe(mockIframe, message);

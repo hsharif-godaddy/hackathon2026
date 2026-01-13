@@ -4,7 +4,7 @@
  * Tests for the pure ChatMessageBuilder service
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ChatMessageBuilder, type BuildMessageParams } from '../ChatMessageBuilder'
 
 describe('ChatMessageBuilder', () => {
@@ -178,7 +178,12 @@ describe('ChatMessageBuilder', () => {
         content: 'Test',
         appId: 'app-123',
         sessionId: 'session-456',
-        visualContext: { viewport: { width: 1920, height: 1080 } },
+        visualContext: {
+          page: 'home',
+          scroll_position: { x: 0, y: 0 },
+          viewport: { width: 1920, height: 1080 },
+          timestamp: Date.now()
+        },
       }
 
       const result = builder.build(params)
@@ -186,7 +191,12 @@ describe('ChatMessageBuilder', () => {
       const attachment = result.context?.contextAttachments?.[0]
       expect(attachment).toEqual({
         type: 'visual_context',
-        data: { viewport: { width: 1920, height: 1080 } },
+        data: {
+          page: 'home',
+          scroll_position: { x: 0, y: 0 },
+          viewport: { width: 1920, height: 1080 },
+          timestamp: expect.any(Number)
+        },
         persistence: 'ephemeral',
         renderStrategy: 'before_prompt',
         metadata: {
@@ -341,7 +351,12 @@ describe('ChatMessageBuilder', () => {
         appId: 'app-123',
         sessionId: 'session-456',
         aiEditContext: { code: 'test' },
-        visualContext: { viewport: { width: 1920, height: 1080 } },
+        visualContext: {
+          page: 'home',
+          scroll_position: { x: 0, y: 0 },
+          viewport: { width: 1920, height: 1080 },
+          timestamp: Date.now()
+        },
         selectedAsset: { imageUrl: 'https://example.com/image.jpg' },
         buildErrorContext: { error: 'Error' },
         todoListContext: { items: [] },

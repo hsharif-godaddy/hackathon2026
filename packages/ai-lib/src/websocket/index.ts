@@ -30,7 +30,10 @@ export type {
   StreamingEventType,
   EventSubscriber,
   EventMetadata,
-  CircularBufferConfig
+  CircularBufferConfig,
+  HistoryProvider,
+  PersistedMessage,
+  RecoveryStatusData
 } from './interfaces.js'
 
 // No-op Persistence for Tests/Examples

@@ -434,13 +434,21 @@ export class ConnectionManager {
   }
 
   private getStoredSocketId(appId: string): string | null {
-    if (!this.deps.storage) return null
-    return this.deps.storage.getItem(this.getStorageKey(appId))
+    if (!this.deps.storage) {
+      logger.debug('websocket.socket_id.no_storage', { appId })
+      return null
+    }
+    const key = this.getStorageKey(appId)
+    const socketId = this.deps.storage.getItem(key)
+    logger.debug('websocket.socket_id.retrieved', { appId, socketId, key, found: !!socketId })
+    return socketId
   }
 
   private storeSocketId(appId: string, socketId: string): void {
     if (!this.deps.storage) return
-    this.deps.storage.setItem(this.getStorageKey(appId), socketId)
+    const key = this.getStorageKey(appId)
+    this.deps.storage.setItem(key, socketId)
+    logger.debug('websocket.socket_id.stored', { appId, socketId, key })
   }
 
   private getStorageKey(appId: string): string {
