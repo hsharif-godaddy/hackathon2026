@@ -3,6 +3,8 @@
 import clsx from 'clsx'
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import Button from '@ux/button'
 import DownloadIcon from '@ux/icon/download'
 import HamburgerIcon from '@ux/icon/hamburger'
@@ -12,6 +14,7 @@ import Spinner from '@ux/spinner'
 import Text from '@ux/text'
 
 import FileTree, { FileItem } from '@/app/develop/components/FileTree'
+import { markdownComponents } from '@/app/develop/components/preview/markdownComponents'
 import { useResponsive } from '@/hooks/useResponsive'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -103,6 +106,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
   const [recentlySaved, setRecentlySaved] = useState<string | null>(null)
+  const [showMarkdownPreview, setShowMarkdownPreview] = useState(false)
 
   const { isMobile } = useResponsive()
   // On mobile, start with file tree open so users know it exists
@@ -277,6 +281,8 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     const existingFile = openFiles.find(f => f.path === path)
     if (existingFile) {
       setActiveFile(path)
+      // Reset markdown preview when switching files
+      setShowMarkdownPreview(false)
       // On mobile, close file tree after selection
       if (isMobile) {
         setShowFileTree(false)
@@ -521,32 +527,59 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                   design="control"
                 />
               )}
+
+              {/* Markdown preview toggle - show for .md files */}
+              {currentFile && currentFile.language === 'markdown' && (
+                <button
+                  onClick={() => setShowMarkdownPreview(!showMarkdownPreview)}
+                  className={clsx(
+                    "ml-auto px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer",
+                    showMarkdownPreview
+                      ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  )}
+                >
+                  {showMarkdownPreview ? 'Edit' : 'Preview'}
+                </button>
+              )}
             </>
           )}
         </div>
 
         {/* Editor */}
-        <div className="flex-1">
+        <div className="flex-1 overflow-auto">
           {currentFile ? (
-            <MonacoEditor
-              height="100%"
-              language={currentFile.language}
-              value={currentFile.content}
-              onChange={handleEditorChange}
-              beforeMount={handleEditorWillMount}
-              theme="vs-dark"
-              options={{
-                minimap: { enabled: false },
-                fontSize: 14,
-                lineNumbers: 'on',
-                roundedSelection: false,
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                tabSize: 2,
-                insertSpaces: true,
-                wordWrap: 'on'
-              }}
-            />
+            <>
+              {showMarkdownPreview && currentFile.language === 'markdown' ? (
+                <div className="h-full p-6 overflow-auto bg-white">
+                  <div className="max-w-4xl mx-auto markdown-preview">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                      {currentFile.content}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              ) : (
+                <MonacoEditor
+                  height="100%"
+                  language={currentFile.language}
+                  value={currentFile.content}
+                  onChange={handleEditorChange}
+                  beforeMount={handleEditorWillMount}
+                  theme="vs-dark"
+                  options={{
+                    minimap: { enabled: false },
+                    fontSize: 14,
+                    lineNumbers: 'on',
+                    roundedSelection: false,
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    tabSize: 2,
+                    insertSpaces: true,
+                    wordWrap: 'on'
+                  }}
+                />
+              )}
+            </>
           ) : (
             <div className="h-full flex flex-col items-center justify-center">
               <PageIcon className="mx-auto mb-2" />
