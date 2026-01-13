@@ -310,6 +310,25 @@ export interface ToolGrepSearchData {
   paths?: string[];
 }
 
+export interface ToolCodeSearchData {
+  toolName: string;
+  query: string;
+  directory: string;
+  searchOptions?: {
+    caseSensitive?: boolean;
+    regex?: boolean;
+    maxResults?: number;
+    contextLines?: number;
+    filePattern?: string;
+  };
+  resultStats?: {
+    totalMatches: number;
+    truncated: boolean;
+    hasRipgrep?: boolean;
+    usedFallback?: boolean;
+  };
+}
+
 export interface ToolGitOperationData {
   toolName: string;
   operation: 'status' | 'add' | 'commit' | 'diff' | 'log' | 'branch' | 'checkout' | 'merge' | 'pull' | 'push' | 'stash' | 'reset' | 'revert' | 'restore' | 'clean';
@@ -928,6 +947,15 @@ export const AppEvents = {
       begin: 'tool.grep.search.begin' as const,
       success: 'tool.grep.search.success' as const,
       failure: 'tool.grep.search.failure' as const,
+    },
+    codeSearch: {
+      begin: 'tool.code.search.begin' as const,
+      success: 'tool.code.search.success' as const,
+      failure: 'tool.code.search.failure' as const,
+      ripgrepError: 'tool.code.search.ripgrep.error' as const,
+      parseError: 'tool.code.search.parse.error' as const,
+      spawnError: 'tool.code.search.spawn.error' as const,
+      fallback: 'tool.code.search.fallback' as const,
     },
     git: {
       begin: 'tool.git.operation.begin' as const,

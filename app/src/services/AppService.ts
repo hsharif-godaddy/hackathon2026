@@ -498,6 +498,54 @@ export class AppService {
   }
 
   /**
+   * Search code in app files
+   */
+  async searchCode(
+    appId: string,
+    query: string,
+    options: {
+      caseSensitive?: boolean
+      regex?: boolean
+      maxResults?: number
+      filePattern?: string
+    } = {}
+  ): Promise<{
+    matches: Array<{
+      path: string
+      line: number
+      column: number
+      text: string
+      matchStart: number
+      matchEnd: number
+    }>
+    totalMatches: number
+    truncated: boolean
+    error?: string
+  }> {
+    const requestBody = {
+      query,
+      caseSensitive: options.caseSensitive,
+      regex: options.regex,
+      maxResults: options.maxResults,
+      filePattern: options.filePattern
+    }
+
+    const apiUrl = await buildDynamicApiUrl(`files/search`, appId)
+    const response = await agentFetch(apiUrl, {
+      siteId: appId,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to search code: ${response.status}`)
+    }
+
+    return response.json()
+  }
+
+  /**
    * Get all apps
    */
   async getAllApps(): Promise<{ apps: App[] }> {

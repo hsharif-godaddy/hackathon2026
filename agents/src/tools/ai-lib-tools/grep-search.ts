@@ -40,7 +40,7 @@ export const grepSearchAITool: Tool = createTool(
       throw new Error(`App '${appId}' not found`)
     }
 
-    const appGrepTool = new GrepTool(app.path)
+    const appGrepTool = new GrepTool(app.path, appId)
     const result = await appGrepTool.execute(input as GrepOptions)
     return appGrepTool.formatForLLM(result)
   }

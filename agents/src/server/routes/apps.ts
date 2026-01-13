@@ -30,6 +30,8 @@ import { ServerManagementTool } from '../../tools/server-management-tool.js';
 import { getNameSuggestionService } from '../../services/name-suggestion.js';
 import { Logger, log } from '../../logging/index.js';
 import { getFeatures } from '../../services/features.js';
+import { searchCode } from '../../utils/code-search.js';
+import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 
 const router: IRouter = Router();
 const appRepo = new AppRepository();
@@ -639,6 +641,67 @@ router.post('/:id/files/edit', async (req: Request, res: Response) => {
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
     log.error(contextLogger, 'route.apps.files.edit.error', error as Error, {});
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /apps/:id/files/search - Search code in app files
+ */
+router.post('/:id/files/search', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { query, caseSensitive, regex, maxResults, filePattern } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    if (!query || typeof query !== 'string' || query.trim().length === 0) {
+      return res.status(400).json({ error: 'Search query is required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const contextLogger = log.forApp(id);
+    contextLogger.info('code-search.request', {
+      message: 'Code search requested',
+      query: query.substring(0, 100),
+      caseSensitive,
+      regex,
+      maxResults
+    });
+
+    const searchOptions: {
+      caseSensitive: boolean
+      regex: boolean
+      maxResults: number
+      filePattern?: string
+    } = {
+      caseSensitive: caseSensitive === true,
+      regex: regex === true,
+      maxResults: maxResults || 100
+    };
+
+    if (filePattern && typeof filePattern === 'string') {
+      searchOptions.filePattern = filePattern;
+    }
+
+    const result = await searchCode(id, app.path, query, searchOptions);
+
+    contextLogger.info('code-search.complete', {
+      message: 'Code search completed',
+      matchCount: result.totalMatches,
+      truncated: result.truncated
+    });
+
+    return res.json(result);
+  } catch (error) {
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.files.search.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

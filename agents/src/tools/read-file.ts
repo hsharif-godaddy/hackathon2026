@@ -35,7 +35,7 @@ export interface ReadFileResult {
 /**
  * Check if a file should be blocked from reading based on AI development guardrails
  */
-function isFileBlocked(filePath: string): { blocked: boolean; reason?: string } {
+export function isFileBlocked(filePath: string): { blocked: boolean; reason?: string } {
   const fileName = basename(filePath);
   // const dirPath = dirname(filePath);
   const normalizedPath = filePath.replace(/\\/g, '/');

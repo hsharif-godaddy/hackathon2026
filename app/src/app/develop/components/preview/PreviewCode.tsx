@@ -13,6 +13,7 @@ import XIcon from '@ux/icon/x'
 import Spinner from '@ux/spinner'
 import Text from '@ux/text'
 
+import CodeSearch from '@/app/develop/components/CodeSearch'
 import FileTree, { FileItem } from '@/app/develop/components/FileTree'
 import { markdownComponents } from '@/app/develop/components/preview/markdownComponents'
 import { useResponsive } from '@/hooks/useResponsive'
@@ -116,6 +117,8 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   // Refs to prevent duplicate loads and manage retry
   const isLoadingRef = useRef(false)
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const editorRef = useRef<any>(null)
+  const pendingLineNumberRef = useRef<number | null>(null)
 
   // Load real files from backend
   const loadFiles = useCallback(async () => {
@@ -276,13 +279,29 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     }
   }
 
-  const handleFileSelect = useCallback(async (path: string) => {
+  const handleFileSelect = useCallback(async (path: string, lineNumber?: number) => {
     // Check if file is already open
     const existingFile = openFiles.find(f => f.path === path)
     if (existingFile) {
       setActiveFile(path)
+
+      // Navigate to line if specified
+      if (lineNumber && editorRef.current) {
+        // Use setTimeout to ensure editor is ready
+        setTimeout(() => {
+          if (editorRef.current) {
+            editorRef.current.revealLineInCenter(lineNumber)
+            editorRef.current.setPosition({ lineNumber, column: 1 })
+          }
+        }, 100)
+      } else if (lineNumber) {
+        // Store for later if editor not ready
+        pendingLineNumberRef.current = lineNumber
+      }
+
       // Reset markdown preview when switching files
       setShowMarkdownPreview(false)
+
       // On mobile, close file tree after selection
       if (isMobile) {
         setShowFileTree(false)
@@ -305,6 +324,11 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
 
     setOpenFiles(prev => [...prev, newFile])
     setActiveFile(path)
+    
+    // Store line number for navigation after editor mounts
+    if (lineNumber) {
+      pendingLineNumberRef.current = lineNumber
+    }
 
     // On mobile, close file tree after selection
     if (isMobile) {
@@ -428,7 +452,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
             />
           )}
           <div className={clsx(
-            "absolute left-0 top-0 bottom-0 w-[280px] bg-intents-ux-boxLowContrast-backgroundColor z-20 transform transition-transform duration-300 ease-in-out overflow-y-auto",
+            "absolute left-0 top-0 bottom-0 w-[280px] bg-intents-ux-boxLowContrast-backgroundColor z-20 transform transition-transform duration-300 ease-in-out flex flex-col",
             showFileTree ? "translate-x-0" : "-translate-x-full"
           )}>
             <div className="flex items-center justify-between px-1.5 py-0.5 border-b">
@@ -441,21 +465,27 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                 icon={<XIcon />}
               />
             </div>
+            <CodeSearch appId={appId} files={files} onResultClick={handleFileSelect} />
+            <div className="flex-1 overflow-y-auto">
+              <FileTree
+                files={files}
+                selectedFile={activeFile}
+                onFileSelect={handleFileSelect}
+              />
+            </div>
+          </div>
+        </>
+      ) : (
+        // Desktop: Fixed sidebar
+        <div className="border-r min-h-0 w-[250px] flex-shrink-0 flex flex-col">
+          <CodeSearch appId={appId} files={files} onResultClick={handleFileSelect} />
+          <div className="flex-1 overflow-y-auto">
             <FileTree
               files={files}
               selectedFile={activeFile}
               onFileSelect={handleFileSelect}
             />
           </div>
-        </>
-      ) : (
-        // Desktop: Fixed sidebar
-        <div className="border-r overflow-y-auto min-h-0 w-[250px] flex-shrink-0">
-          <FileTree
-            files={files}
-            selectedFile={activeFile}
-            onFileSelect={handleFileSelect}
-          />
         </div>
       )}
 
@@ -565,6 +595,16 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                   value={currentFile.content}
                   onChange={handleEditorChange}
                   beforeMount={handleEditorWillMount}
+                  onMount={(editor) => {
+                    editorRef.current = editor
+                    // Navigate to pending line if any
+                    if (pendingLineNumberRef.current) {
+                      const lineNum = pendingLineNumberRef.current
+                      editor.revealLineInCenter(lineNum)
+                      editor.setPosition({ lineNumber: lineNum, column: 1 })
+                      pendingLineNumberRef.current = null
+                    }
+                  }}
                   theme="vs-dark"
                   options={{
                     minimap: { enabled: false },

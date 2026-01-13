@@ -4,8 +4,11 @@ import * as path from 'path';
 import { glob } from 'glob';
 import { minimatch } from 'minimatch';
 import { existsSync, lstatSync, realpathSync } from 'fs';
+
+import { createDevSupervisorClientForApp } from '../utils/dev-supervisor-client-factory.js';
 import { logger } from '../logging/index.js';
-import { toolGrepEvents } from '../logging/events/index.js';
+import { RipgrepUtil } from '../utils/ripgrep-util.js';
+import { toolCodeSearchEvents, toolGrepEvents } from '../logging/events/index.js';
 
 // Types and Schemas
 export const GrepOptionsSchema = z.object({
@@ -80,11 +83,15 @@ export interface GrepResult {
 
 export class GrepTool {
   private workingDirectory: string;
+  private appId?: string;
   private cache: Map<string, { content: string[]; timestamp: number }> = new Map();
   private cacheMaxAge = 5000; // 5 seconds
 
-  constructor(workingDirectory: string = process.cwd()) {
+  constructor(workingDirectory: string = process.cwd(), appId?: string) {
     this.workingDirectory = workingDirectory;
+    if (appId !== undefined) {
+      this.appId = appId;
+    }
   }
 
   /**
@@ -167,6 +174,15 @@ export class GrepTool {
     });
 
     try {
+      // Try ripgrep first (primary choice, fastest)
+      if (this.appId && !params.findDefinition && !params.findReferences && !params.wholeWord) {
+        const ripgrepResult = await this.searchWithRipgrep(params, startTime);
+        if (ripgrepResult) {
+          return ripgrepResult;
+        }
+      }
+
+      // Fall back to Node.js search (always works)
       // Parse and validate options with defaults
       const options = GrepOptionsSchema.parse(params);
 
@@ -265,6 +281,100 @@ export class GrepTool {
         error: error instanceof Error ? error.message : String(error),
         searchTime: Date.now() - startTime
       };
+    }
+  }
+
+  /**
+   * Search using ripgrep (primary/fastest method)
+   * Returns null if ripgrep unavailable or fails (triggers Node.js fallback)
+   */
+  private async searchWithRipgrep(params: GrepOptions, startTime: number): Promise<GrepResult | null> {
+    try {
+      const supervisor = createDevSupervisorClientForApp(this.appId!);
+      if (!supervisor) {
+        toolCodeSearchEvents.fallback(logger, {
+          toolName: 'grep',
+          message: 'Dev-supervisor not available, using Node.js fallback'
+        });
+        return null;
+      }
+
+      const hasRipgrep = await RipgrepUtil.isAvailable(supervisor);
+      if (!hasRipgrep) {
+        toolCodeSearchEvents.fallback(logger, {
+          toolName: 'grep',
+          message: 'Ripgrep not installed in container, using Node.js fallback'
+        });
+        return null;
+      }
+
+      const ripgrepOptions = {
+        caseSensitive: params.caseSensitive,
+        regex: params.regex,
+        maxResults: params.maxResults,
+        contextLines: params.contextLines
+      };
+
+      const ripgrepResult = await RipgrepUtil.search(
+        supervisor,
+        this.workingDirectory,
+        params.query,
+        ripgrepOptions,
+        (filePath: string) => this.isPathSafe(path.join(this.workingDirectory, filePath))
+      );
+
+      if (ripgrepResult.error) {
+        return null;
+      }
+
+      const matches: Match[] = ripgrepResult.matches.map(m => ({
+        file: m.path,
+        line: m.line,
+        column: m.column,
+        match: m.text,
+        context: {
+          before: [],
+          after: []
+        }
+      }));
+
+      const result = {
+        success: true,
+        query: params.query,
+        matches,
+        totalMatches: ripgrepResult.totalMatches,
+        filesSearched: ripgrepResult.matches.length,
+        truncated: ripgrepResult.truncated,
+        searchTime: Date.now() - startTime
+      };
+
+      toolGrepEvents.success(logger, {
+        toolName: 'grep',
+        query: params.query,
+        ...(params.paths && { paths: params.paths }),
+        searchOptions: {
+          regex: params.regex || false,
+          caseSensitive: params.caseSensitive || false,
+          wholeWord: false,
+          contextLines: params.contextLines || 3,
+          maxResults: params.maxResults || 50,
+          maxFilesSearched: params.maxFilesSearched || 1000,
+        },
+        resultStats: {
+          totalMatches: ripgrepResult.totalMatches,
+          filesSearched: ripgrepResult.matches.length,
+          truncated: ripgrepResult.truncated,
+          searchTime: result.searchTime,
+        },
+      });
+
+      return result;
+    } catch (error) {
+      logger.warn('grep.ripgrep.fallback', {
+        error: error instanceof Error ? error.message : String(error),
+        message: 'Ripgrep search failed, falling back to Node.js'
+      });
+      return null;
     }
   }
 

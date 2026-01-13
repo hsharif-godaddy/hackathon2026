@@ -115,6 +115,15 @@ export class DirectoryListingTool {
     'env',
     '.env.local',
     '.env.*.local',
+    
+    // Lock files (sync with isFileBlocked in read-file.ts)
+    'package-lock.json',
+    'pnpm-lock.yaml',
+    'yarn.lock',
+    'composer.lock',
+    'Gemfile.lock',
+    'Pipfile.lock',
+    'poetry.lock',
 
     // things in the template we want to hide for now
     'dev-supervisor',

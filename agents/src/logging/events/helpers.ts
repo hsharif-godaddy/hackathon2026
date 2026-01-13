@@ -44,6 +44,7 @@ import type {
   ToolAstEditData,
   ToolBuildOperationData,
   ToolCacheOperationData,
+  ToolCodeSearchData,
   ToolDirectoryListingData,
   ToolDirectoryWalkData,
   ToolFileEditData,
@@ -603,6 +604,39 @@ export const toolGrepEvents = {
 
   failure: (logger: ILogger, error: Error, data: { toolName: string; query: string; appId?: string }) => {
     log.error(logger, AppEvents.tool.grep.failure, error, data);
+  },
+};
+
+/**
+ * Tool Code Search logging helpers
+ */
+export const toolCodeSearchEvents = {
+  begin: (logger: ILogger, data: { toolName: string; query: string; directory: string; searchOptions?: any }) => {
+    logger.info(AppEvents.tool.codeSearch.begin, data);
+  },
+
+  success: (logger: ILogger, data: ToolCodeSearchData) => {
+    logger.info(AppEvents.tool.codeSearch.success, data);
+  },
+
+  failure: (logger: ILogger, error: Error, data: { toolName: string; query: string; directory: string }) => {
+    log.error(logger, AppEvents.tool.codeSearch.failure, error, data);
+  },
+
+  ripgrepError: (logger: ILogger, data: { toolName: string; query: string; directory: string; stderr?: string }) => {
+    logger.error(AppEvents.tool.codeSearch.ripgrepError, data);
+  },
+
+  parseError: (logger: ILogger, data: { toolName: string; line: string; error: string }) => {
+    logger.warn(AppEvents.tool.codeSearch.parseError, data);
+  },
+
+  spawnError: (logger: ILogger, error: Error, data: { toolName: string; directory: string }) => {
+    log.error(logger, AppEvents.tool.codeSearch.spawnError, error, data);
+  },
+
+  fallback: (logger: ILogger, data: { toolName: string; message: string }) => {
+    logger.warn(AppEvents.tool.codeSearch.fallback, data);
   },
 };
 

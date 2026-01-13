@@ -38,6 +38,7 @@ export {
   toolAstEditEvents,
   toolBuildEvents,
   toolCacheEvents,
+  toolCodeSearchEvents,
   toolDirectoryListingEvents,
   toolDirectoryWalkEvents,
   toolFileEditEvents,
