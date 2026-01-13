@@ -19,6 +19,35 @@ export interface SecretDefinition {
   description?: string
   required?: boolean
   isExisting?: boolean
+  defaultValue?: string
+}
+
+/**
+ * Generate a value for auto: prefixed defaultValues
+ * Supported: auto:hex64, auto:hex32, auto:uuid
+ */
+function generateAutoValue(defaultValue: string | undefined): string {
+  if (!defaultValue) return ''
+  if (!defaultValue.startsWith('auto:')) return defaultValue
+
+  const type = defaultValue.slice(5) // Remove 'auto:' prefix
+
+  switch (type) {
+    case 'hex64': {
+      const array = new Uint8Array(32)
+      crypto.getRandomValues(array)
+      return Array.from(array, b => b.toString(16).padStart(2, '0')).join('')
+    }
+    case 'hex32': {
+      const array = new Uint8Array(16)
+      crypto.getRandomValues(array)
+      return Array.from(array, b => b.toString(16).padStart(2, '0')).join('')
+    }
+    case 'uuid':
+      return crypto.randomUUID()
+    default:
+      return defaultValue
+  }
 }
 
 /**
@@ -71,12 +100,12 @@ export default function ChatSecretsRequestMessage({
 
   const { title, description, secrets, mode, allowMultiple, showSettingsLink, existingSecretNames = [] } = payload
 
-  // Initialize form rows from payload
+  // Initialize form rows from payload (with auto-generated values for 'auto:' defaultValues)
   const initialRows: SecretFormRow[] = secrets.length > 0
     ? secrets.map((s, i) => ({
         id: `secret-${i}`,
         name: s.name,
-        value: '',
+        value: generateAutoValue(s.defaultValue),
         description: s.description,
         required: s.required,
         isExisting: s.isExisting,

@@ -71,12 +71,10 @@ export const skillAITool: Tool = createTool(
         throw new Error(`App not found: ${appId}`);
       }
 
-      const appPath = app.path;
-
       // Install templates directly
       const result = await skillLoader.installTemplates({
         skill: input.skill,
-        appPath
+        appPath: app.path
       });
 
       if (!result.success) {
@@ -87,7 +85,7 @@ export const skillAITool: Tool = createTool(
         skill: result.skill,
         filesInstalled: result.filesInstalled,
         installedFiles: result.installedFiles,
-        message: `Skill '${result.skill}' installed successfully. ${result.filesInstalled} files copied to ${appPath}`
+        message: `Skill '${result.skill}' installed successfully. ${result.filesInstalled} files copied to ${app.path}`
       };
     }
 

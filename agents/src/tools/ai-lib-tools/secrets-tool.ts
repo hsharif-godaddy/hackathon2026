@@ -9,6 +9,7 @@ const SecretDefinitionSchema = z.object({
   description: z.string().optional().describe('Help text explaining what this secret is for'),
   required: z.boolean().optional().describe('Whether this secret is required'),
   isExisting: z.boolean().optional().describe('True if updating an existing secret'),
+  defaultValue: z.string().optional().describe('Pre-filled value. Use "auto:hex64" to auto-generate a 64-char hex string, "auto:hex32" for 32-char, or "auto:uuid" for UUID.'),
 });
 
 /**
