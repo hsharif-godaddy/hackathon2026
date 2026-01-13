@@ -8,9 +8,11 @@
 export * from './types'
 export * from './constants'
 export * from './publishAction'
+export * from './getSiteDataAction'
 
 import { CLIENT_ACTIONS } from './constants'
 import { publishAction } from './publishAction'
+import { getSiteDataAction } from './getSiteDataAction'
 import type { ClientActionExecutor } from './types'
 
 /**
@@ -20,5 +22,5 @@ import type { ClientActionExecutor } from './types'
  */
 export const clientActionExecutors: Record<string, ClientActionExecutor> = {
   [CLIENT_ACTIONS.PUBLISH]: publishAction,
-  // Future actions can be added here
+  [CLIENT_ACTIONS.GET_SITE_DATA]: getSiteDataAction,
 }

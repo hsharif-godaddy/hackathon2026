@@ -52,6 +52,7 @@ export { skillAITool } from './skill-loader.js';
 export { websiteScraperAITool } from './website-scraper.js';
 export { publishClientAITool } from './publish-client.js';
 export { setProjectNameAITool } from './set-project-name.js';
+export { qrCodeAITool } from './qr-code.js';
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js';
@@ -99,6 +100,7 @@ import { skillAITool } from './skill-loader.js';
 import { websiteScraperAITool } from './website-scraper.js';
 import { publishClientAITool } from './publish-client.js';
 import { setProjectNameAITool } from './set-project-name.js';
+import { qrCodeAITool } from './qr-code.js';
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -147,6 +149,7 @@ export const allAILibTools: Record<string, Tool> = {
   websiteScraper: websiteScraperAITool,
   publishClient: publishClientAITool,
   setProjectName: setProjectNameAITool,
+  qrCode: qrCodeAITool,
 };
 
 /**
@@ -195,6 +198,7 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
     iconsValidator: iconsValidatorAITool,
     ragSearch: ragSearchAITool,
     knowBSearch: knowBSearchAITool,
+    qrCode: qrCodeAITool,
   },
 
   // Monitoring and debugging tools

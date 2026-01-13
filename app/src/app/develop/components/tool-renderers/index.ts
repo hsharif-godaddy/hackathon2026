@@ -19,6 +19,7 @@ import ImageSearchToolRenderer from './ImageSearchToolRenderer'
 import MediaSearchToolRenderer from './MediaSearchToolRenderer'
 import OAuthToolRenderer from './OAuthToolRenderer'
 import PublishClientToolRenderer from './PublishClientToolRenderer'
+import QRCodeToolRenderer from './QRCodeToolRenderer'
 import ReadFileToolRenderer from './ReadFileToolRenderer'
 import SecretsToolRenderer from './SecretsToolRenderer'
 import SetProjectNameToolRenderer from './SetProjectNameToolRenderer'
@@ -61,6 +62,7 @@ export const toolRendererRegistry = {
   todoList: TodoListToolRenderer,
   suggestedResponse: SuggestedResponseToolRenderer,
   oauthConnect: OAuthToolRenderer,
+  qrCode: QRCodeToolRenderer,
   requestSecrets: SecretsToolRenderer,
   setProjectName: SetProjectNameToolRenderer,
   socialStatus: SocialStatusToolRenderer,
@@ -113,6 +115,7 @@ export {
   MediaSearchToolRenderer,
   OAuthToolRenderer,
   PublishClientToolRenderer,
+  QRCodeToolRenderer,
   ReadFileToolRenderer,
   SecretsToolRenderer,
   SetProjectNameToolRenderer,

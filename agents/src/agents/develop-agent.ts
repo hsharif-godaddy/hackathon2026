@@ -213,6 +213,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
 
       // Specialized development tools
       mediaSearch: allAILibTools.mediaSearch,
+      qrCode: allAILibTools.qrCode,
       websiteScraper: allAILibTools.websiteScraper,
 
       // Color scheme tool
