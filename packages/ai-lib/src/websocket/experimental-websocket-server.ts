@@ -1699,6 +1699,11 @@ export class WebSocketServer {
         conversationIdForCleanup = conversationId
 
         // WebSocket delivery (blocking)
+        // Explicitly evict any existing websocket subscriber before adding fresh instance
+        // Use effective socket ID to handle migrations (A→B) where recovery already registered websocket-B
+        // This mirrors the cleanup logic at line 1996 and ensures exactly one subscriber exists
+        const effectiveSocketId = this.stateManager.getEffectiveSocketId(socketId)
+        this.eventChannel.unsubscribe(conversationId, `websocket-${effectiveSocketId}`)
         this.eventChannel.subscribe(
           conversationId,
           new WebSocketSubscriber(socket, (id) => this.stateManager.isDisconnected(id))

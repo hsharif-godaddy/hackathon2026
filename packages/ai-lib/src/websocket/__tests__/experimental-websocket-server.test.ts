@@ -1616,6 +1616,60 @@ describe('WebSocketServer - Error Handling', () => {
       testServer.close()
     })
 
+    it('should use effective socket ID when registering subscriber after migration', async () => {
+      vi.clearAllMocks()
+
+      const testServer = new WebSocketServer(httpServer, {
+        agents: mockAgents,
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
+      })
+
+      const eventChannel = (testServer as any).eventChannel
+      const stateManager = (testServer as any).stateManager
+
+      const conversationId = 'test-conv-id'
+
+      // Simulate recovery: socket A migrated to socket B, recovery registered websocket-B
+      const { WebSocketSubscriber } = await import('../subscribers/websocket-subscriber.js')
+      const mockSocketB = { id: 'socket-B', emit: vi.fn(), connected: true }
+      const isDisconnected = () => false
+
+      // Recovery registers subscriber with new socket B
+      eventChannel.subscribe(conversationId, new WebSocketSubscriber(mockSocketB, isDisconnected))
+
+      // Verify one subscriber exists (websocket-B from recovery)
+      const state1 = (eventChannel as any).conversations.get(conversationId)
+      expect(state1.subscribers.size).toBe(1)
+      const subscriberIds1 = Array.from(state1.subscribers).map((s: any) => s.id)
+      expect(subscriberIds1).toEqual(['websocket-socket-B'])
+
+      // Simulate state manager tracking the migration
+      stateManager.createConnection('socket-A', {
+        conversationId,
+        agentName: 'test-agent',
+        context: { socketId: 'socket-A', agentName: 'test-agent' }
+      })
+      stateManager.migrateSocketId('socket-A', 'socket-B')
+
+      // Now simulate a queued message handler from old socket A running
+      // It should use effective socket ID (B) to unsubscribe, preventing duplicates
+      const mockSocketA = { id: 'socket-A', emit: vi.fn(), connected: false } // disconnected
+      const effectiveSocketId = stateManager.getEffectiveSocketId('socket-A')
+
+      // This is what the fix does at line 1705:
+      eventChannel.unsubscribe(conversationId, `websocket-${effectiveSocketId}`)
+      eventChannel.subscribe(conversationId, new WebSocketSubscriber(mockSocketA, isDisconnected))
+
+      // Verify exactly one subscriber exists (no duplicates)
+      const state2 = (eventChannel as any).conversations.get(conversationId)
+      expect(state2.subscribers.size).toBe(1)
+      const subscriberIds2 = Array.from(state2.subscribers).map((s: any) => s.id)
+      expect(subscriberIds2).toEqual(['websocket-socket-A'])
+
+      testServer.close()
+    })
+
     it('should use effectiveId in cleanupConversation', async () => {
       vi.clearAllMocks()
 
