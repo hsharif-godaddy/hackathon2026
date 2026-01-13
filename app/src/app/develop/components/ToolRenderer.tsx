@@ -29,8 +29,7 @@ interface ToolRendererProps {
  */
 function ToolRenderer({ toolCall, className = '', isLastAssistantMessage = false }: ToolRendererProps) {
   const currentAppId = useStreamingConversationStore(state => state.currentAppId)
-  const conversations = useStreamingConversationStore(state => state.conversations)
-  const conversationId = (currentAppId ? getConversationIdFromCookie(currentAppId) : null) ?? conversations[0]?.id
+  const conversationId = currentAppId ? getConversationIdFromCookie(currentAppId) : null
 
   const ToolRendererComponent = getToolRenderer(toolCall.name)
 

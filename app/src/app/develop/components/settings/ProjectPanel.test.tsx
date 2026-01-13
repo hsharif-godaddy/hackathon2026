@@ -21,6 +21,7 @@ vi.mock('@/hooks/usePaywallModal', () => ({
     checkAndShowPaywall: vi.fn((callback) => callback()),
     PaywallModal: () => null,
     isPolling: false,
+    shouldShowPaywall: false,
   })),
 }));
 
@@ -28,8 +29,9 @@ vi.mock('@/hooks/useDailyUsage', () => ({
   useDailyUsage: vi.fn(() => ({
     data: null,
     isLoading: false,
-    warningLevel: 'NORMAL',
+    warningLevel: 'none',
     formattedResetTime: null,
+    refresh: vi.fn(),
   })),
 }));
 
@@ -101,6 +103,7 @@ describe('ProjectPanel', () => {
         checkAndShowPaywall: mockCheckAndShowPaywall,
         PaywallModal: () => null,
         isPolling: false,
+        shouldShowPaywall: false,
       });
 
       renderWithProviders(<ProjectPanel />);
@@ -133,6 +136,7 @@ describe('ProjectPanel', () => {
         checkAndShowPaywall: mockCheckAndShowPaywall,
         PaywallModal: () => null,
         isPolling: false,
+        shouldShowPaywall: false,
       });
 
       renderWithProviders(<ProjectPanel />);
@@ -164,6 +168,7 @@ describe('ProjectPanel', () => {
         checkAndShowPaywall: vi.fn(),
         PaywallModal: () => null,
         isPolling: true,
+        shouldShowPaywall: false,
       });
 
       renderWithProviders(<ProjectPanel />);
@@ -177,9 +182,10 @@ describe('ProjectPanel', () => {
       vi.mocked(useDailyUsage).mockReturnValue({
         data: null,
         isLoading: true,
-        warningLevel: 'NORMAL',
+        warningLevel: 'none',
         formattedResetTime: null,
-      });
+        refresh: vi.fn(),
+      } as unknown as ReturnType<typeof useDailyUsage>);
 
       // Ensure download and polling are NOT in progress
       vi.mocked(useDownloadApp).mockReturnValue({
@@ -192,6 +198,7 @@ describe('ProjectPanel', () => {
         checkAndShowPaywall: vi.fn(),
         PaywallModal: () => null,
         isPolling: false,
+        shouldShowPaywall: false,
       });
 
       renderWithProviders(<ProjectPanel />);
@@ -204,9 +211,10 @@ describe('ProjectPanel', () => {
       vi.mocked(useDailyUsage).mockReturnValue({
         data: null,
         isLoading: false,
-        warningLevel: 'NORMAL',
+        warningLevel: 'none',
         formattedResetTime: null,
-      });
+        refresh: vi.fn(),
+      } as unknown as ReturnType<typeof useDailyUsage>);
 
       vi.mocked(useDownloadApp).mockReturnValue({
         download: vi.fn(),
@@ -218,6 +226,7 @@ describe('ProjectPanel', () => {
         checkAndShowPaywall: vi.fn(),
         PaywallModal: () => null,
         isPolling: false,
+        shouldShowPaywall: false,
       });
 
       renderWithProviders(<ProjectPanel />);
