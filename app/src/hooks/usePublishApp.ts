@@ -1,7 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { dynamicApiConfigService } from '@/config/dynamic-api';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { appFetch } from '@/lib/gasket-config';
+import { regenerateToken } from '@/lib/jwt-regeneration';
 import { logger } from '@/lib/request-context';
 import { appService } from '@/services/AppService';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
@@ -128,10 +130,26 @@ export function usePublishApp() {
         }
       }
 
-      const response = await appFetch(`/api/apps/${appId}/publish`, {
+      // Regenerate JWT with fresh permissions before publish
+      logger.info('publish.regenerate-token', { appId });
+      const tokenResult = await regenerateToken({ siteId: appId, force: true });
+
+      // Get agent URL for this site
+      const apiConfig = await dynamicApiConfigService.getConfigForSite(appId);
+
+      if (!apiConfig.agentUrl) {
+        throw new Error('Agent URL not available for this site');
+      }
+
+      // Call agent service directly with fresh token
+      const publishUrl = `${apiConfig.agentUrl}/apps/${appId}/publish`;
+      logger.info('publish.calling-agent', { appId, url: publishUrl });
+
+      const response = await fetch(publishUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${tokenResult.token}`,
         },
         body: JSON.stringify({ commitHash: hashToPublish }),
       });
