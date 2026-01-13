@@ -18,6 +18,11 @@ export * from './websocket/index.js'
 export * from './utils/env-config.js'
 export * from './utils/file-processor.js'
 export * from './utils/image-content-builder.js'
+export {
+  generateImageWithModel,
+  type GeminiImageGenerationOptions,
+  type GeminiImageGenerationResult
+} from './utils/image-generation.js'
 export * from './utils/model-pricing.js'
 export * from './utils/token-counter.js'
 export * from './utils/s2s-auth.js'
