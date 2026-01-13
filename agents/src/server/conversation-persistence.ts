@@ -730,9 +730,27 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
 
     // Create git commit if there are changes and store hash on context
     if (context.appId) {
-      const commitHash = await this.checkAndCommitChanges(context.appId, 'conversation_complete');
-      // Set commitHash on context so ai-lib can include it in the complete event
-      (context as any).commitHash = commitHash; // null if no commit, string if created
+      // Check if commit hash was already set by beforeMessageComplete
+      const existingCommitHash = (context as any).commitHash
+
+      if (typeof existingCommitHash === 'string' && existingCommitHash.length > 0) {
+        // Commit already created by git hook (squash merge)
+        contextLogger.debug('conversation.complete.commit_hash_reused', {
+          commitHash: existingCommitHash.substring(0, 7),
+          source: 'git_hook_squash_merge'
+        })
+      } else {
+        // Fallback: check for uncommitted changes (safety net)
+        const commitHash = await this.checkAndCommitChanges(context.appId, 'conversation_complete');
+        (context as any).commitHash = commitHash;
+
+        if (commitHash) {
+          contextLogger.debug('conversation.complete.commit_hash_created', {
+            commitHash: commitHash.substring(0, 7),
+            source: 'fallback_commit'
+          })
+        }
+      }
     } else {
       // No appId means no app to commit to - explicitly set null
       (context as any).commitHash = null;

@@ -1,0 +1,1358 @@
+
+> website@0.1.0 dev /Users/deverton/work/gdcorp-partners/airo-app-builder/app
+> GASKET_ENV=local.dev node ../scripts/load-env.js npm run local
+
+
+🔧 Loading environment configuration...
+   GASKET_ENV: local.dev
+[dotenv@17.2.3] injecting env (20) from .env -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+   Loaded: .env
+   Skipped: .env.development (not found)
+   Skipped: .env.local (not found)
+   Skipped: .env.development.local (not found)
+[dotenv@17.2.3] injecting env (5) from .env.local.dev -- tip: ⚙️  override existing env vars with { override: true }
+   Loaded: .env.local.dev
+
+   ✨ 2 environment file(s) loaded successfully
+
+   Configuration detected:
+      SSO_LOGIN_URL: https://sso.dev-godaddy.com/login
+      LOGIN_REDIRECT_URL: https://local.gasket.dev-godaddy.com:8443/
+
+
+> website@0.1.0 local
+> concurrently "npm run build:tsc:watch" "npm run local:https" "next dev --experimental-https"
+
+[0] 
+[0] > website@0.1.0 build:tsc:watch
+[0] > tsc -p ./tsconfig.server.json --watch
+[0] 
+[1] 
+[1] > website@0.1.0 local:https
+[1] > tsx watch server.ts
+[1] 
+[0] [2J[3J[H5:29:25 PM - Starting compilation in watch mode...
+[0] 
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2]  ⚠ Self-signed certificates are currently an experimental feature, use with caution.
+[2]    Attempting to generate self signed certificate. This may prompt for your password
+[1] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[1] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[1] info: Proxy server started: https://local.gasket.dev-godaddy.com:8443
+[0] 
+[0] 5:29:27 PM - Found 0 errors. Watching for file changes.
+[2]    CA Root certificate created in /Users/deverton/Library/Application Support/mkcert
+[2]    Certificates created in /Users/deverton/work/gdcorp-partners/airo-app-builder/app/certificates
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2]   ▲ Next.js 14.2.32
+[2]   - Local:        https://localhost:3000
+[2]   - Environments: .env
+[2]   - Experiments (use with caution):
+[2]     · instrumentationHook
+[2] 
+[2]  ✓ Starting...
+[2]  ✓ Ready in 2.9s
+[1] (node:71858) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+[1] (Use `node --trace-deprecation ...` to show where the warning was created)
+[2]  ○ Compiling /develop/[id] ...
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 17784ms
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] [32mINFO [0m gd-auth-service.singleton.create Creating gdAuthService singleton (lazy)
+[2]       [90mmessage=[0mCreating gdAuthService singleton (lazy)  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🔍 GdAuthService.constructor.called GdAuthService constructor called
+[2]       [90mmessage=[0mGdAuthService constructor called  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2]  GET /api/config 200 in 4451ms
+[2] [32mINFO [0m gd-auth-service.singleton.create Creating gdAuthService singleton (lazy)
+[2]       [90mmessage=[0mCreating gdAuthService singleton (lazy)  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🔍 GdAuthService.constructor.called GdAuthService constructor called
+[2]       [90mmessage=[0mGdAuthService constructor called  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 4666ms
+[2] (node:71870) [DEP0005] DeprecationWarning: Buffer() is deprecated due to security and usability issues. Please use the Buffer.alloc(), Buffer.allocUnsafe(), or Buffer.from() methods instead.
+[2] (Use `node --trace-deprecation ...` to show where the warning was created)
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 7229ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 15ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 12ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 10ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 13ms
+[2]  GET /api/auth/validate 200 in 2803ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 11ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 10ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 9ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 9ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 8ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 8ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 9ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 9ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 10ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 8ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 9ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 29ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&use12HourExpiration=true 200 in 19ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 10ms
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/init-redux-state.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/init-redux-state.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] [32mINFO [0m gd-auth-service.singleton.create Creating gdAuthService singleton (lazy)
+[2]       [90mmessage=[0mCreating gdAuthService singleton (lazy)  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🔍 GdAuthService.constructor.called GdAuthService constructor called
+[2]       [90mmessage=[0mGdAuthService constructor called  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🏭 Using Production Account Adapter
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2]  GET /api/sites 200 in 2875ms
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [32mINFO [0m deployments.api.legacy-site Legacy site has no V2 deployments - returning empty array
+[2]       [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mmessage=[0mLegacy site has no V2 deployments - returning empty array
+[2]  GET /api/apps/3e3baff6-0bd0-4105-94ba-33dff7ec970c/deployments?limit=6&includeJobData=true 200 in 6171ms
+[2]  GET /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 6250ms
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2]  GET /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 71ms
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] [32mINFO [0m docker.database.init.skipped Database tables already initialized via DevDatabase
+[2]       [90mmessage=[0mDatabase tables already initialized via DevDatabase
+[2] [32mINFO [0m 🔍 Starting compose stack recovery process...
+[2] [32mINFO [0m 🔍 Found 0 container records
+[2] [32mINFO [0m docker.recovery.complete Compose stack recovery completed: 0 recovered, 0 cleaned (0ms)
+[2]       [90mrecoveredCount=[0m0  [90mcleanedCount=[0m0  [90mduration=[0m0  [90mmessage=[0mCompose stack recovery completed: 0 recovered, 0 cleaned (0ms)
+[2]  GET /api/servers/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 6784ms
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] [31mERROR[0m mgmt-airo.get-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error GET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/ventures attempt 1 failed
+[2]       [90mmessage=[0mGET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/venture...  [90mattempt=[0m1  [90mattemptDuration=[0m5162  [90mtotalDuration=[0m5162  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.get-attribute.retry
+[2]       [90mattempt=[0m1  [90mnextAttempt=[0m2  [90mdelayMs=[0m1000  [90mtotalDuration=[0m5162  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] [32mINFO [0m gd-auth-service.singleton.create Creating gdAuthService singleton (lazy)
+[2]       [90mmessage=[0mCreating gdAuthService singleton (lazy)  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🔍 GdAuthService.constructor.called GdAuthService constructor called
+[2]       [90mmessage=[0mGdAuthService constructor called  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🏭 Using Production Account Adapter
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [32mINFO [0m deployments.api.legacy-site Legacy site has no V2 deployments - returning empty array
+[2]       [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mmessage=[0mLegacy site has no V2 deployments - returning empty array
+[2] [32mINFO [0m deployments.api.legacy-site Legacy site has no V2 deployments - returning empty array
+[2]       [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mmessage=[0mLegacy site has no V2 deployments - returning empty array
+[2]  GET /api/apps/3e3baff6-0bd0-4105-94ba-33dff7ec970c/deployments?limit=1&includeJobData=true 200 in 1845ms
+[2]  GET /api/apps/3e3baff6-0bd0-4105-94ba-33dff7ec970c/deployments?limit=6&includeJobData=true 200 in 1852ms
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [32mINFO [0m paywall.eligibility.check.start
+[2]       [90mappId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c
+[2] [31mERROR[0m paywall.eligibility.no-root-domain Cannot check switchboard flags without root domain
+[2]       [90mappId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mmessage=[0mCannot check switchboard flags without root domain
+[2] [32mINFO [0m paywall.eligibility.check.start
+[2]       [90mappId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c
+[2] [31mERROR[0m paywall.eligibility.no-root-domain Cannot check switchboard flags without root domain
+[2]       [90mappId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mmessage=[0mCannot check switchboard flags without root domain
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 6401ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 29ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 19ms
+[2] [32mINFO [0m docker.database.init.skipped Database tables already initialized via DevDatabase
+[2]       [90mmessage=[0mDatabase tables already initialized via DevDatabase
+[2] [32mINFO [0m 🔍 Starting compose stack recovery process...
+[2] [32mINFO [0m 🔍 Found 0 container records
+[2] [32mINFO [0m docker.recovery.complete Compose stack recovery completed: 0 recovered, 0 cleaned (0ms)
+[2]       [90mrecoveredCount=[0m0  [90mcleanedCount=[0m0  [90mduration=[0m0  [90mmessage=[0mCompose stack recovery completed: 0 recovered, 0 cleaned (0ms)
+[2]  GET /api/servers/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 733ms
+[2] [31mERROR[0m mgmt-airo.get-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error GET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/ventures attempt 2 failed
+[2]       [90mmessage=[0mGET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/venture...  [90mattempt=[0m2  [90mattemptDuration=[0m1023  [90mtotalDuration=[0m7187  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.get-attribute.retry
+[2]       [90mattempt=[0m2  [90mnextAttempt=[0m3  [90mdelayMs=[0m2000  [90mtotalDuration=[0m7187  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [32mINFO [0m jwt.key.retrieved
+[2]       [90mkeyId=[0m4fea6f74-7bda-4a15-b23c-d630c0e6e985  [90mstatus=[0mactive
+[2] [32mINFO [0m jwt.token.created
+[2]       [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mkeyId=[0m4fea6f74-7bda-4a15-b23c-d630c0e6e985  [90mexpiresAt=[0m2026-01-14T00:00:09.000Z
+[2]  POST /api/auth/agent-token 200 in 3451ms
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [32mINFO [0m sites.update.success Site updated by authenticated customer
+[2]       [90mmessage=[0mSite updated by authenticated customer  [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90maccountId=[0m54409bcf-be8a-45b1-b7ef-a0f0d80d8296
+[2]  PATCH /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 49ms
+[2] [32mINFO [0m sites.update.success Site updated by authenticated customer
+[2]       [90mmessage=[0mSite updated by authenticated customer  [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90maccountId=[0m54409bcf-be8a-45b1-b7ef-a0f0d80d8296
+[2]  PATCH /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 57ms
+[2] [32mINFO [0m sites.update.success Site updated by authenticated customer
+[2]       [90mmessage=[0mSite updated by authenticated customer  [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90maccountId=[0m54409bcf-be8a-45b1-b7ef-a0f0d80d8296
+[2]  PATCH /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 62ms
+[2] [32mINFO [0m sites.update.success Site updated by authenticated customer
+[2]       [90mmessage=[0mSite updated by authenticated customer  [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90maccountId=[0m54409bcf-be8a-45b1-b7ef-a0f0d80d8296
+[2]  PATCH /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 63ms
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2] [32mINFO [0m jwt.key.retrieved
+[2]       [90mkeyId=[0m4fea6f74-7bda-4a15-b23c-d630c0e6e985  [90mstatus=[0mactive
+[2] [32mINFO [0m jwt.token.created
+[2]       [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mkeyId=[0m4fea6f74-7bda-4a15-b23c-d630c0e6e985  [90mexpiresAt=[0m2026-01-14T00:00:10.000Z
+[2]  POST /api/auth/agent-token 200 in 5274ms
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2] [31mERROR[0m mgmt-airo.get-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error GET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/ventures attempt 3 failed
+[2]       [90mmessage=[0mGET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/venture...  [90mattempt=[0m3  [90mattemptDuration=[0m532  [90mtotalDuration=[0m9719  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.get-attribute.final-error
+[2]       [90mattempt=[0m3  [90mtotalDuration=[0m9719  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m venture.getOrCreate.attribute-query-failed Failed to get venture from mgmt-airo attributes, will create new
+[2]       [90mmessage=[0mFailed to get venture from mgmt-airo attributes, will create new  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [32mINFO [0m venture.getOrCreate.creating No existing venture found, creating new profile
+[2]       [90mmessage=[0mNo existing venture found, creating new profile  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445
+[2] [90mDEBUG[0m cert-token.using-env-vars Using certificates from environment variables
+[2]       [90mmessage=[0mUsing certificates from environment variables
+[2] [32mINFO [0m cert-token.refresh.start Refreshing certificate-based S2S token
+[2]       [90mmessage=[0mRefreshing certificate-based S2S token  [90mrealm=[0mcert
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 1738ms
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 1715ms
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 1913ms
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 1679ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 11ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 8ms
+[2] [32mINFO [0m cert-token.refresh.success Certificate-based S2S token refreshed successfully
+[2]       [90mmessage=[0mCertificate-based S2S token refreshed successfully
+[2] [90mDEBUG[0m graphql.request.start
+[2]       [90moperationName=[0mCreateProfileForShopper  [90mhasToken=[0mtrue  [90mhasAppKey=[0mtrue
+[2] [32mINFO [0m venture.createProfile.success Successfully created profile
+[2]       [90mmessage=[0mSuccessfully created profile  [90mshopperId=[0m7700445  [90mventureId=[0m84881f74-caeb-4c38-98bb-d650f26329b5
+[2] [31mERROR[0m mgmt-airo.create-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error POST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attempt 1 failed
+[2]       [90mmessage=[0mPOST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attemp...  [90mattempt=[0m1  [90mattemptDuration=[0m1114  [90mtotalDuration=[0m1114  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.create-attribute.retry
+[2]       [90mattempt=[0m1  [90mnextAttempt=[0m2  [90mdelayMs=[0m1000  [90mtotalDuration=[0m1114  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [31mERROR[0m mgmt-airo.get-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error GET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/ventures attempt 1 failed
+[2]       [90mmessage=[0mGET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/venture...  [90mattempt=[0m1  [90mattemptDuration=[0m471  [90mtotalDuration=[0m471  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.get-attribute.retry
+[2]       [90mattempt=[0m1  [90mnextAttempt=[0m2  [90mdelayMs=[0m1000  [90mtotalDuration=[0m471  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.create-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error POST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attempt 2 failed
+[2]       [90mmessage=[0mPOST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attemp...  [90mattempt=[0m2  [90mattemptDuration=[0m632  [90mtotalDuration=[0m2747  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.create-attribute.retry
+[2]       [90mattempt=[0m2  [90mnextAttempt=[0m3  [90mdelayMs=[0m2000  [90mtotalDuration=[0m2747  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.get-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error GET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/ventures attempt 2 failed
+[2]       [90mmessage=[0mGET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/venture...  [90mattempt=[0m2  [90mattemptDuration=[0m947  [90mtotalDuration=[0m2419  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.get-attribute.retry
+[2]       [90mattempt=[0m2  [90mnextAttempt=[0m3  [90mdelayMs=[0m2000  [90mtotalDuration=[0m2419  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.create-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error POST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attempt 3 failed
+[2]       [90mmessage=[0mPOST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attemp...  [90mattempt=[0m3  [90mattemptDuration=[0m960  [90mtotalDuration=[0m5707  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.create-attribute.final-error
+[2]       [90mattempt=[0m3  [90mtotalDuration=[0m5707  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m venture.getOrCreate.attribute-create-failed Failed to store venture in mgmt-airo attributes
+[2]       [90mmessage=[0mFailed to store venture in mgmt-airo attributes  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mventureId=[0m84881f74-caeb-4c38-98bb-d650f26329b5  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2]  GET /api/venture 200 in 24028ms
+[2] [31mERROR[0m mgmt-airo.get-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error GET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/ventures attempt 3 failed
+[2]       [90mmessage=[0mGET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/venture...  [90mattempt=[0m3  [90mattemptDuration=[0m982  [90mtotalDuration=[0m5404  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.get-attribute.final-error
+[2]       [90mattempt=[0m3  [90mtotalDuration=[0m5404  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m venture.getOrCreate.attribute-query-failed Failed to get venture from mgmt-airo attributes, will create new
+[2]       [90mmessage=[0mFailed to get venture from mgmt-airo attributes, will create new  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [32mINFO [0m venture.getOrCreate.creating No existing venture found, creating new profile
+[2]       [90mmessage=[0mNo existing venture found, creating new profile  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445
+[2] [90mDEBUG[0m cert-token.using-env-vars Using certificates from environment variables
+[2]       [90mmessage=[0mUsing certificates from environment variables
+[2] [32mINFO [0m cert-token.refresh.start Refreshing certificate-based S2S token
+[2]       [90mmessage=[0mRefreshing certificate-based S2S token  [90mrealm=[0mcert
+[2] [32mINFO [0m cert-token.refresh.success Certificate-based S2S token refreshed successfully
+[2]       [90mmessage=[0mCertificate-based S2S token refreshed successfully
+[2] [90mDEBUG[0m graphql.request.start
+[2]       [90moperationName=[0mCreateProfileForShopper  [90mhasToken=[0mtrue  [90mhasAppKey=[0mtrue
+[2] [32mINFO [0m venture.createProfile.success Successfully created profile
+[2]       [90mmessage=[0mSuccessfully created profile  [90mshopperId=[0m7700445  [90mventureId=[0mca47acab-9837-4730-a70e-4c5557227e27
+[2] [31mERROR[0m mgmt-airo.create-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error POST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attempt 1 failed
+[2]       [90mmessage=[0mPOST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attemp...  [90mattempt=[0m1  [90mattemptDuration=[0m918  [90mtotalDuration=[0m918  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.create-attribute.retry
+[2]       [90mattempt=[0m1  [90mnextAttempt=[0m2  [90mdelayMs=[0m1000  [90mtotalDuration=[0m918  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.create-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error POST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attempt 2 failed
+[2]       [90mmessage=[0mPOST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attemp...  [90mattempt=[0m2  [90mattemptDuration=[0m439  [90mtotalDuration=[0m2357  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.create-attribute.retry
+[2]       [90mattempt=[0m2  [90mnextAttempt=[0m3  [90mdelayMs=[0m2000  [90mtotalDuration=[0m2357  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.create-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error POST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attempt 3 failed
+[2]       [90mmessage=[0mPOST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attemp...  [90mattempt=[0m3  [90mattemptDuration=[0m925  [90mtotalDuration=[0m5284  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.create-attribute.final-error
+[2]       [90mattempt=[0m3  [90mtotalDuration=[0m5284  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m venture.getOrCreate.attribute-create-failed Failed to store venture in mgmt-airo attributes
+[2]       [90mmessage=[0mFailed to store venture in mgmt-airo attributes  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mventureId=[0mca47acab-9837-4730-a70e-4c5557227e27  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2]  GET /api/venture 200 in 14289ms
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] [32mINFO [0m gd-auth-service.singleton.create Creating gdAuthService singleton (lazy)
+[2]       [90mmessage=[0mCreating gdAuthService singleton (lazy)  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🔍 GdAuthService.constructor.called GdAuthService constructor called
+[2]       [90mmessage=[0mGdAuthService constructor called  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🏭 Using Production Account Adapter
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m51  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [32mINFO [0m client.chat.prompt.sent
+[2]       [90mappId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mpromptLength=[0m27  [90msource=[0manalytics  [90mhasEditContext=[0mfalse  [90mhasSelectedAsset=[0mfalse
+[2] [90mDEBUG[0m api.logs.received
+[2]       [90mprocessed=[0m1  [90mskipped=[0m0  [90mdropped=[0m0  [90mtotal=[0m1  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b
+[2]  POST /api/client-logs 200 in 1008ms
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m53  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [32mINFO [0m client.chat.prompt.sent
+[2]       [90mappId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mpromptLength=[0m38  [90msource=[0manalytics  [90mhasEditContext=[0mfalse  [90mhasSelectedAsset=[0mfalse
+[2] [90mDEBUG[0m api.logs.received
+[2]       [90mprocessed=[0m1  [90mskipped=[0m0  [90mdropped=[0m0  [90mtotal=[0m1  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b
+[2]  POST /api/client-logs 200 in 25ms
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 5187ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 71ms
+[2]  GET /api/config 200 in 70ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 200ms
+[2]  GET /api/auth/validate 200 in 51ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 49ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 14ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 9ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 9ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 14ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 11ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 9ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 10ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 13ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 12ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&use12HourExpiration=true 200 in 18ms
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2]  GET /api/sites 200 in 130ms
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2]  GET /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 1967ms
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [32mINFO [0m deployments.api.legacy-site Legacy site has no V2 deployments - returning empty array
+[2]       [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mmessage=[0mLegacy site has no V2 deployments - returning empty array
+[2]  GET /api/apps/3e3baff6-0bd0-4105-94ba-33dff7ec970c/deployments?limit=6&includeJobData=true 200 in 2007ms
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2]  GET /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 171ms
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [32mINFO [0m paywall.eligibility.check.start
+[2]       [90mappId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c
+[2] [31mERROR[0m paywall.eligibility.no-root-domain Cannot check switchboard flags without root domain
+[2]       [90mappId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mmessage=[0mCannot check switchboard flags without root domain
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [32mINFO [0m paywall.eligibility.check.start
+[2]       [90mappId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c
+[2] [31mERROR[0m paywall.eligibility.no-root-domain Cannot check switchboard flags without root domain
+[2]       [90mappId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mmessage=[0mCannot check switchboard flags without root domain
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [32mINFO [0m deployments.api.legacy-site Legacy site has no V2 deployments - returning empty array
+[2]       [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mmessage=[0mLegacy site has no V2 deployments - returning empty array
+[2] [32mINFO [0m deployments.api.legacy-site Legacy site has no V2 deployments - returning empty array
+[2]       [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mmessage=[0mLegacy site has no V2 deployments - returning empty array
+[2]  GET /api/apps/3e3baff6-0bd0-4105-94ba-33dff7ec970c/deployments?limit=6&includeJobData=true 200 in 256ms
+[2]  GET /api/apps/3e3baff6-0bd0-4105-94ba-33dff7ec970c/deployments?limit=1&includeJobData=true 200 in 240ms
+[2] [32mINFO [0m docker.database.init.skipped Database tables already initialized via DevDatabase
+[2]       [90mmessage=[0mDatabase tables already initialized via DevDatabase
+[2] [32mINFO [0m 🔍 Starting compose stack recovery process...
+[2] [32mINFO [0m 🔍 Found 0 container records
+[2] [32mINFO [0m docker.recovery.complete Compose stack recovery completed: 0 recovered, 0 cleaned (0ms)
+[2]       [90mrecoveredCount=[0m0  [90mcleanedCount=[0m0  [90mduration=[0m0  [90mmessage=[0mCompose stack recovery completed: 0 recovered, 0 cleaned (0ms)
+[2]  GET /api/servers/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 2675ms
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2]  GET /api/servers/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 30ms
+[2] [31mERROR[0m mgmt-airo.get-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error GET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/ventures attempt 1 failed
+[2]       [90mmessage=[0mGET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/venture...  [90mattempt=[0m1  [90mattemptDuration=[0m3432  [90mtotalDuration=[0m3432  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.get-attribute.retry
+[2]       [90mattempt=[0m1  [90mnextAttempt=[0m2  [90mdelayMs=[0m1000  [90mtotalDuration=[0m3432  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [32mINFO [0m jwt.key.retrieved
+[2]       [90mkeyId=[0m4fea6f74-7bda-4a15-b23c-d630c0e6e985  [90mstatus=[0mactive
+[2] [32mINFO [0m jwt.token.created
+[2]       [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mkeyId=[0m4fea6f74-7bda-4a15-b23c-d630c0e6e985  [90mexpiresAt=[0m2026-01-14T00:07:24.000Z
+[2]  POST /api/auth/agent-token 200 in 3092ms
+[2] [32mINFO [0m jwt.key.retrieved
+[2]       [90mkeyId=[0m4fea6f74-7bda-4a15-b23c-d630c0e6e985  [90mstatus=[0mactive
+[2] [32mINFO [0m jwt.token.created
+[2]       [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90mkeyId=[0m4fea6f74-7bda-4a15-b23c-d630c0e6e985  [90mexpiresAt=[0m2026-01-14T00:07:24.000Z
+[2]  POST /api/auth/agent-token 200 in 3180ms
+[2] [31mERROR[0m mgmt-airo.get-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error GET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/ventures attempt 2 failed
+[2]       [90mmessage=[0mGET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/venture...  [90mattempt=[0m2  [90mattemptDuration=[0m1022  [90mtotalDuration=[0m5456  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.get-attribute.retry
+[2]       [90mattempt=[0m2  [90mnextAttempt=[0m3  [90mdelayMs=[0m2000  [90mtotalDuration=[0m5456  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [32mINFO [0m sites.update.success Site updated by authenticated customer
+[2]       [90mmessage=[0mSite updated by authenticated customer  [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90maccountId=[0m54409bcf-be8a-45b1-b7ef-a0f0d80d8296
+[2]  PATCH /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 46ms
+[2] [32mINFO [0m sites.update.success Site updated by authenticated customer
+[2]       [90mmessage=[0mSite updated by authenticated customer  [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90maccountId=[0m54409bcf-be8a-45b1-b7ef-a0f0d80d8296
+[2]  PATCH /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 51ms
+[2] [32mINFO [0m sites.update.success Site updated by authenticated customer
+[2]       [90mmessage=[0mSite updated by authenticated customer  [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90maccountId=[0m54409bcf-be8a-45b1-b7ef-a0f0d80d8296
+[2]  PATCH /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 52ms
+[2] [32mINFO [0m sites.update.success Site updated by authenticated customer
+[2]       [90mmessage=[0mSite updated by authenticated customer  [90msiteId=[0m3e3baff6-0bd0-4105-94ba-33dff7ec970c  [90maccountId=[0m54409bcf-be8a-45b1-b7ef-a0f0d80d8296
+[2]  PATCH /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 59ms
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 67ms
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 33ms
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 473ms
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 123ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 29ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 12ms
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2] [31mERROR[0m mgmt-airo.get-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error GET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/ventures attempt 3 failed
+[2]       [90mmessage=[0mGET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/venture...  [90mattempt=[0m3  [90mattemptDuration=[0m511  [90mtotalDuration=[0m7969  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.get-attribute.final-error
+[2]       [90mattempt=[0m3  [90mtotalDuration=[0m7969  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m venture.getOrCreate.attribute-query-failed Failed to get venture from mgmt-airo attributes, will create new
+[2]       [90mmessage=[0mFailed to get venture from mgmt-airo attributes, will create new  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [32mINFO [0m venture.getOrCreate.creating No existing venture found, creating new profile
+[2]       [90mmessage=[0mNo existing venture found, creating new profile  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445
+[2] [90mDEBUG[0m cert-token.using-env-vars Using certificates from environment variables
+[2]       [90mmessage=[0mUsing certificates from environment variables
+[2] [32mINFO [0m cert-token.refresh.start Refreshing certificate-based S2S token
+[2]       [90mmessage=[0mRefreshing certificate-based S2S token  [90mrealm=[0mcert
+[2] [32mINFO [0m cert-token.refresh.success Certificate-based S2S token refreshed successfully
+[2]       [90mmessage=[0mCertificate-based S2S token refreshed successfully
+[2] [90mDEBUG[0m graphql.request.start
+[2]       [90moperationName=[0mCreateProfileForShopper  [90mhasToken=[0mtrue  [90mhasAppKey=[0mtrue
+[2] [32mINFO [0m venture.createProfile.success Successfully created profile
+[2]       [90mmessage=[0mSuccessfully created profile  [90mshopperId=[0m7700445  [90mventureId=[0me7119e4f-c489-44cf-9a4c-f05ae90d7735
+[2] [31mERROR[0m mgmt-airo.create-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error POST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attempt 1 failed
+[2]       [90mmessage=[0mPOST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attemp...  [90mattempt=[0m1  [90mattemptDuration=[0m1208  [90mtotalDuration=[0m1208  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.create-attribute.retry
+[2]       [90mattempt=[0m1  [90mnextAttempt=[0m2  [90mdelayMs=[0m1000  [90mtotalDuration=[0m1208  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.create-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error POST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attempt 2 failed
+[2]       [90mmessage=[0mPOST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attemp...  [90mattempt=[0m2  [90mattemptDuration=[0m1038  [90mtotalDuration=[0m3247  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.create-attribute.retry
+[2]       [90mattempt=[0m2  [90mnextAttempt=[0m3  [90mdelayMs=[0m2000  [90mtotalDuration=[0m3247  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.create-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error POST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attempt 3 failed
+[2]       [90mmessage=[0mPOST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attemp...  [90mattempt=[0m3  [90mattemptDuration=[0m461  [90mtotalDuration=[0m5711  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.create-attribute.final-error
+[2]       [90mattempt=[0m3  [90mtotalDuration=[0m5711  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m venture.getOrCreate.attribute-create-failed Failed to store venture in mgmt-airo attributes
+[2]       [90mmessage=[0mFailed to store venture in mgmt-airo attributes  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mventureId=[0me7119e4f-c489-44cf-9a4c-f05ae90d7735  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2]  GET /api/venture 200 in 17777ms
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m58  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2] [31mERROR[0m mgmt-airo.get-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error GET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/ventures attempt 1 failed
+[2]       [90mmessage=[0mGET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/venture...  [90mattempt=[0m1  [90mattemptDuration=[0m911  [90mtotalDuration=[0m911  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.get-attribute.retry
+[2]       [90mattempt=[0m1  [90mnextAttempt=[0m2  [90mdelayMs=[0m1000  [90mtotalDuration=[0m911  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.get-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error GET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/ventures attempt 2 failed
+[2]       [90mmessage=[0mGET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/venture...  [90mattempt=[0m2  [90mattemptDuration=[0m495  [90mtotalDuration=[0m2406  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.get-attribute.retry
+[2]       [90mattempt=[0m2  [90mnextAttempt=[0m3  [90mdelayMs=[0m2000  [90mtotalDuration=[0m2406  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.get-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error GET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/ventures attempt 3 failed
+[2]       [90mmessage=[0mGET /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b/venture...  [90mattempt=[0m3  [90mattemptDuration=[0m1001  [90mtotalDuration=[0m5408  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.get-attribute.final-error
+[2]       [90mattempt=[0m3  [90mtotalDuration=[0m5408  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m venture.getOrCreate.attribute-query-failed Failed to get venture from mgmt-airo attributes, will create new
+[2]       [90mmessage=[0mFailed to get venture from mgmt-airo attributes, will create new  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [32mINFO [0m venture.getOrCreate.creating No existing venture found, creating new profile
+[2]       [90mmessage=[0mNo existing venture found, creating new profile  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445
+[2] [90mDEBUG[0m cert-token.using-env-vars Using certificates from environment variables
+[2]       [90mmessage=[0mUsing certificates from environment variables
+[2] [32mINFO [0m cert-token.refresh.start Refreshing certificate-based S2S token
+[2]       [90mmessage=[0mRefreshing certificate-based S2S token  [90mrealm=[0mcert
+[2] [32mINFO [0m cert-token.refresh.success Certificate-based S2S token refreshed successfully
+[2]       [90mmessage=[0mCertificate-based S2S token refreshed successfully
+[2] [90mDEBUG[0m graphql.request.start
+[2]       [90moperationName=[0mCreateProfileForShopper  [90mhasToken=[0mtrue  [90mhasAppKey=[0mtrue
+[2] [32mINFO [0m venture.createProfile.success Successfully created profile
+[2]       [90mmessage=[0mSuccessfully created profile  [90mshopperId=[0m7700445  [90mventureId=[0m5c0b3787-4da5-48a8-bc6a-86f29536f456
+[2] [31mERROR[0m mgmt-airo.create-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error POST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attempt 1 failed
+[2]       [90mmessage=[0mPOST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attemp...  [90mattempt=[0m1  [90mattemptDuration=[0m917  [90mtotalDuration=[0m917  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.create-attribute.retry
+[2]       [90mattempt=[0m1  [90mnextAttempt=[0m2  [90mdelayMs=[0m1000  [90mtotalDuration=[0m917  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.create-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error POST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attempt 2 failed
+[2]       [90mmessage=[0mPOST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attemp...  [90mattempt=[0m2  [90mattemptDuration=[0m967  [90mtotalDuration=[0m2885  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [33mWARN [0m mgmt-airo.create-attribute.retry
+[2]       [90mattempt=[0m2  [90mnextAttempt=[0m3  [90mdelayMs=[0m2000  [90mtotalDuration=[0m2885  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.create-attribute.error
+[2]       [90mstatus=[0m403  [90mstatusText=[0mForbidden
+[2] [31mERROR[0m mgmt-airo.api.attempt-error POST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attempt 3 failed
+[2]       [90mmessage=[0mPOST /api/airo/v1/attributes/user/790da3d3-5b72-4314-a17a-c7ff92d8bc6b attemp...  [90mattempt=[0m3  [90mattemptDuration=[0m515  [90mtotalDuration=[0m5403  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m mgmt-airo.create-attribute.final-error
+[2]       [90mattempt=[0m3  [90mtotalDuration=[0m5403  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2] [31mERROR[0m venture.getOrCreate.attribute-create-failed Failed to store venture in mgmt-airo attributes
+[2]       [90mmessage=[0mFailed to store venture in mgmt-airo attributes  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mventureId=[0m5c0b3787-4da5-48a8-bc6a-86f29536f456  [90merror=[0mAPI request failed: 403 Forbidden - 
+[2]  GET /api/venture 200 in 14381ms
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/init-redux-state.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/init-redux-state.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] [32mINFO [0m gd-auth-service.singleton.create Creating gdAuthService singleton (lazy)
+[2]       [90mmessage=[0mCreating gdAuthService singleton (lazy)  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🔍 GdAuthService.constructor.called GdAuthService constructor called
+[2]       [90mmessage=[0mGdAuthService constructor called  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&use12HourExpiration=true 200 in 2881ms
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2] [32mINFO [0m gd-auth-service.singleton.create Creating gdAuthService singleton (lazy)
+[2]       [90mmessage=[0mCreating gdAuthService singleton (lazy)  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🔍 GdAuthService.constructor.called GdAuthService constructor called
+[2]       [90mmessage=[0mGdAuthService constructor called  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🏭 Using Production Account Adapter
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 4472ms
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m64  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2]  GET /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 4009ms
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 4549ms
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 1263ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 41ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 12ms
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2] [32mINFO [0m gd-auth-service.singleton.create Creating gdAuthService singleton (lazy)
+[2]       [90mmessage=[0mCreating gdAuthService singleton (lazy)  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🔍 GdAuthService.constructor.called GdAuthService constructor called
+[2]       [90mmessage=[0mGdAuthService constructor called  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🏭 Using Production Account Adapter
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m64  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2]  GET /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 146ms
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 2342ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 58ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 34ms
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] [32mINFO [0m gd-auth-service.singleton.create Creating gdAuthService singleton (lazy)
+[2]       [90mmessage=[0mCreating gdAuthService singleton (lazy)  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🔍 GdAuthService.constructor.called GdAuthService constructor called
+[2]       [90mmessage=[0mGdAuthService constructor called  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&use12HourExpiration=true 200 in 2613ms
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 3418ms
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2] [32mINFO [0m gd-auth-service.singleton.create Creating gdAuthService singleton (lazy)
+[2]       [90mmessage=[0mCreating gdAuthService singleton (lazy)  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🔍 GdAuthService.constructor.called GdAuthService constructor called
+[2]       [90mmessage=[0mGdAuthService constructor called  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🏭 Using Production Account Adapter
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m68  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2]  GET /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 3792ms
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 1220ms
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 4421ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 135ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 24ms
+[2]  ⚠ ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/get-installed-version.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/generate-cds-dependencies.js
+[2] ../node_modules/.pnpm/@venture+cds-utils@0.0.21/node_modules/@venture/cds-utils/lib/index.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/handle-cds-log.js
+[2] ../node_modules/.pnpm/@venture+gasket-plugin-cds@0.0.25/node_modules/@venture/gasket-plugin-cds/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] 
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] Critical dependency: the request of a dependency is an expression
+[2] 
+[2] Import trace for requested module:
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/prepare.js
+[2] ../node_modules/.pnpm/@gasket+plugin-dynamic-plugins@7.4.1/node_modules/@gasket/plugin-dynamic-plugins/lib/index.js
+[2] ./gasket.ts
+[2] ./src/app/layout.tsx
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2] [32mINFO [0m gd-auth-service.singleton.create Creating gdAuthService singleton (lazy)
+[2]       [90mmessage=[0mCreating gdAuthService singleton (lazy)  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🔍 GdAuthService.constructor.called GdAuthService constructor called
+[2]       [90mmessage=[0mGdAuthService constructor called  [90mauthType=[0mjwt  [90mnodeEnv=[0mdevelopment
+[2] [32mINFO [0m 🏭 Using Production Account Adapter
+[2] [33mWARN [0m auth.token.too-old JWT token too old for gateway, will likely be rejected
+[2]       [90mmessage=[0mJWT token too old for gateway, will likely be rejected  [90mtokenAge=[0m68  [90mcustomerId=[0m790da3d3-5b72-4314-a17a-c7ff92d8bc6b  [90mshopperId=[0m7700445  [90mrecommendation=[0mClient should refresh token
+[2]  GET /api/sites/3e3baff6-0bd0-4105-94ba-33dff7ec970c 200 in 184ms
+[2] No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.
+[2] No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.
+[2]  GET /develop/3e3baff6-0bd0-4105-94ba-33dff7ec970c?_rsc=1c7iu 200 in 2969ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 40ms
+[2]  GET /api/auth/validate?allowHeartbeat=true&realm=idp&risk=low&type=basic&type=e2s&use12HourExpiration=true 200 in 12ms

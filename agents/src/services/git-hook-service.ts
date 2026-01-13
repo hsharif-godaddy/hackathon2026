@@ -364,7 +364,7 @@ export class GitHookService {
     conversationId?: string,
     socketId?: string,
     userPrompt?: string
-  ): Promise<void> {
+  ): Promise<string | null> {
     try {
       // Get tracked branch info
       const branchInfo = this.appBranches.get(appId);
@@ -374,7 +374,7 @@ export class GitHookService {
           socketId,
           reason
         });
-        return;
+        return null;
       }
 
       const { branchName } = branchInfo;
@@ -384,14 +384,14 @@ export class GitHookService {
       if (!app) {
         this.logGitError(appId, 'handleConnectionEnd', 'App not found');
         this.appBranches.delete(appId);
-        return;
+        return null;
       }
 
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
       if (!devSupervisor) {
         this.logGitError(appId, 'handleConnectionEnd', 'DevSupervisor not available');
         this.appBranches.delete(appId);
-        return;
+        return null;
       }
 
       const gitUtils = new GitUtils(devSupervisor);
@@ -400,7 +400,7 @@ export class GitHookService {
       const isRepo = await gitUtils.isGitRepository(app.path);
       if (!isRepo) {
         this.appBranches.delete(appId);
-        return;
+        return null;
       }
 
       // Get current branch (should be feature branch)
@@ -423,7 +423,7 @@ export class GitHookService {
           reason
         });
         this.appBranches.delete(appId);
-        return;
+        return null;
       }
 
       // Step 1: Commit any remaining uncommitted changes
@@ -459,12 +459,22 @@ export class GitHookService {
       try {
         await gitUtils.switchBranch(app.path, 'main');
         await gitUtils.squashMerge(app.path, currentBranch, squashMessage);
-        
+
         logger.info('git_hook.connection_end.squash_merged', {
           appId,
           socketId,
           featureBranch: currentBranch,
           squashMessage,
+          reason
+        });
+
+        // Get the commit hash we just created
+        const commits = await gitUtils.getCommitHistory(app.path, 1);
+        const commitHash = commits[0]?.hash || null;
+
+        logger.info('git_hook.connection_end.commit_hash', {
+          appId,
+          commitHash: commitHash ? commitHash.substring(0, 7) : 'unknown',
           reason
         });
 
@@ -482,23 +492,31 @@ export class GitHookService {
           // Log but don't fail - cleanup is not critical
           this.logGitError(appId, 'cleanupOldBranches', cleanupError as Error);
         });
+
+        // Clean up tracking
+        this.appBranches.delete(appId);
+
+        // Return the commit hash
+        return commitHash;
+
       } catch (error) {
         this.logGitError(appId, 'squashMerge', error as Error);
-        
+
         // Try to at least get back to main
         try {
           await gitUtils.switchBranch(app.path, 'main');
         } catch (switchError) {
           this.logGitError(appId, 'switchToMain', switchError as Error);
         }
-      }
 
-      // Clean up tracking
-      this.appBranches.delete(appId);
+        this.appBranches.delete(appId);
+        return null;
+      }
 
     } catch (error) {
       this.logGitError(appId, 'handleConnectionEnd', error as Error);
       this.appBranches.delete(appId);
+      return null;
     }
   }
 

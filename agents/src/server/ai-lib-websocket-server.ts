@@ -1136,6 +1136,52 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
       },
 
+      // Pre-completion callback for git operations
+      beforeMessageComplete: async (socketId: string, context: Record<string, unknown>) => {
+        const typedContext = context as AgentsAppContext
+        const siteId = typedContext?.metadata?.appId
+
+        if (!siteId) {
+          logger.debug('websocket.before_complete.no_app_id', { socketId })
+          return { commitHash: null }
+        }
+
+        try {
+          const conversationId = typedContext?.conversation?.conversationId
+
+          logger.debug('websocket.before_complete.begin', {
+            socketId,
+            appId: siteId,
+            conversationId
+          })
+
+          // Execute git squash merge and get commit hash
+          const commitHash = await gitHookService.handleConnectionEnd(
+            siteId,
+            'complete',
+            conversationId,
+            socketId
+          )
+
+          logger.info('websocket.before_complete.success', {
+            socketId,
+            appId: siteId,
+            conversationId,
+            commitHash: commitHash ? commitHash.substring(0, 7) : 'none'
+          })
+
+          return { commitHash }
+
+        } catch (error) {
+          logger.error('websocket.before_complete.error', {
+            socketId,
+            appId: siteId,
+            error: error instanceof Error ? error.message : String(error)
+          })
+          return { commitHash: null }
+        }
+      },
+
       onMessageComplete: async (socketId: string, result: any, context?: Record<string, unknown>) => {
         const duration = result.duration || 'unknown';
         const steps = result.steps || 0;
@@ -1166,30 +1212,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           message: 'WebSocket request completed for site'
         });
 
-        // Git hook: Final commit and squash merge to main on message completion
-        try {
-          // Extract conversationId for better tracking
-          const conversationId = typedContext?.conversation?.conversationId;
-          
-          await gitHookService.handleConnectionEnd(
-            siteId,
-            'complete',
-            conversationId,
-            socketId
-          );
-          
-          contextLogger.debug('websocket.git_hook.connection_end.success', {
-            message: 'Git hook connection end completed (squash merge to main)',
-            conversationId,
-            reason: 'complete'
-          });
-        } catch (error) {
-          contextLogger.warn('websocket.git_hook.connection_end.error', {
-            message: 'Git hook connection end failed (non-blocking)',
-            reason: 'complete',
-            error: error instanceof Error ? error.message : String(error)
-          });
-        }
+        // Git operations now happen in beforeMessageComplete
+        // This callback is used for post-completion tasks like APM transaction cleanup
 
         // End APM transaction for message processing
         const messageTransactionKey = `${socketId}:message`

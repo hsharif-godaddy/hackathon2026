@@ -119,6 +119,19 @@ export interface WebSocketConfig {
   onConnection?: (socketId: string) => void | Promise<void>
   onDisconnection?: (socketId: string) => void | Promise<void>
   onMessageStart?: (socketId: string, message: string, agentName?: string, context?: Record<string, unknown>) => void | Promise<void>
+  /**
+   * Called BEFORE message completion to allow for pre-completion operations
+   * (e.g., git commits that need to complete before the complete message is sent)
+   *
+   * @returns Object with optional commitHash and other data to merge into context
+   */
+  beforeMessageComplete?: (
+    socketId: string,
+    context: Record<string, unknown>
+  ) => Promise<{
+    commitHash?: string | null
+    [key: string]: unknown
+  } | void>
   onMessageComplete?: (socketId: string, result: {
     agentName: string
     duration: string
@@ -2258,6 +2271,32 @@ export class WebSocketServer {
   ): Promise<void> {
     const duration = `${Date.now() - startTime}ms`
 
+    // Execute pre-completion operations (git commits, etc.)
+    if (this.config.beforeMessageComplete) {
+      try {
+        const preCompletionResult = await this.config.beforeMessageComplete(
+          socketId,
+          processedContext || {}
+        )
+
+        if (preCompletionResult && processedContext) {
+          // Merge pre-completion data into context
+          Object.assign(processedContext, preCompletionResult)
+
+          this.logger.debug('message.pre_completion.success', {
+            socketId,
+            hasCommitHash: !!preCompletionResult.commitHash
+          })
+        }
+      } catch (error) {
+        this.logger.error('message.pre_completion.error', {
+          socketId,
+          error: error instanceof Error ? error.message : String(error)
+        })
+        // Continue with completion even if pre-completion fails
+      }
+    }
+
     // Complete persistence FIRST (includes git commits) before sending complete event
     // Store commit hash if persistence layer provides it via context
     let commitHash: string | null = null
@@ -2270,7 +2309,7 @@ export class WebSocketServer {
         conversation.context
       )
 
-      // Get commit hash from context (always set by persistence layer: string or null)
+      // Get commit hash from context (set by beforeMessageComplete or persistence layer)
       commitHash = (conversation.context as any).commitHash ?? null
 
       // Don't delete conversation - keep it active for next user message
