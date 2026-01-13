@@ -298,6 +298,25 @@ describe('ConnectionStateManager', () => {
       // After clearing, old socket should not resolve
       expect(manager.getEffectiveSocketId('socket-old')).toBe('socket-old')
     })
+
+    it('skips migration when oldSocketId === newSocketId', () => {
+      // This happens during initial recovery with cookie-less recovery
+      // where both oldSocketId and newSocketId are the same
+      manager.migrateSocketId('socket-old', 'socket-old')
+
+      // Connection should still exist (not deleted)
+      const data = manager.getStateData('socket-old')
+      expect(data?.conversationId).toBe('conv-1')
+
+      // Should log debug message about skipping
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'connection.migrate.skipped_same_id',
+        { socketId: 'socket-old' }
+      )
+
+      // No migration chain should be created
+      expect(manager.getEffectiveSocketId('socket-old')).toBe('socket-old')
+    })
   })
 
   describe('cleanup', () => {

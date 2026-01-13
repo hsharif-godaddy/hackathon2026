@@ -385,14 +385,14 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         contextLogger.info('conversation.created_with_id', { conversationId })
       }
     } else {
-      // No conversationId provided, create new one with generated ID
-      const conversation = await this.conversationRepo.create(
+      // No conversationId provided - use latest existing conversation or create new
+      const { conversation, isNew } = await this.conversationRepo.getOrCreateForApp(
         context.appId,
         context.agentName,
         `Chat with ${context.agentName} - ${new Date().toLocaleString()}`
       )
       conversationId = conversation.id
-      contextLogger.info('conversation.created', { conversationId })
+      contextLogger.info(isNew ? 'conversation.created' : 'conversation.reused_latest', { conversationId })
     }
 
     // Extract contextAttachments if present (they're passed through agent context)

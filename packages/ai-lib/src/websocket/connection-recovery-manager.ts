@@ -104,6 +104,7 @@ export interface ConnectionRecoveryManagerDependencies {
   eventChannel: ConversationEventChannel
   logger?: RecoveryManagerLogger
   historyProvider?: HistoryProvider
+  getLatestConversationForApp?: (appId: string) => Promise<string | null>
 }
 
 /**
@@ -121,6 +122,7 @@ export class ConnectionRecoveryManager {
   private readonly config: ConnectionRecoveryManagerConfig
   private readonly logger: RecoveryManagerLogger
   private readonly historyProvider?: HistoryProvider
+  private readonly getLatestConversationForApp?: (appId: string) => Promise<string | null>
 
   constructor(
     dependencies: ConnectionRecoveryManagerDependencies,
@@ -133,15 +135,18 @@ export class ConnectionRecoveryManager {
     if (dependencies.historyProvider) {
       this.historyProvider = dependencies.historyProvider
     }
+    if (dependencies.getLatestConversationForApp) {
+      this.getLatestConversationForApp = dependencies.getLatestConversationForApp
+    }
   }
 
   // ===== Public Recovery Methods =====
 
   /**
    * Attempt recovery for a new connection
-   * Returns true if recovery was initiated, false if fresh connection
+   * Returns recovery mode if recovery should be attempted, null for fresh connection
    */
-  attemptRecovery(socket: Socket): RecoveryMode | null {
+  async attemptRecovery(socket: Socket): Promise<RecoveryMode | null> {
     const socketId = socket.id
     const auth = socket.handshake.auth || {}
     const previousSocketId = auth.previousSocketId
@@ -175,6 +180,25 @@ export class ConnectionRecoveryManager {
       // 2. Page reload after recovery window expired (previousSocketId + conversationId but no state)
       if (!entry || (previousSocketId && !this.stateManager.isDisconnected(previousSocketId))) {
         return 'initial'
+      }
+    }
+
+    // Cookie-less recovery: try to find latest conversation for app
+    // This handles when user loses cookie but app has conversation history
+    if (!auth.conversationId && this.getLatestConversationForApp) {
+      const appId = extractAppId(auth)
+      if (appId) {
+        const latestConversationId = await this.getLatestConversationForApp(appId)
+        if (latestConversationId) {
+          // Store resolved conversationId in auth for handleInitialRecovery
+          auth.conversationId = latestConversationId
+          this.logger.info('recovery.cookie_less.resolved', {
+            socketId,
+            appId,
+            conversationId: latestConversationId
+          })
+          return 'initial'
+        }
       }
     }
 
@@ -453,6 +477,25 @@ export class ConnectionRecoveryManager {
         socketId,
         conversationId,
         lastDeliveredSequence
+      })
+
+      // Emit conversation_info immediately so client cookie is reseeded
+      // This is critical for cookie-less recovery to persist the conversationId
+      socket.emit('message', {
+        type: 'conversation_info',
+        content: '',
+        data: {
+          conversationId,
+          agentId: DEFAULT_AGENT_NAME
+        }
+      } as WebSocketMessage, (ackError?: string) => {
+        if (ackError) {
+          this.logger.warn('recovery.initial.conversation_info_ack_failed', {
+            socketId,
+            conversationId,
+            error: ackError
+          })
+        }
       })
 
       await this.executeRecoveryFlow(socket, context, stateData, callbacks)

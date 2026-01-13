@@ -124,7 +124,7 @@ describe('ConnectionRecoveryManager', () => {
   })
 
   describe('attemptRecovery', () => {
-    it('returns automatic for recovered socket with disconnected stream', () => {
+    it('returns automatic for recovered socket with disconnected stream', async () => {
       const socket = createMockSocket({
         id: 'socket-1',
         recovered: true
@@ -132,11 +132,11 @@ describe('ConnectionRecoveryManager', () => {
 
       createDisconnectedConnection('socket-1', 'conv-1')
 
-      const mode = manager.attemptRecovery(socket)
+      const mode = await manager.attemptRecovery(socket)
       expect(mode).toBe('automatic')
     })
 
-    it('returns manual for socket with previousSocketId', () => {
+    it('returns manual for socket with previousSocketId', async () => {
       const socket = createMockSocket({
         id: 'socket-new',
         handshake: { auth: { previousSocketId: 'socket-old' } }
@@ -144,11 +144,11 @@ describe('ConnectionRecoveryManager', () => {
 
       createDisconnectedConnection('socket-old', 'conv-1')
 
-      const mode = manager.attemptRecovery(socket)
+      const mode = await manager.attemptRecovery(socket)
       expect(mode).toBe('manual')
     })
 
-    it('returns conversation for socket with conversationId cookie', () => {
+    it('returns conversation for socket with conversationId cookie', async () => {
       const socket = createMockSocket({
         id: 'socket-new',
         handshake: { auth: { conversationId: 'conv-1' } }
@@ -156,24 +156,24 @@ describe('ConnectionRecoveryManager', () => {
 
       createDisconnectedConnection('socket-old', 'conv-1')
 
-      const mode = manager.attemptRecovery(socket)
+      const mode = await manager.attemptRecovery(socket)
       expect(mode).toBe('conversation')
     })
 
-    it('returns null for fresh connection', () => {
+    it('returns null for fresh connection', async () => {
       const socket = createMockSocket({ id: 'socket-new' })
 
-      const mode = manager.attemptRecovery(socket)
+      const mode = await manager.attemptRecovery(socket)
       expect(mode).toBeNull()
     })
 
-    it('returns null when previousSocketId not found', () => {
+    it('returns null when previousSocketId not found', async () => {
       const socket = createMockSocket({
         id: 'socket-new',
         handshake: { auth: { previousSocketId: 'socket-nonexistent' } }
       })
 
-      const mode = manager.attemptRecovery(socket)
+      const mode = await manager.attemptRecovery(socket)
       expect(mode).toBeNull()
     })
   })
@@ -769,6 +769,126 @@ describe('ConnectionRecoveryManager', () => {
         'conv-1',
         'persistence-socket-old'
       )
+    })
+  })
+
+  describe('attemptRecovery - cookie-less recovery', () => {
+    it('should resolve latest conversationId when cookie missing but appId has history', async () => {
+      const getLatestConversationForApp = vi.fn().mockResolvedValue('conv-latest')
+
+      const managerWithLatest = new ConnectionRecoveryManager(
+        {
+          stateManager,
+          eventChannel: eventChannel as unknown as ConversationEventChannel,
+          logger: mockLogger,
+          getLatestConversationForApp
+        },
+        config
+      )
+
+      const socket = createMockSocket({
+        id: 'socket-new',
+        handshake: { auth: { appId: 'app-123' } }
+      })
+
+      const mode = await managerWithLatest.attemptRecovery(socket)
+
+      expect(mode).toBe('initial')
+      expect(getLatestConversationForApp).toHaveBeenCalledWith('app-123')
+      expect(socket.handshake.auth.conversationId).toBe('conv-latest')
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'recovery.cookie_less.resolved',
+        expect.objectContaining({
+          socketId: 'socket-new',
+          appId: 'app-123',
+          conversationId: 'conv-latest'
+        })
+      )
+    })
+
+    it('should return null when no cookie and no app history', async () => {
+      const getLatestConversationForApp = vi.fn().mockResolvedValue(null)
+
+      const managerWithLatest = new ConnectionRecoveryManager(
+        {
+          stateManager,
+          eventChannel: eventChannel as unknown as ConversationEventChannel,
+          logger: mockLogger,
+          getLatestConversationForApp
+        },
+        config
+      )
+
+      const socket = createMockSocket({
+        id: 'socket-new',
+        handshake: { auth: { appId: 'app-456' } }
+      })
+
+      const mode = await managerWithLatest.attemptRecovery(socket)
+
+      expect(mode).toBeNull()
+      expect(getLatestConversationForApp).toHaveBeenCalledWith('app-456')
+    })
+
+    it('should not call getLatestConversationForApp when conversationId present', async () => {
+      const getLatestConversationForApp = vi.fn()
+
+      const managerWithLatest = new ConnectionRecoveryManager(
+        {
+          stateManager,
+          eventChannel: eventChannel as unknown as ConversationEventChannel,
+          logger: mockLogger,
+          getLatestConversationForApp
+        },
+        config
+      )
+
+      const socket = createMockSocket({
+        id: 'socket-new',
+        handshake: { auth: { appId: 'app-123', conversationId: 'conv-existing' } }
+      })
+
+      const mode = await managerWithLatest.attemptRecovery(socket)
+
+      expect(mode).toBe('initial')
+      expect(getLatestConversationForApp).not.toHaveBeenCalled()
+    })
+
+    it('should handle getLatestConversationForApp not configured', async () => {
+      // Manager without getLatestConversationForApp
+      const socket = createMockSocket({
+        id: 'socket-new',
+        handshake: { auth: { appId: 'app-123' } }
+      })
+
+      const mode = await manager.attemptRecovery(socket)
+
+      expect(mode).toBeNull()
+    })
+
+    it('should extract appId from JWT auth formats', async () => {
+      const getLatestConversationForApp = vi.fn().mockResolvedValue('conv-latest')
+
+      const managerWithLatest = new ConnectionRecoveryManager(
+        {
+          stateManager,
+          eventChannel: eventChannel as unknown as ConversationEventChannel,
+          logger: mockLogger,
+          getLatestConversationForApp
+        },
+        config
+      )
+
+      // Test with agentContext.appId format
+      const socket = createMockSocket({
+        id: 'socket-new',
+        handshake: { auth: { agentContext: { appId: 'app-from-context' } } }
+      })
+
+      const mode = await managerWithLatest.attemptRecovery(socket)
+
+      expect(mode).toBe('initial')
+      expect(getLatestConversationForApp).toHaveBeenCalledWith('app-from-context')
     })
   })
 })

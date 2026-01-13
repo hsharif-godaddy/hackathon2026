@@ -730,6 +730,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       // History provider for raw UI history (not LLM context)
       historyProvider,
 
+      // Get latest conversation for an app (used for cookie-less recovery)
+      getLatestConversationForApp: async (appId: string) => {
+        const latest = await conversationRepository.getLatestForApp(appId)
+        return latest?.id ?? null
+      },
+
       // Context provider for app context and templates
       contextProvider,
 
@@ -1016,10 +1022,17 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           siteId
         });
 
-        // Check if this is the initial prompt (no existing conversations for this app)
+        // Check if this is the initial prompt (first message in the app's conversation)
         // This is used for funnel tracking to correlate with client-side logs
-        const existingConversations = conversationRepository.getByAppIdSync(siteId)
-        const isInitialPrompt = existingConversations?.[0]?.agentId === 'initial'
+        // Note: startConversation() has already persisted the user message, so we check for exactly 1 message
+        const latestConversation = conversationRepository.getLatestForAppSync(siteId)
+        let isInitialPrompt = false
+        if (latestConversation) {
+          // Check if this is the first user message (efficient count query)
+          const messageCount = await conversationRepository.getMessageCount(latestConversation.id)
+          // startConversation() has already persisted the initial user message, so a count of 1 indicates the initial prompt
+          isInitialPrompt = messageCount === 1
+        }
         const app = appRepo.findById(siteId)
         const customerId = app?.customerId
 
@@ -1285,6 +1298,30 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           logger.debug('apm.websocket.message.transaction.aborted', {
             socketId,
             reason: 'Connection closed before message completion'
+          })
+        }
+      },
+
+      onAgentChanged: async (conversationId: string, oldAgentName: string, newAgentName: string, appId?: string) => {
+        logger.info('websocket.agent.handoff', {
+          conversationId,
+          oldAgent: oldAgentName,
+          newAgent: newAgentName,
+          appId
+        })
+
+        try {
+          await conversationRepository.updateAgentId(conversationId, newAgentName)
+          logger.debug('websocket.agent.handoff.updated', {
+            conversationId,
+            newAgent: newAgentName
+          })
+        } catch (error) {
+          logger.error('websocket.agent.handoff.update_failed', {
+            conversationId,
+            oldAgent: oldAgentName,
+            newAgent: newAgentName,
+            error: error instanceof Error ? error.message : String(error)
           })
         }
       },

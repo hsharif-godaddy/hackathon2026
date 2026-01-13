@@ -298,6 +298,14 @@ export class ConnectionStateManager {
    * Record a socket ID migration (old -> new)
    */
   migrateSocketId(oldSocketId: string, newSocketId: string): void {
+    // Skip migration if socket IDs are the same (e.g., initial recovery with no previous socket)
+    if (oldSocketId === newSocketId) {
+      this.logger.debug('connection.migrate.skipped_same_id', {
+        socketId: oldSocketId
+      })
+      return
+    }
+
     // Get the data for the old socket
     const data = this.connections.get(oldSocketId)
     if (!data) {

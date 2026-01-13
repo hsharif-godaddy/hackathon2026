@@ -88,6 +88,32 @@ export class ConversationRepository {
   }
 
   /**
+   * Get the most recently updated conversation for an app (async)
+   */
+  async getLatestForApp(appId: string): Promise<Conversation | null> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM conversations
+      WHERE app_id = ?
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `);
+    const row = stmt.get(appId) as any;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      appId: row.app_id,
+      agentId: row.agent_id,
+      title: row.title,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at)
+    };
+  }
+
+  /**
    * Get all conversations for an app (synchronous version for agent router)
    */
   getByAppIdSync(appId: string): Conversation[] {
@@ -106,6 +132,15 @@ export class ConversationRepository {
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at)
     }));
+  }
+
+  /**
+   * Get the most recently updated conversation for an app (sync)
+   * This is an alias for convenience that returns the first result from getByAppIdSync()
+   */
+  getLatestForAppSync(appId: string): Conversation | null {
+    const conversations = this.getByAppIdSync(appId);
+    return conversations[0] ?? null;
   }
 
   /**
@@ -139,6 +174,42 @@ export class ConversationRepository {
       WHERE id = ?
     `);
     stmt.run(title, conversationId);
+  }
+
+  /**
+   * Update the agent ID for a conversation (called during agent handoff).
+   * This ensures the conversation row reflects which agent is currently handling it,
+   * which is used by metrics/logging to track initial vs. develop agent activity.
+   */
+  async updateAgentId(conversationId: string, agentId: string): Promise<void> {
+    const stmt = this.db.prepare(`
+      UPDATE conversations
+      SET agent_id = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    stmt.run(agentId, conversationId);
+  }
+
+  /**
+   * Get the latest conversation for an app, or create a new one if none exists.
+   * This is the primary method for single-conversation-per-app pattern.
+   *
+   * Note: There is a small race window between checking for existing conversation
+   * and creating a new one. This is acceptable as single-conversation-per-app is
+   * a soft pattern, and the system still supports multiple conversations per app
+   * for future use cases.
+   *
+   * @returns Object with conversation and isNew flag indicating if it was just created
+   */
+  async getOrCreateForApp(appId: string, agentId: string, title?: string): Promise<{ conversation: Conversation; isNew: boolean }> {
+    const existing = await this.getLatestForApp(appId);
+
+    if (existing) {
+      return { conversation: existing, isNew: false };
+    }
+
+    const conversation = await this.create(appId, agentId, title);
+    return { conversation, isNew: true };
   }
 
   /**
@@ -373,6 +444,18 @@ export class ConversationRepository {
     `);
 
     stmt.run(...values);
+  }
+
+  /**
+   * Get the count of messages in a conversation (efficient for checking if conversation is empty)
+   */
+  async getMessageCount(conversationId: string): Promise<number> {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count FROM conversation_messages
+      WHERE conversation_id = ?
+    `);
+    const row = stmt.get(conversationId) as { count: number };
+    return row.count;
   }
 
   /**

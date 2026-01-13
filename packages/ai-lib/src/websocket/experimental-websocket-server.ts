@@ -103,6 +103,9 @@ export interface WebSocketConfig {
   /** Context provider for loading system context and other contextual messages */
   contextProvider?: ContextProvider
 
+  /** Get latest conversation ID for an app (used for cookie-less recovery) */
+  getLatestConversationForApp?: (appId: string) => Promise<string | null>
+
   /** Optional APM agent for tool execution tracking */
   apmAgent?: APMAgent
 
@@ -123,6 +126,7 @@ export interface WebSocketConfig {
     toolCalls?: any[]
   }, context?: Record<string, unknown>) => void
   onError?: (socketId: string, error: Error, message?: string, context?: Record<string, unknown>) => void | Promise<void>
+  onAgentChanged?: (conversationId: string, oldAgentName: string, newAgentName: string, appId?: string) => void | Promise<void>
   onTokenUsage?: (usage: {
     inputTokens: number
     outputTokens: number
@@ -360,7 +364,8 @@ export class WebSocketServer {
         stateManager: this.stateManager,
         eventChannel: this.eventChannel,
         logger: this.logger,
-        ...(config.historyProvider && { historyProvider: config.historyProvider })
+        ...(config.historyProvider && { historyProvider: config.historyProvider }),
+        ...(config.getLatestConversationForApp && { getLatestConversationForApp: config.getLatestConversationForApp })
       },
       {
         ackTimeout: this.ACK_TIMEOUT_MS,
@@ -510,7 +515,7 @@ export class WebSocketServer {
       }
 
       // Use recovery manager to detect and handle recovery
-      const detectedRecoveryMode = this.recoveryManager.attemptRecovery(socket)
+      const detectedRecoveryMode = await this.recoveryManager.attemptRecovery(socket)
 
       // Delegate to recovery manager for all recovery scenarios
       if (detectedRecoveryMode === 'automatic') {
@@ -1848,6 +1853,18 @@ export class WebSocketServer {
 
         // Prepare for next iteration
         this.logger.info(`Handoff detected: ${agentName} -> ${handoffDetails.newAgentName}`)
+
+        // Notify about agent change (for updating conversation.agent_id)
+        const conversation = this.getConversation(socketId)
+        if (conversation && this.config.onAgentChanged) {
+          await this.config.onAgentChanged(
+            conversation.conversationId,
+            agentName,
+            handoffDetails.newAgentName,
+            currentAppId
+          )
+        }
+
         agentName = handoffDetails.newAgentName
         currentMessage = handoffDetails.handoffPrompt
       }

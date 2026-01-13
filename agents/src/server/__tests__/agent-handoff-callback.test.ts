@@ -1,0 +1,254 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import type { ConversationRepository } from '../../database/repositories/ConversationRepository.js'
+
+vi.mock('../../logging/index.js', () => ({
+  Logger: {
+    create: vi.fn().mockReturnValue({
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      child: vi.fn().mockReturnThis()
+    })
+  },
+  log: {
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn()
+  }
+}))
+
+describe('Agent Handoff Callback', () => {
+  let mockConversationRepo: {
+    updateAgentId: ReturnType<typeof vi.fn>
+  }
+  let logger: any
+
+  beforeEach(async () => {
+    // Reset mocks
+    vi.clearAllMocks()
+
+    // Create mock repository
+    mockConversationRepo = {
+      updateAgentId: vi.fn().mockResolvedValue(undefined)
+    }
+
+    // Get logger from mock
+    const { Logger } = await import('../../logging/index.js')
+    logger = Logger.create({ service: 'test' })
+  })
+
+  // Helper to create the onAgentChanged callback
+  const createCallback = (conversationRepository: any) => {
+    return async (conversationId: string, oldAgentName: string, newAgentName: string, appId?: string) => {
+      logger.info('websocket.agent.handoff', {
+        conversationId,
+        oldAgent: oldAgentName,
+        newAgent: newAgentName,
+        appId
+      })
+
+      try {
+        await conversationRepository.updateAgentId(conversationId, newAgentName)
+        logger.debug('websocket.agent.handoff.updated', {
+          conversationId,
+          newAgent: newAgentName
+        })
+      } catch (error) {
+        logger.error('websocket.agent.handoff.update_failed', {
+          conversationId,
+          oldAgent: oldAgentName,
+          newAgent: newAgentName,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+  }
+
+  describe('onAgentChanged callback', () => {
+    it('should update agent_id when handoff occurs', async () => {
+      const callback = createCallback(mockConversationRepo)
+
+      await callback('conv-123', 'initial', 'develop', 'app-456')
+
+      expect(mockConversationRepo.updateAgentId).toHaveBeenCalledWith('conv-123', 'develop')
+      expect(mockConversationRepo.updateAgentId).toHaveBeenCalledTimes(1)
+    })
+
+    it('should log handoff event with all context', async () => {
+      const callback = createCallback(mockConversationRepo)
+
+      await callback('conv-123', 'initial', 'develop', 'app-456')
+
+      expect(logger.info).toHaveBeenCalledWith('websocket.agent.handoff', {
+        conversationId: 'conv-123',
+        oldAgent: 'initial',
+        newAgent: 'develop',
+        appId: 'app-456'
+      })
+    })
+
+    it('should log success after update', async () => {
+      const callback = createCallback(mockConversationRepo)
+
+      await callback('conv-123', 'initial', 'develop', 'app-456')
+
+      expect(logger.debug).toHaveBeenCalledWith('websocket.agent.handoff.updated', {
+        conversationId: 'conv-123',
+        newAgent: 'develop'
+      })
+    })
+
+    it('should handle missing appId gracefully', async () => {
+      const callback = createCallback(mockConversationRepo)
+
+      await callback('conv-123', 'initial', 'develop')
+
+      expect(mockConversationRepo.updateAgentId).toHaveBeenCalledWith('conv-123', 'develop')
+      expect(logger.info).toHaveBeenCalledWith('websocket.agent.handoff', {
+        conversationId: 'conv-123',
+        oldAgent: 'initial',
+        newAgent: 'develop',
+        appId: undefined
+      })
+    })
+
+    it('should handle multiple consecutive handoffs', async () => {
+      const callback = createCallback(mockConversationRepo)
+
+      await callback('conv-123', 'initial', 'develop', 'app-456')
+      await callback('conv-123', 'develop', 'design', 'app-456')
+      await callback('conv-123', 'design', 'marketing', 'app-456')
+
+      expect(mockConversationRepo.updateAgentId).toHaveBeenCalledTimes(3)
+      expect(mockConversationRepo.updateAgentId).toHaveBeenNthCalledWith(1, 'conv-123', 'develop')
+      expect(mockConversationRepo.updateAgentId).toHaveBeenNthCalledWith(2, 'conv-123', 'design')
+      expect(mockConversationRepo.updateAgentId).toHaveBeenNthCalledWith(3, 'conv-123', 'marketing')
+    })
+
+    it('should log error when updateAgentId fails', async () => {
+      const error = new Error('Database connection failed')
+      mockConversationRepo.updateAgentId.mockRejectedValueOnce(error)
+
+      const callback = createCallback(mockConversationRepo)
+
+      await callback('conv-123', 'initial', 'develop', 'app-456')
+
+      expect(logger.error).toHaveBeenCalledWith('websocket.agent.handoff.update_failed', {
+        conversationId: 'conv-123',
+        oldAgent: 'initial',
+        newAgent: 'develop',
+        error: 'Database connection failed'
+      })
+    })
+
+    it('should not throw when updateAgentId fails', async () => {
+      const error = new Error('Database error')
+      mockConversationRepo.updateAgentId.mockRejectedValueOnce(error)
+
+      const callback = createCallback(mockConversationRepo)
+
+      // Should not throw - errors are caught and logged
+      await expect(callback('conv-123', 'initial', 'develop', 'app-456')).resolves.toBeUndefined()
+    })
+
+    it('should handle non-Error thrown values', async () => {
+      mockConversationRepo.updateAgentId.mockRejectedValueOnce('String error')
+
+      const callback = createCallback(mockConversationRepo)
+
+      await callback('conv-123', 'initial', 'develop', 'app-456')
+
+      expect(logger.error).toHaveBeenCalledWith('websocket.agent.handoff.update_failed', {
+        conversationId: 'conv-123',
+        oldAgent: 'initial',
+        newAgent: 'develop',
+        error: 'String error'
+      })
+    })
+
+    it('should work with different agent combinations', async () => {
+      const callback = createCallback(mockConversationRepo)
+
+      // Test various agent combinations
+      const combinations = [
+        ['initial', 'develop'],
+        ['develop', 'design'],
+        ['design', 'marketing'],
+        ['marketing', 'commerce'],
+        ['initial', 'commerce']
+      ]
+
+      for (const [oldAgent, newAgent] of combinations) {
+        await callback('conv-test', oldAgent, newAgent, 'app-test')
+      }
+
+      expect(mockConversationRepo.updateAgentId).toHaveBeenCalledTimes(combinations.length)
+    })
+  })
+
+  describe('getLatestConversationForApp callback', () => {
+    let mockConversationRepoWithLatest: {
+      getLatestForApp: ReturnType<typeof vi.fn>
+    }
+
+    beforeEach(() => {
+      mockConversationRepoWithLatest = {
+        getLatestForApp: vi.fn()
+      }
+    })
+
+    // Helper to create the getLatestConversationForApp callback
+    const createGetLatestCallback = (conversationRepository: any) => {
+      return async (appId: string) => {
+        const latest = await conversationRepository.getLatestForApp(appId)
+        return latest?.id ?? null
+      }
+    }
+
+    it('should return latest conversation id for app', async () => {
+      mockConversationRepoWithLatest.getLatestForApp.mockResolvedValue({
+        id: 'conv-latest',
+        appId: 'app-123',
+        agentId: 'develop',
+        title: 'Test',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+
+      const callback = createGetLatestCallback(mockConversationRepoWithLatest)
+      const result = await callback('app-123')
+
+      expect(result).toBe('conv-latest')
+      expect(mockConversationRepoWithLatest.getLatestForApp).toHaveBeenCalledWith('app-123')
+    })
+
+    it('should return null when no conversation exists for app', async () => {
+      mockConversationRepoWithLatest.getLatestForApp.mockResolvedValue(null)
+
+      const callback = createGetLatestCallback(mockConversationRepoWithLatest)
+      const result = await callback('app-no-history')
+
+      expect(result).toBeNull()
+      expect(mockConversationRepoWithLatest.getLatestForApp).toHaveBeenCalledWith('app-no-history')
+    })
+
+    it('should handle multiple apps independently', async () => {
+      mockConversationRepoWithLatest.getLatestForApp
+        .mockResolvedValueOnce({ id: 'conv-app1', appId: 'app-1' })
+        .mockResolvedValueOnce({ id: 'conv-app2', appId: 'app-2' })
+        .mockResolvedValueOnce(null)
+
+      const callback = createGetLatestCallback(mockConversationRepoWithLatest)
+
+      const result1 = await callback('app-1')
+      const result2 = await callback('app-2')
+      const result3 = await callback('app-3')
+
+      expect(result1).toBe('conv-app1')
+      expect(result2).toBe('conv-app2')
+      expect(result3).toBeNull()
+    })
+  })
+})
