@@ -42,6 +42,15 @@ export const createMockMessageContext = (
   },
   machine: {
     send: vi.fn(),
+    getSnapshot: vi.fn(() => ({
+      matches: vi.fn((pattern: any) => {
+        // Default: machine is in streaming.receiving state
+        if (pattern?.stream?.streaming) {
+          return true
+        }
+        return false
+      }),
+    })),
   } as any,
   ...overrides,
 })

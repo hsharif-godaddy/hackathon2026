@@ -23,7 +23,7 @@ describe('webSocketMachine', () => {
       const harness = new StateMachineTestHarness(webSocketMachine)
 
       harness.assertState((s) =>
-        s.matches({ transport: 'disconnected', stream: 'idle' })
+        s.matches({ transport: 'disconnected', stream: 'completed' })
       )
 
       harness.destroy()

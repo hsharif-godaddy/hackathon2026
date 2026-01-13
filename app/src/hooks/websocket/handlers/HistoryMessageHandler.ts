@@ -76,6 +76,8 @@ export class HistoryMessageHandler implements MessageHandler {
     // Use unified history persistence action
     // This handles normalization, in-progress detection, activeStream rehydration, and appChatHistory persistence
     if (store.currentAppId) {
+      const prevActiveStream = store.activeStream
+
       store.loadAndPersistHistory({
         appId: store.currentAppId,
         rawMessages: batch,
@@ -87,6 +89,26 @@ export class HistoryMessageHandler implements MessageHandler {
         batchSize: batch.length,
         totalMessages: store.messages.length
       })
+
+      // Check if an in-progress message was detected and activeStream was set
+      // Send STREAM_STARTED to transition machine to streaming state (Tier 1 lifecycle)
+      const currentStore = useStreamingConversationStore.getState()
+      if (!prevActiveStream && currentStore.activeStream) {
+        const conversationId = context.refs.pendingRecoveryAck?.current?.conversationId
+
+        if (conversationId) {
+          logger.debug('websocket.history.in_progress_detected', {
+            messageId: currentStore.activeStream.id,
+            conversationId
+          })
+
+          context.machine.send({
+            type: 'STREAM_STARTED',
+            conversationId,
+            messageId: currentStore.activeStream.id,
+          })
+        }
+      }
 
       // Mark that we've received history for this recovery session
       if (historyReceivedRef && isFirstBatch) {

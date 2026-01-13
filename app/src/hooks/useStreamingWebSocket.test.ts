@@ -291,6 +291,9 @@ describe('useStreamingWebSocket', () => {
 
       const { result } = renderHook(() => useStreamingWebSocket());
 
+      // Clear initial setIsLoading(false) call from idle state sync
+      mockSetIsLoadingAction.mockClear();
+
       // Test empty string
       await result.current.sendMessage('');
 
@@ -311,6 +314,9 @@ describe('useStreamingWebSocket', () => {
       vi.mocked(useCurrentAppId).mockReturnValue(null);
 
       const { result } = renderHook(() => useStreamingWebSocket());
+
+      // Clear initial setIsLoading(false) call from idle state sync
+      mockSetIsLoadingAction.mockClear();
 
       await result.current.sendMessage('Test message');
 

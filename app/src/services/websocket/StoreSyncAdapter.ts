@@ -373,10 +373,6 @@ export class StoreSyncAdapter {
       this.store.setIsLoading(false)
     }
 
-    // Idle state
-    if (snapshot.matches({ stream: 'idle' })) {
-      this.store.setStreamingState('idle')
-    }
   }
 
   /**
@@ -406,7 +402,6 @@ export class StoreSyncAdapter {
    * Get current stream state as a string for transition detection
    */
   private getStreamState(snapshot: WebSocketSnapshot): string {
-    if (snapshot.matches({ stream: 'idle' })) return 'idle'
     if (snapshot.matches({ stream: { streaming: 'receiving' } })) return 'streaming.receiving'
     if (snapshot.matches({ stream: { streaming: 'completing' } })) return 'streaming.completing'
     if (snapshot.matches({ stream: 'completed' })) return 'completed'

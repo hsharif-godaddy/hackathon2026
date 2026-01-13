@@ -45,6 +45,7 @@ describe('RecoveryStatusHandler', () => {
     mockStore.getState.mockReturnValue({
       currentAppId: 'app-123',
       activeStream: { id: 'stream-1', content: 'test content' },
+      streamingState: 'streaming',
       connectionRetry: { isRetrying: true },
       clearConnectionRetry,
       clearActiveStream,
@@ -69,8 +70,8 @@ describe('RecoveryStatusHandler', () => {
     // When historyStreaming: true, history arrives via history_message events
     // so no messages are set directly here
     expect(clearActiveStream).toHaveBeenCalled()
-    expect(setStreamingState).toHaveBeenCalledWith('idle')
-    expect(setIsLoading).toHaveBeenCalledWith(false)
+    // Machine event STREAM_COMPLETE is sent (Tier 1), adapter will sync state
+    expect(context.machine.send).toHaveBeenCalledWith({ type: 'STREAM_COMPLETE' })
     expect(clearConnectionRetry).toHaveBeenCalled()
     expect(context.helpers.clearRetryState).toHaveBeenCalled()
     // Note: We no longer clear the stored socket ID to enable recovery on page reload
@@ -116,9 +117,8 @@ describe('RecoveryStatusHandler', () => {
     // Should NOT call clearActiveStream - that would lose data
     expect(clearActiveStream).not.toHaveBeenCalled()
     // Should call finalizeStream to preserve the in-memory response
+    // finalizeStream sets streamingState: 'idle' and isLoading: false internally
     expect(context.actions.finalizeStream).toHaveBeenCalledWith({})
-    expect(setStreamingState).toHaveBeenCalledWith('idle')
-    expect(setIsLoading).toHaveBeenCalledWith(false)
   })
 
   it('prepares buffered event replay and sets pending ack with WebSocket history', async () => {
@@ -170,12 +170,16 @@ describe('RecoveryStatusHandler', () => {
           content: '',
           isComplete: false,
         }),
-        streamingState: 'streaming',
-        isLoading: true,
+        currentStep: 1,
       })
     )
-    // Machine should already be in streaming state during recovery (Tier 1)
-    // Adapter syncs streamingState from machine
+    // Machine event STREAM_STARTED is sent (Tier 1), adapter syncs streamingState and isLoading
+    expect(context.machine.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'STREAM_STARTED',
+        conversationId: 'conv-2',
+      })
+    )
   })
 
   it('initializes replay deduplication before ACK tracking to avoid race conditions', async () => {

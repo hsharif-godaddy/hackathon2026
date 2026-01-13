@@ -21,12 +21,19 @@ describe('StoreSyncAdapter', () => {
     it('should sync initial disconnected state to store', () => {
       const harness = new StoreSyncAdapterTestHarness()
 
-      // Machine starts in disconnected, adapter should have called setWebSocketState
-      harness.assertStoreActionCalled('setWebSocketState')
-      harness.assertStoreActionCalledWith('setWebSocketState', {
-        status: 'idle',
-        connected: false,
-      })
+      // Machine starts in disconnected + completed, adapter syncs both
+      expect(harness.mockStore.setWebSocketState).toHaveBeenCalled()
+      expect(harness.mockStore.setStreamingState).toHaveBeenCalled()
+
+      // Verify transport state was synced
+      const wsStateCalls = harness.mockStore.setWebSocketState.mock.calls
+      const hasDisconnectedCall = wsStateCalls.some(call =>
+        call[0]?.status === 'idle' && call[0]?.connected === false
+      )
+      expect(hasDisconnectedCall).toBe(true)
+
+      // Verify stream state was synced (machine:completed → store:'idle')
+      expect(harness.mockStore.setStreamingState).toHaveBeenCalledWith('idle')
 
       harness.destroy()
     })
@@ -39,8 +46,8 @@ describe('StoreSyncAdapter', () => {
       // Machine starts in disconnected, adapter should have synced this initially
       harness.machine.assertState((s) => s.matches({ transport: 'disconnected' }))
 
-      // Initial sync already called setWebSocketState on construction
-      harness.assertStoreActionCalled('setWebSocketState')
+      // Initial sync should have called setWebSocketState
+      expect(harness.mockStore.setWebSocketState).toHaveBeenCalled()
 
       harness.destroy()
     })
@@ -341,6 +348,87 @@ describe('StoreSyncAdapter', () => {
 
       // Stream state should remain (parallel region)
       harness.machine.assertState((s) => s.matches({ stream: { streaming: 'receiving' } }))
+
+      harness.destroy()
+    })
+  })
+
+  describe('stream completed initial state', () => {
+    it('should start in completed state and clear isLoading', () => {
+      // Test the initial state sync - machine starts with stream:completed
+      const harness = new StoreSyncAdapterTestHarness()
+
+      // Machine should start in completed state (not idle)
+      harness.machine.assertState((s) => s.matches({ stream: 'completed' }))
+
+      // Initial sync should have set isLoading to false for completed stream state
+      const isLoadingCalls = harness.mockStore.setIsLoading.mock.calls
+      const hasClearedLoading = isLoadingCalls.some(call => call[0] === false)
+      expect(hasClearedLoading).toBe(true)
+
+      // Verify streamingState was set to completed
+      expect(harness.mockStore.setStreamingState).toHaveBeenCalled()
+
+      harness.destroy()
+    })
+
+    it('should clear isLoading when transitioning back to completed state', async () => {
+      const harness = new StoreSyncAdapterTestHarness()
+
+      // Setup connection
+      harness.machine.simulateConnect('app-123')
+      harness.machine.actor.send({ type: 'TOKEN_REFRESHED' })
+      harness.machine.simulateConnectionEstablished('socket-456')
+
+      // Start streaming
+      harness.machine.actor.send({
+        type: 'STREAM_STARTED',
+        conversationId: 'conv-1',
+        messageId: 'msg-1',
+      })
+
+      // Verify we're streaming with isLoading=true
+      harness.machine.assertState((s) => s.matches({ stream: { streaming: 'receiving' } }))
+      expect(harness.mockStore.setIsLoading).toHaveBeenCalledWith(true)
+
+      // Complete stream - transitions: streaming → completing → completed
+      harness.machine.simulateStreamComplete()
+
+      // Wait for completing → completed transition (STREAM_COMPLETE_DELAY = 100ms)
+      await vi.advanceTimersByTimeAsync(150)
+
+      // Machine should be in completed state
+      harness.machine.assertState((s) => s.matches({ stream: 'completed' }))
+
+      // Verify isLoading was cleared (check all calls, including initial and final)
+      const isLoadingCalls = harness.mockStore.setIsLoading.mock.calls
+      expect(isLoadingCalls.some(call => call[0] === false)).toBe(true)
+
+      harness.destroy()
+    })
+
+    it('should maintain completed state across transport changes', async () => {
+      const harness = new StoreSyncAdapterTestHarness()
+
+      // Machine starts in completed state
+      harness.machine.assertState((s) => s.matches({ stream: 'completed' }))
+
+      // Clear initial calls
+      harness.clearAllMocks()
+
+      // Transport state changes (connect/disconnect) shouldn't affect stream state
+      harness.machine.simulateConnect('app-123')
+      harness.machine.actor.send({ type: 'TOKEN_REFRESHED' })
+      harness.machine.simulateConnectionEstablished('socket-456')
+
+      // Stream should still be in completed (parallel regions are independent)
+      harness.machine.assertState((s) => s.matches({ stream: 'completed' }))
+
+      // Adapter syncs on every state change, so we should see completed state
+      // Note: Due to table-driven adapter, only changes trigger calls
+      // Since stream state didn't change (stayed completed), it may not call setStreamingState
+      // Just verify the stream is still in completed state
+      expect(harness.machine.actor.getSnapshot().matches({ stream: 'completed' })).toBe(true)
 
       harness.destroy()
     })

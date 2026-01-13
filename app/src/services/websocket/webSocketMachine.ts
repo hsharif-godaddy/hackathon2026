@@ -495,24 +495,12 @@ export const webSocketMachine = setup({
 
     // ============ STREAM REGION ============
     // Manages streaming lifecycle
+    // Note: Starts in 'completed' state (not 'idle') to align with unified WebSocket
+    // history architecture where initial connection and recovery are identical
     stream: {
-      initial: 'idle',
+      initial: 'completed',
 
       states: {
-        idle: {
-          entry: ['clearMessageId', 'clearError'],
-          on: {
-            SEND_MESSAGE: {
-              target: 'streaming',
-              actions: ['setConversationId', 'savePendingMessage', 'logStreamStart'],
-            },
-            STREAM_STARTED: {
-              target: 'streaming',
-              actions: ['setConversationId', 'setMessageId', 'logStreamStart'],
-            },
-          },
-        },
-
         streaming: {
           initial: 'receiving',
 
@@ -555,14 +543,15 @@ export const webSocketMachine = setup({
         },
 
         completed: {
+          entry: ['clearMessageId', 'clearError'],
           on: {
             SEND_MESSAGE: {
               target: 'streaming',
-              actions: ['setConversationId', 'savePendingMessage'],
+              actions: ['setConversationId', 'savePendingMessage', 'logStreamStart'],
             },
             STREAM_STARTED: {
               target: 'streaming',
-              actions: ['setConversationId', 'setMessageId'],
+              actions: ['setConversationId', 'setMessageId', 'logStreamStart'],
             },
           },
         },

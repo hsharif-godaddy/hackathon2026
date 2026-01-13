@@ -111,8 +111,16 @@ export class RecoveryStatusHandler implements MessageHandler {
         })
       }
     }
-    store.setStreamingState('idle')
-    store.setIsLoading(false)
+
+    // Ensure stream state machine transitions to completed
+    // Check machine state (Tier 1), not store state (Tier 2) to avoid race conditions during retry
+    const snapshot = context.machine.getSnapshot()
+    const isStreaming = snapshot.matches({ stream: { streaming: 'receiving' } }) ||
+                       snapshot.matches({ stream: { streaming: 'completing' } })
+    if (isStreaming) {
+      context.machine.send({ type: 'STREAM_COMPLETE' })
+    }
+    // Otherwise machine is already in completed/error state, adapter will sync
 
     // Clear connection retry if active
     if (store.connectionRetry.isRetrying) {
@@ -201,7 +209,8 @@ export class RecoveryStatusHandler implements MessageHandler {
     }
 
     // Create placeholder stream and load history from WebSocket
-    this.initializeRecoveryStream(context)
+    const conversationId = (data.data?.conversationId as string | undefined) || ''
+    this.initializeRecoveryStream(context, conversationId)
 
     // Check if history is being streamed
     if (data.data?.historyStreaming) {
@@ -227,26 +236,33 @@ export class RecoveryStatusHandler implements MessageHandler {
 
     if (streamIsComplete && currentStore.activeStream) {
       currentStore.clearActiveStream()
-      currentStore.setStreamingState('idle')
-      currentStore.setIsLoading(false)
+
+      // Ensure stream state machine transitions to completed
+      // Check machine state (Tier 1), not store state (Tier 2) to avoid race conditions during retry
+      const snapshot = context.machine.getSnapshot()
+      const isStreaming = snapshot.matches({ stream: { streaming: 'receiving' } }) ||
+                         snapshot.matches({ stream: { streaming: 'completing' } })
+      if (isStreaming) {
+        context.machine.send({ type: 'STREAM_COMPLETE' })
+      }
     }
   }
 
   /**
    * Initialize stream for recovery when no history available
    */
-  private initializeRecoveryStream(context: MessageContext): void {
+  private initializeRecoveryStream(context: MessageContext, conversationId: string): void {
     // Guard: only create if not already streaming (avoid overwriting on duplicate recovery)
     const store = useStreamingConversationStore.getState()
     if (!store.activeStream) {
-      this.createRecoveredStream(context)
+      this.createRecoveredStream(context, conversationId)
     }
   }
 
   /**
    * Create a recovered stream message
    */
-  private createRecoveredStream(_context: MessageContext): void {
+  private createRecoveredStream(context: MessageContext, conversationId: string): void {
     const streamingMessage = {
       id: `recovered_${Date.now()}`,
       role: 'assistant' as const,
@@ -257,11 +273,18 @@ export class RecoveryStatusHandler implements MessageHandler {
       isComplete: false,
     }
 
+    // Set activeStream directly (Tier 2 data operation)
     useStreamingConversationStore.setState({
       activeStream: streamingMessage,
-      streamingState: 'streaming',
       currentStep: 1,
-      isLoading: true,
+    })
+
+    // Transition machine to streaming state (Tier 1 lifecycle)
+    // This will trigger adapter to sync streamingState and isLoading
+    context.machine.send({
+      type: 'STREAM_STARTED',
+      conversationId: conversationId,
+      messageId: streamingMessage.id,
     })
   }
 
@@ -327,8 +350,13 @@ export class RecoveryStatusHandler implements MessageHandler {
               timestamp: lastMsg.timestamp,
               isComplete: false,
             },
-            streamingState: 'streaming',
-            isLoading: true,
+          })
+
+          // Transition machine to streaming state (Tier 1 lifecycle)
+          context.machine.send({
+            type: 'STREAM_STARTED',
+            conversationId: recoveryId,
+            messageId: lastMsg.id,
           })
         } else {
           // Stream was complete, clear loading states
@@ -336,8 +364,15 @@ export class RecoveryStatusHandler implements MessageHandler {
           if (currentStore.activeStream) {
             currentStore.clearActiveStream()
           }
-          currentStore.setStreamingState('idle')
-          currentStore.setIsLoading(false)
+
+          // Ensure machine is in completed state
+          // Check machine state (Tier 1), not store state (Tier 2) to avoid race conditions during retry
+          const snapshot = context.machine.getSnapshot()
+          const isStreaming = snapshot.matches({ stream: { streaming: 'receiving' } }) ||
+                             snapshot.matches({ stream: { streaming: 'completing' } })
+          if (isStreaming) {
+            context.machine.send({ type: 'STREAM_COMPLETE' })
+          }
         }
       } else {
         // No history from WebSocket, no cached messages
@@ -352,8 +387,15 @@ export class RecoveryStatusHandler implements MessageHandler {
         if (currentStore.activeStream) {
           currentStore.clearActiveStream()
         }
-        currentStore.setStreamingState('idle')
-        currentStore.setIsLoading(false)
+
+        // Ensure machine is in completed state
+        // Check machine state (Tier 1), not store state (Tier 2) to avoid race conditions during retry
+        const snapshot = context.machine.getSnapshot()
+        const isStreaming = snapshot.matches({ stream: { streaming: 'receiving' } }) ||
+                           snapshot.matches({ stream: { streaming: 'completing' } })
+        if (isStreaming) {
+          context.machine.send({ type: 'STREAM_COMPLETE' })
+        }
       }
     }
 
