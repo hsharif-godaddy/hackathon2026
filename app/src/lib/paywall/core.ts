@@ -9,7 +9,6 @@
  */
 
 import { logger } from '@/lib/request-context';
-
 import type { PaywallDataProvider } from './providers';
 import { isMatchingProject, PAYWALL_CONFIG, type PaywallCheckResult } from './shared';
 
@@ -20,7 +19,8 @@ import { isMatchingProject, PAYWALL_CONFIG, type PaywallCheckResult } from './sh
  * It follows a 4-step algorithm:
  *
  * 1. Check if paywall is enabled via switchboard flags
- *    - If disabled, allow access (fail open)
+ *    - If check fails (network error, service down), deny access (fail closed)
+ *    - If paywall explicitly disabled by flags, allow access
  *
  * 2. Verify user has a subscription containing the app
  *    - If no subscription, deny access
@@ -57,15 +57,15 @@ export async function checkPaywallEligibility(
     const rootDomain = provider.getRootDomain();
 
     if (!rootDomain) {
-      logger.warn('paywall.eligibility.no-root-domain', {
+      logger.error('paywall.eligibility.no-root-domain', {
         appId,
         message: 'Cannot check switchboard flags without root domain',
       });
-      // Fail open - allow access if we can't determine domain
-      // This prevents blocking legitimate users in edge cases
+      // Fail closed - deny access if we can't determine domain
+      // Security: Never grant access when we can't verify eligibility
       return {
-        hasAccess: true,
-        reason: 'Paywall check skipped (no root domain)',
+        hasAccess: false,
+        reason: 'Unable to verify subscription status (no root domain)',
         details: {
           hasSubscription: false,
           hasEntitlements: false,
@@ -89,10 +89,11 @@ export async function checkPaywallEligibility(
         appId,
         error: error instanceof Error ? error.message : String(error),
       });
-      // Fail open - allow if switchboard check fails
+      // Fail closed - deny access if switchboard check fails
+      // Security: Never grant access when we can't verify paywall status
       return {
-        hasAccess: true,
-        reason: 'Paywall not enabled (switchboard check failed)',
+        hasAccess: false,
+        reason: 'Unable to verify subscription status (switchboard check failed)',
         details: {
           hasSubscription: false,
           hasEntitlements: false,

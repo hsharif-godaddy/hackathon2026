@@ -1490,6 +1490,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Validate token TTL for WebSocket connections (must be 10 minutes or less)
         const agentContext = {
           siteId: validationResult.claims?.siteId || '',
+          canDownload: validationResult.claims?.canDownload ?? false,
+          canPublish: validationResult.claims?.canPublish ?? false,
           exp: validationResult.claims?.exp || 0,
           iat: validationResult.claims?.iat || 0
         };
@@ -1557,6 +1559,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             // Validate TTL for refreshed token
             const refreshAgentContext = {
               siteId: refreshResult.claims?.siteId || '',
+              canDownload: refreshResult.claims?.canDownload ?? false,
+              canPublish: refreshResult.claims?.canPublish ?? false,
               exp: refreshResult.claims?.exp || 0,
               iat: refreshResult.claims?.iat || 0
             };

@@ -44,8 +44,13 @@ async function getAgentToken(siteId: string): Promise<string> {
       
       if (isServer) {
         // Server: Use JWT service directly
+        // Default to no special permissions - operations that need them will regenerate
         const { getJWTService } = await import('./jwt-service');
-        const result = await getJWTService().getToken({ siteId });
+        const result = await getJWTService().getToken({
+          siteId,
+          canDownload: false,
+          canPublish: false
+        });
         token = result.token;
         expires = result.expires;
       } else {

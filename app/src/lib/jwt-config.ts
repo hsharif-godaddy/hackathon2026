@@ -14,9 +14,11 @@ export interface JWTClaims {
   aud: string;      // Audience - hardcoded to 'agents-service'
   exp: number;      // Expiration
   iat: number;      // Issued at
-  
-  // Custom claims (only siteId)
-  siteId: string;   // Site ID
+
+  // Custom claims
+  siteId: string;          // Site ID
+  canDownload: boolean;    // Permission to download app files
+  canPublish: boolean;     // Permission to publish app
 }
 
 /**

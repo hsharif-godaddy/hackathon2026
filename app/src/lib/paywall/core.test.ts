@@ -42,14 +42,14 @@ describe('checkPaywallEligibility', () => {
     vi.clearAllMocks();
   });
 
-  it('should allow access when no root domain (fail open)', async () => {
+  it('should deny access when no root domain (fail closed)', async () => {
     const provider = createMockProvider({
       getRootDomain: vi.fn().mockReturnValue(null),
     });
 
     const result = await checkPaywallEligibility('app-123', provider);
 
-    expect(result.hasAccess).toBe(true);
+    expect(result.hasAccess).toBe(false);
     expect(result.reason).toContain('no root domain');
     expect(provider.checkSwitchboardFlags).not.toHaveBeenCalled();
   });
@@ -65,14 +65,14 @@ describe('checkPaywallEligibility', () => {
     expect(result.reason).toBe('Paywall not enabled');
   });
 
-  it('should allow access when switchboard check fails', async () => {
+  it('should deny access when switchboard check fails (fail closed)', async () => {
     const provider = createMockProvider({
       checkSwitchboardFlags: vi.fn().mockRejectedValue(new Error('Network error')),
     });
 
     const result = await checkPaywallEligibility('app-123', provider);
 
-    expect(result.hasAccess).toBe(true);
+    expect(result.hasAccess).toBe(false);
     expect(result.reason).toContain('switchboard check failed');
   });
 

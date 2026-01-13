@@ -5,6 +5,7 @@ import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { GitUtils } from '../../utils/git.js';
 import { log } from '../../logging/index.js';
 import { Router } from 'express';
+import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import type { PublishResponse, PublishSuccessResponse } from '../../services/DevSupervisorClient.js';
 
 const router: Router = Router();
@@ -63,6 +64,18 @@ router.post('/apps/:id/publish', async (req, res) => {
 
     if (!commitHash) {
       return res.status(400).json({ error: 'Commit hash is required' });
+    }
+
+    // Check publish permission from JWT claims
+    const authReq = req as AuthenticatedRequest;
+    if (!authReq.agentContext?.canPublish) {
+      contextLogger.error('route.publish.forbidden', {
+        reason: 'missing_canPublish_permission',
+      });
+      return res.status(403).json({
+        error: 'Publish not allowed',
+        details: 'Airo Plus subscription required to publish apps'
+      });
     }
 
     contextLogger.info('route.publish.begin', {

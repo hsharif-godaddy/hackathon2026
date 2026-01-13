@@ -9,7 +9,9 @@ import { validateJWTAgentConfig } from '../../lib/jwks-config.js';
 import { auth, AuthType } from '../../services/features.js';
 
 export interface AgentContext {
-  siteId: string;      // Custom claim
+  siteId: string;          // Custom claim
+  canDownload: boolean;    // Permission to download app files
+  canPublish: boolean;     // Permission to publish app
   exp: number;
   iat: number;
 }
@@ -26,7 +28,7 @@ export class JWTAuthMiddleware {
   constructor() {
     // Validate config on startup
     const configValidation = validateJWTAgentConfig();
-    
+
     if (!configValidation.valid) {
       throw new Error(`JWT configuration invalid: ${configValidation.errors.join(', ')}`);
     }
@@ -37,27 +39,27 @@ export class JWTAuthMiddleware {
   /**
    * Validate token TTL for WebSocket connections
    * WebSocket tokens must have a TTL of 12 hours or less
-   * 
+   *
    * @param claims - JWT claims with exp and iat
    * @returns Validation result with error message if invalid
    */
   validateWebSocketTokenTTL(claims: AgentContext): { valid: boolean; error?: string } {
     const now = Math.floor(Date.now() / 1000);
     const tokenTTL = claims.exp - claims.iat;
-    
+
     // Check if token has already expired
     if (claims.exp <= now) {
       return { valid: false, error: 'Token has expired' };
     }
-    
+
     // Check if token TTL exceeds maximum for WebSocket connections
     if (tokenTTL > this.MAX_WEBSOCKET_TOKEN_TTL_SECONDS) {
-      return { 
-        valid: false, 
-        error: `WebSocket tokens must have TTL of ${this.MAX_WEBSOCKET_TOKEN_TTL_SECONDS} seconds or less (token TTL: ${tokenTTL} seconds)` 
+      return {
+        valid: false,
+        error: `WebSocket tokens must have TTL of ${this.MAX_WEBSOCKET_TOKEN_TTL_SECONDS} seconds or less (token TTL: ${tokenTTL} seconds)`
       };
     }
-    
+
     return { valid: true };
   }
 
@@ -68,22 +70,28 @@ export class JWTAuthMiddleware {
     try {
       // Handle different authentication types via feature system
       const authType = auth.getType();
-      
+
       if (authType === AuthType.NONE) {
         // No authentication required (local development)
+        // Grant all permissions for local development
         (req as AuthenticatedRequest).agentContext = {
           siteId: auth.getSiteId(AuthType.NONE),
+          canDownload: true,
+          canPublish: true,
           exp: Math.floor(Date.now() / 1000) + 3600,
           iat: Math.floor(Date.now() / 1000)
         };
         next();
         return;
       }
-      
+
       if (authType === AuthType.MOCK) {
         // Mock authentication for testing
+        // Grant all permissions for testing
         (req as AuthenticatedRequest).agentContext = {
           siteId: auth.getSiteId(AuthType.MOCK),
+          canDownload: true,
+          canPublish: true,
           exp: Math.floor(Date.now() / 1000) + 3600,
           iat: Math.floor(Date.now() / 1000)
         };
@@ -104,40 +112,42 @@ export class JWTAuthMiddleware {
           res.status(401).json({ error: 'Token too large', requiresAuth: true });
           return;
         }
-        
+
         // Validate JWT using public key
         const validationResult = await this.jwtValidator.validateToken(token);
-        
+
         if (!validationResult.valid || !validationResult.claims) {
-          res.status(401).json({ 
-            error: validationResult.reason || 'Invalid token', 
-            requiresAuth: true 
+          res.status(401).json({
+            error: validationResult.reason || 'Invalid token',
+            requiresAuth: true
           });
           return;
         }
-        
-        // Extract context from JWT claims (only siteId custom claim)
+
+        // Extract context from JWT claims
         const claims = validationResult.claims;
         (req as AuthenticatedRequest).agentContext = {
-          siteId: claims.siteId,       // Custom claim
+          siteId: claims.siteId,
+          canDownload: claims.canDownload ?? false,  // Default to false for backward compatibility
+          canPublish: claims.canPublish ?? false,    // Default to false for backward compatibility
           exp: claims.exp,
           iat: claims.iat
         };
-        
+
         next();
         return;
       }
-      
+
       // Unknown auth type - should not happen
       res.status(500).json({ error: 'Unknown authentication type configured' });
-      
+
     } catch (error: unknown) {
       res.status(500).json({ error: 'Authentication error' });
     }
   };
 }
 
-// Lazy singleton instance  
+// Lazy singleton instance
 let jwtAuthMiddlewareInstance: JWTAuthMiddleware | null = null;
 
 /**

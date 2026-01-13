@@ -6,7 +6,9 @@
  */
 
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
+import { dynamicApiConfigService } from '@/config/dynamic-api'
 import { appFetch } from '@/lib/gasket-config'
+import { regenerateToken } from '@/lib/jwt-regeneration'
 import { ClientPaywallProvider } from '@/lib/paywall/client-provider'
 import { checkPaywallEligibility } from '@/lib/paywall/core'
 import { logger } from '@/lib/request-context'
@@ -167,11 +169,26 @@ export const publishAction: ClientActionExecutor = async (params, context) => {
       })
     }
 
-    // Call the publish API with user authentication
-    const response = await appFetch(`/api/apps/${appId}/publish`, {
+    // Regenerate JWT with fresh permissions before publish
+    logger.info('websocket.client-action.publish.regenerate-token', { appId })
+    const tokenResult = await regenerateToken({ siteId: appId, force: true })
+
+    // Get agent URL for this site
+    const apiConfig = await dynamicApiConfigService.getConfigForSite(appId)
+
+    if (!apiConfig.agentUrl) {
+      throw new Error('Agent URL not available for this site')
+    }
+
+    // Call agent service directly with fresh token
+    const publishUrl = `${apiConfig.agentUrl}/apps/${appId}/publish`
+    logger.info('websocket.client-action.publish.calling-agent', { appId, url: publishUrl })
+
+    const response = await fetch(publishUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tokenResult.token}`,
       },
       body: JSON.stringify({
         commitHash,

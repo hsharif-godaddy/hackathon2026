@@ -14,6 +14,8 @@ import { logger } from './request-context';
 
 export interface CreateTokenOptions {
   siteId: string;
+  canDownload: boolean;
+  canPublish: boolean;
 }
 
 export interface TokenResult {
@@ -125,7 +127,9 @@ export class JWTService {
       aud: this.constants.audience,
       exp,
       iat: now,
-      siteId: options.siteId
+      siteId: options.siteId,
+      canDownload: options.canDownload,
+      canPublish: options.canPublish
     };
 
     const headerBase64 = Buffer.from(JSON.stringify(header)).toString('base64url');
@@ -182,10 +186,18 @@ export class JWTService {
   }
 
   /**
+   * Generate cache key from token options
+   * Includes permissions to avoid stale cache when permissions change
+   */
+  private getCacheKey(options: CreateTokenOptions): string {
+    return `${options.siteId}:${options.canDownload}:${options.canPublish}`;
+  }
+
+  /**
    * Get cached token or create new one
    */
   async getToken(options: CreateTokenOptions): Promise<TokenResult> {
-    const cacheKey = options.siteId;
+    const cacheKey = this.getCacheKey(options);
     const cached = this.tokenCache.get(cacheKey);
 
     if (cached && cached.expires > new Date(Date.now() + 60000)) {
@@ -194,7 +206,7 @@ export class JWTService {
 
     const result = await this.createToken(options);
     this.tokenCache.set(cacheKey, result);
-    
+
     return result;
   }
 
@@ -203,7 +215,7 @@ export class JWTService {
    */
   async refreshToken(options: CreateTokenOptions): Promise<TokenResult> {
     const result = await this.createToken(options);
-    const cacheKey = options.siteId;
+    const cacheKey = this.getCacheKey(options);
     this.tokenCache.set(cacheKey, result);
     return result;
   }

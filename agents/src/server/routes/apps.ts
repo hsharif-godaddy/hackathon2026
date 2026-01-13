@@ -1,5 +1,20 @@
+/**
+ * Apps Routes - Basic CRUD Operations
+ *
+ * This file contains core app management endpoints (list, get, create, update, delete, etc.)
+ *
+ * IMPORTANT: This file has grown too large (1300+ lines).
+ * When adding new routes, please create separate route files instead of adding to this file.
+ * Examples of proper route separation:
+ * - download.ts - App download/zip operations
+ * - publish.ts - App publish operations
+ * - git.ts - Git operations
+ *
+ * Keep this file focused on basic CRUD operations only.
+ */
+
 import { Router, Request, Response, IRouter } from 'express';
-import { existsSync, writeFileSync } from 'fs';
+import { existsSync, writeFileSync, createWriteStream, mkdirSync } from 'fs';
 import { join as pathJoin } from 'path';
 import apm from 'elastic-apm-node';
 import multer from 'multer';
@@ -15,6 +30,7 @@ import { ServerManagementTool } from '../../tools/server-management-tool.js';
 import { getNameSuggestionService } from '../../services/name-suggestion.js';
 import { Logger, log } from '../../logging/index.js';
 import { getFeatures } from '../../services/features.js';
+import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 
 const router: IRouter = Router();
 const appRepo = new AppRepository();
@@ -1112,6 +1128,7 @@ router.post('/:id/screenshot', upload.single('screenshot'), (req: Request, res: 
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 
 // Docker-specific routes have been moved to the app service
 

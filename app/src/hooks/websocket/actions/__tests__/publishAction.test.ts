@@ -47,6 +47,16 @@ vi.mock('@/lib/paywall/client-provider', () => ({
   ClientPaywallProvider: vi.fn().mockImplementation(() => ({})),
 }))
 
+vi.mock('@/lib/jwt-regeneration', () => ({
+  regenerateToken: vi.fn(),
+}))
+
+vi.mock('@/config/dynamic-api', () => ({
+  dynamicApiConfigService: {
+    getConfigForSite: vi.fn(),
+  },
+}))
+
 vi.mock('@/stores/useSiteStore', () => ({
   useSiteStore: {
     getState: vi.fn(),
@@ -62,7 +72,9 @@ vi.mock('@/utils/site', () => ({
 }))
 
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
+import { dynamicApiConfigService } from '@/config/dynamic-api'
 import { appFetch } from '@/lib/gasket-config'
+import { regenerateToken } from '@/lib/jwt-regeneration'
 import { checkPaywallEligibility } from '@/lib/paywall/core'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -107,6 +119,25 @@ describe('publishAction', () => {
       },
     })
 
+    // Default JWT regeneration
+    vi.mocked(regenerateToken).mockResolvedValue({
+      token: 'mock-jwt-token',
+      expires: new Date(Date.now() + 43200000).toISOString(),
+      siteId: 'test-site',
+      type: 'jwt',
+    })
+
+    // Default dynamic API config
+    vi.mocked(dynamicApiConfigService.getConfigForSite).mockResolvedValue({
+      baseUrl: 'http://localhost:3000',
+      wsUrl: 'ws://localhost:4000',
+      agentUrl: 'http://localhost:4000',
+      isStatic: false,
+    })
+
+    // Mock global fetch for agent service calls
+    global.fetch = vi.fn()
+
     // Default site store - mock site with publish variant (not first time)
     vi.mocked(useSiteStore.getState).mockReturnValue({
       getSite: vi.fn().mockReturnValue({
@@ -147,7 +178,7 @@ describe('publishAction', () => {
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
       // Mock successful flow
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({ commitHash: 'abc123' }),
       } as Response)
@@ -161,7 +192,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({ commitHash: 'abc123' }),
       } as Response)
@@ -184,7 +215,7 @@ describe('publishAction', () => {
         },
       })
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({ commitHash: 'abc123' }),
       } as Response)
@@ -213,7 +244,7 @@ describe('publishAction', () => {
       expect(mockStoreActions.setShowPaywallModal).toHaveBeenCalledWith('app-123', true)
 
       // Verify publish API was NOT called
-      expect(appFetch).not.toHaveBeenCalledWith(
+      expect(global.fetch).not.toHaveBeenCalledWith(
         expect.stringContaining('/publish'),
         expect.anything()
       )
@@ -265,7 +296,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({ commitHash: 'abc123' }),
       } as Response)
@@ -279,7 +310,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({ commitHash: 'abc123' }),
       } as Response)
@@ -297,7 +328,7 @@ describe('publishAction', () => {
         throw new Error('Store error')
       })
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({ commitHash: 'abc123' }),
       } as Response)
@@ -312,7 +343,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'provided-hash' }
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({ commitHash: 'provided-hash' }),
       } as Response)
@@ -331,7 +362,7 @@ describe('publishAction', () => {
         commits: [],
       })
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({ commitHash: 'fetched-hash' }),
       } as Response)
@@ -350,7 +381,7 @@ describe('publishAction', () => {
         commits: [{ hash: 'first-commit' }],
       } as any)
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({ commitHash: 'first-commit' }),
       } as Response)
@@ -381,7 +412,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({ commitHash: 'abc123' }),
       } as Response)
@@ -400,6 +431,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
+      // Mock appFetch for secrets sync
       vi.mocked(appFetch).mockImplementation(async (url: string) => {
         if (url.includes('secrets')) {
           return {
@@ -407,11 +439,14 @@ describe('publishAction', () => {
             json: async () => ({ success: true }),
           } as Response
         }
-        return {
-          ok: true,
-          json: async () => ({ commitHash: 'abc123' }),
-        } as Response
+        throw new Error('Unexpected appFetch call')
       })
+
+      // Mock global.fetch for publish call
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ commitHash: 'abc123' }),
+      } as Response)
 
       await publishAction(params, context)
 
@@ -428,15 +463,19 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
+      // Mock appFetch to throw error for secrets sync
       vi.mocked(appFetch).mockImplementation(async (url: string) => {
         if (url.includes('secrets')) {
           throw new Error('Sync failed')
         }
-        return {
-          ok: true,
-          json: async () => ({ commitHash: 'abc123' }),
-        } as Response
+        throw new Error('Unexpected appFetch call')
       })
+
+      // Mock global.fetch for publish call (should still succeed)
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ commitHash: 'abc123' }),
+      } as Response)
 
       // Should not throw - continues despite sync error
       await expect(publishAction(params, context)).resolves.toBeDefined()
@@ -446,6 +485,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
+      // Mock appFetch to return error status for secrets sync
       vi.mocked(appFetch).mockImplementation(async (url: string) => {
         if (url.includes('secrets')) {
           return {
@@ -453,11 +493,14 @@ describe('publishAction', () => {
             status: 500,
           } as Response
         }
-        return {
-          ok: true,
-          json: async () => ({ commitHash: 'abc123' }),
-        } as Response
+        throw new Error('Unexpected appFetch call')
       })
+
+      // Mock global.fetch for publish call (should still succeed)
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ commitHash: 'abc123' }),
+      } as Response)
 
       await expect(publishAction(params, context)).resolves.toBeDefined()
     })
@@ -468,18 +511,28 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({ commitHash: 'abc123' }),
       } as Response)
 
       await publishAction(params, context)
 
-      expect(appFetch).toHaveBeenCalledWith(
-        '/api/apps/app-123/publish',
+      // Verify JWT regeneration
+      expect(regenerateToken).toHaveBeenCalledWith({ siteId: 'app-123', force: true })
+
+      // Verify dynamic API config fetch
+      expect(dynamicApiConfigService.getConfigForSite).toHaveBeenCalledWith('app-123')
+
+      // Verify publish API call to agent service
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:4000/apps/app-123/publish',
         expect.objectContaining({
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer mock-jwt-token',
+          },
           body: JSON.stringify({ commitHash: 'abc123' }),
         })
       )
@@ -499,7 +552,7 @@ describe('publishAction', () => {
         },
       }
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => mockResult,
       } as Response)
@@ -519,7 +572,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: false,
         status: 500,
         json: async () => ({ error: 'Internal server error' }),
@@ -532,7 +585,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: false,
         status: 400,
         json: async () => ({
@@ -569,7 +622,7 @@ describe('publishAction', () => {
         },
       })
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: false,
         status: 500,
         json: async () => ({ error: 'Server error' }),
@@ -597,7 +650,7 @@ describe('publishAction', () => {
         },
       })
 
-      vi.mocked(appFetch).mockRejectedValue(new Error('Network error'))
+      vi.mocked(global.fetch).mockRejectedValue(new Error('Network error'))
 
       await expect(publishAction(params, context)).rejects.toThrow('Network error')
 
@@ -621,7 +674,7 @@ describe('publishAction', () => {
         },
       })
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: false,
         status: 500,
         json: async () => ({ error: 'Server error' }),
@@ -651,7 +704,7 @@ describe('publishAction', () => {
         },
       })
 
-      vi.mocked(appFetch).mockRejectedValue(new Error('Network error'))
+      vi.mocked(global.fetch).mockRejectedValue(new Error('Network error'))
 
       await expect(publishAction(params, context)).rejects.toThrow('Network error')
 
@@ -778,7 +831,7 @@ describe('publishAction', () => {
         throw new Error('Store error')
       })
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: false,
         status: 500,
         json: async () => ({ error: 'API error' }),
@@ -794,7 +847,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({
           commitHash: 'abc123',
@@ -814,7 +867,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({
           commitHash: 'abc123',
@@ -836,7 +889,7 @@ describe('publishAction', () => {
 
       vi.mocked(getQueryClient).mockReturnValue(null)
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({
           commitHash: 'abc123',
@@ -852,7 +905,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({ commitHash: 'abc123' }),
       } as Response)
@@ -871,7 +924,7 @@ describe('publishAction', () => {
         throw new Error('Store error')
       })
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({
           commitHash: 'abc123',
@@ -889,7 +942,7 @@ describe('publishAction', () => {
 
       mockQueryClient.invalidateQueries.mockRejectedValue(new Error('Query error'))
 
-      vi.mocked(appFetch).mockResolvedValue({
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({
           commitHash: 'abc123',
@@ -915,7 +968,14 @@ describe('publishAction', () => {
         commits: [],
       })
 
+      // Mock secrets sync
       vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({}),
+      } as Response)
+
+      // Mock agent service publish call
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({
           commitHash: 'abc123',
@@ -946,7 +1006,14 @@ describe('publishAction', () => {
         commits: [],
       })
 
+      // Mock secrets sync
       vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({}),
+      } as Response)
+
+      // Mock agent service publish call
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({
           commitHash: 'abc123',
@@ -979,7 +1046,14 @@ describe('publishAction', () => {
         commits: [],
       })
 
+      // Mock secrets sync
       vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({}),
+      } as Response)
+
+      // Mock agent service publish call
+      vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({
           commitHash: 'abc123',
@@ -1002,23 +1076,27 @@ describe('publishAction', () => {
         commits: [],
       })
 
+      // Mock appFetch for secrets sync (still uses appFetch)
       vi.mocked(appFetch).mockImplementation(async (url: string) => {
         if (url.includes('secrets')) {
           return { ok: true, json: async () => ({}) } as Response
         }
-        return {
-          ok: true,
-          json: async () => ({
-            commitHash: 'fetched-hash',
-            archive: { path: '/archive/path' },
-            deployment: {
-              deploymentId: 'deploy-789',
-              status: 'in_progress',
-              message: 'Deploying to production',
-            },
-          }),
-        } as Response
+        throw new Error('Unexpected appFetch call')
       })
+
+      // Mock global.fetch for publish call to agent service
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          commitHash: 'fetched-hash',
+          archive: { path: '/archive/path' },
+          deployment: {
+            deploymentId: 'deploy-789',
+            status: 'in_progress',
+            message: 'Deploying to production',
+          },
+        }),
+      } as Response)
 
       const result = await publishAction(params, context)
 
@@ -1032,6 +1110,25 @@ describe('publishAction', () => {
       expect(mockStoreActions.setDeploymentInProgressId).toHaveBeenCalledWith(
         'app-123',
         'deploy-789'
+      )
+
+      // Verify JWT regeneration
+      expect(regenerateToken).toHaveBeenCalledWith({ siteId: 'app-123', force: true })
+
+      // Verify dynamic API config fetch
+      expect(dynamicApiConfigService.getConfigForSite).toHaveBeenCalledWith('app-123')
+
+      // Verify publish API call to agent service
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:4000/apps/app-123/publish',
+        expect.objectContaining({
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer mock-jwt-token',
+          },
+          body: JSON.stringify({ commitHash: 'fetched-hash' }),
+        })
       )
 
       // Verify result

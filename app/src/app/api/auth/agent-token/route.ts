@@ -14,6 +14,8 @@ import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-p
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser,withCustomerAuth } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
 import { AIRO_OWNER_PRODUCTS } from '@/lib/mgmt-airo';
+import { checkPaywallEligibility } from '@/lib/paywall/core';
+import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
 import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 
 export interface CreateAgentTokenRequest {
@@ -113,10 +115,37 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       return validationError;
     }
 
+    // Check paywall eligibility to determine permissions
+    let canDownload = false;
+    let canPublish = false;
+
+    try {
+      const provider = new ServerPaywallProvider(
+        authContext.jwt || '',
+        user.customerId,
+        request.headers
+      );
+      const eligibility = await checkPaywallEligibility(body.siteId, provider);
+
+      // Both download and publish require Airo Plus subscription
+      canDownload = eligibility.hasAccess;
+      canPublish = eligibility.hasAccess;
+    } catch (error) {
+      // Fail closed - deny permissions if check fails
+      canDownload = false;
+      canPublish = false;
+    }
+
     const jwtService = getJWTService();
-    const result = body.expiresInSeconds 
-      ? await jwtService.createToken({ siteId: body.siteId }, body.expiresInSeconds)
-      : await jwtService.getToken({ siteId: body.siteId });
+    const tokenOptions = {
+      siteId: body.siteId,
+      canDownload,
+      canPublish
+    };
+
+    const result = body.expiresInSeconds
+      ? await jwtService.createToken(tokenOptions, body.expiresInSeconds)
+      : await jwtService.getToken(tokenOptions);
 
     const response: Record<string, unknown> = {
       token: result.token,

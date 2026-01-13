@@ -18,9 +18,11 @@ export interface JWTClaims {
   aud: string;      // Audience
   exp: number;      // Expiration
   iat: number;      // Issued at
-  
-  // Custom claims (only siteId)
-  siteId: string;   // Site ID
+
+  // Custom claims
+  siteId: string;          // Site ID
+  canDownload?: boolean;   // Permission to download app files (optional for backward compatibility)
+  canPublish?: boolean;    // Permission to publish app (optional for backward compatibility)
 }
 
 export interface ValidationResult {

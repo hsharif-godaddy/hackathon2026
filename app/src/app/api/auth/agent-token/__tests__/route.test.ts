@@ -176,7 +176,9 @@ describe('agent-token', function packageTests() {
         type: 'jwt'
       });
       expect(mockJWTService.getToken).toHaveBeenCalledWith({
-        siteId: MOCK_SITE_ID
+        siteId: MOCK_SITE_ID,
+        canDownload: false,
+        canPublish: false
       });
     });
 
@@ -433,7 +435,7 @@ describe('agent-token', function packageTests() {
           expiresInSeconds
         });
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID },
+          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();
@@ -455,7 +457,9 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBeUndefined();
         expect(mockJWTService.getToken).toHaveBeenCalledWith({
-          siteId: MOCK_SITE_ID
+          siteId: MOCK_SITE_ID,
+          canDownload: false,
+          canPublish: false
         });
         expect(mockJWTService.createToken).not.toHaveBeenCalled();
       });
@@ -544,7 +548,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID },
+          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false },
           expiresInSeconds
         );
       });
@@ -569,7 +573,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(300);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID },
+          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false },
           300
         );
       });
@@ -602,7 +606,9 @@ describe('agent-token', function packageTests() {
         });
         expect(mockControlPlaneAdapter.getSite).toHaveBeenCalledWith(MOCK_SITE_ID, 'user-jwt-token', 'AiroAppBuilder');
         expect(mockJWTService.getToken).toHaveBeenCalledWith({
-          siteId: MOCK_SITE_ID
+          siteId: MOCK_SITE_ID,
+          canDownload: false,
+          canPublish: false
         });
       });
 
@@ -703,7 +709,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID },
+          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();

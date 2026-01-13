@@ -9,19 +9,16 @@ import Collapsible from '@ux/collapsible';
 import Tag from '@ux/tag';
 import text from '@ux/text';
 
-import SinglePlanUpgradeContainer from '@/app/develop/components/SinglePlanUpgradeContainer';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
-import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
+import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishApp } from '@/hooks/usePublishApp';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
-import { shipAnalyticsLog } from '@/lib/logging';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { Separator } from '@/lib/shadcn/separator';
-import { entitlementPollingService } from '@/services/EntitlementPollingService';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversationStore';
@@ -32,7 +29,6 @@ export default function AppPublish({ location }: { location?: string }) {
   const intl = useIntl();
   const t = useTranslations();
   const [open, setOpen] = useState(false);
-  const [showAiroPlusPaywall, setShowAiroPlusPaywall] = useState(false);
   const [entitlementsPollingFailed, setEntitlementsPollingFailed] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
@@ -41,54 +37,21 @@ export default function AppPublish({ location }: { location?: string }) {
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
   const clearPublishStatus = useDevelopPageStore((state) => state.clearPublishStatus);
   const setDeploymentsRefetch = useDevelopPageStore((state) => state.setDeploymentsRefetch);
-  const setShowPaywallModal = useDevelopPageStore((state) => state.setShowPaywallModal);
-  const showPaywallModalFromStore = useDevelopPageStore((state) =>
-    currentAppId && state.publishStates[currentAppId]
-      ? state.publishStates[currentAppId].showPaywallModal
-      : false
-  );
-  const [hasCompletedPurchase, setHasCompletedPurchase] = useState(false);
-  const isPollingEntitlements = useDevelopPageStore((state) => state.isPollingEntitlements);
-  const setIsPollingEntitlements = useDevelopPageStore((state) => state.setIsPollingEntitlements);
+
+  // Switchboard flags
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
   const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall');
-  const { data: isPaywallEnabledInMarket } = useSwitchboard('appbuilder-airoplus-markets');
 
-  const { showPaywall } = usePaywallEligibility(currentAppId);
-  const logInAppPurchase = (subscriptionId: string, entitlementId: string) => {
-    shipAnalyticsLog('airoplus.purchase.in-app', {
-      appId: currentAppId,
-      subscriptionId,
-      entitlementId,
-      source: 'in-app-paywall',
-      appName: site?.name
-    });
-  };
-
-  const handlePurchaseSuccess = async () => {
-    setShowAiroPlusPaywall(false);
-    if (currentAppId) {
-      setShowPaywallModal(currentAppId, false);
-    }
-    setIsPollingEntitlements(true);
-    const result = await entitlementPollingService.pollForEntitlements(currentAppId);
-    setIsPollingEntitlements(false);
-    if (result.success) {
-      if (result.data) {
-        logInAppPurchase(result.data.subscriptionId, result.data.entitlementId);
-      }
+  // Use shared paywall modal hook
+  const { checkAndShowPaywall, PaywallModal, isPolling } = usePaywallModal({
+    appId: currentAppId,
+    source: 'publish',
+    onPurchaseSuccess: async () => {
+      // Open publish modal after successful purchase
       setOpen(true);
       setEntitlementsPollingFailed(false);
-      setHasCompletedPurchase(true); // Set flag to prevent showing paywall again
-    } else {
-      setEntitlementsPollingFailed(true);
-      setOpen(false);
-      logger.error('app-publish.entitlements.polling.failed', {
-        appId: currentAppId,
-        error: result.error,
-      });
-    }
-  };
+    },
+  });
 
   // Get publish state for current app
   const isPublishing = useDevelopPageStore(
@@ -235,17 +198,6 @@ export default function AppPublish({ location }: { location?: string }) {
     }
   }, [currentAppId, refetch, setDeploymentsRefetch]);
 
-  // Sync store paywall modal state with local state
-  useEffect(() => {
-    setShowAiroPlusPaywall(showPaywallModalFromStore);
-    if (showPaywallModalFromStore) {
-      logger.info('app-publish.paywall-modal.triggered-from-store', {
-        appId: currentAppId,
-        message: 'Paywall modal triggered by AI publish action',
-      });
-    }
-  }, [showPaywallModalFromStore, currentAppId]);
-
   if (!isPublishButtonEnabled || !isDevelopPage || !currentAppId || !site?.agent_url) {
     return null;
   }
@@ -255,7 +207,7 @@ export default function AppPublish({ location }: { location?: string }) {
   // - Polling entitlements after purchase
   // - Entitlements polling failed
   // Note: Publishing, deployment, conversation in progress, and current commit deployed are now shown as warnings in the modal
-  const isButtonDisabled = isLoading || isLoadingGitHistory || isPollingEntitlements || entitlementsPollingFailed;
+  const isButtonDisabled = isLoading || isLoadingGitHistory || isPolling || entitlementsPollingFailed;
 
   const publishWidget = isFirstTimePublishing ? 'app_first_publish' : 'app_publish';
 
@@ -338,56 +290,28 @@ export default function AppPublish({ location }: { location?: string }) {
     return t('builder_publish_button');
   };
 
-  const handlePublish = async (open: boolean) => {
+  const handlePublish = async (shouldOpen: boolean) => {
+    if (!shouldOpen) {
+      // Just close the popover
+      setOpen(false);
+      return;
+    }
+
     // Reset polling failure state when attempting to publish
-    if (open) {
-      setEntitlementsPollingFailed(false);
-      // Refetch git history to ensure commit count is accurate
-      refetchGitHistory();
-    }
+    setEntitlementsPollingFailed(false);
+    // Refetch git history to ensure commit count is accurate
+    refetchGitHistory();
 
-    // Show paywall only if not completed purchase and showPaywall is true
-    const shouldShowPaywall = !hasCompletedPurchase && showPaywall;
-
-    if (isAiroPlusPaywallEnabled && isPaywallEnabledInMarket && shouldShowPaywall && open) {
-      setShowAiroPlusPaywall(true);
-      shipAnalyticsLog('airoplus.paywall.shown', {
-        appId: currentAppId,
-        appName: site?.name
-      });
-    } else {
-      setOpen(open);
-    }
+    // Check paywall and either show modal or open popover
+    await checkAndShowPaywall(async () => {
+      setOpen(true);
+    });
   }
 
   return (
     <>
-    {showAiroPlusPaywall && (
-      <SinglePlanUpgradeContainer
-        onErrorClick={async () => {
-          setShowAiroPlusPaywall(false);
-          if (currentAppId) {
-            setShowPaywallModal(currentAppId, false);
-          }
-          shipAnalyticsLog('airoplus.paywall.error', {
-            appId: currentAppId,
-            appName: site?.name
-          });
-        }}
-        onClose={() => {
-          setShowAiroPlusPaywall(false);
-          if (currentAppId) {
-            setShowPaywallModal(currentAppId, false);
-          }
-          shipAnalyticsLog('airoplus.paywall.dismissed', {
-            appId: currentAppId,
-            appName: site?.name
-          });
-        }}
-        onSuccessClick={handlePurchaseSuccess}
-      />
-    )}
-    <Popover open={open} onOpenChange={handlePublish}>
+      <PaywallModal />
+      <Popover open={open} onOpenChange={handlePublish}>
       <PopoverTrigger asChild>
         <Button
           id="tour-publish-button"
