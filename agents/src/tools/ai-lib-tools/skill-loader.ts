@@ -74,19 +74,34 @@ export const skillAITool: Tool = createTool(
       // Install templates directly
       const result = await skillLoader.installTemplates({
         skill: input.skill,
-        appPath: app.path
+        appPath: app.path,
+        appId
       });
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to install skill templates');
       }
 
-      return {
+      // Build response with dependency info
+      const response: Record<string, unknown> = {
         skill: result.skill,
         filesInstalled: result.filesInstalled,
         installedFiles: result.installedFiles,
         message: `Skill '${result.skill}' installed successfully. ${result.filesInstalled} files copied to ${app.path}`
       };
+
+      // Include dependency info if available
+      if (result.dependenciesInstalled && result.dependenciesInstalled.length > 0) {
+        response.dependenciesInstalled = result.dependenciesInstalled;
+        const successCount = result.dependenciesInstalled.filter(d => d.success).length;
+        response.message = `Skill '${result.skill}' installed successfully. ${result.filesInstalled} files copied, ${successCount}/${result.dependenciesInstalled.length} packages installed.`;
+      }
+
+      if (result.dependenciesFailed && result.dependenciesFailed > 0) {
+        response.dependenciesFailed = result.dependenciesFailed;
+      }
+
+      return response;
     }
 
     throw new Error(`Unknown action: ${input.action}`);

@@ -4,6 +4,8 @@ import { fileURLToPath } from 'url';
 import matter from 'gray-matter';
 import { logger } from '../logging/index.js';
 import { skills, getFeatures } from '../services/features.js';
+import { TerminalTool } from './terminal.js';
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 
 /**
  * Options for loading a skill
@@ -21,6 +23,8 @@ export interface InstallTemplatesOptions {
   skill: string;
   /** Base directory where app code lives (e.g., '/tmp/apps/abc123/app') */
   appPath: string;
+  /** App ID for terminal command execution */
+  appId: string;
 }
 
 /**
@@ -50,10 +54,28 @@ export interface SkillLoaderResult {
 }
 
 /**
+ * Result of a single dependency installation attempt
+ */
+export interface DependencyInstallResult {
+  /** Package name */
+  package: string;
+  /** Whether installation succeeded */
+  success: boolean;
+  /** Error message if failed */
+  error?: string;
+  /** Number of retries attempted */
+  retries: number;
+}
+
+/**
  * Result of installing skill templates
+ *
+ * Note on success semantics: success: true indicates template files were installed.
+ * If some npm dependencies fail to install, the operation is still considered successful
+ * because the skill templates are usable. Check dependenciesFailed > 0 for partial failures.
  */
 export interface InstallTemplatesResult {
-  /** Whether the operation succeeded */
+  /** Whether template files were installed successfully */
   success: boolean;
   /** Name of the skill */
   skill: string;
@@ -61,6 +83,12 @@ export interface InstallTemplatesResult {
   filesInstalled?: number;
   /** List of installed file paths */
   installedFiles?: string[];
+  /** Dependencies installation results */
+  dependenciesInstalled?: DependencyInstallResult[];
+  /** Number of dependencies that failed to install */
+  dependenciesFailed?: number;
+  /** True if some dependencies failed but templates succeeded */
+  partialSuccess?: boolean;
   /** Error message if operation failed */
   error?: string;
 }
@@ -97,6 +125,19 @@ export class SkillLoaderTool {
     // This prevents directory traversal attacks (../, /, etc.)
     const validPattern = /^[a-zA-Z0-9_-]+$/;
     return validPattern.test(skillName);
+  }
+
+  /**
+   * Validate npm package name to prevent malicious package installation
+   * @see https://docs.npmjs.com/cli/v9/configuring-npm/package-json#name
+   * @private
+   */
+  private validatePackageName(packageName: string): boolean {
+    // npm package names: lowercase, hyphens, @scopes allowed
+    // Must start with alphanumeric or @scope, can contain . _ - ~
+    // Optional version suffix: @1.0.0, @^1.0.0, @~1.0.0, @latest, etc.
+    const validPattern = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*(@[a-zA-Z0-9.^~<>=|-]+)?$/;
+    return validPattern.test(packageName);
   }
 
   /**
@@ -217,7 +258,7 @@ export class SkillLoaderTool {
    * Copies template files without going through LLM context
    */
   async installTemplates(options: InstallTemplatesOptions): Promise<InstallTemplatesResult> {
-    const { skill, appPath } = options;
+    const { skill, appPath, appId } = options;
 
     this.logger.info('skill.install.start', {
       skill,
@@ -283,17 +324,35 @@ export class SkillLoaderTool {
         }
       }
 
+      // Install npm dependencies from skill.md frontmatter
+      const dependencyResults = await this.installDependencies(skill, appPath, appId);
+      const failedDeps = dependencyResults.filter(r => !r.success).length;
+
       this.logger.info('skill.install.success', {
         skill,
-        filesInstalled: installedFiles.length
+        filesInstalled: installedFiles.length,
+        dependenciesInstalled: dependencyResults.length,
+        dependenciesFailed: failedDeps
       });
 
-      return {
+      const result: InstallTemplatesResult = {
         success: true,
         skill,
         filesInstalled: installedFiles.length,
         installedFiles
       };
+
+      if (dependencyResults.length > 0) {
+        result.dependenciesInstalled = dependencyResults;
+      }
+
+      if (failedDeps > 0) {
+        result.dependenciesFailed = failedDeps;
+        // Indicate partial success: templates installed but some deps failed
+        result.partialSuccess = true;
+      }
+
+      return result;
     } catch (error) {
       // Handle validation errors and other errors
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -429,6 +488,182 @@ export class SkillLoaderTool {
         error: error instanceof Error ? error.message : 'Unknown error listing skills'
       };
     }
+  }
+
+  /**
+   * Parse dependencies from skill.md frontmatter
+   * Validates package names to prevent malicious package installation
+   * @private
+   */
+  private async parseSkillDependencies(skill: string): Promise<string[]> {
+    try {
+      const skillFile = this.getSkillPath(skill, 'skill.md');
+      const skillContent = await fs.readFile(skillFile, 'utf-8');
+      const { data } = matter(skillContent);
+
+      if (Array.isArray(data.dependencies)) {
+        return data.dependencies
+          .filter((dep: unknown) => typeof dep === 'string')
+          .filter((dep: string) => {
+            if (!this.validatePackageName(dep)) {
+              this.logger.warn('skill.dependencies.invalid_name', {
+                skill,
+                packageName: dep
+              });
+              return false;
+            }
+            return true;
+          });
+      }
+
+      return [];
+    } catch (error) {
+      this.logger.warn('skill.dependencies.parse_failed', {
+        skill,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return [];
+    }
+  }
+
+  /**
+   * Install a single npm package with retries using TerminalTool
+   * @private
+   */
+  private async installPackage(
+    packageName: string,
+    appPath: string,
+    appId: string,
+    maxRetries: number = 3
+  ): Promise<DependencyInstallResult> {
+    let lastError: string | undefined;
+
+    // Get dev supervisor client for the app
+    const devSupervisorClient = DevSupervisorClientFactory.createForApp(appId);
+
+    if (!devSupervisorClient) {
+      this.logger.warn('skill.dependencies.no_dev_supervisor', {
+        package: packageName,
+        appId
+      });
+      return {
+        package: packageName,
+        success: false,
+        error: 'Dev supervisor not available for package installation',
+        retries: 0
+      };
+    }
+
+    const terminalTool = new TerminalTool(devSupervisorClient);
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      this.logger.info('skill.dependencies.install_attempt', {
+        package: packageName,
+        attempt: attempt + 1,
+        maxRetries
+      });
+
+      try {
+        const result = await terminalTool.executeCommand(appPath, {
+          command: `npm install ${packageName}`,
+          timeout: 60000 // 60 seconds for npm install
+        });
+
+        if (result.success) {
+          this.logger.info('skill.dependencies.install_success', {
+            package: packageName,
+            attempts: attempt + 1
+          });
+
+          return {
+            package: packageName,
+            success: true,
+            retries: attempt
+          };
+        }
+
+        lastError = result.stderr || `npm install failed with exit code ${result.exitCode}`;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+      }
+
+      this.logger.warn('skill.dependencies.install_retry', {
+        package: packageName,
+        attempt: attempt + 1,
+        maxRetries,
+        error: lastError
+      });
+
+      // Wait before retry with exponential backoff: 1s, 2s, 4s
+      if (attempt < maxRetries - 1) {
+        const backoffMs = 1000 * Math.pow(2, attempt);
+        this.logger.debug('skill.dependencies.backoff', {
+          package: packageName,
+          backoffMs
+        });
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      }
+    }
+
+    this.logger.error('skill.dependencies.install_failed', {
+      package: packageName,
+      attempts: maxRetries,
+      error: lastError
+    });
+
+    const failResult: DependencyInstallResult = {
+      package: packageName,
+      success: false,
+      retries: maxRetries - 1
+    };
+
+    if (lastError) {
+      failResult.error = lastError;
+    }
+
+    return failResult;
+  }
+
+  /**
+   * Install all skill dependencies using TerminalTool
+   * @private
+   */
+  private async installDependencies(
+    skill: string,
+    appPath: string,
+    appId: string
+  ): Promise<DependencyInstallResult[]> {
+    const dependencies = await this.parseSkillDependencies(skill);
+
+    if (dependencies.length === 0) {
+      this.logger.info('skill.dependencies.none', { skill });
+      return [];
+    }
+
+    this.logger.info('skill.dependencies.start', {
+      skill,
+      dependencies,
+      count: dependencies.length
+    });
+
+    const results: DependencyInstallResult[] = [];
+
+    for (const dep of dependencies) {
+      const result = await this.installPackage(dep, appPath, appId);
+      results.push(result);
+    }
+
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+
+    this.logger.info('skill.dependencies.complete', {
+      skill,
+      total: dependencies.length,
+      success: successCount,
+      failed: failCount
+    });
+
+    return results;
   }
 
   /**

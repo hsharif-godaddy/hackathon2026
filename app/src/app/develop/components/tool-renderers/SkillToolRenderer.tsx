@@ -1,7 +1,8 @@
 'use client'
 
-import { BookOpen, CheckCircle2,Package } from 'lucide-react'
-import { useEffect, useMemo,useState } from 'react'
+import { BookOpen, Package } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+
 import Collapsible from '@ux/collapsible'
 import Pagination from '@ux/pagination'
 import TextInput from '@ux/text-input'
@@ -36,12 +37,24 @@ interface SkillLoadResult {
 }
 
 /**
+ * Result of a single dependency installation
+ */
+interface DependencyInstallResult {
+  package: string
+  success: boolean
+  error?: string
+  retries: number
+}
+
+/**
  * Result from skill install action
  */
 interface SkillInstallResult {
   skill: string
   filesInstalled: number
   installedFiles: string[]
+  dependenciesInstalled?: DependencyInstallResult[]
+  dependenciesFailed?: number
 }
 
 /**
@@ -93,13 +106,16 @@ function getSkillMessage(action: string, result: SkillResult | null): { message:
     case 'install':
       const filesCount = (result && 'filesInstalled' in result) ? result.filesInstalled : 0
       const installSkillName = (result && 'skill' in result) ? result.skill : 'skill'
+      const depsInstalled = (result && 'dependenciesInstalled' in result) ? result.dependenciesInstalled : undefined
+      const successCount = depsInstalled ? depsInstalled.filter(d => d.success).length : 0
+      const depInfo = successCount > 0 ? `, ${successCount} ${successCount === 1 ? 'package' : 'packages'}` : ''
       return {
-        message: `Installed ${formatSkillName(installSkillName)} (${filesCount} ${filesCount === 1 ? 'file' : 'files'})`,
+        message: `Installed ${formatSkillName(installSkillName)} (${filesCount} ${filesCount === 1 ? 'file' : 'files'}${depInfo})`,
         icon: <Package className="w-2 h-2" />
       }
     default:
       return {
-        message: 'Skill operation',
+        message: 'Skill',
         icon: <BookOpen className="w-2 h-2" />
       }
   }
@@ -252,28 +268,45 @@ function renderSkillLoad(skillName: string, instructions: string): React.JSX.Ele
 /**
  * Render skill install result as HTML
  */
-function renderSkillInstall(skillName: string, filesInstalled: number, installedFiles: string[]): React.JSX.Element {
+function renderSkillInstall(
+  skillName: string,
+  filesInstalled: number,
+  installedFiles: string[],
+  dependenciesInstalled?: DependencyInstallResult[]
+): React.JSX.Element {
+  const succeededPackages = dependenciesInstalled?.filter(d => d.success) || []
+
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
         <Package className="w-4 h-4 text-foreground/60" />
         <h2 className="text-lg font-semibold text-foreground">{formatSkillName(skillName)}</h2>
       </div>
-      <div className="flex items-center gap-1.5 text-sm">
-        <CheckCircle2 className="w-3 h-3 text-intents-success-color" />
-        <span className="text-foreground/80">
-          Installed {filesInstalled} {filesInstalled === 1 ? 'file' : 'files'}
-        </span>
-      </div>
 
+      {/* Packages Section - only show succeeded */}
+      {succeededPackages.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-xs font-medium text-foreground/70">Packages installed:</div>
+          <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+            {succeededPackages.map((dep, index) => (
+              <span key={index} className="text-xs font-mono bg-intents-ux-boxLowContrast-backgroundColor px-1.5 py-0.5 rounded text-foreground/80">
+                {dep.package}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Files Section */}
       {installedFiles && installedFiles.length > 0 && (
         <div className="space-y-1">
-          <div className="text-sm font-semibold text-foreground">Installed Files:</div>
-          <div className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-2 border border-border max-h-48 overflow-y-auto">
+          <div className="text-xs font-medium text-foreground/70">
+            {filesInstalled} {filesInstalled === 1 ? 'file' : 'files'} installed:
+          </div>
+          <div className="bg-intents-ux-boxLowContrast-backgroundColor rounded p-1.5 border border-border max-h-32 overflow-y-auto">
             <ul className="space-y-0.5">
               {installedFiles.map((file, index) => (
-                <li key={index} className="text-xs font-mono text-foreground/70 flex items-center gap-1">
-                  <span className="text-intents-success-color">✓</span>
+                <li key={index} className="text-xs font-mono text-foreground/70">
                   {file}
                 </li>
               ))}
@@ -343,7 +376,8 @@ export default function SkillToolRenderer({
       modalContentElement = renderSkillInstall(
         parsedResult.skill,
         'filesInstalled' in parsedResult ? parsedResult.filesInstalled : 0,
-        'installedFiles' in parsedResult ? parsedResult.installedFiles : []
+        'installedFiles' in parsedResult ? parsedResult.installedFiles : [],
+        'dependenciesInstalled' in parsedResult ? parsedResult.dependenciesInstalled : undefined
       )
     }
   }

@@ -1,6 +1,8 @@
 ---
 name: authentication
 description: Add BetterAuth authentication (Email/Password, OAuth, or both).
+dependencies:
+  - better-auth
 ---
 
 # BetterAuth Authentication Skill
@@ -15,19 +17,17 @@ If OAuth: "Which provider?"
 
 ## Installation
 
-### Step 1: Install Package
-
-```typescript
-terminalCommand({ command: 'npm install better-auth' });
-```
-
-### Step 2: Install Skill Templates
+### Step 1: Install Skill Templates (includes dependencies)
 
 ```typescript
 skill({ action: 'install', skill: 'authentication' });
 ```
 
-### Step 3: Configure Secrets
+This automatically installs the `better-auth` package and all template files.
+
+**Note**: If package installation fails (e.g., network issues), the skill templates are still installed. You can manually install the package with `npm install better-auth` if needed.
+
+### Step 2: Configure Secrets
 
 **IMPORTANT:** Always request the auth secret first, regardless of auth method chosen.
 
