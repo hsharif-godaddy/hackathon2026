@@ -395,81 +395,73 @@ router.post('/v1/videos/upload',
 router.get('/v1/scrape-website',
   validateGdToken,
   async (req: AuthenticatedRequest, res: Response) => {
-    res.status(403).json({
-      error: {
-        message: 'Tool service coming soon',
-        type: 'forbidden'
+    const requestId = String(req.id ?? 'unknown');
+    const startTime = req.startTime ?? Date.now();
+
+    try {
+      // Validate required parameters
+      if (!req.query.url) {
+        res.status(400).json({
+          error: {
+            message: 'Missing required parameter: url',
+            type: 'invalid_request_error'
+          }
+        });
+        return;
       }
-    });
-    return;
 
-    // const requestId = String(req.id ?? 'unknown');
-    // const startTime = req.startTime ?? Date.now();
+      const params: WebScraperParams = {
+        url: req.query.url as string
+      };
 
-    // try {
-    //   // Validate required parameters
-    //   if (!req.query.url) {
-    //     res.status(400).json({
-    //       error: {
-    //         message: 'Missing required parameter: url',
-    //         type: 'invalid_request_error'
-    //       }
-    //     });
-    //     return;
-    //   }
+      const response = await webScraperClient.scrape(params, requestId);
+      const totalDuration = Date.now() - startTime;
 
-    //   const params: WebScraperParams = {
-    //     url: req.query.url as string
-    //   };
+      logger.info('[INFO] Web Scraper scrape completed', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        query: { url: params.url },
+        userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
+        statusCode: response.statusCode,
+        scrapeDuration: response.duration ? `${response.duration}ms` : 'unknown',
+        totalDuration: `${totalDuration}ms`,
+        userAgent: req.get('User-Agent'),
+        ip: req.ip
+      });
 
-    //   const response = await webScraperClient.scrape(params, requestId);
-    //   const totalDuration = Date.now() - startTime;
+      res.set('Content-Type', response.headers['content-type'] as string || 'application/json');
+      res.set('Cache-Control', 'no-cache'); // Don't cache scraping results
+      res.status(response.statusCode);
+      res.send(response.data);
 
-    //   logger.info('[INFO] Web Scraper scrape completed', {
-    //     requestId,
-    //     method: req.method,
-    //     path: req.path,
-    //     query: { url: params.url },
-    //     userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
-    //     statusCode: response.statusCode,
-    //     scrapeDuration: response.duration ? `${response.duration}ms` : 'unknown',
-    //     totalDuration: `${totalDuration}ms`,
-    //     userAgent: req.get('User-Agent'),
-    //     ip: req.ip
-    //   });
+    } catch (error) {
+      const err = error as { message: string; statusCode?: number; duration?: number };
+      const totalDuration = Date.now() - startTime;
 
-    //   res.set('Content-Type', response.headers['content-type'] as string || 'application/json');
-    //   res.set('Cache-Control', 'no-cache'); // Don't cache scraping results
-    //   res.status(response.statusCode);
-    //   res.send(response.data);
+      logger.error('[ERROR] Web Scraper scrape failed', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        query: req.query,
+        userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
+        error: err.message,
+        statusCode: err.statusCode,
+        scrapeDuration: err.duration ? `${err.duration}ms` : 'unknown',
+        totalDuration: `${totalDuration}ms`,
+        userAgent: req.get('User-Agent'),
+        ip: req.ip
+      });
 
-    // } catch (error) {
-    //   const err = error as { message: string; statusCode?: number; duration?: number };
-    //   const totalDuration = Date.now() - startTime;
-
-    //   logger.error('[ERROR] Web Scraper scrape failed', {
-    //     requestId,
-    //     method: req.method,
-    //     path: req.path,
-    //     query: req.query,
-    //     userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
-    //     error: err.message,
-    //     statusCode: err.statusCode,
-    //     scrapeDuration: err.duration ? `${err.duration}ms` : 'unknown',
-    //     totalDuration: `${totalDuration}ms`,
-    //     userAgent: req.get('User-Agent'),
-    //     ip: req.ip
-    //   });
-
-    //   const statusCode = err.statusCode ?? 503;
-    //   res.status(statusCode).json({
-    //     error: {
-    //       message: 'Web Scraper API request failed',
-    //       type: 'upstream_error',
-    //       requestId
-    //     }
-    //   });
-    // }
+      const statusCode = err.statusCode ?? 503;
+      res.status(statusCode).json({
+        error: {
+          message: 'Web Scraper API request failed',
+          type: 'upstream_error',
+          requestId
+        }
+      });
+    }
   }
 );
 
@@ -477,82 +469,73 @@ router.get('/v1/scrape-website',
 router.get('/v1/screenshot-website',
   validateGdToken,
   async (req: AuthenticatedRequest, res: Response) => {
+    const requestId = String(req.id ?? 'unknown');
+    const startTime = req.startTime ?? Date.now();
 
-    res.status(403).json({
-      error: {
-        message: 'Tool service coming soon',
-        type: 'forbidden'
+    try {
+      // Validate required parameters
+      if (!req.query.url) {
+        res.status(400).json({
+          error: {
+            message: 'Missing required parameter: url',
+            type: 'invalid_request_error'
+          }
+        });
+        return;
       }
-    });
-    return;
 
-    // const requestId = String(req.id ?? 'unknown');
-    // const startTime = req.startTime ?? Date.now();
+      const params: WebScraperParams = {
+        url: req.query.url as string
+      };
 
-    // try {
-    //   // Validate required parameters
-    //   if (!req.query.url) {
-    //     res.status(400).json({
-    //       error: {
-    //         message: 'Missing required parameter: url',
-    //         type: 'invalid_request_error'
-    //       }
-    //     });
-    //     return;
-    //   }
+      const response = await webScraperClient.screenshot(params, requestId);
+      const totalDuration = Date.now() - startTime;
 
-    //   const params: WebScraperParams = {
-    //     url: req.query.url as string
-    //   };
+      logger.info('[INFO] Web Scraper screenshot completed', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        query: { url: params.url },
+        userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
+        statusCode: response.statusCode,
+        screenshotDuration: response.duration ? `${response.duration}ms` : 'unknown',
+        totalDuration: `${totalDuration}ms`,
+        userAgent: req.get('User-Agent'),
+        ip: req.ip
+      });
 
-    //   const response = await webScraperClient.screenshot(params, requestId);
-    //   const totalDuration = Date.now() - startTime;
+      res.set('Content-Type', response.headers['content-type'] as string || 'application/json');
+      res.set('Cache-Control', 'no-cache'); // Don't cache screenshots
+      res.status(response.statusCode);
+      res.send(response.data);
 
-    //   logger.info('[INFO] Web Scraper screenshot completed', {
-    //     requestId,
-    //     method: req.method,
-    //     path: req.path,
-    //     query: { url: params.url },
-    //     userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
-    //     statusCode: response.statusCode,
-    //     screenshotDuration: response.duration ? `${response.duration}ms` : 'unknown',
-    //     totalDuration: `${totalDuration}ms`,
-    //     userAgent: req.get('User-Agent'),
-    //     ip: req.ip
-    //   });
+    } catch (error) {
+      const err = error as { message: string; statusCode?: number; duration?: number };
+      const totalDuration = Date.now() - startTime;
 
-    //   res.set('Content-Type', response.headers['content-type'] as string || 'application/json');
-    //   res.set('Cache-Control', 'no-cache'); // Don't cache screenshots
-    //   res.status(response.statusCode);
-    //   res.send(response.data);
+      logger.error('[ERROR] Web Scraper screenshot failed', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        query: req.query,
+        userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
+        error: err.message,
+        statusCode: err.statusCode,
+        screenshotDuration: err.duration ? `${err.duration}ms` : 'unknown',
+        totalDuration: `${totalDuration}ms`,
+        userAgent: req.get('User-Agent'),
+        ip: req.ip
+      });
 
-    // } catch (error) {
-    //   const err = error as { message: string; statusCode?: number; duration?: number };
-    //   const totalDuration = Date.now() - startTime;
-
-    //   logger.error('[ERROR] Web Scraper screenshot failed', {
-    //     requestId,
-    //     method: req.method,
-    //     path: req.path,
-    //     query: req.query,
-    //     userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
-    //     error: err.message,
-    //     statusCode: err.statusCode,
-    //     screenshotDuration: err.duration ? `${err.duration}ms` : 'unknown',
-    //     totalDuration: `${totalDuration}ms`,
-    //     userAgent: req.get('User-Agent'),
-    //     ip: req.ip
-    //   });
-
-    //   const statusCode = err.statusCode ?? 503;
-    //   res.status(statusCode).json({
-    //     error: {
-    //       message: 'Web Scraper API request failed',
-    //       type: 'upstream_error',
-    //       requestId
-    //     }
-    //   });
-    // }
+      const statusCode = err.statusCode ?? 503;
+      res.status(statusCode).json({
+        error: {
+          message: 'Web Scraper API request failed',
+          type: 'upstream_error',
+          requestId
+        }
+      });
+    }
   }
 );
 
