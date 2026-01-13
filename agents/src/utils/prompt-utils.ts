@@ -165,6 +165,20 @@ export function getSharedPromptFile(fileName: string, currentModuleUrl: string):
 }
 
 /**
+ * Get the path to a specific tool prompt file
+ * @param toolName - The name of the tool directory (e.g., 'font-tool', 'color-scheme')
+ * @param fileName - The prompt file name (e.g., 'font-theme.md')
+ * @param currentModuleUrl - The import.meta.url of the calling module
+ * @returns The full path to the tool prompt file
+ */
+export function getToolPromptFile(toolName: string, fileName: string, currentModuleUrl: string): string {
+  const promptsDir = getPromptsDir(currentModuleUrl)
+  // Safe: toolName and fileName are developer-controlled, not user input
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+  return path.join(promptsDir, toolName, fileName)
+}
+
+/**
  * Modular prompt builder helper that returns common directory paths
  * @param currentModuleUrl - The import.meta.url of the calling module
  * @returns Object with common directory paths for building modular prompts
@@ -175,6 +189,7 @@ export function getModularPromptPaths(currentModuleUrl: string) {
     sharedDir: getSharedPromptDir(currentModuleUrl),
     getAgentDir: (agentName: string) => getAgentPromptDir(agentName, currentModuleUrl),
     getAgentFile: (agentName: string, fileName: string) => getAgentPromptFile(agentName, fileName, currentModuleUrl),
-    getSharedFile: (fileName: string) => getSharedPromptFile(fileName, currentModuleUrl)
+    getSharedFile: (fileName: string) => getSharedPromptFile(fileName, currentModuleUrl),
+    getToolFile: (toolName: string, fileName: string) => getToolPromptFile(toolName, fileName, currentModuleUrl)
   }
 }

@@ -53,6 +53,12 @@ export default {
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
   		},
+		fontFamily: {
+			sans: ['var(--font-sans)'],
+			heading: ['var(--font-heading)'],
+			serif: ['var(--font-serif)'],
+			mono: ['var(--font-mono)']
+		},
   		keyframes: {
   			'accordion-down': {
   				from: {

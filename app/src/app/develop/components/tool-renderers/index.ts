@@ -13,6 +13,7 @@ import CssSuggestToolRenderer from './CssSuggestToolRenderer'
 import DefaultToolRenderer, { type DefaultToolRendererProps } from './DefaultToolRenderer'
 import EndConversationToolRenderer from './EndConversationToolRenderer'
 import FileEditToolRenderer from './FileEditToolRenderer'
+import FontThemeToolRenderer from './FontThemeToolRenderer'
 import GrepSearchToolRenderer from './GrepSearchToolRenderer'
 import HandoffToolRenderer from './HandoffToolRenderer'
 import ImageSearchToolRenderer from './ImageSearchToolRenderer'
@@ -49,6 +50,7 @@ export const toolRendererRegistry = {
   colorScheme: ColorSchemeToolRenderer,
   cssColor: CssColorToolRenderer,
   cssSuggest: CssSuggestToolRenderer,
+  fontTheme: FontThemeToolRenderer,
   socialPostCreate: SocialPostCreateToolRenderer,
   socialPostPublish: SocialPublishToolRenderer,
   end_conversation: EndConversationToolRenderer,
@@ -109,6 +111,7 @@ export {
   DefaultToolRenderer,
   EndConversationToolRenderer,
   FileEditToolRenderer,
+  FontThemeToolRenderer,
   GrepSearchToolRenderer,
   HandoffToolRenderer,
   ImageSearchToolRenderer,

@@ -39,6 +39,16 @@ export interface SuggestedPalette {
 }
 
 /**
+ * Suggested font data
+ */
+export interface SuggestedFont {
+  name: string
+  fontName: string
+  weights: string[]
+  category: string
+}
+
+/**
  * Session state tracking
  */
 interface SessionState {
@@ -48,6 +58,8 @@ interface SessionState {
   selectedTodoListId?: string
   /** Suggested color palettes for this session (keyed by palette name) */
   suggestedPalettes?: Map<string, SuggestedPalette>
+  /** Suggested fonts for this session (keyed by font theme name) */
+  suggestedFonts?: Map<string, SuggestedFont>
   /** History of agent switches */
   history: Array<{
     fromAgentId: string
@@ -534,6 +546,78 @@ export class SessionStateManager implements HandoffStateManager {
 
       if (this.config.enableLogging) {
         logger.info(`[SessionState] Cleared palettes for session ${sessionId}`)
+      }
+    }
+  }
+
+  /**
+   * Store suggested fonts for a session
+   *
+   * @param sessionId - Session identifier
+   * @param fonts - Array of font suggestions to store
+   */
+  storeSuggestedFonts(sessionId: string, fonts: SuggestedFont[]): void {
+    const session = this.getOrCreateSessionState(sessionId)
+
+    if (!session.suggestedFonts) {
+      session.suggestedFonts = new Map()
+    }
+
+    fonts.forEach(function storeFont(font) {
+      session.suggestedFonts!.set(font.name, font)
+    })
+
+    session.lastActivityAt = new Date()
+
+    if (this.config.enableLogging) {
+      logger.info(`[SessionState] Stored ${fonts.length} font(s) for session ${sessionId}`)
+    }
+  }
+
+  /**
+   * Get a suggested font by name for a session
+   *
+   * @param sessionId - Session identifier
+   * @param fontName - Name of the font theme to retrieve
+   * @returns Font data if found, undefined otherwise
+   */
+  getSuggestedFont(sessionId: string, fontName: string): SuggestedFont | undefined {
+    const session = this.sessions.get(sessionId)
+    if (!session?.suggestedFonts) {
+      return undefined
+    }
+
+    return session.suggestedFonts.get(fontName)
+  }
+
+  /**
+   * Get all suggested fonts for a session
+   *
+   * @param sessionId - Session identifier
+   * @returns Array of all suggested fonts
+   */
+  getAllSuggestedFonts(sessionId: string): SuggestedFont[] {
+    const session = this.sessions.get(sessionId)
+    if (!session?.suggestedFonts) {
+      return []
+    }
+
+    return Array.from(session.suggestedFonts.values())
+  }
+
+  /**
+   * Clear suggested fonts for a session
+   *
+   * @param sessionId - Session identifier
+   */
+  clearSuggestedFonts(sessionId: string): void {
+    const session = this.sessions.get(sessionId)
+    if (session) {
+      session.suggestedFonts = new Map()
+      session.lastActivityAt = new Date()
+
+      if (this.config.enableLogging) {
+        logger.info(`[SessionState] Cleared fonts for session ${sessionId}`)
       }
     }
   }

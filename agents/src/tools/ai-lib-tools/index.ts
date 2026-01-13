@@ -47,6 +47,7 @@ export { socialStatus } from './social-status.js';
 export { socialPostCreateAITool } from './social-post-create.js';
 export { socialPostPublish } from './social-post-publish.js';
 export { colorSchemeAITool } from './color-scheme.js';
+export { fontThemeAITool } from './font-theme.js';
 
 export { skillAITool } from './skill-loader.js';
 export { websiteScraperAITool } from './website-scraper.js';
@@ -96,6 +97,7 @@ import { socialStatus } from './social-status.js';
 import { socialPostCreateAITool } from './social-post-create.js';
 import { socialPostPublish } from './social-post-publish.js';
 import { colorSchemeAITool } from './color-scheme.js';
+import { fontThemeAITool } from './font-theme.js';
 import { skillAITool } from './skill-loader.js';
 import { websiteScraperAITool } from './website-scraper.js';
 import { publishClientAITool } from './publish-client.js';
@@ -128,6 +130,7 @@ export const allAILibTools: Record<string, Tool> = {
   knowBSearch: knowBSearchAITool,
   widgetRender: widgetRenderAITool,
   colorScheme: colorSchemeAITool,
+  fontTheme: fontThemeAITool,
   cssColor: cssColorAITool,
   cssSuggest: cssSuggestAITool,
   suggestedResponse: suggestedResponseAITool,

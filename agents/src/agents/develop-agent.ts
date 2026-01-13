@@ -9,14 +9,15 @@ import {
   createSessionStateManager,
   type SessionStateManager
 } from '@airo/ai-lib'
-import { getAgentModelWithName } from '../utils/model-selection.js'
-import { allAILibTools } from '../tools/ai-lib-tools/index.js'
-import { getModularPromptPaths } from '../utils/prompt-utils.js'
+
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 import { logger, log } from '../logging/index.js'
+import { getAgentModelWithName } from '../utils/model-selection.js'
+import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { agents as featureAgents } from '../services/features.js'
-import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
 import { GitHookService } from '../services/git-hook-service.js'
+import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
+import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 
 /**
  * Develop Agent - AI developer for building web applications
@@ -126,6 +127,7 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     .file(paths.getAgentFile('develop', 'claude-behavior.md'))
     .file(paths.getSharedFile('communication.md'))
     .file(paths.getSharedFile('filesystem.md'))
+    .file(paths.getAgentFile('develop', 'font-theme.md')) // Font theme tool documentation
     //.file(paths.getAgentFile('develop', 'design.md'))
     .file(paths.getAgentFile('develop', 'handoff.md'))
     .file(paths.getAgentFile('develop', 'backend.md'))
@@ -145,10 +147,10 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
 }
 
 /**
- * Custom stop condition: Stop after colorScheme tool with mode='suggest'
- * This prevents the agent from outputting text after showing color palette options
+ * Custom stop condition: Stop after colorScheme or fontTheme tools with mode='suggest'
+ * This prevents the agent from outputting text after showing visual widget options
  */
-function shouldStopAfterColorSchemeSuggest(result: unknown): boolean {
+function shouldStopAfterSuggestMode(result: unknown): boolean {
   if (!result || typeof result !== 'object') return false
   
   const stepResult = result as any
@@ -160,15 +162,18 @@ function shouldStopAfterColorSchemeSuggest(result: unknown): boolean {
   
   const lastStep = stepResult.steps[stepResult.steps.length - 1]
   if (!lastStep.content || !Array.isArray(lastStep.content)) return false
-  // Check if any tool call in this step is colorScheme with mode='suggest'
+  
+  // Check if any tool call in this step is colorScheme or fontTheme with mode='suggest'
   for (const item of lastStep.content) {
-    if (item.type === 'tool-call' && item.toolName === 'colorScheme') {
+    if (item.type === 'tool-call' && 
+        (item.toolName === 'colorScheme' || item.toolName === 'fontTheme')) {
       // Check if the args have mode: 'suggest'
       const args = item.input as any
       if (args && args.mode === 'suggest') {
-        logger.info('develop_agent.stop.color_scheme_suggest', {
+        logger.info('develop_agent.stop.suggest_mode', {
+          toolName: item.toolName,
           toolCallId: item.toolCallId,
-          message: 'Stopping after colorScheme suggest mode to prevent text output'
+          message: `Stopping after ${item.toolName} suggest mode to prevent text output`
         })
         return true
       }
@@ -219,6 +224,9 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       // Color scheme tool
       colorScheme: allAILibTools.colorScheme,
 
+      // Font theme tool
+      fontTheme: allAILibTools.fontTheme,
+
       // Widget rendering
       //widgetRender: allAILibTools.widgetRender,
 
@@ -254,7 +262,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     maxOutputTokens: 16000,
 
     // Custom stop conditions
-    stopWhen: [shouldStopAfterColorSchemeSuggest],
+    stopWhen: [shouldStopAfterSuggestMode],
 
     // Enable prompt caching for cost savings and performance
     // The develop agent has a large system prompt (~10K+ tokens) making it ideal for caching
