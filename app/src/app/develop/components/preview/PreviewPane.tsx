@@ -11,9 +11,11 @@ import PreviewHeader from '@/app/develop/components/preview/PreviewHeader'
 import Tips from '@/app/develop/components/tips/Tips'
 import { PreviewViewMode,ViewMode } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
+import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useRestoreCommitMutation } from '@/hooks/useRestoreCommitMutation'
 import { useTranslations } from '@/hooks/useTranslations'
+import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitStore } from '@/stores/useGitStore'
@@ -136,9 +138,33 @@ export default function PreviewPane({
     }
   }, [appId, startPollingForServer, stopPollingForServer])
 
+  // Track if we've already requested a screenshot for this app
+  const screenshotRequestedRef = useRef<string | null>(null)
+
+  // Request screenshot capture from iframe if no screenshot exists
+  const requestScreenshotIfMissing = useCallback(async () => {
+    if (!appId || screenshotRequestedRef.current === appId) return
+
+    try {
+      const apiUrl = await buildDynamicApiUrl('screenshot', appId)
+      const response = await agentFetch(apiUrl, { method: 'GET', siteId: appId })
+
+      if (response.status === 404 && iframeRef.current?.contentWindow) {
+        screenshotRequestedRef.current = appId
+        logger.info('preview-pane.screenshot.requesting', { appId })
+        postMessageToIframe(iframeRef.current, { type: 'REQUEST_SCREENSHOT' })
+      }
+    } catch (error) {
+      logger.warn('preview-pane.screenshot.request.error', { message: 'Failed to request screenshot', error: error instanceof Error ? error.message : String(error) })
+    }
+  }, [appId])
+
   // Handle iframe load and restore scroll position if pending
   const handleIframeLoad = useCallback(() => {
     setIframeError(false)
+
+    // Check if screenshot exists and request one if missing
+    requestScreenshotIfMissing()
 
     // Clear any existing fallback timer before starting a new one
     if (fallbackTimerRef.current) {
@@ -175,7 +201,7 @@ export default function PreviewPane({
         setPendingStateRestore(null)
       }
     }
-  }, [pendingStateRestore]) // attemptStateRestoration removed to avoid circular dependency
+  }, [pendingStateRestore, requestScreenshotIfMissing]) // attemptStateRestoration removed to avoid circular dependency
 
   // Attempt to restore iframe state (scroll position, etc.)
   const attemptStateRestoration = useCallback(() => {
