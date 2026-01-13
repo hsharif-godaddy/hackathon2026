@@ -113,6 +113,7 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
       orientation="horizontal"
       gap="sm"
       className="pt-2 md:pt-0 pb-2 md:pb-0 px-2 sm:px-3 md:p-0"
+      style={isMobile ? { paddingBottom: `calc(0.5rem + env(safe-area-inset-bottom))` } : undefined}
     >
       {isMobile && (
         <IconButton

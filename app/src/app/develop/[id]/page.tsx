@@ -1,7 +1,7 @@
 'use client'
 
-import { useRouter,useSearchParams } from 'next/navigation'
-import { Suspense,useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 
 import AppNotFound from '@/app/develop/components/AppNotFound'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
@@ -42,7 +42,8 @@ import {
   useMessages,
   useSetAiEditContext,
   useSetBuildErrorContext,
-  useSetInputValue} from '@/stores/useStreamingConversationStore'
+  useSetInputValue
+} from '@/stores/useStreamingConversationStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 
 // Delay to allow conversation history messages to load before checking if preview should be visible
@@ -693,14 +694,18 @@ function DevelopPageContent() {
   return (
     <WebSocketProvider sendMessage={sendMessage}>
       <div
-        className="h-screen flex flex-col"
+        className={isMobile ? "ios-fixed-container fixed inset-0 flex flex-col overflow-hidden" : "h-screen flex flex-col"}
+        style={isMobile ? {
+          paddingTop: 'env(safe-area-inset-top)',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+        } : undefined}
         onDragEnter={handleDragEnter}
       >
         <Header location="develop" />
 
         {isMobile ? (
-        // Mobile layout with tabs
-        <div className="flex-1 flex flex-col min-h-0 relative">
+        // Mobile layout with tabs - use fixed positioning to prevent iOS Safari keyboard scroll issues
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <ChatPane
             sendMessage={sendMessage}
             isCreateFlowSession={isCreateFlowSession}

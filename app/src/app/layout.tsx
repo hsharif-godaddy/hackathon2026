@@ -1,6 +1,6 @@
 import "@/styles/globals.scss";
 
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { withGasketData } from '@gasket/nextjs/layout';
 import { makeLayout } from '@godaddy/gasket-next/layout';
@@ -96,6 +96,13 @@ export async function generateMetadata(): Promise<Metadata> {
       },
     };
   }
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 }
 
 const PresentationLayout = withGasketData(gasket)(makeLayout(gasket));

@@ -47,7 +47,7 @@ export default function ChatInput({
                 placeholder={isDisabled ? t('builder_chatinput_processing') : t('builder_chatinput_ask_airo')}
                 rows={3}
                 disabled={isDisabled}
-                className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-sm chat-input-text`}
+                className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-base md:text-sm chat-input-text`}
               />
             </div>
           </div>

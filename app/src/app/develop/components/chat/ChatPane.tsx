@@ -391,7 +391,7 @@ export default function ChatPane({
             </motion.div>
 
             <motion.div
-              className="w-full flex-shrink-0 flex flex-col min-h-0"
+              className="w-full flex-shrink-0 flex flex-col min-h-0 overflow-hidden"
               initial={false}
               animate={{ opacity: activeChatTab === ChatTab.CHAT ? 1 : 0.3 }}
               transition={{ duration: 0.2 }}
