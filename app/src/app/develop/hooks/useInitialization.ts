@@ -1,11 +1,14 @@
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo,useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { logger } from '@/lib/request-context'
+import { getConversationIdFromCookie } from '@/hooks/websocket/useWebSocketHelpers'
+import { AgentService } from '@/services/AgentService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { cleanupSiteCreationStore,useSiteCreationStore } from '@/stores/useSiteCreationStore'
+import { cleanupSiteCreationStore, useSiteCreationStore } from '@/stores/useSiteCreationStore'
 import type { Site } from '@/stores/useSitesStore'
 import {
+  normalizeConversationMessages,
   useHistoryLoadingComplete,
   useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
@@ -364,6 +367,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   const messages = useStreamingConversationStore((state) => state.messages)
   const activeStream = useStreamingConversationStore((state) => state.activeStream)
   const historyLoadingComplete = useHistoryLoadingComplete()
+  const serverCapabilities = useStreamingConversationStore((state) => state.serverCapabilities)
 
   // -------------------------------------------------------------------------
   // DERIVED STATE (Context)
@@ -557,17 +561,153 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
 
   // Step 6: Wait for page loading to complete, then wait for WebSocket history to load
   // History is now loaded via WebSocket (not HTTP) during connection/recovery
+  // Step 6a: Wait for server capabilities or timeout, then decide WebSocket vs HTTP
   useEffect(() => {
     if (phase === 'loading-history' && appId && loadingPhase === 'ready') {
       const effectiveAppId = realAppId || appId
-      logger.debug('initialization.history.waiting', {
+
+      // Case 1: Server explicitly supports WebSocket history
+      if (serverCapabilities?.supportsWebSocketHistory === true) {
+        logger.debug('initialization.history.websocket', {
+          appId: effectiveAppId,
+          message: 'Server supports WebSocket history, waiting for history_complete'
+        })
+        // WebSocket history loading is handled by HistoryMessageHandler and HistoryCompleteHandler
+        return
+      }
+
+      // Case 2: Server doesn't support WebSocket history (false, undefined, or null)
+      // - false: Agent explicitly indicates no support (Jan 13+ with historyProvider undefined)
+      // - undefined: Agent sends server_config without supportsWebSocketHistory field (Jan 7 - Jan 13)
+      // - null: No server_config received at all (pre-Dec 30, 2025)
+      // All cases require HTTP fallback
+      const reason = serverCapabilities === null
+        ? 'no_server_config'
+        : serverCapabilities.supportsWebSocketHistory === false
+          ? 'explicit_false'
+          : 'field_missing'
+
+      logger.info('initialization.history.http_fallback', {
         appId: effectiveAppId,
-        message: 'Waiting for WebSocket history to complete'
+        reason,
+        message: `Using HTTP fallback for conversation history (reason: ${reason})`
       })
-      // History loading happens via WebSocket - just wait for the flag
-      // No HTTP call needed
+      triggerHttpFallback(effectiveAppId)
+      return
     }
-  }, [phase, appId, realAppId, loadingPhase])
+  }, [phase, appId, realAppId, loadingPhase, serverCapabilities])
+
+  // Helper function to trigger HTTP fallback for old agents
+  const triggerHttpFallback = async (effectiveAppId: string) => {
+    // Get conversationId from cookie
+    let conversationId = getConversationIdFromCookie(effectiveAppId)
+
+    // Validate conversationId format (must be a UUID)
+    if (conversationId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(conversationId)) {
+      logger.warn('initialization.history.invalid_conversation_id', {
+        appId: effectiveAppId,
+        conversationId,
+        message: 'Invalid conversationId format in cookie, ignoring'
+      })
+      conversationId = null
+    }
+
+    const agentService = AgentService.getInstance()
+
+    // If no conversationId, try to get the latest conversation
+    const loadHistory = async () => {
+      try {
+        if (!conversationId) {
+          logger.debug('initialization.history.finding_latest', {
+            appId: effectiveAppId,
+            message: 'No conversationId, fetching latest conversation'
+          })
+          const latestConversation = await agentService.getLatestConversation(effectiveAppId)
+          if (latestConversation) {
+            conversationId = latestConversation.id
+            logger.info('initialization.history.latest_found', {
+              appId: effectiveAppId,
+              conversationId
+            })
+          } else {
+            logger.debug('initialization.history.no_conversations', {
+              appId: effectiveAppId,
+              message: 'No conversations exist for this app'
+            })
+            return null
+          }
+        }
+
+        // Load conversation messages
+        if (conversationId) {
+          const conversationDetail = await agentService.getConversation(effectiveAppId, conversationId)
+          return conversationDetail.messages
+        }
+
+        return null
+      } catch (error) {
+        // Re-throw to be caught by outer catch
+        throw error
+      }
+    }
+
+    try {
+      const messages = await loadHistory()
+      if (messages) {
+        // Normalize messages and populate store
+        const normalized = normalizeConversationMessages(messages)
+        useStreamingConversationStore.setState({
+          messages: normalized,
+          historyLoadingComplete: true
+        })
+        logger.info('initialization.history.http_success', {
+          appId: effectiveAppId,
+          messageCount: normalized.length,
+          conversationId
+        })
+      } else {
+        // No history to load
+        useStreamingConversationStore.setState({ historyLoadingComplete: true })
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+
+      // Differentiate error types for better debugging
+      const is404 = errorMessage.includes('404')
+      const isAuth = errorMessage.includes('401') || errorMessage.includes('403')
+      const isNetwork = errorMessage.includes('fetch') || errorMessage.includes('network')
+
+      const logLevel = is404 ? 'warn' : 'error'
+      const errorContext = {
+        appId: effectiveAppId,
+        error: errorMessage,
+        conversationId,
+        errorType: is404 ? 'not_found' : isAuth ? 'auth_error' : isNetwork ? 'network_error' : 'unknown'
+      }
+
+      if (is404) {
+        logger.warn('initialization.history.http_not_found', {
+          ...errorContext,
+          message: 'Conversation not found, likely deleted or never existed'
+        })
+      } else if (isAuth) {
+        logger.error('initialization.history.http_auth_error', {
+          ...errorContext,
+          message: 'Authentication/authorization error loading conversation history'
+        })
+      } else if (isNetwork) {
+        logger.error('initialization.history.http_network_error', {
+          ...errorContext,
+          message: 'Network error loading conversation history'
+        })
+      } else {
+        logger.error('initialization.history.http_failed', errorContext)
+      }
+
+      // Mark as complete anyway to unblock initialization
+      useStreamingConversationStore.setState({ historyLoadingComplete: true })
+    }
+  }
 
   // Step 7: Wait for history loading to complete (via WebSocket)
   useEffect(() => {

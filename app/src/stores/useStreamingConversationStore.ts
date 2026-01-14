@@ -61,6 +61,12 @@ export interface AgentSummary {
   description?: string
 }
 
+// Server capabilities (for backwards compatibility)
+export interface ServerCapabilities {
+  supportsWebSocketHistory: boolean
+  version?: string
+}
+
 // Streaming message (actively being built)
 export interface StreamingMessage {
   id: string
@@ -185,6 +191,9 @@ export interface StreamingConversationState {
 
   // History loading state (for WebSocket history streaming)
   historyLoadingComplete: boolean
+
+  // Server capabilities (for backwards compatibility)
+  serverCapabilities: ServerCapabilities | null
 
   // === CORE STREAMING ACTIONS ===
 
@@ -398,6 +407,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   },
   lastError: null,
   historyLoadingComplete: false,
+  serverCapabilities: null,
 
   // === CORE STREAMING ACTIONS ===
 
@@ -823,7 +833,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
           disconnectSocketId: null,
           escalationTimeoutId: null
         },
-        historyLoadingComplete: false
+        historyLoadingComplete: false,
+        serverCapabilities: null // Reset capabilities when switching apps
       };
     });
   },
@@ -977,7 +988,9 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         wasStreamingOnDisconnect: false,
         disconnectSocketId: null,
         escalationTimeoutId: null
-      }
+      },
+      serverCapabilities: null,
+      historyLoadingComplete: false
     });
   },
 

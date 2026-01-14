@@ -102,6 +102,21 @@ export interface RecoveryStatusData {
 }
 
 /**
+ * Data structure for server_config WebSocket message
+ * Sent immediately after connection for timeout synchronization and feature detection
+ */
+export interface ServerConfigData {
+  /** Stream recovery window timeout in milliseconds */
+  streamRecoveryWindow: number
+  /** Acknowledgement timeout in milliseconds */
+  ackTimeout: number
+  /** Whether server supports WebSocket-based conversation history loading (for backwards compatibility) */
+  supportsWebSocketHistory?: boolean
+  /** Server version for capability negotiation */
+  serverVersion?: string
+}
+
+/**
  * Represents a context message with insertion ordering
  * Context messages use restricted roles (no 'tool' role as tools are part of conversation history)
  */

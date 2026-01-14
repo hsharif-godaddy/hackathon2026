@@ -516,6 +516,22 @@ export class WebSocketServer {
         recovered: socket.recovered
       })
 
+      // Send server config immediately after connection
+      // Includes both timeout configuration and capability flags
+      socket.emit('message', {
+        type: 'server_config',
+        content: '',
+        data: {
+          // Timeout configuration (for synchronization)
+          streamRecoveryWindow: 5 * 60 * 1000, // 5 minutes
+          ackTimeout: 30000, // 30 seconds
+
+          // Capability flags (for backwards compatibility)
+          supportsWebSocketHistory: !!this.config.historyProvider,
+          serverVersion: '2.0' // Increment when breaking changes occur
+        }
+      })
+
       // Debug logging for recovery
       if (previousSocketId) {
         this.logger.info('Connection with previousSocketId detected', {

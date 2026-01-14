@@ -2,10 +2,11 @@
  * Server Config Handler
  *
  * Handles server configuration messages received during WebSocket handshake.
- * Stores timeout values for synchronization between client and server.
+ * Stores timeout values for synchronization and capability flags for feature detection.
  */
 
 import { logger } from '@/lib/request-context'
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
 
 const CONNECTION_RETRY_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes - fallback default
@@ -23,6 +24,16 @@ export class ServerConfigHandler implements MessageHandler {
 
     context.refs.serverConfig.current = config
 
+    // Store server capabilities for backwards compatibility
+    const capabilities = {
+      supportsWebSocketHistory: data.data?.supportsWebSocketHistory === true,
+      version: data.data?.serverVersion as string | undefined
+    }
+
+    useStreamingConversationStore.setState({
+      serverCapabilities: capabilities
+    })
+
     // Send SERVER_CONFIG_RECEIVED event to machine
     context.machine.send({
       type: 'SERVER_CONFIG_RECEIVED',
@@ -31,7 +42,9 @@ export class ServerConfigHandler implements MessageHandler {
 
     logger.info('websocket.server_config.received', {
       streamRecoveryWindow: config.streamRecoveryWindow,
-      ackTimeout: config.ackTimeout
+      ackTimeout: config.ackTimeout,
+      supportsWebSocketHistory: capabilities.supportsWebSocketHistory,
+      serverVersion: capabilities.version
     })
   }
 }

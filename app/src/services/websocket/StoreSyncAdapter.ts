@@ -18,6 +18,7 @@ import type { Actor } from 'xstate'
 import type { EventEmitter } from 'events'
 import { logger } from '@/lib/request-context'
 import type { WebSocketMachine, WebSocketSnapshot } from './webSocketMachine'
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type {
   RecoveryState,
   RetryState,
@@ -78,6 +79,17 @@ const TRANSPORT_STATE_MAP: Record<string, Partial<WebSocketState>> = {
   'transport.connecting.establishingConnection': { status: 'connecting', connected: false },
   'transport.connected.idle': { status: 'idle', connected: true },
   'transport.failed': { status: 'error', connected: false },
+}
+
+/**
+ * Additional store updates to apply on specific state transitions
+ * Used for resetting ephemeral state that should not persist across disconnections
+ */
+const TRANSPORT_STATE_RESETS: Record<string, () => void> = {
+  'transport.disconnected': () => {
+    // Reset server capabilities on disconnect to force re-detection on reconnect
+    useStreamingConversationStore.setState({ serverCapabilities: null })
+  }
 }
 
 /**
@@ -258,6 +270,11 @@ export class StoreSyncAdapter {
     const transportKey = this.getTransportStateKey(snapshot)
     if (transportKey && TRANSPORT_STATE_MAP[transportKey]) {
       this.store.setWebSocketState(TRANSPORT_STATE_MAP[transportKey])
+
+      // Apply additional state resets if defined for this transport state
+      if (TRANSPORT_STATE_RESETS[transportKey]) {
+        TRANSPORT_STATE_RESETS[transportKey]()
+      }
     }
 
     // ============ RECOVERY STATE MAPPING ============
