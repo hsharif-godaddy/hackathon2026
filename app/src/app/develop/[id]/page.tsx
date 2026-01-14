@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import AppNotFound from '@/app/develop/components/AppNotFound'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
@@ -20,6 +20,7 @@ import { ProtectedRoute } from '@/components/auth'
 import { Feedback } from '@/components/feedback/Feedback'
 import Header from '@/components/layout/Header'
 import PublishStatusAlert from '@/components/layout/PublishStatusAlert'
+import { useAuthContext } from '@/components/providers/AuthProvider'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { WebSocketProvider } from '@/contexts/WebSocketContext'
 import { useAppDetails } from '@/hooks/useAppDetails'
@@ -27,6 +28,7 @@ import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { usePageTiming } from '@/hooks/usePageTiming'
+import { useRumAppContext } from '@/hooks/useRumAppContext'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -56,6 +58,11 @@ function DevelopPageContent() {
   const router = useRouter()
   const appId = useAppIdFromParams()
   const isJobId = searchParams.get('type') === 'job'
+  const { getUserInfo } = useAuthContext()
+
+  const customerId = useMemo(() => getUserInfo()?.customerId, [getUserInfo])
+
+  useRumAppContext({ appId, customerId })
 
   // Unified initialization hook - handles all sequencing and UI state
   const init = useInitialization({ appId, isJobId })
