@@ -1,0 +1,64 @@
+# Local Elastic APM Stack for Development
+# See docs/LOCAL_APM_SETUP.md for usage instructions
+#
+# Usage:
+#   docker compose -f docker-compose.apm.yml up -d
+#   docker compose -f docker-compose.apm.yml down
+#
+# Access:
+#   - Kibana: http://localhost:5601
+#   - APM Server: http://localhost:8200
+#   - Elasticsearch: http://localhost:9200
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
+    platform: linux/amd64 # Required for Apple Silicon (M1/M2/M3)
+    container_name: apm-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.0
+    platform: linux/amd64 # Required for Apple Silicon (M1/M2/M3)
+    container_name: apm-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  apm-server:
+    image: docker.elastic.co/apm/apm-server:7.17.0
+    platform: linux/amd64 # Required for Apple Silicon (M1/M2/M3)
+    container_name: apm-server
+    ports:
+      - "8200:8200"
+    environment:
+      - output.elasticsearch.hosts=["http://elasticsearch:9200"]
+      - apm-server.host=0.0.0.0:8200
+      - apm-server.secret_token=local-dev-token # Local dev only - DO NOT use in production
+      - apm-server.rum.enabled=true
+      - apm-server.rum.allow_origins=["*"]
+      - setup.kibana.host=kibana:5601
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      kibana:
+        condition: service_started
+
+volumes:
+  elasticsearch-data:

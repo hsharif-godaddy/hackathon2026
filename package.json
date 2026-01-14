@@ -14,7 +14,12 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "test:e2e": "playwright test",
-    "prepare": "husky && husky install"
+    "prepare": "husky && husky install",
+    "apm:start": "./scripts/local-apm.sh start",
+    "apm:stop": "./scripts/local-apm.sh stop",
+    "apm:status": "./scripts/local-apm.sh status",
+    "apm:logs": "./scripts/local-apm.sh logs",
+    "apm:clean": "./scripts/local-apm.sh clean"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
