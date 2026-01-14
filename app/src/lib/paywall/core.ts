@@ -19,7 +19,7 @@ import { isMatchingProject, PAYWALL_CONFIG, type PaywallCheckResult } from './sh
  * It follows a 4-step algorithm:
  *
  * 1. Check if paywall is enabled via switchboard flags
- *    - If check fails (network error, service down), deny access (fail closed)
+ *    - If check fails (network error, service down), throw error and deny access (fail closed)
  *    - If paywall explicitly disabled by flags, allow access
  *
  * 2. Verify user has a subscription containing the app
@@ -103,6 +103,8 @@ export async function checkPaywallEligibility(
     }
 
     if (!paywallEnabled) {
+      // Switchboard flags explicitly indicate paywall is disabled
+      // This is intentional configuration (not a failure - those throw errors)
       logger.info('paywall.eligibility.disabled', { appId });
       return {
         hasAccess: true,

@@ -81,12 +81,60 @@ export class ServerPaywallProvider implements PaywallDataProvider {
       }),
     ]);
 
-    const paywallFlag = paywallResponse.ok
-      ? (await paywallResponse.json()).setting ?? false
-      : false;
-    const marketsFlag = marketsResponse.ok
-      ? (await marketsResponse.json()).setting ?? false
-      : false;
+    // Fail closed: Throw error if flag fetch fails
+    // This ensures we show "service unavailable" rather than "you need to pay"
+    // The error will be caught by core.ts and return proper "unable to verify" message
+    if (!paywallResponse.ok) {
+      logger.error('paywall.server-provider.flag-fetch.failure', {
+        flag: SWITCHBOARD_FLAGS.PAYWALL,
+        status: paywallResponse.status,
+        url: paywallFlagUrl,
+      });
+      throw new Error(
+        `Switchboard flag fetch failed: ${SWITCHBOARD_FLAGS.PAYWALL} (status: ${paywallResponse.status})`
+      );
+    }
+
+    if (!marketsResponse.ok) {
+      logger.error('paywall.server-provider.flag-fetch.failure', {
+        flag: SWITCHBOARD_FLAGS.MARKETS,
+        status: marketsResponse.status,
+        url: marketsFlagUrl,
+      });
+      throw new Error(
+        `Switchboard flag fetch failed: ${SWITCHBOARD_FLAGS.MARKETS} (status: ${marketsResponse.status})`
+      );
+    }
+
+    // Parse flag responses
+    let paywallFlag: boolean;
+    let marketsFlag: boolean;
+
+    try {
+      const paywallData = await paywallResponse.json();
+      paywallFlag = paywallData.setting ?? false;
+    } catch (error) {
+      logger.error('paywall.server-provider.flag-parse.failure', {
+        flag: SWITCHBOARD_FLAGS.PAYWALL,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error(
+        `Failed to parse switchboard flag: ${SWITCHBOARD_FLAGS.PAYWALL}`
+      );
+    }
+
+    try {
+      const marketsData = await marketsResponse.json();
+      marketsFlag = marketsData.setting ?? false;
+    } catch (error) {
+      logger.error('paywall.server-provider.flag-parse.failure', {
+        flag: SWITCHBOARD_FLAGS.MARKETS,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error(
+        `Failed to parse switchboard flag: ${SWITCHBOARD_FLAGS.MARKETS}`
+      );
+    }
 
     return {
       paywall: paywallFlag,

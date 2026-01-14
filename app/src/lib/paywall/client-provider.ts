@@ -6,6 +6,7 @@
  */
 
 import { appFetch } from '@/lib/gasket-config';
+import { logger } from '@/lib/request-context';
 import { getRootDomain } from '@/utils/getRootDomain';
 
 import type { PaywallDataProvider, SwitchboardFlagsResult } from './providers';
@@ -40,6 +41,7 @@ export class ClientPaywallProvider implements PaywallDataProvider {
    *
    * @param rootDomain - The root domain to construct switchboard URLs
    * @returns Promise with both flag states
+   * @throws Error if flag fetch fails or JSON parsing fails
    */
   async checkSwitchboardFlags(rootDomain: string): Promise<SwitchboardFlagsResult> {
     const { SWITCHBOARD_FLAGS, SWITCHBOARD_APP, BFF_HOST_PREFIX } = PAYWALL_CONFIG;
@@ -52,12 +54,60 @@ export class ClientPaywallProvider implements PaywallDataProvider {
       fetch(marketsFlagUrl, { credentials: 'include' }),
     ]);
 
-    const paywallFlag = paywallResponse.ok
-      ? (await paywallResponse.json()).setting ?? false
-      : false;
-    const marketsFlag = marketsResponse.ok
-      ? (await marketsResponse.json()).setting ?? false
-      : false;
+    // Fail closed: Throw error if flag fetch fails
+    // This ensures we show "service unavailable" rather than "you need to pay"
+    // The error will be caught by core.ts and return proper "unable to verify" message
+    if (!paywallResponse.ok) {
+      logger.error('paywall.client-provider.flag-fetch.failure', {
+        flag: SWITCHBOARD_FLAGS.PAYWALL,
+        status: paywallResponse.status,
+        url: paywallFlagUrl,
+      });
+      throw new Error(
+        `Switchboard flag fetch failed: ${SWITCHBOARD_FLAGS.PAYWALL} (status: ${paywallResponse.status})`
+      );
+    }
+
+    if (!marketsResponse.ok) {
+      logger.error('paywall.client-provider.flag-fetch.failure', {
+        flag: SWITCHBOARD_FLAGS.MARKETS,
+        status: marketsResponse.status,
+        url: marketsFlagUrl,
+      });
+      throw new Error(
+        `Switchboard flag fetch failed: ${SWITCHBOARD_FLAGS.MARKETS} (status: ${marketsResponse.status})`
+      );
+    }
+
+    // Parse flag responses with error handling
+    let paywallFlag: boolean;
+    let marketsFlag: boolean;
+
+    try {
+      const paywallData = await paywallResponse.json();
+      paywallFlag = paywallData.setting ?? false;
+    } catch (error) {
+      logger.error('paywall.client-provider.flag-parse.failure', {
+        flag: SWITCHBOARD_FLAGS.PAYWALL,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error(
+        `Failed to parse switchboard flag: ${SWITCHBOARD_FLAGS.PAYWALL} - ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    try {
+      const marketsData = await marketsResponse.json();
+      marketsFlag = marketsData.setting ?? false;
+    } catch (error) {
+      logger.error('paywall.client-provider.flag-parse.failure', {
+        flag: SWITCHBOARD_FLAGS.MARKETS,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error(
+        `Failed to parse switchboard flag: ${SWITCHBOARD_FLAGS.MARKETS} - ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
 
     return {
       paywall: paywallFlag,

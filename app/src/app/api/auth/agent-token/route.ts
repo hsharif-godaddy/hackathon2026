@@ -16,6 +16,7 @@ import { getJWTService } from '@/lib/jwt-service';
 import { AIRO_OWNER_PRODUCTS } from '@/lib/mgmt-airo';
 import { checkPaywallEligibility } from '@/lib/paywall/core';
 import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
+import { logger } from '@/lib/request-context';
 import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 
 export interface CreateAgentTokenRequest {
@@ -118,6 +119,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Check paywall eligibility to determine permissions
     let canDownload = false;
     let canPublish = false;
+    let eligibilityDetails: Record<string, unknown> = {};
 
     try {
       const provider = new ServerPaywallProvider(
@@ -130,8 +132,39 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       // Both download and publish require Airo Plus subscription
       canDownload = eligibility.hasAccess;
       canPublish = eligibility.hasAccess;
+
+      eligibilityDetails = {
+        hasAccess: eligibility.hasAccess,
+        reason: eligibility.reason,
+        hasSubscription: eligibility.details.hasSubscription,
+        hasEntitlements: eligibility.details.hasEntitlements,
+        hasMatchingProject: eligibility.details.hasMatchingProject,
+      };
+
+      // Log permission grants with full context for security auditing
+      if (canPublish || canDownload) {
+        logger.info('agent-token.permissions-granted', {
+          siteId: body.siteId,
+          customerId: user.customerId,
+          canPublish,
+          canDownload,
+          environment: process.env.NODE_ENV,
+          ...eligibilityDetails,
+        });
+      } else {
+        logger.info('agent-token.permissions-denied', {
+          siteId: body.siteId,
+          customerId: user.customerId,
+          ...eligibilityDetails,
+        });
+      }
     } catch (error) {
       // Fail closed - deny permissions if check fails
+      logger.error('agent-token.paywall-check-failed', {
+        siteId: body.siteId,
+        customerId: user.customerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       canDownload = false;
       canPublish = false;
     }
