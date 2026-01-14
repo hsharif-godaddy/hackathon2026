@@ -160,13 +160,13 @@ For detailed hosting architecture, see [AI Hosting Platform Documentation](ai-ho
 
 ## Domain Structure
 
-| Service Type         | Domain Pattern             | Example                      |
-| -------------------- | -------------------------- | ---------------------------- |
-| Airo Builder         | `app.airo.com`             | Main application             |
-| Agent                | `{id}.agents.platform.com` | `abc123.agents.platform.com` |
-| Development          | `{id}.dev.platform.com`    | `xyz789.dev.platform.com`    |
-| Production (Default) | `{id}.prod.platform.com`   | `def456.prod.platform.com`   |
-| Production (Custom)  | Customer-specified         | `app.customer.com`           |
+| Service Type      | Domain Pattern                    | Example                             |
+| ----------------- | --------------------------------- | ----------------------------------- |
+| Airo App Builder  | `app.airo.com`                    | Main application                    |
+| Agent             | `{appId}.agent.{cell}.{domain}`   | `abc123.agent.c4.test-airoapp.ai`   |
+| Preview           | `{appId}.preview.{cell}.{domain}` | `xyz789.preview.c4.test-airoapp.ai` |
+| Publish (Default) | `{appId}.{cell}.{domain}`         | `def456.c4.test-airoapp.ai`         |
+| Publish (Custom)  | Customer-specified                | `app.customer.com`                  |
 
 ## Technology Stack
 

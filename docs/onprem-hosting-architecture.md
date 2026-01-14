@@ -16,48 +16,46 @@ graph TB
         Internet[Internet]
         CF[Cloudflare]
     end
-    
+
     subgraph "On-Premises Infrastructure"
         subgraph "Ingress Tier"
             ING[Ingress Nodes<br/>v2-ingress-proxy]
         end
-        
-        subgraph "Dev App Workloads"
-            AGENT[Agent Container<br/>*.agents.platform.com<br/>Port: 80]
-            DEV[Dev Container<br/>*.dev.platform.com<br/>Ports: 20000-20100]
+
+        subgraph "App Workloads"
+            AGENT[Agent Container<br/>{appId}.agent.{cell}.{domain}<br/>Port: 80]
+            PREVIEW[Preview Container<br/>{appId}.preview.{cell}.{domain}<br/>Port: 20000]
+            PUBLISH[Publish Container<br/>{appId}.{cell}.{domain}<br/>Port: 20001]
         end
 
-        subgraph "Prod App Workloads"
-            PROD[Prod App Container<br/>*.prod.platform.com<br/>Ports: 20000-20100]
-        end
-        
         subgraph "Storage & Database"
             CEPH[CephFS<br/>Persistent Storage]
             DB[(MySQL<br/>Managed Database)]
         end
     end
-    
+
     Internet -->|80/tcp 443/tcp| CF
     CF -->|443/tcp| ING
     ING -->| Cilium | AGENT
-    ING -->| Cilium | DEV
-    ING -->| Cilium | PROD
-    
-    AGENT -->|Controls via<br/>dev-supervisor| DEV
-    
+    ING -->| Cilium | PREVIEW
+    ING -->| Cilium | PUBLISH
+
+    AGENT -->|Controls via<br/>airo-supervisor| PREVIEW
+    AGENT -->|Controls via<br/>airo-supervisor| PUBLISH
+
     AGENT -.->|Mount| CEPH
-    DEV -.->|Mount| CEPH
-    PROD -.->|Mount| CEPH
-    
-    DEV -->|3306/tcp| DB
-    PROD -->|3306/tcp| DB
-    
+    PREVIEW -.->|Mount| CEPH
+    PUBLISH -.->|Mount| CEPH
+
+    PREVIEW -->|3306/tcp| DB
+    PUBLISH -->|3306/tcp| DB
+
     classDef external fill:#e1f5fe
     classDef workload fill:#e8f5e8
     classDef storage fill:#fff3e0
-    
+
     class Internet,CF external
-    class ING,AGENT,DEV,PROD workload
+    class ING,AGENT,PREVIEW,PUBLISH workload
     class CEPH,DB storage
 ```
 
@@ -106,10 +104,10 @@ graph TB
 #### Agent Container
 
 - **Purpose**: Management interface for customer applications
-- **Domain**: `*.agents.platform.com`
+- **Domain**: `{appId}.agent.{cell}.{domain}` (e.g., `abc123.agent.c4.test-airoapp.ai`)
 - **Capabilities**:
   - Restart application containers
-  - Execute tasks on dev containers via dev-supervisor socket (more details later in this document)
+  - Execute tasks on dev containers via airo-supervisor socket (more details later in this document)
   - Editing application files in the shared alloc directory
   - Service registration with ingress
 - **Ports**: 80/tcp
@@ -118,22 +116,22 @@ graph TB
   - `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}` → `/ceph-storage` (persistent customer data)
   - Mount: `/data/.aws/` → `/data/.aws/` (AWS credentials, read-only)
 
-#### Dev Application Container
+#### Preview Container
 
-- **Purpose**: Customer applications in development mode
-- **Domain**: `*.dev.platform.com`
-- **Ports**: 20000-20100/tcp (application services)
+- **Purpose**: Customer applications in development/preview mode
+- **Domain**: `{appId}.preview.{cell}.{domain}` (e.g., `xyz789.preview.c4.test-airoapp.ai`)
+- **Ports**: 20000/tcp
 - **Storage Mounts**:
   - `${NOMAD_ALLOC_DIR}/customer-app/${appId}` → `/app` (ephemeral application runtime)
   - `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/git-repo` → `/app/.git` (persistent git repository)
   - `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/assets` → `/app/assets` (persistent large file assets)
   - `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/config` → `/config` (persistent config, read-only)
 
-### Production Application Job
+#### Publish Container
 
-- **Purpose**: Customer applications in production mode
-- **Domain**: `*.prod.platform.com` or customer custom domains
-- **Ports**: 20000-20100/tcp (application services)
+- **Purpose**: Customer applications in production/publish mode
+- **Domain**: `{appId}.{cell}.{domain}` (e.g., `def456.c4.test-airoapp.ai`) or customer custom domains
+- **Ports**: 20001/tcp
 - **Storage Mounts**:
   - `${NOMAD_ALLOC_DIR}/customer-app/${appId}` → `/app` (ephemeral application runtime)
   - `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/prod/${version}` → `/prod` (persistent production build artifacts)
@@ -142,11 +140,11 @@ graph TB
 
 ## Secure Agent-to-Application Communication
 
-### dev-supervisor Socket Interface
+### airo-supervisor Socket Interface
 
-The Agent containers communicate securely with development and production application containers through a specialized Go-based supervisor service called `dev-supervisor`. This provides a secure, controlled interface for application lifecycle management without requiring elevated privileges or network-based communication.
+The Agent containers communicate securely with development and production application containers through a specialized Go-based supervisor service called `airo-supervisor`. This provides a secure, controlled interface for application lifecycle management without requiring elevated privileges or network-based communication.
 
-#### dev-supervisor Architecture Overview
+#### airo-supervisor Architecture Overview
 
 ```mermaid
 graph LR
@@ -155,14 +153,14 @@ graph LR
     end
 
     subgraph "Application Container"
-        subgraph "dev-supervisor (PID 1)"
-            DS[dev-supervisor<br/>Unix Socket]
+        subgraph "airo-supervisor (PID 1)"
+            DS[airo-supervisor<br/>Unix Socket]
             DS --> |manages| APP[Customer App Process<br/>Port 20000-20100]
         end
     end
 
     subgraph "Shared Socket Volume"
-        SOCK[Unix Domain Socket<br/>NOMAD_ALLOC_DIR/tmp/appId-dev-supervisor.sock]
+        SOCK[Unix Domain Socket<br/>NOMAD_ALLOC_DIR/tmp/appId-airo-supervisor.sock]
     end
 
     AC -->|HTTP over Unix Socket| SOCK
@@ -182,21 +180,21 @@ graph LR
 **Unix Domain Socket Communication**
 
 - **Transport**: HTTP API served over Unix domain sockets (not TCP)
-- **Socket Path**: `${NOMAD_ALLOC_DIR}/tmp/${appId}-dev-supervisor.sock` (app-specific)
+- **Socket Path**: `${NOMAD_ALLOC_DIR}/tmp/${appId}-airo-supervisor.sock` (app-specific)
 - **Permissions**: Socket permissions restrict access to container users
 - **Isolation**: No network traffic - communication stays within the host kernel
 - **Authentication**: File system permissions provide access control
 
 **Process Isolation**
 
-- **PID 1 Role**: dev-supervisor runs as the primary process in application containers
+- **PID 1 Role**: airo-supervisor runs as the primary process in application containers
 - **Process Management**: Controls customer application lifecycle without exposing system-level access
 - **Signal Handling**: Proper init process behavior with zombie reaping and signal forwarding
-- **Resource Isolation**: Application processes run under dev-supervisor's controlled environment
+- **Resource Isolation**: Application processes run under airo-supervisor's controlled environment
 
 #### API Capabilities
 
-The dev-supervisor exposes a RESTful HTTP API over the Unix socket with the following capabilities:
+The airo-supervisor exposes a RESTful HTTP API over the Unix socket with the following capabilities:
 
 **Process Lifecycle Management**
 
@@ -284,25 +282,25 @@ WS /logs/stream
 
 ```yaml
 # Nomad job configuration - uses allocation directory
-# Socket path: ${NOMAD_ALLOC_DIR}/tmp/${appId}-dev-supervisor.sock
+# Socket path: ${NOMAD_ALLOC_DIR}/tmp/${appId}-airo-supervisor.sock
 
 # Application container environment variable
-Env: {
-  DEV_SUPERVISOR_SOCKET_PATH: "${NOMAD_ALLOC_DIR}/tmp/${appId}-dev-supervisor.sock"
-}
-
+Env:
+  {
+    DEV_SUPERVISOR_SOCKET_PATH: "${NOMAD_ALLOC_DIR}/tmp/${appId}-airo-supervisor.sock",
+  }
 # Both containers share the same allocation directory
-# Agent accesses socket via: ${NOMAD_ALLOC_DIR}/tmp/${appId}-dev-supervisor.sock
-# App container creates socket via dev-supervisor at the same path
+# Agent accesses socket via: ${NOMAD_ALLOC_DIR}/tmp/${appId}-airo-supervisor.sock
+# App container creates socket via airo-supervisor at the same path
 ```
 
 #### Security Benefits
 
 1. **No Network Exposure**: Communication occurs entirely through Unix domain sockets
 2. **File System Permissions**: Access controlled through standard Unix file permissions
-3. **Process Isolation**: dev-supervisor acts as a controlled gateway to application processes
+3. **Process Isolation**: airo-supervisor acts as a controlled gateway to application processes
 4. **Audit Trail**: All communication is logged and traceable
-5. **Resource Controls**: dev-supervisor enforces resource limits and policies
+5. **Resource Controls**: airo-supervisor enforces resource limits and policies
 6. **Crash Recovery**: Automatic process restart with configurable backoff policies
 
 ## Network Security Architecture
@@ -381,22 +379,22 @@ Containers → Host NFS Mounts → CephFS Network → Persistent Storage
 
 ## Port Matrix
 
-| Component | Direction | Ports | Protocol | Source/Destination |
-|-----------|-----------|-------|----------|-------------------|
-| **Internet Ingress** |
-| Ingress Nodes | Inbound | 80, 443 | TCP | Internet |
-| **Cluster Internal** |
-| Nomad Server | Inbound | 4647 | TCP | All Nomad Clients |
-| Cilium Health | Bidirectional | 4240 | TCP | All Cilium Clients |
-| Cilium Networking | Bidirectional | 4245, 6081, 51871 | TCP/UDP | All Cilium Clients |
-| **Application Services** |
-| Agent Containers | Inbound | 80 | TCP | Ingress Nodes |
-| App Containers | Inbound | 20000-20100 | TCP | Ingress Nodes |
+| Component                 | Direction     | Ports             | Protocol | Source/Destination |
+| ------------------------- | ------------- | ----------------- | -------- | ------------------ |
+| **Internet Ingress**      |
+| Ingress Nodes             | Inbound       | 80, 443           | TCP      | Internet           |
+| **Cluster Internal**      |
+| Nomad Server              | Inbound       | 4647              | TCP      | All Nomad Clients  |
+| Cilium Health             | Bidirectional | 4240              | TCP      | All Cilium Clients |
+| Cilium Networking         | Bidirectional | 4245, 6081, 51871 | TCP/UDP  | All Cilium Clients |
+| **Application Services**  |
+| Agent Containers          | Inbound       | 80                | TCP      | Ingress Nodes      |
+| App Containers            | Inbound       | 20000 & 20001     | TCP      | Ingress Nodes      |
 | **External Dependencies** |
-| All Containers | Outbound | 53 | UDP/TCP | CoreDNS |
-| App Containers | Outbound | 3306 | TCP | MySQL Servers |
-| App Containers | Outbound | 25 | TCP | SMTP Servers |
-| App Containers | Outbound | 80, 443 | TCP | Internet |
+| All Containers            | Outbound      | 53                | UDP/TCP  | CoreDNS            |
+| App Containers            | Outbound      | 3306              | TCP      | MySQL Servers      |
+| App Containers            | Outbound      | 25                | TCP      | SMTP Servers       |
+| App Containers            | Outbound      | 80, 443           | TCP      | Internet           |
 
 ## Security Controls Summary
 
@@ -420,7 +418,8 @@ Containers → Host NFS Mounts → CephFS Network → Persistent Storage
 
 ---
 
-*Document Version: 1.0*
-*Created: 2025-09-18*
-*Classification: Internal*
-*Audience: Security & Platform Engineering Teams*
+_Document Version: 1.1_
+_Created: 2025-09-18_
+_Last Updated: 2026-01-07_
+_Classification: Internal_
+_Audience: Security & Platform Engineering Teams_

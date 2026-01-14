@@ -34,9 +34,9 @@ graph TB
         subgraph "Ceph Persistent"
             CEPH2["Ceph: /mnt/ceph/.../appId/git-repo"]
             CEPH2 --> |"bind mount /app/.git"| APP2
-            CEPH3["Ceph: /mnt/ceph/.../appId/preview/assets/public"]
+            CEPH3["Ceph: /mnt/ceph/.../appId/assets/public"]
             CEPH3 --> |"bind mount /app/public/assets"| APP2
-            CEPH4["Ceph: /mnt/ceph/.../appId/preview/assets/private"]
+            CEPH4["Ceph: /mnt/ceph/.../appId/assets/private"]
             CEPH4 --> |"bind mount /private"| APP2
         end
     end
@@ -61,11 +61,11 @@ graph TB
         end
 
         subgraph "Ceph Persistent"
-            CEPH2["Ceph: /mnt/ceph/.../appId/publish/dist"]
-            CEPH2 --> |"bind mount /publish"| APP2
-            CEPH3["Ceph: /mnt/ceph/.../appId/publish/assets/public"]
+            CEPH2["Ceph: /mnt/ceph/.../appId/dist"]
+            CEPH2 --> |"bind mount /dist"| APP2
+            CEPH3["Ceph: /mnt/ceph/.../appId/assets/public"]
             CEPH3 --> |"bind mount /app/public/assets"| APP2
-            CEPH4["Ceph: /mnt/ceph/.../appId/publish/assets/private"]
+            CEPH4["Ceph: /mnt/ceph/.../appId/assets/private"]
             CEPH4 --> |"bind mount /private"| APP2
         end
     end
@@ -111,13 +111,13 @@ Config: {
     {
       type: 'bind',
       readonly: false,
-      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/preview/assets/public`,
+      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/assets/public`,
       target: '/app/public/assets'
     },
     {
       type: 'bind',
       readonly: false,
-      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/preview/assets/private`,
+      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/assets/private`,
       target: '/private'
     }
   ]
@@ -140,8 +140,8 @@ Config: {
     {
       type: 'bind',
       readonly: false,
-      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/publish/dist`,
-      target: '/publish'
+      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/dist`,
+      target: '/dist'
     },
     {
       type: 'bind',
@@ -152,20 +152,18 @@ Config: {
     {
       type: 'bind',
       readonly: false,
-      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/publish/assets/public`,
+      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/assets/public`,
       target: '/app/public/assets'
     },
     {
       type: 'bind',
       readonly: false,
-      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/publish/assets/private`,
+      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/assets/private`,
       target: '/private'
     }
   ]
 }
 ```
-
-Entry point script will copy current version from `/publish` to `/app`.
 
 ### Storage Hierarchy
 
@@ -175,19 +173,14 @@ Entry point script will copy current version from `/publish` to `/app`.
         ├── agent/                     # Persistent storage for the agent
         ├── npm-cache/                 # NPM package cache for faster installations
         ├── git-repo/                  # Persistent Git repository (development/preview)
-        └── preview/                   # Preview Artifacts (development)
-            └── assets/                # Preview Persistent Assets
-                ├── public/            # Public Assets
-                └── private/           # Private Assets
-        └── publish/                   # Published Builds & Artifacts (production)
-            └── dist/                  # Versioned builds
-                ├── v20240915-143022/  # First build
-                ├── v20240915-151245/  # Previous build
-                ├── v20240915-163011/  # Latest build
-                └── current -> v20240915-163011  # Symlink to active version
-            └── assets/                # Published Persistent Assets
-                ├── public/            # Public Assets
-                └── private/           # Private Assets
+        ├── assets/                    # Shared assets (preview and publish)
+        │   ├── public/                # Public assets (images, uploads, etc.)
+        │   └── private/               # Private assets (outside /app for security)
+        └── dist/                      # Published builds (archived by commit hash)
+            ├── ba4a3f58c4ccc538407572dc04f36fd54f749877.tar.gz  # First build
+            ├── c7e2b1a9d3f4e6a8b0c2d4e6f8a0b2c4d6e8f0a2.tar.gz  # Previous build
+            ├── f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0.tar.gz  # Latest build
+            └── current -> f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0.tar.gz  # Symlink to active version
 ```
 
 ### Container Mount Points
@@ -199,20 +192,20 @@ Entry point script will copy current version from `/publish` to `/app`.
 | `${NOMAD_ALLOC_DIR}/customer-app/${appId}` | `/app`               | Application runtime directory                   | Ephemeral   |
 | `/mnt/ceph/.../git-repo`                   | `/app/.git`          | Git repository and metadata                     | Persistent  |
 | `/mnt/ceph/.../npm-cache`                  | `/npm-cache`         | NPM package cache for faster installations      | Persistent  |
-| `/mnt/ceph/.../preview/assets/public`      | `/app/public/assets` | public file assets                              | Persistent  |
-| `/mnt/ceph/.../preview/assets/private`     | `/private`           | private file assets (outside /app for security) | Persistent  |
+| `/mnt/ceph/.../assets/public`              | `/app/public/assets` | Public file assets (shared with publish)        | Persistent  |
+| `/mnt/ceph/.../assets/private`             | `/private`           | Private file assets (outside /app for security) | Persistent  |
 
 #### Production (publish) Mode Mount Points
 
 | Mount Source                               | Container Target     | Purpose                                         | Persistence |
 | ------------------------------------------ | -------------------- | ----------------------------------------------- | ----------- |
 | `${NOMAD_ALLOC_DIR}/customer-app/${appId}` | `/app`               | Production runtime directory                    | Ephemeral   |
-| `/mnt/ceph/.../publish/dist`               | `/publish`           | Built application files                         | Persistent  |
+| `/mnt/ceph/.../dist`                       | `/dist`              | Built application files (versioned)             | Persistent  |
 | `/mnt/ceph/.../npm-cache`                  | `/npm-cache`         | NPM package cache for faster installations      | Persistent  |
-| `/mnt/ceph/.../publish/assets/public`      | `/app/public/assets` | public file assets                              | Persistent  |
-| `/mnt/ceph/.../publish/assets/private`     | `/private`           | private file assets (outside /app for security) | Persistent  |
+| `/mnt/ceph/.../assets/public`              | `/app/public/assets` | Public file assets (shared with preview)        | Persistent  |
+| `/mnt/ceph/.../assets/private`             | `/private`           | Private file assets (outside /app for security) | Persistent  |
 
-Entry point script will copy current version from `/publish` to `/app`.
+> **Note**: Assets are shared between preview and publish modes. When a user uploads an image in preview, it's immediately available in the published site without requiring a republish.
 
 ## Development Lifecycle Management
 
@@ -290,19 +283,19 @@ fi
 sequenceDiagram
     participant Container as Production Container
     participant EphemeralVol as Ephemeral Volume (/app)
-    participant CephProd as Ceph Prod Storage
+    participant CephProd as Ceph Prod Storage (/dist)
     participant SetupScript as nomad_setup_and_serve.sh
 
     Container->>SetupScript: Execute startup script
 
     alt Specific Version Deployment
-        SetupScript->>CephProd: Check /publish/${PUBLISH_BUILD_VERSION}/
-        CephProd-->>SetupScript: Version exists
-        SetupScript->>EphemeralVol: cp -r /publish/${PUBLISH_BUILD_VERSION}/* /app/
+        SetupScript->>CephProd: Check /dist/${BUILD_VERSION}.tar.gz
+        CephProd-->>SetupScript: Archive exists
+        SetupScript->>EphemeralVol: tar -xzf /dist/${BUILD_VERSION}.tar.gz -C /app/
     else Current Version Deployment
-        SetupScript->>CephProd: Check /publish/current/
+        SetupScript->>CephProd: Check /dist/current symlink
         CephProd-->>SetupScript: Current symlink exists
-        SetupScript->>EphemeralVol: cp -r /publish/current/* /app/
+        SetupScript->>EphemeralVol: tar -xzf /dist/current -C /app/
     end
 
     SetupScript->>Container: npm start (production mode)
@@ -310,30 +303,30 @@ sequenceDiagram
 
 ### Production Setup Script Logic
 
-The production startup flow copies pre-built artifacts to the ephemeral volume:
+The production startup flow extracts pre-built archives to the ephemeral volume:
 
 ```bash
 if [ "$DEPLOYMENT_MODE" = "production" ]; then
     echo "Production deployment detected"
 
-    # Determine build version to deploy
-    if [ -n "$PROD_BUILD_VERSION" ]; then
-        DEPLOY_PATH="$CEPH_PROD_PATH/$PROD_BUILD_VERSION"
-        echo "Deploying specific version: $PROD_BUILD_VERSION"
+    # Determine build archive to deploy
+    if [ -n "$BUILD_VERSION" ]; then
+        ARCHIVE_PATH="/dist/$BUILD_VERSION.tar.gz"
+        echo "Deploying specific version: $BUILD_VERSION"
     else
-        DEPLOY_PATH="$CEPH_PROD_PATH/current"
-        echo "Deploying current version"
+        ARCHIVE_PATH="/dist/current"
+        echo "Deploying current version (via symlink)"
     fi
 
-    # Verify build exists
-    if [ ! -d "$DEPLOY_PATH" ]; then
-        echo "ERROR: Build version not found at $DEPLOY_PATH"
+    # Verify archive exists
+    if [ ! -f "$ARCHIVE_PATH" ]; then
+        echo "ERROR: Build archive not found at $ARCHIVE_PATH"
         exit 1
     fi
 
-    # Copy production build to ephemeral volume
-    echo "Copying production build to /app..."
-    cp -r "$DEPLOY_PATH"/* /app/
+    # Extract production build to ephemeral volume
+    echo "Extracting production build to /app..."
+    tar -xzf "$ARCHIVE_PATH" -C /app/
 
     # Start production server
     cd /app
@@ -351,36 +344,36 @@ When Nomad jobs are killed or restarted (due to resource constraints, node failu
 - File modifications not yet committed to git
 - Work-in-progress that exists only in the ephemeral volume
 
-### Solution: Dev-Supervisor SIGTERM Handling
+### Solution: Airo-Supervisor SIGTERM Handling
 
-The dev-supervisor component implements graceful shutdown handling to protect against data loss during Nomad job termination. When receiving a SIGTERM signal, the dev-supervisor performs an emergency commit of any uncommitted changes before allowing the container to shut down.
+The airo-supervisor component implements graceful shutdown handling to protect against data loss during Nomad job termination. When receiving a SIGTERM signal, the airo-supervisor performs an emergency commit of any uncommitted changes before allowing the container to shut down.
 
 ### Implementation Architecture
 
 ```mermaid
 sequenceDiagram
     participant Nomad
-    participant DevSupervisor as Dev-Supervisor
+    participant AiroSupervisor as Airo-Supervisor
     participant GitRepo as Git Repository
     participant Container as App Container
 
-    Nomad->>DevSupervisor: SIGTERM (job kill/restart)
-    DevSupervisor->>DevSupervisor: Initiate graceful shutdown
-    DevSupervisor->>GitRepo: git status --porcelain
+    Nomad->>AiroSupervisor: SIGTERM (job kill/restart)
+    AiroSupervisor->>AiroSupervisor: Initiate graceful shutdown
+    AiroSupervisor->>GitRepo: git status --porcelain
 
     alt Uncommitted Changes Detected
-        GitRepo-->>DevSupervisor: Modified/untracked files found
-        DevSupervisor->>GitRepo: git add .
-        DevSupervisor->>GitRepo: git commit -m "Emergency commit before job termination"
-        DevSupervisor->>DevSupervisor: Log emergency commit details
+        GitRepo-->>AiroSupervisor: Modified/untracked files found
+        AiroSupervisor->>GitRepo: git add .
+        AiroSupervisor->>GitRepo: git commit -m "Emergency commit before job termination"
+        AiroSupervisor->>AiroSupervisor: Log emergency commit details
     else No Changes
-        GitRepo-->>DevSupervisor: Working directory clean
-        DevSupervisor->>DevSupervisor: Log clean shutdown
+        GitRepo-->>AiroSupervisor: Working directory clean
+        AiroSupervisor->>AiroSupervisor: Log clean shutdown
     end
 
-    DevSupervisor->>Container: Forward SIGTERM
+    AiroSupervisor->>Container: Forward SIGTERM
     Container->>Container: Graceful application shutdown
-    DevSupervisor->>Nomad: Exit with status 0
+    AiroSupervisor->>Nomad: Exit with status 0
 ```
 
 ## AI Agent Integration
