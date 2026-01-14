@@ -17,11 +17,10 @@ export const socialConnect: Tool = createTool(
   - TikTok Shop (TikTok Shop only, not regular TikTok accounts)
 
   USAGE WORKFLOW:
-  1. Check connection status first with socialStatus()
-  2. If platform not connected, call socialConnect({ platform })
-  3. Tool returns widget with OAuth button - stay silent, let UI handle it
-  4. User completes authentication in popup window
-  5. User confirms completion, you acknowledge success
+  1. When user asks to connect, call socialConnect({ platform })
+  2. Tool returns widget with OAuth button - stay silent, let UI handle it
+  3. User completes authentication in popup window
+  4. User confirms completion, you acknowledge success
 
   IMPORTANT NOTES:
   - Returns authentication widget signal - frontend fetches OAuth URL directly

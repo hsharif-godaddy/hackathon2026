@@ -111,36 +111,6 @@ export function mapPlatformStatuses(connections: SocialConnection[]): PlatformSt
 }
 
 /**
- * Simple platform status for widgets
- * Returns all platforms with connected boolean
- */
-export interface SimplePlatformStatus extends PlatformConfig {
-  platform: SocialPlatform
-  connected: boolean
-}
-
-/**
- * Get simple platform statuses (connected yes/no)
- * Used by SocialStatusWidget
- */
-export function getSimplePlatformStatuses(
-  connections: Array<SocialConnection>
-): SimplePlatformStatus[] {
-  return Object.entries(PLATFORM_CONFIG).map(([platformKey, config]) => {
-    const platform = platformKey as SocialPlatform
-    const connected = connections.some(c =>
-      PLATFORM_TRANSFORMS.toDisplay(c.platform) === platform
-    )
-
-    return {
-      platform,
-      ...config,
-      connected
-    }
-  })
-}
-
-/**
  * Detailed platform status for settings panel
  * Includes multiple connections per platform, link status, etc.
  */

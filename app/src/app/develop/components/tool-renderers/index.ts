@@ -28,7 +28,6 @@ import SkillToolRenderer from './SkillToolRenderer'
 import SocialConnectToolRenderer from './SocialConnectToolRenderer'
 import SocialPostCreateToolRenderer from './SocialPostCreateToolRenderer'
 import SocialPublishToolRenderer from './SocialPublishToolRenderer'
-import SocialStatusToolRenderer from './SocialStatusToolRenderer'
 import SuggestedResponseToolRenderer from './SuggestedResponseToolRenderer'
 import TerminalCommandToolRenderer from './TerminalCommandToolRenderer'
 import TodoListToolRenderer from './TodoListToolRenderer'
@@ -67,7 +66,6 @@ export const toolRendererRegistry = {
   qrCode: QRCodeToolRenderer,
   requestSecrets: SecretsToolRenderer,
   setProjectName: SetProjectNameToolRenderer,
-  socialStatus: SocialStatusToolRenderer,
   socialConnect: SocialConnectToolRenderer,
   skill: SkillToolRenderer,
   publishClient: PublishClientToolRenderer,

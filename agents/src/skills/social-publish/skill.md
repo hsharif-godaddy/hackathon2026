@@ -76,7 +76,6 @@ You: "Your post is being published..." ❌ DO NOT SAY THIS
 - ❌ NEVER say "I'll publish your post" or "Publishing now"
 - ❌ NEVER describe what's happening - the widget shows it
 - ❌ NEVER provide status updates - the widget does this
-- ❌ NEVER call `socialStatus()` before publishing - connection already verified
 - ✅ ONLY call the tool and stay completely silent
 - ✅ Let the widget handle ALL user feedback
 
@@ -89,6 +88,5 @@ Only respond if user asks a follow-up question. The widget has already communica
 Do NOT call this tool when:
 
 - User is asking to CREATE posts (use `socialPostCreate` instead)
-- User is asking about connection status (use `socialStatus` instead)
 - User wants to connect a platform (use `socialConnect` instead)
 - There is no `social_publish_ready` context attachment

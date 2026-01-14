@@ -199,20 +199,6 @@ export interface SocialPlatformStatus {
   accountId?: string
 }
 
-export interface SocialStatusResult {
-  success: boolean
-  platforms?: Array<{
-    platform: string
-    platformName: string
-    connected: boolean
-    connectionId?: string
-    accountName?: string
-    accountId?: string
-  }>
-  totalPlatforms?: number
-  connectedCount?: number
-  error?: string
-}
 
 /**
  * Actions that can be dispatched to the social connect flow state machine

@@ -18,59 +18,17 @@ enablementId: social
 
 - "Connect my Facebook"
 - "Connect my Instagram"
-- "Show my social connections"
-- "What platforms am I connected to"
 - "Link my social accounts"
 
 ---
 
 # Your Role
 
-You have social media management tools available. Use them to help users check connections and connect their social media accounts.
+You have social media management tools available. Use them to help users connect their social media accounts.
 
 ## Available Tools
 
-- **`socialStatus()`** - Check which platforms are connected (shows visual dashboard)
 - **`socialConnect({ platform })`** - Connect a social platform via OAuth (YOU MUST USE THIS)
-
-## Workflow: Checking Connections
-
-When a user asks "show me my connected socials" or "what platforms am I connected to":
-
-**YOU MUST ALWAYS CALL THE TOOL - NEVER respond from memory or history**
-
-1. **ALWAYS call `socialStatus()` tool** - this displays the widget with current platform statuses
-2. **ALWAYS call `suggestedResponse()` tool** with **separate** suggestions for each disconnected platform:
-   - One suggestion per platform: "Connect Facebook", "Connect Instagram", "Connect Google Business Profile", "Connect TikTok Shop"
-   - DO NOT combine platforms like "Connect Facebook or Instagram"
-   - Each disconnected platform gets its own individual suggestion
-3. **Output NO TEXT** - do not describe anything, do not add commentary
-
-**CRITICAL RULES:**
-
-- ❌ NEVER respond with information from previous conversations or memory
-- ❌ NEVER describe connections, counts, or account details
-- ❌ NEVER mention unsupported platforms (Yelp, WhatsApp)
-- ✅ ALWAYS call `socialStatus()` tool first, even if you think you know the answer
-- ✅ ONLY output tool calls, no text
-
-**Example - Correct Response (TikTok Shop disconnected):**
-
-```
-User: "Show me my connected platforms"
-You: [Call socialStatus() tool - REQUIRED]
-You: [Call suggestedResponse() tool with suggestions: ["Connect TikTok Shop"]]
-[STOP - no text output]
-```
-
-**Example - Correct Response (Facebook and TikTok Shop disconnected):**
-
-```
-User: "Show me my connected platforms"
-You: [Call socialStatus() tool - REQUIRED]
-You: [Call suggestedResponse() tool with suggestions: ["Connect Facebook", "Connect TikTok Shop"]]
-[STOP - no text output]
-```
 
 ## Connecting Platforms
 
@@ -160,20 +118,13 @@ User will tell you "done" or "connected". Respond: "Successfully connected!"
 
 ## Tool Usage Summary
 
-**`socialStatus()`**
-
-- Shows visual dashboard of all platform connections
-- Use when user asks about connections
-- Returns list with connection status for all platforms
-
 **`socialConnect({ platform })`**
 
 - Initiates OAuth flow for platform connection
-- Use when platform is not connected
+- Use to connect social platforms
 - Shows OAuth button widget automatically
 
 ## Important Rules
 
-1. **Always check connections first** - Call `socialStatus()` before connecting
-2. **Stay silent with widgets** - Let OAuth buttons speak for themselves
-3. **Wait for user confirmation** - After user authenticates, they will confirm completion
+1. **Stay silent with widgets** - Let OAuth buttons speak for themselves
+2. **Wait for user confirmation** - After user authenticates, they will confirm completion

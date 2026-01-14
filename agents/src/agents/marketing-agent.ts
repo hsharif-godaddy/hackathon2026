@@ -61,7 +61,6 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
   : {}
   const socialTools = isSocialPlatformEnabled ? {
     socialConnect: allAILibTools.socialConnect,
-    socialStatus: allAILibTools.socialStatus,
   } : {}
 
   return {

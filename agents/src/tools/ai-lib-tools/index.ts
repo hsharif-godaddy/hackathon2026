@@ -44,7 +44,6 @@ export {
 export { oauthConnect } from './oauth-tool.js';
 export { requestSecrets } from './secrets-tool.js';
 export { socialConnect } from './social-connect.js';
-export { socialStatus } from './social-status.js';
 export { socialPostCreateAITool } from './social-post-create.js';
 export { socialPostPublish } from './social-post-publish.js';
 export { colorSchemeAITool } from './color-scheme.js';
@@ -95,7 +94,6 @@ import {
 import { oauthConnect } from './oauth-tool.js';
 import { requestSecrets } from './secrets-tool.js';
 import { socialConnect } from './social-connect.js';
-import { socialStatus } from './social-status.js';
 import { socialPostCreateAITool } from './social-post-create.js';
 import { socialPostPublish } from './social-post-publish.js';
 import { colorSchemeAITool } from './color-scheme.js';
@@ -147,7 +145,6 @@ export const allAILibTools: Record<string, Tool> = {
   commerceSku: commerceSku,
   commerceInventory: commerceInventory,
   socialConnect: socialConnect,
-  socialStatus: socialStatus,
   socialPostCreate: socialPostCreateAITool,
   socialPostPublish: socialPostPublish,
   skill: skillAITool,
@@ -226,7 +223,6 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
   marketing: {
     seoAnalysis: seoAnalyze,
     socialConnect: socialConnect,
-    socialStatus: socialStatus,
     socialPostCreate: socialPostCreateAITool,
     socialPostPublish: socialPostPublish,
   },
