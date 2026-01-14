@@ -192,6 +192,55 @@ export function usePublishApp() {
 
       const result = await response.json();
 
+      // Step 3: Create deployment record via app service (secure, trusted service)
+      // Only if archive was created successfully
+      if (result.success && result.commitHash) {
+        try {
+          logger.info('publish.creating-deployment', {
+            appId,
+            commitHash: result.commitHash.substring(0, 7),
+          });
+
+          const deploymentResponse = await appFetch(`/api/apps/${appId}/deployments`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              gitHash: result.commitHash,
+            }),
+          });
+
+          if (!deploymentResponse.ok) {
+            const deploymentError = await deploymentResponse.json().catch(() => ({
+              error: 'Failed to create deployment',
+            }));
+
+            logger.warn('publish.deployment-creation-failed', {
+              appId,
+              status: deploymentResponse.status,
+              error: deploymentError.error,
+            });
+            // Don't throw - archive was created successfully, deployment is secondary
+          } else {
+            const deploymentData = await deploymentResponse.json();
+            result.deployment = deploymentData;
+
+            logger.info('publish.deployment-created', {
+              appId,
+              deploymentId: deploymentData.deploymentId,
+              status: deploymentData.status,
+            });
+          }
+        } catch (deploymentError) {
+          logger.warn('publish.deployment-creation-error', {
+            appId,
+            error: deploymentError instanceof Error ? deploymentError.message : String(deploymentError),
+          });
+          // Don't throw - archive was created successfully
+        }
+      }
+
       return { result, commitHash: hashToPublish };
     },
     onSuccess: async (data, variables) => {

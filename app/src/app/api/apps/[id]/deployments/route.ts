@@ -17,30 +17,8 @@ export const dynamic = 'force-dynamic';
  * Fetches deployment history for an app from mgmt-airo API.
  * Uses the control plane adapter to resolve subscription_id and system_id from the site.
  *
- * @param {NextRequest} request - The incoming HTTP request with searchParams:
- *   - limit: Maximum number of deployments to return (default: 20)
- *   - includeJobData: Whether to include job data (default: true)
- * @param {CustomerAuthContext} authContext - Authentication context with user info
- * @param {Object} params - Route parameters
- * @param {string} params.id - The site ID
- *
- * @returns {NextResponse} Response containing deployments array and metadata
- *
- * @example
- * // Request
- * GET /api/apps/abc123/deployments?limit=10&includeJobData=true
- *
- * // Response
- * {
- *   "deployments": [
- *     {
- *       "id": "deployment-123",
- *       "status": "deployed",
- *       "commitHash": "a1b2c3d",
- *       "createdAt": "2024-01-01T00:00:00Z"
- *     }
- *   ]
- * }
+ * Query params: limit (default: 20), includeJobData (default: true)
+ * Response: { deployments: [], totalCount, hasMore }
  */
 export const GET = withCustomerAuth(async (
   request: NextRequest,
@@ -146,17 +124,168 @@ export const GET = withCustomerAuth(async (
     return NextResponse.json(response);
 
   } catch (error) {
+    const { id: siteId } = await params;
+
     logger.error('deployments.api.error', {
+      siteId,
       error: error instanceof Error ? error.message : 'Unknown error'
     });
 
-    const status = (error && typeof error === 'object' && 'status' in error && typeof error.status === 'number')
-      ? error.status
-      : 500;
+    const status = (error as { status?: number })?.status ?? 500;
 
     return NextResponse.json(
       {
         error: 'Failed to fetch deployments',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status }
+    );
+  }
+});
+
+/**
+ * POST /api/apps/[id]/deployments
+ *
+ * Creates a deployment record in mgmt-airo after agents service creates the archive.
+ * This must be called from the frontend (not agents service) for security.
+ *
+ * Request body: { gitHash: string }
+ * Response: { deploymentId, statusJobId, status, message }
+ */
+export const POST = withCustomerAuth(async (
+  request: NextRequest,
+  authContext: CustomerAuthContext,
+  { params }: { params: Promise<{ id: string }> }
+): Promise<NextResponse> => {
+  // Parse params and body at the top so they're accessible in error handler
+  const { id: siteId } = await params;
+  let body: { gitHash?: string } = {};
+
+  try {
+    body = await request.json();
+  } catch (parseError) {
+    logger.error('deployments.api.create.parse-error', {
+      siteId,
+      error: parseError instanceof Error ? parseError.message : 'Failed to parse request body'
+    });
+    return NextResponse.json(
+      { error: 'Invalid request body' },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const { user } = authContext;
+
+    // Customer must have an account to create deployments
+    if (!customerHasAccount(user)) {
+      return createCustomerAuthError(
+        'You must have an account to create deployments',
+        403
+      );
+    }
+
+    if (!siteId) {
+      return NextResponse.json(
+        { error: 'Site ID is required' },
+        { status: 400 }
+      );
+    }
+
+    if (!body.gitHash) {
+      return NextResponse.json(
+        { error: 'gitHash is required' },
+        { status: 400 }
+      );
+    }
+
+    // Get site from control plane adapter (handles auth and ownership)
+    const adapter = getControlPlaneAdapter();
+    const site = await adapter.getSite(siteId, authContext.jwt);
+
+    if (!site) {
+      return NextResponse.json(
+        { error: 'Site not found' },
+        { status: 404 }
+      );
+    }
+
+    const isV2 = isV2ControlPlaneEnabled();
+
+    // Check if site has subscription and system IDs (required for V2 deployments)
+    if (!site.subscription_id || !site.system_id) {
+      if (isV2) {
+        // V2 sites MUST have these fields - return 400 error
+        logger.error('deployments.api.create.missing-v2-ids', {
+          siteId,
+          hasSubscriptionId: !!site.subscription_id,
+          hasSystemId: !!site.system_id,
+          message: 'V2 site missing required subscription_id or system_id'
+        });
+        return NextResponse.json(
+          { error: 'Site missing required V2 metadata (subscription_id or system_id)' },
+          { status: 400 }
+        );
+      } else {
+        // Legacy/dev sites don't have V2 IDs - return error
+        logger.info('deployments.api.create.legacy-site', {
+          siteId,
+          message: 'Legacy site cannot create V2 deployments'
+        });
+        return NextResponse.json(
+          { error: 'Deployment creation not supported for legacy sites' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // JWT is provided by withCustomerAuth wrapper
+    if (!authContext.jwt) {
+      throw new Error('Authentication token required');
+    }
+
+    const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
+    const client = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt });
+
+    logger.info('deployments.api.create.start', {
+      siteId,
+      subscriptionId: site.subscription_id,
+      systemId: site.system_id,
+      gitHash: body.gitHash.substring(0, 7)
+    });
+
+    const response = await client.publishApp(
+      site.subscription_id,
+      site.system_id,
+      siteId,
+      body.gitHash
+    );
+
+    logger.info('deployments.api.create.success', {
+      siteId,
+      deploymentId: response.deploymentId,
+      status: response.status
+    });
+
+    return NextResponse.json({
+      deploymentId: response.deploymentId,
+      statusJobId: response.statusJobId,
+      status: response.status,
+      message: response.message
+    });
+
+  } catch (error) {
+    logger.error('deployments.api.create.error', {
+      siteId,
+      gitHash: body.gitHash?.substring(0, 7),
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+
+    const status = (error as { status?: number })?.status ?? 500;
+
+    return NextResponse.json(
+      {
+        error: 'Failed to create deployment',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status }
