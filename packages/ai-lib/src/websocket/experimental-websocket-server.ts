@@ -747,18 +747,6 @@ export class WebSocketServer {
       // Send available agents on connection
       this.sendAvailableAgents(socket)
 
-      // Send server configuration to client for timeout synchronization
-      // This ensures client and server use the same recovery window to avoid client retrying
-      // longer than server will buffer events
-      socket.emit('message', {
-        type: 'server_config',
-        content: 'Server configuration',
-        data: {
-          streamRecoveryWindow: this.STREAM_RECOVERY_WINDOW,
-          ackTimeout: this.ACK_TIMEOUT_MS
-        }
-      } as WebSocketMessage)
-
       // Send history_complete for fresh connections (no history to load)
       // This ensures client initialization completes immediately for new users
       socket.emit('message', {
