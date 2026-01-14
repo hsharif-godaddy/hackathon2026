@@ -528,17 +528,31 @@ function DevelopPageContent() {
         case 'build-error-fix-request':
           // Handle build error fix requests from the publish alert
           if (event.data.errorMessage && event.data.errorDetails) {
+            logger.info('develop-page.build-error-fix-request', {
+              appId,
+              errorMessage: event.data.errorMessage,
+              hasDetails: !!event.data.errorDetails,
+              exitCode: event.data.exitCode,
+              autoSend: event.data.autoSend || false
+            })
+
             // Set build error context to be attached to the message
             setBuildErrorContext({
               error: event.data.errorMessage,
               details: event.data.errorDetails,
               exitCode: event.data.exitCode
             });
+
             // Set a helpful message in the input
-            setInputValue('Please analyze and fix this build error.');
+            // If auto-sent, instruct agent to fix and retry publish; otherwise, only request analysis and fix
+            const messageContent = event.data.autoSend
+              ? 'Please analyze this build error, fix the issue, and then retry the publish operation using the publish action.'
+              : 'Please analyze and fix this build error.';
+
+            setInputValue(messageContent);
             // Auto-send the message and clear context (matches ChatPane pattern)
             setTimeout(() => {
-              sendMessage('Please analyze and fix this build error.', null)
+              sendMessage(messageContent, null)
               // Clear immediately after sending, same as ChatPane does
               setBuildErrorContext(null)
             }, 500)

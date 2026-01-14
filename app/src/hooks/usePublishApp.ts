@@ -164,6 +164,27 @@ export function usePublishApp() {
             details: errorData.details,
             exitCode: errorData.exitCode
           });
+
+          // Automatically send build error logs to agent
+          logger.info('publish.build-error.auto-send-to-agent', {
+            appId,
+            error: errorData.error,
+            hasDetails: !!errorData.details,
+            exitCode: errorData.exitCode
+          });
+
+          // Dispatch event to automatically send build error to agent
+          // The develop page listens for this event and handles the error fix request
+          if (typeof window !== 'undefined') {
+            window.postMessage({
+              type: 'build-error-fix-request',
+              appId,
+              errorMessage: errorData.error || 'Build failed',
+              errorDetails: errorData.details,
+              exitCode: errorData.exitCode,
+              autoSend: true // Flag to indicate this was auto-triggered
+            }, window.location.origin);
+          }
         }
 
         throw new Error(errorData.error || `Publish failed: ${response.status}`);

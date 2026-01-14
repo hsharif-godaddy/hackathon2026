@@ -207,6 +207,27 @@ export const publishAction: ClientActionExecutor = async (params, context) => {
             details: errorData.details,
             exitCode: errorData.exitCode,
           })
+
+          // Automatically send build error logs to agent
+          logger.info('websocket.client-action.publish.build-error.auto-send-to-agent', {
+            appId,
+            error: errorData.error,
+            hasDetails: !!errorData.details,
+            exitCode: errorData.exitCode
+          })
+
+          // Dispatch event to automatically send build error to agent
+          // The develop page listens for this event and handles the error fix request
+          if (typeof window !== 'undefined') {
+            window.postMessage({
+              type: 'build-error-fix-request',
+              appId,
+              errorMessage: errorData.error || 'Build failed',
+              errorDetails: errorData.details,
+              exitCode: errorData.exitCode,
+              autoSend: true // Flag to indicate this was auto-triggered
+            }, window.location.origin)
+          }
         } catch (storeError) {
           logger.warn('websocket.client-action.publish.build-error-store-failed', {
             appId,
