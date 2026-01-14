@@ -4,17 +4,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
-import { WarningLevel } from '@/types/usage';
 import UsageWarningBanner from './UsageWarningBanner';
 
 const mockOpenUpgradeModal = vi.fn();
 const mockSetActiveSettingsSection = vi.fn();
 
 vi.mock('@/hooks/useDailyUsage', () => ({
-  TOAST_THRESHOLD: 90,
   useDailyUsage: vi.fn(() => ({
-    data: { percentage: 95 },
-    warningLevel: WarningLevel.WARNING,
+    isWarningBannerActive: true,
   })),
 }));
 
@@ -46,30 +43,11 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
       });
     });
 
-    it('should not render when appId is null', async function noAppId() {
+    it('should not render when isWarningBannerActive is false', async function notActive() {
       const { useDailyUsage } = await import('@/hooks/useDailyUsage');
       vi.mocked(useDailyUsage).mockReturnValue({
-        data: null,
-        warningLevel: WarningLevel.NONE,
-        isLoading: false,
-        formattedResetTime: null,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-
-      const { container } = renderWithProviders(<UsageWarningBanner appId={null} />);
-
-      expect(container.querySelector('.bg-intents-ux-feedbackWarning-feedbackColor')).not.toBeInTheDocument();
-    });
-
-    it('should not render when usage limit is exceeded', async function exceededLimit() {
-      const { useDailyUsage } = await import('@/hooks/useDailyUsage');
-      vi.mocked(useDailyUsage).mockReturnValue({
-        data: { percentage: 100, resetTime: '2025-01-10T00:00:00Z' },
-        warningLevel: WarningLevel.EXCEEDED,
-        isLoading: false,
-        formattedResetTime: null,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
+        isWarningBannerActive: false,
+      } as ReturnType<typeof useDailyUsage>);
 
       const { container } = renderWithProviders(<UsageWarningBanner appId="test-app" />);
 
@@ -81,12 +59,8 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
     it('should dismiss when close button is clicked', async function dismissOnClose() {
       const { useDailyUsage } = await import('@/hooks/useDailyUsage');
       vi.mocked(useDailyUsage).mockReturnValue({
-        data: { percentage: 95, resetTime: '2025-01-10T00:00:00Z' },
-        warningLevel: WarningLevel.WARNING,
-        isLoading: false,
-        formattedResetTime: null,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
+        isWarningBannerActive: true,
+      } as ReturnType<typeof useDailyUsage>);
 
       const { user, container } = renderWithProviders(<UsageWarningBanner appId="test-app" />);
 
@@ -109,13 +83,9 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(useDailyUsage).mockReturnValue({
-        data: { percentage: 95, resetTime: '2025-01-10T00:00:00Z' },
-        warningLevel: WarningLevel.WARNING,
-        isLoading: false,
-        formattedResetTime: null,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false, error: null } as unknown as ReturnType<typeof useSwitchboard>);
+        isWarningBannerActive: true,
+      } as ReturnType<typeof useDailyUsage>);
+      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
 
       const { container } = renderWithProviders(<UsageWarningBanner appId="test-app" />);
 
@@ -132,13 +102,9 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(useDailyUsage).mockReturnValue({
-        data: { percentage: 95, resetTime: '2025-01-10T00:00:00Z' },
-        warningLevel: WarningLevel.WARNING,
-        isLoading: false,
-        formattedResetTime: null,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false, error: null } as unknown as ReturnType<typeof useSwitchboard>);
+        isWarningBannerActive: true,
+      } as ReturnType<typeof useDailyUsage>);
+      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false, error: null } as ReturnType<typeof useSwitchboard>);
 
       const { container } = renderWithProviders(<UsageWarningBanner appId="test-app" />);
 

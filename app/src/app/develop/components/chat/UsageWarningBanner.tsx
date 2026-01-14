@@ -5,11 +5,10 @@ import { FormattedMessage } from 'react-intl'
 
 import { SettingsSection } from '@/app/develop/components/types'
 import { useChatTabs } from '@/hooks/useChatTabs'
-import { TOAST_THRESHOLD, useDailyUsage } from '@/hooks/useDailyUsage'
+import { useDailyUsage } from '@/hooks/useDailyUsage'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import ChatBanner from '@/lib/ChatBanner'
-import { WarningLevel } from '@/types/usage'
 
 interface UsageWarningBannerProps {
   appId: string | null
@@ -21,18 +20,12 @@ export default function UsageWarningBanner({ appId }: UsageWarningBannerProps) {
   const { data: purchaseEnabled } = useSwitchboard('appbuilder-usage-purchase')
   const { setActiveSettingsSection } = useChatTabs()
 
-  const { data, warningLevel } = useDailyUsage({
+  const { isWarningBannerActive } = useDailyUsage({
     appId,
     enabled: !!appId
   })
 
-  // Only show warning when approaching limit (>= 90%) but not exceeded
-  const showWarning = !isDismissed &&
-    data &&
-    data.percentage >= TOAST_THRESHOLD &&
-    warningLevel !== WarningLevel.EXCEEDED
-
-  if (!showWarning) return null
+  if (isDismissed || !isWarningBannerActive) return null
 
   const handleClose = () => {
     setIsDismissed(true)

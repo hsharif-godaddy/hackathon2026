@@ -131,10 +131,17 @@ export function useDailyUsage(options: UseDailyUsageOptions) {
     return formatResetTime(query.data?.resetTime ?? null)
   }, [query.data?.resetTime])
 
+  // Whether the usage warning banner should be active (>= 90% but not exceeded)
+  const isWarningBannerActive = useMemo(() => {
+    if (!query.data) return false
+    return query.data.percentage >= TOAST_THRESHOLD && warningLevel !== WarningLevel.EXCEEDED
+  }, [query.data, warningLevel])
+
   return {
     ...query,
     warningLevel,
     formattedResetTime,
+    isWarningBannerActive,
     refresh: () => queryClient.invalidateQueries({ queryKey: ['daily-usage', appId] })
   }
 }
