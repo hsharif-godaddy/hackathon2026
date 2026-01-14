@@ -1,13 +1,12 @@
 import { useState } from "react";
 import Box from "@ux/box";
 import Button from "@ux/button";
-import CircleIcon from '@ux/icon/circle';
-import CircleHalfIcon from '@ux/icon/circle-half';
+import Card from "@ux/card";
 import EditIcon from '@ux/icon/edit';
+import LinkIcon from '@ux/icon/link';
 import MenuIcon from '@ux/icon/menu';
-import OkIcon from '@ux/icon/ok';
+import UnlinkIcon from '@ux/icon/unlink';
 import WindowNewIcon from '@ux/icon/window-new';
-import Spinner from '@ux/spinner';
 import Tag from "@ux/tag";
 import text from "@ux/text";
 
@@ -28,57 +27,15 @@ function getDomainUrl(domain: string): string {
 }
 
 /**
- * Get status icon and color based on domain connection status
- *
- * @param appDomain - App domain object with status information
- * @param intl - IntlShape instance for translations
- * @returns Object with icon component, CSS class, and translated label
+ * Get translated status label based on domain connection status
  */
-function getDomainStatusInfo(appDomain: AppDomain | undefined, t: ReturnType<typeof useTranslations>) {
-  if (!appDomain) {
-    return { 
-      icon: CircleIcon, 
-      className: 'text-intents-ux-text-subtle', 
-      label: t('builder_domain_status_not_connected') 
-    };
-  }
-
-  if (appDomain.status === DomainStatus.ACTIVE) {
-    return { 
-      icon: OkIcon, 
-      className: 'text-intents-ux-text-success', 
-      label: t('builder_domain_status_active') 
-    };
-  }
-
-  // Check if domain is pending
-  if (appDomain.status === DomainStatus.PENDING || !appDomain.status) {
-    return { 
-      icon: CircleHalfIcon, 
-      className: 'text-intents-ux-text-info', 
-      label: t('builder_domain_status_pending') 
-    };
-  }
-
-  // Error state
-  if (appDomain.status === DomainStatus.FAILED) {
-    return { 
-      icon: CircleIcon, 
-      className: 'text-intents-ux-text-destructive', 
-      label: t('builder_domain_status_error') 
-    };
-  }
-
-  // Deleting state
-  if (appDomain.status === DomainStatus.DELETING) {
-    return { 
-      icon: Spinner, 
-      className: 'text-intents-ux-text-subtle', 
-      label: t('builder_domain_status_deleting') 
-    };
-  }
-
-  return { icon: CircleIcon, className: 'text-intents-ux-text-subtle', label: appDomain.status };
+function getStatusLabel(appDomain: AppDomain | undefined, t: ReturnType<typeof useTranslations>): string {
+  if (!appDomain) return t('builder_domain_status_not_connected');
+  if (appDomain.status === DomainStatus.ACTIVE) return t('builder_domain_status_active');
+  if (appDomain.status === DomainStatus.PENDING || !appDomain.status) return t('builder_domain_status_pending');
+  if (appDomain.status === DomainStatus.FAILED) return t('builder_domain_status_error');
+  if (appDomain.status === DomainStatus.DELETING) return t('builder_domain_status_deleting');
+  return appDomain.status;
 }
 
 export default function DomainItem({
@@ -103,8 +60,7 @@ export default function DomainItem({
   const [showConfirmation, setShowConfirmation] = useState(false);
   const domainName = domain.domain || domain.name || '';
   const isConnected = !!appDomain;
-  const statusInfo = getDomainStatusInfo(appDomain, t);
-  const StatusIcon = statusInfo.icon;
+  const statusLabel = getStatusLabel(appDomain, t);
 
   const handleConnectClick = () => {
     setShowConfirmation(true);
@@ -133,16 +89,14 @@ export default function DomainItem({
   };
 
   return (
-    <Box
-      orientation="horizontal"
-      className="bg-intents-ux-box-backgroundColor rounded-lg px-2 py-1.5"
-      blockAlignChildren="spaceBetween"
-      inlineAlignChildren="center"
-    >
-      <Box orientation="horizontal" gap="sm" inlineAlignChildren="center">
-        <StatusIcon className={`size-3 ${statusInfo.className}`} />
+    <Card space={{ inline: 'md', block: 'md' }}>
+      <Box
+        orientation="horizontal"
+        blockAlignChildren="spaceBetween"
+        inlineAlignChildren="center"
+      >
         <Box orientation="horizontal" gap="md">
-        {isConnected && appDomain?.status === DomainStatus.ACTIVE ? (
+          {isConnected && appDomain?.status === DomainStatus.ACTIVE ? (
             <Button
               design="inline"
               data-eid={generateClickEID(`settings/domains.domain_item.link`)}
@@ -165,59 +119,78 @@ export default function DomainItem({
             <text.p>{domainName}</text.p>
           )}
           {isConnected && (
-            <Tag emphasis={appDomain?.status === DomainStatus.ACTIVE ? 'success' : 'info'}>
-              {statusInfo.label}
+            <Tag
+              emphasis={
+                appDomain?.status === DomainStatus.ACTIVE ? "success" : "info"
+              }
+            >
+              {statusLabel}
             </Tag>
           )}
         </Box>
+        <Popover open={open} onOpenChange={handlePopoverOpenChange}>
+          <PopoverTrigger>
+            <Button design="minimal" size="sm" icon={<MenuIcon />} />
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-[280px] p-1">
+            {showConfirmation ? (
+              <DomainConnectConfirmation
+                onConfirm={handleConfirmConnect}
+                onCancel={handleCancelConnect}
+                isInternalOnly
+              />
+            ) : (
+              <Box orientation="vertical" gap="sm" inlineAlignChildren="start">
+                {!isConnected ? (
+                  <Button
+                    icon={<LinkIcon />}
+                    design="tertiary"
+                    onClick={handleConnectClick}
+                    disabled={isLoading || disableConnect}
+                    data-eid={generateClickEID(
+                      `settings/domains.custom_domain.connect`,
+                    )}
+                    text={t("builder_domain_button_connect")}
+                    size="sm"
+                    stretch
+                    className="!justify-start"
+                  />
+                ) : (
+                  <Button
+                    icon={<UnlinkIcon />}
+                    design="tertiary"
+                    onClick={handleDisconnect}
+                    disabled={isLoading}
+                    data-eid={generateClickEID(
+                      `settings/domains.custom_domain.disconnect`,
+                    )}
+                    text={t("builder_domain_button_disconnect")}
+                    size="sm"
+                    stretch
+                    className="!justify-start"
+                  />
+                )}
+                {!isCustomDomain && (
+                  <Button
+                    icon={<EditIcon />}
+                    design="tertiary"
+                    onClick={() => setOpen(false)}
+                    data-eid={generateClickEID(
+                      `settings/domains.custom_domain.manage`,
+                    )}
+                    text={t("builder_domain_button_manage")}
+                    href={`https://dcc.godaddy.com/control/dnsmanagement?domainName=${domainName}`}
+                    external
+                    size="sm"
+                    stretch
+                    className="!justify-start"
+                  />
+                )}
+              </Box>
+            )}
+          </PopoverContent>
+        </Popover>
       </Box>
-      <Popover open={open} onOpenChange={handlePopoverOpenChange}>
-        <PopoverTrigger className="hover:cursor-pointer">
-          <MenuIcon className="size-3" />
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-[280px] p-1">
-          {showConfirmation ? (
-            <DomainConnectConfirmation
-              onConfirm={handleConfirmConnect}
-              onCancel={handleCancelConnect}
-              isInternalOnly
-            />
-          ) : (
-            <div className="flex flex-col gap-0.5 items-stretch">
-              {!isConnected ? (
-                <Button
-                  icon={<OkIcon />}
-                  design="tertiary"
-                  onClick={handleConnectClick}
-                  disabled={isLoading || disableConnect}
-                  data-eid={generateClickEID(`settings/domains.custom_domain.connect`)}
-                  text={t('builder_domain_button_connect')}
-                />
-              ) : (
-                <Button
-                  icon={<CircleIcon />}
-                  design="tertiary"
-                  onClick={handleDisconnect}
-                  disabled={isLoading}
-                  data-eid={generateClickEID(`settings/domains.custom_domain.disconnect`)}
-                  text={t('builder_domain_button_disconnect')}
-                />
-              )}
-              {!isCustomDomain && (
-                <Button
-                  icon={<EditIcon />}
-                  design="tertiary"
-                  onClick={() => setOpen(false)}
-                  data-eid={generateClickEID(`settings/domains.custom_domain.manage`)}
-                  text={t('builder_domain_button_manage')}
-                  href={`https://dcc.godaddy.com/control/dnsmanagement?domainName=${domainName}`}
-                  external
-                />
-              )}
-            </div>
-          )}
-        </PopoverContent>
-      </Popover>
-    </Box>
+    </Card>
   );
 }

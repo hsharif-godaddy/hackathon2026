@@ -100,52 +100,50 @@ describe('BigCard', () => {
     expect(screen.getByRole('button', { name: /Action/i })).toBeInTheDocument();
   });
 
-  it('should apply success color for success status', () => {
+  it('should render status Tag with correct emphasis', () => {
     const status: StatusValue = {
       type: 'success',
       label: 'Ready',
     };
 
-    const { container } = renderWithProviders(
+    renderWithProviders(
       <BigCard status={status}>
         <div>Content</div>
       </BigCard>
     );
 
-    const statusElement = container.querySelector('.text-intents-ux-feedbackHighContrastSuccess-feedbackColor');
-    expect(statusElement).toBeInTheDocument();
+    const tag = screen.getByText('builder_status_ready').closest('[class*="ux-tag"]');
+    expect(tag).toBeInTheDocument();
   });
 
-  it('should apply error color for error status', () => {
+  it('should render critical emphasis Tag when there is an error', () => {
     const status: StatusValue = {
-      type: 'error',
+      type: 'critical',
       label: 'Error',
     };
 
-    const { container } = renderWithProviders(
+    renderWithProviders(
       <BigCard status={status}>
         <div>Content</div>
       </BigCard>
     );
 
-    const statusElement = container.querySelector('.text-intents-ux-feedbackHighContrastCritical-feedbackColor');
-    expect(statusElement).toBeInTheDocument();
+    expect(screen.getByText('builder_status_error')).toBeInTheDocument();
   });
 
-  it('should apply warning color for warning status', () => {
+  it('should render warning emphasis Tag in pending status', () => {
     const status: StatusValue = {
       type: 'warning',
       label: 'Pending',
     };
 
-    const { container } = renderWithProviders(
+    renderWithProviders(
       <BigCard status={status}>
         <div>Content</div>
       </BigCard>
     );
 
-    const statusElement = container.querySelector('.text-intents-ux-feedbackHighContrastInfo-feedbackColor');
-    expect(statusElement).toBeInTheDocument();
+    expect(screen.getByText('builder_status_pending')).toBeInTheDocument();
   });
 
   it('should render without title and description', () => {

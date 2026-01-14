@@ -383,9 +383,8 @@ export default function DomainAttach() {
             {[1, 2, 3].map((i) => (
               <div
                 key={`skeleton-${i}`}
-                className="bg-intents-ux-box-backgroundColor rounded-lg px-2 py-1 flex gap-1"
+                className="bg-intents-ux-box-backgroundColor rounded-lg px-2 py-1"
               >
-                <Skeleton rounding="full" size="sm"/>
                 <Skeleton size="md" width="30%" />
               </div>
             ))}
@@ -444,6 +443,7 @@ export default function DomainAttach() {
 
       {/* Custom Domain Input */}
       <Box
+        className="mt-3"
         orientation="vertical"
         blockAlignChildren="start"
         gap="sm"

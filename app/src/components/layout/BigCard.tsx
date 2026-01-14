@@ -1,5 +1,6 @@
 import Box from "@ux/box";
 import CircleFilledIcon from '@ux/icon/circle-filled';
+import Tag from '@ux/tag';
 import text from "@ux/text";
 
 import { StatusValue } from "@/app/develop/components/types";
@@ -57,29 +58,13 @@ function BigCardStatus({ status }: { status: StatusValue }) {
   const t = useTranslations();
   const { type, label } = status;
   return (
-    <Box
-      orientation="horizontal"
-      gap="md"
-      inlineAlignChildren="center"
-      blockAlignChildren="start"
-      className={getStatusColor(type)}
+    <Tag
+      design="inline"  
+      emphasis={type}
+      highcontrast
+      icon={<CircleFilledIcon />}
     >
-      <text.p>{t(`builder_status_${label?.toLowerCase() || 'ready'}`)}</text.p>
-      <CircleFilledIcon className="size-3" />
-    </Box>
+      {t(`builder_status_${label?.toLowerCase() || 'ready'}`)}
+    </Tag>
   )
-}
-
-function getStatusColor(type: string) {
-  switch (type) {
-    case 'success':
-      return 'text-intents-ux-feedbackHighContrastSuccess-feedbackColor';
-    case 'error':
-      return 'text-intents-ux-feedbackHighContrastCritical-feedbackColor';
-    case 'warning':
-      // Using info color because the intent for warning is not actually the highcontrast orange and instead the light yellow so it's not visible enough
-      return 'text-intents-ux-feedbackHighContrastInfo-feedbackColor';
-    default:
-      return 'text-intents-ux-box-foregroundColor';
-  }
 }

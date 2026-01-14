@@ -1,5 +1,5 @@
+import Box from "@ux/box";
 import Button from "@ux/button";
-import SiblingSet from '@ux/sibling-set';
 import text from "@ux/text";
 
 import { useTranslations } from '@/hooks/useTranslations';
@@ -38,20 +38,22 @@ export default function DomainConnectConfirmation({
         <text.span as="paragraph">
             {t('builder_domain_connect_confirmation_description')}
         </text.span>
-      <SiblingSet gap="md">
+      <Box orientation="horizontal" gap="sm">
         <Button
           design="primary"
           onClick={onConfirm}
           text={t('builder_custom_domain_modal_button_continue')}
           data-eid={generateClickEID(`settings/domains.connect_confirm.continue`)}
+          size="sm"
         />
         <Button
           design="secondary"
           onClick={onCancel}
           text={t('builder_custom_domain_modal_button_cancel')}
           data-eid={generateClickEID(`settings/domains.connect_confirm.cancel`)}
+          size="sm"
         />
-      </SiblingSet>
+      </Box>
     </div>
   );
 }

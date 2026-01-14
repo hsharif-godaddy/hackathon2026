@@ -95,11 +95,11 @@ export enum SettingsSection {
  */
 export const Status = {
   READY: { label: 'Ready', type: 'success' },
-  PENDING: { label: 'Pending', type: 'warning' },
-  ERROR: { label: 'Error', type: 'error' },
+  PENDING: { label: 'Pending', type: 'info' },
+  CRITICAL: { label: 'Error', type: 'critical' },
   AVAILABLE: { label: 'Available', type: 'success' },
-  UNAVAILABLE: { label: 'Unavailable', type: 'error' },
-  INACTIVE: { label: 'Inactive', type: 'default' }
+  UNAVAILABLE: { label: 'Unavailable', type: 'critical' },
+  INACTIVE: { label: 'Inactive', type: 'passive' }
 } as const;
 
 /**
