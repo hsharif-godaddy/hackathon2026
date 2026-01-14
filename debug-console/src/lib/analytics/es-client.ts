@@ -38,7 +38,8 @@ export const INDICES = {
   TOOL_FAILURES: `${INDEX_PREFIX}tool_failures`,
   PUBLISH_EVENTS: `${INDEX_PREFIX}publish_events`,
   MODEL_SELECTIONS: `${INDEX_PREFIX}model_selections`,
-  COMMAND_EXECUTIONS: `${INDEX_PREFIX}command_executions`
+  COMMAND_EXECUTIONS: `${INDEX_PREFIX}command_executions`,
+  CLIENT_ERRORS: `${INDEX_PREFIX}client_errors`
 } as const;
 
 // Index mappings
@@ -172,6 +173,22 @@ const MAPPINGS = {
       success: { type: 'boolean' },
       duration_ms: { type: 'integer' },
       exit_code: { type: 'integer' }
+    }
+  },
+  [INDICES.CLIENT_ERRORS]: {
+    properties: {
+      es_id: { type: 'keyword' },
+      timestamp: { type: 'date' },
+      app_id: { type: 'keyword' },
+      event_type: { type: 'keyword' },
+      error_message: { type: 'text' },
+      customer_id: { type: 'keyword' },
+      session_id: { type: 'keyword' },
+      client_ip: { type: 'keyword' },
+      user_agent: { type: 'text' },
+      page_url: { type: 'keyword' },
+      conversation_id: { type: 'keyword' },
+      extra_data: { type: 'object', enabled: false }
     }
   }
 };

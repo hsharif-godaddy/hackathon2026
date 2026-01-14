@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { getSummary, getAllApps, getToolStats, getHealthMetrics, getHourlyStats, getErrorStats, getHourlyErrorStats, getLast24HoursStats, getLast24HoursErrorStats, getSummarizationStats, getHourlySummarizationStats, getRollingHourlySummarizations, getPublishStats, getHourlyPublishStats, getRollingHourlyPublish, init } from '@/lib/analytics/es-db';
+import { getSummary, getAllApps, getToolStats, getHealthMetrics, getHourlyStats, getErrorStats, getHourlyErrorStats, getLast24HoursStats, getLast24HoursErrorStats, getSummarizationStats, getHourlySummarizationStats, getRollingHourlySummarizations, getPublishStats, getHourlyPublishStats, getRollingHourlyPublish, getClientErrorStats, getHourlyClientErrorStats, getRollingHourlyClientErrors, init } from '@/lib/analytics/es-db';
 import { getSchedulerStatus, startScheduler } from '@/lib/analytics/scheduler';
 import { withAuth } from '@/lib/api-auth';
 
@@ -123,6 +123,20 @@ export const GET = withAuth(async (request) => {
 
       case 'last-24h-publish':
         return NextResponse.json(await getRollingHourlyPublish());
+
+      case 'client-errors':
+        return NextResponse.json(await getClientErrorStats(start, end));
+
+      case 'hourly-client-errors': {
+        const date = searchParams.get('date');
+        if (!date) {
+          return NextResponse.json({ error: 'date parameter required' }, { status: 400 });
+        }
+        return NextResponse.json(await getHourlyClientErrorStats(date));
+      }
+
+      case 'last-24h-client-errors':
+        return NextResponse.json(await getRollingHourlyClientErrors());
 
       default:
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 });

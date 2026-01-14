@@ -299,6 +299,40 @@ export function insertPublishEvent(pub: {
   });
 }
 
+export function insertClientError(err: {
+  es_id: string;
+  timestamp: string;
+  app_id: string;
+  event_type: string;
+  error_message?: string;
+  customer_id?: string;
+  session_id?: string;
+  client_ip?: string;
+  user_agent?: string;
+  page_url?: string;
+  conversation_id?: string;
+  extra_data?: Record<string, unknown>;
+}) {
+  pendingDocs.push({
+    index: INDICES.CLIENT_ERRORS,
+    id: err.es_id,
+    doc: {
+      es_id: err.es_id,
+      timestamp: err.timestamp,
+      app_id: err.app_id,
+      event_type: err.event_type,
+      error_message: err.error_message || null,
+      customer_id: err.customer_id || null,
+      session_id: err.session_id || null,
+      client_ip: err.client_ip || null,
+      user_agent: err.user_agent || null,
+      page_url: err.page_url || null,
+      conversation_id: err.conversation_id || null,
+      extra_data: err.extra_data || null
+    }
+  });
+}
+
 // Flush pending documents to ES in batches
 const BATCH_SIZE = 5000;
 
@@ -692,6 +726,121 @@ export async function getHourlyErrorStats(date: string, errorType: 'websocket' |
       errors: b.doc_count,
       apps: b.unique_apps.value
     }))
+  };
+}
+
+export async function getClientErrorStats(startDate?: string, endDate?: string) {
+  const filter = buildDateFilter(startDate, endDate);
+  const query = filter ? { bool: { filter: [filter] } } : { match_all: {} };
+
+  const result = await writeClient.search({
+    index: INDICES.CLIENT_ERRORS,
+    size: 0,
+    body: {
+      query,
+      aggs: {
+        by_day: {
+          date_histogram: { field: 'timestamp', calendar_interval: '1d' },
+          aggs: { unique_apps: { cardinality: { field: 'app_id' } } }
+        }
+      }
+    }
+  });
+
+  const aggs = result.aggregations as Record<string, unknown>;
+  const dayBuckets = (aggs.by_day as { buckets: Array<{ key_as_string: string; doc_count: number; unique_apps: { value: number } }> })?.buckets || [];
+
+  return {
+    total: dayBuckets.reduce((sum, b) => sum + b.doc_count, 0),
+    daily_stats: dayBuckets.map(b => ({
+      date: b.key_as_string,
+      errors: b.doc_count,
+      apps: b.unique_apps.value
+    }))
+  };
+}
+
+export async function getHourlyClientErrorStats(date: string) {
+  const startOfDay = new Date(date);
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const endOfDay = new Date(date);
+  endOfDay.setUTCHours(23, 59, 59, 999);
+
+  const result = await writeClient.search({
+    index: INDICES.CLIENT_ERRORS,
+    size: 0,
+    body: {
+      query: {
+        bool: {
+          filter: [
+            { range: { timestamp: { gte: startOfDay.toISOString(), lte: endOfDay.toISOString() } } }
+          ]
+        }
+      },
+      aggs: {
+        by_hour: {
+          date_histogram: { field: 'timestamp', calendar_interval: '1h' },
+          aggs: { unique_apps: { cardinality: { field: 'app_id' } } }
+        }
+      }
+    }
+  });
+
+  const aggs = result.aggregations as Record<string, unknown>;
+  const hourBuckets = (aggs.by_hour as { buckets: Array<{ key_as_string: string; doc_count: number; unique_apps: { value: number } }> })?.buckets || [];
+
+  return {
+    date,
+    hourly_stats: hourBuckets.map(b => ({
+      hour: new Date(b.key_as_string).getUTCHours(),
+      errors: b.doc_count,
+      apps: b.unique_apps.value
+    }))
+  };
+}
+
+export async function getRollingHourlyClientErrors() {
+  const now = new Date();
+  const past24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  const result = await writeClient.search({
+    index: INDICES.CLIENT_ERRORS,
+    size: 0,
+    body: {
+      query: {
+        bool: {
+          filter: [
+            { range: { timestamp: { gte: past24h.toISOString(), lte: now.toISOString() } } }
+          ]
+        }
+      },
+      aggs: {
+        by_hour: {
+          date_histogram: { field: 'timestamp', fixed_interval: '1h' },
+          aggs: { unique_apps: { cardinality: { field: 'app_id' } } }
+        }
+      }
+    }
+  });
+
+  const aggs = result.aggregations as Record<string, unknown>;
+  const hourBuckets = (aggs.by_hour as { buckets: Array<{ key_as_string: string; doc_count: number; unique_apps: { value: number } }> })?.buckets || [];
+
+  // Convert to hoursAgo format to match other rolling 24h endpoints
+  const nowHour = now.getTime();
+  return {
+    start: past24h.toISOString(),
+    end: now.toISOString(),
+    hourly_stats: hourBuckets.map(b => {
+      const bucketTime = new Date(b.key_as_string).getTime();
+      const hoursAgo = Math.floor((nowHour - bucketTime) / (60 * 60 * 1000));
+      return {
+        hoursAgo,
+        timestamp: b.key_as_string,
+        errors: b.doc_count,
+        apps: b.unique_apps.value
+      };
+    })
   };
 }
 
@@ -1121,14 +1270,15 @@ export async function getAppDetails(appId: string) {
   });
 
   // Scroll through all documents for timeline (parallel fetches)
-  const [runsDocs, errorsDocs, sumDocs, compDocs, toolDocs, convDocs, publishDocs] = await Promise.all([
+  const [runsDocs, errorsDocs, sumDocs, compDocs, toolDocs, convDocs, publishDocs, clientErrorDocs] = await Promise.all([
     scrollAllDocs(INDICES.AGENT_RUNS, appFilter),
     scrollAllDocs(INDICES.ERRORS, appFilter),
     scrollAllDocs(INDICES.SUMMARIZATIONS, appFilter),
     scrollAllDocs(INDICES.COMPRESSIONS, appFilter),
     scrollAllDocs(INDICES.TOOL_EXECUTIONS, appFilter),
     scrollAllDocs(INDICES.CONVERSATIONS, appFilter),
-    scrollAllDocs(INDICES.PUBLISH_EVENTS, appFilter)
+    scrollAllDocs(INDICES.PUBLISH_EVENTS, appFilter),
+    scrollAllDocs(INDICES.CLIENT_ERRORS, appFilter)
   ]);
 
   const agentBuckets = (runsAggs.agent_breakdown as { buckets: Array<{ key: string; doc_count: number; input_tokens: { value: number }; output_tokens: { value: number }; steps: { value: number }; cost: { value: number } }> }).buckets;
@@ -1216,6 +1366,16 @@ export async function getAppDetails(appId: string) {
       type: 'publish',
       detail: s.event_type as string,
       extra_info: s.commit_hash as string || s.error_message as string
+    });
+  }
+
+  // Add client errors (from Katana logs)
+  for (const s of clientErrorDocs) {
+    timeline.push({
+      timestamp: s.timestamp as string,
+      type: 'client_error',
+      detail: s.event_type as string,
+      extra_info: s.error_message as string
     });
   }
 
@@ -1344,7 +1504,7 @@ export async function getAllApps(startDate?: string, endDate?: string) {
   });
 
   // Get counts from other indices with composite pagination
-  const [sumMap, compMap, errMap, tokenLimitMap, budgetMap, wsErrorMap, publishMap, publishSuccessMap, publishFailedMap] = await Promise.all([
+  const [sumMap, compMap, errMap, tokenLimitMap, budgetMap, wsErrorMap, publishMap, publishSuccessMap, publishFailedMap, clientErrorMap] = await Promise.all([
     getAppCountsComposite(INDICES.SUMMARIZATIONS),
     getAppCountsComposite(INDICES.COMPRESSIONS),
     getAppCountsComposite(INDICES.ERRORS),
@@ -1353,7 +1513,8 @@ export async function getAllApps(startDate?: string, endDate?: string) {
     getAppCountsComposite(INDICES.ERRORS, { term: { event_type: 'websocket.conversation.error' } }),
     getAppCountsComposite(INDICES.PUBLISH_EVENTS, { term: { event_type: 'begin' } }),
     getAppCountsComposite(INDICES.PUBLISH_EVENTS, { term: { event_type: 'success' } }),
-    getAppCountsComposite(INDICES.PUBLISH_EVENTS, { bool: { should: [{ term: { event_type: 'build_failed' } }, { term: { event_type: 'archive_failed' } }], minimum_should_match: 1 } })
+    getAppCountsComposite(INDICES.PUBLISH_EVENTS, { bool: { should: [{ term: { event_type: 'build_failed' } }, { term: { event_type: 'archive_failed' } }], minimum_should_match: 1 } }),
+    getAppCountsComposite(INDICES.CLIENT_ERRORS)
   ]);
 
   // Map and sort by cost descending
@@ -1374,7 +1535,8 @@ export async function getAllApps(startDate?: string, endDate?: string) {
     ws_errors: wsErrorMap.get(b.key.app_id) || 0,
     publish_total: publishMap.get(b.key.app_id) || 0,
     publish_success: publishSuccessMap.get(b.key.app_id) || 0,
-    publish_failed: publishFailedMap.get(b.key.app_id) || 0
+    publish_failed: publishFailedMap.get(b.key.app_id) || 0,
+    client_errors: clientErrorMap.get(b.key.app_id) || 0
   }));
 
   // Sort by cost descending
