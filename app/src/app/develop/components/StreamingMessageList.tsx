@@ -249,6 +249,21 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     }
   }, [isStreaming, activeStream, scrollToBottom, userHasScrolledUp])
 
+  // Listen for widget injection events to trigger scroll
+  useEffect(() => {
+    const handleWidgetInjected = () => {
+      // Scroll to bottom when a widget is dynamically injected
+      if (!userHasScrolledUp) {
+        scrollToBottom(true, true)
+      }
+    }
+
+    window.addEventListener('widget-injected', handleWidgetInjected)
+    return () => {
+      window.removeEventListener('widget-injected', handleWidgetInjected)
+    }
+  }, [scrollToBottom, userHasScrolledUp])
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {

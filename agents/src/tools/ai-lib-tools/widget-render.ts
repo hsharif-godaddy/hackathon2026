@@ -56,17 +56,27 @@ const colorPaletteGridSchema = z.object({
 })
 
 /**
+ * Feedback widget schema
+ */
+const feedbackSchema = z.object({
+  type: z.literal('feedback').describe('Widget type identifier'),
+  conversationId: z.string().optional().describe('Optional conversation ID for tracking'),
+  appId: z.string().optional().describe('Optional app ID for tracking')
+})
+
+/**
  * Widget data union schema - add more widget types here
  */
 const widgetDataSchema = z.union([
   colorPaletteSchema,
   typographySchema,
-  colorPaletteGridSchema
+  colorPaletteGridSchema,
+  feedbackSchema
 ])
 
 /**
  * Widget Render Tool for AI-Lib
- * 
+ *
  * Renders interactive widgets in the agent response stream.
  * Supports multiple widget types for rich visual responses.
  */
@@ -77,22 +87,23 @@ Supports:
 - color-palette: Display a single color scheme with preview
 - color-palette-grid: Display multiple color schemes in a grid
 - typography: Display Google Fonts with sample text
+- feedback: Display a feedback widget for user feedback
 `,
   z.object({
     widget: widgetDataSchema.describe('Widget configuration data')
   }),
   async (input) => {
     const { widget } = input
-    
+
     // Validate widget data
     if (!widget || typeof widget !== 'object') {
       throw new Error('Invalid widget data provided')
     }
-    
+
     // Return structured widget data that will be handled by the frontend
     // The WebSocket server will transform this into a widget segment
     const widgetName = 'name' in widget && widget.name ? ` - ${widget.name}` : ''
-    
+
     return {
       success: true,
       widgetType: widget.type,

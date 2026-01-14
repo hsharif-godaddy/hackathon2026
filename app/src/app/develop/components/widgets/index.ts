@@ -8,6 +8,8 @@
 import type { SocialPostData } from '@/types/social-posts'
 import ColorPaletteGridWidget, { type ColorPaletteGridWidgetProps } from './ColorPaletteGridWidget'
 import ColorPaletteWidget, { type ColorPaletteWidgetProps } from './ColorPaletteWidget'
+import FeedbackWidget, { type FeedbackWidgetProps } from './FeedbackWidget'
+import FontPaletteWidget, { type FontPaletteWidgetProps } from './FontPaletteWidget'
 import FontThemeGridWidget, { type FontThemeGridWidgetProps } from './FontThemeGridWidget'
 import { SocialPostList } from './SocialPostList'
 
@@ -18,7 +20,7 @@ export interface SocialPostListProps {
 /**
  * Widget component props union type
  */
-export type WidgetProps = ColorPaletteWidgetProps | ColorPaletteGridWidgetProps | FontThemeGridWidgetProps | SocialPostListProps
+export type WidgetProps = ColorPaletteWidgetProps | ColorPaletteGridWidgetProps | FontPaletteWidgetProps | FontThemeGridWidgetProps | SocialPostListProps | FeedbackWidgetProps
 
 /**
  * Widget registry mapping widget types to components
@@ -26,6 +28,7 @@ export type WidgetProps = ColorPaletteWidgetProps | ColorPaletteGridWidgetProps 
 export const widgetRegistry = {
   'color-palette': ColorPaletteWidget,
   'color-palette-grid': ColorPaletteGridWidget,
+  'feedback': FeedbackWidget,
   'font-theme-grid': FontThemeGridWidget,
   'social-post-list': SocialPostList,
 } as const
@@ -58,6 +61,8 @@ export function getWidgetComponent(type: string) {
 export {
   ColorPaletteGridWidget,
   ColorPaletteWidget,
+  FeedbackWidget,
+  FontPaletteWidget,
   FontThemeGridWidget,
   SocialPostList
 }
@@ -65,6 +70,8 @@ export {
 export type {
   ColorPaletteGridWidgetProps,
   ColorPaletteWidgetProps,
+  FeedbackWidgetProps,
+  FontPaletteWidgetProps,
   FontThemeGridWidgetProps
 }
 

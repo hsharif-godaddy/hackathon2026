@@ -64,6 +64,11 @@ interface FeatureConfig {
   enabledSkills: {
     social: boolean
   }
+
+  // Widget/Feature enablement configuration
+  enabledFeatures: {
+    sessionFeedback: boolean
+  }
 }
 
 /**
@@ -196,6 +201,11 @@ function parseEnvironmentFeatures(): FeatureConfig {
     // Skill enablement configuration. Add skills here as they are created.
     enabledSkills: {
       social: process.env.ENABLE_SOCIAL === 'true'
+    },
+
+    // Widget/Feature enablement configuration
+    enabledFeatures: {
+      sessionFeedback: process.env.ENABLE_SESSION_FEEDBACK === 'true'
     }
   }
 }
@@ -305,6 +315,17 @@ export const skills = {
   isEnabled: (skillId: string): boolean => {
     const features = getFeatures();
     return features.enabledSkills[skillId as keyof typeof features.enabledSkills] ?? false;
+  }
+} as const
+
+/**
+ * Feature enablement helper functions
+ */
+export const features = {
+  /** Check if a specific feature is enabled */
+  isEnabled: (featureId: 'sessionFeedback'): boolean => {
+    const features = getFeatures();
+    return features.enabledFeatures[featureId] ?? false;
   }
 } as const
 
