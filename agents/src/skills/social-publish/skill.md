@@ -1,7 +1,7 @@
 ---
 name: social-publish
 description: Publish social media posts to connected platforms
-enablementId: socialPosts
+enablementId: social
 ---
 
 # Social Publish Skill

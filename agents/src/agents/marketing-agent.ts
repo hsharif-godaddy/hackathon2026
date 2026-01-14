@@ -39,8 +39,7 @@ async function buildMarketingSystemPrompt(): Promise<string> {
 export async function createMarketingAgent(): Promise<AgentConfig> {
   const systemPrompt = await buildMarketingSystemPrompt()
   const { model, modelName } = await getAgentModelWithName('full')
-  const isSocialPostsEnabled = skills.isEnabled('socialPosts')
-  const isSocialPlatformEnabled = skills.isEnabled('social')
+  const isSocialEnabled = skills.isEnabled('social')
 
   const baseTools = {
     seoAnalysis: allAILibTools.seoAnalysis,
@@ -54,13 +53,10 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     mediaSearch: allAILibTools.mediaSearch,
   }
 
-  const socialPostTools = isSocialPostsEnabled ? {
-      socialPostCreate: allAILibTools.socialPostCreate,
-      socialPostPublish: allAILibTools.socialPostPublish,
-    }
-  : {}
-  const socialTools = isSocialPlatformEnabled ? {
+  const socialTools = isSocialEnabled ? {
     socialConnect: allAILibTools.socialConnect,
+    socialPostCreate: allAILibTools.socialPostCreate,
+    socialPostPublish: allAILibTools.socialPostPublish,
   } : {}
 
   return {
@@ -70,8 +66,7 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     modelName,
     tools: {
       ...baseTools,
-      ...socialTools,
-      ...socialPostTools
+      ...socialTools
     },
 
     handoffs: [

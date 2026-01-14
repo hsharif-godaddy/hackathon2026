@@ -111,7 +111,7 @@ _Explore `agents/src/agents/` directory for implementations_
 **Feature Flags:**
 
 - Configuration: `agents/src/services/features.ts`
-- Key flags: `ENABLE_COMMERCE_AGENT`, `ENABLE_SOCIAL_PLATFORM`
+- Key flags: `ENABLE_COMMERCE_AGENT`, `ENABLE_SOCIAL`
 - Usage: `agents.isEnabled("commerce")` / `agents.isEnabled("social")`
 
 ### Tools
@@ -182,7 +182,7 @@ pnpm --filter website exec prisma migrate dev / generate / studio
 - AI: `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL`
 - Database: `MYSQL_ROOT_*` (agents), `DATABASE_URL` (app)
 - Logging: `LOG_LEVEL`, `LOG_DOMAINS`, `LOG_DISABLED_DOMAINS`
-- Features: `ENABLE_COMMERCE_AGENT`, `ENABLE_SOCIAL_PLATFORM`
+- Features: `ENABLE_COMMERCE_AGENT`, `ENABLE_SOCIAL`
 - Media: `GETTY_API_URL`, `GETTY_TOKEN`, `IMAGE_SEARCH_DRIVER`
 
 **Setup:** Use `./setup.sh` or `pnpm --filter airo-setup start` - don't create manually

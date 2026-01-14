@@ -775,8 +775,8 @@ SSO_JWT=${config.ssoJwt}
 # AGENT_URL=http://localhost:4000
 ENABLE_COMMERCE_AGENT=false
 
-# Social Posts Feature Enablement
-ENABLE_SOCIAL_POSTS=false
+# Social Feature Enablement
+ENABLE_SOCIAL=false
 `;
 		}
 

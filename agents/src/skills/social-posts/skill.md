@@ -1,7 +1,7 @@
 ---
 name: social-posts
 description: Create engaging social media posts for Facebook and Instagram
-enablementId: socialPosts
+enablementId: social
 ---
 
 # Social Post Creation Skill
