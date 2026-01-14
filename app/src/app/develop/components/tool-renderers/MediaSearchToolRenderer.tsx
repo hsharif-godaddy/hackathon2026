@@ -1,8 +1,8 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { Image, Sparkles,SquarePlay } from 'lucide-react'
-import { useRef,useState } from 'react'
+import { Image, Sparkles, SquarePlay } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Button from '@ux/button'
 import XThickIcon from '@ux/icon/x-thick'
@@ -43,6 +43,7 @@ export default function MediaSearchToolRenderer({
   const [isPlaying, setIsPlaying] = useState(false)
   const inlineVideoRef = useRef<HTMLVideoElement>(null)
   const modalVideoRef = useRef<HTMLVideoElement>(null)
+  const thumbnailRefs = useRef<(HTMLButtonElement | null)[]>([])
 
   // Parse result - expects JSON format from mediaSearch tool
   let parsedResult: any = null
@@ -164,6 +165,33 @@ export default function MediaSearchToolRenderer({
     setIsModalOpen(false)
   }
 
+  useEffect(() => {
+    if (!isModalOpen || images.length <= 1) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        setSelectedImageIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1))
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        setSelectedImageIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0))
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isModalOpen, images.length])
+
+  useEffect(() => {
+    if (isModalOpen && thumbnailRefs.current[selectedImageIndex]) {
+      thumbnailRefs.current[selectedImageIndex]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'center'
+      })
+    }
+  }, [selectedImageIndex, isModalOpen])
+
   const modalContent = typeof document !== 'undefined' && (
     <AnimatePresence>
       {isModalOpen && (
@@ -234,12 +262,13 @@ export default function MediaSearchToolRenderer({
                 <>
                   {/* Image navigation */}
                   {images.length > 1 && (
-                    <div className="flex gap-1 mb-2 overflow-x-scroll pb-1 w-full max-w-full">
+                    <div className="flex flex-nowrap gap-1 mb-2 overflow-x-auto pb-1 w-full">
                       {images.map((img, index) => (
                         <button
                           key={index}
+                          ref={(el) => { thumbnailRefs.current[index] = el }}
                           onClick={() => setSelectedImageIndex(index)}
-                          className={`flex-shrink-1 w-10 h-10 rounded border-4 overflow-hidden transition-all hover:cursor-pointer hover:opacity-100 ${
+                          className={`flex-shrink-0 w-10 h-10 rounded border-4 overflow-hidden transition-all hover:cursor-pointer hover:opacity-100 ${
                             selectedImageIndex === index ? 'border-primary' : 'border-border opacity-70'
                           }`}
                         >
