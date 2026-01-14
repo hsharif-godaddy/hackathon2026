@@ -32,6 +32,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [userHasScrolledUp, setUserHasScrolledUp] = useState(false)
   const scrollThrottleRef = useRef<NodeJS.Timeout | null>(null)
+  const activeStreamSignatureRef = useRef<string | null>(null)
   const hasLoggedFirstResponseRef = useRef(false)
   const t = useTranslations();
 
@@ -183,7 +184,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     const currentLastMessage = allMessages[allMessages.length - 1]
     const currentLastMessageId = currentLastMessage?.id || null
 
-    if (isInitialLoad) {
+    if (isInitialLoad && allMessages.length > 0) {
       // Initial load - scroll immediately
       scrollToBottom(false)
       setIsInitialLoad(false)
@@ -216,20 +217,24 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     prevLastMessageId.current = currentLastMessageId
   }, [allMessages, isInitialLoad, scrollToBottom, userHasScrolledUp])
 
-  // Handle streaming content updates - only if user hasn't scrolled up
+  // Handle streaming content updates with a single deduped effect
   useEffect(() => {
-    if (isStreaming && !userHasScrolledUp) {
-      // More frequent scroll updates for streaming content
-      scrollToBottom(true)
-    }
-  }, [isStreaming, activeStream, scrollToBottom, userHasScrolledUp]) // Also depend on activeStream changes
+    const currentSignature = activeStream
+      ? `${activeStream.id}:${activeStream.content.length}:${activeStream.segments.length}:${activeStream.toolCalls.length}`
+      : null
 
-  // Additional scroll trigger for content changes that might cause layout shifts
-  useEffect(() => {
-    if (isStreaming && activeStream && !userHasScrolledUp) {
-      // Use immediate scroll for layout-changing content to prevent jumping
-      scrollToBottom(true, true)
+    if (!isStreaming || userHasScrolledUp) {
+      activeStreamSignatureRef.current = currentSignature
+      return
     }
+
+    const shouldScrollImmediately = Boolean(
+      activeStream && activeStreamSignatureRef.current !== currentSignature
+    )
+
+    scrollToBottom(true, shouldScrollImmediately)
+
+    activeStreamSignatureRef.current = currentSignature
   }, [isStreaming, activeStream, scrollToBottom, userHasScrolledUp])
 
   // Handle thinking indicator appearance with immediate scroll
