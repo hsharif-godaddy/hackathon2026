@@ -74,6 +74,14 @@ const SYNC_MANIFEST = [
       '5a13fd960f9e484c4b92e2fc927518b3'  // f482954c - Current version with refactored analytics
     ],
     force: false
+  },
+  {
+    file: 'vite.config.ts',
+    description: 'Vite configuration with configurable host binding',
+    known_hashes: [
+      '16269c87b3b6fc698e25d57e46a431f7'  // Current version - hardcoded host: "0.0.0.0"
+    ],
+    force: false
   }
 ];
 

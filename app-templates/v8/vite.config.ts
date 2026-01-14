@@ -51,7 +51,7 @@ export default defineConfig(({ mode }) => ({
 	},
 
 	server: {
-		host: "0.0.0.0",
+		host: process.env.HOST || "0.0.0.0",
 		port: parseInt(process.env.PORT || "5173"),
 		strictPort: !!process.env.PORT,
 		allowedHosts,
