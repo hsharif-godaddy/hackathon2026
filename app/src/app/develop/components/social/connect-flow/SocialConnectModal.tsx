@@ -5,6 +5,7 @@ import Modal from '@ux/modal'
 
 import { FlowStep } from '@/hooks/social/connect-flow/useSocialConnectFlowStateMachine'
 import { useSocialConnections } from '@/hooks/useSocial'
+import { useTranslations } from '@/hooks/useTranslations'
 import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import SocialConnectFlow from './SocialConnectFlow'
 
@@ -25,6 +26,7 @@ export function SocialConnectModal({
   onSuccess,
   selectedConnectionId
 }: SocialConnectModalProps) {
+  const t = useTranslations()
   const connectionsQuery = useSocialConnections()
   const connections = useMemo(() => connectionsQuery.data ?? [], [connectionsQuery.data])
 
@@ -54,7 +56,8 @@ export function SocialConnectModal({
     ? FlowStep.ValidatingPermissions
     : (platformConnections.length > 0 ? FlowStep.SelectExisting : FlowStep.Auth)
 
-  const title = `Connecting ${platform.charAt(0).toUpperCase() + platform.slice(1)}`
+  const platformName = platform.charAt(0).toUpperCase() + platform.slice(1)
+  const title = t('builder_social_connecting_platform', { platform: platformName })
 
   if (!isOpen) return null
 

@@ -2,6 +2,7 @@
 
 import { memo, useState } from 'react'
 
+import { useTranslations } from '@/hooks/useTranslations'
 import { getConnectionDetails,getConnectionDisplayName } from '@/lib/social-utils'
 import type { EnrichedSocialConnection,SocialConnection } from '@/types/social'
 import { SocialItemSelector } from '../shared/SocialItemSelector'
@@ -25,6 +26,7 @@ export const SocialConnectionSelector = memo(function SocialConnectionSelector({
   onSelectExisting,
   onConnectNew,
 }: SocialConnectionSelectorProps) {
+  const t = useTranslations()
   const isSingleConnection = connections.length === 1
   const [isLoading, setIsLoading] = useState(false)
 
@@ -52,14 +54,14 @@ export const SocialConnectionSelector = memo(function SocialConnectionSelector({
 
   return (
     <SocialItemSelector
-      title={`Choose ${platformName} connection`}
-      description="You have existing connections. Choose one to link or connect a new account."
+      title={t('builder_social_choose_platform_connection', { platformName })}
+      description={t('builder_social_existing_connections_desc')}
       Icon={Icon}
       items={items}
       defaultSelectedId={isSingleConnection ? connections[0].socialId : null}
       buttons={[
         {
-          text: isLoading ? 'Linking...' : 'Link',
+          text: isLoading ? t('builder_social_linking') : t('builder_social_link'),
           design: 'primary',
           onClick: handleUseExisting,
           requiresSelection: true,
@@ -67,7 +69,7 @@ export const SocialConnectionSelector = memo(function SocialConnectionSelector({
           size: 'small'
         },
         {
-          text: 'New Connection',
+          text: t('builder_social_new_connection'),
           design: 'secondary',
           onClick: onConnectNew,
           disabled: () => connectionsLoadingMetadata.size > 0,

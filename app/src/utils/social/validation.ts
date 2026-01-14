@@ -1,6 +1,6 @@
 import { SocialPlatform } from '@/types/social'
 import { SocialPostData, ValidationDetails } from '@/types/social-posts'
-import { formatHashtags } from './format'
+import { formatHashtags, formatPlatformName } from './format'
 
 /**
  * Platforms that support social post publishing
@@ -90,27 +90,29 @@ export function validateSocialPost(
 
   const errorMessages: string[] = []
   if (!withinCharLimit) {
+    const platformName = formatPlatformName(post.platform)
     errorMessages.push(
       t?.('builder_social_validation_char_limit',
-        { maxCharacters: limits.maxCharacters },
-        `Content exceeds {maxCharacters} character limit`
-      ) || `Content exceeds ${limits.maxCharacters} character limit`
+        {
+          platformName,
+          contentLength: characterCount,
+          maxCharacters: limits.maxCharacters
+        }
+      )
     )
   }
   if (!hasEnoughImages) {
     errorMessages.push(
       t?.('builder_social_validation_min_images',
-        { minImages: limits.minImages },
-        `At least {minImages} image required`
-      ) || `At least ${limits.minImages} image required`
+        { minImages: limits.minImages }
+      )
     )
   }
   if (!notTooManyImages) {
     errorMessages.push(
       t?.('builder_social_validation_max_images',
-        { maxImages: limits.maxImages },
-        `Too many images (max {maxImages})`
-      ) || `Too many images (max ${limits.maxImages})`
+        { maxImages: limits.maxImages }
+      )
     )
   }
 

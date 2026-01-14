@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useIsFullscreen } from '@/hooks/useFullscreen'
+import { useTranslations } from '@/hooks/useTranslations'
 import { socialV2Client } from '@/lib/social'
 import { getPlatformStrategy, PLATFORM_CONFIG, PLATFORM_TRANSFORMS, PlatformConfig, SocialPlatform } from '@/lib/social-platforms'
 import { getErrorMessage } from '@/lib/social-utils'
@@ -72,6 +73,7 @@ export function useSocialConnectFlowOrchestrator({
   disableAutoOpen = false,
   onSuccess,
 }: SocialConnectFlowOrchestratorProps): SocialConnectFlowOrchestratorResult {
+  const t = useTranslations()
   const [generatedState] = useState(
     () => state || `${platform}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
   )
@@ -137,7 +139,7 @@ export function useSocialConnectFlowOrchestrator({
   const handleOAuthSuccess = useCallback((oauthData: any) => {
     const userTokenId = oauthData.user_token
     if (!userTokenId) {
-      dispatch({ type: SocialFlowAction.OAuthError, error: 'No user token received from OAuth' })
+      dispatch({ type: SocialFlowAction.OAuthError, error: t('builder_social_error_no_user_token') })
       return
     }
 
@@ -149,7 +151,7 @@ export function useSocialConnectFlowOrchestrator({
     }
 
     dispatch({ type: SocialFlowAction.OAuthSuccess, userTokenId, pageTokens: tokens })
-  }, [dispatch])
+  }, [dispatch, t])
 
   const { authStatus, errorMessage, openPopup } = useAuthPopup(
     authUrl || '',
@@ -163,7 +165,7 @@ export function useSocialConnectFlowOrchestrator({
     const selectedConnection = enrichedPlatformConnections.find(c => c.socialId === socialId)
 
     if (!selectedConnection?.userTokenId) {
-      dispatch({ type: SocialFlowAction.Error, error: 'Connection not found or invalid' })
+      dispatch({ type: SocialFlowAction.Error, error: t('builder_social_error_connection_not_found') })
       return
     }
 
@@ -193,7 +195,7 @@ export function useSocialConnectFlowOrchestrator({
     } catch (error) {
       dispatch({ type: SocialFlowAction.Error, error: getErrorMessage(error) })
     }
-  }, [strategy.validationPlatform, enrichedPlatformConnections, dispatch, appId, linkMutation, platform])
+  }, [strategy.validationPlatform, enrichedPlatformConnections, dispatch, appId, linkMutation, platform, t])
 
   const handleConnectNew = useCallback(() => {
     dispatch({ type: SocialFlowAction.StartOAuth })
@@ -205,7 +207,7 @@ export function useSocialConnectFlowOrchestrator({
 
   const handlePageSelection = useCallback(async (pageId: string) => {
     if (!flowState.userTokenId || !flowState.pageTokens) {
-      dispatch({ type: SocialFlowAction.Error, error: 'Missing user token or page tokens' })
+      dispatch({ type: SocialFlowAction.Error, error: t('builder_social_error_missing_tokens') })
       return
     }
 
@@ -224,11 +226,11 @@ export function useSocialConnectFlowOrchestrator({
     } catch (err) {
       dispatch({ type: SocialFlowAction.Error, error: getErrorMessage(err) })
     }
-  }, [flowState.userTokenId, flowState.pageTokens, platform, appId, createConnectionFlow, dispatch])
+  }, [flowState.userTokenId, flowState.pageTokens, platform, appId, createConnectionFlow, dispatch, t])
 
   const handleCancelSelection = useCallback(() => {
-    dispatch({ type: SocialFlowAction.Error, error: 'User cancelled page selection' })
-  }, [dispatch])
+    dispatch({ type: SocialFlowAction.Error, error: t('builder_social_error_cancelled_page_selection') })
+  }, [dispatch, t])
 
   // Derived state
   const shouldShowExistingConnectionsLoader =

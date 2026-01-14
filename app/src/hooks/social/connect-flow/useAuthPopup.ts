@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { isFullscreen } from '@/hooks/useFullscreen'
+import { useTranslations } from '@/hooks/useTranslations'
 import { getRootDomain } from '@/utils/getRootDomain'
 
 interface PopupPosition {
@@ -37,6 +38,7 @@ export function useAuthPopup(
   onAuthSuccess?: (data: any) => void,
   disableAutoOpen?: boolean
 ): AuthPopupResult {
+  const t = useTranslations()
   const [authStatus, setAuthStatus] = useState<AuthStatus>(AuthStatus.Pending)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const hasAutoOpenedRef = useRef<Record<string, boolean>>({})
@@ -110,7 +112,7 @@ export function useAuthPopup(
             }
           } else {
             setAuthStatus(AuthStatus.Error)
-            setErrorMessage(event.data.error || 'Authentication failed')
+            setErrorMessage(event.data.error || t('builder_social_error_authentication_failed'))
           }
         }
       }

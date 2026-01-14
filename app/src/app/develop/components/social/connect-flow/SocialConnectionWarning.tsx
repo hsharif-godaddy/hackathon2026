@@ -4,6 +4,7 @@ import { memo } from 'react'
 import Button from '@ux/button'
 import text from '@ux/text'
 
+import { useTranslations } from '@/hooks/useTranslations'
 import { SocialSectionHeader } from '../shared/SocialSectionHeader'
 
 interface SocialConnectionWarningProps {
@@ -19,9 +20,11 @@ export const SocialConnectionWarning = memo(function SocialConnectionWarning({
   connectionName,
   onChangeConnection,
 }: SocialConnectionWarningProps) {
+  const t = useTranslations()
+
   return (
     <div className="space-y-1.5">
-      <SocialSectionHeader Icon={Icon} title={`${platformName} already connected`} />
+      <SocialSectionHeader Icon={Icon} title={t('builder_social_platform_already_connected', { platformName })} />
 
       <div className="rounded-md bg-intents-ux-warning-backgroundColor border border-intents-ux-warning-borderColor p-1.5">
         <text.p
@@ -29,20 +32,20 @@ export const SocialConnectionWarning = memo(function SocialConnectionWarning({
           className="text-intents-ux-warning-textColor"
           text={
             connectionName
-              ? `This site is already connected to ${connectionName}.`
-              : `This site already has a ${platformName} connection.`
+              ? t('builder_social_site_connected_to_connection', { connectionName })
+              : t('builder_social_site_has_platform_connection', { platformName })
           }
         />
       </div>
 
-      <text.p size={-2} className="text-muted-foreground" text="You can change to a different connection." />
+      <text.p size={-2} className="text-muted-foreground" text={t('builder_social_can_change_connection')} />
 
       <div className="flex gap-1 pt-1">
         <Button
           design="primary"
           size="sm"
           onClick={onChangeConnection}
-          text="Change Connection"
+          text={t('builder_social_change_connection')}
         />
       </div>
     </div>

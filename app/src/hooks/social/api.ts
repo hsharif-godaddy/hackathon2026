@@ -13,6 +13,7 @@ export interface PublishErrorMessages {
   missingInstagramCredentials?: string
   instagramImageRequired?: string
   platformNotSupported?: string
+  commonError?: string
 }
 
 interface StorePostParams {

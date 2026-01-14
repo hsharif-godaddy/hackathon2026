@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState } from 'react'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
-import { text, type Emphasis } from '@ux/text'
+import { type Emphasis,text } from '@ux/text'
 
 import { usePublishFlow } from '@/hooks/social/usePublishFlow'
-import { PublishFlowState, type PendingPublish, type PublishResult, type PublishStatus, type SocialPostData } from '@/types/social-posts'
 import { useToolResultSync } from '@/hooks/useToolResultSync'
 import { useTranslations } from '@/hooks/useTranslations'
 import { PLATFORM_CONFIG } from '@/lib/social-platforms'
+import { type PendingPublish, PublishFlowState, type PublishResult, type PublishStatus, type SocialPostData } from '@/types/social-posts'
 import { emitPostPublished } from '@/utils/social'
 
 interface SocialPublishWidgetProps {
@@ -128,13 +128,13 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
 
     switch (publishStatus) {
       case PublishFlowState.ReadyToPublish:
-        return renderStatusText(t('builder_widgets_socialpublish_preparing', undefined, 'Preparing to publish...'))
+        return renderStatusText(t('builder_widgets_socialpublish_preparing'))
       case PublishFlowState.Publishing:
-        return renderStatusText(`${t('builder_widgets_socialpublish_publishing_to', undefined, 'Publishing to')} ${platformConfig?.name || pendingPublish.platform}...`)
+        return renderStatusText(`${t('builder_widgets_socialpublish_publishing_to')} ${platformConfig?.name || pendingPublish.platform}...`)
       case PublishFlowState.Success:
-        return renderStatusText(t('builder_widgets_socialpublish_success', undefined, 'Published successfully!'), 'success')
+        return renderStatusText(t('builder_widgets_socialpublish_success'), 'success')
       case PublishFlowState.Error:
-        return renderStatusText(t('builder_widgets_socialpublish_failed', undefined, 'Publishing failed'), 'warning')
+        return renderStatusText(t('builder_widgets_socialpublish_failed'), 'warning')
       default:
         return null
     }
@@ -144,7 +144,7 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
     if (publishStatus === PublishFlowState.Success) {
       const platformName = platformConfig?.name || pendingPublish?.platform || 'platform'
       return<div className="mb-1">
-        <text.p size={-1} text={t('builder_widgets_socialpublish_live_on', undefined, `Your post is now live on ${platformName}`)} />
+        <text.p size={-1} text={t('builder_widgets_socialpublish_live_on', { platformName })} />
       </div>
     }
     return null
@@ -157,7 +157,7 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
           design="primary"
           as="external"
           size="sm"
-          text={t('builder_widgets_socialpublish_view_post', undefined, 'View post')}
+          text={t('builder_widgets_socialpublish_view_post')}
           href={publishResult.platformUrl}
           target="_blank"
           rel="noopener noreferrer"
@@ -179,7 +179,7 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
       {renderPublishSuccessSubtext()}
       {renderPublishStatusAction()}
       {publishStatus === PublishFlowState.Error && (
-        <text.p size={-2} emphasis='warning' text={publishResult?.error || t('builder_common_unknown_error', undefined, 'Unknown error')} />
+        <text.p size={-2} emphasis='warning' text={publishResult?.error || t('builder_common_unknown_error')} />
       )}
     </div>
   )

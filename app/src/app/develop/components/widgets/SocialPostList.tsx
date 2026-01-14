@@ -6,8 +6,8 @@ import clsx from 'clsx'
 import { memo,useCallback, useEffect, useMemo, useState } from 'react'
 import AlertIcon from '@ux/icon/alert'
 import EditIcon from '@ux/icon/edit'
-import EyeIcon from '@ux/icon/show'
 import ImageIcon from '@ux/icon/image'
+import EyeIcon from '@ux/icon/show'
 import text from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
@@ -98,8 +98,8 @@ const PostListItem = memo(({ post, onClick }: PostListItemProps) => {
                 className="px-1 py-0.5 rounded uppercase bg-intents-ux-boxLowContrast-backgroundColor"
               >
                 {isPublished
-                  ? t('builder_social_post_status_published', undefined, 'Published')
-                  : t('builder_social_post_status_draft', undefined, 'Draft')
+                  ? t('builder_social_post_status_published')
+                  : t('builder_social_post_status_draft')
                 }
               </text.span>
               <Icon className="w-2 h-2 text-intents-ux-textSubtle-textColor" />

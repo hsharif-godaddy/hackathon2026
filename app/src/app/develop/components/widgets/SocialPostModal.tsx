@@ -83,14 +83,19 @@ interface CharacterCounterProps {
   platform: string
 }
 
-const CharacterCounter = memo(({ charCount, maxChars, isOverLimit, platform }: CharacterCounterProps) => (
-  <div className="mt-1">
-    <text.span as="label" size={-1} className="block mb-0.5 capitalize">{platform} Character Limits</text.span>
-    <text.span as="paragraph" size={-2} emphasis={isOverLimit ? 'warning' : 'passive'}>
-      {charCount}/{maxChars} characters
-    </text.span>
-  </div>
-))
+const CharacterCounter = memo(({ charCount, maxChars, isOverLimit, platform }: CharacterCounterProps) => {
+  const t = useTranslations()
+  const platformName = platform.charAt(0).toUpperCase() + platform.slice(1)
+
+  return (
+    <div className="mt-1">
+      <text.span as="label" size={-1} className="block mb-0.5">{t('builder_social_character_limits', { platform: platformName })}</text.span>
+      <text.span as="paragraph" size={-2} emphasis={isOverLimit ? 'warning' : 'passive'}>
+        {t('builder_social_character_count', { charCount, maxChars })}
+      </text.span>
+    </div>
+  )
+})
 
 interface PostEditorFormProps {
   post: SocialPostData
@@ -340,7 +345,7 @@ export const SocialPostModal = memo(({ post, appId, onClose, onSave, onPublish }
             />
             <Button
               design="primary"
-              text={isPublishing ? t('builder_common_loading', undefined, 'Loading...') : t('builder_widgets_socialpublish_publish', undefined, 'Publish')}
+              text={isPublishing ? t('builder_common_loading') : t('builder_widgets_socialpublish_publish')}
               size='sm'
               onClick={handlePublish}
               disabled={isPublishing}

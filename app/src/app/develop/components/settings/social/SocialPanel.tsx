@@ -7,6 +7,7 @@ import BigCard from '@/components/layout/BigCard'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
 import { useSocialPanelActions } from '@/hooks/social/panel/useSocialPanelActions'
 import { useSocialPanelData } from '@/hooks/social/panel/useSocialPanelData'
+import { useTranslations } from '@/hooks/useTranslations'
 import { PlatformConnectionsList } from './PlatformConnectionsList'
 import { SocialPanelLoadingSkeleton } from './SocialPanelLoadingSkeleton'
 
@@ -15,6 +16,8 @@ interface SocialPanelProps {
 }
 
 export default function SocialPanel({ siteId }: SocialPanelProps) {
+  const t = useTranslations()
+
   // Fetch and compute all data
   const data = useSocialPanelData(siteId)
 
@@ -34,9 +37,9 @@ export default function SocialPanel({ siteId }: SocialPanelProps) {
     return (
       <EmptyStateCard
         icon={<ShareIcon width={48} height={48} />}
-        title="Error Loading Connections"
+        title={t('builder_social_error_loading_connections')}
         description={data.error}
-        ctaLabel="Retry"
+        ctaLabel={t('builder_common_retry')}
         onCtaClick={actions.refreshConnections}
       />
     )
@@ -45,8 +48,8 @@ export default function SocialPanel({ siteId }: SocialPanelProps) {
   return (
     <>
       <BigCard
-        title="Social Platforms"
-        description="Manage your social media platform connections. Connect or disconnect platforms to control which accounts your app can interact with."
+        title={t('builder_social_platforms_title')}
+        description={t('builder_social_platforms_description')}
       >
         <PlatformConnectionsList
           platformStatuses={data.platformStatuses}

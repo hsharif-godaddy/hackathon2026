@@ -1,9 +1,9 @@
 import { useMemo } from 'react'
 
+import { useConnectionById, useSiteAssociations } from '@/hooks/useSocial'
 import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
 import { useSocialConnectionsWithMetadata } from '../queries/useSocialConnections'
-import { useSiteAssociations, useConnectionById } from '@/hooks/useSocial'
 
 interface UseSocialConnectFlowParams {
   platform: string

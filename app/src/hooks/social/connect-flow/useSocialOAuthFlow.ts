@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 
+import { useTranslations } from '@/hooks/useTranslations'
 import { EMPTY_SOCIAL_ARRAYS } from '@/lib/social'
 import { getPlatformStrategy } from '@/lib/social-platforms'
 import { isRetryableError } from '@/lib/social-utils'
@@ -44,6 +45,7 @@ export function useSocialOAuthFlow({
   popup,
   dispatch
 }: UseSocialOAuthFlowParams): UseSocialOAuthFlowResult {
+  const t = useTranslations()
   const strategy = getPlatformStrategy(platform)
 
   const { data: authData, isLoading: isLoadingAuthUrl, error: authUrlError } = useSocialAuthUrl(
@@ -87,13 +89,13 @@ export function useSocialOAuthFlow({
     if (pages.length === 0) {
       dispatch({
         type: SocialFlowAction.Error,
-        error: `No ${platform} pages found. Make sure you have pages you manage.`,
+        error: t('builder_social_error_no_pages_found', { platform }),
         isRetryable: false
       })
     } else {
       dispatch({ type: SocialFlowAction.PagesLoaded })
     }
-  }, [dispatch, platform])
+  }, [dispatch, platform, t])
 
   const onPagesError = useCallback((error: Error) => {
     dispatch({

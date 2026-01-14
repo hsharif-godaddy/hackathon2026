@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslations } from '@/hooks/useTranslations'
 import type { FacebookPage, GoogleLocation } from '@/lib/social'
 import { PLATFORM_CONFIG } from '@/lib/social-platforms'
 import { SocialItemSelector } from '../shared/SocialItemSelector'
@@ -49,6 +50,7 @@ export function SocialPageSelector({
   onSelect,
   onCancel
 }: SocialPageSelectorProps) {
+  const t = useTranslations()
   const platformDisplayName = PLATFORM_CONFIG[platform]?.name ?? platform
 
   const items = pages.map(page => {
@@ -66,18 +68,18 @@ export function SocialPageSelector({
 
   return (
     <SocialItemSelector
-      title={`Select a ${platformDisplayName} page to connect`}
+      title={t('builder_social_select_platform_page', { platformDisplayName })}
       items={items}
-      emptyMessage={`No ${platformDisplayName} pages found. Make sure you have pages you manage.`}
+      emptyMessage={t('builder_social_no_pages_found', { platformDisplayName })}
       buttons={[
         {
-          text: 'Connect Selected Page',
+          text: t('builder_social_connect_selected_page'),
           design: 'primary',
           onClick: (selectedId) => selectedId && onSelect(selectedId),
           requiresSelection: true
         },
         {
-          text: 'Cancel',
+          text: t('builder_common_cancel'),
           design: 'secondary',
           onClick: onCancel
         }

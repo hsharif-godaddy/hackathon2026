@@ -26,12 +26,13 @@ export function usePublishFlow(
   const t = useTranslations()
 
   const errorMessages = useMemo<PublishErrorMessages>(() => ({
-    platformMismatchFacebook: t('builder_social_error_platform_mismatch_facebook', undefined, 'Connection platform mismatch: expected Facebook'),
-    platformMismatchInstagram: t('builder_social_error_platform_mismatch_instagram', undefined, 'Connection platform mismatch: expected Instagram'),
-    missingPageCredentials: t('builder_social_error_missing_page_credentials', undefined, 'Missing page ID or page token'),
-    missingInstagramCredentials: t('builder_social_error_missing_instagram_credentials', undefined, 'Missing Instagram account ID or token'),
-    instagramImageRequired: t('builder_social_error_instagram_image_required', undefined, 'Instagram posts require at least one image'),
-    platformNotSupported: t('builder_social_error_platform_not_supported', { platform: pendingPublish?.platform || '' }, 'Platform {platform} not supported'),
+    platformMismatchFacebook: t('builder_social_error_platform_mismatch_facebook'),
+    platformMismatchInstagram: t('builder_social_error_platform_mismatch_instagram'),
+    missingPageCredentials: t('builder_social_error_missing_page_credentials'),
+    missingInstagramCredentials: t('builder_social_error_missing_instagram_credentials'),
+    instagramImageRequired: t('builder_social_error_instagram_image_required'),
+    platformNotSupported: t('builder_social_error_platform_not_supported', { platform: pendingPublish?.platform || '' }),
+    commonError: t('builder_common_unknown_error')
   }), [t, pendingPublish?.platform])
 
   const { data: associationsData, isLoading: isLoadingAssociations } = useSiteAssociations(appId)
@@ -72,7 +73,7 @@ export function usePublishFlow(
       onStatusChange(PublishFlowState.Success)
       onResultChange(result)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+      const errorMessage = err instanceof Error ? err.message : errorMessages.commonError
 
       try {
         await storePostResult({
@@ -93,7 +94,7 @@ export function usePublishFlow(
     } finally {
       isPublishingRef.current = false
     }
-  }, [appId, onStatusChange, onResultChange, errorMessages])
+  }, [onStatusChange, errorMessages, appId, onResultChange])
 
   useEffect(() => {
     if (!isActiveFlow || !pendingPublish) return
@@ -105,14 +106,14 @@ export function usePublishFlow(
 
     if (!match) {
       onStatusChange(PublishFlowState.Error)
-      onResultChange({ error: `No ${pendingPublish.platform} connection found. Please connect first.` })
+      onResultChange({ error: errorMessages.platformNotSupported })
       return
     }
 
     setSelectedAssociation(match)
 
     if (isConnectionError && connectionError) {
-      const errorMessage = connectionError instanceof Error ? connectionError.message : 'Failed to fetch connection'
+      const errorMessage = connectionError instanceof Error ? connectionError.message : errorMessages.commonError
       onStatusChange(PublishFlowState.Error)
       onResultChange({ error: errorMessage })
       return
@@ -133,6 +134,7 @@ export function usePublishFlow(
     connectionError,
     onStatusChange,
     onResultChange,
-    executePublish
+    executePublish,
+    errorMessages
   ])
 }
