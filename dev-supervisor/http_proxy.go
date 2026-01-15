@@ -47,6 +47,45 @@ func determineForwardedProto(req *http.Request) string {
 }
 
 /**
+ * getClientIP extracts the real client IP from CF-Connecting-IP header
+ * Returns empty string if header is not present (direct connection, no Cloudflare)
+ *
+ * @param req - HTTP request
+ * @returns client IP address string or empty string
+ */
+func getClientIP(req *http.Request) string {
+	return strings.TrimSpace(req.Header.Get("CF-Connecting-IP"))
+}
+
+/**
+ * getSrcIPAndPort splits RemoteAddr into IP and port components
+ * RemoteAddr format is typically "ip:port" or "[ipv6]:port"
+ *
+ * @param remoteAddr - The RemoteAddr string from request
+ * @returns IP address and port as separate strings
+ */
+func getSrcIPAndPort(remoteAddr string) (string, string) {
+	// RemoteAddr is in format "ip:port" or "[ipv6]:port"
+	host, port, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		// If split fails, return the whole address as IP with empty port
+		return remoteAddr, ""
+	}
+	return host, port
+}
+
+/**
+ * getRayID extracts the CF-Ray header for request tracing
+ * Returns empty string if header is not present
+ *
+ * @param req - HTTP request
+ * @returns CF-Ray value or empty string
+ */
+func getRayID(req *http.Request) string {
+	return strings.TrimSpace(req.Header.Get("CF-Ray"))
+}
+
+/**
  * HTTPProxyConfig defines configuration for the HTTP proxy server
  */
 type HTTPProxyConfig struct {
@@ -191,15 +230,32 @@ func loggingMiddleware(next http.Handler) http.Handler {
 
 		// Log request with response details
 		duration := time.Since(start)
-		slog.Info("http.request",
+		clientIP := getClientIP(r)
+		srcIP, srcPort := getSrcIPAndPort(r.RemoteAddr)
+		rayID := getRayID(r)
+
+		logAttrs := []any{
 			"type", "http_request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rw.statusCode,
 			"size", rw.size,
 			"duration_ms", duration.Milliseconds(),
-			"remote_addr", r.RemoteAddr,
-		)
+			"src_ip", srcIP,
+			"src_port", srcPort,
+		}
+
+		// Add client_ip if present (Cloudflare CF-Connecting-IP)
+		if clientIP != "" {
+			logAttrs = append(logAttrs, "client_ip", clientIP)
+		}
+
+		// Add ray_id if present (Cloudflare CF-Ray for tracing)
+		if rayID != "" {
+			logAttrs = append(logAttrs, "ray_id", rayID)
+		}
+
+		slog.Info("http.request", logAttrs...)
 	})
 }
 
@@ -670,12 +726,28 @@ func (p *HTTPProxy) Start() error {
 			// Note: X-Real-IP is not set (only accessible by trusted sources)
 
 			if !isWebSocket {
-				slog.Debug("proxying request",
+				clientIP := getClientIP(r.In)
+				srcIP, srcPort := getSrcIPAndPort(r.In.RemoteAddr)
+				rayID := getRayID(r.In)
+
+				logAttrs := []any{
 					"method", r.In.Method,
 					"path", r.In.URL.Path,
 					"host", r.In.Host,
 					"target", targetURL.String(),
-					"remote_addr", r.In.RemoteAddr)
+					"src_ip", srcIP,
+					"src_port", srcPort,
+				}
+
+				if clientIP != "" {
+					logAttrs = append(logAttrs, "client_ip", clientIP)
+				}
+
+				if rayID != "" {
+					logAttrs = append(logAttrs, "ray_id", rayID)
+				}
+
+				slog.Debug("proxying request", logAttrs...)
 			}
 		},
 		Transport: retryTransport,
