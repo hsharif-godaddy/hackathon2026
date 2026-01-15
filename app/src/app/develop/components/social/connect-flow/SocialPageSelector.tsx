@@ -76,12 +76,14 @@ export function SocialPageSelector({
           text: t('builder_social_connect_selected_page'),
           design: 'primary',
           onClick: (selectedId) => selectedId && onSelect(selectedId),
-          requiresSelection: true
+          requiresSelection: true,
+          eid: 'social.page.select'
         },
         {
           text: t('builder_common_cancel'),
           design: 'secondary',
-          onClick: onCancel
+          onClick: onCancel,
+          eid: 'social.page.cancel'
         }
       ]}
     />

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Button from '@ux/button'
 import text from '@ux/text'
 
+import { generateClickEID } from '@/utils/instrumentation'
 import { SocialConnectionInfo } from './SocialConnectionInfo'
 import { SocialSectionHeader } from './SocialSectionHeader'
 
@@ -22,6 +23,7 @@ interface SocialItemSelectorButton {
   disabled?: (selectedId: string | null) => boolean
   requiresSelection?: boolean,
   size?: 'default' | 'md' | 'sm' | 'small'
+  eid?: string
 }
 
 interface SocialItemSelectorProps {
@@ -126,6 +128,7 @@ export function SocialItemSelector({
                 onClick={() => button.onClick(selectedId)}
                 disabled={isDisabled}
                 text={button.text}
+                data-eid={button.eid ? generateClickEID(button.eid) : undefined}
               />
             )
           })}

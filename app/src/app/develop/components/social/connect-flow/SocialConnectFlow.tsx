@@ -9,6 +9,7 @@ import { useSocialConnectFlowOrchestrator } from '@/hooks/social/connect-flow/us
 import { FlowStep } from '@/hooks/social/connect-flow/useSocialConnectFlowStateMachine'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
+import { generateClickEID } from '@/utils/instrumentation'
 import { getCurrentRenderState, getRenderConfig } from './social-connect-flow-render'
 import { ContainerVariant,SocialConnectFlowContainer } from './SocialConnectFlowContainer'
 
@@ -114,7 +115,7 @@ function SocialConnectFlowError(error: Error, reset: () => void, t: ReturnType<t
         <text.p size={-3} className="text-muted-foreground">
           {error.message}
         </text.p>
-        <Button design="primary" size="sm" onClick={reset} text={t('builder_common_try_again')} />
+        <Button design="primary" size="sm" onClick={reset} text={t('builder_common_try_again')} data-eid={generateClickEID('social.connect.error_boundary_retry')} />
       </div>
     </SocialConnectFlowContainer>
   )

@@ -10,6 +10,7 @@ import { useToolResultSync } from '@/hooks/useToolResultSync'
 import { useTranslations } from '@/hooks/useTranslations'
 import { PLATFORM_CONFIG } from '@/lib/social-platforms'
 import { type PendingPublish, PublishFlowState, type PublishResult, type PublishStatus, type SocialPostData } from '@/types/social-posts'
+import { generateClickEID } from '@/utils/instrumentation'
 import { emitPostPublished } from '@/utils/social'
 
 interface SocialPublishWidgetProps {
@@ -161,6 +162,7 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
           href={publishResult.platformUrl}
           target="_blank"
           rel="noopener noreferrer"
+          data-eid={generateClickEID('social.publish.view_post')}
         />
       )
     }

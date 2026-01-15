@@ -9,6 +9,7 @@ import { SocialConnectionInfo } from '@/app/develop/components/social/shared/Soc
 import { useTranslations } from '@/hooks/useTranslations'
 import { getConnectionDetails,getConnectionDisplayName } from '@/lib/social-utils'
 import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
+import { generateClickEID } from '@/utils/instrumentation'
 import { Status, StatusBadge } from './StatusBadge'
 
 interface PlatformItemProps {
@@ -84,6 +85,7 @@ export const PlatformItem = memo(function PlatformItem({
                       onClick={() => onUnlinkConnection(connection.socialId)}
                       disabled={isUnlinking}
                       text={isUnlinking ? t('builder_social_unlinking') : t('builder_social_unlink') }
+                      data-eid={generateClickEID('social.settings.unlink')}
                     />
                   )}
                 </Box>
@@ -101,12 +103,12 @@ export const PlatformItem = memo(function PlatformItem({
         {overallStatus !== Status.Linked && (
           <Box orientation="horizontal" gap="sm" blockAlignChildren="end">
             {overallStatus === Status.NotConnected && (
-              <Button size="sm" design="primary" onClick={() => onConnectPlatform(platform)}>
+              <Button size="sm" design="primary" onClick={() => onConnectPlatform(platform)} data-eid={generateClickEID('social.settings.connect')}>
                 {t('builder_social_connect')}
               </Button>
             )}
             {overallStatus === Status.NotLinked && (
-              <Button size="sm" design="primary" onClick={() => onSelectConnection(platform)}>
+              <Button size="sm" design="primary" onClick={() => onSelectConnection(platform)} data-eid={generateClickEID('social.settings.link_account')}>
                 {t('builder_social_link_account')}
               </Button>
             )}

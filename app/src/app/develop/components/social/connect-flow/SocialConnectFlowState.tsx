@@ -5,6 +5,7 @@ import Button from '@ux/button'
 import text from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
+import { generateClickEID } from '@/utils/instrumentation'
 
 export enum FlowStateType {
   Loading = 'loading',
@@ -49,7 +50,7 @@ export const SocialConnectFlowState = memo(function SocialConnectFlowState({
         <div className="flex items-center gap-1 text-intents-ux-error-textColor">
           <text.p size={-2} text={errorMessage || t('builder_social_connection_failed')} />
         </div>
-        {onRetry && <Button design="secondary" size="sm" onClick={onRetry} text={t('builder_common_try_again')} />}
+        {onRetry && <Button design="secondary" size="sm" onClick={onRetry} text={t('builder_common_try_again')} data-eid={generateClickEID('social.connect.retry')} />}
       </div>
     )
   }

@@ -5,6 +5,7 @@ import Button from '@ux/button'
 import text from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
+import { generateClickEID } from '@/utils/instrumentation'
 import { SocialSectionHeader } from '../shared/SocialSectionHeader'
 
 interface SocialConnectionWarningProps {
@@ -46,6 +47,7 @@ export const SocialConnectionWarning = memo(function SocialConnectionWarning({
           size="sm"
           onClick={onChangeConnection}
           text={t('builder_social_change_connection')}
+          data-eid={generateClickEID('social.connect.change_connection')}
         />
       </div>
     </div>
