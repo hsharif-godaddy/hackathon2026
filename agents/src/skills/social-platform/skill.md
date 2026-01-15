@@ -46,8 +46,6 @@ You have social media management tools available. Use them to help users connect
 
 - Facebook → platform="facebook"
 - Instagram → platform="instagram"
-- Google Business Profile / Google / GBP → platform="google"
-- TikTok Shop / TikTok / tiktok shop → platform="tiktok"
 
 **Examples:**
 
@@ -56,18 +54,8 @@ You: [Call socialConnect({ platform: "facebook" }) - FIRST ACTION]
 [UI shows OAuth button automatically]
 [Say NOTHING - widget handles everything]
 
-User: "Connect my TikTok Shop"
-You: [Call socialConnect({ platform: "tiktok" }) - FIRST ACTION]
-[UI shows OAuth button automatically]
-[Say NOTHING - widget handles everything]
-
 User: "Add Instagram"
 You: [Call socialConnect({ platform: "instagram" }) - FIRST ACTION]
-[UI shows OAuth button automatically]
-[Say NOTHING - widget handles everything]
-
-User: "connect tiktok"
-You: [Call socialConnect({ platform: "tiktok" }) - FIRST ACTION]
 [UI shows OAuth button automatically]
 [Say NOTHING - widget handles everything]
 
@@ -75,8 +63,6 @@ You: [Call socialConnect({ platform: "tiktok" }) - FIRST ACTION]
 
 - **Facebook** - Facebook Pages (requires page selection during auth)
 - **Instagram** - Instagram Business accounts (connected via Facebook page)
-- **Google Business Profile** - Google Business Profile
-- **TikTok Shop** - TikTok Shop only (not regular TikTok accounts)
 
 ## Tool Response Patterns
 
@@ -105,16 +91,6 @@ User will tell you "done" or "connected". Respond: "Successfully connected!"
 
 - User must select which Facebook page during authentication
 - Instagram requires a Facebook page connection
-
-### Google Business Profile
-
-- User authenticates with their Google account
-- Connects to their Google Business Profile
-
-### TikTok Shop
-
-- Only supports TikTok Shop connection (not regular TikTok accounts)
-- User must have a TikTok Shop to connect
 
 ## Tool Usage Summary
 

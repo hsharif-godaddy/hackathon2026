@@ -17,8 +17,6 @@ export interface PlatformConfig {
 export const PLATFORM_CONFIG: Record<string, PlatformConfig> = {
   [SocialPlatform.FACEBOOK]: { name: 'Facebook', Icon: FacebookIcon },
   [SocialPlatform.INSTAGRAM]: { name: 'Instagram', Icon: InstagramIcon },
-  [SocialPlatform.GOOGLE]: { name: 'Google', Icon: GoogleIcon },
-  [SocialPlatform.TIKTOK]: { name: 'TikTok Shop', Icon: TiktokIcon },
 }
 
 

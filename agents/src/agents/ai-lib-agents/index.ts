@@ -191,7 +191,7 @@ export const aiLibAgentMetadata: Record<string, AILibAgentMetadata> = {
   marketing: {
     id: 'marketing',
     name: 'Marketing Manager',
-    description: 'SEO specialist and social media manager that helps optimize websites for better visibility and performance in search engines. Can connect to social platforms including Facebook, Instagram, Google Business Profile, TikTok, Yelp, and WhatsApp.',
+    description: 'SEO specialist and social media manager that helps optimize websites for better visibility and performance in search engines. Can connect to social platforms including Facebook and Instagram.',
     version: '1.0.0',
     tags: ['marketing', 'seo', 'content', 'optimization', 'search', 'social-media'],
     toolGroups: ['core', 'planning', 'content'],

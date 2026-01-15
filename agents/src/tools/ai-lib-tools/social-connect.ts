@@ -13,8 +13,6 @@ export const socialConnect: Tool = createTool(
   AVAILABLE PLATFORMS:
   - Facebook (Facebook Pages)
   - Instagram (Instagram Business accounts via Facebook page)
-  - Google Business Profile (Google Business location)
-  - TikTok Shop (TikTok Shop only, not regular TikTok accounts)
 
   USAGE WORKFLOW:
   1. When user asks to connect, call socialConnect({ platform })
