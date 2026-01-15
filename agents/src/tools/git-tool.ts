@@ -4,6 +4,10 @@ import { toolGitEvents } from '../logging/events/index.js';
 import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { buildShellCommand } from '../utils/shell-utils.js';
+import { GitRemoteTokenManager } from '../services/GitRemoteTokenManager.js';
+import { GitRemoteConfigRepository } from '../database/repositories/GitRemoteConfigRepository.js';
+import { GitProviderFactory } from '../services/git-providers/GitProviderFactory.js';
+import { getErrorMessage } from '../utils/error.js';
 
 // Constants for business logic clarity
 const MAX_COMMITS_FOR_INITIAL_BUILD = 2; // Allow for initial + first real commit
@@ -25,13 +29,22 @@ export interface GitToolOptions {
     | 'reset'
     | 'revert'
     | 'restore'
-    | 'clean';
+    | 'clean'
+    | 'configure-remote';
   /** Files to operate on (for add, diff, etc.) */
   files?: string[];
   /** Commit message (for commit operation, or to identify commit by message for revert) */
   message?: string;
   /** Branch name (for checkout, merge, etc.) */
   branch?: string;
+  /** Repository URL (for configure-remote operation) */
+  repoUrl?: string;
+  /** Remote name (for configure-remote, push, pull operations, default: 'origin') */
+  remoteName?: string;
+  /** Remote name alias (for push, pull operations) */
+  remote?: string;
+  /** Force push (for push operation) */
+  forcePush?: boolean;
   /** Operation-specific options */
   options?: {
     /** Include all files (for add, commit) */
@@ -102,10 +115,14 @@ export interface GitToolResult {
 export class GitTool {
   private gitUtils: GitUtils;
   private devSupervisor: DevSupervisorClient | null;
+  private gitRemoteTokenManager: GitRemoteTokenManager | null;
+  private gitRemoteConfigRepo: GitRemoteConfigRepository;
 
   constructor(devSupervisor?: DevSupervisorClient) {
     this.devSupervisor = devSupervisor || null;
     this.gitUtils = new GitUtils(devSupervisor);
+    this.gitRemoteTokenManager = devSupervisor ? new GitRemoteTokenManager(devSupervisor) : null;
+    this.gitRemoteConfigRepo = new GitRemoteConfigRepository();
   }
 
   // Per-repository operation queues to prevent concurrent git operations
@@ -144,17 +161,21 @@ export class GitTool {
 
   /**
    * Extract app ID from app path
-   * App paths are typically in format: /tmp/apps/{appId} or {customerDataDir}/{appId}
+   * App paths are typically in format: /tmp/apps/{appId}/app or {customerDataDir}/{appId}/app
    */
   private extractAppIdFromPath(appPath: string): string | null {
     try {
       // Handle both development and production paths
-      // Development: /tmp/apps/{appId}
-      // Production: /customer-data/{appId} or similar
+      // Development: /tmp/apps/{appId}/app
+      // Production: /customer-data/{appId}/app or similar
       const pathParts = appPath.split('/').filter(part => part.length > 0);
 
-      // The app ID is typically the last part of the path
-      const potentialAppId = pathParts[pathParts.length - 1];
+      // If path ends with '/app', the app ID is the second-to-last part
+      // e.g., /tmp/apps/c95338db-9a67-4216-a286-cf202d169ad9/app -> c95338db-9a67-4216-a286-cf202d169ad9
+      const lastPart = pathParts[pathParts.length - 1];
+      const potentialAppId = lastPart === 'app' && pathParts.length >= 2
+        ? pathParts[pathParts.length - 2]
+        : lastPart;
 
       // Basic validation - app IDs are typically UUIDs or similar identifiers
       if (potentialAppId && potentialAppId.length > 5) {
@@ -250,6 +271,9 @@ export class GitTool {
           break;
         case 'clean':
           result = await this.handleClean(appPath, options);
+          break;
+        case 'configure-remote':
+          result = await this.handleConfigureRemote(appPath, options);
           break;
         default:
           throw new Error(`Unknown git operation: ${options.operation}`);
@@ -609,18 +633,368 @@ export class GitTool {
   }
 
   /**
+   * Handle configure remote operation
+   * Sets up git remote and stores configuration in database
+   */
+  private async handleConfigureRemote(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+    try {
+      // Extract app ID from path
+      const appId = this.extractAppIdFromPath(appPath);
+      if (!appId) {
+        return {
+          success: false,
+          operation: 'configure-remote',
+          error: 'Could not extract app ID from path'
+        };
+      }
+
+      // Validate required parameters
+      if (!options.repoUrl) {
+        return {
+          success: false,
+          operation: 'configure-remote',
+          error: 'Repository URL is required'
+        };
+      }
+
+      const remoteName = options.remoteName || 'origin';
+      const defaultBranch = options.branch || 'main';
+
+      // Detect provider from URL
+      let provider: string;
+      try {
+        const providerInstance = GitProviderFactory.getProvider(options.repoUrl);
+        provider = providerInstance.name;
+      } catch (error) {
+        return {
+          success: false,
+          operation: 'configure-remote',
+          error: `Failed to detect provider: ${getErrorMessage(error)}`
+        };
+      }
+
+      // Check if remote already exists in git
+      const hasRemote = await this.gitUtils.hasRemote(appPath, remoteName);
+
+      if (hasRemote) {
+        // Update existing remote URL
+        const setUrlResult = await this.gitUtils.setRemoteUrl(appPath, remoteName, options.repoUrl);
+
+        if (!setUrlResult.success) {
+          return {
+            success: false,
+            operation: 'configure-remote',
+            error: `Failed to update remote URL: ${setUrlResult.stderr}`
+          };
+        }
+      } else {
+        // Add new remote
+        const addResult = await this.gitUtils.addRemote(appPath, remoteName, options.repoUrl);
+
+        if (!addResult.success) {
+          return {
+            success: false,
+            operation: 'configure-remote',
+            error: `Failed to add remote: ${addResult.stderr}`
+          };
+        }
+      }
+
+      // Store configuration in database
+      try {
+        this.gitRemoteConfigRepo.upsert({
+          appId,
+          remoteName,
+          provider,
+          repoUrl: options.repoUrl,
+          defaultBranch,
+          syncEnabled: true
+        });
+      } catch (error) {
+        return {
+          success: false,
+          operation: 'configure-remote',
+          error: `Failed to store configuration: ${getErrorMessage(error)}`,
+          warning: 'Git remote was added successfully but database storage failed'
+        };
+      }
+
+      return {
+        success: true,
+        operation: 'configure-remote',
+        output: `Remote '${remoteName}' configured successfully\nProvider: ${provider}\nURL: ${options.repoUrl}\nDefault branch: ${defaultBranch}`
+      };
+    } catch (error) {
+      return {
+        success: false,
+        operation: 'configure-remote',
+        error: `Configure remote operation failed: ${getErrorMessage(error)}`
+      };
+    }
+  }
+
+  /**
    * Handle other git operations (simplified implementations)
    */
   private async handleMerge(_appPath: string, _options: GitToolOptions): Promise<GitToolResult> {
     return this.handleUnsupportedOperation('merge', 'Git merge operations are not yet supported');
   }
 
-  private async handlePull(_appPath: string, _options: GitToolOptions): Promise<GitToolResult> {
-    return this.handleUnsupportedOperation('pull', 'Git pull operations are not yet supported');
+  /**
+   * Handle pull from remote repository
+   * Requires git remote to be configured via configure-remote operation
+   */
+  private async handlePull(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+    try {
+      // Extract app ID from path
+      const appId = this.extractAppIdFromPath(appPath);
+      if (!appId) {
+        return {
+          success: false,
+          operation: 'pull',
+          error: 'Could not extract app ID from path'
+        };
+      }
+
+      // Get remote name (default: 'origin')
+      const remoteName = options.remoteName || options.remote || 'origin';
+
+      // Get remote config from database
+      const remoteConfig = this.gitRemoteConfigRepo.findByAppAndRemote(appId, remoteName);
+      if (!remoteConfig) {
+        return {
+          success: false,
+          operation: 'pull',
+          error: `Remote '${remoteName}' not configured. Please run configure-remote first.`
+        };
+      }
+
+      if (!remoteConfig.syncEnabled) {
+        return {
+          success: false,
+          operation: 'pull',
+          error: `Remote '${remoteName}' is disabled`
+        };
+      }
+
+      // Get current branch or use default branch from config
+      const branch = options.branch || remoteConfig.defaultBranch;
+
+      // Validate dependencies
+      if (!this.gitRemoteTokenManager) {
+        return {
+          success: false,
+          operation: 'pull',
+          error: 'Git remote token manager not available. Dev-supervisor is required.'
+        };
+      }
+
+      try {
+        // Configure credentials (inside container)
+        await this.gitRemoteTokenManager.configureGitCredentials(appId, remoteConfig.repoUrl);
+
+        // Execute pull with 'theirs' merge strategy to prefer remote changes
+        const pullResult = await this.gitUtils.pull(appPath, remoteName, branch, {}, 'theirs');
+
+        if (!pullResult.success) {
+          const stderr = (pullResult.stderr || '').toLowerCase();
+
+          // Check for merge conflicts
+          if (stderr.includes('conflict') || stderr.includes('merge')) {
+            return {
+              success: false,
+              operation: 'pull',
+              error: 'Merge conflicts detected. Manual resolution may be required.',
+              warning: 'Run git status to see conflicting files',
+              output: pullResult.stdout
+            };
+          }
+
+          // Check for authentication failures
+          if (stderr.includes('authentication failed') || stderr.includes('403') || stderr.includes('401') || stderr.includes('invalid credentials')) {
+            return {
+              success: false,
+              operation: 'pull',
+              error: 'GitHub authentication failed. Token may be expired or invalid. Please reconfigure the GitHub token.',
+              output: pullResult.stdout
+            };
+          }
+
+          // Check for network errors
+          if (stderr.includes('could not resolve host') || stderr.includes('network') || stderr.includes('connection')) {
+            return {
+              success: false,
+              operation: 'pull',
+              error: 'Network error: Unable to connect to remote repository. Please check your network connection.',
+              output: pullResult.stdout
+            };
+          }
+
+          // Generic error
+          return {
+            success: false,
+            operation: 'pull',
+            error: `Pull failed: ${pullResult.stderr || pullResult.stdout}`,
+            output: pullResult.stdout
+          };
+        }
+
+        // Update last sync timestamp
+        this.gitRemoteConfigRepo.update(remoteConfig.id, {
+          lastSyncAt: Date.now()
+        });
+
+        return {
+          success: true,
+          operation: 'pull',
+          output: `Successfully pulled from ${remoteName}/${branch}\n${pullResult.stdout}`
+        };
+      } finally {
+        // ALWAYS cleanup credentials
+        await this.gitRemoteTokenManager.cleanupGitCredentials(appId);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        operation: 'pull',
+        error: `Pull operation failed: ${getErrorMessage(error)}`
+      };
+    }
   }
 
-  private async handlePush(_appPath: string, _options: GitToolOptions): Promise<GitToolResult> {
-    return this.handleUnsupportedOperation('push', 'Git push operations are not yet supported');
+  /**
+   * Handle push to remote repository
+   * Requires git remote to be configured via configure-remote operation
+   */
+  private async handlePush(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+    try {
+      // Extract app ID from path
+      const appId = this.extractAppIdFromPath(appPath);
+      if (!appId) {
+        return {
+          success: false,
+          operation: 'push',
+          error: 'Could not extract app ID from path'
+        };
+      }
+
+      // Get remote name (default: 'origin')
+      const remoteName = options.remoteName || options.remote || 'origin';
+
+      // Get remote config from database
+      const remoteConfig = this.gitRemoteConfigRepo.findByAppAndRemote(appId, remoteName);
+      if (!remoteConfig) {
+        return {
+          success: false,
+          operation: 'push',
+          error: `Remote '${remoteName}' not configured. Please run configure-remote first.`
+        };
+      }
+
+      if (!remoteConfig.syncEnabled) {
+        return {
+          success: false,
+          operation: 'push',
+          error: `Remote '${remoteName}' is disabled`
+        };
+      }
+
+      // Get current branch or use default branch from config
+      const branch = options.branch || await this.gitUtils.getCurrentBranch(appPath);
+
+      // Check force push flag
+      const forcePush = options.forcePush || options.options?.force || false;
+
+      // Validate dependencies
+      if (!this.gitRemoteTokenManager) {
+        return {
+          success: false,
+          operation: 'push',
+          error: 'Git remote token manager not available. Dev-supervisor is required.'
+        };
+      }
+
+      try {
+        // Configure credentials (inside container)
+        await this.gitRemoteTokenManager.configureGitCredentials(appId, remoteConfig.repoUrl);
+
+        // Execute push with setUpstream=true to track remote branch
+        const pushResult = await this.gitUtils.push(appPath, remoteName, branch, {}, forcePush, true);
+
+        if (!pushResult.success) {
+          const stderr = (pushResult.stderr || '').toLowerCase();
+
+          // Check for authentication failures
+          if (stderr.includes('authentication failed') || stderr.includes('403') || stderr.includes('401') || stderr.includes('invalid credentials')) {
+            return {
+              success: false,
+              operation: 'push',
+              error: 'GitHub authentication failed. Token may be expired or invalid. Please reconfigure the GitHub token.',
+              output: pushResult.stdout
+            };
+          }
+
+          // Check for network errors
+          if (stderr.includes('could not resolve host') || stderr.includes('network') || stderr.includes('connection')) {
+            return {
+              success: false,
+              operation: 'push',
+              error: 'Network error: Unable to connect to remote repository. Please check your network connection.',
+              output: pushResult.stdout
+            };
+          }
+
+          // Check for non-fast-forward (need to pull first)
+          if (stderr.includes('non-fast-forward') || stderr.includes('fetch first') || stderr.includes('rejected')) {
+            return {
+              success: false,
+              operation: 'push',
+              error: 'Push rejected: Remote has changes that are not in local. Pull the latest changes first, or use force push.',
+              warning: 'Consider running pull before push, or use forcePush option',
+              output: pushResult.stdout
+            };
+          }
+
+          // Check for permission errors
+          if (stderr.includes('permission denied') || stderr.includes('403')) {
+            return {
+              success: false,
+              operation: 'push',
+              error: 'Permission denied: The token does not have write access to this repository.',
+              output: pushResult.stdout
+            };
+          }
+
+          // Generic error
+          return {
+            success: false,
+            operation: 'push',
+            error: `Push failed: ${pushResult.stderr || pushResult.stdout}`,
+            output: pushResult.stdout
+          };
+        }
+
+        // Update last sync timestamp
+        this.gitRemoteConfigRepo.update(remoteConfig.id, {
+          lastSyncAt: Date.now()
+        });
+
+        return {
+          success: true,
+          operation: 'push',
+          output: `Successfully pushed to ${remoteName}/${branch}\n${pushResult.stdout}`
+        };
+      } finally {
+        // ALWAYS cleanup credentials
+        await this.gitRemoteTokenManager.cleanupGitCredentials(appId);
+      }
+    } catch (error) {
+      return {
+        success: false,
+        operation: 'push',
+        error: `Push operation failed: ${getErrorMessage(error)}`
+      };
+    }
   }
 
   private async handleStash(_appPath: string, _options: GitToolOptions): Promise<GitToolResult> {

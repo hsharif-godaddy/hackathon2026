@@ -847,15 +847,18 @@ export class GitUtils {
     }
 
     // Check for missing .git directory
+    // Skip this check when using dev-supervisor since the path is inside the container
     if (errorLower.includes('not a git repository') || errorLower.includes('no such file or directory')) {
-      const gitDirPath = resolve(repoPath, '.git');
-      if (!existsSync(gitDirPath)) {
-        // Critical error - missing .git directory requires escalation
-        logger.error('git.util.recovery.missing_git_dir.escalate', {
-          repoPath,
-          gitDirPath
-        });
-        return { recovered: false, shouldRetry: false, escalate: true };
+      if (!this.isDevSupervisorAvailable()) {
+        const gitDirPath = resolve(repoPath, '.git');
+        if (!existsSync(gitDirPath)) {
+          // Critical error - missing .git directory requires escalation
+          logger.error('git.util.recovery.missing_git_dir.escalate', {
+            repoPath,
+            gitDirPath
+          });
+          return { recovered: false, shouldRetry: false, escalate: true };
+        }
       }
     }
 
@@ -880,9 +883,10 @@ export class GitUtils {
       timeout = this.DEFAULT_TIMEOUT,
     } = options;
 
-    // Validate that the directory exists
+    // Validate that the directory exists on host filesystem
+    // Skip this check when using dev-supervisor since the path is inside the container
     const workingDir = resolve(cwd);
-    if (!existsSync(workingDir)) {
+    if (!this.isDevSupervisorAvailable() && !existsSync(workingDir)) {
       throw new Error(`Working directory does not exist: ${workingDir}`);
     }
 
@@ -980,6 +984,175 @@ export class GitUtils {
     }
 
     return result;
+  }
+
+  // ==================================================================================
+  // Git Remote Operations (for GitHub sync feature)
+  // ==================================================================================
+
+  /**
+   * Add a remote to the repository
+   *
+   * @param repoPath - Path to the git repository
+   * @param remoteName - Name of the remote (e.g., 'origin')
+   * @param url - Remote URL
+   * @param options - Git command options
+   * @returns GitCommandResult
+   */
+  async addRemote(
+    repoPath: string,
+    remoteName: string,
+    url: string,
+    options: GitCommandOptions = {}
+  ): Promise<GitCommandResult> {
+    return this.executeGitCommand(['remote', 'add', remoteName, url], repoPath, options);
+  }
+
+  /**
+   * Set the URL for an existing remote
+   *
+   * @param repoPath - Path to the git repository
+   * @param remoteName - Name of the remote (e.g., 'origin')
+   * @param url - New remote URL
+   * @param options - Git command options
+   * @returns GitCommandResult
+   */
+  async setRemoteUrl(
+    repoPath: string,
+    remoteName: string,
+    url: string,
+    options: GitCommandOptions = {}
+  ): Promise<GitCommandResult> {
+    return this.executeGitCommand(['remote', 'set-url', remoteName, url], repoPath, options);
+  }
+
+  /**
+   * Get the URL for a remote
+   *
+   * @param repoPath - Path to the git repository
+   * @param remoteName - Name of the remote (e.g., 'origin')
+   * @param options - Git command options
+   * @returns Remote URL or null if not found
+   */
+  async getRemoteUrl(
+    repoPath: string,
+    remoteName: string,
+    options: GitCommandOptions = {}
+  ): Promise<string | null> {
+    try {
+      const result = await this.executeGitCommand(
+        ['remote', 'get-url', remoteName],
+        repoPath,
+        options
+      );
+
+      if (!result.success) {
+        return null;
+      }
+
+      return result.stdout.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Check if a remote exists
+   *
+   * @param repoPath - Path to the git repository
+   * @param remoteName - Name of the remote (e.g., 'origin')
+   * @param options - Git command options
+   * @returns True if remote exists, false otherwise
+   */
+  async hasRemote(
+    repoPath: string,
+    remoteName: string,
+    options: GitCommandOptions = {}
+  ): Promise<boolean> {
+    try {
+      const url = await this.getRemoteUrl(repoPath, remoteName, options);
+      return url !== null;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Push to a remote repository
+   *
+   * @param repoPath - Path to the git repository
+   * @param remoteName - Name of the remote (e.g., 'origin')
+   * @param branch - Branch name to push
+   * @param options - Git command options
+   * @param forcePush - Whether to force push (default: false)
+   * @param setUpstream - Whether to set upstream tracking (default: false)
+   * @returns GitCommandResult
+   */
+  async push(
+    repoPath: string,
+    remoteName: string,
+    branch: string,
+    options: GitCommandOptions = {},
+    forcePush: boolean = false,
+    setUpstream: boolean = false
+  ): Promise<GitCommandResult> {
+    const args = ['push'];
+
+    if (setUpstream) {
+      args.push('-u');
+    }
+
+    if (forcePush) {
+      args.push('--force');
+    }
+
+    args.push(remoteName, branch);
+
+    return this.executeGitCommand(args, repoPath, options);
+  }
+
+  /**
+   * Pull from a remote repository
+   *
+   * @param repoPath - Path to the git repository
+   * @param remoteName - Name of the remote (e.g., 'origin')
+   * @param branch - Branch name to pull
+   * @param options - Git command options
+   * @param mergeStrategy - Merge strategy for conflicts: 'theirs' (prefer remote), 'ours' (prefer local), or undefined (no auto-resolution)
+   * @returns GitCommandResult
+   */
+  async pull(
+    repoPath: string,
+    remoteName: string,
+    branch: string,
+    options: GitCommandOptions = {},
+    mergeStrategy?: 'theirs' | 'ours'
+  ): Promise<GitCommandResult> {
+    const args = ['pull'];
+
+    if (mergeStrategy) {
+      args.push('-X', mergeStrategy);
+    }
+
+    args.push(remoteName, branch);
+
+    return this.executeGitCommand(args, repoPath, options);
+  }
+
+  /**
+   * Fetch from a remote repository
+   *
+   * @param repoPath - Path to the git repository
+   * @param remoteName - Name of the remote (e.g., 'origin')
+   * @param options - Git command options
+   * @returns GitCommandResult
+   */
+  async fetch(
+    repoPath: string,
+    remoteName: string,
+    options: GitCommandOptions = {}
+  ): Promise<GitCommandResult> {
+    return this.executeGitCommand(['fetch', remoteName], repoPath, options);
   }
 
 }

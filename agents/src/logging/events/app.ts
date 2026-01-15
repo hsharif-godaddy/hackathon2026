@@ -331,7 +331,7 @@ export interface ToolCodeSearchData {
 
 export interface ToolGitOperationData {
   toolName: string;
-  operation: 'status' | 'add' | 'commit' | 'diff' | 'log' | 'branch' | 'checkout' | 'merge' | 'pull' | 'push' | 'stash' | 'reset' | 'revert' | 'restore' | 'clean';
+  operation: 'status' | 'add' | 'commit' | 'diff' | 'log' | 'branch' | 'checkout' | 'merge' | 'pull' | 'push' | 'stash' | 'reset' | 'revert' | 'restore' | 'clean' | 'configure-remote';
   appPath: string;
   appId?: string;
   options?: {

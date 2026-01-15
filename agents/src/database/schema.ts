@@ -187,6 +187,24 @@ export interface ConversationSummary {
   createdAt: Date;
 }
 
+/**
+ * Git remote configuration
+ * Stores metadata for git remote sync (GitHub, GitLab, Bitbucket)
+ * Tokens are NOT stored here - they're in secrets API
+ */
+export interface GitRemoteConfig {
+  id: string;
+  appId: string;
+  remoteName: string;
+  provider: string;
+  repoUrl: string;
+  defaultBranch: string;
+  lastSyncAt: number | null;
+  syncEnabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // ==================================================================================
 // Database Schema Management Functions
 // ==================================================================================
@@ -211,6 +229,7 @@ export function initializeSchema(db: Database): void {
   createMemoryTable(db);
   createImportJobsTable(db);
   createConversationSummariesTable(db);
+  createGitRemoteConfigTable(db);
 
   // Apply migrations BEFORE creating indexes (migrations may alter schema)
   // Note: oauth_tokens table creation moved to migrations (added in PR #646)
@@ -462,6 +481,29 @@ function createConversationSummariesTable(db: Database): void {
 }
 
 /**
+ * Create the git_remote_config table for git remote sync metadata
+ * Tokens are NOT stored in this table - they're in secrets API
+ */
+function createGitRemoteConfigTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS git_remote_config (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      remote_name TEXT NOT NULL DEFAULT 'origin',
+      provider TEXT NOT NULL DEFAULT 'github',
+      repo_url TEXT NOT NULL,
+      default_branch TEXT DEFAULT 'main',
+      last_sync_at INTEGER,
+      sync_enabled BOOLEAN DEFAULT TRUE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(app_id, remote_name),
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+    )
+  `);
+}
+
+/**
  * Create all database indexes for efficient queries
  */
 function createIndexes(db: Database): void {
@@ -565,6 +607,20 @@ function createIndexes(db: Database): void {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversation_summaries_message_range ON conversation_summaries(message_range_start, message_range_end)
   `);
+
+  // Git remote config table indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_git_remote_config_app_id ON git_remote_config(app_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_git_remote_config_provider ON git_remote_config(provider)
+  `);
+
+  // Composite index for efficient findByAppAndRemote queries
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_git_remote_config_app_remote ON git_remote_config(app_id, remote_name)
+  `);
 }
 
 /**
@@ -645,6 +701,16 @@ function createTriggers(db: Database): void {
     FOR EACH ROW
     BEGIN
       UPDATE import_jobs SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END
+  `);
+
+  // Trigger to automatically update updated_at on git_remote_config
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS update_git_remote_config_updated_at
+    AFTER UPDATE ON git_remote_config
+    FOR EACH ROW
+    BEGIN
+      UPDATE git_remote_config SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
     END
   `);
 }
