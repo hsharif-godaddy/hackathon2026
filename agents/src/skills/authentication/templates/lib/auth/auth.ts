@@ -35,12 +35,7 @@ export const auth = betterAuth({
       const hostname = originUrl.hostname;
 
       // Trust all airoapp.ai subdomains
-      if (
-        hostname.endsWith('.preview.c24.airoapp.ai') ||
-        hostname.endsWith('.preview.c24.test-airoapp.ai') ||
-        hostname.endsWith('.c4.test-airoapp.ai') ||
-        hostname.endsWith('.c4.airoapp.ai')
-      ) {
+      if (hostname.endsWith('.airoapp.ai') || hostname.endsWith('.test-airoapp.ai')) {
         return [origin];
       }
 
