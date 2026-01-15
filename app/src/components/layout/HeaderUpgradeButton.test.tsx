@@ -32,9 +32,16 @@ vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: (...args: any[]) => mockShipAnalyticsLog(...args),
 }));
 
+vi.mock('next/navigation', () => ({
+  usePathname: vi.fn(() => '/develop/test-app'),
+}));
+
 describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
-  beforeEach(function setup() {
+  beforeEach(async function setup() {
     vi.clearAllMocks();
+    // Reset pathname mock to develop page for each test
+    const { usePathname } = await import('next/navigation');
+    vi.mocked(usePathname).mockReturnValue('/develop/test-app');
   });
 
   describe('rendering conditions', function renderingTests() {
@@ -88,6 +95,20 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: true, isError: false, error: null });
+
+      const { container } = renderWithProviders(<HeaderUpgradeButton location="test" />);
+
+      expect(container.firstChild).toBeNull();
+    });
+
+    it('should not render when not on develop page', async function noRenderOutsideDevelop() {
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      const { usePathname } = await import('next/navigation');
+
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
+      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(usePathname).mockReturnValue('/apps');
 
       const { container } = renderWithProviders(<HeaderUpgradeButton location="test" />);
 

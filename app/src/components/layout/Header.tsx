@@ -9,8 +9,8 @@ import Tag from '@ux/tag';
 import { UserMenu } from '@/components/auth';
 import AppPublish from '@/components/layout/AppPublish';
 import AppSelector from '@/components/layout/AppSelector';
-import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import DiscordLink from '@/components/layout/DiscordLink';
+import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import InviteFriends from '@/components/layout/InviteFriends';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -62,9 +62,11 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
             {showAuthenticatedUI && (
               <>
                 <div className="h-3 w-px bg-ai-dark self-center" />
-                <AppSelector location={location} />
-                <HeaderUpgradeButton location={location} />
-                <AppPublish location={location} />
+                <div className="flex items-center gap-1.5">
+                  <AppSelector location={location} />
+                  <HeaderUpgradeButton location={location} />
+                  <AppPublish location={location} />
+                </div>
               </>
             )}
           </Box>

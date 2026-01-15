@@ -1,5 +1,6 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import Button from '@ux/button';
 import CheckIcon from '@ux/icon/checkmark';
@@ -23,14 +24,16 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
   const t = useTranslations();
   const [open, setOpen] = useState(false);
   const { isMobile } = useResponsive();
+  const pathname = usePathname();
+  const isDevelopPage = pathname?.includes('/develop/');
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
 
   const { data: featureEnabled, isLoading: isFeatureLoading } = useSwitchboard('appbuilder-airoplus-upgrade-button');
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(currentAppId || undefined);
 
-  // Don't show if feature flag is loading, disabled, or user already has Airo Plus
-  if (isFeatureLoading || isPaywallLoading || !featureEnabled || !showPaywall) return null;
+  // Only show on develop page, when feature enabled, and user doesn't have Airo Plus
+  if (!isDevelopPage || isFeatureLoading || isPaywallLoading || !featureEnabled || !showPaywall) return null;
 
   const handleUpgradeClick = () => {
     setOpen(false);
@@ -51,9 +54,10 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          design='secondary'
+          design='tertiary'
           size='sm'
           data-partial='componentAiro'
+          className='!text-intents-ux-boxHighContrast-foregroundColor'
           data-eid={generateClickEID(`${location}.header.upgrade`)}
           icon={<SparkleIcon />}
           text={isMobile ? undefined : t('builder_upgrade_button')}
@@ -68,7 +72,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
             {t('builder_upgrade_popover_title')}
           </text.h4>
 
-          <text.p size={-1} className='text-intents-ux-boxLowContrast-foregroundColor'>
+          <text.p size={-1} className='text-intents-ux-boxLowContrast-foregroundColor mb-1'>
             {t('builder_upgrade_popover_subtitle')}
           </text.p>
 
