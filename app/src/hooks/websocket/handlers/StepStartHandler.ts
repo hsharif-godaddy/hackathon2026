@@ -11,7 +11,7 @@ import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
 export class StepStartHandler implements MessageHandler {
   readonly type = 'step_start'
 
-  async handle(_data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
     // Send tool impression for analytics
     context.helpers.sendToolImpression('start')
 
@@ -22,6 +22,13 @@ export class StepStartHandler implements MessageHandler {
     const store = useStreamingConversationStore.getState()
     if (store.connectionRetry.isRetrying) {
       store.clearConnectionRetry()
+    }
+
+    // Capture agent name from step_start and store it for ThinkingIndicator
+    const agentNameRaw = data.data?.agentName
+    const agentNameStr = agentNameRaw ? String(agentNameRaw) : null
+    if (agentNameStr) {
+      store.setCurrentAgentName(agentNameStr)
     }
   }
 }

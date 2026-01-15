@@ -224,4 +224,52 @@ describe('useStreamingConversationStore', function packageTests() {
       expect(messagesBefore).toBe(messagesAfter);
     });
   });
+
+  describe('agent name management', function agentNameManagement() {
+    it('should set and retrieve currentAgentName', function setAndGet() {
+      const store = useStreamingConversationStore.getState();
+
+      expect(store.currentAgentName).toBeNull();
+
+      act(() => {
+        store.setCurrentAgentName('Marketing Agent');
+      });
+
+      const state = useStreamingConversationStore.getState();
+      expect(state.currentAgentName).toBe('Marketing Agent');
+    });
+
+    it('should allow setting currentAgentName to null', function setNull() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAgentName('Commerce Agent');
+      });
+
+      expect(useStreamingConversationStore.getState().currentAgentName).toBe('Commerce Agent');
+
+      act(() => {
+        store.setCurrentAgentName(null);
+      });
+
+      expect(useStreamingConversationStore.getState().currentAgentName).toBeNull();
+    });
+
+    it('should reset currentAgentName when switching apps', function resetOnAppSwitch() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.setCurrentAgentName('Design Agent');
+      });
+
+      expect(useStreamingConversationStore.getState().currentAgentName).toBe('Design Agent');
+
+      act(() => {
+        store.setCurrentAppId('app-2');
+      });
+
+      expect(useStreamingConversationStore.getState().currentAgentName).toBeNull();
+    });
+  });
 });

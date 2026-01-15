@@ -132,7 +132,7 @@ describe('Develop Page - Chat', () => {
 
       cy.get('#chat-send-button').should('not.be.disabled');
 
-      cy.contains('Airo Developer is thinking').should('not.exist');
+      cy.contains(/is thinking/).should('not.exist');
     });
 
     it('should complete AI response within 5 minutes and re-enable input', () => {

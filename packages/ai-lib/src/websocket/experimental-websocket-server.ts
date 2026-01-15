@@ -2676,6 +2676,7 @@ export class WebSocketServer {
           step: currentStep,
           stepType: 'reasoning',
           agentId: agentName,
+          agentName: String(this.config.agents.get(agentName)?.getName() || agentName),
           messageId: activeConversation?.context?.agentMessageId  // NEW: Include message ID for pending message tracking
         }
         await this.publishToEventChannel(socket.id, 'step_start', '', stepStartData, agentName)
@@ -2766,6 +2767,7 @@ Please try again with corrected formatting.`
       step: currentStep,
       stepType: 'reasoning',
       agentId: agentName,
+      agentName: String(this.config.agents.get(agentName)?.getName() || agentName),
       messageId: activeConversation?.context?.agentMessageId  // NEW: Include message ID for pending message tracking
     }
     await this.publishToEventChannel(socket.id, 'step_start', '', stepStartData, agentName)

@@ -61,7 +61,7 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
 
   return {
     id: 'marketing',
-    name: 'Marketing Manager',
+    name: 'Airo Marketer',
     system: systemPrompt,
     model,
     modelName,

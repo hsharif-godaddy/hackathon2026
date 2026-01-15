@@ -173,6 +173,7 @@ export interface StreamingConversationState {
   buildErrorContext: { error: string; details: string; exitCode?: number } | null
   availableAgents: AgentSummary[]
   defaultAgentId: string | null
+  currentAgentName: string | null
   developmentPlan: PlanItem[]
 
   // Per-app chat cache: messages and active streams
@@ -224,6 +225,7 @@ export interface StreamingConversationState {
   setAiEditContext: (context: AiEditContext | null) => void
   setBuildErrorContext: (context: { error: string; details: string; exitCode?: number } | null) => void
   setAgentCatalog: (agents: AgentSummary[], defaultAgentId: string | null) => void
+  setCurrentAgentName: (agentName: string | null) => void
   setDevelopmentPlan: (plan: PlanItem[]) => void
 
   // === WEBSOCKET ACTIONS ===
@@ -383,6 +385,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   buildErrorContext: null,
   availableAgents: [],
   defaultAgentId: null,
+  currentAgentName: null,
   developmentPlan: [],
   appChatHistory: {},
   websocket: {
@@ -824,6 +827,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         buildErrorContext: null,
         availableAgents: [],
         defaultAgentId: null,
+        currentAgentName: null, // Reset agent name when switching apps
         appChatHistory: newAppChatHistory,
         websocket: { connected: false, status: 'idle' as const },
         connectionRetry: {
@@ -846,6 +850,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     availableAgents: agents,
     defaultAgentId: defaultAgentId ?? null
   }),
+  setCurrentAgentName: (agentName) => set({ currentAgentName: agentName }),
   setDevelopmentPlan: (plan) => set({ developmentPlan: plan }),
 
   // === WEBSOCKET ACTIONS ===
@@ -1188,3 +1193,4 @@ export const useAiEditContext = () => useStreamingConversationStore(state => sta
 export const useBuildErrorContext = () => useStreamingConversationStore(state => state.buildErrorContext)
 export const useAvailableAgents = () => useStreamingConversationStore(state => state.availableAgents)
 export const useDefaultAgentId = () => useStreamingConversationStore(state => state.defaultAgentId)
+export const useCurrentAgentName = () => useStreamingConversationStore(state => state.currentAgentName)
