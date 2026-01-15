@@ -64,6 +64,9 @@ export default defineConfig(({ mode }) => ({
 		hmr: {
 			overlay: false,
 		},
+		watch: {
+			ignored: ["**/dist/**", "**/.api/**"],
+		},
 	},
 
 	build: {

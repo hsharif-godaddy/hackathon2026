@@ -77,9 +77,10 @@ const SYNC_MANIFEST = [
   },
   {
     file: 'vite.config.ts',
-    description: 'Vite configuration with configurable host binding',
+    description: 'Vite build and dev server configuration',
     known_hashes: [
-      '16269c87b3b6fc698e25d57e46a431f7'  // Current version - hardcoded host: "0.0.0.0"
+      '16269c87b3b6fc698e25d57e46a431f7', // Older version - hardcoded host: "0.0.0.0"
+      'd18a56841b551364f6ec0c0cdeccaca2'  // Before watch.ignored was added
     ],
     force: false
   }
