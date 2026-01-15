@@ -208,6 +208,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
   const { model, modelName } = await getAgentModelWithName('full') // Use full model for complex development tasks
 
   return {
+    id: 'develop',
     name: 'AI Developer',
     system: systemPrompt,
     model,

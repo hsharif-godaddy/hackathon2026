@@ -87,6 +87,7 @@ export async function createDesignAgent(): Promise<AgentConfig> {
   const { model, modelName } = await getAgentModelWithName('full'); // Use full model for comprehensive design work
 
   return {
+    id: 'design',
     name: 'Design System Creator',
     system: systemPrompt,
     model,

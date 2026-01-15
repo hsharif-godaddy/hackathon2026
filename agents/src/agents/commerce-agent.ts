@@ -96,6 +96,7 @@ export async function createCommerceAgent(options?: { appPath?: string }): Promi
   const { model, modelName } = await getAgentModelWithName('fast'); // Use fast model for simple data retrieval
 
   return {
+    id: 'commerce',
     name: 'Commerce Agent',
     system: systemPrompt,
     model,

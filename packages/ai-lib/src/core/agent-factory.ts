@@ -40,12 +40,12 @@ const DEFAULT_MAX_RETRY_ATTEMPTS = 5
 /**
  * Extract LiteLLM metadata from execution context for per-request cost tracking
  * @param executionContext - The execution context passed from the caller
- * @param agentName - The name of the current agent
+ * @param agentId - The keyword identifier of the current agent (e.g., 'develop', 'initial')
  * @returns LiteLLM metadata object with subscriptionId, customerId, appId, and source tags
  */
 function extractLitellmMetadata(
   executionContext?: Record<string, unknown>,
-  agentName?: string
+  agentId?: string
 ): LitellmMetadata | null {
   if (!executionContext || !executionContext.metadata) {
     return null
@@ -74,9 +74,9 @@ function extractLitellmMetadata(
   // Add source tag for distinguishing user-triggered vs background operations
   tags.push('source:user-chat')
 
-  // Add agent name (low cardinality - only ~6 agents)
-  if (agentName) {
-    tags.push(`agent:${agentName}`)
+  // Add agent ID keyword (low cardinality - only ~6 agents)
+  if (agentId) {
+    tags.push(`agent:${agentId}`)
   }
 
   const litellmMetadata: LitellmMetadata = {
@@ -882,7 +882,7 @@ export class AgentWrapper {
     }
 
     // Extract and set LiteLLM metadata for cost tracking
-    const litellmMetadata = extractLitellmMetadata(options?.executionContext, this.config.name)
+    const litellmMetadata = extractLitellmMetadata(options?.executionContext, this.config.id)
 
     // Wrap LLM call with AsyncLocalStorage context for per-request metadata
     const result = await (litellmMetadata
@@ -984,7 +984,7 @@ export class AgentWrapper {
       if (sessionId) attributes.sessionId = sessionId
 
       // Extract and set LiteLLM metadata for cost tracking
-      const litellmMetadata = extractLitellmMetadata(options?.executionContext, this.config.name)
+      const litellmMetadata = extractLitellmMetadata(options?.executionContext, this.config.id)
 
       // Wrap LLM call with AsyncLocalStorage context for per-request metadata
       streamResult = await (litellmMetadata
@@ -1114,6 +1114,8 @@ export class AgentFactory {
 
     // Store agent configurations for handoff access
     Object.entries(agentConfigs).forEach(([id, config]) => {
+      // Ensure the config has the agent ID set
+      config.id = id
       this.agentConfigs.set(id, config)
     })
 

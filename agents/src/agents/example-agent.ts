@@ -56,6 +56,7 @@ export async function createExampleAgent(): Promise<AgentConfig> {
   const { model, modelName } = await getAgentModelWithName('fast') // Use fast model for example/demo purposes
 
   return {
+    id: 'example',
     name: 'Example Agent',
     system: systemPrompt,
     model,

@@ -58,6 +58,8 @@ export interface GlobalAgentConfig {
  * Configuration for a single agent (modern AgentFactory)
  */
 export interface AgentConfig {
+  /** Agent identifier (keyword) - typically set by defineAgents */
+  id: string
   /** Human-readable name of the agent */
   name: string
   /** System prompt for the agent */

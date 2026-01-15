@@ -60,6 +60,7 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
   } : {}
 
   return {
+    id: 'marketing',
     name: 'Marketing Manager',
     system: systemPrompt,
     model,

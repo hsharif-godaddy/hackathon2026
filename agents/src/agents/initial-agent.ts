@@ -66,6 +66,7 @@ export async function createInitialAgent(
   }
 
   return {
+    id: 'initial',
     name: 'Initial',
     system: systemPrompt,
     model,
