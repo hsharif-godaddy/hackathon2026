@@ -71,12 +71,12 @@ export class ServerPaywallProvider implements PaywallDataProvider {
     const [paywallResponse, marketsResponse] = await Promise.all([
       fetch(paywallFlagUrl, {
         headers: {
-          Cookie: `jwt-token=${this.jwt}`,
+          'Authorization': `sso-jwt ${this.jwt}`
         },
       }),
       fetch(marketsFlagUrl, {
         headers: {
-          Cookie: `jwt-token=${this.jwt}`,
+          'Authorization': `sso-jwt ${this.jwt}`
         },
       }),
     ]);
