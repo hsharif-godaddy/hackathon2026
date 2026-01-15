@@ -137,6 +137,7 @@ export default function AppPublish({ location }: { location?: string }) {
   // Check if this is first-time publishing
   const isFirstTimePublishing = !hasBeenPublished(site);
 
+  // Internal deploy function (called after QA gate passes or is skipped)
   const handleDeploy = useCallback(async () => {
     setOpen(false);
 
@@ -315,21 +316,21 @@ export default function AppPublish({ location }: { location?: string }) {
     <>
       <PaywallModal />
       <Popover open={open} onOpenChange={handlePublish}>
-      <PopoverTrigger asChild>
-        <Button
-          id="tour-publish-button"
-          design='primary'
-          size='sm'
-          data-partial='componentAiro'
-          data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
-          disabled={isButtonDisabled}
-          icon={<CloudUploadIcon />}
-          text={isMobile ? undefined : getPublishButtonText()}
-        />
-      </PopoverTrigger>
-      <PopoverContent align='end' className='w-[400px] p-3'>
-        <div className='flex flex-col gap-2'>
-          {/* Collapsible Changes Header */}
+        <PopoverTrigger asChild>
+          <Button
+            id="tour-publish-button"
+            design='primary'
+            size='sm'
+            data-partial='componentAiro'
+            data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
+            disabled={isButtonDisabled}
+            icon={<CloudUploadIcon />}
+            text={isMobile ? undefined : getPublishButtonText()}
+          />
+        </PopoverTrigger>
+        <PopoverContent align='end' className='w-[400px] p-3'>
+          <div className='flex flex-col gap-2'>
+            {/* Collapsible Changes Header */}
             <Collapsible
               id='publish-changes'
               title={changesTitle}
@@ -403,31 +404,31 @@ export default function AppPublish({ location }: { location?: string }) {
               </div>
             </Collapsible>
 
-          {/* Status alert (shows most relevant state) */}
-          {getPublishStatusAlert()}
+            {/* Status alert (shows most relevant state) */}
+            {getPublishStatusAlert()}
 
-          <Separator />
+            <Separator />
 
-          <Button
-            className='w-full'
-            design='primary'
-            size='sm'
-            data-partial='componentAiro'
-            data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
-            disabled={isButtonDisabled || isPublishing || isDeploymentInProgress || isConversationInProgress}
-            onClick={handleDeploy}
-          >
-            {getPublishButtonText()}
-          </Button>
+            <Button
+              className='w-full'
+              design='primary'
+              size='sm'
+              data-partial='componentAiro'
+              data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
+              disabled={isButtonDisabled || isPublishing || isDeploymentInProgress || isConversationInProgress}
+              onClick={handleDeploy}
+            >
+              {getPublishButtonText()}
+            </Button>
 
-          {!isAiroPlusPaywallEnabled && (
-            <text.p emphasis='passive' size={0}>
-              {t('builder_publish_beta_message')}
-            </text.p>
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
-  </>
+            {!isAiroPlusPaywallEnabled && (
+              <text.p emphasis='passive' size={0}>
+                {t('builder_publish_beta_message')}
+              </text.p>
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </>
   )
 }

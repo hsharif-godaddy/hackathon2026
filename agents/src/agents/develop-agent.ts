@@ -168,21 +168,21 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
  */
 function shouldStopAfterSuggestMode(result: unknown): boolean {
   if (!result || typeof result !== 'object') return false
-  
+
   const stepResult = result as any
-  
+
   // The result has a 'steps' array, we need to check the last step
   if (!stepResult.steps || !Array.isArray(stepResult.steps) || stepResult.steps.length === 0) {
     return false
   }
-  
+
   const lastStep = stepResult.steps[stepResult.steps.length - 1]
   if (!lastStep.content || !Array.isArray(lastStep.content)) return false
-  
+
   // Check if any tool call in this step is colorScheme or fontTheme with mode='suggest'
   for (const item of lastStep.content) {
-    if (item.type === 'tool-call' && 
-        (item.toolName === 'colorScheme' || item.toolName === 'fontTheme')) {
+    if (item.type === 'tool-call' &&
+      (item.toolName === 'colorScheme' || item.toolName === 'fontTheme')) {
       // Check if the args have mode: 'suggest'
       const args = item.input as any
       if (args && args.mode === 'suggest') {
@@ -195,7 +195,7 @@ function shouldStopAfterSuggestMode(result: unknown): boolean {
       }
     }
   }
-  
+
   return false
 }
 
