@@ -52,6 +52,12 @@ export interface AiEditContext {
   selector: string
   devContext: DevContext
   screenshot?: string | null
+  // Image replacement specific fields
+  isImageReplacement?: boolean
+  imageInfo?: {
+    type: 'img' | 'background' | 'contains-img' | 'sibling-img'
+    currentUrl: string | null
+  }
 }
 
 export enum ViewMode {

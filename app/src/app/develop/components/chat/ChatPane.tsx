@@ -36,6 +36,7 @@ import {
   useSetBuildErrorContext,
   useSetCurrentAppId,
   useSetInputValue,
+  useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
 import { logAiroHQEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
@@ -283,10 +284,28 @@ export default function ChatPane({
 
   // Handle asset selection from AssetManager
   const handleAssetSelect = useCallback((items: AssetManagerItem[]) => {
+    console.log('🖼️ handleAssetSelect called with items:', items?.length, items)
+
     if (items && items.length > 0) {
+      console.log('🖼️ Setting selected asset:', items[0])
       setSelectedAsset(items[0])
+
+      // If in image replacement mode, suggest a prompt
+      // Get current state directly from store to avoid stale closure issues
+      const currentAiEditContext = useStreamingConversationStore.getState().aiEditContext
+      console.log('🖼️ Current aiEditContext from store:', currentAiEditContext)
+      console.log('🖼️ isImageReplacement:', currentAiEditContext?.isImageReplacement)
+
+      if (currentAiEditContext?.isImageReplacement) {
+        console.log('🖼️ Setting prompt for image replacement')
+        setInputValue('Replace this image with the new one I selected')
+      } else {
+        console.log('🖼️ NOT in image replacement mode, skipping prompt')
+      }
+    } else {
+      console.log('🖼️ No items selected or empty array')
     }
-  }, [])
+  }, [setInputValue])
 
   // Listen for error fix requests from PreviewPaneSimple
   useEffect(() => {
@@ -499,6 +518,7 @@ export default function ChatPane({
         <>
           <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
 
+          {/* AI Edit Context - shows screenshot (works for both Edit with AI and Replace Image) */}
           {safeAiEditContext && (
             <div className="mx-2 rounded-md overflow-hidden bg-white">
               <div className="p-1">
@@ -523,6 +543,7 @@ export default function ChatPane({
             </div>
           )}
 
+          {/* Selected Asset - shows when image is selected from Asset Manager */}
           {selectedAsset && (
             <div className="mx-2 rounded-md overflow-hidden bg-white">
               <div className="p-1">

@@ -436,6 +436,23 @@ function DevelopPageContent() {
           setAiEditContext(event.data.data)
           logger.info('develop-page.ai-edit-requested', { appId })
           break
+        case 'REPLACE_IMAGE':
+          console.log('🖼️ REPLACE_IMAGE message received:', event.data.data)
+          // Set the AI edit context with image replacement info
+          const replaceImageContext = {
+            ...event.data.data,
+            isImageReplacement: true
+          }
+          console.log('🖼️ Setting aiEditContext:', replaceImageContext)
+          setAiEditContext(replaceImageContext)
+          // Open the image manager modal
+          console.log('🖼️ Opening asset manager modal')
+          setIsAssetManagerOpen(true)
+          logger.info('develop-page.image-replace-requested', {
+            appId,
+            imageType: event.data.data?.imageInfo?.type
+          })
+          break
         case 'SCROLL_POSITION_UPDATE':
           // Handle real-time scroll position updates from iframe and store for restoration
           const newScrollPos = {
@@ -569,7 +586,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setBuildErrorContext, setIsSelectMode, sendMessage, setInputValue, handleScreenshotUpload, appId])
+  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setBuildErrorContext, setIsSelectMode, sendMessage, setInputValue, handleScreenshotUpload, setIsAssetManagerOpen, appId])
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {

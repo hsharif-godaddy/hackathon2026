@@ -6,7 +6,8 @@ import {
   Bold,
   Italic,
   ChevronDown,
-  X
+  X,
+  Image
 } from 'lucide-react'
 
 interface SelectedElement {
@@ -282,6 +283,75 @@ export default function ElementEditor({
     return undefined
   }, [])
 
+  // Check if element is an image or has a background image or contains/is near an image
+  const isImageElement = useCallback((element: HTMLElement): { isImage: boolean; imageUrl: string | null; type: 'img' | 'background' | 'contains-img' | 'sibling-img' | null } => {
+    // Check if it's an <img> element
+    if (element.tagName.toLowerCase() === 'img') {
+      const imgElement = element as HTMLImageElement
+      return {
+        isImage: true,
+        imageUrl: imgElement.src || imgElement.currentSrc || null,
+        type: 'img'
+      }
+    }
+
+    // Check for background image on the element itself
+    const computedStyle = window.getComputedStyle(element)
+    const backgroundImage = computedStyle.backgroundImage
+
+    if (backgroundImage && backgroundImage !== 'none') {
+      // Extract URL from background-image: url("...")
+      const urlMatch = backgroundImage.match(/url\(["']?([^"')]+)["']?\)/)
+      if (urlMatch && urlMatch[1]) {
+        return {
+          isImage: true,
+          imageUrl: urlMatch[1],
+          type: 'background'
+        }
+      }
+    }
+
+    // Check if element contains an <img> child (common pattern for image cards/containers)
+    const imgChild = element.querySelector('img') as HTMLImageElement
+    if (imgChild) {
+      return {
+        isImage: true,
+        imageUrl: imgChild.src || imgChild.currentSrc || null,
+        type: 'contains-img'
+      }
+    }
+
+    // Check if element has a sibling <img> (common pattern for overlay divs on top of images)
+    // This handles cases like: <div class="relative"><img /><div class="absolute overlay" /></div>
+    if (element.parentElement) {
+      const siblingImg = element.parentElement.querySelector('img') as HTMLImageElement
+      if (siblingImg) {
+        return {
+          isImage: true,
+          imageUrl: siblingImg.src || siblingImg.currentSrc || null,
+          type: 'sibling-img'
+        }
+      }
+
+      // Check if parent element has a background image (overlay on top of bg-image container)
+      // This handles cases like: <div style="background-image: url(...)"><div class="overlay" /></div>
+      const parentStyle = window.getComputedStyle(element.parentElement)
+      const parentBgImage = parentStyle.backgroundImage
+      if (parentBgImage && parentBgImage !== 'none') {
+        const urlMatch = parentBgImage.match(/url\(["']?([^"')]+)["']?\)/)
+        if (urlMatch && urlMatch[1]) {
+          return {
+            isImage: true,
+            imageUrl: urlMatch[1],
+            type: 'background'
+          }
+        }
+      }
+    }
+
+    return { isImage: false, imageUrl: null, type: null }
+  }, [])
+
   // Capture screenshot of the selected element with background context using html-to-image
   const captureElementScreenshot = useCallback(async (element: HTMLElement): Promise<string | null> => {
     try {
@@ -299,7 +369,7 @@ export default function ElementEditor({
       })
 
       // Load the full capture into an image
-      const img = new Image()
+      const img = document.createElement('img')
       img.src = fullCapture
 
       await new Promise((resolve) => {
@@ -1204,6 +1274,81 @@ export default function ElementEditor({
         >
           {isCapturingScreenshot ? 'Capturing...' : 'Edit with AI'}
         </button>
+
+        {/* Replace Image Button - Show only for image elements or elements with background images */}
+        {selectedElement && (() => {
+          const element = findElement(selectedElement)
+          if (!element) return null
+          const imageInfo = isImageElement(element)
+          return imageInfo.isImage && (
+            <button
+              onClick={async () => {
+                if (selectedElement?.devContext && window.parent !== window && !isCapturingScreenshot) {
+                  setIsCapturingScreenshot(true)
+
+                  const el = findElement(selectedElement)
+                  let screenshot: string | null = null
+                  let preciseSelector = selectedElement.selector
+
+                  if (el) {
+                    screenshot = await captureElementScreenshot(el)
+                    preciseSelector = generatePreciseSelector(el)
+                    console.log('🖼️ Generated precise selector for image:', preciseSelector)
+                  }
+
+                  safePostMessage(window.parent, {
+                    type: 'REPLACE_IMAGE',
+                    data: {
+                      elementInfo: {
+                        ...selectedElement,
+                        preciseSelector
+                      },
+                      selector: preciseSelector,
+                      devContext: selectedElement.devContext,
+                      screenshot,
+                      imageInfo: {
+                        type: imageInfo.type,
+                        currentUrl: imageInfo.imageUrl
+                      }
+                    }
+                  })
+
+                  setHideToolbar(true)
+                }
+              }}
+              disabled={isCapturingScreenshot}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '6px 12px',
+                fontSize: '12px',
+                fontWeight: '500',
+                color: isCapturingScreenshot ? '#9ca3af' : '#8b5cf6',
+                backgroundColor: isCapturingScreenshot ? '#f3f4f6' : '#f5f3ff',
+                border: `1px solid ${isCapturingScreenshot ? '#d1d5db' : '#ddd6fe'}`,
+                borderRadius: '6px',
+                cursor: isCapturingScreenshot ? 'not-allowed' : 'pointer',
+                opacity: isCapturingScreenshot ? 0.6 : 1
+              }}
+              onMouseEnter={(e) => {
+                if (!isCapturingScreenshot) {
+                  e.currentTarget.style.backgroundColor = '#ede9fe'
+                  e.currentTarget.style.borderColor = '#c4b5fd'
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isCapturingScreenshot) {
+                  e.currentTarget.style.backgroundColor = '#f5f3ff'
+                  e.currentTarget.style.borderColor = '#ddd6fe'
+                }
+              }}
+            >
+              <Image style={{ width: '14px', height: '14px' }} />
+              {isCapturingScreenshot ? 'Capturing...' : 'Replace Image'}
+            </button>
+          )
+        })()}
 
         {/* Divider */}
         <div style={{ width: '1px', height: '24px', backgroundColor: '#d1d5db' }}></div>
