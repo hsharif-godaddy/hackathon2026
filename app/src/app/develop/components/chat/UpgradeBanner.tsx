@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
@@ -11,36 +11,40 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 
 const STORAGE_KEY = 'airoplus_upgrade_banner_dismissed'
 
+// Use local date (not UTC) so "today" matches user's timezone
+// 'en-CA' locale reliably returns YYYY-MM-DD format which is sortable and unambiguous
+function getLocalDateString(): string {
+  return new Date().toLocaleDateString('en-CA')
+}
+
 function isDismissedToday(): boolean {
-  // Return true during SSR to prevent hydration mismatch (don't render until client-side check)
-  if (typeof window === 'undefined') return true
-  const today = new Date().toISOString().split('T')[0]
-  return localStorage.getItem(STORAGE_KEY) === today
+  return localStorage.getItem(STORAGE_KEY) === getLocalDateString()
 }
 
 function markDismissedToday(): void {
-  if (typeof window === 'undefined') return
-  const today = new Date().toISOString().split('T')[0]
-  localStorage.setItem(STORAGE_KEY, today)
+  localStorage.setItem(STORAGE_KEY, getLocalDateString())
 }
 
-interface AiroPlusUpgradeBannerProps {
+interface UpgradeBannerProps {
   appId: string | null
 }
 
-export default function AiroPlusUpgradeBanner({ appId }: AiroPlusUpgradeBannerProps) {
+export default function UpgradeBanner({ appId }: UpgradeBannerProps) {
   const t = useTranslations()
-  const [isDismissed, setIsDismissed] = useState(isDismissedToday)
+  const [isDismissed, setIsDismissed] = useState(true)
+  const [mounted, setMounted] = useState(false)
   const { data: featureEnabled, isLoading: isFeatureLoading } = useSwitchboard('appbuilder-airoplus-upgrade-banner')
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
-  const { showPaywall } = usePaywallEligibility(appId || undefined)
+  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId || undefined)
 
-  // Don't render while feature flag is loading to prevent flash
-  if (isFeatureLoading) return null
+  // Check localStorage only after client-side mount to prevent hydration mismatch
+  useEffect(() => {
+    setIsDismissed(isDismissedToday())
+    setMounted(true)
+  }, [])
 
-  // Only show if feature flag is enabled and user doesn't have Airo Plus
-  // Note: Priority/exclusion with other banners is handled by ChatBanners parent component
-  if (!featureEnabled || isDismissed || !showPaywall) return null
+  // Wait for loading, then show only if feature enabled and user doesn't have Airo Plus
+  if (!mounted || isFeatureLoading || isPaywallLoading || !featureEnabled || isDismissed || !showPaywall) return null
 
   const handleClose = () => {
     markDismissedToday()

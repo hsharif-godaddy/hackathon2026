@@ -6,6 +6,7 @@ import { useIntl } from 'react-intl';
 import Alert from '@ux/alert';
 import Button from '@ux/button';
 import Collapsible from '@ux/collapsible';
+import CloudUploadIcon from '@ux/icon/cloud-upload';
 import Tag from '@ux/tag';
 import text from '@ux/text';
 
@@ -13,6 +14,7 @@ import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishApp } from '@/hooks/usePublishApp';
+import { useResponsive } from '@/hooks/useResponsive';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
@@ -28,6 +30,7 @@ import { hasBeenPublished } from '@/utils/site';
 export default function AppPublish({ location }: { location?: string }) {
   const intl = useIntl();
   const t = useTranslations();
+  const { isMobile } = useResponsive();
   const [open, setOpen] = useState(false);
   const [entitlementsPollingFailed, setEntitlementsPollingFailed] = useState(false);
   const pathname = usePathname();
@@ -320,7 +323,8 @@ export default function AppPublish({ location }: { location?: string }) {
           data-partial='componentAiro'
           data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
           disabled={isButtonDisabled}
-          text={getPublishButtonText()}
+          icon={<CloudUploadIcon />}
+          text={isMobile ? undefined : getPublishButtonText()}
         />
       </PopoverTrigger>
       <PopoverContent align='end' className='w-[400px] p-3'>

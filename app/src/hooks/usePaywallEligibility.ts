@@ -1,13 +1,14 @@
-import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
+import { shipAnalyticsLog } from '@/lib/logging';
 import { ClientPaywallProvider } from '@/lib/paywall/client-provider';
 import { checkPaywallEligibility } from '@/lib/paywall/core';
-import { shipAnalyticsLog } from '@/lib/logging';
 import { useUpdateEntitlement } from './useUpdateEntitlement';
 
 interface PaywallEligibilityResult {
   showPaywall: boolean;
+  isLoading: boolean;
   isError: boolean;
   error: Error | null;
 }
@@ -16,6 +17,7 @@ export const usePaywallEligibility = (appId: string | undefined): PaywallEligibi
   // Use consolidated paywall check
   const {
     data: paywallResult,
+    isLoading,
     isError,
     error,
   } = useQuery({
@@ -104,6 +106,7 @@ export const usePaywallEligibility = (appId: string | undefined): PaywallEligibi
 
   return {
     showPaywall,
+    isLoading,
     isError: hasError,
     error: finalError as Error | null,
   };

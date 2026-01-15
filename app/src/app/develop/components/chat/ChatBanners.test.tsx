@@ -13,8 +13,8 @@ vi.mock('@/hooks/useDailyUsage', () => ({
 }));
 
 // Mock child components to isolate ChatBanners logic
-vi.mock('./AiroPlusUpgradeBanner', () => ({
-  default: () => <div data-testid="airoplus-upgrade-banner">AiroPlusUpgradeBanner</div>,
+vi.mock('./UpgradeBanner', () => ({
+  default: () => <div data-testid="upgrade-banner">UpgradeBanner</div>,
 }));
 
 vi.mock('./UsageWarningBanner', () => ({
@@ -35,18 +35,18 @@ describe('ChatBanners', function chatBannersTests() {
 
       await waitFor(function waitForBanner() {
         expect(container.querySelector('[data-testid="usage-warning-banner"]')).toBeInTheDocument();
-        expect(container.querySelector('[data-testid="airoplus-upgrade-banner"]')).not.toBeInTheDocument();
+        expect(container.querySelector('[data-testid="upgrade-banner"]')).not.toBeInTheDocument();
       });
     });
 
-    it('should show AiroPlusUpgradeBanner when usage warning is not active', async function showUpgradeBanner() {
+    it('should show UpgradeBanner when usage warning is not active', async function showUpgradeBanner() {
       const { useDailyUsage } = await import('@/hooks/useDailyUsage');
       vi.mocked(useDailyUsage).mockReturnValue({ isWarningBannerActive: false } as ReturnType<typeof useDailyUsage>);
 
       const { container } = renderWithProviders(<ChatBanners appId="test-app" />);
 
       await waitFor(function waitForBanner() {
-        expect(container.querySelector('[data-testid="airoplus-upgrade-banner"]')).toBeInTheDocument();
+        expect(container.querySelector('[data-testid="upgrade-banner"]')).toBeInTheDocument();
         expect(container.querySelector('[data-testid="usage-warning-banner"]')).not.toBeInTheDocument();
       });
     });

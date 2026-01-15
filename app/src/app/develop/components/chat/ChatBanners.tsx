@@ -1,7 +1,7 @@
 'use client'
 
 import { useDailyUsage } from '@/hooks/useDailyUsage'
-import AiroPlusUpgradeBanner from './AiroPlusUpgradeBanner'
+import UpgradeBanner from './UpgradeBanner'
 import UsageWarningBanner from './UsageWarningBanner'
 
 interface ChatBannersProps {
@@ -12,7 +12,7 @@ interface ChatBannersProps {
  * Container component that manages which chat banner to display.
  * Only one banner shows at a time, with priority order:
  * 1. UsageWarningBanner (usage >= 90%)
- * 2. AiroPlusUpgradeBanner (no Airo Plus subscription)
+ * 2. UpgradeBanner (no Airo Plus subscription)
  */
 export default function ChatBanners({ appId }: ChatBannersProps) {
   const { isWarningBannerActive } = useDailyUsage({ appId, enabled: !!appId })
@@ -22,5 +22,5 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
     return <UsageWarningBanner appId={appId} />
   }
 
-  return <AiroPlusUpgradeBanner appId={appId} />
+  return <UpgradeBanner appId={appId} />
 }

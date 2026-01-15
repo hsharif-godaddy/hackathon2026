@@ -7,7 +7,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { renderWithProviders } from '@/tests/test-utils';
-import AiroPlusUpgradeBanner from './AiroPlusUpgradeBanner';
+import UpgradeBanner from './UpgradeBanner';
 
 // Custom render with i18n messages for testing link interactions
 function renderWithMessages(ui: React.ReactElement) {
@@ -33,7 +33,7 @@ function renderWithMessages(ui: React.ReactElement) {
 const mockOpenUpgradeModal = vi.fn();
 
 vi.mock('@/hooks/usePaywallEligibility', () => ({
-  usePaywallEligibility: vi.fn(() => ({ showPaywall: true, isError: false, error: null })),
+  usePaywallEligibility: vi.fn(() => ({ showPaywall: true, isLoading: false, isError: false, error: null })),
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
@@ -48,7 +48,7 @@ vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
 
-describe('AiroPlusUpgradeBanner', function airoPlusUpgradeBannerTests() {
+describe('UpgradeBanner', function upgradeBannerTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
     localStorage.clear();
@@ -59,10 +59,10 @@ describe('AiroPlusUpgradeBanner', function airoPlusUpgradeBannerTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isError: false, error: null });
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
 
-      const { container } = renderWithProviders(<AiroPlusUpgradeBanner appId="test-app" />);
+      const { container } = renderWithProviders(<UpgradeBanner appId="test-app" />);
 
       await waitFor(function waitForBanner() {
         expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).toBeInTheDocument();
@@ -71,9 +71,9 @@ describe('AiroPlusUpgradeBanner', function airoPlusUpgradeBannerTests() {
 
     it('should not render when user has Airo Plus', async function noRenderWithAiroPlus() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isError: false, error: null });
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
 
-      const { container } = renderWithProviders(<AiroPlusUpgradeBanner appId="test-app" />);
+      const { container } = renderWithProviders(<UpgradeBanner appId="test-app" />);
 
       expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).not.toBeInTheDocument();
     });
@@ -82,10 +82,10 @@ describe('AiroPlusUpgradeBanner', function airoPlusUpgradeBannerTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isError: false, error: null });
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false } as ReturnType<typeof useSwitchboard>);
 
-      const { container } = renderWithProviders(<AiroPlusUpgradeBanner appId="test-app" />);
+      const { container } = renderWithProviders(<UpgradeBanner appId="test-app" />);
 
       expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).not.toBeInTheDocument();
     });
@@ -94,14 +94,14 @@ describe('AiroPlusUpgradeBanner', function airoPlusUpgradeBannerTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isError: false, error: null });
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
 
-      // Mark as dismissed today
-      const today = new Date().toISOString().split('T')[0];
+      // Mark as dismissed today (using same format as component: local date in YYYY-MM-DD)
+      const today = new Date().toLocaleDateString('en-CA');
       localStorage.setItem('airoplus_upgrade_banner_dismissed', today);
 
-      const { container } = renderWithProviders(<AiroPlusUpgradeBanner appId="test-app" />);
+      const { container } = renderWithProviders(<UpgradeBanner appId="test-app" />);
 
       expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).not.toBeInTheDocument();
     });
@@ -110,10 +110,10 @@ describe('AiroPlusUpgradeBanner', function airoPlusUpgradeBannerTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isError: false, error: null });
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
 
-      renderWithProviders(<AiroPlusUpgradeBanner appId="test-app" />);
+      renderWithProviders(<UpgradeBanner appId="test-app" />);
 
       await waitFor(function waitForMessage() {
         // FormattedMessage renders the message ID when no translations are provided
@@ -127,10 +127,10 @@ describe('AiroPlusUpgradeBanner', function airoPlusUpgradeBannerTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isError: false, error: null });
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
 
-      const { user, container } = renderWithProviders(<AiroPlusUpgradeBanner appId="test-app" />);
+      const { user, container } = renderWithProviders(<UpgradeBanner appId="test-app" />);
 
       await waitFor(function waitForBanner() {
         expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).toBeInTheDocument();
@@ -148,10 +148,10 @@ describe('AiroPlusUpgradeBanner', function airoPlusUpgradeBannerTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isError: false, error: null });
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
 
-      const { user } = renderWithMessages(<AiroPlusUpgradeBanner appId="test-app" />);
+      const { user } = renderWithMessages(<UpgradeBanner appId="test-app" />);
 
       await waitFor(function waitForLink() {
         expect(screen.getByRole('link')).toBeInTheDocument();

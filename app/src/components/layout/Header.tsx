@@ -1,26 +1,27 @@
 'use client';
 
-import clsx from 'clsx'
-import Link from 'next/link'
+import clsx from 'clsx';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import Box from '@ux/box'
+import Box from '@ux/box';
 import Tag from '@ux/tag';
 
-import { UserMenu } from '@/components/auth'
-import AppPublish from '@/components/layout/AppPublish'
-import AppSelector from '@/components/layout/AppSelector'
-import InviteFriends from '@/components/layout/InviteFriends'
-import { useAuthContext } from '@/components/providers/AuthProvider'
-import { useResponsive } from '@/hooks/useResponsive'
+import { UserMenu } from '@/components/auth';
+import AppPublish from '@/components/layout/AppPublish';
+import AppSelector from '@/components/layout/AppSelector';
+import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
+import InviteFriends from '@/components/layout/InviteFriends';
+import { useAuthContext } from '@/components/providers/AuthProvider';
+import { useResponsive } from '@/hooks/useResponsive';
 import { useTranslations } from '@/hooks/useTranslations';
-import { generateClickEID } from '@/utils/instrumentation'
+import { generateClickEID } from '@/utils/instrumentation';
 import { AiroLogo } from './AiroLogo';
-import { HeaderProps } from './types'
+import { HeaderProps } from './types';
 
 export default function Header({ actions, onShowMockLogin, location = 'unknown' }: HeaderProps) {
   const t = useTranslations();
   const { isAuthenticated, isAuthDisabled, isLoading } = useAuthContext();
-  const { isMobile } = useResponsive()
+  const { isMobile } = useResponsive();
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop');
 
@@ -60,6 +61,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
               <>
                 <div className="h-3 w-px bg-ai-dark self-center" />
                 <AppSelector location={location} />
+                <HeaderUpgradeButton location={location} />
                 <AppPublish location={location} />
               </>
             )}
