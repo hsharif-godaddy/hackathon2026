@@ -5,6 +5,7 @@
  * for the gateway, even if they haven't expired yet.
  */
 
+import { getAuthTokenFromCookie } from '@/lib/auth/cookie-utils';
 import { logger } from '@/lib/request-context';
 import { decodeJWT } from '@/lib/utils/jwt-utils';
 
@@ -97,20 +98,6 @@ export async function triggerTokenRefresh(): Promise<void> {
  * Check token and refresh if needed (for use in API calls)
  */
 export async function ensureFreshToken(): Promise<boolean> {
-  // Get current token from cookie
-  const getAuthTokenFromCookie = (): string | null => {
-    if (typeof document === 'undefined') return null;
-    
-    const cookies = document.cookie.split(';');
-    for (const cookie of cookies) {
-      const [name, value] = cookie.trim().split('=');
-      if (name === 'auth_idp') {
-        return decodeURIComponent(value);
-      }
-    }
-    return null;
-  };
-  
   const token = getAuthTokenFromCookie();
   if (!token) {
     logger.warn('auth.token-refresh.no-token', 'No token found, need to login');
