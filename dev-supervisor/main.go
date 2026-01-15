@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -41,11 +42,22 @@ type Config struct {
 	ProxyKeyPath           string // Path to TLS private key
 
 	// Static serving configuration
-	ProxyStaticRoot    string // Root directory for static files (required if ProxyServeStatic=true)
-	ProxyServeStatic   bool   // Enable static file serving (explicit, default: false)
-	ProxySPAMode       bool   // Enable SPA fallback (default: true)
-	ProxyAPIPrefix     string // API route prefix (default: /api)
-	ProxyRoutingConfig string // Optional routing config file path
+	ProxyStaticRoot    string   // Root directory for static files (required if ProxyServeStatic=true)
+	ProxyServeStatic   bool     // Enable static file serving (explicit, default: false)
+	ProxySPAMode       bool     // Enable SPA fallback (default: true)
+	ProxyAPIPrefix     string   // API route prefix (default: /api)
+	ProxyRoutingConfig string   // Optional routing config file path
+	AllowedOrigins     []string // CORS allowed origins (comma-separated in env)
+
+	// JWT authentication configuration
+	// Auth failure handling uses hybrid mode: redirects browsers, returns 401 for APIs
+	JWTEnabled        bool     // Enable JWT authentication (default: false)
+	JWKSUrl           string   // JWKS endpoint URL
+	JWKSSkipTLSVerify bool     // Skip TLS certificate verification for JWKS endpoint (local dev only)
+	JWTRedirectURL    string   // Redirect URL on auth failure (supports {url} placeholder)
+	JWTBuilderBaseURL string   // Builder app base URL for smart redirects (e.g., https://airo-builder.test-godaddy.com)
+	SiteID            string   // Site ID for smart redirects (from SITE_ID env var)
+	JWTExcludedPaths  []string // Paths to exclude from JWT validation
 }
 
 // configureSchedulerDefaults re-enables Go 1.25's automatic container-aware scheduler tuning.
@@ -307,6 +319,16 @@ func (s *Server) startHTTPProxyIfEnabled() error {
 		SPAMode:             s.config.ProxySPAMode,
 		APIPrefix:           s.config.ProxyAPIPrefix,
 		ConfigPath:          s.config.ProxyRoutingConfig,
+		AllowedOrigins:      s.config.AllowedOrigins,
+
+		// JWT authentication configuration (hybrid mode: redirects browsers, 401 for APIs)
+		JWTEnabled:        s.config.JWTEnabled,
+		JWKSUrl:           s.config.JWKSUrl,
+		JWKSSkipTLSVerify: s.config.JWKSSkipTLSVerify,
+		JWTRedirectURL:    s.config.JWTRedirectURL,
+		JWTBuilderBaseURL: s.config.JWTBuilderBaseURL,
+		SiteID:            s.config.SiteID,
+		JWTExcludedPaths:  s.config.JWTExcludedPaths,
 	}
 	s.httpProxy = NewHTTPProxy(proxyConfig)
 	if err := s.httpProxy.Start(); err != nil {
@@ -724,6 +746,45 @@ func parseFlags() *Config {
 	config.ProxySPAMode = getEnvBoolWithDefault("DEV_SUPERVISOR_SPA_MODE", true)
 	config.ProxyAPIPrefix = getEnvStringWithDefault("DEV_SUPERVISOR_API_PREFIX", "/api")
 	config.ProxyRoutingConfig = getEnvStringWithDefault("DEV_SUPERVISOR_ROUTING_CONFIG", "")
+
+	// Parse ALLOWED_ORIGINS (comma-separated list)
+	allowedOriginsStr := os.Getenv("ALLOWED_ORIGINS")
+	if allowedOriginsStr != "" {
+		config.AllowedOrigins = strings.Split(allowedOriginsStr, ",")
+		// Trim whitespace from each origin
+		for i := range config.AllowedOrigins {
+			config.AllowedOrigins[i] = strings.TrimSpace(config.AllowedOrigins[i])
+		}
+	}
+
+	// JWT authentication configuration from environment variables
+	config.JWTEnabled = getEnvBoolWithDefault("DEV_SUPERVISOR_ENABLE_JWT_AUTH", false)
+	config.JWKSUrl = getEnvStringWithDefault("DEV_SUPERVISOR_JWKS_URL", "")
+	config.JWKSSkipTLSVerify = getEnvBoolWithDefault("DEV_SUPERVISOR_JWKS_SKIP_TLS_VERIFY", false)
+	config.JWTRedirectURL = getEnvStringWithDefault("DEV_SUPERVISOR_JWT_REDIRECT_URL", "")
+	config.JWTBuilderBaseURL = getEnvStringWithDefault("DEV_SUPERVISOR_JWT_BUILDER_BASE_URL", "")
+
+	// SITE_ID is required (no default) - must be set by docker-compose or production deployment
+	config.SiteID = os.Getenv("SITE_ID")
+
+	// Parse excluded paths (comma-separated)
+	excludedPathsStr := getEnvStringWithDefault("DEV_SUPERVISOR_JWT_EXCLUDED_PATHS", "/api/health")
+	if excludedPathsStr != "" {
+		config.JWTExcludedPaths = strings.Split(excludedPathsStr, ",")
+		// Trim whitespace from each path
+		for i := range config.JWTExcludedPaths {
+			config.JWTExcludedPaths[i] = strings.TrimSpace(config.JWTExcludedPaths[i])
+		}
+	}
+
+	// Add /airo/health to excluded paths when proxy mode is enabled
+	// This endpoint is used for deployment health checks and must be unauthenticated
+	if config.ProxyEnabled {
+		// Check if /airo/health is already excluded
+		if !slices.Contains(config.JWTExcludedPaths, "/airo/health") {
+			config.JWTExcludedPaths = append(config.JWTExcludedPaths, "/airo/health")
+		}
+	}
 
 	return config
 }

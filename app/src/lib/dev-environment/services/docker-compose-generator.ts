@@ -23,6 +23,7 @@ export interface ComposeServiceConfig {
 	gid: number;
 	useTcp: boolean;
 	socketPath: string;
+	enableJwtAuth?: boolean; // Enable JWT authentication in dev-supervisor
 }
 
 export interface DatabaseConfig {
@@ -104,6 +105,51 @@ export class DockerComposeGenerator {
 		env.DEV_SUPERVISOR_PROXY_MAX_RETRIES = "10";
 		env.DEV_SUPERVISOR_PROXY_INITIAL_BACKOFF_MS = "200";
 		env.DEV_SUPERVISOR_PROXY_MAX_BACKOFF_MS = "5000";
+
+		// JWT Authentication configuration (if enabled)
+		if (config.enableJwtAuth) {
+			env.DEV_SUPERVISOR_ENABLE_JWT_AUTH = "true";
+
+			// Builder JWKS Configuration
+			// Dev-supervisor validates site-scoped JWTs issued by the builder
+			// using the builder's public keys from /.well-known/jwks.json
+			const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://airo-builder.test-godaddy.com';
+			env.DEV_SUPERVISOR_JWKS_URL = `${appUrl}/.well-known/jwks.json`;
+
+			// Skip TLS verification for local development with self-signed certificates
+			// Only enable for localhost or local.gasket.dev-godaddy.com URLs
+			if (appUrl.includes('localhost') || appUrl.includes('local.gasket.dev-godaddy.com')) {
+				env.DEV_SUPERVISOR_JWKS_SKIP_TLS_VERIFY = "true";
+			}
+
+			// JWT claims validation
+			env.DEV_SUPERVISOR_JWT_ISSUER = 'airo-app';        // Must match builder's issuer
+			env.DEV_SUPERVISOR_JWT_AUDIENCE = 'agents-service'; // Must match builder's audience
+
+			// GoDaddy SSO Configuration for smart redirects
+			// Extract SSO host from login URL (e.g., "sso.dev-godaddy.com")
+			const ssoLoginUrl = process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
+
+			// Smart redirect configuration:
+			// When users access preview apps directly (not via builder iframe), redirect them
+			// to the builder with the specific app open instead of just the homepage.
+			// Works for both:
+			// - localhost:5001 (local: UUID format like 3d3bdcfd-a490-4475-a1a8-11c1a84e16d1)
+			// - 41gb5nrnyl.c4.test-airoapp.ai (production: short format like 41gb5nrnyl)
+			// Redirects to: https://airo-builder.{env}-godaddy.com/develop/{siteId}?siteId={siteId}
+			env.DEV_SUPERVISOR_JWT_REDIRECT_URL = `${ssoLoginUrl}?app=airo-builder&redirect={url}`;
+			env.DEV_SUPERVISOR_JWT_BUILDER_BASE_URL = appUrl; // Builder base URL for smart redirects
+			env.DEV_SUPERVISOR_JWT_EXCLUDED_PATHS = "/api/health";
+
+			// Auth failure handling uses hybrid mode (hardcoded in dev-supervisor):
+			// - Browser requests (Accept: text/html): Redirect to SSO login page
+			// - API/JSON requests: Return 401 Unauthorized with JSON error
+		}
+
+		// SITE_ID is required by dev-supervisor regardless of JWT auth status
+		// Used for: logging context, X-SITE-UID header, SMTP proxy, and JWT smart redirects
+		// In production, this is set by the deployment system. For local docker-compose, we set it explicitly.
+		env.SITE_ID = config.appId;
 
 		return env;
 	}
@@ -192,6 +238,22 @@ export class DockerComposeGenerator {
 			? '    ports:\n' + ports.map(port => `      - "${port}"`).join('\n') + '\n'
 			: '';
 
+		// Build extra_hosts for JWT auth (allows container to reach builder's JWKS endpoint)
+		let extraHostsLines = '';
+		if (config.enableJwtAuth) {
+			const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://airo-builder.test-godaddy.com';
+			const extraHosts = ['host.docker.internal:host-gateway'];
+
+			// For local development, map builder hostname to host gateway
+			// This allows containers to reach https://local.gasket.dev-godaddy.com:8443/.well-known/jwks.json
+			// with proper TLS certificate validation
+			if (appUrl.includes('local.gasket.dev-godaddy.com')) {
+				extraHosts.push('local.gasket.dev-godaddy.com:host-gateway');
+			}
+
+			extraHostsLines = '    extra_hosts:\n' + extraHosts.map(host => `      - "${host}"`).join('\n') + '\n';
+		}
+
 		// Build the compose file with single app service (HTTP proxy in dev-supervisor)
 		// Uses pre-built shared template image (aab-template-v8:latest) for all apps
 		// This eliminates per-app build time, reducing app creation from ~72s to <5s
@@ -201,7 +263,7 @@ services:
   app:
     image: ${config.imageName}
     restart: unless-stopped
-${portLines}    environment:
+${portLines}${extraHostsLines}    environment:
 ${envLines}
     volumes:
 ${volumeLines}

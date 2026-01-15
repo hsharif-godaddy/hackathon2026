@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -100,11 +102,22 @@ type HTTPProxyConfig struct {
 	MaxBackoff     time.Duration // Maximum backoff duration (default: 2s)
 
 	// Static serving configuration
-	StaticRoot          string // Root directory for static files (required if EnableStaticServing=true)
-	EnableStaticServing bool   // Enable static file serving (explicit, default: false)
-	SPAMode             bool   // Enable SPA fallback (default: true when static serving enabled)
-	APIPrefix           string // API route prefix (default: "/api")
-	ConfigPath          string // Optional path to routing config file
+	StaticRoot          string   // Root directory for static files (required if EnableStaticServing=true)
+	EnableStaticServing bool     // Enable static file serving (explicit, default: false)
+	SPAMode             bool     // Enable SPA fallback (default: true when static serving enabled)
+	APIPrefix           string   // API route prefix (default: "/api")
+	ConfigPath          string   // Optional path to routing config file
+	AllowedOrigins      []string // CORS allowed origins (whitelist)
+
+	// JWT authentication configuration
+	// Auth failure handling uses hybrid mode: redirects browsers, returns 401 for APIs
+	JWTEnabled        bool     // Enable JWT authentication (default: false)
+	JWKSUrl           string   // JWKS endpoint URL
+	JWKSSkipTLSVerify bool     // Skip TLS certificate verification (local dev only)
+	JWTRedirectURL    string   // Redirect URL on auth failure (supports {url} placeholder)
+	JWTBuilderBaseURL string   // Builder app base URL for smart redirects
+	SiteID            string   // Site ID for smart redirects (from SITE_ID env var)
+	JWTExcludedPaths  []string // Paths to exclude from JWT validation
 }
 
 /**
@@ -137,6 +150,14 @@ type HTTPProxyStatus struct {
 	ListenAddr string `json:"listen_addr,omitempty"`
 	TargetURL  string `json:"target_url,omitempty"`
 	Uptime     string `json:"uptime,omitempty"`
+}
+
+/**
+ * ProxyHealthResponse represents the health check response
+ */
+type ProxyHealthResponse struct {
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
 }
 
 /**
@@ -189,19 +210,35 @@ type RequestRouter struct {
 	spaFallback      string
 	apiPrefix        string
 	isProductionMode bool
+	allowedOrigins   []string
 }
 
 func (rr *RequestRouter) writeStaticOptionsResponse(w http.ResponseWriter, r *http.Request) {
-	// Dev-supervisor only listens on the internal loopback interface and sits behind
-	// a trusted proxy in production, so we simply echo the Origin when provided.
 	origin := r.Header.Get("Origin")
-	if origin == "" {
-		origin = "*"
-	} else {
-		w.Header().Add("Vary", "Origin")
+
+	// Validate origin against whitelist
+	if !isOriginAllowed(origin, rr.allowedOrigins) {
+		// Origin not in whitelist - return without CORS headers
+		slog.Debug("cors.static.origin.rejected", "origin", origin)
+		w.WriteHeader(http.StatusForbidden)
+		return
 	}
 
-	w.Header().Set("Access-Control-Allow-Origin", origin)
+	// Set CORS headers
+	if len(rr.allowedOrigins) > 0 {
+		// Whitelist mode - echo the validated origin
+		w.Header().Add("Vary", "Origin")
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	} else {
+		// Permissive mode - use wildcard or echo origin
+		if origin == "" {
+			origin = "*"
+		} else {
+			w.Header().Add("Vary", "Origin")
+		}
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	}
+
 	w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
 	if reqHeaders := r.Header.Get("Access-Control-Request-Headers"); reqHeaders != "" {
 		w.Header().Set("Access-Control-Allow-Headers", reqHeaders)
@@ -307,9 +344,7 @@ func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				// Copy headers from recorder to real response
-				for k, v := range recorder.Header() {
-					w.Header()[k] = v
-				}
+				maps.Copy(w.Header(), recorder.Header())
 
 				// If serving HTML (e.g., index.html from a directory request like /),
 				// override with strict no-cache headers to prevent stale app shell.
@@ -754,6 +789,14 @@ func (p *HTTPProxy) Start() error {
 		// FlushInterval enables streaming responses and is required for WebSockets
 		// and Server-Sent Events (SSE). Without this, responses are buffered.
 		FlushInterval: -1, // Flush immediately (required for WebSockets)
+		// ModifyResponse sets CORS headers on all successful responses
+		// This enables cross-origin requests from the builder app to preview apps
+		ModifyResponse: func(resp *http.Response) error {
+			// Set CORS headers for cross-origin requests
+			origin := resp.Request.Header.Get("Origin")
+			setCORSHeadersOnHeader(resp.Header, origin, p.config.AllowedOrigins)
+			return nil
+		},
 	}
 
 	// Custom error handler
@@ -780,6 +823,9 @@ func (p *HTTPProxy) Start() error {
 				"remote_addr", r.RemoteAddr)
 		}
 
+		// Set CORS headers for cross-origin requests
+		SetCORSHeaders(w, r, p.config.AllowedOrigins)
+
 		// Return appropriate status code with generic error message to avoid information disclosure
 		// Use http.Error to avoid XSS vulnerability from fmt.Fprintf
 		// Detailed error information is already logged above
@@ -797,12 +843,22 @@ func (p *HTTPProxy) Start() error {
 		return fmt.Errorf("invalid static serving configuration: %w", validateErr)
 	}
 
+	// Create HTTP server mux
+	mux := http.NewServeMux()
+
+	// Add health check endpoint (unauthenticated, always available)
+	mux.HandleFunc("/airo/health", p.handleHealthCheck)
+
 	// Create request router
 	router := &RequestRouter{
 		proxyHandler:     p.reverseProxy,
 		apiPrefix:        routingConfig.APIPrefix,
 		isProductionMode: p.config.EnableStaticServing,
+		allowedOrigins:   p.config.AllowedOrigins,
 	}
+
+	// Route all other requests to the router
+	mux.Handle("/", router)
 
 	// Configure static serving if enabled
 	if p.config.EnableStaticServing {
@@ -819,10 +875,51 @@ func (p *HTTPProxy) Start() error {
 		}
 	}
 
-	// Wrap router with logging middleware
-	handler := loggingMiddleware(router)
+	// Build middleware chain: logging -> JWT -> mux
+	handler := http.Handler(mux)
 
-	// Create HTTP server with router (instead of reverse proxy directly)
+	// Add JWT middleware if enabled
+	if p.config.JWTEnabled {
+		if p.config.JWKSUrl == "" {
+			return fmt.Errorf("JWT authentication enabled but JWKS_URL not configured")
+		}
+		if p.config.SiteID == "" {
+			return fmt.Errorf("JWT authentication enabled but SITE_ID not configured")
+		}
+		if p.config.JWTBuilderBaseURL == "" {
+			return fmt.Errorf("JWT authentication enabled but DEV_SUPERVISOR_JWT_BUILDER_BASE_URL not configured")
+		}
+
+		// Create JWT validator
+		validator := NewJWTValidator(JWTValidatorConfig{
+			JWKSUrl:       p.config.JWKSUrl,
+			SkipTLSVerify: p.config.JWKSSkipTLSVerify,
+		})
+
+		// Create JWT middleware (uses hybrid mode: redirects browsers, 401 for APIs)
+		jwtMiddleware := NewJWTMiddleware(JWTMiddlewareConfig{
+			Enabled:        true,
+			Validator:      validator,
+			RedirectURL:    p.config.JWTRedirectURL,
+			BuilderBaseURL: p.config.JWTBuilderBaseURL,
+			SiteID:         p.config.SiteID,
+			ExcludedPaths:  p.config.JWTExcludedPaths,
+			APIPrefix:      routingConfig.APIPrefix,
+			AllowedOrigins: p.config.AllowedOrigins,
+		})
+
+		// Wrap handler with JWT middleware
+		handler = jwtMiddleware.Wrap(handler)
+
+		slog.Info("JWT authentication enabled (hybrid mode)",
+			"jwksURL", p.config.JWKSUrl,
+			"excludedPaths", p.config.JWTExcludedPaths)
+	}
+
+	// Wrap with logging middleware (outermost layer)
+	handler = loggingMiddleware(handler)
+
+	// Create HTTP server with middleware-wrapped handler
 	p.server = &http.Server{
 		Handler:     handler,
 		TLSConfig:   tlsConfig,
@@ -1191,4 +1288,112 @@ func (p *HTTPProxy) loadTLSConfig() (*tls.Config, error) {
 		"min_tls_version", "1.2")
 
 	return tlsConfig, nil
+}
+
+/**
+ * handleHealthCheck handles health check requests for the proxy
+ * Performs a TCP dial to the target to verify it's reachable
+ *
+ * @param w - Response writer
+ * @param r - HTTP request
+ */
+func (p *HTTPProxy) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("proxy.health.check", "remote_addr", r.RemoteAddr)
+
+	// Set content type
+	w.Header().Set("Content-Type", "application/json")
+
+	// Check if proxy is enabled (shouldn't happen as handler is only registered when enabled)
+	if !p.config.Enabled {
+		resp := ProxyHealthResponse{
+			Status: "unhealthy",
+			Reason: "proxy not enabled",
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			slog.Error("proxy.health.encode_error", "error", err)
+		}
+		return
+	}
+
+	// Perform HTTP GET to target with timeout
+	targetURL := fmt.Sprintf("http://%s/", net.JoinHostPort(p.config.TargetHost, fmt.Sprintf("%d", p.config.TargetPort)))
+
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			// Don't follow redirects, just accept them as healthy
+			return http.ErrUseLastResponse
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
+	if err != nil {
+		slog.Debug("proxy.health.request_error",
+			"target", targetURL,
+			"error", err.Error())
+
+		resp := ProxyHealthResponse{
+			Status: "unhealthy",
+			Reason: "failed to create request",
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+		if encodeErr := json.NewEncoder(w).Encode(resp); encodeErr != nil {
+			slog.Error("proxy.health.encode_error", "error", encodeErr)
+		}
+		return
+	}
+
+	httpResp, err := client.Do(req)
+	if err != nil {
+		slog.Debug("proxy.health.target_unreachable",
+			"target", targetURL,
+			"error", err.Error())
+
+		resp := ProxyHealthResponse{
+			Status: "unhealthy",
+			Reason: "target not reachable",
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+		if encodeErr := json.NewEncoder(w).Encode(resp); encodeErr != nil {
+			slog.Error("proxy.health.encode_error", "error", encodeErr)
+		}
+		return
+	}
+	defer httpResp.Body.Close()
+
+	// Discard response body
+	if _, discardErr := io.Copy(io.Discard, httpResp.Body); discardErr != nil {
+		slog.Debug("proxy.health.discard_error", "error", discardErr.Error())
+	}
+
+	// Check status code - 2xx and 3xx are healthy
+	if httpResp.StatusCode >= 200 && httpResp.StatusCode < 400 {
+		// Target is healthy
+		resp := ProxyHealthResponse{
+			Status: "healthy",
+		}
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			slog.Error("proxy.health.encode_error", "error", err)
+		}
+		return
+	}
+
+	// Target returned error status
+	slog.Debug("proxy.health.target_error",
+		"target", targetURL,
+		"status", httpResp.StatusCode)
+
+	resp := ProxyHealthResponse{
+		Status: "unhealthy",
+		Reason: fmt.Sprintf("target returned status %d", httpResp.StatusCode),
+	}
+	w.WriteHeader(http.StatusServiceUnavailable)
+	if encodeErr := json.NewEncoder(w).Encode(resp); encodeErr != nil {
+		slog.Error("proxy.health.encode_error", "error", encodeErr)
+	}
 }

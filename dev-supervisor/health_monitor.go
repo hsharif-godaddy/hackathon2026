@@ -81,6 +81,13 @@ const (
 	HealthStatusDisabled  HealthStatus = "disabled"
 )
 
+// Log level constants for health monitor logging
+const (
+	logLevelInfo    = "info"
+	logLevelWarning = "warning"
+	logLevelError   = "error"
+)
+
 type HealthResult struct {
 	Status    HealthStatus  `json:"status"`
 	Message   string        `json:"message"`
@@ -414,9 +421,9 @@ func (hm *HealthMonitor) processHealthCheckResult(success bool, message string, 
 
 	// Log health check result
 	if hm.logMgr != nil {
-		logLevel := "info"
+		logLevel := logLevelInfo
 		if !success {
-			logLevel = "error"
+			logLevel = logLevelError
 		}
 
 		hm.logMgr.AddLog(LogEntry{
@@ -455,7 +462,7 @@ func (hm *HealthMonitor) attemptRestart() {
 			hm.logMgr.AddLog(LogEntry{
 				Timestamp: now,
 				Source:    "health_monitor",
-				Level:     "error",
+				Level:     logLevelError,
 				Message:   fmt.Sprintf("Max restarts (%d) exceeded in window %v, not restarting", hm.restartPolicy.MaxRestarts, hm.restartPolicy.RestartWindow.ToDuration()),
 			})
 		}
@@ -482,7 +489,7 @@ func (hm *HealthMonitor) attemptRestart() {
 		hm.logMgr.AddLog(LogEntry{
 			Timestamp: now,
 			Source:    "health_monitor",
-			Level:     "warning",
+			Level:     logLevelWarning,
 			Message:   fmt.Sprintf("Attempting restart #%d after %v delay due to health check failure", hm.restartCount, delay),
 		})
 	}
@@ -496,7 +503,7 @@ func (hm *HealthMonitor) attemptRestart() {
 			hm.logMgr.AddLog(LogEntry{
 				Timestamp: time.Now(),
 				Source:    "health_monitor",
-				Level:     "error",
+				Level:     logLevelError,
 				Message:   fmt.Sprintf("Restart failed: %v", err),
 			})
 		}

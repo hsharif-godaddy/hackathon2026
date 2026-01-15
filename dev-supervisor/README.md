@@ -459,6 +459,102 @@ SITE_ID="app-456" \
 
 The proxy will intercept all email traffic and inject the configured headers before forwarding to the destination SMTP server.
 
+## JWT Authentication
+
+dev-supervisor includes JWT authentication for securing preview apps. It validates site-scoped JWT tokens issued by the builder app using public keys from a standard RFC 7517 JWKS endpoint.
+
+### Configuration
+
+JWT authentication is configured via environment variables:
+
+| Variable                              | Required | Description                                                                                 |
+| ------------------------------------- | -------- | ------------------------------------------------------------------------------------------- |
+| `DEV_SUPERVISOR_ENABLE_JWT_AUTH`      | No       | Enable JWT authentication (default: `false`)                                                |
+| `DEV_SUPERVISOR_JWKS_URL`             | Yes\*    | JWKS endpoint URL (e.g., `https://local.gasket.dev-godaddy.com:8443/.well-known/jwks.json`) |
+| `DEV_SUPERVISOR_JWT_ISSUER`           | Yes\*    | Expected issuer claim (e.g., `airo-app`)                                                    |
+| `DEV_SUPERVISOR_JWT_AUDIENCE`         | Yes\*    | Expected audience claim (e.g., `agents-service`)                                            |
+| `DEV_SUPERVISOR_JWT_REDIRECT_URL`     | Yes\*    | SSO login redirect URL with `{url}` placeholder                                             |
+| `DEV_SUPERVISOR_JWT_BUILDER_BASE_URL` | Yes\*    | Builder base URL for smart redirects                                                        |
+| `DEV_SUPERVISOR_JWT_EXCLUDED_PATHS`   | No       | Comma-separated paths to exclude from auth (default: `/api/health`)                         |
+| `SITE_ID`                             | Yes\*    | Site/app ID for siteId claim validation                                                     |
+| `ALLOWED_ORIGINS`                     | No       | Comma-separated CORS allowed origins                                                        |
+
+\*Required when JWT auth is enabled
+
+### Features
+
+- **Standard RFC 7517 JWKS**: Fetches public keys from builder's `/.well-known/jwks.json` endpoint
+- **Site-scoped validation**: Verifies JWT `siteId` claim matches container's `SITE_ID`
+- **Hybrid mode**: Browser requests redirect to SSO, API requests return 401 JSON
+- **Smart redirects**: Unauthenticated users redirected to builder with specific app opened
+- **Key caching**: Public keys cached for 5 minutes to reduce JWKS endpoint load
+- **CORS support**: Configurable origin whitelist for cross-domain requests
+
+### JWKS Endpoint Format
+
+The JWKS client expects standard RFC 7517 format:
+
+```json
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "kid": "key-id",
+      "use": "sig",
+      "alg": "RS256",
+      "n": "modulus-base64url",
+      "e": "exponent-base64url"
+    }
+  ]
+}
+```
+
+### Local Development Setup
+
+For local development, set `NEXT_PUBLIC_APP_URL` in your builder app's environment:
+
+```bash
+# app/.env.local.dev
+NEXT_PUBLIC_APP_URL=https://local.gasket.dev-godaddy.com:8443
+```
+
+This configures docker-compose to point dev-supervisor at your local JWKS endpoint instead of production.
+
+### Example Configuration
+
+```bash
+# Enable JWT authentication
+DEV_SUPERVISOR_ENABLE_JWT_AUTH=true
+
+# JWKS endpoint (local development)
+DEV_SUPERVISOR_JWKS_URL=https://local.gasket.dev-godaddy.com:8443/.well-known/jwks.json
+
+# JWT claims validation
+DEV_SUPERVISOR_JWT_ISSUER=airo-app
+DEV_SUPERVISOR_JWT_AUDIENCE=agents-service
+
+# Redirect configuration
+DEV_SUPERVISOR_JWT_REDIRECT_URL=https://sso.dev-godaddy.com/login?app=airo-builder&redirect={url}
+DEV_SUPERVISOR_JWT_BUILDER_BASE_URL=https://local.gasket.dev-godaddy.com:8443
+
+# Excluded paths (no auth required)
+DEV_SUPERVISOR_JWT_EXCLUDED_PATHS=/api/health
+
+# Site ID for validation
+SITE_ID=fc10ea7a-24ce-491e-9134-0604d423e8bc
+
+# CORS allowed origins
+ALLOWED_ORIGINS=https://local.gasket.dev-godaddy.com:8443,https://airo-builder.test-godaddy.com
+```
+
+### Security
+
+- JWT signature validation using RS256 (RSA + SHA-256)
+- Site ID enforcement prevents cross-site token usage
+- Expiry validation ensures tokens are time-bound
+- Generic error messages prevent information disclosure
+- Public key caching with TTL to balance security and performance
+
 ## Contributing
 
 1. Fork the repository

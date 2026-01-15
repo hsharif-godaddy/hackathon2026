@@ -9,6 +9,52 @@ import { logger } from '@/lib/request-context'
 // Enable Immer MapSet plugin for Map support
 enableMapSet()
 
+/**
+ * Get site-scoped JWT token for preview app authentication
+ *
+ * Preview apps run on different domains than the builder app:
+ * - Production: preview.c4.test-airoapp.ai vs airo-builder.test-godaddy.com
+ * - Local: localhost vs local.gasket.dev-godaddy.com
+ *
+ * This function retrieves a site-scoped JWT from the builder that can be used
+ * to authenticate with the preview app. The JWT is scoped to the specific site
+ * to prevent authorization bypass attacks.
+ *
+ * @param siteId - The site ID to generate token for
+ * @returns Site-scoped JWT token or null if unavailable
+ */
+async function getPreviewAppToken(siteId: string): Promise<string | null> {
+  if (typeof window === 'undefined') {
+    return null // Server-side rendering
+  }
+
+  try {
+    const response = await fetch(`/api/auth/token?siteId=${encodeURIComponent(siteId)}`, {
+      method: 'GET',
+      credentials: 'include'
+    })
+
+    if (!response.ok) {
+      logger.warn('server-polling.token-fetch.failed', {
+        message: 'Failed to fetch token from API',
+        status: response.status,
+        siteId
+      })
+      return null
+    }
+
+    const data = await response.json()
+    return data.token || null
+  } catch (error) {
+    logger.debug('server-polling.token-fetch.error', {
+      message: 'Error fetching token from API',
+      error: error instanceof Error ? error.message : String(error),
+      siteId
+    })
+    return null
+  }
+}
+
 export interface ServerState {
   appId: string
   port: number | null
@@ -44,7 +90,7 @@ interface ServerPollingStore {
   _pollServer: (appId: string) => Promise<void>
   _scheduleNextPoll: (appId: string) => void
   _calculateNextInterval: (pollCount: number) => number
-  _checkUrlHealth: (url: string) => Promise<boolean>
+  _checkUrlHealth: (url: string, appId: string) => Promise<boolean>
 }
 
 // Adaptive polling intervals (in ms)
@@ -156,7 +202,7 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         let healthCheckPassed = false
         if (serverData.status === 'running' && serverData.url) {
           logger.debug('server-polling.health-check', { message: 'Performing health check', appId, url: serverData.url })
-          healthCheckPassed = await get()._checkUrlHealth(serverData.url)
+          healthCheckPassed = await get()._checkUrlHealth(serverData.url, appId)
           logger.debug('server-polling.health-check-result', { message: 'Health check result', appId, passed: healthCheckPassed })
         }
 
@@ -254,21 +300,39 @@ export const useServerPollingStore = create<ServerPollingStore>()(
       }
     },
 
-    _checkUrlHealth: async (url: string): Promise<boolean> => {
+    _checkUrlHealth: async (url: string, appId: string): Promise<boolean> => {
       try {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 5000)
 
+        // Cross-domain authentication bootstrap:
+        // Preview apps run on different domains (localhost or preview.c4.test-airoapp.ai)
+        // than builder app (*.dev-godaddy.com), so GoDaddy SSO cookie won't be sent.
+        //
+        // Solution: Send site-scoped JWT via Authorization header on first request.
+        // This allows dev-supervisor JWT middleware to:
+        // 1. Validate the site-scoped JWT from Authorization header
+        // 2. Verify siteId claim matches the container's SITE_ID
+        // 3. Set auth_idp cookie on preview app's domain
+        // 4. Subsequent iframe navigation uses the cookie automatically
+        const token = await getPreviewAppToken(appId)
+
         const response = await fetch(url, {
           signal: controller.signal,
           method: 'HEAD',
-          cache: 'no-store'
+          cache: 'no-store',
+          credentials: 'include', // Include cookies (once set by dev-supervisor)
+          redirect: 'manual', // Don't follow redirects to avoid CORS errors on SSO redirects
+          headers: token ? {
+            'Authorization': `Bearer ${token}`
+          } : {}
         })
 
         clearTimeout(timeoutId)
 
         // Validate response status
-        return response.ok || response.status < 500
+        // Only 2xx is healthy - redirects indicate auth failure, 4xx/5xx are errors
+        return response.ok
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           logger.debug('server-polling.health-check.timeout', { message: 'Health check timed out', url })

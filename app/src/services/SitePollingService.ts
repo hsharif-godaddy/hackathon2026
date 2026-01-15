@@ -76,7 +76,7 @@ export class SitePollingService {
           await this.checkUrlHealth(`${site.agent_url}/health`, 'Agent') : false;
 
         const frontendHealthy = site.preview_url ?
-          await this.checkUrlHealth(`${site.preview_url}`, 'Frontend') : false;
+          await this.checkUrlHealth(`${site.preview_url}/airo/health`, 'Frontend') : false;
 
         // All services must be healthy to proceed
         const allServicesReady = agentHealthy && frontendHealthy;
@@ -339,7 +339,7 @@ export class SitePollingService {
       await this.checkUrlHealth(`${site.agent_url}/health`, 'Agent') : false;
 
     const frontendHealthy = site.preview_url ?
-      await this.checkUrlHealth(`${site.preview_url}`, 'Frontend') : false;
+      await this.checkUrlHealth(`${site.preview_url}/airo/health`, 'Frontend') : false;
 
     const allServicesReady = agentHealthy && frontendHealthy;
 

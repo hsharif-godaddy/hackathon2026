@@ -544,6 +544,10 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 // Helper functions
 
 func (s *Server) sendError(w http.ResponseWriter, statusCode int, errorType, message string) {
+	// Note: CORS headers not set here as the API endpoints are typically accessed
+	// via Unix socket or localhost, not cross-origin. If cross-origin access is needed,
+	// uncomment the following line:
+	// SetCORSHeaders(w, r) // Note: would need to pass r as parameter
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(ErrorResponse{

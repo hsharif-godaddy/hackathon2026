@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { type ComposeServiceConfig,DockerComposeGenerator } from './docker-compose-generator';
 import { DockerComposeManager } from './docker-compose-manager';
 import { SharedMySQLService } from './shared-mysql-service';
-import { devSupervisor } from '../../features';
+import { devSupervisor, auth } from '../../features';
 import { logger } from '../../request-context';
 import { DevDatabase } from '../database/DevDatabase';
 import { getAllocPath,getAppPath, getBasePath } from '../utils/app-paths';
@@ -19,6 +19,14 @@ import { ConfigJsonManager } from '../utils/config-json';
  */
 function shouldUseTcpMode(): boolean {
 	return devSupervisor.shouldUseTcp();
+}
+
+/**
+ * Determine if JWT authentication should be enabled for dev-supervisor
+ * Only enabled when AUTH_TYPE is explicitly set to 'jwt'
+ */
+function shouldEnableJwtAuth(): boolean {
+	return auth.isJWT();
 }
 
 /**
@@ -439,6 +447,7 @@ export class DockerContainerManager {
 				gid,
 				useTcp,
 				socketPath,
+				enableJwtAuth: shouldEnableJwtAuth(),
 			};
 
 			// Generate docker-compose.yml

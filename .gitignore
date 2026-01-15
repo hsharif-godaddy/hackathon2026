@@ -10,6 +10,11 @@ build/
 .docker-cache/
 logs/
 
+# Log files
+agent.log
+app.log
+messages-*
+
 
 # Playwright Test Artifacts
 test-results/
