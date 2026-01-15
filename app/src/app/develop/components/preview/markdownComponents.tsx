@@ -1,4 +1,6 @@
 import type { Components } from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 /**
  * Custom component styles for ReactMarkdown rendering
@@ -17,13 +19,30 @@ export const markdownComponents: Components = {
   ol: ({ ...props }) => <ol className="list-decimal list-inside mb-3 space-y-1" {...props} />,
   li: ({ ...props }) => <li className="ml-4" {...props} />,
   blockquote: ({ ...props }) => <blockquote className="border-l-4 border-intents-ux-boxLowContrast-borderColor pl-4 italic my-3 opacity-80" {...props} />,
-  code: ({ ...props }) => {
-    const isInline = !props.className?.includes('language-');
-    return isInline
-      ? <code className="bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-feedbackCritical-feedbackColor px-1.5 py-0.5 rounded text-sm font-mono" {...props} />
-      : <code className="block bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-color p-4 rounded-lg overflow-x-auto my-3 text-sm font-mono" {...props} />;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  code: (props: any) => {
+    const { inline, className, children } = props;
+    const match = /language-(\w+)/.exec(className || '');
+    return !inline && match ? (
+      <SyntaxHighlighter
+        style={oneDark}
+        language={match[1]}
+        PreTag="div"
+        className="rounded-md my-3"
+      >
+        {String(children).replace(/\n$/, '')}
+      </SyntaxHighlighter>
+    ) : inline ? (
+      <code className="bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-feedbackCritical-feedbackColor px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+        {children}
+      </code>
+    ) : (
+      <code className="block p-4 rounded-lg overflow-x-auto font-mono" style={{ backgroundColor: '#282c34', color: '#abb2bf' }} {...props}>
+        {children}
+      </code>
+    );
   },
-  pre: ({ ...props }) => <pre className="bg-intents-ux-boxHighContrast-backgroundColor rounded-lg overflow-x-auto my-3" {...props} />,
+  pre: ({ children }) => <div>{children}</div>,
   table: ({ ...props }) => <div className="overflow-x-auto my-3"><table className="min-w-full border-collapse border border-intents-ux-boxLowContrast-borderColor" {...props} /></div>,
   thead: ({ ...props }) => <thead className="bg-intents-ux-boxLowContrast-backgroundColor" {...props} />,
   tbody: ({ ...props }) => <tbody {...props} />,
