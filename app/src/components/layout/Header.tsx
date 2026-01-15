@@ -10,6 +10,7 @@ import { UserMenu } from '@/components/auth';
 import AppPublish from '@/components/layout/AppPublish';
 import AppSelector from '@/components/layout/AppSelector';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
+import DiscordLink from '@/components/layout/DiscordLink';
 import InviteFriends from '@/components/layout/InviteFriends';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -53,6 +54,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
           <Box orientation="horizontal" gap={isMobile ? 'md' : 'lg'}>
             {actions && actions}
             {showAuthenticatedUI && !isDevelopPage && <InviteFriends location={location} />}
+            <DiscordLink location={location} />
             <UserMenu
               onShowMockLogin={onShowMockLogin}
               location={location}
