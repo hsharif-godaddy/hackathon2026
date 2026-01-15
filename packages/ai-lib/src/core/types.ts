@@ -59,7 +59,7 @@ export interface GlobalAgentConfig {
  */
 export interface AgentConfig {
   /** Agent identifier (keyword) - typically set by defineAgents */
-  id: string
+  id?: string
   /** Human-readable name of the agent */
   name: string
   /** System prompt for the agent */
