@@ -772,6 +772,13 @@ function applyMigrations(db: Database): void {
     // Column might already exist, that's fine
   }
 
+  // Add published_url column if it doesn't exist (for V4 unified job architecture)
+  try {
+    db.exec(`ALTER TABLE apps ADD COLUMN published_url TEXT`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
+
   // Create oauth_tokens table if it doesn't exist (added in PR #646)
   try {
     db.exec(`

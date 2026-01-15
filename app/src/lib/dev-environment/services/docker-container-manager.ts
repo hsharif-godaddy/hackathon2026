@@ -311,17 +311,18 @@ export class DockerContainerManager {
 			// Build dev-supervisor and template in one go using build contexts
 			// --load flag imports the built image into Docker daemon (required for Docker Compose)
 			const startTime = Date.now();
-			await execa('docker', [
-				'buildx', 'build',
-				'-t', imageName,
-				'--load',
-				'--build-arg', `HOST_UID=${uid}`,
-				'--build-arg', `HOST_GID=${gid}`,
-				'--build-context', `dev-ca=${path.join(projectRoot, '.dev-ca')}`,
-				'--build-context', `dev-supervisor=${path.join(projectRoot, 'dev-supervisor')}`,
-				'-f', path.join(templatePath, 'Dockerfile.dev'),
-				templatePath
-			]);
+		await execa('docker', [
+			'buildx', 'build',
+			'-t', imageName,
+			'--load',
+			'--build-arg', `HOST_UID=${uid}`,
+			'--build-arg', `HOST_GID=${gid}`,
+			'--build-context', `dev-ca=${path.join(projectRoot, '.dev-ca')}`,
+			'--build-context', `dev-supervisor=${path.join(projectRoot, 'dev-supervisor')}`,
+			'--build-context', `publish=${path.join(projectRoot, 'publish')}`,
+			'-f', path.join(templatePath, 'Dockerfile.dev'),
+			templatePath
+		]);
 			const duration = Date.now() - startTime;
 
 			logger.info("template.image.build.success", {
@@ -436,6 +437,11 @@ export class DockerContainerManager {
 				appId
 			});
 
+			// Get publish ports from DevDatabase for V4 unified job
+			const devApp = this.devDb.findDevAppById(appId);
+			const publishSupervisorPort = devApp?.publishSupervisorPort;
+			const publishPort = devApp?.publishPort;
+
 			// Generate compose configuration
 			const composeConfig: ComposeServiceConfig = {
 				appId,
@@ -447,6 +453,8 @@ export class DockerContainerManager {
 				gid,
 				useTcp,
 				socketPath,
+				publishSupervisorPort,
+				publishPort,
 				enableJwtAuth: shouldEnableJwtAuth(),
 			};
 
@@ -494,12 +502,12 @@ export class DockerContainerManager {
 				appId
 			});
 
-			// Get app container ID
-			const containerId = await this.composeManager.getContainerId(basePath, 'app');
+		// Get preview container ID (main container for the app)
+		const containerId = await this.composeManager.getContainerId(basePath, 'preview');
 
-			if (!containerId) {
-				throw new Error('Failed to get container ID from compose stack');
-			}
+		if (!containerId) {
+			throw new Error('Failed to get container ID from compose stack');
+		}
 
 			logger.info('docker.container.id.retrieved', {
 				appId,
@@ -674,13 +682,13 @@ export class DockerContainerManager {
 			const basePath = getBasePath(appId);
 			const composeStatus = await this.composeManager.ps(basePath);
 
-			// Find app service status
-			const appService = composeStatus.services.find(s => s.name === 'app' || s.name.includes('app'));
+		// Find preview service status (main container for the app)
+		const appService = composeStatus.services.find(s => s.name === 'preview' || s.name.includes('preview'));
 
-			if (!appService) {
-				containerInfo.status = "error";
-				return containerInfo;
-			}
+		if (!appService) {
+			containerInfo.status = "error";
+			return containerInfo;
+		}
 
 			// Map compose status to our status
 			let status: ContainerInfo["status"];
@@ -728,7 +736,7 @@ export class DockerContainerManager {
 			const basePath = getBasePath(appId);
 			const logs = await this.composeManager.logs(basePath, {
 				tail: tailLines,
-				service: 'app',
+				service: 'preview',
 			});
 			return logs;
 		} catch (error: any) {

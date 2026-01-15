@@ -41,7 +41,7 @@ async function getAgentToken(siteId: string): Promise<string> {
       const isServer = typeof window === 'undefined';
       let token: string;
       let expires: Date;
-      
+
       if (isServer) {
         // Server: Use JWT service directly
         // Default to no special permissions - operations that need them will regenerate

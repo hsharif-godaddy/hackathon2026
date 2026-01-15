@@ -60,7 +60,7 @@ describe('DockerContainerManager - Template Image Build Logic', () => {
       expect(buildCall?.[1]).toContain('aab-template-v8:latest');
     });
 
-    it('should include build contexts for dev-ca and dev-supervisor', async () => {
+    it('should include build contexts for dev-ca, dev-supervisor, and publish', async () => {
       // Setup
       mockExeca.mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
 
@@ -74,19 +74,23 @@ describe('DockerContainerManager - Template Image Build Logic', () => {
       const args = buildCall?.[1] as string[] | undefined;
       expect(args).toBeDefined();
 
-      // Check for dev-ca build context
-      const devCaIndex = args?.indexOf('--build-context');
-      expect(devCaIndex).toBeGreaterThan(-1);
-      if (devCaIndex !== undefined && devCaIndex !== -1) {
-        expect(args?.[devCaIndex + 1]).toMatch(/dev-ca=.*\.dev-ca/);
-      }
+      // Find all --build-context arguments
+      const buildContextIndices: number[] = [];
+      args?.forEach((arg, index) => {
+        if (arg === '--build-context') {
+          buildContextIndices.push(index);
+        }
+      });
 
-      // Check for dev-supervisor build context
-      const devSupervisorIndex = args?.lastIndexOf('--build-context');
-      expect(devSupervisorIndex).toBeGreaterThan(-1);
-      if (devSupervisorIndex !== undefined && devSupervisorIndex !== -1) {
-        expect(args?.[devSupervisorIndex + 1]).toMatch(/dev-supervisor=.*dev-supervisor/);
-      }
+      expect(buildContextIndices.length).toBeGreaterThanOrEqual(3);
+
+      // Get all build context values
+      const buildContexts = buildContextIndices.map(index => args?.[index + 1]);
+
+      // Check for required build contexts
+      expect(buildContexts.some(ctx => ctx?.match(/dev-ca=.*\.dev-ca/))).toBe(true);
+      expect(buildContexts.some(ctx => ctx?.match(/dev-supervisor=.*dev-supervisor/))).toBe(true);
+      expect(buildContexts.some(ctx => ctx?.match(/publish=.*publish/))).toBe(true);
     });
 
     it('should pass HOST_UID and HOST_GID build arguments', async () => {

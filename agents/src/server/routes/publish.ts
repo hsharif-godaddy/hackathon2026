@@ -6,7 +6,7 @@ import { GitUtils } from '../../utils/git.js';
 import { log } from '../../logging/index.js';
 import { Router } from 'express';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
-import type { PublishResponse, PublishSuccessResponse } from '../../services/DevSupervisorClient.js';
+import type { DevSupervisorClient, PublishResponse, PublishSuccessResponse } from '../../services/DevSupervisorClient.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -21,6 +21,10 @@ const appRepository = new AppRepository();
  * 3. Get commit details from git log to validate the commit exists
  * 4. Build verification - run `npm run build` to ensure project is buildable
  * 5. Create archive at {DIST_DIR}/{fullCommitHash}.tar.gz using git archive
+ *
+ * For local dev with unified job (AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH set):
+ * - Performs production-parity publish: archive → extract → npm ci → build → .env.local
+ * - Calls publish supervisor to update symlink and restart app
  *
  * Note: Database migrations are handled during development by the develop agent
  * and are committed to the repository before publish. This step no longer
@@ -112,12 +116,11 @@ router.post('/apps/:id/publish', async (req, res) => {
       });
     }
 
-    // Step 1: Check git status to verify repository state
+    // Step 1: Check git status
     contextLogger.info('route.publish.git-status.begin', {});
 
     try {
       const status = await gitUtils.getStatus(app.path);
-
       contextLogger.info('route.publish.git-status.success', {
         branch: status.branch,
         isClean: status.isClean,
@@ -165,20 +168,30 @@ router.post('/apps/:id/publish', async (req, res) => {
       });
     }
 
-    // Step 3: Build verification - ensure project is in a buildable state
+    // Step 3: Build verification
     contextLogger.info('route.publish.build.begin', {
       commitHash: fullCommitHash.substring(0, 7),
     });
 
-    try {
-      if (!devSupervisor) {
-        throw new Error('Dev supervisor not available for build verification');
-      }
+    // Check if dev-supervisor is available for build execution
+    if (!devSupervisor) {
+      contextLogger.error('route.publish.build.supervisor-unavailable', {
+        commitHash: fullCommitHash.substring(0, 7),
+      });
+      return res.status(500).json({
+        error: 'Dev supervisor not available',
+        details: 'Unable to execute build - dev supervisor connection not established'
+      });
+    }
 
+    try {
+      // Build the application
+      // Always use /app as working directory since all deployments are containerized
+      // The app.path is the host path, but inside the container it's always /app
       const buildResult = await devSupervisor.exec({
         command: 'npm run build',
         working_dir: '/app',
-        timeout: 120, // 2 minutes
+        timeout: 120,
         capture_output: true
       });
 
@@ -189,7 +202,7 @@ router.post('/apps/:id/publish', async (req, res) => {
           stderr: buildResult.stderr,
         });
         return res.status(400).json({
-          error: 'Build failed - project is not in a buildable state',
+          error: 'Build failed',
           details: buildResult.stderr || buildResult.stdout,
           exitCode: buildResult.exit_code
         });
@@ -211,15 +224,30 @@ router.post('/apps/:id/publish', async (req, res) => {
     }
 
     // Step 4: Create archive using GitUtils with full commit hash
+    // Detect environment and job type
+    const isLocalDev = !process.env.NOMAD_ALLOC_DIR;
+    const publishSocketPath = process.env.AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH;
+    
+    // For production: check for Unix socket (set by infrastructure)
+    // For local dev: always unified job (uses TCP for supervisors)
+    const isUnifiedJob = isLocalDev || (publishSocketPath && existsSync(publishSocketPath));
+
     contextLogger.info('route.publish.git-archive.begin', {
       commitHash: fullCommitHash.substring(0, 7),
+      isUnifiedJob,
+      isLocalDev,
+      publishSocketPath: publishSocketPath || 'tcp',
     });
 
     let archivePath: string;
     try {
+      // For local dev with unified job, create archive to /dist directory
+      // For production, use default archive location
+      const targetDir = isUnifiedJob && isLocalDev ? '/dist' : undefined;
       const archiveResult = await gitUtils.createArchive(
         app.path,
-        fullCommitHash
+        fullCommitHash,
+        targetDir
       );
       archivePath = archiveResult.path;
 
@@ -239,19 +267,31 @@ router.post('/apps/:id/publish', async (req, res) => {
     }
 
     // Step 5 (v4 unified only): Call publish supervisor to update symlink and reload app
-    // Detect if this is a V4 unified job by checking for publish supervisor socket
-    const publishSocketPath = process.env.AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH;
-    const isUnifiedJob = publishSocketPath && existsSync(publishSocketPath);
-
     let publishResult: PublishSuccessResponse | null = null;
     if (isUnifiedJob) {
       contextLogger.info('route.publish.supervisor.begin', {
         commitHash: fullCommitHash.substring(0, 7),
-        socketPath: publishSocketPath,
+        socketPath: publishSocketPath || 'tcp',
+        isLocalDev,
       });
 
       try {
-        const publishSupervisor = DevSupervisorClientFactory.createForSocketPath(publishSocketPath, id);
+        // Create publish supervisor client
+        // For production: use Unix socket from env var
+        // For local dev: look up TCP path from database
+        let publishSupervisor: DevSupervisorClient | null = null;
+        
+        if (publishSocketPath) {
+          // Production: use provided socket path
+          publishSupervisor = DevSupervisorClientFactory.createForSocketPath(publishSocketPath, id);
+        } else {
+          // Local dev: look up from database
+          const app = appRepository.findById(id);
+          if (app?.publishSupervisorPath) {
+            publishSupervisor = DevSupervisorClientFactory.createForSocketPath(app.publishSupervisorPath, id);
+          }
+        }
+        
         if (!publishSupervisor) {
           throw new Error('Failed to create publish supervisor client');
         }
@@ -312,6 +352,10 @@ router.post('/apps/:id/publish', async (req, res) => {
         version: publishResult.version,
         startupTime: publishResult.startupTime
       };
+      // Flag for local dev UI to show success immediately (no polling needed)
+      if (isLocalDev) {
+        response.published = true;
+      }
     }
 
     return res.json(response);

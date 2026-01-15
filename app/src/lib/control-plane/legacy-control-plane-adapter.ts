@@ -331,6 +331,13 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
    * Map database site record to SiteInfo
    */
   private mapToSiteInfo(site: any): SiteInfo {
+    // Compute variants based on available URLs
+    // If published_url exists, include 'publish' variant (local dev always has preview)
+    const variants: string[] = ['preview'];
+    if (site.published_url) {
+      variants.push('publish');
+    }
+
     return {
       id: site.id,
       name: site.title,
@@ -340,10 +347,12 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
       agent_url: site.agent_url,
       backend_url: site.backend_url,
       preview_url: site.preview_url,
+      published_url: site.published_url,
       ceph_mount_id: site.ceph_mount_id,
       ceph_dir_number: site.ceph_dir_number,
       created_at: site.created_at,
-      updated_at: site.updated_at
+      updated_at: site.updated_at,
+      variants // Include computed variants for local dev
     };
   }
 

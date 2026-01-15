@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
 import Alert from '@ux/alert';
 import Button from '@ux/button';
@@ -63,6 +63,19 @@ export default function AppPublish({ location }: { location?: string }) {
       : false
   );
 
+  // Get last published commit hash from store (for local dev unpublished count)
+  // Falls back to localStorage if store value is null (e.g., after page refresh)
+  const storeLastPublishedCommitHash = useDevelopPageStore(
+    (state) => currentAppId && state.publishStates[currentAppId]
+      ? state.publishStates[currentAppId].lastPublishedCommitHash
+      : null
+  );
+  const lastPublishedCommitHash = useMemo(() => {
+    if (storeLastPublishedCommitHash) return storeLastPublishedCommitHash;
+    if (typeof window === 'undefined' || !currentAppId) return null;
+    return localStorage.getItem(`airo-last-published-commit-${currentAppId}`);
+  }, [storeLastPublishedCommitHash, currentAppId]);
+
   const publishMutation = usePublishApp();
   const isDevelopPage = pathname?.includes('/develop');
 
@@ -94,7 +107,6 @@ export default function AppPublish({ location }: { location?: string }) {
     appId: currentAppId || '',
     enabled: queryEnabled,
   });
-  const gitCommits = gitHistoryData?.commits || []
   const currentCommit = gitHistoryData?.currentCommit
 
   const mostRecentDeployment = deployments[0];
@@ -104,7 +116,8 @@ export default function AppPublish({ location }: { location?: string }) {
     ![DeploymentStatus.DEPLOYED, DeploymentStatus.FAILED].includes(mostRecentDeployment.status as DeploymentStatus);
   // Use actual current commit (HEAD) instead of latest commit (commits[0])
   // Falls back to commits[0] for backward compatibility with old backends
-  const currentCommitHash = currentCommit || gitCommits[0]?.hash;
+  // Use memoizedGitCommits below after useMemo
+  const currentCommitHash = currentCommit || gitHistoryData?.commits?.[0]?.hash;
   const isCurrentCommitDeployed = currentCommitHash &&
     mostRecentDeployment?.gitHash === currentCommitHash &&
     mostRecentDeployment?.status === DeploymentStatus.DEPLOYED;
@@ -202,6 +215,38 @@ export default function AppPublish({ location }: { location?: string }) {
     }
   }, [currentAppId, refetch, setDeploymentsRefetch]);
 
+  // Calculate changes since last published
+  // Must be before early return to satisfy React hooks rules
+  const lastDeployedCommit = deployments.find(d => d.status === DeploymentStatus.DEPLOYED);
+
+  // Memoize gitCommits array to avoid dependency changes on every render
+  const memoizedGitCommits = useMemo(() => gitHistoryData?.commits || [], [gitHistoryData?.commits]);
+
+  // Calculate unpublished count with multiple fallbacks:
+  // 1. If we have deployment record with gitHash, find its index in commits
+  // 2. If lastPublishedCommitHash matches any commit in history, use that index
+  // 3. If no match found, all commits are unpublished
+  const unpublishedCount = useMemo(() => {
+    if (!memoizedGitCommits.length) return 0;
+
+    // Production: use deployment record
+    if (lastDeployedCommit?.gitHash) {
+      const idx = memoizedGitCommits.findIndex(c => c.hash === lastDeployedCommit.gitHash);
+      return idx === -1 ? memoizedGitCommits.length : idx;
+    }
+
+    // Local dev: find the last published commit in history
+    if (lastPublishedCommitHash) {
+      const idx = memoizedGitCommits.findIndex(c => c.hash === lastPublishedCommitHash);
+      return idx === -1 ? memoizedGitCommits.length : idx;
+    }
+
+    // No publish record - all commits are unpublished
+    return memoizedGitCommits.length;
+  }, [memoizedGitCommits, lastDeployedCommit?.gitHash, lastPublishedCommitHash]);
+
+  const lastDeployedDate = lastDeployedCommit?.updatedAt ? new Date(lastDeployedCommit.updatedAt) : null;
+
   if (!isPublishButtonEnabled || !isDevelopPage || !currentAppId || !site?.agent_url) {
     return null;
   }
@@ -214,15 +259,6 @@ export default function AppPublish({ location }: { location?: string }) {
   const isButtonDisabled = isLoading || isLoadingGitHistory || isPolling || entitlementsPollingFailed;
 
   const publishWidget = isFirstTimePublishing ? 'app_first_publish' : 'app_publish';
-
-  // Calculate changes since last published
-  const lastDeployedCommit = deployments.find(d => d.status === DeploymentStatus.DEPLOYED);
-  const lastDeployedHash = lastDeployedCommit?.gitHash;
-  const lastDeployedIndex = lastDeployedHash ? gitCommits.findIndex(c => c.hash === lastDeployedHash) : -1;
-  // If no deployment exists (lastDeployedIndex === -1), all commits are unpublished
-  // Otherwise, unpublished count is the number of commits before the last deployed one
-  const unpublishedCount = lastDeployedIndex === -1 ? gitCommits.length : lastDeployedIndex;
-  const lastDeployedDate = lastDeployedCommit?.updatedAt ? new Date(lastDeployedCommit.updatedAt) : null;
 
   const formattedDate = lastDeployedDate ? intl.formatDate(lastDeployedDate, {
     year: 'numeric',
@@ -361,13 +397,13 @@ export default function AppPublish({ location }: { location?: string }) {
 
                       // Calculate number of commits in this deployment
                       // Find the index of this deployment's commit in the git history
-                      const deploymentCommitIndex = gitCommits.findIndex(c => c.hash === deployment.gitHash);
+                      const deploymentCommitIndex = memoizedGitCommits.findIndex(c => c.hash === deployment.gitHash);
 
                       // Find the index of the next older deployment's commit
                       const nextDeployment = deployments.filter(d => d.status === DeploymentStatus.DEPLOYED)[index + 1];
                       const nextDeploymentCommitIndex = nextDeployment
-                        ? gitCommits.findIndex(c => c.hash === nextDeployment.gitHash)
-                        : gitCommits.length;
+                        ? memoizedGitCommits.findIndex(c => c.hash === nextDeployment.gitHash)
+                        : memoizedGitCommits.length;
 
                       // Count commits between this deployment and the next older one
                       const commitCount = deploymentCommitIndex >= 0 && nextDeploymentCommitIndex >= 0

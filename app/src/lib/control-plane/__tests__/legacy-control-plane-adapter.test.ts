@@ -220,11 +220,14 @@ describe('LegacyControlPlaneAdapter', () => {
         account_id: MOCK_ACCOUNT_ID,
         initial_prompt: MOCK_PROMPT,
         agent_url: MOCK_SITE_DATA.agent_url,
+        backend_url: MOCK_SITE_DATA.backend_url,
         preview_url: MOCK_SITE_DATA.preview_url,
+        published_url: MOCK_SITE_DATA.published_url,
         ceph_mount_id: MOCK_SITE_DATA.ceph_mount_id,
         ceph_dir_number: MOCK_SITE_DATA.ceph_dir_number,
         created_at: MOCK_SITE_DATA.created_at,
-        updated_at: MOCK_SITE_DATA.updated_at
+        updated_at: MOCK_SITE_DATA.updated_at,
+        variants: ['preview']
       });
 
       expect(mockSiteService.getSiteById).toHaveBeenCalledWith(MOCK_SITE_ID);
@@ -395,11 +398,14 @@ describe('LegacyControlPlaneAdapter', () => {
         account_id: MOCK_ACCOUNT_ID,
         initial_prompt: MOCK_PROMPT,
         agent_url: MOCK_SITE_DATA.agent_url,
+        backend_url: MOCK_SITE_DATA.backend_url,
         preview_url: MOCK_SITE_DATA.preview_url,
+        published_url: MOCK_SITE_DATA.published_url,
         ceph_mount_id: MOCK_SITE_DATA.ceph_mount_id,
         ceph_dir_number: MOCK_SITE_DATA.ceph_dir_number,
         created_at: MOCK_SITE_DATA.created_at,
-        updated_at: MOCK_SITE_DATA.updated_at
+        updated_at: MOCK_SITE_DATA.updated_at,
+        variants: ['preview']
       });
 
       expect(mockSiteService.updateSite).toHaveBeenCalledWith(MOCK_SITE_ID, updates);

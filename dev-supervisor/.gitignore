@@ -5,6 +5,7 @@
 *.so
 *.dylib
 dev-supervisor
+airo-supervisor
 
 # Test binary, built with `go test -c`
 *.test

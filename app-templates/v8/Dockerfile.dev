@@ -104,6 +104,13 @@ RUN update-ca-certificates
 # Copy application code (FAST - only this changes frequently)
 COPY --chown=agent:agent . .
 
+# Copy publish scripts from repository root publish directory
+COPY --chown=agent:agent --from=publish run-app.sh /publish/run-app.sh
+COPY --chown=agent:agent --from=publish coming-soon.js /publish/coming-soon.js
+
+# Make publish scripts executable
+RUN chmod +x /publish/run-app.sh /publish/coming-soon.js
+
 # Create logs and supervisor socket directories
 RUN mkdir -p logs /tmp/supervisor
 

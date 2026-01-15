@@ -357,6 +357,16 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         };
       }
       state.publishStates[appId].lastPublishedCommitHash = commitHash;
+
+      // Persist to localStorage for recovery after page refresh
+      if (typeof window !== 'undefined') {
+        const storageKey = `airo-last-published-commit-${appId}`;
+        if (commitHash) {
+          localStorage.setItem(storageKey, commitHash);
+        } else {
+          localStorage.removeItem(storageKey);
+        }
+      }
     }),
     setDeploymentsRefetch: (appId: string, refetch: (() => Promise<any>) | null) => set((state) => {
       if (!state.publishStates[appId]) {

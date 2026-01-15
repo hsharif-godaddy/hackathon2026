@@ -24,6 +24,7 @@ export interface Site {
   agent_url: string | null;
   backend_url: string | null;
   preview_url: string | null;
+  published_url: string | null;
   ceph_mount_id: string | null;
   ceph_dir_number: string | null;
   status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';
@@ -109,7 +110,7 @@ export class PrismaSiteService {
 
       // Copy other fields that match the schema
       const allowedFields = ['title', 'initial_prompt', 'domain', 'agent_url', 'backend_url',
-                             'preview_url', 'ceph_mount_id', 'ceph_dir_number', 'status', 'account_id'];
+                             'preview_url', 'published_url', 'ceph_mount_id', 'ceph_dir_number', 'status', 'account_id'];
 
       for (const field of allowedFields) {
         if (field in updates && field !== 'title') { // Skip title since we handled 'name' above
@@ -212,6 +213,7 @@ export class PrismaSiteService {
       agent_url: prismaSite.agent_url,
       backend_url: prismaSite.backend_url,
       preview_url: prismaSite.preview_url,
+      published_url: prismaSite.published_url,
       ceph_mount_id: prismaSite.ceph_mount_id,
       ceph_dir_number: prismaSite.ceph_dir_number,
       status: prismaSite.status,

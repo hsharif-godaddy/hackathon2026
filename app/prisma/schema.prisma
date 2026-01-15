@@ -60,21 +60,22 @@ model plans {
 }
 
 model sites {
-  id                  String                @id
-  account_id          String
-  title               String?
-  initial_prompt      String?               @db.Text
-  domain              String?
-  agent_url           String?
-  backend_url         String?
-  preview_url         String?
-  ceph_mount_id       String?
-  ceph_dir_number     String?
-  status              SiteStatus            @default(stopped)
-  created_at          DateTime              @default(now())
-  updated_at          DateTime              @default(now())
-  account             accounts              @relation(fields: [account_id], references: [id], onDelete: Cascade)
-  social_associations social_associations[]
+  id              String     @id
+  account_id      String
+  title           String?
+  initial_prompt  String?    @db.Text
+  domain          String?
+  agent_url       String?
+  backend_url     String?
+  preview_url     String?
+  published_url   String?
+  ceph_mount_id   String?
+  ceph_dir_number String?
+  status          SiteStatus @default(stopped)
+  created_at      DateTime   @default(now())
+  updated_at      DateTime   @default(now())
+  account         accounts   @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  social_associations     social_associations[]
   social_posts        social_posts[]
 
   @@index([ceph_mount_id, ceph_dir_number])

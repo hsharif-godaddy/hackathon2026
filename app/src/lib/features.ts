@@ -25,6 +25,7 @@ interface FeatureConfig {
   showGalleryPage: boolean
   devSupervisorUseTcp: boolean
   devSupervisorTcpPort: string
+  enableLocalFeatures: boolean
   // Add more features here as needed
 }
 
@@ -78,6 +79,7 @@ function parseEnvironmentFeatures(): FeatureConfig {
     showGalleryPage: process.env.NEXT_PUBLIC_SHOW_GALLERY_PAGE === 'true',
     devSupervisorUseTcp: process.env.DEV_SUPERVISOR_USE_TCP === 'true',
     devSupervisorTcpPort: process.env.DEV_SUPERVISOR_TCP_PORT || '8877',
+    enableLocalFeatures: process.env.NEXT_PUBLIC_ENABLE_LOCAL_FEATURES === 'true',
     // Add more feature parsing here
   }
 }
@@ -97,6 +99,7 @@ export const isFeatureEnabled = {
   developmentMode: () => features.developmentMode,
   galleryPage: () => features.showGalleryPage,
   devSupervisorTcp: () => features.devSupervisorUseTcp,
+  localFeatures: () => features.enableLocalFeatures,
   // Add more feature checkers here
 } as const
 

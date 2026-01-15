@@ -1,7 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { isFeatureEnabled } from '@/lib/features';
 import { logger } from '@/lib/request-context';
 import { getRootDomain } from '@/utils/getRootDomain';
+
+/**
+ * Local development feature flags
+ * Override switchboard for local development when NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true
+ * 
+ * Only includes features required for local dev publish functionality.
+ */
+const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
+  'appbuilder-publish-button': true,
+};
 
 /**
  * Fetch feature flag value from BFF API
@@ -10,6 +21,14 @@ import { getRootDomain } from '@/utils/getRootDomain';
  * @returns Promise with the feature flag value (boolean)
  */
 async function fetchFeatureFlag(featureName: string): Promise<boolean> {
+  if (isFeatureEnabled.localFeatures() && featureName in LOCAL_FEATURE_OVERRIDES) {
+    logger.info('switchboard.local_override', {
+      featureName,
+      value: LOCAL_FEATURE_OVERRIDES[featureName],
+    });
+    return LOCAL_FEATURE_OVERRIDES[featureName];
+  }
+
   const rootDomain = getRootDomain();
   if (!rootDomain) {
     logger.warn('switchboard.no_root_domain', {

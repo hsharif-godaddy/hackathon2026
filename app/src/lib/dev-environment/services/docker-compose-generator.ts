@@ -23,6 +23,8 @@ export interface ComposeServiceConfig {
 	gid: number;
 	useTcp: boolean;
 	socketPath: string;
+	publishSupervisorPort?: number;
+	publishPort?: number;
 	enableJwtAuth?: boolean; // Enable JWT authentication in dev-supervisor
 }
 
@@ -39,29 +41,29 @@ export interface DatabaseConfig {
 /**
  * Docker Compose file generator for app containers
  * Generates docker-compose.yml files for development apps
+ * Supports both unified mode (single service) and separate mode (preview + publish services)
  */
 export class DockerComposeGenerator {
 	/**
-	 * Generate environment variables for app service
+	 * Generate environment variables for preview service
 	 *
-	 * Builds environment configuration including:
-	 * - Basic runtime settings (HOST, NODE_ENV)
-	 * - Dev-supervisor communication mode (TCP or Unix socket)
+	 * Builds environment configuration for preview container including:
+	 * - Development mode settings (NODE_ENV=development)
+	 * - Preview supervisor configuration
 	 * - App port configuration (internal port for HTTP proxy)
 	 * - Vite-specific settings (VITE_HOST, ALLOWED_ORIGINS)
 	 * - GoDaddy API configuration (GODADDY_API_BASE_URL)
 	 *
 	 * @param config - Service configuration containing app details and connection settings
-	 * @param _dbConfig - Optional database configuration (reserved for future use)
 	 * @returns Record of environment variable key-value pairs for Docker Compose
 	 */
-	private generateAppEnvironment(config: ComposeServiceConfig, _dbConfig?: DatabaseConfig): Record<string, string> {
+	private generatePreviewEnvironment(config: ComposeServiceConfig): Record<string, string> {
 		const env: Record<string, string> = {
 			HOST: "0.0.0.0",
 			NODE_ENV: "development",
 		};
 
-		// Dev-supervisor configuration
+		// Preview supervisor configuration
 		if (config.useTcp && config.socketPath?.startsWith('tcp://')) {
 			// TCP mode - container always listens on constant port 8877
 			env.DEV_SUPERVISOR_USE_TCP = "true";
@@ -92,7 +94,7 @@ export class DockerComposeGenerator {
 			env.GODADDY_API_BASE_URL = process.env.GODADDY_API_BASE_URL;
 		}
 
-		// HTTP Proxy configuration
+		// Preview HTTP Proxy configuration
 		env.DEV_SUPERVISOR_ENABLE_PROXY = "true";
 		env.DEV_SUPERVISOR_PROXY_PORT = config.appPort.toString();
 		env.DEV_SUPERVISOR_PROXY_TARGET_HOST = "localhost";
@@ -154,76 +156,85 @@ export class DockerComposeGenerator {
 		return env;
 	}
 
+	/**
+	 * Generate environment variables for publish service
+	 *
+	 * Builds environment configuration for publish container including:
+	 * - Production mode settings (NODE_ENV=production)
+	 * - Publish supervisor configuration
+	 * - Dist directory configuration
+	 *
+	 * @param config - Service configuration containing app details and connection settings
+	 * @returns Record of environment variable key-value pairs for Docker Compose
+	 */
+	private generatePublishEnvironment(config: ComposeServiceConfig): Record<string, string> {
+		const env: Record<string, string> = {
+			HOST: "0.0.0.0",
+			NODE_ENV: "production",
+			PORT: "8081",
+			DIST_DIR: "/dist",
+		};
+
+		// Publish supervisor configuration
+		if (config.publishSupervisorPort) {
+			env.DEV_SUPERVISOR_USE_TCP = "true";
+			env.DEV_SUPERVISOR_TCP_PORT = "8878"; // Different container port for publish supervisor
+		}
+
+		// Publish HTTP port
+		if (config.publishPort) {
+			env.DEV_SUPERVISOR_PUBLISH_HTTP_PORT = config.publishPort.toString();
+		}
+
+		// Publish HTTP Proxy configuration
+		if (config.publishPort) {
+			env.DEV_SUPERVISOR_ENABLE_PROXY = "true";
+			env.DEV_SUPERVISOR_PROXY_PORT = config.publishPort.toString();
+			env.DEV_SUPERVISOR_PROXY_TARGET_HOST = "localhost";
+			env.DEV_SUPERVISOR_PROXY_TARGET_PORT = "8081";
+			env.DEV_SUPERVISOR_PROXY_CERT_PATH = "/app/.ssl/cert.pem";
+			env.DEV_SUPERVISOR_PROXY_KEY_PATH = "/app/.ssl/key.pem";
+			env.DEV_SUPERVISOR_PUBLISH_SERVE_STATIC = "false";
+			env.DEV_SUPERVISOR_PUBLISH_INTERNAL_PORT = "8081";
+		}
+
+		return env;
+	}
+
 
 	/**
-	 * Get volume mount configurations for app service (v8 template)
-	 *
-	 * Configures Docker volume mounts including:
-	 * - App code directory with hot reload support
-	 * - Anonymous volume for node_modules (performance optimization)
-	 * - Alloc directory for configuration and secrets (read-only)
-	 * - Shared pnpm store directory (single volume shared across all local dev apps)
-	 * - Dev-supervisor socket directory (Unix socket mode only)
-	 *
-	 * @param config - Service configuration containing paths and connection settings
-	 * @returns Array of volume mount strings in Docker Compose format
+	 * Generate preview service definition for docker-compose
+	 * Used when running in separate containers mode
 	 */
-	private getAppVolumes(config: ComposeServiceConfig): string[] {
-		// Get alloc path using centralized utility
+	private generatePreviewService(config: ComposeServiceConfig): string {
 		const allocPath = getAllocPath(config.appId);
+		const distPath = config.appPath.replace(/\/app$/, '/dist');
+
+		const previewEnv = this.generatePreviewEnvironment(config);
+		const envLines = Object.entries(previewEnv).map(([key, value]) => `      ${key}: "${value}"`).join('\n');
 
 		const volumes = [
-			// Mount app code directory for hot reload
 			`${config.appPath}:/app`,
-      // Anonymous volume for node_modules to improve performance
-      // Prevents the copy of host node_modules into container at startup from being overwritten by the /app bind mount
-      `/app/node_modules`,
-			`${allocPath}:/alloc:ro`, // Mount alloc directory for config and secrets
+			`/app/node_modules`,
+			`${distPath}:/dist`,
+			`${allocPath}:/alloc:ro`,
 		];
 
-		// Add dev-supervisor socket directory if using Unix socket mode
 		if (!config.useTcp && config.socketPath) {
 			const socketDir = config.socketPath.substring(0, config.socketPath.lastIndexOf('/'));
 			volumes.push(`${socketDir}:/tmp/supervisor`);
 		}
 
-		// Note: npm cache is handled by BuildKit cache mounts during build, not at runtime
+		const volumeLines = volumes.map(vol => `      - ${vol}`).join('\n');
 
-		return volumes;
-	}
-
-	/**
-	 * Generate docker-compose.yml content
-	 * Note: Database service removed - apps now use shared MySQL instance
-	 * HTTP proxy integrated into dev-supervisor
-	 */
-	generateComposeFile(config: ComposeServiceConfig, dbConfig?: DatabaseConfig): string {
-		logger.info("compose.generate.begin", {
-			appId: config.appId,
-			templateVersion: config.templateVersion,
-		});
-
-		// Build environment variables
-		const appEnv = this.generateAppEnvironment(config, dbConfig);
-		const envLines = Object.entries(appEnv).map(([key, value]) => `      ${key}: "${value}"`).join('\n');
-
-		// Build volumes
-		const appVolumes = this.getAppVolumes(config);
-		const volumeLines = appVolumes.map(vol => `      - ${vol}`).join('\n');
-
-		// Build port mappings
 		const ports: string[] = [];
-
-		// HTTP proxy port
 		ports.push(`${config.appPort}:${config.appPort}`);
 
-		// Supervisor management API (if TCP mode)
 		if (config.useTcp && config.socketPath?.startsWith('tcp://')) {
 			try {
 				const url = new URL(config.socketPath);
 				const supervisorPort = parseInt(url.port);
 				if (supervisorPort && !isNaN(supervisorPort)) {
-					// Map host port to constant container port
 					ports.push(`${supervisorPort}:${DEV_SUPERVISOR_CONTAINER_PORT}`);
 				}
 			} catch (error) {
@@ -234,9 +245,7 @@ export class DockerComposeGenerator {
 			}
 		}
 
-		const portLines = ports.length > 0
-			? '    ports:\n' + ports.map(port => `      - "${port}"`).join('\n') + '\n'
-			: '';
+		const portLines = ports.map(port => `      - "${port}"`).join('\n');
 
 		// Build extra_hosts for JWT auth (allows container to reach builder's JWKS endpoint)
 		let extraHostsLines = '';
@@ -254,23 +263,98 @@ export class DockerComposeGenerator {
 			extraHostsLines = '    extra_hosts:\n' + extraHosts.map(host => `      - "${host}"`).join('\n') + '\n';
 		}
 
-		// Build the compose file with single app service (HTTP proxy in dev-supervisor)
-		// Uses pre-built shared template image (aab-template-v8:latest) for all apps
-		// This eliminates per-app build time, reducing app creation from ~72s to <5s
-		const composeContent = `---
-
-services:
-  app:
+		return `  preview:
     image: ${config.imageName}
     restart: unless-stopped
-${portLines}${extraHostsLines}    environment:
+    container_name: preview-${config.appId}-1
+    ports:
+${portLines}
+${extraHostsLines}    environment:
 ${envLines}
     volumes:
 ${volumeLines}
     networks:
       - app-network
     expose:
-      - "${APP_INTERNAL_PORT}"
+      - "${APP_INTERNAL_PORT}"`;
+	}
+
+	/**
+	 * Generate publish service definition for docker-compose
+	 * Used when running in separate containers mode
+	 */
+	private generatePublishService(config: ComposeServiceConfig): string {
+		const allocPath = getAllocPath(config.appId);
+		const distPath = config.appPath.replace(/\/app$/, '/dist');
+
+		const publishEnv = this.generatePublishEnvironment(config);
+		const envLines = Object.entries(publishEnv).map(([key, value]) => `      ${key}: "${value}"`).join('\n');
+
+		// Publish container volumes - matches production architecture
+		// /dist is mounted READ-WRITE so supervisor can create/update symlinks
+		// Extraction happens in container's /app (not shared /dist)
+		// SSL certs mounted for HTTPS proxy
+		const sslPath = config.appPath.replace(/\/app$/, '/app/.ssl');
+		const volumes = [
+			`/app/node_modules`,
+			`${distPath}:/dist`,
+			`${allocPath}:/alloc:ro`,
+			`${sslPath}:/app/.ssl:ro`,
+		];
+
+		const volumeLines = volumes.map(vol => `      - ${vol}`).join('\n');
+
+		const ports: string[] = [];
+
+		if (config.publishPort) {
+			ports.push(`${config.publishPort}:${config.publishPort}`);
+		}
+
+		if (config.publishSupervisorPort) {
+			ports.push(`${config.publishSupervisorPort}:8878`);
+		}
+
+		const portLines = ports.map(port => `      - "${port}"`).join('\n');
+
+		return `  publish:
+    image: ${config.imageName}
+    restart: unless-stopped
+    container_name: publish-${config.appId}-1
+    command: ["exec", "/publish/run-app.sh"]
+    ports:
+${portLines}
+    environment:
+${envLines}
+    volumes:
+${volumeLines}
+    networks:
+      - app-network
+    expose:
+      - "8081"`;
+	}
+
+	/**
+	 * Generate docker-compose.yml content
+	 * Supports both unified mode (single service) and separate mode (preview + publish services)
+	 * Note: Database service removed - apps now use shared MySQL instance
+	 * HTTP proxy integrated into dev-supervisor
+	 */
+	generateComposeFile(config: ComposeServiceConfig, dbConfig?: DatabaseConfig): string {
+		logger.info("compose.generate.begin", {
+			appId: config.appId,
+			templateVersion: config.templateVersion,
+			mode: "separate-containers",
+		});
+
+		// Always generate separate preview and publish services
+		const previewService = this.generatePreviewService(config);
+		const publishService = this.generatePublishService(config);
+		const servicesContent = `${previewService}\n\n${publishService}`;
+
+		const composeContent = `---
+
+services:
+${servicesContent}
 
 networks:
   app-network:
@@ -280,8 +364,8 @@ networks:
 
 		logger.info("compose.generate.success", {
 			appId: config.appId,
-			services: 1, // Single app service with integrated HTTP proxy
-			proxyMode: "dev-supervisor",
+			services: 2,
+			mode: "separate-containers",
 		});
 
 		return composeContent;

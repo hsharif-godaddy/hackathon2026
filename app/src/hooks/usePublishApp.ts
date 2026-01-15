@@ -7,6 +7,7 @@ import { regenerateToken } from '@/lib/jwt-regeneration';
 import { logger } from '@/lib/request-context';
 import { appService } from '@/services/AppService';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { useSiteStore } from '@/stores/useSiteStore';
 
 /**
  * Response from the publish API endpoint
@@ -23,6 +24,8 @@ interface PublishResponse {
     status: string;
     message: string;
   };
+  published?: boolean; // Flag for local dev: true when publish succeeded immediately
+  publishUrl?: string; // URL of the published site for local dev
 }
 
 /**
@@ -42,15 +45,70 @@ interface PublishResult {
 }
 
 /**
+ * Handle successful local dev publish
+ *
+ * Local dev flow is completely separate from production:
+ * 1. Store the published commit hash
+ * 2. Clear publishing state immediately (no polling)
+ * 3. Refetch site to get updated variants (computed from published_url)
+ * 4. Show success alert
+ * 5. Invalidate git history
+ */
+async function handleLocalDevPublishSuccess(
+  appId: string,
+  commitHash: string,
+  queryClient: ReturnType<typeof useQueryClient>,
+  setLastPublishedCommitHash: (appId: string, hash: string) => void,
+  setIsPublishing: (appId: string, isPublishing: boolean) => void,
+  setPublishSuccess: (appId: string, success: boolean) => void,
+  fetchSite: (appId: string, forceRefresh: boolean) => Promise<any>
+) {
+  // Store published commit hash for unpublished changes tracking
+  setLastPublishedCommitHash(appId, commitHash);
+
+  // Clear publishing state immediately (no deployment polling in local dev)
+  setIsPublishing(appId, false);
+
+  // Refetch site from DB to get fresh data
+  // LegacyControlPlaneAdapter.mapToSiteInfo() automatically computes variants from published_url
+  // published_url is already in DB (set during app creation with coming soon page)
+  try {
+    await fetchSite(appId, true);
+    // Site now has variants: ['preview', 'publish'] computed from published_url
+    // Show success alert
+    setPublishSuccess(appId, true);
+  } catch (error) {
+    logger.error('publish.local-dev.site-refetch.error', {
+      appId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    // Still show success alert even if refetch fails
+    setPublishSuccess(appId, true);
+  }
+
+  // Invalidate git history to refresh commit list
+  await queryClient.invalidateQueries({ 
+    queryKey: ['git-history', appId], 
+    refetchType: 'active' 
+  });
+}
+
+/**
  * React Query hook for publishing an app
  *
- * Handles fetching the latest commit hash if not provided and making the publish request.
- * Stores the last published commit hash in the store for retry functionality.
+ * Handles two completely separate flows:
  *
- * After successful publish:
- * - Sets deploymentInProgressId in store to track the new deployment
- * - useDeploymentsQuery detects this ID and starts polling
- * - Polling continues until deployment status is 'deployed' or 'failed'
+ * PRODUCTION FLOW:
+ * 1. Publish request returns deployment.deploymentId
+ * 2. Set deploymentInProgressId in store
+ * 3. useDeploymentsQuery starts polling mgmt-airo
+ * 4. When deployment status = 'deployed', show success alert
+ *
+ * LOCAL DEV FLOW:
+ * 1. Publish request returns published: true (instant)
+ * 2. Store commit hash, clear publishing state
+ * 3. Refetch site (variants computed from published_url)
+ * 4. Show success alert immediately
  *
  * @returns Mutation object with mutate, mutateAsync, isLoading, isError, error, data
  *
@@ -73,6 +131,9 @@ export function usePublishApp() {
   const setLastPublishedCommitHash = useDevelopPageStore((state) => state.setLastPublishedCommitHash);
   const setDeploymentInProgressId = useDevelopPageStore((state) => state.setDeploymentInProgressId);
   const setBuildErrorDetails = useDevelopPageStore((state) => state.setBuildErrorDetails);
+  const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
+  const setPublishSuccess = useDevelopPageStore((state) => state.setPublishSuccess);
+  const fetchSite = useSiteStore((state) => state.fetchSite);
   const { data: isSecretsSyncEnabled } = useSwitchboard('appbuilder-settings-secrets');
 
   return useMutation<PublishResult, Error, PublishParams>({
@@ -244,16 +305,31 @@ export function usePublishApp() {
       return { result, commitHash: hashToPublish };
     },
     onSuccess: async (data, variables) => {
-      // Set deployment ID in store to trigger polling in useDeploymentsQuery
+      // PRODUCTION FLOW: Deployment tracking with polling
       if (data.result.deployment?.deploymentId) {
         setDeploymentInProgressId(variables.appId, data.result.deployment.deploymentId);
+
+        // Invalidate deployments queries to trigger immediate refetch with polling
+        await queryClient.invalidateQueries({
+          queryKey: ['deployments', variables.appId],
+          refetchType: 'active',
+        });
+        // Note: isPublishing stays true - AppPublish.tsx useEffect handles clearing it when deployment completes
+        return;
       }
 
-      // Invalidate deployments queries to trigger immediate refetch with polling
-      await queryClient.invalidateQueries({
-        queryKey: ['deployments', variables.appId],
-        refetchType: 'active',
-      });
+      // LOCAL DEV FLOW: Instant publish, no deployment tracking
+      if (data.result.published) {
+        await handleLocalDevPublishSuccess(
+          variables.appId,
+          data.result.commitHash || data.commitHash,
+          queryClient,
+          setLastPublishedCommitHash,
+          setIsPublishing,
+          setPublishSuccess,
+          fetchSite
+        );
+      }
     },
     onError: (error, variables) => {
       logger.error('publish.error', {

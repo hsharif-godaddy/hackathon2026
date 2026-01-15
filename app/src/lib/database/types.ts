@@ -69,6 +69,7 @@ export interface Site {
   agent_url: string | null;
   backend_url: string | null;
   preview_url: string | null;
+  published_url: string | null;
   ceph_mount_id: string | null;
   ceph_dir_number: string | null;
   status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';

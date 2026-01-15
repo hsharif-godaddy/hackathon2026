@@ -115,11 +115,15 @@ export class DevEnvironmentManager {
       // 2. App doesn't exist or is in error state - create/recreate it
       let port: number;
       let supervisorPort: number | undefined;
+      let publishSupervisorPort: number | undefined;
+      let publishPort: number | undefined;
 
       if (existingApp) {
         // Reuse existing ports for error recovery
         port = existingApp.port;
         supervisorPort = existingApp.supervisorPort;
+        publishSupervisorPort = existingApp.publishSupervisorPort;
+        publishPort = existingApp.publishPort;
       } else {
         // Allocate new ports for new app
         port = await this.portManager.getNextAvailablePort();
@@ -127,6 +131,10 @@ export class DevEnvironmentManager {
         // Allocate supervisor port if using Docker mode
         if (!this.adapter?.getCapabilities().supportsProcessOperations) {
           supervisorPort = await this.portManager.getNextAvailableSupervisorPort();
+          
+          // Allocate publish supervisor and HTTP ports for V4 unified job architecture
+          publishSupervisorPort = await this.portManager.getNextAvailablePublishSupervisorPort();
+          publishPort = await this.portManager.getNextAvailablePublishPort();
         }
       }
 
@@ -143,11 +151,88 @@ export class DevEnvironmentManager {
         await fsPromises.mkdir(allocPath, { recursive: true });
       }
 
+      // Create V4 unified job directory structure (assets and dist)
+      // Security: siteId is a system-generated UUID from database, not user input.
+      // Subdirectories are hardcoded constants. Path traversal not possible.
+      // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+      const assetsPublicPath = path.join(appPath, 'assets', 'public');
+      // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+      const assetsPrivatePath = path.join(appPath, 'assets', 'private');
+      // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+      const distPath = path.join(appPath, 'dist');
+      // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+      const publishDistPath = path.join(basePath, 'dist');
+
+      if (!existsSync(assetsPublicPath)) {
+        await fsPromises.mkdir(assetsPublicPath, { recursive: true });
+        logger.info('dev-environment.directories.created', {
+          siteId,
+          path: assetsPublicPath,
+          message: 'Created assets/public directory'
+        });
+      }
+      if (!existsSync(assetsPrivatePath)) {
+        await fsPromises.mkdir(assetsPrivatePath, { recursive: true });
+        logger.info('dev-environment.directories.created', {
+          siteId,
+          path: assetsPrivatePath,
+          message: 'Created assets/private directory'
+        });
+      }
+      if (!existsSync(distPath)) {
+        await fsPromises.mkdir(distPath, { recursive: true });
+        logger.info('dev-environment.directories.created', {
+          siteId,
+          path: distPath,
+          message: 'Created dist directory for versioned releases'
+        });
+      }
+      if (!existsSync(publishDistPath)) {
+        await fsPromises.mkdir(publishDistPath, { recursive: true });
+        logger.info('dev-environment.directories.created', {
+          siteId,
+          path: publishDistPath,
+          message: 'Created dist directory for published apps'
+        });
+      }
+
+      // Note: Coming soon server is handled by dev-supervisor when no published version exists
+      // No need to pre-create /dist/current directory - dev-supervisor will create symlink on first publish
+
+      // Copy V4 unified job entrypoint script if using Docker mode with publish ports
+      // Security: appPath/templateVersion derived from system UUIDs, filenames are hardcoded
+      if (!this.adapter?.getCapabilities().supportsProcessOperations && publishSupervisorPort && publishPort) {
+        // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+        const entrypointScriptPath = path.join(appPath, 'dev_entrypoint.sh');
+        // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+        const templateScriptPath = path.join(process.cwd(), 'app-templates', templateVersion, 'dev_entrypoint.sh');
+        
+        if (existsSync(templateScriptPath)) {
+          const scriptContent = readFileSync(templateScriptPath, 'utf-8');
+          writeFileSync(entrypointScriptPath, scriptContent, 'utf-8');
+          // Make script executable
+          await fsPromises.chmod(entrypointScriptPath, 0o755);
+          logger.info('dev-environment.entrypoint-script.created', {
+            siteId,
+            path: entrypointScriptPath,
+            message: 'Created V4 unified job entrypoint script'
+          });
+        } else {
+          logger.warn('dev-environment.entrypoint-script.not-found', {
+            siteId,
+            templateScriptPath,
+            message: 'Entrypoint script template not found, V4 features may not work'
+          });
+        }
+      }
+
       // 4. Create or update dev app record
       const devApp = this.devDb.createDevApp({ // eslint-disable-line @typescript-eslint/no-unused-vars
         appId: siteId,
         port,
         supervisorPort,
+        publishSupervisorPort,
+        publishPort,
         appPath,
         templateVersion,
         status: 'creating'
@@ -159,6 +244,10 @@ export class DevEnvironmentManager {
 
       // Generate SSL certificates for HTTPS development
       await this.generateSSLCertificates(siteId, appPath);
+
+      // Copy SSL certificates to /alloc/.ssl/ for publish container access
+      // The publish container doesn't have /app mounted, so it needs certs in /alloc
+      await this.copySSLCertsToAlloc(siteId, appPath, allocPath);
 
       // Initialize Git repository (skip for Docker mode - container handles it via script)
       if (this.adapter?.getCapabilities().supportsProcessOperations) {
@@ -342,6 +431,7 @@ export class DevEnvironmentManager {
 
         // Create .is_ready file for Docker mode to signal template is ready
         if (!this.adapter?.getCapabilities().supportsProcessOperations) {
+          // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
           const readyFilePath = path.join(appPath, '.is_ready');
           writeFileSync(readyFilePath, '');
         }
@@ -359,8 +449,10 @@ export class DevEnvironmentManager {
 
   /**
    * Update .gitignore to exclude dev-supervisor binary and build artifacts
+   * Security: appPath derived from system UUID, filename is hardcoded
    */
   private async updateGitignoreForDevSupervisor(appPath: string): Promise<void> {
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
     const gitignorePath = path.join(appPath, '.gitignore');
 
     // Entries to add to .gitignore for dev-supervisor
@@ -420,6 +512,56 @@ export class DevEnvironmentManager {
       logger.warn('dev-environment.ssl.failed', {
         appId,
         error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  /**
+   * Copy SSL certificates to /alloc/.ssl/ for publish container access
+   * The publish container doesn't have /app mounted, so it needs certs in /alloc
+   *
+   * Security: All path.join operations in this method are safe from path traversal:
+   * - appPath/allocPath are derived from system-generated UUID (siteId) via getAppPath/getAllocPath
+   * - All subdirectories and filenames are hardcoded string literals
+   * nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+   */
+  private async copySSLCertsToAlloc(appId: string, appPath: string, allocPath: string): Promise<void> {
+    try {
+      const sslSourceDir = path.join(appPath, '.ssl');
+      const sslDestDir = path.join(allocPath, '.ssl');
+
+      // Check if source SSL certs exist
+      const certPath = path.join(sslSourceDir, 'cert.pem');
+      const keyPath = path.join(sslSourceDir, 'key.pem');
+
+      if (!existsSync(certPath) || !existsSync(keyPath)) {
+        logger.warn('dev_app.ssl.copy.skip', {
+          appId,
+          message: 'SSL certificates not found, skipping copy to alloc'
+        });
+        return;
+      }
+
+      // Create destination directory
+      if (!existsSync(sslDestDir)) {
+        await fsPromises.mkdir(sslDestDir, { recursive: true });
+      }
+
+      // Copy cert and key files
+      await fsPromises.copyFile(certPath, path.join(sslDestDir, 'cert.pem'));
+      await fsPromises.copyFile(keyPath, path.join(sslDestDir, 'key.pem'));
+
+      logger.info('dev_app.ssl.copy.success', {
+        appId,
+        source: sslSourceDir,
+        destination: sslDestDir,
+        message: 'SSL certificates copied to alloc directory for publish container'
+      });
+    } catch (error) {
+      logger.warn('dev_app.ssl.copy.failure', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+        message: 'Failed to copy SSL certificates to alloc directory'
       });
     }
   }
@@ -522,6 +664,20 @@ export class DevEnvironmentManager {
     }
 
     return null;
+  }
+
+  /**
+   * Get publish supervisor connection path (TCP URL) for V4 unified job
+   * Returns null if not available or not using V4 unified job architecture
+   */
+  getPublishSupervisorConnectionPath(appId: string): string | null {
+    const devApp = this.devDb.findDevAppById(appId);
+    if (!devApp?.publishSupervisorPort) {
+      return null;
+    }
+
+    // For dev environment, publish supervisor uses TCP
+    return `tcp://localhost:${devApp.publishSupervisorPort}`;
   }
 
   /**

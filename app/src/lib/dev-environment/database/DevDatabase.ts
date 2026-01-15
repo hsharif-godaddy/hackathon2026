@@ -4,6 +4,8 @@ export interface DevAppInfo {
   appId: string;
   port: number;
   supervisorPort?: number;
+  publishSupervisorPort?: number;
+  publishPort?: number;
   appPath: string;
   templateVersion: string;
   status: 'creating' | 'created' | 'error' | 'running' | 'stopped';
@@ -89,6 +91,16 @@ export class DevDatabase {
       this.portAllocations.add(devApp.supervisorPort);
     }
 
+    // Track publish supervisor port allocation if provided
+    if (devApp.publishSupervisorPort) {
+      this.portAllocations.add(devApp.publishSupervisorPort);
+    }
+
+    // Track publish HTTP port allocation if provided
+    if (devApp.publishPort) {
+      this.portAllocations.add(devApp.publishPort);
+    }
+
     return fullDevApp;
   }
 
@@ -119,6 +131,16 @@ export class DevDatabase {
     // Remove supervisor port allocation if it exists
     if (app.supervisorPort) {
       this.portAllocations.delete(app.supervisorPort);
+    }
+
+    // Remove publish supervisor port allocation if it exists
+    if (app.publishSupervisorPort) {
+      this.portAllocations.delete(app.publishSupervisorPort);
+    }
+
+    // Remove publish HTTP port allocation if it exists
+    if (app.publishPort) {
+      this.portAllocations.delete(app.publishPort);
     }
 
     // Remove related running processes

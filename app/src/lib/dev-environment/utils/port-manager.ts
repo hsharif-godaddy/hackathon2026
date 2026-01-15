@@ -5,13 +5,20 @@ import { DevDatabase } from '../database/DevDatabase';
 
 /**
  * Port Manager
- * Manages port allocation for dev apps starting from 5000
- * Manages supervisor port allocation starting from 8877
+ * Manages port allocation for dev apps:
+ * - Preview HTTP ports: 5000-5499
+ * - Publish HTTP ports: 5500-5999 (avoiding 6000 which is blocked by Chrome)
+ * - Preview supervisor TCP ports: 8877+
+ * - Publish supervisor TCP ports: 9000+
  */
 export class PortManager {
   private devDb: DevDatabase;
-  private readonly START_PORT = 5000;
-  private readonly START_SUPERVISOR_PORT = 8877;
+  private readonly START_PORT = 5000; // Preview HTTP ports start from 5000
+  private readonly MAX_PREVIEW_PORT = 5499; // Preview HTTP ports end at 5499
+  private readonly START_PUBLISH_PORT = 5500; // Publish HTTP ports start from 5500 (separate range)
+  private readonly MAX_PUBLISH_PORT = 5999; // Publish HTTP ports end at 5999 (avoiding 6000 which is blocked by Chrome)
+  private readonly START_SUPERVISOR_PORT = 8877; // Preview supervisor TCP ports start from 8877
+  private readonly START_PUBLISH_SUPERVISOR_PORT = 9000; // Publish supervisor TCP ports start from 9000 (separate range)
   private readonly MAX_PORT = 65535;
 
   constructor(devDb: DevDatabase) {
@@ -29,8 +36,8 @@ export class PortManager {
       // Get all currently used ports from the dev database (fresh query each time)
       const usedPorts = this.devDb.getAllocatedPorts();
 
-      // Find the first available port starting from START_PORT
-      for (let port = this.START_PORT; port <= this.MAX_PORT; port++) {
+      // Find the first available port starting from START_PORT (up to MAX_PREVIEW_PORT)
+      for (let port = this.START_PORT; port <= this.MAX_PREVIEW_PORT; port++) {
         if (!usedPorts.includes(port) && await this.isPortAvailable(port)) {
           // Double-check the database again right before returning
           // This helps catch race conditions where another process allocated this port
@@ -145,6 +152,83 @@ export class PortManager {
     }
 
     throw new Error('No available supervisor ports found after multiple attempts');
+  }
+
+  /**
+   * Find the next available publish supervisor port starting from 9000
+   * Uses a separate port range from preview supervisor ports (8877+) to ensure they never conflict
+   * This is for the publish supervisor in V4 unified job architecture
+   */
+  async getNextAvailablePublishSupervisorPort(): Promise<number> {
+    const maxRetries = 10;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      // Get all currently used ports from the dev database (fresh query each time)
+      const usedPorts = this.devDb.getAllocatedPorts();
+
+      // Find the first available port starting from START_PUBLISH_SUPERVISOR_PORT (9000)
+      // This ensures publish supervisor ports are always in a different range from preview supervisor ports (8877-8999)
+      for (let port = this.START_PUBLISH_SUPERVISOR_PORT; port <= this.MAX_PORT; port++) {
+        if (!usedPorts.includes(port) && await this.isPortAvailable(port)) {
+          // Double-check the database again right before returning
+          // This helps catch race conditions where another process allocated this port
+          const freshUsedPorts = this.devDb.getAllocatedPorts();
+          if (!freshUsedPorts.includes(port)) {
+            logger.info(`✅ Publish supervisor port ${port} allocated successfully (attempt ${attempt + 1})`);
+            return port;
+          } else {
+            logger.info(`⚠️ Publish supervisor port ${port} was allocated by another process, retrying...`);
+            break; // Break inner loop to retry with fresh port list
+          }
+        }
+      }
+
+      if (attempt < maxRetries - 1) {
+        // Small delay before retry to avoid tight polling
+        await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 50));
+      }
+    }
+
+    throw new Error('No available publish supervisor ports found after multiple attempts');
+  }
+
+  /**
+   * Find the next available publish HTTP port starting from 5500
+   * Uses a separate port range from preview ports to ensure they never conflict
+   * This is for the publish HTTP server in V4 unified job architecture
+   */
+  async getNextAvailablePublishPort(): Promise<number> {
+    const maxRetries = 10;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      // Get all currently used ports from the dev database (fresh query each time)
+      const usedPorts = this.devDb.getAllocatedPorts();
+
+      // Find the first available port starting from START_PUBLISH_PORT (5500)
+      // This ensures publish ports are always in a different range from preview ports (5000-5499)
+      // Max is 5999 to avoid port 6000 which is blocked by Chrome (ERR_UNSAFE_PORT)
+      for (let port = this.START_PUBLISH_PORT; port <= this.MAX_PUBLISH_PORT; port++) {
+        if (!usedPorts.includes(port) && await this.isPortAvailable(port)) {
+          // Double-check the database again right before returning
+          // This helps catch race conditions where another process allocated this port
+          const freshUsedPorts = this.devDb.getAllocatedPorts();
+          if (!freshUsedPorts.includes(port)) {
+            logger.info(`✅ Publish HTTP port ${port} allocated successfully (attempt ${attempt + 1})`);
+            return port;
+          } else {
+            logger.info(`⚠️ Publish HTTP port ${port} was allocated by another process, retrying...`);
+            break; // Break inner loop to retry with fresh port list
+          }
+        }
+      }
+
+      if (attempt < maxRetries - 1) {
+        // Small delay before retry to avoid tight polling
+        await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 50));
+      }
+    }
+
+    throw new Error('No available publish HTTP ports found after multiple attempts');
   }
 
   /**

@@ -152,8 +152,9 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
       const appStatus = await this.devEnvironmentManager.getDevAppStatus(siteId);
       const backendUrl = appStatus.metadata?.url || `https://localhost:${port}`;
 
-      // Get dev-supervisor connection path and register with agents service
+      // Get dev-supervisor connection paths and register with agents service
       const connectionPath = this.devEnvironmentManager.getConnectionPath(siteId);
+      const publishSupervisorPath = this.devEnvironmentManager.getPublishSupervisorConnectionPath(siteId);
       await this.registerWithAgents(
         siteId,
         title,
@@ -162,14 +163,20 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
         backendUrl,
         connectionPath,
         subscriptionId,
-        customerId
+        customerId,
+        publishSupervisorPath
       );
+
+      // Get publish URL from dev app info (if V4 unified job with publish port)
+      const devApp = this.devEnvironmentManager.getDevApp(siteId);
+      const publishUrl = devApp?.publishPort ? `https://localhost:${devApp.publishPort}` : undefined;
 
       // Update status to 'running' with URLs
       await this.updateSiteStatus(siteId, 'running', {
         agent_url: this.agentsServiceUrl,
         backend_url: backendUrl,
-        preview_url: backendUrl
+        preview_url: backendUrl,
+        published_url: publishUrl
       });
 
       this.log('info', 'Async Docker deployment completed successfully', {
@@ -178,7 +185,8 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
         urls: {
           agent: this.agentsServiceUrl,
           backend: backendUrl,
-          preview: backendUrl
+          preview: backendUrl,
+          published: publishUrl
         }
       });
 
@@ -195,21 +203,38 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
   private async updateSiteStatus(
     siteId: string,
     status: 'creating' | 'running' | 'error',
-    urls?: { agent_url?: string; backend_url?: string; preview_url?: string }
+    urls?: { agent_url?: string; backend_url?: string; preview_url?: string; published_url?: string }
   ): Promise<void> {
     try {
       // Import dynamically to avoid circular dependencies
       const { PrismaSiteService } = await import('@/lib/database/prisma-site-service');
       const siteService = new PrismaSiteService();
 
-      await siteService.updateSite(siteId, {
+      // Check if site exists before updating
+      const existingSite = await siteService.getSiteById(siteId);
+      if (!existingSite) {
+        this.log('warn', 'Site not found, skipping status update', { siteId, status });
+        return;
+      }
+
+      const updatedSite = await siteService.updateSite(siteId, {
         status,
         ...urls
       });
 
+      if (!updatedSite) {
+        this.log('warn', 'Site update returned null (site may not exist)', { siteId, status });
+        return;
+      }
+
       this.log('info', 'Site status updated', { siteId, status });
     } catch (error) {
-      this.log('error', 'Failed to update site status', { siteId, status, error });
+      // Log error but don't throw - status updates are non-critical
+      this.log('error', 'Failed to update site status', { 
+        siteId, 
+        status, 
+        error: error instanceof Error ? error.message : String(error) 
+      });
     }
   }
 
@@ -359,7 +384,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
   /**
    * Register app with agents service for AI assistance
    */
-  private async registerWithAgents(siteId: string, name: string, initialPrompt: string, appPath: string, previewUrl?: string, socketPath?: string | null, subscriptionId?: string, customerId?: string): Promise<void> {
+  private async registerWithAgents(siteId: string, name: string, initialPrompt: string, appPath: string, previewUrl?: string, socketPath?: string | null, subscriptionId?: string, customerId?: string, publishSupervisorPath?: string | null): Promise<void> {
     try {
       const prefixedSubscriptionId = formatSubscriptionId(subscriptionId);
       this.log('info', 'Registering app with agents service', {
@@ -383,7 +408,8 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
           appPath,
           initialPrompt,
           previewUrl,
-          socketPath: socketPath || undefined, // Include connection path if available
+          socketPath: socketPath || undefined, // Preview supervisor connection path
+          publishSupervisorPath: publishSupervisorPath || undefined, // Publish supervisor connection path (V4 unified job)
           subscriptionId: prefixedSubscriptionId,
           customerId
         }),

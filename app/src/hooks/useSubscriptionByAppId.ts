@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { isFeatureEnabled } from '@/lib/features';
 import { logger } from '@/lib/request-context';
 
 interface SubscriptionData {
@@ -21,6 +22,22 @@ export const useSubscriptionByAppId = (appId: string | undefined): UseSubscripti
     queryFn: async (): Promise<SubscriptionData> => {
       if (!appId) {
         throw new Error('appId is required');
+      }
+
+      // Skip subscription API call in local development
+      if (isFeatureEnabled.localFeatures()) {
+        logger.info('subscription.query.local_override', { appId });
+        return {
+          app: { id: appId },
+          subscription: { 
+            id: 'local-subscription',
+            owningProduct: 'AiroAppBuilder'
+          },
+          system: { 
+            systemId: 'local-system',
+            subscriptionId: 'local-subscription'
+          }
+        };
       }
 
       logger.info('subscription.query.start', { appId });
