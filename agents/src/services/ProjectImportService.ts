@@ -6,7 +6,7 @@
  * @see docs/zip-import-plan.md for architecture and design decisions
  */
 
-import { rm, cp } from 'node:fs/promises';
+import { rm, cp, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Logger } from '../logging/index.js';
@@ -373,7 +373,26 @@ export class ProjectImportService {
         }
       }
 
-      // Phase 9: Git commit
+      // Phase 9: Create PaaS configuration file for uploaded apps
+      this.logger.info('project-import.config.create', { jobId, appId });
+      const airoDir = join(app.path, '.airo');
+      const configPath = join(airoDir, 'config.json');
+
+      // Currently only Vite is supported, framework detection logic to be added later.
+      const DEFAULT_DEV_COMMAND = 'npx vite --host 0.0.0.0 --port $PORT';
+
+      const paasConfig = {
+        runtime: {
+          dev: {
+            command: DEFAULT_DEV_COMMAND,
+          },
+        },
+      };
+      await mkdir(airoDir, { recursive: true });
+      await writeFile(configPath, JSON.stringify(paasConfig, null, 2), 'utf-8');
+      this.logger.info('project-import.config.created', { jobId, appId });
+
+      // Phase 10: Git commit
       await this.updateStatus(jobId, ImportJobStatus.COMMITTING);
       const commitResult = await this.gitCommit(appId, app.path);
 
@@ -392,7 +411,7 @@ export class ProjectImportService {
         return;
       }
 
-      // Phase 10: Restart dev server
+      // Phase 11: Restart dev server
       await this.updateStatus(jobId, ImportJobStatus.RESTARTING);
       const restartResult = await this.restartDevServer(appId);
 

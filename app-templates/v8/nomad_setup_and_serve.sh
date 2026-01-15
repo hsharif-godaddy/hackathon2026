@@ -109,6 +109,22 @@ if [ ! -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     echo "Completed: Fresh application detected, copied template files and initialized git repository"
 fi
 
-# run `npm run dev` from $CUSTOMER_APP_DIR
-echo "Running npm run dev from $CUSTOMER_APP_DIR"
-cd "$CUSTOMER_APP_DIR" && exec npm run dev
+cd "$CUSTOMER_APP_DIR"
+
+DEV_CMD="npm run dev"
+
+if [ -f ".airo/config.json" ]; then
+    echo "Custom configuration detected - reading runtime configuration from .airo/config.json"
+
+    # `// empty` makes jq emit nothing so `-e` considers the command missing/null a failure.
+    DEV_CMD=$(jq -er '.runtime.dev.command // empty' .airo/config.json 2>/dev/null || printf '%s' "$DEV_CMD")
+    echo "Setting dev command: $DEV_CMD"
+fi
+
+echo "Starting dev server with command: $DEV_CMD"
+
+# Ensure PORT is set before executing command (defaults to 3000 if not provided)
+PORT=${PORT:-3000}
+# Execute the configured command. This uses sh -c to support complex commands
+# with pipes, redirects, etc. The command is read from platform-generated config.
+exec sh -c "$DEV_CMD"
