@@ -48,6 +48,7 @@ import { initializeContextRegistry } from '../services/initializeContextRegistry
 import { KnowBDriver } from '../tools/ai-lib-tools/drivers/knowb-driver.js'
 import { GitHookService } from '../services/git-hook-service.js'
 import { ClientActionService } from '../services/ClientActionService.js'
+import { hasUnbuiltRebuildPages } from '../tools/ai-lib-tools/suggested-response.js'
 
 /**
  * Shared AppRepository instance to avoid repeated initialization
@@ -374,6 +375,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           } else {
             // Fallback: use a default session ID if not provided
             agentsAppContext.metadata.sessionId = 'default-session'
+          }
+
+          // Check for unbuilt rebuild pages and add to metadata
+          if (agentsAppContext.metadata.appId) {
+            const hasRebuildPages = await hasUnbuiltRebuildPages(agentsAppContext.metadata.appId as string)
+            agentsAppContext.metadata.hasUnbuiltRebuildPages = hasRebuildPages
           }
 
           // Detailed logging if enabled

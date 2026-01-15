@@ -44,8 +44,16 @@ describe('getSiteDataAction', () => {
   it('should throw error if site is not found', async () => {
     const mockGetState = vi.fn(() => ({
       getSite: vi.fn(() => null),
+      sites: {},
+      loading: {},
+      error: null,
+      _pendingRequests: {},
+      fetchSite: vi.fn(),
+      updateSite: vi.fn(),
+      clearError: vi.fn(),
+      cleanup: vi.fn(),
     }))
-    vi.mocked(useSiteStore.getState).mockImplementation(mockGetState)
+    vi.mocked(useSiteStore.getState).mockImplementation(mockGetState as any)
 
     await expect(getSiteDataAction({ appId: 'test-app' }, mockContext)).rejects.toThrow(
       'Site not found'
@@ -67,8 +75,16 @@ describe('getSiteDataAction', () => {
 
     const mockGetState = vi.fn(() => ({
       getSite: vi.fn(() => mockSite),
+      sites: {},
+      loading: {},
+      error: null,
+      _pendingRequests: {},
+      fetchSite: vi.fn(),
+      updateSite: vi.fn(),
+      clearError: vi.fn(),
+      cleanup: vi.fn(),
     }))
-    vi.mocked(useSiteStore.getState).mockImplementation(mockGetState)
+    vi.mocked(useSiteStore.getState).mockImplementation(mockGetState as any)
 
     const result = await getSiteDataAction({ appId: 'test-app' }, mockContext)
 
@@ -87,8 +103,16 @@ describe('getSiteDataAction', () => {
 
     const mockGetState = vi.fn(() => ({
       getSite: vi.fn(() => mockSite),
+      sites: {},
+      loading: {},
+      error: null,
+      _pendingRequests: {},
+      fetchSite: vi.fn(),
+      updateSite: vi.fn(),
+      clearError: vi.fn(),
+      cleanup: vi.fn(),
     }))
-    vi.mocked(useSiteStore.getState).mockImplementation(mockGetState)
+    vi.mocked(useSiteStore.getState).mockImplementation(mockGetState as any)
 
     const result = await getSiteDataAction({ appId: 'test-app' }, mockContext)
 

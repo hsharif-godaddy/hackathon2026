@@ -1,8 +1,8 @@
 'use client'
 
 import clsx from 'clsx'
-import { Check, ClipboardCopy } from 'lucide-react'
-import { useState } from 'react'
+import { Check, ClipboardCopy, Expand, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import { logger } from '@/lib/request-context'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
@@ -55,9 +55,9 @@ function getMessageClasses(message: ChatMessage | StreamingMessageType): string 
 }
 
 /**
- * User message component with copy functionality
+ * Modal component for viewing full message content
  */
-function UserMessage({ content }: { content: string }) {
+function FullMessageModal({ content, isOpen, onClose }: { content: string; isOpen: boolean; onClose: () => void }) {
   const [copiedToClipboard, setCopiedToClipboard] = useState(false)
 
   const handleCopyMessage = async () => {
@@ -72,19 +72,123 @@ function UserMessage({ content }: { content: string }) {
     }
   }
 
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [isOpen])
+
+  if (!isOpen) return null
+
   return (
-    <div className="relative group">
-      <p className="text-sm leading-normal break-words">
-        {content}
-      </p>
-      <button
-        onClick={handleCopyMessage}
-        className="absolute -bottom-0.5 -right-3 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-600 text-xs"
-        title="Copy message to clipboard"
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-intents-ux-box-backgroundColor border border-intents-ux-box-borderColor rounded-lg shadow-xl max-w-3xl w-full mx-4 max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
       >
-        {copiedToClipboard ? <Check className="w-2 h-2" /> : <ClipboardCopy className="w-2 h-2" />}
-      </button>
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-intents-ux-box-borderColor">
+          <span className="text-sm font-medium">Full Message</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCopyMessage}
+              className="p-1.5 rounded hover:bg-intents-ux-boxLowContrast-backgroundColor transition-colors"
+              title="Copy to clipboard"
+            >
+              {copiedToClipboard ? <Check className="w-4 h-4 text-green-500" /> : <ClipboardCopy className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded hover:bg-intents-ux-boxLowContrast-backgroundColor transition-colors"
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4">
+          <pre className="text-sm whitespace-pre-wrap break-words font-sans leading-relaxed">
+            {content}
+          </pre>
+        </div>
+      </div>
     </div>
+  )
+}
+
+/**
+ * User message component with copy functionality and truncation for large messages
+ */
+const MAX_MESSAGE_HEIGHT = 200 // pixels
+
+function UserMessage({ content }: { content: string }) {
+  const [copiedToClipboard, setCopiedToClipboard] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isTruncated, setIsTruncated] = useState(false)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (contentRef.current) {
+      setIsTruncated(contentRef.current.scrollHeight > MAX_MESSAGE_HEIGHT)
+    }
+  }, [content])
+
+  const handleCopyMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopiedToClipboard(true)
+      setTimeout(() => setCopiedToClipboard(false), 2000)
+    } catch (err) {
+      logger.error('streaming_message.copy.failed', {
+        error: err instanceof Error ? err.message : String(err)
+      })
+    }
+  }
+
+  return (
+    <>
+      <div className="flex">
+        <div className="relative group">
+          <div
+            ref={contentRef}
+            className="text-sm leading-relaxed break-words whitespace-pre-wrap font-sans overflow-hidden"
+            style={{ maxHeight: isTruncated ? `${MAX_MESSAGE_HEIGHT}px` : undefined }}
+          >
+            {content}
+          </div>
+          {isTruncated && (
+            <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-intents-ux-boxLowContrast-backgroundColor to-transparent pointer-events-none" />
+          )}
+          <div className="flex items-center gap-1 mt-0.5">
+            {isTruncated && (
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="text-xs text-intents-ux-link-foregroundColor hover:underline flex items-center gap-0.5"
+              >
+                <Expand className="w-2.5 h-2.5" />
+                Show full message
+              </button>
+            )}
+
+          </div>
+
+        </div>
+        <FullMessageModal
+          content={content}
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+        />
+      </div>
+    </>
   )
 }
 

@@ -131,9 +131,9 @@ describe('BigCard', () => {
     expect(screen.getByText('builder_status_error')).toBeInTheDocument();
   });
 
-  it('should render warning emphasis Tag in pending status', () => {
+  it('should render info emphasis Tag in pending status', () => {
     const status: StatusValue = {
-      type: 'warning',
+      type: 'info',
       label: 'Pending',
     };
 

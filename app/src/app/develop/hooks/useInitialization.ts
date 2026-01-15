@@ -29,18 +29,27 @@ function getInitialJobIdFromStorage(appId: string | null): string | null {
  * Helper to check if initial prompt is pending
  *
  * @param initialJobId - The initial job ID to check
+ * @param appId - The app ID to check (for rebuild mode)
  * @returns True if initial prompt is pending
  */
-function checkHasInitialPrompt(initialJobId: string | null): boolean {
-  if (typeof window === 'undefined' || !initialJobId) return false
+function checkHasInitialPrompt(initialJobId: string | null, appId: string | null): boolean {
+  if (typeof window === 'undefined') return false
 
-  // Check if initial prompt is pending
-  const hasPromptPending = sessionStorage.getItem(`initial-prompt-pending-${initialJobId}`) === 'true'
+  // Check with initialJobId first (normal creation flow)
+  if (initialJobId) {
+    const hasPromptPending = sessionStorage.getItem(`initial-prompt-pending-${initialJobId}`) === 'true'
+    const inCreationFlow = sessionStorage.getItem(`in-creation-flow-${initialJobId}`) === 'true'
+    if (hasPromptPending && inCreationFlow) return true
+  }
 
-  // Check if we're in an active creation flow (set when jobId is first seen)
-  const inCreationFlow = sessionStorage.getItem(`in-creation-flow-${initialJobId}`) === 'true'
+  // Also check with appId (for rebuild mode where we navigate directly to appId)
+  if (appId) {
+    const hasPromptPending = sessionStorage.getItem(`initial-prompt-pending-${appId}`) === 'true'
+    const inCreationFlow = sessionStorage.getItem(`in-creation-flow-${appId}`) === 'true'
+    if (hasPromptPending && inCreationFlow) return true
+  }
 
-  return hasPromptPending && inCreationFlow
+  return false
 }
 
 function getStoredInitialPrompt(initialJobId: string | null, appId: string | null): string | null {
@@ -53,6 +62,24 @@ function getStoredInitialPrompt(initialJobId: string | null, appId: string | nul
     return sessionStorage.getItem(`initial-prompt-text-${appId}`)
   }
   return null
+}
+
+/**
+ * Check if this is a rebuild mode prompt that should be used as-is
+ * 
+ * @param initialJobId - The initial job ID to check
+ * @param appId - The app ID to check
+ * @returns True if this is a rebuild mode prompt
+ */
+function isRebuildModePrompt(initialJobId: string | null, appId: string | null): boolean {
+  if (typeof window === 'undefined') return false
+  if (initialJobId && sessionStorage.getItem(`rebuild-mode-prompt-${initialJobId}`) === 'true') {
+    return true
+  }
+  if (appId && sessionStorage.getItem(`rebuild-mode-prompt-${appId}`) === 'true') {
+    return true
+  }
+  return false
 }
 
 // ============================================================================
@@ -104,6 +131,7 @@ export interface InitializationContext {
   hasInitialPrompt: boolean
   initialPromptSent: boolean
   initialPromptText: string | null
+  isRebuildModePrompt: boolean
 }
 
 /**
@@ -382,9 +410,13 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     isWebSocketConnected,
     isStreamingMessage,
     hasSeenFirstFileEdit,
-    hasInitialPrompt: checkHasInitialPrompt(initialJobId),
+    hasInitialPrompt: checkHasInitialPrompt(initialJobId, appId),
     initialPromptSent,
-    initialPromptText: site?.initial_prompt ?? getStoredInitialPrompt(initialJobId, appId),
+    // For rebuild mode, prioritize sessionStorage prompt over site.initial_prompt
+    initialPromptText: isRebuildModePrompt(initialJobId, appId) 
+      ? getStoredInitialPrompt(initialJobId, appId) 
+      : (site?.initial_prompt ?? getStoredInitialPrompt(initialJobId, appId)),
+    isRebuildModePrompt: isRebuildModePrompt(initialJobId, appId),
   }
 
   // -------------------------------------------------------------------------
@@ -431,13 +463,19 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (site?.initial_prompt && site.id) {
+      // DON'T overwrite sessionStorage if we're in rebuild mode
+      // In rebuild mode, the frontend generates a detailed prompt that should be used
+      // instead of the backend's stored initial_prompt
+      if (isRebuildModePrompt(initialJobId, site.id)) {
+        return
+      }
       const storageKey = `initial-prompt-text-${site.id}`
       const existingValue = sessionStorage.getItem(storageKey)
       if (existingValue !== site.initial_prompt) {
         sessionStorage.setItem(storageKey, site.initial_prompt)
       }
     }
-  }, [site?.initial_prompt, site?.id])
+  }, [site?.initial_prompt, site?.id, initialJobId])
 
   // Store initialJobId when first appId is received or when route changes
   // This captures the original job ID for sessionStorage key lookups, persisting across route changes
@@ -956,6 +994,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
         hasInitialPrompt: context.hasInitialPrompt,
         initialPromptSent: context.initialPromptSent,
         hasSeenFirstFileEdit: context.hasSeenFirstFileEdit,
+        isRebuildModePrompt: context.isRebuildModePrompt,
       },
       ui: {
         showChatLoader: ui.showChatLoader,

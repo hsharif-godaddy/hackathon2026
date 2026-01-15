@@ -55,6 +55,8 @@ export { publishClientAITool } from './publish-client.js';
 export { qaAnalyzeAITool } from './qa-analyze.js';
 export { setProjectNameAITool } from './set-project-name.js';
 export { qrCodeAITool } from './qr-code.js';
+export { websiteRebuildAITool } from './website-rebuild.js';
+export { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js';
@@ -105,6 +107,8 @@ import { publishClientAITool } from './publish-client.js';
 import { qaAnalyzeAITool } from './qa-analyze.js';
 import { setProjectNameAITool } from './set-project-name.js';
 import { qrCodeAITool } from './qr-code.js';
+import { websiteRebuildAITool } from './website-rebuild.js';
+import { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -156,6 +160,8 @@ export const allAILibTools: Record<string, Tool> = {
   qaAnalyze: qaAnalyzeAITool,
   setProjectName: setProjectNameAITool,
   qrCode: qrCodeAITool,
+  websiteRebuild: websiteRebuildAITool,
+  rebuildPageSelector: rebuildPageSelectorAITool,
 };
 
 /**

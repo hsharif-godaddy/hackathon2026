@@ -22,6 +22,7 @@ import OAuthToolRenderer from './OAuthToolRenderer'
 import PublishClientToolRenderer from './PublishClientToolRenderer'
 import QRCodeToolRenderer from './QRCodeToolRenderer'
 import ReadFileToolRenderer from './ReadFileToolRenderer'
+import RebuildPageSelectorToolRenderer from './RebuildPageSelectorToolRenderer'
 import SecretsToolRenderer from './SecretsToolRenderer'
 import SetProjectNameToolRenderer from './SetProjectNameToolRenderer'
 import SkillToolRenderer from './SkillToolRenderer'
@@ -31,6 +32,7 @@ import SocialPublishToolRenderer from './SocialPublishToolRenderer'
 import SuggestedResponseToolRenderer from './SuggestedResponseToolRenderer'
 import TerminalCommandToolRenderer from './TerminalCommandToolRenderer'
 import TodoListToolRenderer from './TodoListToolRenderer'
+import WebsiteRebuildToolRenderer from './WebsiteRebuildToolRenderer'
 
 /**
  * Tool renderer component props type
@@ -69,6 +71,8 @@ export const toolRendererRegistry = {
   socialConnect: SocialConnectToolRenderer,
   skill: SkillToolRenderer,
   publishClient: PublishClientToolRenderer,
+  websiteRebuild: WebsiteRebuildToolRenderer,
+  rebuildPageSelector: RebuildPageSelectorToolRenderer,
 } as const
 
 /**
@@ -118,6 +122,7 @@ export {
   PublishClientToolRenderer,
   QRCodeToolRenderer,
   ReadFileToolRenderer,
+  RebuildPageSelectorToolRenderer,
   SecretsToolRenderer,
   SetProjectNameToolRenderer,
   SkillToolRenderer,
@@ -126,5 +131,6 @@ export {
   SuggestedResponseToolRenderer,
   TerminalCommandToolRenderer,
   TodoListToolRenderer,
+  WebsiteRebuildToolRenderer,
 }
 export type { DefaultToolRendererProps }

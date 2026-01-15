@@ -7,6 +7,7 @@ import Button from '@ux/button'
 
 import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext'
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import RebuildPageSelectorToolRenderer from '@/app/develop/components/tool-renderers/RebuildPageSelectorToolRenderer'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 
@@ -36,8 +37,12 @@ export default function SuggestedResponseToolRenderer({
   }
 
   const resultObj = result as any
-  const widgetData = resultObj?.widgetData as SuggestedResponseData | undefined
-
+  // The result structure is { input, output } where output contains our data
+  const output = resultObj?.output || resultObj
+  const widgetData = output?.widgetData as SuggestedResponseData | undefined
+  const rebuildWidget = {widget: output?.rebuildWidget}
+  const showRebuildWidget = rebuildWidget && rebuildWidget.widget && rebuildWidget.widget.widgetData.availablePages.length > 0;
+  
   if (!widgetData || !widgetData.question || !widgetData.suggestions) {
     return null
   }
@@ -50,9 +55,22 @@ export default function SuggestedResponseToolRenderer({
 
   return (
     <Box gap="sm" className="my-2">
+
       <div className="text-sm leading-relaxed break-words mb-1">
         {widgetData.question}
       </div>
+
+      {/* Rebuild widget if present */}
+      {showRebuildWidget && (
+        <div className="mb-1">
+          <RebuildPageSelectorToolRenderer
+            toolName="rebuildPageSelector"
+            toolStatus="completed"
+            result={rebuildWidget}
+            size="small"
+          />
+        </div>
+      )}
 
       <Box
         orientation="horizontal"

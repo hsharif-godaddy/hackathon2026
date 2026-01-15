@@ -276,7 +276,10 @@ export interface ColorPalette {
   background?: string
   foreground?: string
   muted?: string
+  mutedForeground?: string
   border?: string
+  card?: string
+  cardForeground?: string
   destructive?: string
   success?: string
   warning?: string
@@ -292,14 +295,16 @@ export interface GeneratedPalette {
   background: string
   foreground: string
   muted: string
+  mutedForeground: string
   border: string
+  card: string
+  cardForeground: string
   destructive: string
   success: string
   warning: string
   primaryForeground: string
   secondaryForeground: string
   accentForeground: string
-  mutedForeground: string
   destructiveForeground: string
   successForeground: string
   warningForeground: string
@@ -384,11 +389,15 @@ export function generatePalette(input: ColorPalette): GeneratedPalette {
   const success: string = input.success || '#10B981' // Green
   const warning: string = input.warning || '#F59E0B' // Orange
 
+  // Card colors - use provided or default to background/foreground
+  const card: string = input.card || background
+  const cardForeground: string = input.cardForeground || ensureContrast(foreground, card, 4.5)
+
   // Generate foreground colors with proper contrast
   const primaryForeground = ensureContrast('#FFFFFF', primary, 4.5)
   const secondaryForeground = ensureContrast('#FFFFFF', secondary, 4.5)
   const accentForeground = ensureContrast('#FFFFFF', accent, 4.5)
-  const mutedForeground = ensureContrast(foreground, muted, 4.5)
+  const mutedForegroundColor = input.mutedForeground || ensureContrast(foreground, muted, 4.5)
   const destructiveForeground = ensureContrast('#FFFFFF', destructive, 4.5)
   const successForeground = ensureContrast('#FFFFFF', success, 4.5)
   const warningForeground = ensureContrast('#FFFFFF', warning, 4.5)
@@ -402,7 +411,7 @@ export function generatePalette(input: ColorPalette): GeneratedPalette {
     { id: 'primary', name: 'Primary', hex: primary, role: 'Main brand color', foreground: primaryForeground },
     { id: 'secondary', name: 'Secondary', hex: secondary, role: 'Secondary brand color', foreground: secondaryForeground },
     { id: 'accent', name: 'Accent', hex: accent, role: 'Accent and highlights', foreground: accentForeground },
-    { id: 'muted', name: 'Muted', hex: muted, role: 'Subtle backgrounds', foreground: mutedForeground }
+    { id: 'muted', name: 'Muted', hex: muted, role: 'Subtle backgrounds', foreground: mutedForegroundColor }
   ]
 
   // Determine theme based on background darkness
@@ -415,14 +424,16 @@ export function generatePalette(input: ColorPalette): GeneratedPalette {
     background,
     foreground,
     muted,
+    mutedForeground: mutedForegroundColor,
     border,
+    card,
+    cardForeground,
     destructive,
     success,
     warning,
     primaryForeground,
     secondaryForeground,
     accentForeground,
-    mutedForeground,
     destructiveForeground,
     successForeground,
     warningForeground,
@@ -473,8 +484,8 @@ export async function updateCssColors(appPath: string, palette: GeneratedPalette
     // Core colors
     '--background': palette.background,
     '--foreground': palette.foreground,
-    '--card': palette.muted,
-    '--card-foreground': palette.foreground,
+    '--card': palette.card,
+    '--card-foreground': palette.cardForeground,
     '--popover': palette.background,
     '--popover-foreground': palette.foreground,
     '--primary': palette.primary,

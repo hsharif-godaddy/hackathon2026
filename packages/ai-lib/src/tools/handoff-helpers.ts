@@ -115,6 +115,9 @@ export function createHandoffTool(config: HandoffToolConfig) {
           // Skip non-serializable objects like stateManager
           if (key === 'stateManager' || typeof metadata[key] === 'function') {
             acc[key] = '[Non-serializable]'
+          } else if (key === '_screenshots') {
+            // Don't log binary screenshot data - just indicate presence
+            acc[key] = `[${Array.isArray(metadata[key]) ? metadata[key].length : 0} screenshot(s)]`
           } else {
             acc[key] = metadata[key]
           }

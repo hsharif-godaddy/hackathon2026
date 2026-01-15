@@ -59,6 +59,7 @@ export async function createInitialAgent(
   const tools: Record<string, unknown> = {
     todoList: allAILibTools.todoList,
     setProjectName: allAILibTools.setProjectName,
+    websiteRebuild: allAILibTools.websiteRebuild,
   }
 
   if (handoffTool) {
@@ -80,7 +81,8 @@ export async function createInitialAgent(
       },
     ],
 
-    stopAfterTools: handoffTool ? ['handoff'] : [],
+    // Stop after websiteRebuild tool - it handles the handoff internally
+    stopAfterTools: handoffTool ? ['handoff', 'websiteRebuild'] : ['websiteRebuild'],
 
     maxSteps: 10,
     temperature: 0.5,

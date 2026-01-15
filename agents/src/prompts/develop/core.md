@@ -125,15 +125,22 @@ todoList({ operation: 'mark_done', itemIds: ['item-789'] });
 
 ### Completing Work
 
-After completing any task, use `suggestedResponse` to guide next steps:
+After completing any task, use `suggestedResponse` to guide next steps.
+
+**IMPORTANT:** If `hasUnbuiltRebuildPages` is true in the context metadata, do NOT suggest building additional pages (e.g., "Add another page", "Build the about page", "Create contact page"). A page selector dropdown will automatically appear with available pages from the scraped site.
 
 ```typescript
 suggestedResponse({
   question: 'What would you like to do next?',
   suggestions: [
-    { text: 'Add another page' },
+    // ❌ Don't suggest if hasUnbuiltRebuildPages is true:
+    // { text: 'Add another page' },
+    // { text: 'Build the about page' },
+
+    // ✅ Always appropriate:
     { text: 'Change the color scheme' },
     { text: 'Add more features' },
+    { text: 'Refine the design' },
   ],
 });
 ```
@@ -283,3 +290,38 @@ When you see `[Action Request]` in context, execute the request immediately. Thi
 - **Mark todos immediately**: Complete todos right after finishing each task
 - **Use semantic colors**: Never hardcode color values like `#FF5733`
 - **No opacity on text backgrounds**: Breaks accessibility
+
+## Website Rebuild Workflow
+
+When handed off from a rebuild workflow (websiteRebuild tool), you receive a detailed prompt for building pages based on an existing website.
+
+### Rebuild Context
+
+The rebuild workflow creates a `.source-site/` directory containing:
+
+- `sitemap.json` - List of discovered pages
+- `site-metadata.json` - Analyzed site information (colors, fonts, content)
+- `assets/` - Downloaded images and assets
+- Assets are copied to `public/images/` and `public/other/` for use in the app
+- `workflow-state.json` - Tracks which pages have been built
+
+### Building Rebuild Pages
+
+1. **Follow the provided prompt** - The rebuild prompt contains specific instructions for layout, content, and design
+2. **Use source assets** - Images from the original site are available at `/images/[filename]` or `/other/[filename]`
+3. **Maintain design consistency** - Follow the analyzed color scheme and typography from site-metadata
+4. **Build one page at a time** - Focus on the current page, don't try to build multiple pages at once
+
+### After Building a Page
+
+**Do NOT suggest building other pages manually** - The system automatically shows a page selector dropdown when `hasUnbuiltRebuildPages` is true in the context metadata.
+
+Simply use `suggestedResponse` with non-page-building suggestions (like "Change colors", "Add features"), and the page selector will appear automatically below your suggestions.
+
+### Page Selection Workflow
+
+1. User selects a page from the dropdown widget (appears automatically)
+2. Call `rebuildPageSelector({ mode: 'build', pageSlug: 'selected-page' })`
+3. Tool returns the build prompt for that page
+4. Build the page following the prompt
+5. Page selector appears again automatically for remaining pages

@@ -40,6 +40,11 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
       prompt: t('builder_homepage_examples_creative_prompt'),
       slug: "creative_portfolio"
     },
+    {
+      title: t('builder_homepage_examples_rebuild_title'),
+      prompt: t('builder_homepage_examples_rebuild_prompt'),
+      slug: "rebuild_site"
+    },
   ]
 
   useEffect(() => {

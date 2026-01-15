@@ -46,6 +46,8 @@ function formatPaletteForWidget(palette: ReturnType<typeof generatePalette>, nam
       muted: palette.muted,
       mutedForeground: palette.mutedForeground,
       border: palette.border,
+      card: palette.card,
+      cardForeground: palette.cardForeground,
       destructive: palette.destructive,
       destructiveForeground: palette.destructiveForeground,
       success: palette.success,
@@ -268,7 +270,8 @@ This tool has two modes:
 **APPLY MODE** - Apply a color palette to CSS:
 - Apply a previously suggested palette by name
 - Or provide explicit colors to apply directly
-- Updates all CSS color variables
+- Optionally provide semantic color overrides (card, muted, border, etc.)
+- Updates all CSS color variables in one operation
 
 WHEN TO USE SUGGEST MODE:
 - User asks for color options: "show me some purple color schemes"
@@ -312,7 +315,14 @@ IMPORTANT:
     theme: z.enum(['light', 'dark', 'both']).default('both').describe('For suggest mode: Generate light, dark, or both types of palettes'),
     paletteName: z.string().optional().describe('For apply mode: Name of a previously suggested palette to apply'),
     primary: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe('For apply mode: Primary brand color (hex format, e.g., #9333EA)'),
-    background: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe('For apply mode: Background color (hex format, e.g., #FFFFFF for light, #0A0A0A for dark)')
+    background: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe('For apply mode: Background color (hex format, e.g., #FFFFFF for light, #0A0A0A for dark)'),
+    secondary: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe('For apply mode: Secondary color override (hex format)'),
+    accent: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe('For apply mode: Accent color override (hex format)'),
+    muted: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe('For apply mode: Muted background color (hex format, e.g., #E8E8E8 for subtle backgrounds)'),
+    mutedForeground: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe('For apply mode: Muted foreground/text color (hex format)'),
+    border: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe('For apply mode: Border color (hex format)'),
+    card: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe('For apply mode: Card background color (hex format, can be dark on light theme)'),
+    cardForeground: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe('For apply mode: Card foreground/text color (hex format)')
   }),
   async (input, context) => {
     const appId = context?.metadata?.appId as string
@@ -396,7 +406,14 @@ IMPORTANT:
         } else if (input.primary) {
           paletteInput = {
             primary: input.primary,
-            background: input.background
+            background: input.background,
+            secondary: input.secondary,
+            accent: input.accent,
+            muted: input.muted,
+            mutedForeground: input.mutedForeground,
+            border: input.border,
+            card: input.card,
+            cardForeground: input.cardForeground
           } as ColorPalette
         } else {
           throw new Error(`Palette '${input.paletteName}' not found in session. Please use suggest mode first or provide explicit colors.`)
@@ -404,7 +421,14 @@ IMPORTANT:
       } else if (input.primary) {
         paletteInput = {
           primary: input.primary,
-          background: input.background
+          background: input.background,
+          secondary: input.secondary,
+          accent: input.accent,
+          muted: input.muted,
+          mutedForeground: input.mutedForeground,
+          border: input.border,
+          card: input.card,
+          cardForeground: input.cardForeground
         } as ColorPalette
       } else {
         throw new Error('Either paletteName (from previous suggestion) or primary color is required for apply mode')
@@ -413,7 +437,8 @@ IMPORTANT:
       logger.info('colorScheme.apply.begin', {
         appId,
         paletteName,
-        primary: paletteInput.primary
+        primary: paletteInput.primary,
+        hasSemanticOverrides: !!(input.muted || input.card || input.border)
       })
 
       const result = await updateCssColorPalette(app.path, paletteInput)
@@ -473,6 +498,8 @@ IMPORTANT:
           muted: result.palette.muted,
           mutedForeground: result.palette.mutedForeground,
           border: result.palette.border,
+          card: result.palette.card,
+          cardForeground: result.palette.cardForeground,
           destructive: result.palette.destructive,
           destructiveForeground: result.palette.destructiveForeground,
           success: result.palette.success,
@@ -502,6 +529,8 @@ IMPORTANT:
               muted: result.palette.muted,
               mutedForeground: result.palette.mutedForeground,
               border: result.palette.border,
+              card: result.palette.card,
+              cardForeground: result.palette.cardForeground,
               destructive: result.palette.destructive,
               destructiveForeground: result.palette.destructiveForeground,
               success: result.palette.success,

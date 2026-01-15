@@ -48,6 +48,7 @@ function ToolRenderer({ toolCall, className = '', isLastAssistantMessage = false
         endTime={toolCall.endTime}
         partialInput={toolCall.partialInput}
         isLastAssistantMessage={isLastAssistantMessage}
+        size="regular"
       />
     </div>
   )

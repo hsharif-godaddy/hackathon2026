@@ -35,6 +35,13 @@ function getFallback(category: FontCategory): string {
 }
 
 /**
+ * Build Google Fonts URL for a font and weights
+ */
+function buildGoogleFontsUrl(fontName: string, weights: string[]): string {
+  return `https://fonts.googleapis.com/css2?family=${fontName.replace(/\s+/g, '+')}:wght@${weights.join(';')}&display=swap`
+}
+
+/**
  * Fallback function to detect font category when LLM doesn't provide it
  */
 function detectFontCategory(fontName: string): FontCategory {
@@ -416,40 +423,45 @@ export async function updateCssFontVariables(appPath: string, theme: typeof FONT
 export const fontThemeAITool: Tool = createTool(
   `Manage font themes for professional websites.
 
-This tool has two modes:
+This tool has three modes:
 
-**SUGGEST MODE** - Show font theme options:
+**SET MODE** - Directly set a font (recommended for automated flows):
+- Picks and applies a font immediately without showing options
+- Use when you want to make a decision and apply it directly
+- Provide a description of desired font style (e.g., "modern sans-serif for tech startup")
+- The LLM will generate ONE appropriate font and apply it automatically
+- Perfect for rebuild flows where you want to pick fonts programmatically
+
+**SUGGEST MODE** - Show font theme options (for interactive flows):
 - With description: Generates custom LLM-powered font recommendations (2-6 options)
 - Without description: Shows 4 curated professional font themes
 - Displays visual preview of each font with actual rendering
 - User can click "Apply" on any theme
 
-**APPLY MODE** - Apply a font theme:
+**APPLY MODE** - Apply a previously suggested font theme:
 - Updates CSS variables with selected fonts
 - Loads Google Fonts automatically
 - Provides implementation guidance
 
-CURATED THEMES (shown when no description provided):
+CURATED THEMES (shown when no description provided in suggest mode):
 1. Modern Professional - Inter (tech, SaaS, corporate)
 2. Elegant Serif - Lora (publishing, blogs, editorial)
 3. Bold Modern - Montserrat (creative agencies, portfolios)
 4. Classic Formal - Merriweather (law firms, luxury brands)
 
-WORKFLOW FOR QUESTIONS (e.g., "what fonts should I use?"):
+WORKFLOW FOR SET MODE (automated/rebuild flows):
+1. Agent: fontTheme({ mode: 'set', description: 'elegant serif for luxury brand' })
+2. Tool generates ONE font recommendation and applies it immediately
+3. Tool confirms which font was applied
+4. No user interaction needed
+
+WORKFLOW FOR SUGGEST MODE (interactive flows):
 1. User: "What are some best fonts for my app?"
 2. You: fontTheme({ mode: 'suggest' })
 3. Tool displays widget with 4 curated theme previews
 4. User clicks "Apply" on a theme (message: "Apply font theme: Modern Professional")
 5. You: fontTheme({ mode: 'apply', themeName: 'Modern Professional' })
 6. Tool updates CSS and confirms
-
-WORKFLOW FOR SPECIFIC REQUESTS (e.g., "elegant fonts for luxury brand"):
-1. User: "Show me elegant fonts for a luxury brand"
-2. You: fontTheme({ mode: 'suggest', description: 'elegant serif fonts for luxury brand', count: 4 })
-3. Tool generates custom LLM recommendations with visual previews
-4. User clicks "Apply" on a font (message: "Apply font theme: Professional Elegant")
-5. You: fontTheme({ mode: 'apply', themeName: 'Professional Elegant' })
-6. Tool retrieves from session and updates CSS
 
 🚨 CRITICAL: PARSING APPLY MESSAGES 🚨
 When you receive a message like "Apply font theme: <NAME>":
@@ -468,21 +480,25 @@ WHY provide both themeName AND fontName/weights?
 - fontName/weights is FALLBACK if session is lost (refresh, timeout, restart)
 - This makes the tool robust - works even if session state is unavailable
 
-CRITICAL RULES:
-- ALWAYS use suggest mode first - NEVER go directly to apply mode from a user's chat message
+CRITICAL RULES FOR INTERACTIVE FLOWS:
+- For user questions: Use suggest mode first - NEVER go directly to apply mode
 - Use apply mode ONLY when user clicks "Apply" button in the widget (system event)
-- Chat messages like "apply a new font", "use a different font" should STILL trigger suggest mode
-- When applying: EXTRACT the theme name from the message and pass it as themeName parameter
+- Chat messages like "apply a new font", "use a different font" should trigger suggest mode
 - After suggest mode: DO NOT list or describe the themes - the widget shows them visually
 - After suggest mode: STOP immediately - let user interact with widget
-- After apply mode: Confirm which fonts were applied and use suggestedResponse for next steps
 
-IMPORTANT DISTINCTION:
-- User chat message: "apply a new font" → Use suggest mode to show options
-- User clicks "Apply" button in widget → Message like "Apply font theme: {name}" → Use apply mode with themeName`,
+CRITICAL RULES FOR AUTOMATED FLOWS (rebuild, initial setup):
+- Use SET mode to pick and apply fonts directly without user interaction
+- Provide a description of the desired font style based on site purpose/brand
+- The tool will generate ONE font and apply it automatically
+
+MODE SELECTION GUIDE:
+- SET mode: Automated flows, rebuild, when you want to decide and apply immediately
+- SUGGEST mode: User asks for options, wants to explore different fonts
+- APPLY mode: User clicks "Apply" button in widget after seeing suggestions`,
   z.object({
-    mode: z.enum(['suggest', 'apply']).describe('suggest: Show font theme options | apply: Apply a selected theme'),
-    description: z.string().optional().describe('For suggest mode: What kind of fonts? (e.g., "elegant serif for luxury brand", "modern tech fonts"). If omitted, shows 4 curated professional themes.'),
+    mode: z.enum(['set', 'suggest', 'apply']).describe('set: Pick and apply font directly | suggest: Show font options | apply: Apply a selected theme'),
+    description: z.string().optional().describe('For set/suggest mode: What kind of fonts? (e.g., "elegant serif for luxury brand", "modern tech fonts"). Required for set mode. For suggest mode, if omitted, shows 4 curated professional themes.'),
     count: z.number().min(2).max(6).default(4).describe('For suggest mode with description: Number of font recommendations to generate (2-6, default 4)'),
     themeId: z.string().optional().describe('For apply mode: ID of theme to apply (e.g., "modern-professional") or custom font ID from LLM suggestions'),
     themeName: z.string().optional().describe('For apply mode: EXTRACT theme name from messages like "Apply font theme: Dynamic Edge" → use "Dynamic Edge". This retrieves the font from session state. REQUIRED when message starts with "Apply font theme:"'),
@@ -494,6 +510,78 @@ IMPORTANT DISTINCTION:
       const appId = context?.metadata?.appId as string
       const sessionId = context?.metadata?.sessionId as string | undefined
       const stateManager = context?.metadata?.stateManager as any
+
+      if (input.mode === 'set') {
+        if (!appId) {
+          throw new Error('App ID is required for set mode')
+        }
+
+        if (!input.description) {
+          throw new Error('Description is required for set mode')
+        }
+
+        logger.info('fontTheme.set.begin', {
+          appId,
+          description: input.description
+        })
+
+        // Generate ONE font recommendation
+        const llmFonts = await generateFontsWithLLM(
+          input.description,
+          1,
+          appId,
+          sessionId
+        )
+
+        if (llmFonts.length === 0) {
+          throw new Error('Failed to generate font recommendation')
+        }
+
+        const selectedFont = llmFonts[0]!
+
+        // Apply the font immediately
+        const category = selectedFont.category || detectFontCategory(selectedFont.fontName)
+        const theme = {
+          name: selectedFont.name,
+          description: selectedFont.description,
+          font: {
+            name: selectedFont.fontName,
+            weights: selectedFont.weights,
+            category,
+            fallback: getFallback(category),
+            googleFontsUrl: buildGoogleFontsUrl(selectedFont.fontName, selectedFont.weights)
+          }
+        }
+
+        const app = await appRepo.findById(appId)
+        if (!app) {
+          throw new Error(`App not found: ${appId}`)
+        }
+
+        const result = await updateCssFontVariables(app.path, theme)
+
+        if (!result.success) {
+          throw new Error(result.message)
+        }
+
+        logger.info('fontTheme.set.complete', {
+          appId,
+          fontName: selectedFont.fontName,
+          themeName: selectedFont.name
+        })
+
+        return {
+          success: true,
+          message: `Applied font theme: ${selectedFont.name}`,
+          appliedFont: {
+            name: selectedFont.name,
+            fontName: selectedFont.fontName,
+            weights: selectedFont.weights,
+            category
+          },
+          suggestedResponse: `Font theme "${selectedFont.name}" (${selectedFont.fontName}) has been applied.`
+        }
+      }
 
       if (input.mode === 'suggest') {
       if (input.description) {

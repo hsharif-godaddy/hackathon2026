@@ -47,7 +47,7 @@ export class ImageEditorTool {
     toolImageGenerationEvents.begin(logger, logData);
 
     try {
-      const appPath = path.join(this.appsBaseDir, appId);
+      const appPath = path.join(this.appsBaseDir, appId, 'app');
       const publicDir = path.join(appPath, 'public');
       const imagesDir = path.join(publicDir, 'images');
 

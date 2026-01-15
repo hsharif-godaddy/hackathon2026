@@ -2,26 +2,35 @@
 
 ALWAYS use `fontTheme` for font/typography requests. NEVER respond with plain text.
 
-## 🚨 CRITICAL: Parsing Apply Messages
-
-When you see: **"Apply font theme: <NAME>"**
-→ Extract the name and use: `fontTheme({ mode: 'apply', themeName: '<NAME>' })`
-
-Example:
-
-- Message: "Apply font theme: Dynamic Edge"
-- You call: `fontTheme({ mode: 'apply', themeName: 'Dynamic Edge' })`
-
 ## Mode Selection
 
-**User chat message** → `suggest` mode  
+**Automated/rebuild flows** → `set` mode (pick and apply directly)  
+**User chat message asking for options** → `suggest` mode  
 **User clicks "Apply" button** → `apply` mode
-
-CRITICAL: "apply" in chat ≠ apply mode. Only button clicks trigger apply mode.
 
 ## Usage
 
-### Suggest Mode
+### Set Mode (Automated Flows)
+
+Use when you want to pick and apply a font directly without showing options:
+
+```typescript
+fontTheme({ mode: 'set', description: 'elegant serif for luxury brand' });
+```
+
+This will:
+
+1. Generate ONE font recommendation based on description
+2. Apply it immediately
+3. Return confirmation
+
+Perfect for:
+
+- Rebuild flows where you're setting up the site automatically
+- Initial site setup where you want to make design decisions
+- Any automated flow where user interaction isn't needed
+
+### Suggest Mode (Interactive Flows)
 
 With style/use case:
 
@@ -36,6 +45,18 @@ fontTheme({ mode: 'suggest' });
 ```
 
 Description: 5-10 words, style + use case (e.g., "modern sans-serif for tech startup")
+
+## 🚨 CRITICAL: Parsing Apply Messages
+
+When you see: **"Apply font theme: <NAME>"**
+→ Extract the name and use: `fontTheme({ mode: 'apply', themeName: '<NAME>' })`
+
+Example:
+
+- Message: "Apply font theme: Dynamic Edge"
+- You call: `fontTheme({ mode: 'apply', themeName: 'Dynamic Edge' })`
+
+CRITICAL: "apply" in chat ≠ apply mode. Only button clicks trigger apply mode.
 
 ### Apply Mode
 

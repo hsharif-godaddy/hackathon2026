@@ -224,6 +224,9 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       // Planning tools
       todoList: allAILibTools.todoList,
 
+      // Project setup
+      setProjectName: allAILibTools.setProjectName,
+
       // Skills system
       skill: allAILibTools.skill,
 
@@ -244,11 +247,10 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       // Font theme tool
       fontTheme: allAILibTools.fontTheme,
 
-      // Widget rendering
-      //widgetRender: allAILibTools.widgetRender,
+      // Rebuild tools
+      rebuildPageSelector: allAILibTools.rebuildPageSelector,
 
       // User interaction
-      nextAction: allAILibTools.nextAction,
       suggestedResponse: allAILibTools.suggestedResponse,
 
       // Secrets management (for API keys, credentials)

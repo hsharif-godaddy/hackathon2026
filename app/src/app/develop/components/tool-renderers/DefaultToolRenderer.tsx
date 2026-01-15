@@ -26,6 +26,8 @@ export interface DefaultToolRendererProps {
   partialInput?: string
   /** Whether this tool is in the last assistant message (used to disable interactive forms after user responds) */
   isLastAssistantMessage?: boolean
+  /** Display size variant - defaults to "regular" */
+  size?: 'small' | 'regular'
 }
 
 /**
