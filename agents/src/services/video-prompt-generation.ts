@@ -52,6 +52,8 @@ export class VideoPromptGenerationService {
         return await generateText({
           model,
           system: `You are an expert video production and creative director. Your task is to generate a detailed, professional video prompt that can be used to create promotional videos for businesses.
+          
+[CRITICAL: The video prompt should be in the same language as the business/app summary. Do not use any random data which is not available in summary.]
 
 Based on the business/app summary provided, create a comprehensive video prompt following this EXACT structure:
 
@@ -80,6 +82,7 @@ Based on the business/app summary provided, create a comprehensive video prompt 
 - Location/service area
 - Call to action
 - Final shot composition
+- Outro should be 2-3 seconds long
 - Note that it should be suitable for social media platforms]
 
 IMPORTANT GUIDELINES:
@@ -88,9 +91,11 @@ IMPORTANT GUIDELINES:
 - Focus on creating promotional content that drives engagement and conversions
 - Keep the tone energetic, positive, and brand-focused
 - Ensure the outro is polished and memorable
+- Do not add data which is not provided in the business/app summary like email, phone number, etc. [Important]
 - Use vivid, descriptive language that a video production AI can understand
 - Make it suitable for social media platforms (Instagram Reels, YouTube Shorts, TikTok)
-- The video will be 12 seconds in landscape format (1280x720), so plan the pacing accordingly`,
+- The video will be 12 seconds in PORTRAIT format (720x1280 - vertical mobile format), so plan the pacing accordingly
+- Frame subjects vertically and use vertical compositions suitable for mobile viewing`,
           prompt: `Business/App Summary:
 ${summary.summaryText}
 

@@ -4,7 +4,7 @@ FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/node:${UPSTREAM_VERSION}-alpin
 
 USER root
 
-RUN apk add --no-cache python3 py3-setuptools make g++ git
+RUN apk add --no-cache python3 py3-setuptools make g++ git ffmpeg
 
 RUN npm install -g pnpm@10.17.0+sha512.fce8a3dd29a4ed2ec566fb53efbb04d8c44a0f05bc6f24a73046910fb9c3ce7afa35a0980500668fa3573345bd644644fa98338fa168235c80f4aa17aa17fbef
 ENV CI=true

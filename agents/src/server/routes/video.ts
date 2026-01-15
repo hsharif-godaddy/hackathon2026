@@ -10,7 +10,10 @@ const appRepo = new AppRepository();
  * POST /video/:id/generate - Generate AI video with intelligent prompt from app summary
  * 
  * This endpoint generates a professional video prompt based on the app's conversation summary,
- * then uses that prompt to generate a 12-second landscape video (1280x720) using OpenAI Sora-2.
+ * then uses that prompt to generate a 12-second portrait video (720x1280) using OpenAI Sora-2.
+ * 
+ * Portrait format (9:16) is optimized for mobile viewing and social media platforms
+ * (Instagram Reels, YouTube Shorts, TikTok).
  * 
  * No request body required - generates everything from the app's conversation summary.
  */
@@ -30,7 +33,7 @@ router.post('/:id/generate-video', async (req: Request, res: Response) => {
 
     // Fixed parameters for video generation
     const duration = 12;
-    const resolution = '1280x720';
+    const resolution = '720x1280'; // Portrait format (9:16) for mobile/social media
 
     contextLogger.info('route.video.generate.begin', {
       duration,

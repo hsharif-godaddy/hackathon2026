@@ -17,19 +17,23 @@
  * const result = await generateVideo({ 
  *   appId: "app123",
  *   duration: 12,
- *   resolution: "1280x720"
+ *   resolution: "720x1280"
  * });
  * // Returns the generated prompt and video details
  * ```
  */
-import { createOpenAIClient } from '@airo/ai-lib';
-import { AppRepository } from '../database/repositories/AppRepository.js';
-import { getVideoPromptGenerationService } from '../services/video-prompt-generation.js';
-import { nanoid } from 'nanoid';
-import { logger } from '../logging/index.js';
-import { toolVideoGenerationEvents } from '../logging/events/index.js';
+import { execa } from 'execa';
 import fs from 'node:fs';
 import path from 'node:path';
+
+import { nanoid } from 'nanoid';
+
+import { createOpenAIClient } from '@airo/ai-lib';
+
+import { AppRepository } from '../database/repositories/AppRepository.js';
+import { logger } from '../logging/index.js';
+import { toolVideoGenerationEvents } from '../logging/events/index.js';
+import { getVideoPromptGenerationService } from '../services/video-prompt-generation.js';
 
 /**
  * Video resolution options (OpenAI Sora-2 supported resolutions)
@@ -233,6 +237,88 @@ export class VideoGenerationTool {
   }
 
   /**
+   * Check if ffmpeg is available on the system
+   */
+  private async checkFfmpegAvailable(): Promise<boolean> {
+    try {
+      await execa('ffmpeg', ['-version']);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Stitch outro image to the end of video using system ffmpeg
+   * Creates a 1-second video from the image and concatenates it
+   */
+  private async stitchOutroImage(
+    videoPath: string,
+    outroImagePath: string,
+    resolution: VideoResolution
+  ): Promise<void> {
+    const tempOutroVideo = videoPath.replace('.mp4', '-outro-temp.mp4');
+    const finalVideo = videoPath.replace('.mp4', '-final.mp4');
+    const concatList = videoPath.replace('.mp4', '-concat.txt');
+
+    try {
+      logger.info('Stitching outro image to video', {
+        videoPath,
+        outroImagePath,
+        resolution
+      });
+
+      // Step 1: Convert image to 1-second video
+      await execa('ffmpeg', [
+        '-loop', '1',
+        '-i', outroImagePath,
+        '-t', '1',
+        '-vf', `scale=${resolution.split('x')[0]}:${resolution.split('x')[1]}`,
+        '-pix_fmt', 'yuv420p',
+        '-r', '30',
+        '-y',
+        tempOutroVideo
+      ]);
+
+      logger.debug('Outro video created', { tempOutroVideo });
+
+      // Step 2: Create concat demuxer file with absolute paths (safer, no escaping needed)
+      const concatContent = `file '${videoPath}'\nfile '${tempOutroVideo}'`;
+      fs.writeFileSync(concatList, concatContent);
+
+      // Step 3: Concatenate videos
+      await execa('ffmpeg', [
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', concatList,
+        '-c:v', 'libx264',
+        '-c:a', 'aac',
+        '-pix_fmt', 'yuv420p',
+        '-y',
+        finalVideo
+      ]);
+
+      logger.debug('Videos concatenated', { finalVideo });
+
+      // Step 4: Replace original with final video
+      fs.renameSync(finalVideo, videoPath);
+
+      logger.info('Outro stitched successfully', { videoPath });
+    } finally {
+      // Cleanup temp files
+      try {
+        if (fs.existsSync(tempOutroVideo)) fs.unlinkSync(tempOutroVideo);
+        if (fs.existsSync(concatList)) fs.unlinkSync(concatList);
+        if (fs.existsSync(finalVideo)) fs.unlinkSync(finalVideo);
+      } catch (error) {
+        logger.warn('Failed to cleanup temp files', {
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+  }
+
+  /**
    * Generate a video using OpenAI Sora
    * Always generates prompt from the app's conversation summary
    */
@@ -240,7 +326,7 @@ export class VideoGenerationTool {
     const {
       appId,
       duration = 12,
-      resolution = '1280x720',
+      resolution = '720x1280',
       filename
     } = options;
 
@@ -409,6 +495,45 @@ export class VideoGenerationTool {
       const filePath = path.join(imagesDir, fullFilename);
 
       fs.writeFileSync(filePath, videoBuffer);
+
+      // Stitch outro image if available and ffmpeg is installed
+      const outroImagePath = path.join(process.cwd(), 'images', 'Built_with_Airo_Builder_720x1280.jpeg');
+      if (fs.existsSync(outroImagePath)) {
+        const ffmpegAvailable = await this.checkFfmpegAvailable();
+        
+        if (ffmpegAvailable) {
+          logger.info('video.outro.stitch.begin', {
+            appId,
+            videoId,
+            outroImagePath
+          });
+
+          try {
+            await this.stitchOutroImage(filePath, outroImagePath, resolution);
+            logger.info('Outro stitched successfully', {
+              appId,
+              videoId
+            });
+          } catch (error) {
+            logger.warn('Failed to stitch outro, continuing with original video', {
+              appId,
+              videoId,
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+        } else {
+          logger.warn('ffmpeg not available on system, skipping outro', {
+            appId,
+            videoId
+          });
+        }
+      } else {
+        logger.warn('Outro image not found, skipping outro', {
+          appId,
+          videoId,
+          outroImagePath
+        });
+      }
 
       const publicPath = `/images/${fullFilename}`;
       const executionTime = Date.now() - startTime;
