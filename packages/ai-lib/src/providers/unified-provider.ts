@@ -7,7 +7,7 @@
 
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { createLogger } from '../utils/logger.js'
-import { createOpenAI } from '@ai-sdk/openai'
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
 import type { LanguageModel } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
@@ -399,7 +399,7 @@ function createAnthropicFetch(options: { useS2S: boolean; s2sAuthConfig?: S2SAut
 }
 
 /**
- * Create OpenAI provider with configuration
+ * Create OpenAI-compatible provider for LiteLLM
  * Now supports S2S authentication when GOCODE_USE_S2S_AUTH is enabled
  * Includes automatic token refresh on authentication failures
  */
@@ -410,20 +410,24 @@ async function createOpenAIProvider(config?: ProviderConfig) {
   if (s2sConfig) {
     // Use S2S authentication with GoCode endpoint
     const openaiConfig: any = {
+      name: 'litellm',
       apiKey: s2sConfig.apiKey, // Placeholder API key
       baseURL: s2sConfig.baseURL.endsWith('/v1') ? s2sConfig.baseURL : s2sConfig.baseURL + '/v1', // Ensure /v1 suffix
-      fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token injection and refresh
+      fetch: createS2SFetchWrapper(config?.s2sAuth), // Custom fetch with token injection and refresh
+      includeUsage: true // Include token usage in streaming responses
     }
 
     logger.info(`Using S2S authentication with GoCode endpoint: ${openaiConfig.baseURL}`)
-    return createOpenAI(openaiConfig)
+    return createOpenAICompatible(openaiConfig)
 
   } else {
     // Use regular OpenAI authentication
     const fallbackApiKey = config?.openaiApiKey || process.env.OPENAI_API_KEY || ''
 
     const openaiConfig: any = {
-      apiKey: fallbackApiKey
+      name: 'litellm',
+      apiKey: fallbackApiKey,
+      includeUsage: true // Include token usage in streaming responses
     }
 
     // Add base URL if provided (for proxy support)
@@ -433,7 +437,7 @@ async function createOpenAIProvider(config?: ProviderConfig) {
       openaiConfig.baseURL = baseURL.endsWith('/v1') ? baseURL : baseURL + '/v1'
     }
 
-    return createOpenAI(openaiConfig)
+    return createOpenAICompatible(openaiConfig)
   }
 }
 

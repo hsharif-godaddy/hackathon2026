@@ -100,6 +100,14 @@ function isOpenAIAvailable(): boolean {
 }
 
 /**
+ * Get the model override from environment variable if set.
+ * Use AI_MODEL_OVERRIDE to force a specific model for testing.
+ */
+export function getModelOverride(): string | null {
+  return process.env.AI_MODEL_OVERRIDE || null
+}
+
+/**
  * Get the appropriate model for the specified tier
  * 
  * @param tier - 'full' for premium models, 'fast' for quick responses
@@ -116,12 +124,45 @@ function isOpenAIAvailable(): boolean {
  */
 export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
   const config = MODEL_MAPPINGS[tier]
-  
+
+  // Check for model override first (for testing new models)
+  const overrideModel = getModelOverride()
+  if (overrideModel) {
+    logger.info('model.override.active', {
+      overrideModel,
+      tier,
+      reason: 'AI_MODEL_OVERRIDE environment variable set'
+    })
+
+    try {
+      const model = await getModel(overrideModel)
+      const modelInfo = getModelInfo(overrideModel)
+      logger.info('model.override.success', {
+        tier,
+        overrideModel,
+        modelInfo: {
+          shortName: modelInfo.shortName,
+          fullName: modelInfo.fullName,
+          provider: modelInfo.provider,
+          usingProxy: modelInfo.usingProxy
+        }
+      })
+      return wrapWithDevTools(model)
+    } catch (error) {
+      logger.error('model.override.failure', {
+        tier,
+        overrideModel,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      throw new Error(`Failed to initialize override model '${overrideModel}'. Please check the model name and API credentials.`)
+    }
+  }
+
   // Check provider availability
   const bedrockAvailable = await isBedrockAvailable()
   const anthropicAvailable = isAnthropicAvailable()
   const openaiAvailable = isOpenAIAvailable()
-  
+
   logger.info('model.selection.begin', {
     tier,
     providers: {
@@ -130,9 +171,9 @@ export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
       openaiAvailable
     }
   })
-  
+
   let selectedModel: string
-  
+
   if (bedrockAvailable) {
     // Prefer Bedrock for better models and cost
     selectedModel = config.bedrock
@@ -202,12 +243,48 @@ export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
  */
 export async function getAgentModelWithName(tier: ModelTier): Promise<{model: any, modelName: string}> {
   const config = MODEL_MAPPINGS[tier]
-  
+
+  // Check for model override first (for testing new models)
+  const overrideModel = getModelOverride()
+  if (overrideModel) {
+    logger.info('model.override.active', {
+      overrideModel,
+      tier,
+      operation: 'with_name',
+      reason: 'AI_MODEL_OVERRIDE environment variable set'
+    })
+
+    try {
+      const model = await getModel(overrideModel)
+      const modelInfo = getModelInfo(overrideModel)
+      logger.info('model.override.success', {
+        tier,
+        overrideModel,
+        operation: 'with_name',
+        modelInfo: {
+          shortName: modelInfo.shortName,
+          fullName: modelInfo.fullName,
+          provider: modelInfo.provider,
+          usingProxy: modelInfo.usingProxy
+        }
+      })
+      return { model: wrapWithDevTools(model), modelName: overrideModel }
+    } catch (error) {
+      logger.error('model.override.failure', {
+        tier,
+        overrideModel,
+        operation: 'with_name',
+        error: error instanceof Error ? error.message : String(error)
+      })
+      throw new Error(`Failed to initialize override model '${overrideModel}'. Please check the model name and API credentials.`)
+    }
+  }
+
   // Check provider availability
   const bedrockAvailable = await isBedrockAvailable()
   const anthropicAvailable = isAnthropicAvailable()
   const openaiAvailable = isOpenAIAvailable()
-  
+
   logger.info('model.selection.with_name.begin', {
     tier,
     providers: {
@@ -216,9 +293,9 @@ export async function getAgentModelWithName(tier: ModelTier): Promise<{model: an
       openaiAvailable
     }
   })
-  
+
   let selectedModel: string
-  
+
   if (bedrockAvailable) {
     // Prefer Bedrock for better models and cost
     selectedModel = config.bedrock
@@ -325,16 +402,23 @@ export async function validateModelSetup() {
   const bedrockAvailable = await isBedrockAvailable()
   const anthropicAvailable = isAnthropicAvailable()
   const openaiAvailable = isOpenAIAvailable()
-  
+  const overrideModel = getModelOverride()
+
   const status = {
     bedrock: bedrockAvailable,
     anthropic: anthropicAvailable,
     openai: openaiAvailable,
+    override: overrideModel,
     recommendations: [] as string[]
   }
-  
+
+  // Show override status first if active
+  if (overrideModel) {
+    status.recommendations.push(`🔧 Model override active: ${overrideModel} (via AI_MODEL_OVERRIDE)`)
+  }
+
   const totalProviders = [bedrockAvailable, anthropicAvailable, openaiAvailable].filter(Boolean).length
-  
+
   if (totalProviders === 0) {
     status.recommendations.push('❌ No AI providers configured. Run setup script to configure a provider.')
   } else if (totalProviders === 1) {
@@ -351,6 +435,6 @@ export async function validateModelSetup() {
   } else {
     status.recommendations.push(`✅ ${totalProviders} providers available - excellent setup!`)
   }
-  
+
   return status
 }

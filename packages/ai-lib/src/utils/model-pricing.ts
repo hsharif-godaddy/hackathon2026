@@ -59,7 +59,7 @@ interface ModelPricing {
 
 /**
  * Model pricing database
- * Updated as of January 2024
+ * Updated as of January 2025
  */
 const MODEL_PRICING: Record<string, ModelPricing> = {
   // OpenAI Models
@@ -86,6 +86,25 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   'gpt-3.5-turbo': {
     inputCostPer1K: 0.0015,
     outputCostPer1K: 0.002,
+    currency: 'USD'
+  },
+
+  // Gemini Models (via OpenAI-compatible provider)
+  'gemini-3-flash-preview': {
+    inputCostPer1K: 0.0005,
+    outputCostPer1K: 0.003,
+    currency: 'USD'
+  },
+  'gemini-3-pro-preview': {
+    inputCostPer1K: 0.002,
+    outputCostPer1K: 0.012,
+    currency: 'USD'
+  },
+
+  // GLM Models (via OpenAI-compatible provider)
+  'zai-glm-4.7': {
+    inputCostPer1K: 0.00225,
+    outputCostPer1K: 0.00275,
     currency: 'USD'
   },
 
@@ -199,7 +218,11 @@ export function calculateCostEstimate(
   const modelInfo = normalizeModelName(modelName, true) // Prefer Bedrock for caching support
   const provider = modelInfo.provider
   const pricing = getModelPricing(modelName)
-  
+
+  // Normalize usage values to handle undefined from some providers (e.g. Gemini)
+  const inputTokens = usage.inputTokens ?? 0
+  const outputTokens = usage.outputTokens ?? 0
+
   if (!pricing) {
     // Return zero cost for unsupported models
     return {
@@ -214,10 +237,10 @@ export function calculateCostEstimate(
       provider
     }
   }
-  
+
   // Calculate basic costs
-  const inputCost = (usage.inputTokens / 1000) * pricing.inputCostPer1K
-  const outputCost = (usage.outputTokens / 1000) * pricing.outputCostPer1K
+  const inputCost = (inputTokens / 1000) * pricing.inputCostPer1K
+  const outputCost = (outputTokens / 1000) * pricing.outputCostPer1K
   
   // Calculate cached input cost if applicable
   let cachedInputCost = 0
@@ -227,7 +250,7 @@ export function calculateCostEstimate(
   
   if (totalCachedInputTokens > 0 && (pricing.cachedInputReadCostPer1K !== undefined || pricing.cachedInputWriteCostPer1K !== undefined)) {
     // Calculate cost for cached tokens (usually much cheaper)
-    const regularInputTokens = usage.inputTokens - totalCachedInputTokens
+    const regularInputTokens = inputTokens - totalCachedInputTokens
     const regularInputCost = Math.max(0, (regularInputTokens / 1000) * pricing.inputCostPer1K)
     
     // Calculate cached read cost

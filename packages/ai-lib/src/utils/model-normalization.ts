@@ -66,6 +66,22 @@ const MODELS: Record<string, ModelDefinition> = {
     openai: 'gpt-3.5-turbo'
   },
 
+  // Gemini Models (via OpenAI-compatible provider)
+  'gemini-3-flash-preview': {
+    normalizedName: 'gemini-3-flash-preview',
+    openai: 'gemini-3-flash-preview'
+  },
+  'gemini-3-pro-preview': {
+    normalizedName: 'gemini-3-pro-preview',
+    openai: 'gemini-3-pro-preview'
+  },
+
+  // GLM Models (via OpenAI-compatible provider)
+  'zai-glm-4.7': {
+    normalizedName: 'zai-glm-4.7',
+    openai: 'priv/cb.zai-glm-4.7'
+  },
+
   // Claude Models (available on multiple providers)
   'claude-sonnet-4-5': {
     normalizedName: 'claude-sonnet-4-5',
@@ -116,6 +132,17 @@ const ALIASES: Record<string, string> = {
   'gpt4': 'gpt-4',
   'gpt35': 'gpt-3.5-turbo',
   'gpt-35-turbo': 'gpt-3.5-turbo',
+
+  // Gemini aliases
+  'gemini3-flash': 'gemini-3-flash-preview',
+  'gemini-3-flash': 'gemini-3-flash-preview',
+  'gemini3-pro': 'gemini-3-pro-preview',
+  'gemini-3-pro': 'gemini-3-pro-preview',
+
+  // GLM aliases
+  'priv/cb.zai-glm-4.7': 'zai-glm-4.7',
+  'glm-4.7': 'zai-glm-4.7',
+  'glm4.7': 'zai-glm-4.7',
 
   // Claude aliases
   'claude4': 'claude-sonnet-4',

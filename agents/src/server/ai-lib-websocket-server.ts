@@ -41,6 +41,7 @@ import { fileUploadService } from '../services/FileUploadService.js'
 import { logger, log } from '../logging/index.js'
 import { jwtAuthMiddleware } from './middleware/jwt-auth.js'
 import { getAgentConfig } from '../services/features.js'
+import { getModelOverride } from '../utils/model-selection.js'
 import type { AgentsAppContext } from '../types/websocket-context.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
 import { initializeContextRegistry } from '../services/initializeContextRegistry.js'
@@ -620,7 +621,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           const app = appRepo.findById(appId);
           const appPath = app?.path;
           
-          const modelName = metadata.modelName || 'sonnet';
+          const modelName = getModelOverride() || metadata.modelName || 'sonnet';
           const historyLoader = conversationContextManager.getHistoryLoader();
           
           const llmMessages = await historyLoader.loadMessagesWithSummarization(
