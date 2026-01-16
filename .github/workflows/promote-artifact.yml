@@ -35,7 +35,7 @@ jobs:
   promote:
     name: "[${{ inputs.component }}] Promoting ${{ inputs.artifact_id }} to ${{ inputs.environment }}"
     runs-on:
-      group: 8606-awsx64
+      group: 8606-awsx64v2
       labels:
         - self-hosted
 
@@ -130,7 +130,7 @@ jobs:
       actions: write # Required to trigger other workflows
       contents: read
     runs-on:
-      group: 8606-awsx64
+      group: 8606-awsx64v2
       labels:
         - self-hosted
     steps:

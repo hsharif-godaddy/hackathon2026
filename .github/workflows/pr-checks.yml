@@ -14,7 +14,7 @@ permissions:
 jobs:
   quality-checks:
     runs-on:
-      group: 8606-awsx64
+      group: 8606-awsx64v2
       labels:
         - self-hosted
 
@@ -120,7 +120,7 @@ jobs:
 
   v8-template-license-check:
     runs-on:
-      group: 8606-awsx64
+      group: 8606-awsx64v2
       labels:
         - self-hosted
 
@@ -176,7 +176,7 @@ jobs:
 
   docker-build-verification:
     runs-on:
-      group: 8606-awsx64
+      group: 8606-awsx64v2
       labels:
         - self-hosted
 

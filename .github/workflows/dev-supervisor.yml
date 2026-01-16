@@ -14,7 +14,7 @@ jobs:
   lint:
     name: Lint
     runs-on:
-      group: 8606-awsx64
+      group: 8606-awsx64v2
       labels:
         - self-hosted
     steps:
@@ -60,7 +60,7 @@ jobs:
   test:
     name: Test
     runs-on:
-      group: 8606-awsx64
+      group: 8606-awsx64v2
       labels:
         - self-hosted
     steps:
@@ -100,7 +100,7 @@ jobs:
   test-docker:
     name: Docker Integration Tests
     runs-on:
-      group: 8606-awsx64
+      group: 8606-awsx64v2
       labels:
         - self-hosted
     needs: test
@@ -117,7 +117,7 @@ jobs:
   build:
     name: Build
     runs-on:
-      group: 8606-awsx64
+      group: 8606-awsx64v2
       labels:
         - self-hosted
     needs: [lint, test, test-docker]
@@ -173,7 +173,7 @@ jobs:
   docker-build:
     name: Docker Build
     runs-on:
-      group: 8606-awsx64
+      group: 8606-awsx64v2
       labels:
         - self-hosted
     needs: [lint, test, test-docker]

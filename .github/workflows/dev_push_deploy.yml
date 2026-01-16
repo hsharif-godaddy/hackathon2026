@@ -15,7 +15,7 @@ permissions:
 jobs:
   continuous-integration:
     runs-on:
-      group: 8606-awsx64
+      group: 8606-awsx64v2
       labels:
         - self-hosted
 
@@ -68,7 +68,7 @@ jobs:
       - name: Assume Role and Login to ECR
         run: |
           set -e
-          
+
           assume_role_and_login() {
             local role_arn=arn:aws:iam::$1:role/GD-AWS-SSG-Deploy-Role
             local account_id=$1
@@ -82,7 +82,7 @@ jobs:
 
           # Login to base image account (764525110978) - needed for Docker build
           assume_role_and_login 764525110978
-          
+
           # Login to target account (694282668781) - needed for push
           assume_role_and_login 694282668781
 
@@ -90,7 +90,7 @@ jobs:
         working-directory: ./app
         run: |
           docker build --build-arg NPM_AUTH_TOKEN="${ARTIFACTORY_NPM_TOKEN}" -t airo-app:${{ env.branch }}-${{ env.GIT_SHORT_COMMIT }} .
-      
+
       - name: Tag and Push Docker Image to ECR
         run: |
           docker tag airo-app:${{ env.branch }}-${{ env.GIT_SHORT_COMMIT }} 694282668781.dkr.ecr.us-west-2.amazonaws.com/airo-builder/app:${{ env.branch }}-${{ env.GIT_SHORT_COMMIT }}

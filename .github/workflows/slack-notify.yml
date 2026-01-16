@@ -33,7 +33,7 @@ jobs:
   notify:
     name: Send Slack Notification
     runs-on:
-      group: 8606-awsx64
+      group: 8606-awsx64v2
       labels:
         - self-hosted
     steps:
