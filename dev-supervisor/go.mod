@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/emersion/go-smtp v0.24.0
-	github.com/golang-jwt/jwt/v5 v5.2.0
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/gorilla/mux v1.8.1
 	golang.org/x/sys v0.35.0
 	golang.org/x/term v0.34.0
