@@ -37,7 +37,7 @@ export default function SocialPanel({ siteId }: SocialPanelProps) {
     return (
       <EmptyStateCard
         icon={<ShareIcon width={48} height={48} />}
-        title={t('builder_social_error_loading_connections')}
+        title={t('builder_settings_socialpanel_empty_title')}
         description={data.error}
         ctaLabel={t('builder_common_retry')}
         onCtaClick={actions.refreshConnections}
@@ -48,8 +48,8 @@ export default function SocialPanel({ siteId }: SocialPanelProps) {
   return (
     <>
       <BigCard
-        title={t('builder_social_platforms_title')}
-        description={t('builder_social_platforms_description')}
+        title={t('builder_settings_socialpanel_title')}
+        description={t('builder_settings_socialpanel_desc')}
       >
         <PlatformConnectionsList
           platformStatuses={data.platformStatuses}

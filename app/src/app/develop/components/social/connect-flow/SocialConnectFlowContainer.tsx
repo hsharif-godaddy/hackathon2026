@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { memo, ReactNode } from 'react'
 
 import { IconWithName } from '../shared/IconWithName'
+import { useTranslations } from '@/hooks/useTranslations'
 
 export enum ContainerVariant {
   Info = 'info',
@@ -69,13 +70,14 @@ export const SocialConnectFlowContainer = memo(function SocialConnectFlowContain
   children
 }: SocialConnectFlowContainerProps) {
   const styles = variantStyles[variant]
+  const t = useTranslations()
 
   return (
     <div className={clsx(maxWidthClasses[maxWidth], 'mx-auto my-2')}>
       <div className={clsx('rounded-md border p-2', styles.border, styles.bg)}>
         {showHeader && platformName && Icon && (
           <div className="mb-1.5">
-            <IconWithName Icon={Icon} name={`Link your ${platformName}`} />
+            <IconWithName Icon={Icon} name={t('builder_social_connect_link_platform', { platformName })} />
           </div>
         )}
         {children}
