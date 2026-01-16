@@ -1,100 +1,115 @@
 import '@testing-library/jest-dom';
 
-import { beforeEach,describe, expect,it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { screen } from '@testing-library/react';
 
-import * as translationsHook from '@/hooks/useTranslations';
-import * as streamingStore from '@/stores/useStreamingConversationStore';
 import { renderWithProviders } from '@/tests/test-utils';
-import ThinkingIndicator from './ThinkingIndicator';
+import ThinkingIndicator from '@/app/develop/components/ThinkingIndicator';
 
 describe('ThinkingIndicator', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  it('should render without crashing', function render() {
+    renderWithProviders(<ThinkingIndicator />);
 
-    vi.spyOn(translationsHook, 'useTranslations').mockReturnValue(
-      (id: string, values?: Record<string, any>, defaultMessage?: string) => {
-        if (id === 'builder_agent_thinking' && values?.agentName) {
-          return `${values.agentName} is thinking`;
-        }
-        if (id === 'builder_default_agent_name') {
-          return 'Airo Developer';
-        }
-        return defaultMessage || id;
-      }
+    expect(screen.getByText('builder_agent_done')).toBeInTheDocument();
+  });
+
+  it('should display "Done" by default when inactive', function defaultDone() {
+    renderWithProviders(<ThinkingIndicator />);
+
+    expect(screen.getByText('builder_agent_done')).toBeInTheDocument();
+  });
+
+  it('should display "Thinking ..." when active', function activeThinking() {
+    renderWithProviders(<ThinkingIndicator active />);
+
+    expect(screen.getByText('builder_agent_thinking')).toBeInTheDocument();
+  });
+
+  it('should display custom activeLabel when provided', function customActiveLabel() {
+    renderWithProviders(<ThinkingIndicator active activeLabel="Processing..." />);
+
+    expect(screen.getByText('Processing...')).toBeInTheDocument();
+  });
+
+  it('should display custom label when provided', function customLabel() {
+    renderWithProviders(<ThinkingIndicator label="Custom label" />);
+
+    expect(screen.getByText('Custom label')).toBeInTheDocument();
+  });
+
+  it('should render pulse rings when active', function pulseRings() {
+    const { container } = renderWithProviders(<ThinkingIndicator active />);
+
+    const pulseRings = container.querySelectorAll('.animate-agent-pulse');
+    expect(pulseRings.length).toBe(1);
+  });
+
+  it('should not render pulse rings when inactive', function noPulseRings() {
+    const { container } = renderWithProviders(<ThinkingIndicator />);
+
+    const pulseRings = container.querySelectorAll('.animate-agent-pulse');
+    expect(pulseRings.length).toBe(0);
+  });
+
+  it('should render with correct structure', function structure() {
+    const { container } = renderWithProviders(<ThinkingIndicator />);
+
+    const brainIcon = container.querySelector('svg');
+    expect(brainIcon).toBeInTheDocument();
+  });
+
+  it('should apply custom className', function customClassName() {
+    const { container } = renderWithProviders(
+      <ThinkingIndicator className="custom-class" />
     );
-  });
 
-  it('should render without crashing with default agent', () => {
-    vi.spyOn(streamingStore, 'useCurrentAgentName').mockReturnValue(null);
-    renderWithProviders(<ThinkingIndicator />);
-
-    expect(screen.getByText('Airo Developer is thinking')).toBeInTheDocument();
-  });
-
-  it('should display default thinking message when currentAgentName is null', () => {
-    vi.spyOn(streamingStore, 'useCurrentAgentName').mockReturnValue(null);
-    renderWithProviders(<ThinkingIndicator />);
-
-    expect(screen.getByText('Airo Developer is thinking')).toBeInTheDocument();
-  });
-
-  it('should display custom agent name when currentAgentName is set', () => {
-    vi.spyOn(streamingStore, 'useCurrentAgentName').mockReturnValue('Marketing Agent');
-    renderWithProviders(<ThinkingIndicator />);
-
-    expect(screen.getByText('Marketing Agent is thinking')).toBeInTheDocument();
-  });
-
-  it('should map "AI Developer" to "Airo Developer" for consistency', () => {
-    vi.spyOn(streamingStore, 'useCurrentAgentName').mockReturnValue('AI Developer');
-    renderWithProviders(<ThinkingIndicator />);
-
-    expect(screen.getByText('Airo Developer is thinking')).toBeInTheDocument();
-  });
-
-  it('should use actual agent name for non-mapped agents', () => {
-    vi.spyOn(streamingStore, 'useCurrentAgentName').mockReturnValue('Commerce Agent');
-    renderWithProviders(<ThinkingIndicator />);
-
-    expect(screen.getByText('Commerce Agent is thinking')).toBeInTheDocument();
-  });
-
-  it('should render animated dots', () => {
-    vi.spyOn(streamingStore, 'useCurrentAgentName').mockReturnValue(null);
-    const { container } = renderWithProviders(<ThinkingIndicator />);
-
-    // Should have 3 animated dots
-    const dots = container.querySelectorAll('.animate-bounce');
-    expect(dots.length).toBe(3);
-  });
-
-  it('should have correct animation delays on dots', () => {
-    vi.spyOn(streamingStore, 'useCurrentAgentName').mockReturnValue(null);
-    const { container } = renderWithProviders(<ThinkingIndicator />);
-
-    const dots = container.querySelectorAll('.animate-bounce');
-
-    // First dot has no delay
-    expect(dots[0]).not.toHaveStyle({ animationDelay: '0.1s' });
-
-    // Second dot has 0.1s delay
-    expect(dots[1]).toHaveStyle({ animationDelay: '0.1s' });
-
-    // Third dot has 0.2s delay
-    expect(dots[2]).toHaveStyle({ animationDelay: '0.2s' });
-  });
-
-  it('should render with correct structure', () => {
-    vi.spyOn(streamingStore, 'useCurrentAgentName').mockReturnValue(null);
-    const { container } = renderWithProviders(<ThinkingIndicator />);
-
-    // Should have main container
-    const mainContainer = container.querySelector('.flex.items-center.gap-2');
+    const mainContainer = container.querySelector('.custom-class');
     expect(mainContainer).toBeInTheDocument();
+  });
 
-    // Should have message container
-    const messageContainer = container.querySelector('.bg-ai-light\\/40');
-    expect(messageContainer).toBeInTheDocument();
+  it('should display formatted duration in MM:SS format', function durationFormat() {
+    renderWithProviders(<ThinkingIndicator duration={500} />);
+
+    expect(screen.getByText('00:00')).toBeInTheDocument();
+  });
+
+  it('should display formatted duration in seconds', function durationSeconds() {
+    renderWithProviders(<ThinkingIndicator duration={2500} />);
+
+    expect(screen.getByText('00:02')).toBeInTheDocument();
+  });
+
+  it('should display formatted duration in minutes and seconds', function durationMinutes() {
+    renderWithProviders(<ThinkingIndicator duration={125000} />);
+
+    expect(screen.getByText('02:05')).toBeInTheDocument();
+  });
+
+  it('should format duration correctly for edge cases', function edgeCases() {
+    const { rerender } = renderWithProviders(<ThinkingIndicator duration={999} />);
+    expect(screen.getByText('00:00')).toBeInTheDocument();
+
+    rerender(<ThinkingIndicator duration={1000} />);
+    expect(screen.getByText('00:01')).toBeInTheDocument();
+
+    rerender(<ThinkingIndicator duration={59999} />);
+    expect(screen.getByText('00:59')).toBeInTheDocument();
+
+    rerender(<ThinkingIndicator duration={60000} />);
+    expect(screen.getByText('01:00')).toBeInTheDocument();
+  });
+
+  it('should display max duration of 99:59+', function maxDuration() {
+    const maxMs = 99 * 60 * 1000 + 59 * 1000; // 99:59 in milliseconds
+    renderWithProviders(<ThinkingIndicator duration={maxMs} />);
+
+    expect(screen.getByText('99:59')).toBeInTheDocument();
+  });
+
+  it('should display 99:59+ for durations exceeding max', function exceedMax() {
+    const exceedMs = 100 * 60 * 1000; // 100 minutes
+    renderWithProviders(<ThinkingIndicator duration={exceedMs} />);
+
+    expect(screen.getByText('99:59+')).toBeInTheDocument();
   });
 });

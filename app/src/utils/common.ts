@@ -9,3 +9,22 @@ export const formatDate = (date: string | Date, detailed = false) => {
     timeZone: 'UTC',
   }).format(dateObj)
 }
+
+/**
+ * Format duration in milliseconds to MM:SS format
+ *
+ * @param ms - Duration in milliseconds
+ * @returns Formatted duration string (e.g., "00:05", "01:23", "99:59+")
+ */
+export const formatDuration = (ms: number) => {
+  const maxDuration = 5999 // 99 minutes 59 seconds in seconds
+  const totalSeconds = Math.floor(ms / 1000)
+
+  if (totalSeconds > maxDuration) {
+    return '99:59+'
+  }
+
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+}

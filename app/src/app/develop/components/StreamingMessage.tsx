@@ -8,7 +8,7 @@ import { logger } from '@/lib/request-context'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
 import { useStreamingState } from '@/stores/useStreamingConversationStore'
 import StreamingIntegratedResponse from './StreamingIntegratedResponse'
-import ThinkingIndicator from './ThinkingIndicator'
+import ThinkingIndicator from '@/app/develop/components/ThinkingIndicator'
 
 interface StreamingMessageProps {
   message: ChatMessage | StreamingMessageType
@@ -203,7 +203,7 @@ function renderMessageContent(message: ChatMessage | StreamingMessageType, isAct
     const showThinking = isActiveStream && isIncomplete && hasNoContent && !message.upstreamError && !message.budgetExceeded && !message.maxStepsReached && !isErrorOrRetrying
 
     if (showThinking) {
-      return <ThinkingIndicator />
+      return <ThinkingIndicator active={true} className="mt-2" />
     }
 
     return <StreamingIntegratedResponse message={message} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} startTime={startTime} streamingState={streamingState} />
@@ -240,9 +240,7 @@ export default function StreamingMessage({ message, isActiveStream = false, isLa
         'order-1 w-full': message.role !== 'user'
       })}>
         <div className={getMessageClasses(message)}>
-          <div className="overflow-hidden">
-            {renderMessageContent(message, isActiveStream, isLastAssistantMessage, startTime, streamingState)}
-          </div>
+          {renderMessageContent(message, isActiveStream, isLastAssistantMessage, startTime, streamingState)}
         </div>
       </div>
     </div>

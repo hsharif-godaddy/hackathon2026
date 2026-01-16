@@ -56,6 +56,8 @@
   --color-sidebar-foreground: var(--sidebar-foreground);
 
   --color-sidebar: var(--sidebar);
+
+  --color-agent: var(--agent);
 }
 
 @layer base {
@@ -100,6 +102,8 @@
 
     --card-height: 65vh;
     --card-width: calc(var(--card-height) / 1.5);
+
+    --agent: oklch(0.7435 0.1775 345.65);
   }
 
   /* Shadcn Dark Theme */
@@ -502,6 +506,25 @@
     0% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
     100% { background-position: 0% 50%; }
+  }
+
+  @keyframes agent-pulse {
+    0% {
+      opacity: 0;
+      box-shadow: 0 0 0 0 var(--agent);
+    }
+    66% {
+      opacity: .6;
+      box-shadow: 0 0 4px 4px var(--agent);
+    }
+    100% {
+      opacity: 0;
+      box-shadow: 0 0 0 0 var(--agent);
+    }
+  }
+
+  .animate-agent-pulse {
+    animation: agent-pulse 1.8s infinite linear;
   }
 
   .animate-reverse-spin {

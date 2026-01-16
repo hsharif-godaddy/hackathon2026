@@ -1,6 +1,6 @@
-import { describe, expect,it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { formatDate } from './common';
+import { formatDate, formatDuration } from './common';
 
 describe('formatDate', () => {
   describe('basic formatting', () => {
@@ -155,6 +155,31 @@ describe('formatDate', () => {
       const resultString = formatDate(dateString);
       const resultObj = formatDate(dateObj);
       expect(resultString).toBe(resultObj);
+    });
+  });
+
+  describe('formatDuration', function formatDurationTests() {
+    it('should format duration in MM:SS format', function formatBasic() {
+      expect(formatDuration(500)).toBe('00:00');
+      expect(formatDuration(2500)).toBe('00:02');
+      expect(formatDuration(125000)).toBe('02:05');
+    });
+
+    it('should handle edge cases correctly', function edgeCases() {
+      expect(formatDuration(999)).toBe('00:00');
+      expect(formatDuration(1000)).toBe('00:01');
+      expect(formatDuration(59999)).toBe('00:59');
+      expect(formatDuration(60000)).toBe('01:00');
+    });
+
+    it('should display max duration of 99:59', function maxDuration() {
+      const maxMs = 99 * 60 * 1000 + 59 * 1000; // 99:59 in milliseconds
+      expect(formatDuration(maxMs)).toBe('99:59');
+    });
+
+    it('should display 99:59+ for durations exceeding max', function exceedMax() {
+      const exceedMs = 100 * 60 * 1000; // 100 minutes
+      expect(formatDuration(exceedMs)).toBe('99:59+');
     });
   });
 });
