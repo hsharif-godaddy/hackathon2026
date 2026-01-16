@@ -379,10 +379,10 @@ async function initialize() {
           });
         }
       } else {
-        // App exists - update socket paths to ensure they're correct
-        logger.info('server.app.autoregister.update_sockets', {
+        // App exists - verify paths are correct for current architecture (v3/v4)
+        logger.info('server.app.autoregister.verify_paths', {
           siteId: process.env.SITE_ID,
-          reason: 'App exists, updating socket paths'
+          reason: 'App exists, verifying app path and socket paths'
         });
 
         try {
@@ -392,20 +392,20 @@ async function initialize() {
           const result = await appRepo.registerOrUpdateApp({
             siteId: process.env.SITE_ID,
             previewUrl: process.env.PREVIEW_URL,
-            ...(process.env.CUSTOMER_APP_DIR && { path: process.env.CUSTOMER_APP_DIR }),
+            ...(process.env.CUSTOMER_APP_DIR && { appPath: process.env.CUSTOMER_APP_DIR }),
             ...(socketPaths.socketPath && { socketPath: socketPaths.socketPath }),
             ...(socketPaths.publishSupervisorPath && { publishSupervisorPath: socketPaths.publishSupervisorPath })
           });
 
-          logger.info('server.app.autoregister.sockets_updated', {
+          logger.info('server.app.autoregister.paths_verified', {
             siteId: process.env.SITE_ID,
-            path: process.env.CUSTOMER_APP_DIR,
+            appPath: process.env.CUSTOMER_APP_DIR,
             socketPath: socketPaths.socketPath,
             publishSupervisorPath: socketPaths.publishSupervisorPath,
             updated: !result.created
           });
         } catch (error) {
-          logger.error('server.app.autoregister.socket_update_failed', {
+          logger.error('server.app.autoregister.path_verification_failed', {
             siteId: process.env.SITE_ID,
             error: error instanceof Error ? error.message : String(error)
           });

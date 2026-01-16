@@ -138,7 +138,7 @@ export class AppRepository {
     if (existingApp) {
       this.logger.info('app.register.exists', {
         appId: sanitizedSiteId,
-        updating: !!(sanitizedName || port || initialPrompt || previewUrl || socketPath || sanitizedSubscriptionId || sanitizedCustomerId)
+        updating: !!(sanitizedName || sanitizedAppPath || port || initialPrompt || previewUrl || socketPath || sanitizedSubscriptionId || sanitizedCustomerId)
       });
 
       const updates: string[] = [];
@@ -172,6 +172,11 @@ export class AppRepository {
       if (publishSupervisorPath !== undefined) {
         updates.push('publish_supervisor_path = ?');
         values.push(publishSupervisorPath);
+      }
+
+      if (sanitizedAppPath !== undefined) {
+        updates.push('path = ?');
+        values.push(sanitizedAppPath);
       }
 
       // Only set subscription_id if not already set (immutable once stored)
