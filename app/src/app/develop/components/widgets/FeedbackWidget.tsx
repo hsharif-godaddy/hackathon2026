@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import Button from '@ux/button'
 import text from '@ux/text'
 import TextInput from '@ux/text-input'
@@ -34,6 +34,12 @@ const RATING_OPTIONS: RatingOption[] = [
   { rating: FeedbackRating.Good, emoji: '😊', labelKey: 'builder_widgets_feedback_good' },
 ]
 
+const COMMENT_PLACEHOLDER_KEYS: Record<FeedbackRating, string> = {
+  [FeedbackRating.Bad]: 'builder_widgets_feedback_placeholder_bad',
+  [FeedbackRating.Fine]: 'builder_widgets_feedback_placeholder_fine',
+  [FeedbackRating.Good]: 'builder_widgets_feedback_placeholder_good',
+}
+
 export default function FeedbackWidget({ conversationId, appId }: FeedbackWidgetProps) {
   const t = useTranslations()
   const [selectedRating, setSelectedRating] = useState<FeedbackRating | null>(null)
@@ -41,7 +47,6 @@ export default function FeedbackWidget({ conversationId, appId }: FeedbackWidget
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const submitFeedback = async (rating: FeedbackRating, userComment: string) => {
     setIsSubmitting(true)
@@ -62,7 +67,7 @@ export default function FeedbackWidget({ conversationId, appId }: FeedbackWidget
       const baseUrl = `https://api.companion.hub.${rootDomain}/v1/`
 
       const keys = ['rate-session-experience', 'comment-session-experience', 'conversation-id', 'app-id']
-      const values: (string | undefined)[] = [rating, userComment.trim() || '', conversationId || '', appId || '']
+      const values: string[] = [rating, userComment.trim() || '', conversationId || '', appId || '']
 
       const response = await fetch(`${baseUrl}feedbacks/${encodeURIComponent(FEEDBACK_PK)}`, {
         mode: 'cors',
@@ -108,56 +113,14 @@ export default function FeedbackWidget({ conversationId, appId }: FeedbackWidget
     }
   }
 
-  const handleRatingSelect = async (rating: FeedbackRating) => {
+  const handleRatingSelect = (rating: FeedbackRating) => {
     if (isSubmitting || isSubmitted) return
 
     setSelectedRating(rating)
-
-    // If Good, submit immediately without comment field
-    if (rating === FeedbackRating.Good) {
-      await submitFeedback(rating, '')
-    }
-    // If Bad or Fine, show comment field and wait for user input
-  }
-
-  const handleCommentChange = (value: string) => {
-    setComment(value)
-
-    // Clear existing timer when user types
-    if (inactivityTimerRef.current) {
-      clearTimeout(inactivityTimerRef.current)
-      inactivityTimerRef.current = null
-    }
-  }
-
-  const handleCommentInput = (value: string) => {
-    handleCommentChange(value)
-  }
-
-  const handleCommentBlur = () => {
-    // Start 5-second inactivity timer when field loses focus
-    if (selectedRating && !isSubmitting && !isSubmitted) {
-      inactivityTimerRef.current = setTimeout(() => {
-        submitFeedback(selectedRating, comment)
-      }, 5000)
-    }
-  }
-
-  const handleCommentFocus = () => {
-    // Clear inactivity timer when user focuses back on field
-    if (inactivityTimerRef.current) {
-      clearTimeout(inactivityTimerRef.current)
-      inactivityTimerRef.current = null
-    }
   }
 
   const handleCommentKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && selectedRating && !isSubmitting) {
-      // Clear any pending timer
-      if (inactivityTimerRef.current) {
-        clearTimeout(inactivityTimerRef.current)
-        inactivityTimerRef.current = null
-      }
       // Submit immediately
       submitFeedback(selectedRating, comment)
     }
@@ -167,81 +130,98 @@ export default function FeedbackWidget({ conversationId, appId }: FeedbackWidget
     setIsSubmitted(true)
   }
 
+  const handleClear = () => {
+    setSelectedRating(null)
+    setComment('')
+  }
+
   if (isSubmitted && !error) {
     return (
-      <div className="flex flex-col gap-2 p-3 border border-intents-ux-border-borderColor rounded-sm my-2 bg-intents-ux-boxLowContrast-backgroundColor">
-        <text.p
+      <div className="flex items-center justify-center px-2 py-1 border border-intents-ux-border-borderColor rounded-lg my-2">
+        <text.span
           size={-1}
-          className="text-intents-ux-feedbackHighContrastSuccess-feedbackColor text-center"
+          className="text-center"
         >
           {selectedRating ? t('builder_widgets_feedback_thank_you') : t('builder_widgets_feedback_skipped')}
-        </text.p>
+        </text.span>
       </div>
     )
   }
 
-  const showCommentField = selectedRating && (selectedRating === FeedbackRating.Bad || selectedRating === FeedbackRating.Fine) && !isSubmitted
+  const showCommentField = selectedRating && !isSubmitted
 
   return (
-    <div className="flex flex-col gap-1 p-2 bg-intents-ux-boxLowContrast-backgroundColor border border-intents-ux-border-borderColor rounded-sm my-2">
-      <text.p size={0} className="!m-0">
-        {t('builder_widgets_feedback_header')}
-      </text.p>
-      <text.p size={-1} className="text-intents-ux-textSubtle-textColor !mb-1">
-        {t('builder_widgets_feedback_subtext')}
-      </text.p>
-
-      {error && (
-        <div className="p-2 bg-intents-ux-error-backgroundColor rounded-sm">
-          <text.span size={-2} className="text-intents-ux-error-textColor">
-            {error}
+    <div className="flex flex-col gap-2 p-2 border border-intents-ux-border-borderColor rounded-lg my-2">
+      <div className="flex justify-between items-start">
+        <div className="flex flex-col">
+          <text.span as="label" size={0} className="!m-0">
+            {t('builder_widgets_feedback_header')}
+          </text.span>
+          <text.span size={-1} emphasis="passive">
+            {t('builder_widgets_feedback_subtext')}
           </text.span>
         </div>
-      )}
+          <Button
+            design="inline"
+            size="sm"
+            onClick={handleSkip}
+            text={t('builder_widgets_feedback_skip')}
+          />
+      </div>
 
       <div className="flex gap-2 items-center">
-        <div className="flex gap-2 flex-1">
+        <div className="flex gap-1 flex-1">
           {RATING_OPTIONS.map(({ rating, emoji, labelKey }) => (
             <Button
               key={rating}
-              design={selectedRating === rating ? 'primary' : 'secondary'}
+              design={selectedRating === rating ? 'secondary' : 'control'}
               size="sm"
               onClick={() => handleRatingSelect(rating)}
-              disabled={isSubmitting || !!selectedRating}
+              disabled={isSubmitting}
               text={`${emoji} ${t(labelKey)}`}
             />
           ))}
         </div>
-
-        {!selectedRating && (
-          <Button
-            design="secondary"
-            size="sm"
-            onClick={handleSkip}
-            disabled={isSubmitting || isSubmitted}
-            text={t('builder_widgets_feedback_skip')}
-          />
-        )}
       </div>
 
       {showCommentField && (
-        <div className="mt-2">
+        <div className="flex flex-col gap-1">
           <TextInput
-            label={null}
+            multiline
+            label={t('builder_widgets_feedback_comment_label')}
             value={comment}
-            onChange={handleCommentInput}
-            onBlur={handleCommentBlur}
-            onFocus={handleCommentFocus}
+            onChange={setComment}
             onKeyDown={handleCommentKeyDown}
-            placeholder={t('builder_widgets_feedback_comment_placeholder')}
+            placeholder={t(COMMENT_PLACEHOLDER_KEYS[selectedRating])}
             disabled={isSubmitting}
+            visualSize="sm"
           />
+          <div className="flex justify-end gap-1">
+            <Button
+              design="tertiary"
+              size="sm"
+              onClick={handleClear}
+              text={t('builder_widgets_feedback_clear')}
+            />
+            <Button
+              design="primary"
+              size="sm"
+              onClick={() => submitFeedback(selectedRating, comment)}
+              text={t('builder_widgets_feedback_send')}
+            />
+          </div>
         </div>
       )}
 
       {isSubmitting && (
-        <text.span size={-2} className="text-intents-ux-textSubtle-textColor text-center">
+        <text.span size={-2} emphasis="passive" className="text-center">
           {t('builder_widgets_feedback_submitting')}
+        </text.span>
+      )}
+
+      {error && (
+        <text.span size={-2} emphasis="critical">
+          {error}
         </text.span>
       )}
     </div>
