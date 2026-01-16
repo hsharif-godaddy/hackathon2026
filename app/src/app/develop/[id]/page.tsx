@@ -567,10 +567,12 @@ function DevelopPageContent() {
               : 'Please analyze and fix this build error.';
 
             setInputValue(messageContent);
-            // Auto-send the message and clear context (matches ChatPane pattern)
-            setTimeout(() => {
-              sendMessage(messageContent, null)
-              // Clear immediately after sending, same as ChatPane does
+            // Auto-send the message and clear context
+            // IMPORTANT: Must await sendMessage before clearing context because
+            // sendMessage is async and reads buildErrorContext from the store.
+            // Without await, the context is cleared before it's read.
+            setTimeout(async () => {
+              await sendMessage(messageContent, null)
               setBuildErrorContext(null)
             }, 500)
           }
