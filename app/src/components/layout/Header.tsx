@@ -51,18 +51,20 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
             </Link>
             <Tag emphasis="highlight" highcontrast>{t('builder_beta', undefined, 'beta')}</Tag>
           </div>
-          <Box orientation="horizontal" gap={isMobile ? 'md' : 'lg'}>
+          <Box orientation="horizontal" className={isMobile ? 'gap-1 ml-2' : 'gap-2'}>
             {actions && actions}
-            {showAuthenticatedUI && !isDevelopPage && <InviteFriends location={location} />}
-            <DiscordLink location={location} />
-            <UserMenu
-              onShowMockLogin={onShowMockLogin}
-              location={location}
-            />
+            <Box orientation="horizontal" className={isMobile ? 'gap-0.5' : 'gap-1'}>
+              {showAuthenticatedUI && !isDevelopPage && <InviteFriends location={location} />}
+              {!isDevelopPage && <DiscordLink location={location} />}
+              <UserMenu
+                onShowMockLogin={onShowMockLogin}
+                location={location}
+              />
+            </Box>
             {showAuthenticatedUI && (
               <>
                 <div className="h-3 w-px bg-ai-dark self-center" />
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-0.5 sm:gap-1">
                   <AppSelector location={location} />
                   <HeaderUpgradeButton location={location} />
                   <AppPublish location={location} />

@@ -281,9 +281,19 @@
     z-index: 9999;
   }
 
+  /* Ensure Invite Friends modal backdrop appears above all page content */
+  .ux-disrupt-backdrop[data-version]:has(.invite-friends-modal) {
+    z-index: 9999;
+  }
+
   /* SSO login modal styling to account for iframe padding */
   .sso-login-modal.ux-modal {
     gap: 0 !important;
+  }
+
+  /* Invite friends modal - tighten gap between title and content */
+  .invite-friends-modal.ux-modal {
+    gap: 0.75rem !important;
   }
 }
 
