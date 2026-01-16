@@ -115,7 +115,7 @@ export class DockerComposeGenerator {
 			// Builder JWKS Configuration
 			// Dev-supervisor validates site-scoped JWTs issued by the builder
 			// using the builder's public keys from /.well-known/jwks.json
-			const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://airo-builder.test-godaddy.com';
+			const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://local.gasket.dev-godaddy.com:8443';
 			env.DEV_SUPERVISOR_JWKS_URL = `${appUrl}/.well-known/jwks.json`;
 
 			// Skip TLS verification for local development with self-signed certificates
@@ -130,7 +130,7 @@ export class DockerComposeGenerator {
 
 			// GoDaddy SSO Configuration for smart redirects
 			// Extract SSO host from login URL (e.g., "sso.dev-godaddy.com")
-			const ssoLoginUrl = process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
+			const ssoLoginUrl = process.env.SSO_LOGIN_URL || 'https://sso.dev-godaddy.com/login';
 
 			// Smart redirect configuration:
 			// When users access preview apps directly (not via builder iframe), redirect them
@@ -250,7 +250,7 @@ export class DockerComposeGenerator {
 		// Build extra_hosts for JWT auth (allows container to reach builder's JWKS endpoint)
 		let extraHostsLines = '';
 		if (config.enableJwtAuth) {
-			const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://airo-builder.test-godaddy.com';
+			const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://local.gasket.dev-godaddy.com:8443';
 			const extraHosts = ['host.docker.internal:host-gateway'];
 
 			// For local development, map builder hostname to host gateway

@@ -256,9 +256,10 @@ _checkUrlHealth: async (url: string, appId: string): Promise<boolean> => {
 
 if (config.enableJwtAuth) {
   const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL || "https://airo-builder.test-godaddy.com";
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "https://local.gasket.dev-godaddy.com:8443";
   const ssoLoginUrl =
-    process.env.SSO_LOGIN_URL || "https://sso.test-godaddy.com/login";
+    process.env.SSO_LOGIN_URL || "https://sso.dev-godaddy.com/login";
 
   // Builder JWKS Configuration
   env.DEV_SUPERVISOR_ENABLE_JWT_AUTH = "true";
