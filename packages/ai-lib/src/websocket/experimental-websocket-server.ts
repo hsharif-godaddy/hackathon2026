@@ -229,10 +229,10 @@ export interface WebSocketConfig {
   /** Event channel buffer size per conversation (default: 1000) */
   eventBufferSize?: number
 
-  /** Event channel TTL in ms (default: STREAM_RECOVERY_WINDOW = 5 minutes) */
+  /** Event channel TTL in ms (default: STREAM_RECOVERY_WINDOW = 10 minutes) */
   eventBufferTTL?: number
 
-  /** Stream recovery window in ms (default: 5 minutes) - time to allow reconnection before aborting stream */
+  /** Stream recovery window in ms (default: 10 minutes) - time to allow reconnection before aborting stream */
   streamRecoveryWindow?: number
 
   /** ACK timeout in ms (default: 30 seconds) - time to wait for client acknowledgment after replay */
@@ -295,7 +295,7 @@ export class WebSocketServer {
   private eventChannel: ConversationEventChannel
 
   /**
-   * Recovery window for connection state recovery (default: 5 minutes)
+   * Recovery window for connection state recovery (default: 10 minutes)
    * During this time, streams continue and events are buffered
    * Configurable via WebSocketConfig.streamRecoveryWindow
    */
@@ -336,7 +336,7 @@ export class WebSocketServer {
     this.config = config
 
     // Initialize configurable timeouts with defaults
-    this.STREAM_RECOVERY_WINDOW = config.streamRecoveryWindow ?? 5 * 60 * 1000 // 5 minutes
+    this.STREAM_RECOVERY_WINDOW = config.streamRecoveryWindow ?? 10 * 60 * 1000 // 10 minutes
     this.ACK_TIMEOUT_MS = config.ackTimeout ?? 30_000 // 30 seconds
 
     // Validate configuration
@@ -523,8 +523,8 @@ export class WebSocketServer {
         content: '',
         data: {
           // Timeout configuration (for synchronization)
-          streamRecoveryWindow: 5 * 60 * 1000, // 5 minutes
-          ackTimeout: 30000, // 30 seconds
+          streamRecoveryWindow: this.STREAM_RECOVERY_WINDOW,
+          ackTimeout: this.ACK_TIMEOUT_MS,
 
           // Capability flags (for backwards compatibility)
           supportsWebSocketHistory: !!this.config.historyProvider,

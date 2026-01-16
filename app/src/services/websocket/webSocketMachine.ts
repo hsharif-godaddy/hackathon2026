@@ -21,8 +21,8 @@ import type { MachineContext, MachineEvent, ServerConfig } from './stateMachineT
 import { logger } from '@/lib/request-context'
 
 const INITIAL_RETRY_DELAY_MS = 500
-const MAX_RETRY_DELAY_MS = 5000
-const MAX_RETRY_COUNT = 10
+const MAX_RETRY_DELAY_MS = 10000
+const MAX_RETRY_COUNT = 15
 const RECOVERY_ACK_TIMEOUT_MS = 30000
 const STREAM_COMPLETE_DELAY_MS = 100
 
@@ -591,3 +591,8 @@ export type WebSocketActor = ActorRefFrom<typeof webSocketMachine>
  * Use this for strongly typing snapshot.value and snapshot.context
  */
 export type WebSocketSnapshot = SnapshotFrom<typeof webSocketMachine>
+
+/**
+ * Exported constants for testing and external configuration
+ */
+export { MAX_RETRY_COUNT, MAX_RETRY_DELAY_MS }

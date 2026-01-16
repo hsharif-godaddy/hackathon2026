@@ -300,7 +300,9 @@ export class ConnectionManager {
 
     const socketOptions: Record<string, unknown> = {
       transports: ['websocket', 'polling'],
-      timeout: 10000,
+      timeout: 20000,
+      pingInterval: 15000,
+      pingTimeout: 15000,
       autoConnect: false,
       reconnection: true,
       reconnectionAttempts: 60,

@@ -7,6 +7,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { StoreSyncAdapterTestHarness } from './StoreSyncAdapterTestUtils'
+import { MAX_RETRY_COUNT, MAX_RETRY_DELAY_MS } from '../webSocketMachine'
 
 describe('StoreSyncAdapter', () => {
   beforeEach(() => {
@@ -292,8 +293,8 @@ describe('StoreSyncAdapter', () => {
     it('should sync exhausted retry state', async () => {
       const harness = new StoreSyncAdapterTestHarness()
 
-      // Fail connection 10 times
-      for (let i = 0; i < 10; i++) {
+      // Fail connection MAX_RETRY_COUNT times
+      for (let i = 0; i < MAX_RETRY_COUNT; i++) {
         harness.machine.actor.send({ type: 'CONNECT', appId: 'app-123' })
         harness.machine.actor.send({ type: 'TOKEN_REFRESHED' })
         harness.machine.actor.send({
@@ -301,8 +302,8 @@ describe('StoreSyncAdapter', () => {
           error: new Error('Connection failed'),
         })
 
-        if (i < 9) {
-          const delay = Math.min(500 * Math.pow(2, i + 1), 5000)
+        if (i < MAX_RETRY_COUNT - 1) {
+          const delay = Math.min(500 * Math.pow(2, i + 1), MAX_RETRY_DELAY_MS)
           await vi.advanceTimersByTimeAsync(delay)
         }
       }
@@ -310,13 +311,13 @@ describe('StoreSyncAdapter', () => {
       harness.mockStore.setRetryState.mockClear()
 
       // Advance final timer
-      await vi.advanceTimersByTimeAsync(5000)
+      await vi.advanceTimersByTimeAsync(MAX_RETRY_DELAY_MS)
 
       // Should set exhausted state
       harness.assertStoreActionCalled('setRetryState')
       harness.assertStoreActionCalledWith('setRetryState', {
         isRetrying: false,
-        retryCount: 10,
+        retryCount: MAX_RETRY_COUNT,
         exhausted: true,
       })
 

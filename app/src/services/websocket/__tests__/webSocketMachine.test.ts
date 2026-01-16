@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { webSocketMachine } from '../webSocketMachine'
+import { webSocketMachine, MAX_RETRY_COUNT, MAX_RETRY_DELAY_MS } from '../webSocketMachine'
 import { StateMachineTestHarness } from './StateMachineTestUtils'
 
 describe('webSocketMachine', () => {
@@ -82,8 +82,8 @@ describe('webSocketMachine', () => {
     it('should exhaust retries after max attempts', async () => {
       const harness = new StateMachineTestHarness(webSocketMachine)
 
-      // Fail connection 10 times to exhaust retries
-      for (let i = 0; i < 10; i++) {
+      // Fail connection MAX_RETRY_COUNT times to exhaust retries
+      for (let i = 0; i < MAX_RETRY_COUNT; i++) {
         harness.actor.send({ type: 'CONNECT', appId: 'app-123' })
         harness.actor.send({ type: 'TOKEN_REFRESHED' })
         harness.actor.send({
@@ -92,17 +92,17 @@ describe('webSocketMachine', () => {
         })
 
         // Advance through retry delay
-        if (i < 9) {
-          const delay = Math.min(500 * Math.pow(2, i + 1), 5000)
+        if (i < MAX_RETRY_COUNT - 1) {
+          const delay = Math.min(500 * Math.pow(2, i + 1), MAX_RETRY_DELAY_MS)
           await vi.advanceTimersByTimeAsync(delay)
         }
       }
 
       // Should be in exhausted state
-      harness.assertContext((ctx) => ctx.retryCount === 10)
+      harness.assertContext((ctx) => ctx.retryCount === MAX_RETRY_COUNT)
 
       // Advance final timer
-      await vi.advanceTimersByTimeAsync(5000)
+      await vi.advanceTimersByTimeAsync(MAX_RETRY_DELAY_MS)
 
       harness.assertState((s) =>
         s.matches({ transport: { reconnecting: 'exhausted' } })
@@ -463,13 +463,13 @@ describe('webSocketMachine', () => {
           error: new Error('Connection failed'),
         })
 
-        const delay = Math.min(500 * Math.pow(2, i + 1), 5000)
+        const delay = Math.min(500 * Math.pow(2, i + 1), MAX_RETRY_DELAY_MS)
         await vi.advanceTimersByTimeAsync(delay)
       }
 
       // Should have retried and be under max count
       harness.assertContext((ctx) => ctx.retryCount === 5)
-      harness.assertContext((ctx) => ctx.retryCount < 10)
+      harness.assertContext((ctx) => ctx.retryCount < MAX_RETRY_COUNT)
 
       harness.destroy()
     })
@@ -477,8 +477,8 @@ describe('webSocketMachine', () => {
     it('should prevent retry when max count exceeded', async () => {
       const harness = new StateMachineTestHarness(webSocketMachine)
 
-      // Fail connection 10 times to reach max
-      for (let i = 0; i < 10; i++) {
+      // Fail connection MAX_RETRY_COUNT times to reach max
+      for (let i = 0; i < MAX_RETRY_COUNT; i++) {
         harness.actor.send({ type: 'CONNECT', appId: 'app-123' })
         harness.actor.send({ type: 'TOKEN_REFRESHED' })
         harness.actor.send({
@@ -486,17 +486,17 @@ describe('webSocketMachine', () => {
           error: new Error('Connection failed'),
         })
 
-        if (i < 9) {
-          const delay = Math.min(500 * Math.pow(2, i + 1), 5000)
+        if (i < MAX_RETRY_COUNT - 1) {
+          const delay = Math.min(500 * Math.pow(2, i + 1), MAX_RETRY_DELAY_MS)
           await vi.advanceTimersByTimeAsync(delay)
         }
       }
 
       // Should be at max
-      harness.assertContext((ctx) => ctx.retryCount === 10)
+      harness.assertContext((ctx) => ctx.retryCount === MAX_RETRY_COUNT)
 
       // Advance final timer - should go to exhausted
-      await vi.advanceTimersByTimeAsync(5000)
+      await vi.advanceTimersByTimeAsync(MAX_RETRY_DELAY_MS)
 
       harness.assertState((s) =>
         s.matches({ transport: { reconnecting: 'exhausted' } })
