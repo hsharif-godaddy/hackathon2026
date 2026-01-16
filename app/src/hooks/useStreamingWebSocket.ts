@@ -5,7 +5,7 @@
  * Wires controller events to React state and provides a clean sendMessage API.
  */
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { logger } from '@/lib/request-context'
 import { ChatMessageBuilder } from '@/services/websocket/ChatMessageBuilder'
@@ -148,7 +148,24 @@ export function useStreamingWebSocket() {
     })
   }
 
-  const controller = controllerRef.current
+  /**
+   * CRITICAL: Stabilize controller reference across renders
+   *
+   * The controller itself is stable (created once in the ref, never recreated),
+   * but extracting `controllerRef.current` to a variable creates a new reference
+   * on every render. This causes:
+   *
+   * 1. `sendMessage` (which depends on `controller`) to get a new reference every render
+   * 2. Components with `sendMessage` in useEffect deps to re-run unnecessarily
+   * 3. Race conditions and duplicate message sends
+   *
+   * By memoizing with empty deps, we ensure `controller` has the same reference
+   * across all renders, which stabilizes `sendMessage` and prevents duplicate sends.
+   *
+   * DO NOT change this without understanding the implications - removing this
+   * will cause duplicate WebSocket message sends in production.
+   */
+  const controller = useMemo(() => controllerRef.current!, [])
 
   useEffect(() => {
     if (!currentAppId) return
@@ -185,6 +202,10 @@ export function useStreamingWebSocket() {
 
   /**
    * Send message - the main streaming function
+   *
+   * This function has a STABLE reference across renders (thanks to the stabilized
+   * controller reference above). It is SAFE to use in useEffect dependency arrays
+   * without causing infinite loops or duplicate sends.
    */
   const sendMessage = useCallback(
     async (
