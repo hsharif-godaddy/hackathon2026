@@ -91,11 +91,17 @@ CRITICAL RULES:
    - Delete mode is NEVER auto-detected for safety
    - Simply omitting content/edits will NOT delete a file
 
-3. Batch behavior:
+3. Batch behavior and error recovery:
    - Operations execute in the order provided
    - Execution stops on first error (fail-fast)
    - All successful operations before the error are preserved
-   - If autoCommit is enabled, all successful operations are committed together in a single commit`,
+   - If autoCommit is enabled, all successful operations are committed together in a single commit
+
+   WHEN A BATCH FAILS:
+   - You will receive a detailed error showing: completed operations, the failed operation, and unattempted operations
+   - Before retrying, you MUST read the current content of ALL files from the failed operation onwards
+   - Do NOT retry operations that already succeeded - they are already committed
+   - Only retry the failed operation and unattempted operations`,
   z.object({
     operations: operationsSchema,
     createDirs: z.boolean().default(true).describe('Create parent directories if they don\'t exist'),
@@ -127,28 +133,79 @@ CRITICAL RULES:
 
     // CRITICAL: If the batch operation failed, throw an error with details about partial completion
     if (!result.success) {
-      let errorMessage = `Batch file operation failed after ${result.completedOperations}/${result.totalOperations} operations: ${result.error || 'Unknown error'}`;
+      let errorMessage = `Batch file operation failed: completed ${result.completedOperations}/${result.totalOperations} operations, then stopped at operation ${result.completedOperations + 1}.\n`;
 
-      // Include details about failed operation if available
-      // The failed operation is at index result.completedOperations (0-indexed)
-      const failedResult = result.results[result.completedOperations];
-      if (failedResult && !failedResult.success && failedResult.error) {
-        errorMessage += `\nFailed operation: ${failedResult.mode} ${failedResult.path}`;
-        errorMessage += `\nError details: ${failedResult.error}`;
-        if (failedResult.warning) {
-          errorMessage += `\nAttempts: ${failedResult.warning}`;
+      // List completed operations
+      if (result.completedOperations > 0) {
+        errorMessage += `\nCOMPLETED:\n`;
+        for (let i = 0; i < result.completedOperations; i++) {
+          const completedResult = result.results[i];
+          if (completedResult) {
+            errorMessage += `- ${completedResult.path} (${completedResult.mode})\n`;
+          }
         }
       }
 
-      // Include details about the specific operation that failed
-      if (normalizedInput.operations && result.completedOperations < normalizedInput.operations.length) {
+      // Detail the failed operation
+      const failedResult = result.results[result.completedOperations];
+      if (failedResult && !failedResult.success) {
+        errorMessage += `\nFAILED:\n`;
+        errorMessage += `- ${failedResult.path} (${failedResult.mode})\n`;
+        errorMessage += `  Error: ${failedResult.error || 'Unknown error'}\n`;
+
+        // Include attempted edits if available
         const failedOp = normalizedInput.operations[result.completedOperations];
-        if (failedOp && failedOp.edits && failedOp.edits.length > 0) {
-          errorMessage += `\nRequested edits (${failedOp.edits.length}):\n`;
-          failedOp.edits.forEach((edit, index) => {
-            errorMessage += `${index + 1}. Replace: "${edit.old.substring(0, ERROR_TEXT_TRUNCATION_LENGTH)}${edit.old.length > ERROR_TEXT_TRUNCATION_LENGTH ? '...' : ''}" with: "${edit.new.substring(0, ERROR_TEXT_TRUNCATION_LENGTH)}${edit.new.length > ERROR_TEXT_TRUNCATION_LENGTH ? '...' : ''}"\n`;
-          });
+        if (failedOp?.edits && failedOp.edits.length > 0) {
+          errorMessage += `  Attempted: `;
+          errorMessage += failedOp.edits.map((edit, idx) => {
+            const oldTrunc = edit.old.substring(0, ERROR_TEXT_TRUNCATION_LENGTH);
+            const newTrunc = edit.new.substring(0, ERROR_TEXT_TRUNCATION_LENGTH);
+            return `Replace "${oldTrunc}${edit.old.length > ERROR_TEXT_TRUNCATION_LENGTH ? '...' : ''}" with "${newTrunc}${edit.new.length > ERROR_TEXT_TRUNCATION_LENGTH ? '...' : ''}"`;
+          }).join('; ') + '\n';
         }
+
+        if (failedResult.warning) {
+          errorMessage += `  Details: ${failedResult.warning}\n`;
+        }
+      }
+
+      // List unattempted operations
+      const unattemptedCount = result.totalOperations - result.completedOperations - 1;
+      if (unattemptedCount > 0) {
+        errorMessage += `\nNOT ATTEMPTED (must be retried):\n`;
+        for (let i = result.completedOperations + 1; i < normalizedInput.operations.length; i++) {
+          const unattemptedOp = normalizedInput.operations[i];
+          if (unattemptedOp) {
+            errorMessage += `- ${unattemptedOp.path} (${unattemptedOp.mode || 'edit'})\n`;
+          }
+        }
+      }
+
+      // Provide explicit action items
+      errorMessage += `\nREQUIRED ACTION: Before retrying this batch, you MUST read the current content of these files: `;
+      const filesToRead: string[] = [];
+
+      // Add failed file
+      if (failedResult) {
+        filesToRead.push(failedResult.path);
+      }
+
+      // Add all unattempted files
+      for (let i = result.completedOperations + 1; i < normalizedInput.operations.length; i++) {
+        const unattemptedOp = normalizedInput.operations[i];
+        if (unattemptedOp) {
+          filesToRead.push(unattemptedOp.path);
+        }
+      }
+
+      errorMessage += filesToRead.join(', ');
+
+      if (result.completedOperations > 0) {
+        errorMessage += `. Do NOT retry the completed operations (${result.results
+          .slice(0, result.completedOperations)
+          .filter(r => r && r.path)
+          .map(r => r.path)
+          .join(', ')}).`;
       }
 
       throw new Error(errorMessage);
