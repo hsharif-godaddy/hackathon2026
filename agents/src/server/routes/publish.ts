@@ -185,11 +185,13 @@ router.post('/apps/:id/publish', async (req, res) => {
     }
 
     try {
-      // Build the application
+      // Build the application for production
       // Always use /app as working directory since all deployments are containerized
       // The app.path is the host path, but inside the container it's always /app
+      // NOTE: Explicitly set NODE_ENV=production so Vite builds with import.meta.env.DEV=false
+      // The preview container has NODE_ENV=development by default, which would cause DEV=true
       const buildResult = await devSupervisor.exec({
-        command: 'npm run build',
+        command: 'NODE_ENV=production npm run build',
         working_dir: '/app',
         timeout: 120,
         capture_output: true
