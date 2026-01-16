@@ -2150,3 +2150,182 @@ func mustParsePort(t *testing.T, portStr string) int {
 	}
 	return port
 }
+
+// Test that /airo/health returns 200 (health check endpoint)
+func TestAiroPath_HealthEndpoint_Returns200(t *testing.T) {
+	// Create a test mux that mimics the proxy routing
+	mux := http.NewServeMux()
+
+	// Mock health check handler
+	mux.HandleFunc("/airo/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte(`{"status":"healthy"}`)); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
+	})
+
+	// Catch-all for /airo/*
+	mux.HandleFunc("/airo/", func(w http.ResponseWriter, _ *http.Request) {
+		http.NotFound(w, nil)
+	})
+
+	// Test /airo/health
+	req := httptest.NewRequest("GET", "/airo/health", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200 for /airo/health, got: %d", rec.Code)
+	}
+
+	contentType := rec.Header().Get("Content-Type")
+	if !strings.Contains(contentType, "application/json") {
+		t.Errorf("expected Content-Type application/json, got: %s", contentType)
+	}
+}
+
+// Test that /airo/foo returns 404 (catch-all)
+func TestAiroPath_UnmatchedPath_Returns404(t *testing.T) {
+	// Create a test mux that mimics the proxy routing
+	mux := http.NewServeMux()
+
+	// Health check handler
+	mux.HandleFunc("/airo/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Catch-all for /airo/*
+	mux.HandleFunc("/airo/", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+
+	// Proxy handler for everything else
+	proxyHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("proxied")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
+	})
+	mux.Handle("/", proxyHandler)
+
+	// Test /airo/foo
+	req := httptest.NewRequest("GET", "/airo/foo", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected status 404 for /airo/foo, got: %d", rec.Code)
+	}
+}
+
+// Test that multiple unmatched /airo paths return 404
+func TestAiroPath_MultipleUnmatchedPaths_Return404(t *testing.T) {
+	// Create a test mux that mimics the proxy routing
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/airo/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux.HandleFunc("/airo/", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+
+	// Test multiple unmatched /airo paths
+	testPaths := []string{
+		"/airo/foo",
+		"/airo/bar",
+		"/airo/api/test",
+		"/airo/something/nested",
+	}
+
+	for _, path := range testPaths {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", path, nil)
+			rec := httptest.NewRecorder()
+
+			mux.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusNotFound {
+				t.Errorf("expected status 404 for %s, got: %d", path, rec.Code)
+			}
+		})
+	}
+}
+
+// Test that non-/airo paths still proxy to backend
+func TestAiroPath_NonAiroPaths_ProxyToBackend(t *testing.T) {
+	// Create a test mux that mimics the proxy routing
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/airo/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux.HandleFunc("/airo/", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+
+	// Proxy handler for everything else
+	proxyHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("proxied")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
+	})
+	mux.Handle("/", proxyHandler)
+
+	// Test paths that should be proxied
+	testPaths := []string{
+		"/",
+		"/api/users",
+		"/health",
+		"/foo/bar",
+	}
+
+	for _, path := range testPaths {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", path, nil)
+			rec := httptest.NewRecorder()
+
+			mux.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Errorf("expected status 200 for %s (proxied), got: %d", path, rec.Code)
+			}
+
+			if !strings.Contains(rec.Body.String(), "proxied") {
+				t.Errorf("expected proxied response for %s, got: %s", path, rec.Body.String())
+			}
+		})
+	}
+}
+
+// Test that /airo path (without trailing slash) redirects then 404s
+func TestAiroPath_ExactAiroPath_Returns404(t *testing.T) {
+	// Create a test mux that mimics the proxy routing
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/airo/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux.HandleFunc("/airo/", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+
+	// Test /airo (without trailing slash)
+	// Go's ServeMux will redirect /airo to /airo/ automatically
+	req := httptest.NewRequest("GET", "/airo", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	// Should be either 301 (redirect to /airo/) or 404
+	if rec.Code != http.StatusMovedPermanently && rec.Code != http.StatusNotFound {
+		t.Errorf("expected status 301 or 404 for /airo, got: %d", rec.Code)
+	}
+}

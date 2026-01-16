@@ -849,6 +849,12 @@ func (p *HTTPProxy) Start() error {
 	// Add health check endpoint (unauthenticated, always available)
 	mux.HandleFunc("/airo/health", p.handleHealthCheck)
 
+	// Add catch-all for /airo/* that returns 404 for unmatched paths
+	// This MUST come after specific /airo/* handlers but before the / catch-all
+	mux.HandleFunc("/airo/", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+
 	// Create request router
 	router := &RequestRouter{
 		proxyHandler:     p.reverseProxy,
