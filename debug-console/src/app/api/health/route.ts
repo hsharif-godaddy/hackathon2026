@@ -4,7 +4,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const detailed = searchParams.get('detailed') === 'true';
 
-  const health: any = {
+  const health: Record<string, unknown> = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     service: 'debug-console',

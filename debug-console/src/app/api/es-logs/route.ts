@@ -39,6 +39,7 @@ export const GET = withAuth(async (request) => {
     const size = parseInt(searchParams.get('size') || '100', 10);
     const from = parseInt(searchParams.get('from') || '0', 10);
     const level = searchParams.get('level');
+    const levels = searchParams.get('levels');
     const query = searchParams.get('query');
     const appId = searchParams.get('appId');
     const startTime = searchParams.get('startTime');
@@ -69,7 +70,12 @@ export const GET = withAuth(async (request) => {
 
     const mustClauses: Array<Record<string, unknown>> = [];
 
-    if (level && level !== 'all') {
+    if (levels) {
+      const levelList = levels.split(',').map(l => l.toLowerCase());
+      mustClauses.push({
+        terms: { level: levelList }
+      });
+    } else if (level && level !== 'all') {
       mustClauses.push({
         match: { level: level.toLowerCase() }
       });

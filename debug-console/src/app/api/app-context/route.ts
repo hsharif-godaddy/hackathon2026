@@ -70,11 +70,6 @@ interface APMTracesResult {
 }
 
 interface LifetimeActivityStats {
-  totalLogs: number;
-  byLevel: Record<string, number>;
-  byService: Record<string, number>;
-  byEvent: Record<string, number>;
-  firstActivity?: string;
   lastActivity?: string;
 }
 
@@ -101,14 +96,10 @@ interface AppContext {
   errorSummary: {
     total: number;
     last24Hours: number;
-    lastError?: {
-      timestamp: string;
-      message: string;
-      event?: string;
-    };
-    commonErrors: Array<{
+    errorGroups: Array<{
       message: string;
       count: number;
+      lastSeen?: string;
     }>;
   };
   activityStats: {
@@ -249,16 +240,244 @@ async function fetchLogsForApp(
   );
 }
 
+interface ErrorGroup {
+  message: string;
+  count: number;
+  lastSeen?: string;
+}
+
+interface ErrorSummaryResult {
+  total: number;
+  last24Hours: number;
+  errorGroups: ErrorGroup[];
+}
+
+async function fetchErrorSummary(
+  appId: string,
+  sourceIds: string[],
+  timeRange: string = '24h'
+): Promise<ErrorSummaryResult> {
+  const sources = getAllLogSources();
+
+  const endTime: Date = new Date();
+  const now = new Date();
+  const value = parseInt(timeRange.slice(0, -1), 10);
+  const unit = timeRange.slice(-1);
+  const startTime = new Date(now);
+
+  switch (unit) {
+    case 'm':
+      startTime.setMinutes(startTime.getMinutes() - value);
+      break;
+    case 'h':
+      startTime.setHours(startTime.getHours() - value);
+      break;
+    case 'd':
+      startTime.setDate(startTime.getDate() - value);
+      break;
+  }
+
+  const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  let totalErrors = 0;
+  let last24HoursCount = 0;
+  const messageCountMap = new Map<string, { count: number; lastSeen: string | null }>();
+
+  for (const sourceId of sourceIds) {
+    const sourceConfig = sources.find((s) => s.id === sourceId);
+    if (!sourceConfig || !sourceConfig.apiKey) continue;
+
+    const { fieldMapping } = sourceConfig;
+
+    const mustClauses: Record<string, unknown>[] = [
+      {
+        range: {
+          [fieldMapping.timestampField]: {
+            gte: startTime.toISOString(),
+            lte: endTime.toISOString()
+          }
+        }
+      },
+      {
+        match: {
+          [fieldMapping.levelField]: 'error'
+        }
+      }
+    ];
+
+    const appIdQuery = buildAppIdQuery(appId, fieldMapping);
+    if (appIdQuery) {
+      mustClauses.push(appIdQuery);
+    }
+
+    try {
+      const esQuery = {
+        size: 0,
+        query: {
+          bool: {
+            must: mustClauses
+          }
+        },
+        aggs: {
+          last_24h_count: {
+            filter: {
+              range: {
+                [fieldMapping.timestampField]: {
+                  gte: last24Hours.toISOString()
+                }
+              }
+            }
+          },
+          error_messages: {
+            terms: {
+              field: fieldMapping.messageField + '.keyword',
+              size: 20
+            },
+            aggs: {
+              last_seen: {
+                max: {
+                  field: fieldMapping.timestampField
+                }
+              }
+            }
+          },
+          data_error_messages: {
+            terms: {
+              field: 'data.error.keyword',
+              size: 20
+            },
+            aggs: {
+              last_seen: {
+                max: {
+                  field: fieldMapping.timestampField
+                }
+              }
+            }
+          },
+          data_message_errors: {
+            terms: {
+              field: 'data.message.keyword',
+              size: 20
+            },
+            aggs: {
+              last_seen: {
+                max: {
+                  field: fieldMapping.timestampField
+                }
+              }
+            }
+          }
+        }
+      };
+      const response = await fetch(
+        `${sourceConfig.endpoint}/${sourceConfig.index}/_search`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `ApiKey ${sourceConfig.apiKey}`
+          },
+          body: JSON.stringify(esQuery)
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+
+        totalErrors += data.hits?.total?.value || 0;
+        last24HoursCount += data.aggregations?.last_24h_count?.doc_count || 0;
+
+        // Process error_messages aggregation (main message field)
+        if (data.aggregations?.error_messages?.buckets) {
+          for (const bucket of data.aggregations.error_messages.buckets) {
+            const msg = bucket.key as string;
+            if (msg && msg.trim()) {
+              const existing = messageCountMap.get(msg) || { count: 0, lastSeen: null };
+              const bucketLastSeen = bucket.last_seen?.value_as_string || null;
+              const newLastSeen = bucketLastSeen && (!existing.lastSeen || bucketLastSeen > existing.lastSeen)
+                ? bucketLastSeen
+                : existing.lastSeen;
+              messageCountMap.set(msg, {
+                count: existing.count + bucket.doc_count,
+                lastSeen: newLastSeen
+              });
+            }
+          }
+        }
+
+        // Process data.error aggregation (nested error field)
+        if (data.aggregations?.data_error_messages?.buckets) {
+          for (const bucket of data.aggregations.data_error_messages.buckets) {
+            const msg = bucket.key as string;
+            if (msg && msg.trim()) {
+              const existing = messageCountMap.get(msg) || { count: 0, lastSeen: null };
+              const bucketLastSeen = bucket.last_seen?.value_as_string || null;
+              const newLastSeen = bucketLastSeen && (!existing.lastSeen || bucketLastSeen > existing.lastSeen)
+                ? bucketLastSeen
+                : existing.lastSeen;
+              messageCountMap.set(msg, {
+                count: existing.count + bucket.doc_count,
+                lastSeen: newLastSeen
+              });
+            }
+          }
+        }
+
+        // Process data.message aggregation (nested message field)
+        if (data.aggregations?.data_message_errors?.buckets) {
+          for (const bucket of data.aggregations.data_message_errors.buckets) {
+            const msg = bucket.key as string;
+            if (msg && msg.trim()) {
+              const existing = messageCountMap.get(msg) || { count: 0, lastSeen: null };
+              const bucketLastSeen = bucket.last_seen?.value_as_string || null;
+              const newLastSeen = bucketLastSeen && (!existing.lastSeen || bucketLastSeen > existing.lastSeen)
+                ? bucketLastSeen
+                : existing.lastSeen;
+              messageCountMap.set(msg, {
+                count: existing.count + bucket.doc_count,
+                lastSeen: newLastSeen
+              });
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching error summary from source:', sourceId, error);
+    }
+  }
+
+  const errorGroups = Array.from(messageCountMap.entries())
+    .map(([message, { count, lastSeen }]) => ({
+      message,
+      count,
+      lastSeen: lastSeen || undefined
+    }))
+    .sort((a, b) => {
+      // Sort by lastSeen descending (most recent first), then by count descending
+      if (a.lastSeen && b.lastSeen) {
+        const timeDiff = new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime();
+        if (timeDiff !== 0) return timeDiff;
+      } else if (a.lastSeen && !b.lastSeen) {
+        return -1; // a has lastSeen, b doesn't - a comes first
+      } else if (!a.lastSeen && b.lastSeen) {
+        return 1; // b has lastSeen, a doesn't - b comes first
+      }
+      return b.count - a.count; // Fall back to count sorting
+    })
+    .slice(0, 10);
+
+  return {
+    total: totalErrors,
+    last24Hours: last24HoursCount,
+    errorGroups
+  };
+}
+
 async function fetchLifetimeStats(
   appId: string,
   sourceIds: string[]
 ): Promise<LifetimeActivityStats> {
   const sources = getAllLogSources();
-  let totalLogs = 0;
-  const levelCounts: Record<string, number> = {};
-  const serviceCounts: Record<string, number> = {};
-  const eventCounts: Record<string, number> = {};
-  let firstActivity: string | undefined;
   let lastActivity: string | undefined;
 
   for (const sourceId of sourceIds) {
@@ -267,7 +486,6 @@ async function fetchLifetimeStats(
 
     const { fieldMapping } = sourceConfig;
 
-    // Build query with app ID filter if supported
     const mustClauses: Record<string, unknown>[] = [];
     const appIdQuery = buildAppIdQuery(appId, fieldMapping);
     if (appIdQuery) {
@@ -283,29 +501,6 @@ async function fetchLifetimeStats(
           }
         } : { match_all: {} },
         aggs: {
-          by_level: {
-            terms: {
-              field: fieldMapping.levelKeywordField,
-              size: 50
-            }
-          },
-          by_service: {
-            terms: {
-              field: fieldMapping.serviceKeywordField,
-              size: 100
-            }
-          },
-          by_event: {
-            terms: {
-              field: fieldMapping.eventKeywordField,
-              size: 100
-            }
-          },
-          first_activity: {
-            min: {
-              field: fieldMapping.timestampField
-            }
-          },
           last_activity: {
             max: {
               field: fieldMapping.timestampField
@@ -328,35 +523,7 @@ async function fetchLifetimeStats(
 
       if (response.ok) {
         const data = await response.json();
-
-        totalLogs += data.hits?.total?.value || 0;
-
-        if (data.aggregations?.by_level?.buckets) {
-          for (const bucket of data.aggregations.by_level.buckets) {
-            levelCounts[bucket.key] = (levelCounts[bucket.key] || 0) + bucket.doc_count;
-          }
-        }
-
-        if (data.aggregations?.by_service?.buckets) {
-          for (const bucket of data.aggregations.by_service.buckets) {
-            serviceCounts[bucket.key] = (serviceCounts[bucket.key] || 0) + bucket.doc_count;
-          }
-        }
-
-        if (data.aggregations?.by_event?.buckets) {
-          for (const bucket of data.aggregations.by_event.buckets) {
-            eventCounts[bucket.key] = (eventCounts[bucket.key] || 0) + bucket.doc_count;
-          }
-        }
-
-        const sourceFirstActivity = data.aggregations?.first_activity?.value_as_string;
         const sourceLastActivity = data.aggregations?.last_activity?.value_as_string;
-
-        if (sourceFirstActivity) {
-          if (!firstActivity || new Date(sourceFirstActivity) < new Date(firstActivity)) {
-            firstActivity = sourceFirstActivity;
-          }
-        }
 
         if (sourceLastActivity) {
           if (!lastActivity || new Date(sourceLastActivity) > new Date(lastActivity)) {
@@ -369,14 +536,7 @@ async function fetchLifetimeStats(
     }
   }
 
-  return {
-    totalLogs,
-    byLevel: levelCounts,
-    byService: serviceCounts,
-    byEvent: eventCounts,
-    firstActivity,
-    lastActivity
-  };
+  return { lastActivity };
 }
 
 async function fetchAPMTraces(
@@ -673,10 +833,11 @@ export const GET = withAuth(async (request) => {
     const customStartTime = startTimeParam || undefined;
     const customEndTime = endTimeParam || undefined;
 
-    const [logs, apmTracesResult, lifetimeStats] = await Promise.all([
+    const [logs, apmTracesResult, lifetimeStats, errorSummary] = await Promise.all([
       fetchLogsForApp(appId, sourceIds, timeRange, customStartTime, customEndTime),
       fetchAPMTraces(appId, timeRange, traceIdsPage, traceIdsPageSize, spansPage, spansPageSize, customStartTime, customEndTime),
-      fetchLifetimeStats(appId, sourceIds)
+      fetchLifetimeStats(appId, sourceIds),
+      fetchErrorSummary(appId, sourceIds, timeRange)
     ]);
 
     if (logs.length === 0) {
@@ -684,14 +845,13 @@ export const GET = withAuth(async (request) => {
         appId,
         metadata: {
           name: appId,
-          lastActivity: lifetimeStats.lastActivity || null,
-          createdAt: lifetimeStats.firstActivity || null
+          lastActivity: lifetimeStats.lastActivity || null
         },
         recentActivity: [],
         errorSummary: {
           total: 0,
           last24Hours: 0,
-          commonErrors: []
+          errorGroups: []
         },
         activityStats: {
           totalLogs: 0,
@@ -713,31 +873,6 @@ export const GET = withAuth(async (request) => {
         }
       });
     }
-
-    const now = new Date();
-    const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-    const errors = logs.filter(
-      (log) => log._source.level?.toUpperCase() === 'ERROR'
-    );
-    const errorsLast24h = errors.filter(
-      (log) => new Date(log._source['@timestamp']) >= last24Hours
-    );
-
-    const errorMessages = new Map<string, number>();
-    errors.forEach((log) => {
-      const message =
-        log._source.data?.message ||
-        log._source.message ||
-        log._source.event ||
-        'Unknown error';
-      errorMessages.set(message, (errorMessages.get(message) || 0) + 1);
-    });
-
-    const commonErrors = Array.from(errorMessages.entries())
-      .map(([message, count]) => ({ message, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
 
     const levelCounts: Record<string, number> = {};
     const serviceCounts: Record<string, number> = {};
@@ -791,19 +926,6 @@ export const GET = withAuth(async (request) => {
           new Date(a.lastActivity).getTime()
       )
       .slice(0, 10);
-
-    const lastError =
-      errors.length > 0
-        ? {
-          timestamp: errors[0]._source['@timestamp'],
-          message:
-            errors[0]._source.data?.message ||
-            errors[0]._source.message ||
-            errors[0]._source.event ||
-            'Unknown error',
-          event: errors[0]._source.event
-        }
-        : undefined;
 
     const recentActivity = logs.slice(0, 50).map((log) => {
       const fieldMapping = log._fieldMapping;
@@ -859,16 +981,10 @@ export const GET = withAuth(async (request) => {
         name: appId,
         lastActivity: lastActivityLog?._source['@timestamp'],
         version: lastActivityLog?._source.version,
-        status: 'active',
-        createdAt: lifetimeStats.firstActivity
+        status: 'active'
       },
       recentActivity,
-      errorSummary: {
-        total: errors.length,
-        last24Hours: errorsLast24h.length,
-        lastError,
-        commonErrors
-      },
+      errorSummary,
       activityStats: {
         totalLogs: logs.length,
         byLevel: levelCounts,

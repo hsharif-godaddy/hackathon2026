@@ -3,18 +3,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import LogDetailPanel from './LogDetailPanel';
-import LogSourceSelector, { type LogSource } from './LogSourceSelector';
 
-const LOG_LEVELS = ['all', 'DEBUG', 'INFO', 'WARN', 'ERROR'] as const;
+const ERROR_WARN_LEVELS = ['ERROR', 'WARN'];
 
-const TIME_RANGES = [
-  { label: 'Last 15 minutes', value: '15m' },
-  { label: 'Last 1 hour', value: '1h' },
-  { label: 'Last 6 hours', value: '6h' },
-  { label: 'Last 24 hours', value: '24h' },
-  { label: 'Last 7 days', value: '7d' },
-  { label: 'All time', value: 'all' }
-] as const;
+export interface LogSource {
+  id: string;
+  name: string;
+  description: string;
+}
 
 export interface LogEntry {
   id: string;
@@ -129,8 +125,11 @@ interface LogsPanelProps {
   defaultSource?: string;
   isWidget?: boolean;
   globalAppId?: string;
-  onRemove?: () => void;
   onAppIdClick?: (appId: string) => void;
+  // Central filter controls
+  timeRange?: string;
+  query?: string;
+  showAllLogs?: boolean;
 }
 
 const INITIAL_COLUMN_WIDTHS = {
@@ -140,9 +139,7 @@ const INITIAL_COLUMN_WIDTHS = {
   event: 200
 };
 
-// Source-specific field mappings - defines which field to show in the "ID" column for each source
-// Key is the source ID, value is the field configuration
-// supportsAppIdFilter: whether this source filters by app ID on the backend
+// Source-specific field mappings
 const SOURCE_FIELD_MAPPINGS: Record<string, {
   idField: string;
   idLabel: string;
@@ -153,23 +150,22 @@ const SOURCE_FIELD_MAPPINGS: Record<string, {
     idField: 'appId',
     idLabel: 'App ID',
     getIdValue: (log) => log.appId,
-    supportsAppIdFilter: true // Filters by app_id
+    supportsAppIdFilter: true
   },
   'airo-app': {
     idField: 'customerId',
     idLabel: 'Customer ID',
     getIdValue: (log) => (log.raw?.customerId as string) || (log.raw?.['customer.id'] as string) || (log.raw?.['user.id'] as string),
-    supportsAppIdFilter: false // No app ID filtering - shows all logs
+    supportsAppIdFilter: false
   },
   'control_plane': {
     idField: 'appId',
     idLabel: 'App ID',
     getIdValue: (log) => log.appId,
-    supportsAppIdFilter: true // Filters by app_id
+    supportsAppIdFilter: true
   }
 };
 
-// Default mapping for sources not in the list
 const DEFAULT_FIELD_MAPPING = {
   idField: 'appId',
   idLabel: 'App ID',
@@ -177,47 +173,23 @@ const DEFAULT_FIELD_MAPPING = {
   supportsAppIdFilter: true
 };
 
-// Helper to format date for datetime-local input
-function formatDateForInput(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
-
-// Get initial time values (1 hour ago to now)
-function getInitialTimeRange(): { start: string; end: string } {
-  const now = new Date();
-  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-  return {
-    start: formatDateForInput(oneHourAgo),
-    end: formatDateForInput(now)
-  };
-}
-
-export default function LogsPanel({ sources, defaultSource, isWidget, globalAppId, onRemove, onAppIdClick: _onAppIdClick }: LogsPanelProps) {
+export default function LogsPanel({
+  sources,
+  defaultSource,
+  isWidget,
+  globalAppId,
+  onAppIdClick: _onAppIdClick,
+  timeRange = '1h',
+  query = '',
+  showAllLogs = false
+}: LogsPanelProps) {
   const [selectedSource, setSelectedSource] = useState<string>(defaultSource || sources[0]?.id || '');
-  const [level, setLevel] = useState<string>('all');
-  const [timeRange, setTimeRange] = useState<string>('15m');
-  const [useCustomTime, setUseCustomTime] = useState<boolean>(true);
-  const [customStartTime, setCustomStartTime] = useState<string>(() => getInitialTimeRange().start);
-  const [customEndTime, setCustomEndTime] = useState<string>(() => getInitialTimeRange().end);
-  const [query, setQuery] = useState<string>('');
-  const [searchInput, setSearchInput] = useState<string>('');
-  const [appIdFilter, setAppIdFilter] = useState<string>('');
   const [selectedLogIndex, setSelectedLogIndex] = useState<number | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(false);
-  const [detailPanelWidth, setDetailPanelWidth] = useState<number>(450);
-  const [isResizingDetailPanel, setIsResizingDetailPanel] = useState(false);
-  const [viewMode, setViewMode] = useState<'split' | 'drawer'>('drawer');
   const [page, setPage] = useState(0);
   const [accumulatedLogs, setAccumulatedLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
-  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const PAGE_SIZE = 50;
   const [panelHeight, setPanelHeight] = useState<number | null>(null);
   const [isResizing, setIsResizing] = useState(false);
@@ -226,7 +198,6 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const selectedRowRef = useRef<HTMLTableRowElement>(null);
 
-  // Get field mapping for current source
   const fieldMapping = SOURCE_FIELD_MAPPINGS[selectedSource] || DEFAULT_FIELD_MAPPING;
 
   // Column resizing state
@@ -266,7 +237,6 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
     document.addEventListener('mouseup', handleColumnMouseUp);
   }, [columnWidths, handleColumnMouseMove, handleColumnMouseUp]);
 
-  // Keyboard handler for column resize
   const handleColumnKeyDown = useCallback((column: keyof typeof INITIAL_COLUMN_WIDTHS, e: React.KeyboardEvent) => {
     const step = e.shiftKey ? 20 : 5;
     if (e.key === 'ArrowLeft') {
@@ -293,10 +263,6 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
     };
   }, [handleColumnMouseMove, handleColumnMouseUp]);
 
-  // Compute the effective appId filter
-  const effectiveAppId = globalAppId || appIdFilter;
-
-  // Use a ref to track if we've initialized the source from props
   const initializedRef = useRef(false);
 
   useEffect(() => {
@@ -318,28 +284,19 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
       urlParams.set('size', PAGE_SIZE.toString());
       urlParams.set('from', (page * PAGE_SIZE).toString());
 
-      if (level !== 'all') {
-        urlParams.set('level', level);
+      if (!showAllLogs) {
+        urlParams.set('levels', ERROR_WARN_LEVELS.join(','));
       }
 
       if (query) {
         urlParams.set('query', query);
       }
 
-      // Only send appId for sources that support filtering
-      if (effectiveAppId && fieldMapping.supportsAppIdFilter) {
-        urlParams.set('appId', effectiveAppId);
+      if (globalAppId && fieldMapping.supportsAppIdFilter) {
+        urlParams.set('appId', globalAppId);
       }
 
-      if (useCustomTime && customStartTime && customEndTime) {
-        const startDate = new Date(customStartTime);
-        const endDate = new Date(customEndTime);
-        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-          throw new Error('Invalid date format');
-        }
-        urlParams.set('startTime', startDate.toISOString());
-        urlParams.set('endTime', endDate.toISOString());
-      } else if (timeRange !== 'all') {
+      if (timeRange !== 'all') {
         const now = new Date();
         const value = parseInt(timeRange.slice(0, -1), 10);
         const unit = timeRange.slice(-1);
@@ -394,7 +351,7 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
     } finally {
       setLoading(false);
     }
-  }, [selectedSource, level, timeRange, useCustomTime, customStartTime, customEndTime, query, effectiveAppId, page, fieldMapping]);
+  }, [selectedSource, showAllLogs, timeRange, query, globalAppId, page, fieldMapping]);
 
   useEffect(() => {
     fetchLogs();
@@ -402,35 +359,7 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
 
   useEffect(() => {
     setPage(0);
-  }, [selectedSource, level, query, timeRange, useCustomTime, customStartTime, customEndTime, effectiveAppId]);
-
-  useEffect(() => {
-    if (autoRefresh) {
-      refreshIntervalRef.current = setInterval(() => {
-        setPage(0);
-        fetchLogs();
-      }, 10000);
-    } else if (refreshIntervalRef.current) {
-      clearInterval(refreshIntervalRef.current);
-      refreshIntervalRef.current = null;
-    }
-
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-      }
-    };
-  }, [autoRefresh, fetchLogs]);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setQuery(searchInput);
-  };
-
-  const handleRefresh = () => {
-    setPage(0);
-    fetchLogs();
-  };
+  }, [selectedSource, showAllLogs, query, timeRange, globalAppId]);
 
   const loadMore = () => {
     if (!loading && accumulatedLogs.length < total) {
@@ -458,19 +387,15 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
     }
   }, [selectedLogIndex, accumulatedLogs.length]);
 
-  // Scroll selected row into view
   useEffect(() => {
     if (selectedRowRef.current && tableContainerRef.current) {
       selectedRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }, [selectedLogIndex]);
 
-  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (selectedLogIndex === null) return;
-
-      // Don't interfere with input fields
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       switch (e.key) {
@@ -492,42 +417,6 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [selectedLogIndex, selectPreviousLog, selectNextLog]);
-
-  // Detail panel resize handler
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizingDetailPanel || !panelRef.current) return;
-
-      const rect = panelRef.current.getBoundingClientRect();
-      const newWidth = rect.right - e.clientX;
-      const minWidth = 300;
-      const maxWidth = rect.width * 0.7;
-
-      if (newWidth >= minWidth && newWidth <= maxWidth) {
-        setDetailPanelWidth(newWidth);
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizingDetailPanel(false);
-    };
-
-    if (isResizingDetailPanel) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      if (!isResizing) {
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      }
-    };
-  }, [isResizingDetailPanel, isResizing]);
 
   const selectedLog = selectedLogIndex !== null ? accumulatedLogs[selectedLogIndex] : null;
 
@@ -626,352 +515,6 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
             </p>
           )}
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-          {/* View mode toggle */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.125rem',
-            backgroundColor: '#e5e7eb',
-            borderRadius: '8px',
-            padding: '0.25rem',
-            border: '1px solid #9ca3af'
-          }}>
-            <button
-              onClick={() => setViewMode('split')}
-              title="Split View - Show details in side panel"
-              style={{
-                padding: '0.35rem 0.65rem',
-                backgroundColor: viewMode === 'split' ? '#3b82f6' : 'transparent',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                color: viewMode === 'split' ? 'white' : '#4b5563',
-                boxShadow: viewMode === 'split' ? '0 2px 4px rgba(59,130,246,0.3)' : 'none',
-                transition: 'all 0.15s',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.25rem'
-              }}
-            >
-              <span style={{ fontSize: '0.9rem' }}>⬓</span> Split
-            </button>
-            <button
-              onClick={() => setViewMode('drawer')}
-              title="Drawer View - Show details in overlay drawer"
-              style={{
-                padding: '0.35rem 0.65rem',
-                backgroundColor: viewMode === 'drawer' ? '#3b82f6' : 'transparent',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                color: viewMode === 'drawer' ? 'white' : '#4b5563',
-                boxShadow: viewMode === 'drawer' ? '0 2px 4px rgba(59,130,246,0.3)' : 'none',
-                transition: 'all 0.15s',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.25rem'
-              }}
-            >
-              <span style={{ fontSize: '0.9rem' }}>⧉</span> Drawer
-            </button>
-          </div>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              style={{ cursor: 'pointer' }}
-            />
-            <span style={{ fontSize: '0.75rem' }}>Auto-refresh</span>
-          </label>
-          <button
-            onClick={handleRefresh}
-            disabled={loading}
-            style={{
-              padding: '0.4rem 0.75rem',
-              backgroundColor: '#f3f4f6',
-              border: '1px solid #d1d5db',
-              borderRadius: '6px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: '0.75rem',
-              fontWeight: 500
-            }}
-          >
-            {loading ? 'Loading...' : 'Refresh'}
-          </button>
-
-          {onRemove && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove();
-              }}
-              style={{
-                padding: '0.4rem 0.75rem',
-                backgroundColor: '#fee2e2',
-                color: '#ef4444',
-                border: '1px solid #fca5a5',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.75rem',
-                fontWeight: 500,
-                marginLeft: '0.5rem'
-              }}
-            >
-              Remove
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '0.5rem',
-        padding: '0.5rem',
-        border: '1px solid #e5e7eb',
-        borderRadius: '6px',
-        marginBottom: '0.75rem',
-        backgroundColor: '#f9fafb',
-        alignItems: 'flex-end'
-      }}>
-        {!isWidget && (
-          <LogSourceSelector
-            sources={sources}
-            selectedSource={selectedSource}
-            onSourceChange={setSelectedSource}
-          />
-        )}
-
-        <form onSubmit={handleSearch} style={{ flex: '0 1 200px', minWidth: '120px', maxWidth: '200px' }}>
-          <label style={{
-            display: 'block',
-            fontSize: '0.65rem',
-            fontWeight: 500,
-            marginBottom: '0.15rem',
-            color: '#374151'
-          }}>
-            Search
-          </label>
-          <input
-            type="text"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search logs..."
-            style={{
-              width: '100%',
-              padding: '0.3rem 0.4rem',
-              border: '1px solid #d1d5db',
-              borderRadius: '4px',
-              fontSize: '0.7rem'
-            }}
-          />
-        </form>
-
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.15rem', marginLeft: 'auto' }}>
-          <label style={{
-            fontSize: '0.65rem',
-            fontWeight: 500,
-            color: '#374151',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.25rem',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-            marginBottom: '0.3rem'
-          }}>
-            <input
-              type="checkbox"
-              checked={useCustomTime}
-              onChange={(e) => {
-                setUseCustomTime(e.target.checked);
-                if (!e.target.checked) {
-                  setCustomStartTime('');
-                  setCustomEndTime('');
-                } else {
-                  const now = new Date();
-                  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-                  const formatForInput = (date: Date) => {
-                    const year = date.getFullYear();
-                    const month = String(date.getMonth() + 1).padStart(2, '0');
-                    const day = String(date.getDate()).padStart(2, '0');
-                    const hours = String(date.getHours()).padStart(2, '0');
-                    const minutes = String(date.getMinutes()).padStart(2, '0');
-                    return `${year}-${month}-${day}T${hours}:${minutes}`;
-                  };
-                  setCustomStartTime(formatForInput(oneHourAgo));
-                  setCustomEndTime(formatForInput(now));
-                }
-              }}
-              style={{ cursor: 'pointer', flexShrink: 0, width: '12px', height: '12px' }}
-            />
-            <span>Custom Time</span>
-          </label>
-        </div>
-
-        {useCustomTime ? (
-          <>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-              <label htmlFor="custom-start-time" style={{
-                fontSize: '0.65rem',
-                fontWeight: 500,
-                color: '#374151'
-              }}>
-                Start
-              </label>
-              <input
-                id="custom-start-time"
-                type="datetime-local"
-                value={customStartTime}
-                onChange={(e) => setCustomStartTime(e.target.value)}
-                style={{
-                  padding: '0.25rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '4px',
-                  fontSize: '0.65rem',
-                  backgroundColor: 'white',
-                  cursor: 'text',
-                  width: '140px'
-                }}
-              />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-              <label htmlFor="custom-end-time" style={{
-                fontSize: '0.65rem',
-                fontWeight: 500,
-                color: '#374151'
-              }}>
-                End
-              </label>
-              <input
-                id="custom-end-time"
-                type="datetime-local"
-                value={customEndTime}
-                onChange={(e) => setCustomEndTime(e.target.value)}
-                style={{
-                  padding: '0.25rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '4px',
-                  fontSize: '0.65rem',
-                  backgroundColor: 'white',
-                  cursor: 'text',
-                  width: '140px'
-                }}
-              />
-            </div>
-          </>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-            <label htmlFor="time-range" style={{
-              fontSize: '0.65rem',
-              fontWeight: 500,
-              color: '#374151'
-            }}>
-              Time Range
-            </label>
-            <select
-              id="time-range"
-              value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value)}
-              style={{
-                padding: '0.3rem',
-                border: '1px solid #d1d5db',
-                borderRadius: '4px',
-                fontSize: '0.7rem',
-                cursor: 'pointer',
-                backgroundColor: 'white',
-                width: '120px'
-              }}
-            >
-              {TIME_RANGES.map((range) => (
-                <option key={range.value} value={range.value}>
-                  {range.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-          <label htmlFor="log-level" style={{
-            fontSize: '0.65rem',
-            fontWeight: 500,
-            color: '#374151'
-          }}>
-            Level
-          </label>
-          <select
-            id="log-level"
-            value={level}
-            onChange={(e) => setLevel(e.target.value)}
-            style={{
-              padding: '0.3rem',
-              border: '1px solid #d1d5db',
-              borderRadius: '4px',
-              fontSize: '0.7rem',
-              cursor: 'pointer',
-              backgroundColor: 'white'
-            }}
-          >
-            {LOG_LEVELS.map((lvl) => (
-              <option key={lvl} value={lvl.toLowerCase()}>
-                {lvl === 'all' ? 'All Levels' : lvl}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Only show App ID filter for sources that support it */}
-        {fieldMapping.supportsAppIdFilter && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-            <label htmlFor="app-id" style={{
-              fontSize: '0.65rem',
-              fontWeight: 500,
-              color: '#374151'
-            }}>
-              {fieldMapping.idLabel} {globalAppId && <span style={{ color: '#3b82f6', fontSize: '0.55rem' }}>(Global)</span>}
-            </label>
-            <input
-              id="app-id"
-              type="text"
-              value={appIdFilter}
-              onChange={(e) => setAppIdFilter(e.target.value)}
-              disabled={!!globalAppId}
-              placeholder={globalAppId ? globalAppId : `Filter...`}
-              style={{
-                padding: '0.3rem',
-                border: '1px solid #d1d5db',
-                borderRadius: '4px',
-                fontSize: '0.7rem',
-                backgroundColor: globalAppId ? '#f3f4f6' : 'white',
-                cursor: globalAppId ? 'not-allowed' : 'text',
-                width: '100px'
-              }}
-            />
-          </div>
-        )}
-        {/* Show indicator for sources that don't filter by app ID */}
-        {!fieldMapping.supportsAppIdFilter && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            padding: '0.3rem 0.5rem',
-            backgroundColor: '#fef3c7',
-            border: '1px solid #fcd34d',
-            borderRadius: '4px',
-            fontSize: '0.65rem',
-            color: '#92400e'
-          }}>
-            ⚠️ No App ID filter for this source
-          </div>
-        )}
       </div>
 
       {/* Stats bar */}
@@ -986,21 +529,8 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
         <span>
           Showing {accumulatedLogs.length} of {total.toLocaleString()} logs
           {selectedSource && ` from ${sources.find(s => s.id === selectedSource)?.name}`}
-          {effectiveAppId && fieldMapping.supportsAppIdFilter && ` for App: ${effectiveAppId}`}
-          {!fieldMapping.supportsAppIdFilter && ' (all logs - no app filter)'}
+          {globalAppId && fieldMapping.supportsAppIdFilter && ` for App: ${globalAppId}`}
         </span>
-        {autoRefresh && (
-          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              backgroundColor: '#10b981',
-              animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-            }} />
-            Auto-refreshing every 10s
-          </span>
-        )}
       </div>
 
       {/* Error state */}
@@ -1010,33 +540,14 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
           borderRadius: '8px',
           padding: '1rem',
           marginBottom: '1rem',
-          backgroundColor: '#fef2f2',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'start'
+          backgroundColor: '#fef2f2'
         }}>
-          <div>
-            <p style={{ margin: '0 0 0.5rem 0', fontWeight: 600, color: '#dc2626' }}>
-              Error loading logs
-            </p>
-            <p style={{ margin: 0, fontSize: '0.875rem', color: '#991b1b' }}>
-              {error}
-            </p>
-          </div>
-          <button
-            onClick={handleRefresh}
-            style={{
-              padding: '0.5rem 1rem',
-              backgroundColor: '#dc2626',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '0.875rem'
-            }}
-          >
-            Retry
-          </button>
+          <p style={{ margin: '0 0 0.5rem 0', fontWeight: 600, color: '#dc2626' }}>
+            Error loading logs
+          </p>
+          <p style={{ margin: 0, fontSize: '0.875rem', color: '#991b1b' }}>
+            {error}
+          </p>
         </div>
       )}
 
@@ -1079,7 +590,7 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
         </div>
       )}
 
-      {/* Logs table with split-view detail panel */}
+      {/* Logs table */}
       {accumulatedLogs.length > 0 && (
         <div style={{
           display: 'flex',
@@ -1090,7 +601,6 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
           minHeight: panelHeight ? '200px' : '400px',
           maxHeight: panelHeight ? `${Math.max(200, panelHeight - 300)}px` : (isWidget ? '400px' : '600px')
         }}>
-          {/* Left side - Logs table */}
           <div
             ref={tableContainerRef}
             style={{
@@ -1143,7 +653,7 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
                       onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                       onFocus={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
                       onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                      aria-label="Resize timestamp column. Use left/right arrow keys to resize."
+                      aria-label="Resize timestamp column"
                       role="separator"
                       aria-orientation="vertical"
                     />
@@ -1178,7 +688,7 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
                       onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                       onFocus={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
                       onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                      aria-label="Resize level column. Use left/right arrow keys to resize."
+                      aria-label="Resize level column"
                       role="separator"
                       aria-orientation="vertical"
                     />
@@ -1213,7 +723,7 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
                       onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                       onFocus={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
                       onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                      aria-label="Resize ID column. Use left/right arrow keys to resize."
+                      aria-label="Resize ID column"
                       role="separator"
                       aria-orientation="vertical"
                     />
@@ -1248,7 +758,7 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
                       onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                       onFocus={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
                       onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                      aria-label="Resize event column. Use left/right arrow keys to resize."
+                      aria-label="Resize event column"
                       role="separator"
                       aria-orientation="vertical"
                     />
@@ -1303,35 +813,13 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
                           {(log.level || '').toString().toLowerCase()}
                         </span>
                       </td>
-                      <td style={{ padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem' }}>
-                        {(() => {
-                          const idValue = fieldMapping.getIdValue(log);
-                          return idValue ? (
-                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const idStr = safeRender(idValue);
-                                  setAppIdFilter(idStr !== '-' ? idStr : '');
-                                }}
-                                style={{
-                                  fontFamily: 'monospace',
-                                  fontSize: isWidget ? '0.7rem' : '0.75rem',
-                                  background: 'none',
-                                  border: 'none',
-                                  color: '#3b82f6',
-                                  cursor: 'pointer',
-                                  textDecoration: 'underline'
-                                }}
-                                title={`Filter by this ${fieldMapping.idLabel}`}
-                              >
-                                {safeRender(idValue)}
-                              </button>
-                            </div>
-                          ) : (
-                            <span style={{ color: '#9ca3af' }}>-</span>
-                          );
-                        })()}
+                      <td style={{
+                        padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
+                        fontFamily: 'monospace',
+                        fontSize: isWidget ? '0.7rem' : '0.75rem',
+                        color: '#6b7280'
+                      }}>
+                        {safeRender(fieldMapping.getIdValue(log)) || '-'}
                       </td>
                       <td style={{
                         padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
@@ -1388,60 +876,12 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
               </div>
             )}
           </div>
-
-          {/* Right side - Detail panel (Split View mode) */}
-          {selectedLog && viewMode === 'split' && (
-            <>
-              {/* Resize handle */}
-              <div
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setIsResizingDetailPanel(true);
-                }}
-                style={{
-                  width: '6px',
-                  cursor: 'col-resize',
-                  backgroundColor: isResizingDetailPanel ? '#3b82f6' : '#e5e7eb',
-                  transition: isResizingDetailPanel ? 'none' : 'background-color 0.15s',
-                  flexShrink: 0
-                }}
-                onMouseEnter={(e) => {
-                  if (!isResizingDetailPanel) {
-                    e.currentTarget.style.backgroundColor = '#3b82f6';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isResizingDetailPanel) {
-                    e.currentTarget.style.backgroundColor = '#e5e7eb';
-                  }
-                }}
-              />
-
-              {/* Detail panel */}
-              <div style={{
-                width: `${detailPanelWidth}px`,
-                flexShrink: 0,
-                overflow: 'hidden'
-              }}>
-                <LogDetailPanel
-                  log={selectedLog}
-                  fieldMapping={fieldMapping}
-                  onClose={closeDetailPanel}
-                  onPrevious={selectPreviousLog}
-                  onNext={selectNextLog}
-                  hasPrevious={selectedLogIndex !== null && selectedLogIndex > 0}
-                  hasNext={selectedLogIndex !== null && selectedLogIndex < accumulatedLogs.length - 1}
-                />
-              </div>
-            </>
-          )}
         </div>
       )}
 
-      {/* Drawer overlay (Drawer View mode) */}
-      {selectedLog && viewMode === 'drawer' && (
+      {/* Drawer overlay */}
+      {selectedLog && (
         <>
-          {/* Drawer panel */}
           <div
             style={{
               position: 'fixed',
@@ -1470,7 +910,6 @@ export default function LogsPanel({ sources, defaultSource, isWidget, globalAppI
             />
           </div>
 
-          {/* CSS animations */}
           <style>{`
             @keyframes slideIn {
               from { transform: translateX(100%); }

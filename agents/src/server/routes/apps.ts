@@ -261,7 +261,7 @@ router.post('/register', async (req: Request, res: Response) => {
 
     if (error instanceof Error && error.message.includes('mismatch')) {
       const [errorType, ...messageParts] = error.message.split(': ');
-      return res.status(403).json({ 
+      return res.status(403).json({
         error: errorType,
         message: messageParts.join(': ')
       });
@@ -1125,7 +1125,7 @@ router.get('/:id/screenshot', (req: Request, res: Response) => {
 
     const screenshotDir = process.env.SCREENSHOT_DIR || app.path;
     const screenshotPath = pathJoin(screenshotDir, `${app.id}-screenshot.png`);
-    
+
     if (existsSync(screenshotPath)) {
       return res.sendFile(screenshotPath);
     } else {
@@ -1172,10 +1172,10 @@ router.post('/:id/screenshot', upload.single('screenshot'), (req: Request, res: 
 
     const screenshotDir = process.env.SCREENSHOT_DIR || app.path;
     const screenshotPath = pathJoin(screenshotDir, `${app.id}-screenshot.png`);
-    
+
     // Write the file buffer to disk
     writeFileSync(screenshotPath, req.file.buffer);
-    
+
     logger.info('route.apps.screenshot.upload.success', {
       appId: id,
       size: req.file.size,

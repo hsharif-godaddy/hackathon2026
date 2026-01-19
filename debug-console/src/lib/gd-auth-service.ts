@@ -32,8 +32,29 @@ function shouldBypassAuth(): boolean {
  * GoDaddy Auth Service using official gd-auth library
  * Handles JWT validation and automatic heartbeat for JOMAX tokens
  */
+interface AuthPayload {
+    shopperId: string;
+    cid: string;
+    email?: string;
+    exp: number;
+    iat: number;
+    [key: string]: unknown;
+}
+
+interface GdAuthInstance {
+    authenticate(host: string, token: string, options: number): Promise<{
+        auth: string;
+        shopperId: string;
+        cid: string;
+        exp: number;
+        iat: number;
+        payload: Record<string, unknown>;
+        e2s?: { shopperId: string; cid: string };
+    }>;
+}
+
 export class GdAuthService {
-    private gdAuth: any;
+    private gdAuth: GdAuthInstance;
     private ssoHost: string;
 
     constructor() {
@@ -58,7 +79,7 @@ export class GdAuthService {
         });
     }
 
-    async authenticate(token: string): Promise<{ valid: boolean; payload?: any; reason?: string }> {
+    async authenticate(token: string): Promise<{ valid: boolean; payload?: AuthPayload; reason?: string }> {
         // Bypass auth in local development
         if (shouldBypassAuth()) {
             if (!bypassWarningLogged) {
@@ -84,22 +105,22 @@ export class GdAuthService {
             return {
                 valid: true,
                 payload: {
-                    shopperId: isImpersonation ? jwt.e2s.shopperId : jwt.shopperId,
-                    cid: isImpersonation ? jwt.e2s.cid : jwt.cid,
+                    shopperId: isImpersonation && jwt.e2s ? jwt.e2s.shopperId : jwt.shopperId,
+                    cid: isImpersonation && jwt.e2s ? jwt.e2s.cid : jwt.cid,
                     exp: jwt.exp,
                     iat: jwt.iat,
                     ...jwt.payload
                 }
             };
-        } catch (error: any) {
+        } catch (error: unknown) {
             return {
                 valid: false,
-                reason: error.message || 'Authentication failed'
+                reason: error instanceof Error ? error.message : 'Authentication failed'
             };
         }
     }
 
-    extractTokenFromRequest(request: any): string | null {
+    extractTokenFromRequest(request: Request & { cookies?: { get: (name: string) => { value: string } | undefined } }): string | null {
         // In local env, return a dummy token to satisfy the flow
         if (shouldBypassAuth()) {
             return 'local-dev-token';
@@ -112,7 +133,7 @@ export class GdAuthService {
             return authHeader.split('jomax-jwt ')[1];
         }
 
-        const jomaxCookieToken = request.cookies.get('auth_jomax')?.value;
+        const jomaxCookieToken = request.cookies?.get('auth_jomax')?.value;
         if (jomaxCookieToken) {
             return jomaxCookieToken;
         }
@@ -131,7 +152,7 @@ export const gdAuthService = {
         return _gdAuthService;
     },
 
-    extractTokenFromRequest(request: any): string | null {
+    extractTokenFromRequest(request: Request & { cookies?: { get: (name: string) => { value: string } | undefined } }): string | null {
         return this.instance.extractTokenFromRequest(request);
     },
 

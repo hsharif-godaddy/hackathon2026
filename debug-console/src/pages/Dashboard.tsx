@@ -4,8 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import AppContextPanel from '@/components/AppContextPanel';
 import LangfusePanel from '@/components/LangfusePanel';
-import LogsPanel from '@/components/LogsPanel';
-import type { LogSource } from '@/components/LogSourceSelector';
+import LogsPanel, { type LogSource } from '@/components/LogsPanel';
 
 interface Widget {
   id: string;
@@ -27,6 +26,7 @@ export default function Dashboard() {
   const [langfuseBaseUrl, setLangfuseBaseUrl] = useState<string | undefined>(undefined);
   const [langfuseProjectId, setLangfuseProjectId] = useState<string | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [showAllLogs, setShowAllLogs] = useState(false);
 
   // Refs for scrolling to widgets
   const widgetRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -48,7 +48,7 @@ export default function Dashboard() {
   // Get widget display name
   const getWidgetName = useCallback((widget: Widget) => {
     if (widget.type === 'langfuse') {
-      return '🔍 Langfuse Traces';
+      return '🔍 Conversation Traces';
     }
     const source = sources.find(s => s.id === widget.sourceId);
     return source?.name || widget.sourceId || 'Logs';
@@ -116,16 +116,6 @@ export default function Dashboard() {
 
     fetchLangfuseConfig();
   }, []);
-
-  const addLogsWidget = (sourceId: string) => {
-    if (!sourceId) return;
-    const newId = `logs-${sourceId}-${Date.now()}`;
-    setWidgets([...widgets, { id: newId, type: 'logs', sourceId }]);
-  };
-
-  const removeWidget = (id: string) => {
-    setWidgets(widgets.filter(w => w.id !== id));
-  };
 
   const onDragStart = (index: number) => {
     setDragIndex(index);
@@ -260,54 +250,23 @@ export default function Dashboard() {
                     </button>
                   )}
                 </div>
-                {contextAppId.trim() && (
-                  <button
-                    onClick={() => setShowContextPanel(true)}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      backgroundColor: '#3b82f6',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '0.875rem',
-                      fontWeight: 500
-                    }}
-                  >
-                    View Context
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>
-                Add New Panel
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <select
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      addLogsWidget(e.target.value);
-                      e.target.value = '';
-                    }
-                  }}
-                  value=""
+                <button
+                  onClick={() => setShowContextPanel(true)}
+                  disabled={!contextAppId.trim()}
                   style={{
                     padding: '0.5rem 1rem',
-                    borderRadius: '6px',
-                    border: '1px solid #d1d5db',
-                    fontSize: '0.875rem',
-                    backgroundColor: '#3b82f6',
+                    backgroundColor: contextAppId.trim() ? '#3b82f6' : '#9ca3af',
                     color: 'white',
-                    cursor: 'pointer'
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: contextAppId.trim() ? 'pointer' : 'not-allowed',
+                    fontSize: '0.875rem',
+                    fontWeight: 500,
+                    opacity: contextAppId.trim() ? 1 : 0.6
                   }}
                 >
-                  <option value="" disabled>+ Select Log Source</option>
-                  {sources.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
+                  Search
+                </button>
               </div>
             </div>
           </div>
@@ -435,6 +394,8 @@ export default function Dashboard() {
                     setShowContextPanel(false);
                     setContextAppId('');
                   }}
+                  showAllLogs={showAllLogs}
+                  onShowAllLogsChange={setShowAllLogs}
                 />
               </div>
             )}
@@ -503,7 +464,6 @@ export default function Dashboard() {
                   {widget.type === 'langfuse' ? (
                     <LangfusePanel
                       globalAppId={contextAppId.trim() || undefined}
-                      onRemove={() => removeWidget(widget.id)}
                       onSessionClick={(sessionId) => {
                         setContextAppId(sessionId);
                         setShowContextPanel(true);
@@ -517,11 +477,11 @@ export default function Dashboard() {
                       defaultSource={widget.sourceId}
                       isWidget={true}
                       globalAppId={contextAppId.trim() || undefined}
-                      onRemove={() => removeWidget(widget.id)}
                       onAppIdClick={(appId) => {
                         setContextAppId(appId);
                         setShowContextPanel(true);
                       }}
+                      showAllLogs={showAllLogs}
                     />
                   )}
                 </div>

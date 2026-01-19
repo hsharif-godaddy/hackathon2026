@@ -20,6 +20,7 @@ export const GET = withAuth(async (request) => {
     const limit = searchParams.get('limit') || '50';
     const sessionId = searchParams.get('sessionId');
     const fromTimestamp = searchParams.get('fromTimestamp');
+    const appId = searchParams.get('appId');
 
     const params = new URLSearchParams({ page, limit });
     if (sessionId) {
@@ -27,6 +28,10 @@ export const GET = withAuth(async (request) => {
     }
     if (fromTimestamp) {
       params.append('fromTimestamp', fromTimestamp);
+    }
+    // See: https://api.reference.langfuse.com/#tag/trace/GET/api/public/traces
+    if (appId) {
+      params.append('userId', appId);
     }
 
     const authHeader = `Basic ${Buffer.from(`${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}`).toString('base64')}`;
@@ -38,19 +43,22 @@ export const GET = withAuth(async (request) => {
       },
     });
 
+
     if (!response.ok) {
+      const errorText = await response.text();
       return NextResponse.json(
-        { error: `Langfuse API error: ${response.status}` },
+        { error: `Langfuse API error: ${response.status}`, message: errorText },
         { status: response.status }
       );
     }
+
 
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
     console.error('Langfuse traces fetch error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch Langfuse traces' },
+      { error: 'Failed to fetch Langfuse traces', message: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

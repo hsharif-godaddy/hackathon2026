@@ -327,8 +327,8 @@ function TimelineTable({ timeline }: { timeline: TimelineEntry[] }) {
 }
 
 function AppDetailsContent() {
-  const params = useParams();
-  const appId = params.appId as string;
+  const params = useParams<{ appId: string }>();
+  const appId = params?.appId ?? '';
   const [appDetails, setAppDetails] = useState<AppDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

@@ -105,7 +105,7 @@ function getESConfigForSource(sourceId: string): LogSourceConfig | null {
   const sources: LogSourceRegistry = {
     'airo-agents': {
       id: 'airo-agents',
-      name: 'Airo Agents',
+      name: 'Agent Logs',
       description: 'Logs from the Airo Agents service',
       endpoint: env.PIONEER_ES_ENDPOINT || '',
       apiKey: env.PIONEER_ES_API_KEY || '',
@@ -115,7 +115,7 @@ function getESConfigForSource(sourceId: string): LogSourceConfig | null {
     },
     'airo-app': {
       id: 'airo-app',
-      name: 'Airo App Builder',
+      name: 'UI Logs',
       description: 'Logs from the Airo App Builder application',
       endpoint: env.AIRO_BUILDER_ES_ENDPOINT || '',
       apiKey: env.AIRO_BUILDER_ES_API_KEY || '',
@@ -125,8 +125,8 @@ function getESConfigForSource(sourceId: string): LogSourceConfig | null {
     },
     'control_plane': {
       id: 'control_plane',
-      name: 'Control Plane',
-      description: 'Logs from the control plane',
+      name: 'Hosting Logs',
+      description: 'Logs from the hosting service',
       endpoint: env.CONTROL_PLANE_ES_ENDPOINT || '',
       apiKey: env.CONTROL_PLANE_ES_API_KEY || '',
       index: 'pagely-mgmt-worker-hosting-*',
@@ -150,7 +150,7 @@ export function getAllLogSources(): LogSourceConfig[] {
   return [
     {
       id: 'airo-agents',
-      name: 'Airo Agents',
+      name: 'Agent Logs',
       description: 'Logs from the Airo Agents service',
       endpoint: env.PIONEER_ES_ENDPOINT || '',
       apiKey: env.PIONEER_ES_API_KEY || '',
@@ -160,7 +160,7 @@ export function getAllLogSources(): LogSourceConfig[] {
     },
     {
       id: 'airo-app',
-      name: 'Airo App Builder',
+      name: 'UI Logs',
       description: 'Logs from the Airo App Builder application',
       endpoint: env.AIRO_BUILDER_ES_ENDPOINT || '',
       apiKey: env.AIRO_BUILDER_ES_API_KEY || '',
@@ -170,8 +170,8 @@ export function getAllLogSources(): LogSourceConfig[] {
     },
     {
       id: 'control_plane',
-      name: 'Control Plane',
-      description: 'Logs from the control plane',
+      name: 'Hosting Logs',
+      description: 'Logs from the hosting service',
       endpoint: env.CONTROL_PLANE_ES_ENDPOINT || '',
       apiKey: env.CONTROL_PLANE_ES_API_KEY || '',
       index: 'pagely-mgmt-worker-hosting-*',

@@ -627,13 +627,6 @@ function AnalyticsContent() {
     }
   }
 
-  function formatBytes(bytes: number) {
-    if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + ' GB';
-    if (bytes >= 1e6) return (bytes / 1e6).toFixed(2) + ' MB';
-    if (bytes >= 1e3) return (bytes / 1e3).toFixed(2) + ' KB';
-    return bytes + ' B';
-  }
-
   function handleSort(col: keyof AppData | 'steps_per_run') {
     if (sortCol === col) {
       setSortAsc(!sortAsc);
@@ -657,20 +650,6 @@ function AnalyticsContent() {
     return `${month}/${day} ${hours}:${mins}`;
   }
 
-  function formatFullTimestamp(dateStr: string) {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr; // Return original if invalid
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const year = d.getFullYear();
-    let hours = d.getHours();
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12 || 12;
-    const mins = String(d.getMinutes()).padStart(2, '0');
-    const secs = String(d.getSeconds()).padStart(2, '0');
-    return `${month}/${day}/${year} ${hours}:${mins}:${secs} ${ampm}`;
-  }
 
   function formatShortDay(dateStr: string) {
     if (!dateStr) return '';
