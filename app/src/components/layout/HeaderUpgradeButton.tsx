@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import Button from '@ux/button';
 import CheckIcon from '@ux/icon/checkmark';
-import SparkleIcon from '@ux/icon/sparkles';
+import DiamondIcon from '@ux/icon/diamond';
 import text from '@ux/text';
 
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
@@ -61,7 +61,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
         )}
         data-eid={generateClickEID(`${location}.header.upgrade`)}
       >
-        <SparkleIcon className='size-2.75' />
+        <DiamondIcon className='size-2.5' />
         {!isMobile && t('builder_upgrade_button')}
       </PopoverTrigger>
       <PopoverContent
