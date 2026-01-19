@@ -3,8 +3,8 @@
 import { motion } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import ChatBanners from '@/app/develop/components/chat/ChatBanners'
 import { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
+import ChatBanners from '@/app/develop/components/chat/ChatBanners'
 import { ChatContext } from '@/app/develop/components/chat/ChatContext'
 import ChatInput from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
@@ -289,28 +289,40 @@ export default function ChatPane({
 
   // Handle asset selection from AssetManager
   const handleAssetSelect = useCallback((items: AssetManagerItem[]) => {
-    console.log('🖼️ handleAssetSelect called with items:', items?.length, items)
+    logger.debug('chat-pane.asset-select', { itemCount: items?.length })
 
     if (items && items.length > 0) {
-      console.log('🖼️ Setting selected asset:', items[0])
-      setSelectedAsset(items[0])
-
-      // If in image replacement mode, suggest a prompt
-      // Get current state directly from store to avoid stale closure issues
+      const selectedItem = items[0]
       const currentAiEditContext = useStreamingConversationStore.getState().aiEditContext
-      console.log('🖼️ Current aiEditContext from store:', currentAiEditContext)
-      console.log('🖼️ isImageReplacement:', currentAiEditContext?.isImageReplacement)
+
+      logger.debug('chat-pane.asset-select.context', {
+        isImageReplacement: currentAiEditContext?.isImageReplacement,
+        hasAiEditContext: !!currentAiEditContext
+      })
 
       if (currentAiEditContext?.isImageReplacement) {
-        console.log('🖼️ Setting prompt for image replacement')
-        setInputValue('Replace this image with the new one I selected')
+        logger.debug('chat-pane.image-replace.auto-send', { appId })
+        const message = 'Replace this image with the new one I selected'
+
+        shipAnalyticsLog('chat.prompt.sent', {
+          appId,
+          promptLength: message.length,
+          source: 'image-replacement',
+          hasEditContext: true,
+          hasSelectedAsset: true,
+          hasBuildErrorContext: false
+        })
+
+        sendMessage(message, { ...currentAiEditContext, screenshot: null }, selectedItem)
+        handleClearAiEditContext()
       } else {
-        console.log('🖼️ NOT in image replacement mode, skipping prompt')
+        logger.debug('chat-pane.asset-select.manual', { appId })
+        setSelectedAsset(selectedItem)
       }
     } else {
-      console.log('🖼️ No items selected or empty array')
+      logger.debug('chat-pane.asset-select.empty', { appId })
     }
-  }, [setInputValue])
+  }, [appId, sendMessage, handleClearAiEditContext, setSelectedAsset])
 
   // Listen for error fix requests from PreviewPaneSimple
   useEffect(() => {
