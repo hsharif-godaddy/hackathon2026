@@ -1,8 +1,6 @@
 import clsx from 'clsx'
 import CodeIcon from '@ux/icon/code'
-import DesktopIcon from '@ux/icon/desktop'
 import EditIcon from '@ux/icon/edit'
-import MobilePhoneIcon from '@ux/icon/mobile-phone'
 import RefreshIcon from '@ux/icon/refresh'
 import SidebarCollapseIcon from '@ux/icon/sidebar-collapse'
 import SidebarExpandIcon from '@ux/icon/sidebar-expand'
@@ -10,6 +8,7 @@ import WebsiteFilledIcon from '@ux/icon/website-filled'
 import WindowNewIcon from '@ux/icon/window-new'
 
 import IconButton from '@/app/develop/components/IconButton'
+import DeviceSelector from '@/app/develop/components/preview/DeviceSelector'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -32,7 +31,6 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
   const isVersionHistoryOpen = useDevelopPageStore((state) => state.isVersionHistoryOpen)
   const site = useDevelopPageStore((state) => state.site)
   const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange)
-  const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
   const toggleSelectMode = useDevelopPageStore((state) => state.toggleSelectMode)
   const toggleChatPaneCollapse = useDevelopPageStore((state) => state.toggleChatPaneCollapse)
   const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal)
@@ -55,7 +53,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
   return (
     <header className={clsx(
       "flex items-center w-full gap-0.5", {
-        "pb-1.5": !isMobile,
+        "pb-1.5 pr-1": !isMobile,
         "p-2": isMobile
       }
     )}>
@@ -100,7 +98,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
       )}
 
       { (previewViewMode === PreviewViewMode.DESKTOP || viewMode === ViewMode.CODE) && !isMobile && <DomainButton /> }
-      { ((previewViewMode === PreviewViewMode.MOBILE && viewMode === ViewMode.PREVIEW) || isMobile) && <div className="flex-1" /> }
+      { ((previewViewMode !== PreviewViewMode.DESKTOP && viewMode === ViewMode.PREVIEW) || isMobile) && <div className="flex-1" /> }
 
       <IconButton
         icon={<RefreshIcon />}
@@ -112,27 +110,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
       />
 
       {!isMobile && (
-        <>
-          <IconButton
-            icon={<DesktopIcon />}
-            onClick={() => setPreviewViewMode(PreviewViewMode.DESKTOP)}
-            active={previewViewMode === PreviewViewMode.DESKTOP}
-            dataEid={ generateClickEID('develop.preview.preview_desktop') }
-            disabled={viewMode === ViewMode.CODE}
-            label={t('builder_preview_button_desktop')}
-            showLabelWhenActive={false}
-          />
-          <IconButton
-            icon={<MobilePhoneIcon />}
-            onClick={() => setPreviewViewMode(PreviewViewMode.MOBILE)}
-            active={previewViewMode === PreviewViewMode.MOBILE}
-            dataEid={ generateClickEID('develop.preview.preview_mobile') }
-            disabled={viewMode === ViewMode.CODE}
-            label={t('builder_preview_button_mobile')}
-            showLabelWhenActive={false}
-            separator
-          />
-        </>
+        <DeviceSelector disabled={viewMode === ViewMode.CODE} separator />
       )}
       <IconButton
         icon={<WindowNewIcon />}
@@ -153,6 +131,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         disabled={!actualPort || isCheckingApp || isRestarting || isStartingApp}
         label={t('builder_common_open_new_tab')}
         showLabelWhenActive={false}
+        className="flex-shrink-0"
       />
     </header>
   )

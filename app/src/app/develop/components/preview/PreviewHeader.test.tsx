@@ -13,6 +13,7 @@ const mockDevelopStore = {
   isStartingApp: false,
   isRestarting: false,
   previewViewMode: PreviewViewMode.DESKTOP,
+  selectedDeviceId: 'full',
   hasUnsavedChanges: false,
   isSelectMode: false,
   isChatPaneCollapsed: false,
@@ -20,6 +21,7 @@ const mockDevelopStore = {
   site: { name: 'Test App' },
   handleViewModeChange: vi.fn(),
   setPreviewViewMode: vi.fn(),
+  setSelectedDeviceId: vi.fn(),
   toggleSelectMode: vi.fn(),
   toggleChatPaneCollapse: vi.fn(),
   openFeedbackModal: vi.fn(),
@@ -116,23 +118,17 @@ describe('PreviewHeader', () => {
     expect(screen.queryByLabelText('Select Mode')).not.toBeInTheDocument();
   });
 
-  it('should render desktop preview button on desktop', () => {
+  it('should render device selector on desktop', () => {
     renderWithProviders(<PreviewHeader {...defaultProps} isMobile={false} />);
 
-    expect(screen.getByLabelText('builder_preview_button_desktop')).toBeInTheDocument();
+    // DeviceSelector shows "Full size" by default (uses defaultMessage fallback)
+    expect(screen.getByText('Full size')).toBeInTheDocument();
   });
 
-  it('should render mobile preview button on desktop', () => {
-    renderWithProviders(<PreviewHeader {...defaultProps} isMobile={false} />);
-
-    expect(screen.getByLabelText('builder_preview_button_mobile')).toBeInTheDocument();
-  });
-
-  it('should not render preview size buttons on mobile', () => {
+  it('should not render device selector on mobile', () => {
     renderWithProviders(<PreviewHeader {...defaultProps} isMobile={true} />);
 
-    expect(screen.queryByLabelText('builder_preview_button_desktop')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('builder_preview_button_mobile')).not.toBeInTheDocument();
+    expect(screen.queryByText('Full size')).not.toBeInTheDocument();
   });
 
   it('should render open in new tab button', () => {
@@ -165,16 +161,15 @@ describe('PreviewHeader', () => {
     expect(selectButton).toBeDisabled();
   });
 
-  it('should disable preview size buttons when in code mode', () => {
+  it('should disable device selector when in code mode', () => {
     mockDevelopStore.viewMode = ViewMode.CODE;
 
     renderWithProviders(<PreviewHeader {...defaultProps} />);
 
-    const desktopButton = screen.getByLabelText('builder_preview_button_desktop');
-    const mobileButton = screen.getByLabelText('builder_preview_button_mobile');
-
-    expect(desktopButton).toBeDisabled();
-    expect(mobileButton).toBeDisabled();
+    // DeviceSelector button should have disabled styling (pointer-events-none class)
+    const deviceSelectorButton = screen.getByText('Full size').closest('button');
+    expect(deviceSelectorButton).toHaveClass('pointer-events-none');
+    expect(deviceSelectorButton).toHaveClass('opacity-50');
   });
 
   it('should disable open in new tab when app is starting', () => {
@@ -199,8 +194,8 @@ describe('PreviewHeader', () => {
     const { container } = renderWithProviders(<PreviewHeader {...defaultProps} />);
 
     const buttons = container.querySelectorAll('button');
-    // Collapse, Preview, Code, Select, Refresh, Desktop, Mobile, New Tab = 8 buttons
-    expect(buttons.length).toBe(8);
+    // Collapse, Preview, Code, Select, Refresh, DeviceSelector, New Tab = 7 buttons
+    expect(buttons.length).toBe(7);
   });
 
   it('should disable code button when version history is open', () => {

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
+import { DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/develop/components/preview/devicePresets'
 import { PreviewViewMode,ViewMode } from '@/app/develop/components/types'
 import { logger } from '@/lib/request-context'
 import { type App,appService } from '@/services/AppService'
@@ -16,6 +17,7 @@ interface DevelopPageStore {
   // UI states
   viewMode: ViewMode
   previewViewMode: PreviewViewMode
+  selectedDeviceId: string
   isSelectMode: boolean
   expandedPlan: boolean
   chatPaneWidth: number
@@ -69,6 +71,7 @@ interface DevelopPageStore {
   // UI setters
   setViewMode: (mode: ViewMode) => void
   setPreviewViewMode: (mode: PreviewViewMode) => void
+  setSelectedDeviceId: (deviceId: string) => void
   setIsSelectMode: (selectMode: boolean) => void
   setExpandedPlan: (expanded: boolean) => void
   setChatPaneWidth: (width: number) => void
@@ -139,6 +142,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // Initial UI state
     viewMode: ViewMode.PREVIEW,
     previewViewMode: PreviewViewMode.DESKTOP,
+    selectedDeviceId: 'full',
     isSelectMode: false,
     expandedPlan: false,
     chatPaneWidth: 400,
@@ -178,7 +182,18 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // UI setters
     setViewMode: (mode) => set((state) => { state.viewMode = mode }),
-    setPreviewViewMode: (mode) => set((state) => { state.previewViewMode = mode }),
+    setPreviewViewMode: (mode) => set((state) => {
+      state.previewViewMode = mode
+      // Set default device when switching modes
+      if (mode === PreviewViewMode.DESKTOP) {
+        state.selectedDeviceId = 'full'
+      } else if (mode === PreviewViewMode.TABLET) {
+        state.selectedDeviceId = DEFAULT_TABLET_DEVICE
+      } else if (mode === PreviewViewMode.MOBILE) {
+        state.selectedDeviceId = DEFAULT_MOBILE_DEVICE
+      }
+    }),
+    setSelectedDeviceId: (deviceId) => set((state) => { state.selectedDeviceId = deviceId }),
     setIsSelectMode: (selectMode) => set((state) => { state.isSelectMode = selectMode }),
     setExpandedPlan: (expanded) => set((state) => { state.expandedPlan = expanded }),
     setChatPaneWidth: (width) => set((state) => { state.chatPaneWidth = width }),

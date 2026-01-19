@@ -1,10 +1,11 @@
 'use client'
 
 import clsx from 'clsx'
-import { useCallback, useEffect, useMemo,useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader } from '@airo-ux/loader'
 import Button from '@ux/button'
 
+import { getDevicePreset } from '@/app/develop/components/preview/devicePresets'
 import PreviewCode from '@/app/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/develop/components/preview/PreviewError'
 import PreviewHeader from '@/app/develop/components/preview/PreviewHeader'
@@ -56,8 +57,26 @@ export default function PreviewPane({
 
   const previewViewMode = useDevelopPageStore((state) => state.previewViewMode)
   const viewMode = useDevelopPageStore((state) => state.viewMode)
+  const selectedDeviceId = useDevelopPageStore((state) => state.selectedDeviceId)
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
   const isPollingEntitlements = useDevelopPageStore((state) => state.isPollingEntitlements)
+
+  // Get device dimensions from preset
+  const selectedDevice = getDevicePreset(selectedDeviceId)
+  const isFullSize = previewViewMode === PreviewViewMode.DESKTOP || selectedDeviceId === 'full'
+  const deviceWidth = selectedDevice?.width || 0
+  const deviceHeight = selectedDevice?.height || 0
+
+  // Calculate vertical margin based on device height (shorter devices get more margin)
+  // Range: 4px (my-1) for tallest (1366px) to 24px (my-6) for shortest (667px)
+  const minHeight = 667
+  const maxHeight = 1366
+  const minMargin = 4
+  const maxMargin = 32
+  const clampedHeight = Math.max(minHeight, Math.min(maxHeight, deviceHeight))
+  const deviceVerticalMargin = Math.round(
+    maxMargin - ((clampedHeight - minHeight) / (maxHeight - minHeight)) * (maxMargin - minMargin)
+  )
 
   const appId = useAppIdFromParams();
 
@@ -464,15 +483,23 @@ export default function PreviewPane({
               "rounded-lg border": !isMobile
             }
           )}>
-            <div className={clsx(
-              "flex flex-col h-full bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300 ease-in-out", {
-                "w-[430px] mx-auto my-2 max-h-[980px]": previewViewMode === PreviewViewMode.MOBILE && viewMode === ViewMode.PREVIEW && !isMobile,
-                "w-full": previewViewMode === PreviewViewMode.DESKTOP || viewMode === ViewMode.CODE || isMobile,
-                "border shadow-lg": previewViewMode === PreviewViewMode.MOBILE && viewMode === ViewMode.PREVIEW && !isMobile,
-                "rounded-lg p-1.5": !isMobile,
-                "p-0": isMobile
-              }
-            )}>
+            <div
+              className={clsx(
+                "flex flex-col h-full bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300 ease-in-out", {
+                  "mx-auto": !isFullSize && viewMode === ViewMode.PREVIEW && !isMobile,
+                  "w-full": isFullSize || viewMode === ViewMode.CODE || isMobile,
+                  "border shadow-lg": !isFullSize && viewMode === ViewMode.PREVIEW && !isMobile,
+                  "rounded-lg p-1.5": !isMobile,
+                  "p-0": isMobile
+                }
+              )}
+              style={!isFullSize && viewMode === ViewMode.PREVIEW && !isMobile ? {
+                width: `${deviceWidth}px`,
+                maxHeight: `${deviceHeight}px`,
+                marginTop: `${deviceVerticalMargin}px`,
+                marginBottom: `${deviceVerticalMargin}px`
+              } : undefined}
+            >
               <PreviewHeader onPreviewRefresh={onPreviewRefresh} isMobile={isMobile} />
               {viewMode === ViewMode.PREVIEW && (
                 <iframe

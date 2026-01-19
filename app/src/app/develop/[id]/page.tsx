@@ -31,6 +31,7 @@ import { usePageTiming } from '@/hooks/usePageTiming'
 import { useRumAppContext } from '@/hooks/useRumAppContext'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { useSyncResponsiveState } from '@/hooks/useSyncResponsiveState'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -109,7 +110,6 @@ function DevelopPageContent() {
 
   const setChatPaneWidth = useDevelopPageStore((state) => state.setChatPaneWidth)
   const setIsSelectMode = useDevelopPageStore((state) => state.setIsSelectMode)
-  const initializeMobileDetection = useDevelopPageStore((state) => state.initializeMobileDetection)
   const closeFeedbackModal = useDevelopPageStore((state) => state.closeFeedbackModal)
   const setIsPreviewVisible = useDevelopPageStore((state) => state.setIsPreviewVisible)
   const setShowIntroTour = useDevelopPageStore((state) => state.setShowIntroTour)
@@ -170,11 +170,8 @@ function DevelopPageContent() {
     clearExpiredWidgetStates();
   }, [])
 
-  // Initialize mobile detection
-  useEffect(() => {
-    const cleanup = initializeMobileDetection()
-    return cleanup
-  }, [initializeMobileDetection])
+  // Sync responsive state (isMobile) with store using useMediaQuery
+  useSyncResponsiveState()
 
   // All initialization is now handled by useInitialization hook
 

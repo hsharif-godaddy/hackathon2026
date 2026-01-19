@@ -67,6 +67,7 @@ export enum ViewMode {
 
 export enum PreviewViewMode {
   DESKTOP = 'desktop',
+  TABLET = 'tablet',
   MOBILE = 'mobile'
 }
 
