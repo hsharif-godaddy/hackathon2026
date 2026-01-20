@@ -1,13 +1,29 @@
 import '@testing-library/jest-dom';
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
+import { MediaType } from '@/app/develop/components/chat/AssetManagerModal';
 import ChatInput from './ChatInput';
+
+const mockDevelopStore = {
+  isMobile: false,
+  isAssetManagerOpen: false,
+  setIsAssetManagerOpen: vi.fn(),
+};
 
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id) => id),
+}));
+vi.mock('@/stores/useDevelopPageStore', () => ({
+  useDevelopPageStore: (selector: any) => selector(mockDevelopStore),
+}));
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: (feature: string) => {
+    if (feature === 'appbuilder-image-manager') return { data: true };
+    return { data: false };
+  },
 }));
 
 describe('ChatInput', () => {
@@ -17,6 +33,12 @@ describe('ChatInput', () => {
     onInputChange: vi.fn(),
     onSendMessage: vi.fn(),
   };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDevelopStore.isMobile = false;
+    mockDevelopStore.isAssetManagerOpen = false;
+  });
 
   it('should render without crashing', () => {
     renderWithProviders(<ChatInput {...defaultProps} />);
@@ -153,5 +175,85 @@ describe('ChatInput', () => {
     const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
     expect(sendButton).toHaveAttribute('id', 'chat-send-button');
     expect(sendButton).toHaveAttribute('data-eid', 'develop.prompt.send');
+  });
+
+  it('should render media button', () => {
+    renderWithProviders(<ChatInput {...defaultProps} />);
+
+    expect(screen.getByRole('button', { name: 'builder_chat_toolbar_button_media' })).toBeInTheDocument();
+  });
+
+  it('should disable media button when disabled', () => {
+    renderWithProviders(<ChatInput {...defaultProps} isDisabled={true} />);
+
+    const mediaButton = screen.getByRole('button', { name: 'builder_chat_toolbar_button_media' });
+    expect(mediaButton).toBeDisabled();
+  });
+
+  it('should have correct media button data-eid attribute', () => {
+    renderWithProviders(<ChatInput {...defaultProps} />);
+
+    const mediaButton = screen.getByRole('button', { name: 'builder_chat_toolbar_button_media' });
+    expect(mediaButton).toHaveAttribute('data-eid', 'develop.chat_toolbar.medias');
+  });
+
+  it('should render media button on desktop even when asset manager disabled', () => {
+    mockDevelopStore.isMobile = false;
+
+    renderWithProviders(<ChatInput {...defaultProps} />);
+
+    expect(screen.getByRole('button', { name: 'builder_chat_toolbar_button_media' })).toBeInTheDocument();
+  });
+
+  it('should disable media button when selectedAssets length equals maxAssets', function disableAtLimit() {
+    const maxAssets = 4;
+    const assetsAtLimit = Array(maxAssets).fill({
+      imageUrl: 'https://example.com/image.jpg',
+      filename: 'test.jpg',
+      mediaType: MediaType.IMAGE,
+      sourceType: 'gc',
+      contentType: 'image/jpeg',
+      size: 12345,
+      dimensions: { width: 800, height: 600 },
+      thumbnailUrl: 'https://example.com/thumb.jpg',
+    });
+
+    renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        selectedAssets={assetsAtLimit}
+        maxAssets={maxAssets}
+        onClearSelectedAsset={vi.fn()}
+      />
+    );
+
+    const mediaButton = screen.getByRole('button', { name: 'builder_chat_toolbar_button_media' });
+    expect(mediaButton).toBeDisabled();
+  });
+
+  it('should enable media button when selectedAssets length is less than maxAssets', function enableBelowLimit() {
+    const maxAssets = 4;
+    const assetsBelowLimit = Array(maxAssets - 1).fill({
+      imageUrl: 'https://example.com/image.jpg',
+      filename: 'test.jpg',
+      mediaType: MediaType.IMAGE,
+      sourceType: 'gc',
+      contentType: 'image/jpeg',
+      size: 12345,
+      dimensions: { width: 800, height: 600 },
+      thumbnailUrl: 'https://example.com/thumb.jpg',
+    });
+
+    renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        selectedAssets={assetsBelowLimit}
+        maxAssets={maxAssets}
+        onClearSelectedAsset={vi.fn()}
+      />
+    );
+
+    const mediaButton = screen.getByRole('button', { name: 'builder_chat_toolbar_button_media' });
+    expect(mediaButton).not.toBeDisabled();
   });
 });

@@ -194,7 +194,7 @@ export function useStreamingWebSocket() {
     async (
       content: string,
       aiEditContext?: any,
-      selectedAsset?: any,
+      selectedAssets?: any[],
       todoListContext?: any,
       isActionRequest?: boolean,
       customContext?: any
@@ -229,7 +229,7 @@ export function useStreamingWebSocket() {
           content,
           visualContext,
           aiEditContext,
-          selectedAsset,
+          selectedAssets,
           todoListContext,
           isActionRequest,
           customContext,
