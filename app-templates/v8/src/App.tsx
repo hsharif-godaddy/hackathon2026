@@ -15,7 +15,7 @@ const SpinnerFallback = () => (
 const router = createBrowserRouter([
   {
     path: '/',
-    element: import.meta.env.DEV ? (
+    element: import.meta.env.MODE === 'development' ? (
       <AiroErrorBoundary>
         <Suspense fallback={<SpinnerFallback />}>
           <RootLayout>

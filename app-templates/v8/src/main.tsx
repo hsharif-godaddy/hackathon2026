@@ -5,7 +5,7 @@ import App from './App';
 import './styles/globals.css';
 
 // Add robots meta tag only in development mode
-if (import.meta.env.DEV) {
+if (import.meta.env.MODE === 'development') {
   const meta = document.createElement('meta');
   meta.name = 'robots';
   meta.content = 'noindex, nofollow';

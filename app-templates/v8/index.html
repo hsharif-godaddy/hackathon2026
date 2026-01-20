@@ -9,7 +9,7 @@
   <body class="fs-unmask-airo-app-builder">
     <div id="app" class="fs-unmask-airo-app-builder"></div>
     <script type="module">
-      if (import.meta.env.DEV) {
+      if (import.meta.env.MODE === 'development') {
         import('/dev-tools/src/error-client.ts')
       }
       import('/src/main.tsx')

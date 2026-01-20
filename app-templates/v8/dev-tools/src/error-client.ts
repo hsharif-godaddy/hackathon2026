@@ -125,7 +125,7 @@ function renderErrorOverlay(rawError: any) {
 }
 
 // Only hook into Vite HMR in development
-if (import.meta.env.DEV && import.meta.hot) {
+if (import.meta.env.MODE === 'development' && import.meta.hot) {
   const handleHmrError = (data: any) => {
     console.error('Vite compile error (standalone client):', data);
     renderErrorOverlay(data);
