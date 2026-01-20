@@ -119,6 +119,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const editorRef = useRef<any>(null)
   const pendingLineNumberRef = useRef<number | null>(null)
+  const loadingFilesRef = useRef<Set<string>>(new Set())
 
   // Load real files from backend
   const loadFiles = useCallback(async () => {
@@ -211,16 +212,11 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     return tree
   }
 
-  // Load file content from backend
+  // Load file content from backend - throws on error to allow caller to handle
   const loadFileContent = useCallback(async (filePath: string): Promise<string> => {
-    try {
-      const result = await appService.readFile(appId, filePath)
-      return result.content
-    } catch (error) {
-      logger.error('code-editor.file.load-error', { message: 'Error loading file content', error: error instanceof Error ? error.message : String(error) })
-      return `// ${t('builder_code_error_loading')}: ${error instanceof Error ? error.message : t('builder_code_error_unknown')}`
-    }
-  }, [appId, t])
+    const result = await appService.readFile(appId, filePath)
+    return result.content
+  }, [appId])
 
   // Save file content to backend
   const saveFileContent = useCallback(async (filePath: string, content: string): Promise<boolean> => {
@@ -309,30 +305,47 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       return
     }
 
-    // Load file content from backend
-    const content = await loadFileContent(path)
-    const name = path.split('/').pop() || path
-    const language = getLanguageFromPath(path)
-
-    const newFile: OpenFile = {
-      path,
-      name,
-      content,
-      language,
-      isDirty: false
+    // Prevent duplicate loads from rapid clicks (race condition fix)
+    if (loadingFilesRef.current.has(path)) {
+      return
     }
+    loadingFilesRef.current.add(path)
 
-    setOpenFiles(prev => [...prev, newFile])
-    setActiveFile(path)
-    
-    // Store line number for navigation after editor mounts
-    if (lineNumber) {
-      pendingLineNumberRef.current = lineNumber
-    }
+    try {
+      // Load file content from backend
+      const content = await loadFileContent(path)
+      const name = path.split('/').pop() || path
+      const language = getLanguageFromPath(path)
 
-    // On mobile, close file tree after selection
-    if (isMobile) {
-      setShowFileTree(false)
+      const newFile: OpenFile = {
+        path,
+        name,
+        content,
+        language,
+        isDirty: false
+      }
+
+      setOpenFiles(prev => [...prev, newFile])
+      setActiveFile(path)
+
+      // Store line number for navigation after editor mounts
+      if (lineNumber) {
+        pendingLineNumberRef.current = lineNumber
+      }
+
+      // On mobile, close file tree after selection
+      if (isMobile) {
+        setShowFileTree(false)
+      }
+    } catch (error) {
+      // Log error but allow retry by removing from loading set
+      logger.error('code-editor.file.open-error', {
+        message: 'Failed to open file',
+        path,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    } finally {
+      loadingFilesRef.current.delete(path)
     }
   }, [openFiles, loadFileContent, isMobile])
 
