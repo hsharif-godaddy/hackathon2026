@@ -8,7 +8,6 @@
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { getRootDomain } from '@/utils/getRootDomain';
-
 import type { PaywallDataProvider, SwitchboardFlagsResult } from './providers';
 import { PAYWALL_CONFIG, type ProjectEdge } from './shared';
 

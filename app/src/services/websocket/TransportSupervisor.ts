@@ -40,7 +40,6 @@ import {
   type MessageContext,
   type MessageHandlerActions,
   type MessageHandlerHelpers,
-  type MessageHandlerRefs,
   RECOVERY_CONTROL_MESSAGE_TYPES,
   type RecoveryAck,
   type ServerConfig,
@@ -136,8 +135,8 @@ export class TransportSupervisor extends EventEmitter {
     this.currentAppId = appId
 
     const callbacks: ConnectionCallbacks = {
-      onSocketReady: (socket, meta) => {
-        this.handleSocketReady(socket, meta)
+      onSocketReady: (socket) => {
+        this.handleSocketReady(socket)
       },
       onConnect: (params) => this.handleConnectionEstablished(params),
       onConnectionFailed: (error) => this.handleConnectionFailed(error),
@@ -179,7 +178,7 @@ export class TransportSupervisor extends EventEmitter {
     this.deps.refs.retryState.current = { retryCount: 0 }
   }
 
-  private handleSocketReady(socket: Socket, meta: { isNew: boolean }): void {
+  private handleSocketReady(socket: Socket): void {
     this.socket = socket
 
     // Send TOKEN_REFRESHED to machine (token was successfully fetched)
@@ -239,7 +238,6 @@ export class TransportSupervisor extends EventEmitter {
 
       // Set escalation timeout
       this.escalationTimeoutId = setTimeout(() => {
-        const currentState = this.deps.getStreamingState()
         logger.warn('websocket.escalation.timeout-fired', {
           socketId: socket.id,
         })

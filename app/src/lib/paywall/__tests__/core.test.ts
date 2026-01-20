@@ -7,7 +7,7 @@
  * - Fail-closed behavior when checks fail
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { checkPaywallEligibility } from '../core';
 import type { PaywallDataProvider } from '../providers';

@@ -5,9 +5,10 @@
  * Enables testing state transitions without needing React, Zustand, or actual WebSocket connections.
  */
 
-import { createActor, waitFor, type Actor } from 'xstate'
+import { type Actor,createActor, waitFor } from 'xstate'
+
+import type { MachineContext,MachineEvent } from '../stateMachineTypes'
 import type { WebSocketMachine } from '../webSocketMachine'
-import type { MachineEvent, MachineContext } from '../stateMachineTypes'
 
 export class StateMachineTestHarness {
   actor: Actor<WebSocketMachine>

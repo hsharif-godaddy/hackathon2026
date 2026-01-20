@@ -1,17 +1,17 @@
 'use client'
 
+import { Hammer } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { RefreshCw, Hammer } from 'lucide-react'
+import Alert from '@ux/alert'
+import Box from '@ux/box'
+import Button from '@ux/button'
+import SelectInput from '@ux/select-input'
+import Spinner from '@ux/spinner'
+import text from '@ux/text'
 
 import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
 import { useSiteStore } from '@/stores/useSiteStore'
-import Box from '@ux/box'
-import Button from '@ux/button'
-import SelectInput from '@ux/select-input'
-import text from '@ux/text'
-import Spinner from '@ux/spinner'
-import Alert from '@ux/alert'
 
 interface RebuildContextPanelProps {
   appId: string
@@ -32,7 +32,7 @@ export default function RebuildContextPanel({ appId, onBuildPage }: RebuildConte
 
   useEffect(() => {
     loadPages()
-  }, [appId])
+  }, [appId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadPages = async () => {
     try {
@@ -128,12 +128,12 @@ export default function RebuildContextPanel({ appId, onBuildPage }: RebuildConte
                 } catch {
                   displayTitle = page.url
                 }
-                
+
                 // Truncate if still too long
                 if (displayTitle.length > 30) {
                   displayTitle = displayTitle.substring(0, 27) + '...'
                 }
-                
+
                 return (
                   <option key={page.slug} value={page.slug}>
                     {displayTitle}

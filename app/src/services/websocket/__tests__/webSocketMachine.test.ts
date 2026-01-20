@@ -5,9 +5,10 @@
  * Tests all state transitions, guards, actions, and parallel states.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { webSocketMachine, MAX_RETRY_COUNT, MAX_RETRY_DELAY_MS } from '../webSocketMachine'
+import { afterEach, beforeEach, describe, it, vi } from 'vitest'
+
 import { StateMachineTestHarness } from './StateMachineTestUtils'
+import { MAX_RETRY_COUNT, MAX_RETRY_DELAY_MS,webSocketMachine } from '../webSocketMachine'
 
 describe('webSocketMachine', () => {
   beforeEach(() => {
@@ -212,7 +213,7 @@ describe('webSocketMachine', () => {
       // Start in completed state
       harness.actor.send({ type: 'STREAM_COMPLETE' })
       // @ts-expect-error - accessing internal state for testing
-      harness.actor._actorScope.sessionId // Force state update
+      harness.actor._actorScope.sessionId // eslint-disable-line @typescript-eslint/no-unused-expressions
 
       // Send new message
       harness.actor.send({

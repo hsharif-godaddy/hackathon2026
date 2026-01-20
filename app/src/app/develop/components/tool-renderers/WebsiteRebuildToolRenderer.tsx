@@ -1,16 +1,16 @@
 'use client'
 
+import { CheckCircle, Expand, FileText, Globe, Image,XCircle } from 'lucide-react'
 import { useState } from 'react'
-import { Globe, CheckCircle, XCircle, FileText, Expand, Image } from 'lucide-react'
+import Box from '@ux/box'
+import Button from '@ux/button'
+import Tag from '@ux/tag'
+import text from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
-import Box from '@ux/box'
-import Button from '@ux/button'
-import text from '@ux/text'
-import Tag from '@ux/tag'
 
 /**
  * Custom renderer for websiteRebuild tool
@@ -86,7 +86,7 @@ export default function WebsiteRebuildToolRenderer({
           </Box>
           {assetsFound > 0 && (
             <Box orientation="horizontal" gap="sm">
-              <Image className="w-3 h-3" />
+              <Image className="w-3 h-3" /> {/* eslint-disable-line jsx-a11y/alt-text */}
               <text.p size={-1} emphasis="passive">
                 {assetsFound} asset{assetsFound !== 1 ? 's' : ''} found
               </text.p>
@@ -190,7 +190,7 @@ export default function WebsiteRebuildToolRenderer({
                 <Box gap="sm">
                   {assets.map((asset: any, index: number) => (
                     <Box key={index} orientation="horizontal" gap="sm">
-                      <Tag 
+                      <Tag
                         emphasis={
                           asset.type === 'image' ? 'info' :
                           asset.type === 'font' ? 'info' :

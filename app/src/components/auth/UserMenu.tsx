@@ -1,6 +1,5 @@
 'use client';
 
-import clsx from 'clsx';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import UserIcon from '@ux/icon/user';

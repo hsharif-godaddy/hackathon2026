@@ -4,10 +4,11 @@ import { useEffect,useState } from 'react'
 import Button from '@ux/button'
 
 import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext'
+import ColorPaletteWidget from '@/app/develop/components/widgets/ColorPaletteWidget'
+import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 import { postMessageToIframe } from '@/utils/postMessage'
-import ColorPaletteWidget from './ColorPaletteWidget'
 
 /**
  * Complete palette data structure (matches GeneratedPalette from backend)
@@ -61,6 +62,7 @@ export interface ColorPaletteGridWidgetProps {
  * Users can preview color schemes before saving them.
  */
 export default function ColorPaletteGridWidget({ palettes, className = '' }: ColorPaletteGridWidgetProps) {
+  const t = useTranslations()
   const [previewedPalette, setPreviewedPalette] = useState<any>(null)
   const sendUserMessage = useSendUserMessage();
   const isStreaming = useIsActivelyStreaming();
@@ -102,7 +104,7 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
   function handleSave() {
     if (!previewedPalette || isProcessing || !sendUserMessage) return
 
-    sendUserMessage(`Use color scheme: ${previewedPalette.name}`, { isActionRequest: true })
+    sendUserMessage(`${t('builder_tools_css_color_scheme_use_color')} ${previewedPalette.name}`, { isActionRequest: true })
     setPreviewedPalette(null)
   }
 
@@ -112,7 +114,7 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
   function handleMoreOptions() {
     if (isProcessing || !sendUserMessage) return
 
-    sendUserMessage('Show me more color scheme options', { isActionRequest: true })
+    sendUserMessage(t('builder_tools_css_color_scheme_more_options'), { isActionRequest: true })
   }
 
   // Check if palettes array is empty or invalid
@@ -148,7 +150,7 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
       <div className="mt-3 flex items-center gap-1 flex-wrap justify-center">
 
         <Button
-          text="More options"
+          text={t('builder_common_more_options')}
           design="tertiary"
           size="sm"
           disabled={isProcessing}
@@ -156,20 +158,19 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
         />
 
         <Button
-          text="Revert"
+          text={t('builder_common_revert')}
           design="secondary"
           size="sm"
           onClick={handleRevert}
         />
         <Button
-          text="Save"
+          text={t('builder_common_save')}
           design="primary"
           size="sm"
           disabled={isProcessing}
           onClick={handleSave}
         />
       </div>
-
     </div>
   )
 }

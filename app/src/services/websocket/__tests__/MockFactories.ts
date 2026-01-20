@@ -5,6 +5,7 @@
  */
 
 import { vi } from 'vitest'
+
 import type { ServerConfig } from '@/hooks/websocket/handlers/types'
 
 export function createMockConnectionManager() {

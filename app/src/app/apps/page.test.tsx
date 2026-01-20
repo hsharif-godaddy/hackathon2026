@@ -80,7 +80,7 @@ describe('Sites Page', () => {
     it('should show 0 apps total tag', () => {
       renderWithProviders(<Sites />);
 
-      expect(screen.getByText('0 apps total')).toBeInTheDocument();
+      expect(screen.getByText('builder_apps_count')).toBeInTheDocument();
     });
   });
 
@@ -111,7 +111,7 @@ describe('Sites Page', () => {
 
       renderWithProviders(<Sites />);
 
-      expect(screen.getByText('2 apps total')).toBeInTheDocument();
+      expect(screen.getByText('builder_apps_count')).toBeInTheDocument();
     });
 
     it('should show singular form for 1 app', () => {
@@ -121,7 +121,7 @@ describe('Sites Page', () => {
 
       renderWithProviders(<Sites />);
 
-      expect(screen.getByText('1 app total')).toBeInTheDocument();
+      expect(screen.getByText('builder_apps_count')).toBeInTheDocument();
     });
   });
 

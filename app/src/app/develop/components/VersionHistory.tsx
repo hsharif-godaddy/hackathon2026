@@ -48,7 +48,7 @@ export default function VersionHistory() {
     enabled: !!appId
   })
 
-  const commits = data?.commits || []
+  const commits = data?.commits || [] // eslint-disable-line react-hooks/exhaustive-deps
   const currentCommit = data?.currentCommit || null
 
   // NOTE: commits array is ordered from NEWEST to OLDEST (chronologically descending)
@@ -75,7 +75,7 @@ export default function VersionHistory() {
   const mostRecentDeployedCommitIndex = useMemo(() => {
     const mostRecentDeployment = deployments.find(d => d.status === DeploymentStatus.DEPLOYED);
     if (!mostRecentDeployment) return -1;
-    
+
     return commits.findIndex(c => c.hash === mostRecentDeployment.gitHash);
   }, [deployments, commits])
 
@@ -98,7 +98,7 @@ export default function VersionHistory() {
         setSelectedCommitHash(appId, commits[0].hash)
       }
     }
-  }, [commits, selectedCommitHash, currentCommit, isSelectingCommit, commitSelectionError, appId])
+  }, [commits, selectedCommitHash, currentCommit, isSelectingCommit, commitSelectionError, appId, setSelectedCommitHash])
 
   // Handle commit selection using global store
   const handleSelectCommit = async (commit: Commit) => {
@@ -112,7 +112,7 @@ export default function VersionHistory() {
       await selectCommitAction(appId, commit.hash)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      
+
       // Any checkout error might mean an auto-commit was created before the failure
       // Always refetch git history to show any auto-commits that may have been created
       logger.info('version-history.commit.error-refetch', {
@@ -121,15 +121,15 @@ export default function VersionHistory() {
         targetCommit: commit.hash.substring(0, 7),
         error: errorMessage
       })
-      
+
       await queryClient.invalidateQueries({
         queryKey: ['git-history', appId],
         refetchType: 'active'
       })
-      
-      logger.error('version-history.commit.selection-error', { 
-        message: 'Failed to select commit', 
-        error: errorMessage 
+
+      logger.error('version-history.commit.selection-error', {
+        message: 'Failed to select commit',
+        error: errorMessage
       });
     }
   }
@@ -190,7 +190,7 @@ export default function VersionHistory() {
         )}
 
         {commitSelectionError && (
-          <Alert 
+          <Alert
             emphasis="critical"
             onClose={() => setCommitSelectionError(null)}
           >
@@ -217,7 +217,7 @@ export default function VersionHistory() {
             // 1. There is a deployed commit (mostRecentDeployedCommitIndex >= 0), AND
             // 2. This commit's index >= deployed index (meaning it's the same age or older)
             const isPublished = mostRecentDeployedCommitIndex >= 0 && index >= mostRecentDeployedCommitIndex;
-            
+
             return renderCommitItem({
               key: commit.hash,
               onClick: () => handleSelectCommit(commit),

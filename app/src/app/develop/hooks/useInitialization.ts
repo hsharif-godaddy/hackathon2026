@@ -1,8 +1,8 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { logger } from '@/lib/request-context'
 import { getConversationIdFromCookie } from '@/hooks/websocket/useWebSocketHelpers'
+import { logger } from '@/lib/request-context'
 import { AgentService } from '@/services/AgentService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { cleanupSiteCreationStore, useSiteCreationStore } from '@/stores/useSiteCreationStore'
@@ -66,7 +66,7 @@ function getStoredInitialPrompt(initialJobId: string | null, appId: string | nul
 
 /**
  * Check if this is a rebuild mode prompt that should be used as-is
- * 
+ *
  * @param initialJobId - The initial job ID to check
  * @param appId - The app ID to check
  * @returns True if this is a rebuild mode prompt
@@ -413,8 +413,8 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     hasInitialPrompt: checkHasInitialPrompt(initialJobId, appId),
     initialPromptSent,
     // For rebuild mode, prioritize sessionStorage prompt over site.initial_prompt
-    initialPromptText: isRebuildModePrompt(initialJobId, appId) 
-      ? getStoredInitialPrompt(initialJobId, appId) 
+    initialPromptText: isRebuildModePrompt(initialJobId, appId)
+      ? getStoredInitialPrompt(initialJobId, appId)
       : (site?.initial_prompt ?? getStoredInitialPrompt(initialJobId, appId)),
     isRebuildModePrompt: isRebuildModePrompt(initialJobId, appId),
   }
@@ -715,7 +715,6 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       const isAuth = errorMessage.includes('401') || errorMessage.includes('403')
       const isNetwork = errorMessage.includes('fetch') || errorMessage.includes('network')
 
-      const logLevel = is404 ? 'warn' : 'error'
       const errorContext = {
         appId: effectiveAppId,
         error: errorMessage,
@@ -1014,7 +1013,8 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     ui.showChatLoader,
     ui.showPreviewLoader,
     ui.shouldAutoSendPrompt,
-    ui.canInteractWithChat
+    ui.canInteractWithChat,
+    context.isRebuildModePrompt,
   ])
 
   // Debug logging specifically for preview loader state (only when hasInitialPrompt is true)

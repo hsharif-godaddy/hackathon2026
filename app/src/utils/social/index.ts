@@ -1,8 +1,7 @@
+export { emitPostPublished, onPostPublished } from './events'
 export { formatHashtags, formatPlatformName } from './format'
 export {
-  getPlatformLimits,
   getCharacterCount,
-  validateSocialPost,
-  isPostOverLimit
-} from './validation'
-export { emitPostPublished, onPostPublished } from './events'
+  getPlatformLimits,
+  isPostOverLimit,
+  validateSocialPost} from './validation'

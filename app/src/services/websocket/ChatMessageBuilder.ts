@@ -5,9 +5,9 @@
  * Extracted from useStreamingWebSocket to improve testability and separation of concerns.
  */
 
-import type { AgentsAppChatMessage, AgentsAppContext } from '@/types/websocket-context'
-import type { ContextAttachment } from '@/types/context-attachment'
 import type { VisualContext } from '@/app/develop/components/visualContextCapture'
+import type { ContextAttachment } from '@/types/context-attachment'
+import type { AgentsAppChatMessage, AgentsAppContext } from '@/types/websocket-context'
 
 export interface Asset {
   imageUrl: string

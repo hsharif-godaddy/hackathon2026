@@ -4,8 +4,8 @@
  * Discovers application routes by parsing routes.tsx file.
  */
 
-import { appService } from '@/services/AppService'
 import { logger } from '@/lib/request-context'
+import { appService } from '@/services/AppService'
 
 /**
  * Discover routes from the app's routes.tsx file

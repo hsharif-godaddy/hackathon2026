@@ -133,7 +133,7 @@ export default function CookieBanner() {
             <p id="cookie-banner-description" className="text-sm text-gray-600">
               We serve cookies. We use tools, such as cookies, to enable essential services and functionality on our site and to collect data on how visitors interact with our site, products and services. By clicking Accept, you agree to our use of these tools for advertising, analytics and support.{' '}
               <a
-                href="https://www.godaddy.com/en-in/legal/agreements/privacy-policy"
+                href="https://www.godaddy.com/legal/agreements/privacy-policy"
                 className="text-blue-600 hover:text-blue-800 underline"
                 target="_blank"
                 rel="noopener noreferrer"

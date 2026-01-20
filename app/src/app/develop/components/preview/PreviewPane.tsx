@@ -88,7 +88,7 @@ export default function PreviewPane({
     appId: appId || '',
     enabled: !!appId
   });
-  const commits = data?.commits || []
+  const commits = data?.commits || [] // eslint-disable-line react-hooks/exhaustive-deps
 
   // Derive selected commit object from hash
   const selectedCommit = useMemo(() => {

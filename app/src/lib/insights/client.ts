@@ -4,9 +4,9 @@
  * Provides robust GraphQL query execution with retry logic, timeouts, and error handling.
  */
 
-import { calculateBackoffDelay, classifyError, sleep } from './error-handler'
-import { INITIAL_RETRY_DELAY_MS, MAX_RETRIES, MAX_RETRY_DELAY_MS, REQUEST_TIMEOUT_MS } from './config'
 import { logger } from '@/lib/request-context'
+import { INITIAL_RETRY_DELAY_MS, MAX_RETRIES, MAX_RETRY_DELAY_MS, REQUEST_TIMEOUT_MS } from './config'
+import { calculateBackoffDelay, classifyError, sleep } from './error-handler'
 import type { InsightCountResponse } from './types'
 
 /**
@@ -23,8 +23,7 @@ import type { InsightCountResponse } from './types'
  */
 export async function executeGraphQLQuery(
   query: string,
-  operationName: string,
-  authToken: string
+  operationName: string
 ): Promise<InsightCountResponse> {
   let lastError: Error | null = null
 

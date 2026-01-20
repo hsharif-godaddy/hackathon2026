@@ -50,5 +50,5 @@ export const markdownComponents: Components = {
   th: ({ ...props }) => <th className="border border-intents-ux-boxLowContrast-borderColor px-4 py-2 text-left font-semibold" {...props} />,
   td: ({ ...props }) => <td className="border border-intents-ux-boxLowContrast-borderColor px-4 py-2" {...props} />,
   hr: ({ ...props }) => <hr className="my-6 border-intents-ux-boxLowContrast-borderColor" {...props} />,
-  img: ({ ...props }) => <img className="max-w-full h-auto rounded-lg my-3" {...props} />,
+  img: ({ ...props }) => <img className="max-w-full h-auto rounded-lg my-3" {...props} />, // eslint-disable-line jsx-a11y/alt-text, @next/next/no-img-element
 };

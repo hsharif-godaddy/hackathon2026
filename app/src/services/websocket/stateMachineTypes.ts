@@ -93,4 +93,4 @@ export type MachineEvent =
  *
  * Re-export for convenience:
  */
-export type { WebSocketMachine, WebSocketActor, WebSocketSnapshot } from './webSocketMachine'
+export type { WebSocketActor, WebSocketMachine, WebSocketSnapshot } from './webSocketMachine'

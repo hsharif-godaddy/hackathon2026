@@ -3,8 +3,8 @@
  * Uses Gasket shopper tokens for customer access control
  */
 
-import { context as otelContext, trace } from '@opentelemetry/api';
 import { NextRequest, NextResponse } from 'next/server';
+import { context as otelContext, trace } from '@opentelemetry/api';
 
 // Lazy import to avoid initializing gd-auth during module loading
 import { AccountAdapterFactory } from '@/lib/account-adapters/AccountAdapterFactory';

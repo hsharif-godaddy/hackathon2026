@@ -19,7 +19,7 @@ import { logAiroHQEvent } from '@/utils/instrumentation'
 import { hasBeenPublished } from '@/utils/site'
 import type { ClientActionExecutor } from './types'
 
-export const publishAction: ClientActionExecutor = async (params, context) => {
+export const publishAction: ClientActionExecutor = async (params) => {
   const { appId, commitHash: providedCommitHash } = params
 
   // Validate required parameters

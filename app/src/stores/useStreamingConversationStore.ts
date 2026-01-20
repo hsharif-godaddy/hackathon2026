@@ -8,9 +8,8 @@
 import { create } from 'zustand'
 
 import { logger } from '@/lib/request-context'
-import { clearConversationIdCookie, setConversationIdCookie } from '@/hooks/websocket/useWebSocketHelpers'
-import type { StructuredError } from '@/types/errors'
 import type { AgentConversationMessagePayload, AgentSegmentPayload, AgentToolCallPayload } from '@/types/agent-conversation'
+import type { StructuredError } from '@/types/errors'
 import type { AiEditContext } from '../app/develop/components/types'
 
 // Development plan item

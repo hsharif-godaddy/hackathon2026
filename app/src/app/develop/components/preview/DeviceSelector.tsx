@@ -16,8 +16,7 @@ import {
 } from '@/lib/shadcn/popover'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { generateClickEID } from '@/utils/instrumentation'
-
-import { getDevicePreset, getDevicesByCategory, type DevicePreset } from './devicePresets'
+import { type DevicePreset,getDevicePreset, getDevicesByCategory } from './devicePresets'
 
 interface DeviceSelectorProps {
   disabled?: boolean

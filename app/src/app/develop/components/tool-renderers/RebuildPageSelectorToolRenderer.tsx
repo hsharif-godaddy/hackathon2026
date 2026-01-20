@@ -1,17 +1,16 @@
 'use client'
 
+import { CheckCircle, ChevronDown, FileCode, FileText,Hammer } from 'lucide-react'
 import { useState } from 'react'
-import { FileCode, CheckCircle, ChevronDown, Hammer, FileText } from 'lucide-react'
+import Alert from '@ux/alert'
 import Box from '@ux/box'
 import Button from '@ux/button'
-import Alert from '@ux/alert'
 import text from '@ux/text'
 
 import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext'
-import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
-import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 
 interface PageInfo {
   slug: string
@@ -63,7 +62,7 @@ export default function RebuildPageSelectorToolRenderer({
   // If this was a build mode call that returned a prompt, show minimal UI with prompt link
   if (pagePrompt && builtPageSlug) {
     const pageTitle = builtPageSlug.charAt(0).toUpperCase() + builtPageSlug.slice(1).replace(/-/g, ' ')
-    
+
     return (
       <>
         <div>

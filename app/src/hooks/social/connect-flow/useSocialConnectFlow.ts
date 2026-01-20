@@ -43,7 +43,7 @@ export function useSocialConnectFlow({
 
   // Fetch site links
   const siteLinksQuery = useSiteAssociations(appId, enabled)
-  const siteLinks = siteLinksQuery.data?.associations ?? []
+  const siteLinks = siteLinksQuery.data?.associations ?? [] // eslint-disable-line react-hooks/exhaustive-deps
   const isLoadingSiteLinks = siteLinksQuery.isLoading
   const isFetchingSiteLinks = siteLinksQuery.isFetching
 
@@ -59,7 +59,6 @@ export function useSocialConnectFlow({
   )
 
   // Enrich the currently linked connection with metadata (if not already in enrichedConnections)
-  const currentConnectionArray = currentConnectionDetails ? [currentConnectionDetails] : []
   const {
     connections: enrichedCurrentArray,
     isLoadingMetadata: isLoadingCurrentMetadata

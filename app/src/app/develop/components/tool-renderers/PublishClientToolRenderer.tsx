@@ -6,7 +6,6 @@ import { useState } from 'react'
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
 import ToolModal from '@/app/develop/components/tool-renderers/ToolModal'
 import { useTranslations } from '@/hooks/useTranslations'
-
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 
 /**

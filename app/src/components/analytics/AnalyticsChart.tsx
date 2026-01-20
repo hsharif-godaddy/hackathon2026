@@ -1,12 +1,13 @@
 import {
-  AreaChart,
   Area,
-  XAxis,
-  YAxis,
+  AreaChart,
   CartesianGrid,
   ResponsiveContainer,
-  Tooltip
-} from 'recharts'
+  Tooltip,
+  XAxis,
+  YAxis} from 'recharts'
+
+import { useTranslations } from '@/hooks/useTranslations'
 
 interface ChartDataPoint {
   date: string
@@ -37,9 +38,11 @@ interface CustomTooltipProps {
  * @param data - Array of data points with date and value
  */
 export function AnalyticsChart({ data }: AnalyticsChartProps) {
+  const t = useTranslations()
+
   if (!data || data.length === 0) {
     return (
-      <p className="text-muted-foreground text-center py-8">No chart data available</p>
+      <p className="text-muted-foreground text-center py-8">{t('builder_analytics_chart_no_data')}</p>
     )
   }
 
@@ -67,7 +70,7 @@ export function AnalyticsChart({ data }: AnalyticsChartProps) {
         <div className="bg-background border rounded-lg shadow-lg p-2">
           <p className="text-sm font-medium">{payload[0].payload.date}</p>
           <p className="text-sm text-muted-foreground">
-            Page Views: <span className="font-semibold">{formatValue(payload[0].value)}</span>
+            {t('builder_analytics_chart_pageviews')}: <span className="font-semibold">{formatValue(payload[0].value)}</span>
           </p>
         </div>
       )
@@ -114,7 +117,7 @@ export function AnalyticsChart({ data }: AnalyticsChartProps) {
             tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
             tickFormatter={formatValue}
             label={{
-              value: 'Page Views',
+              value: t('builder_analytics_chart_pageviews'),
               angle: -90,
               position: 'insideLeft',
               style: { textAnchor: 'middle', fill: 'hsl(var(--muted-foreground))', fontSize: 12 }

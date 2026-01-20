@@ -8,8 +8,8 @@
 
 import { logger } from '@/lib/request-context'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
 import { HistoryMessageHandler } from './HistoryMessageHandler'
+import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
 
 export class HistoryCompleteHandler implements MessageHandler {
   readonly type = 'history_complete'

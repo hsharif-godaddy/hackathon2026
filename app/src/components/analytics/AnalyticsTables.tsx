@@ -1,3 +1,4 @@
+import { useTranslations } from '@/hooks/useTranslations'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/lib/shadcn/tooltip'
 
 interface PageData {
@@ -21,6 +22,8 @@ interface AnalyticsTablesProps {
 export function AnalyticsTables({
   pageData
 }: AnalyticsTablesProps) {
+  const t = useTranslations()
+
   const renderTable = <T extends { visitors: number }>(
     title: string,
     data: T[],
@@ -31,11 +34,11 @@ export function AnalyticsTables({
       <div className="flex flex-col gap-4 rounded-md border border-border bg-intents-ux-box-backgroundColor p-2">
         <div className="flex items-center justify-between text-sm font-medium">
           <p className="capitalize">{title}</p>
-          <p>Views</p>
+          <p>{t('builder_analytics_table_views')}</p>
         </div>
         {data.length === 0 ? (
           <p className="text-base text-muted-foreground md:text-sm">
-            No data found for this time period.
+            {t('builder_analytics_table_no_data')}
           </p>
         ) : (
           <div className="space-y-2">
@@ -53,7 +56,7 @@ export function AnalyticsTables({
                   </TooltipTrigger>
                   <TooltipContent side="top" className="bg-background text-foreground border border-border shadow-lg">
                     <div className="flex flex-col gap-0">
-                      <div className="text-sm font-semibold leading-none">{row.visitors} visitors</div>
+                      <div className="text-sm font-semibold leading-none">{t('builder_analytics_table_count_visitors', {count: row.visitors})}</div>
                       <div className="text-xs text-muted-foreground mt-1.5">{description}</div>
                     </div>
                   </TooltipContent>
@@ -67,7 +70,7 @@ export function AnalyticsTables({
   }
 
   const getPageDescription = (row: PageData) => {
-    return `Number of views - ${row.page === '/' ? 'home' : row.page} page.`
+    return `${t('builder_analytics_table_number_views')} - ${row.page === '/' ? t('builder_common_home') : row.page} ${t('builder_common_page')}.`
   }
 
   return (

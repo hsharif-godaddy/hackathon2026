@@ -6,7 +6,6 @@
  */
 
 import type { SocialPostData } from '@/types/social-posts'
-
 import ColorPaletteGridWidget, { type ColorPaletteGridWidgetProps } from './ColorPaletteGridWidget'
 import ColorPaletteWidget, { type ColorPaletteWidgetProps } from './ColorPaletteWidget'
 import FeedbackWidget, { type FeedbackWidgetProps } from './FeedbackWidget'

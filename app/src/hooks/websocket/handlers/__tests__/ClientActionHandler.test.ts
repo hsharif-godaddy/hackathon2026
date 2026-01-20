@@ -7,8 +7,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createMockMessageContext } from './testUtils'
-import { ClientActionHandler } from '../ClientActionHandler'
 import { clientActionExecutors } from '../../actions'
+import { ClientActionHandler } from '../ClientActionHandler'
 import type { WebSocketMessage } from '../types'
 
 // Mock the clientActionExecutors

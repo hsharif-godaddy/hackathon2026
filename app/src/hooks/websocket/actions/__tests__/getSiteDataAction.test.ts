@@ -2,10 +2,11 @@
  * Get Site Data Action Tests
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { getSiteDataAction } from '../getSiteDataAction'
+import { beforeEach,describe, expect, it, vi } from 'vitest'
+
 import { useSiteStore } from '@/stores/useSiteStore'
 import type { MessageContext } from '../../handlers/types'
+import { getSiteDataAction } from '../getSiteDataAction'
 
 // Mock dependencies
 vi.mock('@/stores/useSiteStore', () => ({

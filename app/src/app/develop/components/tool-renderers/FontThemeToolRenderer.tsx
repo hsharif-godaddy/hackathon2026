@@ -1,7 +1,6 @@
 'use client'
 
 import { MessageSquare, Type } from 'lucide-react'
-import { useState } from 'react'
 
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
@@ -22,7 +21,6 @@ export default function FontThemeToolRenderer({
   result
 }: DefaultToolRendererProps) {
   const t = useTranslations()
-  const [isModalOpen, setIsModalOpen] = useState(false)
 
   const mode = input?.mode as 'suggest' | 'apply' | undefined
   const isSuggestMode = mode === 'suggest'
@@ -44,7 +42,6 @@ export default function FontThemeToolRenderer({
 
   // Never show details modal for font theme - keep it simple
   const hasDetails = false
-  const fullMessage = typeof resultObj.message === 'string' ? resultObj.message : ''
 
   return (
     <div>
@@ -53,7 +50,6 @@ export default function FontThemeToolRenderer({
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasDetails}
-        onOpenModal={() => setIsModalOpen(true)}
       />
 
       {/* SUGGEST MODE: Display font theme grid when completed */}

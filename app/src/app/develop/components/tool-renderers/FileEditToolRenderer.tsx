@@ -615,7 +615,7 @@ export default function FileEditToolRenderer({
           {toolCallError && input && (
             <div className="mb-2">
               <text.p className="mb-1" size={0}>
-                Input Parameters
+                {t('builder_tools_file_edit_input_params')}
               </text.p>
               <pre className="text-xs whitespace-pre-wrap font-mono bg-muted p-1.5 rounded border border-border max-h-32 overflow-y-auto">
                 {JSON.stringify(input, null, 2)}
@@ -627,7 +627,7 @@ export default function FileEditToolRenderer({
           {normalizedToBatch && batchOperations.length > 0 && (
             <div className="mb-2">
               <text.p className="mb-1" size={0}>
-                Operations
+                {t('builder_tools_file_edit_operations')}
               </text.p>
               <div className="space-y-1">
                 {batchOperations.map((op, index) => (

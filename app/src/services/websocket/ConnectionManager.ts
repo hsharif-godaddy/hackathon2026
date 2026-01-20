@@ -453,14 +453,14 @@ export class ConnectionManager {
     const message = error.message || String(error)
 
     if (message.includes('JWT validation failed') && message.includes('Token expired')) {
-      await this.handleTokenExpiration(appId, error)
+      await this.handleTokenExpiration(appId)
       return
     }
 
     this.callbacks?.onConnectError?.(error)
   }
 
-  private async handleTokenExpiration(appId: string, error: Error): Promise<void> {
+  private async handleTokenExpiration(appId: string): Promise<void> {
     if (this.tokenRefreshCount >= MAX_TOKEN_REFRESH_ATTEMPTS) {
       logger.error('websocket.token.refresh_limit_exceeded', {
         message: 'Maximum token refresh attempts exceeded, rejecting connection',

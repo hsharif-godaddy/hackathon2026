@@ -154,8 +154,7 @@ export function useInsightsAnalytics({
         logger.debug('analytics.fetch.daily-page-views.begin', { publishedUrl, days, operation: 'daily-page-views' })
         const { count: total, dailyBreakdown } = await fetchDailyPageViews(
           publishedUrl,
-          days,
-          '' // Auth token not needed - handled server-side
+          days
         )
 
         logger.debug('analytics.fetch.daily-page-views.success', {
@@ -185,7 +184,7 @@ export function useInsightsAnalytics({
         let visitorsCount = 0
         if (publishedUrl && !abortController.signal.aborted) {
           try {
-            visitorsCount = await fetchVisitors(publishedUrl, days, '') // Auth handled server-side
+            visitorsCount = await fetchVisitors(publishedUrl, days)
           } catch (err) {
             logger.debug('analytics.fetch.visitors.failure', {
               publishedUrl,
@@ -226,7 +225,7 @@ export function useInsightsAnalytics({
             const routesToQuery = await getRoutesToQuery(appId)
             const routePromises = routesToQuery.map(async (route) => {
               try {
-                const count = await fetchRouteCount(publishedUrl, route, days, '') // Auth handled server-side
+                const count = await fetchRouteCount(publishedUrl, route, days)
                 return count > 0 ? { route, pageViews: count } as RoutePageView : null
               } catch {
                 return null
@@ -319,13 +318,13 @@ export function useInsightsAnalytics({
 
         try {
           // Fetch fresh data in background
-          const { count: total, dailyBreakdown } = await fetchDailyPageViews(publishedUrl, days, '')
+          const { count: total, dailyBreakdown } = await fetchDailyPageViews(publishedUrl, days)
           const dailyData = transformDailyBreakdown(dailyBreakdown)
 
           // Fetch visitors
           let visitorsCount = 0
           try {
-            visitorsCount = await fetchVisitors(publishedUrl, days, '')
+            visitorsCount = await fetchVisitors(publishedUrl, days)
           } catch (err) {
             logger.debug('analytics.fetch.visitors.failure', {
               publishedUrl,

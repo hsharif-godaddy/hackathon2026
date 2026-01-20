@@ -469,7 +469,7 @@ describe('useStreamingWebSocket', () => {
       // Make captureVisualContext throw an error
       vi.mocked(captureVisualContext).mockRejectedValue(new Error('Iframe not ready'));
 
-      const { socket } = await setupWebSocketWithApp('app-visual-error')
+      const { socket } = await setupWebSocketWithApp('app-visual-error') // eslint-disable-line @typescript-eslint/no-unused-vars
 
       // sendMessage should not throw even if visual context capture fails
       await expect(async () => {

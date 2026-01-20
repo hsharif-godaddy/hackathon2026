@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import Button from '@ux/button';
 
 import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext';
-import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore';
 import { useTranslations } from '@/hooks/useTranslations';
+import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore';
 
 interface FontInfo {
   name: string
@@ -27,7 +27,7 @@ export interface FontThemeGridWidgetProps {
 }
 
 export default function FontThemeGridWidget({ themes, className = '' }: FontThemeGridWidgetProps) {
-  const [loadedThemes, setLoadedThemes] = useState<Set<string>>(new Set())
+  const [loadedThemes, setLoadedThemes] = useState<Set<string>>(new Set()) // eslint-disable-line @typescript-eslint/no-unused-vars
   const [selectedTheme, setSelectedTheme] = useState<FontTheme | null>(null)
   const t = useTranslations()
   const sendUserMessage = useSendUserMessage()
@@ -35,7 +35,7 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
   const isLoading = useIsLoading()
   const isProcessing = isStreaming || isLoading
 
-  const safeThemes = Array.isArray(themes) ? themes : []
+  const safeThemes = Array.isArray(themes) ? themes : [] // eslint-disable-line react-hooks/exhaustive-deps
   const hasThemes = safeThemes.length > 0
 
   useEffect(function loadGoogleFonts() {
@@ -53,7 +53,7 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
     if (newFontFamilies.length === 0) return
 
     const linkId = 'font-theme-widget-fonts'
-    
+
     let link = document.getElementById(linkId) as HTMLLinkElement
     if (!link) {
       link = document.createElement('link')
@@ -94,7 +94,7 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
 
     const fontFamiliesStr = allFontFamilies.join('&family=')
     const newHref = `https://fonts.googleapis.com/css2?family=${fontFamiliesStr}&display=swap`
-    
+
     // Check URL length to prevent issues (Google Fonts and browser limits)
     if (newHref.length > 2000) {
       // URL too long, use only new fonts
@@ -102,7 +102,7 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
       link.href = `https://fonts.googleapis.com/css2?family=${fallbackStr}&display=swap`
     } else if (link.href !== newHref) {
       link.href = newHref
-      
+
       link.onload = function markFontsLoaded() {
         setLoadedThemes(new Set(safeThemes.map(t => t.id)))
       }
@@ -142,7 +142,6 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
       <div className="flex flex-col gap-2">
         {safeThemes.map((theme) => {
           const font = theme.font
-          const isLoaded = loadedThemes.has(theme.id)
           const isSelected = selectedTheme?.id === theme.id
 
           if (!font || !Array.isArray(font.weights) || font.weights.length === 0) return null

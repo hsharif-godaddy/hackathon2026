@@ -14,16 +14,17 @@
  * and are handled directly by message handlers (Tier 2).
  */
 
-import type { Actor } from 'xstate'
 import type { EventEmitter } from 'events'
+import type { Actor } from 'xstate'
+
 import { logger } from '@/lib/request-context'
-import type { WebSocketMachine, WebSocketSnapshot } from './webSocketMachine'
-import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type {
   RecoveryState,
   RetryState,
   WebSocketState,
 } from '@/stores/useStreamingConversationStore'
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+import type { WebSocketMachine, WebSocketSnapshot } from './webSocketMachine'
 
 /**
  * Store interface expected by the adapter

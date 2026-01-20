@@ -5,7 +5,8 @@
  * Verifies all machine state → store action mappings.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
 import { StoreSyncAdapterTestHarness } from './StoreSyncAdapterTestUtils'
 import { MAX_RETRY_COUNT, MAX_RETRY_DELAY_MS } from '../webSocketMachine'
 

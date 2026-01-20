@@ -4,11 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 
 import { appFetch } from '@/lib/gasket-config'
-import { mockRouter } from '@/tests/mocks'
-import { renderWithProviders } from '@/tests/test-utils'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useSiteStore } from '@/stores/useSiteStore'
-import { useSitesStore } from '@/stores/useSitesStore'
+import { mockRouter } from '@/tests/mocks'
+import { renderWithProviders } from '@/tests/test-utils'
 import SetProjectNameToolRenderer from './SetProjectNameToolRenderer'
 
 vi.mock('@/lib/gasket-config')

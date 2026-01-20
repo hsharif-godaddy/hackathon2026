@@ -1,7 +1,7 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { QrCode, Download } from 'lucide-react'
+import { Download,QrCode } from 'lucide-react'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import Button from '@ux/button'

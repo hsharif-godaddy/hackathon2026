@@ -95,9 +95,9 @@ function SitesPageContent() {
         <AppInactivityAlert />
         <div className="mb-4">
           <Box orientation="horizontal" gap="md" data-partial="componentAiro">
-            Manage your AI-powered websites and applications
+            {t('builder_apps_title')}
             <Tag emphasis="highlight">
-              {`${totalSites} ${totalSites === 1 ? 'app' : 'apps'} total`}
+              {t('builder_apps_count', { count: totalSites })}
             </Tag>
           </Box>
         </div>

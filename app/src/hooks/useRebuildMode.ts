@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 
 import { agentFetch } from '@/lib/agent-fetch'
-import { logger } from '@/lib/request-context'
 import { useSiteStore } from '@/stores/useSiteStore'
 
 /**

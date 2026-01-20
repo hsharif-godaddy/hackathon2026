@@ -4,11 +4,11 @@ import clsx from 'clsx'
 import { Check, ClipboardCopy, Expand, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
+import ThinkingIndicator from '@/app/develop/components/ThinkingIndicator'
 import { logger } from '@/lib/request-context'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
 import { useStreamingState } from '@/stores/useStreamingConversationStore'
 import StreamingIntegratedResponse from './StreamingIntegratedResponse'
-import ThinkingIndicator from '@/app/develop/components/ThinkingIndicator'
 
 interface StreamingMessageProps {
   message: ChatMessage | StreamingMessageType
@@ -131,7 +131,6 @@ function FullMessageModal({ content, isOpen, onClose }: { content: string; isOpe
 const MAX_MESSAGE_HEIGHT = 200 // pixels
 
 function UserMessage({ content }: { content: string }) {
-  const [copiedToClipboard, setCopiedToClipboard] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isTruncated, setIsTruncated] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -141,18 +140,6 @@ function UserMessage({ content }: { content: string }) {
       setIsTruncated(contentRef.current.scrollHeight > MAX_MESSAGE_HEIGHT)
     }
   }, [content])
-
-  const handleCopyMessage = async () => {
-    try {
-      await navigator.clipboard.writeText(content)
-      setCopiedToClipboard(true)
-      setTimeout(() => setCopiedToClipboard(false), 2000)
-    } catch (err) {
-      logger.error('streaming_message.copy.failed', {
-        error: err instanceof Error ? err.message : String(err)
-      })
-    }
-  }
 
   return (
     <>

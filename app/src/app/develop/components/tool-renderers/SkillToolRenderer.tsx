@@ -2,7 +2,6 @@
 
 import { BookOpen, Package } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-
 import Collapsible from '@ux/collapsible'
 import Pagination from '@ux/pagination'
 import TextInput from '@ux/text-input'

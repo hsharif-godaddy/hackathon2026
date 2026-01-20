@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from '@testing-library/react';
 
 import {
-  useStreamingConversationStore,
   type ChatMessage,
+  useStreamingConversationStore,
 } from './useStreamingConversationStore';
 
 // Mock the logger

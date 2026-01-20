@@ -1,8 +1,8 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import AlertIcon from '@ux/icon/alert'
 import Box from '@ux/box'
+import AlertIcon from '@ux/icon/alert'
 import Select from '@ux/select'
 import Spinner from '@ux/spinner'
 
@@ -13,6 +13,7 @@ import { MetricCard } from '@/components/analytics/MetricCard'
 import BigCard from '@/components/layout/BigCard'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
 import { useInsightsAnalytics } from '@/hooks/useInsightsAnalytics'
+import { useTranslations } from '@/hooks/useTranslations'
 import { TooltipProvider } from '@/lib/shadcn/tooltip'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { hasBeenPublished } from '@/utils/site'
@@ -40,6 +41,7 @@ type TimePeriod = '7' | '30' | 'month'
  * @returns RUM panel component
  */
 export default function RUM() {
+  const t = useTranslations()
   const appId = useAppIdFromParams()
   const site = useSiteStore((state) => appId ? state.getSite(appId) : null)
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('7')
@@ -137,9 +139,7 @@ export default function RUM() {
         <Spinner size="md" />
         <div className="text-center space-y-2">
           <p className="text-muted-foreground">
-            {loadingProgress
-              ? `Fetching data ...`
-              : 'Fetching analytics data...'}
+            {loadingProgress ? t('builder_rum_fetching_data') : t('builder_rum_fetching_analytics_data')}
           </p>
           {loadingProgress && (
             <div className="w-full max-w-xs bg-muted rounded-full h-2 mt-4">
@@ -160,9 +160,9 @@ export default function RUM() {
       <Box gap="lg" className="@container">
         <EmptyStateCard
           icon={<AlertIcon width={48} height={48} />}
-          title="Unable to Load Analytics"
-          description={error.message || "The analytics service may be temporarily unavailable. Please try again later."}
-          ctaLabel="Try Again"
+          title={t('builder_rum_error_title')}
+          description={error.message || t('builder_rum_error_desc')}
+          ctaLabel={t('builder_common_try_again')}
           onCtaClick={() => window.location.reload()}
         />
       </Box>
@@ -171,8 +171,8 @@ export default function RUM() {
 
   return (
     <BigCard
-      title="Real User Metrics"
-      description="Website metrics from GoDaddy tracking"
+      title={t('builder_rum_title')}
+      description={t('builder_rum_desc')}
       hideStatus={true}
       button={(
         <Select
@@ -180,12 +180,12 @@ export default function RUM() {
           id="period-select"
           name="period-select"
           onChange={(value) => setSelectedPeriod(value as TimePeriod)}
-          label="Select period"
+          label={t('builder_rum_select_period')}
           visualSize="md"
         >
-          <option value="7">Last 7 Days</option>
-          <option value="30">Last 30 Days</option>
-          <option value="month">This Month</option>
+          <option value="7">{t('builder_rum_period_7')}</option>
+          <option value="30">{t('builder_rum_period_30')}</option>
+          <option value="month">{t('builder_rum_period_month')}</option>
         </Select>
       )}
     >
@@ -195,21 +195,21 @@ export default function RUM() {
             {isRefreshing && (
               <div className="absolute z-50 pointer-events-none inset-0 flex items-center justify-center w-full gap-2 text-sm bg-intents-ux-boxLowContrastOverlay-backgroundColor">
                 <Spinner size="sm" />
-                <span>Updating...</span>
+                <span>{t('builder_common_updating')}</span>
               </div>
             )}
             {/* Metric Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <MetricCard
-                label="Pageviews"
+                label={t('builder_rum_pageviews')}
                 value={metrics.pageviews}
               />
               <MetricCard
-                label="Visitors"
+                label={t('builder_rum_visitors')}
                 value={metrics.visitors}
               />
               <MetricCard
-                label="Views per Visit"
+                label={t('builder_rum_views_visit')}
                 value={metrics.viewsPerVisit > 0 ? metrics.viewsPerVisit.toFixed(2) : '0.00'}
               />
             </div>

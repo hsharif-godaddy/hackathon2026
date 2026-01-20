@@ -33,7 +33,7 @@ export function useSocialConnectionsWithMetadata(
   // Fetch base connection data from API
   const plainConnectionsQuery = useSocialConnections(enabled)
 
-  const plainConnections = plainConnectionsQuery.data ?? []
+  const plainConnections = plainConnectionsQuery.data ?? [] // eslint-disable-line react-hooks/exhaustive-deps
   const isLoadingConnections = plainConnectionsQuery.isLoading
 
   // Normalize platform filter for comparison

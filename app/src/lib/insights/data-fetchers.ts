@@ -4,9 +4,9 @@
  * Provides functions to fetch analytics data from the GraphQL API.
  */
 
-import { executeGraphQLQuery } from './client'
-import { buildInsightCountQuery, buildInsightCountDailyQuery, buildUniqueCountQuery, extractCountFromResponse, extractUniqueCountFromResponse, extractDailyBreakdownFromResponse } from './queries'
 import { logger } from '@/lib/request-context'
+import { executeGraphQLQuery } from './client'
+import { buildInsightCountDailyQuery, buildInsightCountQuery, buildUniqueCountQuery, extractCountFromResponse, extractDailyBreakdownFromResponse,extractUniqueCountFromResponse } from './queries'
 
 /**
  * Fetch route-specific page views
@@ -20,14 +20,13 @@ import { logger } from '@/lib/request-context'
 export async function fetchRouteCount(
   publishedUrl: string,
   route: string,
-  days: number,
-  authToken: string
+  days: number
 ): Promise<number> {
   const routeUrl = route === '/' ? publishedUrl : `${publishedUrl}${route}`
   const query = buildInsightCountQuery(routeUrl, days)
-  
+
   try {
-    const result = await executeGraphQLQuery(query, `fetchRouteCount(${route})`, authToken)
+    const result = await executeGraphQLQuery(query, `fetchRouteCount(${route})`)
     return extractCountFromResponse(result)
   } catch (error) {
     logger.debug('analytics.fetch.route.no-data', {
@@ -49,11 +48,10 @@ export async function fetchRouteCount(
  */
 export async function fetchDailyPageViews(
   publishedUrl: string,
-  days: number,
-  authToken: string
+  days: number
 ): Promise<{ count: number; dailyBreakdown: Array<{ date: string; count: number }> }> {
   const query = buildInsightCountDailyQuery(publishedUrl, days)
-  const result = await executeGraphQLQuery(query, `fetchDailyPageViews(days=${days})`, authToken)
+  const result = await executeGraphQLQuery(query, `fetchDailyPageViews(days=${days})`)
   return extractDailyBreakdownFromResponse(result)
 }
 
@@ -67,13 +65,12 @@ export async function fetchDailyPageViews(
  */
 export async function fetchVisitors(
   publishedUrl: string,
-  days: number,
-  authToken: string
+  days: number
 ): Promise<number> {
   const query = buildUniqueCountQuery(publishedUrl, days)
-  
+
   try {
-    const result = await executeGraphQLQuery(query, `fetchVisitors(${publishedUrl})`, authToken)
+    const result = await executeGraphQLQuery(query, `fetchVisitors(${publishedUrl})`)
     return extractUniqueCountFromResponse(result)
   } catch (error) {
     logger.debug('analytics.fetch.visitors.no-data', {

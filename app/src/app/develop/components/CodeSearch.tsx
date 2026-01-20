@@ -2,10 +2,9 @@
 
 import clsx from 'clsx'
 import { useCallback, useMemo, useState } from 'react'
-import Button from '@ux/button'
 import SearchIcon from '@ux/icon/search'
-import Spinner from '@ux/spinner'
 import XIcon from '@ux/icon/x'
+import Spinner from '@ux/spinner'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -39,7 +38,7 @@ interface FileItem {
 export default function CodeSearch({ appId, files, onResultClick }: CodeSearchProps) {
   const t = useTranslations()
 
-  const getText = (key: string): string => {
+  const getText = useCallback((key: string): string => {
     const translations: Record<string, string> = {
       'builder_code_search_files': 'Files',
       'builder_code_search_code': 'Code',
@@ -56,8 +55,8 @@ export default function CodeSearch({ appId, files, onResultClick }: CodeSearchPr
     const translated = t(key)
     // If translation returns the key itself, use fallback
     return translated !== key ? translated : (translations[key] || key)
-  }
-  
+  }, [t])
+
   const [searchMode, setSearchMode] = useState<SearchMode>('files')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchMatch[]>([])
@@ -91,12 +90,12 @@ export default function CodeSearch({ appId, files, onResultClick }: CodeSearchPr
             // File name search - search locally through file tree
             const fileMatches: SearchMatch[] = []
             const searchLower = searchQuery.toLowerCase()
-            
+
             const searchFiles = (items: FileItem[]) => {
               for (const item of items) {
                 // Search both filename and full path
-                if (item.type === 'file' && 
-                    (item.name.toLowerCase().includes(searchLower) || 
+                if (item.type === 'file' &&
+                    (item.name.toLowerCase().includes(searchLower) ||
                      item.path.toLowerCase().includes(searchLower))) {
                   fileMatches.push({
                     path: item.path,
@@ -112,7 +111,7 @@ export default function CodeSearch({ appId, files, onResultClick }: CodeSearchPr
                 }
               }
             }
-            
+
             searchFiles(files)
             setResults(fileMatches)
             setTotalMatches(fileMatches.length)

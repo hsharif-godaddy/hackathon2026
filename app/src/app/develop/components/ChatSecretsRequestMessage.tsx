@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import Button from '@ux/button'
-import DeleteIcon from '@ux/icon/x-thick'
 import LockIcon from '@ux/icon/locked'
+import DeleteIcon from '@ux/icon/x-thick'
 
 import IconButton from '@/app/develop/components/IconButton'
 import { useWebSocketContext } from '@/contexts/WebSocketContext'

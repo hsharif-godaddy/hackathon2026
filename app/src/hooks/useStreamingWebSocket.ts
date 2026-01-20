@@ -99,7 +99,7 @@ export function useStreamingWebSocket() {
   }
 
   if (!controllerRef.current) {
-    const store = useStreamingConversationStore.getState()
+    const store = useStreamingConversationStore.getState() // eslint-disable-line @typescript-eslint/no-unused-vars
 
     controllerRef.current = new StreamingWebSocketController({
       connectionManager: connectionManagerRef.current,

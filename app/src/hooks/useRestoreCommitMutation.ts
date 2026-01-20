@@ -1,6 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import type { GitCommit } from '@/hooks/useGitHistory';
 import { logger } from '@/lib/request-context';
 import { appService } from '@/services/AppService';
 import { useGitStore } from '@/stores/useGitStore';
@@ -12,17 +11,17 @@ interface RestoreCommitVariables {
 
 /**
  * React Query mutation hook for restoring a git commit
- * 
+ *
  * Handles restoring files from a specific commit and automatically
  * invalidates the git history cache on success to reflect the new commit
  * that gets created from the restore operation.
- * 
+ *
  * @returns Mutation object with mutate, isPending, isError, error properties
- * 
+ *
  * @example
  * ```typescript
  * const restoreMutation = useRestoreCommitMutation();
- * 
+ *
  * function handleRestore() {
  *   restoreMutation.mutate(
  *     { appId: 'app-123', commitHash: 'abc123' },
@@ -70,7 +69,7 @@ export function useRestoreCommitMutation() {
 
       // Invalidate first - this triggers refetch in all active useGitHistoryQuery hooks
       // and waits for them to complete
-      await queryClient.invalidateQueries({ 
+      await queryClient.invalidateQueries({
         queryKey: ['git-history', variables.appId],
         refetchType: 'active'
       });
@@ -83,7 +82,7 @@ export function useRestoreCommitMutation() {
           return { commits: commits || [], currentCommit: currentCommit || null };
         }
       });
-      
+
       logger.info('restore-commit-mutation.refetch-complete', {
         message: 'Git history refetched',
         appId: variables.appId,
@@ -99,7 +98,7 @@ export function useRestoreCommitMutation() {
           commitHash: gitHistory.commits[0].hash.substring(0, 7),
         });
       }
-      
+
       logger.info('restore-commit-mutation.complete', {
         message: 'Restore complete and new commit selected',
         appId: variables.appId,

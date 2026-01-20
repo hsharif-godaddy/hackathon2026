@@ -339,7 +339,7 @@ ${volumeLines}
 	 * Note: Database service removed - apps now use shared MySQL instance
 	 * HTTP proxy integrated into dev-supervisor
 	 */
-	generateComposeFile(config: ComposeServiceConfig, dbConfig?: DatabaseConfig): string {
+	generateComposeFile(config: ComposeServiceConfig): string {
 		logger.info("compose.generate.begin", {
 			appId: config.appId,
 			templateVersion: config.templateVersion,

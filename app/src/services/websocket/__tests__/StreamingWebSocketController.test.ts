@@ -4,16 +4,17 @@
  * Tests for the headless StreamingWebSocketController service
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { EventEmitter } from 'events'
+import type { Socket } from 'socket.io-client'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { getConversationIdFromCookie } from '@/hooks/websocket/useWebSocketHelpers'
+import type { ChatMessageBuilder } from '../ChatMessageBuilder'
+import type { ConnectionCallbacks,ConnectionManager } from '../ConnectionManager'
 import {
   StreamingWebSocketController,
   type StreamingWebSocketControllerDeps,
 } from '../StreamingWebSocketController'
-import type { ConnectionManager, ConnectionCallbacks } from '../ConnectionManager'
-import type { ChatMessageBuilder } from '../ChatMessageBuilder'
-import type { Socket } from 'socket.io-client'
-import { getConversationIdFromCookie } from '@/hooks/websocket/useWebSocketHelpers'
 
 // Mock conversation ID helpers
 vi.mock('@/hooks/websocket/useWebSocketHelpers', () => ({
@@ -467,9 +468,6 @@ describe('StreamingWebSocketController', () => {
 
     it('should clear retry state on disconnect', () => {
       vi.useFakeTimers()
-
-      // Create a timeout
-      const timeoutId = setTimeout(() => {}, 1000)
 
       controller.disconnect()
 

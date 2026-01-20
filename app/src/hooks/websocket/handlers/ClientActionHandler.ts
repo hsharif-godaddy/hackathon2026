@@ -6,8 +6,8 @@
  */
 
 import { logger } from '@/lib/request-context'
-import { clientActionExecutors } from '../actions'
 import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import { clientActionExecutors } from '../actions'
 
 export class ClientActionHandler implements MessageHandler {
   readonly type = 'client_action'

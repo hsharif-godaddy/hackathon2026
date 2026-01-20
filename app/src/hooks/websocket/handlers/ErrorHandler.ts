@@ -43,7 +43,7 @@ export class ErrorHandler implements MessageHandler {
 
     // Handle budget exceeded errors - show immediately, no retry
     if (isBudgetError) {
-      this.handleBudgetExceeded(data, context, errorType, errorCode, errorTimestamp)
+      this.handleBudgetExceeded(data, context)
       return
     }
 
@@ -79,9 +79,6 @@ export class ErrorHandler implements MessageHandler {
   private handleBudgetExceeded(
     data: WebSocketMessage,
     context: MessageContext,
-    errorType: string | undefined,
-    errorCode: number | undefined,
-    errorTimestamp: string | undefined
   ): void {
     logger.warn('websocket.error.budget_exceeded', {
       message: 'Budget exceeded error received',

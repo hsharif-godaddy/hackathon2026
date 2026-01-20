@@ -16,9 +16,10 @@
  * - Tool delta buffering (performance optimization)
  */
 
-import { setup, assign, raise, type ActorRefFrom, type SnapshotFrom } from 'xstate'
-import type { MachineContext, MachineEvent, ServerConfig } from './stateMachineTypes'
+import { type ActorRefFrom, assign, raise, setup, type SnapshotFrom } from 'xstate'
+
 import { logger } from '@/lib/request-context'
+import type { MachineContext, MachineEvent } from './stateMachineTypes'
 
 const INITIAL_RETRY_DELAY_MS = 500
 const MAX_RETRY_DELAY_MS = 10000

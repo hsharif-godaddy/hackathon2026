@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { type ComposeServiceConfig,DockerComposeGenerator } from './docker-compose-generator';
 import { DockerComposeManager } from './docker-compose-manager';
 import { SharedMySQLService } from './shared-mysql-service';
-import { devSupervisor, auth } from '../../features';
+import { auth,devSupervisor } from '../../features';
 import { logger } from '../../request-context';
 import { DevDatabase } from '../database/DevDatabase';
 import { getAllocPath,getAppPath, getBasePath } from '../utils/app-paths';
@@ -459,7 +459,7 @@ export class DockerContainerManager {
 			};
 
 			// Generate docker-compose.yml
-			const composeContent = this.composeGenerator.generateComposeFile(composeConfig, dbConfig);
+			const composeContent = this.composeGenerator.generateComposeFile(composeConfig);
 
 			// Write docker-compose.yml to base directory (not in app or alloc subdirectories)
 			const basePath = getBasePath(appId);

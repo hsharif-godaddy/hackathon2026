@@ -279,7 +279,7 @@ export default function ChatPane({
       }
     }
   }
-  }, [inputValue, sendMessage, currentAppId, appId, setCurrentAppId, safeAiEditContext, selectedAsset, safeBuildErrorContext, handleClearAiEditContext, handleClearSelectedAsset, handleClearBuildErrorContext])
+  }, [inputValue, sendMessage, currentAppId, appId, setCurrentAppId, safeAiEditContext, selectedAsset, safeBuildErrorContext, handleClearAiEditContext, handleClearSelectedAsset, handleClearBuildErrorContext, isCreateFlowSession, messages])
 
   // Create stable context value - reuses handleSendMessage
   const chatContextValue = useMemo(() => ({
@@ -559,7 +559,7 @@ export default function ChatPane({
                 }
 
                 const { prompt } = await response.json()
-                
+
                 logger.info('rebuild-context.build-page-complete', {
                   appId,
                   pageSlug,

@@ -10,7 +10,7 @@
 
 import { logger } from '@/lib/request-context';
 import type { PaywallDataProvider } from './providers';
-import { isMatchingProject, PAYWALL_CONFIG, type PaywallCheckResult } from './shared';
+import { isMatchingProject, type PaywallCheckResult } from './shared';
 
 /**
  * Check if user has Airo Plus access for an app

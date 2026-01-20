@@ -3,8 +3,8 @@
 import clsx from 'clsx'
 import { memo, ReactNode } from 'react'
 
-import { IconWithName } from '../shared/IconWithName'
 import { useTranslations } from '@/hooks/useTranslations'
+import { IconWithName } from '../shared/IconWithName'
 
 export enum ContainerVariant {
   Info = 'info',

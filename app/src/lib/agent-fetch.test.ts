@@ -10,7 +10,7 @@ describe('agent-fetch', function packageTests() {
     vi.clearAllMocks();
     vi.resetModules();
     // Dynamically import to get fresh module with reset caches
-    const module = await import('./agent-fetch');
+    const module = await import('./agent-fetch'); // eslint-disable-line @next/next/no-assign-module-variable
     agentFetch = module.agentFetch;
   });
 
@@ -126,7 +126,7 @@ describe('agent-fetch', function packageTests() {
 
       // Should only make 1 token request despite 5 concurrent calls
       expect(tokenCalls.length).toBe(1);
-      
+
       // Total calls should be 6 (1 token + 5 actual requests)
       expect(fetch).toHaveBeenCalledTimes(6);
     });

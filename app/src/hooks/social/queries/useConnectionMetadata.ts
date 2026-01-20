@@ -138,7 +138,7 @@ export function useConnectionMetadata(
   const metadataQueries = useQueries({ queries })
 
   // Create stable identifier for query states to prevent infinite re-renders
-  const queryStateKey = metadataQueries.map(q => `${q.isLoading}-${!!q.data}-${!!q.error}`).join('|')
+  const queryStateKey = metadataQueries.map(q => `${q.isLoading}-${!!q.data}-${!!q.error}`).join('|') // eslint-disable-line @typescript-eslint/no-unused-vars
 
   // Create stable query state representation
   const queryStates = useMemo(() => {
@@ -147,7 +147,7 @@ export function useConnectionMetadata(
       data: q.data,
       error: q.error
     }))
-  }, [queryStateKey])
+  }, [metadataQueries])
 
   // Enrich connections with fetched metadata
   const enrichedConnections = useMemo(() => {

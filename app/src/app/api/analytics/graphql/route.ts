@@ -6,6 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+
 import { getInsightsAuthToken } from '@/lib/insights-auth'
 import { logger } from '@/lib/request-context'
 

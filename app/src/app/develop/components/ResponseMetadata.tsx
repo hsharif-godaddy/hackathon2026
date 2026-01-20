@@ -3,6 +3,7 @@
 import { Check,ClipboardCopy } from 'lucide-react'
 import { useState } from 'react'
 
+import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 
 interface ResponseMetadataProps {
@@ -28,6 +29,7 @@ interface ResponseMetadataProps {
  * ```
  */
 export default function ResponseMetadata({ duration, content }: ResponseMetadataProps) {
+  const t = useTranslations()
   const [copiedToClipboard, setCopiedToClipboard] = useState(false)
 
   /**
@@ -63,12 +65,12 @@ export default function ResponseMetadata({ duration, content }: ResponseMetadata
   return (
     <div className="flex items-center justify-between mt-1.5 text-xs text-foreground/60">
       <span>
-        Completed in {formatDuration(duration)}
+        {t('builder_chat_completed_in', {duration: formatDuration(duration)})}
       </span>
       <button
         onClick={handleCopyResponse}
         className="hover:text-muted-foreground transition-colors cursor-pointer"
-        title="Copy response to clipboard"
+        title={t('builder_chat_copy_clipboard')}
       >
         {copiedToClipboard ? <Check className="w-2 h-2" /> : <ClipboardCopy className="w-2 h-2" />}
       </button>

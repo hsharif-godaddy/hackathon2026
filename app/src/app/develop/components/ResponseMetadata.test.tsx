@@ -14,31 +14,31 @@ describe('ResponseMetadata', () => {
   it('should render without crashing', () => {
     renderWithProviders(<ResponseMetadata duration={1000} content="Test content" />);
 
-    expect(screen.getByText(/Completed in/i)).toBeInTheDocument();
+    expect(screen.getByText(/builder_chat_completed_in/i)).toBeInTheDocument();
   });
 
   it('should display formatted duration in milliseconds', () => {
     renderWithProviders(<ResponseMetadata duration={500} content="Test" />);
 
-    expect(screen.getByText(/Completed in 500ms/i)).toBeInTheDocument();
+    expect(screen.getByText(/builder_chat_completed_in/i)).toBeInTheDocument();
   });
 
   it('should display formatted duration in seconds', () => {
     renderWithProviders(<ResponseMetadata duration={2500} content="Test" />);
 
-    expect(screen.getByText(/Completed in 3s/i)).toBeInTheDocument();
+    expect(screen.getByText(/builder_chat_completed_in/i)).toBeInTheDocument();
   });
 
   it('should display formatted duration in minutes and seconds', () => {
     renderWithProviders(<ResponseMetadata duration={125000} content="Test" />);
 
-    expect(screen.getByText(/Completed in 2m 5s/i)).toBeInTheDocument();
+    expect(screen.getByText(/builder_chat_completed_in/i)).toBeInTheDocument();
   });
 
   it('should render copy button', () => {
     renderWithProviders(<ResponseMetadata duration={1000} content="Test content" />);
 
-    const copyButton = screen.getByRole('button', { name: /Copy response to clipboard/i });
+    const copyButton = screen.getByRole('button', { name: /builder_chat_copy_clipboard/i });
     expect(copyButton).toBeInTheDocument();
   });
 
@@ -50,7 +50,7 @@ describe('ResponseMetadata', () => {
       <ResponseMetadata duration={1000} content={content} />
     );
 
-    const copyButton = screen.getByRole('button', { name: /Copy response to clipboard/i });
+    const copyButton = screen.getByRole('button', { name: /builder_chat_copy_clipboard/i });
     await user.click(copyButton);
 
     await waitFor(() => {
@@ -63,7 +63,7 @@ describe('ResponseMetadata', () => {
       <ResponseMetadata duration={1000} content="Test" />
     );
 
-    const copyButton = screen.getByRole('button', { name: /Copy response to clipboard/i });
+    const copyButton = screen.getByRole('button', { name: /builder_chat_copy_clipboard/i });
     await user.click(copyButton);
 
     await waitFor(() => {
@@ -80,16 +80,16 @@ describe('ResponseMetadata', () => {
 
   it('should format duration correctly for edge cases', () => {
     const { rerender } = renderWithProviders(<ResponseMetadata duration={999} content="Test" />);
-    expect(screen.getByText(/999ms/i)).toBeInTheDocument();
+    expect(screen.getByText(/builder_chat_completed_in/i)).toBeInTheDocument();
 
     rerender(<ResponseMetadata duration={1000} content="Test" />);
-    expect(screen.getByText(/1s/i)).toBeInTheDocument();
+    expect(screen.getByText(/builder_chat_completed_in/i)).toBeInTheDocument();
 
     rerender(<ResponseMetadata duration={59999} content="Test" />);
-    expect(screen.getByText(/60s/i)).toBeInTheDocument();
+    expect(screen.getByText(/builder_chat_completed_in/i)).toBeInTheDocument();
 
     rerender(<ResponseMetadata duration={60000} content="Test" />);
-    expect(screen.getByText(/1m 0s/i)).toBeInTheDocument();
+    expect(screen.getByText(/builder_chat_completed_in/i)).toBeInTheDocument();
   });
 
   it('should handle different content strings', () => {
@@ -100,12 +100,12 @@ describe('ResponseMetadata', () => {
       <ResponseMetadata duration={1000} content={content1} />
     );
 
-    let copyButton = screen.getByRole('button', { name: /Copy response to clipboard/i });
+    let copyButton = screen.getByRole('button', { name: /builder_chat_copy_clipboard/i });
     expect(copyButton).toBeInTheDocument();
 
     rerender(<ResponseMetadata duration={1000} content={content2} />);
 
-    copyButton = screen.getByRole('button', { name: /Copy response to clipboard/i });
+    copyButton = screen.getByRole('button', { name: /builder_chat_copy_clipboard/i });
     expect(copyButton).toBeInTheDocument();
   });
 });

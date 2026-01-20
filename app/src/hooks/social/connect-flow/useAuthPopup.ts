@@ -122,7 +122,7 @@ export function useAuthPopup(
     return () => {
       window.removeEventListener('message', handleMessage)
     }
-  }, [expectedState, onAuthSuccess])
+  }, [expectedState, onAuthSuccess, t])
 
   useEffect(() => {
     return () => {

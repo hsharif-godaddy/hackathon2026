@@ -13,14 +13,10 @@
 
 import { EventEmitter } from 'events'
 import type { Socket } from 'socket.io-client'
+import type { Actor } from 'xstate'
 import { createActor } from 'xstate'
 
-import { logger } from '@/lib/request-context'
-import type { AgentsAppChatMessage } from '@/types/websocket-context'
-import { webSocketMachine, type WebSocketMachine } from './webSocketMachine'
-import { StoreSyncAdapter } from './StoreSyncAdapter'
-import { TransportSupervisor } from './TransportSupervisor'
-import type { Actor } from 'xstate'
+import type { VisualContext } from '@/app/develop/components/visualContextCapture'
 import type {
   MessageHandlerActions,
   MessageHandlerHelpers,
@@ -28,21 +24,25 @@ import type {
   ServerConfig,
   WebSocketStateUpdate,
 } from '@/hooks/websocket/handlers/types'
-import { ConnectionManager } from './ConnectionManager'
-import {
-  ChatMessageBuilder,
-  type BuildMessageParams,
-  type AIEditContext,
-  type Asset,
-  type TodoContext,
-  type BuildError,
-  type CustomContext,
-} from './ChatMessageBuilder'
-import type { VisualContext } from '@/app/develop/components/visualContextCapture'
 import {
   clearConversationIdCookie,
   getConversationIdFromCookie,
 } from '@/hooks/websocket/useWebSocketHelpers'
+import { logger } from '@/lib/request-context'
+import type { AgentsAppChatMessage } from '@/types/websocket-context'
+import {
+  type AIEditContext,
+  type Asset,
+  type BuildError,
+  type BuildMessageParams,
+  ChatMessageBuilder,
+  type CustomContext,
+  type TodoContext,
+} from './ChatMessageBuilder'
+import { ConnectionManager } from './ConnectionManager'
+import { StoreSyncAdapter } from './StoreSyncAdapter'
+import { TransportSupervisor } from './TransportSupervisor'
+import { type WebSocketMachine,webSocketMachine } from './webSocketMachine'
 
 export interface StreamingWebSocketControllerEvents {
   'connection:established': { socket: Socket; recovered: boolean }

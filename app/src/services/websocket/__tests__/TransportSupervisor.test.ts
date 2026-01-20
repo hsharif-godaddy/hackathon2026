@@ -57,12 +57,13 @@
  * - Recovery ack only sent when appropriate
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { TransportSupervisor, type TransportSupervisorDeps } from '../TransportSupervisor'
-import type { ConnectionManager, ConnectionCallbacks } from '../ConnectionManager'
 import type { Socket } from 'socket.io-client'
-import type { WebSocketActor } from '../stateMachineTypes'
+import { afterEach,beforeEach, describe, expect, it, vi } from 'vitest'
+
 import type { MessageHandlerActions } from '@/hooks/websocket/handlers/types'
+import type { ConnectionCallbacks,ConnectionManager } from '../ConnectionManager'
+import type { WebSocketActor } from '../stateMachineTypes'
+import { TransportSupervisor, type TransportSupervisorDeps } from '../TransportSupervisor'
 
 describe('TransportSupervisor', () => {
   let supervisor: TransportSupervisor

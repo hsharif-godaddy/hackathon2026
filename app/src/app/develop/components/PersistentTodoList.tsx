@@ -3,6 +3,7 @@
 import { AnimatePresence,motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 
+import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { todoListService } from '@/services/TodoListService'
 import { useCurrentAppId } from '@/stores/useStreamingConversationStore'
@@ -15,6 +16,7 @@ import { useCurrentList, useTodoListStore,useUpdatedItemIds, useViewState } from
  * with three states: closed, update, and open
  */
 export default function PersistentTodoList() {
+  const t = useTranslations()
   const currentList = useCurrentList()
   const viewState = useViewState()
   const updatedItemIds = useUpdatedItemIds()
@@ -107,7 +109,9 @@ export default function PersistentTodoList() {
           <div className="flex items-center gap-1 min-w-0 flex-1">
             <span className="font-medium text-foreground truncate">{currentList.name}</span>
             {viewState === 'update' && (
-              <span className="text-xs text-intents-info-color font-medium flex-shrink-0">Updated</span>
+              <span className="text-xs text-intents-info-color font-medium flex-shrink-0">
+                {t('builder_todo_updated')}
+              </span>
             )}
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
@@ -118,7 +122,7 @@ export default function PersistentTodoList() {
                   e.stopPropagation()
                   setViewState('closed')
                 }}
-                title="Collapse"
+                title={t('builder_common_collapse')}
               >
                 <svg
                   className="w-2 h-2"
@@ -129,7 +133,7 @@ export default function PersistentTodoList() {
                   viewBox="0 0 24 24"
                   stroke="currentColor"
                 >
-                  <title>Collapse</title>
+                  <title>{t('builder_common_collapse')}</title>
                   <path d="M5 15l7-7 7 7" />
                 </svg>
               </button>
@@ -208,7 +212,7 @@ export default function PersistentTodoList() {
           })}
           {remainingCount > 0 && (
             <div className="text-xs text-muted-foreground text-center pt-0.5">
-              +{remainingCount} more items
+              {t('builder_todo_count_more_items', { count: remainingCount })}
             </div>
           )}
         </div>
@@ -233,7 +237,7 @@ export default function PersistentTodoList() {
         <div className="px-2 py-1">
           <div className="flex items-center justify-between mb-1">
             <div className="text-xs text-muted-foreground">
-              {completedCount} of {totalItems} completed
+              {t('builder_todo_count_completed', { completedCount, totalItems })}
             </div>
             <button
               className="text-xs text-intents-info-color hover:text-foreground"
@@ -242,7 +246,7 @@ export default function PersistentTodoList() {
                 setIsModalOpen(true)
               }}
             >
-              View Details
+              {t('builder_todo_details')}
             </button>
           </div>
         </div>
@@ -256,7 +260,7 @@ export default function PersistentTodoList() {
             </div>
           ) : (
             <div className="text-sm text-muted-foreground text-center py-2">
-              No items yet
+              {t('builder_common_todo_no_items')}
             </div>
           )}
         </div>
@@ -358,6 +362,8 @@ function TodoListModal({
   onClose: () => void
   list: any
 }) {
+  const t = useTranslations()
+
   if (!isOpen || !list) return null
 
   const items = list.items || []
@@ -448,7 +454,7 @@ function TodoListModal({
                   </div>
                 ) : (
                   <div className="text-center text-muted-foreground py-4">
-                    No items yet
+                    {t('builder_common_todo_no_items')}
                   </div>
                 )}
               </div>

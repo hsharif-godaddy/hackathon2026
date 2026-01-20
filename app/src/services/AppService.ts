@@ -6,9 +6,7 @@ import { type AiroDeploymentStatus } from '@/lib/mgmt-airo'
 import { logger } from '@/lib/request-context'
 import { formatSubscriptionId } from '@/lib/subscription-id'
 import { type AppStatusType } from '@/stores/useAppStore'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { type ServerStatusType } from '@/stores/useServerStore'
-import { useSitesStore } from '@/stores/useSitesStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 
 export interface App {
@@ -139,11 +137,11 @@ export class AppService {
     if (!response.ok) {
       if (response.status === 404) {
         const isV2 = process.env.NEXT_PUBLIC_USE_V2_CONTROL_PLANE === 'true'
-        
+
         if (isV2) {
           throw new Error(`App not found in agents service: ${response.status}`)
         }
-        
+
         logger.info('app-service.get-app.not-found', {
           appId,
           message: 'App not found in agents database (may not be registered yet) - returning placeholder for legacy mode'
@@ -758,7 +756,7 @@ export class AppService {
 
       // Call register endpoint (name should already be set by initial agent)
       const prefixedSubscriptionId = formatSubscriptionId(freshSite.subscription_id);
-      
+
       logger.info('develop-page.registration.registering', {
         message: 'Registering app',
         siteId: appId,

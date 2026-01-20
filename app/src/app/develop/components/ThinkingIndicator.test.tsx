@@ -3,8 +3,8 @@ import '@testing-library/jest-dom';
 import { describe, expect, it } from 'vitest';
 import { screen } from '@testing-library/react';
 
-import { renderWithProviders } from '@/tests/test-utils';
 import ThinkingIndicator from '@/app/develop/components/ThinkingIndicator';
+import { renderWithProviders } from '@/tests/test-utils';
 
 describe('ThinkingIndicator', () => {
   it('should render without crashing', function render() {

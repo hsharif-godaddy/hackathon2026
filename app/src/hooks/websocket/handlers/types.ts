@@ -8,9 +8,9 @@
 import type { MutableRefObject } from 'react'
 import type { Socket } from 'socket.io-client'
 
+import type { ServerConfig, WebSocketActor } from '@/services/websocket/stateMachineTypes'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import type { StructuredError } from '@/types/errors'
-import type { ServerConfig, WebSocketActor } from '@/services/websocket/stateMachineTypes'
 
 /**
  * WebSocket message format from server

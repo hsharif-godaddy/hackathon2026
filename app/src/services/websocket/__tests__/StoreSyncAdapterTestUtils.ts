@@ -6,11 +6,12 @@
  */
 
 import { EventEmitter } from 'events'
-import { StoreSyncAdapter } from '../StoreSyncAdapter'
+
 import { createMockStore } from './MockFactories'
 import { StateMachineTestHarness } from './StateMachineTestUtils'
-import { webSocketMachine } from '../webSocketMachine'
 import type { MachineEvent } from '../stateMachineTypes'
+import { StoreSyncAdapter } from '../StoreSyncAdapter'
+import { webSocketMachine } from '../webSocketMachine'
 
 export class StoreSyncAdapterTestHarness {
   machine: StateMachineTestHarness
