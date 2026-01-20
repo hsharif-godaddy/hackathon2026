@@ -319,6 +319,103 @@ export class VideoGenerationTool {
   }
 
   /**
+   * Save video metadata to .airo/video.json
+   */
+  private saveVideoMetadata(
+    airoDir: string,
+    videoMetadataPath: string,
+    videoId: string,
+    isComplete: boolean,
+    appId: string,
+    filename: string = ''
+  ): void {
+    try {
+      fs.mkdirSync(airoDir, { recursive: true });
+
+      const videoMetadata = {
+        video: isComplete,
+        videoId,
+        filename
+      };
+
+      fs.writeFileSync(videoMetadataPath, JSON.stringify(videoMetadata, null, 2));
+
+      logger.info(`${isComplete ? 'Final' : 'Initial'} video metadata saved`, {
+        appId,
+        videoId,
+        videoMetadataPath,
+        ...(filename && { filename })
+      });
+    } catch (error) {
+      logger.error('Failed to save video metadata', {
+        appId,
+        videoId,
+        videoMetadataPath,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  /**
+   * Process outro stitching - validate requirements and stitch outro image
+   */
+  private async processOutroStitching(
+    filePath: string,
+    resolution: VideoResolution,
+    appId: string,
+    videoId: string
+  ): Promise<void> {
+    const outroImagePath = path.join(process.cwd(), 'images', 'Built_with_Airo_Builder_720x1280.jpeg');
+
+    if (!fs.existsSync(outroImagePath)) {
+      logger.error('Outro image not found', {
+        appId,
+        videoId,
+        outroImagePath
+      });
+      throw new Error(`Required outro image not found: ${outroImagePath}`);
+    }
+
+    const ffmpegAvailable = await this.checkFfmpegAvailable();
+    if (!ffmpegAvailable) {
+      logger.error('ffmpeg not available on system', {
+        appId,
+        videoId
+      });
+      throw new Error('ffmpeg is required for outro stitching but is not available on the system');
+    }
+
+    logger.info('video.outro.stitch.begin', {
+      appId,
+      videoId,
+      outroImagePath
+    });
+
+    await this.stitchOutroImage(filePath, outroImagePath, resolution);
+
+    logger.info('Outro stitched successfully', {
+      appId,
+      videoId
+    });
+  }
+
+  /**
+   * Create log data structure for tracking
+   */
+  private createLogData(
+    appId: string,
+    prompt: string,
+    options: { duration: number; resolution: VideoResolution; filename?: string }
+  ): any {
+    return {
+      toolName: 'video-generation-tool',
+      appId,
+      prompt,
+      options
+    };
+  }
+
+  /**
    * Generate a video using OpenAI Sora
    * Always generates prompt from the app's conversation summary
    */
@@ -333,45 +430,7 @@ export class VideoGenerationTool {
     const startTime = Date.now();
 
     try {
-      // Step 1: Generate prompt from app summary
-      logger.info('Generating video prompt from app summary', { appId });
-      const videoPromptService = getVideoPromptGenerationService();
-      const generatedPrompt = await videoPromptService.generateVideoPrompt(appId);
-
-      if (!generatedPrompt) {
-        logger.error('video-generation.no-prompt', {
-          appId,
-          error: 'No conversation summary available for video prompt generation'
-        });
-        return {
-          success: false,
-          error: 'Failed to generate video prompt from app summary. Make sure the app has conversation history.'
-        };
-      }
-
-      logger.info('Video prompt generated from app summary', {
-        appId,
-        promptLength: generatedPrompt.length
-      });
-
-      const logData = {
-        toolName: 'video-generation-tool',
-        appId,
-        prompt: generatedPrompt,
-        options: { duration, resolution, filename }
-      };
-
-      toolVideoGenerationEvents.begin(logger, logData);
-
-      const openaiClient = await createOpenAIClient();
-      if (!openaiClient) {
-        return {
-          success: false,
-          error: 'OpenAI client could not be created - authentication not configured properly'
-        };
-      }
-
-      // Get the app's actual path from the database
+      // Get the app's actual path from the database first
       const appRepository = new AppRepository();
       const app = appRepository?.findById(appId);
       if (!app) {
@@ -381,7 +440,67 @@ export class VideoGenerationTool {
         };
       }
 
+      // Declare paths once at the beginning using database path
       const appPath = app.path;
+      const airoDir = path.join(appPath, '.airo');
+      const videoMetadataPath = path.join(airoDir, 'video.json');
+      
+      // Check if video already exists
+      let existingVideoId: string | null = null;
+      if (fs.existsSync(videoMetadataPath)) {
+        try {
+          const videoMetadata = JSON.parse(fs.readFileSync(videoMetadataPath, 'utf-8'));
+          
+          if (videoMetadata.video === true && videoMetadata.videoId && videoMetadata.filename) {
+            const videoFilePath = path.join(appPath, 'public', 'images', videoMetadata.filename);
+            
+            // Check if the video file actually exists
+            if (fs.existsSync(videoFilePath)) {
+              logger.info('video-generation.existing-video-complete', {
+                appId,
+                existingVideoId: videoMetadata.videoId,
+                existingFilename: videoMetadata.filename,
+                videoFilePath
+              });
+              return {
+                success: true,
+                url: `${app.previewUrl}/public/images/${videoMetadata.filename}`,
+                filepath: videoFilePath,
+                publicPath: `/public/images/${videoMetadata.filename}`,
+              };
+            } else {
+              // Video file doesn't exist, use videoId to poll
+              existingVideoId = videoMetadata.videoId;
+              logger.info('video-generation.metadata-exists-but-file-missing', {
+                appId,
+                existingVideoId,
+                expectedFilePath: videoFilePath
+              });
+            }
+          } else if (videoMetadata.video === false && videoMetadata.videoId) {
+            // Video generation is in progress, use existing videoId to poll
+            existingVideoId = videoMetadata.videoId;
+            logger.info('video-generation.in-progress-detected', {
+              appId,
+              existingVideoId
+            });
+          }
+        } catch (error) {
+          logger.warn('video-generation.metadata-read-failed', {
+            appId,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+
+      const openaiClient = await createOpenAIClient();
+      if (!openaiClient) {
+        return {
+          success: false,
+          error: 'OpenAI client could not be created - authentication not configured properly'
+        };
+      }
+
       const publicDir = path.join(appPath, 'public');
       const imagesDir = path.join(publicDir, 'images');
 
@@ -389,78 +508,123 @@ export class VideoGenerationTool {
       fs.mkdirSync(publicDir, { recursive: true });
       fs.mkdirSync(imagesDir, { recursive: true });
 
-      // Step 2: Submit video generation request
-      const requestBody = {
-        model: 'sora-2',
-        prompt: generatedPrompt.trim(),
-        size: resolution,
-        seconds: String(duration) // Must be string: '4', '8', or '12'
-      };
+      let videoId: string;
+      let generatedPrompt: string = '';
+      let logData: any;
 
-      logger.info('Submitting video generation request', {
-        appId,
-        model: requestBody.model,
-        duration: requestBody.seconds,
-        resolution: requestBody.size,
-        promptLength: requestBody.prompt.length,
-        requestBody: JSON.stringify(requestBody, null, 2)
-      });
+      if (existingVideoId) {
+        // Use existing video ID and skip video creation
+        videoId = existingVideoId;
+        logger.info('Using existing video ID for polling', {
+          appId,
+          videoId
+        });
 
-      const createResponse = await fetch(
-        `${openaiClient.baseURL}/videos`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openaiClient.apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(requestBody)
-        }
-      );
+        logData = this.createLogData(appId, 'existing-video', { duration, resolution, filename });
+        toolVideoGenerationEvents.begin(logger, logData);
+      } else {
+        // Step 1: Generate prompt from app summary
+        logger.info('Generating video prompt from app summary', { appId });
+        const videoPromptService = getVideoPromptGenerationService();
+        const promptResult = await videoPromptService.generateVideoPrompt(appId);
 
-      if (!createResponse.ok) {
-        let errorDetails = `${createResponse.status} ${createResponse.statusText}`;
-        try {
-          const errorBody = await createResponse.json();
-          errorDetails += ` - ${JSON.stringify(errorBody)}`;
-          logger.error('Video generation API error details', {
+        if (!promptResult) {
+          logger.error('video-generation.no-prompt', {
             appId,
-            status: createResponse.status,
-            statusText: createResponse.statusText,
-            errorBody
+            error: 'No conversation summary available for video prompt generation'
           });
-        } catch {
-          // If we can't parse JSON, try to get text
+          return {
+            success: false,
+            error: 'Failed to generate video prompt from app summary. Make sure the app has conversation history.'
+          };
+        }
+
+        generatedPrompt = promptResult;
+
+        logger.info('Video prompt generated from app summary', {
+          appId,
+          promptLength: generatedPrompt.length
+        });
+
+        logData = this.createLogData(appId, generatedPrompt, { duration, resolution, filename });
+        toolVideoGenerationEvents.begin(logger, logData);
+
+        // Step 2: Submit video generation request
+        const requestBody = {
+          model: 'sora-2',
+          prompt: generatedPrompt.trim(),
+          size: resolution,
+          seconds: String(duration) // Must be string: '4', '8', or '12'
+        };
+
+        logger.info('Submitting video generation request', {
+          appId,
+          model: requestBody.model,
+          duration: requestBody.seconds,
+          resolution: requestBody.size,
+          promptLength: requestBody.prompt.length,
+          requestBody: JSON.stringify(requestBody, null, 2)
+        });
+
+        const createResponse = await fetch(
+          `${openaiClient.baseURL}/videos`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${openaiClient.apiKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+          }
+        );
+
+        if (!createResponse.ok) {
+          let errorDetails = `${createResponse.status} ${createResponse.statusText}`;
           try {
-            const errorText = await createResponse.text();
-            errorDetails += ` - ${errorText}`;
-            logger.error('Video generation API error (text)', {
+            const errorBody = await createResponse.json();
+            errorDetails += ` - ${JSON.stringify(errorBody)}`;
+            logger.error('Video generation API error details', {
               appId,
               status: createResponse.status,
-              errorText
+              statusText: createResponse.statusText,
+              errorBody
             });
           } catch {
-            // Ignore if we can't get the body
+            // If we can't parse JSON, try to get text
+            try {
+              const errorText = await createResponse.text();
+              errorDetails += ` - ${errorText}`;
+              logger.error('Video generation API error (text)', {
+                appId,
+                status: createResponse.status,
+                errorText
+              });
+            } catch {
+              // Ignore if we can't get the body
+            }
           }
+          throw new Error(`Failed to create video generation job: ${errorDetails}`);
         }
-        throw new Error(`Failed to create video generation job: ${errorDetails}`);
+
+        const createData = await createResponse.json();
+        if (!createData || !createData.id) {
+          return {
+            success: false,
+            error: 'No video job created from the provided prompt'
+          };
+        }
+
+        videoId = createData.id;
+
+        logger.info('Video generation job created', {
+          appId,
+          videoId,
+          prompt: generatedPrompt.substring(0, 100)
+        });
+
+        // Save initial video metadata to track video generation in progress
+        this.saveVideoMetadata(airoDir, videoMetadataPath, videoId, false, appId);
       }
-
-      const createData = await createResponse.json();
-      if (!createData || !createData.id) {
-        return {
-          success: false,
-          error: 'No video job created from the provided prompt'
-        };
-      }
-
-      const videoId = createData.id;
-
-      logger.info('Video generation job created', {
-        appId,
-        videoId,
-        prompt: generatedPrompt.substring(0, 100)
-      });
 
       // Step 3: Poll for completion and download
       const { status, content } = await this.pollVideoStatus(
@@ -495,57 +659,26 @@ export class VideoGenerationTool {
 
       // Step 4: Save the video
       const safeFilename = filename ||
-        generatedPrompt.trim()
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-+|-+$/g, '')
-          .substring(0, 40);
+        (generatedPrompt ? 
+          generatedPrompt.trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .substring(0, 40)
+          : 'video');
 
       const fullFilename = `go_live-${safeFilename}-${nanoid(6)}.mp4`;
       const filePath = path.join(imagesDir, fullFilename);
 
       fs.writeFileSync(filePath, videoBuffer);
 
-      // Stitch outro image if available and ffmpeg is installed
-      const outroImagePath = path.join(process.cwd(), 'images', 'Built_with_Airo_Builder_720x1280.jpeg');
-      if (fs.existsSync(outroImagePath)) {
-        const ffmpegAvailable = await this.checkFfmpegAvailable();
-        
-        if (ffmpegAvailable) {
-          logger.info('video.outro.stitch.begin', {
-            appId,
-            videoId,
-            outroImagePath
-          });
+      // Stitch outro image (required)
+      await this.processOutroStitching(filePath, resolution, appId, videoId);
 
-          try {
-            await this.stitchOutroImage(filePath, outroImagePath, resolution);
-            logger.info('Outro stitched successfully', {
-              appId,
-              videoId
-            });
-          } catch (error) {
-            logger.warn('Failed to stitch outro, continuing with original video', {
-              appId,
-              videoId,
-              error: error instanceof Error ? error.message : String(error)
-            });
-          }
-        } else {
-          logger.warn('ffmpeg not available on system, skipping outro', {
-            appId,
-            videoId
-          });
-        }
-      } else {
-        logger.warn('Outro image not found, skipping outro', {
-          appId,
-          videoId,
-          outroImagePath
-        });
-      }
+      // Save video metadata to .airo directory after video processing succeeds
+      this.saveVideoMetadata(airoDir, videoMetadataPath, videoId, true, appId, fullFilename);
 
-      const publicPath = `/images/${fullFilename}`;
+      const publicPath = `/public/images/${fullFilename}`;
       const executionTime = Date.now() - startTime;
 
       toolVideoGenerationEvents.success(logger, {
