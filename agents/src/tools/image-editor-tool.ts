@@ -47,7 +47,16 @@ export class ImageEditorTool {
     toolImageGenerationEvents.begin(logger, logData);
 
     try {
-      const appPath = path.join(this.appsBaseDir, appId, 'app');
+      // Get the app's actual path from the database
+      const app = this.appRepository.findById(appId);
+      if (!app) {
+        return {
+          success: false,
+          error: `App not found: ${appId}`
+        };
+      }
+
+      const appPath = app.path;
       const publicDir = path.join(appPath, 'public');
       const imagesDir = path.join(publicDir, 'images');
 
@@ -106,8 +115,8 @@ export class ImageEditorTool {
         }
       });
 
-      const app = this.appRepository.findById(appId);
-      const imageUrl = app?.previewUrl 
+      // Use the app object already fetched earlier
+      const imageUrl = app.previewUrl 
         ? `${app.previewUrl.replace(/\/+$/, '')}${publicPath}` 
         : publicPath;
 

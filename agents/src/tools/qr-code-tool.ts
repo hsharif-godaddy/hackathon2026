@@ -108,8 +108,8 @@ export class QRCodeTool {
       const cleanPage = targetPage.startsWith('/') ? targetPage : `/${targetPage}`;
       const targetUrl = `${baseUrl.replace(/\/+$/, '')}${cleanPage}`;
 
-      // Setup directories
-      const appPath = path.join(this.appsBaseDir, appId);
+      // Setup directories using the app's actual path
+      const appPath = app.path;
       const publicDir = path.join(appPath, 'public');
       const qrCodesDir = path.join(publicDir, 'qr-codes');
 

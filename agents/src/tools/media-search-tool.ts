@@ -437,7 +437,17 @@ export class MediaSearchTool {
         };
       }
 
-      const appPath = path.join(this.appsBaseDir, appId);
+      // Get the app's actual path from the database
+      const appRepository = new AppRepository();
+      const app = appRepository.findById(appId);
+      if (!app) {
+        return {
+          success: false,
+          error: `App not found: ${appId}`
+        };
+      }
+
+      const appPath = app.path;
       const publicDir = path.join(appPath, 'public');
       const imagesDir = path.join(publicDir, 'images');
 
@@ -513,10 +523,8 @@ export class MediaSearchTool {
         }
       });
 
-      // Get app's preview URL
-      const appRepository = new AppRepository();
-      const app = appRepository.findById(appId);
-      const imageUrl = app?.previewUrl 
+      // Get app's preview URL (app was already fetched earlier)
+      const imageUrl = app.previewUrl 
         ? `${app.previewUrl.replace(/\/+$/, '')}${publicPath}` 
         : publicPath;
 

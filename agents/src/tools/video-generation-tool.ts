@@ -371,7 +371,17 @@ export class VideoGenerationTool {
         };
       }
 
-      const appPath = path.join(this.appsBaseDir, appId);
+      // Get the app's actual path from the database
+      const appRepository = new AppRepository();
+      const app = appRepository?.findById(appId);
+      if (!app) {
+        return {
+          success: false,
+          error: `App not found: ${appId}`
+        };
+      }
+
+      const appPath = app.path;
       const publicDir = path.join(appPath, 'public');
       const imagesDir = path.join(publicDir, 'images');
 
@@ -557,10 +567,8 @@ export class VideoGenerationTool {
         }
       });
 
-      // Get app's preview URL
-      const appRepository = new AppRepository();
-      const app = appRepository.findById(appId);
-      const videoUrl = app?.previewUrl 
+      // Get app's preview URL (app was already fetched earlier)
+      const videoUrl = app.previewUrl 
         ? `${app.previewUrl.replace(/\/+$/, '')}${publicPath}` 
         : publicPath;
 
