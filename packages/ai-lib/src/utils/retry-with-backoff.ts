@@ -5,7 +5,7 @@
  * Only a unified logger interface is supported for structured events.
  */
 
-import { BudgetExceededError } from './errors.js'
+import { BudgetExceededError, isTransientBadRequest } from './errors.js'
 import { APICallError } from '@ai-sdk/provider'
 
 /**
@@ -24,6 +24,15 @@ export interface RetryOptions {
   jitter?: boolean
 }
 
+/** Default number of retry attempts (initial + retries) */
+const DEFAULT_MAX_ATTEMPTS = 5
+/** Default base delay in milliseconds before first retry */
+const DEFAULT_BASE_DELAY_MS = 1000
+/** Default exponential backoff factor */
+const DEFAULT_BACKOFF_FACTOR = 2
+/** Default maximum delay cap in milliseconds */
+const DEFAULT_MAX_DELAY_MS = 16000
+
 /**
  * Default retry configuration
  * - 5 attempts total (initial + 4 retries)
@@ -32,10 +41,10 @@ export interface RetryOptions {
  * - Total max time: ~63 seconds with jitter
  */
 export const DEFAULT_RETRY_OPTIONS: Required<RetryOptions> = {
-  maxAttempts: 5,
-  baseDelayMs: 1000,
-  factor: 2,
-  maxDelayMs: 16000,
+  maxAttempts: DEFAULT_MAX_ATTEMPTS,
+  baseDelayMs: DEFAULT_BASE_DELAY_MS,
+  factor: DEFAULT_BACKOFF_FACTOR,
+  maxDelayMs: DEFAULT_MAX_DELAY_MS,
   jitter: true
 }
 // Backwards compatible legacy constant name (unreleased branch)
@@ -82,8 +91,12 @@ function classify(error: unknown): RetryDecision {
       return { retryable: true, category: 'transient', statusCode, message }
     }
 
-    // Client errors (non-retryable) - except 408 which is handled above
+    // Client errors - check for transient 400s before marking as non-retryable
     if (statusCode && statusCode >= 400 && statusCode < 500) {
+      // Check if this is a transient 400 that might succeed on retry
+      if (statusCode === 400 && isTransientBadRequest(message, error.responseBody)) {
+        return { retryable: true, category: 'transient', statusCode, message }
+      }
       return { retryable: false, statusCode, message }
     }
 
@@ -133,7 +146,11 @@ function classify(error: unknown): RetryDecision {
     return { retryable: true, category: 'transient', statusCode, message }
   }
 
+  // Client errors - check for transient 400s before marking as non-retryable
   if (statusCode && statusCode >= 400 && statusCode < 500) {
+    if (statusCode === 400 && isTransientBadRequest(message)) {
+      return { retryable: true, category: 'transient', statusCode, message }
+    }
     return { retryable: false, statusCode, message }
   }
   return { retryable: false, statusCode, message }

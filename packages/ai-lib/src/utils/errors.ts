@@ -27,6 +27,66 @@ export function containsBudgetExceededPattern(text: string): boolean {
 }
 
 /**
+ * Patterns in 400 error messages that indicate non-retryable validation errors.
+ * These are specific error conditions where retrying would not help.
+ *
+ * Observed in:
+ * - AI SDK v4.x/v5.x/v6.x (@ai-sdk/provider, @ai-sdk/anthropic, @ai-sdk/openai)
+ * - LiteLLM proxy responses
+ *
+ * Patterns:
+ * - toolUse.input: AI SDK tool input validation failure (malformed JSON in tool call)
+ * - JSON parsing: JSON syntax error in request/response parsing
+ */
+export const NON_RETRYABLE_400_PATTERNS = ['toolUse.input', 'JSON parsing'] as const;
+
+/**
+ * Check if a 400 Bad Request error is potentially transient and worth retrying.
+ *
+ * Context: LLM APIs (OpenAI, Claude) sometimes return 400 errors during streaming
+ * when clients disconnect mid-request. These are not true validation errors but
+ * rather artifacts of the interrupted connection. A retry often succeeds.
+ *
+ * Transient 400s are retried using the standard retry infrastructure (retry-with-backoff.ts)
+ * with the same backoff settings as other transient errors. This is appropriate because:
+ * - The retry infrastructure already handles exponential backoff and jitter
+ * - Consistent retry behavior across all transient error types
+ * - Proper logging and metadata tracking via RetryContext
+ *
+ * Returns true if the error:
+ * - Contains "bad request" in the message (generic 400 indicator)
+ * - Does NOT contain known non-retryable validation patterns (toolUse.input, JSON parsing)
+ * - Does NOT indicate a budget exceeded error
+ *
+ * @param message - The error message from the API
+ * @param responseBody - Optional response body to check for budget patterns
+ * @returns true if the error may be transient and worth retrying
+ */
+export function isTransientBadRequest(message: string, responseBody?: string): boolean {
+  const messageLower = message.toLowerCase();
+
+  // Must be a generic "bad request" error
+  if (!messageLower.includes('bad request')) {
+    return false;
+  }
+
+  // Check for known non-retryable patterns
+  const hasNonRetryablePattern = NON_RETRYABLE_400_PATTERNS.some(
+    pattern => message.includes(pattern)
+  );
+  if (hasNonRetryablePattern) {
+    return false;
+  }
+
+  // Check for budget exceeded in response body
+  if (responseBody && containsBudgetExceededPattern(responseBody)) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Safely serialize an error for logging, avoiding circular references
  * and extracting only serializable properties
  *

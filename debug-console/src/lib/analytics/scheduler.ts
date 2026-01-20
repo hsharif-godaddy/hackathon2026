@@ -104,314 +104,314 @@ function safeNum(val: unknown): number {
 // Process a single pioneer log entry - returns true if processed
 function processPioneerLog(log: LogEntry): boolean {
   if (!log.app_id) return false;
-  const event = log.event;
+    const event = log.event;
 
-  switch (event) {
-    case 'agent.run.finish': {
-      const d = log.data as {
-        agentName?: string;
-        finishReason?: string;
-        steps?: unknown;
-        totalUsage?: { inputTokens?: unknown; outputTokens?: unknown; cachedInputTokens?: unknown };
-      };
+    switch (event) {
+      case 'agent.run.finish': {
+        const d = log.data as {
+          agentName?: string;
+          finishReason?: string;
+          steps?: unknown;
+          totalUsage?: { inputTokens?: unknown; outputTokens?: unknown; cachedInputTokens?: unknown };
+        };
       if (!d.totalUsage) return false;
-      const input = safeNum(d.totalUsage.inputTokens);
-      const output = safeNum(d.totalUsage.outputTokens);
+        const input = safeNum(d.totalUsage.inputTokens);
+        const output = safeNum(d.totalUsage.outputTokens);
       if (input === 0 && output === 0) return false;
-      insertRun({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        agent_id: log.agentId || 'unknown',
-        agent_name: d.agentName,
-        finish_reason: d.finishReason,
-        steps: safeNum(d.steps),
-        input_tokens: input,
-        output_tokens: output,
-        cached_input_tokens: safeNum(d.totalUsage.cachedInputTokens)
-      });
+        insertRun({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          agent_id: log.agentId || 'unknown',
+          agent_name: d.agentName,
+          finish_reason: d.finishReason,
+          steps: safeNum(d.steps),
+          input_tokens: input,
+          output_tokens: output,
+          cached_input_tokens: safeNum(d.totalUsage.cachedInputTokens)
+        });
       return true;
-    }
+      }
 
-    case 'agent.step.finish': {
-      const d = log.data as {
-        model?: string;
-        provider?: string;
-        inputTokens?: number;
-        outputTokens?: number;
-        finishReason?: string;
-        toolCallCount?: number;
-      };
-      insertLlmCall({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        agent_id: log.agentId,
-        model: d.model,
-        provider: d.provider,
-        input_tokens: d.inputTokens || 0,
-        output_tokens: d.outputTokens || 0,
-        finish_reason: d.finishReason,
-        tool_call_count: d.toolCallCount || 0
-      });
+      case 'agent.step.finish': {
+        const d = log.data as {
+          model?: string;
+          provider?: string;
+          inputTokens?: number;
+          outputTokens?: number;
+          finishReason?: string;
+          toolCallCount?: number;
+        };
+        insertLlmCall({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          agent_id: log.agentId,
+          model: d.model,
+          provider: d.provider,
+          input_tokens: d.inputTokens || 0,
+          output_tokens: d.outputTokens || 0,
+          finish_reason: d.finishReason,
+          tool_call_count: d.toolCallCount || 0
+        });
       return true;
-    }
+      }
 
-    case 'observability.llm.ended': {
-      const d = log.data as {
-        model?: string;
-        provider?: string;
-        durationMs?: number;
-        finishReason?: string;
-      };
-      insertLlmCall({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        agent_id: log.agentId,
-        model: d.model,
-        provider: d.provider,
-        duration_ms: d.durationMs || 0,
-        finish_reason: d.finishReason
-      });
+      case 'observability.llm.ended': {
+        const d = log.data as {
+          model?: string;
+          provider?: string;
+          durationMs?: number;
+          finishReason?: string;
+        };
+        insertLlmCall({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          agent_id: log.agentId,
+          model: d.model,
+          provider: d.provider,
+          duration_ms: d.durationMs || 0,
+          finish_reason: d.finishReason
+        });
       return true;
-    }
+      }
 
-    case 'develop_agent.tool.execution.complete': {
-      const d = log.data as { toolName?: string };
+      case 'develop_agent.tool.execution.complete': {
+        const d = log.data as { toolName?: string };
       if (!d.toolName) return false;
-      insertToolExecution({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        agent_id: log.agentId,
-        tool_name: d.toolName
-      });
+          insertToolExecution({
+            es_id: log._id,
+            timestamp: log.timestamp,
+            app_id: log.app_id,
+            agent_id: log.agentId,
+            tool_name: d.toolName
+          });
       return true;
-    }
+      }
 
-    case 'compression.batch.complete': {
-      const d = log.data as {
-        totalMessages?: number;
-        compressedMessages?: number;
-        originalTotalLength?: number;
-        compressedTotalLength?: number;
-        compressionRatio?: number;
-        savedBytes?: number;
-        strategiesUsed?: Record<string, number>;
-      };
-      insertCompression({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        total_messages: d.totalMessages || 0,
-        compressed_messages: d.compressedMessages || 0,
-        original_bytes: d.originalTotalLength || 0,
-        compressed_bytes: d.compressedTotalLength || 0,
-        compression_ratio: d.compressionRatio || 0,
-        saved_bytes: d.savedBytes || 0,
-        strategies: d.strategiesUsed
-      });
+      case 'compression.batch.complete': {
+        const d = log.data as {
+          totalMessages?: number;
+          compressedMessages?: number;
+          originalTotalLength?: number;
+          compressedTotalLength?: number;
+          compressionRatio?: number;
+          savedBytes?: number;
+          strategiesUsed?: Record<string, number>;
+        };
+        insertCompression({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          total_messages: d.totalMessages || 0,
+          compressed_messages: d.compressedMessages || 0,
+          original_bytes: d.originalTotalLength || 0,
+          compressed_bytes: d.compressedTotalLength || 0,
+          compression_ratio: d.compressionRatio || 0,
+          saved_bytes: d.savedBytes || 0,
+          strategies: d.strategiesUsed
+        });
       return true;
-    }
+      }
 
-    case 'conversation.history.loader.token_limit_reached': {
-      const d = log.data as { droppedMessages?: number; processedMessages?: number };
-      insertConversation({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        agent_id: log.agentId,
-        event_type: 'token_limit_reached',
-        dropped_messages: d.droppedMessages || 0,
-        processed_messages: d.processedMessages || 0
-      });
+      case 'conversation.history.loader.token_limit_reached': {
+        const d = log.data as { droppedMessages?: number; processedMessages?: number };
+        insertConversation({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          agent_id: log.agentId,
+          event_type: 'token_limit_reached',
+          dropped_messages: d.droppedMessages || 0,
+          processed_messages: d.processedMessages || 0
+        });
       return true;
-    }
+      }
 
-    case 'summarization.background.complete': {
-      const d = log.data as {
-        originalTokens?: number;
-        summaryTokens?: number;
-        compressionRatio?: number;
-      };
-      insertSummarization({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        original_tokens: d.originalTokens || 0,
-        summary_tokens: d.summaryTokens || 0,
-        compression_ratio: d.compressionRatio || 0,
-        success: true
-      });
+      case 'summarization.background.complete': {
+        const d = log.data as {
+          originalTokens?: number;
+          summaryTokens?: number;
+          compressionRatio?: number;
+        };
+        insertSummarization({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          original_tokens: d.originalTokens || 0,
+          summary_tokens: d.summaryTokens || 0,
+          compression_ratio: d.compressionRatio || 0,
+          success: true
+        });
       return true;
-    }
+      }
 
-    case 'summarization.detailed_llm.failure': {
-      const d = log.data as { error?: string; message?: string };
-      insertSummarization({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        success: false,
-        error_message: d.error || d.message
-      });
+      case 'summarization.detailed_llm.failure': {
+        const d = log.data as { error?: string; message?: string };
+        insertSummarization({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          success: false,
+          error_message: d.error || d.message
+        });
       return true;
-    }
+      }
 
-    case 'summarization.detailed_llm.token_budget_exceeded': {
-      const d = log.data as { message?: string };
-      insertSummarization({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        success: false,
-        error_message: d.message || 'Token budget exceeded'
-      });
+      case 'summarization.detailed_llm.token_budget_exceeded': {
+        const d = log.data as { message?: string };
+        insertSummarization({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          success: false,
+          error_message: d.message || 'Token budget exceeded'
+        });
       return true;
-    }
+      }
 
-    case 'knowb-driver.proxy.error': {
-      const d = log.data as { status?: number; error?: string };
-      insertError({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        event_type: 'knowb-driver.proxy.error',
-        status_code: d.status,
-        error_message: d.error
-      });
+      case 'knowb-driver.proxy.error': {
+        const d = log.data as { status?: number; error?: string };
+        insertError({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          event_type: 'knowb-driver.proxy.error',
+          status_code: d.status,
+          error_message: d.error
+        });
       return true;
-    }
+      }
 
-    case 'conversation.start':
-    case 'conversation.continue': {
-      const d = log.data as { socketId?: string };
-      insertConversation({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        agent_id: log.agentId,
-        event_type: event,
-        socket_id: d.socketId
-      });
+      case 'conversation.start':
+      case 'conversation.continue': {
+        const d = log.data as { socketId?: string };
+        insertConversation({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          agent_id: log.agentId,
+          event_type: event,
+          socket_id: d.socketId
+        });
       return true;
-    }
+      }
 
-    case 'websocket.conversation.error': {
-      const d = log.data as { error?: string; socketId?: string };
-      const isBudgetError = d.error?.toLowerCase().includes('budget');
-      insertConversation({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        agent_id: log.agentId,
-        event_type: isBudgetError ? 'budget_exceeded' : 'conversation_error',
-        socket_id: d.socketId
-      });
-      insertError({
-        es_id: log._id + '_err',
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        event_type: isBudgetError ? 'budget_exceeded' : 'websocket.conversation.error',
-        error_message: d.error
-      });
+      case 'websocket.conversation.error': {
+        const d = log.data as { error?: string; socketId?: string };
+        const isBudgetError = d.error?.toLowerCase().includes('budget');
+        insertConversation({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          agent_id: log.agentId,
+          event_type: isBudgetError ? 'budget_exceeded' : 'conversation_error',
+          socket_id: d.socketId
+        });
+        insertError({
+          es_id: log._id + '_err',
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          event_type: isBudgetError ? 'budget_exceeded' : 'websocket.conversation.error',
+          error_message: d.error
+        });
       return true;
-    }
+      }
 
-    case 'tool.file.edit.operation.failure':
-    case 'tool.file.edit.batch.failure': {
-      const d = log.data as { filePath?: string; error?: string; message?: string };
-      insertToolFailure({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        agent_id: log.agentId,
-        tool_name: 'fileEdit',
-        error_message: d.error || d.message,
-        file_path: d.filePath
-      });
+      case 'tool.file.edit.operation.failure':
+      case 'tool.file.edit.batch.failure': {
+        const d = log.data as { filePath?: string; error?: string; message?: string };
+        insertToolFailure({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          agent_id: log.agentId,
+          tool_name: 'fileEdit',
+          error_message: d.error || d.message,
+          file_path: d.filePath
+        });
       return true;
-    }
+      }
 
-    case 'tool.git.operation.failure': {
-      const d = log.data as { error?: string };
-      insertToolFailure({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        agent_id: log.agentId,
-        tool_name: 'git',
-        error_message: d.error
-      });
+      case 'tool.git.operation.failure': {
+        const d = log.data as { error?: string };
+        insertToolFailure({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          agent_id: log.agentId,
+          tool_name: 'git',
+          error_message: d.error
+        });
       return true;
-    }
+      }
 
-    case 'tool.image.search.failure': {
-      const d = log.data as { error?: string };
-      insertToolFailure({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        agent_id: log.agentId,
-        tool_name: 'imageSearch',
-        error_message: d.error
-      });
+      case 'tool.image.search.failure': {
+        const d = log.data as { error?: string };
+        insertToolFailure({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          agent_id: log.agentId,
+          tool_name: 'imageSearch',
+          error_message: d.error
+        });
       return true;
-    }
+      }
 
-    case 'tool.ast.edit.failure': {
-      const d = log.data as { filePath?: string; error?: string };
-      insertToolFailure({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        agent_id: log.agentId,
-        tool_name: 'astEdit',
-        error_message: d.error,
-        file_path: d.filePath
-      });
+      case 'tool.ast.edit.failure': {
+        const d = log.data as { filePath?: string; error?: string };
+        insertToolFailure({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          agent_id: log.agentId,
+          tool_name: 'astEdit',
+          error_message: d.error,
+          file_path: d.filePath
+        });
       return true;
-    }
+      }
 
-    case 'model.provider.selected': {
-      const d = log.data as { model?: string; provider?: string };
+      case 'model.provider.selected': {
+        const d = log.data as { model?: string; provider?: string };
       if (!d.model) return false;
-      insertModelSelection({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        model: d.model,
-        provider: d.provider
-      });
+          insertModelSelection({
+            es_id: log._id,
+            timestamp: log.timestamp,
+            app_id: log.app_id,
+            model: d.model,
+            provider: d.provider
+          });
       return true;
-    }
+      }
 
-    case 'dev_supervisor.exec.success': {
-      const d = log.data as { command?: string; durationMs?: number; exitCode?: number };
-      insertCommandExecution({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        command: d.command,
-        success: true,
-        duration_ms: d.durationMs,
-        exit_code: d.exitCode
-      });
+      case 'dev_supervisor.exec.success': {
+        const d = log.data as { command?: string; durationMs?: number; exitCode?: number };
+        insertCommandExecution({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          command: d.command,
+          success: true,
+          duration_ms: d.durationMs,
+          exit_code: d.exitCode
+        });
       return true;
-    }
+      }
 
-    case 'dev_supervisor.exec.failure': {
-      const d = log.data as { command?: string; durationMs?: number; exitCode?: number };
-      insertCommandExecution({
-        es_id: log._id,
-        timestamp: log.timestamp,
-        app_id: log.app_id,
-        command: d.command,
-        success: false,
-        duration_ms: d.durationMs,
-        exit_code: d.exitCode
-      });
+      case 'dev_supervisor.exec.failure': {
+        const d = log.data as { command?: string; durationMs?: number; exitCode?: number };
+        insertCommandExecution({
+          es_id: log._id,
+          timestamp: log.timestamp,
+          app_id: log.app_id,
+          command: d.command,
+          success: false,
+          duration_ms: d.durationMs,
+          exit_code: d.exitCode
+        });
       return true;
     }
 
@@ -424,7 +424,7 @@ function processPioneerLog(log: LogEntry): boolean {
         success: true
       });
       return true;
-    }
+      }
 
     case 'route.publish.success': {
       const d = log.data as { commitHash?: string };
@@ -519,21 +519,21 @@ async function fetchAndProcessPioneerEvents(
   };
 
   try {
-    let response = await sourceClient.search({
-      index: SOURCE_INDEX_NAME,
-      scroll: '2m',
-      body: query
-    });
+  let response = await sourceClient.search({
+    index: SOURCE_INDEX_NAME,
+    scroll: '2m',
+    body: query
+  });
 
-    scrollId = response._scroll_id;
+  scrollId = response._scroll_id;
 
     // Process first batch
-    for (const hit of response.hits.hits) {
+  for (const hit of response.hits.hits) {
       const log = { _id: hit._id!, ...hit._source as Omit<LogEntry, '_id'> };
       if (processPioneerLog(log)) {
         processedCount++;
         pendingCount.value++;
-      }
+  }
     }
 
     // Flush if threshold reached
@@ -543,14 +543,14 @@ async function fetchAndProcessPioneerEvents(
     }
 
     // Continue scrolling
-    while (response.hits.hits.length > 0 && scrollId) {
-      response = await sourceClient.scroll({
-        scroll_id: scrollId,
-        scroll: '2m'
-      });
-      scrollId = response._scroll_id;
+  while (response.hits.hits.length > 0 && scrollId) {
+    response = await sourceClient.scroll({
+      scroll_id: scrollId,
+      scroll: '2m'
+    });
+    scrollId = response._scroll_id;
 
-      for (const hit of response.hits.hits) {
+    for (const hit of response.hits.hits) {
         const log = { _id: hit._id!, ...hit._source as Omit<LogEntry, '_id'> };
         if (processPioneerLog(log)) {
           processedCount++;
@@ -611,8 +611,8 @@ async function fetchAndProcessKatanaErrors(
       if (processKatanaLog(log)) {
         processedCount++;
         pendingCount.value++;
-      }
     }
+  }
 
     if (pendingCount.value >= FLUSH_THRESHOLD) {
       await flushPendingDocs();
@@ -642,7 +642,7 @@ async function fetchAndProcessKatanaErrors(
   } catch (error) {
     console.error('[Scheduler] Katana fetch error:', error);
   } finally {
-    if (scrollId) {
+  if (scrollId) {
       await writeClient.clearScroll({ scroll_id: scrollId }).catch(() => {});
     }
   }
@@ -682,7 +682,7 @@ async function getMinMaxTimestamp(): Promise<{ pioneer: Date | null; katana: Dat
       const backfillStart = new Date(Date.now() - DEFAULT_PIONEER_BACKFILL_DAYS * 24 * 60 * 60 * 1000);
       if (!pioneerMinMax || backfillStart < pioneerMinMax) {
         pioneerMinMax = backfillStart;
-      }
+}
     }
   }
 

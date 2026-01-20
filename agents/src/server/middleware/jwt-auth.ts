@@ -7,6 +7,7 @@ import { Request, Response, NextFunction } from 'express';
 import { getJWTValidator } from '../../lib/jwt-validator.js';
 import { validateJWTAgentConfig } from '../../lib/jwks-config.js';
 import { auth, AuthType } from '../../services/features.js';
+import { logger } from '../../logging/index.js';
 
 export interface AgentContext {
   siteId: string;          // Custom claim
@@ -103,12 +104,25 @@ export class JWTAuthMiddleware {
       if (authType === AuthType.JWT) {
         const authHeader = req.headers.authorization;
         if (!authHeader?.startsWith('Bearer ')) {
+          const hasSomeAuth = !!authHeader;
+          logger.warn('jwt.auth.missing_bearer', {
+            path: req.path,
+            method: req.method,
+            hasAuthHeader: hasSomeAuth,
+            authHeaderLength: hasSomeAuth ? authHeader.length : undefined,
+          });
           res.status(401).json({ error: 'Missing Authorization header', requiresAuth: true });
           return;
         }
 
         const token = authHeader.substring(7);
         if (token.length > this.MAX_TOKEN_SIZE) {
+          logger.warn('jwt.auth.token_too_large', {
+            path: req.path,
+            method: req.method,
+            tokenLength: token.length,
+            maxSize: this.MAX_TOKEN_SIZE,
+          });
           res.status(401).json({ error: 'Token too large', requiresAuth: true });
           return;
         }
@@ -117,6 +131,11 @@ export class JWTAuthMiddleware {
         const validationResult = await this.jwtValidator.validateToken(token);
 
         if (!validationResult.valid || !validationResult.claims) {
+          logger.warn('jwt.auth.validation_failed', {
+            path: req.path,
+            method: req.method,
+            reason: validationResult.reason || 'Invalid token',
+          });
           res.status(401).json({
             error: validationResult.reason || 'Invalid token',
             requiresAuth: true
@@ -139,9 +158,15 @@ export class JWTAuthMiddleware {
       }
 
       // Unknown auth type - should not happen
+      logger.error('jwt.auth.unknown_type', { authType });
       res.status(500).json({ error: 'Unknown authentication type configured' });
 
     } catch (error: unknown) {
+      logger.error('jwt.auth.error', {
+        path: req.path,
+        method: req.method,
+        error: error instanceof Error ? error.message : String(error),
+      });
       res.status(500).json({ error: 'Authentication error' });
     }
   };

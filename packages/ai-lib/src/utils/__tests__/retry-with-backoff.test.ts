@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { retryWithBackoff, DEFAULT_RETRY_CONFIG, hasRetryMetadata, getRetryMetadata, isRetryableError } from '../retry-with-backoff.js'
-import { createNetworkError, createRateLimitError, createServerError, createAuthError, createBadRequestError, createServiceUnavailableError, createFailingFunction } from './test-helpers.js'
+import { createNetworkError, createRateLimitError, createServerError, createAuthError, createBadRequestError, createServiceUnavailableError, createFailingFunction, createTransientBadRequestError, createToolValidationError } from './test-helpers.js'
 
 describe('retry-with-backoff simplified', () => {
   let events: { info: any[]; warn: any[]; error: any[] }
@@ -103,6 +103,39 @@ describe('retry-with-backoff simplified', () => {
     expect(isRetryableError(createRateLimitError())).toBe(true)
     expect(isRetryableError(createServerError(500))).toBe(true)
     expect(isRetryableError(createAuthError(401))).toBe(false)
-    expect(isRetryableError(createBadRequestError())).toBe(false)
+    // Note: createBadRequestError('Bad request') is now retryable as a transient 400
+    // Use a non-matching message for non-retryable 400 test
+    expect(isRetryableError(createBadRequestError('Invalid parameter value'))).toBe(false)
+  })
+
+  it('transient 400 "Bad Request" is retried', async () => {
+    const fn = createFailingFunction(1, () => createTransientBadRequestError('Bad Request'), 'ok')
+    const p = retryWithBackoff(fn, DEFAULT_RETRY_CONFIG, { operation: 'generate', logger })
+    await vi.runAllTimersAsync()
+    const res = await p
+    expect(res).toBe('ok')
+    expect(events.warn).toHaveLength(1)
+    expect(events.info).toHaveLength(1)
+  })
+
+  it('tool validation 400 is NOT retried', async () => {
+    const fn = vi.fn().mockRejectedValue(createToolValidationError())
+    const p = retryWithBackoff(fn, DEFAULT_RETRY_CONFIG, { operation: 'generate', logger })
+    const caught = p.catch(e => e)
+    await vi.runAllTimersAsync()
+    const err = await caught
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(events.error).toHaveLength(1)
+    expect(events.warn).toHaveLength(0)
+    expect(err.message).toContain('toolUse.input')
+  })
+
+  it('isRetryableError identifies transient vs non-transient 400s', () => {
+    // Transient 400 (generic "Bad Request") should be retryable
+    expect(isRetryableError(createTransientBadRequestError('Bad Request'))).toBe(true)
+
+    // Non-transient 400s should NOT be retryable
+    expect(isRetryableError(createBadRequestError('Invalid parameter'))).toBe(false)
+    expect(isRetryableError(createToolValidationError())).toBe(false)
   })
 })

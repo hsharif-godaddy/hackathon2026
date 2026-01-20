@@ -45,9 +45,31 @@ export function createAuthError(statusCode: 401 | 403 = 401, message?: string): 
 }
 
 /**
- * Creates a bad request error (400) - should NOT be retried
+ * Creates a bad request error (400) - should NOT be retried by default
  */
 export function createBadRequestError(message: string = 'Bad request'): Error {
+  const error: any = new Error(message)
+  error.status = 400
+  error.statusCode = 400
+  return error
+}
+
+/**
+ * Creates a transient bad request error (400) - generic "Bad Request" that may be retried
+ * These occur when LLM APIs return 400 during streaming due to client disconnection
+ */
+export function createTransientBadRequestError(message: string = 'Bad Request'): Error {
+  const error: any = new Error(message)
+  error.status = 400
+  error.statusCode = 400
+  return error
+}
+
+/**
+ * Creates a tool validation bad request error (400) - should NOT be retried
+ * These are specific validation errors from AI SDK
+ */
+export function createToolValidationError(message: string = 'toolUse.input is invalid JSON'): Error {
   const error: any = new Error(message)
   error.status = 400
   error.statusCode = 400

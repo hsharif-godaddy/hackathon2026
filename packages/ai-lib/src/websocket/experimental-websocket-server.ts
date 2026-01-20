@@ -2748,17 +2748,32 @@ Please try again with corrected formatting.`
         }
       } else {
         // Non-retryable errors (budget exceeded, etc.) should propagate immediately
+        // Note: Transient 400 errors are now handled by the retry infrastructure in retry-with-backoff.ts
+        // via the classify() function which uses isTransientBadRequest()
         const errorClassification = classifyError(error);
+
+        // Enhanced logging for 400 errors to help diagnose issues
+        if (isAPIError && error.statusCode === 400) {
+          this.logger.warn('llm.api.bad_request', {
+            socketId: socket.id,
+            agentName,
+            statusCode: error.statusCode,
+            message: error.message,
+            responseBodyLength: error.responseBody?.length,
+            category: errorClassification.category,
+            retryable: errorClassification.retryable
+          });
+        }
+
         if (!errorClassification.retryable) {
           this.logger.warn(`Non-retryable error in streamGenerate: ${errorClassification.category || 'unknown'}`, {
             category: errorClassification.category,
             statusCode: errorClassification.statusCode
           });
-          throw error;
         }
 
-        // Re-throw other errors to be handled by the outer catch block
-        throw error
+        // Re-throw to be handled by outer catch block or AI SDK retry mechanism
+        throw error;
       }
     }
 
