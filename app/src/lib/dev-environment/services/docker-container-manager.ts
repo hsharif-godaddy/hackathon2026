@@ -1068,27 +1068,27 @@ export class DockerContainerManager {
 	/**
 	 * Get container status for a specific app (uses Docker Compose)
 	 */
-	async getAppContainerStatus(appId: string) {
-		const containerInfo =
-			this.containers.get(appId) || this.getContainerFromDb(appId);
+		async getAppContainerStatus(appId: string) {
+			const containerInfo =
+				this.containers.get(appId) || this.getContainerFromDb(appId);
 
-		if (!containerInfo) {
-			return {
-				status: "not_found",
-				message: "No container found for this app",
-			};
-		}
+			if (!containerInfo) {
+				return {
+					status: "not_found",
+					message: "No container found for this app",
+				};
+			}
 
-		try {
-			const basePath = getBasePath(appId);
-			const composeStatus = await this.composeManager.ps(basePath);
+			try {
+				const basePath = getBasePath(appId);
+				const composeStatus = await this.composeManager.ps(basePath);
 
-			// Find app service
-			const appService = composeStatus.services.find(s => s.name === 'app' || s.name.includes('app'));
+				// Find preview service status (main container for the app)
+				const appService = composeStatus.services.find(s => s.name === 'preview' || s.name.includes('preview'));
 
-			if (!appService) {
-				// Clean up orphaned database record
-				this.removeContainerFromDb(appId);
+				if (!appService) {
+					// Clean up orphaned database record
+					this.removeContainerFromDb(appId);
 
 				return {
 					status: "container_missing",
@@ -1133,17 +1133,17 @@ export class DockerContainerManager {
 			throw new Error("No container found for this app");
 		}
 
-		try {
-			// Use Docker Compose to get logs for the app service
-			return await this.composeManager.logs(containerInfo.appPath, {
-				tail: lines,
-				service: 'app',
-			});
-		} catch (error) {
-			throw new Error(
-				`Failed to get container logs: ${error instanceof Error ? error.message : String(error)}`,
-			);
-		}
+			try {
+				// Use Docker Compose to get logs for the app service
+				return await this.composeManager.logs(containerInfo.appPath, {
+					tail: lines,
+					service: 'preview',
+				});
+			} catch (error) {
+				throw new Error(
+					`Failed to get container logs: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
 	}
 
 	/**
