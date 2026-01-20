@@ -67,8 +67,10 @@ function HomeContent() {
   }, [])
 
   // Use useCallback to ensure the function reference stays stable
-  const handleStartBuilding = useCallback(async () => {
-    if (!promptTextRef.current.trim() || isRedirecting || isLoading) return
+  const handleStartBuilding = useCallback(async (overridePrompt?: string) => {
+    // Handle case where this is called as an event handler (overridePrompt would be a MouseEvent)
+    const promptToUse = (typeof overridePrompt === 'string' ? overridePrompt : promptTextRef.current).trim()
+    if (!promptToUse || isRedirecting || isLoading) return
 
     // Clear any previous errors and set loading state
     setError(null)
@@ -88,7 +90,7 @@ function HomeContent() {
         logger.info('page.auth.sso-login', 'User not authenticated, showing SSO login')
 
         // Save the prompt to localStorage before showing login
-        localStorage.setItem('airo-pending-prompt', promptTextRef.current.trim())
+        localStorage.setItem('airo-pending-prompt', promptToUse)
         logger.info('homepage.prompt.save', { message: 'Saved prompt to localStorage before login' })
 
         signIn({ onShowMockLogin: () => setShowMockLogin(true) });
@@ -102,7 +104,7 @@ function HomeContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          initialPrompt: promptTextRef.current.trim()
+          initialPrompt: promptToUse
         })
       })
 
@@ -118,7 +120,7 @@ function HomeContent() {
       sessionStorage.setItem(`name-registration-pending-${siteData.id}`, 'true')
       sessionStorage.setItem(`initial-prompt-pending-${siteData.id}`, 'true')
       sessionStorage.setItem(`in-creation-flow-${siteData.id}`, 'true')
-      sessionStorage.setItem(`initial-prompt-text-${siteData.id}`, promptTextRef.current.trim())
+      sessionStorage.setItem(`initial-prompt-text-${siteData.id}`, promptToUse)
 
       // Immediately redirect to /develop/{siteId} - deployment polling will happen there
       // If the response includes type='job', add query param to indicate this is a temporary job ID
@@ -178,9 +180,7 @@ function HomeContent() {
       setPromptText(savedPrompt)
       localStorage.removeItem('airo-pending-prompt')
 
-      setTimeout(() => {
-        handleStartBuilding()
-      }, 250)
+      handleStartBuilding(savedPrompt)
     }
   }, [isAuthenticated, authIsLoading, promptText, handleStartBuilding])
 

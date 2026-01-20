@@ -77,7 +77,8 @@ const defaultFetchAgentToken = async (siteId: string): Promise<string | null> =>
   if (typeof document === 'undefined') return null
 
   try {
-    const response = await fetch('/api/auth/agent-token', {
+    const { appFetch } = await import('@/lib/gasket-config')
+    const response = await appFetch('/api/auth/agent-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ siteId, expiresInSeconds: 12 * 60 * 60 }),
@@ -131,6 +132,19 @@ export class ConnectionManager {
   private tokenRefreshCount = 0
   private socketUrl: string | null = null
   private connectPromise: Promise<void> | null = null
+  private lifecycleHandlersBySocket = new WeakMap<
+    Socket,
+    {
+      onConnect: () => void
+      onConnectError: (error: Error) => void
+      onDisconnect: (reason: Socket.DisconnectReason) => void
+      onReconnectAttempt: (attempt: number) => void
+      onReconnect: (attempt: number) => void
+      onReconnectError: (error: Error) => void
+      onReconnectFailed: () => void
+      onError: (error: Error) => void
+    }
+  >()
 
   private readonly deps: ConnectionManagerDependencies
 
@@ -161,10 +175,23 @@ export class ConnectionManager {
       const opts = sharedSocket.io?.opts as { auth?: { appId?: string } } | undefined
       const socketAppId = opts?.auth?.appId
       if (socketAppId === appId) {
-        // Reuse shared socket for same app
+        // Reuse shared socket for same app.
+        // IMPORTANT: When reusing, we must still wire lifecycle handlers and notify callbacks.
+        // Otherwise, downstream state machines can get stuck in "connecting" even though
+        // the underlying socket is already connected.
         this.socket = sharedSocket
-        this.createdHere = false
+        // This project uses ConnectionManager only for the main streaming connection.
+        // Treat the reused shared socket as "owned" here so disconnect() can clean it up.
+        this.createdHere = true
+        this.registerLifecycleHandlers(sharedSocket, appId)
         callbacks.onSocketReady?.(sharedSocket, { isNew: false })
+        if (sharedSocket.connected) {
+          // If already connected, connect event won't re-fire; proactively notify.
+          callbacks.onConnect?.({ socket: sharedSocket, recovered: Boolean(sharedSocket.recovered) })
+        } else {
+          // Ensure the socket is actively connecting so we eventually get onConnect.
+          sharedSocket.connect()
+        }
         return Promise.resolve()
       }
 
@@ -209,13 +236,17 @@ export class ConnectionManager {
     }
     this.connectPromise = null
 
-    if (this.socket && this.createdHere) {
-      this.socket.removeAllListeners()
-      if (this.socket.io) {
-        this.socket.io.reconnection(false)
+    if (this.socket) {
+      this.unregisterLifecycleHandlers(this.socket)
+
+      if (this.createdHere) {
+        this.socket.removeAllListeners()
+        if (this.socket.io) {
+          this.socket.io.reconnection(false)
+        }
+        this.socket.disconnect()
+        setSharedSocket(null)
       }
-      this.socket.disconnect()
-      setSharedSocket(null)
     }
 
     this.socket = null
@@ -338,52 +369,84 @@ export class ConnectionManager {
   }
 
   private registerLifecycleHandlers(socket: Socket, appId: string): void {
-    socket.on('connect', () => {
-      const previousSocketId = this.getStoredSocketId(appId)
+    // Avoid accumulating duplicate listeners when reusing the shared socket across mounts.
+    this.unregisterLifecycleHandlers(socket)
 
-      let recovered = false
-      if (socket.recovered) {
-        recovered = true
-      } else if (previousSocketId && previousSocketId !== socket.id) {
-        recovered = true
-      }
+    const handlers = {
+      onConnect: () => {
+        const previousSocketId = this.getStoredSocketId(appId)
 
-      this.storeSocketId(appId, socket.id)
-      this.tokenRefreshCount = 0
+        let recovered = false
+        if (socket.recovered) {
+          recovered = true
+        } else if (previousSocketId && previousSocketId !== socket.id) {
+          recovered = true
+        }
 
-      this.callbacks?.onConnect?.({ socket, recovered })
-    })
+        this.storeSocketId(appId, socket.id)
+        this.tokenRefreshCount = 0
 
-    socket.on('connect_error', (error: Error) => {
-      void this.handleConnectError(error, appId)
-    })
+        this.callbacks?.onConnect?.({ socket, recovered })
+      },
 
-    socket.on('disconnect', (reason: Socket.DisconnectReason) => {
-      this.callbacks?.onDisconnect?.({ reason, socket })
-    })
+      onConnectError: (error: Error) => {
+        void this.handleConnectError(error, appId)
+      },
 
-    socket.on('reconnect_attempt', (attempt: number) => {
-      this.callbacks?.onReconnectAttempt?.({ socket, attempt })
-    })
+      onDisconnect: (reason: Socket.DisconnectReason) => {
+        this.callbacks?.onDisconnect?.({ reason, socket })
+      },
 
-    socket.on('reconnect', (attempt: number) => {
-      this.callbacks?.onReconnect?.({ socket, attempt })
-    })
+      onReconnectAttempt: (attempt: number) => {
+        this.callbacks?.onReconnectAttempt?.({ socket, attempt })
+      },
 
-    socket.on('reconnect_error', (error: Error) => {
-      this.callbacks?.onReconnectError?.({ socket, error })
-    })
+      onReconnect: (attempt: number) => {
+        this.callbacks?.onReconnect?.({ socket, attempt })
+      },
 
-    socket.on('reconnect_failed', () => {
-      this.callbacks?.onReconnectFailed?.({ socket })
-    })
+      onReconnectError: (error: Error) => {
+        this.callbacks?.onReconnectError?.({ socket, error })
+      },
 
-    socket.on('error', (error: Error) => {
-      logger.error('websocket.connection.error', {
-        message: error.message,
-        stack: error.stack,
-      })
-    })
+      onReconnectFailed: () => {
+        this.callbacks?.onReconnectFailed?.({ socket })
+      },
+
+      onError: (error: Error) => {
+        logger.error('websocket.connection.error', {
+          message: error.message,
+          stack: error.stack,
+        })
+      },
+    }
+
+    this.lifecycleHandlersBySocket.set(socket, handlers)
+
+    socket.on('connect', handlers.onConnect)
+    socket.on('connect_error', handlers.onConnectError)
+    socket.on('disconnect', handlers.onDisconnect)
+    socket.on('reconnect_attempt', handlers.onReconnectAttempt)
+    socket.on('reconnect', handlers.onReconnect)
+    socket.on('reconnect_error', handlers.onReconnectError)
+    socket.on('reconnect_failed', handlers.onReconnectFailed)
+    socket.on('error', handlers.onError)
+  }
+
+  private unregisterLifecycleHandlers(socket: Socket): void {
+    const handlers = this.lifecycleHandlersBySocket.get(socket)
+    if (!handlers) return
+
+    socket.off('connect', handlers.onConnect)
+    socket.off('connect_error', handlers.onConnectError)
+    socket.off('disconnect', handlers.onDisconnect)
+    socket.off('reconnect_attempt', handlers.onReconnectAttempt)
+    socket.off('reconnect', handlers.onReconnect)
+    socket.off('reconnect_error', handlers.onReconnectError)
+    socket.off('reconnect_failed', handlers.onReconnectFailed)
+    socket.off('error', handlers.onError)
+
+    this.lifecycleHandlersBySocket.delete(socket)
   }
 
   private async handleConnectError(error: Error, appId: string): Promise<void> {

@@ -708,6 +708,9 @@ describe('TransportSupervisor', () => {
         'recovery_ack',
         expect.any(Object)
       )
+
+      // Still track replay events in the state machine
+      expect(mockMachine.send).toHaveBeenCalledWith({ type: 'REPLAY_EVENT_RECEIVED' })
     })
 
     it('should send recovery ack after replay complete and all events received', async () => {
@@ -737,6 +740,9 @@ describe('TransportSupervisor', () => {
           lastSequence: 42,
         }
       )
+
+      // Notify the machine that the ack was sent so recovery can exit
+      expect(mockMachine.send).toHaveBeenCalledWith({ type: 'RECOVERY_ACK_SENT' })
     })
 
     it('should register all required message handlers', async () => {
@@ -782,6 +788,8 @@ describe('TransportSupervisor', () => {
           lastSequence: 42,
         }
       )
+
+      expect(mockMachine.send).toHaveBeenCalledWith({ type: 'RECOVERY_ACK_SENT' })
     })
   })
 

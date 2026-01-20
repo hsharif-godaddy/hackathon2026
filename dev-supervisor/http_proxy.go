@@ -1306,6 +1306,14 @@ func (p *HTTPProxy) loadTLSConfig() (*tls.Config, error) {
 func (p *HTTPProxy) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("proxy.health.check", "remote_addr", r.RemoteAddr)
 
+	// Allow cross-origin health checks from the builder UI (e.g. local.gasket.dev-godaddy.com)
+	// so client-side polling can determine when the preview app is ready.
+	SetCORSHeaders(w, r, p.config.AllowedOrigins)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	// Set content type
 	w.Header().Set("Content-Type", "application/json")
 

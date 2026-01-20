@@ -612,6 +612,21 @@ describe('AiroMgmtClient', () => {
       expect(mockFetch).toHaveBeenCalledTimes(3);
     });
 
+    it('should not retry on 401 Unauthorized', async () => {
+      const errorResponse = {
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        url: 'https://mgmt.test.com/api/airo/v1/subscriptions',
+        text: async () => 'Unauthorized'
+      } as Response;
+
+      mockFetch.mockResolvedValueOnce(errorResponse);
+
+      await expect(client.getSubscriptions()).rejects.toBeInstanceOf(Error);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
     it('should retry on 404 when retryOn404 is enabled', async () => {
       mockFetch
         .mockResolvedValueOnce({

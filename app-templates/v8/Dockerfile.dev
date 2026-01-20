@@ -111,6 +111,10 @@ COPY --chown=agent:agent --from=publish coming-soon.js /publish/coming-soon.js
 # Make publish scripts executable
 RUN chmod +x /publish/run-app.sh /publish/coming-soon.js
 
+# Copy healthcheck script (must be available before switching to non-root user)
+COPY scripts/dev-supervisor-healthcheck.sh /usr/local/bin/dev-supervisor-healthcheck.sh
+RUN chmod +x /usr/local/bin/dev-supervisor-healthcheck.sh
+
 # Create logs and supervisor socket directories
 RUN mkdir -p logs /tmp/supervisor
 
@@ -137,7 +141,7 @@ ENV NPM_CONFIG_CACHE=/npm-cache
 
 # Health check using dev-supervisor API
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl --unix-socket /tmp/supervisor/dev-supervisor.sock http://localhost/health || exit 1
+    CMD /usr/local/bin/dev-supervisor-healthcheck.sh
 
 # Use our dev-specific git setup script via dev-supervisor
 ENTRYPOINT ["/usr/local/bin/dev-supervisor"]

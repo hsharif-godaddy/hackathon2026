@@ -240,7 +240,8 @@ describe('useStreamingWebSocket', () => {
 
     // Mock fetch for JWT token
     global.fetch = vi.fn((url) => {
-      if (url === '/api/auth/agent-token') {
+      const urlString = String(url)
+      if (urlString.includes('/api/auth/agent-token')) {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ token: 'test-jwt-token' })
@@ -314,6 +315,9 @@ describe('useStreamingWebSocket', () => {
       vi.mocked(useCurrentAppId).mockReturnValue(null);
 
       const { result } = renderHook(() => useStreamingWebSocket());
+
+      // Wait for initial sync microtask to complete
+      await Promise.resolve();
 
       // Clear initial setIsLoading(false) call from idle state sync
       mockSetIsLoadingAction.mockClear();

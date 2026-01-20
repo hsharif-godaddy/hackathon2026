@@ -379,6 +379,13 @@ export class TransportSupervisor extends EventEmitter {
       receivedCount: pending.receivedCount,
       forced: force,
     })
+
+    // Notify the state machine that the recovery ack was sent so it can exit
+    // transport.connected.recovering.sendingAck → transport.connected.idle.
+    if (pending.ackEvent === 'recovery_ack') {
+      this.deps.machine.send({ type: 'RECOVERY_ACK_SENT' })
+    }
+
     this.deps.refs.pendingRecoveryAck.current = null
   }
 
@@ -392,6 +399,7 @@ export class TransportSupervisor extends EventEmitter {
     }
 
     pending.receivedCount++;
+    this.deps.machine.send({ type: 'REPLAY_EVENT_RECEIVED' })
     this.maybeSendRecoveryAck(socket);
   }
 

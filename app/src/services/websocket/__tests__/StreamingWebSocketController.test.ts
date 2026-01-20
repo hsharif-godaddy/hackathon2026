@@ -552,5 +552,45 @@ describe('StreamingWebSocketController', () => {
       // (verified through integration tests with handlers)
       expect(customDeps.toolDeltaBufferRef.current).toBe(customBuffer)
     })
+
+    it('should not send events to stopped machine during destroy with in-flight connection', async () => {
+      // Regression test for Bug 3: Cleanup order race condition
+      // Previously, machine.stop() was called before disconnect(), causing async connection
+      // events to arrive after machine was stopped, resulting in XState warnings and leaks
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      // Start connection but don't complete it yet
+      const connectPromise = controller.connect('app-123')
+
+      // Get the callbacks that were registered
+      const callbacks = (mockConnectionManager.connect as any).mock.calls[0][1] as ConnectionCallbacks
+
+      // Immediately destroy the controller while connection is in-flight
+      // This simulates unmount during connection attempt
+      controller.destroy()
+
+      // Now simulate late-arriving connection events that would have been triggered by async ops
+      // With the correct destroy order (disconnect → adapter → machine), these should be safe
+      callbacks.onSocketReady?.(mockSocket, { isNew: true })
+      callbacks.onConnect?.({ socket: mockSocket, recovered: false })
+
+      // Verify no XState "event sent to stopped actor" warnings were logged
+      const xstateWarnings = consoleSpy.mock.calls.filter(call =>
+        call.some(arg =>
+          typeof arg === 'string' &&
+          arg.includes('event sent to stopped actor') ||
+          arg.includes('sent to stopped machine')
+        )
+      )
+
+      expect(xstateWarnings).toHaveLength(0)
+
+      // Verify disconnect was called (ensures sockets and listeners were cleaned up)
+      expect(mockConnectionManager.disconnect).toHaveBeenCalled()
+
+      consoleSpy.mockRestore()
+      await connectPromise.catch(() => {}) // Cleanup promise
+    })
   })
 })

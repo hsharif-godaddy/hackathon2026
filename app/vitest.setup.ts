@@ -26,6 +26,21 @@ global.console = {
 // Mock fetch globally (can be overridden in individual tests)
 global.fetch = vi.fn();
 
+// Ensure appFetch/authFetch-based code paths work in tests without relying on external auth behavior.
+// Fully mock gasket-auth to prevent real network requests and provide the minimal runtime exports
+// used by application code (some are imported as values even if only used for typing).
+vi.mock('@godaddy/gasket-auth', async () => {
+  const React = await import('react')
+  return {
+    authFetch: (url: string, options?: RequestInit) => globalThis.fetch(url, options),
+    useAuthState: () => ({ isLoading: false, isAuthenticated: true, details: {} }),
+    AuthRequired: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+    AuthIdpType: {},
+    AuthRealmType: {},
+    AuthRiskType: {},
+  }
+})
+
 // jsdom provides sessionStorage and localStorage, but we need to ensure they're cleared between tests
 // This will be handled in beforeEach hooks in individual test files
 
@@ -65,4 +80,3 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: vi.fn(),
   })),
 });
-

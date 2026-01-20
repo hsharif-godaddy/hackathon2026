@@ -226,12 +226,26 @@ export class StreamingWebSocketController extends EventEmitter {
   }
 
   /**
-   * Cleanup - stop machine, adapter, and supervisor
+   * Cleanup - disconnect resources, then stop machine
+   *
+   * Order is critical to prevent race conditions:
+   * 1. disconnect() - Stops WebSocket and removes event listeners (prevents new events)
+   * 2. adapter.destroy() - Unsubscribes from machine (cleanup subscriptions)
+   * 3. machine.stop() - Stops state machine (safe, no more events can arrive)
+   *
+   * Previous order (adapter → machine → disconnect) caused race conditions where
+   * async connection events (CONNECT, CONNECTION_ESTABLISHED) would arrive after
+   * machine was stopped, causing XState warnings and resource leaks.
    */
   destroy(): void {
-    this.adapter.destroy()
-    this.machine.stop()
+    // 1. Disconnect transport first - stops event sources
     this.disconnect()
+
+    // 2. Clean up adapter subscriptions
+    this.adapter.destroy()
+
+    // 3. Stop machine last - safe because no more events can arrive
+    this.machine.stop()
   }
 
   // ===== Event Deduplication Methods =====

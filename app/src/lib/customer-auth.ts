@@ -324,6 +324,28 @@ export function withCustomerAuth<T extends unknown[]>(
       );
     }
 
+    // If the JWT is "too old", downstream gateways may reject it even if it hasn't expired.
+    // Short-circuit with a 401 so client-side authFetch can refresh/re-login proactively.
+    const jwt = authContext.jwt
+    const looksLikeJwt = typeof jwt === 'string' && jwt.split('.').length === 3
+    if (looksLikeJwt && isTokenTooOld(jwt)) {
+      const tokenAgeMinutes = getTokenAgeMinutes(jwt);
+      logger.warn('auth.token.too-old.rejecting', {
+        message: 'JWT token too old for downstream gateway, returning 401 to force refresh',
+        tokenAgeMinutes,
+        customerId: authContext.user.customerId,
+        shopperId: authContext.user.shopperId,
+      }, {
+        tags: ['security']
+      });
+
+      return createCustomerAuthErrorWithData(
+        'Your session is stale. Please log in again to continue.',
+        401,
+        { requiresRefresh: true, tokenAgeMinutes }
+      );
+    }
+
     // Set up request context for the entire request lifecycle
     const requestContext: RequestContext = {
       customerId: authContext.user.customerId
@@ -363,12 +385,21 @@ export function canAccessOwnAccount(customer: CustomerUser, shopperId: string): 
  * Response helper for customer authorization errors
  */
 export function createCustomerAuthError(message: string, status: number = 403): NextResponse {
+  return createCustomerAuthErrorWithData(message, status);
+}
+
+export function createCustomerAuthErrorWithData(
+  message: string,
+  status: number = 403,
+  data: Record<string, unknown> = {}
+): NextResponse {
   return NextResponse.json(
     {
       error: status === 401 ? 'Unauthorized' : 'Forbidden',
       message,
       requiresAuth: status === 401,
-      customerOnly: true
+      customerOnly: true,
+      ...data
     },
     { status }
   );

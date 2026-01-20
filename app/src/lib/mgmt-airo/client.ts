@@ -1,3 +1,5 @@
+import { context as otelContext, propagation } from '@opentelemetry/api';
+
 import { logger } from '@/lib/request-context';
 import { extractCustomerId as extractCustomerIdFromJWT } from '@/lib/utils/jwt-utils';
 import {
@@ -95,14 +97,24 @@ export class AiroMgmtClient {
       const attemptStart = Date.now();
 
       try {
+        const headers: Record<string, string> = {
+          // mgmt-airo expects 'sso-jwt' authorization scheme (not 'Bearer')
+          // The JWT is validated by mgmt-airo against sso.test-godaddy.com
+          'Authorization': `${MGMT_AIRO_AUTH_SCHEME} ${this.jwt}`,
+          ...(body ? { 'Content-Type': 'application/json' } : {})
+        }
+
+        // Propagate trace context to downstream services for end-to-end tracing.
+        // This is a no-op if no active span exists.
+        try {
+          propagation.inject(otelContext.active(), headers);
+        } catch {
+          // Ignore propagation errors
+        }
+
         const response = await fetch(url, {
           method,
-          headers: {
-            // mgmt-airo expects 'sso-jwt' authorization scheme (not 'Bearer')
-            // The JWT is validated by mgmt-airo against sso.test-godaddy.com
-            'Authorization': `${MGMT_AIRO_AUTH_SCHEME} ${this.jwt}`,
-            ...(body ? { 'Content-Type': 'application/json' } : {})
-          },
+          headers,
           signal: AbortSignal.timeout(this.timeoutMs),
           ...(noCache ? { cache: 'no-store' as RequestCache } : {}),
           ...(body ? { body: JSON.stringify(body) } : {})
@@ -150,6 +162,18 @@ export class AiroMgmtClient {
       } catch (error) {
         const attemptDuration = Date.now() - attemptStart;
         const totalDuration = Date.now() - apiCallStart;
+
+        // Do not retry auth failures - they require user action and retrying only adds latency/noise.
+        if (error instanceof AiroHttpError && error.status === 401) {
+          logger.warn('mgmt-airo.api.auth-error.no-retry', {
+            message: `${apiCallId} failed with 401, skipping retries`,
+            url,
+            attempt,
+            attemptDuration,
+            totalDuration,
+          });
+          throw error;
+        }
 
         logger.error('mgmt-airo.api.attempt-error', {
           message: `${apiCallId} attempt ${attempt} failed`,

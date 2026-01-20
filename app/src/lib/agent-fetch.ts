@@ -3,6 +3,8 @@
  * Simple client-side utility for making authenticated requests to agents
  */
 
+import { appFetch } from '@/lib/gasket-config'
+
 export interface AgentFetchOptions extends RequestInit {
   siteId: string;
 }
@@ -55,7 +57,7 @@ async function getAgentToken(siteId: string): Promise<string> {
         expires = result.expires;
       } else {
         // Browser: Call API endpoint
-        const response = await fetch('/api/auth/agent-token', {
+        const response = await appFetch('/api/auth/agent-token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ siteId })

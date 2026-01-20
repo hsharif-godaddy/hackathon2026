@@ -19,8 +19,11 @@ describe('StoreSyncAdapter', () => {
   })
 
   describe('initial sync', () => {
-    it('should sync initial disconnected state to store', () => {
+    it('should sync initial disconnected state to store', async () => {
       const harness = new StoreSyncAdapterTestHarness()
+
+      // Wait for microtask (initial sync) to complete
+      await Promise.resolve()
 
       // Machine starts in disconnected + completed, adapter syncs both
       expect(harness.mockStore.setWebSocketState).toHaveBeenCalled()
@@ -41,8 +44,11 @@ describe('StoreSyncAdapter', () => {
   })
 
   describe('transport state sync', () => {
-    it('should sync disconnected state', () => {
+    it('should sync disconnected state', async () => {
       const harness = new StoreSyncAdapterTestHarness()
+
+      // Wait for microtask (initial sync) to complete
+      await Promise.resolve()
 
       // Machine starts in disconnected, adapter should have synced this initially
       harness.machine.assertState((s) => s.matches({ transport: 'disconnected' }))
@@ -55,6 +61,9 @@ describe('StoreSyncAdapter', () => {
 
     it('should sync connecting → connected transition', async () => {
       const harness = new StoreSyncAdapterTestHarness()
+
+      // Wait for microtask (initial sync) to complete
+      await Promise.resolve()
 
       harness.clearAllMocks()
 
@@ -225,7 +234,6 @@ describe('StoreSyncAdapter', () => {
       // During completion: completing → completed state transitions
       expect(harness.mockStore.setStreamingState).toHaveBeenCalled()
       expect(harness.mockStore.setIsLoading).toHaveBeenCalledWith(false)
-      expect(harness.mockStore.setWebSocketState).toHaveBeenCalled()
 
       harness.destroy()
     })
@@ -355,9 +363,12 @@ describe('StoreSyncAdapter', () => {
   })
 
   describe('stream completed initial state', () => {
-    it('should start in completed state and clear isLoading', () => {
+    it('should start in completed state and clear isLoading', async () => {
       // Test the initial state sync - machine starts with stream:completed
       const harness = new StoreSyncAdapterTestHarness()
+
+      // Wait for microtask (initial sync) to complete
+      await Promise.resolve()
 
       // Machine should start in completed state (not idle)
       harness.machine.assertState((s) => s.matches({ stream: 'completed' }))

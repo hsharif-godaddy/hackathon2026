@@ -67,10 +67,16 @@ export default function ChatAuthRequestMessage({
 
                 setStatus('success')
 
-                // Automatically notify agent to continue
-                setTimeout(() => {
-                    sendMessage('OAuth authentication completed successfully. Please continue.')
-                }, 500)
+                // Notify agent in a microtask to avoid background-tab rAF throttling.
+                if (typeof window === 'undefined') {
+                  sendMessage('OAuth authentication completed successfully. Please continue.')
+                } else if (typeof queueMicrotask === 'function') {
+                  queueMicrotask(() => {
+                    void sendMessage('OAuth authentication completed successfully. Please continue.')
+                  })
+                } else {
+                  void Promise.resolve().then(() => sendMessage('OAuth authentication completed successfully. Please continue.'))
+                }
             } else {
                 logger.error('oauth.auth_request.failed', {
                     conversationId,

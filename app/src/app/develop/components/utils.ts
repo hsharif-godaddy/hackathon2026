@@ -55,30 +55,72 @@ export function useAppIdFromParams() {
   return params?.id as string || ''
 }
 
+const VISUAL_CONTEXT_TIMEOUT_MS = 100
+
 export function handlePreviewRefresh({ lastIframeState }: { lastIframeState: RefObject<any> }) {
-  // First request current visual context to capture scroll position
   const iframe = document.querySelector('#preview-iframe') as HTMLIFrameElement
-  if (iframe && iframe.contentWindow) {
-    try {
-      postMessageToIframe(iframe, { type: 'REQUEST_VISUAL_CONTEXT' })
-      // Also request screenshot for thumbnail update
-      postMessageToIframe(iframe, { type: 'REQUEST_SCREENSHOT' })
-    } catch (error) {
-      logger.error('develop.screenshot.request.failed', {
-        error: error instanceof Error ? error.message : String(error)
-      })
+
+  if (!iframe || !iframe.contentWindow) {
+    window.postMessage({
+      type: 'preview-refresh',
+      preserveState: lastIframeState.current
+    }, window.location.origin)
+    return
+  }
+
+  let fallbackTimer: ReturnType<typeof setTimeout> | null = null
+
+  const cleanup = () => {
+    window.removeEventListener('message', handleVisualContext)
+    if (fallbackTimer !== null) {
+      clearTimeout(fallbackTimer)
+      fallbackTimer = null
+    }
+  }
+
+  const triggerRefresh = () => {
+    window.postMessage({
+      type: 'preview-refresh',
+      preserveState: lastIframeState.current
+    }, window.location.origin)
+  }
+
+  const handleVisualContext = (event: MessageEvent) => {
+    if (event.source !== iframe.contentWindow) return
+    if (event.data?.type !== 'VISUAL_CONTEXT_RESPONSE') return
+
+    if (event.data.context?.scroll_position) {
+      lastIframeState.current.scrollPosition = event.data.context.scroll_position
+    }
+    if (event.data.context?.page) {
+      lastIframeState.current.url = event.data.context.page
     }
 
-    // Wait a bit for the response, then refresh with whatever state we have
-    setTimeout(() => {
-      window.postMessage({
-        type: 'preview-refresh',
-        preserveState: lastIframeState.current
-      }, window.location.origin)
-    }, 100) // Short delay to allow visual context response
-  } else {
-    // No iframe available, just refresh
-    window.postMessage({ type: 'preview-refresh' }, window.location.origin)
+    cleanup()
+    triggerRefresh()
+  }
+
+  const scheduleFallback = () => {
+    // Keep a real-time fallback: rAF can be paused/throttled in background tabs,
+    // which would delay refresh indefinitely.
+    fallbackTimer = setTimeout(() => {
+      cleanup()
+      triggerRefresh()
+    }, VISUAL_CONTEXT_TIMEOUT_MS)
+  }
+
+  window.addEventListener('message', handleVisualContext)
+  scheduleFallback()
+
+  try {
+    postMessageToIframe(iframe, { type: 'REQUEST_VISUAL_CONTEXT' })
+    postMessageToIframe(iframe, { type: 'REQUEST_SCREENSHOT' })
+  } catch (error) {
+    logger.error('develop.screenshot.request.failed', {
+      error: error instanceof Error ? error.message : String(error)
+    })
+    cleanup()
+    triggerRefresh()
   }
 }
 

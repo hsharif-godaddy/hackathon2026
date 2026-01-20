@@ -249,9 +249,9 @@ export class DockerComposeGenerator {
 
 		// Build extra_hosts for JWT auth (allows container to reach builder's JWKS endpoint)
 		let extraHostsLines = '';
-		if (config.enableJwtAuth) {
-			const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://local.gasket.dev-godaddy.com:8443';
-			const extraHosts = ['host.docker.internal:host-gateway'];
+			if (config.enableJwtAuth) {
+				const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://local.gasket.dev-godaddy.com:8443';
+				const extraHosts = ['host.docker.internal:host-gateway'];
 
 			// For local development, map builder hostname to host gateway
 			// This allows containers to reach https://local.gasket.dev-godaddy.com:8443/.well-known/jwks.json
@@ -261,9 +261,9 @@ export class DockerComposeGenerator {
 			}
 
 			extraHostsLines = '    extra_hosts:\n' + extraHosts.map(host => `      - "${host}"`).join('\n') + '\n';
-		}
+			}
 
-		return `  preview:
+			return `  preview:
     image: ${config.imageName}
     restart: unless-stopped
     container_name: preview-${config.appId}-1
@@ -277,7 +277,7 @@ ${volumeLines}
       - app-network
     expose:
       - "${APP_INTERNAL_PORT}"`;
-	}
+		}
 
 	/**
 	 * Generate publish service definition for docker-compose
@@ -314,9 +314,9 @@ ${volumeLines}
 			ports.push(`${config.publishSupervisorPort}:8878`);
 		}
 
-		const portLines = ports.map(port => `      - "${port}"`).join('\n');
+			const portLines = ports.map(port => `      - "${port}"`).join('\n');
 
-		return `  publish:
+			return `  publish:
     image: ${config.imageName}
     restart: unless-stopped
     container_name: publish-${config.appId}-1
@@ -331,7 +331,7 @@ ${volumeLines}
       - app-network
     expose:
       - "8081"`;
-	}
+		}
 
 	/**
 	 * Generate docker-compose.yml content

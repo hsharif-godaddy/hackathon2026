@@ -5,7 +5,7 @@
  * Wires controller events to React state and provides a clean sendMessage API.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 import { logger } from '@/lib/request-context'
 import { ChatMessageBuilder } from '@/services/websocket/ChatMessageBuilder'
@@ -148,27 +148,11 @@ export function useStreamingWebSocket() {
     })
   }
 
-  /**
-   * CRITICAL: Stabilize controller reference across renders
-   *
-   * The controller itself is stable (created once in the ref, never recreated),
-   * but extracting `controllerRef.current` to a variable creates a new reference
-   * on every render. This causes:
-   *
-   * 1. `sendMessage` (which depends on `controller`) to get a new reference every render
-   * 2. Components with `sendMessage` in useEffect deps to re-run unnecessarily
-   * 3. Race conditions and duplicate message sends
-   *
-   * By memoizing with empty deps, we ensure `controller` has the same reference
-   * across all renders, which stabilizes `sendMessage` and prevents duplicate sends.
-   *
-   * DO NOT change this without understanding the implications - removing this
-   * will cause duplicate WebSocket message sends in production.
-   */
-  const controller = useMemo(() => controllerRef.current!, [])
-
   useEffect(() => {
     if (!currentAppId) return
+
+    const controller = controllerRef.current
+    if (!controller) return
 
     const previousAppId = previousAppIdRef.current
 
@@ -190,7 +174,7 @@ export function useStreamingWebSocket() {
     return () => {
       controller.disconnect();
     };
-  }, [currentAppId, controller])
+  }, [currentAppId])
 
   useEffect(() => {
     return () => {
@@ -200,13 +184,12 @@ export function useStreamingWebSocket() {
   }, [])
 
 
-  /**
-   * Send message - the main streaming function
-   *
-   * This function has a STABLE reference across renders (thanks to the stabilized
-   * controller reference above). It is SAFE to use in useEffect dependency arrays
-   * without causing infinite loops or duplicate sends.
-   */
+	  /**
+	   * Send message - the main streaming function
+	   *
+	   * This function has a STABLE reference across renders. It is SAFE to use in
+	   * useEffect dependency arrays without causing infinite loops or duplicate sends.
+	   */
   const sendMessage = useCallback(
     async (
       content: string,
@@ -216,6 +199,11 @@ export function useStreamingWebSocket() {
       isActionRequest?: boolean,
       customContext?: any
     ) => {
+      const controller = controllerRef.current
+      if (!controller) {
+        return
+      }
+
       const hasContent = Boolean(content?.trim())
       const { currentAppId: activeAppId } = useStreamingConversationStore.getState()
 
@@ -253,7 +241,7 @@ export function useStreamingWebSocket() {
         setIsLoading(false)
       }
     },
-    [controller, setIsLoading]
+    [setIsLoading]
   )
 
   return {

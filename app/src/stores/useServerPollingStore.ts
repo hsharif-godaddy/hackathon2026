@@ -198,10 +198,12 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         const data = await response.json()
         const serverData = data.server
 
-        // If we have a URL, perform actual health check
+        // If we have a URL, perform actual health check.
+        // Note: For local dev + JWT-protected preview apps, this also bootstraps auth by
+        // setting the preview-domain auth cookie via Authorization header.
         let healthCheckPassed = false
-        if (serverData.status === 'running' && serverData.url) {
-          logger.debug('server-polling.health-check', { message: 'Performing health check', appId, url: serverData.url })
+        if ((serverData.status === 'running' || serverData.status === 'starting') && serverData.url) {
+          logger.debug('server-polling.health-check', { message: 'Performing health check', appId, url: serverData.url, status: serverData.status })
           healthCheckPassed = await get()._checkUrlHealth(serverData.url, appId)
           logger.debug('server-polling.health-check-result', { message: 'Health check result', appId, passed: healthCheckPassed })
         }

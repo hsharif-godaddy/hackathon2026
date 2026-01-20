@@ -454,6 +454,12 @@ func isOriginAllowed(origin string, allowedOrigins []string) bool {
  * @param allowedOrigins - Whitelist of allowed origins (empty = allow all)
  */
 func setCORSHeadersOnHeader(header http.Header, origin string, allowedOrigins []string) {
+	// Only set CORS headers (or log) for actual cross-origin browser requests.
+	// If Origin is empty, the request is not a CORS request.
+	if origin == "" {
+		return
+	}
+
 	// Validate origin against whitelist
 	if !isOriginAllowed(origin, allowedOrigins) {
 		// Origin not in whitelist - don't set CORS headers

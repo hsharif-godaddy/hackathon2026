@@ -22,6 +22,7 @@ import { useChatTabs } from '@/hooks/useChatTabs'
 import { useRebuildMode } from '@/hooks/useRebuildMode'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
+import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -111,9 +112,7 @@ export default function ChatPane({
 
     async function load() {
       try {
-        const response = await fetch('/api/venture', {
-          credentials: 'include',
-        })
+        const response = await appFetch('/api/venture')
 
         // Check if component unmounted during fetch
         if (cancelled) return;

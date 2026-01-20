@@ -404,10 +404,17 @@ export default function ChatSecretsRequestMessage({
       const savedNames = [...additions, ...updates].map(s => s.name).join(', ')
       const actionWord = mode === 'update' ? 'updated' : 'added'
 
-      // Notify agent to continue
-      setTimeout(() => {
-        sendMessage(`Secrets ${actionWord} successfully: ${savedNames}. Please continue.`)
-      }, 500)
+      // Notify agent in a microtask to avoid background-tab rAF throttling.
+      const continueMessage = `Secrets ${actionWord} successfully: ${savedNames}. Please continue.`
+      if (typeof window === 'undefined') {
+        sendMessage(continueMessage)
+      } else if (typeof queueMicrotask === 'function') {
+        queueMicrotask(() => {
+          void sendMessage(continueMessage)
+        })
+      } else {
+        void Promise.resolve().then(() => sendMessage(continueMessage))
+      }
 
     } catch (err) {
       logger.error('secrets.chat_request.error', {

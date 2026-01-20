@@ -78,6 +78,13 @@ const TRANSPORT_STATE_MAP: Record<string, Partial<WebSocketState>> = {
   'transport.connecting.fetchingToken': { status: 'connecting', connected: false },
   'transport.connecting.establishingConnection': { status: 'connecting', connected: false },
   'transport.connected.idle': { status: 'idle', connected: true },
+  // Recovery is still "connected" at the transport layer. Recovery state is reflected via recoveryState.
+  'transport.connected.recovering.pendingAck': { status: 'idle', connected: true },
+  'transport.connected.recovering.sendingAck': { status: 'idle', connected: true },
+  'transport.connected.recovering.catchup': { status: 'idle', connected: true },
+  // Reconnecting is explicitly NOT connected at the transport layer.
+  'transport.reconnecting.retrying': { status: 'connecting', connected: false },
+  'transport.reconnecting.exhausted': { status: 'error', connected: false },
   'transport.failed': { status: 'error', connected: false },
 }
 
@@ -116,8 +123,12 @@ export class StoreSyncAdapter {
     // Subscribe to controller/supervisor events for application-level state
     this.setupControllerEventHandlers()
 
-    // Do initial sync
-    this.syncToStore(this.machine.getSnapshot())
+    // Do initial sync via microtask to avoid setState-during-render warnings
+    // This ensures store updates happen after the current render phase completes
+    // Using Promise.resolve() ensures compatibility with test frameworks' fake timers
+    Promise.resolve().then(() => {
+      this.syncToStore(this.machine.getSnapshot())
+    })
   }
 
   /**
@@ -136,6 +147,20 @@ export class StoreSyncAdapter {
     })
 
     this.controller.on('connection:established', ({ socket }) => {
+      // Keep store `websocket.connected` in sync with actual transport connectivity.
+      //
+      // In development, React StrictMode and appId transitions can temporarily stop the XState actor
+      // during an in-flight connection attempt. When that happens, machine transitions can be dropped,
+      // leaving the store stuck at `connected=false` even though Socket.IO is connected.
+      //
+      // Downstream: the create-flow auto-send waits on `webSocketState.connected` before sending the
+      // initial prompt, so failing to flip this flag can stall the entire chat panel.
+      const storeState = useStreamingConversationStore.getState()
+      const isAlreadyConnected = storeState.websocket?.connected === true
+      if (!isAlreadyConnected) {
+        this.store.setWebSocketState({ connected: true, status: 'idle' })
+      }
+
       // Clear connection retry tracking if active
       if (this.store.clearConnectionRetry && this.store.connectionRetry?.isRetrying) {
         const snapshot = this.machine.getSnapshot()
@@ -246,6 +271,23 @@ export class StoreSyncAdapter {
 
   private syncToStore(snapshot: WebSocketSnapshot): void {
     const { context } = snapshot
+    const activeAppId = useStreamingConversationStore.getState().currentAppId
+
+    // Guard against stale controllers updating the global store after app switching.
+    // During app creation/redirects, multiple controllers can overlap briefly; without
+    // this check, a disconnect from the previous app can clobber `websocket.connected`
+    // for the current app and prevent initial prompt auto-send.
+    if (context.appId && activeAppId && context.appId !== activeAppId) {
+      if (process.env.NODE_ENV === 'development') {
+        logger.debug('websocket.adapter.sync.ignored_stale_app', {
+          contextAppId: context.appId,
+          activeAppId,
+          transportState: this.getTransportStateKey(snapshot),
+          streamState: this.getStreamState(snapshot),
+        })
+      }
+      return
+    }
 
     // Track stream state to detect transitions
     const currentStreamState = this.getStreamState(snapshot)
@@ -343,10 +385,6 @@ export class StoreSyncAdapter {
     // Entry to streaming.receiving - start stream
     if (snapshot.matches({ stream: { streaming: 'receiving' } })) {
       if (streamStateChanged && currentStreamState === 'streaming.receiving') {
-        this.store.setWebSocketState({
-          status: 'streaming',
-          connected: true,
-        })
         this.store.setIsLoading(true)
 
         if (context.conversationId && context.messageId) {
@@ -364,10 +402,6 @@ export class StoreSyncAdapter {
 
     // Completing state
     if (snapshot.matches({ stream: { streaming: 'completing' } })) {
-      this.store.setWebSocketState({
-        status: 'streaming',
-        connected: true,
-      })
       this.store.setStreamingState('completing')
     }
 
@@ -375,10 +409,6 @@ export class StoreSyncAdapter {
     if (snapshot.matches({ stream: 'completed' }) && streamStateChanged) {
       this.store.setStreamingState('idle')
       this.store.setIsLoading(false)
-      this.store.setWebSocketState({
-        status: 'idle',
-        connected: true,
-      })
     }
 
     // Entry to error - set error
@@ -400,6 +430,17 @@ export class StoreSyncAdapter {
     if (snapshot.matches({ transport: { connecting: 'fetchingToken' } })) return 'transport.connecting.fetchingToken'
     if (snapshot.matches({ transport: { connecting: 'establishingConnection' } })) return 'transport.connecting.establishingConnection'
     if (snapshot.matches({ transport: { connected: 'idle' } })) return 'transport.connected.idle'
+    if (snapshot.matches({ transport: { connected: { recovering: 'pendingAck' } } })) {
+      return 'transport.connected.recovering.pendingAck'
+    }
+    if (snapshot.matches({ transport: { connected: { recovering: 'sendingAck' } } })) {
+      return 'transport.connected.recovering.sendingAck'
+    }
+    if (snapshot.matches({ transport: { connected: { recovering: 'catchup' } } })) {
+      return 'transport.connected.recovering.catchup'
+    }
+    if (snapshot.matches({ transport: { reconnecting: 'retrying' } })) return 'transport.reconnecting.retrying'
+    if (snapshot.matches({ transport: { reconnecting: 'exhausted' } })) return 'transport.reconnecting.exhausted'
     if (snapshot.matches({ transport: 'failed' })) return 'transport.failed'
     return null
   }

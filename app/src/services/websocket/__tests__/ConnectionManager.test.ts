@@ -21,6 +21,16 @@ class MockSocket {
     return this
   }
 
+  off(event: string, handler: (...args: any[]) => void) {
+    const handlers = this.handlers.get(event) ?? []
+    this.handlers.set(event, handlers.filter((existing) => existing !== handler))
+    return this
+  }
+
+  removeListener(event: string, handler: (...args: any[]) => void) {
+    return this.off(event, handler)
+  }
+
   emit(event: string, ...args: any[]) {
     this.handlers.get(event)?.forEach((handler) => handler(...args))
   }

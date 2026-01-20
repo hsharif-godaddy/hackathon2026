@@ -42,16 +42,13 @@ import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import {
   useActiveStream,
   useAutoSendInitialMessage,
+  useHistoryLoadingComplete,
   useMessages,
   useSetAiEditContext,
   useSetBuildErrorContext,
   useSetInputValue
 } from '@/stores/useStreamingConversationStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
-
-// Delay to allow conversation history messages to load before checking if preview should be visible
-// This ensures we have accurate message count when determining initial preview visibility
-const MESSAGE_LOAD_DELAY_MS = 100
 
 function DevelopPageContent() {
   const t = useTranslations();
@@ -141,6 +138,25 @@ function DevelopPageContent() {
   const autoSendInFlightRef = useRef(false)
   const [isCreateFlowSession, setIsCreateFlowSession] = useState(false)
   const prevShowChatLoaderRef = useRef(init.ui.showChatLoader)
+  const previewInitializedRef = useRef(false)
+  const historyLoadingComplete = useHistoryLoadingComplete()
+
+  const scheduleMicrotask = useCallback((task: () => void | Promise<void>) => {
+    if (typeof window === 'undefined') {
+      void task()
+      return
+    }
+
+    // Prefer microtask scheduling to avoid background-tab throttling (rAF pauses in hidden tabs).
+    if (typeof queueMicrotask === 'function') {
+      queueMicrotask(() => {
+        void task()
+      })
+      return
+    }
+
+    void Promise.resolve().then(() => task())
+  }, [])
 
   // Funnel event: Track when chat loader hides (user can now see chat)
   // Only during create flow from homepage
@@ -228,31 +244,29 @@ function DevelopPageContent() {
 
   // WebSocket and conversation history are now initialized by useInitialization hook
 
-  // Determine initial preview visibility based on localStorage and conversation history
+  // Determine initial preview visibility based on persisted state or loaded history
   useEffect(() => {
+    if (previewInitializedRef.current) return
     if (loadingPhase !== 'ready' || !appId) return
 
-    // Check localStorage first
     const storageKey = `airo-preview-visible-${appId}`
-    const savedState = localStorage.getItem(storageKey)
+    const savedState = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null
 
     if (savedState !== null) {
-      // Use saved state
       setIsPreviewVisible(JSON.parse(savedState))
-    } else {
-      // No saved state - check conversation history
-      // Wait a bit for messages to load, then check
-      const timer = setTimeout(() => {
-        const hasHistory = messages.length > 0
-        setIsPreviewVisible(hasHistory)
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(storageKey, JSON.stringify(hasHistory))
-        }
-      }, MESSAGE_LOAD_DELAY_MS)
-
-      return () => clearTimeout(timer)
+      previewInitializedRef.current = true
+      return
     }
-  }, [loadingPhase, appId, messages.length, setIsPreviewVisible])
+
+    if (!historyLoadingComplete) return
+
+    const hasHistory = messages.length > 0
+    setIsPreviewVisible(hasHistory)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(storageKey, JSON.stringify(hasHistory))
+    }
+    previewInitializedRef.current = true
+  }, [loadingPhase, appId, messages.length, setIsPreviewVisible, historyLoadingComplete])
 
   // Server polling - unified approach with adaptive backoff
   useEffect(() => {
@@ -470,10 +484,9 @@ function DevelopPageContent() {
           lastIframeState.current.url = event.data.url
           break
         case 'MESSAGE_COMPLETE':
-          // Handle message completion - refresh preview with state preservation
-          setTimeout(() => {
+          scheduleMicrotask(() => {
             handlePreviewRefresh({ lastIframeState })
-          }, 500) // Small delay to ensure any file changes are processed
+          })
           break
         case 'error-fix-request':
           // Handle runtime error fix requests from AiroErrorBoundary (new format with errorData)
@@ -491,8 +504,8 @@ function DevelopPageContent() {
             setInputValue('Please analyze and fix this runtime error.')
 
             // Auto-send with runtime error context attached (6th parameter: customContext)
-            setTimeout(() => {
-              sendMessage(
+            scheduleMicrotask(() => {
+              void sendMessage(
                 'Please analyze and fix this runtime error.',
                 null, // aiEditContext
                 null, // selectedAsset
@@ -512,7 +525,7 @@ function DevelopPageContent() {
                   source: 'error-boundary'
                 }
               )
-            }, 500)
+            })
           }
           // Handle legacy compile error fix requests (old format with errorMessage string)
           else if (event.data.errorMessage) {
@@ -521,9 +534,9 @@ function DevelopPageContent() {
               errorMessage: event.data.errorMessage
             })
             setInputValue(`Please fix this error: ${event.data.errorMessage}`)
-            setTimeout(() => {
-              sendMessage(`Please fix this error: ${event.data.errorMessage}`, null)
-            }, 500)
+            scheduleMicrotask(() => {
+              void sendMessage(`Please fix this error: ${event.data.errorMessage}`, null)
+            })
           }
           break
         case 'build-page-request':
@@ -534,9 +547,9 @@ function DevelopPageContent() {
             })
             const messageContent = `The page at path ${event.data.pathToBuild} doesn't exist yet, please build it with appropriate content.`;
             setInputValue(messageContent);
-            setTimeout(() => {
-              sendMessage(messageContent, null)
-            }, 500)
+            scheduleMicrotask(() => {
+              void sendMessage(messageContent, null)
+            })
           }
           break
         case 'build-error-fix-request':
@@ -568,10 +581,10 @@ function DevelopPageContent() {
             // IMPORTANT: Must await sendMessage before clearing context because
             // sendMessage is async and reads buildErrorContext from the store.
             // Without await, the context is cleared before it's read.
-            setTimeout(async () => {
+            scheduleMicrotask(async () => {
               await sendMessage(messageContent, null)
               setBuildErrorContext(null)
-            }, 500)
+            })
           }
           break
         case 'SCREENSHOT_RESPONSE':
@@ -585,7 +598,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setBuildErrorContext, setIsSelectMode, sendMessage, setInputValue, handleScreenshotUpload, setIsAssetManagerOpen, appId])
+  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setBuildErrorContext, setIsSelectMode, sendMessage, setInputValue, handleScreenshotUpload, setIsAssetManagerOpen, appId, scheduleMicrotask])
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -613,13 +626,13 @@ function DevelopPageContent() {
       setInputValue(decodedMessage)
 
       // Auto-send and clear URL
-      setTimeout(() => {
+      scheduleMicrotask(() => {
         const url = new URL(window.location.href)
         url.searchParams.delete('message')
         router.replace(url.pathname + url.search, { scroll: false })
-      }, 500)
+      })
     }
-  }, [loadingPhase, searchParams, messages.length, router, setInputValue])
+  }, [loadingPhase, searchParams, messages.length, router, setInputValue, scheduleMicrotask])
 
   // Handle auto-send initial message for new apps (driven by init.ui.shouldAutoSendPrompt)
   useEffect(() => {

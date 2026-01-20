@@ -220,9 +220,8 @@ describe('ChatPane', () => {
     renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith('/api/venture', {
-        credentials: 'include',
-      });
+      const urls = (global.fetch as any).mock.calls.map((call: any[]) => String(call[0]))
+      expect(urls.some((u: string) => u.endsWith('/api/venture'))).toBe(true)
     });
   });
 

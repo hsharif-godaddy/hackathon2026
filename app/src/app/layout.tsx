@@ -150,8 +150,8 @@ async function RootLayout({
         <FullStoryProvider>
         <QueryClientProvider>
           <TranslationsProvider
-            locale={ locale }
-            messages={ messages }
+            locale={locale}
+            messages={messages}
             packages={['@airo/app-builder']}
           >
             <AuthProvider>

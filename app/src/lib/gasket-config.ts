@@ -189,8 +189,18 @@ export async function isAuthDisabled(): Promise<boolean> {
  * @throws {Error} Redirects to coming-soon page if access is restricted
  */
 export async function appFetch(url: string, options?: RequestInit): Promise<Response> {
-  const { authFetch } = await import('@godaddy/gasket-auth');
-  const response = await authFetch(url, options);
+  // Normalize relative URLs for environments where the underlying fetch/auth wrapper
+  // requires absolute URLs (e.g., some server/test runtimes).
+  const resolvedUrl =
+    typeof window !== 'undefined' && typeof url === 'string' && url.startsWith('/')
+      ? new URL(url, window.location.origin).toString()
+      : url;
+
+  // In unit tests we don't want authFetch to trigger real redirects or require full auth plumbing.
+  // Global fetch is already mocked in vitest setup and individual tests.
+  const response = process.env.NODE_ENV === 'test'
+    ? await fetch(resolvedUrl, options)
+    : await (await import('@godaddy/gasket-auth')).authFetch(resolvedUrl, options);
 
   // Check specifically for shopper ID authorization failure (403 only)
   if (response.status === 403) {

@@ -276,12 +276,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         localStorage.setItem(globalTourKey, 'true')
       }
 
-      // Show the tour with a small delay to ensure UI is fully rendered
-      setTimeout(() => {
-        set((state) => {
-          state.showIntroTour = true
-        })
-      }, 1000)
+      set((state) => {
+        state.showIntroTour = true
+      })
     },
 
     // Asset Manager actions
