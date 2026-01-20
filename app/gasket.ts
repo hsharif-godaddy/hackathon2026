@@ -1,27 +1,29 @@
+import fs from 'node:fs';
+
 import type { GasketConfigDefinition } from '@gasket/core';
 import { makeGasket } from '@gasket/core';
 import pluginCommand from '@gasket/plugin-command';
-import pluginDynamicPlugins from '@gasket/plugin-dynamic-plugins';
-import pluginLogger from '@gasket/plugin-logger';
 import pluginData from '@gasket/plugin-data';
+import pluginDynamicPlugins from '@gasket/plugin-dynamic-plugins';
+import pluginHttpsProxy from '@gasket/plugin-https-proxy';
+import pluginIntl from '@gasket/plugin-intl';
+import pluginLogger from '@gasket/plugin-logger';
+import pluginNextjs from '@gasket/plugin-nextjs';
 import pluginWebpack from '@gasket/plugin-webpack';
 import pluginWinston from '@gasket/plugin-winston';
-import pluginAuth from '@godaddy/gasket-plugin-auth';
-import pluginSecurity from '@godaddy/gasket-plugin-security';
-import pluginTraffic from '@godaddy/gasket-plugin-traffic';
-import pluginVisitor from '@godaddy/gasket-plugin-visitor';
-import pluginDevCerts from '@godaddy/gasket-plugin-dev-certs';
-import pluginSelfCerts from '@godaddy/gasket-plugin-self-certs';
 import pluginAtlas from '@godaddy/gasket-plugin-atlas';
-import pluginHttpsProxy from '@gasket/plugin-https-proxy';
-import pluginNextjs from '@gasket/plugin-nextjs';
-import pluginIntl from '@gasket/plugin-intl';
-import pluginUxp from '@godaddy/gasket-plugin-uxp';
+import pluginAuth from '@godaddy/gasket-plugin-auth';
+import pluginDevCerts from '@godaddy/gasket-plugin-dev-certs';
 import pluginOtel from '@godaddy/gasket-plugin-otel';
-import gasketData from './gasket-data.js';
+import pluginSecurity from '@godaddy/gasket-plugin-security';
+import pluginSelfCerts from '@godaddy/gasket-plugin-self-certs';
+import pluginSwitchboard from '@godaddy/gasket-plugin-switchboard';
+import pluginTraffic from '@godaddy/gasket-plugin-traffic';
+import pluginUxp from '@godaddy/gasket-plugin-uxp';
+import pluginVisitor from '@godaddy/gasket-plugin-visitor';
 import pluginCds from '@venture/gasket-plugin-cds';
 
-import fs from 'fs';
+import gasketData from './gasket-data.js';
 
 // Check if we should enable JWT authentication
 const authType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
@@ -31,7 +33,10 @@ export default makeGasket({
     'local.analyze': {
       dynamicPlugins: [
         '@gasket/plugin-analyze'
-      ]
+      ],
+      switchboard: {
+        env: 'development'
+      }
     },
     'local.dev': {
       http: false,
@@ -54,6 +59,9 @@ export default makeGasket({
           key: fs.readFileSync('./node_modules/@godaddy/gasket-plugin-dev-certs/certs/_.gasket.dev-godaddy.com.key'),
           cert: fs.readFileSync('./node_modules/@godaddy/gasket-plugin-dev-certs/certs/_.gasket.dev-godaddy.com.crt')
         },
+      },
+      switchboard: {
+        env: 'development'
       }
     },
     'local.test': {
@@ -94,6 +102,9 @@ export default makeGasket({
           'airo-builder.test-godaddy.com'
         ]
       },
+      switchboard: {
+        env: 'test'
+      }
     },
     'local.prod': {
       http: false,
@@ -133,6 +144,25 @@ export default makeGasket({
           'airo-builder.godaddy.com'
         ]
       },
+      switchboard: {
+        env: 'production'
+      }
+    },
+    // Deployed environments
+    'development': {
+      switchboard: {
+        env: 'development'
+      }
+    },
+    'test': {
+      switchboard: {
+        env: 'test'
+      }
+    },
+    'production': {
+      switchboard: {
+        env: 'production'
+      }
     },
   },
   plugins: [
@@ -156,6 +186,7 @@ export default makeGasket({
     pluginUxp,
     pluginOtel,
     pluginCds,
+    pluginSwitchboard
   ],
   commands: {
     docs: {
@@ -287,6 +318,20 @@ export default makeGasket({
     enabledRoutes: ['/', '/page', '/develop', '/develop/*'],
     proxyLogPath: '/cds-log',
     depsPath: 'cds'
+  },
+  switchboard: {
+    // Fetch only Hivemind experiments (no regular Switchboard feature flags due to caching issues)
+    app: '@hivemind',
+    // Default to production - overridden by environment-specific config in `environments`
+    env: 'production',
+    appLabels: {
+      '@hivemind': ['airo-builder']
+    },
+    auth: {
+      primaryRegion: 'us-west-2',
+      secondaryRegion: 'us-east-1'
+    },
+    enableGasketData: true
   },
   data: gasketData,
 } as GasketConfigDefinition);

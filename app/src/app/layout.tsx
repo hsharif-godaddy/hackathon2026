@@ -1,6 +1,7 @@
 import "@/styles/globals.scss";
 
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { Suspense } from "react";
 import { withGasketData } from '@gasket/nextjs/layout';
 import { makeLayout } from '@godaddy/gasket-next/layout';
@@ -137,6 +138,29 @@ async function RootLayout({
   } catch (error) {
     // Translation load failed - fall back to client-side fetch
     logger.error('translations.layout.load.failure', { error });
+  }
+
+  // Trigger A/A experiment server-side
+  try {
+    const headersList = await headers();
+    const headersObj: Record<string, string> = {};
+    headersList.forEach((value, key) => {
+      headersObj[key] = value;
+    });
+    const cohorts = await gasket.actions.getExperimentCohorts({ headers: headersObj });
+    const aaCohort = cohorts?.['aa-airo-builder'];
+
+    if (aaCohort) {
+      logger.info('hivemind.experiment.triggered', {
+        experimentId: 'aa-airo-builder',
+        cohortId: aaCohort,
+      });
+    }
+  } catch (error) {
+    logger.warn('hivemind.experiment.error', {
+      experimentId: 'aa-airo-builder',
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
   return (
