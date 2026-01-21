@@ -80,9 +80,24 @@ importers:
       "@openai/agents":
         specifier: ^0.0.17
         version: 0.0.17(ws@8.18.3)(zod@3.25.76)
+      "@opentelemetry/api":
+        specifier: ^1.9.0
+        version: 1.9.0
+      "@opentelemetry/exporter-trace-otlp-proto":
+        specifier: ^0.208.0
+        version: 0.208.0(@opentelemetry/api@1.9.0)
+      "@opentelemetry/resources":
+        specifier: ^2.0.0
+        version: 2.2.0(@opentelemetry/api@1.9.0)
       "@opentelemetry/sdk-node":
         specifier: ^0.208.0
         version: 0.208.0(@opentelemetry/api@1.9.0)
+      "@opentelemetry/sdk-trace-base":
+        specifier: ^2.0.0
+        version: 2.2.0(@opentelemetry/api@1.9.0)
+      "@opentelemetry/semantic-conventions":
+        specifier: ^1.34.0
+        version: 1.37.0
       "@qdrant/js-client-rest":
         specifier: ^1.15.1
         version: 1.15.1(typescript@5.9.2)
@@ -8818,6 +8833,7 @@ packages:
     resolution:
       {
         integrity: sha512-ppLRUgHVaGRWUx0R0Ut06Mjo9gBaBkg3v/8AxusGLhsIotbBLuRk51rAzqLC8gq6NyyAojEXglNjzf6R948DNw==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-android-arm-eabi/-/unrs-resolver-binding-android-arm-eabi-1.11.1.tgz,
       }
     cpu: [arm]
     os: [android]
@@ -8826,6 +8842,7 @@ packages:
     resolution:
       {
         integrity: sha512-lCxkVtb4wp1v+EoN+HjIG9cIIzPkX5OtM03pQYkG+U5O/wL53LC4QbIeazgiKqluGeVEeBlZahHalCaBvU1a2g==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-android-arm64/-/unrs-resolver-binding-android-arm64-1.11.1.tgz,
       }
     cpu: [arm64]
     os: [android]
@@ -8834,6 +8851,7 @@ packages:
     resolution:
       {
         integrity: sha512-gPVA1UjRu1Y/IsB/dQEsp2V1pm44Of6+LWvbLc9SDk1c2KhhDRDBUkQCYVWe6f26uJb3fOK8saWMgtX8IrMk3g==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-darwin-arm64/-/unrs-resolver-binding-darwin-arm64-1.11.1.tgz,
       }
     cpu: [arm64]
     os: [darwin]
@@ -8842,6 +8860,7 @@ packages:
     resolution:
       {
         integrity: sha512-cFzP7rWKd3lZaCsDze07QX1SC24lO8mPty9vdP+YVa3MGdVgPmFc59317b2ioXtgCMKGiCLxJ4HQs62oz6GfRQ==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-darwin-x64/-/unrs-resolver-binding-darwin-x64-1.11.1.tgz,
       }
     cpu: [x64]
     os: [darwin]
@@ -8850,6 +8869,7 @@ packages:
     resolution:
       {
         integrity: sha512-fqtGgak3zX4DCB6PFpsH5+Kmt/8CIi4Bry4rb1ho6Av2QHTREM+47y282Uqiu3ZRF5IQioJQ5qWRV6jduA+iGw==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-freebsd-x64/-/unrs-resolver-binding-freebsd-x64-1.11.1.tgz,
       }
     cpu: [x64]
     os: [freebsd]
@@ -8858,6 +8878,7 @@ packages:
     resolution:
       {
         integrity: sha512-u92mvlcYtp9MRKmP+ZvMmtPN34+/3lMHlyMj7wXJDeXxuM0Vgzz0+PPJNsro1m3IZPYChIkn944wW8TYgGKFHw==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-linux-arm-gnueabihf/-/unrs-resolver-binding-linux-arm-gnueabihf-1.11.1.tgz,
       }
     cpu: [arm]
     os: [linux]
@@ -8866,6 +8887,7 @@ packages:
     resolution:
       {
         integrity: sha512-cINaoY2z7LVCrfHkIcmvj7osTOtm6VVT16b5oQdS4beibX2SYBwgYLmqhBjA1t51CarSaBuX5YNsWLjsqfW5Cw==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-linux-arm-musleabihf/-/unrs-resolver-binding-linux-arm-musleabihf-1.11.1.tgz,
       }
     cpu: [arm]
     os: [linux]
@@ -8874,6 +8896,7 @@ packages:
     resolution:
       {
         integrity: sha512-34gw7PjDGB9JgePJEmhEqBhWvCiiWCuXsL9hYphDF7crW7UgI05gyBAi6MF58uGcMOiOqSJ2ybEeCvHcq0BCmQ==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-linux-arm64-gnu/-/unrs-resolver-binding-linux-arm64-gnu-1.11.1.tgz,
       }
     cpu: [arm64]
     os: [linux]
@@ -8882,6 +8905,7 @@ packages:
     resolution:
       {
         integrity: sha512-RyMIx6Uf53hhOtJDIamSbTskA99sPHS96wxVE/bJtePJJtpdKGXO1wY90oRdXuYOGOTuqjT8ACccMc4K6QmT3w==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-linux-arm64-musl/-/unrs-resolver-binding-linux-arm64-musl-1.11.1.tgz,
       }
     cpu: [arm64]
     os: [linux]
@@ -8890,6 +8914,7 @@ packages:
     resolution:
       {
         integrity: sha512-D8Vae74A4/a+mZH0FbOkFJL9DSK2R6TFPC9M+jCWYia/q2einCubX10pecpDiTmkJVUH+y8K3BZClycD8nCShA==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-linux-ppc64-gnu/-/unrs-resolver-binding-linux-ppc64-gnu-1.11.1.tgz,
       }
     cpu: [ppc64]
     os: [linux]
@@ -8898,6 +8923,7 @@ packages:
     resolution:
       {
         integrity: sha512-frxL4OrzOWVVsOc96+V3aqTIQl1O2TjgExV4EKgRY09AJ9leZpEg8Ak9phadbuX0BA4k8U5qtvMSQQGGmaJqcQ==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-linux-riscv64-gnu/-/unrs-resolver-binding-linux-riscv64-gnu-1.11.1.tgz,
       }
     cpu: [riscv64]
     os: [linux]
@@ -8906,6 +8932,7 @@ packages:
     resolution:
       {
         integrity: sha512-mJ5vuDaIZ+l/acv01sHoXfpnyrNKOk/3aDoEdLO/Xtn9HuZlDD6jKxHlkN8ZhWyLJsRBxfv9GYM2utQ1SChKew==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-linux-riscv64-musl/-/unrs-resolver-binding-linux-riscv64-musl-1.11.1.tgz,
       }
     cpu: [riscv64]
     os: [linux]
@@ -8914,6 +8941,7 @@ packages:
     resolution:
       {
         integrity: sha512-kELo8ebBVtb9sA7rMe1Cph4QHreByhaZ2QEADd9NzIQsYNQpt9UkM9iqr2lhGr5afh885d/cB5QeTXSbZHTYPg==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-linux-s390x-gnu/-/unrs-resolver-binding-linux-s390x-gnu-1.11.1.tgz,
       }
     cpu: [s390x]
     os: [linux]
@@ -8922,6 +8950,7 @@ packages:
     resolution:
       {
         integrity: sha512-C3ZAHugKgovV5YvAMsxhq0gtXuwESUKc5MhEtjBpLoHPLYM+iuwSj3lflFwK3DPm68660rZ7G8BMcwSro7hD5w==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-linux-x64-gnu/-/unrs-resolver-binding-linux-x64-gnu-1.11.1.tgz,
       }
     cpu: [x64]
     os: [linux]
@@ -8930,6 +8959,7 @@ packages:
     resolution:
       {
         integrity: sha512-rV0YSoyhK2nZ4vEswT/QwqzqQXw5I6CjoaYMOX0TqBlWhojUf8P94mvI7nuJTeaCkkds3QE4+zS8Ko+GdXuZtA==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-linux-x64-musl/-/unrs-resolver-binding-linux-x64-musl-1.11.1.tgz,
       }
     cpu: [x64]
     os: [linux]
@@ -8938,6 +8968,7 @@ packages:
     resolution:
       {
         integrity: sha512-5u4RkfxJm+Ng7IWgkzi3qrFOvLvQYnPBmjmZQ8+szTK/b31fQCnleNl1GgEt7nIsZRIf5PLhPwT0WM+q45x/UQ==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-wasm32-wasi/-/unrs-resolver-binding-wasm32-wasi-1.11.1.tgz,
       }
     engines: { node: ">=14.0.0" }
     cpu: [wasm32]
@@ -8946,6 +8977,7 @@ packages:
     resolution:
       {
         integrity: sha512-nRcz5Il4ln0kMhfL8S3hLkxI85BXs3o8EYoattsJNdsX4YUU89iOkVn7g0VHSRxFuVMdM4Q1jEpIId1Ihim/Uw==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-win32-arm64-msvc/-/unrs-resolver-binding-win32-arm64-msvc-1.11.1.tgz,
       }
     cpu: [arm64]
     os: [win32]
@@ -8954,6 +8986,7 @@ packages:
     resolution:
       {
         integrity: sha512-DCEI6t5i1NmAZp6pFonpD5m7i6aFrpofcp4LA2i8IIq60Jyo28hamKBxNrZcyOwVOZkgsRp9O2sXWBWP8MnvIQ==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-win32-ia32-msvc/-/unrs-resolver-binding-win32-ia32-msvc-1.11.1.tgz,
       }
     cpu: [ia32]
     os: [win32]
@@ -8962,6 +8995,7 @@ packages:
     resolution:
       {
         integrity: sha512-lrW200hZdbfRtztbygyaq/6jP6AKE8qQN2KvPcJ+x7wiD038YtnYtZ82IMNJ69GJibV7bwL3y9FgK+5w/pYt6g==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@unrs/resolver-binding-win32-x64-msvc/-/unrs-resolver-binding-win32-x64-msvc-1.11.1.tgz,
       }
     cpu: [x64]
     os: [win32]

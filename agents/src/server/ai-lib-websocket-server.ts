@@ -16,6 +16,7 @@ import {
 import { auth, AuthType } from '../services/features.js'
 import apm from 'elastic-apm-node'
 import { observe, updateActiveObservation } from '@langfuse/tracing'
+import { trace, context as otelContext, SpanKind, SpanStatusCode, type Span } from '@opentelemetry/api'
 
 // Define ContextMessage interface locally (extends ConversationMessage with required insertionOrder)
 interface ContextMessage {
@@ -136,6 +137,18 @@ const gitHookService = new GitHookService()
  * Key: socketId, Value: APM transaction object
  */
 const activeWebSocketTransactions = new Map<string, any>()
+
+/**
+ * Map to track active OpenTelemetry spans for WebSocket messages
+ * These spans are parents for AI SDK telemetry (ai.streamText, ai.toolCall)
+ */
+const activeOtelSpans = new Map<string, Span>()
+
+/**
+ * OpenTelemetry tracer for WebSocket operations
+ */
+const SERVICE_VERSION = process.env.npm_package_version || '0.1.0'
+const wsTracer = trace.getTracer('airo-agents-websocket', SERVICE_VERSION)
 
 /**
  * Socket.IO server instance for emitting events
@@ -755,6 +768,100 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         return activeWebSocketTransactions.get(`${socketId}:message`)
       },
 
+      // Create OpenTelemetry trace context for message processing
+      // Called at the START of message handling so AI SDK spans are properly linked
+      createTraceContext: (socketId: string, message: string, messageContext?: Record<string, unknown>) => {
+        const typedContext = messageContext as AgentsAppContext | undefined
+        const siteId = typedContext?.metadata?.appId
+
+        // Create OpenTelemetry span FIRST - this is the parent for AI SDK telemetry
+        // The APM agent's OTel bridge may not be active (conflict with our NodeSDK),
+        // so we create our own span that will be exported via OTLP to Elastic APM
+        const otelSpan = wsTracer.startSpan('WebSocket Message', {
+          kind: SpanKind.SERVER,
+          attributes: {
+            'socket.id': socketId,
+            ...(siteId && { 'app.id': siteId }),
+            'message.length': message.length,
+            ...(typedContext?.metadata?.sessionId && { 'session.id': typedContext.metadata.sessionId }),
+            ...(typedContext?.metadata?.userId && { 'user.id': typedContext.metadata.userId }),
+            ...(typedContext?.conversation?.conversationId && { 'conversation.id': typedContext.conversation.conversationId })
+          }
+        })
+
+        // Store the OTel span for later attribute updates
+        activeOtelSpans.set(`${socketId}:message`, otelSpan)
+
+        // Create context with the span - AI SDK spans will be children of this span
+        const spanContext = trace.setSpan(otelContext.active(), otelSpan)
+
+        // Also start APM transaction for backward compatibility with existing dashboards
+        const messageTransaction = apm.startTransaction('WebSocket Message', 'websocket-message')
+        if (messageTransaction) {
+          messageTransaction.setLabel('socket_id', socketId)
+          if (siteId) messageTransaction.setLabel('appId', siteId)
+          messageTransaction.setLabel('message_length', message.length)
+          if (typedContext?.metadata?.sessionId) {
+            messageTransaction.setLabel('sessionId', typedContext.metadata.sessionId)
+          }
+          if (typedContext?.metadata?.userId) {
+            messageTransaction.setLabel('userId', typedContext.metadata.userId)
+          }
+          if (typedContext?.conversation?.conversationId) {
+            messageTransaction.setLabel('conversationId', typedContext.conversation.conversationId)
+          }
+          activeWebSocketTransactions.set(`${socketId}:message`, messageTransaction)
+        }
+
+        logger.debug('otel.websocket.trace_context.created', {
+          socketId,
+          siteId,
+          traceId: otelSpan.spanContext().traceId,
+          spanId: otelSpan.spanContext().spanId,
+          hasApmTransaction: !!messageTransaction
+        })
+
+        return {
+          context: spanContext,
+          cleanup: (error?: Error) => {
+            // End the OTel span
+            const span = activeOtelSpans.get(`${socketId}:message`)
+            if (span) {
+              if (error) {
+                // Use toString() to include error type, recordException captures full stack
+                span.setStatus({ code: SpanStatusCode.ERROR, message: error.toString() })
+                span.recordException(error)
+              } else {
+                span.setStatus({ code: SpanStatusCode.OK })
+              }
+              span.end()
+              activeOtelSpans.delete(`${socketId}:message`)
+            }
+
+            // End the APM transaction
+            const transaction = activeWebSocketTransactions.get(`${socketId}:message`)
+            if (transaction) {
+              if (error) {
+                transaction.result = 'error'
+                transaction.setOutcome('failure')
+                apm.captureError(error)
+              } else {
+                transaction.result = 'success'
+                transaction.setOutcome('success')
+              }
+              transaction.end()
+              activeWebSocketTransactions.delete(`${socketId}:message`)
+            }
+
+            logger.debug('otel.websocket.trace_context.ended', {
+              socketId,
+              siteId,
+              error: error?.message
+            })
+          }
+        }
+      },
+
       // File path resolver for uploaded files
       filePathResolver: (appId: string, uploadId: string, filename: string) => {
         return fileUploadService.getFilePath(appId, uploadId, filename)
@@ -1050,16 +1157,22 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           timeSinceCreationMs = Date.now() - new Date(app.createdAt).getTime()
         }
 
-        // Start APM transaction for message processing
-        const messageTransaction = apm.startTransaction(
-          'WebSocket Message',
-          'websocket-message'
-        )
+        // Add attributes to the OTel span (created in createTraceContext)
+        const otelSpan = activeOtelSpans.get(`${socketId}:message`)
+        if (otelSpan) {
+          otelSpan.setAttributes({
+            'agent.name': agentName || 'default',
+            'message.is_initial_prompt': isInitialPrompt,
+            ...(customerId && { 'customer.id': customerId }),
+            ...(timeSinceCreationMs !== null && { 'time_since_creation_ms': timeSinceCreationMs })
+          })
+        }
+
+        // APM transaction was created in createTraceContext hook (called earlier)
+        // Add additional labels now that we have more context (agent name, etc.)
+        const messageTransaction = activeWebSocketTransactions.get(`${socketId}:message`)
         if (messageTransaction) {
-          messageTransaction.setLabel('socket_id', socketId)
-          messageTransaction.setLabel('appId', siteId)
           messageTransaction.setLabel('agent_name', agentName || 'default')
-          messageTransaction.setLabel('message_length', message.length)
           messageTransaction.setLabel('event', 'message_start')
           messageTransaction.setLabel('isInitialPrompt', String(isInitialPrompt))
 
@@ -1073,28 +1186,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             messageTransaction.setLabel('customerId', customerId)
           }
 
-          // Add session and conversation IDs if available
-          if (typedContext?.metadata?.sessionId) {
-            messageTransaction.setLabel('sessionId', typedContext.metadata.sessionId)
-          }
-          if (typedContext?.metadata?.userId) {
-            messageTransaction.setLabel('userId', typedContext.metadata.userId)
-          }
-          if (typedContext?.conversation?.conversationId) {
-            messageTransaction.setLabel('conversationId', typedContext.conversation.conversationId)
-          }
-
-          // Store transaction with a message-specific key
-          activeWebSocketTransactions.set(`${socketId}:message`, messageTransaction)
-
-          logger.debug('apm.websocket.message.transaction.started', {
+          logger.debug('apm.websocket.message.transaction.labels_added', {
             socketId,
             siteId,
             agentName,
-            sessionId: typedContext?.metadata?.sessionId,
-            userId: typedContext?.metadata?.userId,
-            conversationId: typedContext?.conversation?.conversationId,
-            transactionName: messageTransaction.name
+            isInitialPrompt,
+            customerId
           })
         }
 
@@ -1221,34 +1318,37 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         });
 
         // Git operations now happen in beforeMessageComplete
-        // This callback is used for post-completion tasks like APM transaction cleanup
+        // Transaction/span ending is handled by createTraceContext.cleanup()
+        // Here we just add final attributes
 
-        // End APM transaction for message processing
-        const messageTransactionKey = `${socketId}:message`
-        const messageTransaction = activeWebSocketTransactions.get(messageTransactionKey)
+        // Add final attributes to OTel span
+        const otelSpan = activeOtelSpans.get(`${socketId}:message`)
+        if (otelSpan) {
+          otelSpan.setAttributes({
+            'agent.id': agentId,
+            'steps': steps,
+            ...(typeof duration === 'number' && { 'duration_ms': duration })
+          })
+        }
+
+        // Add final labels to APM transaction
+        const messageTransaction = activeWebSocketTransactions.get(`${socketId}:message`)
         if (messageTransaction) {
           messageTransaction.setLabel('steps', steps)
           messageTransaction.setLabel('agent_id', agentId)
           messageTransaction.setLabel('event', 'message_complete')
-          
+
           // Add duration if available as a number
           if (typeof duration === 'number') {
             messageTransaction.setLabel('duration_ms', duration)
           }
 
-          messageTransaction.result = 'success'
-          messageTransaction.setOutcome('success')
-          messageTransaction.end()
-
-          activeWebSocketTransactions.delete(messageTransactionKey)
-
-          logger.debug('apm.websocket.message.transaction.ended', {
+          logger.debug('apm.websocket.message.transaction.labels_complete', {
             socketId,
             siteId,
             agentId,
             steps,
-            duration,
-            transactionName: messageTransaction.name
+            duration
           })
         }
       },
@@ -1411,32 +1511,18 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           }
         }
 
-        // Mark APM transactions as failed
-        const messageTransactionKey = `${socketId}:message`
-        const messageTransaction = activeWebSocketTransactions.get(messageTransactionKey)
+        // Transaction ending is handled by createTraceContext.cleanup(error)
+        // Here we just add error labels to the transaction
+
+        const messageTransaction = activeWebSocketTransactions.get(`${socketId}:message`)
         if (messageTransaction) {
           messageTransaction.setLabel('error_message', error.message)
           messageTransaction.setLabel('error_type', error.name || 'Error')
           messageTransaction.setLabel('event', 'error')
-          messageTransaction.result = 'error'
-          messageTransaction.setOutcome('failure')
 
-          // Capture the error in APM
-          apm.captureError(error, {
-            custom: {
-              socketId,
-              messagePreview: message ? message.substring(0, 100) : undefined,
-              transactionType: 'websocket-message'
-            }
-          })
-
-          messageTransaction.end()
-          activeWebSocketTransactions.delete(messageTransactionKey)
-
-          logger.debug('apm.websocket.message.transaction.failed', {
+          logger.debug('apm.websocket.message.transaction.error_labels', {
             socketId,
-            error: error.message,
-            transactionName: messageTransaction.name
+            error: error.message
           })
         }
 

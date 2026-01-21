@@ -2,6 +2,7 @@ import type { ModelMessage } from 'ai'
 import { APICallError, RetryError } from 'ai'
 import { Server as SocketIOServer } from 'socket.io'
 import { Server as HTTPServer } from 'http'
+import { context as otelContext } from '@opentelemetry/api'
 import type { AgentFactory, AgentWrapper } from '../core/agent-factory.js'
 import { createAgentFactory } from '../core/agent-factory.js'
 import { calculateCostEstimate, formatCostEstimate, getCacheHitRate, type TokenUsage } from '../utils/model-pricing.js'
@@ -111,6 +112,22 @@ export interface WebSocketConfig {
 
   /** Optional function to get active websocket transaction by socket ID */
   getActiveTransaction?: (socketId: string) => APMAgent | undefined
+
+  /**
+   * Optional function to create OpenTelemetry trace context for message handling.
+   * Called at the START of message processing, before any AI SDK calls.
+   * This ensures AI SDK spans (ai.streamText, ai.toolCall) are linked as children.
+   *
+   * @param socketId - The socket ID for the current connection
+   * @param message - The user's message
+   * @param context - The message context
+   * @returns Object with context to wrap execution in, and optional cleanup function
+   */
+  createTraceContext?: (socketId: string, message: string, context?: Record<string, unknown>) => {
+    context: import('@opentelemetry/api').Context
+    /** Called when message processing completes (success or error) */
+    cleanup?: (error?: Error) => void
+  } | undefined
 
   /** Agent routing hook - determines which agent should handle a message */
   agentRouter?: (socketId: string, data: ChatMessage) => string | undefined
@@ -1667,6 +1684,29 @@ export class WebSocketServer {
 
     // Queue this message to prevent concurrent handleChatMessage races
     // StateManager handles the queue chain, cleanup, and error isolation
+
+    // Create OpenTelemetry trace context if configured
+    // This is called BEFORE message processing so AI SDK spans are properly linked
+    const traceResult = this.config.createTraceContext?.(socketId, data.message, data.context)
+
+    if (traceResult) {
+      // Run the message handler within the trace context
+      // This propagates the trace context to all AI SDK calls (ai.streamText, ai.toolCall)
+      return this.stateManager.queueMessage(socketId, async () => {
+        try {
+          await otelContext.with(traceResult.context, () =>
+            this.handleChatMessageInternal(socket, data)
+          )
+          // Call cleanup on success
+          traceResult.cleanup?.()
+        } catch (error) {
+          // Call cleanup with error
+          traceResult.cleanup?.(error instanceof Error ? error : new Error(String(error)))
+          throw error
+        }
+      })
+    }
+
     return this.stateManager.queueMessage(socketId, () => this.handleChatMessageInternal(socket, data))
   }
 
