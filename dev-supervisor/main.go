@@ -231,8 +231,9 @@ func (s *Server) setupRoutes() {
 	proxyRouter.HandleFunc("/status", s.handleProxyStatus).Methods("GET")
 	proxyRouter.HandleFunc("/config", s.handleProxyConfig).Methods("GET")
 
-	// Publish endpoint (V4 unified job architecture)
+	// Publish endpoints (V4 unified job architecture)
 	s.router.HandleFunc("/publish", s.handlePublish).Methods("POST")
+	s.router.HandleFunc("/publish/status", s.handlePublishStatus).Methods("GET")
 }
 
 func (s *Server) getConfiguredAddress() string {

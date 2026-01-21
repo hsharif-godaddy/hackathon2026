@@ -190,6 +190,19 @@ export interface PublishRequest {
   commitHash: string;
   /** Force publish even if version exists (optional) */
   force?: boolean;
+  /** Wait for app to be healthy before returning (optional, default: false) */
+  waitForHealthy?: boolean;
+  /** Timeout in seconds for health check (optional, default: 60) */
+  healthTimeoutSeconds?: number;
+}
+
+/**
+ * Log entry from publish status
+ */
+export interface PublishLogEntry {
+  timestamp: string;
+  source: 'stdout' | 'stderr' | 'system';
+  message: string;
 }
 
 /**
@@ -202,6 +215,10 @@ export interface PublishSuccessResponse {
   version: string;
   /** Startup time of the new version */
   startupTime?: string;
+  /** Health status after publish (only if waitForHealthy was true) */
+  healthStatus?: 'healthy' | 'unhealthy' | 'timeout';
+  /** Duration of health check (only if waitForHealthy was true) */
+  healthCheckDuration?: string;
 }
 
 /**
@@ -213,15 +230,46 @@ export interface PublishErrorResponse {
   /** Error message */
   error: string;
   /** Detailed error logs (optional) */
-  logs?: string[];
+  logs?: PublishLogEntry[];
   /** Exit code if applicable */
   exitCode?: number;
+  /** Health status if health check failed */
+  healthStatus?: 'unhealthy' | 'timeout';
+  /** Duration of health check */
+  healthCheckDuration?: string;
+  /** Version that was being published */
+  version?: string;
+  /** Startup time before health check failed */
+  startupTime?: string;
 }
 
 /**
  * Combined publish response type
  */
 export type PublishResponse = PublishSuccessResponse | PublishErrorResponse;
+
+/**
+ * Response from /publish/status endpoint
+ */
+export interface PublishStatusResponse {
+  /** Current version (commit hash) being served, null if no version published yet */
+  version: string | null;
+  /** Health status of the app (active health check result) */
+  health: {
+    status: 'healthy' | 'unhealthy' | 'stopped' | 'unknown';
+    message: string;
+  };
+  /** Process state */
+  process: {
+    state: 'running' | 'stopped' | 'starting' | 'stopping' | 'error';
+    pid: number;
+    uptime: string;
+  };
+  /** Recent logs (if includeLogs=true) */
+  logs?: PublishLogEntry[];
+  /** Warnings about the publish state */
+  warnings?: string[];
+}
 
 /**
  * Client for communicating with dev-supervisor over Unix domain socket or TCP
@@ -557,32 +605,77 @@ export class DevSupervisorClient {
    * This is used in V4 unified job architecture where the publish task runs continuously
    * and switches versions on demand without redeploying the job.
    * 
-   * @param request - Publish request with commitHash and optional force flag
+   * @param request - Publish request with commitHash, optional force flag, and health check options
    * @returns Publish response with status and version info
    * @throws Error if publish fails
    */
   async publish(request: PublishRequest): Promise<PublishResponse> {
     this.logger.info('dev_supervisor.publish.begin', {
       commitHash: request.commitHash,
-      force: request.force
+      force: request.force,
+      waitForHealthy: request.waitForHealthy,
+      healthTimeoutSeconds: request.healthTimeoutSeconds
     });
 
     try {
       const response = await this.makeRequest('POST', '/publish', {
         commitHash: request.commitHash,
-        force: request.force || false
+        force: request.force || false,
+        waitForHealthy: request.waitForHealthy || false,
+        healthTimeoutSeconds: request.healthTimeoutSeconds || 60
       });
 
       this.logger.info('dev_supervisor.publish.success', {
         commitHash: request.commitHash,
         status: response.status,
-        version: response.version
+        version: response.version,
+        healthStatus: response.healthStatus
       });
 
       return response as PublishResponse;
     } catch (error) {
       this.logger.error('dev_supervisor.publish.failure', {
         commitHash: request.commitHash,
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get publish status
+   * 
+   * Returns the current version being served, health status, process state, and logs.
+   * Useful for diagnosing production issues when users report problems.
+   * 
+   * @param options - Options for the status request
+   * @returns Publish status response with version, health, process, and logs
+   */
+  async getPublishStatus(options?: { lines?: number; includeLogs?: boolean }): Promise<PublishStatusResponse> {
+    const lines = options?.lines ?? 200;
+    const includeLogs = options?.includeLogs ?? true;
+
+    this.logger.info('dev_supervisor.publish_status.begin', {
+      lines,
+      includeLogs
+    });
+
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.set('lines', lines.toString());
+      queryParams.set('includeLogs', includeLogs.toString());
+
+      const response = await this.makeRequest('GET', `/publish/status?${queryParams.toString()}`);
+
+      this.logger.info('dev_supervisor.publish_status.success', {
+        version: response.version,
+        healthStatus: response.health?.status,
+        processState: response.process?.state
+      });
+
+      return response as PublishStatusResponse;
+    } catch (error) {
+      this.logger.error('dev_supervisor.publish_status.failure', {
         error: getErrorMessage(error)
       });
       throw error;

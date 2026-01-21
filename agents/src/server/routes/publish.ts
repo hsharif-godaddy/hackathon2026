@@ -246,6 +246,7 @@ router.post('/apps/:id/publish', async (req, res) => {
       // For local dev with unified job, create archive to /dist directory
       // For production, use default archive location
       const targetDir = isUnifiedJob && isLocalDev ? '/dist' : undefined;
+      
       const archiveResult = await gitUtils.createArchive(
         app.path,
         fullCommitHash,
@@ -300,19 +301,24 @@ router.post('/apps/:id/publish', async (req, res) => {
 
         const publishResponse: PublishResponse = await publishSupervisor.publish({
           commitHash: fullCommitHash,
-          force: false
+          force: false,
+          waitForHealthy: true,
+          healthTimeoutSeconds: 60
         });
 
         if (publishResponse.status === 'error') {
           contextLogger.error('route.publish.supervisor.failed', {
             commitHash: fullCommitHash.substring(0, 7),
             error: publishResponse.error,
+            healthStatus: publishResponse.healthStatus,
           });
           return res.status(500).json({
             error: 'Publish supervisor failed',
             details: publishResponse.error,
             logs: publishResponse.logs,
-            exitCode: publishResponse.exitCode
+            exitCode: publishResponse.exitCode,
+            healthStatus: publishResponse.healthStatus,
+            healthCheckDuration: publishResponse.healthCheckDuration
           });
         }
 
@@ -321,6 +327,8 @@ router.post('/apps/:id/publish', async (req, res) => {
         contextLogger.info('route.publish.supervisor.success', {
           commitHash: fullCommitHash.substring(0, 7),
           version: publishResult.version,
+          healthStatus: publishResult.healthStatus,
+          healthCheckDuration: publishResult.healthCheckDuration,
         });
       } catch (error) {
         contextLogger.error('route.publish.supervisor.failed', {
@@ -352,7 +360,9 @@ router.post('/apps/:id/publish', async (req, res) => {
     if (publishResult) {
       response.supervisor = {
         version: publishResult.version,
-        startupTime: publishResult.startupTime
+        startupTime: publishResult.startupTime,
+        healthStatus: publishResult.healthStatus,
+        healthCheckDuration: publishResult.healthCheckDuration
       };
       // Flag for local dev UI to show success immediately (no polling needed)
       if (isLocalDev) {

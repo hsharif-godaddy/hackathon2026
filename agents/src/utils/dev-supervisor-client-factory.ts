@@ -71,6 +71,35 @@ export class DevSupervisorClientFactory {
   }
 
   /**
+   * Create a DevSupervisorClient for the publish supervisor of a specific app
+   * Used in V4 unified job architecture to communicate with the publish task
+   * @param appId - The app ID to create a client for
+   * @returns DevSupervisorClient instance or null if not available
+   * @throws Error if app not found
+   */
+  static createForPublishSupervisor(appId: string): DevSupervisorClient | null {
+    const app = this.getAppRepository().findById(appId);
+    if (!app) {
+      this.logger.error('dev_supervisor.client.create.app_not_found', {
+        appId,
+        error: `App with ID ${appId} not found`
+      });
+      throw new Error(`App with ID ${appId} not found`);
+    }
+
+    // Use stored publishSupervisorPath for V4 unified jobs
+    if (!app.publishSupervisorPath) {
+      this.logger.debug('dev_supervisor.client.create.no_publish_supervisor', {
+        appId,
+        reason: 'App does not have publishSupervisorPath (may be legacy job)'
+      });
+      return null;
+    }
+
+    return this.createForSocketPath(app.publishSupervisorPath, appId);
+  }
+
+  /**
    * Check if dev-supervisor is available for an app
    * @param appId - The app ID to check
    * @returns true if available, false otherwise

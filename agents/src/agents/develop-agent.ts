@@ -235,6 +235,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       //serverStatus: allAILibTools.serverStatus,
       viewLogs: allAILibTools.viewLogs,
       publishClient: allAILibTools.publishClient,
+      publishStatus: allAILibTools.publishStatus,
 
       // Specialized development tools
       mediaSearch: allAILibTools.mediaSearch,
