@@ -26,6 +26,7 @@ export interface BaseEditResult {
   filePath: string;
   diff?: string;
   error?: string;
+  commitHash?: string;
 }
 
 export abstract class ASTEditorBase {

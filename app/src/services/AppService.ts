@@ -48,6 +48,41 @@ export interface TextUpdateData {
   devContext: Record<string, unknown>
 }
 
+export interface ImageReplaceData {
+  elementInfo: {
+    tagName: string
+    className: string
+    id: string
+    selector: string
+    devContext: {
+      fileName: string
+      componentName: string
+      lineNumber: number
+    }
+  }
+  imageInfo: {
+    type: 'img' | 'background' | 'contains-img' | 'sibling-img'
+    currentUrl: string | null
+  }
+  newImageUrl: string
+}
+
+export interface ImageReplaceResult {
+  success: boolean
+  message?: string
+  error?: string
+  fallbackRequired?: boolean
+  data?: {
+    filePath: string
+    changes: {
+      oldUrl: string | null
+      newUrl: string
+      imageType: string
+    }
+    commitHash?: string
+  }
+}
+
 export interface CreateAppData {
   name: string
   initialPrompt: string
@@ -391,6 +426,45 @@ export class AppService {
     }
 
     return response.json()
+  }
+
+  /**
+   * Replace image using AST-based approach
+   * Returns success:true if AST replacement worked, or fallbackRequired:true if LLM should handle it
+   */
+  async replaceImage(appId: string, imageData: ImageReplaceData): Promise<ImageReplaceResult> {
+    const requestBody = {
+      elementInfo: imageData.elementInfo,
+      imageInfo: imageData.imageInfo,
+      newImageUrl: imageData.newImageUrl
+    };
+
+    const apiUrl = await buildDynamicApiUrl(`images/replace`, appId)
+    const response = await agentFetch(apiUrl, {
+      siteId: appId,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    })
+
+    // Parse response regardless of status
+    const result = await response.json() as ImageReplaceResult
+
+    // Even if response is not ok, check if it explicitly says fallback is required
+    if (!response.ok) {
+      logger.warn('app-service.replace-image.ast-failed', {
+        appId,
+        status: response.status,
+        fallbackRequired: result.fallbackRequired
+      })
+      return {
+        success: false,
+        error: result.error || `AST replacement failed: ${response.status}`,
+        fallbackRequired: result.fallbackRequired ?? true
+      }
+    }
+
+    return result
   }
 
   /**

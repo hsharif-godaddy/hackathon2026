@@ -26,6 +26,7 @@ import { agentFetch } from '@/lib/agent-fetch'
 import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
+import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 import {
@@ -319,24 +320,68 @@ export default function ChatPane({
       })
 
       if (currentAiEditContext?.isImageReplacement) {
-        // Image replacement mode: only allow one image and auto-send
+        // Image replacement mode: try AST first, then fall back to AI agent
         logger.debug('chat-pane.image-replace.auto-send', { appId })
-        console.log('isImageReplacement: true')
-        const message = 'Replace this image with the new one I selected'
+        const selectedItem = items[0]
+        const newImageUrl = selectedItem.imageUrl
 
-        shipAnalyticsLog('chat.prompt.sent', {
-          appId,
-          promptLength: message.length,
-          source: 'image-replacement',
-          hasEditContext: true,
-          hasSelectedAsset: true,
-          hasBuildErrorContext: false
-        })
+        // Try AST replacement first
+        const tryAstReplacement = async () => {
+          try {
+            logger.debug('chat-pane.image-replace.ast-attempt', { appId })
+            // Combine elementInfo with devContext for the API
+            const elementInfoWithDevContext = {
+              tagName: currentAiEditContext.elementInfo?.tagName || '',
+              className: currentAiEditContext.elementInfo?.className || '',
+              id: currentAiEditContext.elementInfo?.id || '',
+              selector: currentAiEditContext.selector || '',
+              devContext: currentAiEditContext.devContext || { fileName: '', componentName: '', lineNumber: 0 }
+            }
+            const astResult = await appService.replaceImage(appId, {
+              elementInfo: elementInfoWithDevContext,
+              imageInfo: currentAiEditContext.imageInfo || { type: 'img', currentUrl: null },
+              newImageUrl
+            })
 
-        sendMessage(message, { ...currentAiEditContext, screenshot: null }, [items[0]])
-        handleClearAiEditContext()
+            if (astResult.success) {
+              logger.info('chat-pane.image-replace.ast-success', { appId })
+              // No manual refresh needed - Vite HMR will auto-update the preview
+              handleClearAiEditContext()
+              return
+            }
+
+            if (astResult.fallbackRequired) {
+              // AST failed, fall back to AI agent
+              logger.info('chat-pane.image-replace.ast-fallback', { appId, error: astResult.error })
+              sendFallbackMessage()
+            } else {
+              // AST failed but fallback not required - just clear context
+              logger.debug('chat-pane.image-replace.ast-failed-no-fallback', { appId, error: astResult.error })
+              handleClearAiEditContext()
+            }
+          } catch (error) {
+            logger.error('chat-pane.image-replace.ast-error', { appId, error: String(error) })
+            // On exception, fall back to AI agent
+            sendFallbackMessage()
+          }
+
+          function sendFallbackMessage() {
+            const message = 'Replace this image with the new one I selected'
+            shipAnalyticsLog('chat.prompt.sent', {
+              appId,
+              promptLength: message.length,
+              source: 'image-replacement',
+              hasEditContext: true,
+              hasSelectedAsset: true,
+              hasBuildErrorContext: false
+            })
+            sendMessage(message, { ...currentAiEditContext, screenshot: null }, [selectedItem])
+            handleClearAiEditContext()
+          }
+        }
+
+        void tryAstReplacement()
       } else {
-        console.log('isImageReplacement: false')
         // Normal mode: allow multiple images (append with duplicate checking)
         logger.debug('chat-pane.asset-select.manual', { appId })
         setSelectedAssets((prevAssets) => {

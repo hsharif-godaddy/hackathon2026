@@ -25,6 +25,7 @@ import { ReadFileTool } from '../../tools/read-file.js';
 import { FileEditTool } from '../../tools/file-edit.js';
 import { ASTStyleEditor } from '../../tools/ast-style-editor.js';
 import { ASTTextEditor } from '../../tools/ast-text-editor.js';
+import { astImageEditor } from '../../tools/ast-image-editor.js';
 import { TokenUsageRepository } from '../../database/index.js';
 import { ServerManagementTool } from '../../tools/server-management-tool.js';
 import { getNameSuggestionService } from '../../services/name-suggestion.js';
@@ -897,6 +898,97 @@ router.post('/:id/styles/edit', async (req: Request, res: Response) => {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
     log.error(contextLogger, 'route.apps.style-edit.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /apps/:id/images/replace - Replace image using AST-based approach
+ */
+router.post('/:id/images/replace', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { elementInfo, imageInfo, newImageUrl } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    const contextLogger = log.forApp(id);
+
+    if (!elementInfo || !elementInfo.devContext) {
+      contextLogger.warn('route.apps.image-replace.validation.failed', {
+        hasElementInfo: !!elementInfo,
+        hasDevContext: !!(elementInfo && elementInfo.devContext),
+      });
+      return res.status(400).json({ error: 'Element info with dev context is required' });
+    }
+
+    if (!imageInfo || !imageInfo.type) {
+      contextLogger.warn('route.apps.image-replace.imageinfo.invalid', {
+        hasImageInfo: !!imageInfo,
+        hasType: !!(imageInfo && imageInfo.type),
+      });
+      return res.status(400).json({ error: 'Image info with type is required' });
+    }
+
+    if (!newImageUrl) {
+      contextLogger.warn('route.apps.image-replace.url.missing', {});
+      return res.status(400).json({ error: 'New image URL is required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    contextLogger.info('route.apps.image-replace.begin', {
+      fileName: elementInfo.devContext.fileName,
+      lineNumber: elementInfo.devContext.lineNumber,
+      imageType: imageInfo.type,
+      newImageUrl,
+    });
+
+    const replaceResult = await astImageEditor.replaceImage(app.path, {
+      elementInfo,
+      imageInfo,
+      newImageUrl
+    }, id);
+
+    if (!replaceResult.success) {
+      contextLogger.warn('route.apps.image-replace.ast-failed', {
+        error: replaceResult.error,
+      });
+      return res.status(400).json({
+        success: false,
+        error: 'AST-based image replacement failed',
+        details: replaceResult.error,
+        fallbackRequired: true
+      });
+    }
+
+    contextLogger.info('route.apps.image-replace.success', {
+      oldUrl: replaceResult.changes?.oldUrl,
+      newUrl: replaceResult.changes?.newUrl,
+      imageType: replaceResult.changes?.imageType,
+    });
+
+    return res.json({
+      success: true,
+      message: 'Image replaced successfully',
+      data: {
+        filePath: replaceResult.filePath,
+        changes: replaceResult.changes,
+        commitHash: replaceResult.commitHash
+      }
+    });
+  } catch (error) {
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.image-replace.error', error as Error, {});
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      fallbackRequired: true
+    });
   }
 });
 
