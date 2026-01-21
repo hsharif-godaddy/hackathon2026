@@ -209,7 +209,16 @@ export class VentureService {
         const ventureId = await this.createProfileForShopper(shopperId);
 
         // Step 3: Store the venture ID in mgmt-airo attributes
-        if (this.mgmtAiroClient) {
+        // Skip in local dev - attribute writes require special permissions that local dev doesn't have
+        const isLocalDev = process.env.NODE_ENV === 'development';
+        if (isLocalDev) {
+            logger.debug('venture.getOrCreate.skip-attribute-storage', {
+                message: 'Skipping mgmt-airo attribute storage in local dev',
+                customerId,
+                ventureId,
+            });
+        }
+        if (this.mgmtAiroClient && !isLocalDev) {
             try {
                 // Try to create the attribute
                 await this.mgmtAiroClient.createAttribute(

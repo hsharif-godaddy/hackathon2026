@@ -213,9 +213,10 @@ export class DockerComposeGenerator {
 		const previewEnv = this.generatePreviewEnvironment(config);
 		const envLines = Object.entries(previewEnv).map(([key, value]) => `      ${key}: "${value}"`).join('\n');
 
+		// Note: node_modules is at /node_modules in the image (not /app/node_modules)
+		// This allows the /app bind mount without needing a 549MB anonymous volume copy
 		const volumes = [
 			`${config.appPath}:/app`,
-			`/app/node_modules`,
 			`${distPath}:/dist`,
 			`${allocPath}:/alloc:ro`,
 		];
@@ -294,9 +295,9 @@ ${volumeLines}
 		// /dist is mounted READ-WRITE so supervisor can create/update symlinks
 		// Extraction happens in container's /app (not shared /dist)
 		// SSL certs mounted for HTTPS proxy
+		// Note: node_modules is at /node_modules in the image (not /app/node_modules)
 		const sslPath = config.appPath.replace(/\/app$/, '/app/.ssl');
 		const volumes = [
-			`/app/node_modules`,
 			`${distPath}:/dist`,
 			`${allocPath}:/alloc:ro`,
 			`${sslPath}:/app/.ssl:ro`,

@@ -627,6 +627,21 @@ describe('AiroMgmtClient', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
+    it('should not retry on 403 Forbidden', async () => {
+      const errorResponse = {
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        url: 'https://mgmt.test.com/api/airo/v1/attributes/user/123',
+        text: async () => 'Forbidden'
+      } as Response;
+
+      mockFetch.mockResolvedValueOnce(errorResponse);
+
+      await expect(client.getSubscriptions()).rejects.toBeInstanceOf(Error);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
     it('should retry on 404 when retryOn404 is enabled', async () => {
       mockFetch
         .mockResolvedValueOnce({

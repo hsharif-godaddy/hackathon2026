@@ -46,14 +46,24 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     # This optimization skips redundant installs, reducing container startup from 47s to ~15s
     NEEDS_INSTALL=false
 
-    if [ ! -f ".npm-install-hash" ]; then
-        # First run - need to install
+    # Check for hash file - try /app first (written after npm install), then /node_modules (from image)
+    # The /node_modules/.npm-install-hash survives the /app bind mount and represents base image deps
+    if [ -f ".npm-install-hash" ]; then
+        HASH_FILE=".npm-install-hash"
+    elif [ -f "/node_modules/.npm-install-hash" ]; then
+        HASH_FILE="/node_modules/.npm-install-hash"
+    else
+        HASH_FILE=""
+    fi
+
+    if [ -z "$HASH_FILE" ]; then
+        # No hash file anywhere - need to install
         NEEDS_INSTALL=true
-        echo "First run detected, npm install required"
+        echo "No dependency hash found, npm install required"
     else
         # Check if package files changed
         CURRENT_HASH=$(cat package.json package-lock.json 2>/dev/null | md5sum | cut -d' ' -f1)
-        LAST_HASH=$(cat .npm-install-hash)
+        LAST_HASH=$(cat "$HASH_FILE")
 
         if [ "$CURRENT_HASH" != "$LAST_HASH" ]; then
             NEEDS_INSTALL=true

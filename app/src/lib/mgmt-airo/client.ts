@@ -163,10 +163,11 @@ export class AiroMgmtClient {
         const attemptDuration = Date.now() - attemptStart;
         const totalDuration = Date.now() - apiCallStart;
 
-        // Do not retry auth failures - they require user action and retrying only adds latency/noise.
-        if (error instanceof AiroHttpError && error.status === 401) {
+        // Do not retry auth/authz failures - they require user action and retrying only adds latency/noise.
+        // 401 = authentication (invalid/expired token), 403 = authorization (no permission)
+        if (error instanceof AiroHttpError && (error.status === 401 || error.status === 403)) {
           logger.warn('mgmt-airo.api.auth-error.no-retry', {
-            message: `${apiCallId} failed with 401, skipping retries`,
+            message: `${apiCallId} failed with ${error.status}, skipping retries`,
             url,
             attempt,
             attemptDuration,
