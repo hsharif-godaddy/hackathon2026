@@ -103,6 +103,19 @@ async function setupServerWithConnection(
   return { server, messageHandler: onCall[1] }
 }
 
+/**
+ * Helper to create a mock persistence with method overrides
+ * Preserves prototype chain to ensure all methods are available
+ */
+function createMockPersistence(overrides: Partial<ReturnType<typeof createNoOpPersistence>>) {
+  const basePersistence = createNoOpPersistence()
+  return Object.assign(
+    Object.create(Object.getPrototypeOf(basePersistence)),
+    basePersistence,
+    overrides
+  )
+}
+
 describe('WebSocketServer - Error Handling', () => {
   let server: WebSocketServer
   let httpServer: HTTPServer
@@ -1833,6 +1846,205 @@ describe('WebSocketServer - Error Handling', () => {
       expect(finalState).toBeUndefined()
 
       testServer.close()
+    })
+  })
+
+  describe('ConversationId Injection into Metadata', () => {
+    it('should inject conversationId into metadata after setupPersistence', async () => {
+      const httpServer = new HTTPServer()
+      const startConversationSpy = vi.fn().mockResolvedValue('test-conversation-123')
+      const mockPersistence = createMockPersistence({
+        startConversation: startConversationSpy
+      })
+
+      // Setup streamGenerate to succeed and capture executionContext
+      let capturedExecutionContext: any = null
+      const mockStreamResult = {
+        baseStream: null,
+        textStream: (async function* () {
+          yield 'Test response'
+        })(),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: { inputTokens: 10, outputTokens: 5 },
+          toolCalls: []
+        })
+      }
+
+      mockAgent.streamGenerate = vi.fn().mockImplementation((_prompt, options) => {
+        capturedExecutionContext = options?.executionContext
+        return Promise.resolve(mockStreamResult)
+      })
+
+      const { messageHandler } = await setupServerWithConnection(httpServer, {
+        agents: mockAgents,
+        defaultAgent: 'test-agent',
+        messagePersistence: mockPersistence
+      })
+
+      const chatMessage = {
+        message: 'Test message',
+        agentId: 'test-agent',
+        context: {
+          metadata: {
+            appId: 'test-app'
+          }
+        }
+      }
+
+      await messageHandler(chatMessage)
+
+      // Verify conversationId was injected into executionContext.metadata
+      expect(capturedExecutionContext).toBeDefined()
+      expect(capturedExecutionContext.metadata).toBeDefined()
+      expect(capturedExecutionContext.metadata.conversationId).toBe('test-conversation-123')
+    })
+
+    it('should inject conversationId in handoff/recovery scenarios', async () => {
+      const httpServer = new HTTPServer()
+      const conversationId = 'existing-conversation-456'
+      const startConversationSpy = vi.fn().mockResolvedValue(conversationId)
+      const continueConversationSpy = vi.fn().mockResolvedValue(undefined)
+
+      const mockPersistence = createMockPersistence({
+        startConversation: startConversationSpy,
+        continueConversation: continueConversationSpy
+      })
+
+      const executionContexts: any[] = []
+      const mockStreamResult = {
+        baseStream: null,
+        textStream: (async function* () {
+          yield 'Response'
+        })(),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: { inputTokens: 10, outputTokens: 5 },
+          toolCalls: []
+        })
+      }
+
+      mockAgent.streamGenerate = vi.fn().mockImplementation((_prompt, options) => {
+        executionContexts.push(options?.executionContext)
+        return Promise.resolve(mockStreamResult)
+      })
+
+      const { messageHandler } = await setupServerWithConnection(httpServer, {
+        agents: mockAgents,
+        defaultAgent: 'test-agent',
+        messagePersistence: mockPersistence
+      })
+
+      // First message creates conversation
+      await messageHandler({
+        message: 'First message',
+        agentId: 'test-agent',
+        context: {
+          metadata: { appId: 'test-app' }
+        }
+      })
+
+      // Second message should reuse conversation
+      await messageHandler({
+        message: 'Second message',
+        agentId: 'test-agent',
+        context: {
+          metadata: { appId: 'test-app' },
+          conversation: { conversationId }
+        }
+      })
+
+      // Both calls should have conversationId in metadata
+      expect(executionContexts).toHaveLength(2)
+      expect(executionContexts[0].metadata.conversationId).toBe(conversationId)
+      expect(executionContexts[1].metadata.conversationId).toBe(conversationId)
+    })
+
+    it('should handle missing conversation gracefully', async () => {
+      const httpServer = new HTTPServer()
+
+      let capturedExecutionContext: any = null
+      const mockStreamResult = {
+        baseStream: null,
+        textStream: (async function* () {
+          yield 'Response'
+        })(),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: { inputTokens: 10, outputTokens: 5 },
+          toolCalls: []
+        })
+      }
+
+      mockAgent.streamGenerate = vi.fn().mockImplementation((_prompt, options) => {
+        capturedExecutionContext = options?.executionContext
+        return Promise.resolve(mockStreamResult)
+      })
+
+      const { server } = await setupServerWithConnection(httpServer, {
+        agents: mockAgents,
+        defaultAgent: 'test-agent',
+        messagePersistence: createNoOpPersistence()
+      })
+
+      // Manually call attachConversationId with non-existent socket
+      const testContext: Record<string, unknown> = {
+        metadata: { appId: 'test-app' }
+      }
+
+      // Access the private method via bracket notation for testing
+      ;(server as any).attachConversationId(testContext, 'non-existent-socket')
+
+      // Should not throw and should not add conversationId
+      expect(testContext.metadata).toBeDefined()
+      expect((testContext.metadata as any).conversationId).toBeUndefined()
+    })
+
+    it('should preserve existing metadata when injecting conversationId', async () => {
+      const httpServer = new HTTPServer()
+      const startConversationSpy = vi.fn().mockResolvedValue('test-conversation-789')
+      const mockPersistence = createMockPersistence({
+        startConversation: startConversationSpy
+      })
+
+      let capturedExecutionContext: any = null
+      const mockStreamResult = {
+        baseStream: null,
+        textStream: (async function* () {
+          yield 'Response'
+        })(),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: { inputTokens: 10, outputTokens: 5 },
+          toolCalls: []
+        })
+      }
+
+      mockAgent.streamGenerate = vi.fn().mockImplementation((_prompt, options) => {
+        capturedExecutionContext = options?.executionContext
+        return Promise.resolve(mockStreamResult)
+      })
+
+      const { messageHandler } = await setupServerWithConnection(httpServer, {
+        agents: mockAgents,
+        defaultAgent: 'test-agent',
+        messagePersistence: mockPersistence
+      })
+
+      await messageHandler({
+        message: 'Test',
+        agentId: 'test-agent',
+        context: {
+          metadata: {
+            appId: 'test-app',
+            userId: 'user-123',
+            customField: 'custom-value'
+          }
+        }
+      })
+
+      // Verify all original metadata is preserved
+      expect(capturedExecutionContext.metadata.appId).toBe('test-app')
+      expect(capturedExecutionContext.metadata.userId).toBe('user-123')
+      expect(capturedExecutionContext.metadata.customField).toBe('custom-value')
+      // And conversationId is added
+      expect(capturedExecutionContext.metadata.conversationId).toBe('test-conversation-789')
     })
   })
 })

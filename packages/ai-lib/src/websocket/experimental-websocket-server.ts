@@ -62,6 +62,7 @@ interface ProcessedContext extends Record<string, unknown> {
 
 type MetadataRecord = Record<string, unknown> & {
   appId?: string
+  conversationId?: string
 }
 
 /**
@@ -1750,6 +1751,9 @@ export class WebSocketServer {
       // 3. Setup persistence (conversation ID, tracking)
       await this.setupPersistence(socketId, agentName, data, processedContext)
 
+      // Inject conversationId into metadata for tools to access
+      this.attachConversationId(processedContext, socketId)
+
       // 4. Register event channel subscribers for this conversation
       // WebSocketSubscriber: delivers events to client socket (blocking - fail-fast on errors)
       // PersistenceSubscriber: persists events to database (non-blocking - errors logged)
@@ -1914,6 +1918,9 @@ export class WebSocketServer {
 
           // Update processedContext with the updated context from conversation
           processedContext = updatedContext
+
+          // Re-inject conversationId since updatedContext comes from state manager snapshot
+          this.attachConversationId(processedContext, socketId)
 
           // Continue the loop without checking for handoff
           continue
@@ -2137,6 +2144,25 @@ export class WebSocketServer {
   }
 
   /**
+   * Inject conversationId from state manager into context metadata
+   * This ensures tools have access to conversationId via executionContext.metadata.conversationId
+   */
+  private attachConversationId(
+    context: Record<string, unknown>,
+    socketId: string
+  ): void {
+    const effectiveSocketId = this.stateManager.getEffectiveSocketId(socketId)
+    const conversation = this.getConversation(effectiveSocketId)
+
+    if (conversation?.conversationId) {
+      if (!context.metadata) {
+        context.metadata = {}
+      }
+      (context.metadata as MetadataRecord).conversationId = conversation.conversationId
+    }
+  }
+
+  /**
    * Process context and add socketId
    */
   private async processContext(data: ChatMessage, socketId: string): Promise<Record<string, unknown>> {
@@ -2178,10 +2204,15 @@ export class WebSocketServer {
     }
 
     // Add socketId so it's available to tools via executionContext
-    return {
+    const enrichedContext = {
       ...context,
       socketId
     }
+
+    // Inject conversationId if state manager already has it (recovery/handoff cases)
+    this.attachConversationId(enrichedContext, socketId)
+
+    return enrichedContext
   }
 
   /**
