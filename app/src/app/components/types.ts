@@ -2,6 +2,7 @@ export interface Example {
   title: string
   prompt: string
   slug: string
+  featured?: boolean
 }
 
 export interface BuiltWithItem {

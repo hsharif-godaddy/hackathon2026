@@ -69,7 +69,11 @@ function HomeContent() {
   // Use useCallback to ensure the function reference stays stable
   const handleStartBuilding = useCallback(async (overridePrompt?: string) => {
     // Handle case where this is called as an event handler (overridePrompt would be a MouseEvent)
-    const promptToUse = (typeof overridePrompt === 'string' ? overridePrompt : promptTextRef.current).trim()
+    let promptToUse = (typeof overridePrompt === 'string' ? overridePrompt : promptTextRef.current).trim()
+
+    // Remove placeholder example URLs from the prompt
+    promptToUse = promptToUse.replace(/https?:\/\/example\.com\s*/gi, '').trim()
+
     if (!promptToUse || isRedirecting || isLoading) return
 
     // Clear any previous errors and set loading state

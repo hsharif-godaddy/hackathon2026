@@ -28,12 +28,14 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   const [isTyping, setIsTyping] = useState(false)
   const [displayText, setDisplayText] = useState(promptText)
   const [isFocused, setIsFocused] = useState(false)
+  const [animatedPlaceholder, setAnimatedPlaceholder] = useState('')
 
   // Keep expanded if focused OR has content
   const isExpanded = isFocused || displayText.trim().length > 0
   const animationQueueRef = useRef<string[]>([])
   const lastErrorClearRef = useRef<string>('')
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const placeholderTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Detect Safari browser
   const isSafari = useMemo(() => {
@@ -41,10 +43,23 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     return /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
   }, [])
 
+  // Memoize and shuffle placeholders once on mount
+  const placeholders = useMemo(() => [
+    t('builder_homepage_placeholder_1'),
+    t('builder_homepage_placeholder_2'),
+    t('builder_homepage_placeholder_3'),
+    t('builder_homepage_placeholder_4'),
+    t('builder_homepage_placeholder_5')
+  ].sort(() => Math.random() - 0.5), []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const { isMobile, isTablet } = useResponsive()
+  const isUserTypingRef = useRef(false)
 
   useEffect(() => {
-    setDisplayText(promptText)
+    // Only sync if not from user input (e.g., example click)
+    if (!isUserTypingRef.current) {
+      setDisplayText(promptText)
+    }
   }, [promptText])
 
   // Debounced prompt text update for better performance
@@ -65,6 +80,60 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       }
     }
   }, [])
+
+  // Animated placeholder effect
+  useEffect(() => {
+    if (isFocused || displayText.trim().length > 0) {
+      setAnimatedPlaceholder('')
+      return
+    }
+
+    // Safari: show static first placeholder without animation
+    if (isSafari) {
+      setAnimatedPlaceholder(placeholders[0])
+      return
+    }
+
+    let currentIndex = 0
+    let currentCharIndex = 0
+    let isDeleting = false
+
+    const animatePlaceholder = () => {
+      const currentText = placeholders[currentIndex]
+
+      if (!isDeleting) {
+        if (currentCharIndex <= currentText.length) {
+          setAnimatedPlaceholder(currentText.slice(0, currentCharIndex))
+          currentCharIndex++
+          placeholderTimerRef.current = setTimeout(animatePlaceholder, 50)
+        } else {
+          placeholderTimerRef.current = setTimeout(() => {
+            isDeleting = true
+            animatePlaceholder()
+          }, 2000)
+        }
+      } else {
+        if (currentCharIndex > 0) {
+          currentCharIndex--
+          setAnimatedPlaceholder(currentText.slice(0, currentCharIndex))
+          placeholderTimerRef.current = setTimeout(animatePlaceholder, 30)
+        } else {
+          isDeleting = false
+          currentIndex = (currentIndex + 1) % placeholders.length
+          currentCharIndex = 0
+          placeholderTimerRef.current = setTimeout(animatePlaceholder, 500)
+        }
+      }
+    }
+
+    animatePlaceholder()
+
+    return () => {
+      if (placeholderTimerRef.current) {
+        clearTimeout(placeholderTimerRef.current)
+      }
+    }
+  }, [isFocused, displayText, isSafari, placeholders])
 
   const typeText = useCallback(async (targetText: string) => {
     if (isLoading) return
@@ -184,6 +253,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 onChange={(e) => {
                   if (isTyping) return // Prevent user input during typing animation
                   const newValue = e.target.value
+                  isUserTypingRef.current = true
                   setDisplayText(newValue)
                   debouncedSetPromptText(newValue)
                   // Clear error when user starts typing (avoid unnecessary calls)
@@ -193,7 +263,10 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   }
                 }}
                 onFocus={() => setIsFocused(true)}
-                onBlur={() => setIsFocused(false)}
+                onBlur={() => {
+                  setIsFocused(false)
+                  isUserTypingRef.current = false
+                }}
                 rows={5}
                 disabled={isLoading}
                 maxLength={MAX_PROMPT_LENGTH + 1}
@@ -201,7 +274,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   'h-32 rounded-2xl': isExpanded,
                   'h-8 sm:h-10 rounded-[3rem]': !isExpanded
                 })}
-                placeholder={isTyping ? "" : t('builder_homepage_hero_placeholder')}
+                placeholder={isTyping ? "" : animatedPlaceholder}
               />
               <Button
                 onClick={onStartBuilding}
