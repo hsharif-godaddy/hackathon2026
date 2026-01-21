@@ -4,6 +4,23 @@
 // ***********************************************
 
 /**
+ * Dismiss privacy banners if they exist on the page.
+ * Uses Cypress retry-ability to wait for banners that load asynchronously.
+ * Silently continues if banners don't exist.
+ */
+Cypress.Commands.add('dismissBanners', () => {
+  const banners = ['#pcFooter', '#gtm_privacy', '#pw_banner'];
+
+  banners.forEach(selector => {
+    cy.get('body', { timeout: 2000 }).then($body => {
+      if ($body.find(selector).length > 0) {
+        cy.get(selector).invoke('hide');
+      }
+    });
+  });
+});
+
+/**
  * Clear all authentication state to test unauthenticated flows
  * This clears sessions, cookies, and localStorage
  */
@@ -92,7 +109,13 @@ Cypress.Commands.add('openUserMenu', () => {
 Cypress.Commands.add('verifyAuthenticated', () => {
   // Close any open popovers first by pressing Escape
   cy.get('body').type('{esc}');
-  cy.wait(500);
+
+  // Wait for any open popovers to close before opening user menu
+  // Check for Radix popover with data-state="closed" or absence of open popovers
+  cy.get('body').should(($body) => {
+    const openPopovers = $body.find('[data-state="open"]').length;
+    expect(openPopovers, 'all popovers should be closed').to.equal(0);
+  });
 
   cy.openUserMenu();
   // Use exist instead of visible to handle z-index/overlay issues
@@ -426,13 +449,18 @@ Cypress.Commands.add('setupIsolatedApp', (specPrefix: string, appDescription?: s
     const initialId = interception.response?.body?.id as string;
     const idType = interception.response?.body?.type as string;
 
-    // If this is a job ID (V2), wait for the URL to change to the real app ID
-    // Job IDs are 7-8 chars, real app IDs are 10+ chars
+    // If this is a job ID (V2), the URL may have ?type=job query param
+    // In test/local environments, job might not convert to full app ID
+    // Extract whatever ID is in the URL after waiting for page to settle
     if (idType === 'job' || initialId.length <= 8) {
-      return cy.url({ timeout: 120000 }).should('match', /\/develop\/[a-zA-Z0-9]{9,}/).then((url) => {
+      // Wait for URL to stabilize on the develop page (redirect completes)
+      cy.url({ timeout: 30000 }).should('match', /\/develop\/[a-zA-Z0-9]+/);
+
+      return cy.url().then((url) => {
         const match = url.match(/\/develop\/([a-zA-Z0-9]+)/);
-        const realAppId = match ? match[1] : initialId;
-        return cy.wrap(realAppId);
+        const appId = match ? match[1] : initialId;
+        cy.log(`Using app ID: ${appId} (from ${idType || 'response'})`);
+        return cy.wrap(appId);
       });
     }
 
@@ -532,6 +560,12 @@ Cypress.Commands.add('pollDeploymentStatus', (
 declare global {
   namespace Cypress {
     interface Chainable {
+      /**
+       * Dismiss privacy banners if they exist on the page
+       * @example cy.dismissBanners()
+       */
+      dismissBanners(): Chainable<void>;
+
       /**
        * Clear all authentication state (sessions, cookies, localStorage)
        * @example cy.clearAuthState()

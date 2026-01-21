@@ -1,22 +1,8 @@
-export function dismissPrivacyBanners() {
-    cy.get('body').then(($body) => {
-      if ($body.find('#pcFooter').length > 0) {
-        cy.get('#pcFooter').invoke('css', 'display', 'none');
-      }
-      if ($body.find('#gtm_privacy').length > 0) {
-        cy.get('#gtm_privacy').invoke('css', 'display', 'none');
-      }
-      if ($body.find('#pw_banner').length > 0) {
-        cy.get('#pw_banner').invoke('css', 'display', 'none');
-      }
-    });
-}
-
 export function getPrefix(env: string) {
     env = ['dev', 'test', 'prod'].indexOf(env) === -1 ? 'dev' : env;
     return env === 'prod' ? '' : `${env}-`;
 }
-  
+
 export function getDomainCookie(env: string) {
   return `.${getPrefix(env)}godaddy.com`;
 }

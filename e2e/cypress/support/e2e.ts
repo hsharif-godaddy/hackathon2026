@@ -7,7 +7,7 @@
 
 // Import commands.js using ES2015 syntax:
 import './commands';
-import { dismissPrivacyBanners, getSpecPrefix } from './utils/helpers';
+import { getSpecPrefix } from './utils/helpers';
 
 // Ignore React hydration errors (common in SSR/Next.js apps),
 // cross-origin errors from SSO redirects, and transient server errors
@@ -118,6 +118,7 @@ before(() => {
 /**
  * Global authentication setup that runs before each test
  * Uses cached session from before() hook
+ * Dismisses privacy banners after page load
  */
 beforeEach(() => {
   cy.ensureAuth();
@@ -125,6 +126,6 @@ beforeEach(() => {
   const url = Cypress.env('baseUrl');
   cy.log('Visiting URL:', url);
   cy.visit(url);
-  dismissPrivacyBanners();
+  cy.dismissBanners();
 });
 

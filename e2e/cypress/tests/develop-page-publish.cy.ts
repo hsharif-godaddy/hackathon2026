@@ -38,7 +38,8 @@ describe('Develop Page - Publishing', () => {
      * - Published URL is accessible
      */
     it('should open publish popover, show changes and history, complete publish flow, and verify states', () => {
-      cy.intercept('POST', '**/api/apps/*/publish').as('publishApp');
+      // Publish goes directly to agent service at /apps/{appId}/publish (not /api/apps/)
+      cy.intercept('POST', '**/apps/*/publish').as('publishApp');
       cy.intercept('GET', '**/api/apps/*/deployments*').as('getDeployments');
 
       cy.openDevelop(appId);
@@ -46,10 +47,14 @@ describe('Develop Page - Publishing', () => {
       cy.waitForChatInput();
 
       // Header button should be enabled after loading completes
+      // Accept either "Publish" or "Republish" since app may have been published by previous test
       cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 30000 })
         .should('be.visible')
         .should('not.be.disabled')
-        .should('contain.text', 'Publish')
+        .should(($btn) => {
+          const text = $btn.text();
+          expect(text).to.match(/Publish|Republish/i);
+        })
         .click();
 
       // Modal opens showing changes
@@ -59,8 +64,8 @@ describe('Develop Page - Publishing', () => {
           cy.get('#publish-changes').should('exist');
           cy.contains(/\bchanges?\b/i).should('exist');
 
-          // Click modal publish button
-          cy.contains('button', 'Publish')
+          // Click modal publish button (accepts "Publish" or "Republish")
+          cy.contains('button', /Publish|Republish/i)
             .should('be.visible')
             .should('not.be.disabled')
             .click();
@@ -74,54 +79,76 @@ describe('Develop Page - Publishing', () => {
       // Wait for publish API
       cy.wait('@publishApp', { timeout: 60000 }).then((publishInterception) => {
         expect(publishInterception.response?.statusCode).to.be.oneOf([200, 201]);
+        expect(publishInterception.response?.body?.success).to.be.true;
 
+        // In test/local env, agent service returns {success, commitHash, published}
+        // In production, it returns {deployment: {deploymentId, status}}
         const deploymentId = publishInterception.response?.body?.deployment?.deploymentId;
-        expect(deploymentId).to.be.a('string');
-        cy.log(`Deployment ID: ${deploymentId}`);
+        const isLocalPublish = publishInterception.response?.body?.published === true;
+        const hasCommitHash = !!publishInterception.response?.body?.commitHash;
 
-        cy.pollDeploymentStatus(appId, deploymentId, DEPLOYMENT_POLL_INTERVAL_MS, DEPLOYMENT_TIMEOUT_MS).then((result) => {
-          cy.log(`Deployment status: ${result.status}`);
+        if (deploymentId) {
+          // Production flow: poll deployment status
+          cy.log(`Deployment ID: ${deploymentId}`);
+          cy.pollDeploymentStatus(appId, deploymentId, DEPLOYMENT_POLL_INTERVAL_MS, DEPLOYMENT_TIMEOUT_MS).then((result) => {
+            cy.log(`Deployment status: ${result.status}`);
 
-          if (result.status === 'deployed') {
-            cy.get('[data-eid*="publish-alert.success.custom_domain"]', { timeout: 30000 })
-              .should('be.visible');
+            if (result.status === 'deployed') {
+              cy.get('[data-eid*="publish-alert.success.custom_domain"]', { timeout: 30000 })
+                .should('be.visible');
 
-            // Verify published URL accessible
-            cy.get('[class*="alert"]').first().within(() => {
-              cy.get('a[href*="http"]').first().invoke('attr', 'href').then((publishedUrl) => {
-                if (publishedUrl) {
-                  cy.log(`Published URL: ${publishedUrl}`);
-                  cy.request({
-                    url: publishedUrl,
-                    failOnStatusCode: false,
-                    timeout: 30000,
-                  }).then((response) => {
-                    expect(response.status).to.be.oneOf([200, 301, 302]);
-                    cy.log(`✓ Published URL accessible: ${response.status}`);
-                  });
-                }
+              // Verify published URL accessible
+              cy.get('[class*="alert"]').first().within(() => {
+                cy.get('a[href*="http"]').first().invoke('attr', 'href').then((publishedUrl) => {
+                  if (publishedUrl) {
+                    cy.log(`Published URL: ${publishedUrl}`);
+                    cy.request({
+                      url: publishedUrl,
+                      failOnStatusCode: false,
+                      timeout: 30000,
+                    }).then((response) => {
+                      expect(response.status).to.be.oneOf([200, 301, 302]);
+                      cy.log(`✓ Published URL accessible: ${response.status}`);
+                    });
+                  }
+                });
               });
-            });
 
-            // Close success alert
-            cy.get('[class*="alert"]').first().within(() => {
-              cy.get('button[aria-label*="close"], button[aria-label*="dismiss"], [class*="close"]')
-                .first()
-                .click({ force: true });
-            });
+              // Close success alert
+              cy.get('[class*="alert"]').first().within(() => {
+                cy.get('button[aria-label*="close"], button[aria-label*="dismiss"], [class*="close"]')
+                  .first()
+                  .click({ force: true });
+              });
 
-            cy.get('[data-eid*="publish-alert.success.custom_domain"]', { timeout: 5000 })
-              .should('not.exist');
+              cy.get('[data-eid*="publish-alert.success.custom_domain"]', { timeout: 5000 })
+                .should('not.exist');
 
-            // After successful deploy, button stays enabled but text changes to "Republish"
-            cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 10000 })
-              .should('not.be.disabled')
-              .should('contain.text', 'Republish');
+              // After successful deploy, button stays enabled but text changes to "Republish"
+              cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 10000 })
+                .should('not.be.disabled')
+                .should('contain.text', 'Republish');
 
-          } else if (result.status === 'failed') {
-            cy.contains('button', /try again/i, { timeout: 30000 }).should('exist');
-          }
-        });
+            } else if (result.status === 'failed') {
+              cy.contains('button', /try again/i, { timeout: 30000 }).should('exist');
+            }
+          });
+        } else if (isLocalPublish || hasCommitHash) {
+          // Wait for "Publishing..." header button to change to "Republish"
+          // This indicates deployment is complete
+          cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 120000 })
+            .should('not.be.disabled')
+            .should('not.contain.text', 'Publishing')
+            .should('contain.text', 'Republish');
+
+          // Verify success banner appears
+          cy.get('[data-eid*="publish-alert.success"]', { timeout: 30000 })
+            .should('be.visible');
+        } else {
+          // Unexpected response structure
+          cy.log('Warning: Unexpected publish response structure');
+          throw new Error('Publish response missing deploymentId, published flag, and commitHash');
+        }
       });
     });
 

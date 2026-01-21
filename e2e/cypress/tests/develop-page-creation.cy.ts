@@ -61,7 +61,7 @@ describe('Develop Page - Creation', () => {
 
       cy.get('[data-eid*="homepage.prompt.submit"]').should('be.disabled');
 
-      const longPrompt = 'a'.repeat(5001);
+      const longPrompt = 'a'.repeat(40001);
       cy.get('@promptInput')
         .type(longPrompt, { delay: 0 })
         .should('have.value', longPrompt);
