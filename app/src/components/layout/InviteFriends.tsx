@@ -74,6 +74,7 @@ export default function InviteFriends({ location = 'unknown', variant = InviteFr
         onClick={handleClick}
         data-partial='componentAiro'
         data-eid={generateClickEID(`${location}.header.invite_friends`)}
+        aria-label={t('builder_invite_friend_title')}
       />
       <InviteFriendsModal
         isOpen={modalOpen}

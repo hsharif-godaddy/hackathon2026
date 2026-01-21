@@ -62,6 +62,7 @@ export default function DiscordLink({ location = 'unknown', variant = DiscordLin
       onClick={open}
       data-partial='componentAiro'
       data-eid={generateClickEID(`${location}.header.discord`)}
+      aria-label={t('builder_usermenu_discord', undefined, 'Join our Discord')}
     />
   );
 }

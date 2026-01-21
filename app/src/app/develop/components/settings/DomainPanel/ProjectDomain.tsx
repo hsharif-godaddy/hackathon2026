@@ -4,7 +4,6 @@ import { useEffect, useRef,useState } from "react";
 import { useQuery } from '@tanstack/react-query';
 import Box from "@ux/box";
 import Button from "@ux/button";
-import WindowNewIcon from '@ux/icon/window-new';
 import SiblingSet from "@ux/sibling-set";
 import Skeleton from "@ux/skeleton";
 import text from "@ux/text";
@@ -316,22 +315,13 @@ export default function ProjectDomain() {
          ) : (
            <Button
              design="inline"
+             text={projectDomainDisplay}
              data-eid={generateClickEID(`settings/domains.project_domain.link`)}
              className="!hover:bg-transparent"
              href={getProjectDomainUrl(projectDomainDisplay)}
+             as="external"
              external
-           >
-             <Box
-               className="w-auto"
-               orientation="horizontal"
-               gap="sm"
-               inlineAlignChildren="center"
-               blockAlignChildren="start"
-             >
-               <text.p>{projectDomainDisplay}</text.p>
-               <WindowNewIcon className="size-2" />
-             </Box>
-           </Button>
+           />
          )}
         </div>
         { showButtons && currentProjectName !== projectDomainValue && (
