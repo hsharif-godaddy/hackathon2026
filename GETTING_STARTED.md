@@ -187,12 +187,23 @@ pnpm run dev:agents
 pnpm run dev:app
 ```
 
-**Database Migrations (first time only):**
+**Database Setup and Migrations:**
 
 ```bash
 # Run from project root using workspace filter
+# This applies migrations to the database
 pnpm --filter website exec prisma migrate dev
+
+# Regenerate Prisma client (after schema changes)
+pnpm --filter website exec prisma generate
 ```
+
+**Important:** After pulling code with Prisma schema changes, you MUST run both:
+
+1. `pnpm exec prisma generate` - Regenerates TypeScript types
+2. `pnpm exec prisma migrate dev` - Applies database migrations
+
+If you see errors like `Invalid prisma.sites.findMany() invocation: The column 'airo_app.sites.p...'`, this means your database schema doesn't match the Prisma schema. Run the migration command above to fix it.
 
 ## Environment Configuration
 

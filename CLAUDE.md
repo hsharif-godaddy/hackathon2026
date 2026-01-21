@@ -191,8 +191,32 @@ _Explore the tools directory for complete list and implementations_
 - Config: `app/.env` (`DATABASE_URL`)
 
 ```bash
-pnpm --filter website exec prisma migrate dev / generate / studio
+# Apply migrations to database (updates DB schema)
+pnpm --filter website exec prisma migrate dev
+
+# Regenerate Prisma client (updates TypeScript types)
+pnpm --filter website exec prisma generate
+
+# Open Prisma Studio (database GUI)
+pnpm --filter website exec prisma studio
+
+# Push schema changes without creating migration
+pnpm --filter website exec prisma db push
 ```
+
+**After pulling schema changes:**
+
+When you pull code with Prisma schema updates, you MUST run both:
+
+1. `pnpm exec prisma generate` - Regenerates Prisma client types
+2. `pnpm exec prisma migrate dev` - Applies database migrations
+
+**Common Issues:**
+
+- **Error: `Invalid prisma.sites.findMany() invocation: The column 'airo_app.sites.p...'`**
+  - **Cause:** Database schema doesn't match Prisma schema (migrations not applied)
+  - **Fix:** Run `cd app && pnpm exec prisma migrate dev`
+  - **Prevention:** Always apply migrations after pulling schema changes
 
 ## Environment Config
 
