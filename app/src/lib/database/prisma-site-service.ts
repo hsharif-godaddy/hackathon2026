@@ -155,6 +155,17 @@ export class PrismaSiteService {
   }
 
   /**
+   * Get all site IDs
+   * Used for reconciliation to identify orphaned resources
+   */
+  async getAllSiteIds(): Promise<string[]> {
+    const sites = await this.client.sites.findMany({
+      select: { id: true }
+    });
+    return sites.map(s => s.id);
+  }
+
+  /**
    * Get next available Ceph storage assignment
    * this is temp code until we have a proper Ceph storage assignment system
    * we will want to store the mounts per cell in the database and have a proper round robin system

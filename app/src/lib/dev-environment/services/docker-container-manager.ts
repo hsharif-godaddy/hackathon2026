@@ -2,6 +2,7 @@ import { userInfo } from "node:os";
 import * as path from "node:path";
 
 import { execa } from 'execa';
+import * as fs from "node:fs";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 
 import { type ComposeServiceConfig,DockerComposeGenerator } from './docker-compose-generator';
@@ -602,28 +603,29 @@ export class DockerContainerManager {
 
 	/**
 	 * Remove container completely (uses Docker Compose down)
+	 * Works even without in-memory container records - attempts cleanup based on appId alone
 	 */
 	async removeContainer(appId: string): Promise<boolean> {
 		const startTime = Date.now();
 		const containerInfo =
 			this.containers.get(appId) || this.getContainerFromDb(appId);
+		const basePath = getBasePath(appId);
 
-		if (!containerInfo) {
-			logger.warn('docker.container.remove.not_found', { appId, message: 'Container not found for remove operation' });
-			return false;
-		}
-
-		logger.info('docker.compose.stack.remove.begin', { appId, message: 'Removing Docker Compose stack' });
+		logger.info('docker.compose.stack.remove.begin', { appId, hasRecord: !!containerInfo, message: 'Removing Docker Compose stack' });
 
 		try {
-			const basePath = getBasePath(appId);
+			// 1. Stop and remove Docker containers
+			// Try docker-compose down first (if compose file exists)
+			try {
+				await this.composeManager.down(basePath, true);
+				logger.info('docker.compose.stack.remove.success', { appId });
+			} catch (composeError) {
+				// Compose file might not exist, try direct container removal
+				logger.warn('docker.compose.down.failed', { appId, error: composeError instanceof Error ? composeError.message : String(composeError), message: 'Attempting direct container removal' });
+				await this.forceRemoveContainersByAppId(appId);
+			}
 
-			// Remove compose stack (includes all services, networks, and volumes)
-			await this.composeManager.down(basePath, true);
-
-			logger.info('docker.compose.stack.remove.success', { appId });
-
-			// Drop database and user from shared MySQL
+			// 2. Drop database and user from shared MySQL
 			try {
 				await this.sharedMySQLService.dropDatabase(appId);
 				logger.info('database.drop.success', { appId });
@@ -632,26 +634,36 @@ export class DockerContainerManager {
 				// Continue with cleanup even if database drop fails
 			}
 
-			// Remove image only if it's NOT the shared template image
-			// Shared template images (aab-template-*:latest) are reused across all apps
-			const isSharedTemplate = containerInfo.imageName.startsWith('aab-template-') &&
-			                         containerInfo.imageName.endsWith(':latest');
-
-			if (!isSharedTemplate) {
+			// 3. Remove Docker image (only if we have container info and it's not shared)
+			if (containerInfo?.imageName && !this.isSharedTemplate(containerInfo.imageName)) {
 				try {
 					await execa('docker', ['rmi', containerInfo.imageName]);
 					logger.info('docker.image.remove.success', { imageName: containerInfo.imageName });
 				} catch (imageError) {
 					logger.info('docker.image.remove.skipped', { imageName: containerInfo.imageName, message: 'Docker image may be in use, skipping removal' });
 				}
-			} else {
+			} else if (containerInfo?.imageName) {
 				logger.info('docker.image.remove.skipped_shared', {
 					imageName: containerInfo.imageName,
 					message: 'Skipping removal of shared template image (used by all apps)'
 				});
 			}
 
-			// Remove from memory and database
+			// 4. Remove filesystem artifacts
+			try {
+				await this.removeAppFiles(appId);
+				logger.info('filesystem.remove.success', { appId, path: basePath });
+			} catch (fsError) {
+				logger.warn('filesystem.remove.failure', {
+					appId,
+					path: basePath,
+					error: fsError instanceof Error ? fsError.message : String(fsError),
+					message: 'Failed to remove app files'
+				});
+				// Continue even if filesystem cleanup fails
+			}
+
+			// 5. Remove from memory and database
 			this.containers.delete(appId);
 			this.removeContainerFromDb(appId);
 
@@ -665,6 +677,92 @@ export class DockerContainerManager {
 
 			return false;
 		}
+	}
+
+	/**
+	 * Force remove containers by appId using Docker CLI directly
+	 * Handles both old and new naming patterns
+	 * Used as fallback when docker-compose down fails
+	 */
+	private async forceRemoveContainersByAppId(appId: string): Promise<void> {
+		const containerNames = [
+			// New pattern (current)
+			`preview-${appId}-1`,
+			`publish-${appId}-1`,
+			// Old pattern (for cleanup of legacy containers)
+			`airo-app-${appId}-app-1`
+		];
+
+		for (const name of containerNames) {
+			try {
+				// Try to stop the container first
+				await execa('docker', ['stop', name], { reject: false });
+				// Then remove it
+				await execa('docker', ['rm', name], { reject: false });
+				logger.info('docker.container.force_remove.success', { appId, containerName: name });
+			} catch (error) {
+				// Container doesn't exist or already removed, that's fine
+				logger.debug('docker.container.force_remove.skip', { appId, containerName: name, message: 'Container not found' });
+			}
+		}
+	}
+
+	/**
+	 * Remove app files from filesystem
+	 * Handles /tmp/apps/{appId} directory and all contents
+	 * Uses native fs.rmSync for reliability, falls back to execa for stubborn files
+	 */
+	private async removeAppFiles(appId: string): Promise<void> {
+		const basePath = getBasePath(appId);
+
+		// Check if directory exists
+		if (!fs.existsSync(basePath)) {
+			logger.debug('filesystem.remove.not_found', { appId, path: basePath, message: 'Directory does not exist' });
+			return;
+		}
+
+		logger.info('filesystem.remove.begin', { appId, path: basePath });
+
+		try {
+			// Try native Node.js fs.rmSync first (fastest and most reliable)
+			fs.rmSync(basePath, { recursive: true, force: true });
+			logger.info('filesystem.remove.native_success', { appId, path: basePath });
+		} catch (nativeError) {
+			// If native removal fails, try using shell commands (handles stubborn files better)
+			logger.warn('filesystem.remove.native_failed', {
+				appId,
+				path: basePath,
+				error: nativeError instanceof Error ? nativeError.message : String(nativeError),
+				message: 'Attempting shell command fallback'
+			});
+
+			try {
+				if (process.platform === 'win32') {
+					// Windows: Use rmdir /s /q
+					await execa('rmdir', ['/s', '/q', basePath], { reject: false });
+				} else {
+					// Unix/Linux/Mac: Fix permissions first, then rm -rf
+					await execa('chmod', ['-R', '755', basePath], { reject: false });
+					await execa('rm', ['-rf', basePath]);
+				}
+				logger.info('filesystem.remove.shell_success', { appId, path: basePath });
+			} catch (shellError) {
+				logger.error('filesystem.remove.shell_failed', {
+					appId,
+					path: basePath,
+					error: shellError instanceof Error ? shellError.message : String(shellError)
+				});
+				throw shellError;
+			}
+		}
+	}
+
+	/**
+	 * Check if an image name is a shared template image
+	 * Shared template images (aab-template-*:latest) are reused across all apps
+	 */
+	private isSharedTemplate(imageName: string): boolean {
+		return imageName.startsWith('aab-template-') && imageName.endsWith(':latest');
 	}
 
 	/**

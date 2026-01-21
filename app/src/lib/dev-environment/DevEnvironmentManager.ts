@@ -1,5 +1,10 @@
-import { appendFileSync,existsSync, promises as fsPromises, readFileSync, writeFileSync } from 'fs';
+import { appendFileSync,existsSync, promises as fsPromises, readFileSync, readdirSync, writeFileSync } from 'fs';
+import * as fs from 'node:fs';
 import path from 'path';
+
+import { execa } from 'execa';
+
+import { PrismaSiteService } from '@/lib/database/prisma-site-service';
 
 import { createAppAdapter, getAdapterType } from './adapters';
 import type { IAppAdapter, ServerStatus } from './adapters/interfaces/IAppAdapter';
@@ -43,6 +48,7 @@ export class DevEnvironmentManager {
   private portManager: PortManager;
   private gitUtils: GitUtils;
   private templateService: TemplateCopyService;
+  private siteService: PrismaSiteService;
   private adapter: IAppAdapter | null = null;
   private initialized = false;
 
@@ -52,6 +58,7 @@ export class DevEnvironmentManager {
     this.portManager = new PortManager(this.devDb);
     this.gitUtils = new GitUtils();
     this.templateService = new TemplateCopyService();
+    this.siteService = new PrismaSiteService();
   }
 
   /**
@@ -81,6 +88,14 @@ export class DevEnvironmentManager {
     }
 
     this.initialized = true;
+
+    // Run reconciliation to clean up orphans from previous sessions
+    // Don't await - let it run in background to avoid blocking startup
+    this.reconcileState().catch(error => {
+      logger.error('dev-environment.reconcile.startup_failure', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
   }
 
   /**
@@ -678,6 +693,199 @@ export class DevEnvironmentManager {
 
     // For dev environment, publish supervisor uses TCP
     return `tcp://localhost:${devApp.publishSupervisorPort}`;
+  }
+
+  /**
+   * Reconcile Docker/MySQL state with database on startup
+   * Cleans up orphaned containers and databases for deleted apps
+   * Handles both old (airo-app-*-app-1) and new (preview-*, publish-*) naming patterns
+   */
+  async reconcileState(): Promise<{ containersRemoved: number; databasesDropped: number; filesystemCleaned: number }> {
+    await this.initialize();
+
+    logger.info('dev-environment.reconcile.begin', { message: 'Starting reconciliation of Docker/MySQL state' });
+
+    let containersRemoved = 0;
+    let databasesDropped = 0;
+    let filesystemCleaned = 0;
+
+    try {
+      // Get all active site IDs from MySQL Prisma database
+      const siteIds = await this.siteService.getAllSiteIds();
+      const activeSiteIds = new Set(siteIds);
+
+      logger.info('dev-environment.reconcile.active_sites', { count: activeSiteIds.size });
+
+      // Get all Docker containers matching airo patterns
+      const { stdout } = await execa('docker', ['ps', '-a', '--format', '{{.Names}}']);
+      const containers = stdout.split('\n').filter(Boolean);
+
+      const airoContainers = containers.filter(name =>
+        name.match(/^(preview|publish)-[a-f0-9-]+/) || // New pattern
+        name.match(/^airo-app-[a-f0-9-]+-app-1$/)      // Old pattern
+      );
+
+      logger.info('dev-environment.reconcile.found_containers', { count: airoContainers.length });
+
+      // Extract unique app IDs from container names
+      const containerAppIds = new Set<string>();
+      for (const containerName of airoContainers) {
+        const appId = this.extractAppIdFromContainerName(containerName);
+        if (appId) {
+          containerAppIds.add(appId);
+        }
+      }
+
+      // Get all MySQL databases
+      const databases = await this.getAiroMySQLDatabases();
+      logger.info('dev-environment.reconcile.found_databases', { count: databases.length });
+
+      const dbAppIds = new Set(databases.map(db =>
+        db.replace('airo_', '').replace(/_/g, '-')
+      ));
+
+      // Get all filesystem directories under /tmp/apps
+      const appDirs = await this.getAppDirectories();
+      logger.info('dev-environment.reconcile.found_directories', { count: appDirs.length });
+
+      // Clean up orphaned containers
+      for (const appId of containerAppIds) {
+        if (!activeSiteIds.has(appId)) {
+          logger.info('dev-environment.reconcile.removing_orphan', { appId });
+          const removed = await this.deleteDevApp(appId);
+          if (removed) containersRemoved++;
+        }
+      }
+
+      // Clean up orphaned databases (only if container doesn't exist)
+      for (const appId of dbAppIds) {
+        if (!activeSiteIds.has(appId) && !containerAppIds.has(appId)) {
+          logger.info('dev-environment.reconcile.dropping_orphan_db', { appId });
+          try {
+            if (this.adapter) {
+              await this.adapter.removeApp(appId);
+              databasesDropped++;
+            }
+          } catch (error) {
+            logger.warn('dev-environment.reconcile.drop_failed', {
+              appId,
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+        }
+      }
+
+      // Clean up orphaned filesystem directories
+      for (const appId of appDirs) {
+        if (!activeSiteIds.has(appId) && !containerAppIds.has(appId)) {
+          logger.info('dev-environment.reconcile.removing_orphan_files', { appId });
+          try {
+            const basePath = getBasePath(appId);
+
+            // Try native fs.rmSync first
+            try {
+              fs.rmSync(basePath, { recursive: true, force: true });
+            } catch (nativeError) {
+              // Fall back to shell commands for stubborn files
+              if (process.platform === 'win32') {
+                await execa('rmdir', ['/s', '/q', basePath], { reject: false });
+              } else {
+                await execa('chmod', ['-R', '755', basePath], { reject: false });
+                await execa('rm', ['-rf', basePath]);
+              }
+            }
+
+            filesystemCleaned++;
+            logger.info('dev-environment.reconcile.files_removed', { appId, path: basePath });
+          } catch (error) {
+            logger.warn('dev-environment.reconcile.files_remove_failed', {
+              appId,
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+        }
+      }
+
+      logger.info('dev-environment.reconcile.complete', {
+        containersRemoved,
+        databasesDropped,
+        filesystemCleaned,
+        message: `Reconciliation complete: ${containersRemoved} containers, ${databasesDropped} databases, ${filesystemCleaned} directories cleaned`
+      });
+
+      return { containersRemoved, databasesDropped, filesystemCleaned };
+
+    } catch (error) {
+      logger.error('dev-environment.reconcile.failure', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return { containersRemoved, databasesDropped, filesystemCleaned };
+    }
+  }
+
+  /**
+   * Extract appId from container name
+   * Handles both old and new naming patterns
+   */
+  private extractAppIdFromContainerName(containerName: string): string | null {
+    // New pattern: preview-{appId}-1 or publish-{appId}-1
+    const newMatch = containerName.match(/^(?:preview|publish)-([a-f0-9-]+)-1$/);
+    if (newMatch) return newMatch[1];
+
+    // Old pattern: airo-app-{appId}-app-1
+    const oldMatch = containerName.match(/^airo-app-([a-f0-9-]+)-app-1$/);
+    if (oldMatch) return oldMatch[1];
+
+    return null;
+  }
+
+  /**
+   * Get all airo MySQL databases
+   * Returns database names like "airo_<uuid>"
+   */
+  private async getAiroMySQLDatabases(): Promise<string[]> {
+    try {
+      const mysqlPassword = process.env.MYSQL_ROOT_PASSWORD || 'rootpassword';
+      const { stdout } = await execa('docker', [
+        'exec',
+        'airo-app-mysql',
+        'mysql',
+        '-uroot',
+        `-p${mysqlPassword}`,
+        '-e',
+        'SHOW DATABASES LIKE "airo_%"'
+      ]);
+
+      return stdout
+        .split('\n')
+        .slice(1) // Skip header
+        .filter(Boolean)
+        .filter(db => db !== 'airo_app'); // Skip main app database
+    } catch (error) {
+      logger.error('dev-environment.get_databases.failure', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return [];
+    }
+  }
+
+  /**
+   * Get all app directories under /tmp/apps
+   * Returns array of app IDs (directory names)
+   */
+  private async getAppDirectories(): Promise<string[]> {
+    const appsDir = '/tmp/apps';
+
+    if (!fs.existsSync(appsDir)) {
+      return [];
+    }
+
+    const entries = readdirSync(appsDir, { withFileTypes: true });
+
+    return entries
+      .filter(entry => entry.isDirectory())
+      .map(entry => entry.name)
+      .filter(name => name.match(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/)); // UUID format
   }
 
   /**
