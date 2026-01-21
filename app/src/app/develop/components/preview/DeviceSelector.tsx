@@ -144,7 +144,7 @@ function DeviceMenuItem({ device, displayName, isSelected, onClick }: DeviceMenu
         isSelected && 'font-medium'
       )}
       onClick={onClick}
-      data-eid={generateClickEID(`develop.preview.device_select.${device.id}`)}
+      data-eid={generateClickEID(`develop.preview.device_select_${device.id}`)}
     >
       <span>{displayName}</span>
       {isSelected && <CheckmarkIcon />}

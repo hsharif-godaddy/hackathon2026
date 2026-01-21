@@ -47,7 +47,21 @@ Cypress.Commands.add('ensureAuth', () => {
         });
         cy.setCookie('market', 'en-US');
       });
-  }, { cacheAcrossSpecs: true });
+  }, {
+    cacheAcrossSpecs: true,
+    validate: () => {
+      // Validate the session is still valid by making a test API call
+      cy.request({
+        url: '/api/sites',
+        failOnStatusCode: false,
+      }).then((response) => {
+        // If we get 401, the session is invalid
+        if (response.status === 401) {
+          throw new Error('Session invalid - will recreate');
+        }
+      });
+    },
+  });
 });
 
 /**
