@@ -91,6 +91,7 @@ vi.mock('@/lib/request-context', () => ({
     info: vi.fn(),
     error: vi.fn(),
     warn: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
@@ -147,6 +148,7 @@ describe('PreviewPane', () => {
   it('should start polling for server on mount', () => {
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
+    // PreviewPane manages its own server polling lifecycle
     expect(mockServerPollingStore.startPollingForServer).toHaveBeenCalledWith('test-app-123');
   });
 
@@ -158,9 +160,33 @@ describe('PreviewPane', () => {
     expect(mockServerPollingStore.stopPollingForServer).toHaveBeenCalledWith('test-app-123');
   });
 
-  it.skip('should show building overlay when showBuildingOverlay is true', () => {
-    // Skipped because the overlay may not render in test environment
-    // The overlay implementation uses complex conditional rendering
+  it('should show building overlay on top of iframe when showBuildingOverlay is true', () => {
+    // Server is ready, so iframe should render
+    mockServerPollingStore.getServerState = vi.fn(() => ({
+      isReady: true,
+      url: 'http://localhost:3000',
+      status: 'running'
+    }));
+
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        showBuildingOverlay={true}  // Overlay active
+      />
+    );
+
+    // Both iframe and overlay should be present
+    const iframe = screen.getByTitle('builder_preview_preview_for');
+    expect(iframe).toBeInTheDocument();
+
+    // Overlay should be visible
+    expect(screen.getByTestId('tips')).toBeInTheDocument();
+
+    // Iframe should have accessibility attributes when overlay is active
+    expect(iframe).toHaveAttribute('aria-hidden', 'true');
+    expect(iframe).toHaveAttribute('tabIndex', '-1');
+    // Note: inert attribute not tested due to limited jsdom support
+    // but is set in the component for progressive enhancement
   });
 
   it('should set mobile preview mode when isMobile is true', () => {

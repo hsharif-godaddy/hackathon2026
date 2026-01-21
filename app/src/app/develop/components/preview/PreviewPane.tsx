@@ -49,9 +49,9 @@ export default function PreviewPane({
   const t = useTranslations();
 
   const getServerState = useServerPollingStore((state) => state.getServerState)
+  const isPollingServer = useServerPollingStore((state) => state.isPollingServer)
   const startPollingForServer = useServerPollingStore((state) => state.startPollingForServer)
   const stopPollingForServer = useServerPollingStore((state) => state.stopPollingForServer)
-  const isPollingServer = useServerPollingStore((state) => state.isPollingServer)
 
   const restoreMutation = useRestoreCommitMutation();
 
@@ -146,7 +146,8 @@ export default function PreviewPane({
     }
   }, [])
 
-  // Start polling when component mounts
+  // Server polling lifecycle - PreviewPane owns its server state
+  // The store prevents duplicate polling if multiple components try to poll the same appId
   useEffect(() => {
     if (!appId) return
 
@@ -356,8 +357,10 @@ export default function PreviewPane({
   }, [serverState?.isReady, isWaitingForIframeReady])
 
   const handleManualRetry = () => {
-    logger.info('preview-pane.retry', { message: 'Manual retry for server', appId })
-    // Restart polling for this server
+    logger.info('preview-pane.retry', { message: 'Manual retry - restarting server polling', appId })
+    // Restart polling to recover from server errors
+    // This is the only place PreviewPane manages polling (for error recovery)
+    // Normal polling lifecycle is managed by parent component
     stopPollingForServer(appId)
     startPollingForServer(appId)
     setIframeError(false)
@@ -415,12 +418,14 @@ export default function PreviewPane({
     return <Tips buildingMessage={t('builder_preview_updating_suscription')} showTips={false} />
   }
 
-  if (showBuildingOverlay) {
-    return <Tips buildingMessage={t('builder_preview_building_app')} />
-  }
-
+  // Don't show building overlay here - it should overlay the iframe below, not replace it
+  // Only block rendering if server is not ready yet
   if (!serverState || (isPollingServer(appId) && !serverState.isReady)) {
-    return <Tips buildingMessage={t('builder_preview_loading_app')} />
+    // Show building overlay message if in creation flow, otherwise show server loading
+    const loadingMessage = showBuildingOverlay
+      ? t('builder_preview_building_app')
+      : t('builder_preview_loading_app')
+    return <Tips buildingMessage={loadingMessage} />
   }
 
   // Error state when server failed
@@ -485,7 +490,7 @@ export default function PreviewPane({
           )}>
             <div
               className={clsx(
-                "flex flex-col h-full bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300 ease-in-out", {
+                "flex flex-col h-full bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300 ease-in-out relative", {
                   "mx-auto": !isFullSize && viewMode === ViewMode.PREVIEW && !isMobile,
                   "w-full": isFullSize || viewMode === ViewMode.CODE || isMobile,
                   "border shadow-lg": !isFullSize && viewMode === ViewMode.PREVIEW && !isMobile,
@@ -502,20 +507,34 @@ export default function PreviewPane({
             >
               <PreviewHeader onPreviewRefresh={onPreviewRefresh} isMobile={isMobile} />
               {viewMode === ViewMode.PREVIEW && (
-                <iframe
-                  key={iframeKey}
-                  ref={iframeRef}
-                  id="preview-iframe"
-                  src={previewUrl}
-                  className="w-full h-full md:border md:rounded-md"
-                  onError={handleIframeError}
-                  onLoad={handleIframeLoad}
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"
-                  title={t('builder_preview_preview_for', { appId })}
-                />
+                <div className="relative w-full h-full">
+                  <iframe
+                    key={iframeKey}
+                    ref={iframeRef}
+                    id="preview-iframe"
+                    src={previewUrl}
+                    className="w-full h-full md:border md:rounded-md"
+                    onError={handleIframeError}
+                    onLoad={handleIframeLoad}
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"
+                    title={t('builder_preview_preview_for', { appId })}
+                    aria-hidden={showBuildingOverlay ? 'true' : undefined}
+                    tabIndex={showBuildingOverlay ? -1 : undefined}
+                    // Type assertion needed: `inert` is a standard HTML attribute but not yet in React types
+                    {...(showBuildingOverlay ? { inert: '' as unknown as boolean } : {})}
+                  />
+                </div>
               )}
               {viewMode === ViewMode.CODE && (
                 <PreviewCode appId={appId} />
+              )}
+              {/* Building overlay - hides template app AND controls until agent makes changes
+                   INTENTIONAL: Stays visible if agent never edits (errors, timeouts, etc.)
+                   The vanilla template is an implementation detail that shouldn't be visible */}
+              {showBuildingOverlay && (
+                <div className="absolute inset-0 z-50 bg-intents-ux-boxLowContrast-backgroundColor">
+                  <Tips buildingMessage={t('builder_preview_building_app')} />
+                </div>
               )}
             </div>
           </div>

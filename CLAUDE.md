@@ -159,6 +159,29 @@ _Explore the tools directory for complete list and implementations_
 
 **Testing:** 129 tests across 7 files - see `app/src/services/websocket/__tests__/`
 
+### Initialization State Machine
+
+**Overview:** XState v5 state machine managing develop page initialization lifecycle
+
+**Location:** `app/src/app/develop/hooks/initializationMachine.ts` and `useInitialization.ts`
+
+**Flow:** `idle` → `checkingCreation` → `creating` → `initializingPage` → `loadingHistory` → `ready` (with sub-phases: `waitingForWebSocket` → `websocketConnected` → `waitingForFirstEdit` → `active`)
+
+**Critical Patterns:**
+
+- **Token-based cancellation**: All async operations validate `initializationTokenRef` before firing events to prevent cross-app contamination
+- **Job→App tracking**: `jobIdToRealAppIdRef` maps job IDs to real app IDs to prevent false positive RESET detection during navigation
+- **AbortSignal**: HTTP requests use AbortController for proper cancellation on navigation
+- **Context hydration**: `HYDRATE_APP` event updates machine context during job→app transition to keep logging/telemetry accurate
+
+**Critical Rules:**
+
+- Always validate `initializationTokenRef` before sending events from async operations
+- Track job→app relationships in `jobIdToRealAppIdRef` on CREATION_SUCCEEDED
+- Use AbortSignal for all HTTP requests that could span navigation
+- Send `HYDRATE_APP` when appId changes to keep context synchronized
+- RESET clears all refs to prevent stale state
+
 ### Database
 
 **App (MySQL/Prisma):**

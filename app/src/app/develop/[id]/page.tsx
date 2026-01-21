@@ -81,9 +81,8 @@ function DevelopPageContent() {
 
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
 
-  // Server polling store - unified server status management
-  const startPollingForServer = useServerPollingStore((state) => state.startPollingForServer)
-  const stopPollingForServer = useServerPollingStore((state) => state.stopPollingForServer)
+  // Server polling store - only used for cleanup on unmount
+  // Note: Server polling lifecycle is managed by PreviewPane component
   const cleanupServerPolling = useServerPollingStore((state) => state.cleanup)
 
   // Streaming conversation store - for messages and active stream
@@ -268,16 +267,8 @@ function DevelopPageContent() {
     previewInitializedRef.current = true
   }, [loadingPhase, appId, messages.length, setIsPreviewVisible, historyLoadingComplete])
 
-  // Server polling - unified approach with adaptive backoff
-  useEffect(() => {
-    if (!appId) return
-
-    startPollingForServer(appId)
-
-    return () => {
-      stopPollingForServer(appId)
-    }
-  }, [appId, startPollingForServer, stopPollingForServer])
+  // Note: Server polling is managed by PreviewPane component
+  // PreviewPane owns its server state and polling lifecycle
 
   // Batching state for style updates
   const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
