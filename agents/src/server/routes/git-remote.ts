@@ -5,6 +5,7 @@ import { GitTool } from '../../tools/git-tool.js';
 import { Logger } from '../../logging/index.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
+import { isSupportedProjectOnHost, SUPPORTED_BUILD_TOOLS } from '../middleware/git-import-validation.js';
 import { getErrorMessage } from '../../utils/error.js';
 
 const router: Router = Router();
@@ -379,6 +380,39 @@ router.post(
           error: 'Failed to pull from git remote',
           message: result.error,
           details: result.output
+        });
+        return;
+      }
+
+      // Validate pulled code uses a supported build tool
+      const supportedToolNames = SUPPORTED_BUILD_TOOLS.map(t => t.name).join(', ');
+      if (!isSupportedProjectOnHost(app.path)) {
+        logger.warn('git-remote.pull.unsupported-project', { appId, supportedTools: supportedToolNames });
+
+        // Rollback the pull using ORIG_HEAD (set by git before pull/merge operations)
+        // This correctly handles multi-commit pulls and fast-forwards
+        const rollbackResult = await gitTool.executeGitOperation(app.path, {
+          operation: 'reset',
+          options: { mode: 'hard', hash: 'ORIG_HEAD' }
+        });
+
+        if (!rollbackResult.success) {
+          logger.error('git-remote.pull.rollback-failed', {
+            appId,
+            error: rollbackResult.error
+          });
+
+          res.status(500).json({
+            error: `Only ${supportedToolNames}-based projects are supported`,
+            message: `The pulled code does not use a supported build tool. Attempted rollback failed - repository may be in inconsistent state.`,
+            rollbackError: rollbackResult.error
+          });
+          return;
+        }
+
+        res.status(400).json({
+          error: `Only ${supportedToolNames}-based projects are supported`,
+          message: `The pulled code does not use a supported build tool (${supportedToolNames}). Changes have been rolled back.`
         });
         return;
       }

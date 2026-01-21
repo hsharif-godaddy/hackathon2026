@@ -19,6 +19,10 @@ import { GitTool } from '../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { DevSupervisorClient } from './DevSupervisorClient.js';
 import { ImportJobStatus, ValidationErrorKey, type ImportJob, type ValidationError } from '../types/import.js';
+import {
+  isSupportedProjectInContainer,
+  SUPPORTED_BUILD_TOOLS,
+} from '../server/middleware/git-import-validation.js';
 
 const IMPORT_TIMEOUTS = {
   INSTALL: 5 * 60 * 1000, // 5 minutes
@@ -630,6 +634,20 @@ export class ProjectImportService {
         key: ValidationErrorKey.PACKAGE_JSON_MISSING_NAME,
         message: 'package.json missing name field',
       });
+    }
+
+    // Check for supported build tool (required)
+    const buildToolCheck = await isSupportedProjectInContainer(devSupervisor, projectRoot, packageJson);
+    const supportedToolNames = SUPPORTED_BUILD_TOOLS.map(t => t.name).join(', ');
+
+    if (!buildToolCheck.supported) {
+      const allConfigFiles = SUPPORTED_BUILD_TOOLS.flatMap(t => [...t.configFiles]);
+      errors.push({
+        key: ValidationErrorKey.NOT_VITE_PROJECT,
+        message: `Only ${supportedToolNames}-based projects are supported. No supported config file or dependency found.`,
+        details: { searchedConfigs: allConfigFiles },
+      });
+      return { valid: false, errors };
     }
 
     // Detect package manager by checking lock files

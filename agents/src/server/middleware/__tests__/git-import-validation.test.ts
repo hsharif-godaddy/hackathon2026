@@ -1,7 +1,24 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
 import { ValidationErrorKey } from '../../../types/import.js';
-import { validateGitImport, validateGitUrl, validateToken } from '../git-import-validation.js';
+import {
+  validateGitImport,
+  validateGitUrl,
+  validateToken,
+  importType,
+  hasDependency,
+  hasConfigFileOnHost,
+  matchesBuildToolOnHost,
+  isSupportedProjectOnHost,
+  hasConfigFileInContainer,
+  matchesBuildToolInContainer,
+  isSupportedProjectInContainer,
+  isValidShellPath,
+  VITE_BUILD_TOOL,
+  SUPPORTED_BUILD_TOOLS,
+  type PackageJsonDeps,
+  type BuildToolConfig,
+} from '../git-import-validation.js';
 
 // Create mock logger functions using vi.hoisted to ensure they're available in factory
 const { mockLoggerInfo, mockLoggerWarn, mockLoggerError, mockLogError } = vi.hoisted(() => ({
@@ -597,5 +614,310 @@ describe('validateGitImport middleware', () => {
       expect(global.fetch).not.toHaveBeenCalled(); // Should not reach token validation
       expect(mockNext).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('importType', () => {
+  it('should return "git" for application/json content-type', () => {
+    const req = { headers: { 'content-type': 'application/json' } } as Request;
+    expect(importType(req)).toBe('git');
+  });
+
+  it('should return "git" for application/json with charset', () => {
+    const req = { headers: { 'content-type': 'application/json; charset=utf-8' } } as Request;
+    expect(importType(req)).toBe('git');
+  });
+
+  it('should return "zip" for multipart/form-data content-type', () => {
+    const req = { headers: { 'content-type': 'multipart/form-data' } } as Request;
+    expect(importType(req)).toBe('zip');
+  });
+
+  it('should return "zip" for multipart/form-data with boundary', () => {
+    const req = { headers: { 'content-type': 'multipart/form-data; boundary=----WebKitFormBoundary' } } as Request;
+    expect(importType(req)).toBe('zip');
+  });
+
+  it('should return null for unsupported content-type', () => {
+    const req = { headers: { 'content-type': 'text/plain' } } as Request;
+    expect(importType(req)).toBeNull();
+  });
+
+  it('should return null for missing content-type', () => {
+    const req = { headers: {} } as Request;
+    expect(importType(req)).toBeNull();
+  });
+
+  it('should handle case-insensitive content-type', () => {
+    const req = { headers: { 'content-type': 'APPLICATION/JSON' } } as Request;
+    expect(importType(req)).toBe('git');
+  });
+
+  it('should return null for empty content-type', () => {
+    const req = { headers: { 'content-type': '' } } as Request;
+    expect(importType(req)).toBeNull();
+  });
+});
+
+describe('BuildToolConfig', () => {
+  describe('VITE_BUILD_TOOL', () => {
+    it('should have correct name', () => {
+      expect(VITE_BUILD_TOOL.name).toBe('Vite');
+    });
+
+    it('should contain all standard Vite config file names', () => {
+      expect(VITE_BUILD_TOOL.configFiles).toContain('vite.config.js');
+      expect(VITE_BUILD_TOOL.configFiles).toContain('vite.config.ts');
+      expect(VITE_BUILD_TOOL.configFiles).toContain('vite.config.mjs');
+      expect(VITE_BUILD_TOOL.configFiles).toContain('vite.config.cjs');
+    });
+
+    it('should have vite as package name', () => {
+      expect(VITE_BUILD_TOOL.packageNames).toContain('vite');
+    });
+  });
+
+  describe('SUPPORTED_BUILD_TOOLS', () => {
+    it('should include Vite', () => {
+      expect(SUPPORTED_BUILD_TOOLS).toContainEqual(VITE_BUILD_TOOL);
+    });
+
+    it('should be extensible (array)', () => {
+      expect(Array.isArray(SUPPORTED_BUILD_TOOLS)).toBe(true);
+    });
+  });
+});
+
+describe('hasDependency', () => {
+  it('should return true when package is in dependencies', () => {
+    const packageJson: PackageJsonDeps = { dependencies: { vite: '^5.0.0' } };
+    expect(hasDependency(packageJson, ['vite'])).toBe(true);
+  });
+
+  it('should return true when package is in devDependencies', () => {
+    const packageJson: PackageJsonDeps = { devDependencies: { vite: '^5.0.0' } };
+    expect(hasDependency(packageJson, ['vite'])).toBe(true);
+  });
+
+  it('should return true when any of multiple packages is found', () => {
+    const packageJson: PackageJsonDeps = { dependencies: { bun: '^1.0.0' } };
+    expect(hasDependency(packageJson, ['vite', 'bun', 'webpack'])).toBe(true);
+  });
+
+  it('should return false when none of the packages are found', () => {
+    const packageJson: PackageJsonDeps = { dependencies: { react: '^18.0.0' } };
+    expect(hasDependency(packageJson, ['vite', 'bun'])).toBe(false);
+  });
+
+  it('should return false for empty package.json', () => {
+    const packageJson: PackageJsonDeps = {};
+    expect(hasDependency(packageJson, ['vite'])).toBe(false);
+  });
+});
+
+// Mock fs for host filesystem tests
+import { existsSync, readFileSync } from 'node:fs';
+
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual('node:fs');
+  return {
+    ...actual,
+    existsSync: vi.fn(),
+    readFileSync: vi.fn(),
+  };
+});
+
+describe('isSupportedProjectOnHost', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should return true when project matches any supported tool', () => {
+    vi.mocked(existsSync).mockImplementation((path: any) => {
+      return path.toString().endsWith('vite.config.ts');
+    });
+
+    expect(isSupportedProjectOnHost('/app/project')).toBe(true);
+  });
+
+  it('should return false when project matches no supported tool', () => {
+    vi.mocked(existsSync).mockImplementation((path: any) => {
+      return path.toString().endsWith('package.json');
+    });
+    vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+      dependencies: { react: '^18.0.0' },
+    }));
+
+    expect(isSupportedProjectOnHost('/app/project')).toBe(false);
+  });
+
+  it('should work with custom build tools array', () => {
+    const customTool: BuildToolConfig = {
+      name: 'Custom',
+      configFiles: ['custom.config.js'],
+      packageNames: ['custom-bundler'],
+    };
+
+    vi.mocked(existsSync).mockImplementation((path: any) => {
+      return path.toString().endsWith('custom.config.js');
+    });
+
+    expect(isSupportedProjectOnHost('/app/project', [customTool])).toBe(true);
+    expect(isSupportedProjectOnHost('/app/project', [VITE_BUILD_TOOL])).toBe(false);
+  });
+});
+
+describe('hasConfigFileInContainer', () => {
+  it('should return true when config file is found', async () => {
+    const mockDevSupervisor = {
+      exec: vi.fn().mockResolvedValueOnce({ stdout: 'found' }),
+    };
+
+    const result = await hasConfigFileInContainer(
+      mockDevSupervisor as any,
+      '/app',
+      ['custom.config.js', 'custom.config.ts']
+    );
+
+    expect(result).toBe(true);
+    expect(mockDevSupervisor.exec).toHaveBeenCalledWith({
+      command: 'test -f "/app/custom.config.js" && echo "found" || echo "notfound"',
+      timeout: 5,
+    });
+  });
+
+  it('should check all config files until one is found', async () => {
+    const mockDevSupervisor = {
+      exec: vi.fn()
+        .mockResolvedValueOnce({ stdout: 'notfound' })
+        .mockResolvedValueOnce({ stdout: 'found' }),
+    };
+
+    const result = await hasConfigFileInContainer(
+      mockDevSupervisor as any,
+      '/app',
+      ['first.config.js', 'second.config.js', 'third.config.js']
+    );
+
+    expect(result).toBe(true);
+    expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(2);
+  });
+
+  it('should return false when no config files found', async () => {
+    const mockDevSupervisor = {
+      exec: vi.fn().mockResolvedValue({ stdout: 'notfound' }),
+    };
+
+    const result = await hasConfigFileInContainer(
+      mockDevSupervisor as any,
+      '/app',
+      ['a.config.js', 'b.config.js']
+    );
+
+    expect(result).toBe(false);
+    expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(2);
+  });
+
+  it('should throw error for invalid path', async () => {
+    const mockDevSupervisor = { exec: vi.fn() };
+
+    await expect(
+      hasConfigFileInContainer(mockDevSupervisor as any, '/app; rm -rf /', ['config.js'])
+    ).rejects.toThrow('Invalid project root path');
+  });
+});
+
+describe('isValidShellPath', () => {
+  it('should return true for valid Unix paths', () => {
+    expect(isValidShellPath('/app/project')).toBe(true);
+    expect(isValidShellPath('/app/my-project')).toBe(true);
+    expect(isValidShellPath('/app/my_project')).toBe(true);
+    expect(isValidShellPath('/app/project.name')).toBe(true);
+    expect(isValidShellPath('/app/project123')).toBe(true);
+    expect(isValidShellPath('/app/.hidden')).toBe(true);
+    expect(isValidShellPath('/tmp/apps/abc123/app')).toBe(true);
+  });
+
+  it('should return false for paths with shell metacharacters', () => {
+    expect(isValidShellPath('/app/project; rm -rf /')).toBe(false);
+    expect(isValidShellPath('/app/project`whoami`')).toBe(false);
+    expect(isValidShellPath('/app/project$(id)')).toBe(false);
+    expect(isValidShellPath('/app/project|cat /etc/passwd')).toBe(false);
+    expect(isValidShellPath('/app/project&& echo pwned')).toBe(false);
+    expect(isValidShellPath("/app/project'")).toBe(false);
+    expect(isValidShellPath('/app/project"')).toBe(false);
+    expect(isValidShellPath('/app/project\n')).toBe(false);
+    expect(isValidShellPath('/app/project>')).toBe(false);
+    expect(isValidShellPath('/app/project<')).toBe(false);
+  });
+
+  it('should return false for paths with spaces', () => {
+    expect(isValidShellPath('/app/my project')).toBe(false);
+  });
+
+  it('should return false for empty string', () => {
+    // Empty string is not a valid path
+    expect(isValidShellPath('')).toBe(false);
+  });
+});
+
+describe('isSupportedProjectInContainer', () => {
+  it('should return supported=true with matchedTool when project matches', async () => {
+    const mockDevSupervisor = {
+      exec: vi.fn().mockResolvedValueOnce({ stdout: 'found' }),
+    };
+    const packageJson: PackageJsonDeps = { dependencies: {} };
+
+    const result = await isSupportedProjectInContainer(mockDevSupervisor as any, '/app', packageJson);
+
+    expect(result.supported).toBe(true);
+    expect(result.matchedTool).toBe('Vite');
+  });
+
+  it('should return supported=false when no tool matches', async () => {
+    const mockDevSupervisor = {
+      exec: vi.fn().mockResolvedValue({ stdout: 'notfound' }),
+    };
+    const packageJson: PackageJsonDeps = { dependencies: { react: '^18.0.0' } };
+
+    const result = await isSupportedProjectInContainer(mockDevSupervisor as any, '/app', packageJson);
+
+    expect(result.supported).toBe(false);
+    expect(result.matchedTool).toBeUndefined();
+  });
+
+  it('should work with custom build tools', async () => {
+    const customTool: BuildToolConfig = {
+      name: 'CustomBundler',
+      configFiles: ['custom.config.js'],
+      packageNames: ['custom-bundler'],
+    };
+
+    const mockDevSupervisor = {
+      exec: vi.fn().mockResolvedValueOnce({ stdout: 'found' }),
+    };
+    const packageJson: PackageJsonDeps = { dependencies: {} };
+
+    const result = await isSupportedProjectInContainer(
+      mockDevSupervisor as any,
+      '/app',
+      packageJson,
+      [customTool]
+    );
+
+    expect(result.supported).toBe(true);
+    expect(result.matchedTool).toBe('CustomBundler');
+  });
+
+  it('should match by dependency when no config file exists', async () => {
+    const mockDevSupervisor = {
+      exec: vi.fn().mockResolvedValue({ stdout: 'notfound' }),
+    };
+    const packageJson: PackageJsonDeps = { dependencies: { vite: '^5.0.0' } };
+
+    const result = await isSupportedProjectInContainer(mockDevSupervisor as any, '/app', packageJson);
+
+    expect(result.supported).toBe(true);
+    expect(result.matchedTool).toBe('Vite');
   });
 });

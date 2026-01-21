@@ -22,8 +22,11 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Logger, log } from '../../logging/index.js';
 import { ValidationErrorKey, type ValidationError } from '../../types/import.js';
+import type { DevSupervisorClient } from '../../services/DevSupervisorClient.js';
 
 const logger = Logger.create({ service: 'git-import-validation-middleware' });
 
@@ -420,4 +423,164 @@ export function importType(req: Request): string | null {
     : contentType.startsWith('multipart/form-data')
       ? 'zip'
       : null;
+}
+
+/**
+ * Minimal package.json shape for build tool detection
+ */
+export interface PackageJsonDeps {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
+
+/**
+ * Configuration for a supported build tool.
+ * Add new build tools by creating a new config object.
+ */
+export interface BuildToolConfig {
+  /** Display name for error messages */
+  name: string;
+  /** Config file names to detect (e.g., vite.config.ts, bunfig.toml) */
+  configFiles: readonly string[];
+  /** Package names to check in dependencies/devDependencies */
+  packageNames: readonly string[];
+}
+
+/**
+ * Vite build tool configuration
+ */
+export const VITE_BUILD_TOOL: BuildToolConfig = {
+  name: 'Vite',
+  configFiles: ['vite.config.js', 'vite.config.ts', 'vite.config.mjs', 'vite.config.cjs'],
+  packageNames: ['vite'],
+} as const;
+
+// To add Bun support in future:
+// export const BUN_BUILD_TOOL: BuildToolConfig = {
+//   name: 'Bun',
+//   configFiles: ['bunfig.toml'],
+//   packageNames: ['bun'],
+// } as const;
+
+/**
+ * List of all supported build tools.
+ * Add new tools here to enable validation for them.
+ */
+export const SUPPORTED_BUILD_TOOLS: readonly BuildToolConfig[] = [
+  VITE_BUILD_TOOL,
+  // Add more: BUN_BUILD_TOOL, WEBPACK_BUILD_TOOL, etc.
+] as const;
+
+/**
+ * Validates that a path is safe for shell interpolation.
+ * Prevents command injection by rejecting paths with shell metacharacters.
+ */
+export function isValidShellPath(path: string): boolean {
+  return /^[a-zA-Z0-9/_.-]+$/.test(path);
+}
+
+/**
+ * Checks if package.json has any of the specified packages as dependency.
+ */
+export function hasDependency(packageJson: PackageJsonDeps, packageNames: readonly string[]): boolean {
+  return packageNames.some(pkg =>
+    packageJson.dependencies?.[pkg] || packageJson.devDependencies?.[pkg]
+  );
+}
+
+/**
+ * Checks if any config files exist on the host filesystem.
+ */
+export function hasConfigFileOnHost(appPath: string, configFiles: readonly string[]): boolean {
+  return configFiles.some(configFile => existsSync(join(appPath, configFile)));
+}
+
+/**
+ * Checks if a project matches a build tool on the host filesystem.
+ */
+export function matchesBuildToolOnHost(appPath: string, buildTool: BuildToolConfig): boolean {
+  if (hasConfigFileOnHost(appPath, buildTool.configFiles)) {
+    return true;
+  }
+
+  const packageJsonPath = join(appPath, 'package.json');
+  if (existsSync(packageJsonPath)) {
+    try {
+      const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+      return hasDependency(packageJson, buildTool.packageNames);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * Checks if a project matches any supported build tool on the host filesystem.
+ */
+export function isSupportedProjectOnHost(
+  appPath: string,
+  supportedTools: readonly BuildToolConfig[] = SUPPORTED_BUILD_TOOLS
+): boolean {
+  return supportedTools.some(tool => matchesBuildToolOnHost(appPath, tool));
+}
+
+/**
+ * Checks for config files inside a container via dev-supervisor.
+ *
+ * @throws Error if projectRoot contains invalid characters
+ */
+export async function hasConfigFileInContainer(
+  devSupervisor: DevSupervisorClient,
+  projectRoot: string,
+  configFiles: readonly string[]
+): Promise<boolean> {
+  if (!isValidShellPath(projectRoot)) {
+    throw new Error('Invalid project root path: contains disallowed characters');
+  }
+
+  for (const configFile of configFiles) {
+    const checkResult = await devSupervisor.exec({
+      command: `test -f "${projectRoot}/${configFile}" && echo "found" || echo "notfound"`,
+      timeout: 5,
+    });
+    if (checkResult.stdout?.trim() === 'found') {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Checks if a project matches a build tool inside a container.
+ */
+export async function matchesBuildToolInContainer(
+  devSupervisor: DevSupervisorClient,
+  projectRoot: string,
+  packageJson: PackageJsonDeps,
+  buildTool: BuildToolConfig
+): Promise<boolean> {
+  const hasConfig = await hasConfigFileInContainer(devSupervisor, projectRoot, buildTool.configFiles);
+  if (hasConfig) return true;
+
+  return hasDependency(packageJson, buildTool.packageNames);
+}
+
+/**
+ * Checks if a project matches any supported build tool inside a container.
+ *
+ * @returns Object with match result and matched tool name (if any)
+ */
+export async function isSupportedProjectInContainer(
+  devSupervisor: DevSupervisorClient,
+  projectRoot: string,
+  packageJson: PackageJsonDeps,
+  supportedTools: readonly BuildToolConfig[] = SUPPORTED_BUILD_TOOLS
+): Promise<{ supported: boolean; matchedTool?: string }> {
+  for (const tool of supportedTools) {
+    if (await matchesBuildToolInContainer(devSupervisor, projectRoot, packageJson, tool)) {
+      return { supported: true, matchedTool: tool.name };
+    }
+  }
+  return { supported: false };
 }
