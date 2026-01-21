@@ -69,11 +69,20 @@ check_pnpm() {
 
     if command -v pnpm &> /dev/null; then
         PNPM_VERSION=$(pnpm --version)
-        print_status "pnpm $PNPM_VERSION is installed"
-        return 0
+        REQUIRED_VERSION="10.17.0"
+        
+        if [ "$PNPM_VERSION" = "$REQUIRED_VERSION" ]; then
+            print_status "pnpm $PNPM_VERSION is installed (matches package.json)"
+            return 0
+        else
+            print_warning "pnpm $PNPM_VERSION is installed, but $REQUIRED_VERSION is required"
+            print_info "Different pnpm versions cause lockfile format inconsistencies"
+            show_corepack_instructions
+            return 1
+        fi
     else
         print_error "pnpm is not installed"
-        show_pnpm_install_instructions
+        show_corepack_instructions
         return 1
     fi
 }
@@ -171,23 +180,30 @@ show_nodejs_install_instructions() {
     echo ""
 }
 
-# Show pnpm installation instructions
-show_pnpm_install_instructions() {
+# Show Corepack instructions (recommended for pnpm version management)
+show_corepack_instructions() {
     echo ""
-    print_warning "pnpm installation required"
+    print_warning "Corepack ensures consistent pnpm version across all developers"
     echo ""
-    echo "Install pnpm using npm (after Node.js is installed):"
+    print_info "This project requires pnpm 10.17.0 (specified in package.json)"
+    print_info "Using Corepack prevents lockfile format inconsistencies"
     echo ""
-    echo "  npm install -g pnpm"
+    echo "Enable Corepack (RECOMMENDED - comes with Node.js 22+):"
     echo ""
-    echo "Alternative installation using curl:"
+    echo "  # Enable Corepack"
+    echo "  corepack enable"
     echo ""
-    echo "  curl -fsSL https://get.pnpm.io/install.sh | sh -"
+    echo "  # Corepack will automatically install and use pnpm 10.17.0"
+    echo "  # based on the packageManager field in package.json"
     echo ""
-    echo "For Ubuntu/Debian using package manager:"
+    print_info "After enabling Corepack, pnpm will be automatically managed"
+    print_info "Run 'pnpm --version' to verify it shows 10.17.0"
     echo ""
-    echo "  # Add pnpm repository"
-    echo "  curl -fsSL https://get.pnpm.io/install.sh | env PNPM_VERSION=latest sh -"
+    echo "Alternative: Manual pnpm installation (NOT recommended):"
+    echo ""
+    echo "  npm install -g pnpm@10.17.0"
+    echo ""
+    print_warning "Manual installation may cause version drift between developers"
     echo ""
 }
 

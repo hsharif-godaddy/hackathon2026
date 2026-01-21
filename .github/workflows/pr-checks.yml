@@ -54,14 +54,60 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
-      - name: Install pnpm
-        run: npm install -g pnpm@10.17.0+sha512.fce8a3dd29a4ed2ec566fb53efbb04d8c44a0f05bc6f24a73046910fb9c3ce7afa35a0980500668fa3573345bd644644fa98338fa168235c80f4aa17aa17fbef
+      - name: Enable Corepack and verify pnpm version
+        run: |
+          # Install latest corepack to avoid signature verification issues
+          npm install -g corepack@latest
+          corepack enable
+
+          # Extract expected version from package.json packageManager field
+          EXPECTED_VERSION=$(node -p "
+            const pkg = require('./package.json');
+            const pm = pkg.packageManager || '';
+            const match = pm.match(/^pnpm@(.+?)(\+|$)/);
+            if (!match) {
+              console.error('ERROR: Could not parse packageManager field:', pm);
+              process.exit(1);
+            }
+            match[1];
+          ")
+
+          # Prepare the exact pnpm version from package.json
+          corepack prepare "pnpm@${EXPECTED_VERSION}" --activate
+          ACTUAL_VERSION=$(pnpm --version)
+
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "❌ ERROR: pnpm version mismatch!"
+            echo "Expected: $EXPECTED_VERSION (from package.json packageManager field)"
+            echo "Actual: $ACTUAL_VERSION"
+            echo ""
+            echo "This will cause pnpm-lock.yaml format inconsistencies."
+            echo "Please ensure Corepack is enabled: corepack enable"
+            exit 1
+          fi
+          echo "✅ pnpm version $ACTUAL_VERSION matches expected version"
 
       - name: Configure pnpm registry (root workspace)
         run: |
           echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
+
+      - name: Verify lockfile format consistency
+        run: |
+          echo "🔍 Checking pnpm-lock.yaml format consistency..."
+          # Check if lockfile uses consistent quote style (should be single quotes with pnpm 10.17.0)
+          if grep -q 'lockfileVersion: "' pnpm-lock.yaml; then
+            echo "❌ ERROR: pnpm-lock.yaml uses double quotes (old format)"
+            echo "This indicates it was generated with an older pnpm version."
+            echo ""
+            echo "To fix:"
+            echo "  1. Run: corepack enable"
+            echo "  2. Run: pnpm install"
+            echo "  3. Commit the updated pnpm-lock.yaml"
+            exit 1
+          fi
+          echo "✅ pnpm-lock.yaml format is consistent"
 
       - name: Install workspace dependencies
         run: |
@@ -133,8 +179,38 @@ jobs:
         with:
           node-version: "22.12"
 
-      - name: Install pnpm
-        run: npm install -g pnpm@10.17.0+sha512.fce8a3dd29a4ed2ec566fb53efbb04d8c44a0f05bc6f24a73046910fb9c3ce7afa35a0980500668fa3573345bd644644fa98338fa168235c80f4aa17aa17fbef
+      - name: Enable Corepack and verify pnpm version
+        run: |
+          # Install latest corepack to avoid signature verification issues
+          npm install -g corepack@latest
+          corepack enable
+
+          # Extract expected version from package.json packageManager field
+          EXPECTED_VERSION=$(node -p "
+            const pkg = require('./package.json');
+            const pm = pkg.packageManager || '';
+            const match = pm.match(/^pnpm@(.+?)(\+|$)/);
+            if (!match) {
+              console.error('ERROR: Could not parse packageManager field:', pm);
+              process.exit(1);
+            }
+            match[1];
+          ")
+
+          # Prepare the exact pnpm version from package.json
+          corepack prepare "pnpm@${EXPECTED_VERSION}" --activate
+          ACTUAL_VERSION=$(pnpm --version)
+
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "❌ ERROR: pnpm version mismatch!"
+            echo "Expected: $EXPECTED_VERSION (from package.json packageManager field)"
+            echo "Actual: $ACTUAL_VERSION"
+            echo ""
+            echo "This will cause pnpm-lock.yaml format inconsistencies."
+            echo "Please ensure Corepack is enabled: corepack enable"
+            exit 1
+          fi
+          echo "✅ pnpm version $ACTUAL_VERSION matches expected version"
 
       - name: Verify v8 template lockfile is up-to-date
         working-directory: ./app-templates/v8

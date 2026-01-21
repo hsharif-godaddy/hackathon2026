@@ -48,7 +48,7 @@
       "pnpm --filter website lint"
     ],
     "*.{md,yml,yaml}": [
-      "prettier --write"
+      "bash -c 'if [[ \"$0\" != *\"pnpm-lock.yaml\" ]]; then prettier --write \"$0\"; fi'"
     ],
     "*.json": [
       "bash -c 'if [[ \"$0\" != *\"pnpm-lock.json\" ]]; then prettier --write \"$0\"; fi'"

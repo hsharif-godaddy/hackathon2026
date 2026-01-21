@@ -37,6 +37,7 @@ Files under `/tmp/apps/{appId}/app/**` are generated OUTPUT. Fix generation logi
 **Setup:**
 
 ```bash
+corepack enable                     # Enable Corepack (enforces pnpm 10.17.0)
 ./setup.sh                          # Automated setup
 pnpm --filter airo-setup start      # Selective config
 pnpm install && pnpm run dev        # Manual: agents:4000, app:3000
@@ -54,7 +55,7 @@ pnpm --filter <package> build
 
 ## Architecture
 
-**pnpm workspace monorepo** - Always use `pnpm`, never `npm`
+**pnpm workspace monorepo** - Always use `pnpm`, never `npm`. Corepack enforces pnpm 10.17.0 from `package.json` `packageManager` field.
 
 ### Core Services
 

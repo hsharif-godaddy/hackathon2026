@@ -21,6 +21,9 @@ You first need to request access to the `GD-AWS-USA-GD-AiroBuilde-Dev-Private` A
 git clone <repository-url>
 cd airo-ai-builder
 
+# Enable Corepack (ensures consistent pnpm version)
+corepack enable
+
 # Run the setup utility
 ./setup.sh
 ```
