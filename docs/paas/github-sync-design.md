@@ -2,7 +2,7 @@
 
 **Created:** 2025-01-07
 **Architecture:** 1 Container = 1 App = 1 Git Repository
-**Related:** [github-sync-class-diagram.md](./github-sync-class-diagram.md) - Component architecture and class relationships
+**Related:** [github-sync-class-diagram.md](github-sync-class-diagram.md) - Component architecture and class relationships
 
 ---
 

@@ -3,7 +3,7 @@
 **Created:** 2026-01-12
 **Related:**
 
-- [github-sync-design.md](./github-sync-design.md) - Complete feature design and architecture documentation
+- [github-sync-design.md](github-sync-design.md) - Complete feature design and architecture documentation
 - `github-sync-implementation-plan.md` - Step-by-step implementation plan
 
 ---

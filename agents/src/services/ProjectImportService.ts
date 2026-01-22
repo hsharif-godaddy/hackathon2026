@@ -30,6 +30,10 @@ const IMPORT_TIMEOUTS = {
   TOTAL: 30 * 60 * 1000, // 30 minutes
 } as const;
 
+const DEFAULT_DEV_COMMAND = 'vite --host 0.0.0.0 --port $PORT';
+const DEFAULT_BUILD_COMMAND = 'vite build --outDir dist';
+const DEFAULT_SERVE_COMMAND = 'serve dist -l tcp://0.0.0.0:$PORT';
+
 /**
  * Parameters for starting an import
  */
@@ -383,12 +387,17 @@ export class ProjectImportService {
       const configPath = join(airoDir, 'config.json');
 
       // Currently only Vite is supported, framework detection logic to be added later.
-      const DEFAULT_DEV_COMMAND = 'npx vite --host 0.0.0.0 --port $PORT';
 
       const paasConfig = {
         runtime: {
           dev: {
             command: DEFAULT_DEV_COMMAND,
+          },
+          build: {
+            command: DEFAULT_BUILD_COMMAND,
+          },
+          serve: {
+            command: DEFAULT_SERVE_COMMAND,
           },
         },
       };
@@ -415,9 +424,9 @@ export class ProjectImportService {
         return;
       }
 
-      // Phase 11: Restart dev server
+      // Phase 11: Restart dev server with new command from config
       await this.updateStatus(jobId, ImportJobStatus.RESTARTING);
-      const restartResult = await this.restartDevServer(appId);
+      const restartResult = await this.restartDevServer(appId, DEFAULT_DEV_COMMAND);
 
       if (!restartResult.success) {
         this.logger.warn('project-import.restart.failed', {
@@ -1011,8 +1020,10 @@ export class ProjectImportService {
 
   /**
    * Restart the dev server
+   * @param appId - App ID
+   * @param command - Optional command to start the dev server with (used for imported apps with custom config)
    */
-  private async restartDevServer(appId: string): Promise<{ success: boolean; error?: string }> {
+  private async restartDevServer(appId: string, command?: string): Promise<{ success: boolean; error?: string }> {
     try {
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
 
@@ -1020,7 +1031,31 @@ export class ProjectImportService {
         return { success: false, error: 'Dev supervisor not available' };
       }
 
-      // Send restart command
+      if (command) {
+        this.logger.info('project-import.restart.with-command', { appId, command });
+        await devSupervisor.stopProcess();
+
+        if (!command.trim()) {
+          return { success: false, error: 'Invalid command: empty after port substitution' };
+        }
+
+        if (command.includes('&&') || command.includes(';') || command.includes('|')) {
+          this.logger.warn('project-import.restart.suspicious-command', { appId, command: command });
+        }
+
+        const escapedCommand = command.replace(/"/g, '\\"');
+        const processInfo = await devSupervisor.startProcess({
+          command: `sh -c "${escapedCommand}"`,
+          working_dir: '/app',
+        });
+
+        if (processInfo.state === 'error') {
+          return { success: false, error: processInfo.error || 'Failed to start process with custom command' };
+        }
+
+        return { success: true };
+      }
+
       const success = await devSupervisor.restartProcess({ graceful: true });
 
       const result: { success: boolean; error?: string } = { success };
