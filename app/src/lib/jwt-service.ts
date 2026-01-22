@@ -48,60 +48,89 @@ export class JWTService {
   private tokenCache = new Map<string, { token: string; expires: Date }>();
   private keyCache: { keys: KeyMetadata[]; cachedAt: Date } | null = null;
   private readonly keyCacheMaxAge = 5 * 60 * 1000;
+  private fetchKeysPromise: Promise<KeyMetadata[]> | null = null;
 
   constructor() {
     this.secretsClient = new SecretsManagerClient({ region: this.config.awsRegion });
   }
 
   /**
-   * Get current active signing key from Secrets Manager
+   * Fetch all keys from Secrets Manager with caching and request deduplication
    */
-  private async getActiveKey(): Promise<KeyMetadata> {
+  private async fetchKeys(): Promise<KeyMetadata[]> {
+    // Return cached keys if still valid
     if (this.keyCache && (Date.now() - this.keyCache.cachedAt.getTime()) < this.keyCacheMaxAge) {
-      const activeKey = this.keyCache.keys.find(key => key.status === 'active');
-      if (activeKey) {
-        return activeKey;
-      }
+      return this.keyCache.keys;
     }
 
+    // Deduplicate concurrent requests - if fetch is in progress, wait for it
+    if (this.fetchKeysPromise) {
+      return this.fetchKeysPromise;
+    }
+
+    // Start new fetch
+    this.fetchKeysPromise = this.fetchKeysFromAWS();
+
+    try {
+      const keys = await this.fetchKeysPromise;
+      return keys;
+    } finally {
+      this.fetchKeysPromise = null;
+    }
+  }
+
+  /**
+   * Internal method to fetch keys from AWS Secrets Manager
+   */
+  private async fetchKeysFromAWS(): Promise<KeyMetadata[]> {
     try {
       const command = new GetSecretValueCommand({
         SecretId: this.config.secretName
       });
 
       const response = await this.secretsClient.send(command);
-      
+
       if (!response.SecretString) {
         throw new Error('No secret value found');
       }
 
       const secretValue: JWTSecretValue = JSON.parse(response.SecretString);
-      
+
+      // Update cache
       this.keyCache = {
         keys: secretValue.keys,
         cachedAt: new Date()
       };
 
-      const activeKey = secretValue.keys.find(key => key.status === 'active');
-      
-      if (!activeKey) {
-        throw new Error('No active signing key found');
-      }
-
-      logger.info('jwt.key.retrieved', {
-        keyId: activeKey.keyId,
-        status: activeKey.status
-      });
-
-      return activeKey;
+      return secretValue.keys;
 
     } catch (error) {
-      logger.error('jwt.key.fetch.error', {
+      logger.error('jwt.keys.fetch.error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         secretName: this.config.secretName
       });
-      throw new Error(`Failed to fetch signing key: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Failed to fetch keys: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Get current active signing key from Secrets Manager
+   */
+  private async getActiveKey(): Promise<KeyMetadata> {
+    const keys = await this.fetchKeys();
+
+    const activeKey = keys.find(key => key.status === 'active');
+
+    if (!activeKey) {
+      throw new Error('No active signing key found');
+    }
+
+    logger.info('jwt.key.retrieved', {
+      keyId: activeKey.keyId,
+      status: activeKey.status
+    });
+
+    return activeKey;
   }
 
   /**
@@ -224,27 +253,7 @@ export class JWTService {
    * Get all public keys for JWKS endpoint
    */
   async getPublicKeys(): Promise<KeyMetadata[]> {
-    try {
-      const command = new GetSecretValueCommand({
-        SecretId: this.config.secretName
-      });
-
-      const response = await this.secretsClient.send(command);
-      
-      if (!response.SecretString) {
-        throw new Error('No secret value found');
-      }
-
-      const secretValue: JWTSecretValue = JSON.parse(response.SecretString);
-      
-      return secretValue.keys;
-
-    } catch (error) {
-      logger.error('jwt.publickeys.fetch.error', {
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-      throw new Error(`Failed to fetch public keys: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    return this.fetchKeys();
   }
 }
 
