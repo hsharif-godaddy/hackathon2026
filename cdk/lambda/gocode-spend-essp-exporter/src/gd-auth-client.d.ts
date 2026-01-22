@@ -1,4 +1,6 @@
 declare module 'gd-auth-client' {
+  import { EventEmitter } from 'events';
+
   interface IamTokenClientOptions {
     primaryRegion?: string;
     secondaryRegion?: string;
@@ -9,7 +11,7 @@ declare module 'gd-auth-client' {
     }>;
   }
 
-  export class IamTokenClient {
+  export class IamTokenClient extends EventEmitter {
     constructor(ssoHost: string, options?: IamTokenClientOptions);
     getToken(): Promise<string>;
   }

@@ -10,6 +10,7 @@
 
 import { IamTokenClient } from 'gd-auth-client'
 import { defaultProvider } from '@aws-sdk/credential-provider-node'
+import { logger } from '@/lib/request-context'
 
 /**
  * Token cache with expiration
@@ -69,14 +70,14 @@ export async function getInsightsAuthToken(hostname?: string | null): Promise<st
     // Priority: hostname check > environment variables > NODE_ENV
     // localhost is always treated as test environment
     let isProduction = false
-    
+
     if (hostname) {
       // localhost is always test environment
-      const isLocalhost = hostname === 'localhost' || 
-                         hostname === '127.0.0.1' || 
+      const isLocalhost = hostname === 'localhost' ||
+                         hostname === '127.0.0.1' ||
                          hostname.startsWith('localhost:') ||
                          hostname.startsWith('127.0.0.1:')
-      
+
       if (isLocalhost) {
         isProduction = false
       } else {
@@ -85,7 +86,7 @@ export async function getInsightsAuthToken(hostname?: string | null): Promise<st
       }
     } else {
       // Fall back to environment-based detection
-      isProduction = 
+      isProduction =
         process.env.NODE_ENV === 'production' ||
         !!process.env.MYSQL_DB_USERNAME ||
         !!process.env.AWS_REGION_NOMAD ||
@@ -105,10 +106,17 @@ export async function getInsightsAuthToken(hostname?: string | null): Promise<st
     const ssoHost = isProduction ? 'sso.godaddy.com' : 'sso.test-godaddy.com'
 
     // Create IAM token client with AWS credential provider
-    const ssoClient = new IamTokenClient(ssoHost, {
-      primaryRegion: 'us-west-2',
-      secondaryRegion: 'us-west-2',
-      credentialProviderChain: defaultProvider()
+    const ssoClient = new IamTokenClient(ssoHost)
+
+    // Listen for primary region failures to capture the real error
+    ssoClient.once('background_error', (primaryError: any) => {
+      logger.error('insights.auth.token.primaryRegionFailure', {
+        message: primaryError.message,
+        code: primaryError.code,
+        ssoHost,
+        primaryRegion: 'us-west-2',
+        errorName: primaryError.name
+      })
     })
 
     // Get token from SSO client with error handling

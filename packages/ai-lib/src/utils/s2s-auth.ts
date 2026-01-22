@@ -1,6 +1,6 @@
 /**
  * Service-to-Service Authentication utilities
- * 
+ *
  * Provides optional S2S authentication using gd-auth-client IamTokenClient
  * when GOCODE_USE_S2S_AUTH environment variable is set to true.
  */
@@ -15,8 +15,12 @@ interface TokenCache {
 }
 
 // Normal import - much simpler than dynamic import
-// @ts-expect-error - gd-auth-client is a CommonJS module without TypeScript definitions  
+// @ts-expect-error - gd-auth-client is a CommonJS module without TypeScript definitions
 import { IamTokenClient } from 'gd-auth-client'
+
+import { createLogger } from './logger.js'
+
+const logger = createLogger('s2s-auth')
 
 let cachedToken: TokenCache | null = null;
 let tokenRefreshPromise: Promise<string> | null = null;
@@ -42,7 +46,7 @@ function getDefaultSsoHost(): string {
   }
 
   const env = process.env.NODE_ENV || 'dev';
-  
+
   switch (env.toLowerCase()) {
     case 'production':
     case 'prod':
@@ -62,7 +66,7 @@ function getDefaultSsoHost(): string {
  */
 function getDefaultGoCodeEndpoint(): string {
   const env = process.env.NODE_ENV || 'dev';
-  
+
   switch (env.toLowerCase()) {
     case 'production':
     case 'prod':
@@ -82,7 +86,7 @@ function getDefaultGoCodeEndpoint(): string {
  */
 function getDefaultAnthropicProxyEndpoint(): string {
   const env = process.env.NODE_ENV || 'dev';
-  
+
   switch (env.toLowerCase()) {
     case 'production':
     case 'prod':
@@ -142,12 +146,12 @@ function decodeJWTPayload(jwt: string): any {
     if (parts.length !== 3) {
       throw new Error('Invalid JWT format: expected 3 parts separated by dots');
     }
-    
+
     const payload = parts[1];
     if (!payload) {
       throw new Error('Invalid JWT: missing payload section');
     }
-    
+
     return JSON.parse(Buffer.from(payload, 'base64').toString());
   } catch (error) {
     throw new Error(`Failed to decode JWT payload: ${error instanceof Error ? error.message : String(error)}`);
@@ -161,17 +165,17 @@ function isCachedTokenValid(config: Required<S2SAuthConfig>): boolean {
   if (!cachedToken) {
     return false;
   }
-  
+
   // Check if config matches (different configs need different tokens)
-  const configMatches = 
+  const configMatches =
     cachedToken.config.ssoHost === config.ssoHost &&
     cachedToken.config.region === config.region &&
     cachedToken.config.goCodeEndpoint === config.goCodeEndpoint;
-  
+
   if (!configMatches) {
     return false;
   }
-  
+
   // Check if token is not expired (with 60 second buffer)
   const now = Date.now();
   const bufferMs = 60 * 1000; // 60 seconds
@@ -189,21 +193,21 @@ export function clearTokenCache(): void {
 /**
  * Get cached token info for debugging
  */
-export function getTokenCacheInfo(): { 
-  hasCachedToken: boolean; 
-  expiresAt?: Date; 
+export function getTokenCacheInfo(): {
+  hasCachedToken: boolean;
+  expiresAt?: Date;
   isExpired?: boolean;
   timeUntilExpiration?: number;
 } {
   if (!cachedToken) {
     return { hasCachedToken: false };
   }
-  
+
   const expiresAt = new Date(cachedToken.expiresAt);
   const now = Date.now();
   const isExpired = now >= cachedToken.expiresAt;
   const timeUntilExpiration = Math.max(0, cachedToken.expiresAt - now);
-  
+
   return {
     hasCachedToken: true,
     expiresAt,
@@ -216,7 +220,7 @@ export function getTokenCacheInfo(): {
  * Get JWT token for S2S authentication using AWS IAM credentials
  * Uses caching to avoid fetching new tokens on every request
  * Thread-safe: prevents concurrent token refresh attempts
- * 
+ *
  * @param config - Optional S2S authentication configuration
  * @returns Promise that resolves to JWT token string
  * @throws Error if S2S auth is not enabled or token retrieval fails
@@ -227,24 +231,35 @@ export async function getS2SToken(config?: S2SAuthConfig): Promise<string> {
   }
 
   const finalConfig = { ...getDefaultS2SConfig(), ...config };
-  
+
   // Check if we have a valid cached token
   if (isCachedTokenValid(finalConfig)) {
     return cachedToken!.jwt;
   }
-  
+
   // If a refresh is already in progress, wait for it
   if (tokenRefreshPromise) {
     return tokenRefreshPromise;
   }
-  
+
   // Fetch new token with mutex
   tokenRefreshPromise = (async () => {
     try {
       const client = new IamTokenClient(finalConfig.ssoHost);
-      
+
+      // Listen for primary region failures to capture the real error
+      client.once('background_error', (primaryError: any) => {
+        logger.error('s2s.auth.token.primaryRegionFailure', {
+          message: primaryError.message,
+          code: primaryError.code,
+          ssoHost: finalConfig.ssoHost,
+          primaryRegion: 'us-west-2',
+          errorName: primaryError.name
+        });
+      });
+
       const token = await client.getToken();
-      
+
       // Cache the token with its expiration time
       const payload = decodeJWTPayload(token);
 
@@ -253,7 +268,7 @@ export async function getS2SToken(config?: S2SAuthConfig): Promise<string> {
         expiresAt: (payload.iat + 30 * 60) * 1000, // iat + 30 minutes, convert to milliseconds
         config: finalConfig
       };
-      
+
       return token;
     } catch (error) {
       throw new Error(`Failed to retrieve S2S token: ${error instanceof Error ? error.message : String(error)}`);
@@ -261,14 +276,14 @@ export async function getS2SToken(config?: S2SAuthConfig): Promise<string> {
       tokenRefreshPromise = null;
     }
   })();
-  
+
   return tokenRefreshPromise;
 }
 
 /**
  * Force refresh of S2S token, bypassing cache
  * Useful for manual recovery or when token is known to be invalid
- * 
+ *
  * @param config - Optional S2S authentication configuration
  * @returns Promise that resolves to new JWT token string
  * @throws Error if S2S auth is not enabled or token retrieval fails
@@ -277,10 +292,10 @@ export async function refreshS2SToken(config?: S2SAuthConfig): Promise<string> {
   if (!isS2SAuthEnabled()) {
     throw new Error('S2S authentication is not enabled. Set GOCODE_USE_S2S_AUTH=true to enable.');
   }
-  
+
   // Clear cache to force refresh
   clearTokenCache();
-  
+
   // Fetch new token
   return getS2SToken(config);
 }
@@ -289,7 +304,7 @@ export async function refreshS2SToken(config?: S2SAuthConfig): Promise<string> {
  * Get S2S configuration for OpenAI provider
  * Returns null if S2S is not enabled, otherwise returns the config WITHOUT JWT token
  * (token will be injected by the fetch wrapper on each request)
- * 
+ *
  * @param s2sConfig - Optional S2S authentication configuration
  * @returns Promise that resolves to S2S config, or null if S2S not enabled
  */
@@ -300,7 +315,7 @@ export async function getS2SProviderConfig(s2sConfig?: S2SAuthConfig): Promise<{
   if (!isS2SAuthEnabled()) {
     return null;
   }
-  
+
   const finalConfig = { ...getDefaultS2SConfig(), ...s2sConfig };
   return {
     baseURL: finalConfig.goCodeEndpoint,

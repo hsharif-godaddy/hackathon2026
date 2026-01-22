@@ -23,34 +23,34 @@ const getGoCodeRoleArn = () => `arn:aws:iam::${process.env.AWS_ACCOUNT_ID}:role/
 export async function handler(event: LambdaEvent = {}) {
   try {
     console.log('Starting GoCode spend log sync', { event, environment: ENV_NAME });
-    
+
     const secret = await getSecret();
-    
+
     const roleArn = getGoCodeRoleArn();
     console.log(`Assuming role: ${roleArn}`);
-    
+
     const credentials = await assumeRole(roleArn);
     const jwtToken = await getJWTToken(credentials);
     const esClient = createESClient(secret);
-    
+
     await esClient.cluster.health().catch(err => {
       throw new Error(`Failed to connect to Elasticsearch: ${err.message}`);
     });
-    
+
     let totalLogs = 0;
     let totalIndexed = 0;
-    
+
     const logs = await fetchLogsForDate(jwtToken);
-    
+
     console.log(`Indexing ${logs.length} logs`);
     const indexed = await indexLogs(esClient, logs);
 
     totalLogs += logs.length;
     totalIndexed += indexed;
-    
-  
+
+
     console.log('Sync completed', { totalLogs, successfullyIndexed: totalIndexed, failed: totalLogs - totalIndexed });
-    
+
     return {
       statusCode: 200,
       message: 'Sync completed successfully',
@@ -58,7 +58,7 @@ export async function handler(event: LambdaEvent = {}) {
       successfullyIndexed: totalIndexed,
       failed: totalLogs - totalIndexed
     };
-    
+
   } catch (error) {
     console.error('Sync failed:', error);
     return {
@@ -83,7 +83,7 @@ async function assumeRole(roleArn: string) {
       DurationSeconds: 3600
     })
   );
-  
+
   return {
     accessKeyId: response.Credentials!.AccessKeyId!,
     secretAccessKey: response.Credentials!.SecretAccessKey!,
@@ -93,13 +93,29 @@ async function assumeRole(roleArn: string) {
 
 async function getJWTToken(credentials: { accessKeyId: string; secretAccessKey: string; sessionToken: string }) {
 
-  const token = await new IamTokenClient(SSO_HOST, {
+  const client = new IamTokenClient(SSO_HOST, {
     credentialProviderChain: () => Promise.resolve({
       accessKeyId: credentials.accessKeyId,
       secretAccessKey: credentials.secretAccessKey,
       sessionToken: credentials.sessionToken
     })
-  }).getToken();
+  });
+
+  // Listen for primary region failures to capture the real error
+  client.once('background_error', (primaryError: any) => {
+    console.error(JSON.stringify({
+      level: 'error',
+      event: 'lambda.iamToken.primaryRegionFailure',
+      message: primaryError.message,
+      code: primaryError.code,
+      ssoHost: SSO_HOST,
+      primaryRegion: 'us-west-2',
+      errorName: primaryError.name,
+      timestamp: new Date().toISOString()
+    }));
+  });
+
+  const token = await client.getToken();
 
   return token;
 }
@@ -136,7 +152,7 @@ async function fetchLogsForDate(jwtToken: string): Promise<SpendLog[]> {
   });
 
   console.log(`calling : ${GOCODE_ENDPOINT}/spend/logs?${params}`);
-  
+
   const response = await fetch(`${GOCODE_ENDPOINT}/spend/logs?${params}`, {
     headers: {
       'Authorization': `Bearer ${jwtToken}`,
