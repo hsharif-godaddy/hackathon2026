@@ -72,11 +72,6 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
           <text.h4 as='title' className='mb-2'>
             {t('builder_upgrade_popover_title')}
           </text.h4>
-
-          <text.p size={-1} className='text-intents-ux-boxLowContrast-foregroundColor mb-1'>
-            {t('builder_upgrade_popover_subtitle')}
-          </text.p>
-
           <ul className='flex flex-col gap-1 mb-3'>
             {benefits.map((benefit, index) => (
               <li key={index} className='flex items-center gap-1'>
