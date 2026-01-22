@@ -21,7 +21,7 @@ import (
 const (
 	Version            = "0.2.0"
 	AppName            = "airo-supervisor"
-	defaultTimeout     = 30 * time.Second
+	defaultTimeout     = 120 * time.Second
 	serverReadyTimeout = 5 * time.Second
 )
 

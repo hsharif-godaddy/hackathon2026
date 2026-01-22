@@ -798,18 +798,18 @@ func (s *Server) getPublishHealthCheckURL() string {
 		}
 	}
 
-	// Fallback for non-proxy mode (e.g., publish task port)
-	url := "http://localhost:20001/"
-	slog.Debug("publish.health_check.target", "url", url, "source", "fallback")
+	// Fallback for non-proxy mode - use PORT env var (standard for app listening port)
+	port := getEnvIntWithDefault("PORT", 20000)
+	url := fmt.Sprintf("http://localhost:%d/", port)
+	slog.Debug("publish.health_check.target", "url", url, "source", "PORT_env")
 	return url
 }
 
 // Health check timeout configuration
 const (
-	healthCheckInitialTimeout  = 5 * time.Second  // Initial per-request timeout
-	healthCheckMaxTimeout      = 60 * time.Second // Maximum per-request timeout
-	healthCheckTimeoutIncrease = 5 * time.Second  // Increase per retry
-	healthCheckInterval        = 1 * time.Second  // Time between retries
+	healthCheckInitialTimeout  = 5 * time.Second // Initial per-request timeout
+	healthCheckTimeoutIncrease = 5 * time.Second // Increase per retry
+	healthCheckInterval        = 1 * time.Second // Time between retries
 )
 
 // waitForAppHealthy polls the given URL until it returns a 2xx status or timeout
@@ -859,13 +859,8 @@ func (s *Server) waitForAppHealthy(targetURL string, timeout time.Duration) (boo
 			}
 		}
 
-		// Increase timeout for next attempt (up to max)
-		if currentTimeout < healthCheckMaxTimeout {
-			currentTimeout += healthCheckTimeoutIncrease
-			if currentTimeout > healthCheckMaxTimeout {
-				currentTimeout = healthCheckMaxTimeout
-			}
-		}
+		// Increase timeout for next attempt
+		currentTimeout += healthCheckTimeoutIncrease
 
 		time.Sleep(healthCheckInterval)
 	}
