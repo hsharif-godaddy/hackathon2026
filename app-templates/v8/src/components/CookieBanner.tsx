@@ -95,9 +95,9 @@ function initC2Tracking(): void {
 
   // Load SCC script
   const h = location.hostname;
-  const url = h === 'localhost' || h.startsWith('dev-')
+  const url = h === 'localhost' || h.includes('dev-airoapp')
     ? 'https://img1.dev-wsimg.com/signals/js/clients/scc-c2/scc-c2.js'
-    : h.startsWith('test-')
+    : h.includes('test-airoapp')
       ? 'https://img1.test-wsimg.com/signals/js/clients/scc-c2/scc-c2.min.js'
       : 'https://img1.wsimg.com/signals/js/clients/scc-c2/scc-c2.min.js';
   const script = document.createElement('script');
