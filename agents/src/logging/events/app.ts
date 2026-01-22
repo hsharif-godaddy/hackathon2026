@@ -1028,6 +1028,15 @@ export const AppEvents = {
     },
   },
 
+  // Customer Logs API events: customer_logs.{fetch}.{begin|success|failure}
+  customerLogs: {
+    fetch: {
+      begin: 'customer_logs.fetch.begin' as const,
+      success: 'customer_logs.fetch.success' as const,
+      failure: 'customer_logs.fetch.failure' as const,
+    },
+  },
+
   // WebSocket events: websocket.{connection|chat}.{event_type}
   websocket: {
     connection: {

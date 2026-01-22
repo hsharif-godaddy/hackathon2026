@@ -1239,3 +1239,38 @@ export const analyticsEvents = {
     logger.debug(AppEvents.analytics.routes.discoveryFailed, data);
   },
 };
+
+/**
+ * Customer Logs API event data interfaces
+ */
+export interface CustomerLogsFetchData {
+  appId: string;
+  target: 'preview' | 'publish';
+  lines?: number;
+  sources?: Array<'stdout' | 'stderr'>;
+  since?: string;
+}
+
+export interface CustomerLogsFetchResultData extends CustomerLogsFetchData {
+  rawCount: number;
+  sanitizedCount: number;
+  executionTime: number;
+}
+
+/**
+ * Customer Logs API logging helpers
+ * Used for customer-facing deployment log access
+ */
+export const customerLogsEvents = {
+  fetchBegin: (logger: ILogger, data: CustomerLogsFetchData) => {
+    logger.info(AppEvents.customerLogs.fetch.begin, data);
+  },
+
+  fetchSuccess: (logger: ILogger, data: CustomerLogsFetchResultData) => {
+    logger.info(AppEvents.customerLogs.fetch.success, data);
+  },
+
+  fetchFailure: (logger: ILogger, error: Error, data: CustomerLogsFetchData) => {
+    log.error(logger, AppEvents.customerLogs.fetch.failure, error, data);
+  },
+};

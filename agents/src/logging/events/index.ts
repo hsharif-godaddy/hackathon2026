@@ -31,6 +31,7 @@ export {
   conversationContextEvents,
   conversationHistoryEvents,
   conversationTokenLimitEvents,
+  customerLogsEvents,
   dockerContainerEvents,
   fileUploadEvents,
   httpRequestEvents,
