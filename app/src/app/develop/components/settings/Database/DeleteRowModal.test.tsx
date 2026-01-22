@@ -4,7 +4,6 @@ import { beforeEach,describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
-import { DeleteRowModal } from './DeleteRowModal';
 
 // Mock ResizeObserver
 global.ResizeObserver = vi.fn().mockImplementation(() => ({
@@ -12,6 +11,20 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
   unobserve: vi.fn(),
   disconnect: vi.fn(),
 }));
+
+// Mock @ux/modal to avoid Disrupt rendering issues in test environment
+vi.mock('@ux/modal', () => ({
+  default: ({ title, children, actions, onClose }: any) => (
+    <div role="dialog" aria-label={title}>
+      <h2>{title}</h2>
+      <button onClick={onClose} aria-label="Close">Close</button>
+      <div>{children}</div>
+      <div>{actions}</div>
+    </div>
+  ),
+}));
+
+import { DeleteRowModal } from './DeleteRowModal';
 
 describe('DeleteRowModal', () => {
   beforeEach(() => {

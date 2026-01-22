@@ -12,7 +12,7 @@ class WebScraperClient extends BaseClient {
     super({
       serviceName: 'WebScraper',
       ssoHost: config.sso.host,
-      defaultRetries: 2,
+      defaultRetries: 2
     });
   }
   /**
@@ -29,7 +29,7 @@ class WebScraperClient extends BaseClient {
 
       return this.makeRequest(scraperUrl, requestId, 'GET', undefined, {
         'x-app-key': config.webScraper.appKey,
-        'User-Agent': config.webScraper.userAgent,
+        'User-Agent': config.webScraper.userAgent
       });
     });
   }
@@ -48,7 +48,7 @@ class WebScraperClient extends BaseClient {
 
       return this.makeRequest(scraperUrl, requestId, 'GET', undefined, {
         'x-app-key': config.webScraper.appKey,
-        'User-Agent': config.webScraper.userAgent,
+        'User-Agent': config.webScraper.userAgent
       });
     });
   }

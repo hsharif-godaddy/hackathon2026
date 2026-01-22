@@ -9,6 +9,33 @@ overrides:
   caniuse-lite: 1.0.30001736
   react: 19.1.0
   react-dom: 19.1.0
+  '@ux/alert': 2500.7.2
+  '@ux/box': 2500.7.1
+  '@ux/button': 2500.7.2
+  '@ux/card': 2500.7.2
+  '@ux/checkbox': 2500.7.2
+  '@ux/coachmark': 2500.7.2
+  '@ux/collapsible': 2500.7.2
+  '@ux/disrupt': 2500.7.2
+  '@ux/flyout': 2500.7.1
+  '@ux/growl': 2500.7.2
+  '@ux/icon': 2500.7.2
+  '@ux/intents': 2500.7.1
+  '@ux/menu': 2500.7.2
+  '@ux/modal': 2500.7.2
+  '@ux/pagination': 2500.7.2
+  '@ux/radio': 2500.7.1
+  '@ux/select': 2500.7.2
+  '@ux/select-input': 2500.7.2
+  '@ux/skeleton': 2500.7.2
+  '@ux/spinner': 2500.7.1
+  '@ux/table': 2500.7.2
+  '@ux/tag': 2500.7.2
+  '@ux/tailwind-intents': 2500.7.1
+  '@ux/text': 2500.7.1
+  '@ux/text-input': 2500.7.2
+  '@ux/toggle-button': 2500.7.1
+  '@ux/tooltip': 2500.7.2
 
 importers:
 
@@ -84,6 +111,9 @@ importers:
       '@opentelemetry/api':
         specifier: ^1.9.0
         version: 1.9.0
+      '@opentelemetry/context-async-hooks':
+        specifier: ^2.2.0
+        version: 2.2.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/exporter-trace-otlp-proto':
         specifier: ^0.208.0
         version: 0.208.0(@opentelemetry/api@1.9.0)
@@ -292,6 +322,9 @@ importers:
       '@aws-sdk/credential-provider-node':
         specifier: ^3.888.0
         version: 3.893.0
+      '@babel/runtime':
+        specifier: ^7.28.4
+        version: 7.28.6
       '@elastic/apm-rum':
         specifier: ^5.17.0
         version: 5.17.0
@@ -452,89 +485,89 @@ importers:
         specifier: ^8.21.3
         version: 8.21.3(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/alert':
-        specifier: ^2500.3.2
-        version: 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/box':
-        specifier: ^2500.3.2
-        version: 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.1
+        version: 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button':
-        specifier: ^2500.3.2
-        version: 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/card':
-        specifier: ^2500.3.2
-        version: 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/checkbox':
-        specifier: ^2500.4.0
-        version: 2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/coachmark':
-        specifier: ^2500.5.5
-        version: 2500.5.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/collapsible':
-        specifier: ^2500.3.2
-        version: 2500.5.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/disrupt':
-        specifier: ^2500.3.3
-        version: 2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/flyout':
-        specifier: ^2500.3.2
-        version: 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.1
+        version: 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/growl':
-        specifier: ^2500.7.0
-        version: 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/icon':
-        specifier: ^2500.3.2
-        version: 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents':
-        specifier: ^2500.3.2
-        version: 2500.3.2
+        specifier: 2500.7.1
+        version: 2500.7.1
       '@ux/menu':
-        specifier: ^2500.3.3
-        version: 2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/modal':
-        specifier: ^2500.3.4
-        version: 2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/pagination':
-        specifier: ^2500.3.2
-        version: 2500.5.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/radio':
-        specifier: ^2500.3.4
-        version: 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.1
+        version: 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/select':
-        specifier: ^2500.5.6
-        version: 2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/select-input':
-        specifier: ^2500.3.2
-        version: 2500.5.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/sibling-set':
         specifier: ^2500.7.2
         version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/skeleton':
-        specifier: ^2500.3.2
-        version: 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/spinner':
-        specifier: ^2500.3.2
-        version: 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.1
+        version: 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/table':
-        specifier: ^2500.3.2
-        version: 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/tag':
-        specifier: ^2500.3.2
-        version: 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/tailwind-intents':
-        specifier: ^2500.3.2
-        version: 2500.3.2(@ux/intents@2500.3.2)(tailwindcss@4.1.13)
+        specifier: 2500.7.1
+        version: 2500.7.1(@ux/intents@2500.7.1)(tailwindcss@4.1.13)
       '@ux/text':
-        specifier: ^2500.3.2
-        version: 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.1
+        version: 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text-input':
-        specifier: ^2500.5.0
-        version: 2500.5.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/toggle-button':
-        specifier: ^2500.5.6
-        version: 2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.1
+        version: 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/tooltip':
-        specifier: ^2500.3.2
-        version: 2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 2500.7.2
+        version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@venture/cds-loader':
         specifier: 0.0.56
         version: 0.0.56(@rspack/core@1.6.5(@swc/helpers@0.5.17))(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.2)(webpack@5.101.3)
@@ -549,7 +582,7 @@ importers:
         version: 1.13.0(@opentelemetry/api-logs@0.208.0)(@opentelemetry/api@1.9.0)(@opentelemetry/instrumentation@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))
       '@wsb/image-manager-loader':
         specifier: ^1.3.0
-        version: 1.3.0(@ux/button@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/modal@2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/search@2500.7.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/spinner@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@7.1.14(react@19.1.0)(typescript@5.9.2))(react@19.1.0)
+        version: 1.3.0(@ux/button@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/modal@2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/search@2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/spinner@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@7.1.14(react@19.1.0)(typescript@5.9.2))(react@19.1.0)
       '@xstate/react':
         specifier: ^6.0.0
         version: 6.0.0(@types/react@19.1.13)(react@19.1.0)(xstate@5.25.0)
@@ -696,8 +729,8 @@ importers:
         specifier: ^15.5.13
         version: 15.5.13
       '@ux/postcss-intents':
-        specifier: ^2500.3.2
-        version: 2500.3.2(@ux/intents@2500.3.2)(postcss@8.5.6)
+        specifier: ^2500.7.1
+        version: 2500.7.1(@ux/intents@2500.7.1)(postcss@8.5.6)
       '@vitejs/plugin-react':
         specifier: ^5.1.1
         version: 5.1.1(vite@6.4.1(@types/node@22.18.12)(jiti@2.5.1)(lightningcss@1.30.1)(sass@1.92.1)(terser@5.44.0)(tsx@4.20.5)(yaml@2.8.1))
@@ -1086,8 +1119,8 @@ importers:
 
 packages:
 
-  '@acemir/cssom@0.9.23':
-    resolution: {integrity: sha512-2kJ1HxBKzPLbmhZpxBiTZggjtgCwKg1ma5RHShxvd6zgqhDEdEkzpiwe7jLkI2p2BrZvFCXIihdoMkl1H39VnA==}
+  '@acemir/cssom@0.9.31':
+    resolution: {integrity: sha512-ZnR3GSaH+/vJ0YlHau21FjfLYjMpYVIzTD8M8vIEQvIGxeOXyXdzCI140rrCY862p/C/BbzWsjc1dgnM9mkoTA==}
 
   '@adobe/css-tools@4.4.4':
     resolution: {integrity: sha512-Elp+iwUx5rN5+Y8xLt5/GRoG20WGoDCQ/1Fb+1LiGtvwbDavuSk0jhD/eZdckHAuzcDzccnkv+rEjyWfRx18gg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@adobe/css-tools/-/adobe-css-tools-4.4.4.tgz}
@@ -1173,11 +1206,11 @@ packages:
   '@asamuzakjp/css-color@3.2.0':
     resolution: {integrity: sha512-K1A6z8tS3XsmCMM86xoWdn7Fkdn9m6RSVtocUrJYIwZnFVkng/PvkEoWtOWmP+Scc6saYWHWZYbndEEXxl24jw==}
 
-  '@asamuzakjp/css-color@4.0.5':
-    resolution: {integrity: sha512-lMrXidNhPGsDjytDy11Vwlb6OIGrT3CmLg3VWNFyWkLWtijKl7xjvForlh8vuj0SHGjgl4qZEQzUmYTeQA2JFQ==}
+  '@asamuzakjp/css-color@4.1.1':
+    resolution: {integrity: sha512-B0Hv6G3gWGMn0xKJ0txEi/jM5iFpT3MfDxmhZFb4W047GvytCf1DHQ1D69W3zHI4yWe2aTZAA0JnbMZ7Xc8DuQ==}
 
-  '@asamuzakjp/dom-selector@6.7.4':
-    resolution: {integrity: sha512-buQDjkm+wDPXd6c13534URWZqbz0RP5PAhXZ+LIoa5LgwInT9HVJvGIJivg75vi8I13CxDGdTnz+aY5YUJlIAA==}
+  '@asamuzakjp/dom-selector@6.7.6':
+    resolution: {integrity: sha512-hBaJER6A9MpdG3WgdlOolHmbOYvSk46y7IQN/1+iqiCuUu6iWdQrs9DGKF8ocqsEqWujWf/V7b7vaDgiUmIvUg==}
 
   '@asamuzakjp/nwsapi@2.3.9':
     resolution: {integrity: sha512-n8GuYSrI9bF7FFZ/SjhwevlHc8xaVlb/7HmHelnc/PZXBD2ZR49NnN9sMMuDdEGPeeRQ5d0hqlSlEpgCX3Wl0Q==}
@@ -1506,6 +1539,10 @@ packages:
 
   '@babel/code-frame@7.27.1':
     resolution: {integrity: sha512-cjQ7ZlQ0Mv3b47hABuTevyTuYN4i+loJKGeV9flcCgIK37cCXRh+L1bd3iBHlynerhQ7BhCkn2BPbQUL+rGqFg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@babel/code-frame/-/babel-code-frame-7.27.1.tgz}
+    engines: {node: '>=6.9.0'}
+
+  '@babel/code-frame@7.28.6':
+    resolution: {integrity: sha512-JYgintcMjRiCvS8mMECzaEn+m3PfoQiyqukOMCCVQtoJGYJw8j/8LBJEiqkHLkfwCcs74E3pbAUFNg7d9VNJ+Q==}
     engines: {node: '>=6.9.0'}
 
   '@babel/compat-data@7.28.4':
@@ -2112,8 +2149,8 @@ packages:
     resolution: {integrity: sha512-h7iEYiW4HebClDEhtvFObtPmIvrd1SSfpI9EhOeKk4CtIK/ngBWFpuhCzhdmRKtg71ylcue+9I6dv54XYO1epQ==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/runtime@7.28.4':
-    resolution: {integrity: sha512-Q/N6JNWvIvPnLDvjlE1OUBLPQHH6l3CltCEsHIujp45zQUSSh8K+gHnaEX45yAT1nyngnINhvWtzN+Nb9D8RAQ==}
+  '@babel/runtime@7.28.6':
+    resolution: {integrity: sha512-05WQkdpL9COIMz4LjTxGpPNCdlpyimKppYNoJ5Di5EUObifl8t4tuLuUBBZEpoLYOmfvIWrsp9fCl0HoPRVTdA==}
     engines: {node: '>=6.9.0'}
 
   '@babel/template@7.27.2':
@@ -2165,7 +2202,7 @@ packages:
     resolution: {integrity: sha512-90vx2lVm+fhQyE8FKqNhT8JBI8GuY0biAwxTzvzeRIdWVo2ArCpUfYMYq4kzaGTfA6NwCmXmBFSgnqfG6OFxLw==}
 
   '@colors/colors@1.6.0':
-    resolution: {integrity: sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@colors/colors/-/colors-colors-1.6.0.tgz}
+    resolution: {integrity: sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA==}
     engines: {node: '>=0.1.90'}
 
   '@cspotcode/source-map-support@0.8.1':
@@ -2196,8 +2233,8 @@ packages:
     peerDependencies:
       '@csstools/css-tokenizer': ^3.0.4
 
-  '@csstools/css-syntax-patches-for-csstree@1.0.16':
-    resolution: {integrity: sha512-2SpS4/UaWQaGpBINyG5ZuCHnUDeVByOhvbkARwfmnfxDvTaj80yOI1cD8Tw93ICV5Fx4fnyDKWQZI1CDtcWyUg==}
+  '@csstools/css-syntax-patches-for-csstree@1.0.25':
+    resolution: {integrity: sha512-g0Kw9W3vjx5BEBAF8c5Fm2NcB/Fs8jJXh85aXqwEXiL+tqtOut07TWgyaGzAAfTM+gKckrrncyeGEZPcaRgm2Q==}
     engines: {node: '>=18'}
 
   '@csstools/css-tokenizer@3.0.4':
@@ -2205,7 +2242,7 @@ packages:
     engines: {node: '>=18'}
 
   '@dabh/diagnostics@2.0.3':
-    resolution: {integrity: sha512-hrlQOIi7hAfzsMqlGSFyVucrx38O+j6wiGOf//H2ecvIEqYN4ADBSS2iLMh5UFyDunCNniUIPk/q3riFv45xRA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@dabh/diagnostics/-/dabh-diagnostics-2.0.3.tgz}
+    resolution: {integrity: sha512-hrlQOIi7hAfzsMqlGSFyVucrx38O+j6wiGOf//H2ecvIEqYN4ADBSS2iLMh5UFyDunCNniUIPk/q3riFv45xRA==}
 
   '@elastic/apm-rum-core@5.23.0':
     resolution: {integrity: sha512-kQnKwf6EaHfNvOrL66SOJuoAp8xuCdqAGb/bnxiKsFu1DKYOglJiW5Su4wSjQp82rTP7Vt2X1RZbu+7lURLX9Q==}
@@ -2234,8 +2271,14 @@ packages:
   '@emnapi/core@1.5.0':
     resolution: {integrity: sha512-sbP8GzB1WDzacS8fgNPpHlp6C9VZe+SJP3F90W9rLemaQj2PzIuTEl1qDOYQf58YIpyjViI24y9aPWCjEzY2cg==}
 
+  '@emnapi/core@1.8.1':
+    resolution: {integrity: sha512-AvT9QFpxK0Zd8J0jopedNm+w/2fIzvtPKPjqyw9jwvBaReTTqPBk9Hixaz7KbjimP+QNz605/XnjFcDAL2pqBg==}
+
   '@emnapi/runtime@1.5.0':
     resolution: {integrity: sha512-97/BJ3iXHww3djw6hYIfErCZFee7qCtrneuLa20UXFCOTCfBM2cvQHjWJ2EG0s0MtdNwInarqCTz35i4wWXHsQ==}
+
+  '@emnapi/runtime@1.8.1':
+    resolution: {integrity: sha512-mehfKSMWjjNol8659Z8KxEMrdSJDDot5SXMq00dM8BN4o+CLNXQ0xH2V7EchNHV4RmbZLmmPdEaXZc5H2FXmDg==}
 
   '@emnapi/wasi-threads@1.1.0':
     resolution: {integrity: sha512-WI0DdZ8xFSbgMjR1sFsKABJ/C5OnRrjT06JXbZKexJGrDuPTzZdDYfFlsgcCXCyf+suG5QU2e/y1Wo2V/OapLQ==}
@@ -2587,7 +2630,7 @@ packages:
     resolution: {integrity: sha512-HJnTFeRM2kVFVr5gr5kH1XP6K0JcJtE7Lzvtr3FS/so5f1kpsqqqxy5JF+FRaO6H2qmcMfAUIox7AJteieRtVw==}
 
   '@formatjs/fast-memoize@2.2.7':
-    resolution: {integrity: sha512-Yabmi9nSvyOMrlSeGGWDiH7rf3a7sIwplbvo/dlz9WCIjzIQAfy1RMf4S0X3yG724n5Ghu2GmEl5NJIV6O9sZQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@formatjs/fast-memoize/-/formatjs-fast-memoize-2.2.7.tgz}
+    resolution: {integrity: sha512-Yabmi9nSvyOMrlSeGGWDiH7rf3a7sIwplbvo/dlz9WCIjzIQAfy1RMf4S0X3yG724n5Ghu2GmEl5NJIV6O9sZQ==}
 
   '@formatjs/icu-messageformat-parser@2.11.4':
     resolution: {integrity: sha512-7kR78cRrPNB4fjGFZg3Rmj5aah8rQj9KPzuLsmcSn4ipLXQvC04keycTI1F7kJYDwIXtT2+7IDEto842CfZBtw==}
@@ -2802,7 +2845,7 @@ packages:
       hono: ^4
 
   '@humanwhocodes/config-array@0.13.0':
-    resolution: {integrity: sha512-DZLEEqFWQFiyK6h5YIeynKx7JlvCYWL0cImfSRXZ9l4Sg2efkFGTuFf6vzXjK1cq6IYkU+Eg/JizXw+TD2vRNw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@humanwhocodes/config-array/-/humanwhocodes-config-array-0.13.0.tgz}
+    resolution: {integrity: sha512-DZLEEqFWQFiyK6h5YIeynKx7JlvCYWL0cImfSRXZ9l4Sg2efkFGTuFf6vzXjK1cq6IYkU+Eg/JizXw+TD2vRNw==}
     engines: {node: '>=10.10.0'}
     deprecated: Use @eslint/config-array instead
 
@@ -3356,7 +3399,7 @@ packages:
     engines: {node: '>= 8'}
 
   '@nolyfill/is-core-module@1.0.39':
-    resolution: {integrity: sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA==}
+    resolution: {integrity: sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@nolyfill/is-core-module/-/nolyfill-is-core-module-1.0.39.tgz}
     engines: {node: '>=12.4.0'}
 
   '@npmcli/fs@1.1.1':
@@ -5153,7 +5196,7 @@ packages:
     resolution: {integrity: sha512-e2BR4lsJkkRlKZ/qCHPw9ZaSxc0MVUd7gtbtaB7aMvHeJVYe8sOB8DBZkP2DtISHGSku9sCK6T6cnY0CtXrOCQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@swc/counter/-/swc-counter-0.1.3.tgz}
 
   '@swc/helpers@0.5.17':
-    resolution: {integrity: sha512-5IKx/Y13RsYd+sauPb2x+U/xZikHjolzfuDgTAl/Tdf3Q8rslRvC19NKDLgAJQ6wsqADk10ntlv08nPFw/gO/A==}
+    resolution: {integrity: sha512-5IKx/Y13RsYd+sauPb2x+U/xZikHjolzfuDgTAl/Tdf3Q8rslRvC19NKDLgAJQ6wsqADk10ntlv08nPFw/gO/A==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@swc/helpers/-/swc-helpers-0.5.17.tgz}
 
   '@swc/helpers@0.5.5':
     resolution: {integrity: sha512-KGYxvIOXcceOAbEk4bi/dVLEK9z8sZ0uBB3Il5b1rhfClSpcX0yfRO0KmTkqR2cnQDymwLB+25ZyMzICg/cm/A==}
@@ -5342,7 +5385,7 @@ packages:
     resolution: {integrity: sha512-NMv9ASNARoKksWtsq/SHakpYAYnhBrQgGD8zkLYk/jaK8jUGn08CfEdTRgYhMypUQAfzSP8W6gNLe0q19/t4VA==}
 
   '@types/body-parser@1.19.6':
-    resolution: {integrity: sha512-HLFeCYgz89uk22N5Qg3dvGvsv46B8GLvKKo1zKG4NybA8U2DiEO3w9lqGg29t/tfLRJpJ6iQxnVw4OnB7MoM9g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@types/body-parser/-/types-body-parser-1.19.6.tgz}
+    resolution: {integrity: sha512-HLFeCYgz89uk22N5Qg3dvGvsv46B8GLvKKo1zKG4NybA8U2DiEO3w9lqGg29t/tfLRJpJ6iQxnVw4OnB7MoM9g==}
 
   '@types/bunyan@1.8.11':
     resolution: {integrity: sha512-758fRH7umIMk5qt5ELmRMff4mLDlN+xyYzC+dkPTdKwbSkJFvz6xwyScrytPU0QIBbRRwbiE8/BIg8bpajerNQ==}
@@ -5360,7 +5403,7 @@ packages:
     resolution: {integrity: sha512-kCFuWS0ebDbmxs0AXYn6e2r2nrGAb5KwQhknjSPSPgJcGd8+HVSILlUyFhGqML2gk39HcG7D1ydW9/qpYkN00Q==}
 
   '@types/connect@3.4.38':
-    resolution: {integrity: sha512-K6uROf1LD88uDQqJCktA4yzL1YYAK6NgfsI0v/mTgyPKWsX1CnJ0XPSDhViejru1GcRkLWb8RlzFYJRqGUbaug==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@types/connect/-/types-connect-3.4.38.tgz}
+    resolution: {integrity: sha512-K6uROf1LD88uDQqJCktA4yzL1YYAK6NgfsI0v/mTgyPKWsX1CnJ0XPSDhViejru1GcRkLWb8RlzFYJRqGUbaug==}
 
   '@types/cookiejar@2.1.5':
     resolution: {integrity: sha512-he+DHOWReW0nghN24E1WUqM0efK4kI9oTqDm6XmK8ZPe2djZ90BSNdGnIyCLzCPw7/pogPlGbzI2wHGGmi4O/Q==}
@@ -5405,7 +5448,7 @@ packages:
     resolution: {integrity: sha512-MzMFlSLBqNF2gcHWO0G1vP/YQyfvrxZ0bF+u7mzUdZ1/xK4A4sru+nraZz5i3iEIk1l1uyicaDVTB4QbbEkAYg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@types/eslint-scope/-/types-eslint-scope-3.7.7.tgz}
 
   '@types/eslint@9.6.1':
-    resolution: {integrity: sha512-FXx2pKgId/WyYo2jXw63kk7/+TY7u7AziEJxJAnSFzHlqTAS3Ync6SvgYAN/k4/PQpnnVuzoMuVnByKK2qp0ag==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@types/eslint/-/types-eslint-9.6.1.tgz}
+    resolution: {integrity: sha512-FXx2pKgId/WyYo2jXw63kk7/+TY7u7AziEJxJAnSFzHlqTAS3Ync6SvgYAN/k4/PQpnnVuzoMuVnByKK2qp0ag==}
 
   '@types/estree-jsx@1.0.5':
     resolution: {integrity: sha512-52CcUVNFyfb1A2ALocQw/Dd1BQFNmSdkuC3BkZ6iqhdMfQz7JWOFRuJFloOzjk+6WijU56m9oKXFAXc7o3Towg==}
@@ -5437,7 +5480,7 @@ packages:
       '@types/react': '*'
 
   '@types/http-errors@2.0.5':
-    resolution: {integrity: sha512-r8Tayk8HJnX0FztbZN7oVqGccWgw98T/0neJphO91KkmOzug1KkofZURD4UaD5uH8AqcFLfdPErnBod0u71/qg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@types/http-errors/-/types-http-errors-2.0.5.tgz}
+    resolution: {integrity: sha512-r8Tayk8HJnX0FztbZN7oVqGccWgw98T/0neJphO91KkmOzug1KkofZURD4UaD5uH8AqcFLfdPErnBod0u71/qg==}
 
   '@types/inquirer@9.0.9':
     resolution: {integrity: sha512-/mWx5136gts2Z2e5izdoRCo46lPp5TMs9R15GTSsgg/XnZyxDWVqoVU3R9lWnccKpqwsJLvRoxbCjoJtZB7DSw==}
@@ -5479,7 +5522,7 @@ packages:
     resolution: {integrity: sha512-ymXWVrDiCxTBE3+RIrrP533E70eA+9qu7zdWoHuOmGujkYtzf4HQF96b8nwHLqhuf4ykX61IGRIB38CC6/sImQ==}
 
   '@types/mime@1.3.5':
-    resolution: {integrity: sha512-/pyBZWSLD2n0dcHE3hq8s8ZvcETHtEuF+3E7XVt0Ig2nvsVQXdghHVcEkIWjy9A0wKfTn97a/PSDYohKIlnP/w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@types/mime/-/types-mime-1.3.5.tgz}
+    resolution: {integrity: sha512-/pyBZWSLD2n0dcHE3hq8s8ZvcETHtEuF+3E7XVt0Ig2nvsVQXdghHVcEkIWjy9A0wKfTn97a/PSDYohKIlnP/w==}
 
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
@@ -5518,10 +5561,10 @@ packages:
     resolution: {integrity: sha512-te7NQcV2BOvdj2b1hCAHzAoMNuj65kNBMz0KBaxM6c3VGBOhU0dURQKOtH8CFNI/dsKkwlv32p26qYQTWoB5bw==}
 
   '@types/qs@6.14.0':
-    resolution: {integrity: sha512-eOunJqu0K1923aExK6y8p6fsihYEn/BYuQ4g0CxAAgFc4b/ZLN4CrsRZ55srTdqoiLzU2B2evC+apEIxprEzkQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@types/qs/-/types-qs-6.14.0.tgz}
+    resolution: {integrity: sha512-eOunJqu0K1923aExK6y8p6fsihYEn/BYuQ4g0CxAAgFc4b/ZLN4CrsRZ55srTdqoiLzU2B2evC+apEIxprEzkQ==}
 
   '@types/range-parser@1.2.7':
-    resolution: {integrity: sha512-hKormJbkJqzQGhziax5PItDUTMAM9uE2XXQmM37dyd4hVM+5aVl7oVxMVUiVQn2oCQFN/LKCZdvSM0pFRqbSmQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@types/range-parser/-/types-range-parser-1.2.7.tgz}
+    resolution: {integrity: sha512-hKormJbkJqzQGhziax5PItDUTMAM9uE2XXQmM37dyd4hVM+5aVl7oVxMVUiVQn2oCQFN/LKCZdvSM0pFRqbSmQ==}
 
   '@types/react-dom@19.1.9':
     resolution: {integrity: sha512-qXRuZaOsAdXKFyOhRBg6Lqqc0yay13vN7KrIg4L7N4aaHN68ma9OK3NE1BoDFgFOTfM7zg+3/8+2n8rLUH3OKQ==}
@@ -5547,10 +5590,10 @@ packages:
     resolution: {integrity: sha512-FmgJfu+MOcQ370SD0ev7EI8TlCAfKYU+B4m5T3yXc1CiRN94g/SZPtsCkk506aUDtlMnFZvasDwHHUcZUEaYuA==}
 
   '@types/send@0.17.5':
-    resolution: {integrity: sha512-z6F2D3cOStZvuk2SaP6YrwkNO65iTZcwA2ZkSABegdkAh/lf+Aa/YQndZVfmEXT5vgAp6zv06VQ3ejSVjAny4w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@types/send/-/types-send-0.17.5.tgz}
+    resolution: {integrity: sha512-z6F2D3cOStZvuk2SaP6YrwkNO65iTZcwA2ZkSABegdkAh/lf+Aa/YQndZVfmEXT5vgAp6zv06VQ3ejSVjAny4w==}
 
   '@types/serve-static@1.15.8':
-    resolution: {integrity: sha512-roei0UY3LhpOJvjbIP6ZZFngyLKl5dskOtDhxY5THRSpO+ZI+nzJ+m5yUMzGrp89YRa7lvknKkMYjqQFGwA7Sg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@types/serve-static/-/types-serve-static-1.15.8.tgz}
+    resolution: {integrity: sha512-roei0UY3LhpOJvjbIP6ZZFngyLKl5dskOtDhxY5THRSpO+ZI+nzJ+m5yUMzGrp89YRa7lvknKkMYjqQFGwA7Sg==}
 
   '@types/shimmer@1.2.0':
     resolution: {integrity: sha512-UE7oxhQLLd9gub6JKIAhDq06T0F6FnztwMNRvYgjeQSBeMc1ZG/tA47EwfduvkuQS8apbkM/lpLpWsaCeYsXVg==}
@@ -5577,7 +5620,7 @@ packages:
     resolution: {integrity: sha512-HsJ+z3QuETzP3cswwtzt2vEIiHBk/dCcHGhbmG5X3ecnwFD/lPrMpliGXxSCg03L9AhrdwA4Oz/qfspkDW+xGQ==}
 
   '@types/triple-beam@1.3.5':
-    resolution: {integrity: sha512-6WaYesThRMCl19iryMYP7/x2OVgCtbIVflDGFpWnb9irXI3UjYE4AzmYuiUKY1AJstGijoY+MgUszMgRxIYTYw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@types/triple-beam/-/types-triple-beam-1.3.5.tgz}
+    resolution: {integrity: sha512-6WaYesThRMCl19iryMYP7/x2OVgCtbIVflDGFpWnb9irXI3UjYE4AzmYuiUKY1AJstGijoY+MgUszMgRxIYTYw==}
 
   '@types/unist@2.0.11':
     resolution: {integrity: sha512-CmBKiL6NNo/OqgmMn95Fk9Whlp2mtvIv+KNpQKN2F4SjvrEesubTRWGYSg+BnWZOnlCaSTU1sMpsBOzgbYhnsA==}
@@ -5721,7 +5764,7 @@ packages:
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
   '@ungap/structured-clone@1.3.0':
-    resolution: {integrity: sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ungap/structured-clone/-/ungap-structured-clone-1.3.0.tgz}
+    resolution: {integrity: sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==}
 
   '@ungap/url-search-params@0.1.4':
     resolution: {integrity: sha512-RLwrxCTDNiNev9hpr9rDq8NyeQ8Nn0X1we4Wu7Tlf368I8r+7hBj3uObhifhuLk74egaYaSX5nUsBlWz6kjj+A==}
@@ -5821,32 +5864,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@ux/alert@2500.3.4':
-    resolution: {integrity: sha512-6PjR3izkBUCBAGY6N6OQ3iVcu3zgqTccjeerhsh+NkkKPpK8xthuqVlHuLKluJ364SnfPgZEYSy7Cs/a24xuJg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/alert/-/@ux/alert-2500.3.4.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/box@2500.3.4':
-    resolution: {integrity: sha512-byMuhI8Z5/rI2Q7womt0OSyt+f/wbd/2y24Wit/aAuh5IlkxIVuExx0CY5kVM5oJbpkPgoYp65DFhbs8mmVRTw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/box/-/@ux/box-2500.3.4.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/box@2500.5.5':
-    resolution: {integrity: sha512-lP2Z4FxOMrpZmT0bNPQEVtA/yHdBv4R01a+ZrPb4+FECSrulqr7q/iO94Nne5Fh8K9zcOVKEAbcxeOvYrdKADw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/box/-/@ux/box-2500.5.5.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/box@2500.7.0':
-    resolution: {integrity: sha512-gofrzeP3QHsueQ0OHOwAOXc/1EVJ5I+e4P6Wire4G2n9+61kp40Dd9Ax0affFdqm4Tua/dPXLyOOMtqGdSB6bw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/box/-/@ux/box-2500.7.0.tgz}
+  '@ux/alert@2500.7.2':
+    resolution: {integrity: sha512-KrFmkKcCHpVeNhaQ1gkicdB23BXTrRkdvGBlvCzfxPpt0KZm7cSbaGzx/C9cymRIHuDtH1/7V5KPKpdcMuhC4Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/alert/-/@ux/alert-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -5861,104 +5880,40 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/button@2400.18.1':
-    resolution: {integrity: sha512-BI0vMzjLFvN61MUuOiKvBxYn3QyAaG5acqozsa2zJt7vIhp+nykd8pHGjAzLOPmMcG/v372DS1JdofroR6Fg8A==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/button/-/@ux/button-2400.18.1.tgz}
+  '@ux/button@2500.7.2':
+    resolution: {integrity: sha512-gvY9/BN7wbc10Fol3ofZafUNvgUORDVUqe5sTmb9JOpWL14MJHtaK/N8I02fIlT5qcKjsz612aRiZtHdM5EOyA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/button/-/@ux/button-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/button@2500.3.4':
-    resolution: {integrity: sha512-uUt2XXyyQaPS05Sj+h2chuYuB7IsfG9At3iEjfCnRzueA50Yydrc7DDi/g9lvoIY3QpEV1rGafEjUX7lhH20WQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/button/-/@ux/button-2500.3.4.tgz}
+  '@ux/card@2500.7.2':
+    resolution: {integrity: sha512-JmPWr47dFODXP+zwg++5kbrPZ3iCAN04vJg9N7wuH1vb2wH44XsVKEt8GSYW1H5genlaNtlhz1Ham8/VnX6JeA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/card/-/@ux/card-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/button@2500.5.1':
-    resolution: {integrity: sha512-wUtUuOkTt/FUwlsanzS+RncY5LusmKenxvthgiepoqsqUHoo7Sy24S11Sf4zIuwufnISR49hJuREsWyYGt7xUQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/button/-/@ux/button-2500.5.1.tgz}
+  '@ux/checkbox@2500.7.2':
+    resolution: {integrity: sha512-KZHyhuyqfj1AYmxWGH7KGgV2wTJz3CUEtukjVC3FMLzUvcTlueCSltJO767sXuIVISszpWH+8KJJrUZ2U0YiBg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/checkbox/-/@ux/checkbox-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/button@2500.5.5':
-    resolution: {integrity: sha512-FlFE1GfqW37NoBWFlFRpNLD/xd+x4JkB8x2+LFodqzpj/6iyo9j6fgzysK6dRp+MSwUWRqfMgTPGP4vx6E5cBA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/button/-/@ux/button-2500.5.5.tgz}
+  '@ux/coachmark@2500.7.2':
+    resolution: {integrity: sha512-9ww0kbBc892/QVXjeMNoxtfLcTxF1lH4TPi2mPLF7H9rb/e0/EmQLQ7jF4hDReUCFuSvAZL0yX+Fnp8wWUjtlA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/coachmark/-/@ux/coachmark-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/button@2500.7.0':
-    resolution: {integrity: sha512-/YSrqtEHCCCtlEvi3Fu7WmngVBzZwebsVY4XQ7EDcpX2+5kTo+0IskDAgZuFO9OzT1JeLvPV36T/qt81anwLFA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/button/-/@ux/button-2500.7.0.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/button@2500.7.1':
-    resolution: {integrity: sha512-1Lu0FvnK4v6VsrnSXvwf7ifo4u5O/IivmozOdmY5Lm4lSVeePFUBOivOkdq+1QcXCn7B53OtUW+eGRxcugCYwg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/button/-/@ux/button-2500.7.1.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/card@2500.5.1':
-    resolution: {integrity: sha512-gR64oMTaBsm7Fr9EKyWdiREUttmgS2lc0/MBR94tbW3+WEoaJhrEwz6ahXi4NGntp5gf7n0o9VH1TrQ8yPlBHA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/card/-/@ux/card-2500.5.1.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/checkbox@2500.4.0':
-    resolution: {integrity: sha512-wMhslHNYBTe5NEprKBAauyi9LsOo8d3lTpvurlFcBh059qQ7Co1ozzzLC5N4uzzz+sFOe0GKLgOHXCp4kAIk+A==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/checkbox/-/@ux/checkbox-2500.4.0.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/coachmark@2500.5.5':
-    resolution: {integrity: sha512-dOLsaLDZ3M2IT9fGZRHvqHd+6RdFlfTkz7oXTKKM2gGInGLiUeRrzgRmJi3j6CJUEoCT+MY1hUFWnD21KoUbVA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/coachmark/-/@ux/coachmark-2500.5.5.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/collapsible@2500.5.2':
-    resolution: {integrity: sha512-RE6xD3PvjkHXQy1WEfdrBlcKvWMew8Zx7Mv1aZkJTbsq90N+Hc8KJQWKfCPQ8xJTW5is7RTvchkXAa5yp1lu8w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/collapsible/-/@ux/collapsible-2500.5.2.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/component-utilities@2500.3.2':
-    resolution: {integrity: sha512-gs5Zx7J/ovcAH3KkqW4zDqn1xH3NKhsQEMA0yXwK0X9Y5W02KDbEtDV9ee8tn/eBg0cKBuRF6MqmW1IYiBdoqg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/component-utilities/-/@ux/component-utilities-2500.3.2.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/component-utilities@2500.5.5':
-    resolution: {integrity: sha512-zZO5ThXLm+wJPJpQSv8n4b/S0KDyISfKg6o0PmDTpEM7fKMjRZiOJKzogk6+wUjD3tstQSfnOQckbjsBJBTA5A==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/component-utilities/-/@ux/component-utilities-2500.5.5.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/component-utilities@2500.5.7':
-    resolution: {integrity: sha512-q4nJmpIxFXY63aJTnmVd2/aif33Og7GNwy0laZzbrW59ke3HuWpwgGQJTzOG3jsk4dYPAJ9jWN2Fafvo0MJkpA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/component-utilities/-/@ux/component-utilities-2500.5.7.tgz}
+  '@ux/collapsible@2500.7.2':
+    resolution: {integrity: sha512-iwDnLq8iwS/+y7VT7eBO4RFaZovxq9Eg6ppnVjD7sETiSKhuskT5CSZHkSsIwImA9ILcvsvT4NwX27WqCuN+9w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/collapsible/-/@ux/collapsible-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -5973,120 +5928,40 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/corner-actions@2500.3.4':
-    resolution: {integrity: sha512-rH9m0dGQCltjljYL1mMOKd4TpVzD+jR/AXKp47XhKgdgvoQ5ATDsh174KtlzD59XYZS9pkne3BMcu7TmrU5Y8w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/corner-actions/-/@ux/corner-actions-2500.3.4.tgz}
+  '@ux/corner-actions@2500.7.2':
+    resolution: {integrity: sha512-yGQi7IK7G1BOfaopgfPhHtcPTvcswxchBiu2mW8uufPpObfCrHZMn3sGP2xEMI7eEXl9l7nEmkfDQ2dgfk35MA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/corner-actions/-/@ux/corner-actions-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/corner-actions@2500.5.1':
-    resolution: {integrity: sha512-sEABHd/bG35IbaCcx8RDlxgWq40KZ5/ycgyWYrx1+KDK5u7vuTLpUasmtW/a8gomLABdwytzepWuzHfm849V9g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/corner-actions/-/@ux/corner-actions-2500.5.1.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/corner-actions@2500.5.5':
-    resolution: {integrity: sha512-kxk/C4tJR6DrtOt2D49XEYhWyNgLQjpPGsWgbt6g4rTMYQplNVwYQdfbvUywZ5h+8xzUQTBHMay7WZ2NvLe/Hw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/corner-actions/-/@ux/corner-actions-2500.5.5.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/corner-actions@2500.7.0':
-    resolution: {integrity: sha512-lklcimixcbrFNueuyDFRhYdLY6WUfylsD7Fm5FMw6MCCjjeOKZe2L0YRV7mQQe2VnSItK+xVdyYP9wVnzpm+Sw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/corner-actions/-/@ux/corner-actions-2500.7.0.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/data-version@2500.7.0':
-    resolution: {integrity: sha512-d/7xipJ89CeClfycc3inKSwu1SS/yKtCj9/YjpH+ob8G8dU3DRWusCtnTvScPUvUC5b5l4g0VRNXCoxh6NSXHw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/data-version/-/@ux/data-version-2500.7.0.tgz}
+  '@ux/data-version@2500.7.1':
+    resolution: {integrity: sha512-qhF0Ed9ZpPBhiAPwOZe9npeYg00p6QxWBCTlQABgW7q81W5O0BDYyKCNlhC6cNELdWTAOzHhz9Bq18sojf7nJg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/data-version/-/@ux/data-version-2500.7.1.tgz}
     engines: {node: '>= 18'}
 
   '@ux/deploy-assets@3.4.0':
     resolution: {integrity: sha512-TY4oPzrDBKpv8oaL/hCUZdeU4vtL/Kz0LNRRD6YBhDhB8wkAe2dsgHlUTy9MGJnZcwtKtN/XPDVHUzdBBjD1Pg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/deploy-assets/-/@ux/deploy-assets-3.4.0.tgz}
     hasBin: true
 
-  '@ux/dialog@2500.7.0':
-    resolution: {integrity: sha512-ColMOPFMaIM3T6nFClykPFXMkqMXFCT7nrxEDIMSGOcROi+dLGmklaD6HQHeJbRW9FyA/zEFQGO3ihu5cpf6qA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/dialog/-/@ux/dialog-2500.7.0.tgz}
+  '@ux/dialog@2500.7.2':
+    resolution: {integrity: sha512-MaySOlKfDwlJidJvJDSjVihBoNPrTwzxcFevq7ggAT3fl5LRDYUzpXdri1ZDURv/eVfv7Rmv8PLp26UDNCLNMA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/dialog/-/@ux/dialog-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/disrupt@2500.3.5':
-    resolution: {integrity: sha512-H7eox0Mj0psuSCKDNA4ZajMGHJ9NT8uIZmPEnL49xIVWhFtnKuDDfX6/qvc/3UGHjUY4zGRAU+rVI4wmtcog3Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/disrupt/-/@ux/disrupt-2500.3.5.tgz}
+  '@ux/disrupt@2500.7.2':
+    resolution: {integrity: sha512-0LlQLyoGMAvSvazUpAyomoe0daPCxUa3+a/7KrUhtfIv3/vths49dWoGeDZeKGUSMd0hATVOVClz8NCw8JS0Mw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/disrupt/-/@ux/disrupt-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/disrupt@2500.5.1':
-    resolution: {integrity: sha512-7Zbqq5lP6DsoRgZDSof1Jyoy5nDUgjHwZH4CVaPQ2ZO0No2atKdniAPsNNM+rcBBMmZVSI1T5peacfAznHY4cw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/disrupt/-/@ux/disrupt-2500.5.1.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/disrupt@2500.5.5':
-    resolution: {integrity: sha512-HPqG4vnVQTqHlwk2rZbZdvhqlJ6RWLStI/UlPTIt41y/rj1lON+O1w//NdYQgbatxnsy7y2mkuuGCOjF7LkwWg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/disrupt/-/@ux/disrupt-2500.5.5.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/field-frame@2500.5.0':
-    resolution: {integrity: sha512-dv0L8PtULYVz1Ab15aZH7cMS0nyJS4JqUYnbKCE8gKhDPpG3WC1Q3L0PCYMwqgPwQBuENyd6LsuFnt1TqrE+cg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/field-frame/-/@ux/field-frame-2500.5.0.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/field-frame@2500.5.4':
-    resolution: {integrity: sha512-Sz6owUH6aFKCUwqaYtiyEa9u5v9spfUb5VOqPtWPPEQ93J26xOdz+az5D0ruiurx2pTmyR0oRUPg/a7uGcZ1KQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/field-frame/-/@ux/field-frame-2500.5.4.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/field-frame@2500.7.1':
-    resolution: {integrity: sha512-z8W9fQAj0YT6Dq0rRXMUaF1ZkvVCBvE0z0ZKt1ysphh5Jf3AtGewmqZ5ZUR1b92XOfUwCJ1Fa7gC29QpVTVwVA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/field-frame/-/@ux/field-frame-2500.7.1.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/flyout@2500.3.4':
-    resolution: {integrity: sha512-7P3sPfv5da6uSYf45gXnb5k3EFiob+M2deMApWCyWki2LdlTxAHpoX2lHL/yW9dSLtt+tyoI5qRBsXVYyHLKSg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/flyout/-/@ux/flyout-2500.3.4.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/flyout@2500.4.0':
-    resolution: {integrity: sha512-9aKx/oyW4txdfjG7KNZpEK3aLuIoJUz9x/bfsafq1niMJvk+0yfSK9UVo3QetXS5zDQPc8DvFUF1Ny3BcIc3sw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/flyout/-/@ux/flyout-2500.4.0.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/flyout@2500.5.5':
-    resolution: {integrity: sha512-88GR0hjcXDA3djiEarbtNCXx50tLdyP3Tpjj/HIS9u79WL66PX5zAVMghaJHHnzTpI7gQWCY5CHmnbXjxc0mEA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/flyout/-/@ux/flyout-2500.5.5.tgz}
+  '@ux/field-frame@2500.7.2':
+    resolution: {integrity: sha512-UoZoQlLGbBWH5Iif3ufpud0bp4RpIDO1e945Q9bG0hGNfNa2aABTwDTz4guXvXHYiMbRnnd7eLs9IKK/9dHQRQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/field-frame/-/@ux/field-frame-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -6101,125 +5976,25 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/growl@2500.7.0':
-    resolution: {integrity: sha512-VuCxDXrejOYdXAUpC6lrcnmLvco+UM6NgRYanus4U9ZQqVz0wuxq9lLFwX0OHwjqD0OfCSP/6C22heoUhyEXPw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/growl/-/@ux/growl-2500.7.0.tgz}
+  '@ux/growl@2500.7.2':
+    resolution: {integrity: sha512-R7WoLucM+UHiXm16gAmMYcaQPOj3x6olN113vr4A74F0RGP6v5nfrLbvG5SkcMqyqGOh+NwvMlUnSSS9Dej47w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/growl/-/@ux/growl-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/icon@2400.18.1':
-    resolution: {integrity: sha512-kpWGctYvS3/1wr7qKHlIuGh9TpUJ7kk1h5qwuucTZPsU6m6gQs1nRdW1cXDZ5LA05cvIVR0pg2wm2G06bmFExA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/icon/-/@ux/icon-2400.18.1.tgz}
+  '@ux/icon@2500.7.2':
+    resolution: {integrity: sha512-3fF1fN3g1Ysjs3YiItW4GVQh2bN0FhvsPalzGFwlC5SGdoSd0UOhTrNM2TsrMBLYstQ46SusEKuonMRyu5fJ7g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/icon/-/@ux/icon-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
-
-  '@ux/icon@2500.3.4':
-    resolution: {integrity: sha512-gt7X5pB9PCMnHucJYhN8CNUdipow361u3tvVHRO65RfpEuNQUO/9mJLj/eTYJ9ukjgtS8NOhCDv9Sb0bSNCa5A==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/icon/-/@ux/icon-2500.3.4.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/icon@2500.4.0':
-    resolution: {integrity: sha512-dBvPh/LMe9oMN+5JNn0ew1+sqFwKJ+hgIFTbEKC63jOc9wugISUJ8QF9XowYJAhNGOwlq/mw0pko3wm33RLuRw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/icon/-/@ux/icon-2500.4.0.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/icon@2500.5.1':
-    resolution: {integrity: sha512-g7TMKgW+gsgBtfO0jGx8mFCZFr2zXm6sXqVuYu+dagQQ9h5mvx/BpV2jPk+yJkixn30AJcToq/to8/xCuDSHew==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/icon/-/@ux/icon-2500.5.1.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/icon@2500.5.5':
-    resolution: {integrity: sha512-FTdtfeXed1OvXWWDqirpaDIaXcybTF2HYaP9GPiQaxtygl5jH+gjy64kU7zBlDR9U0VSMGAW4BoVrQPXCb7CGw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/icon/-/@ux/icon-2500.5.5.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/icon@2500.5.7':
-    resolution: {integrity: sha512-wnTLCb8rHLy46GowK4q7IbKR1MmuEPxkIKbmVOUusrukut4x/uEA2vY4fnjkcMimLq6FZTXq+C+7hylDU0XwTQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/icon/-/@ux/icon-2500.5.7.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/icon@2500.7.0':
-    resolution: {integrity: sha512-BfZw81tlvChp66wwxHGfuXhmYTi0aLGT/S2hY+y0FXidqeg++JvjCyEyLQ/Y0kErDoD80ef++9FEullZANYKgw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/icon/-/@ux/icon-2500.7.0.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/icon@2500.7.1':
-    resolution: {integrity: sha512-WnnvJV2n708EyKBasP/ezkAryJ94A44fOzRziPcY8V4Q8Z4fb02Dd+LvRacVspWx2/fNfp7t/KSeISjFzziSqw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/icon/-/@ux/icon-2500.7.1.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/intents@2400.11.0':
-    resolution: {integrity: sha512-Z7h1vxJD5irqFXTT6yV5AY0sHJ5vhk9OYWaX3X3kd6h5WRlrdRfkq7P4UQ/UDAhG0SN7FOaGXNTUzqCvQED/UA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/intents/-/@ux/intents-2400.11.0.tgz}
-    engines: {node: '>= 18'}
-
-  '@ux/intents@2500.3.2':
-    resolution: {integrity: sha512-ST3rTqJYrXEs7hfRGUpylc5B42VRaIMUW+pmNkE9S+fAo1i4n8bmhOphTdhnf0Tg4HwEklK7LXFBO6QYvNvx9A==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/intents/-/@ux/intents-2500.3.2.tgz}
-    engines: {node: '>= 18'}
-
-  '@ux/intents@2500.5.5':
-    resolution: {integrity: sha512-XCYOJajuM8dK82OM+ReWv3FubhECgMV8vcZdZIqlk8ETQrq0rL9HaahmGFyBLc0z7hKOBT3c9A0IwAg2nGqOBw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/intents/-/@ux/intents-2500.5.5.tgz}
-    engines: {node: '>= 18'}
-
-  '@ux/intents@2500.5.6':
-    resolution: {integrity: sha512-/SEufJ7vG1c11d/rW4OqiOc98X5o4PeidYwp+sCl/FuwqMSpNPV6AGn7kojorw3+8zOjOQIRNwCSTAMRBauDvA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/intents/-/@ux/intents-2500.5.6.tgz}
-    engines: {node: '>= 18'}
-
-  '@ux/intents@2500.7.0':
-    resolution: {integrity: sha512-EhEmfUlgse/SodrIsmfQfhvkMSJ0LoQDV68VpKKKD/QLFSX/B0+bXIEmFIVGo6kTDkAnt0/bZlbe6VZLzDU/Gw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/intents/-/@ux/intents-2500.7.0.tgz}
-    engines: {node: '>= 18'}
 
   '@ux/intents@2500.7.1':
     resolution: {integrity: sha512-hBjYuon+djTVzOgpxraN73UQHL58EcGgjAow5Nv0tnPbR6dyECidnvEdA/FozAySPOVSPtB6071gzMwgoYcbmg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/intents/-/@ux/intents-2500.7.1.tgz}
     engines: {node: '>= 18'}
-
-  '@ux/label@2500.4.0':
-    resolution: {integrity: sha512-tbS95TIQQk78Z7Dcmhfk/R7CwuXjg5v9/0C3bWqEoG/5MkNuD+v6pfsqDpRbXS1LhQDWA8Bb7gKHNfqEBAAI8A==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/label/-/@ux/label-2500.4.0.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/label@2500.5.4':
-    resolution: {integrity: sha512-pdRXDmsBfhux+3VcdRR5SufaBUXSAmeUVqnfADEVSfidYnYgick2GsbMzAgrSmRDssbt4+g22piqdXqDxF+/YQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/label/-/@ux/label-2500.5.4.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/label@2500.5.7':
-    resolution: {integrity: sha512-ROq2xsD3qE+/esWINOVNhcYV0YLy7K3k3KcEggMQAiQ8XNRVu9jSFtxhVkIicj6p0knbqULiFH7Oln7YKMSLJA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/label/-/@ux/label-2500.5.7.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
 
   '@ux/label@2500.7.1':
     resolution: {integrity: sha512-L1NAc6Y19p23z0t5NYOmRCu8WRqmPM5lqBH2jqyejWC9VX3GJ7QZDZGgKrRumPl8My4foDKI742bnmCzW19dlA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/label/-/@ux/label-2500.7.1.tgz}
@@ -6229,67 +6004,59 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/listbox@2500.7.1':
-    resolution: {integrity: sha512-VzFoaf7MjS/6QiIYCb4heY0BkfalXzTbwNfzOuIV8YRzUhVg4pafE3Ob9ZtR5aOdPYPgzlSZ4vsnWaLcCdsg7Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/listbox/-/@ux/listbox-2500.7.1.tgz}
+  '@ux/listbox@2500.7.2':
+    resolution: {integrity: sha512-gSilWDr3FUxCEV9UMJ+TypZUniaVh8EoxBP/w26k5ga/6dlrESvG39SOd0KyeX7khRLXppMrdW7HC4/6qoeiZg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/listbox/-/@ux/listbox-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/menu@2500.3.5':
-    resolution: {integrity: sha512-oAxgrRoYMz/s+o+fOsb6TDTIBIdCuVFDBtmWHIuFtPirNDi1DkqNihZGuEvsqXjOF5eoEVS2No4QEFBBKDsjvQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/menu/-/@ux/menu-2500.3.5.tgz}
+  '@ux/menu@2500.7.2':
+    resolution: {integrity: sha512-vBg9gmkCt6+ZgWvUqmVofOyt3ngScnPoLRZmKFDjxS5HgMTp3fScdhet53Q33yS8e8Vv8Zp3cce1HO8c1DRZ0g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/menu/-/@ux/menu-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/menu@2500.5.1':
-    resolution: {integrity: sha512-V3HjbrtvpxGILvGGsMZezkTFCnR3I0yvaNoDhykW8gZkxuIuKzTG8EOY85dSUzU3q87WJC9ukPP364H6cIHNgw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/menu/-/@ux/menu-2500.5.1.tgz}
+  '@ux/modal@2500.7.2':
+    resolution: {integrity: sha512-if6oB1/RI3xmEtjWNm3mFAZaf2Twjipa3vA0QjzBx2yMNmw0iDXRG+YVJy5HyvlLwVyQdhJmop0b3n/SjiTsFA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/modal/-/@ux/modal-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/modal@2500.3.5':
-    resolution: {integrity: sha512-uu+TxTP+XWR0i1wI6t5DjiHWKsql1TR8BnlH3wFFDLn1xxm6Q2L0sgh6WwQWxOvtssHeZNHYLU93/9sCLO5Gaw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/modal/-/@ux/modal-2500.3.5.tgz}
+  '@ux/pagination@2500.7.2':
+    resolution: {integrity: sha512-aROB8UoW06BhdnbHRTtAYhgaqUsVgciLkzT1AmBqzHIZKjbBoF9MLIptCfs50ZH2waN0fG5l1WZFMfGdb8YiJQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/pagination/-/@ux/pagination-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/pagination@2500.5.1':
-    resolution: {integrity: sha512-7AuQKz4/N3Qx3uj1TcX6obQrdgRx9K/ppzD6SUXkQN73lx+Q03NTGgEULOkmkI+800aW0xFLYXoaQWy3znLj9A==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/pagination/-/@ux/pagination-2500.5.1.tgz}
+  '@ux/popover@2500.7.2':
+    resolution: {integrity: sha512-VLiNXZOrmW782V7MmLnXuAx+zsJ5gAuFen161vrI1LdilyBTVvOaFCiH1ROzWKol7nQV7xUtw7YZOiCVlIdHZQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/popover/-/@ux/popover-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/popover@2500.5.5':
-    resolution: {integrity: sha512-OlZR8ZlTCNY5T5vmEOciXDcHVrSuAlr0DlrmZQmwGE+Nztmmt+V+nOY9N46V6pHjRmIzradDQjyHPT72vKjnTQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/popover/-/@ux/popover-2500.5.5.tgz}
+  '@ux/postcss-intents@2500.7.1':
+    resolution: {integrity: sha512-1ErqfRT0aO3QMqFDzbqGH/nqlqEkdr3F1eyfQZjJrQ1X8nsGGD7XUzjoVbqEsaIY+J51QyEr9T2/Nwl7TYG2Sw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/postcss-intents/-/@ux/postcss-intents-2500.7.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/postcss-intents@2500.3.2':
-    resolution: {integrity: sha512-IK8KXKMu6SbrQLMUNinvbBt5cJ7iR+JeXaDQV9dJ50reSvML6Y8xXNtl088dA9TfBL+mT4xAxCsg5MEZSBexXg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/postcss-intents/-/@ux/postcss-intents-2500.3.2.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      '@ux/intents': '>=2500.x'
+      '@ux/intents': 2500.7.1
       postcss: '>=8.x'
 
   '@ux/presentation-central@4.1.0':
     resolution: {integrity: sha512-pFAZAsSfGTm+ZqtUCjaIBtYOSYkN4IRIOP9DncREh3pLi6kUeoWLYpEep77d7/by5NdFGCkXO9F6yFffRRbZ/w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/presentation-central/-/@ux/presentation-central-4.1.0.tgz}
     engines: {node: '>=16'}
 
-  '@ux/radio@2500.3.4':
-    resolution: {integrity: sha512-oAgHJoYUX03zHsG8XH5yeaE5vTC7EzRC9sJ6jC/PUGLhT+7TlPC00MVwGrQ9ZlpVjtXbIsaAu0pVguBXXEtmdA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/radio/-/@ux/radio-2500.3.4.tgz}
+  '@ux/radio@2500.7.1':
+    resolution: {integrity: sha512-mUZIyV6ghTRw8Jej3Do8EF7RcR2Oowg8HF+Tt1w76hVH+Hldi1Uj3/jS13bMwtHTC0rV9PN0lwnu8YaMzca0yA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/radio/-/@ux/radio-2500.7.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -6299,49 +6066,37 @@ packages:
   '@ux/react-bundle@1.1.1':
     resolution: {integrity: sha512-5qDZz0pt5K1KbfS7d1GszRMvuDOsFZnC/vfB3uTvdKjAZGB3l+y+Z+s/R19sfitELPccafvSkVtl//gtiWMmPw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/react-bundle/-/@ux/react-bundle-1.1.1.tgz}
 
-  '@ux/reveal@2500.3.4':
-    resolution: {integrity: sha512-AX3dPwXYvEcV2MxfMAt/dEkc3T9cPUZDpQdDDQ6G5FpY5JORxztTjmALEIVN4pU+cLIjGep5HIemO+yYuaITRg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/reveal/-/@ux/reveal-2500.3.4.tgz}
+  '@ux/reveal@2500.7.1':
+    resolution: {integrity: sha512-YIvyyhrcmBrG3ABP14ekGfnLz7UWAtKtiZ0/pFjOZRbOT2UUtrBNTfcji+JM6SF6pD68deOI0kAztXYjmGNnJg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/reveal/-/@ux/reveal-2500.7.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/search@2500.7.1':
-    resolution: {integrity: sha512-4lKiTfq5JTmGU/bSLjrKX1DrHAHG24Yn0vVRCprGXP+KyDBmjlJy0kbgUGHSjEbD3GHKHyGtf0NVZaL9JjHtvw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/search/-/@ux/search-2500.7.1.tgz}
+  '@ux/search@2500.7.2':
+    resolution: {integrity: sha512-iOYfkGH4YdzJrjyXvGKlxhzL0b21kKOgbojkTgJSELVYzW46hYeEa6jndb0OA9SDabkUpdFv5SkEucAEiP5rMg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/search/-/@ux/search-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/select-input@2500.5.4':
-    resolution: {integrity: sha512-hPl/1THvOxlo0Tf2zElp6Qusd6nlUkpwhqaz2IoAKyCrAmyQ5Bp7dKyDsxoYg4Mz0GPH4Y3vc275I+6B04dVYg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/select-input/-/@ux/select-input-2500.5.4.tgz}
+  '@ux/select-input@2500.7.2':
+    resolution: {integrity: sha512-+jz0XkPwHQbSqy9ueqyr5WEWCk/as6+gywzedz2nbN1FJ1Tq68s98HGp8pW7oW0mOLAIqN/+xRyB7EKaJOsIcA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/select-input/-/@ux/select-input-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/select@2500.5.7':
-    resolution: {integrity: sha512-xupyIW06qujF+w6pnPxz4Xai9GIEjT/tPuGwyU+Dr1byEESStRCbl5TyPvk9aDYkNYHIBY11Nb7fZbK3ANW3SA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/select/-/@ux/select-2500.5.7.tgz}
+  '@ux/select@2500.7.2':
+    resolution: {integrity: sha512-/KMs43cmRfUg+4K8MNCKPshJOwXNW84qxvGQf48BZAMs+t38Qsfxch8tUPZcnmse8gTs845lo+3TopsrSjHUwg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/select/-/@ux/select-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
-
-  '@ux/short-css-vars@2400.11.0':
-    resolution: {integrity: sha512-1Noe4wa4Ex2ssZuyaMyt6FXsdsColJ1RDszFekXhrgykgiOIa8yGDL0svsxU2zxNiccG5YjSGkrTZk2r6BcKBg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/short-css-vars/-/@ux/short-css-vars-2400.11.0.tgz}
-    engines: {node: '>= 18'}
-
-  '@ux/short-css-vars@2500.3.2':
-    resolution: {integrity: sha512-H2drPVNHvWkeetv7ouSHS25+e9P8MckCeCiGrj1jLOdygZ3Bz1hgS83qwri8eA20+OAnnYbjfdZumoawA3LvSg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/short-css-vars/-/@ux/short-css-vars-2500.3.2.tgz}
-    engines: {node: '>= 18'}
-
-  '@ux/short-css-vars@2500.7.0':
-    resolution: {integrity: sha512-iuIPXtwXluWwnkhvnM/ZbTlRH/HZ+BAZamypx7y3z9PutGfkLW4GXIAdxqYEjURQM9mfZTzKV74kmkfhYBCWOQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/short-css-vars/-/@ux/short-css-vars-2500.7.0.tgz}
-    engines: {node: '>= 18'}
 
   '@ux/short-css-vars@2500.7.1':
     resolution: {integrity: sha512-/rrX71pQMOZDoqhuLfuwkcYebVs5f0lwCS8PlFfZz723Qgp+kOFVNb9IjHpqqPIqDCQrr0zJvjijxnV6UTcvRA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/short-css-vars/-/@ux/short-css-vars-2500.7.1.tgz}
@@ -6356,32 +6111,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/skeleton@2500.5.1':
-    resolution: {integrity: sha512-QQaK77ih44w/B5uzdNbkw6jv5nXRjg4aTbfcDABsuh+E+PdCbKN01x+oDo9kqT/2bxGYHDAksSebfvtAlIOiVg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/skeleton/-/@ux/skeleton-2500.5.1.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/space@2500.3.4':
-    resolution: {integrity: sha512-LN6tqg9tdi0YwCwLdBpVhKkiawMm7Xqhey61CO7Lgpdz5muPbDtwukzZtHwwFGLbI0P1MjtHL3fnKoHu5zx32g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/space/-/@ux/space-2500.3.4.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/space@2500.5.5':
-    resolution: {integrity: sha512-XhZHx52CP+KtGx7qncbu6GFYCsPvrsJLaD4iplPS4J5Hl0g5Ed6/HkC34dX9n8RVCt1lXtAAv+zr4CZcwzWg8w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/space/-/@ux/space-2500.5.5.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/space@2500.7.0':
-    resolution: {integrity: sha512-jQAWHWJ4Xw4pk0d9oI1nF473/ZXxWRkg6WdAv5/tMwmxiR6f7/IUpsmpyk5kui+OcrDXlezYpWVdtkBNey4OcQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/space/-/@ux/space-2500.7.0.tgz}
+  '@ux/skeleton@2500.7.2':
+    resolution: {integrity: sha512-hf2dCqgc8/lESszRrs0XuzjEjWV0LXbnAyvOqdnOlL0d24NbqejA16xQX9RcnH1So5droPFXv9rfutZ42Im3rw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/skeleton/-/@ux/skeleton-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -6396,68 +6127,44 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/spinner@2400.18.1':
-    resolution: {integrity: sha512-empON8YYwT+7rZ1vnjiW0ZetlKefi+q6e0T2JDK1Z1eXbs5n34MHtchSs/nfSf3BAzYSqnxywfh5bpsn02RWDg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/spinner/-/@ux/spinner-2400.18.1.tgz}
+  '@ux/spinner@2500.7.1':
+    resolution: {integrity: sha512-nAR86F4jfXP348Qg/tVXSlc2cpIaQ8VDOxYJiaOzV/n02kXSrheOD4/nHwPv9b8EYu3zfgwS1xzM/hwZNRqAtQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/spinner/-/@ux/spinner-2500.7.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/spinner@2500.3.4':
-    resolution: {integrity: sha512-6KZ8QGaYyM8TP7C8rKm392EXI0DAiR20P2fboYVheBe+4veOxoJtZdQtJ2uGIoM7xbmzosNrfzM3LDj52XUlAg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/spinner/-/@ux/spinner-2500.3.4.tgz}
+  '@ux/summary@2500.7.2':
+    resolution: {integrity: sha512-rinPIhAZODOyO65HfAikJVe0zA8JV3Ys9b89Xrcx+vJ+HGmCrrosg0XBxb93VSUKs7USNp5X8wFLxNrSPtyHrw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/summary/-/@ux/summary-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/summary@2500.5.1':
-    resolution: {integrity: sha512-xJ+LknZG6roXf4cucgcT5AuAIiotpHF/aOF/9sn9eq1efZSNqH1zaHbFkQxiJbW76b8LQXJDdl0hzxjEUhlV+Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/summary/-/@ux/summary-2500.5.1.tgz}
+  '@ux/table@2500.7.2':
+    resolution: {integrity: sha512-zXQoxxQTl2v4+s0U4zvWucBsUdNTB7y+LJXnw8WJrQBULwm1u8p3L9Xy916zExH7uhTNCkNlxrb8YJlwznNW/w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/table/-/@ux/table-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/table@2500.5.1':
-    resolution: {integrity: sha512-lOrNEZDAuNo6dDezax/VK5NEwz/DlKzn9ACZShSn0QMsk00TsDFGODRYWyQUgq8ZySOovGh56QnS9L9tcdpeaA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/table/-/@ux/table-2500.5.1.tgz}
+  '@ux/tag@2500.7.2':
+    resolution: {integrity: sha512-X39QmUgjWQmcCZAYsCzsgpXy22ZiHeodCcfudVy0Ce4k1me5LQktUgpDMjsFkgNxX7lOpzy5JJeoRuDhEzyvtA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/tag/-/@ux/tag-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/tag@2500.3.4':
-    resolution: {integrity: sha512-kBjxDTjo1YqPLey8m/+goJe99X8vrm5CwQHRJGKKpcIfmEw0FFHHTQ4oIIaHG0s13tWfazgeSqQRTM2im150lw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/tag/-/@ux/tag-2500.3.4.tgz}
+  '@ux/tailwind-intents@2500.7.1':
+    resolution: {integrity: sha512-vTp4sOSbzugOztQeWrobXUdWB8GEAe1hYJg9YHwiuhhzoUtvnVnkFfZaH140dSVC7/j/xyUp3m5vgQ9blcaaxQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/tailwind-intents/-/@ux/tailwind-intents-2500.7.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/tag@2500.5.1':
-    resolution: {integrity: sha512-DmR17hWH3Atn2wLplNw9EWxbQroFty5HbtYz3lkis27pcS1vC+7PZuzxVF17aJ+4+1D8Ht1+u435GbK8O4l/cw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/tag/-/@ux/tag-2500.5.1.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/tailwind-intents@2500.3.2':
-    resolution: {integrity: sha512-l5U/hOWhcxPnufdVRs5xxlvKcOyICHBh4PdBfxWsjMW7kK+5KOBmGUWT4upz9ca9AoKtwm4ZyTX8+STsPpQLHw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/tailwind-intents/-/@ux/tailwind-intents-2500.3.2.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      '@ux/intents': ^2400.11.0
+      '@ux/intents': 2500.7.1
       tailwindcss: ^3.4.17
-
-  '@ux/text-entry@2500.4.0':
-    resolution: {integrity: sha512-eJRJvikeoZtY+BopKNqlCBjr62XPSSpsmy0aKnqhOK/hRhp7VH4zAnW6UyJvInq5jWBr8P8rWkZ4ilGhQ9lMKQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-entry/-/@ux/text-entry-2500.4.0.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
 
   '@ux/text-entry@2500.7.1':
     resolution: {integrity: sha512-tVSfdR8oRGiSVOowhrEjoBayeH7T0iWGdzSD8eQeX3mzxziZ5msEcFMZzc92A+X1hZmj00GVpdM/x/XDd55BAQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-entry/-/@ux/text-entry-2500.7.1.tgz}
@@ -6467,16 +6174,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/text-input@2500.5.0':
-    resolution: {integrity: sha512-BIojr0DMw2vp+QdBaYgY6NDoBkLfuwufsAjdX/Mz76l7xH/u/bHH2Zep63yp4uW5KFp6nXSYdCWaqq2BaBnLmA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-input/-/@ux/text-input-2500.5.0.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/text-lockup@2500.3.4':
-    resolution: {integrity: sha512-h8MbpDWuF3JnrxRgBZB488gkTQAsONr0K9LWzFGje1a73uEzOSF+w0D/qQQLt5or3hiAJBrEWBWd6wVgdExmGQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-lockup/-/@ux/text-lockup-2500.3.4.tgz}
+  '@ux/text-input@2500.7.2':
+    resolution: {integrity: sha512-UIxwuo+8z0TOuYIkMNI+LNv3T+ztceGE1W1EI9cdpEVK+AJ39OnaTReGPoKsbreBkTWC+p+ssM0hZesGPibfYg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-input/-/@ux/text-input-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -6491,64 +6190,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/text-lockup@2500.5.5':
-    resolution: {integrity: sha512-xBn1aN1qfNzptiWl6OmHuBbzN+a23x2wzLIX/FD2TFwdvvwcfAGy4f8k5OdTwkIPDsw4vtzt1CPBXxB4S4Q7UQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-lockup/-/@ux/text-lockup-2500.5.5.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/text-lockup@2500.7.0':
-    resolution: {integrity: sha512-fMKzE58KazN5kAywwdzqQzTDcQp8KK1++uilJTyk1VfgoIh4c6kHXZweJKBWRzPIvcp1AomSw7Og9mxGfmvdSQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-lockup/-/@ux/text-lockup-2500.7.0.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/text@2400.18.1':
-    resolution: {integrity: sha512-OZpc5uo898ApshKD3CuCA4fGif3zwJwrL7tCkXBXFQu/CMk0eqgEFuWLJm2gjnGuxC7RygCjArV5SdOf3xQlrA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text/-/@ux/text-2400.18.1.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/text@2500.3.4':
-    resolution: {integrity: sha512-LhRluiu7U4rCzFVuysUaaIfetT9Ic8zc4Kb5DXX32U7jwdox8pPX1I34aDVMP23CWhGJ5JEGKsXTp9ZDL7wB6A==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text/-/@ux/text-2500.3.4.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/text@2500.5.4':
-    resolution: {integrity: sha512-h5e9ZvplEv8SQExU1uTZiKYhkyU6xH/aWzVmqOmEPvqXdqg8rgG7WdNCHgoM6rztZC3fjyTzHlhX8JSEuUIfgA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text/-/@ux/text-2500.5.4.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/text@2500.5.5':
-    resolution: {integrity: sha512-sb6j8lIsMep5e/tiaf1cOhP+fWC6Q63xrX+j2ZupbrwT5rIrnRTQtMEMkm+sxBJTWIdsHSYAn6/2xM62PEEm4A==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text/-/@ux/text-2500.5.5.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/text@2500.5.7':
-    resolution: {integrity: sha512-sZ3DwK9oesl70MOTCsSN9XU+UUBvEtj4b15FbcA7tS5GJPa9UgejWc8IOSPd8sUclhVWCUof0/S62svI6bxF1Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text/-/@ux/text-2500.5.7.tgz}
-    engines: {node: '>= 18'}
-    peerDependencies:
-      prop-types: ^15.7.2
-      react: 19.1.0
-      react-dom: 19.1.0
-
-  '@ux/text@2500.7.0':
-    resolution: {integrity: sha512-Y5c6xZLeSEmZaa11Ggz+ZnYIYzelCmZEKkv9O6hd/KWOpRP1JTfzzD7Tjhn6TCD3EwuK5OC46E20eubC5hKOqA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text/-/@ux/text-2500.7.0.tgz}
+  '@ux/text-lockup@2500.7.2':
+    resolution: {integrity: sha512-nAXN4OYPvLZ3EA8n9/KyLpVQqmNKKQhaPz7yn+JpBRn6xKNo3zJiLAFGJ/dEhLy1rtS9qCv14qk3apK2PTCsCg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-lockup/-/@ux/text-lockup-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -6563,32 +6206,32 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/thumb@2500.5.7':
-    resolution: {integrity: sha512-lwYQB9XOpQuigYfYtxDv9lmgTYq2ZQ0hFXAXvxkM1buCbtsfDnaoBTLDzX2NW1qFR8LXC/WakVtuUVNlXBcEhw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/thumb/-/@ux/thumb-2500.5.7.tgz}
+  '@ux/thumb@2500.7.1':
+    resolution: {integrity: sha512-Rb1NO5NmyM7XWXVdV2k3IgDCFvSuIzD1omvfM+x5XN3yg2RRDV28ZVoRH84FotKQ7tW7BffItmU3Flt1R0iLXQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/thumb/-/@ux/thumb-2500.7.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/toggle-button@2500.5.7':
-    resolution: {integrity: sha512-kBgHub4TSyRbLJAbXOe7qrlqGNCYi112EemqihKyeeZIKzeWoYn45z+YuY+aa6PjhbDtJUt+Ke2Rie8TTrzX4A==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/toggle-button/-/@ux/toggle-button-2500.5.7.tgz}
+  '@ux/toggle-button@2500.7.1':
+    resolution: {integrity: sha512-qeAdN5Yrb4iAb1JxysTg6oDKRQSGdpxmTTD43wOJX4xX+AvkWc9gZL11+0kpbtkbOkoGlVHClxOhiNSdcLMnzw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/toggle-button/-/@ux/toggle-button-2500.7.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/tooltip@2500.4.0':
-    resolution: {integrity: sha512-V6aGY6NRnRPWAEEE/tg/EgC2ZhD8WE9ISAOzvx41iPqCax7lIrAphuilsHQAxg1Y/tkOlGWhX8HsjB6w2SBFyQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/tooltip/-/@ux/tooltip-2500.4.0.tgz}
+  '@ux/tooltip@2500.7.2':
+    resolution: {integrity: sha512-C3/AJ3UFXfV7tSXy5Bc3/AqysLcgxVbTK+H/sye60boLOKFahQSlSjAMtScRJup/kIGSMMFtokqY2C4+iD3yJA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/tooltip/-/@ux/tooltip-2500.7.2.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/track@2500.5.7':
-    resolution: {integrity: sha512-1G0wS+m08gz6O7l10zs5Pfo8XaCWGR0y5GenObzgPdm95rpl1KntP6anLQSpI3rzY6+DiHoCzlNLmzA7OdJ1Vw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/track/-/@ux/track-2500.5.7.tgz}
+  '@ux/track@2500.7.1':
+    resolution: {integrity: sha512-BJAAob9zyOsxsZwPmQ1LyV51sXhUBKinsIUcKgshto8NbE0Iq2AQKLu2pPA7pzEgZKbjQ6Cy1I9hClCkHh2I0w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/track/-/@ux/track-2500.7.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -6727,10 +6370,10 @@ packages:
   '@wsb/image-manager-loader@1.3.0':
     resolution: {integrity: sha512-0ueAzScJAdico5Z6aO0x66mfQHxYf2J8iQnzEh5DLZv9VP2dBtz7D/b/DYyzegAOg5aHxuBZZi7UhY8VdVn2yA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@wsb/image-manager-loader/-/@wsb/image-manager-loader-1.3.0.tgz}
     peerDependencies:
-      '@ux/button': '*'
-      '@ux/modal': '*'
+      '@ux/button': 2500.7.2
+      '@ux/modal': 2500.7.2
       '@ux/search': '*'
-      '@ux/spinner': '*'
+      '@ux/spinner': 2500.7.1
       prop-types: ^15.6.0
       react: 19.1.0
       react-dom: 19.1.0
@@ -7252,11 +6895,6 @@ packages:
   breadth-filter@2.0.0:
     resolution: {integrity: sha512-thQShDXnFWSk2oVBixRCyrWsFoV5tfOpWKHmxwafHQDNxCfDBk539utpvytNjmlFrTMqz41poLwJvA1MW3z0MQ==}
 
-  breakdancer@4.1.1:
-    resolution: {integrity: sha512-jDE5TmQFaGrxlwauIgS74B6OJyDZcoU7T0/O4Ay4+m9sQkKQ3VJEYnuhEMulB2cIo4v+fXVi/LcJtQ8R2dkhTA==}
-    peerDependencies:
-      react: 19.1.0
-
   breakdancer@4.2.0:
     resolution: {integrity: sha512-+lvic5n77XVMgfxEcMHFvalE8FGmD8HeTSdcT9RD54QMViSToeScUPuTfPvt1kNnipfdxF8ER68H9UwjBtgsrA==}
     peerDependencies:
@@ -7367,10 +7005,6 @@ packages:
   camelcase@6.3.0:
     resolution: {integrity: sha512-Gmy6FhYlCY7uOElZUSbxo2UCDH8owEk996gkbrpsgGtrJLM3J7jGxl9Ic7Qwwj4ivOE5AWZWRMecDdF7hqGjFA==}
     engines: {node: '>=10'}
-
-  camelcase@8.0.0:
-    resolution: {integrity: sha512-8WB3Jcas3swSvjIeA2yvCJ+Miyz5l1ZmB6HFb9R1317dt9LCQoswg/BGrmAmkWVEszSrrg4RwmO46qIm2OEnSA==}
-    engines: {node: '>=16'}
 
   caniuse-lite@1.0.30001736:
     resolution: {integrity: sha512-ImpN5gLEY8gWeqfLUyEF4b7mYWcYoR2Si1VhnrbM4JizRFmfGaAQ12PhNykq6nvI4XvKLrsp8Xde74D5phJOSw==}
@@ -7770,8 +7404,8 @@ packages:
     resolution: {integrity: sha512-2z+rWdzbbSZv6/rhtvzvqeZQHrBaqgogqt85sqFNbabZOuFbCVFb8kPeEtZjiKkbrm395irpNKiYeFeLiQnFPg==}
     engines: {node: '>=18'}
 
-  cssstyle@5.3.3:
-    resolution: {integrity: sha512-OytmFH+13/QXONJcC75QNdMtKpceNk3u8ThBjyyYjkEcy/ekBwR1mMAuNvi3gdBPW3N5TlCzQ0WZw8H0lN/bDw==}
+  cssstyle@5.3.7:
+    resolution: {integrity: sha512-7D2EPVltRrsTkhpQmksIu+LxeWAIEk6wRDMJ1qljlv+CKHJM+cJLlfhWIzNA44eAsHXSNe3+vO6DW1yCYx8SuQ==}
     engines: {node: '>=20'}
 
   csstype@3.1.3:
@@ -7828,8 +7462,8 @@ packages:
     resolution: {integrity: sha512-ZYP5VBHshaDAiVZxjbRVcFJpc+4xGgT0bK3vzy1HLN8jTO975HEbuYzZJcHoQEY5K1a0z8YayJkyVETa08eNTg==}
     engines: {node: '>=18'}
 
-  data-urls@6.0.0:
-    resolution: {integrity: sha512-BnBS08aLUM+DKamupXs3w2tJJoqU+AkaE/+6vQxi/G/DPmIZFJJp9Dkb1kM03AZx8ADehDUZgsNxju3mPXZYIA==}
+  data-urls@6.0.1:
+    resolution: {integrity: sha512-euIQENZg6x8mj3fO6o9+fOW8MimUI4PpD/fZBhJfeioZVy9TUpM4UY7KjQNVZFlqwJ0UdzRDzkycB997HEq1BQ==}
     engines: {node: '>=20'}
 
   data-view-buffer@1.0.2:
@@ -10024,8 +9658,8 @@ packages:
     resolution: {integrity: sha512-r8LA6i4LP4EeWOhqBaZZjDWwehd1xUJPCJd9Sv300H0ZmcUER4+JPh7bqqZeqs1o5pgtgvXm+d9UGrB5zZGDiQ==}
     engines: {node: 20 || >=22}
 
-  lru-cache@11.2.2:
-    resolution: {integrity: sha512-F9ODfyqML2coTIsQpSkRHnLSZMtkU8Q+mSfcaIyKwy58u+8k5nvAYeiNhsyMARvzNcXJ9QfWVrcPsC9e9rAxtg==}
+  lru-cache@11.2.4:
+    resolution: {integrity: sha512-B5Y16Jr9LB9dHVkh6ZevG+vAbOsNOYCX+sXvFWFu7B3Iz5mijW3zdbMyhsh8ANd2mSWBYdJgnqi+mL7/LrOPYg==}
     engines: {node: 20 || >=22}
 
   lru-cache@5.1.1:
@@ -11195,8 +10829,8 @@ packages:
     peerDependencies:
       react: 19.1.0
 
-  react-focus-lock@2.13.6:
-    resolution: {integrity: sha512-ehylFFWyYtBKXjAO9+3v8d0i+cnc1trGS0vlTGhzFW1vbFXVUTmR8s2tt/ZQG8x5hElg6rhENlLG1H3EZK0Llg==}
+  react-focus-lock@2.13.7:
+    resolution: {integrity: sha512-20lpZHEQrXPb+pp1tzd4ULL6DyO5D2KnR0G69tTDdydrmNhU7pdFmbQUYVyHUgp+xN29IuFR0PVuhOmvaZL9Og==}
     peerDependencies:
       '@types/react': '*'
       react: 19.1.0
@@ -12181,15 +11815,15 @@ packages:
   tldts-core@6.1.86:
     resolution: {integrity: sha512-Je6p7pkk+KMzMv2XXKmAE3McmolOQFdxkKw0R8EYNr7sELW46JqnNeTX8ybPiQgvg1ymCoF8LXs5fzFaZvJPTA==}
 
-  tldts-core@7.0.17:
-    resolution: {integrity: sha512-DieYoGrP78PWKsrXr8MZwtQ7GLCUeLxihtjC1jZsW1DnvSMdKPitJSe8OSYDM2u5H6g3kWJZpePqkp43TfLh0g==}
+  tldts-core@7.0.19:
+    resolution: {integrity: sha512-lJX2dEWx0SGH4O6p+7FPwYmJ/bu1JbcGJ8RLaG9b7liIgZ85itUVEPbMtWRVrde/0fnDPEPHW10ZsKW3kVsE9A==}
 
   tldts@6.1.86:
     resolution: {integrity: sha512-WMi/OQ2axVTf/ykqCQgXiIct+mSQDFdH2fkwhPwgEwvJ1kSzZRiinb0zF2Xb8u4+OqPChmyI6MEu4EezNJz+FQ==}
     hasBin: true
 
-  tldts@7.0.17:
-    resolution: {integrity: sha512-Y1KQBgDd/NUc+LfOtKS6mNsC9CCaH+m2P1RoIZy7RAPo3C3/t8X45+zgut31cRZtZ3xKPjfn3TkGTrctC2TQIQ==}
+  tldts@7.0.19:
+    resolution: {integrity: sha512-8PWx8tvC4jDB39BQw1m4x8y5MH1BcQ5xHeL2n7UVFulMPH/3Q0uiamahFJ3lXA0zO2SUyRXuVVbWSDmstlt9YA==}
     hasBin: true
 
   tmpl@1.0.5:
@@ -12715,8 +12349,8 @@ packages:
     resolution: {integrity: sha512-VwddBukDzu71offAQR975unBIGqfKZpM+8ZX6ySk8nYhVoo5CYaZyzt3YBvYtRtO+aoGlqxPg/B87NGVZ/fu6g==}
     engines: {node: '>=12'}
 
-  webidl-conversions@8.0.0:
-    resolution: {integrity: sha512-n4W4YFyz5JzOfQeA8oN7dUYpR+MBP3PIUsn2jLjWXwK5ASUzt0Jc/A5sAUZoCYFJRGF0FBKJ+1JjN43rNdsQzA==}
+  webidl-conversions@8.0.1:
+    resolution: {integrity: sha512-BMhLD/Sw+GbJC21C/UgyaZX41nPt8bUTg+jWyDeg7e7YN4xOM05YPSIXceACnXVtqyEw/LMClUQMtMZ+PGGpqQ==}
     engines: {node: '>=20'}
 
   webpack-sources@3.3.3:
@@ -12741,6 +12375,10 @@ packages:
   whatwg-mimetype@4.0.0:
     resolution: {integrity: sha512-QaKxh0eNIi2mE9p2vEdzfagOKHCcj1pJ56EEHGQOVxp8r9/iszLUUV7v89x9O1p/T+NlTM5W7jW6+cz4Fq1YVg==}
     engines: {node: '>=18'}
+
+  whatwg-mimetype@5.0.0:
+    resolution: {integrity: sha512-sXcNcHOC51uPGF0P/D4NVtrkjSU2fNsm9iog4ZvZJsL3rjoDAzXZhkm2MWt1y+PUdggKAYVoMAIYcs78wJ51Cw==}
+    engines: {node: '>=20'}
 
   whatwg-url@14.2.0:
     resolution: {integrity: sha512-De72GdQZzNTUBBChsXueQUnPKDkg/5A5zp7pFDuQAj5UFoENpiACU0wlCvzpAGnTkj++ihpKwKyYewn/XNUbKw==}
@@ -12860,6 +12498,18 @@ packages:
 
   ws@8.18.3:
     resolution: {integrity: sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
+  ws@8.19.0:
+    resolution: {integrity: sha512-blAT2mjOEIi0ZzruJfIhb3nps74PRWTCz1IjglWEEpQl5XS/UNama6u2/rjFkDDouqr4L67ry+1aGIALViWjDg==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -13027,7 +12677,7 @@ packages:
 
 snapshots:
 
-  '@acemir/cssom@0.9.23':
+  '@acemir/cssom@0.9.31':
     optional: true
 
   '@adobe/css-tools@4.4.4': {}
@@ -13103,9 +12753,9 @@ snapshots:
 
   '@airo-ux/loader@2.1.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.2)':
     dependencies:
-      '@ux/box': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/button': 2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2400.11.0
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
       '@ux/text-lockup': 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
@@ -13135,22 +12785,22 @@ snapshots:
       '@csstools/css-tokenizer': 3.0.4
       lru-cache: 10.4.3
 
-  '@asamuzakjp/css-color@4.0.5':
+  '@asamuzakjp/css-color@4.1.1':
     dependencies:
       '@csstools/css-calc': 2.1.4(@csstools/css-parser-algorithms@3.0.5(@csstools/css-tokenizer@3.0.4))(@csstools/css-tokenizer@3.0.4)
       '@csstools/css-color-parser': 3.1.0(@csstools/css-parser-algorithms@3.0.5(@csstools/css-tokenizer@3.0.4))(@csstools/css-tokenizer@3.0.4)
       '@csstools/css-parser-algorithms': 3.0.5(@csstools/css-tokenizer@3.0.4)
       '@csstools/css-tokenizer': 3.0.4
-      lru-cache: 11.2.2
+      lru-cache: 11.2.4
     optional: true
 
-  '@asamuzakjp/dom-selector@6.7.4':
+  '@asamuzakjp/dom-selector@6.7.6':
     dependencies:
       '@asamuzakjp/nwsapi': 2.3.9
       bidi-js: 1.0.3
       css-tree: 3.1.0
       is-potential-custom-element-name: 1.0.1
-      lru-cache: 11.2.2
+      lru-cache: 11.2.4
     optional: true
 
   '@asamuzakjp/nwsapi@2.3.9':
@@ -14241,6 +13891,12 @@ snapshots:
       js-tokens: 4.0.0
       picocolors: 1.1.1
 
+  '@babel/code-frame@7.28.6':
+    dependencies:
+      '@babel/helper-validator-identifier': 7.28.5
+      js-tokens: 4.0.0
+      picocolors: 1.1.1
+
   '@babel/compat-data@7.28.4': {}
 
   '@babel/compat-data@7.28.5': {}
@@ -15012,7 +14668,7 @@ snapshots:
     dependencies:
       core-js-pure: 3.47.0
 
-  '@babel/runtime@7.28.4': {}
+  '@babel/runtime@7.28.6': {}
 
   '@babel/template@7.27.2':
     dependencies:
@@ -15102,7 +14758,7 @@ snapshots:
     dependencies:
       '@csstools/css-tokenizer': 3.0.4
 
-  '@csstools/css-syntax-patches-for-csstree@1.0.16':
+  '@csstools/css-syntax-patches-for-csstree@1.0.25':
     optional: true
 
   '@csstools/css-tokenizer@3.0.4': {}
@@ -15157,7 +14813,18 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+  '@emnapi/core@1.8.1':
+    dependencies:
+      '@emnapi/wasi-threads': 1.1.0
+      tslib: 2.8.1
+    optional: true
+
   '@emnapi/runtime@1.5.0':
+    dependencies:
+      tslib: 2.8.1
+    optional: true
+
+  '@emnapi/runtime@1.8.1':
     dependencies:
       tslib: 2.8.1
     optional: true
@@ -16426,8 +16093,8 @@ snapshots:
 
   '@napi-rs/wasm-runtime@1.0.7':
     dependencies:
-      '@emnapi/core': 1.5.0
-      '@emnapi/runtime': 1.5.0
+      '@emnapi/core': 1.8.1
+      '@emnapi/runtime': 1.8.1
       '@tybys/wasm-util': 0.10.1
     optional: true
 
@@ -17935,7 +17602,7 @@ snapshots:
 
   '@redux-saga/core@1.4.2':
     dependencies:
-      '@babel/runtime': 7.28.4
+      '@babel/runtime': 7.28.6
       '@redux-saga/deferred': 1.3.1
       '@redux-saga/delay-p': 1.3.1
       '@redux-saga/is': 1.2.1
@@ -18743,7 +18410,7 @@ snapshots:
   '@sso/deck@2.0.3(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@7.1.14(react@19.1.0)(typescript@5.9.2))(react@19.1.0)':
     dependencies:
       '@sso/core-utils': 1.14.3(react@19.1.0)
-      '@ux/spinner': 2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/spinner': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       browser-cookies: 1.2.0
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
@@ -18867,8 +18534,8 @@ snapshots:
 
   '@testing-library/dom@10.4.1':
     dependencies:
-      '@babel/code-frame': 7.27.1
-      '@babel/runtime': 7.28.4
+      '@babel/code-frame': 7.28.6
+      '@babel/runtime': 7.28.6
       '@types/aria-query': 5.0.4
       aria-query: 5.3.0
       dom-accessibility-api: 0.5.16
@@ -18887,7 +18554,7 @@ snapshots:
 
   '@testing-library/react@16.3.0(@testing-library/dom@10.4.1)(@types/react-dom@19.1.9(@types/react@19.1.13))(@types/react@19.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@babel/runtime': 7.28.4
+      '@babel/runtime': 7.28.6
       '@testing-library/dom': 10.4.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
@@ -19491,40 +19158,13 @@ snapshots:
   '@unrs/resolver-binding-win32-x64-msvc@1.11.1':
     optional: true
 
-  '@ux/alert@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/alert@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/button': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      '@ux/text-lockup': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/box@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.3.2
-      '@ux/space': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/box@2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.5.5
-      '@ux/space': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/box@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.7.0
-      '@ux/space': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/text-lockup': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -19539,59 +19179,9 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/button@2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/button@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/icon': 2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2400.11.0
-      '@ux/text': 2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/button@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/icon': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      '@ux/text': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/button@2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/icon': 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      '@ux/text': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/button@2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/icon': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.5.5
-      '@ux/text': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/button@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/icon': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.7.0
-      '@ux/text': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/button@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/icon': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
@@ -19599,39 +19189,39 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/card@2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/card@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/component-utilities': 2500.3.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/corner-actions': 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      '@ux/tag': 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text-lockup': 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/corner-actions': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/tag': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text-lockup': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/checkbox@2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/checkbox@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/component-utilities': 2500.3.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      '@ux/text': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/coachmark@2500.5.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/coachmark@2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/button': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/component-utilities': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/disrupt': 2500.5.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.5.5
-      '@ux/popover': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/disrupt': 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/popover': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -19639,47 +19229,17 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
-  '@ux/collapsible@2500.5.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/collapsible@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/component-utilities': 2500.3.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      '@ux/reveal': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/reveal': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/sibling-set': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/summary': 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/summary': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/component-utilities@2500.3.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      breakdancer: 4.1.1(react@19.1.0)
-      diagnostics: 2.0.2
-      fn.name: 1.1.0
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-      safe-stable-stringify: 2.5.0
-
-  '@ux/component-utilities@2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      breakdancer: 4.1.1(react@19.1.0)
-      diagnostics: 2.0.2
-      fn.name: 1.1.0
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-      safe-stable-stringify: 2.5.0
-
-  '@ux/component-utilities@2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      breakdancer: 4.1.1(react@19.1.0)
-      diagnostics: 2.0.2
-      fn.name: 1.1.0
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-      safe-stable-stringify: 2.5.0
 
   '@ux/component-utilities@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
@@ -19691,43 +19251,16 @@ snapshots:
       react-dom: 19.1.0(react@19.1.0)
       safe-stable-stringify: 2.5.0
 
-  '@ux/corner-actions@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/corner-actions@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.7.0
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/corner-actions@2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/box': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/corner-actions@2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/box': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.7.0
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/corner-actions@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/box': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.7.0
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/data-version@2500.7.0':
+  '@ux/data-version@2500.7.1':
     dependencies:
       semver: 7.7.3
 
@@ -19743,101 +19276,33 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@ux/dialog@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/dialog@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/button': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.7.0
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
       '@ux/sibling-set': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/disrupt@2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.3.2
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-      react-focus-lock: 2.13.6(@types/react@19.1.13)(react@19.1.0)
-    transitivePeerDependencies:
-      - '@types/react'
-
-  '@ux/disrupt@2500.5.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.7.0
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-      react-focus-lock: 2.13.6(@types/react@19.1.13)(react@19.1.0)
-    transitivePeerDependencies:
-      - '@types/react'
-
-  '@ux/disrupt@2500.5.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.5.5
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-      react-focus-lock: 2.13.6(@types/react@19.1.13)(react@19.1.0)
-    transitivePeerDependencies:
-      - '@types/react'
-
-  '@ux/field-frame@2500.5.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.7.0
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/field-frame@2500.5.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.7.0
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/field-frame@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/disrupt@2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/intents': 2500.7.1
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
+      react-focus-lock: 2.13.7(@types/react@19.1.13)(react@19.1.0)
+    transitivePeerDependencies:
+      - '@types/react'
 
-  '@ux/flyout@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/field-frame@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@floating-ui/react-dom': 1.3.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/box': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/flyout@2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@floating-ui/react-dom': 1.3.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/box': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.7.0
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/flyout@2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@floating-ui/react-dom': 1.3.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/box': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.7.0
+      '@ux/intents': 2500.7.1
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -19853,103 +19318,26 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/growl@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/growl@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/button': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/corner-actions': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/data-version': 2500.7.0
-      '@ux/dialog': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.7.0
-      '@ux/text': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text-lockup': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/corner-actions': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/data-version': 2500.7.1
+      '@ux/dialog': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text-lockup': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/icon@2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/icon@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/icon@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/icon@2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/icon@2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/icon@2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/icon@2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/icon@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/icon@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/intents@2400.11.0':
-    dependencies:
-      '@ux/short-css-vars': 2400.11.0
-      camelcase: 6.3.0
-      obj-dot-props: 1.1.0
-      string-hash: 1.1.3
-
-  '@ux/intents@2500.3.2':
-    dependencies:
-      '@ux/short-css-vars': 2500.3.2
-      camelcase: 8.0.0
-      obj-dot-props: 1.1.0
-      string-hash: 1.1.3
-
-  '@ux/intents@2500.5.5':
-    dependencies:
-      '@ux/short-css-vars': 2500.3.2
-      camelcase: 8.0.0
-      obj-dot-props: 1.1.0
-      string-hash: 1.1.3
-
-  '@ux/intents@2500.5.6':
-    dependencies:
-      '@ux/short-css-vars': 2500.3.2
-      camelcase: 6.3.0
-      obj-dot-props: 1.1.0
-      string-hash: 1.1.3
-
-  '@ux/intents@2500.7.0':
-    dependencies:
-      '@ux/short-css-vars': 2500.7.0
-      camelcase: 6.3.0
-      obj-dot-props: 1.1.0
-      string-hash: 1.1.3
 
   '@ux/intents@2500.7.1':
     dependencies:
@@ -19957,30 +19345,6 @@ snapshots:
       camelcase: 6.3.0
       obj-dot-props: 1.1.0
       string-hash: 1.1.3
-
-  '@ux/label@2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/text': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/label@2500.5.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/text': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/label@2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/text': 2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
 
   '@ux/label@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
@@ -19990,9 +19354,9 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/listbox@2500.7.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/listbox@2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/button': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       classnames: 2.5.1
       merge-refs: 2.0.0(@types/react@19.1.13)
@@ -20002,13 +19366,13 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
-  '@ux/menu@2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/menu@2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/button': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/component-utilities': 2500.3.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/disrupt': 2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/flyout': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
+      '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/disrupt': 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/flyout': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
       classnames: 2.5.1
       merge-refs: 2.0.0(@types/react@19.1.13)
       prop-types: 15.8.1
@@ -20017,30 +19381,16 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
-  '@ux/menu@2500.5.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/modal@2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/button': 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/component-utilities': 2500.3.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/disrupt': 2500.5.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/flyout': 2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      classnames: 2.5.1
-      merge-refs: 2.0.0(@types/react@19.1.13)
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-    transitivePeerDependencies:
-      - '@types/react'
-
-  '@ux/modal@2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/box': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/corner-actions': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/dialog': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/disrupt': 2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      '@ux/text-lockup': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/corner-actions': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/dialog': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/disrupt': 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/text-lockup': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -20048,14 +19398,14 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
-  '@ux/pagination@2500.5.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/pagination@2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/button': 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      '@ux/menu': 2500.5.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/search': 2500.7.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/menu': 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/search': 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -20063,24 +19413,24 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
-  '@ux/popover@2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/popover@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/component-utilities': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/corner-actions': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/flyout': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.5.5
-      '@ux/space': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text-lockup': 2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/corner-actions': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/flyout': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/space': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text-lockup': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/postcss-intents@2500.3.2(@ux/intents@2500.3.2)(postcss@8.5.6)':
+  '@ux/postcss-intents@2500.7.1(@ux/intents@2500.7.1)(postcss@8.5.6)':
     dependencies:
-      '@ux/intents': 2500.3.2
+      '@ux/intents': 2500.7.1
       postcss: 8.5.6
       postcss-value-parser: 4.2.0
       propget: 1.1.0
@@ -20097,10 +19447,10 @@ snapshots:
     transitivePeerDependencies:
       - debug
 
-  '@ux/radio@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/radio@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/intents': 2500.3.2
-      '@ux/text': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -20112,21 +19462,21 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
-  '@ux/reveal@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/reveal@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/search@2500.7.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/search@2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/button': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/component-utilities': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/field-frame': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/field-frame': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/flyout': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/listbox': 2500.7.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/listbox': 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text-entry': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       merge-refs: 2.0.0(@types/react@19.1.13)
@@ -20136,41 +19486,29 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
-  '@ux/select-input@2500.5.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/select-input@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/field-frame': 2500.5.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      '@ux/label': 2500.5.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/select': 2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text': 2500.5.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/field-frame': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/label': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/select': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/select@2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/select@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/component-utilities': 2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.5.6
-      '@ux/label': 2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text': 2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/label': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/short-css-vars@2400.11.0':
-    dependencies:
-      string-hash: 1.1.3
-
-  '@ux/short-css-vars@2500.3.2':
-    dependencies:
-      string-hash: 1.1.3
-
-  '@ux/short-css-vars@2500.7.0':
-    dependencies:
-      string-hash: 1.1.3
 
   '@ux/short-css-vars@2500.7.1':
     dependencies:
@@ -20186,33 +19524,9 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/skeleton@2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/skeleton@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/space@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.3.2
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/space@2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.7.0
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/space@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.7.0
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -20226,78 +19540,50 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/spinner@2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/spinner@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/intents': 2400.11.0
+      '@ux/intents': 2500.7.1
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/spinner@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/summary@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/intents': 2500.3.2
+      '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/summary@2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/table@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/button': 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      '@ux/text': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/table@2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/tag@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      '@ux/text': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/tag@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/tailwind-intents@2500.7.1(@ux/intents@2500.7.1)(tailwindcss@4.1.13)':
     dependencies:
-      '@ux/icon': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/tag@2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/icon': 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/tailwind-intents@2500.3.2(@ux/intents@2500.3.2)(tailwindcss@4.1.13)':
-    dependencies:
-      '@ux/intents': 2500.3.2
+      '@ux/intents': 2500.7.1
       obj-dot-props: 1.1.0
       tailwindcss: 4.1.13
-
-  '@ux/text-entry@2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/component-utilities': 2500.3.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.7.0
-      '@ux/label': 2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
 
   '@ux/text-entry@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
@@ -20310,25 +19596,14 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/text-input@2500.5.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/text-input@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/field-frame': 2500.5.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/flyout': 2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      '@ux/label': 2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/text-entry': 2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/text-lockup@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/box': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      '@ux/text': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/field-frame': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/flyout': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/label': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text-entry': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -20336,80 +19611,21 @@ snapshots:
 
   '@ux/text-lockup@2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
-      '@ux/text': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/text-lockup@2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/text-lockup@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.7.0
-      '@ux/text': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/text-lockup@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/box': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/icon': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.7.0
-      '@ux/text': 2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/text@2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2400.11.0
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/text@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.3.2
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/text@2500.5.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.7.0
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/text@2500.5.5(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.5.5
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/text@2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.7.0
-      classnames: 2.5.1
-      prop-types: 15.8.1
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@ux/text@2500.7.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@ux/intents': 2500.7.0
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -20423,40 +19639,40 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/thumb@2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/thumb@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/intents': 2500.7.0
+      '@ux/intents': 2500.7.1
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/toggle-button@2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/toggle-button@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/component-utilities': 2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.5.6
-      '@ux/text': 2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/thumb': 2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/track': 2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/thumb': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/track': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/tooltip@2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/tooltip@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/box': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/flyout': 2500.4.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/intents': 2500.3.2
+      '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/flyout': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/track@2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@ux/track@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/intents': 2500.7.0
-      '@ux/text': 2500.5.7(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -20716,12 +19932,12 @@ snapshots:
       '@webassemblyjs/ast': 1.14.1
       '@xtuc/long': 4.2.2
 
-  '@wsb/image-manager-loader@1.3.0(@ux/button@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/modal@2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/search@2500.7.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/spinner@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@7.1.14(react@19.1.0)(typescript@5.9.2))(react@19.1.0)':
+  '@wsb/image-manager-loader@1.3.0(@ux/button@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/modal@2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/search@2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/spinner@2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@7.1.14(react@19.1.0)(typescript@5.9.2))(react@19.1.0)':
     dependencies:
-      '@ux/button': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/modal': 2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/search': 2500.7.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@ux/spinner': 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/modal': 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/search': 2500.7.2(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/spinner': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       axios: 1.12.2
       canvas-confetti: 1.9.4
       class-autobind: 0.1.4
@@ -21333,11 +20549,6 @@ snapshots:
     dependencies:
       object.entries: 1.1.9
 
-  breakdancer@4.1.1(react@19.1.0):
-    dependencies:
-      propget: 1.1.0
-      react: 19.1.0
-
   breakdancer@4.2.0(react@19.1.0):
     dependencies:
       propget: 1.1.0
@@ -21477,8 +20688,6 @@ snapshots:
   camelcase@5.3.1: {}
 
   camelcase@6.3.0: {}
-
-  camelcase@8.0.0: {}
 
   caniuse-lite@1.0.30001736: {}
 
@@ -21856,11 +21065,12 @@ snapshots:
       '@asamuzakjp/css-color': 3.2.0
       rrweb-cssom: 0.8.0
 
-  cssstyle@5.3.3:
+  cssstyle@5.3.7:
     dependencies:
-      '@asamuzakjp/css-color': 4.0.5
-      '@csstools/css-syntax-patches-for-csstree': 1.0.16
+      '@asamuzakjp/css-color': 4.1.1
+      '@csstools/css-syntax-patches-for-csstree': 1.0.25
       css-tree: 3.1.0
+      lru-cache: 11.2.4
     optional: true
 
   csstype@3.1.3: {}
@@ -21910,9 +21120,9 @@ snapshots:
       whatwg-mimetype: 4.0.0
       whatwg-url: 14.2.0
 
-  data-urls@6.0.0:
+  data-urls@6.0.1:
     dependencies:
-      whatwg-mimetype: 4.0.0
+      whatwg-mimetype: 5.0.0
       whatwg-url: 15.1.0
     optional: true
 
@@ -22075,7 +21285,7 @@ snapshots:
 
   dom-helpers@5.2.1:
     dependencies:
-      '@babel/runtime': 7.28.4
+      '@babel/runtime': 7.28.6
       csstype: 3.1.3
 
   dom-serializer@2.0.0:
@@ -24024,7 +23234,7 @@ snapshots:
       '@babel/parser': 7.28.5
       '@istanbuljs/schema': 0.1.3
       istanbul-lib-coverage: 3.2.2
-      semver: 7.7.2
+      semver: 7.7.3
     transitivePeerDependencies:
       - supports-color
 
@@ -24443,10 +23653,10 @@ snapshots:
 
   jsdom@27.2.0:
     dependencies:
-      '@acemir/cssom': 0.9.23
-      '@asamuzakjp/dom-selector': 6.7.4
-      cssstyle: 5.3.3
-      data-urls: 6.0.0
+      '@acemir/cssom': 0.9.31
+      '@asamuzakjp/dom-selector': 6.7.6
+      cssstyle: 5.3.7
+      data-urls: 6.0.1
       decimal.js: 10.6.0
       html-encoding-sniffer: 4.0.0
       http-proxy-agent: 7.0.2
@@ -24457,11 +23667,11 @@ snapshots:
       symbol-tree: 3.2.4
       tough-cookie: 6.0.0
       w3c-xmlserializer: 5.0.0
-      webidl-conversions: 8.0.0
+      webidl-conversions: 8.0.1
       whatwg-encoding: 3.1.1
       whatwg-mimetype: 4.0.0
       whatwg-url: 15.1.0
-      ws: 8.18.3
+      ws: 8.19.0
       xml-name-validator: 5.0.0
     transitivePeerDependencies:
       - bufferutil
@@ -24808,7 +24018,7 @@ snapshots:
 
   lru-cache@11.2.1: {}
 
-  lru-cache@11.2.2:
+  lru-cache@11.2.4:
     optional: true
 
   lru-cache@5.1.1:
@@ -25303,7 +24513,7 @@ snapshots:
 
   mimetext@3.0.27:
     dependencies:
-      '@babel/runtime': 7.28.4
+      '@babel/runtime': 7.28.6
       '@babel/runtime-corejs3': 7.28.4
       js-base64: 3.7.8
       mime-types: 2.1.35
@@ -26191,7 +25401,7 @@ snapshots:
 
   react-clientside-effect@1.2.8(react@19.1.0):
     dependencies:
-      '@babel/runtime': 7.28.4
+      '@babel/runtime': 7.28.6
       react: 19.1.0
 
   react-dom@19.1.0(react@19.1.0):
@@ -26207,16 +25417,16 @@ snapshots:
 
   react-dynamic-remote-component@0.0.5:
     dependencies:
-      '@babel/runtime': 7.28.4
+      '@babel/runtime': 7.28.6
 
   react-error-boundary@4.1.2(react@19.1.0):
     dependencies:
-      '@babel/runtime': 7.28.4
+      '@babel/runtime': 7.28.6
       react: 19.1.0
 
-  react-focus-lock@2.13.6(@types/react@19.1.13)(react@19.1.0):
+  react-focus-lock@2.13.7(@types/react@19.1.13)(react@19.1.0):
     dependencies:
-      '@babel/runtime': 7.28.4
+      '@babel/runtime': 7.28.6
       focus-lock: 1.3.6
       prop-types: 15.8.1
       react: 19.1.0
@@ -26279,7 +25489,7 @@ snapshots:
 
   react-redux@7.2.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
     dependencies:
-      '@babel/runtime': 7.28.4
+      '@babel/runtime': 7.28.6
       '@types/react-redux': 7.1.34
       hoist-non-react-statics: 3.3.2
       loose-envify: 1.4.0
@@ -26337,7 +25547,7 @@ snapshots:
 
   react-syntax-highlighter@15.6.6(react@19.1.0):
     dependencies:
-      '@babel/runtime': 7.28.4
+      '@babel/runtime': 7.28.6
       highlight.js: 10.7.3
       highlightjs-vue: 1.0.0
       lowlight: 1.20.0
@@ -26347,7 +25557,7 @@ snapshots:
 
   react-transition-group@4.4.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
     dependencies:
-      '@babel/runtime': 7.28.4
+      '@babel/runtime': 7.28.6
       dom-helpers: 5.2.1
       loose-envify: 1.4.0
       prop-types: 15.8.1
@@ -26427,7 +25637,7 @@ snapshots:
 
   redux@4.2.1:
     dependencies:
-      '@babel/runtime': 7.28.4
+      '@babel/runtime': 7.28.6
 
   redux@5.0.1: {}
 
@@ -27426,16 +26636,16 @@ snapshots:
 
   tldts-core@6.1.86: {}
 
-  tldts-core@7.0.17:
+  tldts-core@7.0.19:
     optional: true
 
   tldts@6.1.86:
     dependencies:
       tldts-core: 6.1.86
 
-  tldts@7.0.17:
+  tldts@7.0.19:
     dependencies:
-      tldts-core: 7.0.17
+      tldts-core: 7.0.19
     optional: true
 
   tmpl@1.0.5: {}
@@ -27458,7 +26668,7 @@ snapshots:
 
   tough-cookie@6.0.0:
     dependencies:
-      tldts: 7.0.17
+      tldts: 7.0.19
     optional: true
 
   tr46@0.0.3: {}
@@ -27998,7 +27208,7 @@ snapshots:
 
   webidl-conversions@7.0.0: {}
 
-  webidl-conversions@8.0.0:
+  webidl-conversions@8.0.1:
     optional: true
 
   webpack-sources@3.3.3: {}
@@ -28041,6 +27251,9 @@ snapshots:
 
   whatwg-mimetype@4.0.0: {}
 
+  whatwg-mimetype@5.0.0:
+    optional: true
+
   whatwg-url@14.2.0:
     dependencies:
       tr46: 5.1.1
@@ -28049,7 +27262,7 @@ snapshots:
   whatwg-url@15.1.0:
     dependencies:
       tr46: 6.0.0
-      webidl-conversions: 8.0.0
+      webidl-conversions: 8.0.1
     optional: true
 
   whatwg-url@5.0.0:
@@ -28186,6 +27399,9 @@ snapshots:
   ws@8.18.0: {}
 
   ws@8.18.3: {}
+
+  ws@8.19.0:
+    optional: true
 
   x509.js@1.0.0: {}
 

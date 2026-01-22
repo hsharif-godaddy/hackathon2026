@@ -7,7 +7,7 @@ class GettyClient extends BaseClient {
     super({
       serviceName: 'Getty',
       ssoHost: 'sso.godaddy.com',
-      defaultRetries: 2,
+      defaultRetries: 2
     });
   }
 
@@ -18,7 +18,7 @@ class GettyClient extends BaseClient {
 
       return this.makeRequest(gettyUrl, requestId, 'GET', undefined, {
         'x-app-key': config.getty.appKey,
-        'User-Agent': config.getty.userAgent,
+        'User-Agent': config.getty.userAgent
       });
     });
   }
@@ -30,7 +30,7 @@ class GettyClient extends BaseClient {
 
       return this.makeRequest(gettyUrl, requestId, 'GET', undefined, {
         'x-app-key': config.getty.appKey,
-        'User-Agent': config.getty.userAgent,
+        'User-Agent': config.getty.userAgent
       });
     });
   }
@@ -41,7 +41,7 @@ class GettyClient extends BaseClient {
 
       return this.makeRequest(gettyUrl, requestId, 'POST', JSON.stringify({ id: videoId }), {
         'x-app-key': config.getty.appKey,
-        'User-Agent': config.getty.userAgent,
+        'User-Agent': config.getty.userAgent
       });
     });
   }

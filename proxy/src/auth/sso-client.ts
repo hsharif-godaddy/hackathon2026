@@ -24,7 +24,7 @@ class SSOClient {
 
   async getToken(ssoHost?: string): Promise<string> {
     // Use provided host or default from config
-    const host = ssoHost || config.sso.host;
+    const host = ssoHost ?? config.sso.host;
     const now = new Date();
 
     // Get or create token cache for this host
@@ -254,7 +254,7 @@ class SSOClient {
         logger.info('[SSO] Token cache cleared', {
           ssoHost,
           hadToken,
-          previousExpiry: previousExpiry?.toISOString() || null
+          previousExpiry: previousExpiry?.toISOString() ?? null
         });
       }
     } else {

@@ -1,8 +1,8 @@
 'use client'
 
+import Box from '@ux/box';
 import Button from '@ux/button';
 import Modal from '@ux/modal';
-import SiblingSet from '@ux/sibling-set';
 import text from '@ux/text';
 
 import { useTranslations } from '@/hooks/useTranslations';
@@ -32,7 +32,7 @@ export function DeleteRowModal({ isOpen, onClose, onConfirm, isDeleting, error }
       onClose={onClose}
       centered
       actions={
-        <SiblingSet gap="md">
+        <Box orientation="horizontal" gap="md">
           <Button
             design="secondary"
             text={t('builder_common_cancel')}
@@ -45,7 +45,7 @@ export function DeleteRowModal({ isOpen, onClose, onConfirm, isDeleting, error }
             onClick={onConfirm}
             disabled={isDeleting}
           />
-        </SiblingSet>
+        </Box>
       }
     >
       <text.p>{t('builder_settings_database_delete_row_warning')}</text.p>

@@ -6,7 +6,7 @@ import path from 'path';
 const env = process.env as EnvironmentVariables;
 
 // Detect environment from ENVIRONMENT variable (returns 'test' or 'prod')
-const environment = env.ENVIRONMENT || 'test'; // Default to test for safety
+const environment = env.ENVIRONMENT ?? 'test'; // Default to test for safety
 const isProduction = environment === 'prod';
 
 // SSO configuration based on environment
@@ -111,7 +111,7 @@ function validateConfig(): boolean {
   // Console acceptable here: config validates before logger is initialized (circular dep)
   console.log('[CONFIG] ========== PROXY CONFIGURATION ==========');
   console.log('[CONFIG] Environment:', {
-    ENVIRONMENT: env.ENVIRONMENT || '(not set, defaulting to test)',
+    ENVIRONMENT: env.ENVIRONMENT ?? '(not set, defaulting to test)',
     detectedEnv: isProduction ? 'production' : 'test'
   });
   console.log('[CONFIG] SSO:', {

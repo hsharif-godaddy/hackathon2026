@@ -119,7 +119,7 @@ export default function FeedbackWidget({ conversationId, appId }: FeedbackWidget
     setSelectedRating(rating)
   }
 
-  const handleCommentKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleCommentKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && selectedRating && !isSubmitting) {
       // Submit immediately
       submitFeedback(selectedRating, comment)

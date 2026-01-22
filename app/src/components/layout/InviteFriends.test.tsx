@@ -5,7 +5,6 @@ import { screen, waitFor } from '@testing-library/react';
 
 import { mockAuthContext } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
-import InviteFriends, { InviteFriendsVariant } from './InviteFriends';
 
 // Mock ResizeObserver for UX Modal
 global.ResizeObserver = vi.fn().mockImplementation(() => ({
@@ -14,9 +13,23 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
   disconnect: vi.fn(),
 }));
 
+// Mock @ux/modal to avoid Disrupt rendering issues in test environment
+vi.mock('@ux/modal', () => ({
+  default: ({ title, children, actions, onClose }: any) => (
+    <div role="dialog" aria-label={title}>
+      <h2>{title}</h2>
+      <button onClick={onClose} aria-label="Close">Close</button>
+      <div>{children}</div>
+      <div>{actions}</div>
+    </div>
+  ),
+}));
+
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id) => id),
 }));
+
+import InviteFriends, { InviteFriendsVariant } from './InviteFriends';
 
 vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: () => mockAuthContext({ isAuthenticated: true }),
@@ -99,8 +112,9 @@ describe('InviteFriends', function inviteFriendsTests() {
 
   describe('when user is not authenticated', function unauthenticatedTests() {
     beforeEach(function setupUnauthenticated() {
-      vi.mocked(vi.importActual('@/components/providers/AuthProvider')).useAuthContext = () =>
-        mockAuthContext({ isAuthenticated: false });
+      vi.doMock('@/components/providers/AuthProvider', () => ({
+        useAuthContext: () => mockAuthContext({ isAuthenticated: false }),
+      }));
     });
 
     it('should not render anything', function noRender() {

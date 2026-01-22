@@ -69,7 +69,9 @@ const MOCK_SITE_DATA = {
   initial_prompt: MOCK_PROMPT,
   status: 'created',
   agent_url: 'https://agent-site456.example.com',
+  backend_url: 'https://backend-site456.example.com',
   preview_url: 'https://preview-site456.example.com',
+  published_url: 'https://published-site456.example.com',
   ceph_mount_id: 'ceph-123',
   ceph_dir_number: '456',
   created_at: new Date('2025-01-01T00:00:00Z'),
@@ -227,7 +229,7 @@ describe('LegacyControlPlaneAdapter', () => {
         ceph_dir_number: MOCK_SITE_DATA.ceph_dir_number,
         created_at: MOCK_SITE_DATA.created_at,
         updated_at: MOCK_SITE_DATA.updated_at,
-        variants: ['preview']
+        variants: ['preview', 'publish']
       });
 
       expect(mockSiteService.getSiteById).toHaveBeenCalledWith(MOCK_SITE_ID);
@@ -405,7 +407,7 @@ describe('LegacyControlPlaneAdapter', () => {
         ceph_dir_number: MOCK_SITE_DATA.ceph_dir_number,
         created_at: MOCK_SITE_DATA.created_at,
         updated_at: MOCK_SITE_DATA.updated_at,
-        variants: ['preview']
+        variants: ['preview', 'publish']
       });
 
       expect(mockSiteService.updateSite).toHaveBeenCalledWith(MOCK_SITE_ID, updates);

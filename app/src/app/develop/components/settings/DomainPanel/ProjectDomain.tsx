@@ -4,7 +4,6 @@ import { useEffect, useRef,useState } from "react";
 import { useQuery } from '@tanstack/react-query';
 import Box from "@ux/box";
 import Button from "@ux/button";
-import SiblingSet from "@ux/sibling-set";
 import Skeleton from "@ux/skeleton";
 import text from "@ux/text";
 import TextInput from "@ux/text-input";
@@ -325,7 +324,7 @@ export default function ProjectDomain() {
          )}
         </div>
         { showButtons && currentProjectName !== projectDomainValue && (
-          <SiblingSet gap="sm" className="mt-2">
+          <Box orientation="horizontal" gap="sm" className="mt-2">
             <Button
               disabled={
                 currentProjectName.length === 0 ||
@@ -341,7 +340,7 @@ export default function ProjectDomain() {
               onClick={handleUpdateAppName}
               data-eid={generateClickEID(`settings/domains.project_domain.update`)}
               className="!hover:bg-transparent"
-              text={isValidatingDomain || (currentProjectName !== debouncedDomain) 
+              text={isValidatingDomain || (currentProjectName !== debouncedDomain)
                 ? t('builder_project_domain_button_checking')
                 : t('builder_project_domain_button_save')
             }
@@ -354,7 +353,7 @@ export default function ProjectDomain() {
               className="!hover:bg-transparent"
               text={t('builder_project_domain_button_cancel')}
             />
-          </SiblingSet>
+          </Box>
         ) }
       </Box>
     </BigCard>

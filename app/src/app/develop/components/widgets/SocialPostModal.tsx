@@ -2,9 +2,9 @@
 'use client'
 
 import { memo,useCallback, useMemo, useState } from 'react'
+import Box from '@ux/box'
 import Button from '@ux/button'
 import Modal from '@ux/modal'
-import SiblingSet from '@ux/sibling-set'
 import text from '@ux/text'
 import TextInput from '@ux/text-input'
 
@@ -319,7 +319,7 @@ export const SocialPostModal = memo(({ post, appId, onClose, onSave, onPublish }
           // Published state: Only show close button (no edit/publish)
           null
         ) : isEditMode ? (
-          <SiblingSet gap="md">
+          <Box orientation="horizontal" gap="md">
             <Button
               design="secondary"
               text={t('builder_common_cancel')}
@@ -333,9 +333,9 @@ export const SocialPostModal = memo(({ post, appId, onClose, onSave, onPublish }
               size="sm"
               disabled={validation.isOverLimit}
             />
-          </SiblingSet>
+          </Box>
         ) : (
-          <SiblingSet gap="md">
+          <Box orientation="horizontal" gap="md">
             <Button
               design="secondary"
               text={t('builder_common_edit')}
@@ -350,7 +350,7 @@ export const SocialPostModal = memo(({ post, appId, onClose, onSave, onPublish }
               onClick={handlePublish}
               disabled={isPublishing}
             />
-          </SiblingSet>
+          </Box>
         )
       }
     >

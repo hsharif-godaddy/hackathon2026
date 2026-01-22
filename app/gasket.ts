@@ -172,11 +172,11 @@ export default makeGasket({
     pluginData,
     pluginWebpack,
     pluginWinston,
-    // Only include auth plugin when using JWT authentication
-    ...(isJWTMode ? [pluginAuth] : []),
     pluginSecurity,
     pluginTraffic,
-    pluginVisitor,
+    pluginVisitor, // Must come before auth plugin to populate visitor.hostname
+    // Only include auth plugin when using JWT authentication
+    ...(isJWTMode ? [pluginAuth] : []),
     pluginDevCerts,
     pluginSelfCerts,
     pluginAtlas,
@@ -291,6 +291,7 @@ export default makeGasket({
       type: ['basic'],
       allowHeartbeat: true,
       use12HourExpiration: true,
+      host: process.env.SSO_HOST ? [process.env.SSO_HOST] : ['godaddy.com'],
       ssoRedirectOverride: process.env.SSO_LOGIN_URL,
       ssoLogoutOverride: process.env.SSO_LOGOUT_URL,
       ssoRedirectSubdomain: false,

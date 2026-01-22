@@ -326,7 +326,7 @@ router.post('/v1/videos/upload',
 
     try {
       // Validate required parameters
-      if (!req.body || !req.body.id) {
+      if (!req.body?.id) {
         res.status(400).json({
           error: {
             message: 'Missing required parameter: id',
@@ -549,7 +549,7 @@ router.post('/v1/knowb/search',
 
     try {
       // Validate required query parameter
-      const { query, kbNodeIds, maxResults, scoreThreshold } = req.body as KnowBSearchParams;
+      const { query } = req.body as KnowBSearchParams;
 
       if (!query || typeof query !== 'string' || query.trim().length === 0) {
         res.status(400).json({
@@ -692,7 +692,7 @@ router.post('/v1/knowb/upload',
         resourceType,
         file: req.file.buffer,
         filename: req.file.originalname,
-        contentType: req.file.mimetype,
+        contentType: req.file.mimetype
       };
 
       if (acl !== undefined) {

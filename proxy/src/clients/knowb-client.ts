@@ -11,9 +11,9 @@ import { BaseClient } from './base-client';
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const parts = token.split('.');
-    if (parts.length !== 3) return null;
+    if (parts.length !== 3) {return null;}
     const payload = parts[1];
-    if (!payload) return null;
+    if (!payload) {return null;}
     const decoded = Buffer.from(payload, 'base64').toString('utf8');
     return JSON.parse(decoded);
   } catch {
@@ -31,7 +31,7 @@ class KnowBClient extends BaseClient {
     super({
       serviceName: 'KnowB',
       ssoHost: config.sso.host,
-      defaultRetries: 2,
+      defaultRetries: 2
     });
   }
   /**
@@ -48,7 +48,7 @@ class KnowBClient extends BaseClient {
         requestId,
         configuredUpstream: config.knowb.upstream,
         configuredDefaultKbNodeIds: config.knowb.defaultKbNodeIds,
-        envKnowbUpstream: process.env.KNOWB_UPSTREAM || '(not set, using default)',
+        envKnowbUpstream: process.env.KNOWB_UPSTREAM ?? '(not set, using default)'
       });
 
       const jwtToken = await this.getToken();
@@ -68,12 +68,12 @@ class KnowBClient extends BaseClient {
       // Build request body with defaults
       const requestBody = {
         filter: {
-          kbNodeIds: params.kbNodeIds || config.knowb.defaultKbNodeIds,
-          maxNumberOfResult: params.maxResults || config.knowb.defaultMaxResults,
-          scoreThreshold: params.scoreThreshold || config.knowb.defaultScoreThreshold,
+          kbNodeIds: params.kbNodeIds ?? config.knowb.defaultKbNodeIds,
+          maxNumberOfResult: params.maxResults ?? config.knowb.defaultMaxResults,
+          scoreThreshold: params.scoreThreshold ?? config.knowb.defaultScoreThreshold
         },
         query: params.query.trim(),
-        searchType: 'auto',
+        searchType: 'auto'
       };
 
       const knowbUrl = `${config.knowb.upstream}/v1/search`;
@@ -83,7 +83,7 @@ class KnowBClient extends BaseClient {
         requestId,
         fullUrl: knowbUrl,
         hostname: new URL(knowbUrl).hostname,
-        requestBody: JSON.stringify(requestBody),
+        requestBody: JSON.stringify(requestBody)
       });
 
       return this.makeRequest(knowbUrl, requestId, 'POST', JSON.stringify(requestBody));
@@ -106,7 +106,7 @@ class KnowBClient extends BaseClient {
         requestId,
         tokenLength: jwtToken.length,
         tokenType: tokenPayload?.typ,
-        tokenSubject: tokenPayload?.sub,
+        tokenSubject: tokenPayload?.sub
       });
 
       const knowbUrl = `${config.knowb.upstream}/v1/kbnodes`;
@@ -117,7 +117,7 @@ class KnowBClient extends BaseClient {
         hostname: new URL(knowbUrl).hostname,
         filename: params.filename,
         kbNodeId: params.kbNodeId,
-        resourceType: params.resourceType,
+        resourceType: params.resourceType
       });
 
       return this.makeUploadRequest(knowbUrl, jwtToken, requestId, params);
@@ -165,7 +165,7 @@ class KnowBClient extends BaseClient {
     const headers = {
       'Authorization': `sso-jwt ${jwtToken}`,
       'Accept': 'application/json',
-      ...formData.getHeaders(),
+      ...formData.getHeaders()
     };
 
     logger.info('[KnowB] Making upload request with form-data', {
@@ -173,7 +173,7 @@ class KnowBClient extends BaseClient {
       url: urlObj.pathname,
       hostname: urlObj.hostname,
       filename: params.filename,
-      fileSize: params.file.length,
+      fileSize: params.file.length
     });
 
     try {

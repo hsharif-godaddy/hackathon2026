@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
-import InviteFriendsModal from './InviteFriendsModal';
 
 // Mock ResizeObserver for UX Modal
 global.ResizeObserver = vi.fn().mockImplementation(() => ({
@@ -13,9 +12,23 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
   disconnect: vi.fn(),
 }));
 
+// Mock @ux/modal to avoid Disrupt rendering issues in test environment
+vi.mock('@ux/modal', () => ({
+  default: ({ title, children, actions, onClose }: any) => (
+    <div role="dialog" aria-label={title}>
+      <h2>{title}</h2>
+      <button onClick={onClose} aria-label="Close">Close</button>
+      <div>{children}</div>
+      <div>{actions}</div>
+    </div>
+  ),
+}));
+
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id) => id),
 }));
+
+import InviteFriendsModal from './InviteFriendsModal';
 
 vi.mock('@/lib/request-context', () => ({
   logger: {

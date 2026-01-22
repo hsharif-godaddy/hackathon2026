@@ -2,7 +2,6 @@ import { useEffect, useMemo,useRef, useState } from "react";
 import Box from "@ux/box";
 import Button from "@ux/button";
 import Modal from "@ux/modal";
-import SiblingSet from "@ux/sibling-set";
 import Skeleton from "@ux/skeleton";
 import text from "@ux/text";
 import TextInput from "@ux/text-input";
@@ -488,7 +487,7 @@ export default function DomainAttach() {
                <text.span as="paragraph">
                 {t('builder_custom_domain_modal_description')}
                </text.span>
-             <SiblingSet gap="md" className="justify-center">
+             <Box orientation="horizontal" gap="md" className="justify-center">
                <Button
                  design="primary"
                  onClick={handleConfirmAdd}
@@ -501,7 +500,7 @@ export default function DomainAttach() {
                  text={t('builder_custom_domain_modal_button_cancel')}
                  data-eid={generateClickEID(`settings/domains.connect_confirm.cancel`)}
                />
-             </SiblingSet>
+             </Box>
            </Box>
           </Modal>
         )}

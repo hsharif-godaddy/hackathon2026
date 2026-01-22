@@ -12,6 +12,12 @@ import path from 'node:path';
  */
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src')
+    },
+    conditions: ['import', 'module', 'browser', 'default']
+  },
   test: {
     globals: true,
     environment: 'jsdom',
@@ -41,11 +47,6 @@ export default defineConfig({
     },
     // Ensure cleanup hooks have time to complete before vitest exits
     teardownTimeout: 15000,
-  },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src')
-    }
   }
 });
 

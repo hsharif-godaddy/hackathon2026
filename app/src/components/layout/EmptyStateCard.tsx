@@ -2,7 +2,6 @@
 
 import Box from '@ux/box';
 import Button from '@ux/button';
-import SiblingSet from '@ux/sibling-set';
 import text from '@ux/text';
 
 interface EmptyStateCardProps {
@@ -74,7 +73,8 @@ export default function EmptyStateCard(props: EmptyStateCardProps) {
         />
       </Box>
 
-      <SiblingSet
+      <Box
+        orientation="horizontal"
         gap="md"
       >
         <Button
@@ -92,7 +92,7 @@ export default function EmptyStateCard(props: EmptyStateCardProps) {
             onClick={onSecondaryCtaClick}
           />
         )}
-      </SiblingSet>
+      </Box>
     </Box>
   );
 }

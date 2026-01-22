@@ -69,7 +69,7 @@ export abstract class BaseClient {
     const headers: Record<string, string> = {
       'Authorization': `sso-jwt ${jwtToken}`,
       'Accept': 'application/json',
-      ...additionalHeaders,
+      ...additionalHeaders
     };
 
     if (body && method === 'POST') {
@@ -80,14 +80,14 @@ export abstract class BaseClient {
       requestId,
       method,
       url: urlObj.pathname + urlObj.search,
-      headers: this.sanitizeHeaders(headers),
+      headers: this.sanitizeHeaders(headers)
     });
 
     try {
       const response = await fetch(url, {
         method,
         headers,
-        ...(body && method === 'POST' && { body }),
+        ...(body && method === 'POST' && { body })
       });
 
       const data = await response.text();
@@ -96,13 +96,13 @@ export abstract class BaseClient {
         return {
           statusCode: response.status,
           headers: Object.fromEntries(response.headers.entries()) as Record<string, string | string[]>,
-          data,
+          data
         };
       } else if (response.status === 401 && retries > 0) {
         // Token might be expired, clear cache and retry
         logger.warn(`[${this.serviceName}] API returned 401, clearing SSO cache and retrying`, {
           requestId,
-          retriesLeft: retries,
+          retriesLeft: retries
         });
         ssoClient.clearCache(this.ssoHost);
 
@@ -114,7 +114,7 @@ export abstract class BaseClient {
           requestId,
           statusCode: response.status,
           responseBody: data,
-          url: urlObj.pathname,
+          url: urlObj.pathname
         });
 
         const error = new Error(`${this.serviceName} API request failed with status ${response.status}`) as Error & {
@@ -128,7 +128,7 @@ export abstract class BaseClient {
     } catch (error) {
       logger.error(`[${this.serviceName}] API request error`, {
         requestId,
-        error: error instanceof Error ? error.message : String(error),
+        error: error instanceof Error ? error.message : String(error)
       });
 
       if (retries > 0) {
