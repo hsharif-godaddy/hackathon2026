@@ -31,6 +31,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
   const isVersionHistoryOpen = useDevelopPageStore((state) => state.isVersionHistoryOpen)
   const site = useDevelopPageStore((state) => state.site)
   const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange)
+  const setIsSelectMode = useDevelopPageStore((state) => state.setIsSelectMode)
   const toggleSelectMode = useDevelopPageStore((state) => state.toggleSelectMode)
   const toggleChatPaneCollapse = useDevelopPageStore((state) => state.toggleChatPaneCollapse)
   const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal)
@@ -77,12 +78,16 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
       />
       <IconButton
         icon={<CodeIcon />}
-        onClick={() => handleViewModeChange(ViewMode.CODE, hasUnsavedChanges)}
+        onClick={() => {
+          setIsSelectMode(false);
+          handleViewModeChange(ViewMode.CODE, hasUnsavedChanges);
+        }}
         data-eid={ generateClickEID('develop.preview.code_editor') }
         active={viewMode === ViewMode.CODE}
         disabled={isVersionHistoryOpen}
         label={t('builder_preview_button_code')}
         showLabelWhenActive={false}
+        separator={!isMobile}
       />
       {!isMobile && (
         <IconButton
