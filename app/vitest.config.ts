@@ -38,7 +38,9 @@ export default defineConfig({
         branches: 50,
         statements: 50
       }
-    }
+    },
+    // Ensure cleanup hooks have time to complete before vitest exits
+    teardownTimeout: 15000,
   },
   resolve: {
     alias: {

@@ -15,5 +15,8 @@ export default defineConfig({
     },
     // Test categorization
     include: ['**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
+    // Timeout configuration
+    testTimeout: 30000, // 30s for long-running integration tests
+    teardownTimeout: 15000, // Ensure cleanup hooks complete
   },
 });

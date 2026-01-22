@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { vi, afterAll } from 'vitest';
 
 /**
  * Vitest global setup
@@ -79,4 +79,12 @@ Object.defineProperty(window, 'matchMedia', {
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
   })),
+});
+
+// Final cleanup after all test files complete
+// This runs once at the end of the test suite to restore any global mocks.
+// Individual test files should handle their own cleanup in afterEach/afterAll
+// hooks if they need to prevent mock leakage between tests.
+afterAll(() => {
+  vi.restoreAllMocks();
 });

@@ -8,16 +8,17 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { DevSupervisorLogClient } from '../dev-supervisor-log-client.js';
 import { DevSupervisorClient, createDevSupervisorClient } from '../../services/DevSupervisorClient.js';
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { existsSync } from 'fs';
+import { cleanupProcess } from './test-helpers.js';
 
 describe('DevSupervisorLogClient Integration Tests', () => {
   let logClient: DevSupervisorLogClient;
   let devSupervisorClient: DevSupervisorClient;
   let socketPath: string;
-  let devSupervisorProcess: any;
+  let devSupervisorProcess: ChildProcess | null = null;
   let testDir: string;
   let skipTests = false;
   
@@ -91,21 +92,11 @@ describe('DevSupervisorLogClient Integration Tests', () => {
   
   afterAll(async () => {
     if (skipTests) return;
-    
-    // Clean up
-    if (devSupervisorProcess) {
-      devSupervisorProcess.kill('SIGTERM');
-      
-      // Wait for graceful shutdown
-      await new Promise(resolve => {
-        devSupervisorProcess.on('exit', resolve);
-        setTimeout(() => {
-          devSupervisorProcess.kill('SIGKILL');
-          resolve(true);
-        }, 5000);
-      });
-    }
-    
+
+    // Clean up process using helper
+    await cleanupProcess(devSupervisorProcess, 5000);
+    devSupervisorProcess = null;
+
     // Clean up test directory
     if (testDir && existsSync(testDir)) {
       try {

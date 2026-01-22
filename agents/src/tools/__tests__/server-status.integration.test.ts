@@ -14,6 +14,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { existsSync } from 'fs';
 import type { AgentExecutionContext } from '../../base/index.js';
+import { cleanupProcess } from './test-helpers.js';
 
 // Helper function to call app service APIs
 async function callAppServiceAPI(endpoint: string, method: 'GET' | 'POST' = 'GET', body?: any) {
@@ -172,30 +173,14 @@ export default function Home() {
   
   afterAll(async () => {
     if (skipTests) return;
-    
-    // Clean up processes
-    if (devServerProcess) {
-      devServerProcess.kill('SIGTERM');
-      await new Promise(resolve => {
-        devServerProcess!.on('exit', resolve);
-        setTimeout(() => {
-          devServerProcess!.kill('SIGKILL');
-          resolve(true);
-        }, 3000);
-      });
-    }
-    
-    if (devSupervisorProcess) {
-      devSupervisorProcess.kill('SIGTERM');
-      await new Promise(resolve => {
-        devSupervisorProcess!.on('exit', resolve);
-        setTimeout(() => {
-          devSupervisorProcess!.kill('SIGKILL');
-          resolve(true);
-        }, 5000);
-      });
-    }
-    
+
+    // Clean up processes using helper
+    await cleanupProcess(devServerProcess, 3000);
+    devServerProcess = null;
+
+    await cleanupProcess(devSupervisorProcess, 5000);
+    devSupervisorProcess = null;
+
     // Clean up test directory
     if (testDir && existsSync(testDir)) {
       try {
@@ -204,7 +189,7 @@ export default function Home() {
         console.warn('Failed to clean up test directory:', error);
       }
     }
-    
+
     // Clean up app via API
     if (appId) {
       try {
@@ -231,19 +216,10 @@ export default function Home() {
 
   afterEach(async () => {
     if (skipTests) return;
-    
+
     // Stop any running dev server between tests
-    if (devServerProcess) {
-      devServerProcess.kill('SIGTERM');
-      await new Promise(resolve => {
-        devServerProcess!.on('exit', resolve);
-        setTimeout(() => {
-          devServerProcess!.kill('SIGKILL');
-          resolve(true);
-        }, 2000);
-      });
-      devServerProcess = null;
-    }
+    await cleanupProcess(devServerProcess, 2000);
+    devServerProcess = null;
   });
 
   describe('Environment Setup', () => {
