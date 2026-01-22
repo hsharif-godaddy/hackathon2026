@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 
@@ -10,16 +10,111 @@ interface CookieConsent {
   timestamp: number;
 }
 
+declare global {
+  interface Window {
+    _signalsDataLayer?: unknown[];
+    revokeAnalyticsConsent?: () => void;
+    __SCC_INIT__?: boolean;
+  }
+}
+
+// Inline C2 tracking - loads script and tracks clicks/pageviews
+function initC2Tracking(): void {
+  if (typeof window === 'undefined' || window.__SCC_INIT__) return;
+  window.__SCC_INIT__ = true;
+  window._signalsDataLayer = window._signalsDataLayer || [];
+
+  const track = (eid: string, type: string, label: string, props?: Record<string, unknown>) => {
+    window._signalsDataLayer!.push({
+      schema: 'add_event', version: 'v1',
+      data: { eid, type, event_label: label, custom_properties: { ...props, timestamp: new Date().toISOString(), source: 'airo-app-builder' } }
+    });
+  };
+
+  const getSection = (el: HTMLElement): string => {
+    if (el.closest('header')) return 'header';
+    if (el.closest('footer')) return 'footer';
+    if (el.closest('nav')) return 'nav';
+    if (el.closest('main')) return 'main';
+    return 'page';
+  };
+
+  const getDevice = (): string => {
+    const w = window.innerWidth;
+    return w < 768 ? 'mobile' : w < 1024 ? 'tablet' : 'desktop';
+  };
+
+  // Initial events
+  track('airo.website.session', 'session', 'start', { page_path: location.pathname, referrer: document.referrer });
+  track('airo.website.pageview', 'pageview', document.title, { page_path: location.pathname, referrer: document.referrer });
+
+  // Click tracking
+  // Capture phase (true) ensures we track clicks even if event.stopPropagation() is called
+  document.addEventListener('click', (e) => {
+    const el = (e.target as HTMLElement)?.closest('a, button, [role="button"]') as HTMLElement;
+    if (!el) return;
+    const text = el.textContent?.trim()?.substring(0, 100) || '';
+    const href = (el as HTMLAnchorElement).href || '';
+    const type = el.tagName.toLowerCase() === 'a' ? 'link' : 'button';
+
+    let isExternal: boolean | undefined;
+    if (href) {
+      try {
+        isExternal = new URL(href, location.origin).origin !== location.origin;
+      } catch {
+        // Malformed URL, treat as internal
+      }
+    }
+
+    track('airo.website.click', 'click', text || type, {
+      element_type: type,
+      element_text: text,
+      element_id: el.id || undefined,
+      section: getSection(el),
+      page_path: location.pathname,
+      page_title: document.title,
+      href: href || undefined,
+      is_external: href ? isExternal : undefined,
+      device: getDevice(),
+      viewport_width: window.innerWidth
+    });
+  }, true);
+
+  // Route tracking
+  let lastUrl = location.href;
+  const trackPage = () => {
+    if (location.href !== lastUrl) {
+      track('airo.website.pageview', 'pageview', document.title, { page_path: location.pathname, referrer: lastUrl });
+      lastUrl = location.href;
+    }
+  };
+  window.addEventListener('popstate', trackPage);
+  const push = history.pushState, replace = history.replaceState;
+  history.pushState = (...args) => { push.apply(history, args); setTimeout(trackPage, 0); };
+  history.replaceState = (...args) => { replace.apply(history, args); setTimeout(trackPage, 0); };
+
+  // Load SCC script
+  const h = location.hostname;
+  const url = h === 'localhost' || h.startsWith('dev-')
+    ? 'https://img1.dev-wsimg.com/signals/js/clients/scc-c2/scc-c2.js'
+    : h.startsWith('test-')
+      ? 'https://img1.test-wsimg.com/signals/js/clients/scc-c2/scc-c2.min.js'
+      : 'https://img1.wsimg.com/signals/js/clients/scc-c2/scc-c2.min.js';
+  const script = document.createElement('script');
+  script.src = url;
+  script.async = true;
+  document.head.appendChild(script);
+}
+
 /**
  * Cookie banner component for C2 analytics consent
-
+ *
  * Displays a consent banner for C2 analytics tracking. Manages user consent
  * preferences in localStorage and controls whether analytics scripts are loaded.
  */
 export default function CookieBanner() {
   const [showBanner, setShowBanner] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
-  const scriptLoadedRef = useRef(false);
 
   useEffect(function checkConsent() {
     if (typeof window === 'undefined') return;
@@ -40,7 +135,7 @@ export default function CookieBanner() {
         localStorage.removeItem(COOKIE_CONSENT_KEY);
         setShowBanner(true);
       } else if (consent.analytics) {
-        loadAnalytics();
+        initC2Tracking();
       }
     } catch {
       localStorage.removeItem(COOKIE_CONSENT_KEY);
@@ -50,51 +145,10 @@ export default function CookieBanner() {
     setIsLoaded(true);
   }, []);
 
-  function loadAnalytics() {
-    if (typeof window === 'undefined' || scriptLoadedRef.current) return;
-
-    window._signalsDataLayer = window._signalsDataLayer || [];
-
-    const existingScript = document.querySelector('script[src*="scc-c2"]');
-    if (existingScript) {
-      scriptLoadedRef.current = true;
-      return;
-    }
-
-    const script = document.createElement('script');
-    const isTestEnv = window.location.hostname.startsWith('test-') ||
-                      window.location.hostname.startsWith('dev-');
-    const scriptUrl = isTestEnv
-      ? 'https://img1.test-wsimg.com/signals/js/clients/scc-c2/scc-c2.min.js'
-      : 'https://img1.wsimg.com/signals/js/clients/scc-c2/scc-c2.min.js';
-
-    script.src = scriptUrl;
-    script.async = true;
-    script.crossOrigin = 'anonymous';
-    document.head.appendChild(script);
-    scriptLoadedRef.current = true;
-  }
-
   function saveConsent(analytics: boolean) {
-    const consent: CookieConsent = {
-      analytics,
-      timestamp: Date.now(),
-    };
-    localStorage.setItem(COOKIE_CONSENT_KEY, JSON.stringify(consent));
-
-    if (analytics) {
-      loadAnalytics();
-    }
-
+    localStorage.setItem(COOKIE_CONSENT_KEY, JSON.stringify({ analytics, timestamp: Date.now() }));
+    if (analytics) initC2Tracking();
     setShowBanner(false);
-  }
-
-  function handleAccept() {
-    saveConsent(true);
-  }
-
-  function handleDecline() {
-    saveConsent(false);
   }
 
   function revokeConsent() {
@@ -106,15 +160,10 @@ export default function CookieBanner() {
   useEffect(function exposeRevokeFunction() {
     if (typeof window === 'undefined') return;
     window.revokeAnalyticsConsent = revokeConsent;
+    return () => { delete window.revokeAnalyticsConsent; };
+  }, []);
 
-    return function cleanup() {
-      delete window.revokeAnalyticsConsent;
-    };
-  }, [revokeConsent]);
-
-  if (!isLoaded || !showBanner) {
-    return null;
-  }
+  if (!isLoaded || !showBanner) return null;
 
   return (
     <div
@@ -127,50 +176,18 @@ export default function CookieBanner() {
       <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex-1">
-            <h3 className="text-sm font-semibold text-gray-900 mb-1">
-              Cookie Consent
-            </h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">Cookie Consent</h3>
             <p id="cookie-banner-description" className="text-sm text-gray-600">
               We serve cookies. We use tools, such as cookies, to enable essential services and functionality on our site and to collect data on how visitors interact with our site, products and services. By clicking Accept, you agree to our use of these tools for advertising, analytics and support.{' '}
-              <a
-                href="https://www.godaddy.com/legal/agreements/privacy-policy"
-                className="text-blue-600 hover:text-blue-800 underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Learn more
-              </a>
+              <a href="https://www.godaddy.com/legal/agreements/privacy-policy" className="text-blue-600 hover:text-blue-800 underline" target="_blank" rel="noopener noreferrer">Learn more</a>
             </p>
           </div>
-
           <div className="flex items-center gap-3 flex-shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleDecline}
-              className="whitespace-nowrap"
-            >
-              Decline
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleAccept}
-              className="whitespace-nowrap"
-              autoFocus
-            >
-              Accept
-            </Button>
+            <Button variant="outline" size="sm" onClick={() => saveConsent(false)} className="whitespace-nowrap">Decline</Button>
+            <Button size="sm" onClick={() => saveConsent(true)} className="whitespace-nowrap" autoFocus>Accept</Button>
           </div>
         </div>
       </div>
     </div>
   );
 }
-
-declare global {
-  interface Window {
-    _signalsDataLayer?: unknown[];
-    revokeAnalyticsConsent?: () => void;
-  }
-}
-

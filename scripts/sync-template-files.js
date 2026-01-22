@@ -45,7 +45,10 @@ const SYNC_MANIFEST = [
   {
     file: 'src/components/CookieBanner.tsx',
     description: 'cookie consent banner for C2 analytics',
-    known_hashes: [],
+    known_hashes: [
+      '1785601300e3d9d95e5da2c53aa155a3', // c054fea9 - Implement CookieBanner component for analytics
+      'c23c35c1239baf9990b60ac54c7c4b97'  // d4d5fb79 - i18n round
+    ],
     force: false
   },
   {
