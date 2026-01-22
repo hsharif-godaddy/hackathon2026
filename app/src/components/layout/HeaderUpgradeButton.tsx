@@ -32,7 +32,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
 
   const { data: featureEnabled, isLoading: isFeatureLoading } = useSwitchboard('appbuilder-airoplus-upgrade-button');
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(currentAppId || undefined);
-
+  console.log('showPaywall', showPaywall);
   // Only show on develop page, when feature enabled, and user doesn't have Airo Plus
   if (!isDevelopPage || isFeatureLoading || isPaywallLoading || !featureEnabled || !showPaywall) return null;
 

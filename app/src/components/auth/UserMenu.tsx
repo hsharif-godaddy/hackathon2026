@@ -1,6 +1,6 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import UserIcon from '@ux/icon/user';
 
@@ -9,6 +9,7 @@ import InviteFriends, { InviteFriendsVariant } from '@/components/layout/InviteF
 import InviteFriendsModal from '@/components/layout/InviteFriendsModal';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useSsoSignIn } from '@/hooks/useSsoSignIn';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { Button } from "@/lib/shadcn/button"
 import {
@@ -26,6 +27,7 @@ interface UserMenuProps {
 
 export default function UserMenu({ onShowMockLogin, location = 'unknown' }: UserMenuProps = {}) {
   const t = useTranslations();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const pathname = usePathname();
@@ -38,6 +40,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
   } = useAuthContext();
 
   const { signIn } = useSsoSignIn();
+  const { data: isManagePlanEnabled } = useSwitchboard('appbuilder-manage-plan', { enabled: isAuthenticated });
 
   const handleSignInClick = () => {
     setOpen(false); // Close the popover
@@ -81,7 +84,23 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
                 <Separator className="my-0.5" />
               </>
             )}
-            { isAuthenticated && !isAuthDisabled && (
+            {isAuthenticated && isManagePlanEnabled && (
+              <>
+                <Button
+                  variant="ghost"
+                  className="justify-start px-1 hover:cursor-pointer"
+                  onClick={() => {
+                    setOpen(false);
+                    router.push('/manage-plan');
+                  }}
+                  data-eid={generateClickEID(`${location}.user_menu.manage_plan`)}
+                >
+                  {t('builder_usermenu_manage_plan')}
+                </Button>
+                <Separator className="my-0.5" />
+              </>
+            )}
+            {isAuthenticated && !isAuthDisabled && (
               <Button
                 variant="ghost"
                 className="justify-start px-1 hover:cursor-pointer"

@@ -3,7 +3,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
-import { mockAuthContext } from '@/tests/mocks';
+import { mockAuthContext, mockRouter } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import UserMenu from './UserMenu';
 
@@ -25,6 +25,7 @@ Object.defineProperty(navigator, 'clipboard', {
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/develop',
+  useRouter: () => mockRouter(),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({

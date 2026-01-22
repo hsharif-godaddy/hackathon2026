@@ -12,6 +12,7 @@ import { getRootDomain } from '@/utils/getRootDomain';
  */
 const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-publish-button': true,
+  'appbuilder-manage-plan': true,
 };
 
 /**
