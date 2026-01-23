@@ -16,6 +16,7 @@ export interface CreateTokenOptions {
   siteId: string;
   canDownload: boolean;
   canPublish: boolean;
+  isE2S: boolean;
 }
 
 export interface TokenResult {
@@ -158,7 +159,8 @@ export class JWTService {
       iat: now,
       siteId: options.siteId,
       canDownload: options.canDownload,
-      canPublish: options.canPublish
+      canPublish: options.canPublish,
+      isE2S: options.isE2S
     };
 
     const headerBase64 = Buffer.from(JSON.stringify(header)).toString('base64url');
@@ -219,7 +221,7 @@ export class JWTService {
    * Includes permissions to avoid stale cache when permissions change
    */
   private getCacheKey(options: CreateTokenOptions): string {
-    return `${options.siteId}:${options.canDownload}:${options.canPublish}`;
+    return `${options.siteId}:${options.canDownload}:${options.canPublish}:${options.isE2S}`;
   }
 
   /**

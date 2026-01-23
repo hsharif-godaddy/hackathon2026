@@ -51,7 +51,8 @@ async function getAgentToken(siteId: string): Promise<string> {
         const result = await getJWTService().getToken({
           siteId,
           canDownload: false,
-          canPublish: false
+          canPublish: false,
+          isE2S: false  // Server-side calls default to non-impersonation
         });
         token = result.token;
         expires = result.expires;

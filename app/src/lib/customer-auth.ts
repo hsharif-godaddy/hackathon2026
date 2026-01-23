@@ -80,6 +80,7 @@ export interface CustomerUser {
   accountId?: string; // May not exist for new customers
   exp?: number;
   iat?: number;
+  isE2S?: boolean; // true if auth type is 'e2s' (employee-to-shopper)
 }
 
 export interface CustomerAuthContext {
@@ -133,7 +134,8 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
           customerId: mockCustomerId,
           accountId: mockAccount?.id,
           exp: Math.floor(Date.now() / 1000) + 3600,
-          iat: Math.floor(Date.now() / 1000)
+          iat: Math.floor(Date.now() / 1000),
+          isE2S: false
         },
         jwt: 'mock-jwt-token' // Mock JWT for development
       };
@@ -172,7 +174,8 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
           customerId: devCustomerId,
           accountId: devAccount?.id, // Use actual account ID from database
           exp: Math.floor(Date.now() / 1000) + 3600,
-          iat: Math.floor(Date.now() / 1000)
+          iat: Math.floor(Date.now() / 1000),
+          isE2S: false
         },
         jwt: 'dev-jwt-token' // Dev JWT for development
       };
@@ -239,7 +242,8 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       customerId: customerId || shopperId,
       accountId: account.id,
       exp: result.payload.exp,
-      iat: result.payload.iat
+      iat: result.payload.iat,
+      isE2S: result.payload.isE2S ?? false
     };
 
     // Monitor token ages for observability

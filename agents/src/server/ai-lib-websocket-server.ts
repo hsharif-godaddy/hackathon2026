@@ -396,6 +396,44 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             agentsAppContext.metadata.hasUnbuiltRebuildPages = hasRebuildPages
           }
 
+          // Add subscriptionId and customerId to metadata for LiteLLM cost tracking
+          // If E2S auth is enabled (care session), use "care" instead of the customer's subscriptionId
+          const appId = agentsAppContext.metadata?.appId as string | undefined
+          if (appId) {
+            const app = appRepo.findById(appId)
+            if (app) {
+              // Get socket to check for E2S auth (care session)
+              const socketId = (context as any).socketId as string | undefined
+              const socket = socketId && ioInstance ? ioInstance.sockets.sockets.get(socketId) : null
+              const agentContext = socket?.handshake?.auth?.agentContext as { isE2S?: boolean } | undefined
+              const isE2S = agentContext?.isE2S === true
+              logger.info('context.e2s_auth.check', {
+                appId,
+                socketId: socketId || 'missing',
+                hasIoInstance: !!ioInstance,
+                socketFound: !!socket,
+                hasHandshakeAuth: !!socket?.handshake?.auth,
+                authKeys: socket?.handshake?.auth ? Object.keys(socket.handshake.auth) : [],
+                isE2S,
+                agentContext
+              })
+
+              if (isE2S) {
+                // E2S (care) session: use "care" as subscriptionId for cost tracking
+                agentsAppContext.metadata.subscriptionId = 'airo-build:sid:care-agent'
+                logger.info('context.e2s_subscription', {
+                  appId,
+                  isE2S: true,
+                  subscriptionId: 'airo-build:sid:care-agent'
+                })
+              } else {
+                // Regular auth: use the app's subscriptionId
+                agentsAppContext.metadata.subscriptionId = app.subscriptionId
+              }
+              agentsAppContext.metadata.customerId = app.customerId
+            }
+          }
+
           // Detailed logging if enabled
           if (contextLogging.detailed) {
             logger.debug('websocket.context.provider.detailed', {
@@ -1647,6 +1685,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           siteId: validationResult.claims?.siteId || '',
           canDownload: validationResult.claims?.canDownload ?? false,
           canPublish: validationResult.claims?.canPublish ?? false,
+          isE2S: validationResult.claims?.isE2S ?? false,
           exp: validationResult.claims?.exp || 0,
           iat: validationResult.claims?.iat || 0
         };
@@ -1716,6 +1755,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               siteId: refreshResult.claims?.siteId || '',
               canDownload: refreshResult.claims?.canDownload ?? false,
               canPublish: refreshResult.claims?.canPublish ?? false,
+              isE2S: refreshResult.claims?.isE2S ?? false,
               exp: refreshResult.claims?.exp || 0,
               iat: refreshResult.claims?.iat || 0
             };

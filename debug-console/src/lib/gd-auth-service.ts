@@ -100,13 +100,13 @@ export class GdAuthService {
 
         try {
             const jwt = await this.gdAuth.authenticate(this.ssoHost, token, 0);
-            const isImpersonation = jwt.auth === 'e2s';
+            const isE2S = jwt.auth === 'e2s';
 
             return {
                 valid: true,
                 payload: {
-                    shopperId: isImpersonation && jwt.e2s ? jwt.e2s.shopperId : jwt.shopperId,
-                    cid: isImpersonation && jwt.e2s ? jwt.e2s.cid : jwt.cid,
+                    shopperId: isE2S && jwt.e2s ? jwt.e2s.shopperId : jwt.shopperId,
+                    cid: isE2S && jwt.e2s ? jwt.e2s.cid : jwt.cid,
                     exp: jwt.exp,
                     iat: jwt.iat,
                     ...jwt.payload

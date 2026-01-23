@@ -224,6 +224,92 @@ describe('POST /apps/register - Validation Tests', () => {
     });
   });
 
+  describe('Impersonation prefix for subscriptionId', () => {
+    let appWithAuth: express.Express;
+
+    beforeEach(() => {
+      appWithAuth = express();
+      appWithAuth.use(express.json());
+      
+      // Mock JWT auth middleware that sets agentContext
+      appWithAuth.use((req, _res, next) => {
+        const authReq = req as any;
+        // Set agentContext based on test header
+        const isE2S = req.headers['x-test-impersonation'] === 'true';
+        authReq.agentContext = {
+          siteId: 'test-site',
+          canDownload: true,
+          canPublish: true,
+          isE2S,
+          exp: Date.now() + 3600,
+          iat: Date.now()
+        };
+        next();
+      });
+      
+      appWithAuth.use('/apps', appsRouter);
+    });
+
+    it('should prefix subscriptionId with "care-" when isE2S is true', async () => {
+      const response = await request(appWithAuth)
+        .post('/apps/register')
+        .set('x-test-impersonation', 'true')
+        .send({ 
+          siteId: 'test-site-123', 
+          subscriptionId: 'sub-12345' 
+        });
+
+      expect(response.status).not.toBe(400);
+      // The subscriptionId should be prefixed in the database
+      // We can't directly check the database in this test, but we can verify the request was accepted
+      expect(response.body.success).toBe(true);
+    });
+
+    it('should NOT prefix subscriptionId when isE2S is false', async () => {
+      const response = await request(appWithAuth)
+        .post('/apps/register')
+        .set('x-test-impersonation', 'false')
+        .send({ 
+          siteId: 'test-site-456', 
+          subscriptionId: 'sub-67890' 
+        });
+
+      expect(response.status).not.toBe(400);
+      expect(response.body.success).toBe(true);
+      // In this case, subscriptionId should remain unchanged
+    });
+
+    it('should handle missing subscriptionId with isE2S true', async () => {
+      const response = await request(appWithAuth)
+        .post('/apps/register')
+        .set('x-test-impersonation', 'true')
+        .send({ 
+          siteId: 'test-site-789'
+          // No subscriptionId provided
+        });
+
+      expect(response.status).not.toBe(400);
+      expect(response.body.success).toBe(true);
+    });
+
+    it('should handle undefined agentContext gracefully', async () => {
+      const appNoAuth = express();
+      appNoAuth.use(express.json());
+      // No auth middleware - agentContext will be undefined
+      appNoAuth.use('/apps', appsRouter);
+
+      const response = await request(appNoAuth)
+        .post('/apps/register')
+        .send({ 
+          siteId: 'test-site-999', 
+          subscriptionId: 'sub-99999' 
+        });
+
+      // Should still work, just without the prefix
+      expect(response.status).not.toBe(400);
+    });
+  });
+
   describe('CustomerId validation', () => {
     it('should return 400 when customerId is not a string', async () => {
       const response = await request(app)

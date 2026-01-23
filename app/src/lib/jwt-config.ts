@@ -19,6 +19,7 @@ export interface JWTClaims {
   siteId: string;          // Site ID
   canDownload: boolean;    // Permission to download app files
   canPublish: boolean;     // Permission to publish app
+  isE2S: boolean; // true if auth type is 'e2s' (employee-to-shopper)
 }
 
 /**

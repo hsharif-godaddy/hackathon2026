@@ -173,7 +173,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     const tokenOptions = {
       siteId: body.siteId,
       canDownload,
-      canPublish
+      canPublish,
+      isE2S: user.isE2S ?? false
     };
 
     const result = body.expiresInSeconds

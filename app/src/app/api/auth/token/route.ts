@@ -111,7 +111,8 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
     const result = await jwtService.createToken({
       siteId,
       canDownload: false,  // Preview apps don't need download permission
-      canPublish: false    // Preview apps don't need publish permission
+      canPublish: false,   // Preview apps don't need publish permission
+      isE2S: user.isE2S ?? false
     });
 
     return NextResponse.json(

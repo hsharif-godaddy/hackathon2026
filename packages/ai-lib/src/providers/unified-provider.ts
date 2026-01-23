@@ -311,7 +311,7 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
         modifiedInit.body = JSON.stringify(body)
 
         // Log successful injection
-        logger.debug('litellm_metadata injected into API request', {
+        logger.info('litellm_metadata injected into API request', {
           user: metadata.user,
           tags: metadata.tags,
           url: typeof url === 'string' ? url : url.toString()

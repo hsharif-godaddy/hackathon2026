@@ -67,7 +67,8 @@ export class GdAuthService {
             shopperId: 'dev-user',
             cid: 'dev-customer',
             exp: Math.floor(Date.now() / 1000) + 3600,
-            iat: Math.floor(Date.now() / 1000)
+            iat: Math.floor(Date.now() / 1000),
+            isE2S: false
           },
           reason: `Authentication bypassed (${authType} mode)`
         };
@@ -75,16 +76,17 @@ export class GdAuthService {
 
       // Use gd-auth for authentication - it handles heartbeat automatically
       const jwt = await this.gdAuth.authenticate(this.ssoHost, token, 0);
-      const isImpersonation = jwt.auth === 'e2s';
+      // auth: 'basic' = normal user, auth: 'e2s' = employee-to-shopper impersonation
+      const isE2S = jwt.auth === 'e2s';
 
       return {
         valid: true,
         payload: {
-          shopperId: isImpersonation ? jwt.e2s.shopperId : jwt.shopperId,
-          cid: isImpersonation ? jwt.e2s.cid : jwt.cid, // Use cid for customerId
+          shopperId: isE2S ? jwt.e2s.shopperId : jwt.shopperId,
+          cid: isE2S ? jwt.e2s.cid : jwt.cid,
           exp: jwt.exp,
           iat: jwt.iat,
-          // Include all other JWT payload properties
+          isE2S,
           ...jwt.payload
         }
       };

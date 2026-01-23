@@ -191,7 +191,7 @@ export const authUtils = {
    * @param token - JWT token string  
    * @returns True if token is e2s impersonation
    */
-  isImpersonationToken: (token: string): boolean => {
+  isE2SToken: (token: string): boolean => {
     return authUtils.detectAuthTypeFromToken(token) === 'e2s';
   }
 } as const
