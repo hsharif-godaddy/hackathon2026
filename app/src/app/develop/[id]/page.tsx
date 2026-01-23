@@ -497,7 +497,7 @@ function DevelopPageContent() {
               void sendMessage(
                 'Please analyze and fix this runtime error.',
                 null, // aiEditContext
-                undefined, // selectedAssets
+                null, // selectedAsset
                 null, // todoListContext
                 false, // isActionRequest
                 {

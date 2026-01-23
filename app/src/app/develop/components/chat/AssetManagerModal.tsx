@@ -2,24 +2,14 @@
 
 import dynamic from 'next/dynamic'
 
-import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context'
-
-/**
- * Media type enumeration for asset manager items
- */
-export enum MediaType {
-  IMAGE = 'IMAGE',
-  VIDEO = 'VIDEO',
-  PDF = 'PDF',
-}
 
 /**
  * Base properties common to all asset types
  */
 interface BaseAsset {
   /** The type of media */
-  mediaType: MediaType
+  mediaType: 'IMAGE' | 'VIDEO' | 'PDF'
   /** The source type (e.g., 'gc', 'vimeo') */
   sourceType: string
   /** The URL to the thumbnail or preview image (protocol-relative) */
@@ -30,7 +20,7 @@ interface BaseAsset {
  * Represents an image asset from the Asset Manager
  */
 export interface ImageAsset extends BaseAsset {
-  mediaType: MediaType.IMAGE
+  mediaType: 'IMAGE'
   /** The filename of the image */
   filename: string
   /** The MIME content type */
@@ -52,7 +42,7 @@ export interface ImageAsset extends BaseAsset {
  * Represents a video asset from the Asset Manager
  */
 export interface VideoAsset extends BaseAsset {
-  mediaType: MediaType.VIDEO
+  mediaType: 'VIDEO'
   /** The video URL */
   videoUrl: string
   /** Video ID */
@@ -69,7 +59,7 @@ export interface VideoAsset extends BaseAsset {
  * Represents a PDF asset from the Asset Manager
  */
 export interface PDFAsset extends BaseAsset {
-  mediaType: MediaType.PDF
+  mediaType: 'PDF'
   /** The filename of the PDF */
   filename: string
   /** The MIME content type */
@@ -97,10 +87,6 @@ interface AssetManagerModalProps {
   onItemsSelected: (items: AssetManagerItem[]) => void
   /** Venture ID for the asset manager */
   ventureId: string | null
-  /** Current number of assets already selected */
-  currentAssetCount?: number
-  /** The max number of assets a user can select */
-  maxAssets?: number
 }
 
 /**
@@ -146,57 +132,34 @@ const ImageManagerLoader = dynamic(
  * />
  * ```
  */
-export default function AssetManagerModal({ 
-    isOpen,
-    onClose,
-    onItemsSelected,
-    ventureId,
-    currentAssetCount = 0,
-    maxAssets = 1 
-  }: AssetManagerModalProps) {
-  const t = useTranslations();
+export default function AssetManagerModal({ isOpen, onClose, onItemsSelected, ventureId }: AssetManagerModalProps) {
   // Don't render anything if ventureId is not available yet
   if (!ventureId) {
     return null;
   }
 
-  // Calculate how many more assets can be selected
-  const selectionLimit = Math.max(0, maxAssets - currentAssetCount)
-
-  // Don't render the modal if we're already at the limit
-  if (selectionLimit === 0) {
-    return null;
-  }
-
   return (
     <div style={{ display: isOpen ? 'block' : 'none' }}>
-      {isOpen && (
-        <ImageManagerLoader
-          key={`asset-manager-${currentAssetCount}`}
-          appName="airobuilde"
-          businessCategory="tech"
-          ventureId={ventureId}
-          onItemsSelectedCallback={(items: any[]) => {
+      <ImageManagerLoader
+        appName="airobuilde"
+        businessCategory="tech"
+        ventureId={ventureId}
+        onItemsSelectedCallback={(items: any[]) => {
           logger.debug('asset_manager.items.selected', {
             itemCount: items.length,
             items: items.map((i: any) => ({ mediaType: i.mediaType, sourceType: i.sourceType }))
           });
-          
-          if (items.length > 0) {
-            onItemsSelected(items);
-          }
+          onItemsSelected(items);
           onClose();
         }}
         onModalCloseCallback={onClose}
         rootDomain={getHostname()}
-        selectionLimit={selectionLimit}
+        selectionLimit={1}
         autoSelectAfterUpload={true}
         removeSources={['STOCK_MEDIA', 'SOCIAL_MEDIA']}
-        mediaTypes={[MediaType.IMAGE, MediaType.VIDEO, MediaType.PDF]}
+        mediaTypes={['IMAGE', 'VIDEO', 'PDF']}
         market="en-US"
-        modalTitle={selectionLimit > 1 ? t('builder_asset_manager_title', { number: selectionLimit }) : null}
-        />
-      )}
+      />
     </div>
   );
 }

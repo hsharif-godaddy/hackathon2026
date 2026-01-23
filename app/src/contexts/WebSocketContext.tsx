@@ -14,7 +14,7 @@ interface WebSocketContextValue {
   sendMessage: (
     content: string,
     aiEditContext?: any,
-    selectedAssets?: any[],
+    selectedAsset?: any,
     todoListContext?: any,
     isActionRequest?: boolean,
     customContext?: any
@@ -32,7 +32,7 @@ export function WebSocketProvider({
   sendMessage: (
     content: string,
     aiEditContext?: any,
-    selectedAssets?: any[],
+    selectedAsset?: any,
     todoListContext?: any,
     isActionRequest?: boolean,
     customContext?: any
