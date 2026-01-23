@@ -3,16 +3,15 @@
  * Uses Gasket shopper tokens for customer access control
  */
 
-import { NextRequest, NextResponse } from 'next/server';
 import { context as otelContext, trace } from '@opentelemetry/api';
+import { NextRequest, NextResponse } from 'next/server';
 
-// Lazy import to avoid initializing gd-auth during module loading
 import { AccountAdapterFactory } from '@/lib/account-adapters/AccountAdapterFactory';
 import { getTokenAgeMinutes, getTokenValidationAgeMinutes, isTokenTooOld, decodeJWT } from '@/lib/auth/token-refresh';
 import { isFeatureEnabled } from '@/lib/features';
 import { isAuthDisabled } from '@/lib/gasket-config';
 import { MOCK_USER } from '@/lib/mock-auth';
-import { logger,type RequestContext, RequestContextService } from '@/lib/request-context';
+import { logger, type RequestContext, RequestContextService } from '@/lib/request-context';
 
 /**
  * Set OpenTelemetry span attribute for APM correlation
@@ -80,7 +79,8 @@ export interface CustomerUser {
   accountId?: string; // May not exist for new customers
   exp?: number;
   iat?: number;
-  isE2S?: boolean; // true if auth type is 'e2s' (employee-to-shopper)
+  authType?: 'basic' | 'e2s' | 's2s'; // Authentication type: basic (normal), e2s (employee impersonation), s2s (shopper delegation)
+  isE2S?: boolean; // Backward compatibility: true if authType is 'e2s' or 's2s'
 }
 
 export interface CustomerAuthContext {
@@ -237,13 +237,15 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       }
     }
 
+    const authType = result.payload.authType || 'basic';
     const user: CustomerUser = {
       shopperId,
       customerId: customerId || shopperId,
       accountId: account.id,
       exp: result.payload.exp,
       iat: result.payload.iat,
-      isE2S: result.payload.isE2S ?? false
+      authType,
+      isE2S: authType === 'e2s' || authType === 's2s' // Backward compatibility: true for any delegation
     };
 
     // Monitor token ages for observability

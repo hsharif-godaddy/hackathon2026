@@ -57,8 +57,8 @@ export class GdAuthService {
   async authenticate(token: string): Promise<{ valid: boolean; payload?: any; reason?: string }> {
     try {
       // If auth is disabled or not JWT mode, return mock success
-      const authType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
-      const isJWTMode = authType === 'jwt' || (process.env.NODE_ENV === 'production' && !authType);
+      const envAuthType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
+      const isJWTMode = envAuthType === 'jwt' || (process.env.NODE_ENV === 'production' && !envAuthType);
 
       if (!isJWTMode || !this.gdAuth) {
         return {
@@ -68,25 +68,45 @@ export class GdAuthService {
             cid: 'dev-customer',
             exp: Math.floor(Date.now() / 1000) + 3600,
             iat: Math.floor(Date.now() / 1000),
-            isE2S: false
+            authType: 'basic'
           },
-          reason: `Authentication bypassed (${authType} mode)`
+          reason: `Authentication bypassed (${envAuthType} mode)`
         };
       }
 
       // Use gd-auth for authentication - it handles heartbeat automatically
       const jwt = await this.gdAuth.authenticate(this.ssoHost, token, 0);
-      // auth: 'basic' = normal user, auth: 'e2s' = employee-to-shopper impersonation
-      const isE2S = jwt.auth === 'e2s';
+      const authType = jwt.auth;
+      const isImpersonation = authType === 'e2s';
+      const isDelegation = authType === 's2s';
+
+      // Extract shopper/customer info based on auth type
+      let shopperId: string;
+      let cid: string;
+
+      if (isImpersonation) {
+        // Employee-to-Shopper: Use e2s nested object
+        shopperId = jwt.e2s.shopperId;
+        cid = jwt.e2s.cid;
+      } else if (isDelegation) {
+        // Shopper-to-Shopper: Use s2s nested object
+        shopperId = jwt.s2s.shopperId;
+        cid = jwt.s2s.cid;
+      } else {
+        // Basic auth: Use root level
+        shopperId = jwt.shopperId;
+        cid = jwt.cid;
+      }
 
       return {
         valid: true,
         payload: {
-          shopperId: isE2S ? jwt.e2s.shopperId : jwt.shopperId,
-          cid: isE2S ? jwt.e2s.cid : jwt.cid,
+          shopperId,
+          cid,
           exp: jwt.exp,
           iat: jwt.iat,
-          isE2S,
+          authType, // Include auth type for debugging
+          // Include all other JWT payload properties
           ...jwt.payload
         }
       };

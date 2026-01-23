@@ -7,17 +7,18 @@ import { getRootDomain } from '@/utils/getRootDomain';
 /**
  * Local development feature flags
  * Override switchboard for local development when NEXT_PUBLIC_ENABLE_LOCAL_FEATURES=true
- * 
+ *
  * Only includes features required for local dev publish functionality.
  */
 const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-publish-button': true,
   'appbuilder-manage-plan': true,
+  'appbuilder-settings-team': true,
 };
 
 /**
  * Fetch feature flag value from BFF API
- * 
+ *
  * @param featureName - Name of the feature flag to fetch
  * @returns Promise with the feature flag value (boolean)
  */

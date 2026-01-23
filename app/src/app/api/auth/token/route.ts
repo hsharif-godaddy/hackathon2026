@@ -112,6 +112,7 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
       siteId,
       canDownload: false,  // Preview apps don't need download permission
       canPublish: false,   // Preview apps don't need publish permission
+      authType: user.authType || 'basic',
       isE2S: user.isE2S ?? false
     });
 

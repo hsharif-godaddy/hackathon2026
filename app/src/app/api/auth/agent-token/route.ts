@@ -174,6 +174,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       siteId: body.siteId,
       canDownload,
       canPublish,
+      authType: user.authType || 'basic',
       isE2S: user.isE2S ?? false
     };
 

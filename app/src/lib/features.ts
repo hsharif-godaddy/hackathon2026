@@ -152,10 +152,10 @@ export const devSupervisor = {
 export const authUtils = {
   /** 
    * Get supported auth types for JWT authentication
-   * Includes both basic and impersonation (e2s) auth types
+   * Includes basic, e2s (employee-to-shopper), and s2s (shopper-to-shopper delegation)
    */
   getSupportedAuthTypes: (): string[] => {
-    return ['basic', 'e2s'];
+    return ['basic', 'e2s', 's2s'];
   },
   
   /**
@@ -169,13 +169,23 @@ export const authUtils = {
     const payload = decodeJWT(token);
     if (!payload) return 'basic';
     
-    // Check for e2s (impersonation) auth
+    // Check for auth field first (gd-auth sets this)
+    if (payload.auth) {
+      return payload.auth;
+    }
+    
+    // Check for e2s (employee-to-shopper impersonation)
     if (payload.e2s && typeof payload.e2s === 'object') {
       return 'e2s';
     }
     
+    // Check for s2s (shopper-to-shopper delegation)
+    if (payload.s2s && typeof payload.s2s === 'object') {
+      return 's2s';
+    }
+    
     // Check for other nested auth types
-    const nestedAuthTypes = ['cert2s', 's2s', 'e2s2s'];
+    const nestedAuthTypes = ['cert2s', 'e2s2s'];
     for (const authType of nestedAuthTypes) {
       if (payload[authType] && typeof payload[authType] === 'object') {
         return authType;

@@ -8,6 +8,7 @@ import ProjectPanel from '@/app/develop/components/settings/ProjectPanel'
 import { SecretsPanel } from '@/app/develop/components/settings/SecretsPanel'
 import SecurityPanel from '@/app/develop/components/settings/SecurityPanel'
 import SocialPanel from '@/app/develop/components/settings/social/SocialPanel'
+import TeamPanel from '@/app/develop/components/settings/TeamPanel'
 import VisualScanPanel from '@/app/develop/components/settings/VisualScanPanel'
 import { SettingsSection } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
@@ -22,6 +23,7 @@ export default function SettingsView() {
   const { data: isDomainEnabled } = useSwitchboard('appbuilder-settings-domain');
   const { data: isBackupsEnabled } = useSwitchboard('appbuilder-settings-backups');
   const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security');
+  const { data: isTeamEnabled } = useSwitchboard('appbuilder-settings-team');
   const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
   const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
@@ -38,6 +40,8 @@ export default function SettingsView() {
         return isBackupsEnabled ? <BackupsPanel /> : null;
       case SettingsSection.SECURITY:
         return isSecurityEnabled ? <SecurityPanel /> : null;
+      case SettingsSection.TEAM:
+        return isTeamEnabled ? <TeamPanel /> : null;
       case SettingsSection.DATABASE:
         return isDatabaseEnabled ? <DatabasePanel appId={appId} /> : null;
       case SettingsSection.SECRETS:

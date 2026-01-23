@@ -10,6 +10,7 @@ import LockedIcon from '@ux/icon/locked';
 import RevertIcon from '@ux/icon/revert';
 import SettingsIcon from '@ux/icon/settings';
 import SocialIcon from '@ux/icon/social';
+import Users3Icon from '@ux/icon/users3';
 
 import { SettingsSection } from '@/app/develop/components/types';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -42,6 +43,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const { data: isDomainEnabled } = useSwitchboard('appbuilder-settings-domain');
   const { data: isBackupsEnabled } = useSwitchboard('appbuilder-settings-backups');
   const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security');
+  const { data: isTeamEnabled } = useSwitchboard('appbuilder-settings-team');
   const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
   const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
@@ -77,6 +79,12 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       label: t('builder_settings_nav_security'),
       icon: <LockedIcon />,
       disabled: isSecurityEnabled !== true,
+    },
+    {
+      id: SettingsSection.TEAM,
+      label: t('builder_settings_nav_team'),
+      icon: <Users3Icon />,
+      disabled: isTeamEnabled !== true,
     },
     {
       id: SettingsSection.DATABASE,
