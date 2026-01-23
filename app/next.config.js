@@ -21,6 +21,14 @@ export default gasket.actions.getNextConfig({
     'airo-builder-local.dev-godaddy.com'
   ],
   webpack: (config, { isServer }) => {
+    // Suppress webpack warnings for dynamic imports in plugin systems
+    // These are expected for @venture/cds-utils and @gasket/plugin-dynamic-plugins
+    // Merge with existing warnings instead of replacing them
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings ?? []),
+      /Critical dependency: the request of a dependency is an expression/,
+    ];
+
     if (!isServer) {
       // Exclude server-only modules from client bundle
       // This is the standard Next.js approach for conditional server imports
@@ -28,7 +36,7 @@ export default gasket.actions.getNextConfig({
       config.externals.push({
         './jwt-service': 'commonjs ./jwt-service',
       });
-      
+
       // Add fallbacks for Node.js modules that Gasket plugins try to import
       // These modules are not available in the browser, so we provide empty fallbacks
       config.resolve.fallback = {

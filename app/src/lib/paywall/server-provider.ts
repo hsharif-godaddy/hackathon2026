@@ -43,13 +43,42 @@ export class ServerPaywallProvider implements PaywallDataProvider {
    * Extracts the root domain from the Host header and transforms
    * 'ote' to 'stg' for staging environments.
    *
+   * For local development (localhost or 127.0.0.1), returns a fallback
+   * domain from the PAYWALL_DEV_DOMAIN environment variable, or defaults
+   * to 'test-godaddy.com'.
+   *
    * @returns Root domain or null if header not found
    */
   getRootDomain(): string | null {
     const host = this.headers.get('host');
-    if (!host) return null;
 
-    const matches = host.match(/([\w-]+\.\w+)$/);
+    if (!host) {
+      logger.warn('paywall.server-provider.no-host-header', {
+        message: 'Host header is missing or null',
+      });
+      return null;
+    }
+
+    // Strip port number if present (e.g., "example.com:8443" -> "example.com")
+    const hostWithoutPort = host.split(':')[0];
+
+    // Development fallback for local development domains
+    // Matches: localhost, 127.0.0.1, local.gasket.dev-godaddy.com
+    if (
+      hostWithoutPort.startsWith('localhost') ||
+      hostWithoutPort.startsWith('127.0.0.1') ||
+      hostWithoutPort === 'local.gasket.dev-godaddy.com'
+    ) {
+      const fallbackDomain = process.env.PAYWALL_DEV_DOMAIN || 'dev-godaddy.com';
+      logger.info('paywall.server-provider.local-dev-fallback', {
+        host: hostWithoutPort,
+        fallbackDomain,
+      });
+      return fallbackDomain;
+    }
+
+    // Extract root domain (e.g., "builder.test-godaddy.com" -> "test-godaddy.com")
+    const matches = hostWithoutPort.match(/([\w-]+\.\w+)$/);
     return matches ? matches[0].replace('ote', 'stg') : null;
   }
 

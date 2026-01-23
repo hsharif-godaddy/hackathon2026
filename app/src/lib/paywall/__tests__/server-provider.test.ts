@@ -156,8 +156,22 @@ describe('ServerPaywallProvider', () => {
       expect(provider.getRootDomain()).toBeNull();
     });
 
-    it('should return null when host does not match domain pattern', () => {
+    it('should return fallback domain for localhost', () => {
       const headers = new Headers({ host: 'localhost:3000' });
+      const provider = new ServerPaywallProvider('jwt-token', 'customer-123', headers);
+
+      expect(provider.getRootDomain()).toBe('dev-godaddy.com');
+    });
+
+    it('should return fallback domain for local.gasket.dev-godaddy.com', () => {
+      const headers = new Headers({ host: 'local.gasket.dev-godaddy.com:8443' });
+      const provider = new ServerPaywallProvider('jwt-token', 'customer-123', headers);
+
+      expect(provider.getRootDomain()).toBe('dev-godaddy.com');
+    });
+
+    it('should return null when host does not match domain pattern and is not localhost', () => {
+      const headers = new Headers({ host: 'invalid-host' });
       const provider = new ServerPaywallProvider('jwt-token', 'customer-123', headers);
 
       expect(provider.getRootDomain()).toBeNull();
