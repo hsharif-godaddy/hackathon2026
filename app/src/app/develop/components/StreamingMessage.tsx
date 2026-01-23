@@ -4,7 +4,6 @@ import clsx from 'clsx'
 import { Check, ClipboardCopy, Expand, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import ThinkingIndicator from '@/app/develop/components/ThinkingIndicator'
 import { logger } from '@/lib/request-context'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
 import { useStreamingState } from '@/stores/useStreamingConversationStore'
@@ -183,16 +182,6 @@ function UserMessage({ content }: { content: string }) {
 function renderMessageContent(message: ChatMessage | StreamingMessageType, isActiveStream?: boolean, isLastAssistantMessage?: boolean, startTime?: Date, streamingState?: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error') {
   // Assistant messages - use streaming integrated response for proper content flow
   if (message.role === 'assistant') {
-    // Check if we should show thinking indicator (no content yet, stream is active)
-    const hasNoContent = !message.content && !message.segments?.length && !message.toolCalls?.length
-    const isIncomplete = 'isComplete' in message && !message.isComplete
-    const isErrorOrRetrying = streamingState === 'error' || streamingState === 'retrying'
-    const showThinking = isActiveStream && isIncomplete && hasNoContent && !message.upstreamError && !message.budgetExceeded && !message.maxStepsReached && !isErrorOrRetrying
-
-    if (showThinking) {
-      return <ThinkingIndicator active={true} className="mt-2" />
-    }
-
     return <StreamingIntegratedResponse message={message} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} startTime={startTime} streamingState={streamingState} />
   }
 

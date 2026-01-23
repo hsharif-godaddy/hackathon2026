@@ -33,10 +33,10 @@
   "dependencies": {
     "@airo-ux/loader": "^2.1.0",
     "@aws-sdk/client-secrets-manager": "3.679.0",
-    "@babel/runtime": "^7.28.4",
     "@aws-sdk/client-sqs": "3.679.0",
     "@aws-sdk/client-sts": "3.679.0",
     "@aws-sdk/credential-provider-node": "^3.888.0",
+    "@babel/runtime": "^7.28.4",
     "@elastic/apm-rum": "^5.17.0",
     "@formatjs/intl": "^3.1.8",
     "@fullstory/browser": "^2.0.6",
@@ -157,6 +157,7 @@
     "sass": "^1.92.1",
     "socket.io-client": "^4.8.1",
     "tailwind-merge": "^3.3.1",
+    "use-sound": "^5.0.0",
     "uuid": "^11.1.0",
     "xstate": "^5.25.0",
     "zustand": "^5.0.8"

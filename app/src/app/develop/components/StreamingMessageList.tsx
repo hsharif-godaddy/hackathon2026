@@ -3,6 +3,7 @@
 import { useCallback,useEffect, useMemo, useRef, useState } from 'react'
 import Box from '@ux/box'
 import Skeleton from '@ux/skeleton'
+import useSound from 'use-sound'
 
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -16,6 +17,7 @@ import {
   useIsLoading,
 } from '@/stores/useStreamingConversationStore'
 import StreamingMessage from './StreamingMessage'
+import ThinkingIndicator from './ThinkingIndicator'
 
 interface StreamingMessageListProps {
   allMessages: (ChatMessage | StreamingMessageType)[]
@@ -34,6 +36,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   const scrollThrottleRef = useRef<NodeJS.Timeout | null>(null)
   const activeStreamSignatureRef = useRef<string | null>(null)
   const hasLoggedFirstResponseRef = useRef(false)
+  const prevIsStreamingRef = useRef(false)
   const t = useTranslations();
 
   // Store hooks for loading state
@@ -42,6 +45,9 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   const appIdFromParams = useAppIdFromParams()
   const isLoadingMessages = useIsLoading()
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
+
+  // Sound hook
+  const [playBeep] = useSound('/notification-beep.wav', { volume: 0.5 })
 
   // Reset scroll state when app changes to ensure fresh UX
   useEffect(() => {
@@ -217,11 +223,22 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     prevLastMessageId.current = currentLastMessageId
   }, [allMessages, isInitialLoad, scrollToBottom, userHasScrolledUp])
 
-  // Handle streaming content updates with a single deduped effect
+  // Handle streaming content updates and completion
+  const wasStreamingRef = useRef(false)
   useEffect(() => {
     const currentSignature = activeStream
       ? `${activeStream.id}:${activeStream.content.length}:${activeStream.segments.length}:${activeStream.toolCalls.length}`
       : null
+
+    // Handle stream completion (was streaming, now stopped)
+    if (wasStreamingRef.current && !isStreaming && !userHasScrolledUp) {
+      scrollToBottom(true, true)
+      wasStreamingRef.current = false
+      activeStreamSignatureRef.current = currentSignature
+      return
+    }
+
+    wasStreamingRef.current = isStreaming
 
     if (!isStreaming || userHasScrolledUp) {
       activeStreamSignatureRef.current = currentSignature
@@ -264,6 +281,15 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     }
   }, [scrollToBottom, userHasScrolledUp])
 
+  // Play notification sound when streaming completes
+  useEffect(() => {
+    // Detect transition from streaming to not streaming
+    if (prevIsStreamingRef.current && !isStreaming) {
+      playBeep()
+    }
+    prevIsStreamingRef.current = isStreaming
+  }, [isStreaming, playBeep])
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -275,6 +301,43 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
       }
     }
   }, [])
+
+  const shouldShowGlobalThinking = useMemo(() => {
+    if (!isStreaming || !activeStream || activeStream.isComplete) {
+      return false
+    }
+
+    if (activeStream.upstreamError || activeStream.budgetExceeded || activeStream.maxStepsReached) {
+      return false
+    }
+
+    // Build a map of tool IDs to their latest status from segments
+    const toolStatusMap = new Map<string, string>()
+    activeStream.segments?.forEach(segment => {
+      if ((segment.type === 'tool_start' || segment.type === 'tool_result' || segment.type === 'tool_call') && segment.toolCall) {
+        const toolId = segment.toolCall.id
+        const currentStatus = segment.toolCall.status
+        if (currentStatus) {
+          toolStatusMap.set(toolId, currentStatus)
+        }
+      }
+    })
+
+    const runningToolsFromSegments = Array.from(toolStatusMap.entries()).filter(([_toolId, status]) => status === 'running')
+    const runningInToolCalls = activeStream.toolCalls?.filter(tool => tool.status === 'running')
+    const hasRunningTools = runningToolsFromSegments.length > 0 || (runningInToolCalls && runningInToolCalls.length > 0)
+
+    const lastSegment = activeStream.segments?.[activeStream.segments.length - 1]
+    const isStreamingText = lastSegment && (lastSegment.type === 'text' || lastSegment.type === 'content')
+
+    const lastToolSegment = activeStream.segments?.findLast(seg =>
+      seg.type === 'tool_result' || seg.type === 'tool_call'
+    )
+    const isSuggestedResponseCompleted = lastToolSegment?.toolCall?.name === 'suggestedResponse' &&
+                                         lastToolSegment?.toolCall?.status === 'completed'
+
+    return !hasRunningTools && !isStreamingText && !isSuggestedResponseCompleted
+  }, [isStreaming, activeStream])
 
   // Show loading state during app transitions to prevent showing stale messages
   const isAppTransitioning = currentAppId !== appIdFromParams
@@ -381,6 +444,8 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
           />
         )
       })}
+
+      {shouldShowGlobalThinking && <ThinkingIndicator active={true} />}
 
       <div ref={messagesEndRef} />
     </div>
