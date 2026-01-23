@@ -3,6 +3,8 @@
  * These match the backend types but are defined separately to avoid coupling
  */
 
+export const CONNECT_REQUEST_FROM_PUBLISH = 'social_connect_with_post'
+
 export enum SocialPlatform {
   FACEBOOK = 'facebook',
   INSTAGRAM = 'instagram',

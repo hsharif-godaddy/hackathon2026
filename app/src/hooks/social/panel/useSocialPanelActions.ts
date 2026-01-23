@@ -14,6 +14,7 @@ interface UseSocialPanelActionsResult {
   selectedPlatform: string
   selectedConnectionId: string | undefined
   unlinkingConnectionId: string | null
+  oauthState: string
 
   // Actions
   handleConnectPlatform: (platform: string) => void
@@ -40,6 +41,7 @@ export function useSocialPanelActions({
   const [selectedPlatform, setSelectedPlatform] = useState<string>('')
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | undefined>()
   const [unlinkingConnectionId, setUnlinkingConnectionId] = useState<string | null>(null)
+  const [oauthState, setOauthState] = useState<string>('')
 
   const refreshConnections = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['social-connections'] })
@@ -49,12 +51,14 @@ export function useSocialPanelActions({
   const handleConnectPlatform = useCallback((platform: string) => {
     setSelectedPlatform(platform)
     setSelectedConnectionId(undefined)
+    setOauthState(`${platform}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`)
     setIsModalOpen(true)
   }, [])
 
   const handleSelectConnection = useCallback((platform: string) => {
     setSelectedPlatform(platform)
     setSelectedConnectionId(undefined)
+    setOauthState(`${platform}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`)
     setIsModalOpen(true)
   }, [])
 
@@ -62,12 +66,14 @@ export function useSocialPanelActions({
     setIsModalOpen(false)
     setSelectedPlatform('')
     setSelectedConnectionId(undefined)
+    setOauthState('')
   }, [])
 
   const handleModalSuccess = useCallback(() => {
     setIsModalOpen(false)
     setSelectedPlatform('')
     setSelectedConnectionId(undefined)
+    setOauthState('')
     queryClient.invalidateQueries({ queryKey: ['site-associations', siteId] })
   }, [queryClient, siteId])
 
@@ -95,6 +101,7 @@ export function useSocialPanelActions({
     selectedPlatform,
     selectedConnectionId,
     unlinkingConnectionId,
+    oauthState,
     handleConnectPlatform,
     handleSelectConnection,
     handleModalClose,

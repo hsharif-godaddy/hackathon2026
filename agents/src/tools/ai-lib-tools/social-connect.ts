@@ -1,6 +1,6 @@
 import { createTool, type Tool } from '@airo/ai-lib';
 import { z } from 'zod';
-import { SocialPlatform } from '../../types/social.js';
+import { SocialPlatform, CONNECT_REQUEST_FROM_PUBLISH } from '../../types/social.js';
 import { Logger } from '../../logging/index.js';
 
 const logger = Logger.create({ service: 'social-connect' });
@@ -50,7 +50,7 @@ export const socialConnect: Tool = createTool(
 
     // Check for pending post data (user tried to publish without connection)
     const contextAttachments = (context as any)?.contextAttachments;
-    const connectWithPost = contextAttachments?.find((att: any) => att.type === 'social_connect_with_post');
+    const connectWithPost = contextAttachments?.find((att: any) => att.type === CONNECT_REQUEST_FROM_PUBLISH);
     const pendingPublish = connectWithPost?.data?.pendingPublish;
     const postData = connectWithPost?.data?.postData;
 

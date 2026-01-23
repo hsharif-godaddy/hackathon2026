@@ -16,6 +16,7 @@ interface SocialConnectModalProps {
   onClose: () => void
   onSuccess?: () => void
   selectedConnectionId?: string
+  oauthState: string
 }
 
 export function SocialConnectModal({
@@ -24,17 +25,18 @@ export function SocialConnectModal({
   isOpen,
   onClose,
   onSuccess,
-  selectedConnectionId
+  selectedConnectionId,
+  oauthState
 }: SocialConnectModalProps) {
   const t = useTranslations()
   const connectionsQuery = useSocialConnections()
   const connections = useMemo(() => connectionsQuery.data ?? [], [connectionsQuery.data])
 
-  const [flowKey, setFlowKey] = useState(() => `${platform}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`)
+  const [mountKey, setMountKey] = useState(() => Date.now())
 
   useEffect(() => {
     if (isOpen) {
-      setFlowKey(`${platform}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`)
+      setMountKey(Date.now())
     }
   }, [isOpen, platform])
 
@@ -65,10 +67,10 @@ export function SocialConnectModal({
     <Modal title={title} onClose={onClose}>
       <div className="w-full w-[400px] md:w-[500px] lg:w-[600px]">
         <SocialConnectFlow
-          key={flowKey}
+          key={mountKey}
           platform={platform}
           appId={appId}
-          state={flowKey}
+          state={oauthState}
           initialStep={initialStep}
           initialUserTokenId={initialUserTokenId}
           disableAutoOpen

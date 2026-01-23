@@ -12,6 +12,7 @@ import { PostCardPreview } from '@/app/develop/components/widgets/PostCardPrevie
 import { useWebSocketContext } from '@/contexts/WebSocketContext'
 import { useSiteAssociations } from '@/hooks/useSocial'
 import { useTranslations } from '@/hooks/useTranslations'
+import { CONNECT_REQUEST_FROM_PUBLISH } from '@/types/social'
 import { SocialPostData, SocialPostState } from '@/types/social-posts'
 import { formatHashtags, formatPlatformName, getCharacterCount, getPlatformLimits, isPostOverLimit } from '@/utils/social'
 
@@ -256,7 +257,7 @@ export const SocialPostModal = memo(({ post, appId, onClose, onSave, onPublish }
 
       // Transform post data for publishing
       const pendingPublish = {
-        platform: editedPost.platform as 'facebook' | 'instagram',
+        platform: editedPost.platform,
         message: [editedPost.content, editedPost.callToAction, formatHashtags(editedPost.hashtags)].filter(Boolean).join('\n\n'),
         imageUrls: editedPost.images?.map(img => img.url) || [],
       }
@@ -287,7 +288,7 @@ export const SocialPostModal = memo(({ post, appId, onClose, onSave, onPublish }
           undefined,
           false,
           {
-            type: 'social_connect_with_post',
+            type: CONNECT_REQUEST_FROM_PUBLISH,
             data: {
               platform: editedPost.platform,
               pendingPublish,

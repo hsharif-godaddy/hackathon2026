@@ -67,6 +67,7 @@ export default function SocialPanel({ siteId }: SocialPanelProps) {
         onClose={actions.handleModalClose}
         onSuccess={actions.handleModalSuccess}
         selectedConnectionId={actions.selectedConnectionId}
+        oauthState={actions.oauthState}
       />
     </>
   )

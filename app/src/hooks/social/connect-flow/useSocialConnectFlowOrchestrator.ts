@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 
 import { useIsFullscreen } from '@/hooks/useFullscreen'
 import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
 import { socialV2Client } from '@/lib/social'
 import { getPlatformStrategy, PLATFORM_CONFIG, PLATFORM_TRANSFORMS, PlatformConfig, SocialPlatform } from '@/lib/social-platforms'
 import { getErrorMessage } from '@/lib/social-utils'
@@ -21,7 +22,7 @@ import { useLinkConnection } from '../mutations/useLinkConnection'
 export interface SocialConnectFlowOrchestratorProps {
   platform: string
   appId: string
-  state?: string
+  state: string
   initialStep?: FlowStep
   initialUserTokenId?: string
   disableAutoOpen?: boolean
@@ -74,9 +75,14 @@ export function useSocialConnectFlowOrchestrator({
   onSuccess,
 }: SocialConnectFlowOrchestratorProps): SocialConnectFlowOrchestratorResult {
   const t = useTranslations()
-  const [generatedState] = useState(
-    () => state || `${platform}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
-  )
+
+  useEffect(() => {
+    logger.info('social.connect_flow.state_sync', {
+      platform,
+      appId,
+      state,
+    })
+  }, [state, platform, appId])
 
   const { state: flowState, dispatch } = useSocialConnectFlowStateMachine(
     initialStep || FlowStep.SelectExisting,
@@ -126,7 +132,7 @@ export function useSocialConnectFlowOrchestrator({
   } = useSocialOAuthFlow({
     platform: normalizedPlatform as SocialPlatform,
     appId,
-    state: generatedState,
+    state,
     enabled: shouldProceedToOAuth,
     flowStep: flowState.step,
     userTokenId: flowState.userTokenId || '',
@@ -156,7 +162,7 @@ export function useSocialConnectFlowOrchestrator({
   const { authStatus, errorMessage, openPopup } = useAuthPopup(
     authUrl || '',
     platform,
-    generatedState,
+    state,
     handleOAuthSuccess,
     disableAutoOpen || flowState.forceNewConnection || flowState.showSelectExisting || isSelectExistingLoading
   )

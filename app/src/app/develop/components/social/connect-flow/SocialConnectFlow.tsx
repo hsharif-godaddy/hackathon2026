@@ -16,7 +16,7 @@ import { ContainerVariant,SocialConnectFlowContainer } from './SocialConnectFlow
 interface SocialConnectFlowProps {
   platform: string
   appId: string
-  state?: string
+  state: string
   initialStep?: FlowStep
   initialUserTokenId?: string
   disableAutoOpen?: boolean

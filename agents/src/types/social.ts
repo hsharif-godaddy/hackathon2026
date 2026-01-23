@@ -48,3 +48,5 @@ export function getAllPlatforms(): SocialPlatform[] {
 export function getAllPostStates(): PostState[] {
   return Object.values(PostState);
 }
+
+export const CONNECT_REQUEST_FROM_PUBLISH = 'social_connect_with_post'

@@ -51,7 +51,7 @@ export function useSocialAuthUrl(
         popup: String(popup ?? true),
         scopes: requestedScopes.join(','),
         path: `develop/${appId}`,
-        state,
+        queryParams: `state=${state}`,
       })
 
       if (strategy.oauthParams) {

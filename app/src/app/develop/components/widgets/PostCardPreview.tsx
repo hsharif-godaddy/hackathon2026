@@ -14,8 +14,7 @@ import { text } from '@ux/text'
 
 import { useAppImageUrl } from '@/app/develop/hooks/useAppImageUrl'
 import { useTranslations } from '@/hooks/useTranslations'
-import { SocialPlatform } from '@/types/social'
-import { SocialPostData } from '@/types/social-posts'
+import { PublishablePlatform, SocialPostData } from '@/types/social-posts'
 import { formatHashtags } from '@/utils/social'
 
 /**
@@ -33,7 +32,7 @@ const PlatformIcon = {
  */
 const PostCardText = ({ post }: { post: SocialPostData }) => {
   return (
-    <div className={clsx('px-2 mx-1 mb-1', post.platform === SocialPlatform.INSTAGRAM ? 'order-3': 'order-2')}>
+    <div className={clsx('px-2 mx-1 mb-1', post.platform === PublishablePlatform.INSTAGRAM ? 'order-3': 'order-2')}>
       <div className="text-sm">
         {post.content}{' '}
         {post.callToAction && (
@@ -77,7 +76,7 @@ const PostImage = memo(({ postImage, imageAspectRatio, imagesRequested , platfor
   }
 
   return (
-    <div className={ clsx("mx-0.5 flex items-center justify-center relative mt-0.5", platform === SocialPlatform.INSTAGRAM ? 'order-2 mb-1' : 'order-3') } style={{ aspectRatio: imageAspectRatio }}>
+    <div className={ clsx("mx-0.5 flex items-center justify-center relative mt-0.5", platform === PublishablePlatform.INSTAGRAM ? 'order-2 mb-1' : 'order-3') } style={{ aspectRatio: imageAspectRatio }}>
       {postImage && imageUrl ? (
         <img
           src={imageUrl}
@@ -154,7 +153,7 @@ const PreviewFooter = memo(() => {
  */
 export const PostCardPreview = ({ post }: { post: SocialPostData }) => {
   const imageAspectRatio = useMemo(() => {
-    if (post.platform === SocialPlatform.INSTAGRAM) return '1 / 1';
+    if (post.platform === PublishablePlatform.INSTAGRAM) return '1 / 1';
     return '16 / 9';
   }, [post.platform]);
 

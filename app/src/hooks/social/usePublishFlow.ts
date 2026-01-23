@@ -43,7 +43,7 @@ export function usePublishFlow(
 
   const { data: connection, isError: isConnectionError, error: connectionError } = useConnectionById(
     selectedAssociation?.socialId || '',
-    !!selectedAssociation
+    !!selectedAssociation && isActiveFlow
   )
 
   const executePublish = useCallback(async (

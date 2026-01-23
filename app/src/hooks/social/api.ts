@@ -3,7 +3,7 @@ import { agentFetch } from '@/lib/agent-fetch'
 import { SocialV2Client } from '@/lib/social'
 import { isFacebookConnection, isInstagramConnection } from '@/lib/utils/social-type-guards'
 import type { SocialConnection, SocialPublishResult } from '@/types/social'
-import { type PendingPublish, SocialPostState } from '@/types/social-posts'
+import { type PendingPublish, PublishablePlatform, SocialPostState } from '@/types/social-posts'
 
 const socialV2Client = new SocialV2Client()
 
@@ -95,10 +95,10 @@ async function publishToInstagram(
   })
 }
 
-const platformPublishers = {
-  facebook: publishToFacebook,
-  instagram: publishToInstagram
-} as const
+const platformPublishers: Record<PublishablePlatform, (publish: PendingPublish, connection: SocialConnection, errorMessages?: PublishErrorMessages) => Promise<SocialPublishResult>> = {
+  [PublishablePlatform.FACEBOOK]: publishToFacebook,
+  [PublishablePlatform.INSTAGRAM]: publishToInstagram
+}
 
 export async function publishToPlatform(
   publish: PendingPublish,

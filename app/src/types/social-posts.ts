@@ -1,6 +1,15 @@
 import type { SocialPlatform, SocialPublishResult } from './social'
 
 /**
+ * Platforms that support direct publishing
+ * Subset of SocialPlatform that has publish functionality implemented
+ */
+export enum PublishablePlatform {
+  FACEBOOK = 'facebook',
+  INSTAGRAM = 'instagram'
+}
+
+/**
  * State of a social post in the database
  * Represents the lifecycle state after a publish attempt
  */
@@ -47,7 +56,7 @@ export interface SocialPostData {
   styleDescription?: string
   content: string
   hashtags: string[]
-  platform: SocialPlatform
+  platform: PublishablePlatform
   callToAction?: string
   images?: PostImageData[]
   hasImages?: boolean       // Flag indicating if post has images
@@ -66,7 +75,7 @@ export type PublishStatus = `${PublishFlowState}`
 
 export interface PendingPublish {
   publishId?: string
-  platform: 'facebook' | 'instagram'
+  platform: PublishablePlatform
   message: string
   imageUrls: string[]
   scheduledAt?: Date

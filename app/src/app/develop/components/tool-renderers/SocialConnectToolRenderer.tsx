@@ -72,7 +72,7 @@ function SocialConnectToolRenderer({
         <SocialConnectFlow
           platform={r.platform as string}
           appId={r.appId as string}
-          state={r.state as string | undefined}
+          state={r.state as string}
           disableAutoOpen={false}
           onSuccess={handleConnectSuccess}
         />

@@ -44,7 +44,7 @@ const PLATFORM_LIMITS: Record<PublishablePlatform, PlatformLimits> = {
  * @returns Platform limits object with maxCharacters and maxImages
  */
 export function getPlatformLimits(platform: SocialPostData['platform']): PlatformLimits {
-  return PLATFORM_LIMITS[platform as PublishablePlatform] || PLATFORM_LIMITS[SocialPlatform.FACEBOOK]
+  return PLATFORM_LIMITS[platform] || PLATFORM_LIMITS[SocialPlatform.FACEBOOK]
 }
 
 /**
