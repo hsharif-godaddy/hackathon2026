@@ -6,6 +6,7 @@ import Radio from "@ux/radio";
 import text from "@ux/text";
 import TextInput from "@ux/text-input";
 
+import { useTranslations } from "@/hooks/useTranslations";
 import { logger } from '@/lib/request-context';
 import type { FeedbackFormProps } from "./types";
 import { getBaseUrl, isLocalhost } from "./utils";
@@ -17,6 +18,7 @@ export function FeedbackForm({
   onSubmitError,
   eids,
 }: FeedbackFormProps) {
+  const t = useTranslations();
   const { control, handleSubmit, formState } = useForm();
 
   async function onSubmit(data: any) {
@@ -86,8 +88,8 @@ export function FeedbackForm({
               {type === "radio" && options ? (
                 <div>
                   <Box gap="md">
-                    <text.label as="label" text={label} />
-                    {options.map((v) => (
+                    <text.label as="label" text={t(`builder_feedback_${id}_label`)} />
+                    {options.map((v, index) => (
                       <Controller
                         key={v}
                         control={control}
@@ -97,7 +99,7 @@ export function FeedbackForm({
                           return (
                             <Radio
                               id={v}
-                              label={v}
+                              label={t(`builder_feedback_${id}_option_${index}`)}
                               {...field}
                               onChange={() => field.onChange(v)}
                               checked={field.value === v}
@@ -112,7 +114,7 @@ export function FeedbackForm({
                     <text.div
                       as="caption"
                       emphasis="critical"
-                      text="Please select an option"
+                      text={t('builder_feedback_select_option')}
                     />
                   )}
                 </div>
@@ -124,7 +126,7 @@ export function FeedbackForm({
                     rules={{ required }}
                     render={({ field, fieldState }) => (
                       <Box gap="md">
-                        <text.label as="label" text={label} />
+                        <text.label as="label" text={t(`builder_feedback_${id}_label`)} />
                         <TextInput
                           id={id}
                           label={null}
@@ -162,12 +164,12 @@ export function FeedbackForm({
           <Button
             type="submit"
             design="primary"
-            text={"Submit"}
+            text={t('builder_common_submit')}
             disabled={formState.isSubmitting}
             data-eid={eids?.submitButton}
           />
           <Button
-            text={"Cancel"}
+            text={t('builder_common_cancel')}
             onClick={onClose}
             data-eid={eids?.cancelButton}
           />

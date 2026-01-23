@@ -2,12 +2,14 @@ import { useEffect,useState } from "react";
 import Modal from "@ux/modal"
 import Spinner from "@ux/spinner"
 
+import { FeedbackForm } from '@/components/feedback/FeedbackForm';
+import { FeedbackProps } from '@/components/feedback/types';
+import { getBaseUrl, getMockFeedbackConfig,isLocalhost } from '@/components/feedback/utils';
+import { useTranslations } from "@/hooks/useTranslations";
 import { logger } from '@/lib/request-context';
-import { FeedbackForm } from './FeedbackForm';
-import { FeedbackProps } from './types';
-import { getBaseUrl, getMockFeedbackConfig,isLocalhost } from './utils';
 
 export function Feedback(props: FeedbackProps) {
+  const t = useTranslations();
   const [isLoading, setIsLoading] = useState(true);
   const [config, setConfig] = useState(null);
 
@@ -56,7 +58,7 @@ export function Feedback(props: FeedbackProps) {
   return (
     <Modal
       className="max-w-2xl"
-      title={config.title || 'Feedback'}
+      title={t('builder_feedback_title')}
       id="feedback-modal"
       onClose={onClose}
     >

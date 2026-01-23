@@ -104,7 +104,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
     }] : []),
     {
       id: SettingsSection.ANALYTICS,
-      label: 'Analytics',
+      label: t('builder_settings_nav_analytics'),
       icon: <GraphIcon />,
       disabled: isAnalyticsEnabled !== true,
     },
