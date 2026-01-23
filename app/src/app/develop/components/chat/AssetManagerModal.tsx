@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic'
 
+import { useGasketData } from '@/hooks/useGasketData'
 import { logger } from '@/lib/request-context'
 
 /**
@@ -133,6 +134,9 @@ const ImageManagerLoader = dynamic(
  * ```
  */
 export default function AssetManagerModal({ isOpen, onClose, onItemsSelected, ventureId }: AssetManagerModalProps) {
+  const gasketData = useGasketData();
+  const market = gasketData?.intl?.locale || 'en-US';
+
   // Don't render anything if ventureId is not available yet
   if (!ventureId) {
     return null;
@@ -158,7 +162,7 @@ export default function AssetManagerModal({ isOpen, onClose, onItemsSelected, ve
         autoSelectAfterUpload={true}
         removeSources={['STOCK_MEDIA', 'SOCIAL_MEDIA']}
         mediaTypes={['IMAGE', 'VIDEO', 'PDF']}
-        market="en-US"
+        market={market}
       />
     </div>
   );
