@@ -6,6 +6,7 @@
 
 ---
 
+
 ## Executive Summary
 
 ### Current State
@@ -1708,7 +1709,7 @@ Restart services: `pnpm run dev`
 ### Step 1: Create App
 
 ```bash
-curl -X POST http://localhost:3000/api/apps/create \
+curl -X POST https://<<domain_name>>/api/apps/create \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Test Git Sync App",
@@ -1723,31 +1724,41 @@ curl -X POST http://localhost:3000/api/apps/create \
 ### Step 2: Check App Status
 
 ```bash
-curl http://localhost:4000/api/apps/{APP_ID}
+curl https://<<domain_name>>/api/apps/{APP_ID}
 ```
 
 Poll until `status: "running"`
 
 ---
 
-### Step 3: Configure GitHub Token in Container
+### Step 3: Configure GitHub Token via Secrets API
+**Note: This is airo-app-builder api**
 
 ```bash
-docker exec -it airo-{APP_ID} sh -c '
-  mkdir -p /alloc
-  echo "{\"GITHUB_TOKEN\":{\"VALUE\":\"ghp_YOUR_TOKEN_HERE\"}}" > /alloc/config.json
-  chmod 600 /alloc/config.json
-'
+curl -X POST https://<<domain_name>>/api/secrets/{APP_ID}/variants/preview \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operations": {
+      "additions": [
+        {
+          "name": "GITHUB_TOKEN",
+          "value": "ghp_YOUR_TOKEN_HERE"
+        }
+      ]
+    }
+  }'
 ```
 
 **Replace `ghp_YOUR_TOKEN_HERE` with your actual GitHub Personal Access Token**
+
+**Expected:** `{"success": true}` - Token is now stored in container's `/alloc/config.json`
 
 ---
 
 ### Step 4: Configure Git Remote
 
 ```bash
-curl -X POST http://localhost:4000/apps/{APP_ID}/git/remote/configure \
+curl -X POST https://<<domain_name>>/api/apps/{APP_ID}/git/remote/configure \
   -H "Content-Type: application/json" \
   -d '{
     "repoUrl": "https://github.com/YOUR_USERNAME/test-repo.git",
@@ -1763,7 +1774,7 @@ curl -X POST http://localhost:4000/apps/{APP_ID}/git/remote/configure \
 ### Step 5: Get Remote Status
 
 ```bash
-curl http://localhost:4000/apps/{APP_ID}/git/remote/status
+curl https://<<domain_name>>/api/apps/{APP_ID}/git/remote/status
 ```
 
 **Expected:** Returns array of configured remotes with `syncEnabled: true`
@@ -1773,7 +1784,7 @@ curl http://localhost:4000/apps/{APP_ID}/git/remote/status
 ### Step 6: Push to GitHub
 
 ```bash
-curl -X POST http://localhost:4000/apps/{APP_ID}/git/push \
+curl -X POST https://<<domain_name>>/api/apps/{APP_ID}/git/push \
   -H "Content-Type: application/json" \
   -d '{
     "remoteName": "origin",
@@ -1793,12 +1804,11 @@ curl -X POST http://localhost:4000/apps/{APP_ID}/git/push \
 **First, make a change in GitHub (edit a file via web UI), then:**
 
 ```bash
-curl -X POST http://localhost:4000/apps/{APP_ID}/git/pull \
+curl -X POST https://<<domain_name>>/api/apps/{APP_ID}/git/pull \
   -H "Content-Type: application/json" \
   -d '{
     "remoteName": "origin",
     "branch": "main"
-
   }'
 ```
 
