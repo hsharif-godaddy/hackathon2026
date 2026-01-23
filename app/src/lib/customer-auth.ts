@@ -8,7 +8,7 @@ import { context as otelContext, trace } from '@opentelemetry/api';
 
 // Lazy import to avoid initializing gd-auth during module loading
 import { AccountAdapterFactory } from '@/lib/account-adapters/AccountAdapterFactory';
-import { getTokenAgeMinutes,isTokenTooOld } from '@/lib/auth/token-refresh';
+import { getTokenAgeMinutes, getTokenValidationAgeMinutes, isTokenTooOld, decodeJWT } from '@/lib/auth/token-refresh';
 import { isFeatureEnabled } from '@/lib/features';
 import { isAuthDisabled } from '@/lib/gasket-config';
 import { MOCK_USER } from '@/lib/mock-auth';
@@ -242,22 +242,20 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       iat: result.payload.iat
     };
 
-    // Check if token is too old for gateway
-    if (isTokenTooOld(token)) {
-      const tokenAge = getTokenAgeMinutes(token);
-      logger.warn('auth.token.too-old', {
-        message: 'JWT token too old for gateway, will likely be rejected',
-        tokenAge,
-        customerId,
-        shopperId,
-        recommendation: 'Client should refresh token'
-      }, {
-        tags: ['security']
-      });
+    // Monitor token ages for observability
+    // Gateway checks: vat ≤ 5 min, iat ≤ 12 hours (per=true) or 1 hour (per=false)
+    // Browser heartbeat keeps vat fresh automatically (~4 min intervals)
+    const tokenAge = getTokenAgeMinutes(token);
+    const vatAge = getTokenValidationAgeMinutes(token);
 
-      // Still return the token, but log the warning
-      // The client-side code should handle refresh
-    }
+    logger.debug('auth.token.age', {
+      iatAgeMinutes: tokenAge,
+      vatAgeMinutes: vatAge,
+      customerId,
+      shopperId
+    }, {
+      tags: ['security']
+    });
 
     return {
       isAuthenticated: true,
@@ -324,17 +322,36 @@ export function withCustomerAuth<T extends unknown[]>(
       );
     }
 
-    // If the JWT is "too old", downstream gateways may reject it even if it hasn't expired.
-    // Short-circuit with a 401 so client-side authFetch can refresh/re-login proactively.
+    // Fail-fast check: Detect tokens that will be rejected by downstream gateway
+    // Gateway checks both timestamps:
+    // - vat (validated at time) must be ≤ 5 minutes old
+    // - iat (issued at time) must be ≤ 12 hours old (for per=true tokens, 99% of cases)
+    // Browser heartbeat keeps vat fresh automatically (~4 min intervals)
+    //
+    // Benefits of server-side checking:
+    // 1. Prevents wasted gateway API calls
+    // 2. Stops mgmt-airo retry loops before they start (was retrying 3x, adding 7+ sec latency)
+    // 3. Provides clear `requiresRefresh` signal to client
+    // 4. Better error messages and user experience
     const jwt = authContext.jwt
     const looksLikeJwt = typeof jwt === 'string' && jwt.split('.').length === 3
     if (looksLikeJwt && isTokenTooOld(jwt)) {
-      const tokenAgeMinutes = getTokenAgeMinutes(jwt);
+      const iatAgeMinutes = getTokenAgeMinutes(jwt);
+      const vatAgeMinutes = getTokenValidationAgeMinutes(jwt);
+
+      // Decode to get per flag for better diagnostics
+      const payload = decodeJWT(jwt);
+      const hasPer = payload?.per === true || payload?.per === 'true';
+
       logger.warn('auth.token.too-old.rejecting', {
         message: 'JWT token too old for downstream gateway, returning 401 to force refresh',
-        tokenAgeMinutes,
+        iatAgeMinutes,
+        vatAgeMinutes,
+        hasPer,
         customerId: authContext.user.customerId,
         shopperId: authContext.user.shopperId,
+        // Include appId if available from URL path for correlation
+        appId: extractAppIdFromPath(request.url) || undefined
       }, {
         tags: ['security']
       });
@@ -342,7 +359,7 @@ export function withCustomerAuth<T extends unknown[]>(
       return createCustomerAuthErrorWithData(
         'Your session is stale. Please log in again to continue.',
         401,
-        { requiresRefresh: true, tokenAgeMinutes }
+        { requiresRefresh: true, iatAgeMinutes, vatAgeMinutes }
       );
     }
 
