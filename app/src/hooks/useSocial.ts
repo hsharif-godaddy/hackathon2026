@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { appFetch } from '@/lib/gasket-config'
+import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import { agentFetch } from '@/lib/agent-fetch'
 import { SOCIAL_CACHE_CONFIG, SocialV2Client } from '@/lib/social'
-import { getPlatformStrategy, PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
+import { getPlatformStrategy } from '@/lib/social-platforms'
 import { SocialPlatform, SocialPlatformKey } from '@/types/social'
+import { SocialPostState } from '@/types/social-posts'
 import { DEFAULT_SCOPES } from '@/types/social-scopes'
 import { getRootDomain } from '@/utils/getRootDomain'
 
@@ -65,25 +67,14 @@ interface AuthUrlResponse {
 
 interface SiteAssociation {
   id: string
-  site_id: string
-  social_id: string
+  appId: string
+  socialId: string
   platform: string
-  created_at: string
+  createdAt: string
 }
 
 interface SiteAssociationsResponse {
   associations: SiteAssociation[]
-}
-
-interface LinkConnectionParams {
-  siteId: string
-  socialId: string
-  platform: string
-}
-
-interface UnlinkConnectionParams {
-  siteId: string
-  associationId: string
 }
 
 export function useValidatePermissions(
@@ -279,12 +270,10 @@ export function useSiteAssociations(siteId: string, enabled = true) {
   return useQuery({
     queryKey: ['site-associations', siteId],
     queryFn: async () => {
-      const response = await appFetch(`/api/sites/${siteId}/social/associations`, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      const apiUrl = await buildDynamicApiUrl('social/associations', siteId)
+      const response = await agentFetch(apiUrl, {
+        siteId,
+        method: 'GET'
       })
 
       if (!response.ok) {
@@ -300,95 +289,37 @@ export function useSiteAssociations(siteId: string, enabled = true) {
   })
 }
 
-export function useLinkConnection() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async ({ siteId, socialId, platform }: LinkConnectionParams) => {
-      const apiPlatform = PLATFORM_TRANSFORMS.toApiEnum(platform)
-
-      const response = await appFetch(`/api/sites/${siteId}/social/associations`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ socialId, platform: apiPlatform }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to link connection: ${response.status}`)
-      }
-
-      const data = await response.json()
-      return data.association
-    },
-    onSuccess: (_, { siteId }) => {
-      queryClient.invalidateQueries({ queryKey: ['site-associations', siteId] })
-      queryClient.invalidateQueries({ queryKey: ['social-connections'] })
-    },
-  })
-}
-
-export function useUnlinkConnection() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async ({ siteId, associationId }: UnlinkConnectionParams) => {
-      const response = await appFetch(`/api/sites/${siteId}/social/associations/${associationId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to unlink connection: ${response.status}`)
-      }
-
-      return { siteId, associationId }
-    },
-    onSuccess: (_, { siteId }) => {
-      queryClient.invalidateQueries({ queryKey: ['site-associations', siteId] })
-      queryClient.invalidateQueries({ queryKey: ['social-connections'] })
-    },
-  })
-}
-
 export function useStoreSocialPost() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (params: {
       siteId: string
-      association_id?: string
+      associationId?: string
       platform: string
-      state: 'SCHEDULED' | 'PUBLISHED' | 'FAILED'
+      state: SocialPostState
       payload: {
         message: string
         imageUrl?: string | null
       }
-      response?: any
-      external_id?: string
-      error_message?: string
-      completed_at?: string
-      scheduled_at?: string
+      externalResponse?: unknown
+      externalId?: string
+      completedAt?: string
+      scheduledAt?: string
     }) => {
-      const response = await appFetch(`/api/sites/${params.siteId}/social/posts`, {
+      const apiUrl = await buildDynamicApiUrl('social/posts', params.siteId)
+      const response = await agentFetch(apiUrl, {
+        siteId: params.siteId,
         method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          association_id: params.association_id || null,
+          associationId: params.associationId || null,
           platform: params.platform,
           state: params.state,
           payload: params.payload,
-          response: params.response || null,
-          external_id: params.external_id || null,
-          completed_at: params.completed_at || new Date().toISOString(),
-          error_message: params.error_message || null,
-          scheduled_at: params.scheduled_at || null,
+          externalResponse: params.externalResponse || null,
+          externalId: params.externalId || null,
+          completedAt: params.completedAt || new Date().toISOString(),
+          scheduledAt: params.scheduledAt || null,
         })
       })
 

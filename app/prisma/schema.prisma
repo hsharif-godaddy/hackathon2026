@@ -24,21 +24,6 @@ enum AccountStatus {
   closed
 }
 
-enum SocialPlatformType {
-  FACEBOOK
-  INSTAGRAM
-  GOOGLE_BUSINESS_PROFILE
-  TIKTOK
-  YELP
-  WHATSAPP
-}
-
-enum PostState {
-  SCHEDULED
-  PUBLISHED
-  FAILED
-}
-
 model accounts {
   id          String        @id
   shopper_id  String        @unique
@@ -75,49 +60,7 @@ model sites {
   created_at      DateTime   @default(now())
   updated_at      DateTime   @default(now())
   account         accounts   @relation(fields: [account_id], references: [id], onDelete: Cascade)
-  social_associations     social_associations[]
-  social_posts        social_posts[]
 
   @@index([ceph_mount_id, ceph_dir_number])
   @@index([account_id])
-}
-
-model social_associations {
-  id              String              @id @default(cuid())
-  site_id         String
-  social_id       String
-  platform        SocialPlatformType
-  created_at      DateTime            @default(now())
-  site            sites               @relation(fields: [site_id], references: [id], onDelete: Cascade)
-  social_posts    social_posts[]
-
-  @@unique([site_id, social_id])
-  @@index([site_id, platform])
-  @@map("social_associations")
-}
-
-model social_posts {
-  id                  String              @id @default(cuid())
-  site_id             String
-  association_id      String?
-  platform            String
-  state               PostState
-  payload             Json
-  external_response   Json?
-  external_id         String?
-  scheduled_at        DateTime?
-  completed_at        DateTime?
-  campaign_id         String?
-  created_by          String?
-  created_at          DateTime            @default(now())
-  updated_at          DateTime            @updatedAt
-  site                sites               @relation(fields: [site_id], references: [id], onDelete: Cascade)
-  association         social_associations? @relation(fields: [association_id], references: [id], onDelete: SetNull) // Preserve posts for historical/audit purposes when a social association is removed
-
-  @@index([site_id])
-  @@index([site_id, state])
-  @@index([association_id])
-  @@index([platform])
-  @@index([scheduled_at])
-  @@index([campaign_id])
 }

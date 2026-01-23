@@ -184,10 +184,10 @@ export interface SocialPublishResult {
  */
 export interface SiteAssociation {
   id: string
-  site_id: string
-  social_id: string
+  appId: string
+  socialId: string
   platform: string
-  created_at: string
+  createdAt: string
 }
 
 export interface SocialPlatformStatus {

@@ -46,9 +46,17 @@ describe('Database Schema Integration Tests', () => {
       const tableNames = tables.map(t => t.name);
       expect(tableNames).toEqual([
         'apps',
-        'conversation_messages', 
+        'conversation_messages',
+        'conversation_summaries',
         'conversations',
+        'file_context',
+        'git_remote_config',
+        'import_jobs',
+        'memory',
+        'oauth_tokens',
         'running_processes',
+        'social_associations',
+        'social_posts',
         'token_usage'
       ]);
     });
@@ -104,7 +112,7 @@ describe('Database Schema Integration Tests', () => {
       `).all() as { name: string }[];
 
       const indexNames = indexes.map(i => i.name);
-      
+
       // Verify all expected indexes exist
       expect(indexNames).toContain('idx_apps_created_at');
       expect(indexNames).toContain('idx_running_processes_app_id');
@@ -117,6 +125,14 @@ describe('Database Schema Integration Tests', () => {
       expect(indexNames).toContain('idx_token_usage_created_at');
       expect(indexNames).toContain('idx_token_usage_operation');
       expect(indexNames).toContain('idx_token_usage_conversation_id');
+      expect(indexNames).toContain('idx_social_associations_app_id');
+      expect(indexNames).toContain('idx_social_associations_app_platform');
+      expect(indexNames).toContain('idx_social_posts_app_id');
+      expect(indexNames).toContain('idx_social_posts_app_state');
+      expect(indexNames).toContain('idx_social_posts_association_id');
+      expect(indexNames).toContain('idx_social_posts_platform');
+      expect(indexNames).toContain('idx_social_posts_scheduled_at');
+      expect(indexNames).toContain('idx_social_posts_campaign_id');
     });
 
     it('should create all required triggers', () => {
@@ -129,10 +145,11 @@ describe('Database Schema Integration Tests', () => {
       `).all() as { name: string }[];
 
       const triggerNames = triggers.map(t => t.name);
-      
+
       // Verify all expected triggers exist
       expect(triggerNames).toContain('update_apps_updated_at');
       expect(triggerNames).toContain('update_conversations_updated_at');
+      expect(triggerNames).toContain('update_social_posts_updated_at');
     });
   });
 
@@ -330,7 +347,7 @@ describe('Database Schema Integration Tests', () => {
         ORDER BY name
       `).all() as { name: string }[];
 
-      expect(tables).toHaveLength(5); // Should still have exactly 5 tables
+      expect(tables).toHaveLength(13); // Should still have exactly 13 tables
     });
   });
 

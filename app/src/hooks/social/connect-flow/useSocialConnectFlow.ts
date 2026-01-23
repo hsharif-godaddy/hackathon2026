@@ -54,8 +54,8 @@ export function useSocialConnectFlow({
 
   // Fetch the currently linked connection details
   const { data: currentConnectionDetails, isLoading: isLoadingCurrentConnection } = useConnectionById(
-    currentSiteLink?.social_id || '',
-    !!currentSiteLink?.social_id
+    currentSiteLink?.socialId || '',
+    !!currentSiteLink?.socialId
   )
 
   // Enrich the currently linked connection with metadata (if not already in enrichedConnections)

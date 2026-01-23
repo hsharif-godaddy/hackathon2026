@@ -16,4 +16,5 @@ export { default as oauthRouter } from './oauth.js';
 export { default as videoRouter } from './video.js';
 export { conversationsRouter } from './conversations.js';
 export { default as gitRemoteRouter } from './git-remote.js';
+export { default as socialRouter } from './social.js';
 export { customerLogsRouter } from './customer-logs.js';

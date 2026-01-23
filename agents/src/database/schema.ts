@@ -7,6 +7,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { Logger } from '../logging/index.js';
+import { SocialPlatform, PostState } from '../types/social.js';
 
 const logger = Logger.create({ service: 'database-schema' });
 
@@ -205,6 +206,38 @@ export interface GitRemoteConfig {
   updatedAt: Date;
 }
 
+/**
+ * Social platform association
+ * Stores connections between apps and social media accounts
+ */
+export interface SocialAssociation {
+  id: string;
+  appId: string;
+  socialId: string;
+  platform: SocialPlatform;
+  createdAt: Date;
+}
+
+/**
+ * Social media post
+ * Stores publish attempts and results for social media posts
+ */
+export interface SocialPost {
+  id: string;
+  appId: string;
+  associationId: string | null;
+  platform: string;
+  state: PostState;
+  payload: string; // JSON string
+  externalResponse: string | null; // JSON string
+  externalId: string | null;
+  scheduledAt: Date | null;
+  completedAt: Date | null;
+  campaignId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // ==================================================================================
 // Database Schema Management Functions
 // ==================================================================================
@@ -232,7 +265,7 @@ export function initializeSchema(db: Database): void {
   createGitRemoteConfigTable(db);
 
   // Apply migrations BEFORE creating indexes (migrations may alter schema)
-  // Note: oauth_tokens table creation moved to migrations (added in PR #646)
+  // Note: oauth_tokens and social tables creation moved to migrations
   applyMigrations(db);
 
   // Create all indexes (after migrations complete)
@@ -504,6 +537,50 @@ function createGitRemoteConfigTable(db: Database): void {
 }
 
 /**
+ * Create the social_associations table for social platform connections
+ * Stores connections between apps and social media accounts
+ */
+function createSocialAssociationsTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS social_associations (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      social_id TEXT NOT NULL,
+      platform TEXT NOT NULL CHECK(platform IN ('FACEBOOK', 'INSTAGRAM', 'GOOGLE_BUSINESS_PROFILE', 'TIKTOK', 'YELP', 'WHATSAPP')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(app_id, social_id),
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+    )
+  `);
+}
+
+/**
+ * Create the social_posts table for social media publish records
+ * Stores publish attempts and results for social media posts
+ */
+function createSocialPostsTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS social_posts (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      association_id TEXT,
+      platform TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('SCHEDULED', 'PUBLISHED', 'FAILED')),
+      payload TEXT NOT NULL,
+      external_response TEXT,
+      external_id TEXT,
+      scheduled_at DATETIME,
+      completed_at DATETIME,
+      campaign_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE,
+      FOREIGN KEY (association_id) REFERENCES social_associations(id) ON DELETE SET NULL
+    )
+  `);
+}
+
+/**
  * Create all database indexes for efficient queries
  */
 function createIndexes(db: Database): void {
@@ -621,6 +698,40 @@ function createIndexes(db: Database): void {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_git_remote_config_app_remote ON git_remote_config(app_id, remote_name)
   `);
+
+  // Social associations table indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_social_associations_app_id ON social_associations(app_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_social_associations_app_platform ON social_associations(app_id, platform)
+  `);
+
+  // Social posts table indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_social_posts_app_id ON social_posts(app_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_social_posts_app_state ON social_posts(app_id, state)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_social_posts_association_id ON social_posts(association_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_social_posts_platform ON social_posts(platform)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_social_posts_scheduled_at ON social_posts(scheduled_at)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_social_posts_campaign_id ON social_posts(campaign_id)
+  `);
 }
 
 /**
@@ -711,6 +822,16 @@ function createTriggers(db: Database): void {
     FOR EACH ROW
     BEGIN
       UPDATE git_remote_config SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END
+  `);
+
+  // Trigger to automatically update updated_at on social_posts
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS update_social_posts_updated_at
+    AFTER UPDATE ON social_posts
+    FOR EACH ROW
+    BEGIN
+      UPDATE social_posts SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
     END
   `);
 }
@@ -868,6 +989,12 @@ function applyMigrations(db: Database): void {
   } catch (err) {
     // Table might already exist, that's fine
   }
+
+  // Create social_associations table if it doesn't exist
+  createSocialAssociationsTable(db);
+
+  // Create social_posts table if it doesn't exist
+  createSocialPostsTable(db);
 
   // Add subscription_id column if it doesn't exist (for existing databases)
   try {

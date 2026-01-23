@@ -169,7 +169,7 @@ import compression from 'compression';
 import { createServer } from 'http';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter, debugRouter, filesRouter, publishRouter, downloadRouter, dbRouter, todoListRouter, securityScanRouter, oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, customerLogsRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter, debugRouter, filesRouter, publishRouter, downloadRouter, dbRouter, todoListRouter, securityScanRouter, oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, socialRouter, customerLogsRouter } from './routes/index.js';
 import { auth } from '../services/features.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
@@ -292,6 +292,7 @@ app.use('/', jwtAuthMiddleware.authenticate, gitRemoteRouter);
 app.use('/', jwtAuthMiddleware.authenticate, publishRouter);
 app.use('/', jwtAuthMiddleware.authenticate, downloadRouter);
 app.use('/', jwtAuthMiddleware.authenticate, conversationsRouter);
+app.use('/', jwtAuthMiddleware.authenticate, socialRouter);
 
 // Error handling
 app.use(notFoundHandler);

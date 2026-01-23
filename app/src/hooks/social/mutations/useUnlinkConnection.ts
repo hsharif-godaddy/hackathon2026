@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
-import { appFetch } from '@/lib/gasket-config'
+import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import { agentFetch } from '@/lib/agent-fetch'
 
 interface UnlinkConnectionParams {
   siteId: string
@@ -12,12 +13,10 @@ export function useUnlinkConnection() {
 
   return useMutation({
     mutationFn: async ({ siteId, associationId }: UnlinkConnectionParams) => {
-      const response = await appFetch(`/api/sites/${siteId}/social/associations/${associationId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      const apiUrl = await buildDynamicApiUrl(`social/associations/${associationId}`, siteId)
+      const response = await agentFetch(apiUrl, {
+        siteId,
+        method: 'DELETE'
       })
 
       if (!response.ok) {
@@ -27,7 +26,6 @@ export function useUnlinkConnection() {
       return { siteId, associationId }
     },
     onSuccess: (_, { siteId }) => {
-      // Invalidate both site associations and connections to refresh UI
       queryClient.invalidateQueries({ queryKey: ['site-associations', siteId] })
       queryClient.invalidateQueries({ queryKey: ['social-connections'] })
     },

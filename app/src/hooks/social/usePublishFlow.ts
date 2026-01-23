@@ -42,7 +42,7 @@ export function usePublishFlow(
   const initiatedPublishIds = useRef<Set<string>>(new Set())
 
   const { data: connection, isError: isConnectionError, error: connectionError } = useConnectionById(
-    selectedAssociation?.social_id || '',
+    selectedAssociation?.socialId || '',
     !!selectedAssociation
   )
 

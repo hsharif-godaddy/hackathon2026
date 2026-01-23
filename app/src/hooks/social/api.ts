@@ -1,4 +1,5 @@
-import { appFetch } from '@/lib/gasket-config'
+import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import { agentFetch } from '@/lib/agent-fetch'
 import { SocialV2Client } from '@/lib/social'
 import { isFacebookConnection, isInstagramConnection } from '@/lib/utils/social-type-guards'
 import type { SocialConnection, SocialPublishResult } from '@/types/social'
@@ -29,22 +30,22 @@ interface StorePostParams {
 }
 
 export async function storePostResult(params: StorePostParams): Promise<void> {
-  await appFetch(`/api/sites/${params.appId}/social/posts`, {
+  const apiUrl = await buildDynamicApiUrl('social/posts', params.appId)
+  await agentFetch(apiUrl, {
+    siteId: params.appId,
     method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      association_id: params.associationId,
+      associationId: params.associationId,
       platform: params.platform,
       state: params.state,
       payload: {
         message: params.message,
         imageUrls: params.imageUrls
       },
-      external_response: params.result ?? (params.error ? { error: params.error } : null),
-      external_id: params.result?.id ?? null,
-      completed_at: new Date().toISOString(),
-      ...(params.scheduledAt && { scheduled_at: params.scheduledAt.toISOString() })
+      externalResponse: params.result ?? (params.error ? { error: params.error } : null),
+      externalId: params.result?.id ?? null,
+      completedAt: new Date().toISOString(),
+      ...(params.scheduledAt && { scheduledAt: params.scheduledAt.toISOString() })
     })
   })
 }

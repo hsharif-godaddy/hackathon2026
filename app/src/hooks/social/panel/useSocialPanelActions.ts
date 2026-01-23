@@ -72,7 +72,7 @@ export function useSocialPanelActions({
   }, [queryClient, siteId])
 
   const handleUnlinkConnection = useCallback(async (socialId: string) => {
-    const association = siteLinks.find(link => link.social_id === socialId)
+    const association = siteLinks.find(link => link.socialId === socialId)
     if (!association) {
       return
     }

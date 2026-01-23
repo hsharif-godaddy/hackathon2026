@@ -2,9 +2,18 @@
 
 This document describes the `social_posts` table schema and the publish flow for social media posts.
 
+## ⚠️ Architecture Update (January 2026)
+
+**Social posts data is now stored in SQLite (agents service).**
+
+- **Location:** `agents/src/database/schema.ts` → SQLite database (`agents/data/apps.db`)
+- **Reason:** Social posts are agent-generated content and should live with other agent data (conversations, files, memories), Prisma is only for local to fake the v2 control plane
+
+---
+
 ## Table Schema
 
-### `social_posts`
+### `social_posts` (SQLite - Agents Service)
 
 Stores publish attempts and results for social media posts.
 
@@ -12,22 +21,25 @@ Stores publish attempts and results for social media posts.
 ┌─────────────────────┬──────────────┬─────────────────────────────────────────┐
 │ Column              │ Type         │ Description                             │
 ├─────────────────────┼──────────────┼─────────────────────────────────────────┤
-│ id                  │ String (PK)  │ Unique identifier (cuid)                │
-│ site_id             │ String (FK)  │ Reference to sites table                │
-│ association_id      │ String? (FK) │ Reference to social_associations        │
-│ platform            │ String       │ Platform: facebook, instagram           │
-│ state               │ PostState    │ SCHEDULED, PUBLISHED, FAILED            │
-│ payload             │ Json         │ Post content (message, imageUrls)       │
-│ external_response   │ Json?        │ Platform API response or error          │
-│ external_id         │ String?      │ Platform's post ID                      │
-│ scheduled_at        │ DateTime?    │ When post should publish                │
-│ completed_at        │ DateTime?    │ When post was published/failed          │
-│ campaign_id         │ String?      │ Links to automated campaign             │
-│ created_by          │ String?      │ Who created: 'agent', 'user'            │
-│ created_at          │ DateTime     │ Record creation time                    │
-│ updated_at          │ DateTime     │ Last update time                        │
+│ id                  │ TEXT (PK)    │ Unique identifier (nanoid)              │
+│ app_id              │ TEXT (FK)    │ Reference to apps table                 │
+│ association_id      │ TEXT? (FK)   │ Reference to social_associations        │
+│ platform            │ TEXT         │ Platform: facebook, instagram, etc.     │
+│ state               │ TEXT         │ SCHEDULED, PUBLISHED, FAILED (CHECK)    │
+│ payload             │ TEXT         │ JSON: Post content (message, imageUrls) │
+│ external_response   │ TEXT?        │ JSON: Platform API response or error    │
+│ external_id         │ TEXT?        │ Platform's post ID                      │
+│ scheduled_at        │ DATETIME?    │ When post should publish                │
+│ completed_at        │ DATETIME?    │ When post was published/failed          │
+│ campaign_id         │ TEXT?        │ Links to automated campaign             │
+│ created_at          │ DATETIME     │ Record creation time                    │
+│ updated_at          │ DATETIME     │ Last update time (auto-updated)         │
 └─────────────────────┴──────────────┴─────────────────────────────────────────┘
 ```
+
+**Database:** `agents/data/apps.db` (SQLite)
+**Schema:** `agents/src/database/schema.ts`
+**Repository:** `agents/src/database/repositories/SocialPostRepository.ts`
 
 ### Field Details
 
@@ -57,12 +69,21 @@ Stores publish attempts and results for social media posts.
 
 ### Indexes
 
-- `site_id` - Filter posts by site
-- `site_id, state` - Filter by site and state
-- `association_id` - Filter by social connection
-- `platform` - Filter by platform
-- `scheduled_at` - Query scheduled posts
-- `campaign_id` - Filter by campaign
+- `idx_social_posts_app_id` - Filter posts by app
+- `idx_social_posts_app_state` - Filter by app and state
+- `idx_social_posts_association_id` - Filter by social connection
+- `idx_social_posts_platform` - Filter by platform
+- `idx_social_posts_scheduled_at` - Query scheduled posts
+- `idx_social_posts_campaign_id` - Filter by campaign
+
+### Foreign Key Constraints
+
+- `app_id` → `apps(id)` ON DELETE CASCADE
+- `association_id` → `social_associations(id)` ON DELETE SET NULL
+
+### Triggers
+
+- `update_social_posts_updated_at` - Auto-updates `updated_at` timestamp on row changes
 
 ---
 
@@ -114,7 +135,7 @@ sequenceDiagram
     participant Tool as socialPostPublish
     participant Widget as SocialPublishWidget
     participant Hook as usePublishFlowWithCallbacks
-    participant API as /api/sites/[id]/social/posts
+    participant API as Agents: /apps/[id]/social/posts
     participant Platform as Facebook/Instagram API
 
     User->>Modal: Click "Publish"
@@ -230,15 +251,15 @@ flowchart LR
 
 ## Key Components
 
-| Component                           | Location                          | Responsibility                          |
-| ----------------------------------- | --------------------------------- | --------------------------------------- |
-| `SocialPostModal`                   | `app/develop/components/widgets/` | UI for editing/publishing posts         |
-| `SocialPublishWidget`               | `app/develop/components/widgets/` | Shows publish status in chat            |
-| `SocialPostList`                    | `app/develop/components/widgets/` | List view of posts with click-to-edit   |
-| `PostCardPreview`                   | `app/develop/components/widgets/` | Post preview card with platform styling |
-| `usePublishFlowWithCallbacks`       | `hooks/social/`                   | Orchestrates the publish process        |
-| `SocialV2Client`                    | `lib/social.ts`                   | API client for Facebook/Instagram       |
-| `POST /api/sites/[id]/social/posts` | `app/api/`                        | Stores publish records in DB            |
+| Component                      | Location                          | Responsibility                          |
+| ------------------------------ | --------------------------------- | --------------------------------------- |
+| `SocialPostModal`              | `app/develop/components/widgets/` | UI for editing/publishing posts         |
+| `SocialPublishWidget`          | `app/develop/components/widgets/` | Shows publish status in chat            |
+| `SocialPostList`               | `app/develop/components/widgets/` | List view of posts with click-to-edit   |
+| `PostCardPreview`              | `app/develop/components/widgets/` | Post preview card with platform styling |
+| `usePublishFlowWithCallbacks`  | `hooks/social/`                   | Orchestrates the publish process        |
+| `SocialV2Client`               | `lib/social.ts`                   | API client for Facebook/Instagram       |
+| `POST /apps/[id]/social/posts` | `agents/src/server/routes/`       | Stores publish records in SQLite DB     |
 
 ---
 

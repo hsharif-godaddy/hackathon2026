@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
-import { appFetch } from '@/lib/gasket-config'
+import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import { agentFetch } from '@/lib/agent-fetch'
 import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 
 interface LinkConnectionParams {
@@ -12,10 +13,10 @@ interface LinkConnectionParams {
 interface LinkConnectionResponse {
   association: {
     id: string
-    site_id: string
-    social_id: string
+    appId: string
+    socialId: string
     platform: string
-    created_at: string
+    createdAt: string
   }
 }
 
@@ -25,14 +26,12 @@ export function useLinkConnection() {
   return useMutation({
     mutationFn: async ({ siteId, socialId, platform }: LinkConnectionParams) => {
       const apiPlatform = PLATFORM_TRANSFORMS.toApiEnum(platform)
+      const apiUrl = await buildDynamicApiUrl('social/associations', siteId)
 
-      const response = await appFetch(`/api/sites/${siteId}/social/associations`, {
+      const response = await agentFetch(apiUrl, {
+        siteId,
         method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ socialId, platform: apiPlatform }),
+        body: JSON.stringify({ socialId, platform: apiPlatform })
       })
 
       if (!response.ok) {
@@ -43,7 +42,6 @@ export function useLinkConnection() {
       return data.association
     },
     onSuccess: (_, { siteId }) => {
-      // Invalidate both site associations and connections to refresh UI
       queryClient.invalidateQueries({ queryKey: ['site-associations', siteId] })
       queryClient.invalidateQueries({ queryKey: ['social-connections'] })
     },

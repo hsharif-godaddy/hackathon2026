@@ -35,7 +35,7 @@ export function useSocialPanelData(siteId: string): UseSocialPanelDataResult {
 
   // Create a set of linked connection IDs for quick lookup
   const linkedConnectionIds = useMemo(() =>
-    new Set(siteLinks.map(link => link.social_id)),
+    new Set(siteLinks.map(link => link.socialId)),
     [siteLinks]
   )
 
