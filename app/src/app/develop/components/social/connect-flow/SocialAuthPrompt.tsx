@@ -18,12 +18,13 @@ export const SocialAuthPrompt = memo(function SocialAuthPrompt({
   onConnect
 }: SocialAuthPromptProps) {
   const t = useTranslations()
+  const platform = platformName.charAt(0).toUpperCase() + platformName.slice(1)
 
   return (
     <Box orientation="vertical" gap="md">
       <text.span as="paragraph" emphasis="info" size={-2} text={t('builder_social_auth_popup_instruction')} />
       <text.span as="paragraph" emphasis="passive" size={-2} text={t('builder_social_auth_popup_fallback')} />
-      <Button design="primary" size="sm" onClick={onConnect} text={t('builder_social_connect_platform', { platformName })} data-eid={generateClickEID('social.connect.auth_prompt')} />
+      <Button design="primary" size="sm" onClick={onConnect} text={t('builder_social_connect_platform', { platformName: platform })} data-eid={generateClickEID('social.connect.auth_prompt')} />
     </Box>
   )
 })

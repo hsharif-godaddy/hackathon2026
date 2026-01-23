@@ -57,7 +57,7 @@ export function SocialConnectModal({
     : (platformConnections.length > 0 ? FlowStep.SelectExisting : FlowStep.Auth)
 
   const platformName = platform.charAt(0).toUpperCase() + platform.slice(1)
-  const title = t('builder_social_connecting_platform', { platform: platformName })
+  const title = t('builder_social_connecting_platform', { platformName })
 
   if (!isOpen) return null
 
