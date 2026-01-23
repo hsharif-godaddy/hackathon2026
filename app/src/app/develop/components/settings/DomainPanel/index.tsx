@@ -1,21 +1,28 @@
 import Box from "@ux/box";
+import Button from "@ux/button";
 import WebsiteIcon from '@ux/icon/website';
 import Spinner from "@ux/spinner";
-import { text } from "@ux/text";
+import text from "@ux/text";
 
 import DomainAttach from "@/app/develop/components/settings/DomainPanel/DomainAttach";
 import ProjectDomain from "@/app/develop/components/settings/DomainPanel/ProjectDomain";
 import { useAppIdFromParams } from "@/app/develop/components/utils";
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
+import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { useSwitchboard } from "@/hooks/useSwitchboard";
+import { useTranslations } from '@/hooks/useTranslations';
+import { useDevelopPageStore } from "@/stores/useDevelopPageStore";
 import { useSiteStore } from "@/stores/useSiteStore";
+import RidingArrow from '@/svgs/riding-arrow';
+import { generateClickEID } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
 import { usePublishForDomain } from './usePublishForDomain';
 
 export default function DomainPanel() {
+  const t = useTranslations();
   const { data: isDomainAttachEnabled, isLoading: isDomainAttachLoading } = useSwitchboard('appbuilder-domain-attach');
   const { data: isProjectDomainEnabled, isLoading: isProjectDomainLoading } = useSwitchboard('appbuilder-project-domain');
-  
+
   const currentAppId = useAppIdFromParams();
   const site = useSiteStore((state) => {
     if (!currentAppId) return null;
@@ -27,27 +34,65 @@ export default function DomainPanel() {
     return state.loading[currentAppId] ?? false;
   });
 
+  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(currentAppId || undefined);
+  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
+
   const { handlePublish, isPublishDisabled, publishState } = usePublishForDomain(currentAppId, site);
   const isPublished = hasBeenPublished(site);
 
-  if (isDomainAttachLoading || isProjectDomainLoading || isSiteLoading) {
+  if (isDomainAttachLoading || isProjectDomainLoading || isSiteLoading || isPaywallLoading) {
     return (
       <div className='flex flex-col justify-center items-center h-[calc(100vh-40rem)] gap-2'>
         <Spinner size='md'/>
-        <text.p>Loading domain settings...</text.p>
+        <text.p>{t('builder_domain_loading')}</text.p>
       </div>
     );
   }
 
-  // Show single empty state if site hasn't been published yet
+  // Show upgrade screen for free users who haven't published
+  if (!isSiteLoading && !isPublished && !isPaywallLoading && showPaywall && (isDomainAttachEnabled || isProjectDomainEnabled)) {
+    return (
+      <Box
+        className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-6"
+        orientation="horizontal"
+        gap="lg"
+        inlineAlignChildren="start"
+        blockAlignChildren="center"
+      >
+        <Box orientation="vertical" gap="sm" className="flex-1">
+          <text.h3 as="title">{t('builder_domain_upgrade_title')}</text.h3>
+          <text.p className="text-intents-ux-text-secondaryColor">
+            {t('builder_domain_upgrade_description')}
+          </text.p>
+          <div className="mt-2">
+            <Button
+              text={t('builder_upgrade_button')}
+              design="primary"
+              size="sm"
+              onClick={() => openUpgradeModal('domains.upgrade')}
+              data-eid={generateClickEID(`settings/domains.upgrade`)}
+            />
+          </div>
+        </Box>
+        <div className="flex-shrink-0">
+          <RidingArrow />
+        </div>
+      </Box>
+    );
+  }
+
+  // Show single empty state if site hasn't been published yet (for paid users)
   if (!isSiteLoading && !isPublished && (isDomainAttachEnabled || isProjectDomainEnabled)) {
     return (
       <Box gap="lg" className="@container">
         <EmptyStateCard
           icon={<WebsiteIcon width={48} height={48} />}
-          title="Publish Your App to Manage Domains"
-          description="Your app must be published before you can customize your project domain or add custom domains. Publish your app to unlock domain management features."
-          ctaLabel={publishState.isPublishing ? "Publishing..." : "Publish Now"}
+          title={t('builder_domain_publish_required_title')}
+          description={t('builder_domain_publish_required_description')}
+          ctaLabel={publishState.isPublishing
+            ? t('builder_domain_publishing')
+            : t('builder_domain_publish_now')
+          }
           onCtaClick={handlePublish}
           ctaDisabled={isPublishDisabled}
         />
@@ -58,10 +103,10 @@ export default function DomainPanel() {
   return (
     <Box gap="lg" className="@container">
       {!isDomainAttachEnabled && !isProjectDomainEnabled && (
-        <div>
-          <text.h1>Domain</text.h1>
-          <text.p>Configure custom domains for your application coming soon.</text.p>
-        </div>
+        <>
+          <text.h1>{t('builder_domain_title')}</text.h1>
+          <text.p>{t('builder_domain_coming_soon')}</text.p>
+        </>
       )}
       {isProjectDomainEnabled && <ProjectDomain />}
       {isDomainAttachEnabled && <DomainAttach />}

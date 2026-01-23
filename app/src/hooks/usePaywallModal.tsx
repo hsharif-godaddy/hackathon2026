@@ -1,4 +1,5 @@
 import { JSX,useCallback, useState } from "react";
+import { useQueryClient } from '@tanstack/react-query';
 
 import SinglePlanUpgradeContainer from '@/app/develop/components/SinglePlanUpgradeContainer'
 import { regenerateToken } from '@/lib/jwt-regeneration'
@@ -61,6 +62,7 @@ export function usePaywallModal({
 }: UsePaywallModalOptions): UsePaywallModalReturn {
   const [showAiroPlusPaywall, setShowAiroPlusPaywall] = useState(false)
   const [hasCompletedPurchase, setHasCompletedPurchase] = useState(false)
+  const queryClient = useQueryClient()
   const isPollingEntitlements = useDevelopPageStore((state) => state.isPollingEntitlements)
   const setIsPollingEntitlements = useDevelopPageStore((state) => state.setIsPollingEntitlements)
   const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall')
@@ -109,6 +111,12 @@ export function usePaywallModal({
         })
       }
 
+      // Invalidate paywall eligibility query to update UI immediately
+      await queryClient.invalidateQueries({
+        queryKey: ['paywall-eligibility', appId],
+        refetchType: 'active',
+      })
+
       // Execute optional post-purchase callback
       if (onPurchaseSuccess) {
         await onPurchaseSuccess()
@@ -120,7 +128,7 @@ export function usePaywallModal({
         error: result.error,
       })
     }
-  }, [appId, source, logInAppPurchase, setIsPollingEntitlements, onPurchaseSuccess])
+  }, [appId, source, logInAppPurchase, setIsPollingEntitlements, onPurchaseSuccess, queryClient])
 
   const checkAndShowPaywall = useCallback(
     async (action: () => Promise<void>) => {
