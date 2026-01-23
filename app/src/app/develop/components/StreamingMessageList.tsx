@@ -1,11 +1,11 @@
 'use client'
 
-import { useCallback,useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Box from '@ux/box'
 import Skeleton from '@ux/skeleton'
-import useSound from 'use-sound'
 
 import { useAppIdFromParams } from '@/app/develop/components/utils'
+import { useSound } from '@/hooks/useSound'
 import { useTranslations } from '@/hooks/useTranslations'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
