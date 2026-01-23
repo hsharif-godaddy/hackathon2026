@@ -27,8 +27,8 @@ jobs:
   continuous-integration:
     name: "[Env: ${{ inputs.DEPLOY_TO_ENV || 'dev-private' }}] branch: ${{ github.ref_name }} "
     runs-on:
-      group: 8606-awsx64v2
       labels:
+        - airo-cicd-runners
         - self-hosted
 
     env:

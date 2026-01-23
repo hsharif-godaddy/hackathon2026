@@ -43,8 +43,8 @@ jobs:
   test:
     timeout-minutes: 60
     runs-on:
-      group: 8606-awsx64v2
       labels:
+        - airo-cicd-runners
         - self-hosted
     outputs:
       environment: ${{ steps.env-config.outputs.environment }}

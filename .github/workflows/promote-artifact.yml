@@ -35,8 +35,8 @@ jobs:
   promote:
     name: "[${{ inputs.component }}] Promoting ${{ inputs.artifact_id }} to ${{ inputs.environment }}"
     runs-on:
-      group: 8606-awsx64v2
       labels:
+        - airo-cicd-runners
         - self-hosted
 
     environment: ${{ inputs.environment }}
@@ -130,8 +130,8 @@ jobs:
       actions: write # Required to trigger other workflows
       contents: read
     runs-on:
-      group: 8606-awsx64v2
       labels:
+        - airo-cicd-runners
         - self-hosted
     steps:
       - name: Trigger E2E Test Workflow
