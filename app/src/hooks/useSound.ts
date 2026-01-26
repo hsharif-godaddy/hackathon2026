@@ -75,7 +75,7 @@ export function useSound(
     audio.play().catch(err => {
       console.warn('Failed to play sound:', err)
     })
-  }, [volume, interrupt])
+  }, [volume, interrupt, src])
 
   const stop = useCallback(() => {
     if (currentPlayingRef.current) {

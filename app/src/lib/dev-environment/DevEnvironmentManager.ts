@@ -1,11 +1,10 @@
-import { appendFileSync,existsSync, promises as fsPromises, readFileSync, readdirSync, writeFileSync } from 'fs';
 import * as fs from 'node:fs';
-import path from 'path';
 
 import { execa } from 'execa';
+import { appendFileSync,existsSync, promises as fsPromises, readdirSync, readFileSync, writeFileSync } from 'fs';
+import path from 'path';
 
 import { PrismaSiteService } from '@/lib/database/prisma-site-service';
-
 import { createAppAdapter, getAdapterType } from './adapters';
 import type { IAppAdapter, ServerStatus } from './adapters/interfaces/IAppAdapter';
 import { type DevAppInfo,DevDatabase } from './database/DevDatabase';

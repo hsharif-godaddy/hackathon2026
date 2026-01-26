@@ -5,7 +5,6 @@ import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { appFetch } from '@/lib/gasket-config';
 import { regenerateToken } from '@/lib/jwt-regeneration';
 import { logger } from '@/lib/request-context';
-import { appService } from '@/services/AppService';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 
@@ -86,9 +85,9 @@ async function handleLocalDevPublishSuccess(
   }
 
   // Invalidate git history to refresh commit list
-  await queryClient.invalidateQueries({ 
-    queryKey: ['git-history', appId], 
-    refetchType: 'active' 
+  await queryClient.invalidateQueries({
+    queryKey: ['git-history', appId],
+    refetchType: 'active'
   });
 }
 

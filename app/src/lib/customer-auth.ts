@@ -3,11 +3,11 @@
  * Uses Gasket shopper tokens for customer access control
  */
 
-import { context as otelContext, trace } from '@opentelemetry/api';
 import { NextRequest, NextResponse } from 'next/server';
+import { context as otelContext, trace } from '@opentelemetry/api';
 
 import { AccountAdapterFactory } from '@/lib/account-adapters/AccountAdapterFactory';
-import { getTokenAgeMinutes, getTokenValidationAgeMinutes, isTokenTooOld, decodeJWT } from '@/lib/auth/token-refresh';
+import { decodeJWT,getTokenAgeMinutes, getTokenValidationAgeMinutes, isTokenTooOld } from '@/lib/auth/token-refresh';
 import { isFeatureEnabled } from '@/lib/features';
 import { isAuthDisabled } from '@/lib/gasket-config';
 import { MOCK_USER } from '@/lib/mock-auth';

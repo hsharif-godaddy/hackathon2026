@@ -9,7 +9,7 @@
  */
 
 import { IamTokenClient } from 'gd-auth-client'
-import { defaultProvider } from '@aws-sdk/credential-provider-node'
+
 import { logger } from '@/lib/request-context'
 
 /**

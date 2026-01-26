@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach,describe, expect, it, vi } from 'vitest';
 
 // Create shared mock authenticate function at module level
 const mockAuthenticate = vi.fn();
@@ -38,7 +38,7 @@ describe('GdAuthService', () => {
     vi.resetModules();
 
     // Re-import after reset
-    const module = await import('./gd-auth-service');
+    const module = await import('./gd-auth-service'); // eslint-disable-line @next/next/no-assign-module-variable
     GdAuthService = module.GdAuthService;
 
     // Create service

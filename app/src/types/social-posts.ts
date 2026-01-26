@@ -1,4 +1,4 @@
-import type { SocialPlatform, SocialPublishResult } from './social'
+import type { SocialPublishResult } from './social'
 
 /**
  * Platforms that support direct publishing

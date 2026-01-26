@@ -1,8 +1,8 @@
+import * as fs from "node:fs";
 import { userInfo } from "node:os";
 import * as path from "node:path";
 
 import { execa } from 'execa';
-import * as fs from "node:fs";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 
 import { type ComposeServiceConfig,DockerComposeGenerator } from './docker-compose-generator';

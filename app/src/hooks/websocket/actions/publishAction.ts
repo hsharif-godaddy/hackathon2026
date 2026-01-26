@@ -12,7 +12,6 @@ import { regenerateToken } from '@/lib/jwt-regeneration'
 import { ClientPaywallProvider } from '@/lib/paywall/client-provider'
 import { checkPaywallEligibility } from '@/lib/paywall/core'
 import { logger } from '@/lib/request-context'
-import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { logAiroHQEvent } from '@/utils/instrumentation'
@@ -20,7 +19,7 @@ import { hasBeenPublished } from '@/utils/site'
 import type { ClientActionExecutor } from './types'
 
 export const publishAction: ClientActionExecutor = async (params) => {
-  const { appId, commitHash: providedCommitHash } = params
+  const { appId } = params
 
   // Validate required parameters
   if (!appId || typeof appId !== 'string') {

@@ -7,6 +7,7 @@ import TextInput from '@ux/text-input'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import { shipAnalyticsLog } from '@/lib/logging'
+import { logger } from '@/lib/request-context'
 import { getRootDomain } from '@/utils/getRootDomain'
 
 export interface FeedbackWidgetProps {
@@ -29,15 +30,21 @@ interface RatingOption {
 }
 
 const RATING_OPTIONS: RatingOption[] = [
-  { rating: FeedbackRating.Bad, emoji: '😞', labelKey: 'builder_widgets_feedback_bad' },
+  { rating: FeedbackRating.Bad, emoji: '☹️', labelKey: 'builder_widgets_feedback_bad' },
   { rating: FeedbackRating.Fine, emoji: '😐', labelKey: 'builder_widgets_feedback_fine' },
-  { rating: FeedbackRating.Good, emoji: '😊', labelKey: 'builder_widgets_feedback_good' },
+  { rating: FeedbackRating.Good, emoji: '🙂', labelKey: 'builder_widgets_feedback_good' },
 ]
 
 const COMMENT_PLACEHOLDER_KEYS: Record<FeedbackRating, string> = {
   [FeedbackRating.Bad]: 'builder_widgets_feedback_placeholder_bad',
   [FeedbackRating.Fine]: 'builder_widgets_feedback_placeholder_fine',
   [FeedbackRating.Good]: 'builder_widgets_feedback_placeholder_good',
+}
+
+const RATING_SLACK_EMOJIS: Record<FeedbackRating, string> = {
+  [FeedbackRating.Bad]: ':white_frowning_face: - Session rated as Bad',
+  [FeedbackRating.Fine]: ':neutral_face: - Session rated as Neutral',
+  [FeedbackRating.Good]: ':slightly_smiling_face: - Session rated as Good',
 }
 
 export default function FeedbackWidget({ conversationId, appId }: FeedbackWidgetProps) {
@@ -47,6 +54,43 @@ export default function FeedbackWidget({ conversationId, appId }: FeedbackWidget
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const sendToSlack = async (rating: FeedbackRating, userComment: string) => {
+    try {
+      const feedbackLines = [
+        `*Rating*: ${RATING_SLACK_EMOJIS[rating]}`,
+      ]
+
+      if (userComment.trim()) {
+        feedbackLines.push(`*Comment*: ${userComment.trim()}`)
+      }
+
+      if (conversationId) {
+        feedbackLines.push(`*Conversation ID*: ${conversationId}`)
+      }
+
+      const message = feedbackLines.join('\n')
+      const title = `New Session Feedback${appId ? ` for App ID: ${appId}` : ''}`
+
+      await fetch('/api/slack-webhook/feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title,
+          message,
+        }),
+      })
+    } catch (err) {
+      logger.warn('feedback.session.slack.send_failed', {
+        appId: appId || '',
+        conversationId: conversationId || '',
+        rating,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
 
   const submitFeedback = async (rating: FeedbackRating, userComment: string) => {
     setIsSubmitting(true)
@@ -59,6 +103,10 @@ export default function FeedbackWidget({ conversationId, appId }: FeedbackWidget
       if (!rootDomain) {
         // Mock delay for localhost
         await new Promise(resolve => setTimeout(resolve, 500))
+
+        // Send to Slack even in localhost mode
+        await sendToSlack(rating, userComment)
+
         setIsSubmitted(true)
         return
       }
@@ -89,6 +137,9 @@ export default function FeedbackWidget({ conversationId, appId }: FeedbackWidget
       }
 
       setIsSubmitted(true)
+
+      // Send to Slack after successful database save
+      await sendToSlack(rating, userComment)
 
       // Log successful submission to Elasticsearch
       shipAnalyticsLog('feedback.submit.success', {

@@ -8,8 +8,9 @@ import TextInput from "@ux/text-input";
 
 import { useTranslations } from "@/hooks/useTranslations";
 import { logger } from '@/lib/request-context';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import type { FeedbackFormProps } from "./types";
-import { getBaseUrl, isLocalhost } from "./utils";
+import { formatSlackFeedbackMessage, getBaseUrl, isLocalhost } from "./utils";
 
 export function FeedbackForm({
   config,
@@ -20,6 +21,35 @@ export function FeedbackForm({
 }: FeedbackFormProps) {
   const t = useTranslations();
   const { control, handleSubmit, formState } = useForm();
+  const currentAppId = useDevelopPageStore((state) => state.currentAppId);
+
+  async function sendToSlack(data: any) {
+    try {
+      const title = `New Feedback Submitted${currentAppId ? ` for App ID: ${currentAppId}` : ''}`;
+      const message = formatSlackFeedbackMessage(data);
+
+      await fetch('/api/slack-webhook/feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title,
+          message,
+        }),
+      });
+      logger.info('feedback.slack.sent', {
+        feedbackId: config.pk,
+        appId: currentAppId,
+      });
+    } catch (err) {
+      logger.warn('feedback.slack.send_failed', {
+        feedbackId: config.pk,
+        appId: currentAppId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 
   async function onSubmit(data: any) {
     if (isLocalhost()) {
@@ -29,6 +59,8 @@ export function FeedbackForm({
         success: true,
         message: 'Feedback submitted successfully (mock)'
       };
+
+      await sendToSlack(data);
 
       if (onSubmitSuccess) {
         onSubmitSuccess(mockResponse);
@@ -55,7 +87,10 @@ export function FeedbackForm({
       }),
     })
       .then((res) => res.json())
-      .then((res) => {
+      .then(async (res) => {
+        // Send to Slack after successful database save
+        await sendToSlack(data);
+
         if (onSubmitSuccess) {
           onSubmitSuccess(res);
         } else {
@@ -99,7 +134,7 @@ export function FeedbackForm({
                           return (
                             <Radio
                               id={v}
-                              label={t(`builder_feedback_${id}_option_${index}`)}
+                              label={t(`builder_feedback_${id}_options_${index}`)}
                               {...field}
                               onChange={() => field.onChange(v)}
                               checked={field.value === v}

@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query';
 import Box from "@ux/box";
 import Button from "@ux/button";
 import Skeleton from "@ux/skeleton";
-import text from "@ux/text";
 import TextInput from "@ux/text-input";
 
 import { Status } from "@/app/develop/components/types";

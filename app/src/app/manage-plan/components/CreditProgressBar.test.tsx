@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom';
 
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 
 import CreditProgressBar from './CreditProgressBar';
 
