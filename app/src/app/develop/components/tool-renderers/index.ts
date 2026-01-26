@@ -7,6 +7,7 @@
  * Tools not in the registry will use the DefaultToolRenderer.
  */
 
+import AskQuestionToolRenderer from './AskQuestionToolRenderer'
 import ColorSchemeToolRenderer from './ColorSchemeToolRenderer'
 import CssColorToolRenderer from './CssColorToolRenderer'
 import CssSuggestToolRenderer from './CssSuggestToolRenderer'
@@ -48,6 +49,7 @@ export type ToolRendererProps = DefaultToolRendererProps
  *   'image_search': ImageSearchToolRenderer,
  */
 export const toolRendererRegistry = {
+  askQuestion: AskQuestionToolRenderer,
   colorScheme: ColorSchemeToolRenderer,
   cssColor: CssColorToolRenderer,
   cssSuggest: CssSuggestToolRenderer,
@@ -107,6 +109,7 @@ export function getToolRenderer(toolName: string) {
  * Export tool renderer components
  */
 export {
+  AskQuestionToolRenderer,
   ColorSchemeToolRenderer,
   CssColorToolRenderer,
   CssSuggestToolRenderer,

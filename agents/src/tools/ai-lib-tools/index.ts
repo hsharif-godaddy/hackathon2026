@@ -55,6 +55,7 @@ export { publishClientAITool } from './publish-client.js';
 export { publishStatusAITool } from './publish-status.js';
 export { qaAnalyzeAITool } from './qa-analyze.js';
 export { setProjectNameAITool } from './set-project-name.js';
+export { askQuestionAITool } from './ask-question.js';
 export { qrCodeAITool } from './qr-code.js';
 export { websiteRebuildAITool } from './website-rebuild.js';
 export { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
@@ -108,6 +109,7 @@ import { publishClientAITool } from './publish-client.js';
 import { publishStatusAITool } from './publish-status.js';
 import { qaAnalyzeAITool } from './qa-analyze.js';
 import { setProjectNameAITool } from './set-project-name.js';
+import { askQuestionAITool } from './ask-question.js';
 import { qrCodeAITool } from './qr-code.js';
 import { websiteRebuildAITool } from './website-rebuild.js';
 import { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
@@ -162,6 +164,7 @@ export const allAILibTools: Record<string, Tool> = {
   publishStatus: publishStatusAITool,
   qaAnalyze: qaAnalyzeAITool,
   setProjectName: setProjectNameAITool,
+  askQuestion: askQuestionAITool,
   qrCode: qrCodeAITool,
   websiteRebuild: websiteRebuildAITool,
   rebuildPageSelector: rebuildPageSelectorAITool,
