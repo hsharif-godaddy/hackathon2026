@@ -211,20 +211,25 @@ export default function ImageSearchToolRenderer({
     ? t('builder_tools_imagesearch_found', { imageCount })
     : t('builder_tools_imagesearch_title_only')
 
+  // Only show header when not completed or no images to display
+  const shouldShowHeader = toolStatus !== 'completed' || !hasImages
+
   return (
     <div>
-      <ToolHeader
-        icon={<Image className="w-2 h-2" />} /* eslint-disable-line jsx-a11y/alt-text */
-        displayName={displayName}
-        toolStatus={toolStatus}
-        hasDetails={hasDetails}
-        onOpenModal={handleOpenModal}
-      />
+      {shouldShowHeader && (
+        <ToolHeader
+          icon={<Image className="w-2 h-2" />} /* eslint-disable-line jsx-a11y/alt-text */
+          displayName={displayName}
+          toolStatus={toolStatus}
+          hasDetails={hasDetails}
+          onOpenModal={handleOpenModal}
+        />
+      )}
 
       {/* Image gallery - always showing when completed */}
       {toolStatus === 'completed' && hasImages && (
         <div className="my-2">
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-4 gap-1.5">
             {displayedImages.map((img, index) => (
               <button
                 key={index}

@@ -324,20 +324,25 @@ export default function MediaSearchToolRenderer({
   const shouldShowSeeAll = imageCount > 4
   const displayedImages = shouldShowSeeAll ? images.slice(0, 3) : images
 
+  // Only show header when not completed or no media to display
+  const shouldShowHeader = toolStatus !== 'completed' || (!hasImages && !hasVideo)
+
   return (
     <div>
-      <ToolHeader
-        icon={icon}
-        displayName={displayName}
-        toolStatus={toolStatus}
-        hasDetails={hasDetails}
-        onOpenModal={hasDetails ? handleModalOpen : undefined}
-      />
+      {shouldShowHeader && (
+        <ToolHeader
+          icon={icon}
+          displayName={displayName}
+          toolStatus={toolStatus}
+          hasDetails={hasDetails}
+          onOpenModal={hasDetails ? handleModalOpen : undefined}
+        />
+      )}
 
       {/* Image gallery - showing for searched and generated images */}
       {toolStatus === 'completed' && (mediaType === 'image' || mediaType === 'generate') && hasImages && (!isMarkdownFormat || isGeneratedImage) && (
         <div className="my-2">
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-4 gap-1.5">
             {displayedImages.map((img, index) => (
               <button
                 key={index}
