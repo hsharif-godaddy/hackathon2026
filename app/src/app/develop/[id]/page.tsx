@@ -834,10 +834,9 @@ function DevelopPageContent() {
 
       {showUpgradeModal && (
         <SinglePlanUpgradeContainer
+          source={upgradeModalSource ?? 'unknown'}
           onSuccessClick={() => {
-            const source = upgradeModalSource ?? 'unknown'
             closeUpgradeModal()
-            shipAnalyticsLog(`${source}.success`, { appId })
           }}
           onClose={() => {
             const source = upgradeModalSource ?? 'unknown'

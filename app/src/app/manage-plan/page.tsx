@@ -94,6 +94,7 @@ function ManagePlanContent() {
   const planDisplayLabel = planLabelKey ? t(planLabelKey) : '';
   const isFreePlan = subscription.plan === SubscriptionPlan.Free;
   const hasCreditsNoPlan = creditPacks.length > 0 && isFreePlan;
+  const paywallSourceId = paywallSource ?? 'manage_plan';
 
   // Calculate reset date from monthly grant useBefore or subscription renewsAt
   const resetDate = monthlyGrant
@@ -133,20 +134,17 @@ function ManagePlanContent() {
     <>
       {showPaywallModal && (
         <SinglePlanUpgradeContainer
+          source={paywallSourceId}
           onSuccessClick={() => {
-            const source = paywallSource ?? 'unknown';
             closePaywall();
-            shipAnalyticsLog(`${source}.success`, {});
           }}
           onClose={() => {
-            const source = paywallSource ?? 'unknown';
             closePaywall();
-            shipAnalyticsLog(`${source}.dismissed`, {});
+            shipAnalyticsLog(`${paywallSourceId}.dismissed`, {});
           }}
           onErrorClick={() => {
-            const source = paywallSource ?? 'unknown';
             closePaywall();
-            shipAnalyticsLog(`${source}.error`, {});
+            shipAnalyticsLog(`${paywallSourceId}.error`, {});
           }}
         />
       )}

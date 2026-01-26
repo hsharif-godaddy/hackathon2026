@@ -72,7 +72,7 @@ export function usePaywallModal({
 
   const logInAppPurchase = useCallback(
     (subscriptionId: string, entitlementId: string) => {
-      shipAnalyticsLog('airoplus.purchase.in-app', {
+      shipAnalyticsLog('airoplus.purchase.success', {
         appId,
         subscriptionId,
         entitlementId,
@@ -166,6 +166,7 @@ export function usePaywallModal({
 
     return (
       <SinglePlanUpgradeContainer
+        source={source}
         onErrorClick={async () => {
           setShowAiroPlusPaywall(false)
           shipAnalyticsLog('airoplus.paywall.error', {
