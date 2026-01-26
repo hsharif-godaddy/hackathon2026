@@ -33,7 +33,6 @@ interface PublishResponse {
  */
 interface PublishParams {
   appId: string;
-  commitHash?: string;
 }
 
 /**
@@ -137,25 +136,7 @@ export function usePublishApp() {
   const { data: isSecretsSyncEnabled } = useSwitchboard('appbuilder-settings-secrets');
 
   return useMutation<PublishResult, Error, PublishParams>({
-    mutationFn: async ({ appId, commitHash }) => {
-      let hashToPublish = commitHash;
-
-      // If no commit hash provided, fetch the current commit (HEAD) from git history
-      if (!hashToPublish) {
-        const historyData = await appService.getGitHistory(appId);
-        // Use actual current commit (HEAD) instead of latest commit (commits[0])
-        // This ensures we publish what's actually checked out, not necessarily the tip
-        const currentCommitHash = historyData.currentCommit || historyData.commits?.[0]?.hash;
-
-        if (!currentCommitHash) {
-          throw new Error('No commit found in git history');
-        }
-
-        hashToPublish = currentCommitHash;
-      }
-
-      // Store the commit hash for retry functionality
-      setLastPublishedCommitHash(appId, hashToPublish);
+    mutationFn: async ({ appId }) => {
 
       if (isSecretsSyncEnabled) {
         try {
@@ -212,7 +193,7 @@ export function usePublishApp() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${tokenResult.token}`,
         },
-        body: JSON.stringify({ commitHash: hashToPublish }),
+        body: JSON.stringify({}),
       });
 
       if (!response.ok) {
@@ -252,6 +233,11 @@ export function usePublishApp() {
       }
 
       const result = await response.json();
+
+      // Store the commit hash from the response for retry functionality
+      if (result.commitHash) {
+        setLastPublishedCommitHash(appId, result.commitHash);
+      }
 
       // Step 3: Create deployment record via app service (secure, trusted service)
       // Only if archive was created successfully
@@ -302,7 +288,7 @@ export function usePublishApp() {
         }
       }
 
-      return { result, commitHash: hashToPublish };
+      return { result, commitHash: result.commitHash };
     },
     onSuccess: async (data, variables) => {
       // PRODUCTION FLOW: Deployment tracking with polling

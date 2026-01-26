@@ -99,46 +99,9 @@ export const publishAction: ClientActionExecutor = async (params) => {
       }
     }
 
-    // Ensure commitHash is a string or undefined
-    let commitHash = typeof providedCommitHash === 'string' && providedCommitHash
-      ? providedCommitHash
-      : undefined
-
-    // If no commit hash provided, fetch the current commit (HEAD) from git history
-    // This matches the behavior of the UI publish button
-    if (!commitHash) {
-      logger.debug('websocket.client-action.publish.fetching-commit', {
-        appId,
-      })
-
-      const historyData = await appService.getGitHistory(appId)
-      commitHash = historyData.currentCommit || historyData.commits?.[0]?.hash
-
-      if (!commitHash || typeof commitHash !== 'string') {
-        throw new Error('No commit found in git history')
-      }
-
-      logger.debug('websocket.client-action.publish.commit-fetched', {
-        appId,
-        commitHash: commitHash.substring(0, 7),
-      })
-    }
-
     logger.info('websocket.client-action.publish.begin', {
       appId,
-      commitHash: commitHash.substring(0, 7),
     })
-
-    // Store the commit hash for retry functionality (matches UI behavior)
-    try {
-      const setLastPublishedCommitHash = useDevelopPageStore.getState().setLastPublishedCommitHash
-      setLastPublishedCommitHash(appId, commitHash)
-    } catch (storeError) {
-      logger.warn('websocket.client-action.publish.store-update-failed', {
-        appId,
-        error: storeError instanceof Error ? storeError.message : String(storeError),
-      })
-    }
 
     // Sync secrets from preview to publish if enabled (matches UI behavior)
     try {
@@ -190,9 +153,7 @@ export const publishAction: ClientActionExecutor = async (params) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${tokenResult.token}`,
       },
-      body: JSON.stringify({
-        commitHash,
-      }),
+      body: JSON.stringify({}),
     })
 
     if (!response.ok) {
@@ -266,6 +227,19 @@ export const publishAction: ClientActionExecutor = async (params) => {
 
     const result = await response.json()
 
+    // Store the commit hash from the response for retry functionality
+    if (result.commitHash) {
+      try {
+        const setLastPublishedCommitHash = useDevelopPageStore.getState().setLastPublishedCommitHash
+        setLastPublishedCommitHash(appId, result.commitHash)
+      } catch (storeError) {
+        logger.warn('websocket.client-action.publish.store-update-failed', {
+          appId,
+          error: storeError instanceof Error ? storeError.message : String(storeError),
+        })
+      }
+    }
+
     // Step 3: Create deployment record via app service (secure, trusted service)
     // Only if archive was created successfully
     if (result.success && result.commitHash) {
@@ -338,10 +312,18 @@ export const publishAction: ClientActionExecutor = async (params) => {
         })
       }
 
-      // Invalidate deployments queries to trigger immediate refetch with polling
+      // Invalidate queries to refresh UI
       try {
         const queryClient = getQueryClient()
         if (queryClient) {
+          // Invalidate git history to refresh commit list in history tab
+          // Do NOT use refetchType: 'active' - we need to invalidate even if History tab is not currently open
+          // so that when user switches to it, the query refetches with fresh data
+          await queryClient.invalidateQueries({
+            queryKey: ['git-history', appId],
+          })
+
+          // Invalidate deployments queries to trigger immediate refetch with polling
           await queryClient.invalidateQueries({
             queryKey: ['deployments', appId],
             refetchType: 'active',

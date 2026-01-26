@@ -339,89 +339,25 @@ describe('publishAction', () => {
   })
 
   describe('commit hash resolution', () => {
-    it('should use provided commitHash', async () => {
-      const context = createMockMessageContext()
-      const params = { appId: 'app-123', commitHash: 'provided-hash' }
-
-      vi.mocked(global.fetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({ commitHash: 'provided-hash' }),
-      } as Response)
-
-      await publishAction(params, context)
-
-      expect(appService.getGitHistory).not.toHaveBeenCalled()
-    })
-
-    it('should fetch current commit if not provided', async () => {
+    it('should store commit hash from response in store', async () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123' }
 
-      vi.mocked(appService.getGitHistory).mockResolvedValue({
-        currentCommit: 'fetched-hash',
-        commits: [],
-      })
-
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ commitHash: 'fetched-hash' }),
+        json: async () => ({
+          success: true,
+          commitHash: 'response-hash',
+          archive: { path: '/path/to/archive' }
+        }),
       } as Response)
 
       await publishAction(params, context)
 
-      expect(appService.getGitHistory).toHaveBeenCalledWith('app-123')
-    })
-
-    it('should use first commit from history if currentCommit is null', async () => {
-      const context = createMockMessageContext()
-      const params = { appId: 'app-123' }
-
-      vi.mocked(appService.getGitHistory).mockResolvedValue({
-        currentCommit: null,
-        commits: [{ hash: 'first-commit' }],
-      } as any)
-
-      vi.mocked(global.fetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({ commitHash: 'first-commit' }),
-      } as Response)
-
-      await publishAction(params, context)
-
+      // Verify commit hash from response is stored
       expect(mockStoreActions.setLastPublishedCommitHash).toHaveBeenCalledWith(
         'app-123',
-        'first-commit'
-      )
-    })
-
-    it('should throw error if no commits found', async () => {
-      const context = createMockMessageContext()
-      const params = { appId: 'app-123' }
-
-      vi.mocked(appService.getGitHistory).mockResolvedValue({
-        currentCommit: null,
-        commits: [],
-      } as any)
-
-      await expect(publishAction(params, context)).rejects.toThrow(
-        'No commit found in git history'
-      )
-    })
-
-    it('should store commit hash in store', async () => {
-      const context = createMockMessageContext()
-      const params = { appId: 'app-123', commitHash: 'abc123' }
-
-      vi.mocked(global.fetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({ commitHash: 'abc123' }),
-      } as Response)
-
-      await publishAction(params, context)
-
-      expect(mockStoreActions.setLastPublishedCommitHash).toHaveBeenCalledWith(
-        'app-123',
-        'abc123'
+        'response-hash'
       )
     })
   })
@@ -533,7 +469,7 @@ describe('publishAction', () => {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer mock-jwt-token',
           },
-          body: JSON.stringify({ commitHash: 'abc123' }),
+          body: JSON.stringify({}),
         })
       )
     })
@@ -1127,7 +1063,7 @@ describe('publishAction', () => {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer mock-jwt-token',
           },
-          body: JSON.stringify({ commitHash: 'fetched-hash' }),
+          body: JSON.stringify({}),
         })
       )
 

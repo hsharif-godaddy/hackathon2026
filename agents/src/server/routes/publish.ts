@@ -63,12 +63,7 @@ const appRepository = new AppRepository();
 router.post('/apps/:id/publish', async (req, res) => {
   try {
     const { id } = req.params;
-    const { commitHash } = req.body;
     const contextLogger = log.forApp(id);
-
-    if (!commitHash) {
-      return res.status(400).json({ error: 'Commit hash is required' });
-    }
 
     // Check publish permission from JWT claims
     const authReq = req as AuthenticatedRequest;
@@ -82,10 +77,6 @@ router.post('/apps/:id/publish', async (req, res) => {
       });
     }
 
-    contextLogger.info('route.publish.begin', {
-      commitHash: commitHash.substring(0, 7),
-    });
-
     // Get app from database
     const app = appRepository.findById(id);
     if (!app) {
@@ -97,21 +88,153 @@ router.post('/apps/:id/publish', async (req, res) => {
     const devSupervisor = DevSupervisorClientFactory.createForApp(id);
     const gitUtils = new GitUtils(devSupervisor || undefined);
 
-    // Resolve the commit reference to a full SHA
-    let fullCommitHash: string;
+    // CRITICAL: Ensure we're on main branch before publishing
+    // If we're on a feature branch, merge it to main first
+    // Note: Detached HEAD (when user manually selected an old commit) is allowed
     try {
-      fullCommitHash = await gitUtils.resolveCommitHash(app.path, commitHash);
-      contextLogger.info('route.publish.commit-resolved', {
-        providedRef: commitHash.substring(0, 7),
-        fullHash: fullCommitHash.substring(0, 7),
-      });
+      const currentBranch = await gitUtils.getCurrentBranch(app.path);
+
+      // Skip merge logic if in detached HEAD state (user manually selected old commit to publish)
+      // In detached HEAD, getCurrentBranch returns 'HEAD' or the commit hash
+      const isDetachedHead = currentBranch === 'HEAD' || currentBranch.match(/^[0-9a-f]{7,40}$/i);
+
+      if (isDetachedHead) {
+        contextLogger.info('route.publish.detached-head', {
+          currentBranch,
+          message: 'Publishing from detached HEAD (manually selected commit)',
+        });
+      } else if (currentBranch !== 'main') {
+        contextLogger.warn('route.publish.not-on-main', {
+          currentBranch,
+          action: 'squash-merging-to-main',
+        });
+
+        // Check for uncommitted changes and commit them first
+        const hasChanges = await gitUtils.hasUncommittedChanges(app.path);
+        if (hasChanges) {
+          // Only stage tracked modified files (not untracked files like screenshots, IDE files)
+          await gitUtils.addFiles(app.path, ['-u']);
+          const commitResult = await gitUtils.commit(app.path, `Pre-publish commit from ${currentBranch}`);
+
+          // If commit succeeded, log it. If it failed, that's okay - probably nothing was staged
+          // (only untracked files exist, which git add -u doesn't stage)
+          if (commitResult.success) {
+            contextLogger.info('route.publish.pre-publish-commit', {
+              currentBranch,
+            });
+          } else {
+            contextLogger.debug('route.publish.no-changes-to-commit', {
+              currentBranch,
+              message: 'No tracked modified files to commit (untracked files may exist)',
+            });
+          }
+        }
+
+        // Switch to main and verify it's in a clean state before merging
+        await gitUtils.switchBranch(app.path, 'main');
+
+        // Verify main branch has no staged or modified files before merging
+        // Note: Untracked files are allowed (e.g., screenshots, IDE files, etc.)
+        const mainStatus = await gitUtils.getStatus(app.path);
+        if (mainStatus.stagedFiles > 0 || mainStatus.modifiedFiles > 0) {
+          throw new Error('Main branch has staged or modified files - cannot safely merge');
+        }
+
+        contextLogger.info('route.publish.main-verified', {
+          branch: mainStatus.branch,
+          isClean: mainStatus.isClean,
+        });
+
+        // Check if we can do a fast-forward merge (preserves commit history)
+        // Fast-forward is possible when main is a direct ancestor of the feature branch
+        const canFastForward = await gitUtils.canFastForwardMerge(app.path, currentBranch);
+
+        let mergeResult: { success: boolean; stdout: string };
+        let mergeType: 'fast-forward' | 'squash' | 'none' = 'none';
+
+        if (canFastForward) {
+          // Fast-forward merge - preserves all original commit messages
+          // This keeps history clean with descriptive commit messages
+          contextLogger.info('route.publish.merge-strategy', {
+            strategy: 'fast-forward',
+            reason: 'main is ancestor of feature branch',
+          });
+
+          mergeResult = await gitUtils.fastForwardMerge(app.path, currentBranch);
+          mergeType = 'fast-forward';
+
+          contextLogger.info('route.publish.merged-to-main', {
+            fromBranch: currentBranch,
+            mergeType: 'fast-forward',
+          });
+        } else {
+          // Can't fast-forward - need to squash merge
+          // This happens when main has moved forward since the feature branch was created
+          contextLogger.info('route.publish.merge-strategy', {
+            strategy: 'squash',
+            reason: 'main has diverged from feature branch',
+          });
+
+          mergeResult = await gitUtils.squashMerge(app.path, currentBranch, 'Publish: merge feature branch');
+
+          // Check if there were actually changes merged
+          const branchHasNewCommits = !mergeResult.stdout.includes('No changes to commit') && !mergeResult.stdout.includes('already merged');
+
+          if (!branchHasNewCommits) {
+            contextLogger.info('route.publish.branch-already-merged', {
+              fromBranch: currentBranch,
+              message: 'Feature branch has no new commits - already up-to-date with main',
+            });
+            mergeType = 'none';
+          } else {
+            contextLogger.info('route.publish.merged-to-main', {
+              fromBranch: currentBranch,
+              mergeType: 'squash',
+            });
+            mergeType = 'squash';
+          }
+        }
+
+        // Clean up the feature branch after successful merge (but not if no merge happened)
+        if (mergeType !== 'none') {
+          try {
+            await gitUtils.deleteBranch(app.path, currentBranch);
+            contextLogger.info('route.publish.branch-cleanup', {
+              deletedBranch: currentBranch,
+              mergeType,
+            });
+          } catch (cleanupError) {
+            // Non-critical - log warning but continue
+            contextLogger.warn('route.publish.branch-cleanup-failed', {
+              branch: currentBranch,
+              error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+            });
+          }
+        }
+      }
     } catch (error) {
-      contextLogger.error('route.publish.commit-resolve-failed', {
-        commitRef: commitHash,
+      contextLogger.error('route.publish.merge-to-main-failed', {
         error: error instanceof Error ? error.message : String(error),
       });
       return res.status(400).json({
-        error: 'Failed to resolve commit reference',
+        error: 'Failed to merge feature branch to main',
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // Get current commit hash (we're guaranteed to be on main at this point)
+    let fullCommitHash: string;
+    try {
+      fullCommitHash = await gitUtils.getCurrentCommit(app.path);
+      contextLogger.info('route.publish.begin', {
+        commitHash: fullCommitHash.substring(0, 7),
+      });
+    } catch (error) {
+      contextLogger.error('route.publish.get-commit-failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return res.status(400).json({
+        error: 'Failed to get current commit',
         details: error instanceof Error ? error.message : String(error),
       });
     }

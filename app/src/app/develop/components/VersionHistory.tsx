@@ -79,24 +79,32 @@ export default function VersionHistory() {
     return commits.findIndex(c => c.hash === mostRecentDeployment.gitHash);
   }, [deployments, commits])
 
-  // Auto-select current commit on initial load
+  // Track the last currentCommit we synced to - when it changes, we should sync again
+  const lastSyncedCommitRef = useRef<Record<string, string>>({})
+
+  // Auto-select current commit when currentCommit changes
   // Uses lightweight state sync (no checkout) when server provides currentCommit
+  // IMPORTANT: Only auto-updates when currentCommit changes - respects manual selections otherwise
   useEffect(() => {
     if (commits.length === 0 || !appId || isSelectingCommit || commitSelectionError) return
 
-    // Only auto-select if no commit is currently selected (initial load)
-    // Agent-created commits are handled directly in useStreamingWebSocket
-    // User manual selections should always be respected
-    if (!selectedCommitHash) {
-      if (currentCommit && commits.some(c => c.hash === currentCommit)) {
-        // Use lightweight setter - just sync UI state, don't trigger checkout
-        // The server already has this commit checked out (it's HEAD)
-        setSelectedCommitHash(appId, currentCommit)
-      } else {
-        // Fallback: When currentCommit is null (old backend or git failure),
-        // use the latest commit to maintain backward compatibility
-        setSelectedCommitHash(appId, commits[0].hash)
-      }
+    const lastSyncedCommit = lastSyncedCommitRef.current[appId]
+
+    // Auto-select in these cases:
+    // 1. No commit selected at all (initial load)
+    // 2. currentCommit has changed since we last synced (new commit was made)
+    const shouldAutoSelect = !selectedCommitHash || (currentCommit && currentCommit !== lastSyncedCommit)
+
+    if (shouldAutoSelect && currentCommit && commits.some(c => c.hash === currentCommit)) {
+      // Use lightweight setter - just sync UI state, don't trigger checkout
+      // The server already has this commit checked out (it's HEAD)
+      setSelectedCommitHash(appId, currentCommit)
+      lastSyncedCommitRef.current[appId] = currentCommit
+    } else if (!selectedCommitHash && commits.length > 0) {
+      // Fallback: When currentCommit is null (old backend or git failure),
+      // use the latest commit to maintain backward compatibility
+      setSelectedCommitHash(appId, commits[0].hash)
+      lastSyncedCommitRef.current[appId] = commits[0].hash
     }
   }, [commits, selectedCommitHash, currentCommit, isSelectingCommit, commitSelectionError, appId, setSelectedCommitHash])
 

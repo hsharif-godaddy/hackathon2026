@@ -645,6 +645,80 @@ export class GitUtils {
   }
 
   /**
+   * Check if a fast-forward merge is possible from source branch to current branch
+   * A fast-forward is possible when the current branch is a direct ancestor of the source branch
+   *
+   * @param repoPath - Path to the git repository
+   * @param sourceBranch - Name of the branch to merge from
+   * @param options - Git command options
+   * @returns True if fast-forward is possible, false otherwise
+   */
+  async canFastForwardMerge(
+    repoPath: string,
+    sourceBranch: string,
+    options: GitCommandOptions = {}
+  ): Promise<boolean> {
+    // Use git merge-base to check if HEAD is ancestor of sourceBranch
+    // If merge-base of HEAD and sourceBranch equals HEAD, then fast-forward is possible
+    const mergeBaseResult = await this.executeGitCommand(
+      ['merge-base', 'HEAD', sourceBranch],
+      repoPath,
+      options
+    );
+
+    if (!mergeBaseResult.success) {
+      return false;
+    }
+
+    const mergeBase = mergeBaseResult.stdout.trim();
+
+    // Get current HEAD hash
+    const headResult = await this.executeGitCommand(
+      ['rev-parse', 'HEAD'],
+      repoPath,
+      options
+    );
+
+    if (!headResult.success) {
+      return false;
+    }
+
+    const head = headResult.stdout.trim();
+
+    // If merge-base equals HEAD, then HEAD is ancestor of sourceBranch (fast-forward possible)
+    return mergeBase === head;
+  }
+
+  /**
+   * Perform a fast-forward merge from a branch into the current branch
+   * Preserves all original commit messages from the source branch
+   *
+   * @param repoPath - Path to the git repository
+   * @param branchName - Name of the branch to merge
+   * @param options - Git command options
+   * @returns GitCommandResult from the merge operation
+   * @throws Error if merge fails or fast-forward is not possible
+   */
+  async fastForwardMerge(
+    repoPath: string,
+    branchName: string,
+    options: GitCommandOptions = {}
+  ): Promise<GitCommandResult> {
+    // Execute fast-forward merge
+    const mergeResult = await this.executeGitCommand(
+      ['merge', '--ff-only', branchName],
+      repoPath,
+      options
+    );
+
+    if (!mergeResult.success) {
+      throw new Error(`Failed to fast-forward merge branch '${branchName}': ${mergeResult.stderr}`);
+    }
+
+    return mergeResult;
+  }
+
+  /**
    * Perform a squash merge from a branch into the current branch
    *
    * @param repoPath - Path to the git repository
@@ -660,6 +734,31 @@ export class GitUtils {
     commitMessage: string,
     options: GitCommandOptions = {}
   ): Promise<GitCommandResult> {
+    // Check if the branch has any commits that aren't in the current branch (main)
+    // This prevents creating empty merge commits when the feature branch is identical to main
+    const revListResult = await this.executeGitCommand(
+      ['rev-list', '--count', `HEAD..${branchName}`],
+      repoPath,
+      options
+    );
+
+    if (revListResult.success) {
+      const commitCount = parseInt(revListResult.stdout.trim(), 10);
+      if (commitCount === 0) {
+        // Feature branch has no commits that aren't in main - nothing to merge
+        return {
+          command: `git merge --squash ${branchName}`,
+          workingDir: repoPath,
+          success: true,
+          stdout: 'No changes to commit - branch is already merged',
+          stderr: '',
+          exitCode: 0,
+          executionTime: 0,
+          timedOut: false
+        };
+      }
+    }
+
     // Execute squash merge
     const mergeResult = await this.executeGitCommand(
       ['merge', '--squash', branchName],

@@ -10,7 +10,6 @@ import type { ClientActionService } from '../services/ClientActionService.js'
 
 export interface PublishOptions {
   appId: string
-  commitHash?: string
 }
 
 export interface PublishResult {
@@ -30,11 +29,10 @@ export async function executePublish(
   options: PublishOptions,
   clientActionService: ClientActionService
 ): Promise<PublishResult> {
-  const { appId, commitHash } = options
+  const { appId } = options
 
   logger.info('publish-client.begin', {
     appId,
-    commitHash: commitHash ? commitHash.substring(0, 7) : 'HEAD',
   })
 
   try {
@@ -43,7 +41,6 @@ export async function executePublish(
       action: 'publish',
       params: {
         appId,
-        commitHash: commitHash || undefined,
       },
       timeoutMs: 120000, // 2 minutes - publishing can take a while
     })
