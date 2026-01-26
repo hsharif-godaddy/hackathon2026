@@ -521,9 +521,10 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Create new symlink pointing to the archive file
-	if err := os.Symlink(commitHashPath, currentSymlink); err != nil {
-		slog.Error("publish.symlink.create_failed", "error", err, "target", commitHashPath)
+	// Create new symlink pointing to the archive file (use relative path so symlink works regardless of mount point)
+	archiveFilename := fmt.Sprintf("%s.tar.gz", req.CommitHash)
+	if err := os.Symlink(archiveFilename, currentSymlink); err != nil {
+		slog.Error("publish.symlink.create_failed", "error", err, "target", archiveFilename)
 		s.sendError(w, http.StatusInternalServerError, "symlink_failed", "Failed to create symlink to new version")
 		return
 	}
