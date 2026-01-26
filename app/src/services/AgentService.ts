@@ -16,7 +16,7 @@ export interface ConversationDetail {
 
 export class AgentService {
   private static instance: AgentService
-  
+
   public static getInstance(): AgentService {
     if (!AgentService.instance) {
       AgentService.instance = new AgentService()
@@ -34,13 +34,13 @@ export class AgentService {
     // Remove the app-specific path and use the base agent URL
     const baseAgentUrl = config.agentUrl.replace(`/apps/${appId}`, '')
     const apiUrl = `${baseAgentUrl}/agent/conversations/${appId}`
-    
+
     const response = await agentFetch(apiUrl, { siteId: appId })
-    
+
     if (!response.ok) {
       throw new Error(`Failed to fetch conversations: ${response.status}`)
     }
-    
+
     const data = await response.json()
     logger.debug('agent.conversations.response', {
       message: 'Raw response from agent service',
@@ -49,7 +49,7 @@ export class AgentService {
       hasConversations: !!data.conversations,
       conversationsCount: Array.isArray(data.conversations) ? data.conversations.length : 0
     });
-    
+
     // Try both possible response structures
     if (Array.isArray(data)) {
       logger.debug('agent.conversations.direct-array', { message: 'Response is direct array, returning data' });
@@ -58,13 +58,13 @@ export class AgentService {
       logger.debug('agent.conversations.property', { message: 'Response has conversations property, returning data.conversations' });
       return data.conversations
     } else {
-      logger.warn('agent.conversations.unexpected-structure', { 
+      logger.warn('agent.conversations.unexpected-structure', {
         message: 'Unexpected response structure, returning empty array',
         dataType: typeof data,
         hasConversations: !!data.conversations,
         isArray: Array.isArray(data)
-      }, { 
-        data: { responseData: data } 
+      }, {
+        data: { responseData: data }
       });
       return []
     }
@@ -131,6 +131,25 @@ export class AgentService {
     if (!response.ok) {
       throw new Error(`Failed to delete conversation: ${response.status}`)
     }
+
+    return response.json()
+  }
+
+  /**
+   * Generate launch video for an app
+   */
+  async generateLaunchVideo(appId: string): Promise<{ success: boolean; video?: { url: string; publicPath: string; filepath: string; jobId: string }; error?: string }> {
+    const apiUrl = await buildDynamicApiUrl(`/generate-video`, appId);
+
+    const response = await agentFetch(apiUrl, {
+      siteId: appId,
+      method: 'POST'
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to generate video: ${response.status}`)
+    }
+
 
     return response.json()
   }

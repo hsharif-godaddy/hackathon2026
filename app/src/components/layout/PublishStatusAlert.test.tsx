@@ -14,6 +14,8 @@ const mockDevelopStore = {
   setPublishError: vi.fn(),
   dismissPublishSuccess: vi.fn(),
   clearPublishStatus: vi.fn(),
+  setShowGoLiveModal: vi.fn(),
+  getPublishState: vi.fn((appId: string) => mockDevelopStore.publishStates[appId] || null),
 };
 const mockSiteStore = {
   getSite: vi.fn(),
@@ -315,5 +317,49 @@ describe('PublishStatusAlert', () => {
     // Success alert should render when site has been published
     expect(screen.getByText('builder_publish_success_title')).toBeInTheDocument();
     expect(screen.getByText('builder_publish_success_button_domain')).toBeInTheDocument();
+  });
+
+  it('should automatically show Go Live modal on first successful publish', async () => {
+    mockDevelopStore.publishStates = {
+      'app-123': { showSuccessAlert: true, hasGoneLive: false },
+    };
+    mockSiteStore.getSite.mockReturnValue({
+      id: 'app-123',
+      published_url: 'https://example.com',
+    });
+
+    renderWithProviders(<PublishStatusAlert />);
+
+    await waitFor(() => {
+      expect(mockDevelopStore.setShowGoLiveModal).toHaveBeenCalledWith('app-123', true);
+    });
+  });
+
+  it('should NOT show Go Live modal if user has already gone live', () => {
+    mockDevelopStore.publishStates = {
+      'app-123': { showSuccessAlert: true, hasGoneLive: true },
+    };
+    mockSiteStore.getSite.mockReturnValue({
+      id: 'app-123',
+      published_url: 'https://example.com',
+    });
+
+    renderWithProviders(<PublishStatusAlert />);
+
+    expect(mockDevelopStore.setShowGoLiveModal).not.toHaveBeenCalled();
+  });
+
+  it('should NOT show Go Live modal if site has not been published', () => {
+    mockDevelopStore.publishStates = {
+      'app-123': { showSuccessAlert: true, hasGoneLive: false },
+    };
+    mockSiteStore.getSite.mockReturnValue({
+      id: 'app-123',
+      published_url: '', // Not published
+    });
+
+    renderWithProviders(<PublishStatusAlert />);
+
+    expect(mockDevelopStore.setShowGoLiveModal).not.toHaveBeenCalled();
   });
 });

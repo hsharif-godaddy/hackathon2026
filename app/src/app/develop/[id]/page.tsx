@@ -19,6 +19,7 @@ import { useInitialization } from '@/app/develop/hooks/useInitialization'
 import { ProtectedRoute } from '@/components/auth'
 import { Feedback } from '@/components/feedback/Feedback'
 import Header from '@/components/layout/Header'
+import PostPublishGoLiveModal from '@/components/layout/PostPublishGoLiveModal'
 import PublishStatusAlert from '@/components/layout/PublishStatusAlert'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
@@ -800,6 +801,8 @@ function DevelopPageContent() {
 
           <div className="flex-1 flex flex-col relative">
             {isPublishButtonEnabled && <PublishStatusAlert />}
+            {isPublishButtonEnabled && <PostPublishGoLiveModal appId={appId} />}
+
             <div className="flex-1 overflow-hidden relative">
               <div className={`absolute inset-0 ${activeChatTab === ChatTab.SETTINGS ? 'hidden' : ''}`}>
                 <PreviewPane

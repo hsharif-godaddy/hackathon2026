@@ -11,6 +11,7 @@ import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { logger } from '../../logging/index.js';
 import { qaAnalyzeAITool, markIssuesAsFixed } from '../../tools/ai-lib-tools/qa-analyze.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
+import {requirePermission} from "../middleware";
 
 const qaAnalyzeSchema = z.object({
   appId: z.string(),
@@ -27,15 +28,7 @@ const markFixedSchema = z.object({
 const router: Router = Router();
 const appRepo = new AppRepository();
 
-router.post('/qa-analyze', async (req: Request, res: Response) => {
-  // Check run Qa Analyze permission from JWT claims
-  const authReq = req as AuthenticatedRequest;
-  if (!authReq.agentContext?.canPublish) {
-    return res.status(403).json({
-      error: 'Run Qa Analyze not allowed',
-      details: 'Airo Plus subscription required to run Qa Analyze'
-    });
-  }
+router.post('/qa-analyze', requirePermission('canDownload'), async (req: Request, res: Response) => {
   try {
     const { appId, mode, forceRefresh } = qaAnalyzeSchema.parse(req.body);
 

@@ -7,6 +7,7 @@ import { log } from '../../logging/index.js';
 import { Router } from 'express';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import type { DevSupervisorClient, PublishResponse, PublishSuccessResponse } from '../../services/DevSupervisorClient.js';
+import { requirePermission } from '../middleware/require-permission.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -60,9 +61,14 @@ const appRepository = new AppRepository();
  *   }
  * }
  */
-router.post('/apps/:id/publish', async (req, res) => {
+router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
     const contextLogger = log.forApp(id);
 
     // Check publish permission from JWT claims
@@ -352,7 +358,7 @@ router.post('/apps/:id/publish', async (req, res) => {
     // Detect environment and job type
     const isLocalDev = !process.env.NOMAD_ALLOC_DIR;
     const publishSocketPath = process.env.AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH;
-    
+
     // For production: check for Unix socket (set by infrastructure)
     // For local dev: always unified job (uses TCP for supervisors)
     const isUnifiedJob = isLocalDev || (publishSocketPath && existsSync(publishSocketPath));
@@ -406,7 +412,7 @@ router.post('/apps/:id/publish', async (req, res) => {
         // For production: use Unix socket from env var
         // For local dev: look up TCP path from database
         let publishSupervisor: DevSupervisorClient | null = null;
-        
+
         if (publishSocketPath) {
           // Production: use provided socket path
           publishSupervisor = DevSupervisorClientFactory.createForSocketPath(publishSocketPath, id);
@@ -417,7 +423,7 @@ router.post('/apps/:id/publish', async (req, res) => {
             publishSupervisor = DevSupervisorClientFactory.createForSocketPath(app.publishSupervisorPath, id);
           }
         }
-        
+
         if (!publishSupervisor) {
           throw new Error('Failed to create publish supervisor client');
         }
@@ -495,7 +501,7 @@ router.post('/apps/:id/publish', async (req, res) => {
 
     return res.json(response);
   } catch (error) {
-    const contextLogger = log.forApp(req.params.id);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : log.forAgent('publish-routes');
     log.error(contextLogger, 'route.publish.error', error as Error, {});
     return res.status(500).json({
       error: 'Failed to publish archive',

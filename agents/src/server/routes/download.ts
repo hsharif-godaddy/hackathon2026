@@ -12,7 +12,7 @@ import archiver from 'archiver';
 import { AppRepository } from '../../database/index.js';
 import { Logger, log } from '../../logging/index.js';
 import { ALLOWED_DIRECTORIES, ALLOWED_CONFIG_FILES } from '../../config/app-download.js';
-import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
+import { requirePermission } from '../middleware/require-permission.js';
 
 const router: Router = Router();
 const appRepo = new AppRepository();
@@ -68,26 +68,13 @@ function safePath(base: string, segment: string): string {
  * 4. Stream zip to client
  * 5. Cleanup temporary file
  */
-router.get('/apps/:id/zip', async (req: Request, res: Response) => {
+router.get('/apps/:id/zip', requirePermission('canDownload'), async (req: Request, res: Response) => {
   const { id } = req.params;
   const contextLogger = id ? log.forApp(id) : logger;
 
   try {
     if (!id) {
       return res.status(400).json({ error: 'App ID is required' });
-    }
-
-    // Check download permission from JWT claims
-    const authReq = req as AuthenticatedRequest;
-    if (!authReq.agentContext?.canDownload) {
-      log.error(contextLogger, 'route.apps.zip.forbidden', new Error('Download not allowed'), {
-        appId: id,
-        reason: 'missing_canDownload_permission',
-      });
-      return res.status(403).json({
-        error: 'Download not allowed',
-        details: 'Airo Plus subscription required to download app files'
-      });
     }
 
     const app = appRepo.findById(id);

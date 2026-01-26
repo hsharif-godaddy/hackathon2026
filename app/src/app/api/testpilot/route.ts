@@ -97,13 +97,20 @@ export async function POST(request: NextRequest) {
         return { key: testType, result: null };
       } catch (error) {
         const elapsed = Date.now() - testStartTime;
+        const errorMessage = error instanceof Error ? error.message : String(error);
         logger.error('testpilot.api.test-failed', {
           testType,
           elapsed,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage,
         });
-        // Return null for failed tests so other tests can continue
-        return { key: testType, result: null };
+        // Return error information so frontend can display it
+        return {
+          key: testType,
+          result: {
+            error: errorMessage,
+            status: 'failed'
+          }
+        };
       }
     });
 
@@ -112,10 +119,10 @@ export async function POST(request: NextRequest) {
     const totalElapsed = Date.now() - startTime;
     logger.info('testpilot.api.all-complete', { totalElapsed, testCount: testResults.length });
 
-    // Combine results into a single object
+    // Combine results into a single object (include errors)
     const results: Record<string, unknown> = {};
     for (const item of testResults) {
-      if (item && item.result !== null) {
+      if (item && item.result) {
         results[item.key] = item.result;
       }
     }

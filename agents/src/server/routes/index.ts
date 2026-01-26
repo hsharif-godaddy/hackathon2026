@@ -14,6 +14,7 @@ export { default as securityScanRouter } from './security-scan.js';
 export { default as qaAnalyzeRouter } from './qa-analyze.js';
 export { default as oauthRouter } from './oauth.js';
 export { default as videoRouter } from './video.js';
+export { default as goLiveRouter } from './go-live.js';
 export { conversationsRouter } from './conversations.js';
 export { default as gitRemoteRouter } from './git-remote.js';
 export { default as socialRouter } from './social.js';

@@ -13,6 +13,107 @@ import { postMessageToIframe } from '@/utils/postMessage'
 // Loading phases for proper sequencing
 type LoadingPhase = 'idle' | 'loading-app' | 'loading-site' | 'loading-conversations' | 'ready'
 
+// Helper to load go-live status from .airo/live.json (defaults to false for sync init)
+const loadGoLiveStatus = (appId: string): { hasGoneLive: boolean; wentLiveAt: string | null } => {
+  // Return default for initialization - actual status will be loaded async
+  return { hasGoneLive: false, wentLiveAt: null }
+}
+
+// Helper to load go-live status from .airo/live.json via API (async version)
+const loadGoLiveStatusAsync = async (appId: string): Promise<{ hasGoneLive: boolean; wentLiveAt: string | null }> => {
+  if (typeof window === 'undefined') {
+    return { hasGoneLive: false, wentLiveAt: null }
+  }
+
+  try {
+    const { agentFetch } = await import('@/lib/agent-fetch');
+    const { dynamicApiConfigService } = await import('@/config/dynamic-api');
+
+    const apiConfig = await dynamicApiConfigService.getConfigForSite(appId);
+    if (!apiConfig.agentUrl) {
+      logger.warn('develop-store.load-go-live-status.no-agent-url', { appId });
+      return { hasGoneLive: false, wentLiveAt: null };
+    }
+
+    const response = await agentFetch(`${apiConfig.agentUrl}/apps/${appId}/go-live-status`, {
+      siteId: appId,
+      method: 'GET'
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to load go-live status: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return {
+      hasGoneLive: data.hasGoneLive ?? false,
+      wentLiveAt: data.wentLiveAt ?? null
+    };
+  } catch (error) {
+    logger.error('develop-store.load-go-live-status.failure', { appId, error: String(error) });
+    return { hasGoneLive: false, wentLiveAt: null };
+  }
+}
+
+// Helper to save go-live status to .airo/live.json via API
+const saveGoLiveStatus = async (appId: string) => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const { agentFetch } = await import('@/lib/agent-fetch');
+    const { dynamicApiConfigService } = await import('@/config/dynamic-api');
+    const { regenerateToken } = await import('@/lib/jwt-regeneration');
+
+    // Regenerate token with canPublish permission
+    await regenerateToken({ siteId: appId, force: true });
+
+    const apiConfig = await dynamicApiConfigService.getConfigForSite(appId);
+    if (!apiConfig.agentUrl) {
+      logger.error('develop-store.save-go-live-status.no-agent-url', { appId });
+      return;
+    }
+
+    const response = await agentFetch(`${apiConfig.agentUrl}/apps/${appId}/mark-gone-live`, {
+      siteId: appId,
+      method: 'POST'
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to save go-live status: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    logger.info('develop-store.save-go-live-status.success', {
+      appId,
+      hasGoneLive: result.hasGoneLive,
+      wentLiveAt: result.wentLiveAt
+    });
+  } catch (error) {
+    logger.error('develop-store.save-go-live-status.failure', { appId, error: String(error) });
+  }
+}
+
+// Helper to create default publish state
+const createDefaultPublishState = (appId: string) => {
+  const goLiveStatus = loadGoLiveStatus(appId);
+  return {
+    isPublishing: false,
+    publishError: false,
+    buildErrorDetails: null,
+    lastPublishedCommitHash: null,
+    deploymentsRefetch: null,
+    deploymentInProgressId: null,
+    showSuccessAlert: false,
+    showPaywallModal: false,
+    hasGoneLive: goLiveStatus.hasGoneLive,
+    wentLiveAt: goLiveStatus.wentLiveAt,
+    showGoLiveModal: false,
+    goLiveModalStep: null as 'confirm' | 'qa' | 'security-results' | 'republish' | 'video' | 'marketing' | null,
+    securityScanResults: null,
+    launchVideoUrl: null,
+  };
+}
+
 interface DevelopPageStore {
   // UI states
   viewMode: ViewMode
@@ -58,6 +159,13 @@ interface DevelopPageStore {
     deploymentInProgressId: string | null
     showSuccessAlert: boolean
     showPaywallModal: boolean
+    // Go Live modal state
+    hasGoneLive: boolean
+    wentLiveAt: string | null
+    showGoLiveModal: boolean
+    goLiveModalStep: 'confirm' | 'qa' | 'security-results' | 'republish' | 'video' | 'marketing' | null
+    securityScanResults: any | null
+    launchVideoUrl: string | null
   }>
 
   // Page loading orchestration
@@ -116,7 +224,21 @@ interface DevelopPageStore {
     deploymentsRefetch: (() => Promise<any>) | null
     deploymentInProgressId: string | null
     showSuccessAlert: boolean
+    hasGoneLive: boolean
+    wentLiveAt: string | null
+    showGoLiveModal: boolean
+    goLiveModalStep: 'confirm' | 'qa' | 'security-results' | 'republish' | 'video' | 'marketing' | null
+    securityScanResults: any | null
+    launchVideoUrl: string | null
   }
+
+  // Go Live modal actions
+  setShowGoLiveModal: (appId: string, show: boolean) => void
+  setGoLiveModalStep: (appId: string, step: 'confirm' | 'qa' | 'security-results' | 'republish' | 'video' | 'marketing' | null) => void
+  setSecurityScanResults: (appId: string, results: any | null) => void
+  setLaunchVideoUrl: (appId: string, url: string | null) => void
+  markAsGoneLive: (appId: string) => Promise<void>
+  hasGoneLive: (appId: string) => boolean
 
   // Page loading orchestration
   initializePage: (appId: string) => Promise<void>
@@ -299,74 +421,29 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // Publish status actions (per-app)
     getPublishState: (appId: string) => {
       const state = get().publishStates[appId];
-      return state || {
-        isPublishing: false,
-        publishError: false,
-        buildErrorDetails: null,
-        lastPublishedCommitHash: null,
-        deploymentsRefetch: null,
-        deploymentInProgressId: null,
-        showSuccessAlert: false,
-        showPaywallModal: false,
-      };
+      return state || createDefaultPublishState(appId);
     },
     setIsPublishing: (appId: string, isPublishing: boolean) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = {
-          isPublishing: false,
-          publishError: false,
-          buildErrorDetails: null,
-          lastPublishedCommitHash: null,
-          deploymentsRefetch: null,
-          deploymentInProgressId: null,
-          showSuccessAlert: false,
-          showPaywallModal: false,
-        };
+        state.publishStates[appId] = createDefaultPublishState(appId);
       }
       state.publishStates[appId].isPublishing = isPublishing;
     }),
     setPublishError: (appId: string, hasError: boolean) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = {
-          isPublishing: false,
-          publishError: false,
-          buildErrorDetails: null,
-          lastPublishedCommitHash: null,
-          deploymentsRefetch: null,
-          deploymentInProgressId: null,
-          showSuccessAlert: false,
-          showPaywallModal: false,
-        };
+        state.publishStates[appId] = createDefaultPublishState(appId);
       }
       state.publishStates[appId].publishError = hasError;
     }),
     setBuildErrorDetails: (appId: string, errorDetails: { error: string; details: string; exitCode?: number } | null) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = {
-          isPublishing: false,
-          publishError: false,
-          buildErrorDetails: null,
-          lastPublishedCommitHash: null,
-          deploymentsRefetch: null,
-          deploymentInProgressId: null,
-          showSuccessAlert: false,
-          showPaywallModal: false,
-        };
+        state.publishStates[appId] = createDefaultPublishState(appId);
       }
       state.publishStates[appId].buildErrorDetails = errorDetails;
     }),
     setLastPublishedCommitHash: (appId: string, commitHash: string | null) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = {
-          isPublishing: false,
-          publishError: false,
-          buildErrorDetails: null,
-          lastPublishedCommitHash: null,
-          deploymentsRefetch: null,
-          deploymentInProgressId: null,
-          showSuccessAlert: false,
-          showPaywallModal: false,
-        };
+        state.publishStates[appId] = createDefaultPublishState(appId);
       }
       state.publishStates[appId].lastPublishedCommitHash = commitHash;
 
@@ -382,46 +459,19 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     }),
     setDeploymentsRefetch: (appId: string, refetch: (() => Promise<any>) | null) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = {
-          isPublishing: false,
-          publishError: false,
-          buildErrorDetails: null,
-          lastPublishedCommitHash: null,
-          deploymentsRefetch: null,
-          deploymentInProgressId: null,
-          showSuccessAlert: false,
-          showPaywallModal: false,
-        };
+        state.publishStates[appId] = createDefaultPublishState(appId);
       }
       state.publishStates[appId].deploymentsRefetch = refetch;
     }),
     setDeploymentInProgressId: (appId: string, deploymentId: string | null) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = {
-          isPublishing: false,
-          publishError: false,
-          buildErrorDetails: null,
-          lastPublishedCommitHash: null,
-          deploymentsRefetch: null,
-          deploymentInProgressId: null,
-          showSuccessAlert: false,
-          showPaywallModal: false,
-        };
+        state.publishStates[appId] = createDefaultPublishState(appId);
       }
       state.publishStates[appId].deploymentInProgressId = deploymentId;
     }),
     setPublishSuccess: (appId: string, showSuccess: boolean) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = {
-          isPublishing: false,
-          publishError: false,
-          buildErrorDetails: null,
-          lastPublishedCommitHash: null,
-          deploymentsRefetch: null,
-          deploymentInProgressId: null,
-          showSuccessAlert: false,
-          showPaywallModal: false,
-        };
+        state.publishStates[appId] = createDefaultPublishState(appId);
       }
       state.publishStates[appId].showSuccessAlert = showSuccess;
       state.publishStates[appId].isPublishing = false;
@@ -444,16 +494,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     }),
     setShowPaywallModal: (appId: string, show: boolean) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = {
-          isPublishing: false,
-          publishError: false,
-          buildErrorDetails: null,
-          lastPublishedCommitHash: null,
-          deploymentsRefetch: null,
-          deploymentInProgressId: null,
-          showSuccessAlert: false,
-          showPaywallModal: false,
-        };
+        state.publishStates[appId] = createDefaultPublishState(appId);
       }
       state.publishStates[appId].showPaywallModal = show;
     }),
@@ -515,6 +556,16 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         set((state) => {
           state.site = site
         })
+
+        // Load go-live status from .airo/live.json
+        const goLiveStatus = await loadGoLiveStatusAsync(appId);
+        set((state) => {
+          if (!state.publishStates[appId]) {
+            state.publishStates[appId] = createDefaultPublishState(appId);
+          }
+          state.publishStates[appId].hasGoneLive = goLiveStatus.hasGoneLive;
+          state.publishStates[appId].wentLiveAt = goLiveStatus.wentLiveAt;
+        });
 
         // Phase 3: Load conversations with proper context
         set((state) => { state.loadingPhase = 'loading-conversations' })
@@ -644,6 +695,72 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       window.addEventListener('resize', checkMobile)
 
       return () => window.removeEventListener('resize', checkMobile)
+    },
+
+    // Go Live modal actions
+    setShowGoLiveModal: (appId: string, show: boolean) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState(appId);
+      }
+      state.publishStates[appId].showGoLiveModal = show;
+      if (!show) {
+        // Reset modal state when closing
+        state.publishStates[appId].goLiveModalStep = null;
+        state.publishStates[appId].securityScanResults = null;
+        state.publishStates[appId].launchVideoUrl = null;
+      }
+    }),
+
+    setGoLiveModalStep: (appId: string, step: 'confirm' | 'qa' | 'security-results' | 'republish' | 'video' | 'marketing' | null) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState(appId);
+      }
+      state.publishStates[appId].goLiveModalStep = step;
+    }),
+
+    setSecurityScanResults: (appId: string, results: any | null) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState(appId);
+      }
+      state.publishStates[appId].securityScanResults = results;
+    }),
+
+    setLaunchVideoUrl: (appId: string, url: string | null) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState(appId);
+      }
+      state.publishStates[appId].launchVideoUrl = url;
+    }),
+
+    markAsGoneLive: async (appId: string) => {
+      const timestamp = new Date().toISOString();
+
+      // Update state optimistically
+      set((state) => {
+        if (!state.publishStates[appId]) {
+          state.publishStates[appId] = createDefaultPublishState(appId);
+        }
+        state.publishStates[appId].hasGoneLive = true;
+        state.publishStates[appId].wentLiveAt = timestamp;
+      });
+
+      // Persist to .airo/live.json via API
+      await saveGoLiveStatus(appId);
+
+      logger.info('go-live.completed', {
+        appId,
+        wentLiveAt: timestamp
+      });
+    },
+
+    hasGoneLive: (appId: string) => {
+      const state = get().publishStates[appId];
+      if (state) {
+        return state.hasGoneLive;
+      }
+      // Check localStorage if not in state
+      const goLiveStatus = loadGoLiveStatus(appId);
+      return goLiveStatus.hasGoneLive;
     }
   })),
     { name: 'DevelopPageStore' }

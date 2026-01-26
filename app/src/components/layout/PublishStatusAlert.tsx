@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { FormattedMessage } from 'react-intl';
 import Alert from '@ux/alert';
 import Button from '@ux/button';
@@ -42,6 +42,8 @@ export default function PublishStatusAlert() {
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
   const dismissPublishSuccess = useDevelopPageStore((state) => state.dismissPublishSuccess);
   const clearPublishStatus = useDevelopPageStore((state) => state.clearPublishStatus);
+  const setShowGoLiveModal = useDevelopPageStore((state) => state.setShowGoLiveModal);
+  const getPublishState = useDevelopPageStore((state) => state.getPublishState);
   const isPublishing = useDevelopPageStore((state) =>
     state.publishStates[currentAppId]?.isPublishing ?? false
   );
@@ -148,6 +150,20 @@ export default function PublishStatusAlert() {
 
     router.push(`/develop/${currentAppId}?tab=settings&settings=domain`);
   }, [currentAppId, router]);
+
+  // Automatically show Go Live modal on successful publish if user hasn't gone live yet
+  useEffect(() => {
+    if (showSuccessAlert && currentAppId && hasBeenPublished(site)) {
+      const publishState = getPublishState(currentAppId);
+      if (!publishState?.hasGoneLive) {
+        logger.info('publish-alert.auto-show-go-live-modal', {
+          message: 'Automatically showing Go Live modal after successful publish',
+          appId: currentAppId,
+        });
+        setShowGoLiveModal(currentAppId, true);
+      }
+    }
+  }, [showSuccessAlert, currentAppId, site, getPublishState, setShowGoLiveModal]);
 
   if (!isPublishing && !publishError && !showSuccessAlert) {
     return null;

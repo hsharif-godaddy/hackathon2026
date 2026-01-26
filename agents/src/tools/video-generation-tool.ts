@@ -82,16 +82,13 @@ export class VideoGenerationTool {
   private static readonly MAX_RETRIES = 3; // Retry failed requests up to 3 times
   private static readonly FETCH_TIMEOUT_MS = 30000; // 30 second timeout for fetch requests
   private static readonly RETRY_DELAY_MS = 2000; // 2 second delay before retry
-  private static readonly DEFAULT_APPS_DIR = '/tmp/apps';
 
-  private readonly appsBaseDir: string;
   private readonly maxPollingAttempts: number;
   private readonly pollingIntervalMs: number;
   private readonly maxRetries: number;
   private readonly fetchTimeoutMs: number;
 
   constructor() {
-    this.appsBaseDir = process.env.APPS_BASE_DIR || VideoGenerationTool.DEFAULT_APPS_DIR;
     this.maxPollingAttempts = VideoGenerationTool.MAX_POLLING_ATTEMPTS;
     this.pollingIntervalMs = VideoGenerationTool.POLLING_INTERVAL_MS;
     this.maxRetries = VideoGenerationTool.MAX_RETRIES;
@@ -503,6 +500,13 @@ export class VideoGenerationTool {
 
       const publicDir = path.join(appPath, 'public');
       const imagesDir = path.join(publicDir, 'images');
+
+      logger.info('video-generation.paths', {
+        appId,
+        appPath,
+        publicDir,
+        imagesDir
+      });
 
       // Create directories - mkdirSync with recursive:true is idempotent and race-condition safe
       fs.mkdirSync(publicDir, { recursive: true });

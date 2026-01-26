@@ -1,8 +1,9 @@
 import { vi, afterAll } from 'vitest';
+import '@testing-library/jest-dom/vitest';
 
 /**
  * Vitest global setup
- * 
+ *
  * Configures test environment with mock values and global mocks
  */
 

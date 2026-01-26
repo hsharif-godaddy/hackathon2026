@@ -84,6 +84,8 @@ export function useDeploymentsQuery({
   const getPublishState = useDevelopPageStore((state) => state.getPublishState);
   const setDeploymentInProgressId = useDevelopPageStore((state) => state.setDeploymentInProgressId);
   const setPublishSuccess = useDevelopPageStore((state) => state.setPublishSuccess);
+  const setShowGoLiveModal = useDevelopPageStore((state) => state.setShowGoLiveModal);
+  const hasGoneLive = useDevelopPageStore((state) => state.hasGoneLive);
   const fetchSite = useSiteStore((state) => state.fetchSite);
   const getSite = useSiteStore((state) => state.getSite);
 
@@ -257,10 +259,25 @@ export function useDeploymentsQuery({
           }
         })();
 
-        // Refetch site data to get updated domains/URLs/variants, then show success
+        // Refetch site data to get updated domains/URLs/variants, then show success or go-live modal
         fetchSite(appId, true)
-          .then(function handleRefetchSuccess() {
-            setPublishSuccess(appId, true);
+          .then(function handleRefetchSuccess(updatedSite) {
+            // Check if this is first publish and user hasn't gone live yet
+            const isFirstPublish = !wasAlreadyPublished;
+            const userHasGoneLive = hasGoneLive(appId);
+
+            if (isFirstPublish && !userHasGoneLive) {
+              // Show go-live modal for first-time publishers
+              setShowGoLiveModal(appId, true);
+              logger.info('deployments-query.showing-go-live-modal', {
+                appId,
+                isFirstPublish,
+                userHasGoneLive
+              });
+            } else {
+              // Show normal success alert for subsequent publishes or users who already went live
+              setPublishSuccess(appId, true);
+            }
           })
           .catch(function handleFetchError(error) {
             logger.error('deployments-query.site-refetch.error', {
@@ -282,7 +299,7 @@ export function useDeploymentsQuery({
       // Clear deployment tracking
       setDeploymentInProgressId(appId, null);
     }
-  }, [query.data, appId, getPublishState, setDeploymentInProgressId, setPublishSuccess, fetchSite, getSite, queryClient]);
+  }, [query.data, appId, getPublishState, setDeploymentInProgressId, setPublishSuccess, setShowGoLiveModal, hasGoneLive, fetchSite, getSite, queryClient]);
 
   return query;
 }
