@@ -1,6 +1,6 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { logger } from '../logging/index.js';
-import { getEmbeddingModel, generateEmbeddings } from '@airo/ai-lib';
+import { getEmbeddingModel, generateEmbeddings, llmMetadataContext } from '@airo/ai-lib';
 
 export interface VectorSearchOptions {
   query: string;
@@ -211,20 +211,23 @@ export class QdrantService {
   private async generateEmbedding(text: string): Promise<number[]> {
     try {
       const model = await getEmbeddingModel(QdrantService.EMBEDDING_MODEL);
-      const result = await generateEmbeddings(text, model);
-      
+
+      const existingMetadata = llmMetadataContext.getStore();
+
+      const result = await generateEmbeddings(text, model, {}, existingMetadata);
+
       if (!result.embeddings || result.embeddings.length === 0) {
         throw new Error('No embeddings returned');
       }
-      
+
       const embedding = result.embeddings[0];
       if (!embedding) {
         throw new Error('First embedding is undefined');
       }
-      
+
       return embedding.embedding;
     } catch (error) {
-      this.logger.error('qdrant.embedding.failure', { 
+      this.logger.error('qdrant.embedding.failure', {
         textLength: text.length,
         model: QdrantService.EMBEDDING_MODEL,
         error: error instanceof Error ? error.message : String(error)

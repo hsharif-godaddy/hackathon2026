@@ -1,5 +1,6 @@
 import { getModel, llmMetadataContext, type LitellmMetadata } from '@airo/ai-lib'
 import { generateText } from 'ai'
+
 import { Logger, log } from '../logging/index.js'
 
 const logger = Logger.create({ service: 'name-suggestion' })
@@ -24,13 +25,22 @@ export class NameSuggestionService {
       // Get the model using ai-lib's unified provider
       const model = await getModel('haiku')
 
-      // Create minimal metadata for name suggestions (no appId available yet)
+      const existingMetadata = llmMetadataContext.getStore();
+
+      // Only use default user identifier if user doesn't exist in parent context
+      const userIdentifier = existingMetadata?.user || 'airo-builder:name-suggestion';
+
+      const additionalTags = [
+        'source:name-suggestion'
+      ]
+      const mergedTags = [...new Set([...(existingMetadata?.tags || []), ...additionalTags])]
+
       const metadata: LitellmMetadata = {
-        tags: ['source:name-suggestion']
+        ...(userIdentifier && { user: userIdentifier }),
+        tags: mergedTags
       }
 
-      // Generate name using AI with metadata context
-      const result = await llmMetadataContext.run(metadata, async () => {
+      const generateNameFn = async () => {
         return await generateText({
           model,
           system: `You are an expert app name generator. Your task is to suggest a short, catchy, and appropriate name for an app based on the description provided.
@@ -49,7 +59,9 @@ export class NameSuggestionService {
           maxOutputTokens: 50,
           experimental_telemetry: { isEnabled: true, functionId: 'name-suggestion' },
         })
-      })
+      }
+
+      const result = await llmMetadataContext.run(metadata, generateNameFn)
 
       let suggestedName = result.text
       if (suggestedName) {

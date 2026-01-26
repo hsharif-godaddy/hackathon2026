@@ -420,11 +420,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
               if (isE2S) {
                 // E2S (care) session: use "care" as subscriptionId for cost tracking
-                agentsAppContext.metadata.subscriptionId = 'airo-build:sid:care-agent'
+                agentsAppContext.metadata.subscriptionId = 'airo-builder:care-agent'
                 logger.info('context.e2s_subscription', {
                   appId,
                   isE2S: true,
-                  subscriptionId: 'airo-build:sid:care-agent'
+                  subscriptionId: 'airo-builder:care-agent'
                 })
               } else {
                 // Regular auth: use the app's subscriptionId

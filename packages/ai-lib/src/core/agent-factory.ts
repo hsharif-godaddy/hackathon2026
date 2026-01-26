@@ -65,11 +65,11 @@ function extractLitellmMetadata(
 
   // Add customerId if available
   if (customerId) {
-    tags.push(customerId)
+    tags.push(`cid:${customerId}`)
   }
 
   // Add appId
-  tags.push(appId)
+  tags.push(`appId:${appId}`)
 
   // Add source tag for distinguishing user-triggered vs background operations
   tags.push('source:user-chat')

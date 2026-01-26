@@ -1,4 +1,4 @@
-import { createTool, generateTextWithTracking, calculateCostEstimate, type Tool, createPromptBuilder } from '@airo/ai-lib'
+import { createTool, generateTextWithTracking, calculateCostEstimate, llmMetadataContext, type LitellmMetadata, type Tool, createPromptBuilder } from '@airo/ai-lib'
 import path from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
@@ -125,7 +125,25 @@ Return ONLY the JSON object with the fonts array. No markdown, no code blocks, n
   if (appId) contextData.appId = appId
   if (sessionId) contextData.conversationId = sessionId
 
-  const result = await generateTextWithTracking({
+  // Check if metadata already exists in parent context
+  const existingMetadata = llmMetadataContext.getStore()
+
+  // Only look up app if user doesn't exist in parent context
+  let userIdentifier = existingMetadata?.user
+  if (!userIdentifier && appId) {
+    const app = appRepo.findById(appId)
+    userIdentifier = app?.subscriptionId || app?.customerId
+  }
+
+  // Merge existing tags with source tag
+  const mergedTags = [...new Set([...(existingMetadata?.tags || []), 'source:tool-llm', 'source:font-theme'])]
+
+  const metadata: LitellmMetadata = {
+    ...(userIdentifier && { user: userIdentifier }),
+    tags: mergedTags
+  }
+
+  const generateFontsFn = async () => generateTextWithTracking({
     model,
     modelName,
     system: systemPrompt,
@@ -160,6 +178,8 @@ Return ONLY the JSON object with the fonts array. No markdown, no code blocks, n
       )
     }
   })
+
+  const result = await llmMetadataContext.run(metadata, generateFontsFn)
 
   let cleanedText = result.text.trim()
 

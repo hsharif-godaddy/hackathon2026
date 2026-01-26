@@ -845,18 +845,20 @@ Return ONLY the JSON object with issues array. No markdown, no code blocks, no e
     if (appId) contextData.appId = appId
     if (sessionId) contextData.conversationId = sessionId
 
-    const app = appId ? appRepo.findById(appId) : null
+    const existingMetadata = llmMetadataContext.getStore()
 
-    const litellmMetadata: LitellmMetadata | null = app
-        ? {
-            ...(app.subscriptionId ? { user: app.subscriptionId } : {}),
-            tags: [
-                app.customerId,
-                appId,
-                'source:tool-llm'
-            ].filter((tag): tag is string => !!tag)
-        }
-        : null
+    let userIdentifier = existingMetadata?.user
+    if (!userIdentifier && appId) {
+        const app = appRepo.findById(appId)
+        userIdentifier = app?.subscriptionId || app?.customerId
+    }
+
+    const mergedTags = [...new Set([...(existingMetadata?.tags || []), 'source:tool-llm', 'source:qa-analyze'])]
+
+    const litellmMetadata: LitellmMetadata = {
+        ...(userIdentifier && { user: userIdentifier }),
+        tags: mergedTags
+    }
 
     const result = await generateWithMetadata({
         model,

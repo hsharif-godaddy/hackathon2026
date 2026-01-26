@@ -1,12 +1,15 @@
 import { getModel, llmMetadataContext, type LitellmMetadata } from '@airo/ai-lib'
 import { generateText } from 'ai'
-import { Logger, log } from '../logging/index.js'
+
+import { AppRepository } from '../database/repositories/AppRepository.js'
 import { SummaryRepository } from '../database/repositories/SummaryRepository.js'
+import { Logger, log } from '../logging/index.js'
 
 const logger = Logger.create({ service: 'video-prompt-generation' })
 
 export class VideoPromptGenerationService {
   private summaryRepo: SummaryRepository
+  private static appRepo = new AppRepository()
 
   constructor() {
     this.summaryRepo = new SummaryRepository()
@@ -42,13 +45,33 @@ export class VideoPromptGenerationService {
       // Use 'sonnet' for high-quality video prompt generation
       const model = await getModel('sonnet')
 
-      // Create metadata for video prompt generation
-      const metadata: LitellmMetadata = {
-        tags: ['source:video-prompt-generation', `appId:${appId}`]
+      const existingMetadata = llmMetadataContext.getStore();
+
+      let userIdentifier = existingMetadata?.user;
+      let customerId: string | undefined;
+
+      if (!userIdentifier) {
+        const app = VideoPromptGenerationService.appRepo.findById(appId);
+        userIdentifier = app?.subscriptionId || app?.customerId;
+        customerId = app?.customerId;
       }
 
-      // Generate video prompt using AI with metadata context
-      const result = await llmMetadataContext.run(metadata, async () => {
+      // Build tags: include customerId and appId when no parent context
+      const mergedTags = [...new Set([
+        ...(existingMetadata?.tags || []),
+        ...(existingMetadata ? [] : [
+          customerId ? `cid:${customerId}` : undefined,
+          `appId:${appId}`
+        ].filter((t): t is string => !!t)),
+        'source:video-prompt-generation'
+      ])];
+
+      const metadata: LitellmMetadata = {
+        ...(userIdentifier && { user: userIdentifier }),
+        tags: mergedTags
+      };
+
+      const generateVideoPromptFn = async () => {
         return await generateText({
           model,
           system: `You are an expert video production and creative director. Your task is to generate a detailed, professional video prompt that can be used to create promotional videos for businesses.
@@ -104,7 +127,9 @@ Generate a detailed 12-second video prompt following the exact structure provide
           maxOutputTokens: 1500,
           experimental_telemetry: { isEnabled: true, functionId: 'video-prompt-generation' },
         })
-      })
+      }
+
+      const result = await llmMetadataContext.run(metadata, generateVideoPromptFn);
 
       const videoPrompt = result.text?.trim()
 

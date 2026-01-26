@@ -142,20 +142,25 @@ Return ONLY the JSON object with the palettes array. No markdown, no code blocks
   if (appId) contextData.appId = appId
   if (sessionId) contextData.conversationId = sessionId
 
-  // Look up app details for LiteLLM metadata
-  const app = appId ? appRepo.findById(appId) : null
+  // Check if metadata already exists in parent context
+  const existingMetadata = llmMetadataContext.getStore()
+
+  // Only look up app if user doesn't exist in parent context
+  let userIdentifier = existingMetadata?.user
+
+  if (!userIdentifier && appId) {
+    const app = appRepo.findById(appId)
+    userIdentifier = app?.subscriptionId || app?.customerId
+  }
+
+  // Merge existing tags with source tag
+  const mergedTags = [...new Set([...(existingMetadata?.tags || []), 'source:tool-llm', 'source:color-scheme'])]
 
   // Create LiteLLM metadata for cost tracking
-  const litellmMetadata: LitellmMetadata | null = app
-    ? {
-        ...(app.subscriptionId ? { user: app.subscriptionId } : {}),
-        tags: [
-          app.customerId,
-          appId,
-          'source:tool-llm'
-        ].filter((tag): tag is string => !!tag)
-      }
-    : null
+  const litellmMetadata: LitellmMetadata = {
+    ...(userIdentifier && { user: userIdentifier }),
+    tags: mergedTags
+  }
 
   const result = await (litellmMetadata
     ? llmMetadataContext.run(litellmMetadata, async () => {

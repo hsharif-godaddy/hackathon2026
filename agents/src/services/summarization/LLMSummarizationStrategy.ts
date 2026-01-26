@@ -148,20 +148,32 @@ export class LLMSummarizationStrategy implements SummarizationStrategy {
     const attributes: { userId: string; sessionId?: string } = { userId: appId };
     if (context.sessionId) attributes.sessionId = context.sessionId;
 
-    // Look up app details for LiteLLM metadata
-    const app = LLMSummarizationStrategy.appRepo.findById(appId);
+    const existingMetadata = llmMetadataContext.getStore();
+
+    let userIdentifier = existingMetadata?.user;
+    let customerId: string | undefined;
+
+    if (!userIdentifier) {
+      const app = LLMSummarizationStrategy.appRepo.findById(appId);
+      userIdentifier = app?.subscriptionId || app?.customerId;
+      customerId = app?.customerId;
+    }
+
+    // Build tags: include customerId and appId when no parent context
+    const mergedTags = [...new Set([
+      ...(existingMetadata?.tags || []),
+      ...(existingMetadata ? [] : [
+        customerId ? `cid:${customerId}` : undefined,
+        `appId:${appId}`
+      ].filter((t): t is string => !!t)),
+      'source:summarization'
+    ])];
 
     // Create LiteLLM metadata for cost tracking
-    const litellmMetadata: LitellmMetadata | null = app
-      ? {
-          ...(app.subscriptionId ? { user: app.subscriptionId } : {}),
-          tags: [
-            app.customerId,
-            appId,
-            'source:summarization'
-          ].filter((tag): tag is string => !!tag)
-        }
-      : null;
+    const litellmMetadata: LitellmMetadata = {
+      ...(userIdentifier && { user: userIdentifier }),
+      tags: mergedTags
+    };
 
     // Extract generateText call to avoid duplication
     const generateTextWithAttributes = async () =>
