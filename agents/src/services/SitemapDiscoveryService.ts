@@ -42,6 +42,38 @@ export class SitemapDiscoveryService {
   }
 
   /**
+   * Check if URL has a path beyond the root
+   *
+   * @param url - URL to check
+   * @returns True if URL has path segments beyond /
+   */
+  static hasPathBeyondRoot(url: string): boolean {
+    try {
+      const urlObj = new URL(url);
+      const path = urlObj.pathname.replace(/\/$/, '');
+      return path.length > 0 && path !== '/';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Extract the path prefix from a URL
+   *
+   * @param url - URL to extract path from
+   * @returns Path prefix (e.g., "/psycholand" from "https://example.com/psycholand")
+   */
+  static extractPathPrefix(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      const path = urlObj.pathname.replace(/\/$/, '');
+      return path || '/';
+    } catch {
+      return '/';
+    }
+  }
+
+  /**
    * Discover all pages on the website
    * 
    * @returns Promise resolving to discovery result
@@ -156,8 +188,89 @@ export class SitemapDiscoveryService {
   }
 
   /**
+   * Crawl from a specific path, only following links within the path prefix
+   *
+   * @param pathPrefix - The path prefix to stay within (e.g., "/psycholand")
+   * @returns Promise resolving to discovery result
+   */
+  async crawlFromPath(pathPrefix: string): Promise<SitemapDiscoveryResult> {
+    try {
+      logger.info('sitemap-discovery.crawl-from-path.begin', {
+        baseUrl: this.baseUrl,
+        pathPrefix,
+        maxPages: this.maxPages
+      });
+
+      const pages: DiscoveredPage[] = [];
+      const visited = new Set<string>();
+      const queued = new Set<string>(); // Track URLs already in queue to prevent duplicates
+      const queue: string[] = [this.baseUrl];
+      queued.add(this.normalizeUrl(this.baseUrl));
+
+      while (queue.length > 0 && pages.length < this.maxPages) {
+        const currentUrl = queue.shift();
+        if (!currentUrl) continue;
+
+        const normalizedUrl = this.normalizeUrl(currentUrl);
+        if (visited.has(normalizedUrl)) continue;
+        visited.add(normalizedUrl);
+
+        // Fetch and parse the page
+        const links = await this.extractLinksFromPage(currentUrl);
+
+        // Add current page to results
+        pages.push({
+          url: currentUrl,
+          priority: currentUrl === this.baseUrl ? 1.0 : 0.5,
+          source: 'crawl'
+        });
+
+        // Queue links that match the path prefix
+        for (const link of links) {
+          const normalizedLink = this.normalizeUrl(link);
+          if (
+            this.matchesPathPrefix(link, pathPrefix) &&
+            !visited.has(normalizedLink) &&
+            !queued.has(normalizedLink)
+          ) {
+            queue.push(link);
+            queued.add(normalizedLink);
+          }
+        }
+      }
+
+      const pagesWithBlogDetection = this.detectBlogPages(pages);
+
+      logger.info('sitemap-discovery.crawl-from-path.complete', {
+        baseUrl: this.baseUrl,
+        pathPrefix,
+        totalPages: pagesWithBlogDetection.length
+      });
+
+      return {
+        success: true,
+        pages: pagesWithBlogDetection,
+        totalPages: pagesWithBlogDetection.length
+      };
+    } catch (error) {
+      logger.error('sitemap-discovery.crawl-from-path.error', {
+        error: error instanceof Error ? error.message : String(error),
+        baseUrl: this.baseUrl,
+        pathPrefix
+      });
+
+      return {
+        success: false,
+        pages: [],
+        totalPages: 0,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
+  /**
    * Get the canonical base URL after following redirects
-   * 
+   *
    * @returns Promise resolving to the final URL after redirects
    */
   private async getCanonicalBaseUrl(): Promise<string> {
@@ -609,5 +722,83 @@ export class SitemapDiscoveryService {
     }
 
     return counts;
+  }
+
+  /**
+   * Extract internal links from a page
+   *
+   * @param pageUrl - URL of the page to extract links from
+   * @returns Promise resolving to array of link URLs
+   */
+  private async extractLinksFromPage(pageUrl: string): Promise<string[]> {
+    try {
+      const response = await fetch(pageUrl);
+      if (!response.ok) {
+        logger.warn('sitemap-discovery.extract-links.failed', {
+          pageUrl,
+          status: response.status
+        });
+        return [];
+      }
+
+      const finalUrl = response.url || pageUrl;
+      const finalUrlObj = new URL(finalUrl);
+      const html = await response.text();
+      const links: string[] = [];
+
+      const linkRegex = /<a\s+(?:[^>]*?\s+)?href=["']([^"']+)["']/gi;
+      let match;
+
+      while ((match = linkRegex.exec(html)) !== null) {
+        const href = match[1];
+        if (!href) continue;
+
+        try {
+          const url = new URL(href, finalUrl);
+          // Only include same-hostname URLs without hash fragments
+          // Remove query parameters to avoid duplicate pages like /about and /about?utm_source=...
+          if (url.hostname === finalUrlObj.hostname && !url.hash) {
+            url.search = '';
+            links.push(url.href);
+          }
+        } catch {
+          // Ignore malformed URLs
+          continue;
+        }
+      }
+
+      return links;
+    } catch (error) {
+      logger.warn('sitemap-discovery.extract-links.error', {
+        pageUrl,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return [];
+    }
+  }
+
+  /**
+   * Check if a URL matches the path prefix
+   *
+   * @param url - URL to check
+   * @param pathPrefix - Path prefix to match against
+   * @returns True if URL path starts with the prefix
+   */
+  private matchesPathPrefix(url: string, pathPrefix: string): boolean {
+    try {
+      const urlObj = new URL(url);
+      const normalizedPath = urlObj.pathname.replace(/\/$/, '') || '/';
+      const normalizedPrefix = pathPrefix.replace(/\/$/, '') || '/';
+
+      // Root prefix matches everything on the same domain
+      if (normalizedPrefix === '/') {
+        return true;
+      }
+
+      // Check if path starts with prefix
+      return normalizedPath === normalizedPrefix || normalizedPath.startsWith(normalizedPrefix + '/');
+    } catch {
+      return false;
+    }
   }
 }

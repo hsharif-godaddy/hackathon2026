@@ -13,7 +13,7 @@ import type {
 } from '../types/rebuild.js';
 import { AssetProcessingService } from './AssetProcessingService.js';
 import { SiteAnalyzerAgent } from '../agents/site-analyzer-agent.js';
-import { SitemapDiscoveryService } from './SitemapDiscoveryService.js';
+import { SitemapDiscoveryService, type SitemapDiscoveryResult } from './SitemapDiscoveryService.js';
 import { WebsiteScraperDriver } from '../tools/ai-lib-tools/drivers/website-scraper-driver.js';
 import { PagePromptAgent } from '../agents/page-prompt-agent.js';
 
@@ -66,6 +66,7 @@ export class RebuildOrchestrationService {
       const state: RebuildWorkflowState = {
         appId,
         sourceUrl,
+        rootPath: SitemapDiscoveryService.extractPathPrefix(sourceUrl),
         status: 'scraping',
         scrapingProgress: {
           total: 0,
@@ -107,8 +108,30 @@ export class RebuildOrchestrationService {
     try {
       const state = await this.getStatus(appId);
 
-      const sitemapService = new SitemapDiscoveryService(sourceUrl, MAX_PAGES_TO_SCRAPE);
-      const discoveryResult = await sitemapService.discover();
+      let discoveryResult: SitemapDiscoveryResult;
+
+      // Choose discovery method based on whether URL has a path beyond root
+      if (SitemapDiscoveryService.hasPathBeyondRoot(sourceUrl)) {
+        // Sub-path mode: crawl-based discovery with path prefix filtering
+        // Reuse state.rootPath which was already computed in startRebuild()
+        logger.info('rebuild-orchestration.sub-path-mode', {
+          appId,
+          sourceUrl,
+          pathPrefix: state.rootPath
+        });
+
+        const sitemapService = new SitemapDiscoveryService(sourceUrl, MAX_PAGES_TO_SCRAPE);
+        discoveryResult = await sitemapService.crawlFromPath(state.rootPath);
+      } else {
+        // Root mode: existing sitemap-based discovery
+        logger.info('rebuild-orchestration.root-mode', {
+          appId,
+          sourceUrl
+        });
+
+        const sitemapService = new SitemapDiscoveryService(sourceUrl, MAX_PAGES_TO_SCRAPE);
+        discoveryResult = await sitemapService.discover();
+      }
 
       if (!discoveryResult.success || discoveryResult.pages.length === 0) {
         throw new Error('Failed to discover pages');
@@ -181,7 +204,7 @@ export class RebuildOrchestrationService {
       const sitemapData: SitemapData = {
         pages: discoveryResult.pages.map(p => ({
           url: p.url,
-          slug: this.urlToSlug(p.url),
+          slug: this.urlToSlug(p.url, state.rootPath),
           priority: p.priority,
           changefreq: p.changefreq,
           lastmod: p.lastmod,
@@ -215,7 +238,7 @@ export class RebuildOrchestrationService {
             sanitizedContent: page.sanitizedContent,
             html: page.html,
             screenshotBase64: page.screenshotBase64
-          });
+          }, state.rootPath);
         } else {
           logger.warn('rebuild-orchestration.page-skip', {
             appId,
@@ -227,7 +250,7 @@ export class RebuildOrchestrationService {
         }
       }
 
-      const homePage = multiPageResult.pages.find(p => p.success && this.isHomepage(p.url));
+      const homePage = multiPageResult.pages.find(p => p.success && this.isHomepage(p.url, state.rootPath));
 
       if (homePage && homePage.sanitizedContent) {
         const analyzer = new SiteAnalyzerAgent();
@@ -513,8 +536,11 @@ export class RebuildOrchestrationService {
    *
    * @param page - Page scrape result
    */
-  private async savePage(page: { url: string; sanitizedContent?: string; html?: string; screenshotBase64?: string }): Promise<void> {
-    const slug = this.urlToSlug(page.url);
+  private async savePage(
+    page: { url: string; sanitizedContent?: string; html?: string; screenshotBase64?: string },
+    rootPath: string = '/'
+  ): Promise<void> {
+    const slug = this.urlToSlug(page.url, rootPath);
 
     const pageContent: PageContent = {
       url: page.url,
@@ -618,33 +644,51 @@ export class RebuildOrchestrationService {
    * Convert URL to slug
    *
    * @param url - URL to convert
+   * @param rootPath - Root path for this rebuild (default: "/")
    * @returns Slug
    */
-  private urlToSlug(url: string): string {
+  private urlToSlug(url: string, rootPath: string = '/'): string {
     try {
       const urlObj = new URL(url);
-      let slug = urlObj.pathname.replace(/^\/|\/$/g, '').replace(/\//g, '-');
+      let pathname = urlObj.pathname.replace(/^\/|\/$/g, '');
 
-      if (!slug || slug === '') {
-        slug = 'homepage';
+      // Remove root path prefix for sub-path rebuilds
+      const rootPrefix = rootPath.replace(/^\/|\/$/g, '');
+      if (rootPrefix && pathname.startsWith(rootPrefix)) {
+        pathname = pathname.slice(rootPrefix.length).replace(/^\//, '');
+      } else if (rootPrefix && pathname !== rootPrefix) {
+        // URL doesn't match expected rootPath prefix - log for debugging
+        logger.warn('rebuild-orchestration.slug-prefix-mismatch', {
+          url,
+          pathname,
+          rootPath,
+          message: 'URL does not start with expected rootPath prefix'
+        });
       }
 
-      return slug;
+      if (!pathname || pathname === '') {
+        return 'homepage';
+      }
+
+      return pathname.replace(/\//g, '-');
     } catch {
       return 'page';
     }
   }
 
   /**
-   * Check if URL is homepage
-   * 
+   * Check if URL is the homepage (root of the rebuild)
+   *
    * @param url - URL to check
-   * @returns True if homepage
+   * @param rootPath - Root path for this rebuild (default: "/")
+   * @returns True if this is the homepage
    */
-  private isHomepage(url: string): boolean {
+  private isHomepage(url: string, rootPath: string = '/'): boolean {
     try {
       const urlObj = new URL(url);
-      return urlObj.pathname === '/' || urlObj.pathname === '';
+      const normalizedPath = urlObj.pathname.replace(/\/$/, '') || '/';
+      const normalizedRoot = rootPath.replace(/\/$/, '') || '/';
+      return normalizedPath === normalizedRoot;
     } catch {
       return false;
     }

@@ -173,6 +173,7 @@ export interface SourceSiteData {
 export interface RebuildWorkflowState {
   appId: string;
   sourceUrl: string;
+  rootPath: string; // "/" for normal rebuilds, "/psycholand" for sub-path rebuilds
   status: 'scraping' | 'analyzing' | 'style_questions' | 'building' | 'review' | 'complete' | 'error';
   scrapingProgress: {
     total: number;

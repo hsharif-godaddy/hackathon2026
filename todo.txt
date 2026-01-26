@@ -1,0 +1,9 @@
+We are running set-project-name 4 times when reloading an apps history, At least according to console.log
+
+Create an appointment app which ties AI and twillio to schedule by text
+
+I should have a branch somewhere with code for catching compile errors and getting them to the agent to auto-correct, finish that
+
+The initial agent sometimes spews an entire design analysis, we just want it to build the prompt for the develop agent, we don't want to see that
+
+Font Theme is missing a useful render, when its not being used with suggestions
