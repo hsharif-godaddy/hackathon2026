@@ -183,7 +183,7 @@ export default function CookieBanner() {
             </p>
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
-            <Button variant="outline" size="sm" onClick={() => saveConsent(false)} className="whitespace-nowrap">Decline</Button>
+            <Button size="sm" variant="secondary" onClick={() => saveConsent(false)} className="whitespace-nowrap">Decline</Button>
             <Button size="sm" onClick={() => saveConsent(true)} className="whitespace-nowrap" autoFocus>Accept</Button>
           </div>
         </div>
