@@ -6,7 +6,6 @@
 
 ---
 
-
 ## Executive Summary
 
 ### Current State
@@ -1141,87 +1140,100 @@ export function registerRoutes(app: Express) {
 
 ## Feature Flags & Safety
 
-### Environment Variables
+### Capability-Based Access Control (Primary)
+
+The git remote sync feature uses **capability-based access control** via `/alloc/config.json`. This is the primary access control mechanism.
+
+**Capabilities:**
+
+| Capability                                   | Required For                                  | Description                       |
+| -------------------------------------------- | --------------------------------------------- | --------------------------------- |
+| `CODE_SYNC_GIT_PUSH`                         | `/git/push`                                   | Push local commits to GitHub      |
+| `CODE_SYNC_GIT_PULL`                         | `/git/pull`                                   | Pull remote commits from GitHub   |
+| `CODE_SYNC_GIT_PUSH` OR `CODE_SYNC_GIT_PULL` | `/git/remote/status`, `/git/remote/configure` | Configure and check remote status |
+
+**Config Structure (`/alloc/config.json`):**
+
+```json
+{
+  "CAPABILITIES": {
+    "VALUE": ["CODE_SYNC_GIT_PUSH", "CODE_SYNC_GIT_PULL"],
+    "SYSTEM_MANAGED": true
+  }
+}
+```
+
+**Implementation:** `agents/src/utils/capability-config.ts` - `isCapabilityEnabled()`
+
+```typescript
+import { isCapabilityEnabled } from "../utils/capability-config.js";
+
+// Check if push is allowed
+if (isCapabilityEnabled("CODE_SYNC_GIT_PUSH")) {
+  // Allow push operation
+}
+```
+
+### Environment Variables (Backward Compatibility)
+
+> **⚠️ DEPRECATED**: `ENABLE_GIT_REMOTE_SYNC` is a temporary flag for backward compatibility.
+> Once capability config is fully deployed, this flag will be removed and all access control
+> will rely solely on capabilities in `/alloc/config.json`.
 
 ```bash
 # agents/.env
 
-# Global feature flag
-ENABLE_GIT_REMOTE_SYNC=true           # Default: false (disabled)
-
-# Product-specific enablement
-GIT_REMOTE_SYNC_PRODUCTS=aab,paas     # Comma-separated list: 'aab', 'paas', or 'aab,paas'
+# DEPRECATED: Temporary backward compatibility flag
+# When true: bypasses capability checks (legacy behavior)
+# When false/unset: falls back to capability-based checks
+ENABLE_GIT_REMOTE_SYNC=true           # Default: false (uses capability checks)
 
 # Product identifier (set per deployment)
 PRODUCT_TYPE=aab                       # 'aab' (Airo App Builder) or 'paas' (Platform as a Service)
 ```
 
-### Feature Flag Logic
+### Access Control Logic
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Feature Flag Evaluation                      │
+│                    Access Control Evaluation                    │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│   1. Check ENABLE_GIT_REMOTE_SYNC                               │
-│      └── false? → Feature DISABLED                              │
+│   1. Check ENABLE_GIT_REMOTE_SYNC (backward compatibility)      │
+│      └── true? → ALLOW (bypass capability checks)               │
+│      └── false/unset? → Continue to capability checks           │
 │                                                                 │
-│   2. Check PRODUCT_TYPE matches GIT_REMOTE_SYNC_PRODUCTS        │
-│      └── PRODUCT_TYPE=aab, GIT_REMOTE_SYNC_PRODUCTS=aab,paas    │
-│      └── 'aab' in ['aab', 'paas']? → YES → Feature ENABLED      │
+│   2. Check capabilities based on request path:                  │
+│      └── /git/push → isCapabilityEnabled('CODE_SYNC_GIT_PUSH')  │
+│      └── /git/pull → isCapabilityEnabled('CODE_SYNC_GIT_PULL')  │
+│      └── /git/remote/* → CODE_SYNC_GIT_PUSH OR CODE_SYNC_GIT_PULL│
 │                                                                 │
-│   3. Optional: Check experiment ID (future)                     │
+│   3. Capability found? → ALLOW                                  │
+│      └── Not found? → 403 Forbidden                             │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+Future State (after ENABLE_GIT_REMOTE_SYNC removal):
+┌─────────────────────────────────────────────────────────────────┐
+│                    Capability-Only Evaluation                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│   1. Check capabilities based on request path:                  │
+│      └── /git/push → isCapabilityEnabled('CODE_SYNC_GIT_PUSH')  │
+│      └── /git/pull → isCapabilityEnabled('CODE_SYNC_GIT_PULL')  │
+│      └── /git/remote/* → CODE_SYNC_GIT_PUSH OR CODE_SYNC_GIT_PULL│
+│                                                                 │
+│   2. Capability found? → ALLOW                                  │
+│      └── Not found? → 403 Forbidden                             │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Feature Service Integration
+### Implementation Reference
 
-```typescript
-// File: agents/src/services/features.ts
-
-export type ProductType = "aab" | "paas";
-
-export interface FeatureFlags {
-  // ... existing flags ...
-  ENABLE_GIT_REMOTE_SYNC: boolean; // NEW
-}
-
-export function getProductType(): ProductType {
-  const product = process.env.PRODUCT_TYPE?.toLowerCase();
-  if (product === "paas") return "paas";
-  return "aab"; // Default to AAB
-}
-
-export function isGitRemoteSyncEnabled(): boolean {
-  // 1. Check global flag
-  if (process.env.ENABLE_GIT_REMOTE_SYNC !== "true") {
-    return false;
-  }
-
-  // 2. Check product-specific enablement
-  const enabledProducts = (process.env.GIT_REMOTE_SYNC_PRODUCTS || "")
-    .toLowerCase()
-    .split(",")
-    .map((p) => p.trim())
-    .filter(Boolean);
-
-  // If no products specified, feature is disabled
-  if (enabledProducts.length === 0) {
-    return false;
-  }
-
-  const currentProduct = getProductType();
-  return enabledProducts.includes(currentProduct);
-}
-
-export function getFeatureFlags(): FeatureFlags {
-  return {
-    // ... existing flags ...
-    ENABLE_GIT_REMOTE_SYNC: isGitRemoteSyncEnabled(),
-  };
-}
-```
+- **Capability checker:** `agents/src/utils/capability-config.ts` - `isCapabilityEnabled()`
+- **Middleware:** `agents/src/server/routes/git-remote.ts` - `requireGitRemoteSync()`
+- **Unit tests:** `agents/src/server/routes/__tests__/git-remote.test.ts`
 
 ### Middleware Implementation
 
@@ -1268,7 +1280,6 @@ function requireGitRemoteSync(req: any, res: any, next: any) {
 
 ```bash
 ENABLE_GIT_REMOTE_SYNC=true
-GIT_REMOTE_SYNC_PRODUCTS=aab
 PRODUCT_TYPE=aab
 ```
 
@@ -1276,7 +1287,6 @@ PRODUCT_TYPE=aab
 
 ```bash
 ENABLE_GIT_REMOTE_SYNC=true
-GIT_REMOTE_SYNC_PRODUCTS=aab,paas
 PRODUCT_TYPE=paas  # Set per deployment
 ```
 
@@ -1697,7 +1707,6 @@ Container: dev-supervisor process (PID 1)
 ```bash
 # In agents/.env
 ENABLE_GIT_REMOTE_SYNC=true
-GIT_REMOTE_SYNC_PRODUCTS=aab-v1
 AUTH_TYPE=none
 NODE_ENV=development
 ```
@@ -1732,6 +1741,7 @@ Poll until `status: "running"`
 ---
 
 ### Step 3: Configure GitHub Token via Secrets API
+
 **Note: This is airo-app-builder api**
 
 ```bash

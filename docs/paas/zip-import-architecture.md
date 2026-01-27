@@ -169,7 +169,7 @@ curl https://agent.abc123.com/git/abc123/replace/status \
 - `CUSTOMER_JWT` - Customer authentication for App Builder
 - `AGENT_TOKEN` - RSA-signed JWT from `/api/auth/agent-token` endpoint
 
-**See [zip-import-plan.md](./zip-import-plan.md#authentication) for detailed authentication documentation.**
+**See [zip-import-plan.md](zip-import-plan.md#authentication) for detailed authentication documentation.**
 
 **Why Direct Agent Access?**
 
@@ -227,10 +227,33 @@ curl https://agent.abc123.com/git/abc123/replace/status \
 
 ### Access Control
 
+**Capability-Based (Primary):**
+
+| Capability | Required For | Description |
+|------------|-------------|-------------|
+| `CODE_SYNC_ZIP_UPLOAD` | `/git/:appId/replace` | Upload zip to replace codebase |
+
+**Config Structure (`/alloc/config.json`):**
+
+```json
+{
+  "CAPABILITIES": {
+    "VALUE": ["CODE_SYNC_ZIP_UPLOAD"],
+    "SYSTEM_MANAGED": true
+  }
+}
+```
+
+**Backward Compatibility:**
+
 | Check        | Layer | Implementation                   |
 | ------------ | ----- | -------------------------------- |
-| Feature flag | Agent | `ENABLE_ZIP_IMPORT=true` env var |
+| Feature flag | Agent | `ENABLE_ZIP_IMPORT=true` env var (DEPRECATED) |
 | JWT auth     | Agent | Standard JWT middleware          |
+
+> **⚠️ DEPRECATED**: `ENABLE_ZIP_IMPORT` is a temporary flag for backward compatibility.
+> Once capability config is fully deployed, this flag will be removed and access control
+> will rely solely on `CODE_SYNC_ZIP_UPLOAD` capability in `/alloc/config.json`.
 
 ### Response Sanitization
 
@@ -451,13 +474,17 @@ are stored in the database for debugging but NOT returned in API responses.
 ## Environment Variables
 
 ```bash
-# Required for import feature
-# Required
+# DEPRECATED: Temporary backward compatibility flag
+# When true: bypasses capability checks (legacy behavior)
+# When false/unset: falls back to capability-based checks via /alloc/config.json
 ENABLE_ZIP_IMPORT=true
 
 # Optional
 IMPORT_TEMP_DIR=/tmp/airo-imports  # Default: /tmp/airo-imports
 ```
+
+> **Note:** Once capability config is fully deployed, `ENABLE_ZIP_IMPORT` will be removed.
+> Use `CODE_SYNC_ZIP_UPLOAD` capability in `/alloc/config.json` instead.
 
 ## Testing
 

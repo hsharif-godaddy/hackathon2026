@@ -106,12 +106,37 @@ agent before the zip enters the container.
 
 ---
 
-## Environment Variables
+## Access Control
+
+### Capability-Based (Primary)
+
+The zip import feature uses **capability-based access control** via `/alloc/config.json`:
+
+| Capability | Description |
+|------------|-------------|
+| `CODE_SYNC_ZIP_UPLOAD` | Required to upload zip files and replace codebase |
+
+**Config Structure:**
+
+```json
+{
+  "CAPABILITIES": {
+    "VALUE": ["CODE_SYNC_ZIP_UPLOAD"],
+    "SYSTEM_MANAGED": true
+  }
+}
+```
+
+### Environment Variables (Backward Compatibility)
 
 | Variable            | Default             | Description                                        |
 | ------------------- | ------------------- | -------------------------------------------------- |
-| `ENABLE_ZIP_IMPORT` | `false`             | Feature flag to enable import functionality        |
+| `ENABLE_ZIP_IMPORT` | `false`             | **DEPRECATED** - Temporary backward compatibility flag |
 | `IMPORT_TEMP_DIR`   | `/tmp/airo-imports` | Temp directory for uploaded zips before validation |
+
+> **⚠️ DEPRECATED**: `ENABLE_ZIP_IMPORT` is temporary for backward compatibility.
+> Once capability config is fully deployed, this flag will be removed and access control
+> will rely solely on `CODE_SYNC_ZIP_UPLOAD` capability.
 
 ---
 
@@ -213,6 +238,6 @@ interface AgentJWT {
 
 ## Related Documentation
 
-- [Zip Import Architecture](./zip-import-architecture.md) - Full architecture overview, API specs, diagrams
-- [V2 Integration](../V2_INTEGRATION.md) - Full authentication flow details
-- [mgmt-airo Client](../app/src/lib/mgmt-airo/README.md) - API client documentation
+- [Zip Import Architecture](zip-import-architecture.md) - Full architecture overview, API specs, diagrams
+- [V2 Integration](../../V2_INTEGRATION.md) - Full authentication flow details
+- [mgmt-airo Client](../../app/src/lib/mgmt-airo/README.md) - API client documentation

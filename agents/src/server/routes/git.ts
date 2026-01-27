@@ -21,6 +21,7 @@ import {
 } from '../../types/import.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import {importType, validateGitImport} from '../middleware/git-import-validation.js';
+import { isCapabilityEnabled } from '../../utils/capability-config.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -79,11 +80,12 @@ const zipUpload = multer({
  * Requires ENABLE_ZIP_IMPORT=true environment variable.
  */
 function requireZipImportFeature(req: Request, res: Response, next: NextFunction): void {
-  if (process.env.ENABLE_ZIP_IMPORT !== 'true') {
+  const isZipUploadEnabled: boolean = process.env.ENABLE_ZIP_IMPORT === 'true' || isCapabilityEnabled("CODE_SYNC_ZIP_UPLOAD");
+  if (!isZipUploadEnabled) {
     res.status(403).json({
       success: false,
       error: 'Zip import feature is not enabled',
-      details: 'Set ENABLE_ZIP_IMPORT=true to enable this feature',
+      details: 'Enable CODE_SYNC_ZIP_UPLOAD capability via /alloc/config.json',
     });
     return;
   }

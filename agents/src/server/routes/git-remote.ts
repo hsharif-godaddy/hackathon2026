@@ -7,6 +7,7 @@ import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-fa
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { isSupportedProjectOnHost, SUPPORTED_BUILD_TOOLS } from '../middleware/git-import-validation.js';
 import { getErrorMessage } from '../../utils/error.js';
+import { isCapabilityEnabled } from '../../utils/capability-config.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -43,77 +44,49 @@ function getProductFamily(templateVersion?: string): string {
 /**
  * Middleware to check if git remote sync feature is enabled
  *
- * Validates both global feature flag and product-specific enablement.
- * Checks the app's product family against GIT_REMOTE_SYNC_PRODUCTS.
+ * Validates capability based on the request path:
+ * - /git/push requires CODE_SYNC_GIT_PUSH capability
+ * - /git/pull requires CODE_SYNC_GIT_PULL capability
+ * - /git/remote/status requires CODE_SYNC_GIT_PUSH OR CODE_SYNC_GIT_PULL
+ * - /git/remote/configure requires CODE_SYNC_GIT_PUSH OR CODE_SYNC_GIT_PULL
  */
 function requireGitRemoteSync(req: Request, res: Response, next: NextFunction): void {
+  // Check global feature flag first
+  let isGitSyncEnabled: boolean = process.env.ENABLE_GIT_REMOTE_SYNC === 'true';
+  let requiredCapability = '';
+  const requestPath = req.path;
+  if (!isGitSyncEnabled) {
+    if (requestPath.endsWith('/git/push')) {
+      isGitSyncEnabled = isCapabilityEnabled('CODE_SYNC_GIT_PUSH');
+      requiredCapability = 'CODE_SYNC_GIT_PUSH';
+    } else if (requestPath.endsWith('/git/pull')) {
+      isGitSyncEnabled = isCapabilityEnabled('CODE_SYNC_GIT_PULL');
+      requiredCapability = 'CODE_SYNC_GIT_PULL';
+    } else if (requestPath.endsWith('/git/remote/status') || requestPath.endsWith('/git/remote/configure')) {
+      isGitSyncEnabled = isCapabilityEnabled('CODE_SYNC_GIT_PUSH') || isCapabilityEnabled('CODE_SYNC_GIT_PULL');
+      requiredCapability = 'CODE_SYNC_GIT_PUSH or CODE_SYNC_GIT_PULL';
+    } else {
+      // Unknown path - deny by default
+      res.status(403).json({
+        error: 'Unknown git remote operation',
+        message: 'This operation is not recognized'
+      });
+      return;
+    }
+  }
 
-  // 1. Check global feature flag
-  if (process.env.ENABLE_GIT_REMOTE_SYNC !== 'true') {
-    res.status(503).json({
-      error: 'Git remote sync feature is not enabled',
-      message: 'Set ENABLE_GIT_REMOTE_SYNC=true to enable this feature'
+  if (!isGitSyncEnabled) {
+    logger.warn('git-remote.capability-denied', {
+      path: requestPath,
+      requiredCapability
+    });
+
+    res.status(403).json({
+      error: 'Git operation not allowed',
+      message: `This operation requires the ${requiredCapability} capability`
     });
     return;
   }
-
-  //TODO: This need to discuss with V2-team/John and then need to enable.
-  // Have to get agreement what env var can be used for this.
-  //
-
-  // // 2. Parse allowed product families
-  // const allowedProducts = (process.env.GIT_REMOTE_SYNC_PRODUCTS || '')
-  //   .split(',')
-  //   .map(p => p.trim())
-  //   .filter(Boolean);
-  //
-  // // If no products specified, feature is disabled
-  // if (allowedProducts.length === 0) {
-  //   res.status(403).json({
-  //     error: 'Git remote sync feature is not enabled for any products',
-  //     message: 'Configure GIT_REMOTE_SYNC_PRODUCTS to enable this feature'
-  //   });
-  //   return;
-  // }
-  //
-  // // 3. Get app and determine its product family
-  // const appId = req.params.id;
-  // if (!appId) {
-  //   res.status(400).json({ error: 'App ID is required' });
-  //   return;
-  // }
-  //
-  // const app = appRepository.findById(appId);
-  // if (!app) {
-  //   res.status(404).json({ error: 'App not found' });
-  //   return;
-  // }
-  //
-  // // 4. Check if app's product family is allowed
-  // const appProductFamily = getProductFamily(app.templateVersion);
-  //
-  // if (!allowedProducts.includes(appProductFamily)) {
-  //   logger.warn('git-remote.product-not-allowed', {
-  //     appId,
-  //     templateVersion: app.templateVersion,
-  //     productFamily: appProductFamily,
-  //     allowedProducts
-  //   });
-  //
-  //   res.status(403).json({
-  //     error: 'Git remote sync is not enabled for this app',
-  //     message: `This app uses product family '${appProductFamily}' which is not in the allowed list: ${allowedProducts.join(', ')}`,
-  //     appProductFamily,
-  //     allowedProducts
-  //   });
-  //   return;
-  // }
-  //
-  // logger.info('git-remote.product-allowed', {
-  //   appId,
-  //   templateVersion: app.templateVersion,
-  //   productFamily: appProductFamily
-  // });
 
   next();
 }
