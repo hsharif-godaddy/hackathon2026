@@ -55,7 +55,7 @@ describe('Develop Page - Header', () => {
         .click();
 
       cy.url({ timeout: 15000 }).should('match', /\/$/);
-      cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+      cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
         .should('be.visible');
     });
 

@@ -18,7 +18,7 @@ describe('Authentication', () => {
       cy.visit('/');
       cy.wait('@getSites');
 
-      cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+      cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
         .should('be.visible');
 
       cy.get('header').should('be.visible');
@@ -69,7 +69,7 @@ describe('Authentication', () => {
       cy.visit('/', { failOnStatusCode: false });
 
       // Homepage loads normally (no SSO redirect on load)
-      cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+      cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
         .should('be.visible');
 
       // SSO modal should NOT be present on initial page load
@@ -87,7 +87,7 @@ describe('Authentication', () => {
       cy.visit('/', { failOnStatusCode: false });
 
       // Both prod and test: Homepage loads normally
-      cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+      cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
         .should('be.visible');
 
       // SSO modal should NOT exist before clicking Sign In
@@ -114,14 +114,14 @@ describe('Authentication', () => {
       cy.visit('/', { failOnStatusCode: false });
 
       // Both prod and test: Homepage loads normally (no SSO redirect on load)
-      cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+      cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
         .should('be.visible');
 
       // SSO modal should NOT exist before clicking submit
       cy.get('iframe[src*="sso"]').should('not.exist');
 
       // Type prompt and click submit
-      cy.get('textarea[placeholder*="Describe your app idea"]')
+      cy.get('[data-testid="homepage-prompt-input"]')
         .type('A simple page that displays hello world');
 
       cy.get('[data-eid*="homepage.prompt.submit"]').click();
@@ -145,7 +145,7 @@ describe('Authentication', () => {
       cy.visit('/');
       cy.wait('@getSites');
 
-      cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+      cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
         .should('be.visible');
 
       cy.get('body').type('{esc}');
@@ -287,7 +287,7 @@ describe('Authentication', () => {
       cy.visit('/');
       cy.wait('@getSites');
 
-      cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+      cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
         .should('be.visible');
 
       cy.visit('/apps');
@@ -311,7 +311,7 @@ describe('Authentication', () => {
       cy.visit('/', { failOnStatusCode: false });
 
       // Homepage should load
-      cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+      cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
         .should('be.visible');
 
       // Apps menu items should not exist for unauthenticated users
@@ -328,7 +328,7 @@ describe('Authentication', () => {
 
       cy.visit('/');
 
-      cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+      cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
         .should('be.visible');
     });
   });

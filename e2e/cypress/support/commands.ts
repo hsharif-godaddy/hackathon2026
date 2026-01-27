@@ -141,7 +141,7 @@ Cypress.Commands.add('verifyUnauthenticated', () => {
 Cypress.Commands.add('waitForHomepage', () => {
   cy.intercept('GET', '**/api/sites').as('getSitesHomepage');
   cy.wait('@getSitesHomepage');
-  cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+  cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
     .should('be.visible');
 });
 
@@ -230,7 +230,7 @@ Cypress.Commands.add('createAppAndGetId', (prompt: string) => {
 
   cy.visit('/');
 
-  cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+  cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
     .should('be.visible')
     .type(prompt);
 
@@ -268,7 +268,7 @@ Cypress.Commands.add('createNewApp', (prompt: string) => {
   cy.visit('/');
 
   // Wait for homepage to be ready
-  cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+  cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
     .should('be.visible')
     .type(prompt);
 
@@ -435,7 +435,7 @@ Cypress.Commands.add('setupIsolatedApp', (specPrefix: string, appDescription?: s
 
   cy.visit('/');
 
-  cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+  cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
     .should('be.visible')
     .type(appName);
 

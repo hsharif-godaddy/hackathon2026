@@ -15,7 +15,7 @@ describe('Core Navigation', () => {
     cy.intercept('GET', '**/api/sites').as('getSites');
 
     cy.visit('/');
-    cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+    cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
       .should('be.visible');
 
     cy.wait('@getSites');
@@ -46,7 +46,7 @@ describe('Core Navigation', () => {
     cy.intercept('GET', '**/api/sites').as('getSites');
 
     cy.visit('/');
-    cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+    cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
       .should('be.visible');
 
     cy.wait('@getSites');

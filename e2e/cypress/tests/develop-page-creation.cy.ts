@@ -22,7 +22,7 @@ describe('Develop Page - Creation', () => {
 
       cy.visit('/');
 
-      cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+      cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
         .should('be.visible')
         .should('not.be.disabled')
         .type(`${SPEC_PREFIX} A simple page that displays hello world`);
@@ -51,7 +51,7 @@ describe('Develop Page - Creation', () => {
     it('should validate prompt input before allowing submit', () => {
       cy.visit('/');
 
-      cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+      cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
         .as('promptInput')
         .should('be.visible');
 
@@ -63,7 +63,8 @@ describe('Develop Page - Creation', () => {
 
       const longPrompt = 'a'.repeat(40001);
       cy.get('@promptInput')
-        .type(longPrompt, { delay: 0 })
+        .invoke('val', longPrompt)
+        .trigger('input')
         .should('have.value', longPrompt);
 
       cy.get('[data-eid*="homepage.prompt.submit"]').should('be.disabled');
@@ -72,7 +73,7 @@ describe('Develop Page - Creation', () => {
     it('should populate prompt when clicking suggested example buttons', () => {
       cy.visit('/');
 
-      cy.get('textarea[placeholder*="Describe your app idea"]', { timeout: 30000 })
+      cy.get('[data-testid="homepage-prompt-input"]', { timeout: 30000 })
         .as('promptInput')
         .should('be.visible');
 

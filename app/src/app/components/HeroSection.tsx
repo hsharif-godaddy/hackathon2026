@@ -249,6 +249,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               elevation="float"
             >
               <textarea
+                data-testid="homepage-prompt-input"
                 value={displayText}
                 onChange={(e) => {
                   if (isTyping) return // Prevent user input during typing animation

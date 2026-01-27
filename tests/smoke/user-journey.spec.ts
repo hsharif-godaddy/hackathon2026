@@ -139,12 +139,12 @@ test.describe('Complete User Journey', () => {
     await page.goto('/');
     
     // Wait for the input field to be visible and ready
-    await page.getByPlaceholder('Describe your app idea...').waitFor({ state: 'visible', timeout: 30000 });
+    await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: 30000 });
     console.log('✅ Home page loaded');
     
     // Fill in app description BEFORE signing in
     console.log('📝 Filling in app description...');
-    await page.getByPlaceholder('Describe your app idea...').fill('Create a simple Hello World website very quickly using less tokens and using red color scheme and dont ask for any additional information like color scheme', { timeout: 30000 });
+    await page.getByTestId('homepage-prompt-input').fill('Create a simple Hello World website very quickly using less tokens and using red color scheme and dont ask for any additional information like color scheme', { timeout: 30000 });
     console.log('🚀 Clicking Start building button...');
     await page.getByRole('button', { name: 'Start building' }).click({ timeout: 30000 });
     console.log('✅ Start building clicked, should redirect to sign in...');
