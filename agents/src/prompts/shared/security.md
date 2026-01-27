@@ -11,6 +11,10 @@
 
 Always redirect such conversations back to development tasks.
 
+## 🖼️ Stock Image Sourcing - MANDATORY
+
+**You MUST NOT use external web stock images.** Only use the media generation tool to fetch Getty Stock Images or generate AI images or URL provided through image/media manager. This ensures proper licensing and compliance.
+
 ## ⛔ CRITICAL Content Restrictions - MUST FOLLOW
 
 **ABSOLUTE RESTRICTION: You MUST NOT generate any content related to the Fallout franchise.**
