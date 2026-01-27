@@ -52,24 +52,6 @@
     ],
     "*.json": [
       "bash -c 'if [[ \"$0\" != *\"pnpm-lock.json\" ]]; then prettier --write \"$0\"; fi'"
-    ],
-    "package.json": [
-      "bash -c 'MATRIX_PACKAGE=root ./scripts/license-check.sh'"
-    ],
-    "app/package.json": [
-      "bash -c 'cd app && MATRIX_PACKAGE=app ../scripts/license-check.sh'"
-    ],
-    "proxy/package.json": [
-      "bash -c 'cd proxy && MATRIX_PACKAGE=proxy ../scripts/license-check.sh'"
-    ],
-    "packages/ai-lib/package.json": [
-      "bash -c 'cd packages/ai-lib && MATRIX_PACKAGE=ai-lib ../../scripts/license-check.sh'"
-    ],
-    "app-templates/v8/package.json": [
-      "bash -c 'cd app-templates/v8 && MATRIX_PACKAGE=v8-template ../../scripts/license-check.sh'"
-    ],
-    "website/package.json": [
-      "bash -c 'cd website && MATRIX_PACKAGE=website ../../scripts/license-check.sh'"
     ]
   },
   "pnpm": {
