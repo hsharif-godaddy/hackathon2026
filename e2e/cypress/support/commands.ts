@@ -449,22 +449,20 @@ Cypress.Commands.add('setupIsolatedApp', (specPrefix: string, appDescription?: s
     const initialId = interception.response?.body?.id as string;
     const idType = interception.response?.body?.type as string;
 
-    // If this is a job ID (V2), the URL may have ?type=job query param
-    // In test/local environments, job might not convert to full app ID
-    // Extract whatever ID is in the URL after waiting for page to settle
-    if (idType === 'job' || initialId.length <= 8) {
-      // Wait for URL to stabilize on the develop page (redirect completes)
-      cy.url({ timeout: 30000 }).should('match', /\/develop\/[a-zA-Z0-9]+/);
+    // Always wait for redirect to develop page to complete
+    // This ensures the app is fully initialized before tests proceed
+    cy.url({ timeout: 60000 }).should('match', /\/develop\/[a-zA-Z0-9]+/);
 
-      return cy.url().then((url) => {
-        const match = url.match(/\/develop\/([a-zA-Z0-9]+)/);
-        const appId = match ? match[1] : initialId;
-        cy.log(`Using app ID: ${appId} (from ${idType || 'response'})`);
-        return cy.wrap(appId);
-      });
-    }
+    // Wait for develop page to be ready (WebSocket connected, chat history loaded)
+    cy.waitForDevelopPage();
 
-    return cy.wrap(initialId);
+    // Extract app ID from URL
+    return cy.url().then((url) => {
+      const match = url.match(/\/develop\/([a-zA-Z0-9]+)/);
+      const appId = match ? match[1] : initialId;
+      cy.log(`App created: ${appId}`);
+      return cy.wrap(appId);
+    });
   });
 });
 
