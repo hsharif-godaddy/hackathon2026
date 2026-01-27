@@ -36,7 +36,7 @@
     ],
     "app/**/*.{ts,tsx,js,jsx}": [
       "bash -c 'cd app && pnpm lint'",
-      "bash -c 'cd app && pnpm test'"
+      "bash -c 'cd app && case \"${SKIP_PRECOMMIT_TESTS,,}\" in 1|true|yes) ;; *) pnpm test ;; esac'"
     ],
     "proxy/**/*.{ts,tsx,js,jsx}": [
       "pnpm --filter proxy lint:fix"
