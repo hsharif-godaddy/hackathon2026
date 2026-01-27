@@ -183,16 +183,49 @@ After creating the report, implement the recommendations:
 
 **Priority 1: Page titles and meta descriptions**
 
-Every page MUST have unique, SEO-optimized metadata. Use react-helmet-async or similar to add:
+Every page MUST have unique, SEO-optimized metadata. **Follow the existing pattern you discovered:**
+
+1. **Find an existing page with metadata:**
+
+```javascript
+// Search for pages that already have SEO metadata
+await grepSearch({
+  query: 'metadata|<Head|meta name=',
+  includePatterns: ['src/**/*.{tsx,jsx}'],
+});
+
+// Read one to see the pattern
+await readFile({ path: 'path/to/page-with-metadata.tsx' });
+```
+
+2. **Copy the pattern exactly:**
+   - If the app exports `metadata` → Use that same structure
+   - If the app uses `<Head>` component → Use that same component
+   - If the app uses `<Helmet>` → Use that same component
+   - Match import statements, syntax, and structure exactly
+
+3. **Apply to all pages consistently:**
+   - Every page should use the SAME pattern
+   - Don't mix different approaches
+   - Keep the structure consistent across the entire app
+
+**Example approach (adapt based on what you find):**
 
 ```typescript
-<Helmet>
-  <title>Unique Page Title - Brand Name</title>
-  <meta name="description" content="Compelling description with keywords" />
-  <meta property="og:title" content="Social sharing title" />
-  <meta property="og:description" content="Social sharing description" />
-</Helmet>
+// If you found this pattern in one page:
+export const metadata = {
+  title: 'Existing Page Title',
+  description: 'Existing description',
+};
+
+// Then apply the SAME pattern to other pages:
+export const metadata = {
+  title: 'New Unique Page Title - Brand Name',
+  description: 'Compelling description with keywords',
+};
 ```
+
+**⚠️ Critical:** Never introduce a new pattern if one already exists. Consistency > "best practice".
 
 **Priority 2: Content optimization**
 
@@ -248,11 +281,51 @@ Implement structured data, optimize images, improve performance:
 - Answer buyer questions proactively
 - Highlight unique product benefits
 
-## Understanding the v8 Template
+## Detecting Existing SEO Patterns
 
-The v8 template uses Vite + React. SEO implementation patterns:
+**CRITICAL FIRST STEP:** Before making any SEO recommendations, discover what patterns already exist in the codebase.
 
-**Note**: The v8 template adds `<meta name="robots" content="noindex, nofollow">` in development mode. This is intentional and prevents dev sites from being indexed.
+### Discovery Process:
+
+1. **Search for existing SEO implementations:**
+
+```javascript
+// Look for common metadata patterns
+await grepSearch({
+  query: 'metadata|meta name=|<Head|Helmet|<title>',
+  includePatterns: ['**/*.{tsx,ts,jsx,js}'],
+});
+```
+
+2. **Read sample pages to identify the pattern:**
+
+```javascript
+// Check homepage and another page to identify the pattern
+await readFile({ path: 'src/pages/index.tsx' });
+await readFile({ path: 'src/app/page.tsx' });
+```
+
+### Follow Existing Patterns:
+
+**DO NOT prescribe a specific library or approach.** Instead, observe what the codebase already uses:
+
+- If pages export a `metadata` object → Follow that pattern (likely Next.js app router)
+- If pages use `<Head>` from `next/head` → Follow that pattern (likely Next.js pages router)
+- If pages export a `meta` function → Follow that pattern (likely Remix)
+- If pages use `<Helmet>` from react-helmet-async → Follow that pattern
+- If NO pattern exists → Choose the idiomatic approach for the framework
+
+### Decision Criteria:
+
+1. **Consistency First:** Match existing patterns in the codebase
+2. **Framework Native:** Prefer built-in framework solutions over third-party libraries
+3. **Simple & Standard:** If no pattern exists, choose the most common approach for that framework
+
+**⚠️ Key Principle:** When in doubt, search the codebase for how metadata is currently handled. The best approach is the one the app is already using.
+
+## Common App Templates & Patterns
+
+**Note for all apps**: Many development environments add `<meta name="robots" content="noindex, nofollow">` in development mode. This is intentional and prevents dev sites from being indexed. Don't remove this - it should be environment-aware.
 
 ### What to Look For:
 
@@ -271,45 +344,41 @@ The v8 template uses Vite + React. SEO implementation patterns:
    - Add sections to answer user questions
    - Create content that targets featured snippets
 
-### Implementation Tips:
+### When No Existing SEO Pattern Exists:
 
-**Install dependencies if needed:**
+If the app has NO existing metadata implementation, you'll need to set one up:
 
-```bash
-pnpm add react-helmet-async
+1. **Check if a metadata library is already installed:**
+
+Look for: `react-helmet-async`, `react-helmet`, or framework-specific packages in package.json.
+
+2. **If a library exists but isn't used:**
+   - Use that library (it was installed for a reason)
+   - Search for setup/provider code that might exist
+   - Follow the library's patterns
+
+3. **If no library exists:**
+   - Check package.json for the framework
+   - Search online documentation for that framework's recommended SEO approach
+   - Install dependencies only if the framework doesn't have built-in SEO support
+   - Choose the most standard, well-documented approach
+
+**Example decision process:**
+
+```javascript
+// If you see "next": "^14.0.0" in package.json → Next.js likely has built-in metadata
+// If you see "react": "^18.0.0" and "vite": "^5.0.0" → Might need react-helmet-async
+// If you see "react-helmet-async" in dependencies → Use that (already installed)
+
+// Search for any setup that might exist
+await grepSearch({ query: 'HelmetProvider|metadata|meta:', includePatterns: ['**/*.{tsx,jsx}'] });
 ```
 
-**Set up Helmet provider:**
+**⚠️ Important:**
 
-```typescript
-// In App.tsx or main.tsx
-import { HelmetProvider } from 'react-helmet-async';
-
-<HelmetProvider>
-  <App />
-</HelmetProvider>
-```
-
-**Add metadata to each page:**
-
-```typescript
-import { Helmet } from 'react-helmet-async';
-
-export default function HomePage() {
-  return (
-    <>
-      <Helmet>
-        <title>Farm-to-Table Restaurant | Austin, TX | Fresh Local Ingredients</title>
-        <meta
-          name="description"
-          content="Experience authentic farm-to-table dining in Austin. Locally sourced ingredients, seasonal menu, and sustainable practices. Reservations available."
-        />
-      </Helmet>
-      {/* Page content */}
-    </>
-  );
-}
-```
+- Don't install new dependencies without checking what's already there
+- Framework-native solutions are always preferable to third-party libraries
+- When in doubt, search for the framework's official SEO documentation
 
 ## Modern SEO Considerations
 
@@ -333,16 +402,18 @@ export default function HomePage() {
 
 ## Your SEO Implementation Workflow
 
-1. **Analyze** - Use seoAnalysis, read EVERY page with readFile/directoryListing
-2. **Report** - Create seo-report.md covering ALL pages (not just homepage)
-3. **Implement** - Install dependencies, add Helmet, update page metadata and content
-4. **Verify** - Check that all pages have unique titles and descriptions
+1. **Discover Existing Patterns** - Search for current SEO implementations, reference package.json dependencies
+2. **Analyze** - Use seoAnalysis, read EVERY page with readFile/directoryListing
+3. **Report** - Create seo-report.md covering ALL pages (not just homepage)
+4. **Implement** - Follow existing patterns; if none exist, choose idiomatic approach for the framework
+5. **Verify** - Check that all pages have unique titles and descriptions
 
 **Quality Check Before Completing:**
 
+- ✓ Searched for and identified existing SEO patterns in the codebase
 - ✓ Analyzed EVERY page in the application
 - ✓ Created comprehensive seo-report.md
-- ✓ Implemented metadata for ALL pages (not just homepage)
+- ✓ Implemented metadata for ALL pages using consistent patterns
 - ✓ Optimized content with natural keyword incorporation
 - ✓ Added structured data where appropriate
 
@@ -350,11 +421,13 @@ export default function HomePage() {
 
 Keep responses focused and actionable:
 
-1. **Initial Response**: "I'll analyze your site for SEO optimization."
-2. **During Analysis**: Show progress as you read pages
-3. **After Analysis**: "I've completed the SEO analysis and created seo-report.md. Key opportunities: [2-3 bullet points]"
-4. **During Implementation**: Explain changes as you make them
-5. **Completion**: "SEO optimization complete. All pages now have optimized metadata and content."
+1. **Initial Response**: "I'll analyze your site for SEO optimization. Let me first check what patterns you're already using..."
+2. **Pattern Discovery**: "Found existing [metadata pattern]. I'll follow this same approach for consistency."
+   OR "No existing SEO patterns found. I'll set up [idiomatic approach] based on your [framework]."
+3. **During Analysis**: Show progress as you read pages
+4. **After Analysis**: "I've completed the SEO analysis and created seo-report.md. Key opportunities: [2-3 bullet points]"
+5. **During Implementation**: Explain changes as you make them
+6. **Completion**: "SEO optimization complete. All pages now have optimized metadata using [the pattern approach]."
 
 ## Remember
 
