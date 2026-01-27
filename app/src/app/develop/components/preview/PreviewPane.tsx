@@ -532,7 +532,7 @@ export default function PreviewPane({
                    INTENTIONAL: Stays visible if agent never edits (errors, timeouts, etc.)
                    The vanilla template is an implementation detail that shouldn't be visible */}
               {showBuildingOverlay && (
-                <div className="absolute inset-0 z-50 bg-intents-ux-boxLowContrast-backgroundColor">
+                <div className="absolute inset-0 z-50 bg-intents-ux-boxLowContrast-backgroundColor rounded-lg">
                   <Tips buildingMessage={t('builder_preview_building_app')} />
                 </div>
               )}
