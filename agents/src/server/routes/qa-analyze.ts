@@ -11,7 +11,7 @@ import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { logger } from '../../logging/index.js';
 import { qaAnalyzeAITool, markIssuesAsFixed } from '../../tools/ai-lib-tools/qa-analyze.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
-import {requirePermission} from "../middleware";
+import {requirePermission} from "../middleware/index.js";
 
 const qaAnalyzeSchema = z.object({
   appId: z.string(),
