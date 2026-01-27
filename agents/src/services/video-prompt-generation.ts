@@ -2,6 +2,7 @@ import { getModel, llmMetadataContext, type LitellmMetadata } from '@airo/ai-lib
 import { generateText } from 'ai'
 
 import { AppRepository } from '../database/repositories/AppRepository.js'
+import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
 import { SummaryRepository } from '../database/repositories/SummaryRepository.js'
 import { Logger, log } from '../logging/index.js'
 
@@ -9,10 +10,12 @@ const logger = Logger.create({ service: 'video-prompt-generation' })
 
 export class VideoPromptGenerationService {
   private summaryRepo: SummaryRepository
+  private conversationRepo: ConversationRepository
   private static appRepo = new AppRepository()
 
   constructor() {
     this.summaryRepo = new SummaryRepository()
+    this.conversationRepo = new ConversationRepository()
   }
 
   /**
@@ -31,15 +34,42 @@ export class VideoPromptGenerationService {
       // Get the latest conversation summary for the app
       const summary = await this.summaryRepo.findLatestForApp(appId)
 
+      let contentText: string
+
       if (!summary || !summary.summaryText) {
         logger.warn('video-prompt-generation.no-summary', { appId })
-        return null
-      }
 
-      logger.info('video-prompt-generation.summary-found', {
-        appId,
-        summaryLength: summary.summaryText.length
-      })
+        const conversation = await this.conversationRepo.getLatestForApp(appId)
+
+        if (!conversation) {
+          logger.warn('video-prompt-generation.no-conversation', { appId })
+          return null
+        }
+
+        const messages = await this.conversationRepo.getMessages(conversation.id)
+
+        if (messages.length === 0) {
+          logger.warn('video-prompt-generation.no-messages', { appId })
+          return null
+        }
+
+        contentText = messages
+          .map(msg => `${msg.sender === 'user' ? 'User' : 'Agent'}: ${msg.content}`)
+          .join('\n\n')
+
+        logger.info('video-prompt-generation.using-messages', {
+          appId,
+          messageCount: messages.length,
+          contentLength: contentText.length
+        })
+      } else {
+        contentText = summary.summaryText
+
+        logger.info('video-prompt-generation.summary-found', {
+          appId,
+          summaryLength: summary.summaryText.length
+        })
+      }
 
       // Get the model using ai-lib's unified provider
       // Use 'sonnet' for high-quality video prompt generation
@@ -120,7 +150,7 @@ IMPORTANT GUIDELINES:
 - The video will be 12 seconds in PORTRAIT format (720x1280 - vertical mobile format), so plan the pacing accordingly
 - Frame subjects vertically and use vertical compositions suitable for mobile viewing`,
           prompt: `Business/App Summary:
-${summary.summaryText}
+${contentText}
 
 Generate a detailed 12-second video prompt following the exact structure provided in the system prompt.`,
           temperature: 0.7,
@@ -137,7 +167,7 @@ Generate a detailed 12-second video prompt following the exact structure provide
         logger.info('video-prompt-generation.generated', {
           appId,
           promptLength: videoPrompt.length,
-          summaryLength: summary.summaryText.length
+          contentLength: contentText.length
         })
         return videoPrompt
       }
