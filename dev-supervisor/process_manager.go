@@ -511,6 +511,15 @@ func (pm *ProcessManager) Start(req ProcessStartRequest) error {
 		return pm.restartProcess()
 	})
 
+	// Restart idle monitoring if start-on-request is enabled and monitor is not running
+	if pm.startOnRequestEnabled && pm.idleMonitorCancel == nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		pm.idleMonitorCancel = cancel
+		pm.UpdateActivity() // Reset activity timer
+		go pm.idleMonitorLoop(ctx, pm.idleCheckInterval)
+		slog.Debug("idle_monitor.restarted_on_process_start")
+	}
+
 	return nil
 }
 
@@ -602,7 +611,14 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 			"timeout_seconds", stopReq.Timeout,
 			"pid", currentStatus.PID)
 
-		// Stop health monitoring first
+		// Stop idle monitoring if enabled
+		if pm.idleMonitorCancel != nil {
+			pm.idleMonitorCancel()
+			pm.idleMonitorCancel = nil
+			slog.Debug("idle_monitor.stopped_on_restart")
+		}
+
+		// Stop health monitoring
 		pm.healthMon.Stop()
 
 		// Stop the current process
@@ -651,6 +667,15 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 	pm.healthMon.Start(func() error {
 		return pm.restartProcess()
 	})
+
+	// Restart idle monitoring if start-on-request is enabled
+	if pm.startOnRequestEnabled && pm.idleMonitorCancel == nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		pm.idleMonitorCancel = cancel
+		pm.UpdateActivity() // Reset activity timer
+		go pm.idleMonitorLoop(ctx, pm.idleCheckInterval)
+		slog.Debug("idle_monitor.restarted_after_restart")
+	}
 
 	return nil
 }
@@ -802,6 +827,13 @@ func (pm *ProcessManager) EnableStartOnRequest(idleTimeout, checkInterval time.D
 		// Continue anyway - not a fatal error
 	}
 
+	// Cancel existing monitor if running (defensive - shouldn't happen in practice)
+	if pm.idleMonitorCancel != nil {
+		slog.Warn("start_on_request.already_enabled", "message", "canceling existing monitor")
+		pm.idleMonitorCancel()
+		pm.idleMonitorCancel = nil
+	}
+
 	pm.startOnRequestEnabled = true
 	pm.idleTimeout = idleTimeout
 	pm.idleCheckInterval = checkInterval
@@ -814,7 +846,7 @@ func (pm *ProcessManager) EnableStartOnRequest(idleTimeout, checkInterval time.D
 		"idle_timeout", idleTimeout,
 		"check_interval", checkInterval)
 
-	go pm.idleMonitorLoop(ctx)
+	go pm.idleMonitorLoop(ctx, checkInterval)
 }
 
 // UpdateActivity updates the last activity timestamp
@@ -834,6 +866,34 @@ func (pm *ProcessManager) UnregisterWebSocket(conn net.Conn) {
 	slog.Debug("websocket.unregistered", "remote_addr", conn.RemoteAddr())
 }
 
+// IsIdleMonitorRunning returns true if the idle monitor is currently running
+func (pm *ProcessManager) IsIdleMonitorRunning() bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return pm.idleMonitorCancel != nil
+}
+
+// GetIdleTimeout returns the configured idle timeout duration
+func (pm *ProcessManager) GetIdleTimeout() time.Duration {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return pm.idleTimeout
+}
+
+// GetIdleCheckInterval returns the configured idle check interval duration
+func (pm *ProcessManager) GetIdleCheckInterval() time.Duration {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return pm.idleCheckInterval
+}
+
+// IsStartOnRequestEnabled returns true if start-on-request is enabled
+func (pm *ProcessManager) IsStartOnRequestEnabled() bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return pm.startOnRequestEnabled
+}
+
 // StopIdleMonitor stops the idle monitoring goroutine
 func (pm *ProcessManager) StopIdleMonitor() {
 	pm.mu.Lock()
@@ -847,8 +907,8 @@ func (pm *ProcessManager) StopIdleMonitor() {
 }
 
 // idleMonitorLoop periodically checks for idle timeout and stops the process
-func (pm *ProcessManager) idleMonitorLoop(ctx context.Context) {
-	ticker := time.NewTicker(pm.idleCheckInterval)
+func (pm *ProcessManager) idleMonitorLoop(ctx context.Context, checkInterval time.Duration) {
+	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
 
 	for {

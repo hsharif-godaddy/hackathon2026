@@ -279,9 +279,9 @@ func TestProcessManager_EnableStartOnRequest(t *testing.T) {
 
 	pm.EnableStartOnRequest(idleTimeout, checkInterval)
 
-	assert.True(t, pm.startOnRequestEnabled, "startOnRequestEnabled should be true")
-	assert.Equal(t, idleTimeout, pm.idleTimeout, "idleTimeout should match")
-	assert.Equal(t, checkInterval, pm.idleCheckInterval, "idleCheckInterval should match")
+	assert.True(t, pm.IsStartOnRequestEnabled(), "startOnRequestEnabled should be true")
+	assert.Equal(t, idleTimeout, pm.GetIdleTimeout(), "idleTimeout should match")
+	assert.Equal(t, checkInterval, pm.GetIdleCheckInterval(), "idleCheckInterval should match")
 	assert.NotNil(t, pm.lastActivityTime.Load(), "lastActivityTime should be initialized")
 
 	// Clean up
@@ -436,14 +436,135 @@ func TestProcessManager_StopIdleMonitor(t *testing.T) {
 	pm.EnableStartOnRequest(5*time.Second, 100*time.Millisecond)
 
 	// Verify monitor is running
-	assert.NotNil(t, pm.idleMonitorCancel, "idle monitor should be running")
+	assert.True(t, pm.IsIdleMonitorRunning(), "idle monitor should be running")
 
 	// Stop the monitor
 	pm.StopIdleMonitor()
 
 	// Verify monitor is stopped
-	assert.Nil(t, pm.idleMonitorCancel, "idle monitor should be stopped")
+	assert.False(t, pm.IsIdleMonitorRunning(), "idle monitor should be stopped")
 
 	// Calling again should be safe
+	pm.StopIdleMonitor()
+}
+
+// TestProcessManager_IdleMonitorRestartsAfterAutoStart tests that idle monitoring
+// restarts correctly after an auto-start cycle
+func TestProcessManager_IdleMonitorRestartsAfterAutoStart(t *testing.T) {
+	logMgr := NewLogManager(100)
+	pid1Mgr := NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Start a long-running process
+	req := ProcessStartRequest{
+		Command:    "sleep 30",
+		WorkingDir: "/tmp",
+	}
+	require.NoError(t, pm.Start(req), "should start process")
+	time.Sleep(100 * time.Millisecond) // Let process start
+
+	// Enable start-on-request with very short timeout for testing
+	pm.EnableStartOnRequest(500*time.Millisecond, 100*time.Millisecond)
+
+	// Verify idle monitor is running
+	require.True(t, pm.IsIdleMonitorRunning(), "idle monitor should be running after EnableStartOnRequest")
+
+	// Wait for idle timeout to trigger (first stop)
+	time.Sleep(800 * time.Millisecond)
+
+	// Process should have been stopped by idle timeout
+	status := pm.GetStatus()
+	assert.Equal(t, ProcessStateStopped, status.State, "process should be stopped after idle timeout")
+	assert.False(t, pm.IsIdleMonitorRunning(), "idle monitor should be canceled after stop")
+
+	// Simulate auto-start by calling Start() again (this is what handleAutoStart does)
+	req2 := ProcessStartRequest{
+		Command:    "sleep 30",
+		WorkingDir: "/tmp",
+	}
+	require.NoError(t, pm.Start(req2), "should restart process")
+	time.Sleep(100 * time.Millisecond) // Let process start
+
+	// CRITICAL: Verify idle monitor was restarted (this is the bug fix)
+	require.True(t, pm.IsIdleMonitorRunning(), "idle monitor should be restarted after auto-start")
+
+	// Verify process is running
+	status = pm.GetStatus()
+	assert.Equal(t, ProcessStateRunning, status.State, "process should be running after auto-start")
+
+	// Wait for idle timeout to trigger again (second stop - this is what failed before the fix)
+	time.Sleep(800 * time.Millisecond)
+
+	// Process should have been stopped by idle timeout AGAIN
+	status = pm.GetStatus()
+	assert.Equal(t, ProcessStateStopped, status.State, "process should be stopped after second idle timeout")
+
+	// Clean up
+	pm.StopIdleMonitor()
+}
+
+// TestProcessManager_IdleMonitorRestartsAfterRestart tests that idle monitoring
+// restarts properly after a manual restart operation
+func TestProcessManager_IdleMonitorRestartsAfterRestart(t *testing.T) {
+	logMgr := NewLogManager(100)
+	pid1Mgr := NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Start a long-running process
+	req := ProcessStartRequest{
+		Command:    "sleep 30",
+		WorkingDir: "/tmp",
+	}
+	require.NoError(t, pm.Start(req), "should start process")
+	time.Sleep(100 * time.Millisecond) // Let process start
+
+	// Enable start-on-request
+	pm.EnableStartOnRequest(500*time.Millisecond, 100*time.Millisecond)
+	require.True(t, pm.IsIdleMonitorRunning(), "idle monitor should be running")
+
+	// Perform a manual restart
+	err := pm.Restart(ProcessRestartRequest{Graceful: true})
+	require.NoError(t, err, "restart should succeed")
+	time.Sleep(100 * time.Millisecond) // Let process restart
+
+	// Verify idle monitor was restarted after manual restart
+	require.True(t, pm.IsIdleMonitorRunning(), "idle monitor should be restarted after manual restart")
+
+	// Verify process is running
+	status := pm.GetStatus()
+	assert.Equal(t, ProcessStateRunning, status.State, "process should be running after restart")
+
+	// Wait for idle timeout to trigger
+	time.Sleep(800 * time.Millisecond)
+
+	// Process should have been stopped by idle timeout
+	status = pm.GetStatus()
+	assert.Equal(t, ProcessStateStopped, status.State, "process should be stopped after idle timeout")
+
+	// Clean up
+	pm.StopIdleMonitor()
+}
+
+// TestProcessManager_EnableStartOnRequestTwice tests that calling EnableStartOnRequest
+// multiple times doesn't leak goroutines
+func TestProcessManager_EnableStartOnRequestTwice(t *testing.T) {
+	logMgr := NewLogManager(100)
+	pid1Mgr := NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Enable start-on-request first time
+	pm.EnableStartOnRequest(5*time.Second, 1*time.Second)
+	require.True(t, pm.IsIdleMonitorRunning(), "first idle monitor should be running")
+	assert.Equal(t, 5*time.Second, pm.GetIdleTimeout(), "first idle timeout should be set")
+
+	// Enable start-on-request again (should cancel old and create new)
+	pm.EnableStartOnRequest(10*time.Second, 2*time.Second)
+	require.True(t, pm.IsIdleMonitorRunning(), "second idle monitor should be running")
+
+	// Verify settings were updated (this proves old monitor was canceled and new one created)
+	assert.Equal(t, 10*time.Second, pm.GetIdleTimeout(), "idle timeout should be updated")
+	assert.Equal(t, 2*time.Second, pm.GetIdleCheckInterval(), "check interval should be updated")
+
+	// Clean up
 	pm.StopIdleMonitor()
 }
