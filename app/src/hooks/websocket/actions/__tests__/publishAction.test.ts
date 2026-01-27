@@ -447,6 +447,11 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
+      vi.mocked(appService.getGitHistory).mockResolvedValue({
+        currentCommit: 'fetched-hash',
+        commits: [],
+      })
+
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
         json: async () => ({ commitHash: 'abc123' }),
@@ -469,7 +474,7 @@ describe('publishAction', () => {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer mock-jwt-token',
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ commitHash: 'fetched-hash' }),
         })
       )
     })
@@ -477,6 +482,11 @@ describe('publishAction', () => {
     it('should return deployment data on success', async () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      vi.mocked(appService.getGitHistory).mockResolvedValue({
+        currentCommit: 'abc123',
+        commits: [],
+      })
 
       const mockResult = {
         commitHash: 'abc123',
@@ -1063,7 +1073,7 @@ describe('publishAction', () => {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer mock-jwt-token',
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ commitHash: 'fetched-hash' }),
         })
       )
 
