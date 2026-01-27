@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -28,6 +30,12 @@ const (
 const (
 	defaultPortWaitTimeout = 10 * time.Second
 	portCheckInterval      = 50 * time.Millisecond
+)
+
+// Sentinel errors for process state checks
+var (
+	ErrAlreadyStarting = errors.New("process is already starting")
+	ErrAlreadyRunning  = errors.New("process is already running")
 )
 
 type ProcessInfo struct {
@@ -134,6 +142,14 @@ type ProcessManager struct {
 	restartCount          int
 	enableLogging         bool // Control whether to log child process stdout/stderr
 	outputToStructuredLog bool // Control whether to output child process logs to structured logging
+
+	// Start-on-request fields
+	lastActivityTime      atomic.Value  // stores time.Time
+	idleTimeout           time.Duration // Duration of inactivity before auto-stopping
+	idleCheckInterval     time.Duration // How often to check for idle timeout
+	idleMonitorCancel     context.CancelFunc
+	startOnRequestEnabled bool
+	activeWebSockets      sync.Map // map[net.Conn]bool - tracks active WS connections
 }
 
 func NewProcessManager(logMgr *LogManager, pid1Mgr *PID1Manager) *ProcessManager {
@@ -468,8 +484,11 @@ func (pm *ProcessManager) Start(req ProcessStartRequest) error {
 	// Check if we already have a running process
 	if pm.currentProcess != nil {
 		status := pm.currentProcess.GetInfo()
-		if status.State == ProcessStateRunning || status.State == ProcessStateStarting {
-			return fmt.Errorf("process is already %s", status.State)
+		if status.State == ProcessStateRunning {
+			return ErrAlreadyRunning
+		}
+		if status.State == ProcessStateStarting {
+			return ErrAlreadyStarting
 		}
 	}
 
@@ -506,6 +525,15 @@ func (pm *ProcessManager) Stop(req ProcessStopRequest) error {
 	status := pm.currentProcess.GetInfo()
 	if status.State != ProcessStateRunning {
 		return fmt.Errorf("process is not running (current state: %s)", status.State)
+	}
+
+	// Stop idle monitoring if enabled
+	// Note: We check and cancel within the lock to prevent race conditions
+	// The idle monitor goroutine will exit cleanly when context is canceled
+	if pm.idleMonitorCancel != nil {
+		pm.idleMonitorCancel()
+		pm.idleMonitorCancel = nil
+		slog.Debug("idle_monitor.stopped_on_process_stop")
 	}
 
 	// Stop health monitoring
@@ -655,7 +683,7 @@ func (pm *ProcessManager) GetHealthStatus() HealthResult {
 	return pm.healthMon.GetStatus()
 }
 
-func (pm *ProcessManager) GetRestartStats() map[string]interface{} {
+func (pm *ProcessManager) GetRestartStats() map[string]any {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
@@ -666,6 +694,12 @@ func (pm *ProcessManager) GetRestartStats() map[string]interface{} {
 
 func (pm *ProcessManager) StopAllProcesses() {
 	pm.mu.Lock()
+
+	// Stop idle monitor if running
+	if pm.idleMonitorCancel != nil {
+		pm.idleMonitorCancel()
+		pm.idleMonitorCancel = nil
+	}
 
 	if pm.currentProcess == nil {
 		pm.mu.Unlock()
@@ -701,6 +735,18 @@ func (pm *ProcessManager) StopAllProcesses() {
 	// which could block indefinitely. The process will clean up asynchronously.
 }
 
+// GetStartRequest returns the current process start request for auto-restart
+func (pm *ProcessManager) GetStartRequest() *ProcessStartRequest {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	if pm.currentProcess != nil {
+		return &pm.currentProcess.config
+	}
+
+	return nil
+}
+
 // SetProcessLogging enables or disables child process stdout/stderr logging
 func (pm *ProcessManager) SetProcessLogging(enabled bool) {
 	pm.mu.Lock()
@@ -727,4 +773,155 @@ func (pm *ProcessManager) GetStructuredLogging() bool {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 	return pm.outputToStructuredLog
+}
+
+// EnableStartOnRequest enables start-on-request functionality with idle monitoring
+// Parameters must satisfy: idleTimeout > 0, checkInterval > 0, checkInterval < idleTimeout
+func (pm *ProcessManager) EnableStartOnRequest(idleTimeout, checkInterval time.Duration) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	// Validate parameters
+	if idleTimeout <= 0 {
+		slog.Error("start_on_request.invalid_idle_timeout",
+			"idle_timeout", idleTimeout,
+			"message", "idle timeout must be positive")
+		return
+	}
+	if checkInterval <= 0 {
+		slog.Error("start_on_request.invalid_check_interval",
+			"check_interval", checkInterval,
+			"message", "check interval must be positive")
+		return
+	}
+	if checkInterval >= idleTimeout {
+		slog.Warn("start_on_request.check_interval_too_large",
+			"check_interval", checkInterval,
+			"idle_timeout", idleTimeout,
+			"message", "check interval should be less than idle timeout for efficient detection")
+		// Continue anyway - not a fatal error
+	}
+
+	pm.startOnRequestEnabled = true
+	pm.idleTimeout = idleTimeout
+	pm.idleCheckInterval = checkInterval
+	pm.UpdateActivity() // Initialize to now
+
+	ctx, cancel := context.WithCancel(context.Background())
+	pm.idleMonitorCancel = cancel
+
+	slog.Info("start_on_request.enabled",
+		"idle_timeout", idleTimeout,
+		"check_interval", checkInterval)
+
+	go pm.idleMonitorLoop(ctx)
+}
+
+// UpdateActivity updates the last activity timestamp
+func (pm *ProcessManager) UpdateActivity() {
+	pm.lastActivityTime.Store(time.Now())
+}
+
+// RegisterWebSocket registers an active WebSocket connection
+func (pm *ProcessManager) RegisterWebSocket(conn net.Conn) {
+	pm.activeWebSockets.Store(conn, true)
+	slog.Debug("websocket.registered", "remote_addr", conn.RemoteAddr())
+}
+
+// UnregisterWebSocket unregisters a WebSocket connection when it closes
+func (pm *ProcessManager) UnregisterWebSocket(conn net.Conn) {
+	pm.activeWebSockets.Delete(conn)
+	slog.Debug("websocket.unregistered", "remote_addr", conn.RemoteAddr())
+}
+
+// StopIdleMonitor stops the idle monitoring goroutine
+func (pm *ProcessManager) StopIdleMonitor() {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if pm.idleMonitorCancel != nil {
+		pm.idleMonitorCancel()
+		pm.idleMonitorCancel = nil
+		slog.Info("idle_monitor.stopped")
+	}
+}
+
+// idleMonitorLoop periodically checks for idle timeout and stops the process
+func (pm *ProcessManager) idleMonitorLoop(ctx context.Context) {
+	ticker := time.NewTicker(pm.idleCheckInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			pm.checkIdleAndStop()
+		}
+	}
+}
+
+// checkIdleAndStop checks if the process has been idle too long and stops it
+// This function is called periodically by the idle monitor goroutine
+func (pm *ProcessManager) checkIdleAndStop() {
+	status := pm.GetStatus()
+	if status.State != ProcessStateRunning {
+		return // Already stopped
+	}
+
+	// Check WebSocket connections and idle time atomically to prevent race conditions
+	// where a WebSocket connects between the check and the stop call
+	pm.mu.Lock()
+
+	// Check if any WebSocket connections are active
+	hasActiveWS := false
+	pm.activeWebSockets.Range(func(_, _ any) bool {
+		hasActiveWS = true
+		return false // stop iteration
+	})
+
+	if hasActiveWS {
+		pm.mu.Unlock()
+		slog.Debug("idle.check.has_active_websockets")
+		return // Don't stop if WebSockets are active
+	}
+
+	// Check idle duration while still holding the lock
+	lastActivity, ok := pm.lastActivityTime.Load().(time.Time)
+	if !ok {
+		pm.mu.Unlock()
+		slog.Error("idle.check.type_assertion_failed")
+		return
+	}
+	idleDuration := time.Since(lastActivity)
+
+	if idleDuration <= pm.idleTimeout {
+		pm.mu.Unlock()
+		return // Not idle long enough
+	}
+
+	// Process is idle and no active WebSockets - proceed with stop
+	slog.Info("idle.stopping",
+		"idle_duration", idleDuration,
+		"threshold", pm.idleTimeout,
+		"pid", status.PID)
+
+	// Release lock before calling Stop() to avoid deadlock (Stop acquires the same lock)
+	pm.mu.Unlock()
+
+	err := pm.Stop(ProcessStopRequest{
+		Signal:  "SIGTERM",
+		Timeout: 30,
+	})
+
+	if err != nil {
+		slog.Error("idle.stop_failed",
+			"error", err,
+			"pid", status.PID,
+			"idle_duration", idleDuration)
+	} else {
+		slog.Info("idle.stopped",
+			"pid", status.PID,
+			"uptime", time.Since(status.StartTime))
+	}
 }

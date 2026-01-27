@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"strconv"
+	"time"
 )
 
 // getEnvStringWithDefault returns the environment variable value if set,
@@ -28,6 +29,17 @@ func getEnvBoolWithDefault(key string, defaultValue bool) bool {
 func getEnvIntWithDefault(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if parsedValue, err := strconv.Atoi(value); err == nil {
+			return parsedValue
+		}
+	}
+	return defaultValue
+}
+
+// getEnvDurationWithDefault returns the parsed duration value of the environment variable,
+// or defaultValue if not set or parsing fails
+func getEnvDurationWithDefault(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if parsedValue, err := time.ParseDuration(value); err == nil {
 			return parsedValue
 		}
 	}

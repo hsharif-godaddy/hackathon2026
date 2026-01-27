@@ -15,6 +15,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const testProxyResponse = "proxy"
@@ -2328,4 +2331,220 @@ func TestAiroPath_ExactAiroPath_Returns404(t *testing.T) {
 	if rec.Code != http.StatusMovedPermanently && rec.Code != http.StatusNotFound {
 		t.Errorf("expected status 301 or 404 for /airo, got: %d", rec.Code)
 	}
+}
+
+// Test RequestRouter auto-start when process is stopped
+func TestRequestRouter_AutoStartWhenStopped(t *testing.T) {
+	// Create process manager with a simple echo process
+	logMgr := NewLogManager(100)
+	pid1Mgr := NewPID1Manager()
+	procMgr := NewProcessManager(logMgr, pid1Mgr)
+
+	// Start a simple HTTP server process
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		//nolint:errcheck // Test mock response, error not critical
+		w.Write([]byte("backend response"))
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	// Create a RequestRouter with start-on-request enabled
+	router := &RequestRouter{
+		proxyHandler:          httputil.NewSingleHostReverseProxy(backendURL),
+		procMgr:               procMgr,
+		startOnRequestEnabled: true,
+	}
+
+	// Configure and start the process
+	startReq := ProcessStartRequest{
+		Command: "sleep 5",
+	}
+	require.NoError(t, procMgr.Start(startReq))
+	time.Sleep(100 * time.Millisecond)
+
+	// Stop the process to simulate stopped state
+	require.NoError(t, procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1}))
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify process is stopped
+	status := procMgr.GetStatus()
+	require.Equal(t, ProcessStateStopped, status.State)
+
+	// Make a request - should trigger auto-start
+	req := httptest.NewRequest("GET", "/test", nil)
+	rec := httptest.NewRecorder()
+
+	// Start goroutine to handle the request
+	done := make(chan bool)
+	go func() {
+		router.ServeHTTP(rec, req)
+		done <- true
+	}()
+
+	// Wait a bit for auto-start to trigger
+	time.Sleep(500 * time.Millisecond)
+
+	// Process should now be starting or running
+	status = procMgr.GetStatus()
+	assert.Contains(t, []ProcessState{ProcessStateStarting, ProcessStateRunning}, status.State,
+		"process should be starting or running after auto-start")
+
+	// Clean up
+	<-done
+	//nolint:errcheck // Test cleanup, error not critical
+	procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
+}
+
+// Test RequestRouter doesn't auto-start when process is already running
+func TestRequestRouter_NoAutoStartWhenRunning(t *testing.T) {
+	// Create process manager
+	logMgr := NewLogManager(100)
+	pid1Mgr := NewPID1Manager()
+	procMgr := NewProcessManager(logMgr, pid1Mgr)
+
+	// Create backend server
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		//nolint:errcheck // Test mock response, error not critical
+		w.Write([]byte("backend response"))
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	// Create RequestRouter
+	router := &RequestRouter{
+		proxyHandler:          httputil.NewSingleHostReverseProxy(backendURL),
+		procMgr:               procMgr,
+		startOnRequestEnabled: true,
+	}
+
+	// Start the process
+	startReq := ProcessStartRequest{
+		Command: "sleep 10",
+	}
+	require.NoError(t, procMgr.Start(startReq))
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify process is running
+	status := procMgr.GetStatus()
+	require.Equal(t, ProcessStateRunning, status.State)
+
+	// Make a request - should NOT trigger auto-start (process already running)
+	req := httptest.NewRequest("GET", "/test", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	// Process should still be running (same PID)
+	newStatus := procMgr.GetStatus()
+	assert.Equal(t, ProcessStateRunning, newStatus.State)
+	assert.Equal(t, status.PID, newStatus.PID, "PID should remain the same")
+
+	// Clean up
+	//nolint:errcheck // Test cleanup, error not critical
+	procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
+}
+
+// Test RequestRouter doesn't auto-start when startOnRequestEnabled is false
+func TestRequestRouter_NoAutoStartWhenDisabled(t *testing.T) {
+	// Create process manager
+	logMgr := NewLogManager(100)
+	pid1Mgr := NewPID1Manager()
+	procMgr := NewProcessManager(logMgr, pid1Mgr)
+
+	// Create backend server
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		//nolint:errcheck // Test mock response, error not critical
+		w.Write([]byte("backend response"))
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	// Create RequestRouter with start-on-request DISABLED
+	router := &RequestRouter{
+		proxyHandler:          httputil.NewSingleHostReverseProxy(backendURL),
+		procMgr:               procMgr,
+		startOnRequestEnabled: false, // disabled
+	}
+
+	// Verify process is stopped
+	status := procMgr.GetStatus()
+	require.Equal(t, ProcessStateStopped, status.State)
+
+	// Make a request - should NOT trigger auto-start
+	req := httptest.NewRequest("GET", "/test", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	// Process should still be stopped
+	status = procMgr.GetStatus()
+	assert.Equal(t, ProcessStateStopped, status.State, "process should remain stopped when auto-start is disabled")
+}
+
+// Test activity tracking is called on proxied requests
+func TestRequestRouter_ActivityTracking(t *testing.T) {
+	// Create process manager
+	logMgr := NewLogManager(100)
+	pid1Mgr := NewPID1Manager()
+	procMgr := NewProcessManager(logMgr, pid1Mgr)
+
+	// Enable start-on-request to enable activity tracking
+	procMgr.EnableStartOnRequest(5*time.Second, 1*time.Second)
+
+	// Start the process
+	startReq := ProcessStartRequest{
+		Command: "sleep 10",
+	}
+	require.NoError(t, procMgr.Start(startReq))
+	time.Sleep(100 * time.Millisecond)
+
+	// Get initial activity time
+	initialActivity, ok := procMgr.lastActivityTime.Load().(time.Time)
+	require.True(t, ok, "should be able to load activity time")
+
+	// Wait a bit to ensure time difference
+	time.Sleep(50 * time.Millisecond)
+
+	// Create backend server
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		//nolint:errcheck // Test mock response, error not critical
+		w.Write([]byte("backend response"))
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	// Create RequestRouter
+	router := &RequestRouter{
+		proxyHandler:          httputil.NewSingleHostReverseProxy(backendURL),
+		procMgr:               procMgr,
+		startOnRequestEnabled: true,
+	}
+
+	// Make a proxied request
+	req := httptest.NewRequest("GET", "/api/test", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	// Activity time should be updated
+	newActivity, ok := procMgr.lastActivityTime.Load().(time.Time)
+	require.True(t, ok, "should be able to load updated activity time")
+	assert.True(t, newActivity.After(initialActivity), "activity time should be updated after proxied request")
+
+	// Clean up
+	procMgr.StopIdleMonitor()
+	//nolint:errcheck // Test cleanup, error not critical
+	procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
 }

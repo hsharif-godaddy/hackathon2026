@@ -1,9 +1,27 @@
 package main
 
 import (
+	"net"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// mockConn implements net.Conn for testing
+type mockConn struct {
+	net.Conn
+}
+
+func (m *mockConn) Close() error                       { return nil }
+func (m *mockConn) Read(_ []byte) (n int, err error)   { return 0, nil }
+func (m *mockConn) Write(b []byte) (n int, err error)  { return len(b), nil }
+func (m *mockConn) LocalAddr() net.Addr                { return nil }
+func (m *mockConn) RemoteAddr() net.Addr               { return nil }
+func (m *mockConn) SetDeadline(_ time.Time) error      { return nil }
+func (m *mockConn) SetReadDeadline(_ time.Time) error  { return nil }
+func (m *mockConn) SetWriteDeadline(_ time.Time) error { return nil }
 
 func TestProcessManager_NewProcessManager(t *testing.T) {
 	logMgr := NewLogManager(100)
@@ -249,4 +267,183 @@ func TestProcessManager_ConfigureHealthCheck(t *testing.T) {
 	if totalRestarts, exists := stats["total_restarts"]; !exists || totalRestarts != 0 {
 		t.Error("Expected total_restarts to be 0 initially")
 	}
+}
+
+func TestProcessManager_EnableStartOnRequest(t *testing.T) {
+	logMgr := NewLogManager(100)
+	pid1Mgr := NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	idleTimeout := 5 * time.Second
+	checkInterval := 1 * time.Second
+
+	pm.EnableStartOnRequest(idleTimeout, checkInterval)
+
+	assert.True(t, pm.startOnRequestEnabled, "startOnRequestEnabled should be true")
+	assert.Equal(t, idleTimeout, pm.idleTimeout, "idleTimeout should match")
+	assert.Equal(t, checkInterval, pm.idleCheckInterval, "idleCheckInterval should match")
+	assert.NotNil(t, pm.lastActivityTime.Load(), "lastActivityTime should be initialized")
+
+	// Clean up
+	pm.StopIdleMonitor()
+}
+
+func TestProcessManager_UpdateActivity(t *testing.T) {
+	logMgr := NewLogManager(100)
+	pid1Mgr := NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	pm.EnableStartOnRequest(5*time.Second, 1*time.Second)
+
+	// Get initial activity time
+	initialTime, ok := pm.lastActivityTime.Load().(time.Time)
+	require.True(t, ok, "should be able to load activity time")
+
+	// Wait a bit to ensure time difference
+	time.Sleep(10 * time.Millisecond)
+
+	// Update activity
+	pm.UpdateActivity()
+
+	// Verify activity time was updated
+	updatedTime, ok := pm.lastActivityTime.Load().(time.Time)
+	require.True(t, ok, "should be able to load updated activity time")
+	assert.True(t, updatedTime.After(initialTime), "lastActivityTime should be updated to a later time")
+
+	// Clean up
+	pm.StopIdleMonitor()
+}
+
+func TestProcessManager_WebSocketTracking(t *testing.T) {
+	logMgr := NewLogManager(100)
+	pid1Mgr := NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	pm.EnableStartOnRequest(5*time.Second, 1*time.Second)
+
+	// Create mock connections
+	conn1 := &mockConn{}
+	conn2 := &mockConn{}
+
+	// Register WebSocket connections
+	pm.RegisterWebSocket(conn1)
+	pm.RegisterWebSocket(conn2)
+
+	// Verify connections are tracked
+	count := 0
+	pm.activeWebSockets.Range(func(_, _ any) bool {
+		count++
+		return true
+	})
+	assert.Equal(t, 2, count, "should have 2 active WebSocket connections")
+
+	// Unregister one connection
+	pm.UnregisterWebSocket(conn1)
+
+	// Verify only one connection remains
+	count = 0
+	pm.activeWebSockets.Range(func(_, _ any) bool {
+		count++
+		return true
+	})
+	assert.Equal(t, 1, count, "should have 1 active WebSocket connection after unregister")
+
+	// Clean up
+	pm.StopIdleMonitor()
+}
+
+func TestProcessManager_IdleStopWithWebSocket(t *testing.T) {
+	logMgr := NewLogManager(100)
+	pid1Mgr := NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Start a long-running process
+	req := ProcessStartRequest{
+		Command: "sleep 30",
+	}
+
+	require.NoError(t, pm.Start(req), "should start process")
+	time.Sleep(100 * time.Millisecond) // Let process start
+
+	// Enable start-on-request with very short timeout for testing
+	pm.EnableStartOnRequest(500*time.Millisecond, 100*time.Millisecond)
+
+	// Register a WebSocket connection
+	conn := &mockConn{}
+	pm.RegisterWebSocket(conn)
+
+	// Wait longer than idle timeout
+	time.Sleep(1 * time.Second)
+
+	// Process should still be running because WebSocket is active
+	status := pm.GetStatus()
+	assert.Equal(t, ProcessStateRunning, status.State, "process should still be running with active WebSocket")
+
+	// Unregister WebSocket
+	pm.UnregisterWebSocket(conn)
+
+	// Wait for idle check to trigger
+	time.Sleep(1 * time.Second)
+
+	// Now process should be stopped (or error if it was killed)
+	status = pm.GetStatus()
+	assert.Contains(t, []ProcessState{ProcessStateStopped, ProcessStateStopping, ProcessStateError}, status.State,
+		"process should be stopped after WebSocket closed")
+
+	// Clean up
+	pm.StopIdleMonitor()
+	if status.State == ProcessStateRunning {
+		//nolint:errcheck // Test cleanup, error not critical
+		pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
+	}
+}
+
+func TestProcessManager_GetStartRequest(t *testing.T) {
+	logMgr := NewLogManager(100)
+	pid1Mgr := NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Test when no process has been started
+	req := pm.GetStartRequest()
+	assert.Nil(t, req, "should return nil when no process has been started")
+
+	// Start a process
+	startReq := ProcessStartRequest{
+		Command:    "sleep 5",
+		WorkingDir: "/tmp",
+		Env:        map[string]string{"TEST": "value"},
+	}
+
+	require.NoError(t, pm.Start(startReq), "should start process")
+	time.Sleep(100 * time.Millisecond)
+
+	// Get start request
+	req = pm.GetStartRequest()
+	require.NotNil(t, req, "should return start request after starting process")
+	assert.Equal(t, startReq.Command, req.Command, "command should match")
+	assert.Equal(t, startReq.WorkingDir, req.WorkingDir, "working dir should match")
+
+	// Clean up
+	//nolint:errcheck // Test cleanup, error not critical
+	pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
+}
+
+func TestProcessManager_StopIdleMonitor(t *testing.T) {
+	logMgr := NewLogManager(100)
+	pid1Mgr := NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	pm.EnableStartOnRequest(5*time.Second, 100*time.Millisecond)
+
+	// Verify monitor is running
+	assert.NotNil(t, pm.idleMonitorCancel, "idle monitor should be running")
+
+	// Stop the monitor
+	pm.StopIdleMonitor()
+
+	// Verify monitor is stopped
+	assert.Nil(t, pm.idleMonitorCancel, "idle monitor should be stopped")
+
+	// Calling again should be safe
+	pm.StopIdleMonitor()
 }

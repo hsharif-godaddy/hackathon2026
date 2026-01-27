@@ -132,13 +132,15 @@ type HTTPProxyConfig struct {
  * - Graceful lifecycle management
  */
 type HTTPProxy struct {
-	mu           sync.RWMutex
-	config       HTTPProxyConfig
-	server       *http.Server
-	listener     net.Listener
-	running      bool
-	reverseProxy *httputil.ReverseProxy
-	startTime    time.Time
+	mu                    sync.RWMutex
+	config                HTTPProxyConfig
+	server                *http.Server
+	listener              net.Listener
+	running               bool
+	reverseProxy          *httputil.ReverseProxy
+	startTime             time.Time
+	procMgr               *ProcessManager
+	startOnRequestEnabled bool
 }
 
 /**
@@ -168,6 +170,7 @@ type responseWriter struct {
 	http.ResponseWriter
 	statusCode int
 	size       int
+	procMgr    *ProcessManager // For WebSocket tracking
 }
 
 func (rw *responseWriter) WriteHeader(code int) {
@@ -183,12 +186,47 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 
 // Hijack implements http.Hijacker interface to support WebSocket upgrades
 // This is required for the reverse proxy to upgrade HTTP connections to WebSocket
+// Also registers the hijacked connection with ProcessManager for idle tracking
 func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	hijacker, ok := rw.ResponseWriter.(http.Hijacker)
 	if !ok {
 		return nil, nil, fmt.Errorf("underlying ResponseWriter does not implement http.Hijacker")
 	}
-	return hijacker.Hijack()
+	conn, buf, err := hijacker.Hijack()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Wrap connection to track WebSocket lifecycle if ProcessManager is available
+	if rw.procMgr != nil {
+		conn = &trackedConn{
+			Conn:    conn,
+			procMgr: rw.procMgr,
+		}
+		rw.procMgr.RegisterWebSocket(conn)
+	}
+
+	return conn, buf, nil
+}
+
+/**
+ * trackedConn wraps net.Conn to automatically unregister WebSocket connections
+ * when they close, ensuring accurate idle tracking
+ */
+type trackedConn struct {
+	net.Conn
+	procMgr *ProcessManager
+	once    sync.Once
+}
+
+func (tc *trackedConn) Close() error {
+	// Unregister exactly once, even if Close is called multiple times
+	tc.once.Do(func() {
+		if tc.procMgr != nil {
+			tc.procMgr.UnregisterWebSocket(tc)
+		}
+	})
+	return tc.Conn.Close()
 }
 
 // Flush implements http.Flusher interface to support Server-Sent Events (SSE)
@@ -205,12 +243,14 @@ func (rw *responseWriter) Flush() {
  * Routes requests to static file handler, SPA fallback, or backend proxy
  */
 type RequestRouter struct {
-	staticHandler    http.Handler
-	proxyHandler     http.Handler
-	spaFallback      string
-	apiPrefix        string
-	isProductionMode bool
-	allowedOrigins   []string
+	staticHandler         http.Handler
+	proxyHandler          http.Handler
+	spaFallback           string
+	apiPrefix             string
+	isProductionMode      bool
+	allowedOrigins        []string
+	procMgr               *ProcessManager
+	startOnRequestEnabled bool
 }
 
 func (rr *RequestRouter) writeStaticOptionsResponse(w http.ResponseWriter, r *http.Request) {
@@ -249,9 +289,110 @@ func (rr *RequestRouter) writeStaticOptionsResponse(w http.ResponseWriter, r *ht
 }
 
 /**
- * loggingMiddleware wraps an http.Handler to log requests with response details
+ * handleAutoStart handles requests when the app is stopped
+ * Holds the request open, starts the process, and forwards when ready
  */
-func loggingMiddleware(next http.Handler) http.Handler {
+func (rr *RequestRouter) handleAutoStart(w http.ResponseWriter, r *http.Request) {
+	slog.Info("autostart.triggered",
+		"path", r.URL.Path,
+		"method", r.Method,
+		"remote_addr", r.RemoteAddr)
+
+	// Get current process start request
+	startReq := rr.procMgr.GetStartRequest()
+	if startReq == nil {
+		slog.Error("autostart.no_config")
+		http.Error(w, "Service configuration error", http.StatusInternalServerError)
+		return
+	}
+
+	// Start the process
+	startTime := time.Now()
+	err := rr.procMgr.Start(*startReq)
+	// Accept benign race conditions (already starting, already running)
+	// These are success signals - another concurrent request beat us to it
+	if err != nil {
+		// Use typed error checking instead of string matching for robustness
+		if !errors.Is(err, ErrAlreadyStarting) && !errors.Is(err, ErrAlreadyRunning) {
+			slog.Error("autostart.failed", "error", err)
+			http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		// Log the benign race for observability
+		slog.Info("autostart.concurrent_race", "error", err.Error())
+	}
+
+	// Wait for process to be ready (hold the request)
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	timeout := time.After(60 * time.Second)
+
+	for {
+		select {
+		case <-r.Context().Done():
+			// Client disconnected or canceled the request
+			slog.Info("autostart.client_canceled",
+				"path", r.URL.Path,
+				"method", r.Method,
+				"reason", r.Context().Err())
+			return
+
+		case <-timeout:
+			slog.Error("autostart.timeout",
+				"path", r.URL.Path,
+				"method", r.Method)
+			http.Error(w, "Service startup timeout", http.StatusGatewayTimeout)
+			return
+
+		case <-ticker.C:
+			status := rr.procMgr.GetStatus()
+
+			switch status.State {
+			case ProcessStateStopped, ProcessStateStopping:
+				// Keep waiting - these states shouldn't happen during startup
+				// but handle them gracefully
+				slog.Debug("autostart.unexpected_state",
+					"state", status.State,
+					"path", r.URL.Path)
+
+			case ProcessStateRunning:
+				duration := time.Since(startTime)
+				slog.Info("autostart.process_ready",
+					"pid", status.PID,
+					"startup_duration_ms", duration.Milliseconds(),
+					"path", r.URL.Path,
+					"method", r.Method)
+
+				// Update activity before forwarding
+				rr.procMgr.UpdateActivity()
+
+				// Forward the original request to backend
+				rr.proxyHandler.ServeHTTP(w, r)
+				return
+
+			case ProcessStateError:
+				slog.Error("autostart.process_failed",
+					"error", status.Error,
+					"state", status.State,
+					"path", r.URL.Path)
+				http.Error(w, "Service startup failed", http.StatusBadGateway)
+				return
+
+			case ProcessStateStarting:
+				// Keep waiting
+				slog.Debug("autostart.waiting",
+					"pid", status.PID,
+					"state", status.State)
+			}
+		}
+	}
+}
+
+/**
+ * loggingMiddleware wraps an http.Handler to log requests with response details
+ * Optionally tracks WebSocket connections if procMgr is provided
+ */
+func loggingMiddleware(next http.Handler, procMgr *ProcessManager) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
@@ -260,6 +401,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 			ResponseWriter: w,
 			statusCode:     http.StatusOK, // Default to 200 if WriteHeader not called
 			size:           0,
+			procMgr:        procMgr, // Enable WebSocket tracking if available
 		}
 
 		// Call next handler
@@ -301,9 +443,27 @@ func loggingMiddleware(next http.Handler) http.Handler {
  * Routes requests based on path, method, and configuration
  */
 func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Check if we need to auto-start (any request can trigger it)
+	if rr.procMgr != nil && rr.startOnRequestEnabled {
+		status := rr.procMgr.GetStatus()
+		// Auto-start if process is stopped or errored
+		// This allows crashed apps to auto-restart on next request
+		// Note: We don't auto-start ProcessStateStopping to avoid race conditions
+		// where the process is intentionally shutting down
+		if status.State == ProcessStateStopped || status.State == ProcessStateError {
+			// Auto-start for any request (hold and forward)
+			rr.handleAutoStart(w, r)
+			return
+		}
+	}
+
 	// 1. API routes - always proxy to backend
 	if strings.HasPrefix(r.URL.Path, rr.apiPrefix) {
 		slog.Debug("routing to API backend", "path", r.URL.Path)
+		// Update activity before proxying
+		if rr.procMgr != nil && rr.startOnRequestEnabled {
+			rr.procMgr.UpdateActivity()
+		}
 		rr.proxyHandler.ServeHTTP(w, r)
 		return
 	}
@@ -311,6 +471,10 @@ func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 2. Static serving disabled - proxy everything else to backend
 	if !rr.isProductionMode {
 		slog.Debug("proxying to backend (static serving disabled)", "path", r.URL.Path)
+		// Update activity before proxying
+		if rr.procMgr != nil && rr.startOnRequestEnabled {
+			rr.procMgr.UpdateActivity()
+		}
 		rr.proxyHandler.ServeHTTP(w, r)
 		return
 	}
@@ -388,6 +552,10 @@ func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 4. Default - proxy to backend
+	// Update activity before proxying
+	if rr.procMgr != nil && rr.startOnRequestEnabled {
+		rr.procMgr.UpdateActivity()
+	}
 	rr.proxyHandler.ServeHTTP(w, r)
 }
 
@@ -857,10 +1025,12 @@ func (p *HTTPProxy) Start() error {
 
 	// Create request router
 	router := &RequestRouter{
-		proxyHandler:     p.reverseProxy,
-		apiPrefix:        routingConfig.APIPrefix,
-		isProductionMode: p.config.EnableStaticServing,
-		allowedOrigins:   p.config.AllowedOrigins,
+		proxyHandler:          p.reverseProxy,
+		apiPrefix:             routingConfig.APIPrefix,
+		isProductionMode:      p.config.EnableStaticServing,
+		allowedOrigins:        p.config.AllowedOrigins,
+		procMgr:               p.procMgr,
+		startOnRequestEnabled: p.startOnRequestEnabled,
 	}
 
 	// Route all other requests to the router
@@ -923,7 +1093,8 @@ func (p *HTTPProxy) Start() error {
 	}
 
 	// Wrap with logging middleware (outermost layer)
-	handler = loggingMiddleware(handler)
+	// Pass procMgr for WebSocket connection tracking
+	handler = loggingMiddleware(handler, p.procMgr)
 
 	// Create HTTP server with middleware-wrapped handler
 	p.server = &http.Server{
@@ -971,6 +1142,29 @@ func (p *HTTPProxy) Start() error {
 	}()
 
 	return nil
+}
+
+/**
+ * EnableStartOnRequest enables start-on-request functionality
+ * Must be called before Start()
+ *
+ * @param procMgr - Process manager instance
+ * @param idleTimeout - Duration of inactivity before auto-stopping
+ * @param checkInterval - How often to check for idle timeout
+ */
+func (p *HTTPProxy) EnableStartOnRequest(procMgr *ProcessManager, idleTimeout, checkInterval time.Duration) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.procMgr = procMgr
+	p.startOnRequestEnabled = true
+
+	// Enable idle monitoring in ProcessManager
+	procMgr.EnableStartOnRequest(idleTimeout, checkInterval)
+
+	slog.Info("start_on_request.enabled",
+		"idle_timeout", idleTimeout,
+		"check_interval", checkInterval)
 }
 
 /**

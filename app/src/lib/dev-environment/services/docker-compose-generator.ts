@@ -153,6 +153,14 @@ export class DockerComposeGenerator {
 		// In production, this is set by the deployment system. For local docker-compose, we set it explicitly.
 		env.SITE_ID = config.appId;
 
+		// Start-on-request configuration (preview only)
+		// Automatically starts the process when a request arrives and stops it after idle timeout
+		// NOMAD_TASK_NAME signals the variant (required for start-on-request to activate)
+		env.NOMAD_TASK_NAME = "preview";
+		env.DEV_SUPERVISOR_ENABLE_START_ON_REQUEST = "true";
+		env.DEV_SUPERVISOR_IDLE_TIMEOUT = "5m";           // Stop after 5 minutes of inactivity
+		env.DEV_SUPERVISOR_IDLE_CHECK_INTERVAL = "30s";   // Check for idle timeout every 30 seconds
+
 		return env;
 	}
 
@@ -174,6 +182,9 @@ export class DockerComposeGenerator {
 			PORT: "8081",
 			DIST_DIR: "/dist",
 		};
+
+		// Identify this as the publish variant (always-on, no start-on-request)
+		env.NOMAD_TASK_NAME = "publish";
 
 		// Publish supervisor configuration
 		if (config.publishSupervisorPort) {

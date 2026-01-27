@@ -58,6 +58,11 @@ type Config struct {
 	JWTBuilderBaseURL string   // Builder app base URL for smart redirects (e.g., https://airo-builder.test-godaddy.com)
 	SiteID            string   // Site ID for smart redirects (from SITE_ID env var)
 	JWTExcludedPaths  []string // Paths to exclude from JWT validation
+
+	// Start-on-request configuration (preview variant only)
+	StartOnRequestEnabled bool          // Enable start-on-request (auto-start stopped apps, auto-stop idle apps)
+	IdleTimeout           time.Duration // Duration of inactivity before auto-stopping (default: 30m)
+	IdleCheckInterval     time.Duration // How often to check for idle timeout (default: 30s)
 }
 
 // configureSchedulerDefaults re-enables Go 1.25's automatic container-aware scheduler tuning.
@@ -332,6 +337,16 @@ func (s *Server) startHTTPProxyIfEnabled() error {
 		JWTExcludedPaths:  s.config.JWTExcludedPaths,
 	}
 	s.httpProxy = NewHTTPProxy(proxyConfig)
+
+	// Enable start-on-request if configured
+	if s.config.StartOnRequestEnabled {
+		s.httpProxy.EnableStartOnRequest(
+			s.procMgr,
+			s.config.IdleTimeout,
+			s.config.IdleCheckInterval,
+		)
+	}
+
 	if err := s.httpProxy.Start(); err != nil {
 		slog.Error("failed to start HTTP proxy", "error", err)
 		return err
@@ -364,8 +379,9 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 		return err
 	}
 
+	const previewTaskName = "preview"
 	// Start SMTP proxy (skip for preview task in unified job)
-	if os.Getenv("NOMAD_TASK_NAME") != "preview" {
+	if os.Getenv("NOMAD_TASK_NAME") != previewTaskName {
 		if err := s.smtpProxy.Start(); err != nil {
 			slog.Warn("failed to start SMTP proxy", "error", err)
 		}
@@ -785,6 +801,20 @@ func parseFlags() *Config {
 		if !slices.Contains(config.JWTExcludedPaths, "/airo/health") {
 			config.JWTExcludedPaths = append(config.JWTExcludedPaths, "/airo/health")
 		}
+	}
+
+	// Start-on-request configuration (preview variant only)
+	config.StartOnRequestEnabled = getEnvBoolWithDefault("DEV_SUPERVISOR_ENABLE_START_ON_REQUEST", false)
+	config.IdleTimeout = getEnvDurationWithDefault("DEV_SUPERVISOR_IDLE_TIMEOUT", 30*time.Minute)
+	config.IdleCheckInterval = getEnvDurationWithDefault("DEV_SUPERVISOR_IDLE_CHECK_INTERVAL", 30*time.Second)
+
+	const previewTaskName = "preview"
+	// Only enable for preview variant
+	taskName := os.Getenv("NOMAD_TASK_NAME")
+	if config.StartOnRequestEnabled && taskName != previewTaskName {
+		slog.Warn("start-on-request disabled: only supported for preview variant",
+			"task_name", taskName)
+		config.StartOnRequestEnabled = false
 	}
 
 	return config
