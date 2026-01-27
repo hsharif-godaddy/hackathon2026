@@ -387,14 +387,12 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 		}
 	}
 
-	// Create HTTP server with PID 1 enforcement for Unix socket mode
-	// Only PID 1 (the main container process) can access the API via SO_PEERCRED
+	// Create HTTP server
 	server := &http.Server{
-		Handler:      peerCredPID1Middleware(s.router),
+		Handler:      s.router,
 		ReadTimeout:  defaultTimeout,
 		WriteTimeout: defaultTimeout,
 		IdleTimeout:  2 * defaultTimeout,
-		ConnContext:  connContextWithPeerCred,
 	}
 
 	// Start PID 1 manager with shutdown callback
