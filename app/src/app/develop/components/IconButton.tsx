@@ -15,6 +15,7 @@ interface IconButtonProps {
   tooltipDescription?: string | React.ReactNode
   id?: string
   showLabelWhenActive?: boolean
+  showLabelAlways?: boolean
 }
 
 export default function IconButton({
@@ -29,7 +30,8 @@ export default function IconButton({
   label,
   tooltipDescription = null,
   id,
-  showLabelWhenActive = true
+  showLabelWhenActive = true,
+  showLabelAlways = false
 }: IconButtonProps) {
   const [showTooltip, setShowTooltip] = useState(false)
   const anchorRef = useRef(null)
@@ -72,11 +74,11 @@ export default function IconButton({
       aria-haspopup={showTooltip}
     >
       {icon}
-      {label && showLabelWhenActive && (
+      {label && (showLabelWhenActive || showLabelAlways) && (
         <span className={clsx(
-          "text-sm max-w-0 opacity-0 overflow-hidden whitespace-nowrap", {
-            "max-w-xs opacity-100 mx-0.5 transition-all duration-400 ease-in-out": active,
-            "transition-all duration-200 ease-in-out": !active
+          "text-sm overflow-hidden whitespace-nowrap", {
+            "max-w-0 opacity-0 transition-all duration-200 ease-in-out": !active && !showLabelAlways,
+            "max-w-xs opacity-100 mx-0.5 transition-all duration-400 ease-in-out": active || showLabelAlways
           }
         )}>{label}</span>
       )}

@@ -7,8 +7,8 @@ import TextInput from '@ux/text-input'
 
 import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext'
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
-import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 
 // Constant for "Other" option value
 const OTHER_VALUE = '__other__' as const

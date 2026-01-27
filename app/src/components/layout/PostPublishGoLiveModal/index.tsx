@@ -22,7 +22,6 @@ import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
-import type { TaskStatus } from './types';
 import { ModalErrorBoundaryWithTranslations as ModalErrorBoundary } from './components/ModalErrorBoundary';
 import { useQAAnalysis } from './hooks/useQAAnalysis';
 import { useSecurityScan } from './hooks/useSecurityScan';
@@ -32,6 +31,7 @@ import { MarketingStep } from './steps/MarketingStep';
 import { QAStep } from './steps/QAStep';
 import { SecurityResultsStep } from './steps/SecurityResultsStep';
 import { VideoStep } from './steps/VideoStep';
+import type { TaskStatus } from './types';
 
 interface PostPublishGoLiveModalProps {
   appId: string;

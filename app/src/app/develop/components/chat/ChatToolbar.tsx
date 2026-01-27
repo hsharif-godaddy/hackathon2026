@@ -129,17 +129,9 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
         onClick={() => handleTabClick(ChatTab.CHAT)}
         label={t('builder_chat_toolbar_button_chat')}
         active={activeChatTab === ChatTab.CHAT}
+        showLabelAlways={!isMobile}
       />
-      {/* disable until we are sure we'll have this feature here
-      <IconButton
-        icon={<PaintBucketIcon />}
-        dataEid={generateClickEID('develop.chat_toolbar.styles')}
-        label={t('builder_chat_toolbar_button_styles')}
-        active={activeChatTab === ChatTab.STYLES}
-        tooltip={t('builder_chat_toolbar_available_soon')}
-      />
-      */}
-      {(!isMobile || (isMobile && isAssetManagerEnabled)) && (
+      {isAssetManagerEnabled && (
         <IconButton
           icon={<ImageIcon />}
           dataEid={generateClickEID('develop.chat_toolbar.medias')}
@@ -148,15 +140,9 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
           active={isAssetManagerOpen}
           tooltipDescription={!isAssetManagerEnabled ? t('builder_chat_toolbar_available_soon') : undefined}
           disabled={isProcessing}
+          showLabelAlways={!isMobile}
         />
       )}
-      {/* disabled for now<IconButton
-        icon={<CheckboxListIcon />}
-        dataEid={generateClickEID('develop.chat_toolbar.todo')}
-        label={t('builder_chat_toolbar_button_todo)}
-        active={activeChatTab === ChatTab.TODO}
-        tooltip={t('builder_chat_toolbar_available_soon')}
-      /> */}
       <IconButton
         icon={<HistoryIcon />}
         dataEid={generateClickEID('develop.chat_toolbar.history')}
@@ -164,6 +150,7 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
         label={t('builder_chat_toolbar_button_history')}
         active={activeChatTab === ChatTab.HISTORY}
         disabled={isProcessing || isFetchingCommits || isSelectingCommit || viewMode === ViewMode.CODE || isSelectMode}
+        showLabelAlways={!isMobile}
       />
       {isMobile ? (
         isSettingsEnabled && <SettingsMenu />

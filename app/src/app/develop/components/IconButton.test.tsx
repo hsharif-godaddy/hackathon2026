@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 
-import { beforeEach,describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
@@ -211,5 +211,64 @@ describe('IconButton', () => {
     await waitFor(() => {
       expect(button).toHaveAttribute('aria-haspopup', 'false');
     });
+  });
+
+  it('should always show label when showLabelAlways is true', () => {
+    renderWithProviders(
+      <IconButton icon={<MockIcon />} label="Always Visible" showLabelAlways />
+    );
+
+    const label = screen.getByText('Always Visible');
+    expect(label).toBeInTheDocument();
+    expect(label).toHaveClass('opacity-100');
+    expect(label).not.toHaveClass('opacity-0');
+  });
+
+  it('should show label when showLabelAlways is true even when not active', () => {
+    renderWithProviders(
+      <IconButton
+        icon={<MockIcon />}
+        label="Always Visible"
+        active={false}
+        showLabelAlways
+      />
+    );
+
+    const label = screen.getByText('Always Visible');
+    expect(label).toBeInTheDocument();
+    expect(label).toHaveClass('opacity-100');
+    expect(label).toHaveClass('max-w-xs');
+  });
+
+  it('should show label when showLabelAlways is true and active', () => {
+    renderWithProviders(
+      <IconButton
+        icon={<MockIcon />}
+        label="Always Visible"
+        active
+        showLabelAlways
+      />
+    );
+
+    const label = screen.getByText('Always Visible');
+    expect(label).toBeInTheDocument();
+    expect(label).toHaveClass('opacity-100');
+    expect(label).toHaveClass('max-w-xs');
+  });
+
+  it('should prioritize showLabelAlways over showLabelWhenActive', () => {
+    renderWithProviders(
+      <IconButton
+        icon={<MockIcon />}
+        label="Always Visible"
+        active={false}
+        showLabelWhenActive={false}
+        showLabelAlways
+      />
+    );
+
+    const label = screen.getByText('Always Visible');
+    expect(label).toBeInTheDocument();
+    expect(label).toHaveClass('opacity-100');
   });
 });

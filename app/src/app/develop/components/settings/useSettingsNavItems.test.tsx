@@ -1,4 +1,4 @@
-import { beforeEach,describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SettingsSection } from '@/app/develop/components/types';
 import { renderHookWithProviders } from '@/tests/test-utils';

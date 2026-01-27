@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { MessageSquare, Type } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import FontThemeModal from '@/app/develop/components/tool-renderers/FontThemeModal'
