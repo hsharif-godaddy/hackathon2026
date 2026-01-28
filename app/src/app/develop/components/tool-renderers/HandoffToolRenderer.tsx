@@ -2,7 +2,9 @@
 
 import { Bot } from 'lucide-react'
 import { useState } from 'react'
+import Collapsible from '@ux/collapsible'
 
+import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
 import { useTranslations } from '@/hooks/useTranslations'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import KeyValueTable from './KeyValueTable'
@@ -29,6 +31,7 @@ function getAgentDisplayName(agentId: string, t: (key: string) => string): strin
  *
  * Shows "Now talking with {Agent Name}" with a robot icon.
  * Clickable to show modal with handoff details (arguments and results).
+ * Prompt field is rendered as markdown, other arguments collapsed by default.
  */
 export default function HandoffToolRenderer({
   toolName: _toolName,
@@ -54,16 +57,49 @@ export default function HandoffToolRenderer({
 
   const hasDetails = Boolean(input || result)
 
+  // Extract prompt and other arguments
+  let prompt: string | null = null
+  let otherArguments: Record<string, any> = {}
+
+  if (input && typeof input === 'object') {
+    const inputObj = input as Record<string, any>
+    if (inputObj.prompt && typeof inputObj.prompt === 'string') {
+      prompt = inputObj.prompt
+      // Get all other arguments except prompt
+      otherArguments = Object.fromEntries(
+        Object.entries(inputObj).filter(([key]) => key !== 'prompt')
+      )
+    } else {
+      otherArguments = inputObj
+    }
+  }
+
   const modalContent = (
     <ToolModal
       isOpen={isModalOpen}
       onClose={() => setIsModalOpen(false)}
       title={t('builder_tools_handoff_to', {targetAgent})}
     >
-      <div className="flex-1 overflow-y-auto space-y-2">
-        {/* Arguments */}
-        {input && typeof input === 'object' && (
-          <KeyValueTable data={input as Record<string, any>} title={t('builder_tools_default_arguments')} />
+      <div className="flex-1 overflow-y-auto space-y-4">
+        {/* Prompt as Markdown */}
+        {prompt && (
+          <div>
+            <h3 className="text-sm font-semibold mb-2">Prompt</h3>
+            <div className="prose prose-sm max-w-none dark:prose-invert">
+              <MarkdownRenderer content={prompt} />
+            </div>
+          </div>
+        )}
+
+        {/* Other Arguments (collapsed by default) */}
+        {Object.keys(otherArguments).length > 0 && (
+          <Collapsible
+            id="handoff-arguments"
+            title={t('builder_tools_default_arguments')}
+            defaultOpen={false}
+          >
+            <KeyValueTable data={otherArguments} />
+          </Collapsible>
         )}
 
         {/* Results */}
