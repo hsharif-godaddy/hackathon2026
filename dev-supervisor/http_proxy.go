@@ -28,6 +28,18 @@ const (
 	protoHTTPS = "https"
 )
 
+// allowedHTTPMethods defines the HTTP methods accepted by the reverse proxy
+// Matches RFC 9110 safe and unsafe methods commonly used in REST APIs
+var allowedHTTPMethods = map[string]bool{
+	http.MethodGet:     true,
+	http.MethodHead:    true,
+	http.MethodPost:    true,
+	http.MethodPut:     true,
+	http.MethodPatch:   true,
+	http.MethodDelete:  true,
+	http.MethodOptions: true,
+}
+
 func determineForwardedProto(req *http.Request) string {
 	if raw := strings.TrimSpace(req.Header.Get("X-Forwarded-Proto")); raw != "" {
 		normalized := strings.ToLower(raw)
@@ -253,6 +265,16 @@ type RequestRouter struct {
 	startOnRequestEnabled bool
 }
 
+// isCORSPreflight returns true if the request is a CORS preflight OPTIONS request.
+// CORS preflight requests have either Access-Control-Request-Method or
+// Access-Control-Request-Headers headers, which distinguish them from regular
+// OPTIONS requests used for API discovery.
+func (rr *RequestRouter) isCORSPreflight(r *http.Request) bool {
+	return r.Method == http.MethodOptions &&
+		(r.Header.Get("Access-Control-Request-Method") != "" ||
+			r.Header.Get("Access-Control-Request-Headers") != "")
+}
+
 func (rr *RequestRouter) writeStaticOptionsResponse(w http.ResponseWriter, r *http.Request) {
 	origin := r.Header.Get("Origin")
 
@@ -279,12 +301,25 @@ func (rr *RequestRouter) writeStaticOptionsResponse(w http.ResponseWriter, r *ht
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 	}
 
-	w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+	// Determine which methods to advertise based on context
+	// CORS preflight: advertise all allowed methods (browser needs to know what API supports)
+	// Static file OPTIONS: advertise only safe methods (static files don't support mutations)
+	var allowedMethodsStr string
+	if r.Header.Get("Access-Control-Request-Method") != "" || r.Header.Get("Access-Control-Request-Headers") != "" {
+		// CORS preflight - advertise all methods
+		allowedMethodsStr = "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS"
+	} else {
+		// Static file OPTIONS - only safe methods
+		allowedMethodsStr = "GET, HEAD, OPTIONS"
+	}
+
+	w.Header().Set("Access-Control-Allow-Methods", allowedMethodsStr)
+	w.Header().Set("Allow", allowedMethodsStr)
+
 	if reqHeaders := r.Header.Get("Access-Control-Request-Headers"); reqHeaders != "" {
 		w.Header().Set("Access-Control-Allow-Headers", reqHeaders)
 	}
 
-	w.Header().Set("Allow", "GET, HEAD, OPTIONS")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -443,6 +478,30 @@ func loggingMiddleware(next http.Handler, procMgr *ProcessManager) http.Handler 
  * Routes requests based on path, method, and configuration
  */
 func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Handle CORS preflight OPTIONS - static response, no startup, no activity
+	// CORS preflight is automated browser behavior and should not be treated as user activity
+	if rr.isCORSPreflight(r) {
+		slog.Debug("http.options.preflight",
+			"path", r.URL.Path,
+			"origin", r.Header.Get("Origin"),
+			"request_method", r.Header.Get("Access-Control-Request-Method"))
+		rr.writeStaticOptionsResponse(w, r)
+		return
+	}
+
+	// Validate HTTP method - reject unsupported methods
+	// Allowed: GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS
+	// Reject: CONNECT, TRACE, and any unknown methods
+	if !allowedHTTPMethods[r.Method] {
+		slog.Debug("http.method.rejected",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"remote_addr", r.RemoteAddr)
+		w.Header().Set("Allow", "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS")
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	// Check if we need to auto-start (any request can trigger it)
 	if rr.procMgr != nil && rr.startOnRequestEnabled {
 		status := rr.procMgr.GetStatus()
