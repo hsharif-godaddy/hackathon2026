@@ -59,19 +59,20 @@ func NewJWTMiddleware(config JWTMiddlewareConfig) *JWTMiddleware {
  */
 func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip if JWT validation is disabled
-		if !m.config.Enabled {
-			next.ServeHTTP(w, r)
-			return
-		}
-
 		// Handle OPTIONS preflight requests without authentication
 		// Preflight requests don't carry Authorization headers by design
+		// IMPORTANT: Handle OPTIONS even when JWT is disabled to ensure proper CORS headers
 		if r.Method == "OPTIONS" {
-			slog.Debug("jwt.middleware.preflight", "path", r.URL.Path)
+			slog.Debug("jwt.middleware.preflight", "path", r.URL.Path, "jwt_enabled", m.config.Enabled)
 			SetCORSHeaders(w, r, m.config.AllowedOrigins)
 			w.Header().Set("Access-Control-Max-Age", "86400") // Cache preflight for 24 hours
 			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		// Skip remaining JWT validation if disabled
+		if !m.config.Enabled {
+			next.ServeHTTP(w, r)
 			return
 		}
 

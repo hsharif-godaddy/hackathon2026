@@ -223,3 +223,149 @@ func TestRealOptionsHandling(t *testing.T) {
 		}
 	})
 }
+
+// TestJWTMiddlewareOptionsWhenDisabled tests that OPTIONS requests are handled
+// with proper CORS headers even when JWT authentication is disabled.
+// This is critical for preview apps where JWT is disabled but CORS headers
+// including Access-Control-Allow-Credentials must still be set.
+func TestJWTMiddlewareOptionsWhenDisabled(t *testing.T) {
+	t.Run("OPTIONS preflight sets CORS headers when JWT is disabled", func(t *testing.T) {
+		// Create a handler that should NOT be called for OPTIONS
+		backendCalled := false
+		backend := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			backendCalled = true
+			w.WriteHeader(http.StatusOK)
+		})
+
+		// Create JWT middleware with JWT DISABLED but with allowed origins
+		allowedOrigins := []string{"https://airo-builder.test-godaddy.com"}
+		middleware := NewJWTMiddleware(JWTMiddlewareConfig{
+			Enabled:        false, // JWT is disabled
+			AllowedOrigins: allowedOrigins,
+		})
+
+		// Wrap the backend with JWT middleware
+		handler := middleware.Wrap(backend)
+
+		// Create CORS preflight request
+		req := httptest.NewRequest("OPTIONS", "/api/test", nil)
+		req.Header.Set("Origin", "https://airo-builder.test-godaddy.com")
+		req.Header.Set("Access-Control-Request-Method", "HEAD")
+		req.Header.Set("Access-Control-Request-Headers", "authorization")
+
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		resp := w.Result()
+
+		// Verify response status
+		if resp.StatusCode != http.StatusNoContent {
+			t.Errorf("Expected status 204, got %d", resp.StatusCode)
+		}
+
+		// Backend should NOT be called for OPTIONS preflight
+		if backendCalled {
+			t.Error("Backend should not be called for OPTIONS preflight")
+		}
+
+		// Verify all CORS headers are set correctly
+		origin := resp.Header.Get("Access-Control-Allow-Origin")
+		if origin != "https://airo-builder.test-godaddy.com" {
+			t.Errorf("Expected Access-Control-Allow-Origin to be 'https://airo-builder.test-godaddy.com', got '%s'", origin)
+		}
+
+		credentials := resp.Header.Get("Access-Control-Allow-Credentials")
+		if credentials != "true" {
+			t.Errorf("Expected Access-Control-Allow-Credentials to be 'true', got '%s'", credentials)
+		}
+
+		methods := resp.Header.Get("Access-Control-Allow-Methods")
+		if methods == "" {
+			t.Error("Expected Access-Control-Allow-Methods header to be set")
+		}
+
+		headers := resp.Header.Get("Access-Control-Allow-Headers")
+		if headers == "" {
+			t.Error("Expected Access-Control-Allow-Headers header to be set")
+		}
+
+		maxAge := resp.Header.Get("Access-Control-Max-Age")
+		if maxAge != "86400" {
+			t.Errorf("Expected Access-Control-Max-Age to be '86400', got '%s'", maxAge)
+		}
+
+		vary := resp.Header.Get("Vary")
+		if !strings.Contains(vary, "Origin") {
+			t.Errorf("Expected Vary header to contain 'Origin', got '%s'", vary)
+		}
+	})
+
+	t.Run("non-OPTIONS requests pass through when JWT is disabled", func(t *testing.T) {
+		// Create a handler that SHOULD be called for non-OPTIONS
+		backendCalled := false
+		backend := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			backendCalled = true
+			w.WriteHeader(http.StatusOK)
+		})
+
+		// Create JWT middleware with JWT DISABLED
+		middleware := NewJWTMiddleware(JWTMiddlewareConfig{
+			Enabled:        false,
+			AllowedOrigins: []string{"https://airo-builder.test-godaddy.com"},
+		})
+
+		handler := middleware.Wrap(backend)
+
+		// Create a HEAD request (not OPTIONS)
+		req := httptest.NewRequest("HEAD", "/", nil)
+		req.Header.Set("Origin", "https://airo-builder.test-godaddy.com")
+
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		// Backend SHOULD be called for non-OPTIONS requests
+		if !backendCalled {
+			t.Error("Backend should be called for non-OPTIONS requests when JWT is disabled")
+		}
+	})
+
+	t.Run("OPTIONS with disallowed origin does not set CORS headers", func(t *testing.T) {
+		backend := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		// Create JWT middleware with specific allowed origins
+		middleware := NewJWTMiddleware(JWTMiddlewareConfig{
+			Enabled:        false,
+			AllowedOrigins: []string{"https://allowed-origin.com"},
+		})
+
+		handler := middleware.Wrap(backend)
+
+		// Create CORS preflight request from DISALLOWED origin
+		req := httptest.NewRequest("OPTIONS", "/api/test", nil)
+		req.Header.Set("Origin", "https://malicious-site.com")
+		req.Header.Set("Access-Control-Request-Method", "POST")
+
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		resp := w.Result()
+
+		// Response should still be 204 (preflight handled)
+		if resp.StatusCode != http.StatusNoContent {
+			t.Errorf("Expected status 204, got %d", resp.StatusCode)
+		}
+
+		// But CORS headers should NOT be set for disallowed origin
+		origin := resp.Header.Get("Access-Control-Allow-Origin")
+		if origin != "" {
+			t.Errorf("Expected Access-Control-Allow-Origin to be empty for disallowed origin, got '%s'", origin)
+		}
+
+		credentials := resp.Header.Get("Access-Control-Allow-Credentials")
+		if credentials != "" {
+			t.Errorf("Expected Access-Control-Allow-Credentials to be empty for disallowed origin, got '%s'", credentials)
+		}
+	})
+}
