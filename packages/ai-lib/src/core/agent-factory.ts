@@ -246,6 +246,8 @@ export class AgentWrapper {
   private agent: ToolLoopAgent<AgentCallOptions, any, any>
   private config: AgentConfig
   private skillToolProvider?: GlobalAgentConfig['skillToolProvider']
+  private currentConversationId: string | undefined
+  private currentStepNumber: number = 0
 
   constructor(config: AgentConfig, skillToolProvider?: GlobalAgentConfig['skillToolProvider']) {
     this.config = config
@@ -457,54 +459,10 @@ export class AgentWrapper {
           ;(preparedCall as typeof preparedCall & { experimental_context?: unknown }).experimental_context = callOptions.executionContext
         }
 
-        // NEW: Inject skill tools for dynamic skill tool loading
+        // Store conversationId for prepareStep to use (skill tools are pre-registered,
+        // activeTools filtering controls visibility)
         const executionContext = callOptions.executionContext as Record<string, any> | undefined
-        const conversationId = executionContext?.metadata?.conversationId as string | undefined
-
-        if (conversationId && this.skillToolProvider) {
-          try {
-            // Estimate current token count based on message count
-            // This is a rough approximation; actual token counting would be more accurate
-            // but requires access to the model's tokenizer
-            const estimatedTokenCount = Math.max(
-              allMessages.length * 500, // Rough estimate: 500 tokens per message
-              (executionContext?.metadata?.tokenCount as number) || 0
-            )
-
-            // Get dynamicTool instances for active skills
-            const skillTools = await this.skillToolProvider.getToolsForSkills(
-              conversationId,
-              estimatedTokenCount,
-              callOptions.executionContext
-            )
-
-            // Merge skill tools with base tools if any skill tools exist
-            if (Object.keys(skillTools).length > 0) {
-              const mergedPreparedCall = {
-                ...preparedCall,
-                tools: {
-                  ...wrappedTools,
-                  ...skillTools
-                }
-              }
-
-              logger.info('agent.skill_tools.injected', {
-                conversationId,
-                skillToolCount: Object.keys(skillTools).length,
-                skillTools: Object.keys(skillTools),
-                estimatedTokenCount
-              })
-
-              return mergedPreparedCall
-            }
-          } catch (error) {
-            logger.error('agent.skill_tools.injection_failed', {
-              conversationId,
-              error: error instanceof Error ? error.message : String(error)
-            })
-            // Continue with base tools only on error
-          }
-        }
+        this.currentConversationId = executionContext?.metadata?.conversationId as string | undefined
 
         return preparedCall
       }
@@ -782,11 +740,58 @@ export class AgentWrapper {
     }
 
     const prepareStep: PrepareStepFunction = async ({ stepNumber, messages }) => {
+      // Track current step number for use in onStepFinish
+      this.currentStepNumber = stepNumber
+
       safeLog('info', 'agent.step.begin', {
         agentName,
         stepNumber,
         messageCount: messages.length
       }, 'agent.step.begin.log_failed')
+
+      // Get conversationId stored during prepareCall
+      const conversationId = this.currentConversationId
+
+      if (conversationId && this.skillToolProvider) {
+        try {
+          // Cleanup inactive skills (10 step threshold)
+          const deactivated = this.skillToolProvider.cleanupInactiveSkills(
+            conversationId,
+            stepNumber
+          )
+
+          if (deactivated.length > 0) {
+            safeLog('info', 'agent.skills.auto_unloaded', {
+              agentName,
+              conversationId,
+              skills: deactivated,
+              stepNumber
+            }, 'agent.skills.auto_unloaded.log_failed')
+          }
+
+          // Get active tool names for this conversation
+          const activeSkillTools = this.skillToolProvider.getActiveToolNames(conversationId)
+
+          // Filter out skill tools from base tools using the provider's registry
+          // Skill tools should only appear in activeTools when the skill is active
+          const skillToolNames = new Set(this.skillToolProvider.getSkillToolNames())
+          const allToolNames = Object.keys(this.config.tools || {})
+          const baseToolNames = allToolNames.filter(name => !skillToolNames.has(name))
+
+          return {
+            // Type cast needed: AI SDK expects keyof TOOLS but we have runtime string arrays
+            // from baseToolNames and activeSkillTools that match tool keys at runtime
+            activeTools: [...baseToolNames, ...activeSkillTools] as any
+          }
+        } catch (error) {
+          safeLog('error', 'agent.skills.prepareStep_failed', {
+            agentName,
+            conversationId,
+            stepNumber,
+            error: error instanceof Error ? error.message : String(error)
+          }, 'agent.skills.prepareStep_failed.log_failed')
+        }
+      }
 
       return undefined
     }
@@ -825,6 +830,44 @@ export class AgentWrapper {
           totalTokens: usage.totalTokens,
           cachedInputTokens: usage.cachedInputTokens
         })
+      }
+
+      // Update skill usage tracking for any skill tools that were called
+      // Skill tools use the pattern: skillname__toolname (e.g., database__listTables)
+      const conversationId = this.currentConversationId
+      const stepNumber = this.currentStepNumber
+
+      if (conversationId && this.skillToolProvider && stepResult?.toolCalls?.length) {
+        const updatedSkills = new Set<string>()
+
+        for (const toolCall of stepResult.toolCalls) {
+          const toolName = toolCall.toolName
+          // Check for skill tool pattern: skillname__toolname
+          if (toolName && toolName.includes('__')) {
+            const skillName = toolName.split('__')[0]
+            if (skillName && !updatedSkills.has(skillName)) {
+              updatedSkills.add(skillName)
+              try {
+                this.skillToolProvider.updateSkillUsage(conversationId, skillName, stepNumber)
+                safeLog('info', 'agent.skill.usage_updated', {
+                  agentName,
+                  conversationId,
+                  skillName,
+                  toolName,
+                  stepNumber
+                }, 'agent.skill.usage_updated.log_failed')
+              } catch (error) {
+                safeLog('error', 'agent.skill.usage_update_failed', {
+                  agentName,
+                  conversationId,
+                  skillName,
+                  stepNumber,
+                  error: error instanceof Error ? error.message : String(error)
+                }, 'agent.skill.usage_update_failed.log_failed')
+              }
+            }
+          }
+        }
       }
     }
 
@@ -1394,35 +1437,39 @@ export class AgentFactory {
       maxSteps: config.maxSteps ?? 8 // Default to 8 reasoning steps
     }
 
-    // Merge tools (global tools + agent-specific tools)
-    if (this.globalConfig.globalTools || config.tools) {
-      const globalTools = this.globalConfig.globalTools || []
-      const configTools = config.tools || {}
+    // Merge tools (global tools + skill tools + agent-specific tools)
+    const globalTools = this.globalConfig.globalTools || []
+    const skillTools = this.globalConfig.skillToolProvider?.getAllTools() || {}
+    const configTools = config.tools || {}
 
-      // Convert global tools array to object if needed
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let globalToolsObj: Record<string, any> = {}
-      if (Array.isArray(globalTools)) {
-        globalTools.forEach((tool, index) => {
-          // Tools don't have a name property, so we use index-based naming
-          globalToolsObj[`global_tool_${index}`] = tool
-        })
-      } else {
-        globalToolsObj = globalTools
-      }
+    // Convert global tools array to object if needed
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let globalToolsObj: Record<string, any> = {}
+    if (Array.isArray(globalTools)) {
+      globalTools.forEach((tool, index) => {
+        // Tools don't have a name property, so we use index-based naming
+        globalToolsObj[`global_tool_${index}`] = tool
+      })
+    } else {
+      globalToolsObj = globalTools
+    }
 
-      // Merge with agent-specific tools (agent tools take precedence)
-      // Filter out undefined/null tools to prevent errors
-      const filteredGlobalTools = Object.fromEntries(
-        Object.entries(globalToolsObj).filter(([_, tool]) => tool != null)
-      )
-      const filteredConfigTools = Object.fromEntries(
-        Object.entries(configTools).filter(([_, tool]) => tool != null)
-      )
-      merged.tools = {
-        ...filteredGlobalTools,
-        ...filteredConfigTools
-      }
+    // Filter out undefined/null tools to prevent errors
+    const filteredGlobalTools = Object.fromEntries(
+      Object.entries(globalToolsObj).filter(([_, tool]) => tool != null)
+    )
+    const filteredSkillTools = Object.fromEntries(
+      Object.entries(skillTools).filter(([_, tool]) => tool != null)
+    )
+    const filteredConfigTools = Object.fromEntries(
+      Object.entries(configTools).filter(([_, tool]) => tool != null)
+    )
+
+    // Merge with precedence: agent tools > skill tools > global tools
+    merged.tools = {
+      ...filteredGlobalTools,
+      ...filteredSkillTools,
+      ...filteredConfigTools
     }
 
     return merged

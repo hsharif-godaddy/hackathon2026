@@ -23,15 +23,27 @@ export interface AgentsCollection {
 }
 
 /**
- * Skill tool provider interface for dynamic skill tool injection
+ * Skill tool provider interface for skill lifecycle management
+ *
+ * Skills are pre-registered at startup. The provider supplies all skill tools
+ * which are merged with agent tools. activeTools filtering controls visibility.
+ * Skills are deactivated after INACTIVITY_THRESHOLD_STEPS of not being used.
  */
 export interface SkillToolProvider {
-  /** Get tool instances for active skills in a conversation */
-  getToolsForSkills: (
-    conversationId: string,
-    estimatedTokenCount: number,
-    executionContext?: Record<string, unknown>
-  ) => Promise<Record<string, Tool>>
+  /** Get all pre-registered skill tools (called once during factory setup) */
+  getAllTools: () => Record<string, Tool>
+
+  /** Get all pre-registered skill tool names (for filtering in prepareStep) */
+  getSkillToolNames: () => string[]
+
+  /** Get prefixed tool names for all active skills in a conversation */
+  getActiveToolNames: (conversationId: string) => string[]
+
+  /** Update skill usage when its tool is called */
+  updateSkillUsage: (conversationId: string, skillName: string, stepNumber: number) => void
+
+  /** Cleanup inactive skills based on step threshold */
+  cleanupInactiveSkills: (conversationId: string, currentStep: number) => string[]
 }
 
 /**

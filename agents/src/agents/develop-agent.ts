@@ -17,6 +17,7 @@ import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { agents as featureAgents } from '../services/features.js'
 import { GitHookService } from '../services/git-hook-service.js'
 import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
+import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 
 /**
@@ -101,20 +102,28 @@ const afterToolExecution: AfterToolExecutionHook = async (
     }
   }
 
-  // NEW: Detect auto-continuation flag for skill tool loading
-  if (resultObj?.__autoContinue === true) {
-    const continuationPrompt = resultObj.__continuationPrompt || 'Continue processing';
+  // Track skill tool usage for step-based inactivity management
+  if (toolName.includes('__')) {
+    const skillName = toolName.split('__')[0];
+    const conversationId = context?.metadata?.conversationId;
+    const stepNumber = context?.metadata?.stepNumber;
 
-    // Store flags in context metadata for auto-continuation detection
-    if (context?.metadata) {
-      (context.metadata as any).__autoContinue = true;
-      (context.metadata as any).__continuationPrompt = continuationPrompt;
+    if (skillName && typeof conversationId === 'string' && typeof stepNumber === 'number') {
+      try {
+        skillToolManager.updateSkillUsage(conversationId, skillName, stepNumber);
+        contextLogger.debug('develop_agent.skill_tool.usage_tracked', {
+          skillName,
+          toolName,
+          stepNumber
+        });
+      } catch (error) {
+        contextLogger.warn('develop_agent.skill_tool.usage_tracking_failed', {
+          skillName,
+          toolName,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
     }
-
-    contextLogger.info('develop_agent.tool.auto_continue.detected', {
-      toolName,
-      continuationPrompt
-    });
   }
 
   return result

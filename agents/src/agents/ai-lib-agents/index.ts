@@ -50,8 +50,11 @@ export async function createUnifiedAgentFactory(options?: {
   agents: ReturnType<AgentFactory['defineAgents']>
   stateManager: SessionStateManager
 }> {
+  // Initialize skill tool manager (pre-registers all skill tools)
+  await skillToolManager.initialize()
+
   const factory = createAgentFactory({
-    globalTools: [],
+    // skillToolProvider.getAllTools() is called internally by the factory
     skillToolProvider: skillToolManager
   })
 

@@ -14,6 +14,9 @@ export * from './prompt/prompt-builder.js'
 // WebSocket exports
 export * from './websocket/index.js'
 
+// Skills exports
+export * from './skills/index.js'
+
 // Utility exports
 export * from './utils/env-config.js'
 export * from './utils/file-processor.js'

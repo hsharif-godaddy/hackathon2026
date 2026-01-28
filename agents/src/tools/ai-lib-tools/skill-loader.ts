@@ -14,7 +14,7 @@ import { logger } from '../../logging/index.js';
  * - install: Directly copy skill template files to app directory
  */
 export const skillAITool: Tool = createTool(
-  'Manage skills - list, load, unload, or install. Skills provide specialized knowledge and tools. Use "list" to discover skills, "load" to activate skill instructions and tools (auto-continues to make tools available immediately), "unload" to remove skill tools, "install" to copy templates.',
+  'Manage skills - list, load, unload, or install. Skills provide specialized knowledge and tools. Use "list" to discover skills, "load" to activate skill instructions and tools, "unload" to remove skill tools, "install" to copy templates.',
   z.object({
     action: z.enum(['list', 'load', 'unload', 'install']).describe('Action: "list" (show skills), "load" (activate skill+tools), "unload" (remove tools), "install" (copy templates)'),
     skill: z.string().optional().describe('Skill name (required for load, unload, install)'),
@@ -43,7 +43,7 @@ export const skillAITool: Tool = createTool(
       throw new Error(`Skill name is required for action "${input.action}"`);
     }
 
-    // Load action - load instructions AND register skill tools
+    // Load action - load instructions AND activate skill tools
     if (input.action === 'load') {
       const result = await skillLoader.loadSkill({ skill: input.skill });
 
@@ -51,62 +51,34 @@ export const skillAITool: Tool = createTool(
         throw new Error(result.error || 'Failed to load skill');
       }
 
-      // NEW: Register skill tools for dynamic loading
+      // Activate skill tools (pre-registered at startup, this enables activeTools filtering)
       const conversationId = context?.metadata?.conversationId as string | undefined;
 
       if (conversationId) {
-        const currentTokenCount = (context?.metadata?.tokenCount as number) || 0;
+        const toolResult = skillToolManager.registerSkill(input.skill, conversationId);
 
-        try {
-          const toolResult = await skillToolManager.registerSkill(
-            input.skill,
-            conversationId,
-            currentTokenCount,
-            context
-          );
-
-          if (!toolResult.success) {
-            logger.warn('skill.tools.registration_failed', {
-              skill: input.skill,
-              conversationId,
-              error: toolResult.error
-            });
-
-            // Return without tools if registration failed
-            return {
-              skill: result.skill,
-              instructions: result.instructions,
-              toolsAvailable: [],
-              message: `Skill '${result.skill}' loaded with instructions only. Tool registration failed: ${toolResult.error}`
-            };
-          }
-
-          // Return with auto-continuation flags for seamless UX
-          return {
-            skill: result.skill,
-            instructions: result.instructions,
-            toolsAvailable: toolResult.tools,
-            message: `Skill '${result.skill}' loaded with ${toolResult.tools.length} tools: ${toolResult.tools.join(', ')}. Follow the instructions to use them.`,
-
-            // AUTO-CONTINUATION FLAGS (critical for single-turn UX)
-            __autoContinue: true,
-            __continuationPrompt: `Continue with the original task. The ${result.skill} skill tools are now available: ${toolResult.tools.join(', ')}. Use them to complete the user's request.`
-          };
-        } catch (error) {
-          logger.error('skill.tools.registration_error', {
+        if (!toolResult.success) {
+          logger.warn('skill.tools.activation_failed', {
             skill: input.skill,
             conversationId,
-            error: error instanceof Error ? error.message : String(error)
+            error: toolResult.error
           });
 
-          // Return instructions only on error
           return {
             skill: result.skill,
             instructions: result.instructions,
             toolsAvailable: [],
-            message: `Skill '${result.skill}' loaded with instructions only. Tool registration encountered an error.`
+            message: `Skill '${result.skill}' loaded with instructions only. Tool activation failed: ${toolResult.error}`
           };
         }
+
+        // Return skill information - tools are now visible via prepareStep/activeTools
+        return {
+          skill: result.skill,
+          instructions: result.instructions,
+          toolsAvailable: toolResult.tools,
+          message: `Skill '${result.skill}' loaded with ${toolResult.tools.length} tools: ${toolResult.tools.join(', ')}. The tools are now available for use.`
+        };
       }
 
       // No conversationId - return instructions only
@@ -114,7 +86,7 @@ export const skillAITool: Tool = createTool(
         skill: result.skill,
         instructions: result.instructions,
         toolsAvailable: [],
-        message: `Skill '${result.skill}' loaded with instructions. No conversation context available for tool registration.`
+        message: `Skill '${result.skill}' loaded with instructions. No conversation context available for tool activation.`
       };
     }
 
