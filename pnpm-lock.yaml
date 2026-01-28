@@ -8,6 +8,7 @@ overrides:
   chai: 5.3.1
   caniuse-lite: 1.0.30001736
   next: 14.2.35
+  qs: 6.14.1
   react: 19.1.0
   react-dom: 19.1.0
   '@ux/alert': 2500.7.2
@@ -43,8 +44,8 @@ importers:
   .:
     dependencies:
       agents:
-        specifier: ^0.3.3
-        version: 0.3.3(@ai-sdk/openai@3.0.9(zod@3.25.76))(@cloudflare/ai-chat@0.0.3)(@cloudflare/codemode@0.0.3)(@cloudflare/workers-types@4.20260109.0)(ai@6.0.31(zod@3.25.76))(react@19.1.0)(zod@3.25.76)
+        specifier: ^0.3.6
+        version: 0.3.6(@ai-sdk/openai@3.0.9(zod@3.25.76))(@cloudflare/ai-chat@0.0.3)(@cloudflare/codemode@0.0.3)(@cloudflare/workers-types@4.20260109.0)(ai@6.0.31(zod@3.25.76))(hono@4.11.3)(react@19.1.0)(zod@3.25.76)
       dotenv:
         specifier: ^17.2.3
         version: 17.2.3
@@ -170,8 +171,8 @@ importers:
         specifier: ^9.6.0
         version: 9.6.0
       express:
-        specifier: ^4.18.2
-        version: 4.21.2
+        specifier: ^4.22.1
+        version: 4.22.1
       glob:
         specifier: ^11.0.3
         version: 11.0.3
@@ -778,8 +779,8 @@ importers:
         specifier: ^16.4.5
         version: 16.6.1
       express:
-        specifier: ^4.19.2
-        version: 4.21.2
+        specifier: ^4.22.1
+        version: 4.22.1
       node-cron:
         specifier: ^3.0.3
         version: 3.0.3
@@ -974,8 +975,8 @@ importers:
         specifier: ^9.0.0
         version: 9.1.2(eslint@8.57.1)
       express:
-        specifier: ^4.18.2
-        version: 4.21.2
+        specifier: ^4.22.1
+        version: 4.22.1
       prettier:
         specifier: ^3.1.0
         version: 3.6.2
@@ -1017,8 +1018,8 @@ importers:
   proxy:
     dependencies:
       express:
-        specifier: ^4.21.2
-        version: 4.21.2
+        specifier: ^4.22.1
+        version: 4.22.1
       form-data:
         specifier: ^4.0.1
         version: 4.0.4
@@ -3122,8 +3123,8 @@ packages:
     resolution: {integrity: sha512-d//GE8/Yh7aC3e7p+kZG8JqqEAwwDUmAfvH1quogtbk+ksS6E0RR6toKKESPYYZVre0meqkJb27zb+dhqE9Sgw==}
     engines: {node: '>=18'}
 
-  '@modelcontextprotocol/sdk@1.23.0':
-    resolution: {integrity: sha512-MCGd4K9aZKvuSqdoBkdMvZNcYXCkZRYVs/Gh92mdV5IHbctX9H9uIvd4X93+9g8tBbXv08sxc/QHXTzf8y65bA==}
+  '@modelcontextprotocol/sdk@1.25.2':
+    resolution: {integrity: sha512-LZFeo4F9M5qOhC/Uc1aQSrBHxMrvxett+9KLHt7OhcExtoiRN9DKgbZffMP/nxjutWDQpfMDfP3nkHI4X9ijww==}
     engines: {node: '>=18'}
     peerDependencies:
       '@cfworker/json-schema': ^4.1.1
@@ -6515,14 +6516,14 @@ packages:
     resolution: {integrity: sha512-kja8j7PjmncONqaTsB8fQ+wE2mSU2DJ9D4XKoJ5PFWIdRMa6SLSN1ff4mOr4jCbfRSsxR4keIiySJU0N9T5hIQ==}
     engines: {node: '>= 8.0.0'}
 
-  agents@0.3.3:
-    resolution: {integrity: sha512-rz/ouvEjaPWghJ/lfp0IBNUq0zn/Q/t8jP6p9T0Hny0wCqNHlZzwS3XKRrH56kmZqAZCxRnuOw6Tvy7FWhQmVw==}
+  agents@0.3.6:
+    resolution: {integrity: sha512-gJtXDGV2jhPI/WzZOYAM5GJleOq7U2o7fnenE89RJ3Y5klm29O1Pk4sQoLVASO2sTucPNtJRMztQCGL2352B+g==}
     hasBin: true
     peerDependencies:
       '@ai-sdk/openai': ^3.0.0
       '@ai-sdk/react': ^3.0.0
-      '@cloudflare/ai-chat': ^0.0.3
-      '@cloudflare/codemode': ^0.0.3
+      '@cloudflare/ai-chat': ^0.0.4
+      '@cloudflare/codemode': ^0.0.5
       ai: ^6.0.0
       react: 19.1.0
       viem: '>=2.0.0'
@@ -7368,10 +7369,6 @@ packages:
     resolution: {integrity: sha512-D76uU73ulSXrD1UXF4KE2TMxVVwhsnCgfAyTg9k8P6KGZjlXKrOLe4dJQKI3Bxi5wjesZoFXJWElNWBjPZMbhg==}
     engines: {node: '>=6.6.0'}
 
-  cookie@0.7.1:
-    resolution: {integrity: sha512-6DnInpx7SJ2AK3+CTUE/ZM0vWTUboZCegxhC2xiIydHR9jNuTAASBrfEpHhiGOZw/nX51bHt6YQl8jsGo4y/0w==}
-    engines: {node: '>= 0.6'}
-
   cookie@0.7.2:
     resolution: {integrity: sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==}
     engines: {node: '>= 0.6'}
@@ -8170,8 +8167,8 @@ packages:
     peerDependencies:
       express: '>= 4.11'
 
-  express@4.21.2:
-    resolution: {integrity: sha512-28HqgMZAmih1Czt9ny7qr6ek2qddF4FclbMzwhCREB6OFfH+rXAnuNCwo1/wFvrtbgsQDb4kSbX9de9lFbrXnA==}
+  express@4.22.1:
+    resolution: {integrity: sha512-F2X8g9P1X7uCPZMA3MVf9wcTqlyNp7IhH5qPCI0izhaOIYXaW9L535tGA3qmjRzpH+bZczqq7hVKxTR4NWnu+g==}
     engines: {node: '>= 0.10.0'}
 
   express@5.1.0:
@@ -9344,6 +9341,9 @@ packages:
     resolution: {integrity: sha512-9FzQjJ7MATs1tSpnco1K6ayiYE3figslrXA72G2HQ/n76RzvYlofyi5QM+iX4YRs/pu3yzxlVQSST23+dMDknw==}
     engines: {node: '>= 0.6.0'}
 
+  jose@6.1.3:
+    resolution: {integrity: sha512-0TpaTfihd4QMNwrz/ob2Bp7X04yuxJkjRGi4aKmOqwhov54i6u79oCv7T+C7lo70MKH6BesI3vscD1yb/yzKXQ==}
+
   js-base64@3.7.8:
     resolution: {integrity: sha512-hNngCeKxIUQiEUN3GPJOkz4wF/YvdUdbNL9hsBcMQTkKzboD7T/q3OYOuuPZLUE6dBxSGpwhk5mwuDud7JVAow==}
 
@@ -9410,6 +9410,9 @@ packages:
 
   json-schema-traverse@1.0.0:
     resolution: {integrity: sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==}
+
+  json-schema-typed@8.0.2:
+    resolution: {integrity: sha512-fQhoXdcvc3V28x7C7BMs4P5+kNlgUURe2jmUT1T//oBRMDrqy1QPelJimwZGo7Hg9VPV3EQV5Bnq4hbFy2vetA==}
 
   json-schema@0.4.0:
     resolution: {integrity: sha512-es94M3nTIfsEPisRafak+HDLfHXnKBhV3vU5eqPcS3flIWqcxJWgXHXiey3YrpaNsanY5ei1VoYEbOzijuq9BA==}
@@ -10796,12 +10799,8 @@ packages:
     engines: {node: '>=10.13.0'}
     hasBin: true
 
-  qs@6.13.0:
-    resolution: {integrity: sha512-+38qI9SOr8tfZ4QmJNplMUxqjbe7LKvvZgWdExBOmd+egZTtjLB67Gu0HRX3u/XOq7UU2Nx6nsjvS16Z9uwfpg==}
-    engines: {node: '>=0.6'}
-
-  qs@6.14.0:
-    resolution: {integrity: sha512-YWWTjgABSKcvs/nWBi9PycY/JiPJqOD4JA6o9Sej2AtvSGarXxKC3OQSk4pAarbdQlKAh5D4FCQkJNkW+GAn3w==}
+  qs@6.14.1:
+    resolution: {integrity: sha512-4EK3+xJl8Ts67nLYNwqw/dsFVnCf+qR7RgXSK9jEEm9unao3njwMDdmsdvoKBKHzxd7tCYz5e5M+SnMjdtXGQQ==}
     engines: {node: '>=0.6'}
 
   querystring@0.2.0:
@@ -14784,16 +14783,16 @@ snapshots:
 
   '@cfworker/json-schema@4.1.1': {}
 
-  '@cloudflare/ai-chat@0.0.3(agents@0.3.3)(ai@6.0.31(zod@3.25.76))(react@19.1.0)(zod@3.25.76)':
+  '@cloudflare/ai-chat@0.0.3(agents@0.3.6)(ai@6.0.31(zod@3.25.76))(react@19.1.0)(zod@3.25.76)':
     dependencies:
-      agents: 0.3.3(@ai-sdk/openai@3.0.9(zod@3.25.76))(@cloudflare/ai-chat@0.0.3)(@cloudflare/codemode@0.0.3)(@cloudflare/workers-types@4.20260109.0)(ai@6.0.31(zod@3.25.76))(react@19.1.0)(zod@3.25.76)
+      agents: 0.3.6(@ai-sdk/openai@3.0.9(zod@3.25.76))(@cloudflare/ai-chat@0.0.3)(@cloudflare/codemode@0.0.3)(@cloudflare/workers-types@4.20260109.0)(ai@6.0.31(zod@3.25.76))(hono@4.11.3)(react@19.1.0)(zod@3.25.76)
       ai: 6.0.31(zod@3.25.76)
       react: 19.1.0
       zod: 3.25.76
 
-  '@cloudflare/codemode@0.0.3(agents@0.3.3)(ai@6.0.31(zod@3.25.76))(typescript@5.9.2)(zod@3.25.76)':
+  '@cloudflare/codemode@0.0.3(agents@0.3.6)(ai@6.0.31(zod@3.25.76))(typescript@5.9.2)(zod@3.25.76)':
     dependencies:
-      agents: 0.3.3(@ai-sdk/openai@3.0.9(zod@3.25.76))(@cloudflare/ai-chat@0.0.3)(@cloudflare/codemode@0.0.3)(@cloudflare/workers-types@4.20260109.0)(ai@6.0.31(zod@3.25.76))(react@19.1.0)(zod@3.25.76)
+      agents: 0.3.6(@ai-sdk/openai@3.0.9(zod@3.25.76))(@cloudflare/ai-chat@0.0.3)(@cloudflare/codemode@0.0.3)(@cloudflare/workers-types@4.20260109.0)(ai@6.0.31(zod@3.25.76))(hono@4.11.3)(react@19.1.0)(zod@3.25.76)
       ai: 6.0.31(zod@3.25.76)
       zod: 3.25.76
       zod-to-ts: 2.0.0(typescript@5.9.2)(zod@3.25.76)
@@ -15883,8 +15882,9 @@ snapshots:
       - supports-color
     optional: true
 
-  '@modelcontextprotocol/sdk@1.23.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)':
+  '@modelcontextprotocol/sdk@1.25.2(@cfworker/json-schema@4.1.1)(hono@4.11.3)(zod@3.25.76)':
     dependencies:
+      '@hono/node-server': 1.19.7(hono@4.11.3)
       ajv: 8.17.1
       ajv-formats: 3.0.1(ajv@8.17.1)
       content-type: 1.0.5
@@ -15894,6 +15894,8 @@ snapshots:
       eventsource-parser: 3.0.6
       express: 5.1.0
       express-rate-limit: 7.5.1(express@5.1.0)
+      jose: 6.1.3
+      json-schema-typed: 8.0.2
       pkce-challenge: 5.0.0
       raw-body: 3.0.1
       zod: 3.25.76
@@ -15901,6 +15903,7 @@ snapshots:
     optionalDependencies:
       '@cfworker/json-schema': 4.1.1
     transitivePeerDependencies:
+      - hono
       - supports-color
 
   '@modern-js/node-bundle-require@2.67.6':
@@ -20143,12 +20146,12 @@ snapshots:
     dependencies:
       humanize-ms: 1.2.1
 
-  agents@0.3.3(@ai-sdk/openai@3.0.9(zod@3.25.76))(@cloudflare/ai-chat@0.0.3)(@cloudflare/codemode@0.0.3)(@cloudflare/workers-types@4.20260109.0)(ai@6.0.31(zod@3.25.76))(react@19.1.0)(zod@3.25.76):
+  agents@0.3.6(@ai-sdk/openai@3.0.9(zod@3.25.76))(@cloudflare/ai-chat@0.0.3)(@cloudflare/codemode@0.0.3)(@cloudflare/workers-types@4.20260109.0)(ai@6.0.31(zod@3.25.76))(hono@4.11.3)(react@19.1.0)(zod@3.25.76):
     dependencies:
       '@cfworker/json-schema': 4.1.1
-      '@cloudflare/ai-chat': 0.0.3(agents@0.3.3)(ai@6.0.31(zod@3.25.76))(react@19.1.0)(zod@3.25.76)
-      '@cloudflare/codemode': 0.0.3(agents@0.3.3)(ai@6.0.31(zod@3.25.76))(typescript@5.9.2)(zod@3.25.76)
-      '@modelcontextprotocol/sdk': 1.23.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
+      '@cloudflare/ai-chat': 0.0.3(agents@0.3.6)(ai@6.0.31(zod@3.25.76))(react@19.1.0)(zod@3.25.76)
+      '@cloudflare/codemode': 0.0.3(agents@0.3.6)(ai@6.0.31(zod@3.25.76))(typescript@5.9.2)(zod@3.25.76)
+      '@modelcontextprotocol/sdk': 1.25.2(@cfworker/json-schema@4.1.1)(hono@4.11.3)(zod@3.25.76)
       ai: 6.0.31(zod@3.25.76)
       cron-schedule: 6.0.0
       json-schema: 0.4.0
@@ -20164,6 +20167,7 @@ snapshots:
       '@ai-sdk/openai': 3.0.9(zod@3.25.76)
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
+      - hono
       - supports-color
 
   aggregate-error@3.1.0:
@@ -20614,7 +20618,7 @@ snapshots:
       http-errors: 2.0.0
       iconv-lite: 0.4.24
       on-finished: 2.4.1
-      qs: 6.13.0
+      qs: 6.14.1
       raw-body: 2.5.2
       type-is: 1.6.18
       unpipe: 1.0.0
@@ -20629,7 +20633,7 @@ snapshots:
       http-errors: 2.0.0
       iconv-lite: 0.6.3
       on-finished: 2.4.1
-      qs: 6.14.0
+      qs: 6.14.1
       raw-body: 3.0.1
       type-is: 2.0.1
     transitivePeerDependencies:
@@ -21079,8 +21083,6 @@ snapshots:
   cookie-signature@1.0.6: {}
 
   cookie-signature@1.2.2: {}
-
-  cookie@0.7.1: {}
 
   cookie@0.7.2: {}
 
@@ -22136,14 +22138,14 @@ snapshots:
     dependencies:
       express: 5.1.0
 
-  express@4.21.2:
+  express@4.22.1:
     dependencies:
       accepts: 1.3.8
       array-flatten: 1.1.1
       body-parser: 1.20.3
       content-disposition: 0.5.4
       content-type: 1.0.5
-      cookie: 0.7.1
+      cookie: 0.7.2
       cookie-signature: 1.0.6
       debug: 2.6.9
       depd: 2.0.0
@@ -22159,13 +22161,13 @@ snapshots:
       parseurl: 1.3.3
       path-to-regexp: 0.1.12
       proxy-addr: 2.0.7
-      qs: 6.13.0
+      qs: 6.14.1
       range-parser: 1.2.1
       safe-buffer: 5.2.1
       send: 0.19.0
       serve-static: 1.16.2
       setprototypeof: 1.2.0
-      statuses: 2.0.1
+      statuses: 2.0.2
       type-is: 1.6.18
       utils-merge: 1.0.1
       vary: 1.1.2
@@ -22193,7 +22195,7 @@ snapshots:
       once: 1.4.0
       parseurl: 1.3.3
       proxy-addr: 2.0.7
-      qs: 6.14.0
+      qs: 6.14.1
       range-parser: 1.2.1
       router: 2.2.0
       send: 1.2.0
@@ -23698,6 +23700,8 @@ snapshots:
 
   jmespath@0.16.0: {}
 
+  jose@6.1.3: {}
+
   js-base64@3.7.8: {}
 
   js-tokens@4.0.0: {}
@@ -23799,6 +23803,8 @@ snapshots:
   json-schema-traverse@0.4.1: {}
 
   json-schema-traverse@1.0.0: {}
+
+  json-schema-typed@8.0.2: {}
 
   json-schema@0.4.0: {}
 
@@ -25430,11 +25436,7 @@ snapshots:
       pngjs: 5.0.0
       yargs: 15.4.1
 
-  qs@6.13.0:
-    dependencies:
-      side-channel: 1.1.0
-
-  qs@6.14.0:
+  qs@6.14.1:
     dependencies:
       side-channel: 1.1.0
 
@@ -26562,7 +26564,7 @@ snapshots:
       formidable: 3.5.4
       methods: 1.1.2
       mime: 2.6.0
-      qs: 6.14.0
+      qs: 6.14.1
     transitivePeerDependencies:
       - supports-color
 
