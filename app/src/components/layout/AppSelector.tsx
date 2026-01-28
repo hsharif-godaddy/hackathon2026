@@ -29,10 +29,12 @@ export default function AppSelector({ location }: { location?: string }) {
     isLoading: isLoadingAuth
   } = useAuthContext();
 
+  // Only fetch sites once auth state is fully resolved AND user is authenticated.
+  // This prevents race conditions where we might try to fetch with an incomplete auth state.
   const {
     sites,
     isLoading: isLoadingSites,
-  } = useSites({ enabled: isAuthenticated })
+  } = useSites({ enabled: !isLoadingAuth && isAuthenticated })
 
   const isMobile = useDevelopPageStore((state) => state.isMobile)
 
@@ -47,6 +49,12 @@ export default function AppSelector({ location }: { location?: string }) {
   }, [location, isLoadingSites, sites.length]);
 
   const isLoading = isLoadingAuth || isLoadingSites;
+
+  // Show nothing while auth is still loading - wait for definitive auth state.
+  // Once auth resolves, if not authenticated, show nothing (Header gates this anyway).
+  if (isLoadingAuth) {
+    return null;
+  }
 
   if (!isAuthenticated) {
     return null;

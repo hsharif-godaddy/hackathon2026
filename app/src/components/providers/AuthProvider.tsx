@@ -150,7 +150,6 @@ export function useAuthContext() {
       }),
       handleSignIn: () => {},
       handleSignOut: () => {},
-      authenticatedFetch: fetch,
       refreshAuth: () => {},
       isAuthDisabled: actualIsDisabled,
       authType: actualAuthType,

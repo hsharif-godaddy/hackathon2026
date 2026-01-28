@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import { withGasketData } from '@gasket/nextjs/layout';
 import { makeLayout } from '@godaddy/gasket-next/layout';
 
+import AuthBoundary from "@/components/auth/AuthBoundary";
 import GlobalSsoLogin from "@/components/auth/GlobalSsoLogin";
 import SessionTimeoutManager from "@/components/auth/SessionTimeoutManager";
 import AuthProvider from "@/components/providers/AuthProvider";
@@ -181,9 +182,11 @@ async function RootLayout({
             <AuthProvider>
               <SubscriptionCacheProvider>
                 <SessionTimeoutManager />
-                <main className="flex-1 min-h-screen">
-                  {children}
-                </main>
+                <AuthBoundary>
+                  <main className="flex-1 min-h-screen">
+                    {children}
+                  </main>
+                </AuthBoundary>
                 <GlobalSsoLogin />
               </SubscriptionCacheProvider>
             </AuthProvider>

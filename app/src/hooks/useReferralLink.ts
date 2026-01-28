@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { useAuthContext } from '@/components/providers/AuthProvider';
+import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { getRootDomain } from '@/utils/getRootDomain';
 
@@ -42,12 +43,12 @@ interface UseReferralLinkResult {
  * ```
  */
 export function useReferralLink({ enabled = true }: UseReferralLinkOptions = {}): UseReferralLinkResult {
-  const { isAuthenticated, authenticatedFetch } = useAuthContext();
+  const { isAuthenticated } = useAuthContext();
 
   const { data, isLoading, error } = useQuery<ReferralLinkResponse>({
     queryKey: ['referral-link'],
     queryFn: async () => {
-      const response = await authenticatedFetch('/api/referral-link');
+      const response = await appFetch('/api/referral-link');
 
       if (!response.ok) {
         logger.error('referral-link.error', {

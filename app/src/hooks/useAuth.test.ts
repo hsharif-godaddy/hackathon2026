@@ -134,12 +134,6 @@ describe('useAuth', () => {
     });
   });
 
-  it('should return authenticatedFetch', () => {
-    const { result } = renderHook(() => useAuth());
-
-    expect(result.current.authenticatedFetch).toBeDefined();
-  });
-
   it('should return authType', async () => {
     const { result } = renderHook(() => useAuth());
 

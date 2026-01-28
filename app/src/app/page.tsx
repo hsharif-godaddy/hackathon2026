@@ -76,6 +76,14 @@ function HomeContent() {
 
     if (!promptToUse || isRedirecting || isLoading) return
 
+    // Short-circuit if auth state is still loading.
+    // Wait for auth to resolve before deciding whether to show SSO login or proceed.
+    // This prevents triggering SSO login during the brief window when auth is initializing.
+    if (authIsLoading) {
+      logger.debug('page.auth.loading', 'Auth state still loading, waiting before proceeding')
+      return
+    }
+
     // Clear any previous errors and set loading state
     setError(null)
     setIsLoading(true)
@@ -89,7 +97,7 @@ function HomeContent() {
 
     try {
       // Step 1: Quick auth check - show in-app SSO login if needed
-      // Ensure consistent timing for async and sync auth checks
+      // Auth state is now definitively resolved (authIsLoading is false)
       if (!isAuthDisabled && !isAuthenticated) {
         logger.info('page.auth.sso-login', 'User not authenticated, showing SSO login')
 
@@ -171,7 +179,7 @@ function HomeContent() {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, signIn, t])
+  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, authIsLoading, signIn, t])
 
   // Restore prompt from localStorage after login and clear it
   useEffect(() => {

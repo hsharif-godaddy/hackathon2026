@@ -18,6 +18,8 @@ interface SitesStore {
   loadingById: Record<string, boolean>
   error: string | null
   lastFetchedAll: number | null
+  /** True when sites list is empty because user needs to authenticate */
+  requiresAuth: boolean
 
   // Bulk operations
   fetchAllSites: () => Promise<void>
@@ -38,6 +40,7 @@ interface SitesStore {
 
   // Utility
   clearError: () => void
+  clearRequiresAuth: () => void
   cleanup: () => void
 }
 
@@ -50,6 +53,7 @@ export const useSitesStore = create<SitesStore>()(
     loadingById: {},
     error: null,
     lastFetchedAll: null,
+    requiresAuth: false,
 
     // Fetch all sites from API
     fetchAllSites: async () => {
@@ -61,10 +65,31 @@ export const useSitesStore = create<SitesStore>()(
       set((state) => {
         state.isLoadingAll = true
         state.error = null
+        state.requiresAuth = false
       })
 
       try {
+        // appFetch handles 401 gracefully - no auto-redirect, sets auth state in UI store.
+        // This allows the homepage to work for unauthenticated users.
         const response = await appFetch('/api/sites')
+
+        // Handle 401 gracefully - user needs to authenticate
+        if (response.status === 401) {
+          logger.debug('sites-store.fetch-all.requires-auth', {
+            message: 'Sites fetch requires authentication',
+            requiresRefresh: response.authMetadata?.requiresRefresh
+          })
+
+          set((state) => {
+            state.allSites = []
+            state.sitesById = {}
+            state.isLoadingAll = false
+            // Don't set lastFetchedAll - leave it null so sites will auto-refetch after auth is restored
+            state.requiresAuth = true
+            // Don't set error - this is expected for unauthenticated users
+          })
+          return
+        }
 
         if (!response.ok) {
           throw new Error(`Failed to fetch sites: ${response.status} ${response.statusText}`)
@@ -77,6 +102,7 @@ export const useSitesStore = create<SitesStore>()(
           state.allSites = sites
           state.isLoadingAll = false
           state.lastFetchedAll = Date.now()
+          state.requiresAuth = false
 
           // Update sitesById for consistency
           state.sitesById = {}
@@ -354,6 +380,13 @@ export const useSitesStore = create<SitesStore>()(
       })
     },
 
+    // Clear requiresAuth flag (call after successful re-authentication to allow refetch)
+    clearRequiresAuth: () => {
+      set((state) => {
+        state.requiresAuth = false
+      })
+    },
+
     // Cleanup store state
     cleanup: () => {
       set((state) => {
@@ -363,6 +396,7 @@ export const useSitesStore = create<SitesStore>()(
         state.loadingById = {}
         state.error = null
         state.lastFetchedAll = null
+        state.requiresAuth = false
       })
     }
   }))
@@ -373,6 +407,7 @@ export const useSites = (options?: { enabled?: boolean }) => {
   const allSites = useSitesStore((state) => state.allSites)
   const isLoadingAll = useSitesStore((state) => state.isLoadingAll)
   const error = useSitesStore((state) => state.error)
+  const requiresAuth = useSitesStore((state) => state.requiresAuth)
   const fetchAllSites = useSitesStore((state) => state.fetchAllSites)
   const refreshSites = useSitesStore((state) => state.refreshSites)
   const deleteSite = useSitesStore((state) => state.deleteSite)
@@ -386,17 +421,20 @@ export const useSites = (options?: { enabled?: boolean }) => {
   const enabled = options?.enabled ?? true
 
   // Auto-fetch sites on first use (if never fetched and not loading and enabled)
+  // Skip if requiresAuth is true to avoid 401 retry loop - user must re-authenticate first
   React.useEffect(() => {
-    if (enabled && !lastFetchedAll && !isLoadingAll) {
+    if (enabled && !lastFetchedAll && !isLoadingAll && !requiresAuth) {
       fetchAllSites()
     }
-  }, [enabled, lastFetchedAll, isLoadingAll, fetchAllSites])
+  }, [enabled, lastFetchedAll, isLoadingAll, requiresAuth, fetchAllSites])
 
   return {
     // Data
     sites: allSites,
     isLoading: isLoadingAll,
     error,
+    /** True when sites list is empty because user needs to authenticate */
+    requiresAuth,
 
     // Actions
     refreshSites,

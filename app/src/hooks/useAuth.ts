@@ -1,5 +1,5 @@
 import { useCallback,useEffect, useMemo, useRef, useState } from 'react';
-import { authFetch,AuthIdpType, AuthRealmType, AuthRiskType, useAuthState } from '@godaddy/gasket-auth';
+import { AuthIdpType, AuthRealmType, AuthRiskType, useAuthState } from '@godaddy/gasket-auth';
 
 import { useMockAuth } from '@/hooks/useMockAuth';
 import { auth, authUtils } from '@/lib/features';
@@ -302,9 +302,6 @@ export function useAuth(options: UseAuthOptions = {}) {
     return { showModal: false };
   };
 
-  // Authenticated fetch using Gasket's authFetch
-  const authenticatedFetch = authFetch;
-
   // Determine authentication state based on mode
   const getAuthenticationState = () => {
     // If config failed to load, treat as not authenticated and not loading
@@ -355,7 +352,6 @@ export function useAuth(options: UseAuthOptions = {}) {
     // Auth actions
     handleSignIn,
     handleSignOut,
-    authenticatedFetch,
     refreshAuth,
 
     // Auth status and mode

@@ -9,6 +9,7 @@ import Spinner from '@ux/spinner';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { logger } from '@/lib/request-context';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
+import { useSitesStore } from '@/stores/useSitesStore';
 import { getRootDomain } from '@/utils/getRootDomain';
 
 /**
@@ -65,7 +66,8 @@ export default function SsoLogin() {
   const [error, setError] = useState<string | null>(null);
   const [ssoHost, setSsoHost] = useState<string | null>(null);
 
-  const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded } = useAuthUIStore();
+  const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, clearNeedsReauth } = useAuthUIStore();
+  const clearRequiresAuth = useSitesStore((state) => state.clearRequiresAuth);
   const { refreshAuth } = useAuthContext();
 
   // Determine SSO host on client-side only
@@ -85,10 +87,13 @@ export default function SsoLogin() {
 
     setError(null);
     closeSsoLogin();
+    // Clear auth-related flags so UI components know auth is restored
+    clearNeedsReauth();
+    clearRequiresAuth(); // Allow sites store to refetch
 
     // Refresh auth state to pick up new cookies without full page reload
     refreshAuth();
-  }, [closeSsoLogin, refreshAuth]);
+  }, [closeSsoLogin, clearNeedsReauth, clearRequiresAuth, refreshAuth]);
 
   // Don't render if not open
   if (!isSsoLoginOpen) {

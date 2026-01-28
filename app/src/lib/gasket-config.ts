@@ -1,6 +1,7 @@
 import { SHOPPER_AUTH_FAILURE_MESSAGE } from './customer-auth';
 import { auth } from './features';
 import { logger } from './request-context';
+import { useAuthUIStore } from '@/stores/useAuthUIStore';
 // Gasket configuration for Airo Builder authentication
 
 // Extend globalThis interface for auth logging flag and config cache
@@ -179,16 +180,75 @@ export async function isAuthDisabled(): Promise<boolean> {
 }
 
 /**
- * Helper function for authenticated API calls
- * Wraps authFetch and adds access restriction handling
+ * Options for appFetch beyond standard RequestInit
+ */
+export interface AppFetchOptions {
+  /**
+   * When true, automatically sets needsReauth in the auth UI store on 401.
+   * Defaults to true. Set to false if you want to handle 401 manually.
+   */
+  setAuthState?: boolean;
+}
+
+/**
+ * Auth metadata extracted from 401 responses.
+ * These flags are set by the server in customer-auth.ts
+ */
+export interface AuthResponseMetadata {
+  /** True when the request requires authentication */
+  requiresAuth?: boolean;
+  /** True when the token is stale and needs refresh */
+  requiresRefresh?: boolean;
+  /** Age of the token's issued-at time in minutes */
+  iatAgeMinutes?: number;
+  /** Age of the token's validated-at time in minutes */
+  vatAgeMinutes?: number;
+}
+
+/**
+ * Extended Response type that includes auth metadata for 401 responses
+ */
+export interface AppFetchResponse extends Response {
+  /** Auth metadata extracted from 401 response body */
+  authMetadata?: AuthResponseMetadata;
+}
+
+/**
+ * Helper function for authenticated API calls.
+ * Uses plain fetch with credentials and handles 401 responses at the UI layer.
+ *
+ * This function NEVER redirects on 401. Instead, it:
+ * 1. Extracts auth metadata from the 401 response
+ * 2. Sets needsReauth in the auth UI store (unless setAuthState: false)
+ * 3. Returns the response for the caller to handle
  *
  * @param url - API endpoint URL
- * @param options - Fetch options
- * @returns Response from the API
+ * @param options - Fetch options (standard RequestInit)
+ * @param appOptions - Additional options for appFetch behavior
+ * @returns Response from the API, with authMetadata attached for 401 responses
  *
- * @throws {Error} Redirects to coming-soon page if access is restricted
+ * @example
+ * ```typescript
+ * // Normal usage - 401 sets auth state, no redirect
+ * const response = await appFetch('/api/sites');
+ * if (response.status === 401) {
+ *   // Auth state already set, UI will show login prompt via AuthBoundary
+ * }
+ *
+ * // Handle 401 manually without setting auth state
+ * const response = await appFetch('/api/sites', {}, { setAuthState: false });
+ * if (response.status === 401) {
+ *   // Handle manually
+ * }
+ * ```
  */
-export async function appFetch(url: string, options?: RequestInit): Promise<Response> {
+export async function appFetch(
+  url: string,
+  options?: RequestInit,
+  appOptions?: AppFetchOptions
+): Promise<AppFetchResponse> {
+  const { setAuthState = true } = appOptions || {};
+
   // Normalize relative URLs for environments where the underlying fetch/auth wrapper
   // requires absolute URLs (e.g., some server/test runtimes).
   const resolvedUrl =
@@ -196,11 +256,50 @@ export async function appFetch(url: string, options?: RequestInit): Promise<Resp
       ? new URL(url, window.location.origin).toString()
       : url;
 
-  // In unit tests we don't want authFetch to trigger real redirects or require full auth plumbing.
-  // Global fetch is already mocked in vitest setup and individual tests.
-  const response = process.env.NODE_ENV === 'test'
-    ? await fetch(resolvedUrl, options)
-    : await (await import('@godaddy/gasket-auth')).authFetch(resolvedUrl, options);
+  // Always use plain fetch with credentials - never use authFetch which auto-redirects
+  const response: AppFetchResponse = await fetch(resolvedUrl, {
+    ...options,
+    credentials: 'include'
+  });
+
+  // Handle 401 responses at the UI layer
+  if (response.status === 401) {
+    let authMetadata: AuthResponseMetadata = {};
+
+    // Extract auth metadata from response body
+    try {
+      const contentType = response.headers.get('content-type');
+      if (contentType?.includes('application/json')) {
+        // Clone response so caller can still read the body
+        const data = await response.clone().json();
+        authMetadata = {
+          requiresAuth: data.requiresAuth,
+          requiresRefresh: data.requiresRefresh,
+          iatAgeMinutes: data.iatAgeMinutes,
+          vatAgeMinutes: data.vatAgeMinutes
+        };
+        response.authMetadata = authMetadata;
+
+        logger.debug('app-fetch.auth-required', {
+          message: '401 response - authentication required',
+          requiresAuth: data.requiresAuth,
+          requiresRefresh: data.requiresRefresh,
+          url: resolvedUrl
+        });
+      }
+    } catch (error) {
+      logger.debug('app-fetch.auth-metadata.parse-error', {
+        message: 'Could not parse 401 response for auth metadata',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+
+    // Set auth state in UI store (client-side only)
+    if (setAuthState && typeof window !== 'undefined') {
+      const reason = authMetadata.requiresRefresh ? 'session_stale' : 'not_authenticated';
+      useAuthUIStore.getState().setNeedsReauth(reason, undefined, authMetadata);
+    }
+  }
 
   // Check specifically for shopper ID authorization failure (403 only)
   if (response.status === 403) {
