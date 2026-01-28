@@ -12,7 +12,7 @@ import { usePaywallEligibility } from './usePaywallEligibility'
 import { useSwitchboard } from './useSwitchboard'
 
 interface UsePaywallModalOptions {
-  appId: string | undefined
+  appId?: string // Made optional for account-level subscriptions
   source: string
   onPurchaseSuccess?: () => Promise<void>
 }
@@ -22,6 +22,7 @@ interface UsePaywallModalReturn {
   PaywallModal: () => JSX.Element | null
   isPolling: boolean
   shouldShowPaywall: boolean
+  isPaywallLoading: boolean
 }
 
 /**
@@ -29,7 +30,7 @@ interface UsePaywallModalReturn {
  *
  * Encapsulates all the common paywall UI orchestration logic:
  * - Modal visibility state
- * - Entitlements polling after purchase
+ * - Account-level entitlements polling after purchase
  * - Switchboard flag checks
  * - Analytics logging
  * - Purchase success handling
@@ -37,8 +38,8 @@ interface UsePaywallModalReturn {
  * @example
  * ```tsx
  * const { checkAndShowPaywall, PaywallModal, isPolling } = usePaywallModal({
- *   appId,
- *   source: 'download'
+ *   source: 'download',
+ *   appId // Optional for logging
  * })
  *
  * const handleDownload = async () => {
@@ -67,7 +68,7 @@ export function usePaywallModal({
   const setIsPollingEntitlements = useDevelopPageStore((state) => state.setIsPollingEntitlements)
   const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall')
   const { data: isPaywallEnabledInMarket } = useSwitchboard('appbuilder-airoplus-markets')
-  const { showPaywall } = usePaywallEligibility(appId)
+  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId)
   const site = useSiteStore((state) => (appId ? state.getSite(appId) : null))
 
   const logInAppPurchase = useCallback(
@@ -87,7 +88,7 @@ export function usePaywallModal({
     setShowAiroPlusPaywall(false)
     setIsPollingEntitlements(true)
 
-    const result = await entitlementPollingService.pollForEntitlements(appId)
+    const result = await entitlementPollingService.pollForAccountEntitlements()
     setIsPollingEntitlements(false)
 
     if (result.success) {
@@ -96,26 +97,29 @@ export function usePaywallModal({
       }
       setHasCompletedPurchase(true)
 
-      // Regenerate JWT with fresh permissions after successful purchase
+      // Regenerate JWT with fresh permissions after successful purchase if appId provided
       // This ensures the user immediately gets canDownload and canPublish permissions
-      try {
-        logger.info('paywall-modal.regenerating-jwt', { appId, reason: 'subscription_purchased' })
-        await regenerateToken({ siteId: appId, force: true })
-        logger.info('paywall-modal.jwt-regenerated', { appId })
-      } catch (jwtError) {
-        // Non-critical - log but continue
-        // Token will be regenerated on next download/publish attempt
-        logger.warn('paywall-modal.jwt-regeneration-failed', {
-          appId,
-          error: jwtError instanceof Error ? jwtError.message : String(jwtError),
-        })
+      if (appId) {
+        try {
+          logger.info('paywall-modal.regenerating-jwt', { appId, reason: 'subscription_purchased' })
+          await regenerateToken({ siteId: appId, force: true })
+          logger.info('paywall-modal.jwt-regenerated', { appId })
+        } catch (jwtError) {
+          // Non-critical - log but continue
+          // Token will be regenerated on next download/publish attempt
+          logger.warn('paywall-modal.jwt-regeneration-failed', {
+            appId,
+            error: jwtError instanceof Error ? jwtError.message : String(jwtError),
+          })
+        }
       }
 
-      // Invalidate paywall eligibility query to update UI immediately
-      await queryClient.invalidateQueries({
-        queryKey: ['paywall-eligibility', appId],
-        refetchType: 'active',
-      })
+      // Invalidate paywall-related queries to update UI immediately
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['subscription'] }),
+        queryClient.invalidateQueries({ queryKey: ['entitlements'] }),
+        queryClient.invalidateQueries({ queryKey: ['projects'] }),
+      ])
 
       // Execute optional post-purchase callback
       if (onPurchaseSuccess) {
@@ -132,8 +136,6 @@ export function usePaywallModal({
 
   const checkAndShowPaywall = useCallback(
     async (action: () => Promise<void>) => {
-      if (!appId) return
-
       // Show paywall only if not completed purchase and showPaywall is true
       const shouldShowPaywall = !hasCompletedPurchase && showPaywall
 
@@ -193,5 +195,6 @@ export function usePaywallModal({
     PaywallModal,
     isPolling: isPollingEntitlements,
     shouldShowPaywall: !hasCompletedPurchase && showPaywall,
+    isPaywallLoading,
   }
 }

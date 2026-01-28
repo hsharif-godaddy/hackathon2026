@@ -29,6 +29,7 @@ import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { usePageTiming } from '@/hooks/usePageTiming'
+import { usePaywallPrefetch } from '@/hooks/usePaywallPrefetch'
 import { useRumAppContext } from '@/hooks/useRumAppContext'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -62,6 +63,9 @@ function DevelopPageContent() {
   const customerId = useMemo(() => getUserInfo()?.customerId, [getUserInfo])
 
   useRumAppContext({ appId, customerId })
+
+  // Prefetch paywall data early for faster eligibility checks
+  usePaywallPrefetch()
 
   // Unified initialization hook - handles all sequencing and UI state
   const init = useInitialization({ appId, isJobId })

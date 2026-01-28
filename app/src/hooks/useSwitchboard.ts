@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { type QueryClient, useQuery } from '@tanstack/react-query';
 
 import { isFeatureEnabled } from '@/lib/features';
 import { logger } from '@/lib/request-context';
@@ -90,5 +90,19 @@ export function useSwitchboard(featureName: string, options: { enabled?: boolean
     staleTime: 5 * 60 * 1000,
     retry: 1,
     refetchOnWindowFocus: false,
+  });
+}
+
+/**
+ * Prefetch a feature flag into the query cache
+ *
+ * @param queryClient - React Query client
+ * @param featureName - Name of the feature flag to prefetch
+ */
+export function prefetchSwitchboard(queryClient: QueryClient, featureName: string) {
+  return queryClient.prefetchQuery({
+    queryKey: ['featureFlag', featureName],
+    queryFn: () => fetchFeatureFlag(featureName),
+    staleTime: 5 * 60 * 1000,
   });
 }

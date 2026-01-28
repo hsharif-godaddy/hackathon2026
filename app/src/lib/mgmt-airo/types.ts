@@ -2,6 +2,8 @@
  * Type definitions for mgmt-airo API
  */
 
+import { SubscriptionPlan } from '@/types/credits';
+
 /**
  * Product IDs for Airo products
  * Use these constants when filtering API requests
@@ -44,6 +46,12 @@ export interface AiroSubscription {
   status: string;
   isTrial: boolean;
   entitlementId: string;
+  /** Airo Builder entitlement ID (new airo builder plans) */
+  builderEntitlementId?: string;
+  /** Subscription plan type (new airo builder plans) */
+  plan?: SubscriptionPlan;
+  /** When the subscription renews (new airo builder plans) */
+  renewsAt?: string;
   createdAt: string;
   updatedAt: string;
 }

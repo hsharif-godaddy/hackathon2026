@@ -2,13 +2,16 @@
  * Client-Side Paywall Data Provider
  *
  * Implementation of PaywallDataProvider for browser/client-side environment.
- * Uses browser-specific APIs and Next.js API routes for data access.
+ * Used by non-React contexts (e.g., publishAction) that need paywall checks.
+ *
+ * For React components, prefer usePaywallEligibility hook which uses
+ * React Query for automatic caching and deduplication.
  */
 
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { getRootDomain } from '@/utils/getRootDomain';
-import type { PaywallDataProvider, SwitchboardFlagsResult } from './providers';
+import type { AccountSubscription, PaywallDataProvider, SwitchboardFlagsResult } from './providers';
 import { PAYWALL_CONFIG, type ProjectEdge } from './shared';
 
 /**
@@ -20,6 +23,7 @@ import { PAYWALL_CONFIG, type ProjectEdge } from './shared';
  * - Relies on browser cookies for authentication (credentials: 'include')
  */
 export class ClientPaywallProvider implements PaywallDataProvider {
+
   /**
    * Get root domain from window.location
    *
@@ -115,13 +119,34 @@ export class ClientPaywallProvider implements PaywallDataProvider {
   }
 
   /**
-   * Get subscription ID for an app
+   * Get account-level subscription (app-agnostic)
+   *
+   * Calls /api/subscription to get the user's subscription.
+   *
+   * @returns Promise with account subscription data
+   */
+  async getAccountSubscription(): Promise<AccountSubscription | undefined> {
+    const response = await appFetch('/api/subscription', {
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const data = await response.json();
+    return data?.data?.subscription;
+  }
+
+  /**
+   * Get subscription ID for an app (deprecated - use getAccountSubscription)
    *
    * Calls /api/apps/[id]/subscription which uses the authenticated user's
    * credentials to find the subscription containing the app.
    *
    * @param appId - The app ID to find subscription for
    * @returns Promise with subscription ID or undefined
+   * @deprecated Use getAccountSubscription() for app-agnostic subscriptions
    */
   async getSubscription(appId: string): Promise<string | undefined> {
     const response = await appFetch(`/api/apps/${appId}/subscription`, {
@@ -163,8 +188,7 @@ export class ClientPaywallProvider implements PaywallDataProvider {
   /**
    * Get user's projects
    *
-   * Calls /api/projects which returns the authenticated user's projects
-   * with billing information.
+   * Calls /api/projects to get the user's projects.
    *
    * @returns Promise with array of project edges
    */

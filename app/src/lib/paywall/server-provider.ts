@@ -8,7 +8,9 @@
 import { AIRO_OWNER_PRODUCTS, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 import { VentureService } from '@/lib/venture-service';
-import type { PaywallDataProvider, SwitchboardFlagsResult } from './providers';
+import { SubscriptionPlan } from '@/types/credits';
+import { getPlanFromSubscription } from '@/utils/credits';
+import type { AccountSubscription, PaywallDataProvider, SwitchboardFlagsResult } from './providers';
 import { PAYWALL_CONFIG, type ProjectEdge } from './shared';
 
 /**
@@ -171,7 +173,86 @@ export class ServerPaywallProvider implements PaywallDataProvider {
   }
 
   /**
-   * Get subscription ID for an app
+   * Get account-level subscription (app-agnostic)
+   *
+   * Gets the customer's subscription with plan information.
+   * Prioritizes active paid subscriptions over free ones.
+   *
+   * @returns Promise with account subscription data
+   */
+  async getAccountSubscription(): Promise<AccountSubscription | undefined> {
+    const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
+    const client = new AiroMgmtClient({ baseUrl, jwt: this.jwt });
+
+    const subscriptions = await client.getSubscriptions(
+      AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER
+    );
+
+    // Prioritize active paid subscriptions
+    // Order of precedence: airoPlus > starter > free > none
+    let bestSubscription = null;
+    const planPriority: Record<SubscriptionPlan, number> = {
+      [SubscriptionPlan.AiroPlus]: 4,
+      [SubscriptionPlan.Starter]: 3,
+      [SubscriptionPlan.Free]: 2,
+      [SubscriptionPlan.None]: 1
+    };
+
+    for (const subscription of subscriptions) {
+      // Skip inactive subscriptions unless we have nothing else
+      if (subscription.status !== 'active' && bestSubscription) {
+        continue;
+      }
+
+      // Determine plan from subscription data
+      const plan = getPlanFromSubscription(subscription);
+
+      // Keep the subscription with the highest priority plan
+      if (!bestSubscription ||
+          (planPriority[plan] || 0) > (planPriority[bestSubscription.plan] || 0)) {
+        bestSubscription = {
+          ...subscription,
+          plan
+        };
+      }
+    }
+
+    if (!bestSubscription) {
+      // No subscription found - return a default free plan
+      return {
+        plan: SubscriptionPlan.Free,
+        status: 'active',
+        isTrial: false,
+        customerId: this.customerId
+      };
+    }
+
+    // Try to fetch full subscription details via entitlements endpoint
+    try {
+      const fullSubscription = await client.getEntitlements(bestSubscription.id);
+      return {
+        id: fullSubscription.id,
+        productId: fullSubscription.productId,
+        customerId: fullSubscription.customerId,
+        status: fullSubscription.status,
+        isTrial: fullSubscription.isTrial,
+        entitlementId: fullSubscription.entitlementId,
+        builderEntitlementId: fullSubscription.builderEntitlementId,
+        plan: fullSubscription.plan || bestSubscription.plan,
+        renewsAt: fullSubscription.renewsAt
+      };
+    } catch (error) {
+      // If we can't fetch full details, return what we have
+      logger.warn('paywall.server-provider.subscription-detail-error', {
+        subscriptionId: bestSubscription.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return bestSubscription;
+    }
+  }
+
+  /**
+   * Get subscription ID for an app (deprecated - use getAccountSubscription)
    *
    * Searches through all subscriptions, systems, and apps to find the
    * subscription containing the specified app.
@@ -181,6 +262,7 @@ export class ServerPaywallProvider implements PaywallDataProvider {
    *
    * @param appId - The app ID to find subscription for
    * @returns Promise with subscription ID or undefined
+   * @deprecated Use getAccountSubscription() for app-agnostic subscriptions
    */
   async getSubscription(appId: string): Promise<string | undefined> {
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';

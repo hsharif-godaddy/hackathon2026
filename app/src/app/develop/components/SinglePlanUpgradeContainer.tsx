@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import { useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import uxAlert from '@ux/alert';
 import uxButton from '@ux/button';
 import uxIcon from '@ux/icon';
@@ -44,6 +45,7 @@ const SinglePlanUpgradeContainer = ({
 }: SinglePlanUpgradeContainerProps) => {
   const gasketData = useGasketData();
   const { getUserInfo } = useAuth();
+  const queryClient = useQueryClient();
   const shopperId = getUserInfo()?.shopperId;
 
   const handleSuccess = useCallback(() => {
@@ -52,7 +54,13 @@ const SinglePlanUpgradeContainer = ({
 
     // Ship unified analytics log to Elastic for all purchase paths
     shipAnalyticsLog('airoplus.purchase.in-app', { source })
-  }, [source])
+
+    // Invalidate paywall-related queries so UI updates with new subscription status
+    queryClient.invalidateQueries({ queryKey: ['subscription'] })
+    queryClient.invalidateQueries({ queryKey: ['paywall-feature-flags'] })
+    queryClient.invalidateQueries({ queryKey: ['entitlements'] })
+    queryClient.invalidateQueries({ queryKey: ['projects'] })
+  }, [source, queryClient])
 
   return (
     <ErrorBoundary>

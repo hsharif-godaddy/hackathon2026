@@ -127,7 +127,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         user.customerId,
         request.headers
       );
-      const eligibility = await checkPaywallEligibility(body.siteId, provider);
+      const eligibility = await checkPaywallEligibility(provider, body.siteId);
 
       // Both download and publish require Airo Plus subscription
       canDownload = eligibility.hasAccess;

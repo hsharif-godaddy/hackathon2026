@@ -8,6 +8,7 @@
  * This abstraction allows the core paywall logic to be environment-agnostic.
  */
 
+import { SubscriptionPlan } from '@/types/credits';
 import type { ProjectEdge } from './shared';
 
 /**
@@ -18,6 +19,21 @@ export interface SwitchboardFlagsResult {
   paywall: boolean;
   /** Whether paywall is enabled in the current market */
   markets: boolean;
+}
+
+/**
+ * Account subscription data structure
+ */
+export interface AccountSubscription {
+  id?: string;
+  productId?: string;
+  customerId?: string;
+  status?: string;
+  isTrial?: boolean;
+  entitlementId?: string; // Airo Plus entitlement
+  builderEntitlementId?: string; // Airo Builder entitlement
+  plan?: SubscriptionPlan;
+  renewsAt?: string;
 }
 
 /**
@@ -51,13 +67,24 @@ export interface PaywallDataProvider {
   checkSwitchboardFlags(rootDomain: string): Promise<SwitchboardFlagsResult>;
 
   /**
-   * Get subscription ID for an app
+   * Get account-level subscription (app-agnostic)
+   *
+   * Client: Calls /api/subscription API route
+   * Server: Uses AiroMgmtClient to get customer's subscription
+   *
+   * @returns Promise with account subscription data
+   */
+  getAccountSubscription(): Promise<AccountSubscription | undefined>;
+
+  /**
+   * Get subscription ID for an app (deprecated - use getAccountSubscription)
    *
    * Client: Calls /api/apps/[id]/subscription API route
    * Server: Uses AiroMgmtClient to search through subscriptions/systems/apps
    *
    * @param appId - The app ID to find subscription for
    * @returns Promise with subscription ID or undefined if not found
+   * @deprecated Use getAccountSubscription() for app-agnostic subscriptions
    */
   getSubscription(appId: string): Promise<string | undefined>;
 

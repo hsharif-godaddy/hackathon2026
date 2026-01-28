@@ -5,7 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 
-import { useWebSocketRecovery } from '../useWebSocketRecovery'
+import { useWebSocketRecovery } from './useWebSocketRecovery'
 
 describe('useWebSocketRecovery', () => {
   beforeEach(() => {

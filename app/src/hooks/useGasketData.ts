@@ -38,6 +38,10 @@ declare module '@gasket/data' {
       depsPath?: string;
       [key: string]: unknown;
     };
+    /** Internationalization data from @gasket/plugin-intl */
+    intl?: {
+      locale: string;
+    };
     /**
      * Switchboard configuration and Hivemind experiments
      *

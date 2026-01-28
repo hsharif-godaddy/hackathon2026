@@ -1,4 +1,5 @@
 import { logger } from '@/lib/request-context';
+import { SubscriptionPlan } from '@/types/credits';
 
 export interface EntitlementData {
   subscription: any;
@@ -23,7 +24,147 @@ export class EntitlementPollingService {
   }
 
   /**
+   * Poll for account-level entitlements until they are created in the backend
+   */
+  async pollForAccountEntitlements(
+    onStatusUpdate?: (attempt: number, maxAttempts: number) => void
+  ): Promise<EntitlementPollingResult> {
+    return new Promise((resolve, reject) => { /* eslint-disable-line @typescript-eslint/no-unused-vars */
+      let attempts = 0;
+      const startTime = Date.now();
+
+      const poll = async () => {
+        try {
+          attempts++;
+          const elapsed = Date.now() - startTime;
+          // Notify caller of status update
+          if (onStatusUpdate) {
+            onStatusUpdate(attempts, this.maxAttempts);
+          }
+
+          // Get the account-level subscription
+          const subscriptionUrl = '/api/subscription';
+          const subscriptionResponse = await fetch(subscriptionUrl, {
+            credentials: 'include',
+          });
+
+          const subscriptionData = await subscriptionResponse.json();
+
+          if (!subscriptionResponse.ok) {
+            const errorMessage = subscriptionData.error || `Failed to fetch subscription data: ${subscriptionResponse.status}`;
+            logger.error('entitlement-polling.account-subscription.error', {
+              attempt: attempts,
+              statusCode: subscriptionResponse.status,
+              error: errorMessage
+            });
+            throw new Error(errorMessage);
+          }
+
+          if (!subscriptionData.success || !subscriptionData.data?.subscription) {
+            const errorMessage = subscriptionData.error || 'Failed to get subscription data';
+            logger.error('entitlement-polling.account-subscription.failed', {
+              attempt: attempts,
+              error: errorMessage
+            });
+            throw new Error(errorMessage);
+          }
+
+          const subscription = subscriptionData.data.subscription;
+
+          // Check if the subscription plan indicates access
+          if (subscription.plan === SubscriptionPlan.AiroPlus || subscription.plan === SubscriptionPlan.Starter) {
+            resolve({
+              success: true,
+              data: {
+                subscription: subscription,
+                subscriptionId: subscription.id,
+                entitlementId: subscription.builderEntitlementId || subscription.entitlementId || subscription.id
+              }
+            });
+            return;
+          }
+
+          // For legacy compatibility, check entitlements if subscription has an ID
+          if (subscription.id) {
+            const entitlementsUrl = `/api/entitlements?subscriptionId=${encodeURIComponent(subscription.id)}`;
+            const entitlementsResponse = await fetch(entitlementsUrl, {
+              credentials: 'include',
+            });
+
+            const entitlementsData = await entitlementsResponse.json();
+
+            if (entitlementsResponse.ok && entitlementsData.success && entitlementsData.data?.subscription) {
+              resolve({
+                success: true,
+                data: {
+                  subscription: entitlementsData.data.subscription,
+                  subscriptionId: entitlementsData.data.subscriptionId || subscription.id,
+                  entitlementId: entitlementsData.data.subscription.entitlementId
+                }
+              });
+              return;
+            }
+          }
+
+          // No entitlements found yet, continue polling if under time/attempt limits
+          const currentElapsed = Date.now() - startTime;
+          if (attempts < this.maxAttempts && currentElapsed < MAX_POLLING_DURATION_MS) {
+            logger.info('entitlement-polling.account.no-entitlements-yet', {
+              subscriptionId: subscription.id,
+              plan: subscription.plan,
+              attempt: attempts,
+              maxAttempts: this.maxAttempts,
+              elapsedSeconds: Math.round(currentElapsed / 1000),
+              maxDurationSeconds: Math.round(MAX_POLLING_DURATION_MS / 1000),
+              willRetryIn: `${this.pollInterval / 1000}s`
+            });
+            setTimeout(poll, this.pollInterval);
+          } else {
+            const timeoutReason = currentElapsed >= MAX_POLLING_DURATION_MS ? 'time limit exceeded' : 'max attempts reached';
+            logger.info('entitlement-polling.account.timeout', {
+              subscriptionId: subscription.id,
+              plan: subscription.plan,
+              reason: timeoutReason,
+              attempts,
+              maxAttempts: this.maxAttempts,
+              elapsedSeconds: Math.round(elapsed / 1000),
+              maxDurationSeconds: Math.round(MAX_POLLING_DURATION_MS / 1000)
+            });
+            resolve({
+              success: false,
+              error: `Entitlement polling timed out - ${timeoutReason}`
+            });
+          }
+
+        } catch (error) {
+          logger.error('entitlement-polling.account.error', {
+            attempt: attempts,
+            elapsedSeconds: Math.round((Date.now() - startTime) / 1000),
+            error: error instanceof Error ? error.message : String(error)
+          });
+
+          const catchElapsed = Date.now() - startTime;
+          if (attempts >= this.maxAttempts || catchElapsed >= MAX_POLLING_DURATION_MS) {
+            const timeoutReason = catchElapsed >= MAX_POLLING_DURATION_MS ? 'time limit exceeded' : 'max attempts reached';
+            resolve({
+              success: false,
+              error: error instanceof Error ? error.message : `Unknown error during entitlement polling (${timeoutReason})`
+            });
+          } else {
+            // Try again after delay
+            setTimeout(poll, this.pollInterval);
+          }
+        }
+      };
+
+      // Start polling
+      poll();
+    });
+  }
+
+  /**
    * Poll for entitlements by app ID until they are created in the backend
+   * @deprecated Use pollForAccountEntitlements() for app-agnostic subscriptions
    */
   async pollForEntitlements(
     appId: string,

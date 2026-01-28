@@ -6,8 +6,8 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createMockMessageContext } from '../../handlers/__tests__/testUtils'
-import { publishAction } from '../publishAction'
+import { publishAction } from './publishAction'
+import { createMockMessageContext } from '../handlers/__tests__/testUtils'
 
 // Mock dependencies
 vi.mock('@/lib/gasket-config', () => ({
@@ -98,6 +98,7 @@ describe('publishAction', () => {
       setBuildErrorDetails: vi.fn(),
       setDeploymentInProgressId: vi.fn(),
       setShowPaywallModal: vi.fn(),
+      openUpgradeModal: vi.fn(),
     }
 
     vi.mocked(useDevelopPageStore.getState).mockReturnValue(mockStoreActions)
@@ -199,7 +200,7 @@ describe('publishAction', () => {
 
       await publishAction(params, context)
 
-      expect(checkPaywallEligibility).toHaveBeenCalledWith('app-123', expect.any(Object))
+      expect(checkPaywallEligibility).toHaveBeenCalledWith(expect.any(Object), 'app-123')
     })
 
     it('should allow publish when user has access', async () => {
@@ -222,6 +223,7 @@ describe('publishAction', () => {
 
       await expect(publishAction(params, context)).resolves.toBeDefined()
       expect(mockStoreActions.setShowPaywallModal).not.toHaveBeenCalled()
+      expect(mockStoreActions.openUpgradeModal).not.toHaveBeenCalled()
     })
 
     it('should block publish and show modal when user lacks access', async () => {
@@ -240,8 +242,10 @@ describe('publishAction', () => {
 
       await expect(publishAction(params, context)).rejects.toThrow('Airo Plus subscription required')
 
-      // Verify modal was triggered
+      // Verify paywall state was tracked (prevents error alert)
       expect(mockStoreActions.setShowPaywallModal).toHaveBeenCalledWith('app-123', true)
+      // Verify upgrade modal was actually shown in UI
+      expect(mockStoreActions.openUpgradeModal).toHaveBeenCalledWith('publish')
 
       // Verify publish API was NOT called
       expect(global.fetch).not.toHaveBeenCalledWith(
@@ -266,6 +270,7 @@ describe('publishAction', () => {
 
       await expect(publishAction(params, context)).rejects.toThrow('No active subscription found')
       expect(mockStoreActions.setShowPaywallModal).toHaveBeenCalledWith('app-123', true)
+      expect(mockStoreActions.openUpgradeModal).toHaveBeenCalledWith('publish')
     })
 
     it('should continue gracefully if modal trigger fails', async () => {
@@ -697,8 +702,10 @@ describe('publishAction', () => {
 
       await expect(publishAction(params, context)).rejects.toThrow('Airo Plus subscription required')
 
-      // Paywall modal should be shown
+      // Paywall state should be tracked (prevents error alert)
       expect(mockStoreActions.setShowPaywallModal).toHaveBeenCalledWith('app-123', true)
+      // Upgrade modal should be shown in UI
+      expect(mockStoreActions.openUpgradeModal).toHaveBeenCalledWith('publish')
       // Should NOT set publish error when paywall modal is showing
       expect(mockStoreActions.setPublishError).not.toHaveBeenCalled()
       // But should still clear publishing state

@@ -122,6 +122,27 @@ export function getPackName(creditsMax: number): string {
 }
 
 /**
+ * Determine subscription plan from subscription data
+ * Handles both new plan field and legacy productId mapping
+ */
+export function getPlanFromSubscription(subscription: {
+  plan?: SubscriptionPlan;
+  productId?: string;
+  isTrial?: boolean;
+}): SubscriptionPlan {
+  if (subscription.plan) {
+    return subscription.plan;
+  }
+
+  // Legacy product ID mapping
+  if (subscription.productId === 'aab-v1') {
+    return subscription.isTrial ? SubscriptionPlan.Free : SubscriptionPlan.AiroPlus;
+  }
+
+  return SubscriptionPlan.None;
+}
+
+/**
  * Get translation key for subscription plan display label
  */
 export function getPlanDisplayLabelKey(plan: SubscriptionPlan): string {

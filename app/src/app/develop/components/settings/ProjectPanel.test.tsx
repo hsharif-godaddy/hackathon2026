@@ -79,6 +79,7 @@ describe('ProjectPanel', () => {
         PaywallModal: () => null,
         isPolling: false,
         shouldShowPaywall: false,
+        isPaywallLoading: false,
       });
 
       renderWithProviders(<ProjectPanel />);
@@ -112,6 +113,7 @@ describe('ProjectPanel', () => {
         PaywallModal: () => null,
         isPolling: false,
         shouldShowPaywall: false,
+        isPaywallLoading: false,
       });
 
       renderWithProviders(<ProjectPanel />);
@@ -144,6 +146,7 @@ describe('ProjectPanel', () => {
         PaywallModal: () => null,
         isPolling: true,
         shouldShowPaywall: false,
+        isPaywallLoading: false,
       });
 
       renderWithProviders(<ProjectPanel />);
@@ -165,6 +168,7 @@ describe('ProjectPanel', () => {
         PaywallModal: () => null,
         isPolling: false,
         shouldShowPaywall: false,
+        isPaywallLoading: false,
       });
 
       renderWithProviders(<ProjectPanel />);

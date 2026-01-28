@@ -18,7 +18,7 @@ export default function ProjectPanel() {
   const { download, isDownloading } = useDownloadApp()
 
   // Use shared paywall modal hook
-  const { checkAndShowPaywall, PaywallModal, isPolling } = usePaywallModal({
+  const { checkAndShowPaywall, PaywallModal, isPolling, isPaywallLoading } = usePaywallModal({
     appId,
     source: 'download',
     onPurchaseSuccess: async () => {
@@ -63,7 +63,7 @@ export default function ProjectPanel() {
       >
         <Button
           onClick={handleDownload}
-          disabled={isDownloading || isPolling || !appId}
+          disabled={isDownloading || isPolling || isPaywallLoading || !appId}
           design='primary'
           size='md'
           data-eid={generateClickEID('settings.project.app_download')}

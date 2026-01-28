@@ -46,7 +46,7 @@ export default function AppPublish({ location }: { location?: string }) {
   const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall');
 
   // Use shared paywall modal hook
-  const { checkAndShowPaywall, PaywallModal, isPolling } = usePaywallModal({
+  const { checkAndShowPaywall, PaywallModal, isPolling, isPaywallLoading } = usePaywallModal({
     appId: currentAppId,
     source: 'publish',
     onPurchaseSuccess: async () => {
@@ -255,8 +255,9 @@ export default function AppPublish({ location }: { location?: string }) {
   // - Initial loading (deployments or git history)
   // - Polling entitlements after purchase
   // - Entitlements polling failed
+  // - Paywall eligibility is being checked
   // Note: Publishing, deployment, conversation in progress, and current commit deployed are now shown as warnings in the modal
-  const isButtonDisabled = isLoading || isLoadingGitHistory || isPolling || entitlementsPollingFailed;
+  const isButtonDisabled = isLoading || isLoadingGitHistory || isPolling || entitlementsPollingFailed || isPaywallLoading;
 
   const publishWidget = isFirstTimePublishing ? 'app_first_publish' : 'app_publish';
 

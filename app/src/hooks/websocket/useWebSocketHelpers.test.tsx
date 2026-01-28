@@ -13,7 +13,7 @@ import {
   getConversationIdFromCookie,
   setConversationIdCookie,
   useWebSocketHelpers,
-} from '../useWebSocketHelpers'
+} from './useWebSocketHelpers'
 
 vi.mock('@/stores/useGitStore', () => ({
   useGitStore: {

@@ -177,5 +177,6 @@ export async function createGraphQLClientWithS2SAuth(): Promise<GraphQLClient> {
         }
     };
 
-    return new GraphQLClient(endpoint, getToken);
+    // Use 30 second timeout for S2S queries (projects query can be slow)
+    return new GraphQLClient(endpoint, getToken, 30000);
 }

@@ -9,11 +9,12 @@
  */
 
 import { logger } from '@/lib/request-context';
+import { SubscriptionPlan } from '@/types/credits';
 import type { PaywallDataProvider } from './providers';
 import { isMatchingProject, type PaywallCheckResult } from './shared';
 
 /**
- * Check if user has Airo Plus access for an app
+ * Check if user has Airo Plus access (app-agnostic)
  *
  * This is the main paywall eligibility check used by both client and server.
  * It follows a 4-step algorithm:
@@ -22,23 +23,25 @@ import { isMatchingProject, type PaywallCheckResult } from './shared';
  *    - If check fails (network error, service down), throw error and deny access (fail closed)
  *    - If paywall explicitly disabled by flags, allow access
  *
- * 2. Verify user has a subscription containing the app
- *    - If no subscription, deny access
+ * 2. Get user's account-level subscription
+ *    - Check the plan field (none|free|starter|airoPlus)
+ *    - Free and none plans require paywall
+ *    - Starter and airoPlus plans have access
  *
- * 3. Check if user has entitlements
+ * 3. Check if user has entitlements (for legacy compatibility)
  *    - If yes, grant access
  *
  * 4. Fallback: Check for matching Airo Plus project
  *    - If found, grant access
  *    - Otherwise, deny access
  *
- * @param appId - The app ID to check access for
  * @param provider - Environment-specific data provider
+ * @param appId - Optional app ID for legacy compatibility
  * @returns Promise with detailed access result
  */
 export async function checkPaywallEligibility(
-  appId: string,
-  provider: PaywallDataProvider
+  provider: PaywallDataProvider,
+  appId?: string
 ): Promise<PaywallCheckResult> {
   logger.info('paywall.eligibility.check.start', { appId });
 
@@ -117,49 +120,70 @@ export async function checkPaywallEligibility(
       };
     }
 
-    // Step 2: Check subscription
-    const subscriptionId = await provider.getSubscription(appId);
+    // Step 2: Check account-level subscription
+    const accountSubscription = await provider.getAccountSubscription();
 
-    if (!subscriptionId) {
+    if (!accountSubscription) {
       logger.warn('paywall.eligibility.no-subscription', { appId });
       result.reason = 'No active subscription found';
       return result;
     }
 
-    result.details.hasSubscription = true;
-    result.details.subscriptionId = subscriptionId;
+    // Check plan level for access
+    const hasAccessByPlan = accountSubscription.plan === SubscriptionPlan.AiroPlus || accountSubscription.plan === SubscriptionPlan.Starter;
 
-    // Step 3: Check entitlements
-    try {
-      const entitlementId = await provider.getEntitlements(subscriptionId);
+    if (hasAccessByPlan) {
+      result.details.hasSubscription = true;
+      result.details.subscriptionId = accountSubscription.id;
+      result.hasAccess = true;
 
-      if (entitlementId) {
-        result.details.hasEntitlements = true;
-        result.details.entitlementId = entitlementId;
-        result.hasAccess = true;
-
-        logger.info('paywall.eligibility.access-granted', {
-          appId,
-          reason: 'user-has-entitlements',
-          subscriptionId,
-          entitlementId,
-        });
-
-        return result;
-      }
-    } catch (error) {
-      logger.warn('paywall.eligibility.entitlements-error', {
+      logger.info('paywall.eligibility.access-granted', {
         appId,
-        subscriptionId,
-        error: error instanceof Error ? error.message : String(error),
+        reason: 'user-has-paid-plan',
+        subscriptionId: accountSubscription.id,
+        plan: accountSubscription.plan,
       });
-      // Continue to fallback check
+
+      return result;
     }
 
-    // Step 4: Check matching project (fallback)
-    try {
-      const projects = await provider.getProjects();
+    // If user has free or none plan, check entitlements and projects in parallel
+    result.details.hasSubscription = true;
+    result.details.subscriptionId = accountSubscription.id;
 
+    // Step 3 & 4: Check entitlements and projects in parallel for faster response
+    const [entitlementResult, projectsResult] = await Promise.allSettled([
+      accountSubscription.id ? provider.getEntitlements(accountSubscription.id) : Promise.resolve(undefined),
+      provider.getProjects(),
+    ]);
+
+    // Check entitlements result
+    if (entitlementResult.status === 'fulfilled' && entitlementResult.value) {
+      result.details.hasEntitlements = true;
+      result.details.entitlementId = entitlementResult.value;
+      result.hasAccess = true;
+
+      logger.info('paywall.eligibility.access-granted', {
+        appId,
+        reason: 'user-has-entitlements',
+        subscriptionId: accountSubscription.id,
+        entitlementId: entitlementResult.value,
+      });
+
+      return result;
+    }
+
+    if (entitlementResult.status === 'rejected') {
+      logger.warn('paywall.eligibility.entitlements-error', {
+        appId,
+        subscriptionId: accountSubscription.id,
+        error: entitlementResult.reason instanceof Error ? entitlementResult.reason.message : String(entitlementResult.reason),
+      });
+    }
+
+    // Check projects result
+    if (projectsResult.status === 'fulfilled') {
+      const projects = projectsResult.value;
       const matchingProject = projects.find((edge) => isMatchingProject(edge.node));
 
       if (matchingProject?.node?.billing?.id) {
@@ -170,23 +194,26 @@ export async function checkPaywallEligibility(
         logger.info('paywall.eligibility.access-granted', {
           appId,
           reason: 'user-has-matching-project',
-          subscriptionId,
+          subscriptionId: accountSubscription.id,
           billingId: matchingProject.node.billing.id,
         });
 
         return result;
       }
-    } catch (error) {
+    } else {
       logger.warn('paywall.eligibility.projects-error', {
         appId,
-        subscriptionId,
-        error: error instanceof Error ? error.message : String(error),
+        subscriptionId: accountSubscription.id,
+        error: projectsResult.reason instanceof Error ? projectsResult.reason.message : String(projectsResult.reason),
       });
-      // Continue to denial
     }
 
     // No access found
-    logger.warn('paywall.eligibility.access-denied', { appId, subscriptionId });
+    logger.warn('paywall.eligibility.access-denied', {
+      appId,
+      subscriptionId: accountSubscription.id,
+      plan: accountSubscription.plan
+    });
     result.reason = 'Airo Plus subscription required';
     return result;
   } catch (error) {

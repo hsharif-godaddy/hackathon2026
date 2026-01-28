@@ -1,9 +1,12 @@
 import { useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
 
 import { shipAnalyticsLog } from '@/lib/logging';
-import { ClientPaywallProvider } from '@/lib/paywall/client-provider';
-import { checkPaywallEligibility } from '@/lib/paywall/core';
+import { isMatchingProject } from '@/lib/paywall/shared';
+import { SubscriptionPlan } from '@/types/credits';
+import { useEntitlements } from './useEntitlements';
+import { usePaywallFeatureFlags } from './usePaywallFeatureFlags';
+import { useProjects } from './useProjects';
+import { useSubscription } from './useSubscription';
 import { useUpdateEntitlement } from './useUpdateEntitlement';
 
 interface PaywallEligibilityResult {
@@ -13,36 +16,60 @@ interface PaywallEligibilityResult {
   error: Error | null;
 }
 
-export const usePaywallEligibility = (appId: string | undefined): PaywallEligibilityResult => {
-  // Use consolidated paywall check
-  const {
-    data: paywallResult,
-    isLoading,
-    isError,
-    error,
-  } = useQuery({
-    queryKey: ['paywall-eligibility', appId],
-    queryFn: async () => {
-      if (!appId) {
-        return {
-          hasAccess: false,
-          details: {
-            hasSubscription: false,
-            hasEntitlements: false,
-            hasMatchingProject: false,
-          },
-        };
-      }
+/**
+ * Hook to check account-level paywall eligibility
+ *
+ * Uses individual query hooks for each data source.
+ * React Query handles caching and deduplication automatically.
+ *
+ * @param appId - Optional app ID for legacy compatibility and logging
+ * @returns PaywallEligibilityResult
+ */
+export const usePaywallEligibility = (appId?: string): PaywallEligibilityResult => {
+  // Step 1: Fetch feature flags
+  const { data: featureFlags, isLoading: isFlagsLoading, isError: isFlagsError } = usePaywallFeatureFlags();
+  const paywallEnabled = featureFlags?.paywall && featureFlags?.markets;
 
-      const provider = new ClientPaywallProvider();
-      const result = await checkPaywallEligibility(appId, provider);
-      return result;
-    },
-    enabled: !!appId,
-    staleTime: 30000, // Consider data fresh for 30 seconds
-    refetchOnWindowFocus: true,
+  // Step 2: Fetch subscription data (only if paywall enabled)
+  const { data: subscription, isLoading: isSubscriptionLoading, isError: isSubscriptionError } = useSubscription();
+
+  // Check if user has active paid plan - if so, grant access immediately
+  // Subscription must be active AND have a paid plan type
+  const isActive = subscription?.status === 'active';
+  const hasPaidPlan = isActive && (
+    subscription?.plan === SubscriptionPlan.AiroPlus ||
+    subscription?.plan === SubscriptionPlan.Starter
+  );
+
+  // Only need additional checks for free/none plans
+  const needsAdditionalChecks = paywallEnabled && subscription && !hasPaidPlan;
+
+  // Step 3: Fetch entitlements (only if needed)
+  const { data: entitlementId, isLoading: isEntitlementsLoading } = useEntitlements({
+    subscriptionId: subscription?.id,
+    enabled: needsAdditionalChecks,
   });
 
+  // Step 4: Fetch projects for Airo Plus matching (only if needed)
+  const { data: projects, isLoading: isProjectsLoading } = useProjects({
+    enabled: needsAdditionalChecks,
+  });
+
+  // Find matching Airo Plus project
+  const matchingProject = projects?.find((edge) => isMatchingProject(edge.node));
+  const billingId = matchingProject?.node?.billing?.id;
+
+  // Compute loading state - only wait for what we need
+  const isLoading = isFlagsLoading ||
+    (paywallEnabled && isSubscriptionLoading) ||
+    (needsAdditionalChecks && (isEntitlementsLoading || isProjectsLoading));
+
+  // Compute access
+  const hasEntitlements = !!entitlementId;
+  const hasMatchingProject = !!billingId;
+  const hasAccess = !paywallEnabled || hasPaidPlan || hasEntitlements || hasMatchingProject;
+
+  // Auto-update entitlement logic
   const {
     mutate: updateEntitlement,
     isPending: isUpdating,
@@ -50,64 +77,48 @@ export const usePaywallEligibility = (appId: string | undefined): PaywallEligibi
     isError: updateFailed,
   } = useUpdateEntitlement();
 
-  // Extract details from result
-  const hasEntitlements = paywallResult?.details.hasEntitlements ?? false;
-  const hasMatchingProject = paywallResult?.details.hasMatchingProject ?? false;
-  const subscriptionId = paywallResult?.details.subscriptionId;
-  const entitlementId = paywallResult?.details.entitlementId;
-  const billingId = paywallResult?.details.billingId;
-
-  // Determine overall error state
-  const hasError = isError || updateFailed;
-  const finalError = error || null;
-
-  // Determine if we should trigger the auto-update
-  // User has subscription + matching project but no entitlements yet
   const shouldAutoUpdate =
     !!billingId &&
-    !!subscriptionId &&
+    !!subscription?.id &&
     !hasEntitlements &&
     hasMatchingProject &&
-    !hasError &&
     !isUpdating &&
     !hasUpdated &&
     !updateFailed;
 
-  // Log when user has Airo Plus access (let Elastic handle deduplication via unique count)
+  // Log when user has Airo Plus access
   useEffect(() => {
-    if (hasEntitlements && subscriptionId) {
+    if (hasEntitlements && subscription?.id) {
       shipAnalyticsLog('airoplus.access.detected', {
         appId,
-        subscriptionId,
+        subscriptionId: subscription.id,
         entitlementId,
         source: 'existing-entitlement',
       });
     }
-  }, [hasEntitlements, subscriptionId, appId, entitlementId]);
+  }, [hasEntitlements, subscription?.id, appId, entitlementId]);
 
   // Auto-trigger entitlement update when conditions are met
-  // React Query's mutation state (isPending, isSuccess, isError) prevents duplicate calls
   useEffect(() => {
-    if (shouldAutoUpdate) {
+    if (shouldAutoUpdate && subscription?.id && billingId) {
       updateEntitlement({
-        subscriptionId: subscriptionId!,
-        entitlementId: billingId!,
+        subscriptionId: subscription.id,
+        entitlementId: billingId,
         appId,
       });
     }
-  }, [shouldAutoUpdate, appId, subscriptionId, billingId, updateEntitlement]);
+  }, [shouldAutoUpdate, appId, subscription?.id, billingId, updateEntitlement]);
 
   // Determine if paywall should be shown
-  // Trust the consolidated check result, but allow in-progress updates
   const entitlementUpdateInProgress = isUpdating || hasUpdated;
-  const hasAccess = paywallResult?.hasAccess || entitlementUpdateInProgress;
-
-  const showPaywall = hasError || !hasAccess;
+  const finalHasAccess = hasAccess || entitlementUpdateInProgress;
+  const hasError = isFlagsError || isSubscriptionError || updateFailed;
+  const showPaywall = hasError || !finalHasAccess;
 
   return {
     showPaywall,
     isLoading,
     isError: hasError,
-    error: finalError as Error | null,
+    error: null,
   };
 };

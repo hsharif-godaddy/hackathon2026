@@ -9,7 +9,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ClientPaywallProvider } from '../client-provider';
+import { ClientPaywallProvider } from './client-provider';
 
 // Mock logger
 vi.mock('@/lib/request-context', () => ({

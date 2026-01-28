@@ -30,14 +30,17 @@ export const publishAction: ClientActionExecutor = async (params) => {
   try {
     // Check paywall eligibility using core algorithm with client provider
     const provider = new ClientPaywallProvider()
-    const { hasAccess, reason } = await checkPaywallEligibility(appId, provider)
+    const { hasAccess, reason } = await checkPaywallEligibility(provider, appId)
     if (!hasAccess) {
       logger.warn('publish-action.access-denied', { appId, reason })
 
       // Show paywall modal
       try {
         const store = useDevelopPageStore.getState()
+        // Track that paywall blocked this publish (prevents error alert from showing)
         store.setShowPaywallModal(appId, true)
+        // Actually show the upgrade modal in the UI
+        store.openUpgradeModal('publish')
       } catch (storeError) {
         logger.warn('publish-action.paywall-modal-trigger-failed', {
           appId,

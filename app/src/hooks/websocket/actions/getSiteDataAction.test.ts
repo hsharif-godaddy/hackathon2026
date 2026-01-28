@@ -5,8 +5,8 @@
 import { beforeEach,describe, expect, it, vi } from 'vitest'
 
 import { useSiteStore } from '@/stores/useSiteStore'
-import type { MessageContext } from '../../handlers/types'
-import { getSiteDataAction } from '../getSiteDataAction'
+import { getSiteDataAction } from './getSiteDataAction'
+import type { MessageContext } from '../handlers/types'
 
 // Mock dependencies
 vi.mock('@/stores/useSiteStore', () => ({
