@@ -25,24 +25,6 @@ vi.mock('@/hooks/usePaywallModal', () => ({
   })),
 }));
 
-vi.mock('@/hooks/useDailyUsage', () => ({
-  useDailyUsage: vi.fn(() => ({
-    data: null,
-    isLoading: false,
-    warningLevel: 'none',
-    formattedResetTime: null,
-    refresh: vi.fn(),
-  })),
-}));
-
-import { useDailyUsage } from '@/hooks/useDailyUsage';
-
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({
-    data: false,
-  })),
-}));
-
 vi.mock('@/app/develop/components/utils', () => ({
   useAppIdFromParams: vi.fn(() => 'test-app-123'),
 }));
@@ -64,14 +46,7 @@ describe('ProjectPanel', () => {
   it('should render without crashing', () => {
     renderWithProviders(<ProjectPanel />);
 
-    expect(screen.getByText('Daily Usage')).toBeInTheDocument();
-  });
-
-  it('should display usage heading', () => {
-    renderWithProviders(<ProjectPanel />);
-
-    const heading = screen.getByRole('heading', { name: /Daily Usage/i });
-    expect(heading).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Download Files/i })).toBeInTheDocument();
   });
 
   describe('Download button tracking', () => {
@@ -178,44 +153,7 @@ describe('ProjectPanel', () => {
       expect(downloadButton).toBeDisabled();
     });
 
-    it('should disable download button when daily usage is loading', () => {
-      vi.mocked(useDailyUsage).mockReturnValue({
-        data: null,
-        isLoading: true,
-        warningLevel: 'none',
-        formattedResetTime: null,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-
-      // Ensure download and polling are NOT in progress
-      vi.mocked(useDownloadApp).mockReturnValue({
-        download: vi.fn(),
-        isDownloading: false,
-        error: null,
-      });
-
-      vi.mocked(usePaywallModal).mockReturnValue({
-        checkAndShowPaywall: vi.fn(),
-        PaywallModal: () => null,
-        isPolling: false,
-        shouldShowPaywall: false,
-      });
-
-      renderWithProviders(<ProjectPanel />);
-
-      const downloadButton = screen.getByRole('button', { name: /Download Files/i });
-      expect(downloadButton).toBeDisabled();
-    });
-
     it('should enable download button when not loading and has appId', () => {
-      vi.mocked(useDailyUsage).mockReturnValue({
-        data: null,
-        isLoading: false,
-        warningLevel: 'none',
-        formattedResetTime: null,
-        refresh: vi.fn(),
-      } as unknown as ReturnType<typeof useDailyUsage>);
-
       vi.mocked(useDownloadApp).mockReturnValue({
         download: vi.fn(),
         isDownloading: false,
