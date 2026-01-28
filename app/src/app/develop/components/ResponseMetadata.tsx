@@ -1,7 +1,10 @@
 'use client'
 
-import { Check,ClipboardCopy } from 'lucide-react'
-import { useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useRef, useState } from 'react'
+import CheckIcon from '@ux/icon/checkmark'
+import ClipboardIcon from '@ux/icon/clipboard'
+import OkIcon from '@ux/icon/ok'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -31,6 +34,8 @@ interface ResponseMetadataProps {
 export default function ResponseMetadata({ duration, content }: ResponseMetadataProps) {
   const t = useTranslations()
   const [copiedToClipboard, setCopiedToClipboard] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   /**
    * Format duration in milliseconds to human-readable string
@@ -54,7 +59,17 @@ export default function ResponseMetadata({ duration, content }: ResponseMetadata
     try {
       await navigator.clipboard.writeText(content)
       setCopiedToClipboard(true)
-      setTimeout(() => setCopiedToClipboard(false), 2000)
+
+      // Clear existing timeout if any
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+
+      // Set new timeout
+      timeoutRef.current = setTimeout(() => {
+        setCopiedToClipboard(false)
+        timeoutRef.current = null
+      }, 5000)
     } catch (err) {
       logger.error('response_metadata.copy.failed', {
         error: err instanceof Error ? err.message : String(err)
@@ -62,19 +77,70 @@ export default function ResponseMetadata({ duration, content }: ResponseMetadata
     }
   }
 
+  /**
+   * Handle mouse leave - clear timeout and reset state
+   */
+  const handleMouseLeave = () => {
+    setIsHovered(false)
+
+    // Clear timeout and reset copied state
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+    setCopiedToClipboard(false)
+  }
+
   return (
-    <div className="flex items-center justify-between mt-1.5 text-xs text-foreground/50">
-      <span>
-        {t('builder_chat_completed_in', {duration: formatDuration(duration)})}
-      </span>
-      <button
-        onClick={handleCopyResponse}
-        className="hover:text-muted-foreground transition-colors cursor-pointer"
-        title={t('builder_chat_copy_clipboard')}
-      >
-        {copiedToClipboard ? <Check className="w-2 h-2" /> : <ClipboardCopy className="w-2 h-2" />}
-      </button>
-    </div>
+    <button
+      className="group flex items-center justify-between mt-1.5 text-xs text-foreground/50 cursor-pointer w-full"
+      onClick={handleCopyResponse}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={handleMouseLeave}
+      title={t('builder_chat_copy_clipboard')}
+    >
+      <div className="flex gap-1 items-center">
+        <OkIcon className="w-2 h-2" />
+        <div className="flex gap-0.5 items-center overflow-hidden group-hover:text-foreground">
+          {t('builder_chat_completed')}
+          <AnimatePresence>
+            {isHovered && (
+              <motion.span
+                className="whitespace-nowrap"
+                initial={{ opacity: 0, x: -10, width: 0 }}
+                animate={{ opacity: 1, x: 0, width: 'auto' }}
+                exit={{ opacity: 0, x: -10, width: 0 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+              >
+                {t('builder_chat_in_duration', {duration: formatDuration(duration)})}
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+      <AnimatePresence>
+        {isHovered && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            {copiedToClipboard ? (
+              <motion.div
+                initial={{ scale: 0.5 }}
+                animate={{ scale: [0.5, 1.2, 1] }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+              >
+                <CheckIcon className="w-2 h-2" />
+              </motion.div>
+            ) : (
+              <ClipboardIcon className="w-2 h-2" />
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </button>
   )
 }
 
