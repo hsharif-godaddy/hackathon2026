@@ -165,7 +165,7 @@ jobs:
           go build -ldflags="-w -s" -o "dist/${BINARY_NAME}-${GOOS}-${GOARCH}" .
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: dev-supervisor-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dev-supervisor/dist/
