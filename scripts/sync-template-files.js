@@ -79,6 +79,14 @@ const SYNC_MANIFEST = [
     force: false
   },
   {
+    file: 'tailwind.config.js',
+    description: 'Tailwind configuration',
+    known_hashes: [
+      'dc4000c310080b563197be98cf2069d8'  // Before dev-tools/src content path was added
+    ],
+    force: false
+  },
+  {
     file: 'vite.config.ts',
     description: 'Vite build and dev server configuration',
     known_hashes: [

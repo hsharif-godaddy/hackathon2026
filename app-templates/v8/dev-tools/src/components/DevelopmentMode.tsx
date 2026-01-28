@@ -273,7 +273,7 @@ export default function DevelopmentMode() {
       {showFloatingButton && (
         <button
         data-dev-tools="floating-button"
-        className="fixed bottom-10 left-10 w-7.5 h-7.5 rounded-full bg-intents-ux-boxLowContrast-backgroundColor backdrop-blur-10px text-white p-1.5 font-semibold text-sm z-999999 box-shadow-md border transition-opacity duration-200 cursor-pointer"
+        className="fixed bottom-10 left-10 w-7.5 h-7.5 rounded-full backdrop-blur-10px text-white p-1.5 font-semibold text-sm z-999999 box-shadow-md border transition-opacity duration-200 cursor-pointer"
         style={{
           background: isSelectMode
             ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
@@ -300,7 +300,7 @@ export default function DevelopmentMode() {
           data-dev-tools="indicator"
           onMouseEnter={() => setIsIndicatorHovered(true)}
           onMouseLeave={() => setIsIndicatorHovered(false)}
-          className="fixed top-[10px] left-1/2 transform -translate-x-1/2 bg-white text-black p-1.5 rounded-sm font-semibold text-sm z-999998 shadow-md border border-border transition-opacity duration-200 cursor-pointer"
+          className="fixed top-[10px] left-1/2 transform -translate-x-1/2 bg-white text-black px-2 py-0.5 rounded-sm font-semibold text-sm z-999998 shadow-md border border-border transition-opacity duration-200 cursor-pointer"
           style={{ opacity: isIndicatorHovered ? 0 : 1 }}
           title="Hover to temporarily hide this indicator"
         >
