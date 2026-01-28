@@ -3,10 +3,19 @@ version: 2
 # Dependabot configuration for public npm dependencies only
 # Note: Internal GoDaddy packages (via Artifactory) are excluded due to security restrictions
 # Schedule times are in UTC
+
+registries:
+  npm-public:
+    type: npm-registry
+    url: https://registry.npmjs.org
+    replaces-base: true
+
 updates:
   # Root workspace
   - package-ecosystem: "npm"
     directory: "/"
+    registries:
+      - npm-public
     schedule:
       interval: "weekly"
       day: "monday"
@@ -56,6 +65,8 @@ updates:
   # Agents package
   - package-ecosystem: "npm"
     directory: "/agents"
+    registries:
+      - npm-public
     schedule:
       interval: "weekly"
       day: "monday"
@@ -81,6 +92,8 @@ updates:
   # App (website) package
   - package-ecosystem: "npm"
     directory: "/app"
+    registries:
+      - npm-public
     schedule:
       interval: "weekly"
       day: "monday"
@@ -116,6 +129,8 @@ updates:
   # CDK package
   - package-ecosystem: "npm"
     directory: "/cdk"
+    registries:
+      - npm-public
     schedule:
       interval: "weekly"
       day: "monday"
@@ -131,6 +146,8 @@ updates:
   # Proxy package
   - package-ecosystem: "npm"
     directory: "/proxy"
+    registries:
+      - npm-public
     schedule:
       interval: "weekly"
       day: "monday"
@@ -140,6 +157,8 @@ updates:
   # AI Lib package
   - package-ecosystem: "npm"
     directory: "/packages/ai-lib"
+    registries:
+      - npm-public
     schedule:
       interval: "weekly"
       day: "monday"
@@ -160,6 +179,8 @@ updates:
   # Design Extractor package
   - package-ecosystem: "npm"
     directory: "/packages/design-extractor"
+    registries:
+      - npm-public
     schedule:
       interval: "weekly"
       day: "monday"
@@ -169,6 +190,8 @@ updates:
   # Setup package
   - package-ecosystem: "npm"
     directory: "/setup"
+    registries:
+      - npm-public
     schedule:
       interval: "weekly"
       day: "monday"
@@ -178,6 +201,8 @@ updates:
   # Bedrock Log Viewer package
   - package-ecosystem: "npm"
     directory: "/bedrock-log-viewer"
+    registries:
+      - npm-public
     schedule:
       interval: "weekly"
       day: "monday"
@@ -187,6 +212,8 @@ updates:
   # Debug Console package
   - package-ecosystem: "npm"
     directory: "/debug-console"
+    registries:
+      - npm-public
     schedule:
       interval: "weekly"
       day: "monday"
