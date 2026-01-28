@@ -265,14 +265,21 @@ type RequestRouter struct {
 	startOnRequestEnabled bool
 }
 
-// isCORSPreflight returns true if the request is a CORS preflight OPTIONS request.
-// CORS preflight requests have either Access-Control-Request-Method or
-// Access-Control-Request-Headers headers, which distinguish them from regular
-// OPTIONS requests used for API discovery.
-func (rr *RequestRouter) isCORSPreflight(r *http.Request) bool {
+/**
+ * isCORSPreflight returns true if the request is a CORS preflight OPTIONS request.
+ * CORS preflight requests have either Access-Control-Request-Method or
+ * Access-Control-Request-Headers headers, which distinguish them from regular
+ * OPTIONS requests used for API discovery.
+ */
+func isCORSPreflight(r *http.Request) bool {
 	return r.Method == http.MethodOptions &&
 		(r.Header.Get("Access-Control-Request-Method") != "" ||
 			r.Header.Get("Access-Control-Request-Headers") != "")
+}
+
+// isCORSPreflight is a convenience method for RequestRouter
+func (rr *RequestRouter) isCORSPreflight(r *http.Request) bool {
+	return isCORSPreflight(r)
 }
 
 func (rr *RequestRouter) writeStaticOptionsResponse(w http.ResponseWriter, r *http.Request) {
@@ -421,6 +428,62 @@ func (rr *RequestRouter) handleAutoStart(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}
+}
+
+/**
+ * isPathExcluded checks if a request path matches any excluded path
+ * Used to prevent health checks and monitoring from keeping apps alive
+ * Matches JWT middleware logic for consistency
+ */
+func isPathExcluded(path string, excludedPaths []string) bool {
+	for _, excluded := range excludedPaths {
+		// Exclude exact path matches
+		if path == excluded {
+			return true
+		}
+
+		// For directory-style exclusions (ending with "/"), use prefix matching.
+		// This avoids unintentionally excluding paths like "/healthcheck" when
+		// only "/health" is configured as an excluded path.
+		if strings.HasSuffix(excluded, "/") && strings.HasPrefix(path, excluded) {
+			return true
+		}
+	}
+	return false
+}
+
+/**
+ * activityTrackingMiddleware wraps an http.Handler to track in-flight requests
+ * for idle monitoring. Only active when start-on-request is enabled.
+ * Excludes health checks, monitoring paths, and CORS preflight from updating activity at request start.
+ * Always updates activity on request completion (via UntrackRequest) to prevent shutdown during long requests.
+ */
+func activityTrackingMiddleware(next http.Handler, procMgr *ProcessManager, excludedPaths []string) http.Handler {
+	// Return no-op if ProcessManager is nil or start-on-request is disabled
+	if procMgr == nil || !procMgr.IsStartOnRequestEnabled() {
+		return next
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Track request start (always count in-flight requests)
+		procMgr.TrackRequest()
+
+		// Determine if this request should update activity at start
+		// Skip CORS preflight (automated browser behavior), health checks, and monitoring
+		shouldUpdateActivityAtStart := !isCORSPreflight(r) && !isPathExcluded(r.URL.Path, excludedPaths)
+
+		// Update activity at request start for non-excluded paths
+		if shouldUpdateActivityAtStart {
+			procMgr.UpdateActivity()
+		}
+
+		// Ensure cleanup always happens, even on panic
+		// UntrackRequest always calls UpdateActivity() to prevent shutdown during long requests
+		defer procMgr.UntrackRequest()
+
+		// Call next handler
+		next.ServeHTTP(w, r)
+	})
 }
 
 /**
@@ -1110,8 +1173,22 @@ func (p *HTTPProxy) Start() error {
 		}
 	}
 
-	// Build middleware chain: logging -> JWT -> mux
+	// Build middleware chain: logging -> JWT -> activity -> mux
+	// JWT comes first so only authenticated requests count as activity
 	handler := http.Handler(mux)
+
+	// Determine excluded paths for activity tracking
+	// Always exclude health check and monitoring paths from updating activity
+	// to prevent automated probes from keeping apps alive indefinitely
+	activityExcludedPaths := p.config.JWTExcludedPaths
+	if activityExcludedPaths == nil {
+		activityExcludedPaths = []string{}
+	}
+
+	// Wrap with activity tracking middleware
+	// Tracks in-flight requests for idle monitoring (no-op if start-on-request disabled)
+	// Placed after JWT so only authenticated requests count as activity
+	handler = activityTrackingMiddleware(handler, p.procMgr, activityExcludedPaths)
 
 	// Add JWT middleware if enabled
 	if p.config.JWTEnabled {

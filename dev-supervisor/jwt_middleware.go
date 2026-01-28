@@ -76,7 +76,7 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		}
 
 		// Check if path is excluded from validation
-		if m.isPathExcluded(r.URL.Path) {
+		if isPathExcluded(r.URL.Path, m.config.ExcludedPaths) {
 			slog.Debug("jwt.middleware.path_excluded", "path", r.URL.Path)
 			next.ServeHTTP(w, r)
 			return
@@ -388,29 +388,6 @@ func (m *JWTMiddleware) isAPIOrJSONRequest(r *http.Request) bool {
 	// Check Content-Type for JSON
 	contentType := r.Header.Get("Content-Type")
 	return strings.Contains(contentType, "application/json")
-}
-
-/**
- * isPathExcluded checks if a path should be excluded from JWT validation
- *
- * @param path - Request path
- * @returns true if path is excluded
- */
-func (m *JWTMiddleware) isPathExcluded(path string) bool {
-	for _, excluded := range m.config.ExcludedPaths {
-		// Exclude exact path matches
-		if path == excluded {
-			return true
-		}
-
-		// For directory-style exclusions (ending with "/"), use prefix matching.
-		// This avoids unintentionally excluding paths like "/healthcheck" when
-		// only "/health" is configured as an excluded path.
-		if strings.HasSuffix(excluded, "/") && strings.HasPrefix(path, excluded) {
-			return true
-		}
-	}
-	return false
 }
 
 /**

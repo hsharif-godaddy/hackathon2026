@@ -144,6 +144,7 @@ type ProcessManager struct {
 
 	// Start-on-request fields
 	lastActivityTime      atomic.Value  // stores time.Time
+	inFlightRequests      atomic.Int64  // Count of HTTP requests currently being processed
 	idleTimeout           time.Duration // Duration of inactivity before auto-stopping
 	idleCheckInterval     time.Duration // How often to check for idle timeout
 	idleMonitorCancel     context.CancelFunc
@@ -843,6 +844,20 @@ func (pm *ProcessManager) UpdateActivity() {
 	pm.lastActivityTime.Store(time.Now())
 }
 
+// TrackRequest increments the in-flight request counter
+// Acquires mutex to coordinate with idle shutdown checks
+func (pm *ProcessManager) TrackRequest() {
+	pm.mu.Lock()
+	pm.inFlightRequests.Add(1)
+	pm.mu.Unlock()
+}
+
+// UntrackRequest decrements the in-flight request counter and updates activity
+func (pm *ProcessManager) UntrackRequest() {
+	pm.inFlightRequests.Add(-1)
+	pm.UpdateActivity()
+}
+
 // RegisterWebSocket registers an active WebSocket connection
 func (pm *ProcessManager) RegisterWebSocket(conn net.Conn) {
 	pm.activeWebSockets.Store(conn, true)
@@ -929,10 +944,15 @@ func (pm *ProcessManager) checkIdleAndStop() {
 		return false // stop iteration
 	})
 
-	if hasActiveWS {
+	// Check if any HTTP requests are in-flight
+	inFlight := pm.inFlightRequests.Load()
+
+	if hasActiveWS || inFlight > 0 {
 		pm.mu.Unlock()
-		slog.Debug("idle.check.has_active_websockets")
-		return // Don't stop if WebSockets are active
+		slog.Debug("idle.check.has_active_connections",
+			"websockets", hasActiveWS,
+			"in_flight_requests", inFlight)
+		return // Don't stop if WebSockets or requests are active
 	}
 
 	// Check idle duration while still holding the lock
@@ -949,7 +969,24 @@ func (pm *ProcessManager) checkIdleAndStop() {
 		return // Not idle long enough
 	}
 
-	// Process is idle and no active WebSockets - proceed with stop
+	// Final re-check immediately before stopping to catch late arrivals
+	// This prevents race where request starts after initial check but before Stop()
+	finalWSCheck := false
+	pm.activeWebSockets.Range(func(_, _ any) bool {
+		finalWSCheck = true
+		return false
+	})
+	finalInFlight := pm.inFlightRequests.Load()
+
+	if finalWSCheck || finalInFlight > 0 {
+		pm.mu.Unlock()
+		slog.Debug("idle.check.late_arrival_detected",
+			"websockets", finalWSCheck,
+			"in_flight_requests", finalInFlight)
+		return // New activity arrived, abort shutdown
+	}
+
+	// Process is idle and no active connections - proceed with stop
 	slog.Info("idle.stopping",
 		"idle_duration", idleDuration,
 		"threshold", pm.idleTimeout,

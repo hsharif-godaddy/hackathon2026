@@ -568,3 +568,80 @@ func TestProcessManager_EnableStartOnRequestTwice(t *testing.T) {
 	// Clean up
 	pm.StopIdleMonitor()
 }
+
+// TestProcessManager_InFlightRequestsBlockIdle tests that in-flight requests prevent idle shutdown
+func TestProcessManager_InFlightRequestsBlockIdle(t *testing.T) {
+	logMgr := NewLogManager(100)
+	pid1Mgr := NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Start a long-running process
+	req := ProcessStartRequest{
+		Command:    "sleep 30",
+		WorkingDir: "/tmp",
+	}
+	require.NoError(t, pm.Start(req), "should start process")
+	time.Sleep(100 * time.Millisecond) // Let process start
+
+	// Enable start-on-request with short timeout for testing
+	pm.EnableStartOnRequest(500*time.Millisecond, 100*time.Millisecond)
+
+	// Simulate an in-flight request
+	pm.TrackRequest()
+
+	// Wait longer than idle timeout
+	time.Sleep(800 * time.Millisecond)
+
+	// Process should still be running because of in-flight request
+	status := pm.GetStatus()
+	assert.Equal(t, ProcessStateRunning, status.State, "process should still be running with in-flight request")
+
+	// Complete the request (UntrackRequest updates activity, but that's expected)
+	// After completion, idle timeout should start fresh from the completion time
+	pm.UntrackRequest()
+
+	// Wait for idle timeout to trigger
+	time.Sleep(800 * time.Millisecond)
+
+	// Process should now be stopped (idle timeout elapsed since completion)
+	status = pm.GetStatus()
+	assert.Equal(t, ProcessStateStopped, status.State, "process should be stopped after request completes and idle timeout")
+
+	// Cleanup
+	pm.StopIdleMonitor()
+}
+
+// TestProcessManager_HealthCheckDoesNotPreventIdle tests that health checks don't keep app alive
+func TestProcessManager_HealthCheckDoesNotPreventIdle(t *testing.T) {
+	logMgr := NewLogManager(100)
+	pid1Mgr := NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Start a long-running process
+	req := ProcessStartRequest{
+		Command:    "sleep 30",
+		WorkingDir: "/tmp",
+	}
+	require.NoError(t, pm.Start(req), "should start process")
+	time.Sleep(100 * time.Millisecond)
+
+	// Enable start-on-request with short timeout
+	pm.EnableStartOnRequest(500*time.Millisecond, 100*time.Millisecond)
+
+	// Simulate periodic health checks (don't call UpdateActivity - middleware handles this)
+	// In real scenario, health checks increment/decrement counter but don't update activity
+	for i := 0; i < 5; i++ {
+		pm.TrackRequest()
+		pm.inFlightRequests.Add(-1) // Complete without updating activity
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Wait for idle timeout
+	time.Sleep(400 * time.Millisecond)
+
+	// Process should be stopped despite health checks
+	status := pm.GetStatus()
+	assert.Equal(t, ProcessStateStopped, status.State, "process should be stopped despite health checks")
+
+	pm.StopIdleMonitor()
+}
