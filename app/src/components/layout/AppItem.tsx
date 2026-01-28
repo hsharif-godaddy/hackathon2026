@@ -25,7 +25,7 @@ export default function AppItem({site, dataEid}: {site: Site, dataEid?: string})
       onClick={() => router.push(`/develop/${site.id}?siteId=${site.id}`)}
       data-eid={dataEid ?? null}
       className={clsx(
-        "w-full text-left group rounded-sm hover:cursor-pointer transition-all duration-300", {
+        "w-full text-left leading-tight group rounded-sm hover:cursor-pointer transition-all duration-300", {
           "bg-intents-ux-boxLowContrast-backgroundColor": site.id === currentSiteId,
         }
       )}
@@ -34,11 +34,11 @@ export default function AppItem({site, dataEid}: {site: Site, dataEid?: string})
         orientation="horizontal"
         gap="md"
         inlineAlignChildren="center"
-        className="p-1 rounded-md leading-tight group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300"
+        className="p-1 rounded-md group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300"
       >
         <AppThumbnail siteId={site.id} siteName={site.name} size="xs" />
         <div className="flex flex-wrap items-center gap-0.5">
-          <span>{site.name}</span>
+          <text.span as="label" className="line-clamp-2">{site.name}</text.span>
         </div>
       </Box>
     </button>
@@ -65,7 +65,7 @@ export function AppItemNew({ location }: { location?: string }) {
   return (
     <button
       onClick={() => router.push(`/`)}
-      className="hover:cursor-pointer group"
+      className="hover:cursor-pointer group text-left leading-tight"
       data-eid={generateClickEID(`${location}.apps_menu.new`)}
     >
       <Box
@@ -78,7 +78,7 @@ export function AppItemNew({ location }: { location?: string }) {
           <PlusIcon className="size-3.5 text-ai transition-all" />
         </div>
         <div>
-          <text.p>{t('builder_apps_empty_create')}</text.p>
+          <text.span as="label">{t('builder_apps_empty_create')}</text.span>
         </div>
       </Box>
     </button>
@@ -91,7 +91,7 @@ export function AppItemSeeAll({ location }: { location?: string }) {
   return (
     <button
       onClick={() => router.push(`/apps`)}
-      className="hover:cursor-pointer group"
+      className="hover:cursor-pointer group text-left leading-tight"
       data-eid={generateClickEID(`${location}.apps_menu.see_all`)}
     >
       <Box
@@ -104,7 +104,7 @@ export function AppItemSeeAll({ location }: { location?: string }) {
           <text.p className="text-ai"><AppsIcon className="size-3.5 text-ai" /></text.p>
         </div>
         <div>
-          <text.p>{t('builder_common_see_all')}</text.p>
+          <text.span as="label">{t('builder_common_see_all')}</text.span>
         </div>
       </Box>
     </button>
