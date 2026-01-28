@@ -1160,11 +1160,8 @@ func (p *HTTPProxy) EnableStartOnRequest(procMgr *ProcessManager, idleTimeout, c
 	p.startOnRequestEnabled = true
 
 	// Enable idle monitoring in ProcessManager
+	// (ProcessManager will log the configuration)
 	procMgr.EnableStartOnRequest(idleTimeout, checkInterval)
-
-	slog.Info("start_on_request.enabled",
-		"idle_timeout", idleTimeout,
-		"check_interval", checkInterval)
 }
 
 /**
