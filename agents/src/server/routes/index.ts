@@ -12,6 +12,8 @@ export { default as dbRouter } from './db.js';
 export { default as todoListRouter } from './todo-list.js';
 export { default as securityScanRouter } from './security-scan.js';
 export { default as qaAnalyzeRouter } from './qa-analyze.js';
+export { default as vulnerabilityScanRouter } from './vulnerability-scan.js';
+export { default as secretsScanRouter } from './secrets-scan.js';
 export { default as oauthRouter } from './oauth.js';
 export { default as videoRouter } from './video.js';
 export { default as goLiveRouter } from './go-live.js';

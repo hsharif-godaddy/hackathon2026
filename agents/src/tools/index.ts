@@ -23,6 +23,8 @@ export { DevSupervisorLogClient } from './dev-supervisor-log-client.js';
 export { ViewLogsTool } from './view-logs-tool.js';
 export { MemoryTool } from './memory-tool.js';
 export { SkillLoaderTool } from './skill-loader-tool.js';
+export { VulnerabilityScannerTool } from './vulnerability-scanner-tool.js';
+export { SecretsScannerTool } from './secrets-scanner-tool.js';
 // Tool definitions and execution now handled by ai-lib agents
 export type {
   DirectoryListingOptions,
@@ -151,3 +153,13 @@ export type {
   TemplateFile
 } from './skill-loader-tool.js';
 
+export type {
+  VulnerabilityScannerOptions,
+  VulnerabilityScannerResult
+} from './vulnerability-scanner-tool.js';
+
+export type {
+  SecretsScannerOptions,
+  SecretsScannerResult,
+  SecretFinding
+} from './secrets-scanner-tool.js';

@@ -21,6 +21,40 @@ COPY --from=dev-supervisor . .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o dev-supervisor .
 
 # =================================================================
+# Stage 0.5: Prepare gitleaks binary (CACHED - rarely changes)
+# =================================================================
+FROM alpine:3.22 AS gitleaks-preparer
+
+# Install curl and tar for downloading
+RUN apk add --no-cache curl tar gzip
+
+WORKDIR /tmp
+
+# Download gitleaks for Alpine Linux
+# Support both x64 and ARM64 architectures
+ARG GITLEAKS_VERSION=v8.18.0
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+
+# Detect architecture from TARGETPLATFORM (set by Docker buildx)
+# Format: linux/amd64 or linux/arm64
+RUN ARCH=$(echo ${TARGETPLATFORM:-linux/amd64} | cut -d'/' -f2) && \
+    if [ "$ARCH" = "amd64" ]; then \
+        PLATFORM="linux_x64"; \
+    elif [ "$ARCH" = "arm64" ]; then \
+        PLATFORM="linux_arm64"; \
+    else \
+        echo "Unsupported architecture: $ARCH" && exit 1; \
+    fi && \
+    VERSION_FOR_FILENAME=${GITLEAKS_VERSION#v} && \
+    curl -L -f "https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VERSION}/gitleaks_${VERSION_FOR_FILENAME}_${PLATFORM}.tar.gz" -o gitleaks.tar.gz && \
+    tar -xzf gitleaks.tar.gz && \
+    chmod +x gitleaks && \
+    mv gitleaks /usr/local/bin/gitleaks && \
+    /usr/local/bin/gitleaks version && \
+    rm -f gitleaks.tar.gz
+
+# =================================================================
 # Stage 1: Dependencies Layer (CACHED - rarely changes)
 # =================================================================
 FROM node:22-alpine AS deps
@@ -94,6 +128,9 @@ RUN echo 'agent:agent' | chpasswd
 
 # Set working directory
 WORKDIR /app
+
+# Copy gitleaks binary from preparer stage
+COPY --chown=agent:agent --from=gitleaks-preparer /usr/local/bin/gitleaks /usr/local/bin/gitleaks
 
 # Copy dev-supervisor binary from build stage (not pre-built image)
 COPY --chown=agent:agent --from=dev-supervisor-builder /build/dev-supervisor /usr/local/bin/dev-supervisor
