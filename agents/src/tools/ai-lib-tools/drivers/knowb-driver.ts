@@ -39,6 +39,27 @@ export interface KnowBSearchResult {
 }
 
 /**
+ * Options for uploading to KnowB
+ */
+export interface KnowBUploadOptions {
+  kbNodeId: string;
+  resourceId: string;
+  content: string;
+  metadata?: Record<string, unknown>;
+  /** Optional header to prepend to content. If provided, creates "# {header}: {resourceId}" */
+  header?: string;
+}
+
+/**
+ * Result from KnowB upload
+ */
+export interface KnowBUploadResult {
+  success: boolean;
+  resourceId?: string;
+  error?: string;
+}
+
+/**
  * API response structure from KnowB
  */
 interface KnowBAPIResponse {
@@ -249,6 +270,86 @@ export class KnowBDriver extends BaseDriver {
         return `## Document ${index + 1}: ${item.kbNodeId}\n**Relevance Score:** ${item.score.toFixed(3)}\n\n${item.text}\n`;
       })
       .join('\n---\n\n');
+  }
+
+  /**
+   * Upload content to the knowledge base
+   *
+   * @param options - Upload options containing content and metadata
+   * @returns Promise resolving to upload result
+   */
+  async upload(options: KnowBUploadOptions): Promise<KnowBUploadResult> {
+    const { kbNodeId, resourceId, content, metadata, header } = options;
+
+    this.logger.info('knowb-driver.upload.begin', {
+      kbNodeId,
+      resourceId,
+      contentLength: content.length,
+    });
+
+    try {
+      if (!this.hasAuth()) {
+        return {
+          success: false,
+          error: this.getAuthErrorMessage(),
+        };
+      }
+
+      // Create markdown content, optionally with header
+      const markdownContent = header
+        ? `# ${header}: ${resourceId}\n\n${content}`
+        : content;
+      const blob = new Blob([markdownContent], { type: 'text/markdown' });
+      const formData = new FormData();
+      formData.append('file', blob, `${resourceId}.md`);
+      formData.append('kbNodeId', kbNodeId);
+      formData.append('resourceType', 'document');
+      if (metadata) {
+        formData.append('metadata', JSON.stringify({ ...metadata, resourceId }));
+      }
+
+      const url = `${this.apiBaseUrl}/v1/knowb/upload`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': this.ssoJwt,
+          'x-app-key': this.appKey,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error('knowb-driver.upload.error', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+        });
+        return {
+          success: false,
+          error: `KnowB upload error: ${response.status} ${response.statusText}`,
+        };
+      }
+
+      this.logger.info('knowb-driver.upload.success', {
+        resourceId,
+        kbNodeId,
+      });
+
+      return {
+        success: true,
+        resourceId,
+      };
+    } catch (error) {
+      this.logger.error('knowb-driver.upload.exception', {
+        resourceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        success: false,
+        error: `KnowB upload failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
   }
 }
 
