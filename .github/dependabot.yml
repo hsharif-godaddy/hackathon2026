@@ -1,0 +1,202 @@
+version: 2
+
+# Dependabot configuration for public npm dependencies only
+# Note: Internal GoDaddy packages (via Artifactory) are excluded due to security restrictions
+# Schedule times are in UTC
+updates:
+  # Root workspace
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:23"
+    open-pull-requests-limit: 10
+    groups:
+      # Group AWS SDK updates together
+      aws-sdk:
+        patterns:
+          - "@aws-sdk/*"
+          - "@aws-crypto/*"
+          - "@smithy/*"
+      # Group React ecosystem
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      # Group Next.js related
+      nextjs:
+        patterns:
+          - "next"
+          - "@next/*"
+      # Group testing dependencies
+      testing:
+        patterns:
+          - "jest"
+          - "@jest/*"
+          - "vitest"
+          - "@vitest/*"
+          - "@playwright/*"
+          - "@testing-library/*"
+      # Group linting/formatting
+      code-quality:
+        patterns:
+          - "eslint"
+          - "@typescript-eslint/*"
+          - "prettier"
+          - "typescript"
+      # Group AI SDK packages
+      ai-sdk:
+        patterns:
+          - "ai"
+          - "@ai-sdk/*"
+
+  # Agents package
+  - package-ecosystem: "npm"
+    directory: "/agents"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:17"
+    open-pull-requests-limit: 10
+    groups:
+      ai-sdk:
+        patterns:
+          - "ai"
+          - "@ai-sdk/*"
+      testing:
+        patterns:
+          - "jest"
+          - "@jest/*"
+          - "vitest"
+          - "@vitest/*"
+      code-quality:
+        patterns:
+          - "eslint"
+          - "@typescript-eslint/*"
+          - "typescript"
+
+  # App (website) package
+  - package-ecosystem: "npm"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:42"
+    open-pull-requests-limit: 10
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      nextjs:
+        patterns:
+          - "next"
+          - "@next/*"
+      prisma:
+        patterns:
+          - "prisma"
+          - "@prisma/*"
+      testing:
+        patterns:
+          - "jest"
+          - "@jest/*"
+          - "@testing-library/*"
+      code-quality:
+        patterns:
+          - "eslint"
+          - "@typescript-eslint/*"
+          - "prettier"
+          - "typescript"
+
+  # CDK package
+  - package-ecosystem: "npm"
+    directory: "/cdk"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:34"
+    open-pull-requests-limit: 10
+    groups:
+      aws-cdk:
+        patterns:
+          - "aws-cdk-lib"
+          - "@aws-cdk/*"
+          - "constructs"
+
+  # Proxy package
+  - package-ecosystem: "npm"
+    directory: "/proxy"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:51"
+    open-pull-requests-limit: 5
+
+  # AI Lib package
+  - package-ecosystem: "npm"
+    directory: "/packages/ai-lib"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:55"
+    open-pull-requests-limit: 5
+    groups:
+      ai-sdk:
+        patterns:
+          - "ai"
+          - "@ai-sdk/*"
+      testing:
+        patterns:
+          - "jest"
+          - "@jest/*"
+          - "vitest"
+          - "@vitest/*"
+
+  # Design Extractor package
+  - package-ecosystem: "npm"
+    directory: "/packages/design-extractor"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:48"
+    open-pull-requests-limit: 5
+
+  # Setup package
+  - package-ecosystem: "npm"
+    directory: "/setup"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:12"
+    open-pull-requests-limit: 5
+
+  # Bedrock Log Viewer package
+  - package-ecosystem: "npm"
+    directory: "/bedrock-log-viewer"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:06"
+    open-pull-requests-limit: 5
+
+  # Debug Console package
+  - package-ecosystem: "npm"
+    directory: "/debug-console"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:18"
+    open-pull-requests-limit: 5
+
+  # Monitor GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
