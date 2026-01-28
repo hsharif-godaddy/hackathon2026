@@ -7,22 +7,37 @@ import {
   countTokens,
   countTotalTokens,
   countConversationTokens,
-  estimateTokens,
   isTokenCountingSupported,
   getModelProvider
 } from '../token-counter.js'
 
-// Mock the external dependencies
-vi.mock('tiktoken', () => ({
-  encoding_for_model: vi.fn((_model: string) => ({
-    encode: vi.fn((text: string) => new Array(Math.ceil(text.length / 4)).fill(0)),
-    free: vi.fn()
-  }))
+// Mock ai-tokenizer with dynamic import support
+vi.mock('ai-tokenizer', () => ({
+  Tokenizer: class MockTokenizer {
+    constructor(_encoding: unknown) {}
+    count(text: string): number {
+      return Math.ceil(text.length / 4)
+    }
+  },
+  models: {
+    'openai/gpt-4o': true,
+    'openai/gpt-4o-mini': true,
+    'openai/gpt-4-turbo': true,
+    'anthropic/claude-3-opus': true,
+    'anthropic/claude-3.5-sonnet': true,
+    'anthropic/claude-3-haiku': true,
+    'anthropic/claude-3.5-haiku': true,
+    'anthropic/claude-sonnet-4': true,
+    'anthropic/claude-sonnet-4.5': true,
+    'anthropic/claude-haiku-4.5': true,
+    'google/gemini-3-pro-preview': true,
+    'zai/glm-4.5': true,
+  }
 }))
 
-vi.mock('@anthropic-ai/tokenizer', () => ({
-  countTokens: vi.fn((text: string) => Math.ceil(text.length / 4))
-}))
+vi.mock('ai-tokenizer/encoding/claude', () => ({}))
+vi.mock('ai-tokenizer/encoding/o200k_base', () => ({}))
+vi.mock('ai-tokenizer/encoding/cl100k_base', () => ({}))
 
 describe('token-counter', () => {
   beforeEach(() => {
@@ -30,9 +45,9 @@ describe('token-counter', () => {
   })
 
   describe('countTokens', () => {
-    it('should count tokens for OpenAI models', () => {
-      const result = countTokens('Hello world', 'gpt-4o')
-      
+    it('should count tokens for OpenAI models', async () => {
+      const result = await countTokens('Hello world', 'gpt-4o')
+
       expect(result).toEqual({
         tokenCount: expect.any(Number),
         provider: 'openai',
@@ -41,9 +56,9 @@ describe('token-counter', () => {
       expect(result.tokenCount).toBeGreaterThan(0)
     })
 
-    it('should count tokens for Anthropic models', () => {
-      const result = countTokens('Hello world', 'claude-3-5-sonnet')
-      
+    it('should count tokens for Anthropic models', async () => {
+      const result = await countTokens('Hello world', 'claude-3-5-sonnet')
+
       expect(result).toEqual({
         tokenCount: expect.any(Number),
         provider: 'anthropic',
@@ -52,28 +67,28 @@ describe('token-counter', () => {
       expect(result.tokenCount).toBeGreaterThan(0)
     })
 
-    it('should count tokens for Bedrock Claude models', () => {
-      const result = countTokens('Hello world', 'claude4')
-      
+    it('should count tokens for Bedrock Claude models', async () => {
+      const result = await countTokens('Hello world', 'claude4')
+
       expect(result).toEqual({
         tokenCount: expect.any(Number),
-        provider: 'anthropic', // Note: Uses Anthropic tokenizer for Bedrock Claude
+        provider: 'anthropic',
         normalizedModelName: 'claude-sonnet-4'
       })
       expect(result.tokenCount).toBeGreaterThan(0)
     })
 
-    it('should handle model aliases correctly', () => {
-      const result1 = countTokens('Hello world', 'gpt4o')
-      const result2 = countTokens('Hello world', 'gpt-4o')
-      
+    it('should handle model aliases correctly', async () => {
+      const result1 = await countTokens('Hello world', 'gpt4o')
+      const result2 = await countTokens('Hello world', 'gpt-4o')
+
       expect(result1.provider).toBe(result2.provider)
       expect(result1.normalizedModelName).toBe(result2.normalizedModelName)
     })
 
-    it('should handle empty text input', () => {
-      const result = countTokens('', 'gpt-4o')
-      
+    it('should handle empty text input', async () => {
+      const result = await countTokens('', 'gpt-4o')
+
       expect(result).toEqual({
         tokenCount: 0,
         provider: 'openai',
@@ -81,9 +96,9 @@ describe('token-counter', () => {
       })
     })
 
-    it('should handle null text input', () => {
-      const result = countTokens(null as any, 'gpt-4o')
-      
+    it('should handle null text input', async () => {
+      const result = await countTokens(null as any, 'gpt-4o')
+
       expect(result).toEqual({
         tokenCount: 0,
         provider: 'openai',
@@ -91,9 +106,9 @@ describe('token-counter', () => {
       })
     })
 
-    it('should handle non-string text input', () => {
-      const result = countTokens(123 as any, 'gpt-4o')
-      
+    it('should handle non-string text input', async () => {
+      const result = await countTokens(123 as any, 'gpt-4o')
+
       expect(result).toEqual({
         tokenCount: 0,
         provider: 'openai',
@@ -101,143 +116,111 @@ describe('token-counter', () => {
       })
     })
 
-    it('should fall back to approximation for unsupported models', () => {
+    it('should fall back to approximation for unsupported models', async () => {
       const text = 'Hello world test'
-      const result = countTokens(text, 'unknown-model')
-      
+      const result = await countTokens(text, 'unknown-model')
+
       expect(result.tokenCount).toBe(Math.ceil(text.length / 4))
       expect(result.provider).toBe('openai') // Fallback provider
     })
 
-    it('should handle very long text', () => {
+    it('should handle very long text', async () => {
       const longText = 'word '.repeat(1000)
-      const result = countTokens(longText, 'gpt-4o')
-      
+      const result = await countTokens(longText, 'gpt-4o')
+
       expect(result.tokenCount).toBeGreaterThan(0)
       expect(result.tokenCount).toBeLessThan(longText.length) // Should be less than character count
     })
   })
 
   describe('countTotalTokens', () => {
-    it('should count tokens across multiple texts', () => {
+    it('should count tokens across multiple texts', async () => {
       const texts = ['Hello', 'world', 'test']
-      const result = countTotalTokens(texts, 'gpt-4o')
-      
+      const result = await countTotalTokens(texts, 'gpt-4o')
+
       expect(result.tokenCount).toBeGreaterThan(0)
       expect(result.provider).toBe('openai')
       expect(result.normalizedModelName).toBe('gpt-4o')
     })
 
-    it('should handle empty array', () => {
-      const result = countTotalTokens([], 'gpt-4o')
-      
+    it('should handle empty array', async () => {
+      const result = await countTotalTokens([], 'gpt-4o')
+
       expect(result.tokenCount).toBe(0)
     })
 
-    it('should handle array with empty strings', () => {
+    it('should handle array with empty strings', async () => {
       const texts = ['', '', '']
-      const result = countTotalTokens(texts, 'gpt-4o')
-      
+      const result = await countTotalTokens(texts, 'gpt-4o')
+
       expect(result.tokenCount).toBe(0)
     })
 
-    it('should be equivalent to joining texts and counting', () => {
+    it('should be equivalent to joining texts and counting', async () => {
       const texts = ['Hello', 'world', 'test']
-      const totalResult = countTotalTokens(texts, 'gpt-4o')
-      const joinedResult = countTokens(texts.join(''), 'gpt-4o')
-      
+      const totalResult = await countTotalTokens(texts, 'gpt-4o')
+      const joinedResult = await countTokens(texts.join(''), 'gpt-4o')
+
       expect(totalResult.tokenCount).toBe(joinedResult.tokenCount)
     })
   })
 
   describe('countConversationTokens', () => {
-    it('should count tokens in conversation messages', () => {
+    it('should count tokens in conversation messages', async () => {
       const messages = [
         { role: 'user', content: 'Hello' },
         { role: 'assistant', content: 'Hi there!' },
         { role: 'user', content: 'How are you?' }
       ]
-      
-      const result = countConversationTokens(messages, 'gpt-4o')
-      
+
+      const result = await countConversationTokens(messages, 'gpt-4o')
+
       expect(result.tokenCount).toBeGreaterThan(0)
       expect(result.provider).toBe('openai')
     })
 
-    it('should handle messages without content', () => {
+    it('should handle messages without content', async () => {
       const messages = [
         { role: 'user', content: '' },
         { role: 'assistant' } as any, // Missing content
         { role: 'user', content: 'Hello' }
       ]
-      
-      const result = countConversationTokens(messages, 'gpt-4o')
-      
+
+      const result = await countConversationTokens(messages, 'gpt-4o')
+
       expect(result.tokenCount).toBeGreaterThan(0) // Should still count 'Hello'
     })
 
-    it('should filter out empty content messages', () => {
+    it('should filter out empty content messages', async () => {
       const messages = [
         { role: 'user', content: '   ' }, // Whitespace only
         { role: 'assistant', content: 'Hello' }
       ]
-      
-      const result = countConversationTokens(messages, 'gpt-4o')
-      
+
+      const result = await countConversationTokens(messages, 'gpt-4o')
+
       // Should only count the 'Hello' message
-      const singleResult = countTokens('Hello', 'gpt-4o')
+      const singleResult = await countTokens('Hello', 'gpt-4o')
       expect(result.tokenCount).toBe(singleResult.tokenCount)
     })
 
-    it('should handle empty messages array', () => {
-      const result = countConversationTokens([], 'gpt-4o')
-      
+    it('should handle empty messages array', async () => {
+      const result = await countConversationTokens([], 'gpt-4o')
+
       expect(result.tokenCount).toBe(0)
     })
 
-    it('should work with different role types', () => {
+    it('should work with different role types', async () => {
       const messages = [
         { role: 'system', content: 'You are helpful' },
         { role: 'user', content: 'Hello' },
         { role: 'assistant', content: 'Hi!' }
       ]
-      
-      const result = countConversationTokens(messages, 'claude-3-5-sonnet')
-      
+
+      const result = await countConversationTokens(messages, 'claude-3-5-sonnet')
+
       expect(result.tokenCount).toBeGreaterThan(0)
       expect(result.provider).toBe('anthropic')
-    })
-  })
-
-  describe('estimateTokens', () => {
-    it('should provide rough token estimate', () => {
-      const text = 'Hello world test message'
-      const estimate = estimateTokens(text)
-      
-      expect(estimate).toBe(Math.ceil(text.length / 4))
-    })
-
-    it('should handle empty string', () => {
-      const estimate = estimateTokens('')
-      expect(estimate).toBe(0)
-    })
-
-    it('should handle null input', () => {
-      const estimate = estimateTokens(null as any)
-      expect(estimate).toBe(0)
-    })
-
-    it('should handle non-string input', () => {
-      const estimate = estimateTokens(123 as any)
-      expect(estimate).toBe(0)
-    })
-
-    it('should provide consistent estimates', () => {
-      const text = 'Consistent test text'
-      const estimate1 = estimateTokens(text)
-      const estimate2 = estimateTokens(text)
-      
-      expect(estimate1).toBe(estimate2)
     })
   })
 
@@ -291,100 +274,78 @@ describe('token-counter', () => {
   })
 
   describe('integration with model normalization', () => {
-    it('should consistently use normalized model names', () => {
+    it('should consistently use normalized model names', async () => {
       // Test that aliases resolve to the same normalized name
-      const result1 = countTokens('test', 'claude4')
-      const result2 = countTokens('test', 'sonnet4')
-      const result3 = countTokens('test', 'claude-sonnet-4')
-      
+      const result1 = await countTokens('test', 'claude4')
+      const result2 = await countTokens('test', 'sonnet4')
+      const result3 = await countTokens('test', 'claude-sonnet-4')
+
       expect(result1.normalizedModelName).toBe('claude-sonnet-4')
       expect(result2.normalizedModelName).toBe('claude-sonnet-4')
       expect(result3.normalizedModelName).toBe('claude-sonnet-4')
     })
 
-    it('should handle provider preferences correctly', () => {
+    it('should handle provider preferences correctly', async () => {
       // Different aliases might have different provider preferences
-      const result = countTokens('test', 'claude4')
+      const result = await countTokens('test', 'claude4')
       expect(['anthropic', 'bedrock-claude']).toContain(result.provider)
     })
   })
 
   describe('error handling and resilience', () => {
-    it('should handle tiktoken encoding errors gracefully', async () => {
-      // Mock tiktoken to throw an error
-      const { encoding_for_model } = await import('tiktoken')
-      vi.mocked(encoding_for_model).mockImplementationOnce(() => {
-        throw new Error('Tiktoken error')
-      })
-      
-      // Should fall back to approximation without throwing
-      const result = countTokens('Hello world', 'gpt-4o')
-      
-      expect(result.tokenCount).toBe(Math.ceil('Hello world'.length / 4))
-    })
-
-    it('should handle Anthropic tokenizer errors gracefully', async () => {
-      // Mock Anthropic tokenizer to throw an error
-      const { countTokens: countAnthropicTokens } = await import('@anthropic-ai/tokenizer')
-      vi.mocked(countAnthropicTokens).mockImplementationOnce(() => {
-        throw new Error('Anthropic tokenizer error')
-      })
-      
-      // Should fall back to approximation without throwing
-      const result = countTokens('Hello world', 'claude-3-5-sonnet')
-      
-      expect(result.tokenCount).toBe(Math.ceil('Hello world'.length / 4))
-    })
-
-    it('should handle very long text inputs', () => {
+    it('should handle very long text inputs', async () => {
       const veryLongText = 'a'.repeat(100000)
-      
-      expect(() => {
-        countTokens(veryLongText, 'gpt-4o')
-      }).not.toThrow()
+
+      await expect(countTokens(veryLongText, 'gpt-4o')).resolves.not.toThrow()
     })
 
-    it('should handle special characters and Unicode', () => {
+    it('should handle special characters and Unicode', async () => {
       const textWithUnicode = 'Hello 世界 🌍 emoji test'
-      
-      expect(() => {
-        countTokens(textWithUnicode, 'gpt-4o')
-      }).not.toThrow()
-      
-      const result = countTokens(textWithUnicode, 'gpt-4o')
+
+      const result = await countTokens(textWithUnicode, 'gpt-4o')
       expect(result.tokenCount).toBeGreaterThan(0)
     })
   })
 
   describe('performance considerations', () => {
-    it('should handle multiple calls efficiently', () => {
+    it('should handle multiple calls efficiently', async () => {
       const text = 'Performance test text'
       const startTime = Date.now()
-      
+
       // Make multiple calls
+      const promises = []
       for (let i = 0; i < 10; i++) {
-        countTokens(text, 'gpt-4o')
+        promises.push(countTokens(text, 'gpt-4o'))
       }
-      
+      await Promise.all(promises)
+
       const endTime = Date.now()
       const duration = endTime - startTime
-      
+
       // Should complete reasonably quickly (less than 1 second)
       expect(duration).toBeLessThan(1000)
     })
+  })
 
-    it('should properly free tiktoken encodings', async () => {
-      const { encoding_for_model } = await import('tiktoken')
-      const mockFree = vi.fn()
-      
-      vi.mocked(encoding_for_model).mockReturnValue({
-        encode: vi.fn(() => [1, 2, 3]),
-        free: mockFree
-      } as any)
-      
-      countTokens('test', 'gpt-4o')
-      
-      expect(mockFree).toHaveBeenCalled()
+  describe('lazy loading behavior', () => {
+    it('should load tokenizer on first use and cache it', async () => {
+      // First call loads the tokenizer
+      const result1 = await countTokens('test', 'gpt-4o')
+      expect(result1.tokenCount).toBeGreaterThan(0)
+
+      // Second call should use cached tokenizer
+      const result2 = await countTokens('test', 'gpt-4o')
+      expect(result2.tokenCount).toBe(result1.tokenCount)
+    })
+
+    it('should load different tokenizers for different providers', async () => {
+      // Load OpenAI tokenizer
+      const openaiResult = await countTokens('test', 'gpt-4o')
+      expect(openaiResult.provider).toBe('openai')
+
+      // Load Claude tokenizer
+      const claudeResult = await countTokens('test', 'claude-3-5-sonnet')
+      expect(claudeResult.provider).toBe('anthropic')
     })
   })
 })

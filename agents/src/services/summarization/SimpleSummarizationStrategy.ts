@@ -34,7 +34,7 @@ export class SimpleSummarizationStrategy implements SummarizationStrategy {
 
     // Use a simple model name for token counting
     const modelUsed = 'claude-3-5-sonnet';
-    const tokenCountResult = countTokens(summaryText, modelUsed);
+    const tokenCountResult = await countTokens(summaryText, modelUsed);
     const summaryTokenCount = tokenCountResult.tokenCount;
 
     return {

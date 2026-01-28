@@ -44,7 +44,7 @@ describe('FileContextManager', () => {
     }));
 
     vi.doMock('../../utils/token-counter.js', () => ({
-      estimateTokens: vi.fn().mockReturnValue(50)
+      countTokens: vi.fn().mockResolvedValue({ tokenCount: 50, provider: 'anthropic', normalizedModelName: 'claude-sonnet-4-5' })
     }));
 
     vi.doMock('../../logging/index.js', () => ({

@@ -3,6 +3,15 @@ import { ConversationHistoryLoader } from '../ConversationHistoryLoader.js';
 import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
 import conversationFixture from './fixtures/conversation-messages.json';
 
+// Mock token counter to provide deterministic token counts
+vi.mock('../../utils/token-counter.js', () => ({
+  countTokens: vi.fn().mockImplementation((text: string) => {
+    // Simulate ~4 chars per token for deterministic testing
+    const tokenCount = Math.ceil(text.length / 4);
+    return Promise.resolve({ tokenCount, provider: 'anthropic', normalizedModelName: 'claude-sonnet-4-5' });
+  })
+}));
+
 describe('ConversationHistoryLoader', () => {
   let loader: ConversationHistoryLoader;
   let mockRepo: ConversationRepository;
@@ -315,7 +324,7 @@ describe('ConversationHistoryLoader', () => {
   });
 
   describe('applyTokenLimit', () => {
-    it('should keep all messages if under token limit', () => {
+    it('should keep all messages if under token limit', async () => {
       const messages: any[] = [
         { role: 'user', content: 'Short message 1' },
         { role: 'assistant', content: 'Short response 1' },
@@ -323,13 +332,13 @@ describe('ConversationHistoryLoader', () => {
         { role: 'assistant', content: 'Short response 2' },
       ];
 
-      const result = loader.applyTokenLimit(messages, 10000);
+      const result = await loader.applyTokenLimit(messages, 10000);
 
       expect(result).toHaveLength(4);
       expect(result).toEqual(messages);
     });
 
-    it('should drop oldest messages when over token limit', () => {
+    it('should drop oldest messages when over token limit', async () => {
       const longText = 'x'.repeat(1000);
       const messages: any[] = [
         { role: 'user', content: 'Message 1' },
@@ -340,13 +349,13 @@ describe('ConversationHistoryLoader', () => {
         { role: 'assistant', content: 'Recent response' },
       ];
 
-      const result = loader.applyTokenLimit(messages, 100);
+      const result = await loader.applyTokenLimit(messages, 100);
 
       expect(result.length).toBeLessThan(messages.length);
       expect(result[result.length - 1].content).toBe('Recent response');
     });
 
-    it('should include tool calls in token count', () => {
+    it('should include tool calls in token count', async () => {
       const messages: any[] = [
         {
           role: 'assistant',
@@ -362,34 +371,34 @@ describe('ConversationHistoryLoader', () => {
         { role: 'tool', content: 'Search result', tool_call_id: 'tool1', name: 'search' }
       ];
 
-      const result = loader.applyTokenLimit(messages, 50);
+      const result = await loader.applyTokenLimit(messages, 50);
 
       expect(result.length).toBeLessThanOrEqual(messages.length);
     });
 
-    it('should always include at least one message', () => {
+    it('should always include at least one message', async () => {
       const messages: any[] = [
         { role: 'user', content: 'x'.repeat(10000) },
       ];
 
-      const result = loader.applyTokenLimit(messages, 10);
+      const result = await loader.applyTokenLimit(messages, 10);
 
       expect(result).toHaveLength(1);
     });
 
-    it('should handle empty message array', () => {
-      const result = loader.applyTokenLimit([], 1000);
+    it('should handle empty message array', async () => {
+      const result = await loader.applyTokenLimit([], 1000);
 
       expect(result).toHaveLength(0);
     });
 
-    it('should use model-based token counting when model name provided', () => {
+    it('should use model-based token counting when model name provided', async () => {
       const messages: any[] = [
         { role: 'user', content: 'Test message' },
         { role: 'assistant', content: 'Test response' },
       ];
 
-      const result = loader.applyTokenLimit(messages, 10000, 'claude4');
+      const result = await loader.applyTokenLimit(messages, 10000, 'claude4');
 
       expect(result).toHaveLength(2);
     });

@@ -3,7 +3,10 @@ import type { ToolCall } from '../database/schema.js';
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js';
 import { SummaryRepository } from '../database/repositories/SummaryRepository.js';
 import { logger } from '../logging/index.js';
-import { countTokens, estimateTokens } from '../utils/token-counter.js';
+import { countTokens } from '../utils/token-counter.js';
+
+// Default model for token counting when no specific model is provided
+const DEFAULT_TOKEN_COUNTING_MODEL = 'claude-sonnet-4-5';
 import { MessageCompressor } from './compression/MessageCompressor.js';
 import type { CompressionStrategy } from './compression/MessageCompressor.js';
 import type { SummarizationStrategy } from './summarization/SummarizationStrategy.js';
@@ -419,7 +422,7 @@ export class ConversationHistoryLoader {
    * @param modelName - Model name for accurate token counting
    * @returns Token-limited array of LLM messages
    */
-  applyTokenLimit(llmMessages: LLMMessage[], maxTokens: number, modelName?: string): LLMMessage[] {
+  async applyTokenLimit(llmMessages: LLMMessage[], maxTokens: number, modelName?: string): Promise<LLMMessage[]> {
     logger.debug('conversation.history.loader.token_limit_begin', {
       totalMessages: llmMessages.length,
       maxTokens,
@@ -448,20 +451,13 @@ export class ConversationHistoryLoader {
     const limitedMessages: LLMMessage[] = [];
     let currentTokenCount = 0;
 
+    // Resolve the token model once for use throughout the function
+    const tokenModel = modelName || DEFAULT_TOKEN_COUNTING_MODEL;
+
     // First, always include all summary messages (they're highly compressed)
     for (const message of summaryMessages) {
       const messageContent = this.serializeMessageForTokenCount(message);
-      let messageTokens: number;
-      if (modelName && messageContent.trim()) {
-        try {
-          const result = countTokens(messageContent, modelName);
-          messageTokens = result.tokenCount;
-        } catch (error) {
-          messageTokens = estimateTokens(messageContent);
-        }
-      } else {
-        messageTokens = estimateTokens(messageContent);
-      }
+      const messageTokens = (await countTokens(messageContent, tokenModel)).tokenCount;
 
       // SAFETY CHECK: Warn if summary exceeds 50% of token limit
       if (messageTokens > maxTokens * 0.5) {
@@ -487,23 +483,7 @@ export class ConversationHistoryLoader {
       const message = regularMessages[i];
       if (!message) continue;
       const messageContent = this.serializeMessageForTokenCount(message);
-
-      let messageTokens: number;
-      if (modelName && messageContent.trim()) {
-        try {
-          const result = countTokens(messageContent, modelName);
-          messageTokens = result.tokenCount;
-        } catch (error) {
-          messageTokens = estimateTokens(messageContent);
-          logger.warn('conversation.history.loader.token_count_fallback', {
-            messageIndex: i,
-            error: error instanceof Error ? error.message : String(error),
-            estimatedTokens: messageTokens,
-          });
-        }
-      } else {
-        messageTokens = estimateTokens(messageContent);
-      }
+      const messageTokens = (await countTokens(messageContent, tokenModel)).tokenCount;
 
       if (currentTokenCount + messageTokens > maxTokens && limitedMessages.length > summaryMessages.length) {
         logger.info('conversation.history.loader.token_limit_reached', {
@@ -660,7 +640,7 @@ export class ConversationHistoryLoader {
       });
     }
     
-    return this.applyTokenLimit(llmMessages, maxTokens, modelName);
+    return await this.applyTokenLimit(llmMessages, maxTokens, modelName);
   }
 
   /**
@@ -775,7 +755,7 @@ export class ConversationHistoryLoader {
       });
     }
     
-    return this.applyTokenLimit(llmMessages, maxTokens, modelName);
+    return await this.applyTokenLimit(llmMessages, maxTokens, modelName);
   }
 
   /**
@@ -994,7 +974,7 @@ export class ConversationHistoryLoader {
       });
     }
 
-    return this.applyTokenLimit(compressedMessages, maxTokens, modelName);
+    return await this.applyTokenLimit(compressedMessages, maxTokens, modelName);
   }
 
   /**
@@ -1084,7 +1064,7 @@ export class ConversationHistoryLoader {
       });
     }
     
-    return this.applyTokenLimit(llmMessages, maxTokens, modelName);
+    return await this.applyTokenLimit(llmMessages, maxTokens, modelName);
   }
 
   /**

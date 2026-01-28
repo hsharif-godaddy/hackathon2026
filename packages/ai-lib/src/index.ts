@@ -65,7 +65,6 @@ export {
   countTokens,
   countTotalTokens,
   countConversationTokens,
-  estimateTokens,
   isTokenCountingSupported,
   getModelProvider,
   type TokenCountResult,

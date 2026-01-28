@@ -174,7 +174,7 @@ export class BackgroundSummarizer {
       // Capture full history to summarize (everything before recent turns)
       const fullHistoryMessagesDb = allMessages.slice(0, summarizableMessageCount);
       const fullHistoryMessages = this.convertToLLMMessages(fullHistoryMessagesDb);
-      const fullHistoryTokenCount = this.countTokensForMessages(fullHistoryMessages, modelName);
+      const fullHistoryTokenCount = await this.countTokensForMessages(fullHistoryMessages, modelName);
 
       if (fullHistoryMessages.length === 0) {
         logger.debug('summarization.background.no_messages_to_summarize', { appId });
@@ -213,7 +213,7 @@ export class BackgroundSummarizer {
       }
 
       const incrementalMessages = this.convertToLLMMessages(incrementalMessagesDb);
-      const incrementalTokenCount = this.countTokensForMessages(incrementalMessages, modelName);
+      const incrementalTokenCount = await this.countTokensForMessages(incrementalMessages, modelName);
 
       // Log token check at info level for visibility
       logger.info('summarization.background.token_check', {
@@ -328,11 +328,11 @@ export class BackgroundSummarizer {
   /**
    * Count tokens for a set of messages using the configured model
    */
-  private countTokensForMessages(messages: LLMMessage[], modelName: string): number {
+  private async countTokensForMessages(messages: LLMMessage[], modelName: string): Promise<number> {
     let tokenCount = 0;
     for (const msg of messages) {
       const serialized = this.serializeMessage(msg);
-      const result = countTokens(serialized, modelName);
+      const result = await countTokens(serialized, modelName);
       tokenCount += result.tokenCount;
     }
     return tokenCount;

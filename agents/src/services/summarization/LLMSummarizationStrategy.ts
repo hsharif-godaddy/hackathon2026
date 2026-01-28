@@ -105,7 +105,7 @@ export class LLMSummarizationStrategy implements SummarizationStrategy {
         messageCount: messagesToSummarize.length,
       });
 
-      return this.createFallbackSummary(context);
+      return await this.createFallbackSummary(context);
     }
   }
 
@@ -195,7 +195,7 @@ export class LLMSummarizationStrategy implements SummarizationStrategy {
     this.logAndExtractCaching(llmResult.usage);
 
     const summaryText = llmResult.text.trim();
-    const tokenCountResult = countTokens(summaryText, modelName);
+    const tokenCountResult = await countTokens(summaryText, modelName);
     const summaryTokenCount = tokenCountResult.tokenCount;
 
     const newUpdateCount = shouldRegenerateFromScratch ? 0 : (previousUpdateCount + (isIncremental ? 1 : 0));
@@ -354,11 +354,11 @@ Merge new info. Remove completed items from Pending.`;
 
   /**
    * Create a fallback summary when LLM fails
-   * 
+   *
    * @param context - Summarization context
    * @returns Fallback summarization result
    */
-  private createFallbackSummary(context: SummarizationContext): SummarizationResult {
+  private async createFallbackSummary(context: SummarizationContext): Promise<SummarizationResult> {
     const { messages, messageRange, originalTokenCount } = context;
 
     // Simple fallback: concatenate first 500 chars of each message
@@ -371,7 +371,7 @@ Merge new info. Remove completed items from Pending.`;
     }
 
     const summaryText = `[Fallback Summary] ${parts.join(' | ')}`;
-    const tokenCountResult = countTokens(summaryText, 'claude-3-5-sonnet');
+    const tokenCountResult = await countTokens(summaryText, 'claude-3-5-sonnet');
     const summaryTokenCount = tokenCountResult.tokenCount;
 
     logger.warn('summarization.llm.fallback', {

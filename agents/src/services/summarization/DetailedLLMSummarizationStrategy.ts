@@ -168,7 +168,7 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
     const startTime = Date.now();
     
     // Split messages into batches at conversation boundaries
-    const batches = this.createBatches(messages, modelName);
+    const batches = await this.createBatches(messages, modelName);
     
     logger.info('summarization.detailed_llm.batches_created', {
       appId,
@@ -278,10 +278,10 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
    * Create batches of messages, cutting only at conversation boundaries
    * A conversation boundary is after a complete user question + assistant response
    */
-  private createBatches(messages: LLMMessage[], modelName: string): Array<{
+  private async createBatches(messages: LLMMessage[], modelName: string): Promise<Array<{
     messages: LLMMessage[];
     tokenCount: number;
-  }> {
+  }>> {
     const batches: Array<{ messages: LLMMessage[]; tokenCount: number }> = [];
     let currentBatch: LLMMessage[] = [];
     let currentTokenCount = 0;
@@ -291,7 +291,7 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
       if (!msg) continue;
 
       const msgText = this.serializeMessage(msg);
-      const msgTokens = countTokens(msgText, modelName).tokenCount;
+      const msgTokens = (await countTokens(msgText, modelName)).tokenCount;
 
       // Check if adding this message would exceed the batch limit
       if (currentTokenCount + msgTokens > this.maxTokensPerBatch && currentBatch.length > 0) {
@@ -390,7 +390,7 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
       : await generateTextWithAttributes();
 
     const summaryText = llmResult.text;
-    const summaryTokenCount = countTokens(summaryText, modelName).tokenCount;
+    const summaryTokenCount = (await countTokens(summaryText, modelName)).tokenCount;
 
     if (summaryTokenCount > 2000) {
       logger.warn('summarization.detailed_llm.token_budget_exceeded', {

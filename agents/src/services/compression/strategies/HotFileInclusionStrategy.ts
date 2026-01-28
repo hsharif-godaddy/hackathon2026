@@ -3,7 +3,10 @@ import type { LLMMessage } from '../../ConversationHistoryLoader.js';
 import { readFile, stat } from 'fs/promises';
 import { existsSync } from 'fs';
 import { logger } from '../../../logging/index.js';
-import { estimateTokens } from '../../../utils/token-counter.js';
+import { countTokens } from '../../../utils/token-counter.js';
+
+// Default model for token counting when no specific model is provided
+const DEFAULT_TOKEN_COUNTING_MODEL = 'claude-sonnet-4-5';
 import { createSafePathBuilder } from '../../../utils/safe-path.js';
 import { basename } from 'path';
 
@@ -295,7 +298,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
       }
 
       const content = await readFile(fullPath, 'utf-8');
-      const tokenCount = estimateTokens(content);
+      const tokenCount = (await countTokens(content, DEFAULT_TOKEN_COUNTING_MODEL)).tokenCount;
 
       if (currentTokens + tokenCount > maxTokens) {
         logger.debug('compression.hot_files.load.would_exceed_budget', {

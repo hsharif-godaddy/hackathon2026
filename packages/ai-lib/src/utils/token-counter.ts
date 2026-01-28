@@ -1,17 +1,131 @@
 /**
  * Token counting utility for AI models
  * Uses ai-tokenizer for accurate cross-model token counting with AI SDK support
+ *
+ * Tokenizer modules are loaded dynamically on-demand to reduce initial bundle size
+ * and startup time. Only the tokenizer needed for the specific model is loaded.
  */
-
-import { Tokenizer, models } from 'ai-tokenizer'
-import * as cl100k from 'ai-tokenizer/encoding/cl100k_base'
-import * as claude from 'ai-tokenizer/encoding/claude'
-import * as o200k from 'ai-tokenizer/encoding/o200k_base'
 
 import { normalizeModelName, type ModelProvider } from './model-normalization.js'
 import { createLogger } from './logger.js'
 
 const logger = createLogger('token-counter')
+
+// Types from ai-tokenizer (imported dynamically)
+type TokenizerInstance = {
+  count(text: string): number
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type TokenizerClass = new (...args: any[]) => TokenizerInstance
+
+// Lazy-loaded tokenizer instances (one per encoding type)
+let claudeTokenizer: TokenizerInstance | null = null
+let openaiTokenizer: TokenizerInstance | null = null
+let glmTokenizer: TokenizerInstance | null = null
+
+// Cached Tokenizer class and models registry
+let TokenizerConstructor: TokenizerClass | null = null
+let models: Record<string, unknown> | null = null
+
+// In-flight promises to prevent duplicate loading
+const loadingPromises: Record<string, Promise<TokenizerInstance>> = {}
+
+/**
+ * Load the core ai-tokenizer module (Tokenizer class and models registry)
+ */
+async function ensureCoreLoaded(): Promise<void> {
+  if (TokenizerConstructor && models) {
+    return
+  }
+
+  const { Tokenizer, models: loadedModels } = await import('ai-tokenizer')
+  TokenizerConstructor = Tokenizer
+  models = loadedModels
+}
+
+/**
+ * Get or create the Claude tokenizer (lazy-loaded)
+ */
+async function getClaudeTokenizer(): Promise<TokenizerInstance> {
+  if (claudeTokenizer) {
+    return claudeTokenizer
+  }
+
+  if (loadingPromises['claude']) {
+    return loadingPromises['claude']
+  }
+
+  loadingPromises['claude'] = (async () => {
+    try {
+      await ensureCoreLoaded()
+      const claude = await import('ai-tokenizer/encoding/claude')
+      claudeTokenizer = new TokenizerConstructor!(claude)
+      return claudeTokenizer
+    } catch (error) {
+      // Clear the promise so retry is possible
+      delete loadingPromises['claude']
+      throw error
+    }
+  })()
+
+  return loadingPromises['claude']
+}
+
+/**
+ * Get or create the OpenAI tokenizer (lazy-loaded, uses o200k_base encoding)
+ */
+async function getOpenAITokenizer(): Promise<TokenizerInstance> {
+  if (openaiTokenizer) {
+    return openaiTokenizer
+  }
+
+  if (loadingPromises['openai']) {
+    return loadingPromises['openai']
+  }
+
+  loadingPromises['openai'] = (async () => {
+    try {
+      await ensureCoreLoaded()
+      const o200k = await import('ai-tokenizer/encoding/o200k_base')
+      openaiTokenizer = new TokenizerConstructor!(o200k)
+      return openaiTokenizer
+    } catch (error) {
+      // Clear the promise so retry is possible
+      delete loadingPromises['openai']
+      throw error
+    }
+  })()
+
+  return loadingPromises['openai']
+}
+
+/**
+ * Get or create the GLM tokenizer (lazy-loaded, uses cl100k_base encoding)
+ */
+async function getGLMTokenizer(): Promise<TokenizerInstance> {
+  if (glmTokenizer) {
+    return glmTokenizer
+  }
+
+  if (loadingPromises['glm']) {
+    return loadingPromises['glm']
+  }
+
+  loadingPromises['glm'] = (async () => {
+    try {
+      await ensureCoreLoaded()
+      const cl100k = await import('ai-tokenizer/encoding/cl100k_base')
+      glmTokenizer = new TokenizerConstructor!(cl100k)
+      return glmTokenizer
+    } catch (error) {
+      // Clear the promise so retry is possible
+      delete loadingPromises['glm']
+      throw error
+    }
+  })()
+
+  return loadingPromises['glm']
+}
 
 /**
  * Supported model types for token counting
@@ -56,11 +170,6 @@ export interface TokenCountResult {
   normalizedModelName: string
 }
 
-// Cached tokenizers for performance
-const claudeTokenizer = new Tokenizer(claude)
-const openaiTokenizer = new Tokenizer(o200k)
-const glmTokenizer = new Tokenizer(cl100k)
-
 /**
  * Map our normalized model names to ai-tokenizer model names
  */
@@ -88,21 +197,21 @@ const MODEL_TO_TOKENIZER: Record<string, string> = {
 }
 
 /**
- * Get the appropriate tokenizer for a model
+ * Get the appropriate tokenizer for a model (lazy-loaded)
  */
-function getTokenizer(normalizedName: string, provider: ModelProvider): Tokenizer {
+async function getTokenizer(normalizedName: string, provider: ModelProvider): Promise<TokenizerInstance> {
   // GLM models use cl100k encoding
   if (normalizedName.includes('glm')) {
-    return glmTokenizer
+    return getGLMTokenizer()
   }
 
   switch (provider) {
     case 'anthropic':
     case 'bedrock-claude':
-      return claudeTokenizer
+      return getClaudeTokenizer()
     case 'openai':
     default:
-      return openaiTokenizer
+      return getOpenAITokenizer()
   }
 }
 
@@ -116,18 +225,18 @@ function getTokenizer(normalizedName: string, provider: ModelProvider): Tokenize
  * @example
  * ```typescript
  * // OpenAI models
- * const result1 = countTokens("Hello world", "gpt-4o")
- * const result2 = countTokens("Hello world", "gpt4o-mini") // alias supported
+ * const result1 = await countTokens("Hello world", "gpt-4o")
+ * const result2 = await countTokens("Hello world", "gpt4o-mini") // alias supported
  *
  * // Anthropic models
- * const result3 = countTokens("Hello world", "claude-3-5-sonnet")
- * const result4 = countTokens("Hello world", "sonnet4") // alias supported
+ * const result3 = await countTokens("Hello world", "claude-3-5-sonnet")
+ * const result4 = await countTokens("Hello world", "sonnet4") // alias supported
  *
  * // Bedrock models (full ARN)
- * const result5 = countTokens("Hello world", "us.anthropic.claude-3-5-sonnet-20240620-v1:0")
+ * const result5 = await countTokens("Hello world", "us.anthropic.claude-3-5-sonnet-20240620-v1:0")
  * ```
  */
-export function countTokens(text: string, modelName: string): TokenCountResult {
+export async function countTokens(text: string, modelName: string): Promise<TokenCountResult> {
   if (!text || typeof text !== 'string') {
     return {
       tokenCount: 0,
@@ -142,13 +251,22 @@ export function countTokens(text: string, modelName: string): TokenCountResult {
 
   let tokenCount: number
 
-  // Check if model has native ai-tokenizer support
+  // Check if model has native ai-tokenizer support via our static mapping.
+  // We use MODEL_TO_TOKENIZER as the source of truth rather than the ai-tokenizer
+  // models registry because: (1) we control which models we support, (2) the registry
+  // is lazy-loaded so checking it would require loading the library, and (3) runtime
+  // failures are handled gracefully via the try/catch with character approximation fallback.
   const tokenizerModelName = MODEL_TO_TOKENIZER[normalizedName]
-  if (tokenizerModelName && tokenizerModelName in models) {
+  if (tokenizerModelName) {
     try {
-      tokenCount = getTokenizer(normalizedName, provider).count(text)
+      const tokenizer = await getTokenizer(normalizedName, provider)
+      tokenCount = tokenizer.count(text)
     } catch (error) {
-      logger.warn(`Error counting tokens with ai-tokenizer for "${normalizedName}", using approximation`, error)
+      logger.warn('token-counter.count.failure', {
+        normalizedName,
+        error: error instanceof Error ? error.message : String(error),
+        fallback: 'character approximation'
+      })
       tokenCount = Math.ceil(text.length / 4)
     }
   } else {
@@ -170,7 +288,7 @@ export function countTokens(text: string, modelName: string): TokenCountResult {
  * @param modelName - The model name
  * @returns Total token count across all texts
  */
-export function countTotalTokens(texts: string[], modelName: string): TokenCountResult {
+export async function countTotalTokens(texts: string[], modelName: string): Promise<TokenCountResult> {
   return countTokens(texts.join(''), modelName)
 }
 
@@ -182,10 +300,10 @@ export function countTotalTokens(texts: string[], modelName: string): TokenCount
  * @param modelName - The model name
  * @returns Total token count for the conversation
  */
-export function countConversationTokens(
+export async function countConversationTokens(
   messages: Array<{ content: string; role?: string }>,
   modelName: string
-): TokenCountResult {
+): Promise<TokenCountResult> {
   const allContent = messages
     .map(msg => msg.content || '')
     .filter(content => content.trim().length > 0)
@@ -194,27 +312,17 @@ export function countConversationTokens(
 }
 
 /**
- * Get approximate token count without specifying model (uses rough approximation)
- * Useful for quick estimates when model type is unknown
- *
- * @param text - The text to estimate tokens for
- * @returns Approximate token count (1 token ≈ 4 characters)
- */
-export function estimateTokens(text: string): number {
-  if (!text || typeof text !== 'string') {
-    return 0
-  }
-  return Math.ceil(text.length / 4)
-}
-
-/**
- * Check if a model is supported for accurate token counting
+ * Check if a model is supported for accurate token counting.
+ * This is a synchronous convenience check that only verifies the model exists
+ * in our static MODEL_TO_TOKENIZER mapping. It does NOT verify that the model
+ * is actually supported by the ai-tokenizer library at runtime - that verification
+ * happens when countTokens() is called and any failures fall back to character
+ * approximation. Use this for quick pre-checks; actual support is determined at runtime.
  */
 export function isTokenCountingSupported(modelName: string): boolean {
   try {
     const modelInfo = normalizeModelName(modelName)
-    const tokenizerModelName = MODEL_TO_TOKENIZER[modelInfo.normalizedName]
-    return Boolean(tokenizerModelName && tokenizerModelName in models)
+    return modelInfo.normalizedName in MODEL_TO_TOKENIZER
   } catch {
     return false
   }

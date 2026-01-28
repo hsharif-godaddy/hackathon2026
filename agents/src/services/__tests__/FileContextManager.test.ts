@@ -109,8 +109,8 @@ describe('FileContextManager', () => {
     vi.mocked(fs.stat).mockResolvedValue(mockFileStats as any);
 
     // Mock token counter
-    const { estimateTokens } = await import('../../utils/token-counter.js');
-    vi.mocked(estimateTokens).mockReturnValue(50);
+    const { countTokens } = await import('../../utils/token-counter.js');
+    vi.mocked(countTokens).mockResolvedValue({ tokenCount: 50, provider: 'anthropic', normalizedModelName: 'claude-sonnet-4-5' });
 
     // Mock crypto
     const crypto = await import('crypto');
@@ -584,13 +584,11 @@ describe('FileContextManager', () => {
       expect(context).toBeDefined();
     });
 
-    it('should handle token estimation errors gracefully', async () => {
+    it('should handle token counting errors gracefully', async () => {
       mockRepository.findByAppPath.mockReturnValue([mockDbFileContext]);
-      
-      const { estimateTokens } = await import('../../utils/token-counter.js');
-      vi.mocked(estimateTokens).mockImplementation(() => {
-        throw new Error('Token estimation failed');
-      });
+
+      const { countTokens } = await import('../../utils/token-counter.js');
+      vi.mocked(countTokens).mockRejectedValue(new Error('Token counting failed'));
 
       const context = await fileContextManager.getHotFilesContext();
 

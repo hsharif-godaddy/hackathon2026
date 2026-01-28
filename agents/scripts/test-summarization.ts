@@ -211,7 +211,7 @@ async function main() {
   let totalTokens = 0;
   for (const msg of llmMessages) {
     const serialized = serializeMessage(msg);
-    const result = countTokens(serialized, modelName);
+    const result = await countTokens(serialized, modelName);
     totalTokens += result.tokenCount;
   }
 
@@ -302,7 +302,7 @@ async function main() {
       const msg = llmMessages[i];
       if (!msg) continue;
       const serialized = serializeMessage(msg);
-      const result = countTokens(serialized, modelName);
+      const result = await countTokens(serialized, modelName);
       accumulatedTokens += result.tokenCount;
 
       if (accumulatedTokens > tokenThreshold && i > 0) {
@@ -328,7 +328,7 @@ async function main() {
   let summaryTokenCount = 0;
   for (const msg of messagesToSummarize) {
     const serialized = serializeMessage(msg);
-    const result = countTokens(serialized, modelName);
+    const result = await countTokens(serialized, modelName);
     summaryTokenCount += result.tokenCount;
   }
 

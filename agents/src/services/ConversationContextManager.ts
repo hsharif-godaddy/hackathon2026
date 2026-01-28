@@ -8,7 +8,7 @@ import type { AgentExecutionContext } from '../base/agent.interface.js';
 import { ToolCallRenderer } from './ToolCallRenderer.js';
 import { logger } from '../logging/index.js';
 import { conversationContextEvents, conversationHistoryEvents, conversationTokenLimitEvents } from '../logging/events/index.js';
-import { countTokens, estimateTokens } from '../utils/token-counter.js';
+import { countTokens } from '../utils/token-counter.js';
 import { ConversationHistoryLoader } from './ConversationHistoryLoader.js';
 import {
   HotFileInclusionStrategy,
