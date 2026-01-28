@@ -34,7 +34,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
     <header className={clsx(
       "text-intents-ux-boxHighContrast-foregroundColor",
       {
-        "header-bg bg-intents-ux-boxHighContrast-backgroundColor": location !== 'homepage',
+        "bg-gradient bg-intents-ux-boxHighContrast-backgroundColor": location !== 'homepage',
       }
     )}>
       <div className="mx-auto px-2 sm:px-3 lg:px-4">

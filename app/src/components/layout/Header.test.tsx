@@ -60,14 +60,14 @@ describe('Header', () => {
     const { container } = renderWithProviders(<Header location="homepage" />);
 
     const header = container.querySelector('header');
-    expect(header).not.toHaveClass('header-bg');
+    expect(header).not.toHaveClass('bg-gradient');
   });
 
   it('should apply non-homepage styling when location is not homepage', () => {
     const { container } = renderWithProviders(<Header location="develop" />);
 
     const header = container.querySelector('header');
-    expect(header).toHaveClass('header-bg');
+    expect(header).toHaveClass('bg-gradient');
   });
 
   it('should render custom actions when provided', () => {

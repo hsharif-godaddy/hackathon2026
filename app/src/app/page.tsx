@@ -206,9 +206,8 @@ function HomeContent() {
   }
 
   return (
-      <div className="relative w-full overflow-hidden header-bg bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
-        <div className="header-orb" />
-        <div className="footer-bg" />
+      <div className="relative w-full overflow-hidden bg-gradient bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
+
 
       <div className="w-full h-full relative z-10">
           <Header

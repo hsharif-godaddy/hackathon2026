@@ -16,7 +16,7 @@
   --color-ai-dark-transparent: #37294E80;
   --color-ring-ai: #613EA3;
 
-  --color-light-purple: #37294E33;
+  --color-light-purple: #D3C1F733;
 
   /* Shadcn color mappings */
   --color-background: var(--background);
@@ -166,40 +166,12 @@
     }
   }
 
-  .header-bg {
-    background: radial-gradient(167.97% 140.89% at 100% 0%, rgba(118, 65, 237, 0.15) 0%, rgba(0, 0, 0, 0) 100%), #111;
-  }
-
-  .header-orb {
-    background: radial-gradient(ellipse at 47.65% 36.14%,
-      #8EF9FF 0%,
-      #B375FF 25%,
-      #FF75BC 50%,
-      #C290FF 75%,
-      #8EF9FF 100%);
-    opacity: 0.4;
-    filter: blur(200px);
-    width: 980px;
-    height: 1030px;
-    border-radius: 50%;
-    position: absolute;
-    top: 0;
-    left: 0;
-    transform: translate(-40%, -50%) rotate(-168.232deg);
-    will-change: transform;
-  }
-
-  .footer-bg {
-    background: conic-gradient(from -49deg at 47.65% 36.14%, #8EF9FF 75deg, #B375FF 193deg, #FF75BC 267deg, #C290FF 335deg);
-    opacity: .4;
-    filter: blur(400px);
-    width: 3600px;
-    height: 3780px;
-    position: absolute;
-    bottom: -2600px;
-    left: 50%;
-    transform: translateX(-40%);
-    z-index: 1;
+  .bg-gradient {
+    background: linear-gradient(0deg, rgba(0, 0, 0, 0.60) 0%, rgba(0, 0, 0, 0.60) 100%), 
+    radial-gradient(87.19% 99.53% at 100% 66.1%, rgba(125, 90, 226, 0.90) 0%, rgba(129, 93, 233, 0.73) 30.77%, rgba(108, 71, 215, 0.00) 100%), 
+    radial-gradient(97.36% 95.15% at 9.95% 92.27%, #7558B7 0%, rgba(117, 88, 183, 0.93) 11.54%, rgba(117, 88, 183, 0.00) 100%), 
+    radial-gradient(96.02% 113.17% at 35.23% -8.21%, #271A48 0%, rgba(42, 29, 78, 0.96) 21.63%, rgba(114, 84, 201, 0.00) 100%), 
+    #271948;
   }
 
   .feature-icon {

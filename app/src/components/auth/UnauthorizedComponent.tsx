@@ -28,7 +28,7 @@ export default function UnauthorizedComponent({
 
   return (
     <>
-      <div className="flex flex-col items-center justify-center relative w-full min-h-screen overflow-hidden header-bg bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
+      <div className="flex flex-col items-center justify-center relative w-full min-h-screen overflow-hidden bg-gradient bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
         <Box className="p-4 max-w-md text-center" gap="lg">
           <h2 className="text-xl font-semibold mb-2">{t('build_auth_unauthorized_required')}</h2>
           { unauthorizedMessage && (
