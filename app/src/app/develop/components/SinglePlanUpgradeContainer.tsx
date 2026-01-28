@@ -1,11 +1,33 @@
+'use client'
+
 import { useCallback } from 'react';
-import ComponentLoader from '@venture/cds-loader';
+import dynamic from 'next/dynamic';
+import uxAlert from '@ux/alert';
+import uxButton from '@ux/button';
+import uxIcon from '@ux/icon';
+import uxModal from '@ux/modal';
+import uxRadio from '@ux/radio';
+import uxSpinner from '@ux/spinner';
+import uxTag from '@ux/tag';
+import uxText from '@ux/text';
+import uxTooltip from '@ux/tooltip';
+import uxTooltipLegacy from '@ux/tooltip-legacy';
 
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { useAuth } from '@/hooks/useAuth';
-import { useGasketData } from '@/hooks/useGasketData'
-import { shipAnalyticsLog } from '@/lib/logging'
-import { logImpressionEvent } from '@/utils/instrumentation'
+import { useGasketData } from '@/hooks/useGasketData';
+import { shipAnalyticsLog } from '@/lib/logging';
+import { logImpressionEvent } from '@/utils/instrumentation';
+import { ensurePropTypes } from '@/utils/propTypes';
+
+const ComponentLoader = dynamic(
+  async () => {
+    await ensurePropTypes()
+    const cdsLoaderModule = await import('@venture/cds-loader')
+    return cdsLoaderModule.default
+  },
+  { ssr: false }
+) as any
 
 interface SinglePlanUpgradeContainerProps {
   onClose: () => void
@@ -38,7 +60,19 @@ const SinglePlanUpgradeContainer = ({
         type='godaddyUnifiedPlansAndPricingLibrary'
         cds={ gasketData?.cds }
         subType='SinglePlanUpgrade'
-        deps={{}}
+        // Deps list https://github.com/gdcorp-im/unified-plans-and-pricing-library/blob/main/package.json#L194-L208
+        deps={{
+          uxAlert: { module: uxAlert, version: '2500.7.2' },
+          uxButton: { module: uxButton, version: '2500.7.2' },
+          uxIcon: { module: uxIcon, version: '2500.7.2' },
+          uxModal: { module: uxModal, version: '2500.7.2' },
+          uxRadio: { module: uxRadio, version: '2500.7.1' },
+          uxSpinner: { module: uxSpinner, version: '2500.7.1' },
+          uxTag: { module: uxTag, version: '2500.7.2' },
+          uxText: { module: uxText, version: '2500.7.1' },
+          uxTooltip: { module: uxTooltip, version: '2500.7.2' },
+          uxTooltipLegacy: { module: uxTooltipLegacy, version: '2400.15.1' }
+        }}
         shopperId={ shopperId }
         productId='AiroPlusAppBuilderProduct'
         locale={gasketData?.intl?.locale || 'en-US'}

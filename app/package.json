@@ -119,6 +119,7 @@
     "@ux/text-input": "^2500.7.2",
     "@ux/toggle-button": "^2500.7.1",
     "@ux/tooltip": "^2500.7.2",
+    "@ux/tooltip-legacy": "^2400.15.1",
     "@venture/cds-loader": "0.0.56",
     "@venture/cds-utils": "0.0.33",
     "@venture/gasket-plugin-cds": "0.0.26",

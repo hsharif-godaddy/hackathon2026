@@ -89,11 +89,11 @@ describe('ChatMessageBuilder', () => {
         content: 'Test',
         appId: 'app-123',
         sessionId: 'session-456',
-        selectedAsset: {
+        selectedAssets: [{
           imageUrl: '//example.com/image.jpg',
           thumbnailUrl: '//example.com/thumb.jpg',
           videoUrl: '//example.com/video.mp4',
-        },
+        }],
       }
 
       const result = builder.build(params)
@@ -114,9 +114,9 @@ describe('ChatMessageBuilder', () => {
         content: 'Test',
         appId: 'app-123',
         sessionId: 'session-456',
-        selectedAsset: {
+        selectedAssets: [{
           imageUrl: 'https://example.com/image.jpg',
-        },
+        }],
       }
 
       const result = builder.build(params)
@@ -134,9 +134,9 @@ describe('ChatMessageBuilder', () => {
         content: 'Test',
         appId: 'app-123',
         sessionId: 'session-456',
-        selectedAsset: {
+        selectedAssets: [{
           imageUrl: 'https://example.com/image.jpg',
-        },
+        }],
       }
 
       const result = builder.build(params)
@@ -147,6 +147,62 @@ describe('ChatMessageBuilder', () => {
           imageUrl: 'https://example.com/image.jpg',
         },
       ])
+    })
+
+    it('should handle multiple assets', () => {
+      const params: BuildMessageParams = {
+        content: 'Test',
+        appId: 'app-123',
+        sessionId: 'session-456',
+        selectedAssets: [
+          {
+            imageUrl: 'https://example.com/image1.jpg',
+          },
+          {
+            imageUrl: '//example.com/image2.jpg',
+            thumbnailUrl: '//example.com/thumb2.jpg',
+          },
+        ],
+      }
+
+      const result = builder.build(params)
+
+      const attachment = result.context?.contextAttachments?.[0]
+      expect(attachment?.type).toBe('selected_assets')
+      expect(attachment?.data).toEqual([
+        {
+          imageUrl: 'https://example.com/image1.jpg',
+        },
+        {
+          imageUrl: 'https://example.com/image2.jpg',
+          thumbnailUrl: 'https://example.com/thumb2.jpg',
+        },
+      ])
+    })
+
+    it('should not add attachment when selectedAssets is empty', () => {
+      const params: BuildMessageParams = {
+        content: 'Test',
+        appId: 'app-123',
+        sessionId: 'session-456',
+        selectedAssets: [],
+      }
+
+      const result = builder.build(params)
+
+      expect(result.context?.contextAttachments).toBeUndefined()
+    })
+
+    it('should not add attachment when selectedAssets is undefined', () => {
+      const params: BuildMessageParams = {
+        content: 'Test',
+        appId: 'app-123',
+        sessionId: 'session-456',
+      }
+
+      const result = builder.build(params)
+
+      expect(result.context?.contextAttachments).toBeUndefined()
     })
   })
 
@@ -358,7 +414,7 @@ describe('ChatMessageBuilder', () => {
           viewport: { width: 1920, height: 1080 },
           timestamp: Date.now()
         },
-        selectedAsset: { imageUrl: 'https://example.com/image.jpg' },
+        selectedAssets: [{ imageUrl: 'https://example.com/image.jpg' }],
         buildErrorContext: { error: 'Error' },
         todoListContext: { items: [] },
         isActionRequest: true,

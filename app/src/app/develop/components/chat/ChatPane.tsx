@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
+import AssetManagerModal, { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
 import ChatBanners from '@/app/develop/components/chat/ChatBanners'
 import { ChatContext } from '@/app/develop/components/chat/ChatContext'
 import ChatInput from '@/app/develop/components/chat/ChatInput'
@@ -20,6 +20,7 @@ import { useAppIdFromParams } from '@/app/develop/components/utils'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useRebuildMode } from '@/hooks/useRebuildMode'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
 import { appFetch } from '@/lib/gasket-config'
@@ -49,7 +50,7 @@ import { postMessageToIframe } from '@/utils/postMessage'
 
 interface ChatPaneProps {
   onPreviewRefresh?: () => void
-  sendMessage: (content: string, aiEditContext?: any, selectedAsset?: AssetManagerItem | null, todoListContext?: any, isActionRequest?: boolean) => Promise<void>
+  sendMessage: (content: string, aiEditContext?: any, selectedAssets?: AssetManagerItem[] | null, todoListContext?: any, isActionRequest?: boolean) => Promise<void>
   isCreateFlowSession?: boolean
 }
 
@@ -79,7 +80,10 @@ export default function ChatPane({
   const toggleExpandedPlan = useDevelopPageStore((state) => state.toggleExpandedPlan)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
   const setIsVersionHistoryOpen = useDevelopPageStore((state) => state.setIsVersionHistoryOpen)
+  const isAssetManagerOpen = useDevelopPageStore((state) => state.isAssetManagerOpen)
+  const setIsAssetManagerOpen = useDevelopPageStore((state) => state.setIsAssetManagerOpen)
   const { activeChatTab, setActiveChatTab } = useChatTabs()
+  const { data: isAssetManagerEnabled } = useSwitchboard('appbuilder-image-manager')
 
   const appId = useAppIdFromParams()
   const { isRebuildMode } = useRebuildMode(appId)
@@ -101,8 +105,8 @@ export default function ChatPane({
     hasLoggedFirstUserMessageRef.current = false
   }, [appId])
 
-  // State for selected asset from AssetManager
-  const [selectedAsset, setSelectedAsset] = useState<AssetManagerItem | null>(null)
+  // State for selected assets from AssetManager
+  const [selectedAssets, setSelectedAssets] = useState<AssetManagerItem[]>([])
 
   // Pre-fetch ventureId for AssetManager to avoid loading delay
   const [ventureId, setVentureId] = useState<string | null>(null)
@@ -162,6 +166,16 @@ export default function ChatPane({
   const safeAiEditContext = (currentAppId === appId) ? aiEditContext : null
   const safeBuildErrorContext = (currentAppId === appId) ? buildErrorContext : null
 
+  // Calculate maxAssets based on image replacement mode
+  const maxAssets = safeAiEditContext?.isImageReplacement ? 1 : 4
+
+  // Clear selected assets when entering image replacement mode
+  useEffect(() => {
+    if (safeAiEditContext?.isImageReplacement) {
+      setSelectedAssets([])
+    }
+  }, [safeAiEditContext?.isImageReplacement])
+
   // Debug current state (only log when there's a significant change)
   const prevDebugRef = useRef<string>('')
   const currentDebugState = `${appId}-${currentAppId}-${visibleMessages?.length}`
@@ -194,9 +208,14 @@ export default function ChatPane({
     setAiEditContext(null)
   }, [setAiEditContext])
 
-  // Handle clearing selected asset
+  // Handle clearing selected assets
   const handleClearSelectedAsset = useCallback(() => {
-    setSelectedAsset(null)
+    setSelectedAssets([])
+  }, [])
+
+  // Handle clearing a single asset by index
+  const handleClearSingleAsset = useCallback((index: number) => {
+    setSelectedAssets((prev) => prev.filter((_, i) => i !== index))
   }, [])
 
   // Handle clearing build error context
@@ -226,7 +245,7 @@ export default function ChatPane({
         promptLength: messageToSend.length,
         source: content ? 'suggestion' : 'user-input',
         hasEditContext: !!safeAiEditContext,
-        hasSelectedAsset: !!selectedAsset,
+        hasSelectedAsset: selectedAssets.length > 0,
         hasBuildErrorContext: !!safeBuildErrorContext
       });
 
@@ -258,21 +277,21 @@ export default function ChatPane({
       // Screenshot is null to avoid agent analyzing it
       if (content) {
         // Programmatic send (e.g., suggestion button click)
-        // Parameters: message, aiEditContext, selectedAsset, todoListContext, isActionRequest
+        // Parameters: message, aiEditContext, selectedAssets, todoListContext, isActionRequest
         // - aiEditContext: minimal (no screenshot) since this isn't a user edit request
-        // - selectedAsset: null since programmatic sends don't have asset selections
+        // - selectedAssets: undefined since programmatic sends don't have asset selections
         // - todoListContext: undefined since todo context is managed separately
         // - isActionRequest: signals agent to execute request immediately.
-        sendMessage(messageToSend, { screenshot: null }, null, undefined, options?.isActionRequest)
+        sendMessage(messageToSend, { screenshot: null }, undefined, undefined, options?.isActionRequest)
       } else {
         // User input send - include all context
-        sendMessage(messageToSend, { ...safeAiEditContext, screenshot: null }, selectedAsset)
+        sendMessage(messageToSend, { ...safeAiEditContext, screenshot: null }, selectedAssets.length > 0 ? selectedAssets : undefined)
 
         // Clear contexts only for user input sends
       if (safeAiEditContext) {
         handleClearAiEditContext()
       }
-      if (selectedAsset) {
+      if (selectedAssets.length > 0) {
         handleClearSelectedAsset()
       }
       if (safeBuildErrorContext) {
@@ -280,7 +299,7 @@ export default function ChatPane({
       }
     }
   }
-  }, [inputValue, sendMessage, currentAppId, appId, setCurrentAppId, safeAiEditContext, selectedAsset, safeBuildErrorContext, handleClearAiEditContext, handleClearSelectedAsset, handleClearBuildErrorContext, isCreateFlowSession, messages])
+  }, [inputValue, sendMessage, currentAppId, appId, setCurrentAppId, safeAiEditContext, selectedAssets, safeBuildErrorContext, handleClearAiEditContext, handleClearSelectedAsset, handleClearBuildErrorContext, isCreateFlowSession, messages])
 
   // Create stable context value - reuses handleSendMessage
   const chatContextValue = useMemo(() => ({
@@ -292,7 +311,7 @@ export default function ChatPane({
     logger.debug('chat-pane.asset-select', { itemCount: items?.length })
 
     if (items && items.length > 0) {
-      const selectedItem = items[0]
+      // Get current state directly from store to avoid stale closure issues
       const currentAiEditContext = useStreamingConversationStore.getState().aiEditContext
 
       logger.debug('chat-pane.asset-select.context', {
@@ -356,7 +375,7 @@ export default function ChatPane({
               hasSelectedAsset: true,
               hasBuildErrorContext: false
             })
-            sendMessage(message, { ...currentAiEditContext, screenshot: null }, selectedItem)
+            sendMessage(message, { ...currentAiEditContext, screenshot: null }, [selectedItem])
             handleClearAiEditContext()
           }
         }
@@ -365,27 +384,36 @@ export default function ChatPane({
       } else {
         // Normal mode: allow multiple images (append with duplicate checking)
         logger.debug('chat-pane.asset-select.manual', { appId })
-        setSelectedAsset(selectedItem)
+        setSelectedAssets((prevAssets) => {
+          // Create a Set of existing asset URLs to check for duplicates
+          const existingUrls = new Set(prevAssets.map(asset => asset.imageUrl))
+
+          // Filter out duplicates from new items
+          const newItems = items.filter(item => !existingUrls.has(item.imageUrl))
+
+          // Combine existing and new items
+          return [...prevAssets, ...newItems]
+        })
       }
     } else {
       logger.debug('chat-pane.asset-select.empty', { appId })
     }
-  }, [appId, sendMessage, handleClearAiEditContext, setSelectedAsset])
+  }, [appId, sendMessage, handleClearAiEditContext])
 
   // Listen for error fix requests from PreviewPaneSimple
   useEffect(() => {
     const handleErrorFixEvent = (event: CustomEvent) => {
       if (event.detail.appId === appId && inputValue?.trim()) {
         // Use the actual sendMessage function from WebSocket hook
-        sendMessage(inputValue, { ...safeAiEditContext, screenshot: null }, selectedAsset)
+        sendMessage(inputValue, { ...safeAiEditContext, screenshot: null }, selectedAssets.length > 0 ? selectedAssets : undefined)
 
         // Clear the AI edit context after sending
         if (safeAiEditContext) {
           handleClearAiEditContext()
         }
 
-        // Clear the selected asset after sending
-        if (selectedAsset) {
+        // Clear the selected assets after sending
+        if (selectedAssets.length > 0) {
           handleClearSelectedAsset()
         }
 
@@ -401,7 +429,7 @@ export default function ChatPane({
     return () => {
       window.removeEventListener('airo-error-fix', handleErrorFixEvent as EventListener)
     }
-  }, [appId, inputValue, sendMessage, safeAiEditContext, selectedAsset, safeBuildErrorContext, handleClearAiEditContext, handleClearSelectedAsset, handleClearBuildErrorContext])
+  }, [appId, inputValue, sendMessage, safeAiEditContext, selectedAssets, safeBuildErrorContext, handleClearAiEditContext, handleClearSelectedAsset, handleClearBuildErrorContext])
 
 
   // Get tab index for animation - matches mobile toolbar order
@@ -415,26 +443,6 @@ export default function ChatPane({
     }
   }
 
-  // Helper function to get the display URL for an asset
-  const getAssetDisplayUrl = (asset: AssetManagerItem): string => {
-    // Ensure protocol is https
-    const url = asset.imageUrl.startsWith('//') ? `https:${asset.imageUrl}` : asset.imageUrl
-    return url
-  }
-
-  // Helper function to get the asset label
-  const getAssetLabel = (asset: AssetManagerItem): string => {
-    switch (asset.mediaType) {
-      case 'IMAGE':
-        return asset.filename || t('builder_chatpane_asset_image')
-      case 'VIDEO':
-        return t('builder_chatpane_asset_video')
-      case 'PDF':
-        return asset.filename || t('builder_chatpane_asset_pdf')
-      default:
-        return t('builder_chatpane_asset_default')
-    }
-  }
 
   if (isMobile) {
     const tabIndex = getTabIndex(activeChatTab)
@@ -482,52 +490,6 @@ export default function ChatPane({
             >
               <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
 
-              {safeAiEditContext && (
-                <div className="mx-2 rounded-md overflow-hidden bg-white">
-                  <div className="p-1">
-                    {safeAiEditContext.screenshot && (
-                      <div className="relative inline-block">
-                        <img // eslint-disable-line @next/next/no-img-element
-                          src={safeAiEditContext.screenshot}
-                          alt={t('builder_chatpane_edit_selected')}
-                          className="max-h-[120px] object-contain rounded border"
-                        />
-                        <button
-                          onClick={handleClearAiEditContext}
-                          className="absolute -top-1 -right-1 w-3 h-3 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
-                          style={{ backgroundColor: '#ffffff' }}
-                          title={t('builder_chatpane_edit_clear')}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {selectedAsset && (
-                <div className="mx-2 rounded-md overflow-hidden bg-white">
-                  <div className="p-1">
-                    <div className="relative inline-block">
-                      <img // eslint-disable-line @next/next/no-img-element
-                        src={getAssetDisplayUrl(selectedAsset)}
-                        alt={getAssetLabel(selectedAsset)}
-                        className="max-h-[120px] object-contain rounded border"
-                      />
-                      <button
-                        onClick={handleClearSelectedAsset}
-                        className="absolute -top-1 -right-1 w-3 h-3 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
-                        style={{ backgroundColor: '#ffffff' }}
-                        title={t('builder_chatpane_clear_asset')}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               <ChatBanners appId={appId} />
               <ChatInput
                 appId={appId}
@@ -535,6 +497,11 @@ export default function ChatPane({
                 isDisabled={isProcessing}
                 onInputChange={setInputValue}
                 onSendMessage={handleSendMessage}
+                selectedAssets={selectedAssets}
+                maxAssets={maxAssets}
+                onClearSelectedAsset={handleClearSingleAsset}
+                aiEditContext={safeAiEditContext}
+                onClearAiEditContext={handleClearAiEditContext}
               />
             </motion.div>
 
@@ -560,9 +527,17 @@ export default function ChatPane({
 
       <ChatToolbar
         isProcessing={isProcessing}
-        onAssetSelect={handleAssetSelect}
-        ventureId={ventureId}
       />
+      {isAssetManagerEnabled && (
+        <AssetManagerModal
+          isOpen={isAssetManagerOpen}
+          onClose={() => setIsAssetManagerOpen(false)}
+          onItemsSelected={handleAssetSelect}
+          ventureId={ventureId}
+          currentAssetCount={selectedAssets.length}
+          maxAssets={maxAssets}
+        />
+      )}
     </div>
     </ChatContext.Provider>
   )
@@ -634,54 +609,6 @@ export default function ChatPane({
         <>
           <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
 
-          {/* AI Edit Context - shows screenshot (works for both Edit with AI and Replace Image) */}
-          {safeAiEditContext && (
-            <div className="mx-2 rounded-md overflow-hidden bg-white">
-              <div className="p-1">
-                {safeAiEditContext.screenshot && (
-                  <div className="relative inline-block">
-                    <img // eslint-disable-line @next/next/no-img-element
-                      src={safeAiEditContext.screenshot}
-                      alt={t('builder_chatpane_edit_selected')}
-                      className="max-h-[120px] object-contain rounded border"
-                    />
-                    <button
-                      onClick={handleClearAiEditContext}
-                      className="absolute -top-1 -right-1 w-3 h-3 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
-                      style={{ backgroundColor: '#ffffff' }}
-                      title={t('builder_chatpane_edit_clear')}
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Selected Asset - shows when image is selected from Asset Manager */}
-          {selectedAsset && (
-            <div className="mx-2 rounded-md overflow-hidden bg-white">
-              <div className="p-1">
-                <div className="relative inline-block">
-                  <img // eslint-disable-line @next/next/no-img-element
-                    src={getAssetDisplayUrl(selectedAsset)}
-                    alt={getAssetLabel(selectedAsset)}
-                    className="max-h-[120px] object-contain rounded border"
-                  />
-                  <button
-                    onClick={handleClearSelectedAsset}
-                    className="absolute -top-1 -right-1 w-3 h-3 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
-                    style={{ backgroundColor: '#ffffff' }}
-                    title={t('builder_chatpane_clear_asset')}
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {safeBuildErrorContext && (
             <div className="mx-2 rounded-md overflow-hidden border">
               <div className="p-1.5">
@@ -722,6 +649,11 @@ export default function ChatPane({
               isDisabled={isProcessing}
               onInputChange={setInputValue}
               onSendMessage={handleSendMessage}
+              selectedAssets={selectedAssets}
+              maxAssets={maxAssets}
+              onClearSelectedAsset={handleClearSingleAsset}
+              aiEditContext={safeAiEditContext}
+              onClearAiEditContext={handleClearAiEditContext}
             />
           </div>
         </>
@@ -737,9 +669,17 @@ export default function ChatPane({
 
       <ChatToolbar
         isProcessing={isProcessing}
-        onAssetSelect={handleAssetSelect}
-        ventureId={ventureId}
       />
+      {isAssetManagerEnabled && (
+        <AssetManagerModal
+          isOpen={isAssetManagerOpen}
+          onClose={() => setIsAssetManagerOpen(false)}
+          onItemsSelected={handleAssetSelect}
+          ventureId={ventureId}
+          currentAssetCount={selectedAssets.length}
+          maxAssets={maxAssets}
+        />
+      )}
     </div>
     </ChatContext.Provider>
   )

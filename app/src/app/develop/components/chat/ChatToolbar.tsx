@@ -4,11 +4,9 @@ import { useEffect, useRef } from 'react'
 import Box from '@ux/box'
 import CommentsIcon from '@ux/icon/comments'
 import HistoryIcon from '@ux/icon/history'
-import ImageIcon from '@ux/icon/image'
 import SettingsIcon from '@ux/icon/settings'
 import WebsiteIcon from '@ux/icon/website'
 
-import AssetManagerModal, { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
 import IconButton from '@/app/develop/components/IconButton'
 import SettingsMenu from '@/app/develop/components/settings/SettingsMenu'
 import { ChatTab, ViewMode } from '@/app/develop/components/types'
@@ -24,11 +22,11 @@ import { generateClickEID } from '@/utils/instrumentation'
 
 interface ChatToolbarProps {
   isProcessing?: boolean
-  onAssetSelect?: (items: AssetManagerItem[]) => void
-  ventureId: string | null
 }
 
-export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventureId }: ChatToolbarProps) {
+export default function ChatToolbar({
+    isProcessing = false
+  }: ChatToolbarProps) {
   const t = useTranslations();
   const appId = useAppIdFromParams()
   const { activeChatTab, setActiveChatTab, activeSettingsSection, setActiveSettingsSection } = useChatTabs()
@@ -39,7 +37,6 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
   const isSelectingCommit = useGitStore((state) => state.isSelectingCommit);
   const returnToMain = useGitStore((state) => state.returnToMain);
 
-  const { data: isAssetManagerEnabled } = useSwitchboard('appbuilder-image-manager');
   const { data: isSettingsEnabled } = useSwitchboard('appbuilder-settings');
 
   const { data: gitHistoryData, isFetching: isFetchingCommits } = useGitHistoryQuery({
@@ -84,18 +81,6 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
     }
   }, [appId, viewMode, isSelectMode, activeChatTab, latestCommitHash, returnToMain])
 
-  const isAssetManagerOpen = useDevelopPageStore((state) => state.isAssetManagerOpen);
-  const setIsAssetManagerOpen = useDevelopPageStore((state) => state.setIsAssetManagerOpen);
-
-  function handleAssetSelect(items: AssetManagerItem[]) {
-    logger.debug('chat_toolbar.assets.selected', {
-      itemCount: items.length,
-      items: items.map(i => ({ mediaType: i.mediaType, sourceType: i.sourceType }))
-    })
-    if (onAssetSelect) {
-      onAssetSelect(items)
-    }
-  }
 
   const handleTabClick = (tab: ChatTab) => {
     if (tab === ChatTab.SETTINGS) {
@@ -131,18 +116,6 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
         active={activeChatTab === ChatTab.CHAT}
         showLabelAlways={!isMobile}
       />
-      {isAssetManagerEnabled && (
-        <IconButton
-          icon={<ImageIcon />}
-          dataEid={generateClickEID('develop.chat_toolbar.medias')}
-          onClick={() => isAssetManagerEnabled ? setIsAssetManagerOpen(true) : undefined}
-          label={t('builder_chat_toolbar_button_media')}
-          active={isAssetManagerOpen}
-          tooltipDescription={!isAssetManagerEnabled ? t('builder_chat_toolbar_available_soon') : undefined}
-          disabled={isProcessing}
-          showLabelAlways={!isMobile}
-        />
-      )}
       <IconButton
         icon={<HistoryIcon />}
         dataEid={generateClickEID('develop.chat_toolbar.history')}
@@ -165,14 +138,6 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
           label={t('builder_chat_toolbar_button_settings')}
           active={activeChatTab === ChatTab.SETTINGS}
           disabled={isProcessing || isVersionHistoryOpen}
-        />
-      )}
-      {isAssetManagerEnabled && (
-        <AssetManagerModal
-          isOpen={isAssetManagerOpen}
-          onClose={() => { setIsAssetManagerOpen(false) }}
-          onItemsSelected={handleAssetSelect}
-          ventureId={ventureId}
         />
       )}
     </Box>

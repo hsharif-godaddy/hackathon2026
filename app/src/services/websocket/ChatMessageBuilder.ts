@@ -45,7 +45,7 @@ export interface BuildMessageParams {
   conversationId?: string | null
   visualContext?: VisualContext | null
   aiEditContext?: AIEditContext
-  selectedAsset?: Asset
+  selectedAssets?: Asset[]
   todoListContext?: TodoContext
   buildErrorContext?: BuildError | null
   isActionRequest?: boolean
@@ -59,10 +59,10 @@ export class ChatMessageBuilder {
   /**
    * Transform asset URLs to include https protocol
    */
-  private transformAsset(asset: Asset | undefined): Asset | null {
-    if (!asset) return null
+  private transformAssets(assets: Asset[] | undefined): Asset[] {
+    if (!assets || assets.length === 0) return []
 
-    return {
+    return assets.map(asset => ({
       ...asset,
       imageUrl: asset.imageUrl.startsWith('//')
         ? `https:${asset.imageUrl}`
@@ -77,7 +77,7 @@ export class ChatMessageBuilder {
           ? `https:${asset.videoUrl}`
           : asset.videoUrl
       })
-    }
+    }))
   }
 
   /**
@@ -113,11 +113,11 @@ export class ChatMessageBuilder {
       })
     }
 
-    const transformedAsset = this.transformAsset(params.selectedAsset)
-    if (transformedAsset) {
+    const transformedAssets = this.transformAssets(params.selectedAssets)
+    if (transformedAssets.length > 0) {
       attachments.push({
         type: 'selected_assets',
-        data: [transformedAsset],
+        data: transformedAssets,
         persistence: 'ephemeral',
         renderStrategy: 'before_prompt',
         metadata: {

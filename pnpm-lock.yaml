@@ -573,6 +573,9 @@ importers:
       '@ux/tooltip':
         specifier: 2500.7.2
         version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/tooltip-legacy':
+        specifier: ^2400.15.1
+        version: 2400.18.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@venture/cds-loader':
         specifier: 0.0.56
         version: 0.0.56(@rspack/core@1.6.5(@swc/helpers@0.5.17))(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.2)(webpack@5.101.3)
@@ -6286,6 +6289,14 @@ packages:
 
   '@ux/toggle-button@2500.7.1':
     resolution: {integrity: sha512-qeAdN5Yrb4iAb1JxysTg6oDKRQSGdpxmTTD43wOJX4xX+AvkWc9gZL11+0kpbtkbOkoGlVHClxOhiNSdcLMnzw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/toggle-button/-/@ux/toggle-button-2500.7.1.tgz}
+    engines: {node: '>= 18'}
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
+  '@ux/tooltip-legacy@2400.18.4':
+    resolution: {integrity: sha512-kaI5HyWLTzNZMPJleHfTFHhUZiLv8J0BF8+hknxex2OkAkStwm3XeyaOixr2VrormCDg7CnlF5F/pRLIT5OqKQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/tooltip-legacy/-/@ux/tooltip-legacy-2400.18.4.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -19534,6 +19545,17 @@ snapshots:
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/thumb': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/track': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
+  '@ux/tooltip-legacy@2400.18.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@floating-ui/dom': 1.7.4
+      '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
