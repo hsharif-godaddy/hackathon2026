@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -44,4 +45,28 @@ func getEnvDurationWithDefault(key string, defaultValue time.Duration) time.Dura
 		}
 	}
 	return defaultValue
+}
+
+// getAllowedSELinuxTypes returns the list of SELinux types allowed to access the API
+// Configured via DEV_SUPERVISOR_ALLOWED_SELINUX_TYPES (comma-separated)
+// Defaults to "airo_agent_container.process" if not set or if value contains only whitespace
+func getAllowedSELinuxTypes() []string {
+	const defaultType = "airo_agent_container.process"
+
+	value := strings.TrimSpace(os.Getenv("DEV_SUPERVISOR_ALLOWED_SELINUX_TYPES"))
+	if value == "" {
+		return []string{defaultType}
+	}
+
+	var result []string
+	for _, t := range strings.Split(value, ",") {
+		if trimmed := strings.TrimSpace(t); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+
+	if len(result) == 0 {
+		return []string{defaultType}
+	}
+	return result
 }

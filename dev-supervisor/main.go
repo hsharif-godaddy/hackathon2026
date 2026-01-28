@@ -387,12 +387,15 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 		}
 	}
 
-	// Create HTTP server
+	// Create HTTP server with SELinux enforcement for Unix socket mode
+	// Only processes with allowed SELinux types can access the API via SO_PEERSEC
+	allowedSELinuxTypes := getAllowedSELinuxTypes()
 	server := &http.Server{
-		Handler:      s.router,
+		Handler:      peerSecMiddleware(allowedSELinuxTypes)(s.router),
 		ReadTimeout:  defaultTimeout,
 		WriteTimeout: defaultTimeout,
 		IdleTimeout:  2 * defaultTimeout,
+		ConnContext:  connContextWithPeerSec,
 	}
 
 	// Start PID 1 manager with shutdown callback
