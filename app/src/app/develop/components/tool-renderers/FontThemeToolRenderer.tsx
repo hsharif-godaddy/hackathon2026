@@ -1,6 +1,6 @@
 'use client'
 
-import { MessageSquare, Type } from 'lucide-react'
+import { Type } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
@@ -94,7 +94,6 @@ export default function FontThemeToolRenderer({
 
           {/* Helper message */}
           <div className="flex items-center gap-1 text-xs text-intents-ux-textSubtle-textColor mt-2">
-            <MessageSquare className="w-3 h-3" aria-hidden="true" />
             <span className="text-sm">{t('builder_tools_font_theme_select', undefined, 'Click a font to select, then Apply')}</span>
           </div>
         </div>
@@ -191,4 +190,3 @@ export default function FontThemeToolRenderer({
     </div>
   )
 }
-

@@ -36,7 +36,7 @@ export default function ChatInput({
   return (
     <div className="px-2 sm:px-3 md:px-0 mt-1 mt-auto">
       <div id="tour-chat-input" className="relative">
-        <div className="flex flex-col pt-1.5 pr-1.5 pb-1 pl-1 border rounded-lg focus-within:ring-2">
+        <div className="flex flex-col pt-1.5 pr-1.5 pb-1 pl-1 border border-intents-ux-boxHighContrast-borderColor rounded-lg focus-within:ring-1">
           <div className="flex items-stretch space-x-1">
             <div className="flex-1">
               <textarea

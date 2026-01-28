@@ -32,7 +32,7 @@ export default function ToolHeader({
   onOpenModal
 }: ToolHeaderProps) {
   return (
-    <span className="text-foreground/60 text-xs flex items-center min-w-0 gap-1">
+    <span className="text-foreground/50 text-xs flex items-center min-w-0 gap-1">
       <span className="flex-shrink-0">{icon}</span>
       <span className="min-w-0 flex items-center gap-1">
         <span className="min-w-0 flex-1 truncate">

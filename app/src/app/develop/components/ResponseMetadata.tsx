@@ -63,7 +63,7 @@ export default function ResponseMetadata({ duration, content }: ResponseMetadata
   }
 
   return (
-    <div className="flex items-center justify-between mt-1.5 text-xs text-foreground/60">
+    <div className="flex items-center justify-between mt-1.5 text-xs text-foreground/50">
       <span>
         {t('builder_chat_completed_in', {duration: formatDuration(duration)})}
       </span>

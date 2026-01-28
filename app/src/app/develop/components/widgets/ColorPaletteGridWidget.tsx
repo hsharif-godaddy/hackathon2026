@@ -147,7 +147,7 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
       </div>
 
       {/* Button Controls - Always visible */}
-      <div className="mt-3 flex items-center gap-1 flex-wrap justify-center">
+      <div className="mt-3 flex items-center gap-1 flex-wrap justify-end pr-0.5">
 
         <Button
           text={t('builder_common_more_options')}

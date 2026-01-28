@@ -1,6 +1,6 @@
 'use client'
 
-import { MessageSquare, Palette } from 'lucide-react'
+import { Palette } from 'lucide-react'
 import { useState } from 'react'
 
 import ColorPaletteModal from '@/app/develop/components/tool-renderers/ColorPaletteModal'
@@ -76,7 +76,6 @@ export default function ColorSchemeToolRenderer({
 
           {/* Helper message */}
           <div className="flex items-center gap-1 text-xs text-intents-ux-textSubtle-textColor mt-2">
-            <MessageSquare className="w-3 h-3 flex-shrink-0" aria-hidden="true" />
             <span className="text-sm">{t('builder_tools_css_suggest_select_or_ask', undefined, 'Click a palette to preview or ask for more options')}</span>
           </div>
         </div>

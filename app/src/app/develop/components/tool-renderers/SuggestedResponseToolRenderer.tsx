@@ -1,12 +1,10 @@
 'use client'
 
-import '@/app/develop/components/tool-renderers/SuggestedResponseToolRenderer.css'
-
 import Box from '@ux/box'
-import Button from '@ux/button'
 
 import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext'
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import OptionButton from '@/app/develop/components/tool-renderers/OptionButton'
 import RebuildPageSelectorToolRenderer from '@/app/develop/components/tool-renderers/RebuildPageSelectorToolRenderer'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
@@ -42,7 +40,7 @@ export default function SuggestedResponseToolRenderer({
   const widgetData = output?.widgetData as SuggestedResponseData | undefined
   const rebuildWidget = {widget: output?.rebuildWidget}
   const showRebuildWidget = rebuildWidget && rebuildWidget.widget && rebuildWidget.widget.widgetData.availablePages.length > 0;
-  
+
   if (!widgetData || !widgetData.question || !widgetData.suggestions) {
     return null
   }
@@ -73,26 +71,17 @@ export default function SuggestedResponseToolRenderer({
       )}
 
       <Box
-        orientation="horizontal"
+        orientation="vertical"
         gap="sm"
-        wrap={true}
-        inlineAlignChildren="end"
-        className="flex-wrap justify-end"
       >
         {widgetData.suggestions.map((suggestion, index) => (
-          <Button
+          <OptionButton
             key={index}
             text={suggestion.text}
-            design="secondary"
-            size="sm"
             disabled={isProcessing}
             onClick={() => handleSuggestionClick(suggestion)}
-            className="suggestion-button rounded-md py-1 font-normal"
-            style={{
-              borderColor: 'var(--color-ai)',
-              color: 'var(--color-ai)',
-              transition: 'all 0.2s ease'
-            }}
+            animationDelay={index * 0.2}
+            isSelectable={true}
           />
         ))}
       </Box>
@@ -100,18 +89,9 @@ export default function SuggestedResponseToolRenderer({
       <Box
         orientation="horizontal"
         gap="sm"
-        inlineAlignChildren="end"
-        className="text-xs text-intents-ux-textSubtle-textColor self-end mt-1"
+        inlineAlignChildren="start"
+        className="text-xs text-intents-ux-textSubtle-textColor mt-1"
       >
-        <svg
-          className="w-3 h-3"
-          fill="currentColor"
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-        >
-          <path d="M12 2C6.48 2 2 6.48 2 12c0 1.54.36 3 .97 4.29L2 22l5.71-.97C9 21.64 10.46 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.38 0-2.68-.3-3.86-.83l-.28-.14-2.86.49.49-2.86-.14-.28A7.95 7.95 0 014 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8z"/>
-          <path d="M7 9h10v2H7zm0 4h7v2H7z"/>
-        </svg>
         <span className="text-sm ">{t('builder_tools_suggested_response')}</span>
       </Box>
     </Box>

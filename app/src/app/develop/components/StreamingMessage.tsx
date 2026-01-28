@@ -3,7 +3,9 @@
 import clsx from 'clsx'
 import { Check, ClipboardCopy, Expand, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import Button from '@ux/button'
 
+import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
 import { useStreamingState } from '@/stores/useStreamingConversationStore'
@@ -57,6 +59,7 @@ function getMessageClasses(message: ChatMessage | StreamingMessageType): string 
  * Modal component for viewing full message content
  */
 function FullMessageModal({ content, isOpen, onClose }: { content: string; isOpen: boolean; onClose: () => void }) {
+  const t = useTranslations()
   const [copiedToClipboard, setCopiedToClipboard] = useState(false)
 
   const handleCopyMessage = async () => {
@@ -94,27 +97,25 @@ function FullMessageModal({ content, isOpen, onClose }: { content: string; isOpe
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-intents-ux-box-borderColor">
-          <span className="text-sm font-medium">Full Message</span>
-          <div className="flex items-center gap-2">
-            <button
+        <div className="flex items-center justify-between pl-3 pr-2 py-2 border-b border-intents-ux-box-borderColor">
+          <span className="font-medium">{t('builder_settings_logs_expanded_full_message')}</span>
+          <div className="flex items-center gap-1">
+            <Button
               onClick={handleCopyMessage}
-              className="p-1.5 rounded hover:bg-intents-ux-boxLowContrast-backgroundColor transition-colors"
-              title="Copy to clipboard"
-            >
-              {copiedToClipboard ? <Check className="w-4 h-4 text-green-500" /> : <ClipboardCopy className="w-4 h-4" />}
-            </button>
-            <button
+              title={t('builder_common_copy_clipboard')}
+              icon={copiedToClipboard ? <Check /> : <ClipboardCopy />}
+              size="sm"
+            />
+            <Button
               onClick={onClose}
-              className="p-1.5 rounded hover:bg-intents-ux-boxLowContrast-backgroundColor transition-colors"
-              title="Close"
-            >
-              <X className="w-4 h-4" />
-            </button>
+              title={t('builder_common_close')}
+              icon={<X />}
+              size="sm"
+            />
           </div>
         </div>
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-3">
           <pre className="text-sm whitespace-pre-wrap break-words font-sans leading-relaxed">
             {content}
           </pre>
@@ -127,9 +128,10 @@ function FullMessageModal({ content, isOpen, onClose }: { content: string; isOpe
 /**
  * User message component with copy functionality and truncation for large messages
  */
-const MAX_MESSAGE_HEIGHT = 200 // pixels
+const MAX_MESSAGE_HEIGHT = 250 // pixels
 
 function UserMessage({ content }: { content: string }) {
+  const t = useTranslations()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isTruncated, setIsTruncated] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -146,27 +148,30 @@ function UserMessage({ content }: { content: string }) {
         <div className="relative group">
           <div
             ref={contentRef}
-            className="text-sm leading-relaxed break-words whitespace-pre-wrap font-sans overflow-hidden"
+            className="relative text-sm leading-relaxed break-words whitespace-pre-wrap font-sans overflow-hidden"
             style={{ maxHeight: isTruncated ? `${MAX_MESSAGE_HEIGHT}px` : undefined }}
           >
             {content}
+            {isTruncated && (
+              <div
+                className="absolute bottom-0 left-0 right-0 h-6 pointer-events-none"
+                style={{
+                  background: 'linear-gradient(to top, #F5F7F8 0%, transparent 100%)'
+                }}
+              />
+            )}
           </div>
           {isTruncated && (
-            <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-intents-ux-boxLowContrast-backgroundColor to-transparent pointer-events-none" />
-          )}
-          <div className="flex items-center gap-1 mt-0.5">
-            {isTruncated && (
+            <div className="flex items-center justify-center w-full gap-1 pt-1 z-10">
               <button
                 onClick={() => setIsModalOpen(true)}
-                className="text-xs text-intents-ux-link-foregroundColor hover:underline flex items-center gap-0.5"
+                className="text-xs text-intents-ux-link-foregroundColor hover:cursor-pointer flex items-center gap-0.5 group"
               >
-                <Expand className="w-2.5 h-2.5" />
-                Show full message
+                <Expand className="size-2 group-hover:scale-110 transition-transform duration-200" />
+                {t('builder_full_message_modal_show')}
               </button>
-            )}
-
-          </div>
-
+            </div>
+          )}
         </div>
         <FullMessageModal
           content={content}

@@ -194,7 +194,7 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
         })}
       </div>
 
-      <div className="mt-3 flex items-center gap-1 flex-wrap justify-center">
+      <div className="mt-3 flex items-center gap-1 flex-wrap justify-end pr-0.5">
         <Button
           text={t('builder_font_theme_more_options', undefined, 'More options')}
           design="tertiary"

@@ -1,16 +1,18 @@
 'use client'
 
+import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
+import * as Accordion from '@radix-ui/react-accordion'
 import Box from '@ux/box'
-import Button from '@ux/button'
-import TextInput from '@ux/text-input'
+import Text from '@ux/text'
 
 import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext'
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import OptionButton from '@/app/develop/components/tool-renderers/OptionButton'
+import OptionInput from '@/app/develop/components/tool-renderers/OptionInput'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 
-// Constant for "Other" option value
 const OTHER_VALUE = '__other__' as const
 
 interface Suggestion {
@@ -22,7 +24,6 @@ interface Question {
   question: string
   suggestions: Suggestion[]
   allowOther?: boolean
-  multiSelect?: boolean
   metadata?: Record<string, unknown>
 }
 
@@ -52,21 +53,26 @@ export default function AskQuestionToolRenderer({
   const isLoading = useIsLoading()
   const isProcessing = isStreaming || isLoading
 
-  // Local state for question progression
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState<string[]>([])
-  const [selectedValue, setSelectedValue] = useState<string>('') // For single-select
-  const [selectedValues, setSelectedValues] = useState<string[]>([]) // For multi-select
+  const [selectedValue, setSelectedValue] = useState<string>('')
   const [otherValue, setOtherValue] = useState('')
+  const [furthestQuestionReached, setFurthestQuestionReached] = useState(0)
 
-  // Reset state when result changes (new tool invocation)
   useEffect(() => {
     setCurrentQuestionIndex(0)
     setAnswers([])
     setSelectedValue('')
-    setSelectedValues([])
     setOtherValue('')
+    setFurthestQuestionReached(0)
   }, [result])
+
+  // Track the furthest question we've reached
+  useEffect(() => {
+    if (currentQuestionIndex > furthestQuestionReached) {
+      setFurthestQuestionReached(currentQuestionIndex)
+    }
+  }, [currentQuestionIndex, furthestQuestionReached])
 
   if (toolStatus !== 'completed' || !result) {
     return null
@@ -81,344 +87,211 @@ export default function AskQuestionToolRenderer({
   }
 
   const { questions } = widgetData
-  const currentQuestion = questions[currentQuestionIndex]
   const totalQuestions = questions.length
-  const isLastQuestion = currentQuestionIndex === totalQuestions - 1
-  const isMultiSelect = currentQuestion?.multiSelect === true
   const isSubmitted = currentQuestionIndex >= totalQuestions
 
-  function handleSuggestionSelect(suggestion: Suggestion) {
+  if (isSubmitted || isLastAssistantMessage === false) {
+    return null
+  }
+
+  const isLastQuestion = currentQuestionIndex === totalQuestions - 1
+
+  function submitAnswer(answer: string) {
+    if (isProcessing || !sendUserMessage) return
+
+    // Update or append answer depending on whether we're editing
+    const newAnswers = [...answers]
+    newAnswers[currentQuestionIndex] = answer
+
+    setAnswers(newAnswers)
+    setSelectedValue('')
+    setOtherValue('')
+
+    // Find next unanswered question
+    let nextQuestionIndex = -1
+    for (let i = 0; i < questions.length; i++) {
+      if (!newAnswers[i]) {
+        nextQuestionIndex = i
+        break
+      }
+    }
+
+    if (nextQuestionIndex === -1) {
+      // All questions answered - send message
+      setCurrentQuestionIndex(questions.length) // Mark as submitted
+
+      const formattedMessage = questions
+        .map((q, idx) => `${idx + 1}) ${q.question}\n${newAnswers[idx]}`)
+        .filter((_, idx) => newAnswers[idx]) // Only include answered questions
+        .join('\n\n')
+
+      sendUserMessage(formattedMessage, { isActionRequest: true })
+    } else {
+      // Navigate to next unanswered question
+      setCurrentQuestionIndex(nextQuestionIndex)
+    }
+  }
+
+  function handleSuggestionClick(suggestion: Suggestion) {
     if (isProcessing) return
     const value = suggestion.value || suggestion.text
-
-    if (isMultiSelect) {
-      // Toggle value in multi-select mode
-      setSelectedValues(prev =>
-        prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
-      )
-    } else {
-      // Replace value in single-select mode
-      setSelectedValue(value)
-    }
+    submitAnswer(value)
   }
 
   function handleOtherChange(value: string) {
     setOtherValue(value)
-    if (isMultiSelect) {
-      // In multi-select, add OTHER_VALUE when text is provided, remove when empty
-      setSelectedValues(prev => {
-        const hasOther = prev.includes(OTHER_VALUE)
-        if (value.trim() && !hasOther) {
-          return [...prev, OTHER_VALUE]
-        } else if (!value.trim() && hasOther) {
-          return prev.filter(v => v !== OTHER_VALUE)
-        }
-        return prev
-      })
-    } else {
-      setSelectedValue(OTHER_VALUE)
-    }
+    setSelectedValue(OTHER_VALUE)
+  }
+
+  function handleOtherFocus() {
+    setSelectedValue(OTHER_VALUE)
   }
 
   function handleOtherKeyDown(event: React.KeyboardEvent) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
-      if (canSubmit) {
-        handleSubmit()
+      if (otherValue.trim()) {
+        submitAnswer(otherValue.trim())
       }
     }
   }
 
-  function handleSubmit() {
-    if (isProcessing || !sendUserMessage) return
-
-    let answer: string
-
-    if (isMultiSelect) {
-      // Multi-select mode: format multiple answers
-      const values = [...selectedValues]
-
-      // Replace OTHER_VALUE with actual other text
-      const finalValues = values.map(v => v === OTHER_VALUE ? otherValue.trim() : v).filter(v => v)
-
-      if (finalValues.length === 0) return
-      answer = finalValues.join(', ')
-    } else {
-      // Single-select mode: single answer
-      if (selectedValue === OTHER_VALUE) {
-        if (!otherValue.trim()) return
-        answer = otherValue.trim()
-      } else {
-        if (!selectedValue) return
-        answer = selectedValue
-      }
-    }
-
-    const newAnswers = [...answers, answer]
-    setAnswers(newAnswers)
-
-    // Always move to next question (or past the last one)
-    setCurrentQuestionIndex(currentQuestionIndex + 1)
-    setSelectedValue('')
-    setSelectedValues([])
-    setOtherValue('')
-
-    if (isLastQuestion) {
-      // All questions answered - send formatted message to agent after state update
-      const formattedMessage = questions
-        .map((q, idx) => `Question ${idx + 1}: ${q.question}\nAnswer: ${newAnswers[idx]}`)
-        .join('\n\n')
-
-      sendUserMessage(formattedMessage, { isActionRequest: true })
+  function handleOtherSubmit() {
+    if (otherValue.trim()) {
+      submitAnswer(otherValue.trim())
     }
   }
-
-  const canSubmit = isMultiSelect
-    ? selectedValues.length > 0 && (selectedValues.includes(OTHER_VALUE) ? otherValue.trim().length > 0 : true)
-    : selectedValue === OTHER_VALUE ? otherValue.trim().length > 0 : selectedValue.length > 0
 
   function handleEditAnswer(questionIndex: number) {
-    // Go back to that question to edit it
     setCurrentQuestionIndex(questionIndex)
 
-    // Pre-populate the answer
     const existingAnswer = answers[questionIndex]
     const question = questions[questionIndex]
 
-    if (question.multiSelect) {
-      // Multi-select: parse comma-separated values
-      const answerParts = existingAnswer.split(',').map(a => a.trim())
-      const values: string[] = []
-      let otherText = ''
+    const matchingSuggestion = question.suggestions.find(
+      s => (s.value || s.text) === existingAnswer || s.text === existingAnswer
+    )
 
-      answerParts.forEach(part => {
-        const matchingSuggestion = question.suggestions.find(
-          s => (s.value || s.text) === part || s.text === part
-        )
-
-        if (matchingSuggestion) {
-          values.push(matchingSuggestion.value || matchingSuggestion.text)
-        } else {
-          // It's an "Other" answer
-          values.push(OTHER_VALUE)
-          otherText = part
-        }
-      })
-
-      setSelectedValues(values)
-      setOtherValue(otherText)
-      setSelectedValue('')
+    if (matchingSuggestion) {
+      setSelectedValue(matchingSuggestion.value || matchingSuggestion.text)
+      setOtherValue('')
     } else {
-      // Single-select: check if matches a suggestion
-      const matchingSuggestion = question.suggestions.find(
-        s => (s.value || s.text) === existingAnswer || s.text === existingAnswer
-      )
-
-      if (matchingSuggestion) {
-        setSelectedValue(matchingSuggestion.value || matchingSuggestion.text)
-        setOtherValue('')
-      } else {
-        // It's an "Other" answer
-        setSelectedValue(OTHER_VALUE)
-        setOtherValue(existingAnswer)
-      }
-      setSelectedValues([])
+      setSelectedValue(OTHER_VALUE)
+      setOtherValue(existingAnswer)
     }
-
-    // Remove this answer and all subsequent answers
-    setAnswers(answers.slice(0, questionIndex))
-  }
-
-  // Hide the component if:
-  // 1. Questions have been submitted in current session (isSubmitted)
-  // 2. This is not the last assistant message (user already responded when loading from history)
-  if (isSubmitted || isLastAssistantMessage === false) {
-    return null
   }
 
   return (
-    <Box gap="sm" className="my-2">
-      {/* Progress indicator */}
-      {totalQuestions > 1 && currentQuestion && (
-        <div className="text-xs text-intents-ux-textSubtle-textColor mb-0.5" role="status" aria-live="polite">
-          {t('builder_tools_askquestion_progress', { current: currentQuestionIndex + 1, total: totalQuestions }, `Question ${currentQuestionIndex + 1} of ${totalQuestions}`)}
-        </div>
-      )}
+    <Box gap="sm" className="my-1">
+      <Accordion.Root
+        type="single"
+        value={`question-${currentQuestionIndex}`}
+        onValueChange={(value) => {
+          if (value.startsWith('question-')) {
+            const idx = parseInt(value.replace('question-', ''), 10)
+            if (!isNaN(idx) && idx < questions.length) {
+              if (idx < answers.length) {
+                // Editing a previous answer - load it
+                handleEditAnswer(idx)
+              } else {
+                // Viewing a future question - just navigate to it
+                setCurrentQuestionIndex(idx)
+                setSelectedValue('')
+                setOtherValue('')
+              }
+            }
+          }
+        }}
+      >
+        {questions.map((question, idx) => {
+          const isAnswered = idx < answers.length
+          const isCurrent = idx === currentQuestionIndex
+          const answer = answers[idx]
 
-      {/* Previously answered questions */}
-      {answers.length > 0 && (
-        <ul className="list-none space-y-0" role="list">
-          {answers.map((answer, idx) => (
-            <li key={idx}>
-              <button
-                type="button"
-                onClick={() => handleEditAnswer(idx)}
-                disabled={isProcessing}
-                aria-label={t('builder_tools_askquestion_edit_answer', { question: questions[idx].question }, `Edit answer for: ${questions[idx].question}`)}
-                className="w-full flex items-center gap-1 text-xs text-intents-ux-textSubtle-textColor py-0.5 px-1 rounded hover:bg-intents-ux-boxLowContrast-backgroundColor transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
-              >
-                <span className="font-medium">{questions[idx].question}</span>
-                <span className="text-intents-ux-textSubtle-textColor" aria-hidden="true">→</span>
-                <span>{answer}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+          // Only show questions up to the furthest reached
+          if (idx > furthestQuestionReached) {
+            return null
+          }
 
-      {/* Current question */}
-      {currentQuestion && (
-        <>
-          {/* Fieldset for semantic radio group */}
-          <fieldset className="mb-1">
-            <legend className="text-sm leading-relaxed break-words font-medium mb-1">
-              {currentQuestion.question}
-            </legend>
-
-            {/* Compact radio/checkbox list */}
-            <div className="space-y-0.5" {...(!isMultiSelect && { role: "radiogroup" })}>
-              {currentQuestion.suggestions.map((suggestion, index) => {
-                const value = suggestion.value || suggestion.text
-                const isSelected = isMultiSelect
-                  ? selectedValues.includes(value)
-                  : selectedValue === value
-                const inputId = `question-${currentQuestionIndex}-option-${index}`
-
-                return (
-                  <label
-                    key={index}
-                    htmlFor={inputId}
-                    className="w-full flex items-center gap-1.5 px-1 py-0.5 rounded hover:bg-intents-ux-boxLowContrast-backgroundColor transition-colors cursor-pointer"
-                  >
-                    <input
-                      type={isMultiSelect ? "checkbox" : "radio"}
-                      id={inputId}
-                      name={`question-${currentQuestionIndex}`}
-                      value={value}
-                      checked={isSelected}
-                      onChange={() => handleSuggestionSelect(suggestion)}
-                      disabled={isProcessing}
-                      className="sr-only"
-                    />
-                    <div className="flex-shrink-0" aria-hidden="true">
-                      {isMultiSelect ? (
-                        // Checkbox style
-                        isSelected ? (
-                          <div className="w-3 h-3 rounded border border-primary bg-primary flex items-center justify-center">
-                            <svg className="w-2 h-2 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
-                          </div>
-                        ) : (
-                          <div className="w-3 h-3 rounded border border-intents-ux-border-borderColor" />
-                        )
-                      ) : (
-                        // Radio button style
-                        isSelected ? (
-                          <div className="w-3 h-3 rounded-full border border-primary flex items-center justify-center">
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                          </div>
-                        ) : (
-                          <div className="w-3 h-3 rounded-full border border-intents-ux-border-borderColor" />
-                        )
-                      )}
-                    </div>
-                    <span className="text-xs">{suggestion.text}</span>
-                  </label>
-                )
-              })}
-
-              {/* Other option - always visible */}
-              {currentQuestion.allowOther !== false && (
-                <div className="flex items-center gap-1.5 px-1 py-0.5">
-                  <label
-                    htmlFor={`question-${currentQuestionIndex}-other-input`}
-                    className="flex-shrink-0 cursor-pointer"
-                  >
-                    <input
-                      type={isMultiSelect ? "checkbox" : "radio"}
-                      id={`question-${currentQuestionIndex}-other-input`}
-                      name={`question-${currentQuestionIndex}`}
-                      value={OTHER_VALUE}
-                      checked={isMultiSelect
-                        ? selectedValues.includes(OTHER_VALUE) || otherValue.trim().length > 0
-                        : selectedValue === OTHER_VALUE}
-                      onChange={() => {
-                        if (isMultiSelect) {
-                          setSelectedValues(prev => {
-                            const hasOther = prev.includes(OTHER_VALUE)
-                            if (hasOther) {
-                              // Unchecking: clear text and remove from array
-                              setOtherValue('')
-                              return prev.filter(v => v !== OTHER_VALUE)
-                            } else {
-                              // Checking: add to array (text can be added later)
-                              return [...prev, OTHER_VALUE]
-                            }
-                          })
-                        } else {
-                          setSelectedValue(OTHER_VALUE)
-                        }
-                      }}
-                      disabled={isProcessing}
-                      className="sr-only"
-                    />
-                    <div aria-hidden="true">
-                      {isMultiSelect ? (
-                        // Checkbox style for Other
-                        (selectedValues.includes(OTHER_VALUE) || otherValue.trim().length > 0) ? (
-                          <div className="w-3 h-3 rounded border border-primary bg-primary flex items-center justify-center">
-                            <svg className="w-2 h-2 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
-                          </div>
-                        ) : (
-                          <div className="w-3 h-3 rounded border border-intents-ux-border-borderColor" />
-                        )
-                      ) : (
-                        // Radio button style for Other
-                        selectedValue === OTHER_VALUE ? (
-                          <div className="w-3 h-3 rounded-full border border-primary flex items-center justify-center">
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                          </div>
-                        ) : (
-                          <div className="w-3 h-3 rounded-full border border-intents-ux-border-borderColor" />
-                        )
-                      )}
-                    </div>
-                    <span className="sr-only">{t('builder_tools_askquestion_other_label', undefined, 'Other (type your answer)')}</span>
-                  </label>
-                  <div className="flex-1">
-                    <TextInput
-                      value={otherValue}
-                      onChange={handleOtherChange}
-                      onKeyDown={handleOtherKeyDown}
-                      placeholder={t('builder_tools_askquestion_other_placeholder', undefined, 'Other...')}
-                      disabled={isProcessing}
-                      visualSize="sm"
-                      label={null}
-                      aria-label={t('builder_tools_askquestion_other_aria_label', undefined, 'Other answer')}
-                    />
+          return (
+            <Accordion.Item
+              key={idx}
+              value={`question-${idx}`}
+            >
+              <Accordion.Header>
+                <Accordion.Trigger
+                  className="flex items-center justify-between w-full text-left text-sm hover:cursor-pointer"
+                  disabled={isProcessing}
+                >
+                  <div className="flex-1 flex flex-col">
+                    <Text.span text={question.question} size={-1} className="!font-medium" />
+                    {isAnswered && <Text.span text={answer} size={-1} className="!italic" />}
                   </div>
-                </div>
-              )}
-            </div>
-          </fieldset>
+                  <Text.div text={`${idx + 1} / ${totalQuestions}`} size={-2} className="!text-foreground/60" />
+                </Accordion.Trigger>
+              </Accordion.Header>
 
-          {/* Submit/Next button */}
-          <div className="flex justify-end">
-            <Button
-              text={isLastQuestion
-                ? t('builder_common_submit', undefined, 'Submit')
-                : t('builder_common_next', undefined, 'Next')}
-              design="primary"
-              size="sm"
-              disabled={isProcessing || !canSubmit}
-              onClick={handleSubmit}
-            />
-          </div>
-        </>
-      )}
+              <Accordion.Content forceMount asChild>
+                <motion.div
+                  initial={false}
+                  animate={{
+                    height: isCurrent ? 'auto' : 0,
+                    opacity: isCurrent ? 1 : 0
+                  }}
+                  transition={{
+                    duration: 0.3,
+                    ease: [0.4, 0, 0.2, 1]
+                  }}
+                  style={{ overflow: 'hidden' }}
+                  className="my-1"
+                >
+                  <div>
+                    <fieldset>
+                      <legend className="sr-only">{question.question}</legend>
+
+                      <div role="radiogroup" className="flex flex-col gap-1">
+                        {question.suggestions.map((suggestion, suggestionIdx) => {
+                          const value = suggestion.value || suggestion.text
+                          const isSelected = isCurrent && selectedValue === value
+
+                          return (
+                            <div key={suggestionIdx}>
+                              <OptionButton
+                                text={suggestion.text}
+                                isSelected={isSelected}
+                                isSelectable={true}
+                                disabled={isProcessing}
+                                onClick={() => handleSuggestionClick(suggestion)}
+                              />
+                            </div>
+                          )
+                        })}
+
+                        {question.allowOther !== false && (
+                          <OptionInput
+                            value={isCurrent ? otherValue : ''}
+                            isSelected={isCurrent && selectedValue === OTHER_VALUE}
+                            disabled={isProcessing}
+                            placeholder={t('builder_tools_askquestion_other_placeholder', undefined, 'Other...')}
+                            ariaLabel={t('builder_tools_askquestion_other_aria_label', undefined, 'Other answer')}
+                            submitLabel={isLastQuestion
+                              ? t('builder_common_submit', undefined, 'Submit')
+                              : t('builder_common_next', undefined, 'Next')}
+                            onChange={handleOtherChange}
+                            onFocus={handleOtherFocus}
+                            onSubmit={handleOtherSubmit}
+                            onKeyDown={handleOtherKeyDown}
+                          />
+                        )}
+                      </div>
+                    </fieldset>
+                  </div>
+                </motion.div>
+              </Accordion.Content>
+            </Accordion.Item>
+          )
+        })}
+      </Accordion.Root>
     </Box>
   )
 }
