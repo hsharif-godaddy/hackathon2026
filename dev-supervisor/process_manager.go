@@ -10,7 +10,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -303,53 +302,43 @@ func (mp *ManagedProcess) Stop(signal string, timeout int) error {
 
 		mp.info.State = ProcessStateStopped
 		if err != nil {
-			// Store the exit information
-			var exitCode int
-			var hasExitCode bool
-			if exitError, ok := err.(*exec.ExitError); ok {
-				exitCode = exitError.ExitCode()
-				mp.info.ExitCode = &exitCode
-				hasExitCode = true
-			}
-
-			// Check if error contains signal indication
-			containsSignalString := strings.Contains(err.Error(), "signal:")
-
-			// Expected exit codes from signals (only check if we have an exit code):
-			// 143 = SIGTERM (128 + 15) - graceful shutdown
-			// 130 = SIGINT (128 + 2) - Ctrl+C
-			// 137 = SIGKILL (128 + 9) - force kill
-			isExpectedSignalExit := hasExitCode && (exitCode == 143 || exitCode == 130 || exitCode == 137)
+			expected, exitCode := isExpectedSignalExit(err)
+			mp.info.ExitCode = exitCode
 
 			// Log the exit status
-			if isExpectedSignalExit || containsSignalString {
-				slog.Info("process stopped",
-					slog.GroupAttrs("process_exit",
-						slog.Int("exit_code", exitCode),
-						slog.Bool("expected", true),
-					),
-				)
+			if expected {
+				if exitCode != nil {
+					slog.Info("process stopped",
+						slog.GroupAttrs("process_exit",
+							slog.Int("exit_code", *exitCode),
+							slog.Bool("expected", true),
+						),
+					)
+				} else {
+					slog.Info("process stopped",
+						slog.GroupAttrs("process_exit",
+							slog.Bool("expected", true),
+							slog.String("note", "no exit code available"),
+						),
+					)
+				}
 			} else {
-				if hasExitCode {
+				if exitCode != nil {
 					slog.Warn("process stopped with unexpected exit code",
 						slog.GroupAttrs("process_exit",
-							slog.Int("exit_code", exitCode),
+							slog.Int("exit_code", *exitCode),
 							slog.Bool("expected", false),
 						),
 						slog.String("error", err.Error()),
 					)
 				} else {
-					slog.Warn("process stopped with non-exit error",
+					slog.Warn("process stopped with unexpected error",
 						slog.GroupAttrs("process_exit",
 							slog.Bool("expected", false),
 						),
 						slog.String("error", err.Error()),
 					)
 				}
-			}
-
-			// Only return the error if it's not a signal-based termination
-			if !containsSignalString && !isExpectedSignalExit {
 				mp.info.State = ProcessStateError
 				mp.info.Error = err.Error()
 				return err
@@ -417,17 +406,17 @@ func (mp *ManagedProcess) waitForCompletion(pid1Mgr *PID1Manager) {
 	}
 
 	mp.infoMu.Lock()
-	if err != nil {
-		mp.info.State = ProcessStateError
-		mp.info.Error = err.Error()
-		if exitError, ok := err.(*exec.ExitError); ok {
-			code := exitError.ExitCode()
-			mp.info.ExitCode = &code
-		}
-	} else {
+	expected, exitCode := isExpectedSignalExit(err)
+	mp.info.ExitCode = exitCode
+
+	if expected {
 		mp.info.State = ProcessStateStopped
-		code := 0
-		mp.info.ExitCode = &code
+	} else {
+		// Unexpected error - set state to error
+		mp.info.State = ProcessStateError
+		if err != nil {
+			mp.info.Error = err.Error()
+		}
 	}
 	mp.infoMu.Unlock()
 
