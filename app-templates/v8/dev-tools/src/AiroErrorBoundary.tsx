@@ -13,6 +13,26 @@ interface State {
 
 export default class AiroErrorBoundary extends Component<Props, State> {
   state: State = { error: null, errorInfo: null };
+  private hmrAfterUpdateHandler?: () => void;
+
+  componentDidMount() {
+    // Reset error state on HMR updates so fixed code can render
+    if (import.meta.hot) {
+      this.hmrAfterUpdateHandler = () => {
+        if (this.state.error) {
+          this.setState({ error: null, errorInfo: null });
+        }
+      };
+      import.meta.hot.on('vite:afterUpdate', this.hmrAfterUpdateHandler);
+    }
+  }
+
+  componentWillUnmount() {
+    // Clean up HMR listener to prevent memory leaks
+    if (import.meta.hot && this.hmrAfterUpdateHandler) {
+      import.meta.hot.off('vite:afterUpdate', this.hmrAfterUpdateHandler);
+    }
+  }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('Error caught by AiroErrorBoundary:', error, errorInfo);

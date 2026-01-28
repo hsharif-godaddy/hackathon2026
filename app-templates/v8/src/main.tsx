@@ -12,13 +12,6 @@ if (import.meta.env.MODE === 'development') {
   document.head.appendChild(meta);
 }
 
-// Reload the page after a hot reload
-if (import.meta.hot) {
-  import.meta.hot.on('vite:afterUpdate', () => {
-    window.location.reload();
-  });
-}
-
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
