@@ -20,7 +20,25 @@ export default gasket.actions.getNextConfig({
     'airo-builder.dev-godaddy.com',
     'airo-builder-local.dev-godaddy.com'
   ],
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, dev }) => {
+    // Reduce file watching to prevent EMFILE errors
+    if (dev) {
+      config.watchOptions = {
+        ignored: [
+          '**/node_modules/**',
+          '**/.git/**',
+          '**/.next/**',
+          '**/dist/**',
+          '**/build/**',
+          '**/coverage/**',
+          '**/*.test.ts',
+          '**/*.test.tsx',
+          '**/__tests__/**',
+        ],
+        aggregateTimeout: 300,
+      };
+    }
+
     // Suppress webpack warnings for dynamic imports in plugin systems
     // These are expected for @venture/cds-utils and @gasket/plugin-dynamic-plugins
     // Merge with existing warnings instead of replacing them
