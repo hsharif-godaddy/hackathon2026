@@ -127,9 +127,21 @@ todoList({ operation: 'mark_done', itemIds: ['item-789'] });
 
 After completing any task, use `suggestedResponse` to guide next steps.
 
+**For initial build (handoff from initial agent):**
+
+- Follow the SUGGESTED RESPONSES section from the handoff prompt
+- Use the specific question and suggestions provided in the handoff
+- Typically asks for design feedback with options like "Change the color scheme", "Change the fonts"
+
+**For other tasks:**
+
+- Use appropriate suggestions based on what was just completed
+- Check conversation history first - don't suggest features that already exist
+
 **IMPORTANT:** If `hasUnbuiltRebuildPages` is true in the context metadata, do NOT suggest building additional pages (e.g., "Add another page", "Build the about page", "Create contact page"). A page selector dropdown will automatically appear with available pages from the scraped site.
 
 ```typescript
+// Example for general tasks:
 suggestedResponse({
   question: 'What would you like to do next?',
   suggestions: [
@@ -137,15 +149,13 @@ suggestedResponse({
     // { text: 'Add another page' },
     // { text: 'Build the about page' },
 
-    // ✅ Always appropriate:
+    // ✅ Context-appropriate suggestions:
     { text: 'Change the color scheme' },
-    { text: 'Add more features' },
+    { text: 'Change the fonts' },
     { text: 'Refine the design' },
   ],
 });
 ```
-
-**Check conversation history first** - don't suggest features that already exist.
 
 ## Design Guidelines
 
@@ -182,7 +192,12 @@ bg-primary text-primary-foreground
 
 ### Color Scheme Tool
 
-When users request color changes, use the `colorScheme` tool:
+**For initial build (handoff from initial agent):**
+
+- Use `colorScheme({ mode: 'apply', description: '...' })` to set colors directly
+- Do NOT use suggest mode during initial build - just pick appropriate colors based on design direction
+
+**For user-requested changes:**
 
 1. **First, show options**: `colorScheme({ mode: 'suggest', description: '...', count: 4 })`
 2. **Then, apply selection**: `colorScheme({ mode: 'apply', paletteName: '...' })`
@@ -253,10 +268,29 @@ mediaSearch({
 ### When NOT to Use Tools
 
 **mediaSearch**: Text-only changes, layout adjustments, forms, data display
-**colorScheme**: Before content exists, empty pages, initial page creation
+**colorScheme suggest mode**: Before content exists, empty pages (use apply mode during initial build)
 **todoList**: Simple edits, bug fixes, single-file changes
 
 ## Common Workflows
+
+### Initial Build from Handoff
+
+When receiving a handoff from the initial agent, follow the BUILD ORDER in the handoff prompt:
+
+1. Search for images if needed
+2. Build homepage structure (index.tsx)
+3. Build header with navigation
+4. Build footer with links and branding
+5. Set font stack using `fontTheme({ mode: 'set', description: '...' })`
+6. Set color scheme using `colorScheme({ mode: 'apply', description: '...' })`
+7. Mark the Homepage todo item as COMPLETE
+8. Show the design and use `suggestedResponse` with the suggestions from the handoff
+
+**CRITICAL for initial build:**
+
+- Use `fontTheme` with `mode: 'set'` - do NOT show font suggestions
+- Use `colorScheme` with `mode: 'apply'` - do NOT show color suggestions
+- Follow the SUGGESTED RESPONSES section from the handoff prompt exactly
 
 ### Building Pages
 

@@ -54,7 +54,7 @@ export default function ToolModal({
         <>
           {/* Backdrop */}
           <motion.div
-            className="fixed inset-0 z-50 bg-intents-ux-boxHighContrastOverlay-backgroundColor"
+            className="fixed inset-0 z-[60] bg-intents-ux-boxHighContrastOverlay-backgroundColor"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -64,7 +64,7 @@ export default function ToolModal({
 
           {/* Modal Container */}
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-2"
+            className="fixed inset-0 z-[60] flex items-center justify-center p-2"
             onClick={onClose}
           >
             <motion.div

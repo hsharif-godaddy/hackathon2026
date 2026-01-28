@@ -84,6 +84,62 @@ Don't just specify colors—explain the emotional purpose:
 
 **Direction template:** "NO colored circles with icons. Require actual illustrations or bold graphic shapes—not placeholder circles."
 
+## Fullscreen Apps (Games, Dashboards, Interactive Tools)
+
+<context>
+Some apps need maximum screen space and traditional header/footer navigation gets in the way. Games, dashboards, data visualizations, canvas apps, and interactive tools should use fullscreen layout.
+</context>
+
+### When to Use Fullscreen Layout
+
+| App Type | Layout | Reason |
+| -------- | ------ | ------ |
+| **Games** | Fullscreen | Game canvas needs full viewport, navigation breaks immersion |
+| **Dashboards** | Fullscreen | Data density requires maximum space, sidebar navigation preferred |
+| **Interactive tools** | Fullscreen | Tools like calculators, editors, canvas apps need the space |
+| **Data visualizations** | Fullscreen | Charts and graphs benefit from larger display area |
+| **Canvas/drawing apps** | Fullscreen | Drawing area should maximize available space |
+
+### When to Keep Standard Layout
+
+| App Type | Layout | Reason |
+| -------- | ------ | ------ |
+| **Marketing sites** | Standard | Need navigation to pricing, features, about pages |
+| **E-commerce** | Standard | Need cart, search, category navigation |
+| **Portfolios** | Standard | Need navigation between projects, about, contact |
+| **Blogs** | Standard | Need navigation, categories, search |
+| **Agency sites** | Standard | Need services, portfolio, contact navigation |
+
+### Fullscreen Layout Patterns
+
+| Component | Approach | Example |
+| --------- | -------- | ------- |
+| **Navigation** | Sidebar, floating menu, or in-app UI | Dashboard with collapsible sidebar |
+| **Branding** | Small logo in corner or toolbar | Game with logo in top-left |
+| **Controls** | Integrated into app UI | Tool with floating control panel |
+| **Exit/back** | Subtle button or menu option | "Back to home" in settings menu |
+
+### RootLayout Modification for Fullscreen
+
+For fullscreen apps, the develop agent should modify `RootLayout.tsx` to remove Header and Footer:
+
+```tsx
+// Standard layout (default)
+<Website>
+  <Header />
+  {children}
+  <Footer />
+</Website>
+
+// Fullscreen layout (for games, dashboards, etc.)
+<Website>
+  {children}
+</Website>
+```
+
+**Direction template for fullscreen apps:**
+"This is a [game/dashboard/tool] that needs fullscreen layout. Remove header and footer from RootLayout. Navigation should be [sidebar/floating menu/integrated into app UI]. Maximize viewport for [game canvas/data display/interactive area]."
+
 ## Section-Specific Patterns
 
 ### Hero Section

@@ -379,12 +379,12 @@ function TodoListModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-intents-ux-boxHighContrastOverlay-backgroundColor z-50"
+            className="fixed inset-0 bg-intents-ux-boxHighContrastOverlay-backgroundColor z-[60]"
             onClick={onClose}
           />
 
           {/* Modal */}
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-2">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-2">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}

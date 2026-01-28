@@ -1,14 +1,14 @@
-# Attribute Discovery - Personalization Requirements
+# Project Details - Personalization Requirements
 
 <context>
-Generic designs fail because they don't account for audience-specific needs. A site for teenagers needs different typography than one for seniors. A B2B SaaS needs different trust signals than a consumer app. Identifying the right attributes upfront prevents building the wrong thing.
+Generic designs fail because they don't account for audience-specific needs. A site for teenagers needs different typography than one for seniors. A B2B SaaS needs different trust signals than a consumer app. Identifying the right project details upfront prevents building the wrong thing.
 </context>
 
-Before creating the design plan, identify the 3 most important attributes for this project. These attributes directly impact design decisions:
+Before creating the design plan, identify the 3 most important details for this project. These details directly impact design decisions:
 
-## Available Attributes
+## Available Details
 
-| Attribute                | Design Impact                                                                               |
+| Detail                   | Design Impact                                                                               |
 | ------------------------ | ------------------------------------------------------------------------------------------- |
 | **Business name**        | Branding, identity consistency, domain suggestions                                          |
 | **Industry**             | Determines appropriate design patterns, imagery, and content structure                      |
@@ -31,20 +31,20 @@ Before creating the design plan, identify the 3 most important attributes for th
 | **Trust signals**        | Social proof prominence, credibility elements (reviews, credentials, testimonials, minimal) |
 | **Visual showcase**      | Content structure, imagery ratio (portfolio-heavy, product-focused, text-driven)            |
 
-## Attribute Selection Process
+## Detail Selection Process
 
-<explicit_instruction>
+<instructions>
 
 1. **Analyze the request** - Identify project type and goals
-2. **Select 3 most important attributes** - Choose those that will significantly impact design decisions
+2. **Select 3 most important details** - Choose those that will significantly impact design decisions
 3. **Check if you can infer answers** - Often the user's description contains enough context
-4. **If you can infer all 3:** Document assumptions briefly and continue immediately
-5. **If you cannot infer all 3:** Use the `askQuestion` tool to gather needed attributes
-   </explicit_instruction>
+4. **If you can infer all 3:** Proceed directly to Step 2 (Set Project Name) without mentioning them
+5. **If you cannot infer all 3:** Use the `askQuestion` tool to gather needed details
+   </instructions>
 
 ## Using the askQuestion Tool
 
-<tool_usage>
+<instructions>
 **CRITICAL:** When you need to ask questions, use the `askQuestion` tool. Do NOT add any text after calling the tool—execution will stop automatically.
 
 **Tool schema:**
@@ -101,13 +101,15 @@ I'll use these answers to create your design.
 [NO TEXT AFTER THE TOOL CALL]
 ```
 
-</tool_usage>
+</instructions>
 
 ## Decision Examples
 
-### Example 1: Can Infer All (Continue Immediately)
+<examples>
+<example id="infer-all">
+### Can Infer All (Continue Immediately)
 
-**User:** "Create a project management dashboard for software teams"
+**User input:** "Create a project management dashboard for software teams"
 
 **Analysis:**
 
@@ -115,11 +117,13 @@ I'll use these answers to create your design.
 - Target audience: Tech-savvy professionals, all ages, mid-range to premium ✓
 - Device priority: Desktop-first (complex workflows) ✓
 
-**Action:** Continue with brief documentation: "I'm designing for a SaaS project management tool targeting tech-savvy professionals on desktop—proceeding with the design."
+**Action:** Proceed directly to Step 2 (Set Project Name) without mentioning inferences.
+</example>
 
-### Example 2: Need to Ask (Use askQuestion Tool)
+<example id="need-to-ask">
+### Need to Ask (Use askQuestion Tool)
 
-**User:** "Website for my coffee shop"
+**User input:** "Website for my coffee shop"
 
 **Analysis:**
 
@@ -164,10 +168,12 @@ I'll use these answers to create your design.
 ```
 
 **IMPORTANT:** No text before or after the tool call. Execution stops automatically.
+</example>
 
-### Example 3: Partial Inference
+<example id="partial-inference">
+### Partial Inference
 
-**User:** "Online store for handmade jewelry, targeting millennials who like minimalist design"
+**User input:** "Online store for handmade jewelry, targeting millennials who like minimalist design"
 
 **Analysis:**
 
@@ -175,24 +181,26 @@ I'll use these answers to create your design.
 - Brand personality: Minimalist ✓
 - Product type: Physical products (jewelry) ✓
 
-**Action:** Continue without asking—all key attributes can be inferred: "I'm designing a minimalist e-commerce site for handmade jewelry targeting millennials—proceeding with the design."
+**Action:** Proceed directly to Step 2 (Set Project Name) without mentioning inferences.
+</example>
+</examples>
 
-<important_rules>
+<rules>
 These rules exist because asking too many questions frustrates users:
 
 - **Use askQuestion tool for questions** - Do NOT ask questions in plain text
 - **No text after tool calls** - The tool stops execution automatically; any text you add will never be seen
-- **Ask all needed attributes at once** - Include all questions in one tool call (user sees them one at a time)
-- **Prefer inference over asking** - If you can reasonably determine an attribute, do so
-- **Document assumptions** - State what you inferred so user can correct if wrong
-- **Continue immediately** - After getting answers (or inferring), proceed with design
-- **Don't ask for obvious attributes** - If user said "coffee shop," don't ask what industry they're in
+- **Ask all needed details at once** - Include all questions in one tool call (user sees them one at a time)
+- **Prefer inference over asking** - If you can reasonably determine a detail, do so silently
+- **Don't mention inferences** - Continue immediately without stating what you inferred (reduces verbosity; users can correct during design review)
+- **Continue immediately** - After getting answers (or inferring), proceed directly to tool calls
+- **Don't ask for obvious details** - If user said "coffee shop," don't ask what industry they're in
 - **Provide contextual suggestions** - Base suggestions on the project type and context
-  </important_rules>
+  </rules>
 
-## How Attributes Influence Design
+## How Project Details Influence Design
 
-After determining the 3 key attributes, use them to inform:
+After determining the 3 key details, use them to inform:
 
 | Design Element         | Influenced By                                           |
 | ---------------------- | ------------------------------------------------------- |
@@ -205,4 +213,4 @@ After determining the 3 key attributes, use them to inform:
 | Motion and interaction | Animation level, device priority, brand personality     |
 | Section emphasis       | Primary goal, product type, visual showcase             |
 
-Include the 3 discovered attributes in your handoff prompt so the develop agent understands the personalization context.
+Include the 3 key project details in your handoff prompt so the develop agent understands the personalization context.
