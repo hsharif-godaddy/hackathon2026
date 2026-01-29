@@ -18,8 +18,8 @@ const RESTART_TIMEOUTS = {
   BUILD: 10 * 60 * 1000, // 10 minutes
 } as const;
 
-const DEFAULT_DEV_COMMAND = 'vite --host 0.0.0.0 --port $PORT';
-const DEFAULT_BUILD_COMMAND = 'vite build --outDir dist';
+export const DEFAULT_DEV_COMMAND = 'node_modules/.bin/vite --host 0.0.0.0 --port $PORT';
+const DEFAULT_BUILD_COMMAND = 'node_modules/.bin/vite build --outDir dist';
 const DEFAULT_SERVE_COMMAND = 'serve dist -l tcp://0.0.0.0:$PORT';
 
 export interface RestartCycleResult {

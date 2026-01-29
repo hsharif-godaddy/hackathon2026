@@ -215,8 +215,8 @@ describe('AppRestartService', () => {
       // Verify the JSON structure
       const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
       const writtenConfig = JSON.parse(writeCall[1] as string);
-      expect(writtenConfig.runtime.dev.command).toBe('vite --host 0.0.0.0 --port $PORT');
-      expect(writtenConfig.runtime.build.command).toBe('vite build --outDir dist');
+      expect(writtenConfig.runtime.dev.command).toBe('node_modules/.bin/vite --host 0.0.0.0 --port $PORT');
+      expect(writtenConfig.runtime.build.command).toBe('node_modules/.bin/vite build --outDir dist');
       expect(writtenConfig.runtime.serve.command).toBe('serve dist -l tcp://0.0.0.0:$PORT');
     });
   });

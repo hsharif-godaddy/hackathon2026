@@ -14,7 +14,7 @@ import { ImportJobRepository, UpdateImportJobParams } from '../database/reposito
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { zipSecurityService } from './ZipSecurityService.js';
 import { gitCloneService } from './GitCloneService.js';
-import { appRestartService } from './AppRestartService.js';
+import { appRestartService, DEFAULT_DEV_COMMAND } from './AppRestartService.js';
 import { GitTool } from '../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { DevSupervisorClient } from './DevSupervisorClient.js';
@@ -23,8 +23,6 @@ import {
   isSupportedProjectInContainer,
   SUPPORTED_BUILD_TOOLS,
 } from '../server/middleware/git-import-validation.js';
-
-const DEFAULT_DEV_COMMAND = 'vite --host 0.0.0.0 --port $PORT';
 
 /**
  * Parameters for starting an import
