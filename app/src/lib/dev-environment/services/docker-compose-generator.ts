@@ -138,7 +138,7 @@ export class DockerComposeGenerator {
 			// Works for both:
 			// - localhost:5001 (local: UUID format like 3d3bdcfd-a490-4475-a1a8-11c1a84e16d1)
 			// - 41gb5nrnyl.c4.test-airoapp.ai (production: short format like 41gb5nrnyl)
-			// Redirects to: https://airo-builder.{env}-godaddy.com/develop/{siteId}?siteId={siteId}
+			// Redirects to: https://airo-builder.{env}-godaddy.com/?redirect=%2Fdevelop%2F{siteId}%3FsiteId%3D{siteId}
 			env.DEV_SUPERVISOR_JWT_REDIRECT_URL = `${ssoLoginUrl}?app=airo-builder&redirect={url}`;
 			env.DEV_SUPERVISOR_JWT_BUILDER_BASE_URL = appUrl; // Builder base URL for smart redirects
 			env.DEV_SUPERVISOR_JWT_EXCLUDED_PATHS = "/api/health";

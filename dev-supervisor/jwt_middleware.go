@@ -6,8 +6,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 )
+
+var siteIDPattern = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 
 /**
  * JWTMiddlewareConfig defines configuration for JWT middleware
@@ -274,8 +277,8 @@ func (m *JWTMiddleware) redirect(w http.ResponseWriter, r *http.Request, reason 
  * - localhost:5001 (local development) - SITE_ID from docker-compose
  * - 41gb5nrnyl.c4.test-airoapp.ai (production) - SITE_ID from deployment config
  *
- * Builder URL format:
- * - https://airo-builder.{env}-godaddy.com/develop/{siteId}?siteId={siteId}
+ * Builder URL format (root with redirect query so SSO allowlists the origin):
+ * - https://airo-builder.{env}-godaddy.com/?redirect=%2Fdevelop%2F{siteId}%3FsiteId%3D{siteId}
  *
  * @returns Smart redirect URL or empty string if SITE_ID not configured
  */
@@ -285,6 +288,11 @@ func (m *JWTMiddleware) buildSmartRedirectURL() string {
 	if siteID == "" {
 		slog.Debug("jwt.middleware.smart_redirect.no_site_id",
 			"message", "SITE_ID not configured, using default redirect")
+		return ""
+	}
+	if !siteIDPattern.MatchString(siteID) {
+		slog.Warn("jwt.middleware.smart_redirect.invalid_site_id",
+			"siteID", siteID)
 		return ""
 	}
 
@@ -305,13 +313,23 @@ func (m *JWTMiddleware) buildSmartRedirectURL() string {
 	}
 
 	// Build the smart redirect URL with URL-encoded siteID
-	// Format: https://airo-builder.{env}-godaddy.com/develop/{siteId}?siteId={siteId}
+	// Format: https://airo-builder.{env}-godaddy.com/?redirect=%2Fdevelop%2F{siteId}%3FsiteId%3D{siteId}
 	escapedSiteID := url.QueryEscape(siteID)
-	smartURL := fmt.Sprintf("%s://%s/develop/%s?siteId=%s",
+
+	basePath := builderBaseURL.Path
+	if basePath == "" {
+		basePath = "/"
+	}
+	if !strings.HasSuffix(basePath, "/") {
+		basePath += "/"
+	}
+
+	redirectPath := fmt.Sprintf("/develop/%s?siteId=%s", escapedSiteID, escapedSiteID)
+	smartURL := fmt.Sprintf("%s://%s%s?redirect=%s",
 		builderBaseURL.Scheme,
 		builderBaseURL.Host,
-		escapedSiteID,
-		escapedSiteID)
+		basePath,
+		url.QueryEscape(redirectPath))
 
 	return smartURL
 }

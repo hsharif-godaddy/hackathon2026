@@ -79,6 +79,50 @@ export default function SsoLogin() {
     setSsoLoaded();
   }, [setSsoLoaded]);
 
+  const redirectToRequestedPath = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+
+    const searchParams = new URLSearchParams(window.location.search);
+    const redirectParam = searchParams.get('redirect');
+    if (!redirectParam) {
+      return false;
+    }
+
+    try {
+      const baseOrigin = window.location.origin;
+      const baseProtocol = window.location.protocol;
+      const url = new URL(redirectParam, baseOrigin);
+      const isSameOrigin = url.origin === baseOrigin;
+      const isSameProtocol = url.protocol === baseProtocol;
+
+      if (!isSameOrigin || !isSameProtocol) {
+        logger.warn('sso-login.auth.redirect.rejected', {
+          message: 'Redirect URL origin mismatch, ignoring',
+          redirectUrl: redirectParam,
+          requestedOrigin: url.origin,
+          requestedProtocol: url.protocol,
+        });
+        return false;
+      }
+
+      logger.info('sso-login.auth.redirect', {
+        message: 'Redirecting to requested URL after SSO login',
+        redirectPath: url.pathname + url.search + url.hash,
+      });
+      window.location.assign(url.href);
+      return true;
+    } catch (error) {
+      logger.warn('sso-login.auth.redirect.invalid', {
+        message: 'Invalid redirect URL from SSO',
+        redirectUrl: redirectParam,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }, []);
+
   const handleAuth = useCallback(function onSsoAuth(data?: unknown) {
     logger.info('sso-login.auth.success', {
       message: 'SSO authentication successful',
@@ -93,7 +137,11 @@ export default function SsoLogin() {
 
     // Refresh auth state to pick up new cookies without full page reload
     refreshAuth();
-  }, [closeSsoLogin, clearNeedsReauth, clearRequiresAuth, refreshAuth]);
+
+    if (redirectToRequestedPath()) {
+      return;
+    }
+  }, [closeSsoLogin, clearNeedsReauth, clearRequiresAuth, refreshAuth, redirectToRequestedPath]);
 
   // Don't render if not open
   if (!isSsoLoginOpen) {
