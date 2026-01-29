@@ -45,21 +45,21 @@ describe('CodeSearch', () => {
   it('should render search input with mode toggle buttons', async function render() {
     renderWithProviders(<CodeSearch {...defaultProps} />)
 
-    expect(screen.getByRole('button', { name: 'Files' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Code' })).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Search files...')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'builder_code_search_files' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'builder_code_search_code' })).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('builder_code_search_placeholder_files')).toBeInTheDocument()
   })
 
   it('should switch mode and update placeholder when code button is clicked', async function switchMode() {
     const { user } = renderWithProviders(<CodeSearch {...defaultProps} />)
 
-    expect(screen.getByPlaceholderText('Search files...')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('builder_code_search_placeholder_files')).toBeInTheDocument()
 
-    const codeButton = screen.getByRole('button', { name: 'Code' })
+    const codeButton = screen.getByRole('button', { name: 'builder_code_search_code' })
     await user.click(codeButton)
 
-    expect(screen.getByPlaceholderText('Search code...')).toBeInTheDocument()
-    expect(screen.queryByPlaceholderText('Search files...')).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText('builder_code_search_placeholder_code')).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('builder_code_search_placeholder_files')).not.toBeInTheDocument()
   })
 })
 

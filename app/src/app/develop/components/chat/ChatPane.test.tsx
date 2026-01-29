@@ -190,23 +190,6 @@ describe('ChatPane', () => {
     expect(screen.getByTestId('version-history')).toBeInTheDocument();
   });
 
-  it('should show preview pane on mobile when PREVIEW tab is active', () => {
-    mockChatTabs.activeChatTab = ChatTab.PREVIEW;
-    mockDevelopPageStore.isMobile = true;
-
-    renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
-
-    expect(screen.getByTestId('preview-pane')).toBeInTheDocument();
-  });
-
-  it('should show settings pane when SETTINGS tab is active', () => {
-    mockChatTabs.activeChatTab = ChatTab.SETTINGS;
-
-    renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
-
-    expect(screen.getByTestId('settings-pane')).toBeInTheDocument();
-  });
-
   it('should fall back to CHAT tab on desktop if PREVIEW is selected', () => {
     mockChatTabs.activeChatTab = ChatTab.PREVIEW;
     mockDevelopPageStore.isMobile = false;
@@ -223,16 +206,6 @@ describe('ChatPane', () => {
       const urls = (global.fetch as any).mock.calls.map((call: any[]) => String(call[0]))
       expect(urls.some((u: string) => u.endsWith('/api/venture'))).toBe(true)
     });
-  });
-
-  it('should pass onPreviewRefresh to PreviewPane', () => {
-    const onPreviewRefresh = vi.fn();
-    mockChatTabs.activeChatTab = ChatTab.PREVIEW;
-    mockDevelopPageStore.isMobile = true;
-
-    renderWithProviders(<ChatPane sendMessage={mockSendMessage} onPreviewRefresh={onPreviewRefresh} />);
-
-    expect(screen.getByTestId('preview-pane')).toBeInTheDocument();
   });
 
   it('should handle sendMessage prop', () => {

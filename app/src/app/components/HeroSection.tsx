@@ -43,16 +43,26 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     return /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
   }, [])
 
-  // Memoize and shuffle placeholders once on mount
-  const placeholders = useMemo(() => [
-    t('builder_homepage_placeholder_1'),
-    t('builder_homepage_placeholder_2'),
-    t('builder_homepage_placeholder_3'),
-    t('builder_homepage_placeholder_4'),
-    t('builder_homepage_placeholder_5')
-  ].sort(() => Math.random() - 0.5), []) // eslint-disable-line react-hooks/exhaustive-deps
-
   const { isMobile, isTablet } = useResponsive()
+
+  // Memoize and shuffle placeholders once on mount
+  // Use mobile-specific placeholders on mobile to prevent truncation
+  const placeholders = useMemo(() => {
+    if (isMobile) {
+      return [
+        t('builder_homepage_placeholder_mobile_1'),
+        t('builder_homepage_placeholder_mobile_2'),
+        t('builder_homepage_placeholder_mobile_3')
+      ]
+    }
+    return [
+      t('builder_homepage_placeholder_1'),
+      t('builder_homepage_placeholder_2'),
+      t('builder_homepage_placeholder_3'),
+      t('builder_homepage_placeholder_4'),
+      t('builder_homepage_placeholder_5')
+    ].sort(() => Math.random() - 0.5)
+  }, [isMobile]) // eslint-disable-line react-hooks/exhaustive-deps
   const isUserTypingRef = useRef(false)
 
   useEffect(() => {
@@ -272,7 +282,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 disabled={isLoading}
                 maxLength={MAX_PROMPT_LENGTH + 1}
                 className={clsx('!bg-intents-ux-box-backgroundColor relative pl-3 sm:pl-4 pr-8 sm:pr-12 py-2.5 sm:py-3 w-full text-md sm:text-xl leading-[1.5] font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
-                  'h-32 rounded-2xl': isExpanded,
+                  'h-24 md:h-32 rounded-2xl': isExpanded,
                   'h-8 sm:h-10 rounded-[3rem]': !isExpanded
                 })}
                 placeholder={isTyping ? "" : animatedPlaceholder}

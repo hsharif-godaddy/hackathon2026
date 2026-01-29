@@ -6,7 +6,7 @@ import Button from '@ux/button';
 import SettingsIcon from '@ux/icon/settings';
 
 import { useSettingsNavItems } from '@/app/develop/components/settings/useSettingsNavItems';
-import { SettingsSection } from '@/app/develop/components/types';
+import { ChatTab, SettingsSection } from '@/app/develop/components/types';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useTranslations } from '@/hooks/useTranslations';
 import {
@@ -21,7 +21,7 @@ export default function SettingsMenu() {
 
   const [open, setOpen] = useState(false);
 
-  const { activeSettingsSection, setActiveSettingsSection } = useChatTabs();
+  const { activeChatTab, activeSettingsSection, setActiveSettingsSection } = useChatTabs();
 
   const handleNavigate = (id: SettingsSection) => {
     setActiveSettingsSection(id);
@@ -29,6 +29,9 @@ export default function SettingsMenu() {
   };
 
   const items = useSettingsNavItems();
+
+  // Only show an item as active when we're actually on the Settings tab
+  const isOnSettingsTab = activeChatTab === ChatTab.SETTINGS;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -54,7 +57,7 @@ export default function SettingsMenu() {
               key={item.id}
               design="option"
               size="sm"
-              active={activeSettingsSection === item.id}
+              active={isOnSettingsTab && activeSettingsSection === item.id}
               icon={item.icon}
               text={item.label}
               disabled={item.disabled}
@@ -67,7 +70,7 @@ export default function SettingsMenu() {
                   handleNavigate(item.id);
                 }
               }}
-              data-eid={generateClickEID(`develop.settings.menu.${item.id}`)}
+              data-eid={generateClickEID(`develop.settings_menu.${item.id}`)}
             />
           ))}
         </div>

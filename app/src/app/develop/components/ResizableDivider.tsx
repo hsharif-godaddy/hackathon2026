@@ -6,12 +6,14 @@ interface ResizableDividerProps {
   onResize: (leftWidth: number) => void
   minLeftWidth?: number
   minRightWidth?: number
+  style?: React.CSSProperties
 }
 
 export default function ResizableDivider({
   onResize,
   minLeftWidth = 300,
   minRightWidth = 400,
+  style,
 }: ResizableDividerProps) {
   const [isDragging, setIsDragging] = useState(false)
   const dividerRef = useRef<HTMLDivElement>(null)
@@ -116,30 +118,6 @@ export default function ResizableDivider({
     }
   }, [isDragging])
 
-  // Handle window resize to adjust constraints
-  useEffect(() => {
-    const handleWindowResize = () => {
-      if (containerRef.current) {
-        // Force recalculation of constraints on window resize
-        const containerRect = containerRef.current.getBoundingClientRect()
-        const containerWidth = containerRect.width
-        const maxLeftWidth = containerWidth - minRightWidth
-
-        // Get current left panel width
-        const leftPanel = containerRef.current.firstElementChild as HTMLElement
-        if (leftPanel) {
-          const currentWidth = parseInt(leftPanel.style.width || '0', 10)
-          if (currentWidth > maxLeftWidth) {
-            onResize(maxLeftWidth)
-          }
-        }
-      }
-    }
-
-    window.addEventListener('resize', handleWindowResize, { passive: true })
-    return () => window.removeEventListener('resize', handleWindowResize)
-  }, [minRightWidth, onResize])
-
   // Cleanup animation frame on unmount
   useEffect(() => {
     return () => {
@@ -152,10 +130,9 @@ export default function ResizableDivider({
   return (
     <div
       ref={dividerRef}
-      className="relative w-1 bg-transparent cursor-col-resize flex-shrink-0 z-10 group"
+      className="absolute top-2 bottom-2 w-0.5 bg-transparent cursor-col-resize flex-shrink-0 z-10 rounded-lg transition-colors duration-400 hover:bg-border"
       onMouseDown={handleMouseDown}
-    >
-      <div className="absolute inset-y-0 left-1 w-px transform -translate-x-0.5 transition-colors duration-400 group-hover:bg-intents-ux-actionPrimary-backgroundColor" />
-    </div>
+      style={style}
+    />
   )
 }

@@ -36,14 +36,14 @@ export default function AppNotFound() {
         <Button
           design="secondary"
           onClick={() => router.push('/')}
-          data-eid={generateClickEID('app_not_found.home_button')}
+          data-eid={generateClickEID('develop.app_not_found.home_button')}
           text={t('builder_app_not_found_home_button')}
         />
 
         <Button
           design="primary"
           onClick={() => router.push('/apps')}
-          data-eid={generateClickEID('app_not_found.apps_button')}
+          data-eid={generateClickEID('develop.app_not_found.apps_button')}
           text={t('builder_app_not_found_apps_button')}
         />
       </Box>

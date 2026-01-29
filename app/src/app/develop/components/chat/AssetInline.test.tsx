@@ -3,8 +3,8 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
+import { ImageAsset, MediaType, PDFAsset, VideoAsset } from '@/app/develop/components/chat/AssetManagerModal';
 import { renderWithProviders } from '@/tests/test-utils';
-import { ImageAsset, MediaType, VideoAsset, PDFAsset } from '@/app/develop/components/chat/AssetManagerModal';
 import AssetInline, { AssetInlineList, AssetMode } from './AssetInline';
 
 const mockDevelopStore = {

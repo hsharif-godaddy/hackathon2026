@@ -3,10 +3,11 @@
 import clsx from 'clsx'
 import { useState } from 'react'
 import CheckmarkIcon from '@ux/icon/checkmark'
-import ChevronDownIcon from '@ux/icon/chevron-down'
 import DesktopIcon from '@ux/icon/desktop'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
+import TabletIcon from '@ux/icon/tablet'
 
+import { type DevicePreset, getDevicesByCategory } from '@/app/develop/components/preview/devicePresets'
 import { PreviewViewMode } from '@/app/develop/components/types'
 import { useTranslations } from '@/hooks/useTranslations'
 import {
@@ -16,7 +17,6 @@ import {
 } from '@/lib/shadcn/popover'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { generateClickEID } from '@/utils/instrumentation'
-import { type DevicePreset,getDevicePreset, getDevicesByCategory } from './devicePresets'
 
 interface DeviceSelectorProps {
   disabled?: boolean
@@ -32,23 +32,20 @@ export default function DeviceSelector({ disabled = false, separator = false }: 
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
   const setSelectedDeviceId = useDevelopPageStore((state) => state.setSelectedDeviceId)
 
-  const selectedDevice = getDevicePreset(selectedDeviceId)
-
   // Translate "Full size" for the 'full' device, use device.name for others
   function getDeviceDisplayName(device: DevicePreset): string {
     return device.id === 'full' ? t('builder_device_full_size', undefined, 'Full size') : device.name
   }
 
-  const displayName = selectedDevice ? getDeviceDisplayName(selectedDevice) : t('builder_device_full_size', undefined, 'Full size')
-
   function handleDeviceSelect(device: DevicePreset) {
-    setSelectedDeviceId(device.id)
-
-    // Only update preview mode if it's actually changing
-    // This prevents resetting the device ID when switching between devices of the same category
+    // Set preview mode first if it's changing
+    // This allows the subsequent setSelectedDeviceId to override the default device
     if (previewViewMode !== device.category) {
       setPreviewViewMode(device.category)
     }
+
+    // Set the specific device ID (will override any default set by setPreviewViewMode)
+    setSelectedDeviceId(device.id)
 
     setOpen(false)
   }
@@ -57,11 +54,11 @@ export default function DeviceSelector({ disabled = false, separator = false }: 
     if (previewViewMode === PreviewViewMode.MOBILE) {
       return <MobilePhoneIcon />
     }
+    if (previewViewMode === PreviewViewMode.TABLET) {
+      return <TabletIcon />
+    }
     return <DesktopIcon />
   }
-
-  // Only show device name text when in full size desktop mode
-  const showDeviceName = previewViewMode === PreviewViewMode.DESKTOP
 
   // Group devices by category for display
   const desktopDevices = getDevicesByCategory(PreviewViewMode.DESKTOP)
@@ -80,8 +77,6 @@ export default function DeviceSelector({ disabled = false, separator = false }: 
         data-eid={generateClickEID('develop.preview.device_selector')}
       >
         {getIcon()}
-        {showDeviceName && <span>{displayName}</span>}
-        {showDeviceName && <ChevronDownIcon className="opacity-50" />}
       </PopoverTrigger>
       <PopoverContent
         align="center"

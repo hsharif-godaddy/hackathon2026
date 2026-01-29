@@ -58,8 +58,7 @@ export default function ChatInput({
   return (
     <div className="px-2 sm:px-3 md:px-0 mt-1 mt-auto">
       <div id="tour-chat-input" className="relative">
-        <div className="flex flex-col pt-1.5 pr-1.5 pb-1 pl-1 border border-intents-ux-boxHighContrast-borderColor rounded-lg focus-within:ring-1">
-
+        <div className="flex flex-col pt-1.5 pr-1.5 pb-1 pl-1 mb-px border border-intents-ux-boxHighContrast-borderColor rounded-lg focus-within:ring-1">
           {/* AI Edit Context - shows screenshot (works for both Edit with AI and Replace Image) */}
           {aiEditContext && aiEditContext.screenshot && (
             <div className="mb-1">
@@ -101,7 +100,6 @@ export default function ChatInput({
           </div>
 
           <div className="flex items-center justify-between pt-1">
-
             <div className="flex items-center gap-0.5">
               {(!isMobile || (isMobile && isAssetManagerEnabled)) && (
                 <Button
@@ -118,7 +116,7 @@ export default function ChatInput({
               )}
               <UsageGauge appId={appId} />
             </div>
-            
+
             <Button
               id="chat-send-button"
               onClick={() => onSendMessage()}

@@ -1,6 +1,5 @@
 'use client'
 
-import { motion } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import AssetManagerModal, { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
@@ -10,10 +9,8 @@ import ChatInput from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
 import PersistentTodoList from '@/app/develop/components/PersistentTodoList'
 import PlanTracker from '@/app/develop/components/PlanTracker'
-import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import RebuildContextPanel from '@/app/develop/components/RebuildContextPanel'
 import SettingsPane from '@/app/develop/components/settings/SettingsPane'
-import SettingsView from '@/app/develop/components/settings/SettingsView'
 import StreamingMessageList from '@/app/develop/components/StreamingMessageList'
 import { ChatTab } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
@@ -49,13 +46,11 @@ import { logAiroHQEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
 interface ChatPaneProps {
-  onPreviewRefresh?: () => void
   sendMessage: (content: string, aiEditContext?: any, selectedAssets?: AssetManagerItem[] | null, todoListContext?: any, isActionRequest?: boolean) => Promise<void>
   isCreateFlowSession?: boolean
 }
 
 export default function ChatPane({
-  onPreviewRefresh,
   sendMessage,
   isCreateFlowSession = false
 }: ChatPaneProps) {
@@ -431,117 +426,46 @@ export default function ChatPane({
     }
   }, [appId, inputValue, sendMessage, safeAiEditContext, selectedAssets, safeBuildErrorContext, handleClearAiEditContext, handleClearSelectedAsset, handleClearBuildErrorContext])
 
-
-  // Get tab index for animation - matches mobile toolbar order
-  const getTabIndex = (tab: ChatTab): number => {
-    switch (tab) {
-      case ChatTab.PREVIEW: return 0
-      case ChatTab.CHAT: return 1
-      case ChatTab.HISTORY: return 2
-      case ChatTab.SETTINGS: return 3
-      default: return 1 // Default to chat
-    }
-  }
-
-
   if (isMobile) {
-    const tabIndex = getTabIndex(activeChatTab)
-    const transformValue = `-${tabIndex * 100}%`
-
     return (
       <ChatContext.Provider value={chatContextValue}>
-      <div className="flex-1 flex flex-col min-h-0">
-        <PlanTracker
-          developmentPlan={developmentPlan}
-          expandedPlan={expandedPlan}
-          onToggleExpandedPlan={toggleExpandedPlan}
-        />
+        <div className="flex-1 flex flex-col min-h-0">
+          <PlanTracker
+            developmentPlan={developmentPlan}
+            expandedPlan={expandedPlan}
+            onToggleExpandedPlan={toggleExpandedPlan}
+          />
 
-        {/* Mobile horizontal scrolling container */}
-        <div className="flex-1 relative overflow-hidden">
-          <motion.div
-            className="flex h-full"
-            initial={{ x: transformValue }}
-            animate={{ x: transformValue }}
-            transition={{
-              type: "spring",
-              stiffness: 300,
-              damping: 30
-            }}
-          >
-            {/* Preview Tab Content - Index 0, always rendered to prevent reloading */}
-            <motion.div
-              className="w-full flex-shrink-0 flex flex-col min-h-0"
-              initial={false}
-              animate={{ opacity: activeChatTab === ChatTab.PREVIEW ? 1 : 0.3 }}
-              transition={{ duration: 0.2 }}
-            >
-              <PreviewPane
-                onPreviewRefresh={onPreviewRefresh}
-                isMobile
-              />
-            </motion.div>
+          <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
 
-            <motion.div
-              className="w-full flex-shrink-0 flex flex-col min-h-0 overflow-hidden"
-              initial={false}
-              animate={{ opacity: activeChatTab === ChatTab.CHAT ? 1 : 0.3 }}
-              transition={{ duration: 0.2 }}
-            >
-              <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
+          <ChatBanners appId={appId} />
+          <ChatInput
+            appId={appId}
+            inputValue={safeInputValue}
+            isDisabled={isProcessing}
+            onInputChange={setInputValue}
+            onSendMessage={handleSendMessage}
+            selectedAssets={selectedAssets}
+            maxAssets={maxAssets}
+            onClearSelectedAsset={handleClearSingleAsset}
+            aiEditContext={safeAiEditContext}
+            onClearAiEditContext={handleClearAiEditContext}
+          />
 
-              <ChatBanners appId={appId} />
-              <ChatInput
-                appId={appId}
-                inputValue={safeInputValue}
-                isDisabled={isProcessing}
-                onInputChange={setInputValue}
-                onSendMessage={handleSendMessage}
-                selectedAssets={selectedAssets}
-                maxAssets={maxAssets}
-                onClearSelectedAsset={handleClearSingleAsset}
-                aiEditContext={safeAiEditContext}
-                onClearAiEditContext={handleClearAiEditContext}
-              />
-            </motion.div>
-
-            <motion.div
-              className="w-full flex-shrink-0 flex flex-col min-h-0 overflow-y-auto"
-              initial={false}
-              animate={{ opacity: activeChatTab === ChatTab.HISTORY ? 1 : 0.3 }}
-              transition={{ duration: 0.2 }}
-            >
-              <VersionHistory />
-            </motion.div>
-
-            <motion.div
-              className="w-full flex-shrink-0 flex flex-col min-h-0"
-              initial={false}
-              animate={{ opacity: activeChatTab === ChatTab.SETTINGS ? 1 : 0.3 }}
-              transition={{ duration: 0.2 }}
-            >
-              <SettingsView />
-            </motion.div>
-          </motion.div>
+          {isAssetManagerEnabled && (
+            <AssetManagerModal
+              isOpen={isAssetManagerOpen}
+              onClose={() => setIsAssetManagerOpen(false)}
+              onItemsSelected={handleAssetSelect}
+              ventureId={ventureId}
+              currentAssetCount={selectedAssets.length}
+              maxAssets={maxAssets}
+            />
+          )}
         </div>
-
-      <ChatToolbar
-        isProcessing={isProcessing}
-      />
-      {isAssetManagerEnabled && (
-        <AssetManagerModal
-          isOpen={isAssetManagerOpen}
-          onClose={() => setIsAssetManagerOpen(false)}
-          onItemsSelected={handleAssetSelect}
-          ventureId={ventureId}
-          currentAssetCount={selectedAssets.length}
-          maxAssets={maxAssets}
-        />
-      )}
-    </div>
-    </ChatContext.Provider>
-  )
-}
+      </ChatContext.Provider>
+    )
+  }
 
   return (
     <ChatContext.Provider value={chatContextValue}>

@@ -267,7 +267,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     selectedDeviceId: 'full',
     isSelectMode: false,
     expandedPlan: false,
-    chatPaneWidth: 400,
+    chatPaneWidth: 415,
     isChatPaneCollapsed: false,
     isMobile: false,
     isPreviewVisible: false,

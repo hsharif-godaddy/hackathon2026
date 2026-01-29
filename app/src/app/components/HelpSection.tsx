@@ -10,7 +10,7 @@ export default function HelpSection() {
   return(
     <PageSection>
       <Box
-        className="max-w-screen-lg mx-auto bg-light-purple rounded-xl p-6 lg:p-10 mb-6 lg:mb-10"
+        className="max-w-screen-lg mx-auto bg-light-purple rounded-xl p-4 lg:p-10 mb-6 lg:mb-10"
         blockAlignChildren="start"
         inlineAlignChildren="start"
         gap="lg"

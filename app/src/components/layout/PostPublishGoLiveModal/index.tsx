@@ -12,7 +12,7 @@
  */
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Modal from '@ux/modal';
 
 import { Confetti } from '@/components/icons/Confetti';

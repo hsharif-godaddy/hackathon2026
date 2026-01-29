@@ -1,11 +1,13 @@
 'use client'
 
+import { motion } from 'framer-motion'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import AppNotFound from '@/app/develop/components/AppNotFound'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
 import ChatPaneLoader, { ResumeLoaderPhase } from '@/app/develop/components/chat/ChatPaneLoader'
+import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
@@ -14,6 +16,7 @@ import { AppIntroTour } from '@/app/develop/components/tour/AppIntroTour'
 import { ChatTab } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { handlePreviewRefresh } from '@/app/develop/components/utils'
+import VersionHistory from '@/app/develop/components/VersionHistory'
 import { clearExpiredWidgetStates } from '@/app/develop/components/widgets'
 import { useInitialization } from '@/app/develop/hooks/useInitialization'
 import { ProtectedRoute } from '@/components/auth'
@@ -38,6 +41,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
+import { cn } from '@/lib/utils'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
@@ -45,6 +49,8 @@ import {
   useActiveStream,
   useAutoSendInitialMessage,
   useHistoryLoadingComplete,
+  useIsActivelyStreaming,
+  useIsLoading,
   useMessages,
   useSetAiEditContext,
   useSetBuildErrorContext,
@@ -98,6 +104,8 @@ function DevelopPageContent() {
   const setBuildErrorContext = useSetBuildErrorContext()
   const autoSendInitialMessage = useAutoSendInitialMessage()
   const { sendMessage, webSocketState } = useStreamingWebSocket()
+  const isLoading = useIsLoading()
+  const isStreaming = useIsActivelyStreaming()
 
   const chatPaneWidth = useDevelopPageStore((state) => state.chatPaneWidth)
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
@@ -132,6 +140,34 @@ function DevelopPageContent() {
 
   // Local state (only what's not in stores)
   const [selectedElement, setSelectedElement] = useState<unknown>(null)
+  // Optimistic mobile tab state for instant transitions
+  const [optimisticMobileTab, setOptimisticMobileTab] = useState<ChatTab>(activeChatTab)
+  // Track preview updates for mobile notification
+  const [hasPreviewUpdate, setHasPreviewUpdate] = useState(false)
+
+  // Sync optimistic state with URL state
+  useEffect(() => {
+    setOptimisticMobileTab(activeChatTab)
+  }, [activeChatTab])
+
+  // Track when streaming completes to show preview update indicator
+  const prevIsStreamingRef = useRef(isStreaming)
+  useEffect(() => {
+    const wasStreaming = prevIsStreamingRef.current
+    prevIsStreamingRef.current = isStreaming
+
+    // When streaming stops, mark preview as updated (on mobile only)
+    if (wasStreaming && !isStreaming && isMobile) {
+      setHasPreviewUpdate(true)
+    }
+  }, [isStreaming, isMobile])
+
+  // Clear preview update indicator when user navigates to preview
+  useEffect(() => {
+    if (optimisticMobileTab === ChatTab.PREVIEW) {
+      setHasPreviewUpdate(false)
+    }
+  }, [optimisticMobileTab])
 
   // Store last known iframe state for restoration
   const lastIframeState = useRef<{
@@ -279,6 +315,7 @@ function DevelopPageContent() {
   const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const pendingUpdateRef = useRef<{ selector: string; property: string; value: string; newClassName: string; newStyle?: string } | null>(null)
   const isFirstUpdateRef = useRef(true)
+  const isProcessing = isLoading || isStreaming
 
   const sendStyleUpdate = useCallback(async (styleData: { selector: string; property: string; value: string; newClassName: string; newStyle?: string }) => {
     if (!appId) return
@@ -738,7 +775,9 @@ function DevelopPageContent() {
   return (
     <WebSocketProvider sendMessage={sendMessage}>
       <div
-        className={isMobile ? "ios-fixed-container fixed inset-0 flex flex-col overflow-hidden" : "h-screen flex flex-col"}
+        className={cn("fixed inset-0 flex flex-col overflow-hidden", {
+          "ios-fixed-container": isMobile
+        })}
         style={isMobile ? {
           paddingTop: 'env(safe-area-inset-top)',
           paddingBottom: 'env(safe-area-inset-bottom)',
@@ -747,24 +786,22 @@ function DevelopPageContent() {
       >
         <Header location="develop" />
 
-        {isMobile ? (
-        // Mobile layout with tabs - use fixed positioning to prevent iOS Safari keyboard scroll issues
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <ChatPane
-            sendMessage={sendMessage}
-            isCreateFlowSession={isCreateFlowSession}
-          />
-        </div>
-      ) : (
-        // Desktop layout with resizable panels
-        <div className="flex-1 min-h-0 overflow-hidden sm:p-1 lg:p-2 flex">
-          {!isChatPaneCollapsed && (
-            <div
-              className="flex flex-col flex-shrink-0 relative"
+        {/* Desktop Layout */}
+        {!isMobile && (
+          <div className="relative h-full w-full overflow-hidden">
+            {/* Sidebar (Chat, History, Settings menu) */}
+            <motion.div
+              className="absolute top-2 left-2 bottom-2"
+              animate={{
+                x: isChatPaneCollapsed ? -(chatPaneWidth + 16) : 0,
+                width: chatPaneWidth
+              }}
+              transition={{
+                duration: 0.3,
+                ease: [0.4, 0, 0.2, 1]
+              }}
               style={{
-                width: `${chatPaneWidth}px`,
-                minWidth: `${chatPaneWidth}px`,
-                maxWidth: `${chatPaneWidth}px`
+                pointerEvents: isChatPaneCollapsed ? 'none' : 'auto'
               }}
             >
               {init.ui.showChatLoader ? (
@@ -787,76 +824,182 @@ function DevelopPageContent() {
                 />
               ) : (
                 <ChatPane
-                  onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                   sendMessage={sendMessage}
                   isCreateFlowSession={isCreateFlowSession}
                 />
               )}
-            </div>
-          )}
+            </motion.div>
 
-          {!isChatPaneCollapsed && (
-            <ResizableDivider
-              onResize={handlePanelResize}
-              minLeftWidth={380}
-              minRightWidth={400}
-            />
-          )}
+            {/* Resizable Divider */}
+            {!isChatPaneCollapsed && (
+              <ResizableDivider
+                onResize={handlePanelResize}
+                minLeftWidth={300}
+                minRightWidth={Math.max(600, typeof window !== 'undefined' ? window.innerWidth * 0.5 : 600)}
+                style={{
+                  left: `${chatPaneWidth + 15}px`
+                }}
+              />
+            )}
 
-          <div className="flex-1 flex flex-col relative">
-            {isPublishButtonEnabled && <PublishStatusAlert />}
-            {isPublishButtonEnabled && <PostPublishGoLiveModal appId={appId} />}
+            {/* Content (Preview, Settings, Code) */}
+            <motion.div
+              className="absolute top-2 right-2 bottom-2"
+              animate={{
+                left: isChatPaneCollapsed ? 8 : chatPaneWidth + 16
+              }}
+              transition={{
+                duration: 0.3,
+                ease: [0.4, 0, 0.2, 1]
+              }}
+            >
+              {isPublishButtonEnabled && <PublishStatusAlert />}
+              {isPublishButtonEnabled && <PostPublishGoLiveModal appId={appId} />}
 
-            <div className="flex-1 overflow-hidden relative">
-              <div className={`absolute inset-0 ${activeChatTab === ChatTab.SETTINGS ? 'hidden' : ''}`}>
-                <PreviewPane
-                  onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
-                  showBuildingOverlay={init.ui.showPreviewLoader}
-                  isHibernated={hibernation.isHibernated}
-                  isResuming={hibernation.isResuming}
-                  resumeFailed={hibernation.resumeFailed}
-                  onRetryResume={() => hibernation.resume()}
-                />
-              </div>
-              <div className={`absolute inset-0 ${activeChatTab !== ChatTab.SETTINGS ? 'hidden' : ''}`}>
-                <SettingsView />
-              </div>
-            </div>
+              <PreviewPane
+                onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                showBuildingOverlay={init.ui.showPreviewLoader}
+                isHibernated={hibernation.isHibernated}
+                isResuming={hibernation.isResuming}
+                resumeFailed={hibernation.resumeFailed}
+                onRetryResume={() => hibernation.resume()}
+                isMobile={false}
+              />
+
+              <SettingsView />
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
 
-      {openFeedbackId === "airo#app-builder" && (
-        <Feedback
-          feedbackId="airo#app-builder"
-          onClose={closeFeedbackModal}
-          onSubmitSuccess={closeFeedbackModal}
+        {/* Mobile Layout */}
+        {isMobile && (
+          <div className="relative h-full w-full overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 bottom-8">
+              {init.ui.showChatLoader ? (
+                <ChatPaneLoader
+                  phase={init.ui.chatLoaderPhase}
+                  error={init.ui.chatLoaderError}
+                  retryCount={init.retryCount}
+                  maxRetries={init.maxRetries}
+                  onRetry={init.actions.retry}
+                  onCancel={init.actions.cancel}
+                />
+              ) : hibernation.isHibernated || hibernation.isResuming ? (
+                <ChatPaneLoader
+                  phase={ResumeLoaderPhase.RESUMING}
+                  error={null}
+                  retryCount={0}
+                  maxRetries={0}
+                  onRetry={() => {}}
+                  onCancel={() => {}}
+                />
+              ) : (
+                <>
+                  {/* Preview Tab */}
+                  <div
+                    className="absolute inset-0 flex flex-col transition-opacity duration-150"
+                    style={{
+                      opacity: optimisticMobileTab === ChatTab.PREVIEW ? 1 : 0,
+                      pointerEvents: optimisticMobileTab === ChatTab.PREVIEW ? 'auto' : 'none',
+                      willChange: 'opacity'
+                    }}
+                  >
+                    {isPublishButtonEnabled && <PublishStatusAlert />}
+                    {isPublishButtonEnabled && <PostPublishGoLiveModal appId={appId} />}
+
+                    <PreviewPane
+                      onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                      showBuildingOverlay={init.ui.showPreviewLoader}
+                      isHibernated={hibernation.isHibernated}
+                      isResuming={hibernation.isResuming}
+                      resumeFailed={hibernation.resumeFailed}
+                      onRetryResume={() => hibernation.resume()}
+                      isMobile={true}
+                    />
+                  </div>
+
+                  {/* Chat Tab */}
+                  <div
+                    className="absolute inset-0 flex flex-col overflow-hidden transition-opacity duration-150"
+                    style={{
+                      opacity: optimisticMobileTab === ChatTab.CHAT ? 1 : 0,
+                      pointerEvents: optimisticMobileTab === ChatTab.CHAT ? 'auto' : 'none',
+                      willChange: 'opacity'
+                    }}
+                  >
+                    <ChatPane
+                      sendMessage={sendMessage}
+                      isCreateFlowSession={isCreateFlowSession}
+                    />
+                  </div>
+
+                  {/* History Tab */}
+                  <div
+                    className="absolute inset-0 flex flex-col overflow-y-auto transition-opacity duration-150"
+                    style={{
+                      opacity: optimisticMobileTab === ChatTab.HISTORY ? 1 : 0,
+                      pointerEvents: optimisticMobileTab === ChatTab.HISTORY ? 'auto' : 'none',
+                      willChange: 'opacity'
+                    }}
+                  >
+                    <VersionHistory />
+                  </div>
+
+                  {/* Settings Tab */}
+                  <div
+                    className="absolute inset-0 flex flex-col transition-opacity duration-150"
+                    style={{
+                      opacity: optimisticMobileTab === ChatTab.SETTINGS ? 1 : 0,
+                      pointerEvents: optimisticMobileTab === ChatTab.SETTINGS ? 'auto' : 'none',
+                      willChange: 'opacity'
+                    }}
+                  >
+                    <SettingsView />
+                  </div>
+                </>
+              )}
+            </div>
+            <ChatToolbar
+              className="fixed bottom-1 left-0 right-0"
+              isProcessing={isProcessing}
+              onBeforeTabChange={setOptimisticMobileTab}
+              optimisticActiveTab={optimisticMobileTab}
+              hasPreviewUpdate={hasPreviewUpdate}
+            />
+          </div>
+        )}
+
+        {openFeedbackId === "airo#app-builder" && (
+          <Feedback
+            feedbackId="airo#app-builder"
+            onClose={closeFeedbackModal}
+            onSubmitSuccess={closeFeedbackModal}
+          />
+        )}
+
+        <AppIntroTour
+          show={showIntroTour}
+          onClose={() => setShowIntroTour(false)}
         />
-      )}
 
-      <AppIntroTour
-        show={showIntroTour}
-        onClose={() => setShowIntroTour(false)}
-      />
-
-      {showUpgradeModal && (
-        <SinglePlanUpgradeContainer
-          source={upgradeModalSource ?? 'unknown'}
-          onSuccessClick={() => {
-            closeUpgradeModal()
-          }}
-          onClose={() => {
-            const source = upgradeModalSource ?? 'unknown'
-            closeUpgradeModal()
-            shipAnalyticsLog(`${source}.dismissed`, { appId })
-          }}
-          onErrorClick={() => {
-            const source = upgradeModalSource ?? 'unknown'
-            closeUpgradeModal()
-            shipAnalyticsLog(`${source}.error`, { appId })
-          }}
-        />
-      )}
+        {showUpgradeModal && (
+          <SinglePlanUpgradeContainer
+            source={upgradeModalSource ?? 'unknown'}
+            onSuccessClick={() => {
+              closeUpgradeModal()
+            }}
+            onClose={() => {
+              const source = upgradeModalSource ?? 'unknown'
+              closeUpgradeModal()
+              shipAnalyticsLog(`${source}.dismissed`, { appId })
+            }}
+            onErrorClick={() => {
+              const source = upgradeModalSource ?? 'unknown'
+              closeUpgradeModal()
+              shipAnalyticsLog(`${source}.error`, { appId })
+            }}
+          />
+        )}
       </div>
     </WebSocketProvider>
   )

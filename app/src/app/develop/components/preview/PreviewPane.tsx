@@ -1,6 +1,7 @@
 'use client'
 
 import clsx from 'clsx'
+import { animate, motion, useMotionValue } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader } from '@airo-ux/loader'
 import Button from '@ux/button'
@@ -10,7 +11,7 @@ import PreviewCode from '@/app/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/develop/components/preview/PreviewError'
 import PreviewHeader from '@/app/develop/components/preview/PreviewHeader'
 import Tips from '@/app/develop/components/tips/Tips'
-import { PreviewViewMode,ViewMode } from '@/app/develop/components/types'
+import { PreviewViewMode, ViewMode } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
@@ -130,6 +131,38 @@ export default function PreviewPane({
   // Track message handler timers for proper cleanup (from PR #1056)
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null)
   const scrollRestoreTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Track previous viewMode to determine flip direction
+  const previousViewModeRef = useRef<ViewMode>(viewMode)
+
+  // Motion values for smooth animation control
+  const rotateY = useMotionValue(0)
+  const scale = useMotionValue(1)
+
+  // Calculate rotation angle and animate scale based on viewMode transition
+  useEffect(() => {
+    const previous = previousViewModeRef.current
+    const current = viewMode
+
+    if (previous === current) return
+
+    const targetRotation = current === ViewMode.CODE ? 180 : 0
+
+    // Animate rotation
+    animate(rotateY, targetRotation, {
+      duration: 0.5,
+      ease: [0.4, 0, 0.2, 1]
+    })
+
+    // Animate scale: 1 -> 0.92 -> 1 (scale down at midpoint, scale back up at end)
+    animate(scale, [1, 0.85, 1], {
+      duration: 0.5,
+      ease: "easeOut",
+      times: [0, 0.5, 1]
+    })
+
+    previousViewModeRef.current = current
+  }, [viewMode, rotateY, scale])
 
   // Sync ref with state to avoid stale closures
   useEffect(() => {
@@ -490,44 +523,79 @@ export default function PreviewPane({
           )}>
             <div
               className={clsx(
-                "flex flex-col h-full bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300 ease-in-out relative", {
-                  "mx-auto": !isFullSize && viewMode === ViewMode.PREVIEW && !isMobile,
-                  "w-full": isFullSize || viewMode === ViewMode.CODE || isMobile,
-                  "border shadow-lg": !isFullSize && viewMode === ViewMode.PREVIEW && !isMobile,
+                "flex flex-col h-full w-full bg-intents-ux-boxLowContrast-backgroundColor relative", {
                   "rounded-lg p-1.5": !isMobile,
                   "p-0": isMobile
                 }
               )}
-              style={!isFullSize && viewMode === ViewMode.PREVIEW && !isMobile ? {
-                width: `${deviceWidth}px`,
-                maxHeight: `${deviceHeight}px`,
-                marginTop: `${deviceVerticalMargin}px`,
-                marginBottom: `${deviceVerticalMargin}px`
-              } : undefined}
             >
               <PreviewHeader onPreviewRefresh={onPreviewRefresh} isMobile={isMobile} />
-              {viewMode === ViewMode.PREVIEW && (
-                <div className="relative w-full h-full">
-                  <iframe
-                    key={iframeKey}
-                    ref={iframeRef}
-                    id="preview-iframe"
-                    src={previewUrl}
-                    className="w-full h-full md:border md:rounded-md"
-                    onError={handleIframeError}
-                    onLoad={handleIframeLoad}
-                    sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"
-                    title={t('builder_preview_preview_for', { appId })}
-                    aria-hidden={showBuildingOverlay ? 'true' : undefined}
-                    tabIndex={showBuildingOverlay ? -1 : undefined}
-                    // Type assertion needed: `inert` is a standard HTML attribute but not yet in React types
-                    {...(showBuildingOverlay ? { inert: '' as unknown as boolean } : {})}
-                  />
-                </div>
-              )}
-              {viewMode === ViewMode.CODE && (
-                <PreviewCode appId={appId} />
-              )}
+
+              {/* 3D Flip Card Container */}
+              <div className="relative w-full h-full overflow-hidden" style={{ transformStyle: 'preserve-3d' }}>
+                <motion.div
+                  className="relative w-full h-full"
+                  style={{
+                    transformStyle: 'preserve-3d',
+                    rotateY,
+                    scale
+                  }}
+                >
+                  {/* Front Face - Preview (iframe) */}
+                  <div
+                    className="absolute inset-0 w-full h-full flex items-center justify-center pb-1 md:pb-0 px-2 md:px-0"
+                    style={{
+                      backfaceVisibility: 'hidden',
+                      WebkitBackfaceVisibility: 'hidden'
+                    }}
+                  >
+                    <div
+                      className={clsx(
+                        "relative transition-all duration-300 ease-in-out", {
+                          "w-full h-full": isFullSize || isMobile,
+                          "border shadow-lg": !isFullSize && !isMobile,
+                          "my-auto": !isFullSize && !isMobile
+                        }
+                      )}
+                      style={!isFullSize && !isMobile ? {
+                        width: `${deviceWidth}px`,
+                        height: `min(${deviceHeight}px, calc(100% - ${deviceVerticalMargin * 2}px))`
+                      } : undefined}
+                    >
+                      <iframe
+                        key={iframeKey}
+                        ref={iframeRef}
+                        id="preview-iframe"
+                        src={previewUrl}
+                        className="w-full h-full border rounded-md"
+                        onError={handleIframeError}
+                        onLoad={handleIframeLoad}
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"
+                        title={t('builder_preview_preview_for', { appId })}
+                        aria-hidden={viewMode === ViewMode.CODE || showBuildingOverlay ? 'true' : undefined}
+                        tabIndex={viewMode === ViewMode.CODE || showBuildingOverlay ? -1 : undefined}
+                        // Type assertion needed: `inert` is a standard HTML attribute but not yet in React types
+                        {...(viewMode === ViewMode.CODE || showBuildingOverlay ? { inert: '' as unknown as boolean } : {})}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Back Face - Code Editor */}
+                  <div
+                    className="absolute inset-0 w-full h-full"
+                    style={{
+                      backfaceVisibility: 'hidden',
+                      WebkitBackfaceVisibility: 'hidden',
+                      transform: 'rotateY(180deg)'
+                    }}
+                    aria-hidden={viewMode === ViewMode.PREVIEW ? 'true' : undefined}
+                    {...(viewMode === ViewMode.PREVIEW ? { inert: '' as unknown as boolean } : {})}
+                  >
+                    <PreviewCode appId={appId} />
+                  </div>
+                </motion.div>
+              </div>
+
               {/* Building overlay - hides template app AND controls until agent makes changes
                    INTENTIONAL: Stays visible if agent never edits (errors, timeouts, etc.)
                    The vanilla template is an implementation detail that shouldn't be visible */}

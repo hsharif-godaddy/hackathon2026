@@ -16,21 +16,33 @@ import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
+import { cn } from '@/lib/utils'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitStore } from '@/stores/useGitStore'
 import { generateClickEID } from '@/utils/instrumentation'
 
 interface ChatToolbarProps {
   isProcessing?: boolean
+  className?: string
+  onBeforeTabChange?: (tab: ChatTab) => void
+  optimisticActiveTab?: ChatTab
+  hasPreviewUpdate?: boolean
 }
 
 export default function ChatToolbar({
-    isProcessing = false
+    isProcessing = false,
+    className = '',
+    onBeforeTabChange,
+    optimisticActiveTab,
+    hasPreviewUpdate = false
   }: ChatToolbarProps) {
   const t = useTranslations();
   const appId = useAppIdFromParams()
   const { activeChatTab, setActiveChatTab, activeSettingsSection, setActiveSettingsSection } = useChatTabs()
   const isMobile = useDevelopPageStore((state) => state.isMobile);
+
+  // Use optimistic tab for UI selection state, fall back to URL-based state
+  const displayActiveTab = optimisticActiveTab ?? activeChatTab
   const isVersionHistoryOpen = useDevelopPageStore((state) => state.isVersionHistoryOpen);
   const viewMode = useDevelopPageStore((state) => state.viewMode);
   const isSelectMode = useDevelopPageStore((state) => state.isSelectMode);
@@ -83,12 +95,16 @@ export default function ChatToolbar({
 
 
   const handleTabClick = (tab: ChatTab) => {
+    // Call optimistic callback first for instant UI updates
+    onBeforeTabChange?.(tab)
+
     if (tab === ChatTab.SETTINGS) {
       // Preserve or initialize settings section when opening the settings tab
       setActiveSettingsSection(activeSettingsSection)
       return
     }
 
+    // This will update the URL, but the optimistic state is already updated above
     setActiveChatTab(tab)
   }
 
@@ -96,24 +112,32 @@ export default function ChatToolbar({
     <Box
       orientation="horizontal"
       gap="sm"
-      className="pt-2 md:pt-0 pb-2 md:pb-0 px-2 sm:px-3 md:p-0"
+      className={cn("pt-0 pb-2 md:pb-0 px-2 sm:px-3 md:p-0", className)}
       style={isMobile ? { paddingBottom: `calc(0.5rem + env(safe-area-inset-bottom))` } : undefined}
     >
       {isMobile && (
-        <IconButton
-          icon={<WebsiteIcon />}
-          dataEid={generateClickEID('develop.chat_toolbar.preview')}
-          onClick={() => handleTabClick(ChatTab.PREVIEW)}
-          label={t('builder_chat_toolbar_button_preview')}
-          active={activeChatTab === ChatTab.PREVIEW}
-        />
+        <div className="relative">
+          <IconButton
+            icon={<WebsiteIcon />}
+            dataEid={generateClickEID('develop.chat_toolbar.preview')}
+            onClick={() => handleTabClick(ChatTab.PREVIEW)}
+            label={t('builder_chat_toolbar_button_preview')}
+            active={displayActiveTab === ChatTab.PREVIEW}
+          />
+          {hasPreviewUpdate && (
+            <span className="absolute top-0 right-0 flex h-1.5 w-1.5 pointer-events-none">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-ai opacity-50"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-ai"></span>
+            </span>
+          )}
+        </div>
       )}
       <IconButton
         icon={<CommentsIcon />}
         dataEid={generateClickEID('develop.chat_toolbar.chat')}
         onClick={() => handleTabClick(ChatTab.CHAT)}
         label={t('builder_chat_toolbar_button_chat')}
-        active={activeChatTab === ChatTab.CHAT}
+        active={displayActiveTab === ChatTab.CHAT}
         showLabelAlways={!isMobile}
       />
       <IconButton
@@ -121,7 +145,7 @@ export default function ChatToolbar({
         dataEid={generateClickEID('develop.chat_toolbar.history')}
         onClick={() => handleTabClick(ChatTab.HISTORY)}
         label={t('builder_chat_toolbar_button_history')}
-        active={activeChatTab === ChatTab.HISTORY}
+        active={displayActiveTab === ChatTab.HISTORY}
         disabled={isProcessing || isFetchingCommits || isSelectingCommit || viewMode === ViewMode.CODE || isSelectMode}
         showLabelAlways={!isMobile}
       />
@@ -136,7 +160,7 @@ export default function ChatToolbar({
           tooltipDescription={isSettingsEnabled ? undefined : t('builder_chat_toolbar_available_soon')}
           className="ml-auto"
           label={t('builder_chat_toolbar_button_settings')}
-          active={activeChatTab === ChatTab.SETTINGS}
+          active={displayActiveTab === ChatTab.SETTINGS}
           disabled={isProcessing || isVersionHistoryOpen}
         />
       )}

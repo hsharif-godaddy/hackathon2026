@@ -3,7 +3,6 @@
  * Explains what will happen next and asks for confirmation
  */
 
-import Box from '@ux/box';
 import Button from '@ux/button';
 import text from '@ux/text';
 

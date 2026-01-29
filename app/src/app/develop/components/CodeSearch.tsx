@@ -38,25 +38,6 @@ interface FileItem {
 export default function CodeSearch({ appId, files, onResultClick }: CodeSearchProps) {
   const t = useTranslations()
 
-  const getText = useCallback((key: string): string => {
-    const translations: Record<string, string> = {
-      'builder_code_search_files': 'Files',
-      'builder_code_search_code': 'Code',
-      'builder_code_search_placeholder_files': 'Search files...',
-      'builder_code_search_placeholder_code': 'Search code...',
-      'builder_code_search_error': 'Search failed',
-      'builder_code_search_searching': 'Searching...',
-      'builder_code_search_result': 'result',
-      'builder_code_search_results': 'results',
-      'builder_code_search_showing_first': 'showing first',
-      'builder_code_search_no_results': 'No results found',
-      'builder_common_clear': 'Clear'
-    }
-    const translated = t(key)
-    // If translation returns the key itself, use fallback
-    return translated !== key ? translated : (translations[key] || key)
-  }, [t])
-
   const [searchMode, setSearchMode] = useState<SearchMode>('files')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchMatch[]>([])
@@ -138,14 +119,14 @@ export default function CodeSearch({ appId, files, onResultClick }: CodeSearchPr
             message: 'Search failed',
             error: err instanceof Error ? err.message : String(err)
           })
-          setError(getText('builder_code_search_error'))
+          setError(t('builder_code_search_error'))
           setResults([])
         } finally {
           setIsSearching(false)
         }
       }, 300)
     }
-  }, [appId, searchMode, files, getText])
+  }, [appId, searchMode, files, t])
 
   const handleQueryChange = useCallback((value: string) => {
     setQuery(value)
@@ -198,7 +179,7 @@ export default function CodeSearch({ appId, files, onResultClick }: CodeSearchPr
               : "border border-transparent opacity-60 hover:opacity-80"
           )}
         >
-          {getText('builder_code_search_files')}
+          {t('builder_code_search_files')}
         </button>
         <button
           onClick={() => {
@@ -213,7 +194,7 @@ export default function CodeSearch({ appId, files, onResultClick }: CodeSearchPr
               : "border border-transparent opacity-60 hover:opacity-80"
           )}
         >
-          {getText('builder_code_search_code')}
+          {t('builder_code_search_code')}
         </button>
       </div>
 
@@ -224,7 +205,7 @@ export default function CodeSearch({ appId, files, onResultClick }: CodeSearchPr
             type="text"
             value={query}
             onChange={(e) => handleQueryChange(e.target.value)}
-            placeholder={searchMode === 'files' ? getText('builder_code_search_placeholder_files') : getText('builder_code_search_placeholder_code')}
+            placeholder={searchMode === 'files' ? t('builder_code_search_placeholder_files') : t('builder_code_search_placeholder_code')}
             className="w-full px-2.5 py-1.5 pl-4 pr-3.5 text-sm border border-intents-ux-highContrast-textColor rounded-md focus:outline-none focus:ring-2 focus:ring-intents-ux-highContrast-textColor"
           />
           <SearchIcon className="absolute left-1.5 top-1/2 -translate-y-1/2 w-2 h-2 opacity-50 pointer-events-none" />
@@ -232,7 +213,7 @@ export default function CodeSearch({ appId, files, onResultClick }: CodeSearchPr
             <button
               onClick={handleClearSearch}
               className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded opacity-60 hover:opacity-100 transition-all group"
-              title={getText('builder_common_clear')}
+              title={t('builder_common_clear')}
             >
               <XIcon className="w-1.5 h-1.5 group-hover:stroke-[3]" />
             </button>
@@ -243,7 +224,7 @@ export default function CodeSearch({ appId, files, onResultClick }: CodeSearchPr
       {isSearching && (
         <div className="p-2 flex items-center justify-center gap-1 text-sm">
           <Spinner className="!w-2 !h-2" />
-          <span>{getText('builder_code_search_searching')}</span>
+          <span>{t('builder_code_search_searching')}</span>
         </div>
       )}
 
@@ -256,8 +237,8 @@ export default function CodeSearch({ appId, files, onResultClick }: CodeSearchPr
       {!isSearching && results.length > 0 && (
         <>
           <div className="px-1.5 py-0.5 text-xs opacity-75">
-            {totalMatches} {totalMatches === 1 ? getText('builder_code_search_result') : getText('builder_code_search_results')}
-            {truncated && ` (${getText('builder_code_search_showing_first')} 100)`}
+            {totalMatches} {totalMatches === 1 ? t('builder_code_search_result') : t('builder_code_search_results')}
+            {truncated && ` (${t('builder_code_search_showing_first')} 100)`}
           </div>
 
           <div className="max-h-64 overflow-y-auto">
@@ -287,7 +268,7 @@ export default function CodeSearch({ appId, files, onResultClick }: CodeSearchPr
 
       {!isSearching && query && results.length === 0 && !error && (
         <div className="p-2 text-sm text-center opacity-75">
-          {getText('builder_code_search_no_results')}
+          {t('builder_code_search_no_results')}
         </div>
       )}
     </div>

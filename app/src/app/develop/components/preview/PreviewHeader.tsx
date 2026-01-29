@@ -9,12 +9,12 @@ import WindowNewIcon from '@ux/icon/window-new'
 
 import IconButton from '@/app/develop/components/IconButton'
 import DeviceSelector from '@/app/develop/components/preview/DeviceSelector'
+import { ViewMode } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation'
-import { PreviewViewMode,ViewMode } from '../types'
 
 export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
   const t = useTranslations();
@@ -24,7 +24,6 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
   const isCheckingApp = useDevelopPageStore((state) => state.isCheckingApp)
   const isStartingApp = useDevelopPageStore((state) => state.isStartingApp)
   const isRestarting = useDevelopPageStore((state) => state.isRestarting)
-  const previewViewMode = useDevelopPageStore((state) => state.previewViewMode)
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
   const isSelectMode = useDevelopPageStore((state) => state.isSelectMode)
   const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed)
@@ -58,7 +57,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         "p-2": isMobile
       }
     )}>
-      { !isMobile && (
+      {!isMobile && (
         <IconButton
           icon={isChatPaneCollapsed ? <SidebarExpandIcon /> : <SidebarCollapseIcon />}
           onClick={toggleChatPaneCollapse}
@@ -68,6 +67,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
           data-eid={ generateClickEID(`develop.preview.chat_pane_${isChatPaneCollapsed ? 'expand' : 'collapse'}`) }
         />
       )}
+
       <IconButton
         icon={<WebsiteFilledIcon />}
         onClick={() => handleViewModeChange(ViewMode.PREVIEW, hasUnsavedChanges)}
@@ -76,6 +76,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         label={t('builder_preview_button_preview')}
         showLabelWhenActive={false}
       />
+
       <IconButton
         icon={<CodeIcon />}
         onClick={() => {
@@ -89,6 +90,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         showLabelWhenActive={false}
         separator={!isMobile}
       />
+
       {!isMobile && (
         <IconButton
           icon={<EditIcon />}
@@ -102,8 +104,8 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         />
       )}
 
-      { (previewViewMode === PreviewViewMode.DESKTOP || viewMode === ViewMode.CODE) && !isMobile && <DomainButton /> }
-      { ((previewViewMode !== PreviewViewMode.DESKTOP && viewMode === ViewMode.PREVIEW) || isMobile) && <div className="flex-1" /> }
+      {!isMobile && <DomainButton />}
+      {isMobile && <div className="grow" />}
 
       <IconButton
         icon={<RefreshIcon />}
@@ -117,6 +119,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
       {!isMobile && (
         <DeviceSelector disabled={viewMode === ViewMode.CODE} separator />
       )}
+
       <IconButton
         icon={<WindowNewIcon />}
         onClick={() => {

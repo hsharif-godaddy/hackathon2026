@@ -3,8 +3,8 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
-import { renderWithProviders } from '@/tests/test-utils';
 import { MediaType } from '@/app/develop/components/chat/AssetManagerModal';
+import { renderWithProviders } from '@/tests/test-utils';
 import ChatInput from './ChatInput';
 
 const mockDevelopStore = {

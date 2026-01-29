@@ -119,16 +119,18 @@ describe('PreviewHeader', () => {
   });
 
   it('should render device selector on desktop', () => {
-    renderWithProviders(<PreviewHeader {...defaultProps} isMobile={false} />);
+    const { container } = renderWithProviders(<PreviewHeader {...defaultProps} isMobile={false} />);
 
     // DeviceSelector shows "Full size" by default (uses defaultMessage fallback)
-    expect(screen.getByText('Full size')).toBeInTheDocument();
+    const button = container.querySelector('[data-eid="develop.preview.device_selector"]');
+    expect(button).toBeInTheDocument();
   });
 
   it('should not render device selector on mobile', () => {
-    renderWithProviders(<PreviewHeader {...defaultProps} isMobile={true} />);
+    const { container } = renderWithProviders(<PreviewHeader {...defaultProps} isMobile={true} />);
 
-    expect(screen.queryByText('Full size')).not.toBeInTheDocument();
+    const button = container.querySelector('[data-eid="develop.preview.device_selector"]');
+    expect(button).not.toBeInTheDocument();
   });
 
   it('should render open in new tab button', () => {
@@ -164,10 +166,11 @@ describe('PreviewHeader', () => {
   it('should disable device selector when in code mode', () => {
     mockDevelopStore.viewMode = ViewMode.CODE;
 
-    renderWithProviders(<PreviewHeader {...defaultProps} />);
+    const { container } = renderWithProviders(<PreviewHeader {...defaultProps} />);
 
     // DeviceSelector button should have disabled styling (pointer-events-none class)
-    const deviceSelectorButton = screen.getByText('Full size').closest('button');
+    const deviceSelectorButton = container.querySelector('[data-eid="develop.preview.device_selector"]');
+    expect(deviceSelectorButton).toBeInTheDocument();
     expect(deviceSelectorButton).toHaveClass('pointer-events-none');
     expect(deviceSelectorButton).toHaveClass('opacity-50');
   });

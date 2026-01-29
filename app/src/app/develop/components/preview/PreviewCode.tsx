@@ -453,7 +453,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   }
 
   return (
-    <div className="h-full w-full flex overflow-hidden relative">
+    <div className="h-full w-full flex overflow-hidden relative border rounded-md bg-intents-ux-box-backgroundColor">
       {/* File Tree - Desktop: sidebar, Mobile: overlay */}
       {isMobile ? (
         // Mobile: Slide-in overlay
@@ -465,7 +465,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
             />
           )}
           <div className={clsx(
-            "absolute left-0 top-0 bottom-0 w-[280px] bg-intents-ux-boxLowContrast-backgroundColor z-20 transform transition-transform duration-300 ease-in-out flex flex-col",
+            "absolute left-0 top-0 bottom-0 w-[280px] bg-intents-ux-box-backgroundColor z-20 transform transition-transform duration-300 ease-in-out flex flex-col",
             showFileTree ? "translate-x-0" : "-translate-x-full"
           )}>
             <div className="flex items-center justify-between px-1.5 py-0.5 border-b">

@@ -64,7 +64,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
             {showAuthenticatedUI && (
               <>
                 <div className="h-3 w-px bg-ai-dark self-center" />
-                <div className="flex items-center gap-0.5 sm:gap-1">
+                <div className="flex items-center gap-1 sm:gap-1">
                   <AppSelector location={location} />
                   <HeaderUpgradeButton location={location} />
                   <AppPublish location={location} />
