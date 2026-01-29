@@ -1016,15 +1016,17 @@ export class AgentWrapper {
         callOptions.files = options.files
       }
 
-      // Extract userId (appId/siteId) and sessionId from execution context for Langfuse tracing
-      const metadata = (options?.executionContext as any)?.metadata
-      const userId = metadata?.appId as string | undefined
-      const sessionId = metadata?.sessionId as string | undefined
+      // Extract userId (appId/siteId), sessionId, and customerId from execution context for Langfuse tracing
+      const contextMetadata = (options?.executionContext as any)?.metadata
+      const userId = contextMetadata?.appId as string | undefined
+      const sessionId = contextMetadata?.sessionId as string | undefined
+      const customerId = contextMetadata?.customerId as string | undefined
 
       // Wrap stream call with Langfuse attribute propagation
-      const attributes: { userId?: string; sessionId?: string } = {}
+      const attributes: { userId?: string; sessionId?: string; metadata?: Record<string, string> } = {}
       if (userId) attributes.userId = userId
       if (sessionId) attributes.sessionId = sessionId
+      if (customerId) attributes.metadata = { customerId }
 
       // Extract and set LiteLLM metadata for cost tracking
       const litellmMetadata = extractLitellmMetadata(options?.executionContext, this.config.id)

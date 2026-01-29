@@ -339,10 +339,6 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
     const systemPrompt = this.buildSystemPrompt(existingSummary);
     const userPrompt = this.buildUserPrompt(messages, operationLog);
 
-    const attributes: { userId: string; sessionId?: string } = { userId: appId };
-    if (sessionId) attributes.sessionId = sessionId;
-
-
     const existingMetadata = llmMetadataContext.getStore();
 
     // Look up app for user identifier and tags if not in parent context
@@ -354,6 +350,10 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
       userIdentifier = app?.subscriptionId || app?.customerId;
       customerId = app?.customerId;
     }
+
+    const attributes: { userId: string; sessionId?: string; metadata?: Record<string, string> } = { userId: appId };
+    if (sessionId) attributes.sessionId = sessionId;
+    if (customerId) attributes.metadata = { customerId };
 
     // Build tags: include customerId and appId when no parent context
     const mergedTags = [...new Set([

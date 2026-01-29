@@ -145,9 +145,6 @@ export class LLMSummarizationStrategy implements SummarizationStrategy {
       mode: 'incremental',
     });
 
-    const attributes: { userId: string; sessionId?: string } = { userId: appId };
-    if (context.sessionId) attributes.sessionId = context.sessionId;
-
     const existingMetadata = llmMetadataContext.getStore();
 
     let userIdentifier = existingMetadata?.user;
@@ -158,6 +155,10 @@ export class LLMSummarizationStrategy implements SummarizationStrategy {
       userIdentifier = app?.subscriptionId || app?.customerId;
       customerId = app?.customerId;
     }
+
+    const attributes: { userId: string; sessionId?: string; metadata?: Record<string, string> } = { userId: appId };
+    if (context.sessionId) attributes.sessionId = context.sessionId;
+    if (customerId) attributes.metadata = { customerId };
 
     // Build tags: include customerId and appId when no parent context
     const mergedTags = [...new Set([
