@@ -547,7 +547,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             try {
               const retrievalResult = await tracedSearchKnowB({
                 query: userMessage,
-                kbNodeIds: ['/airo_sys'],
+                kbNodeIds: ['/airo_info'],
                 maxResults: 3,
                 scoreThreshold: 0.35,
                 appId: agentsAppContext.metadata?.appId,

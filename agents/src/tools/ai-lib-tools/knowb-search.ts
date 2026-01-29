@@ -25,7 +25,7 @@ The search returns relevant documentation with similarity scores.`,
     kbNodeIds: z
       .array(z.string())
       .optional()
-      .describe('Specific knowledge base nodes to search. Defaults to ["/airo_sys"]'),
+      .describe('Specific knowledge base nodes to search. Defaults to ["/airo_info"]'),
     maxResults: z
       .number()
       .optional()

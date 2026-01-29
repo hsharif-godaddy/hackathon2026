@@ -1,13 +1,17 @@
 /**
  * KnowB Knowledge Base Driver
  *
- * Handles knowledge base search through the proxy or direct API
- * - Proxy mode: Uses PROXY_URL with GETTY_TOKEN for authentication
- * - Direct mode: Uses SSO_JWT for local development
+ * Handles knowledge base search through direct API calls
+ *
+ * Configuration:
+ * - GODADDY_API_BASE_URL: KnowB API URL (required)
+ * - SSO_HOST: SSO host for authentication (optional, defaults to sso.test-godaddy.com)
+ * - S2S mode: GOCODE_USE_S2S_AUTH=true (uses gd-auth-client for tokens)
+ * - Local mode: SSO_JWT (uses sso-jwt token directly)
  */
-import { log } from '../../../logging/index.js';
+import { getS2SToken, isS2SAuthEnabled } from '@airo/ai-lib';
 
-import { BaseDriver } from './base-driver.js';
+import { log, Logger } from '../../../logging/index.js';
 
 /**
  * Options for KnowB search
@@ -80,27 +84,75 @@ interface KnowBAPIResponse {
  * KnowB Knowledge Base Driver
  * Handles semantic search against GoDaddy's knowledge base
  */
-export class KnowBDriver extends BaseDriver {
-  private directApiUrl: string;
+export class KnowBDriver {
+  protected logger: Logger;
+  private apiUrl: string;
+  private ssoJwt: string;
+  private ssoHost: string;
+  private useS2S: boolean;
+
+  // Default configuration matching proxy
+  private static readonly DEFAULT_KB_NODE_IDS = ['/airo_info'];
+  private static readonly DEFAULT_MAX_RESULTS = 5;
+  private static readonly DEFAULT_SCORE_THRESHOLD = 0.35;
 
   constructor() {
-    super({
-      serviceName: 'knowb-driver',
-      defaultBaseUrl: '',
+    this.logger = Logger.create({ service: 'knowb-driver' });
+
+    // Setup authentication mode
+    this.ssoJwt = process.env.SSO_JWT || '';
+    this.useS2S = isS2SAuthEnabled();
+    this.ssoHost = process.env.SSO_HOST || 'sso.test-godaddy.com';
+
+    // Set API URL from environment (required)
+    this.apiUrl = process.env.GODADDY_API_BASE_URL || '';
+
+    this.logger.info('knowb-driver.config.initialized', {
+      useS2S: this.useS2S,
+      hasSsoJwt: !!this.ssoJwt,
+      apiUrl: this.apiUrl,
+      ssoHost: this.ssoHost,
     });
 
-    this.directApiUrl = process.env.KNOWB_API_URL || 'https://knowb.api.int.test-godaddy.com/v1/search';
-
-    this.logger.info('knowb-driver.direct-api.configured', {
-      directApiUrl: this.directApiUrl,
-      useProxy: this.useProxy,
-    });
+    if (!this.apiUrl) {
+      this.logger.warn('knowb-driver.config.missing', {
+        message: 'GODADDY_API_BASE_URL environment variable is not set.',
+      });
+    }
 
     if (!this.hasAuth()) {
       this.logger.warn('knowb-driver.auth.missing', {
-        message: 'No auth configured. Set GETTY_API_URL + GETTY_TOKEN for hosted or SSO_JWT for local.',
+        message: 'No auth configured. Set GOCODE_USE_S2S_AUTH=true for hosted or SSO_JWT for local.',
       });
     }
+
+    this.logger.info('knowb-driver.auth.mode', {
+      mode: this.useS2S ? 'S2S' : (this.ssoJwt ? 'SSO_JWT' : 'none'),
+    });
+  }
+
+  /**
+   * Get authorization header based on auth mode
+   * Priority: S2S (hosted) > SSO_JWT (local)
+   */
+  private async getAuthHeader(): Promise<string> {
+    if (this.useS2S) {
+      const token = await getS2SToken({ ssoHost: this.ssoHost });
+      return `sso-jwt ${token}`;
+    }
+
+    if (this.ssoJwt) {
+      return `sso-jwt ${this.ssoJwt}`;
+    }
+
+    throw new Error('No authentication configured. Set GOCODE_USE_S2S_AUTH=true for hosted or SSO_JWT for local.');
+  }
+
+  /**
+   * Check if authentication is configured
+   */
+  private hasAuth(): boolean {
+    return this.useS2S || !!this.ssoJwt;
   }
 
   /**
@@ -112,9 +164,9 @@ export class KnowBDriver extends BaseDriver {
   async search(options: KnowBSearchOptions): Promise<KnowBSearchResult> {
     const {
       query,
-      kbNodeIds = ['/airo_sys'],
-      maxResults = 5,
-      scoreThreshold = 0.35,
+      kbNodeIds = KnowBDriver.DEFAULT_KB_NODE_IDS,
+      maxResults = KnowBDriver.DEFAULT_MAX_RESULTS,
+      scoreThreshold = KnowBDriver.DEFAULT_SCORE_THRESHOLD,
     } = options;
 
     if (!query || typeof query !== 'string' || query.trim().length === 0) {
@@ -129,15 +181,67 @@ export class KnowBDriver extends BaseDriver {
       kbNodeIds,
       maxResults,
       scoreThreshold,
-      useProxy: this.useProxy,
+      useS2S: this.useS2S,
     });
 
+    if (!this.apiUrl) {
+      return {
+        success: false,
+        error: 'GODADDY_API_BASE_URL environment variable is not configured.',
+      };
+    }
+
+    if (!this.hasAuth()) {
+      return {
+        success: false,
+        error: 'No authentication configured. Set GOCODE_USE_S2S_AUTH=true for hosted or SSO_JWT for local.',
+      };
+    }
+
     try {
-      if (this.useProxy) {
-        return await this.searchViaProxy(query, kbNodeIds, maxResults, scoreThreshold);
-      } else {
-        return await this.searchDirect(query, kbNodeIds, maxResults, scoreThreshold);
+      const authHeader = await this.getAuthHeader();
+
+      const url = `${this.apiUrl}/v1/search`;
+      const requestBody = {
+        filter: {
+          kbNodeIds,
+          maxNumberOfResult: maxResults,
+          scoreThreshold,
+        },
+        query: query.trim(),
+        searchType: 'auto',
+      };
+
+      this.logger.info('knowb-driver.api.request', {
+        url,
+        query: query.substring(0, 100),
+      });
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'Authorization': authHeader,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error('knowb-driver.api.error', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+        });
+        return {
+          success: false,
+          error: `KnowB API error: ${response.status} ${response.statusText}`,
+        };
       }
+
+      const data = (await response.json()) as KnowBAPIResponse;
+      return this.parseResponse(data, query);
     } catch (error) {
       log.error(this.logger, 'knowb-driver.search.error', error as Error, {
         query: query.substring(0, 100),
@@ -148,90 +252,6 @@ export class KnowBDriver extends BaseDriver {
         error: `Knowledge base search failed: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
-  }
-
-  /**
-   * Search via proxy (hosted mode)
-   */
-  private async searchViaProxy(
-    query: string,
-    kbNodeIds: string[],
-    maxResults: number,
-    scoreThreshold: number
-  ): Promise<KnowBSearchResult> {
-    const response = await this.post('/v1/knowb/search', {
-      query: query.trim(),
-      kbNodeIds,
-      maxResults,
-      scoreThreshold,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      this.logger.error('knowb-driver.proxy.error', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
-      });
-      return {
-        success: false,
-        error: `KnowB proxy error: ${response.status} ${response.statusText}`,
-      };
-    }
-
-    const data = (await response.json()) as KnowBAPIResponse;
-    return this.parseResponse(data, query);
-  }
-
-  /**
-   * Search directly (local mode with SSO_JWT)
-   */
-  private async searchDirect(
-    query: string,
-    kbNodeIds: string[],
-    maxResults: number,
-    scoreThreshold: number
-  ): Promise<KnowBSearchResult> {
-    if (!this.hasAuth()) {
-      return {
-        success: false,
-        error: this.getAuthErrorMessage(),
-      };
-    }
-
-    const requestBody = {
-      filter: {
-        kbNodeIds,
-        maxNumberOfResult: maxResults,
-        scoreThreshold,
-      },
-      query: query.trim(),
-      searchType: 'auto',
-    };
-
-    const response = await fetch(this.directApiUrl, {
-      method: 'POST',
-      headers: this.getHeaders({
-        'Content-Type': 'application/json',
-      }),
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      this.logger.error('knowb-driver.api.error', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
-      });
-      return {
-        success: false,
-        error: `KnowB API error: ${response.status} ${response.statusText}`,
-      };
-    }
-
-    const data = (await response.json()) as KnowBAPIResponse;
-    return this.parseResponse(data, query);
   }
 
   /**
@@ -291,9 +311,11 @@ export class KnowBDriver extends BaseDriver {
       if (!this.hasAuth()) {
         return {
           success: false,
-          error: this.getAuthErrorMessage(),
+          error: 'No authentication configured. Set GOCODE_USE_S2S_AUTH=true for hosted or SSO_JWT for local.',
         };
       }
+
+      const authHeader = await this.getAuthHeader();
 
       // Create markdown content, optionally with header
       const markdownContent = header
@@ -308,12 +330,11 @@ export class KnowBDriver extends BaseDriver {
         formData.append('metadata', JSON.stringify({ ...metadata, resourceId }));
       }
 
-      const url = `${this.apiBaseUrl}/v1/knowb/upload`;
+      const url = `${this.apiUrl}/v1/knowb/upload`;
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Authorization': this.ssoJwt,
-          'x-app-key': this.appKey,
+          'Authorization': authHeader,
         },
         body: formData,
       });

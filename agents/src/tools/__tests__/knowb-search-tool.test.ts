@@ -145,7 +145,7 @@ describe('KnowBSearchTool', () => {
       const callArgs = mockFetch.mock.calls[0];
       const requestBody = JSON.parse(callArgs[1].body);
 
-      expect(requestBody.filter.kbNodeIds).toEqual(['/airo_sys']);
+      expect(requestBody.filter.kbNodeIds).toEqual(['/airo_info']);
       expect(requestBody.filter.maxNumberOfResult).toBe(5);
       expect(requestBody.filter.scoreThreshold).toBe(0.35);
     });
