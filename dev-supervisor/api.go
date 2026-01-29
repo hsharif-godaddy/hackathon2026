@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,9 @@ import (
 
 // Archive extension used for published version files
 const tarGzExtension = ".tar.gz"
+
+// maxArchivedVersions is the number of .tar.gz archives to retain in the dist directory
+const maxArchivedVersions = 3
 
 // API endpoint handlers
 
@@ -531,6 +535,9 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("publish.symlink.updated", "commit_hash", req.CommitHash, "symlink", currentSymlink)
 
+	// Clean up old archives in background
+	go pruneOldArchives(distDir, maxArchivedVersions)
+
 	// Restart the Node.js application to load the new version
 	slog.Info("publish.restart.begin", "commit_hash", req.CommitHash)
 	restartReq := ProcessRestartRequest{Graceful: true}
@@ -884,4 +891,83 @@ func (s *Server) sendError(w http.ResponseWriter, statusCode int, errorType, mes
 	}); err != nil {
 		slog.Error("failed to encode JSON response", "error", err)
 	}
+}
+
+// pruneOldArchives removes old .tar.gz files from the dist directory, keeping only the latest `keep` files.
+// Files are sorted by modification time (newest first). This prevents disk space from filling up.
+func pruneOldArchives(distDir string, keep int) {
+	entries, err := os.ReadDir(distDir)
+	if err != nil {
+		slog.Error("publish.prune.read_dir_failed", "error", err, "dir", distDir)
+		return
+	}
+
+	// Collect all .tar.gz files with their modification times
+	type archiveFile struct {
+		path    string
+		modTime time.Time
+	}
+	var archives []archiveFile
+	keepPaths := map[string]bool{}
+
+	currentSymlink := filepath.Join(distDir, "current")
+	currentTarget, err := os.Readlink(currentSymlink)
+	if err != nil {
+		slog.Warn("publish.prune.readlink_failed", "error", err, "symlink", currentSymlink)
+	} else {
+		if !filepath.IsAbs(currentTarget) {
+			currentTarget = filepath.Join(distDir, currentTarget)
+		}
+		keepPaths[currentTarget] = true
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), tarGzExtension) {
+			continue
+		}
+
+		fullPath := filepath.Join(distDir, entry.Name())
+		info, err := entry.Info()
+		if err != nil {
+			slog.Warn("publish.prune.stat_failed", "error", err, "file", fullPath)
+			continue
+		}
+
+		archives = append(archives, archiveFile{path: fullPath, modTime: info.ModTime()})
+	}
+
+	if len(archives) <= keep {
+		slog.Debug("publish.prune.skip", "archiveCount", len(archives), "keep", keep)
+		return
+	}
+
+	// Sort by modification time, newest first
+	sort.Slice(archives, func(i, j int) bool {
+		return archives[i].modTime.After(archives[j].modTime)
+	})
+
+	// Remove all but the latest `keep` files
+	removed := 0
+	kept := 0
+	for _, archive := range archives {
+		// Always preserve the current symlink target
+		if keepPaths[archive.path] {
+			continue
+		}
+
+		// Keep up to the configured numeric limit
+		if kept < keep {
+			kept++
+			continue
+		}
+
+		if err := os.Remove(archive.path); err != nil {
+			slog.Warn("publish.prune.remove_failed", "error", err, "file", archive.path)
+			continue
+		}
+		removed++
+		slog.Debug("publish.prune.removed", "file", archive.path, "modTime", archive.modTime)
+	}
+
+	slog.Info("publish.prune.complete", "removed", removed, "kept", kept)
 }
