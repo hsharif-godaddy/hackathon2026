@@ -172,10 +172,6 @@ export function useSecurityScan(appId: string) {
         totalIssues,
         summary
       });
-
-      if (totalIssues === 0) {
-        setGoLiveModalStep(appId, 'video');
-      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setScanError(errorMessage);
@@ -183,7 +179,7 @@ export function useSecurityScan(appId: string) {
     } finally {
       setIsScanning(false);
     }
-  }, [appId, getSite, setSecurityScanResults, setGoLiveModalStep, skipSecurityScan]);
+  }, [appId, getSite, setSecurityScanResults, skipSecurityScan]);
 
   return {
     isScanning,

@@ -125,7 +125,7 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
   };
 
   const handleQASkip = () => {
-    setGoLiveModalStep(appId, 'video');
+    setGoLiveModalStep(appId, 'security-results');
     shipAnalyticsLog('go_live.qa.skipped', { appId });
   };
 
@@ -204,14 +204,14 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
               description: 'Use your available SEO tools and skills to improve search engine optimization'
             },
             {
-              id: 'social_media_posts',
-              title: 'Generate and publish social media posts',
-              description: 'Check if you have access to social skills (social-platform, social-posts, social-publish). If available, use them to connect platforms, generate 3-5 engaging launch announcement posts, and publish them. If social skills are not available, create 3-5 social media posts manually for different platforms with varied tone and style. Include the promotional video from /public/images/ (the file starting with go_live-) in at least one of the posts.'
-            },
-            {
               id: 'blog_post',
               title: 'Create launch announcement blog post',
               description: 'First check if the site has a blog. If yes, use the blog-writing skill to add a launch announcement post (800-1200 words). If no blog exists, first use the blog skill to add a blog feature to the site, then use the blog-writing skill to create the launch announcement post.'
+            },
+            {
+              id: 'social_media_posts',
+              title: 'Generate and publish social media posts',
+              description: 'Check if you have access to social skills (social-platform, social-posts, social-publish). If available, use them to connect platforms, generate 3-5 engaging launch announcement posts, and publish them. If social skills are not available, create 3-5 social media posts manually for different platforms with varied tone and style. Include the promotional video from /public/images/ (the file starting with go_live-) in at least one of the posts.'
             }
           ],
           instructions: 'Create a todo list to track all these tasks and complete each one. Make all content ready to copy-paste and use immediately. After completing tasks that modify the site code (blog, SEO), remind the user to publish their site again to deploy the changes.',

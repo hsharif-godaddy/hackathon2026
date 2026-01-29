@@ -263,7 +263,7 @@ describe('useSecurityScan', () => {
     expect(result.current.isScanning).toBe(false);
   });
 
-  it('should skip to video step when no vulnerabilities found', async () => {
+  it('should set results but not auto-advance when no vulnerabilities found', async () => {
     const mockResponse = {
       security: {
         results: {
@@ -288,9 +288,17 @@ describe('useSecurityScan', () => {
     void result.current.runScan();
 
     await waitFor(() => {
-      expect(mocks.setGoLiveModalStep).toHaveBeenCalledWith(mockAppId, 'video');
+      expect(mocks.setSecurityScanResults).toHaveBeenCalledWith(
+        mockAppId,
+        expect.objectContaining({
+          vulnerabilities: [],
+          summary: { critical: 0, high: 0, moderate: 0, low: 0 }
+        })
+      );
     }, { timeout: 3000 });
 
+    // Should NOT auto-advance to video step
+    expect(mocks.setGoLiveModalStep).not.toHaveBeenCalled();
     expect(result.current.isScanning).toBe(false);
   });
 
