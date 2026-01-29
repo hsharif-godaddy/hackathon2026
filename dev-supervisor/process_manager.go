@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 )
 
 type ProcessState string
@@ -158,8 +160,8 @@ func NewProcessManager(logMgr *LogManager, pid1Mgr *PID1Manager) *ProcessManager
 		pid1Mgr:               pid1Mgr,
 		portDiscovery:         NewPortDiscovery(),
 		healthMon:             NewHealthMonitor(logMgr),
-		enableLogging:         true,                        // Default: enable child process logging
-		outputToStructuredLog: getProcessLoggingToStdout(), // Default: enable structured logging output, configurable via env
+		enableLogging:         true,                               // Default: enable child process logging
+		outputToStructuredLog: config.GetProcessLoggingToStdout(), // Default: enable structured logging output, configurable via env
 	}
 }
 

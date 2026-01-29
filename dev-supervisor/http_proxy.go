@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"github.com/rs/cors"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 )
 
 const (
@@ -684,46 +686,46 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
  * @param config - HTTP proxy configuration
  * @returns Initialized HTTPProxy instance
  */
-func NewHTTPProxy(config HTTPProxyConfig) *HTTPProxy {
+func NewHTTPProxy(cfg HTTPProxyConfig) *HTTPProxy {
 	// Set defaults for retry configuration from environment variables or use hardcoded defaults
-	if config.MaxRetries == 0 {
-		envMaxRetries := getEnvIntWithDefault("DEV_SUPERVISOR_PROXY_MAX_RETRIES", 5)
+	if cfg.MaxRetries == 0 {
+		envMaxRetries := config.GetEnvIntWithDefault("DEV_SUPERVISOR_PROXY_MAX_RETRIES", 5)
 		if envMaxRetries <= 0 {
 			slog.Warn("invalid DEV_SUPERVISOR_PROXY_MAX_RETRIES value, using default", "invalid_value", envMaxRetries)
-			config.MaxRetries = 5
+			cfg.MaxRetries = 5
 		} else {
-			config.MaxRetries = envMaxRetries
+			cfg.MaxRetries = envMaxRetries
 		}
 	}
 
-	if config.InitialBackoff == 0 {
-		envInitialBackoffMs := getEnvIntWithDefault("DEV_SUPERVISOR_PROXY_INITIAL_BACKOFF_MS", 100)
+	if cfg.InitialBackoff == 0 {
+		envInitialBackoffMs := config.GetEnvIntWithDefault("DEV_SUPERVISOR_PROXY_INITIAL_BACKOFF_MS", 100)
 		if envInitialBackoffMs <= 0 {
 			slog.Warn("invalid DEV_SUPERVISOR_PROXY_INITIAL_BACKOFF_MS value, using default", "invalid_value", envInitialBackoffMs)
 			envInitialBackoffMs = 100
 		}
-		config.InitialBackoff = time.Duration(envInitialBackoffMs) * time.Millisecond
+		cfg.InitialBackoff = time.Duration(envInitialBackoffMs) * time.Millisecond
 	}
 
-	if config.MaxBackoff == 0 {
-		envMaxBackoffMs := getEnvIntWithDefault("DEV_SUPERVISOR_PROXY_MAX_BACKOFF_MS", 2000)
+	if cfg.MaxBackoff == 0 {
+		envMaxBackoffMs := config.GetEnvIntWithDefault("DEV_SUPERVISOR_PROXY_MAX_BACKOFF_MS", 2000)
 		if envMaxBackoffMs <= 0 {
 			slog.Warn("invalid DEV_SUPERVISOR_PROXY_MAX_BACKOFF_MS value, using default", "invalid_value", envMaxBackoffMs)
 			envMaxBackoffMs = 2000
 		}
-		config.MaxBackoff = time.Duration(envMaxBackoffMs) * time.Millisecond
+		cfg.MaxBackoff = time.Duration(envMaxBackoffMs) * time.Millisecond
 	}
 
 	slog.Info("HTTP proxy retry configuration",
 		slog.GroupAttrs("retry",
-			slog.Int("max", config.MaxRetries),
-			slog.Duration("initial_backoff", config.InitialBackoff),
-			slog.Duration("max_backoff", config.MaxBackoff),
+			slog.Int("max", cfg.MaxRetries),
+			slog.Duration("initial_backoff", cfg.InitialBackoff),
+			slog.Duration("max_backoff", cfg.MaxBackoff),
 		),
 	)
 
 	return &HTTPProxy{
-		config:  config,
+		config:  cfg,
 		running: false,
 	}
 }

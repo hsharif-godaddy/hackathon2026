@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 )
 
 func TestGetSocketPath(t *testing.T) {
@@ -50,9 +52,9 @@ func TestGetSocketPath(t *testing.T) {
 			}
 
 			// Test function
-			result := getSocketPath()
+			result := config.GetSocketPath()
 			if result != tt.expected {
-				t.Errorf("getSocketPath() = %s, expected %s", result, tt.expected)
+				t.Errorf("config.GetSocketPath() = %s, expected %s", result, tt.expected)
 			}
 		})
 	}

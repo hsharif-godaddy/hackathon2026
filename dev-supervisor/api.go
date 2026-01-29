@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 )
 
 // Archive extension used for published version files
@@ -501,7 +503,7 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 		"health_timeout_seconds", req.HealthTimeoutSeconds)
 
 	// Get dist directory from environment
-	distDir := getEnvStringWithDefault("DIST_DIR", "/dist")
+	distDir := config.GetEnvStringWithDefault("DIST_DIR", "/dist")
 
 	// Construct the commit hash path (archive file)
 	commitHashPath := fmt.Sprintf("%s/%s.tar.gz", distDir, req.CommitHash)
@@ -666,7 +668,7 @@ func (s *Server) handlePublishStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get dist directory from environment
-	distDir := getEnvStringWithDefault("DIST_DIR", "/dist")
+	distDir := config.GetEnvStringWithDefault("DIST_DIR", "/dist")
 	currentSymlink := filepath.Join(distDir, "current")
 
 	// Build response
@@ -791,7 +793,7 @@ func (s *Server) handlePublishStatus(w http.ResponseWriter, r *http.Request) {
 // getPublishHealthCheckURL returns the URL to use for health checking the published app
 // Uses proxy target config if proxy is enabled, otherwise falls back to localhost:20001
 func (s *Server) getPublishHealthCheckURL() string {
-	proxyEnabled := getEnvBoolWithDefault("DEV_SUPERVISOR_ENABLE_PROXY", false)
+	proxyEnabled := config.GetEnvBoolWithDefault("DEV_SUPERVISOR_ENABLE_PROXY", false)
 
 	if proxyEnabled {
 		host, hostSet := os.LookupEnv("DEV_SUPERVISOR_PROXY_TARGET_HOST")
@@ -807,7 +809,7 @@ func (s *Server) getPublishHealthCheckURL() string {
 	}
 
 	// Fallback for non-proxy mode - use PORT env var (standard for app listening port)
-	port := getEnvIntWithDefault("PORT", 20000)
+	port := config.GetEnvIntWithDefault("PORT", 20000)
 	url := fmt.Sprintf("http://localhost:%d/", port)
 	slog.Debug("publish.health_check.target", "url", url, "source", "PORT_env")
 	return url

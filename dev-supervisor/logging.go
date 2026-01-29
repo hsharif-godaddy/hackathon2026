@@ -5,6 +5,8 @@ import (
 	"os"
 
 	"golang.org/x/term"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 )
 
 var logger *slog.Logger
@@ -19,7 +21,7 @@ func newLoggerWithHandler(handler slog.Handler) *slog.Logger {
 // getLogLevel returns the configured log level from environment variable
 // Defaults to Info if not set or invalid
 func getLogLevel() slog.Level {
-	levelStr := getEnvStringWithDefault("DEV_SUPERVISOR_LOG_LEVEL", "INFO")
+	levelStr := config.GetEnvStringWithDefault("DEV_SUPERVISOR_LOG_LEVEL", "INFO")
 
 	switch levelStr {
 	case "debug", "DEBUG":

@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"os"
@@ -7,27 +7,27 @@ import (
 	"time"
 )
 
-// getEnvStringWithDefault returns the environment variable value if set,
+// GetEnvStringWithDefault returns the environment variable value if set,
 // otherwise returns the provided default value
-func getEnvStringWithDefault(key, defaultValue string) string {
+func GetEnvStringWithDefault(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
 	}
 	return defaultValue
 }
 
-// getEnvBoolWithDefault returns true if the environment variable is set to "true",
+// GetEnvBoolWithDefault returns true if the environment variable is set to "true",
 // false if set to any other value, or defaultValue if not set
-func getEnvBoolWithDefault(key string, defaultValue bool) bool {
+func GetEnvBoolWithDefault(key string, defaultValue bool) bool {
 	if value := os.Getenv(key); value != "" {
 		return value == "true"
 	}
 	return defaultValue
 }
 
-// getEnvIntWithDefault returns the parsed integer value of the environment variable,
+// GetEnvIntWithDefault returns the parsed integer value of the environment variable,
 // or defaultValue if not set or parsing fails
-func getEnvIntWithDefault(key string, defaultValue int) int {
+func GetEnvIntWithDefault(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if parsedValue, err := strconv.Atoi(value); err == nil {
 			return parsedValue
@@ -36,9 +36,9 @@ func getEnvIntWithDefault(key string, defaultValue int) int {
 	return defaultValue
 }
 
-// getEnvDurationWithDefault returns the parsed duration value of the environment variable,
+// GetEnvDurationWithDefault returns the parsed duration value of the environment variable,
 // or defaultValue if not set or parsing fails
-func getEnvDurationWithDefault(key string, defaultValue time.Duration) time.Duration {
+func GetEnvDurationWithDefault(key string, defaultValue time.Duration) time.Duration {
 	if value := os.Getenv(key); value != "" {
 		if parsedValue, err := time.ParseDuration(value); err == nil {
 			return parsedValue
@@ -47,10 +47,10 @@ func getEnvDurationWithDefault(key string, defaultValue time.Duration) time.Dura
 	return defaultValue
 }
 
-// getAllowedSELinuxTypes returns the list of SELinux types allowed to access the API
+// GetAllowedSELinuxTypes returns the list of SELinux types allowed to access the API
 // Configured via DEV_SUPERVISOR_ALLOWED_SELINUX_TYPES (comma-separated)
 // Defaults to "airo_agent_container.process" if not set or if value contains only whitespace
-func getAllowedSELinuxTypes() []string {
+func GetAllowedSELinuxTypes() []string {
 	const defaultType = "airo_agent_container.process"
 
 	value := strings.TrimSpace(os.Getenv("DEV_SUPERVISOR_ALLOWED_SELINUX_TYPES"))

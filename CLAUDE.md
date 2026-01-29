@@ -98,6 +98,10 @@ pnpm install && pnpm run dev        # Manual: agents:4000, app:3000
 pnpm typecheck / lint / test / test:e2e / build / build:all
 pnpm --filter @airo/agents test:unit / test:integration
 pnpm --filter <package> build
+
+# dev-supervisor (Go project)
+cd dev-supervisor && go fmt ./...
+cd dev-supervisor && golangci-lint run
 ```
 
 **Ports:** Agents=4000, App=3000. Kill conflicting processes.
@@ -113,7 +117,9 @@ pnpm --filter <package> build
 | **agents/**         | `@airo/agents` | 4000 | Express API, agent registry, app lifecycle, SQLite, WebSocket       |
 | **app/**            | `website`      | 3000 | Next.js builder UI, Monaco, chat, MySQL/Prisma, GoDaddy SSO, UXCore |
 | **proxy/**          | `airo-proxy`   | N/A  | Getty Images API proxy with SSO authentication                      |
-| **dev-supervisor/** | N/A            | N/A  | Go-based process supervisor with HTTP proxy, TLS, PID1 management   |
+| **dev-supervisor/** | Go project     | N/A  | Go-based process supervisor with HTTP proxy, TLS, PID1 management   |
+
+**dev-supervisor:** Standalone Go project - see [dev-supervisor/CLAUDE.md](dev-supervisor/CLAUDE.md) for Go-specific guidelines.
 
 _Additional services:_ `website/` (marketing), `app-templates/` (v8 template), `packages/ai-lib/` (shared AI utils), `packages/design-extractor/` (PDF RAG), `setup/` (config utility), `e2e/` (E2E tests)
 
@@ -402,3 +408,4 @@ Context auto-compacts at limits. Complete tasks fully regardless of budget. Save
 - [ ] `pnpm build` passes
 - [ ] Changes tested
 - [ ] Backward compatibility verified
+- [ ] **dev-supervisor only:** `go fmt ./...` and `golangci-lint run` pass

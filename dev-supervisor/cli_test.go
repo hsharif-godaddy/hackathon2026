@@ -5,6 +5,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 )
 
 func TestCliBasics(t *testing.T) {
@@ -108,7 +110,7 @@ func TestGetSocketPathFromEnv(t *testing.T) {
 				os.Setenv("AIRO_SUPERVISOR_SOCKET_PATH", tt.envValue)
 			}
 
-			result := getSocketPath()
+			result := config.GetSocketPath()
 			if result != tt.expected {
 				t.Errorf("Expected %s, got %s", tt.expected, result)
 			}

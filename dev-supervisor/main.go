@@ -10,12 +10,13 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"slices"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 )
 
 const (
@@ -25,45 +26,8 @@ const (
 	serverReadyTimeout = 5 * time.Second
 )
 
-type Config struct {
-	SocketPath             string
-	ShowVersion            bool
-	ShowHelp               bool
-	ShutdownTimeout        time.Duration
-	ProcessLogging         bool   // Enable/disable child process stdout/stderr logging
-	ProcessLoggingToStdout bool   // Enable/disable outputting child process logs to structured logging (stdout)
-	UseTCP                 bool   // Enable TCP mode instead of Unix socket (insecure, dev only)
-	TCPPort                string // TCP port to listen on when UseTCP is true
-	ProxyEnabled           bool   // Enable HTTP proxy mode
-	ProxyPort              int    // External HTTPS port for proxy
-	ProxyTargetHost        string // Proxy target host (backend host)
-	ProxyTargetPort        int    // Proxy target port (backend port)
-	ProxyCertPath          string // Path to TLS certificate
-	ProxyKeyPath           string // Path to TLS private key
-
-	// Static serving configuration
-	ProxyStaticRoot    string   // Root directory for static files (required if ProxyServeStatic=true)
-	ProxyServeStatic   bool     // Enable static file serving (explicit, default: false)
-	ProxySPAMode       bool     // Enable SPA fallback (default: true)
-	ProxyAPIPrefix     string   // API route prefix (default: /api)
-	ProxyRoutingConfig string   // Optional routing config file path
-	AllowedOrigins     []string // CORS allowed origins (comma-separated in env)
-
-	// JWT authentication configuration
-	// Auth failure handling uses hybrid mode: redirects browsers, returns 401 for APIs
-	JWTEnabled        bool     // Enable JWT authentication (default: false)
-	JWKSUrl           string   // JWKS endpoint URL
-	JWKSSkipTLSVerify bool     // Skip TLS certificate verification for JWKS endpoint (local dev only)
-	JWTRedirectURL    string   // Redirect URL on auth failure (supports {url} placeholder)
-	JWTBuilderBaseURL string   // Builder app base URL for smart redirects (e.g., https://airo-builder.test-godaddy.com)
-	SiteID            string   // Site ID for smart redirects (from SITE_ID env var)
-	JWTExcludedPaths  []string // Paths to exclude from JWT validation
-
-	// Start-on-request configuration (preview variant only)
-	StartOnRequestEnabled bool          // Enable start-on-request (auto-start stopped apps, auto-stop idle apps)
-	IdleTimeout           time.Duration // Duration of inactivity before auto-stopping (default: 30m)
-	IdleCheckInterval     time.Duration // How often to check for idle timeout (default: 30s)
-}
+// Config is an alias for config.Config
+type Config = config.Config
 
 // configureSchedulerDefaults re-enables Go 1.25's automatic container-aware scheduler tuning.
 func configureSchedulerDefaults() {
@@ -118,32 +82,6 @@ func parseGodebugSettings() map[string]string {
 	return settings
 }
 
-func getSocketPath() string {
-	// Check v4 environment variable first (AIRO_SUPERVISOR_SOCKET_PATH)
-	if value := getEnvStringWithDefault("AIRO_SUPERVISOR_SOCKET_PATH", ""); value != "" {
-		return value
-	}
-	// Fall back to v3 environment variable (DEV_SUPERVISOR_SOCKET_PATH) for backward compatibility
-	return getEnvStringWithDefault("DEV_SUPERVISOR_SOCKET_PATH", "/tmp/airo-supervisor.sock")
-}
-
-func getProcessLoggingToStdout() bool {
-	// Default is true (enabled), only disable if explicitly set to "true"
-	return !getEnvBoolWithDefault("DEV_SUPERVISOR_DISABLE_PROCESS_STDOUT", false)
-}
-
-func getTCPConfig() (bool, string) {
-	// Default to false (Unix socket mode)
-	if !getEnvBoolWithDefault("DEV_SUPERVISOR_USE_TCP", false) {
-		return false, ""
-	}
-
-	// Default port if TCP is enabled but no port specified
-	port := getEnvStringWithDefault("DEV_SUPERVISOR_TCP_PORT", "8080")
-
-	return true, port
-}
-
 type Server struct {
 	router                 *mux.Router
 	procMgr                *ProcessManager
@@ -176,8 +114,8 @@ func NewServer() *Server {
 	procMgr := NewProcessManager(logMgr, pid1Mgr)
 
 	// Set default configuration
-	procMgr.SetProcessLogging(true)                           // Default: enable child process logging
-	procMgr.SetStructuredLogging(getProcessLoggingToStdout()) // Default: enable structured output, configurable via env
+	procMgr.SetProcessLogging(true)                                  // Default: enable child process logging
+	procMgr.SetStructuredLogging(config.GetProcessLoggingToStdout()) // Default: enable structured output, configurable via env
 
 	s := &Server{
 		router:                 mux.NewRouter(),
@@ -188,8 +126,8 @@ func NewServer() *Server {
 		envMgr:                 NewEnvironmentManager(),
 		smtpProxy:              NewSMTPProxy(),
 		startTime:              time.Now(),
-		processLogging:         true,                        // Default: enable child process logging
-		processLoggingToStdout: getProcessLoggingToStdout(), // Default: enable structured output, configurable via env
+		processLogging:         true,                               // Default: enable child process logging
+		processLoggingToStdout: config.GetProcessLoggingToStdout(), // Default: enable structured output, configurable via env
 	}
 
 	s.setupRoutes()
@@ -248,7 +186,9 @@ func (s *Server) getConfiguredAddress() string {
 	if s.config != nil && s.config.SocketPath != "" {
 		return s.config.SocketPath
 	}
-	return getSocketPath()
+	// Fallback to config package
+	cfg := config.LoadConfig()
+	return cfg.SocketPath
 }
 
 // waitForServerReady waits for the server to be ready to accept connections
@@ -278,31 +218,23 @@ func (s *Server) waitForServerReady(address string, useTCP bool) error {
 	}
 }
 
-func (s *Server) StartWithConfig(config *Config) error {
-	s.config = config
-	s.processLogging = config.ProcessLogging
-	s.processLoggingToStdout = config.ProcessLoggingToStdout
+func (s *Server) StartWithConfig(cfg *Config) error {
+	s.config = cfg
+	s.processLogging = cfg.ProcessLogging
+	s.processLoggingToStdout = cfg.ProcessLoggingToStdout
 	// Configure process manager logging
-	s.procMgr.SetProcessLogging(config.ProcessLogging)
-	s.procMgr.SetStructuredLogging(config.ProcessLoggingToStdout)
+	s.procMgr.SetProcessLogging(cfg.ProcessLogging)
+	s.procMgr.SetStructuredLogging(cfg.ProcessLoggingToStdout)
 
-	if config.UseTCP {
-		return s.startTCPServer(config.TCPPort, config.ShutdownTimeout)
+	if cfg.UseTCP {
+		return s.startTCPServer(cfg.TCPPort, cfg.ShutdownTimeout)
 	}
-	return s.startUnixServer(config.SocketPath, config.ShutdownTimeout)
+	return s.startUnixServer(cfg.SocketPath, cfg.ShutdownTimeout)
 }
 
 func (s *Server) Start() error {
-	useTCP, tcpPort := getTCPConfig()
-	config := &Config{
-		SocketPath:             getSocketPath(),
-		ShutdownTimeout:        5 * time.Second,
-		ProcessLogging:         true,                        // Default: enable child process logging
-		ProcessLoggingToStdout: getProcessLoggingToStdout(), // Default: enable structured output, configurable via env
-		UseTCP:                 useTCP,
-		TCPPort:                tcpPort,
-	}
-	return s.StartWithConfig(config)
+	cfg := config.LoadConfig()
+	return s.StartWithConfig(cfg)
 }
 
 // startHTTPProxyIfEnabled starts the HTTP proxy if enabled in the configuration
@@ -389,7 +321,7 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 
 	// Create HTTP server with SELinux enforcement for Unix socket mode
 	// Only processes with allowed SELinux types can access the API via SO_PEERSEC
-	allowedSELinuxTypes := getAllowedSELinuxTypes()
+	allowedSELinuxTypes := config.GetAllowedSELinuxTypes()
 	server := &http.Server{
 		Handler:      peerSecMiddleware(allowedSELinuxTypes)(s.router),
 		ReadTimeout:  defaultTimeout,
@@ -664,24 +596,40 @@ func (s *Server) WaitForShutdown() {
 }
 
 func parseFlags() *Config {
-	config := &Config{}
+	// CLI flag variables for overrides
+	var (
+		socketPath       string
+		useTCP           bool
+		tcpPort          string
+		showVersion      bool
+		showVersionShort bool
+		showHelp         bool
+		showHelpShort    bool
+		shutdownTimeout  time.Duration
+		proxyEnabled     bool
+		proxyPort        int
+		proxyTargetHost  string
+		proxyTargetPort  int
+		proxyCertPath    string
+		proxyKeyPath     string
+	)
 
-	flag.StringVar(&config.SocketPath, "socket", "", "Unix domain socket path (overrides DEV_SUPERVISOR_SOCKET_PATH)")
-	flag.BoolVar(&config.UseTCP, "tcp", false, "Use TCP instead of Unix socket (INSECURE - development only)")
-	flag.StringVar(&config.TCPPort, "port", "", "TCP port to listen on when using -tcp flag (overrides DEV_SUPERVISOR_TCP_PORT)")
-	flag.BoolVar(&config.ShowVersion, "version", false, "Show version and exit")
-	flag.BoolVar(&config.ShowVersion, "v", false, "Show version and exit (shorthand)")
-	flag.BoolVar(&config.ShowHelp, "help", false, "Show help and exit")
-	flag.BoolVar(&config.ShowHelp, "h", false, "Show help and exit (shorthand)")
-	flag.DurationVar(&config.ShutdownTimeout, "shutdown-timeout", 10*time.Second, "Graceful shutdown timeout")
+	flag.StringVar(&socketPath, "socket", "", "Unix domain socket path (overrides DEV_SUPERVISOR_SOCKET_PATH)")
+	flag.BoolVar(&useTCP, "tcp", false, "Use TCP instead of Unix socket (INSECURE - development only)")
+	flag.StringVar(&tcpPort, "port", "", "TCP port to listen on when using -tcp flag (overrides DEV_SUPERVISOR_TCP_PORT)")
+	flag.BoolVar(&showVersion, "version", false, "Show version and exit")
+	flag.BoolVar(&showVersionShort, "v", false, "Show version and exit (shorthand)")
+	flag.BoolVar(&showHelp, "help", false, "Show help and exit")
+	flag.BoolVar(&showHelpShort, "h", false, "Show help and exit (shorthand)")
+	flag.DurationVar(&shutdownTimeout, "shutdown-timeout", 0, "Graceful shutdown timeout")
 
 	// HTTP Proxy configuration
-	flag.BoolVar(&config.ProxyEnabled, "proxy", false, "Enable HTTP proxy mode")
-	flag.IntVar(&config.ProxyPort, "proxy-port", 0, "HTTP proxy listen port")
-	flag.StringVar(&config.ProxyTargetHost, "proxy-target-host", "localhost", "HTTP proxy target host")
-	flag.IntVar(&config.ProxyTargetPort, "proxy-target-port", 8080, "HTTP proxy target port")
-	flag.StringVar(&config.ProxyCertPath, "proxy-cert", "", "Path to TLS certificate")
-	flag.StringVar(&config.ProxyKeyPath, "proxy-key", "", "Path to TLS private key")
+	flag.BoolVar(&proxyEnabled, "proxy", false, "Enable HTTP proxy mode")
+	flag.IntVar(&proxyPort, "proxy-port", 0, "HTTP proxy listen port")
+	flag.StringVar(&proxyTargetHost, "proxy-target-host", "", "HTTP proxy target host")
+	flag.IntVar(&proxyTargetPort, "proxy-target-port", 0, "HTTP proxy target port")
+	flag.StringVar(&proxyCertPath, "proxy-cert", "", "Path to TLS certificate")
+	flag.StringVar(&proxyKeyPath, "proxy-key", "", "Path to TLS private key")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", AppName)
@@ -721,133 +669,46 @@ func parseFlags() *Config {
 
 	flag.Parse()
 
-	// Handle TCP vs Unix socket configuration
-	if config.UseTCP {
-		// TCP mode
-		if config.TCPPort == "" {
-			// Check environment variable for port
-			_, envPort := getTCPConfig()
-			if envPort != "" {
-				config.TCPPort = envPort
-			} else {
-				config.TCPPort = "8080" // Default port
-			}
-		}
-	} else {
-		// Check if environment variable forces TCP mode
-		useTCP, tcpPort := getTCPConfig()
-		if useTCP {
-			config.UseTCP = true
-			config.TCPPort = tcpPort
-		} else {
-			// Unix socket mode
-			if config.SocketPath == "" {
-				config.SocketPath = getSocketPath()
-			}
+	// Load configuration from environment
+	cfg := config.LoadConfig()
+
+	// Apply CLI flag overrides
+	if socketPath != "" {
+		cfg.SocketPath = socketPath
+	}
+	if useTCP {
+		cfg.UseTCP = true
+		if tcpPort != "" {
+			cfg.TCPPort = tcpPort
 		}
 	}
-
-	// Set default process logging configuration
-	config.ProcessLogging = true                                // Default: enable child process logging
-	config.ProcessLoggingToStdout = getProcessLoggingToStdout() // Default: enable structured output, configurable via env
-
-	// HTTP Proxy configuration from environment variables
-	config.ProxyEnabled = getEnvBoolWithDefault("DEV_SUPERVISOR_ENABLE_PROXY", false)
-	config.ProxyPort = getEnvIntWithDefault("DEV_SUPERVISOR_PROXY_PORT", 0)
-	config.ProxyTargetHost = getEnvStringWithDefault("DEV_SUPERVISOR_PROXY_TARGET_HOST", "localhost")
-	config.ProxyTargetPort = getEnvIntWithDefault("DEV_SUPERVISOR_PROXY_TARGET_PORT", 8080)
-	config.ProxyCertPath = getEnvStringWithDefault("DEV_SUPERVISOR_PROXY_CERT_PATH", "")
-	config.ProxyKeyPath = getEnvStringWithDefault("DEV_SUPERVISOR_PROXY_KEY_PATH", "")
-
-	// Static serving configuration from environment variables
-	// Default static root is /app/dist/client (standard Vite build output in container)
-	config.ProxyStaticRoot = getEnvStringWithDefault("DEV_SUPERVISOR_STATIC_ROOT", "/app/dist/client")
-	config.ProxyServeStatic = getEnvBoolWithDefault("DEV_SUPERVISOR_SERVE_STATIC", false)
-	config.ProxySPAMode = getEnvBoolWithDefault("DEV_SUPERVISOR_SPA_MODE", true)
-	config.ProxyAPIPrefix = getEnvStringWithDefault("DEV_SUPERVISOR_API_PREFIX", "/api")
-	config.ProxyRoutingConfig = getEnvStringWithDefault("DEV_SUPERVISOR_ROUTING_CONFIG", "")
-
-	// Parse allowed origins using the same logic as vite.config.ts
-	// This ensures dev-supervisor and Vite have identical CORS configurations
-	var allowedOrigins []string
-
-	// 1. Add FRONTEND_DOMAIN with http/https prefixes (if set)
-	frontendDomain := os.Getenv("FRONTEND_DOMAIN")
-	if frontendDomain != "" {
-		allowedOrigins = append(allowedOrigins,
-			frontendDomain,
-			"http://"+frontendDomain,
-			"https://"+frontendDomain,
-		)
+	if shutdownTimeout > 0 {
+		cfg.ShutdownTimeout = shutdownTimeout
+	}
+	if proxyEnabled {
+		cfg.ProxyEnabled = true
+	}
+	if proxyPort > 0 {
+		cfg.ProxyPort = proxyPort
+	}
+	if proxyTargetHost != "" {
+		cfg.ProxyTargetHost = proxyTargetHost
+	}
+	if proxyTargetPort > 0 {
+		cfg.ProxyTargetPort = proxyTargetPort
+	}
+	if proxyCertPath != "" {
+		cfg.ProxyCertPath = proxyCertPath
+	}
+	if proxyKeyPath != "" {
+		cfg.ProxyKeyPath = proxyKeyPath
 	}
 
-	// 2. Add ALLOWED_ORIGINS (comma-separated list, if set)
-	allowedOriginsStr := os.Getenv("ALLOWED_ORIGINS")
-	if allowedOriginsStr != "" {
-		origins := strings.Split(allowedOriginsStr, ",")
-		allowedOrigins = append(allowedOrigins, origins...)
-	}
+	// Handle show version/help flags
+	cfg.ShowVersion = showVersion || showVersionShort
+	cfg.ShowHelp = showHelp || showHelpShort
 
-	// 3. Add VITE_PARENT_ORIGIN (if set)
-	viteParentOrigin := os.Getenv("VITE_PARENT_ORIGIN")
-	if viteParentOrigin != "" {
-		allowedOrigins = append(allowedOrigins, viteParentOrigin)
-	}
-
-	// Trim whitespace and remove duplicates
-	seenOrigins := make(map[string]bool)
-	for _, origin := range allowedOrigins {
-		trimmed := strings.TrimSpace(origin)
-		if trimmed != "" && !seenOrigins[trimmed] {
-			seenOrigins[trimmed] = true
-			config.AllowedOrigins = append(config.AllowedOrigins, trimmed)
-		}
-	}
-
-	// JWT authentication configuration from environment variables
-	config.JWTEnabled = getEnvBoolWithDefault("DEV_SUPERVISOR_ENABLE_JWT_AUTH", false)
-	config.JWKSUrl = getEnvStringWithDefault("DEV_SUPERVISOR_JWKS_URL", "")
-	config.JWKSSkipTLSVerify = getEnvBoolWithDefault("DEV_SUPERVISOR_JWKS_SKIP_TLS_VERIFY", false)
-	config.JWTRedirectURL = getEnvStringWithDefault("DEV_SUPERVISOR_JWT_REDIRECT_URL", "")
-	config.JWTBuilderBaseURL = getEnvStringWithDefault("DEV_SUPERVISOR_JWT_BUILDER_BASE_URL", "")
-
-	// SITE_ID is required (no default) - must be set by docker-compose or production deployment
-	config.SiteID = os.Getenv("SITE_ID")
-
-	// Parse excluded paths (comma-separated)
-	excludedPathsStr := getEnvStringWithDefault("DEV_SUPERVISOR_JWT_EXCLUDED_PATHS", "/api/health")
-	if excludedPathsStr != "" {
-		config.JWTExcludedPaths = strings.Split(excludedPathsStr, ",")
-		// Trim whitespace from each path
-		for i := range config.JWTExcludedPaths {
-			config.JWTExcludedPaths[i] = strings.TrimSpace(config.JWTExcludedPaths[i])
-		}
-	}
-
-	// Add /airo/health to excluded paths when proxy mode is enabled
-	// This endpoint is used for deployment health checks and must be unauthenticated
-	if config.ProxyEnabled {
-		// Check if /airo/health is already excluded
-		if !slices.Contains(config.JWTExcludedPaths, "/airo/health") {
-			config.JWTExcludedPaths = append(config.JWTExcludedPaths, "/airo/health")
-		}
-	}
-
-	// Start-on-request configuration (preview variant only)
-	config.StartOnRequestEnabled = getEnvBoolWithDefault("DEV_SUPERVISOR_ENABLE_START_ON_REQUEST", false)
-	config.IdleTimeout = getEnvDurationWithDefault("DEV_SUPERVISOR_IDLE_TIMEOUT", 30*time.Minute)
-	config.IdleCheckInterval = getEnvDurationWithDefault("DEV_SUPERVISOR_IDLE_CHECK_INTERVAL", 30*time.Second)
-
-	const previewTaskName = "preview"
-	// Only enable for preview variant
-	taskName := os.Getenv("NOMAD_TASK_NAME")
-	if config.StartOnRequestEnabled && taskName != previewTaskName {
-		slog.Warn("start-on-request disabled: only supported for preview variant",
-			"task_name", taskName)
-		config.StartOnRequestEnabled = false
-	}
-
-	return config
+	return cfg
 }
 
 func showVersion() {
@@ -855,14 +716,14 @@ func showVersion() {
 }
 
 func main() {
-	config := parseFlags()
+	cfg := parseFlags()
 
-	if config.ShowHelp {
+	if cfg.ShowHelp {
 		flag.Usage()
 		os.Exit(0)
 	}
 
-	if config.ShowVersion {
+	if cfg.ShowVersion {
 		showVersion()
 		os.Exit(0)
 	}
@@ -871,20 +732,20 @@ func main() {
 	initLogging()
 	configureSchedulerDefaults()
 
-	if config.UseTCP {
+	if cfg.UseTCP {
 		slog.Info("starting dev-supervisor",
 			"version", Version,
 			"mode", "tcp",
-			"port", config.TCPPort,
+			"port", cfg.TCPPort,
 			"pid", os.Getpid(),
-			"shutdown_timeout", config.ShutdownTimeout)
+			"shutdown_timeout", cfg.ShutdownTimeout)
 	} else {
 		slog.Info("starting dev-supervisor",
 			"version", Version,
 			"mode", "unix",
-			"socket_path", config.SocketPath,
+			"socket_path", cfg.SocketPath,
 			"pid", os.Getpid(),
-			"shutdown_timeout", config.ShutdownTimeout)
+			"shutdown_timeout", cfg.ShutdownTimeout)
 	}
 
 	server := NewServer()
@@ -896,18 +757,18 @@ func main() {
 
 		// Start the server in a goroutine so we can also start the command
 		go func() {
-			if err := server.StartWithConfig(config); err != nil {
+			if err := server.StartWithConfig(cfg); err != nil {
 				slog.Error("failed to start server", "error", err)
 				os.Exit(1)
 			}
 		}()
 
 		// Wait for server to be ready
-		address := config.SocketPath
-		if config.UseTCP {
-			address = config.TCPPort
+		address := cfg.SocketPath
+		if cfg.UseTCP {
+			address = cfg.TCPPort
 		}
-		if err := server.waitForServerReady(address, config.UseTCP); err != nil {
+		if err := server.waitForServerReady(address, cfg.UseTCP); err != nil {
 			slog.Error("server failed to start", "error", err)
 			os.Exit(1)
 		}
@@ -922,7 +783,7 @@ func main() {
 		server.WaitForShutdown()
 	} else {
 		// No command specified, just start the server normally
-		if err := server.StartWithConfig(config); err != nil {
+		if err := server.StartWithConfig(cfg); err != nil {
 			slog.Error("failed to start server", "error", err)
 			os.Exit(1)
 		}
