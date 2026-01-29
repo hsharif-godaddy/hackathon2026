@@ -1,5 +1,5 @@
 import { GitUtils, GitStatus as GitUtilsStatus } from '../utils/git.js';
-import { logger } from '../logging/index.js';
+import { logger, Logger } from '../logging/index.js';
 import { toolGitEvents } from '../logging/events/index.js';
 import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
@@ -45,6 +45,12 @@ export interface GitToolOptions {
   remote?: string;
   /** Force push (for push operation) */
   forcePush?: boolean;
+  /** GitHub token for authentication (for push/pull operations, bypasses /alloc/config.json lookup) */
+  token?: string;
+  /** Allow merging unrelated histories (for pull operation) */
+  allowUnrelatedHistories?: boolean;
+  /** Use merge instead of rebase for divergent branches (for pull operation) */
+  noRebase?: boolean;
   /** Operation-specific options */
   options?: {
     /** Include all files (for add, commit) */
@@ -117,6 +123,7 @@ export class GitTool {
   private devSupervisor: DevSupervisorClient | null;
   private gitRemoteTokenManager: GitRemoteTokenManager | null;
   private gitRemoteConfigRepo: GitRemoteConfigRepository;
+  private logger = Logger.create({ service: 'git-tool' });
 
   constructor(devSupervisor?: DevSupervisorClient) {
     this.devSupervisor = devSupervisor || null;
@@ -741,8 +748,70 @@ export class GitTool {
   }
 
   /**
+   * Ensure git remote is configured in the container
+   *
+   * For PaaS pattern, the remote may not exist or may have a different URL.
+   * This method ensures the remote is properly configured before push/pull.
+   *
+   * @param appPath - Path to the app
+   * @param remoteName - Remote name (e.g., 'origin')
+   * @param repoUrl - Repository URL to configure
+   */
+  private async ensureRemoteConfigured(appPath: string, remoteName: string, repoUrl: string): Promise<void> {
+    const hasRemote = await this.gitUtils.hasRemote(appPath, remoteName);
+    if (!hasRemote) {
+      // Add the remote
+      await this.gitUtils.addRemote(appPath, remoteName, repoUrl);
+    } else {
+      // Update the remote URL in case it changed
+      const currentUrl = await this.gitUtils.getRemoteUrl(appPath, remoteName);
+      if (currentUrl !== repoUrl) {
+        await this.gitUtils.setRemoteUrl(appPath, remoteName, repoUrl);
+      }
+    }
+  }
+
+  /**
+   * Validate pattern parameters for push/pull operations
+   *
+   * For PaaS pattern, both token AND repoUrl must be provided together.
+   * For AiroAppBuilder pattern, neither should be provided (uses database config).
+   *
+   * @param operation - The operation name ('push' or 'pull')
+   * @param token - Optional token from request
+   * @param repoUrl - Optional repoUrl from request
+   * @returns Error result if validation fails, null if valid
+   */
+  private validatePatternParameters(
+    operation: 'push' | 'pull',
+    token?: string,
+    repoUrl?: string
+  ): GitToolResult | null {
+    // Check for partial PaaS parameters (only one of token/repoUrl provided)
+    const hasToken = !!token;
+    const hasRepoUrl = !!repoUrl;
+
+    if (hasToken !== hasRepoUrl) {
+      const missing = hasToken ? 'repoUrl' : 'token';
+      const provided = hasToken ? 'token' : 'repoUrl';
+      return {
+        success: false,
+        operation,
+        error: `Incomplete PaaS parameters: '${provided}' was provided but '${missing}' is missing. ` +
+          `For PaaS pattern, both 'token' and 'repoUrl' must be provided together. ` +
+          `For AiroAppBuilder pattern, omit both and use configure-remote + secrets API instead.`
+      };
+    }
+
+    return null; // Valid
+  }
+
+  /**
    * Handle pull from remote repository
-   * Requires git remote to be configured via configure-remote operation
+   *
+   * Supports two patterns:
+   * - PaaS: Pass token + repoUrl directly in options (both required together, skips database lookup)
+   * - AiroAppBuilder: Uses stored config from database + token from /alloc/config.json (omit both token and repoUrl)
    */
   private async handlePull(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
     try {
@@ -759,26 +828,61 @@ export class GitTool {
       // Get remote name (default: 'origin')
       const remoteName = options.remoteName || options.remote || 'origin';
 
-      // Get remote config from database
-      const remoteConfig = this.gitRemoteConfigRepo.findByAppAndRemote(appId, remoteName);
-      if (!remoteConfig) {
-        return {
-          success: false,
-          operation: 'pull',
-          error: `Remote '${remoteName}' not configured. Please run configure-remote first.`
-        };
+      this.logger.info('git-tool.pull.begin', {
+        appId,
+        appPath,
+        remoteName,
+        branch: options.branch,
+        isPaaSPattern: !!(options.repoUrl && options.token),
+      });
+
+      // Validate pattern parameters (token and repoUrl must both be present or both absent)
+      const validationError = this.validatePatternParameters('pull', options.token, options.repoUrl);
+      if (validationError) {
+        return validationError;
       }
 
-      if (!remoteConfig.syncEnabled) {
-        return {
-          success: false,
-          operation: 'pull',
-          error: `Remote '${remoteName}' is disabled`
-        };
+      // Determine repoUrl and branch based on pattern:
+      // - PaaS pattern: Use repoUrl from options directly (skip database)
+      // - AiroAppBuilder pattern: Look up from database
+      let repoUrl: string;
+      let branch: string;
+      const isPaaSPattern = !!(options.repoUrl && options.token);
+
+      if (isPaaSPattern) {
+        // PaaS pattern: Use provided repoUrl and token directly
+        repoUrl = options.repoUrl!;
+        branch = options.branch || 'main';
+      } else {
+        // AiroAppBuilder pattern: Look up config from database
+        const remoteConfig = this.gitRemoteConfigRepo.findByAppAndRemote(appId, remoteName);
+        if (!remoteConfig) {
+          return {
+            success: false,
+            operation: 'pull',
+            error: `Remote '${remoteName}' not configured. Please run configure-remote first or provide both 'repoUrl' and 'token' in request for PaaS pattern.`
+          };
+        }
+
+        if (!remoteConfig.syncEnabled) {
+          return {
+            success: false,
+            operation: 'pull',
+            error: `Remote '${remoteName}' is disabled`
+          };
+        }
+
+        repoUrl = remoteConfig.repoUrl;
+        branch = options.branch || remoteConfig.defaultBranch;
       }
 
-      // Get current branch or use default branch from config
-      const branch = options.branch || remoteConfig.defaultBranch;
+      this.logger.info('git-tool.pull.config-resolved', {
+        appId,
+        isPaaSPattern,
+        remoteName,
+        branch,
+        hasToken: !!options.token,
+      });
 
       // Validate dependencies
       if (!this.gitRemoteTokenManager) {
@@ -790,17 +894,41 @@ export class GitTool {
       }
 
       try {
+        // For PaaS pattern, ensure git remote is configured in the container
+        if (isPaaSPattern) {
+          await this.ensureRemoteConfigured(appPath, remoteName, repoUrl);
+        }
+
         // Configure credentials (inside container)
-        await this.gitRemoteTokenManager.configureGitCredentials(appId, remoteConfig.repoUrl);
+        // Token can be passed directly (PaaS) or read from /alloc/config.json (AiroAppBuilder)
+        this.logger.info('git-tool.pull.credentials-configuring', { appId });
+        await this.gitRemoteTokenManager.configureGitCredentials(appId, repoUrl, options.token);
 
         // Execute pull with 'theirs' merge strategy to prefer remote changes
-        const pullResult = await this.gitUtils.pull(appPath, remoteName, branch, {}, 'theirs');
+        this.logger.info('git-tool.pull.executing', {
+          appId,
+          remoteName,
+          branch,
+          mergeStrategy: 'theirs',
+          allowUnrelatedHistories: options.allowUnrelatedHistories,
+          noRebase: options.noRebase,
+        });
+        const pullResult = await this.gitUtils.pull(
+          appPath,
+          remoteName,
+          branch,
+          {},
+          'theirs',
+          options.allowUnrelatedHistories,
+          options.noRebase
+        );
 
         if (!pullResult.success) {
           const stderr = (pullResult.stderr || '').toLowerCase();
 
           // Check for merge conflicts
           if (stderr.includes('conflict') || stderr.includes('merge')) {
+            this.logger.warn('git-tool.pull.merge-conflict', { appId, remoteName, branch });
             return {
               success: false,
               operation: 'pull',
@@ -812,6 +940,7 @@ export class GitTool {
 
           // Check for authentication failures
           if (stderr.includes('authentication failed') || stderr.includes('403') || stderr.includes('401') || stderr.includes('invalid credentials')) {
+            this.logger.warn('git-tool.pull.auth-failed', { appId, remoteName });
             return {
               success: false,
               operation: 'pull',
@@ -822,6 +951,7 @@ export class GitTool {
 
           // Check for network errors
           if (stderr.includes('could not resolve host') || stderr.includes('network') || stderr.includes('connection')) {
+            this.logger.warn('git-tool.pull.network-error', { appId, remoteName });
             return {
               success: false,
               operation: 'pull',
@@ -831,6 +961,7 @@ export class GitTool {
           }
 
           // Generic error
+          this.logger.error('git-tool.pull.failed', { appId, remoteName, error: pullResult.stderr });
           return {
             success: false,
             operation: 'pull',
@@ -839,9 +970,21 @@ export class GitTool {
           };
         }
 
-        // Update last sync timestamp
-        this.gitRemoteConfigRepo.update(remoteConfig.id, {
-          lastSyncAt: Date.now()
+        // Update last sync timestamp (only for AiroAppBuilder pattern with database config)
+        if (!options.repoUrl) {
+          const remoteConfig = this.gitRemoteConfigRepo.findByAppAndRemote(appId, remoteName);
+          if (remoteConfig) {
+            this.gitRemoteConfigRepo.update(remoteConfig.id, {
+              lastSyncAt: Date.now()
+            });
+          }
+        }
+
+        this.logger.info('git-tool.pull.success', {
+          appId,
+          remoteName,
+          branch,
+          output: pullResult.stdout?.substring(0, 200), // Truncate for logging
         });
 
         return {
@@ -852,8 +995,14 @@ export class GitTool {
       } finally {
         // ALWAYS cleanup credentials
         await this.gitRemoteTokenManager.cleanupGitCredentials(appId);
+        this.logger.info('git-tool.pull.credentials-cleaned', { appId });
       }
     } catch (error) {
+      this.logger.error('git-tool.pull.exception', {
+        appId: this.extractAppIdFromPath(appPath),
+        appPath,
+        error: getErrorMessage(error),
+      });
       return {
         success: false,
         operation: 'pull',
@@ -864,12 +1013,16 @@ export class GitTool {
 
   /**
    * Handle push to remote repository
-   * Requires git remote to be configured via configure-remote operation
+   *
+   * Supports two patterns:
+   * - PaaS: Pass token + repoUrl directly in options (both required together, skips database lookup)
+   * - AiroAppBuilder: Uses stored config from database + token from /alloc/config.json (omit both token and repoUrl)
    */
   private async handlePush(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+    let appId: string | null = null;
     try {
       // Extract app ID from path
-      const appId = this.extractAppIdFromPath(appPath);
+      appId = this.extractAppIdFromPath(appPath);
       if (!appId) {
         return {
           success: false,
@@ -881,29 +1034,66 @@ export class GitTool {
       // Get remote name (default: 'origin')
       const remoteName = options.remoteName || options.remote || 'origin';
 
-      // Get remote config from database
-      const remoteConfig = this.gitRemoteConfigRepo.findByAppAndRemote(appId, remoteName);
-      if (!remoteConfig) {
-        return {
-          success: false,
-          operation: 'push',
-          error: `Remote '${remoteName}' not configured. Please run configure-remote first.`
-        };
+      this.logger.info('git-tool.push.begin', {
+        appId,
+        appPath,
+        remoteName,
+        branch: options.branch,
+        forcePush: options.forcePush || options.options?.force || false,
+        isPaaSPattern: !!(options.repoUrl && options.token),
+      });
+
+      // Validate pattern parameters (token and repoUrl must both be present or both absent)
+      const validationError = this.validatePatternParameters('push', options.token, options.repoUrl);
+      if (validationError) {
+        return validationError;
       }
 
-      if (!remoteConfig.syncEnabled) {
-        return {
-          success: false,
-          operation: 'push',
-          error: `Remote '${remoteName}' is disabled`
-        };
-      }
+      // Determine repoUrl and branch based on pattern:
+      // - PaaS pattern: Use repoUrl from options directly (skip database)
+      // - AiroAppBuilder pattern: Look up from database
+      let repoUrl: string;
+      let branch: string;
+      const isPaaSPattern = !!(options.repoUrl && options.token);
 
-      // Get current branch or use default branch from config
-      const branch = options.branch || await this.gitUtils.getCurrentBranch(appPath);
+      if (isPaaSPattern) {
+        // PaaS pattern: Use provided repoUrl and token directly
+        repoUrl = options.repoUrl!;
+        branch = options.branch || await this.gitUtils.getCurrentBranch(appPath);
+      } else {
+        // AiroAppBuilder pattern: Look up config from database
+        const remoteConfig = this.gitRemoteConfigRepo.findByAppAndRemote(appId, remoteName);
+        if (!remoteConfig) {
+          return {
+            success: false,
+            operation: 'push',
+            error: `Remote '${remoteName}' not configured. Please run configure-remote first or provide both 'repoUrl' and 'token' in request for PaaS pattern.`
+          };
+        }
+
+        if (!remoteConfig.syncEnabled) {
+          return {
+            success: false,
+            operation: 'push',
+            error: `Remote '${remoteName}' is disabled`
+          };
+        }
+
+        repoUrl = remoteConfig.repoUrl;
+        branch = options.branch || await this.gitUtils.getCurrentBranch(appPath);
+      }
 
       // Check force push flag
       const forcePush = options.forcePush || options.options?.force || false;
+
+      this.logger.info('git-tool.push.config-resolved', {
+        appId,
+        isPaaSPattern,
+        remoteName,
+        branch,
+        forcePush,
+        hasToken: !!options.token,
+      });
 
       // Validate dependencies
       if (!this.gitRemoteTokenManager) {
@@ -915,10 +1105,23 @@ export class GitTool {
       }
 
       try {
+        // For PaaS pattern, ensure git remote is configured in the container
+        if (isPaaSPattern) {
+          await this.ensureRemoteConfigured(appPath, remoteName, repoUrl);
+        }
+
         // Configure credentials (inside container)
-        await this.gitRemoteTokenManager.configureGitCredentials(appId, remoteConfig.repoUrl);
+        // Token can be passed directly (PaaS) or read from /alloc/config.json (AiroAppBuilder)
+        this.logger.info('git-tool.push.credentials-configuring', { appId });
+        await this.gitRemoteTokenManager.configureGitCredentials(appId, repoUrl, options.token);
 
         // Execute push with setUpstream=true to track remote branch
+        this.logger.info('git-tool.push.executing', {
+          appId,
+          remoteName,
+          branch,
+          forcePush,
+        });
         const pushResult = await this.gitUtils.push(appPath, remoteName, branch, {}, forcePush, true);
 
         if (!pushResult.success) {
@@ -926,6 +1129,7 @@ export class GitTool {
 
           // Check for authentication failures
           if (stderr.includes('authentication failed') || stderr.includes('403') || stderr.includes('401') || stderr.includes('invalid credentials')) {
+            this.logger.warn('git-tool.push.auth-failed', { appId, remoteName });
             return {
               success: false,
               operation: 'push',
@@ -936,6 +1140,7 @@ export class GitTool {
 
           // Check for network errors
           if (stderr.includes('could not resolve host') || stderr.includes('network') || stderr.includes('connection')) {
+            this.logger.warn('git-tool.push.network-error', { appId, remoteName });
             return {
               success: false,
               operation: 'push',
@@ -946,6 +1151,7 @@ export class GitTool {
 
           // Check for non-fast-forward (need to pull first)
           if (stderr.includes('non-fast-forward') || stderr.includes('fetch first') || stderr.includes('rejected')) {
+            this.logger.warn('git-tool.push.rejected', { appId, remoteName, reason: 'non-fast-forward' });
             return {
               success: false,
               operation: 'push',
@@ -957,6 +1163,7 @@ export class GitTool {
 
           // Check for permission errors
           if (stderr.includes('permission denied') || stderr.includes('403')) {
+            this.logger.warn('git-tool.push.permission-denied', { appId, remoteName });
             return {
               success: false,
               operation: 'push',
@@ -966,6 +1173,7 @@ export class GitTool {
           }
 
           // Generic error
+          this.logger.error('git-tool.push.failed', { appId, remoteName, error: pushResult.stderr });
           return {
             success: false,
             operation: 'push',
@@ -974,9 +1182,21 @@ export class GitTool {
           };
         }
 
-        // Update last sync timestamp
-        this.gitRemoteConfigRepo.update(remoteConfig.id, {
-          lastSyncAt: Date.now()
+        // Update last sync timestamp (only for AiroAppBuilder pattern with database config)
+        if (!options.repoUrl) {
+          const remoteConfig = this.gitRemoteConfigRepo.findByAppAndRemote(appId, remoteName);
+          if (remoteConfig) {
+            this.gitRemoteConfigRepo.update(remoteConfig.id, {
+              lastSyncAt: Date.now()
+            });
+          }
+        }
+
+        this.logger.info('git-tool.push.success', {
+          appId,
+          remoteName,
+          branch,
+          output: pushResult.stdout?.substring(0, 200),
         });
 
         return {
@@ -987,8 +1207,14 @@ export class GitTool {
       } finally {
         // ALWAYS cleanup credentials
         await this.gitRemoteTokenManager.cleanupGitCredentials(appId);
+        this.logger.info('git-tool.push.credentials-cleaned', { appId });
       }
     } catch (error) {
+      this.logger.error('git-tool.push.exception', {
+        appId,
+        appPath,
+        error: getErrorMessage(error),
+      });
       return {
         success: false,
         operation: 'push',

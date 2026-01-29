@@ -1,0 +1,342 @@
+/**
+ * AppRestartService
+ *
+ * Provides restart cycle operations for apps. This includes stopping the dev server,
+ * running npm install/build, creating PaaS config, and restarting the dev server.
+ *
+ * Extracted from ProjectImportService to allow reuse in git pull and other operations.
+ */
+
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { Logger } from '../logging/index.js';
+import { TerminalTool } from '../tools/terminal.js';
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+
+const RESTART_TIMEOUTS = {
+  INSTALL: 5 * 60 * 1000, // 5 minutes
+  BUILD: 10 * 60 * 1000, // 10 minutes
+} as const;
+
+const DEFAULT_DEV_COMMAND = 'vite --host 0.0.0.0 --port $PORT';
+const DEFAULT_BUILD_COMMAND = 'vite build --outDir dist';
+const DEFAULT_SERVE_COMMAND = 'serve dist -l tcp://0.0.0.0:$PORT';
+
+export interface RestartCycleResult {
+  success: boolean;
+  error?: string;
+  phases: {
+    install: boolean;
+    build: boolean;
+    restart: boolean;
+  };
+}
+
+export class AppRestartService {
+  private logger = Logger.create({ service: 'app-restart' });
+
+  /**
+   * Perform a full restart cycle for an app
+   *
+   * This performs the following steps:
+   * 1. Stop the dev server
+   * 2. Run npm install
+   * 3. Run npm build (if build script exists)
+   * 4. Create PaaS config
+   * 5. Restart the dev server
+   *
+   * @param appId - App ID
+   * @param appPath - Path to the app directory
+   * @param options - Optional configuration
+   * @returns Result with success status and phase completion info
+   */
+  async performFullRestartCycle(
+    appId: string,
+    appPath: string,
+    options?: {
+      skipInstall?: boolean;
+      skipBuild?: boolean;
+      devCommand?: string;
+    }
+  ): Promise<RestartCycleResult> {
+    const result: RestartCycleResult = {
+      success: false,
+      phases: {
+        install: false,
+        build: false,
+        restart: false,
+      },
+    };
+
+    this.logger.info('app-restart.cycle.begin', { appId });
+
+    try {
+      // Step 1: Stop dev server
+      const stopResult = await this.stopDevServer(appId);
+      if (!stopResult.success) {
+        this.logger.warn('app-restart.stop-server.failed', {
+          appId,
+          error: stopResult.error,
+        });
+        // Continue anyway - the process might not have been running
+      } else {
+        // Wait for process to fully terminate and release file locks
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      // Step 2: Run npm install (unless skipped)
+      if (!options?.skipInstall) {
+        const installResult = await this.runNpmInstall(appId, appPath);
+        if (!installResult.success) {
+          result.error = installResult.error || 'npm install failed';
+          this.logger.error('app-restart.install.failed', {
+            appId,
+            error: result.error,
+          });
+          return result;
+        }
+        result.phases.install = true;
+        this.logger.info('app-restart.install.success', { appId });
+      } else {
+        result.phases.install = true; // Mark as success since it was skipped
+      }
+
+      // Step 3: Run npm build (unless skipped)
+      if (!options?.skipBuild) {
+        const buildResult = await this.runNpmBuild(appId, appPath);
+        if (!buildResult.success) {
+          // Build failure is not critical - log warning but continue
+          this.logger.warn('app-restart.build.failed', {
+            appId,
+            error: buildResult.error,
+          });
+          // Still mark as success since build is optional for dev mode
+          result.phases.build = true;
+        } else {
+          result.phases.build = true;
+          this.logger.info('app-restart.build.success', { appId });
+        }
+      } else {
+        result.phases.build = true; // Mark as success since it was skipped
+      }
+
+      // Step 4: Create PaaS config
+      await this.createPaasConfig(appPath);
+
+      // Step 5: Restart dev server
+      const restartResult = await this.restartDevServer(
+        appId,
+        options?.devCommand || DEFAULT_DEV_COMMAND
+      );
+      if (!restartResult.success) {
+        result.error = restartResult.error || 'Failed to restart dev server';
+        this.logger.error('app-restart.restart.failed', {
+          appId,
+          error: result.error,
+        });
+        return result;
+      }
+      result.phases.restart = true;
+
+      result.success = true;
+      this.logger.info('app-restart.cycle.success', { appId });
+      return result;
+    } catch (error) {
+      result.error = error instanceof Error ? error.message : 'Unknown error during restart cycle';
+      this.logger.error('app-restart.cycle.error', {
+        appId,
+        error: result.error,
+      });
+      return result;
+    }
+  }
+
+  /**
+   * Stop the dev server
+   */
+  async stopDevServer(appId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+
+      if (!devSupervisor) {
+        return { success: false, error: 'Dev supervisor not available' };
+      }
+
+      const success = await devSupervisor.stopProcess();
+
+      const result: { success: boolean; error?: string } = { success };
+      if (!success) result.error = 'Failed to stop dev server';
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to stop dev server',
+      };
+    }
+  }
+
+  /**
+   * Run npm install via dev-supervisor
+   */
+  async runNpmInstall(
+    appId: string,
+    appPath: string
+  ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
+    try {
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+
+      if (!devSupervisor) {
+        return {
+          success: false,
+          error: 'Dev supervisor not available',
+        };
+      }
+
+      const terminalTool = new TerminalTool(devSupervisor);
+
+      const result = await terminalTool.executeCommand(appPath, {
+        command: 'npm install',
+        timeout: RESTART_TIMEOUTS.INSTALL,
+      });
+
+      const response: { success: boolean; output?: string; error?: string; exitCode?: number } = {
+        success: result.success,
+        exitCode: result.exitCode,
+      };
+      const combinedOutput = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
+      if (combinedOutput) response.output = combinedOutput;
+      if (!result.success) {
+        response.error = result.stderr || 'npm install failed';
+      }
+      return response;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'npm install failed',
+      };
+    }
+  }
+
+  /**
+   * Run npm build via dev-supervisor
+   */
+  async runNpmBuild(
+    appId: string,
+    appPath: string
+  ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
+    try {
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+
+      if (!devSupervisor) {
+        return {
+          success: false,
+          error: 'Dev supervisor not available',
+        };
+      }
+
+      const terminalTool = new TerminalTool(devSupervisor);
+
+      const result = await terminalTool.executeCommand(appPath, {
+        command: 'npm run build',
+        timeout: RESTART_TIMEOUTS.BUILD,
+      });
+
+      const response: { success: boolean; output?: string; error?: string; exitCode?: number } = {
+        success: result.success,
+        exitCode: result.exitCode,
+      };
+      const combinedOutput = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
+      if (combinedOutput) response.output = combinedOutput;
+      if (!result.success) {
+        response.error = result.stderr || 'npm run build failed';
+      }
+      return response;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'npm run build failed',
+      };
+    }
+  }
+
+  /**
+   * Create PaaS configuration file for apps
+   */
+  async createPaasConfig(appPath: string): Promise<void> {
+    const airoDir = join(appPath, '.airo');
+    const configPath = join(airoDir, 'config.json');
+
+    const paasConfig = {
+      runtime: {
+        dev: {
+          command: DEFAULT_DEV_COMMAND,
+        },
+        build: {
+          command: DEFAULT_BUILD_COMMAND,
+        },
+        serve: {
+          command: DEFAULT_SERVE_COMMAND,
+        },
+      },
+    };
+
+    await mkdir(airoDir, { recursive: true });
+    await writeFile(configPath, JSON.stringify(paasConfig, null, 2), 'utf-8');
+
+    this.logger.info('app-restart.config.created', { appPath });
+  }
+
+  /**
+   * Restart the dev server
+   * @param appId - App ID
+   * @param command - Optional command to start the dev server with
+   */
+  async restartDevServer(appId: string, command?: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+
+      if (!devSupervisor) {
+        return { success: false, error: 'Dev supervisor not available' };
+      }
+
+      if (command) {
+        this.logger.info('app-restart.restart.with-command', { appId, command });
+        await devSupervisor.stopProcess();
+
+        if (!command.trim()) {
+          return { success: false, error: 'Invalid command: empty after port substitution' };
+        }
+
+        if (command.includes('&&') || command.includes(';') || command.includes('|')) {
+          this.logger.warn('app-restart.restart.suspicious-command', { appId, command });
+        }
+
+        const escapedCommand = command.replace(/"/g, '\\"');
+        const processInfo = await devSupervisor.startProcess({
+          command: `sh -c "${escapedCommand}"`,
+          working_dir: '/app',
+        });
+
+        if (processInfo.state === 'error') {
+          return { success: false, error: processInfo.error || 'Failed to start process with custom command' };
+        }
+
+        return { success: true };
+      }
+
+      const success = await devSupervisor.restartProcess({ graceful: true });
+
+      const result: { success: boolean; error?: string } = { success };
+      if (!success) result.error = 'Failed to restart dev server';
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to restart dev server',
+      };
+    }
+  }
+}
+
+// Export singleton instance
+export const appRestartService = new AppRestartService();

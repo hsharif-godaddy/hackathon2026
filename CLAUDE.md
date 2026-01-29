@@ -20,6 +20,55 @@ Files under `/tmp/apps/{appId}/app/**` are generated OUTPUT. Fix generation logi
 - Read and understand code before proposing changes - never speculate
   </code_quality_standards>
 
+<product_context_requirement>
+**MANDATORY: Ask which product before designing any feature.**
+
+This codebase serves TWO products with different architectures:
+
+| Product                  | Architecture | Data Flow                                  |
+| ------------------------ | ------------ | ------------------------------------------ |
+| **AiroAppBuilder (AAB)** | Full stack   | UI (app/) → BFF → Agents API               |
+| **PaaS**                 | Headless     | External UI → V2 API / Agents API directly |
+
+**Before implementing any feature, ASK:**
+
+> "Is this feature for AiroAppBuilder, PaaS, or both?"
+
+The answer determines:
+
+- Which APIs to use
+- Whether data comes from database or request body
+- Which services are available (secrets API, app database, etc.)
+
+**Key Architectural Differences:**
+
+| Aspect                | AiroAppBuilder (AAB)                                 | PaaS                                                 |
+| --------------------- | ---------------------------------------------------- | ---------------------------------------------------- |
+| **App Record**        | Exists in agents SQLite `apps` table                 | May NOT exist in agents database                     |
+| **App Path**          | Retrieved via `appRepository.findById()`             | Must be passed in request OR derived from convention |
+| **Secrets/Tokens**    | Stored via `/api/secrets` → `/alloc/config.json`     | Passed directly in API request body                  |
+| **Git Remote Config** | Stored in `git_remote_config` table                  | Passed in request (`repoUrl`, `token`)               |
+| **Authentication**    | GoDaddy SSO via app/ BFF                             | Direct API auth (V2 tokens, API keys)                |
+| **Container Access**  | Via `DevSupervisorClientFactory.createForApp(appId)` | Same, but appId must be valid                        |
+
+**Implementation Pattern:**
+
+```typescript
+// Check if PaaS pattern (direct params) or AAB pattern (database lookup)
+if (options.token && options.repoUrl) {
+  // PaaS: Use values from request directly
+  repoUrl = options.repoUrl;
+  token = options.token;
+} else {
+  // AAB: Look up from database / config
+  const config = repository.findByAppId(appId);
+  repoUrl = config.repoUrl;
+  token = getNomadAllocConfig()?.GITHUB_TOKEN?.VALUE;
+}
+```
+
+</product_context_requirement>
+
 <design_system_requirements>
 **Design System Boundaries:**
 

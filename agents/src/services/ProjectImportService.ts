@@ -6,7 +6,7 @@
  * @see docs/zip-import-plan.md for architecture and design decisions
  */
 
-import { rm, cp, mkdir, writeFile } from 'node:fs/promises';
+import { rm, cp } from 'node:fs/promises';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Logger } from '../logging/index.js';
@@ -14,7 +14,7 @@ import { ImportJobRepository, UpdateImportJobParams } from '../database/reposito
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { zipSecurityService } from './ZipSecurityService.js';
 import { gitCloneService } from './GitCloneService.js';
-import { TerminalTool } from '../tools/terminal.js';
+import { appRestartService } from './AppRestartService.js';
 import { GitTool } from '../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { DevSupervisorClient } from './DevSupervisorClient.js';
@@ -24,15 +24,7 @@ import {
   SUPPORTED_BUILD_TOOLS,
 } from '../server/middleware/git-import-validation.js';
 
-const IMPORT_TIMEOUTS = {
-  INSTALL: 5 * 60 * 1000, // 5 minutes
-  BUILD: 10 * 60 * 1000, // 10 minutes
-  TOTAL: 30 * 60 * 1000, // 30 minutes
-} as const;
-
 const DEFAULT_DEV_COMMAND = 'vite --host 0.0.0.0 --port $PORT';
-const DEFAULT_BUILD_COMMAND = 'vite build --outDir dist';
-const DEFAULT_SERVE_COMMAND = 'serve dist -l tcp://0.0.0.0:$PORT';
 
 /**
  * Parameters for starting an import
@@ -297,7 +289,7 @@ export class ProjectImportService {
 
       // Phase 5: Stop dev server before copying (to release file locks)
       this.logger.info('project-import.stop-server.start', { appId });
-      const stopResult = await this.stopDevServer(appId);
+      const stopResult = await appRestartService.stopDevServer(appId);
       if (!stopResult.success) {
         this.logger.warn('project-import.stop-server.failed', {
           appId,
@@ -331,7 +323,7 @@ export class ProjectImportService {
 
       // Phase 7: Install dependencies (already runs in container via dev-supervisor)
       await this.updateStatus(jobId, ImportJobStatus.INSTALLING);
-      const installResult = await this.runNpmInstall(appId, app.path);
+      const installResult = await appRestartService.runNpmInstall(appId, app.path);
 
       if (installResult.output) {
         await this.importJobRepo.update(jobId, { installOutput: installResult.output });
@@ -357,7 +349,7 @@ export class ProjectImportService {
       // Phase 8: Build (if script exists)
       if (validation.hasBuildScript) {
         await this.updateStatus(jobId, ImportJobStatus.BUILDING);
-        const buildResult = await this.runNpmBuild(appId, app.path);
+        const buildResult = await appRestartService.runNpmBuild(appId, app.path);
 
         if (buildResult.output) {
           await this.importJobRepo.update(jobId, { buildOutput: buildResult.output });
@@ -383,26 +375,7 @@ export class ProjectImportService {
 
       // Phase 9: Create PaaS configuration file for uploaded apps
       this.logger.info('project-import.config.create', { jobId, appId });
-      const airoDir = join(app.path, '.airo');
-      const configPath = join(airoDir, 'config.json');
-
-      // Currently only Vite is supported, framework detection logic to be added later.
-
-      const paasConfig = {
-        runtime: {
-          dev: {
-            command: DEFAULT_DEV_COMMAND,
-          },
-          build: {
-            command: DEFAULT_BUILD_COMMAND,
-          },
-          serve: {
-            command: DEFAULT_SERVE_COMMAND,
-          },
-        },
-      };
-      await mkdir(airoDir, { recursive: true });
-      await writeFile(configPath, JSON.stringify(paasConfig, null, 2), 'utf-8');
+      await appRestartService.createPaasConfig(app.path);
       this.logger.info('project-import.config.created', { jobId, appId });
 
       // Phase 10: Git commit
@@ -426,7 +399,7 @@ export class ProjectImportService {
 
       // Phase 11: Restart dev server with new command from config
       await this.updateStatus(jobId, ImportJobStatus.RESTARTING);
-      const restartResult = await this.restartDevServer(appId, DEFAULT_DEV_COMMAND);
+      const restartResult = await appRestartService.restartDevServer(appId, DEFAULT_DEV_COMMAND);
 
       if (!restartResult.success) {
         this.logger.warn('project-import.restart.failed', {
@@ -821,90 +794,6 @@ export class ProjectImportService {
   }
 
   /**
-   * Run npm install via dev-supervisor
-   */
-  private async runNpmInstall(
-    appId: string,
-    appPath: string
-  ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
-    try {
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-
-      if (!devSupervisor) {
-        return {
-          success: false,
-          error: 'Dev supervisor not available',
-        };
-      }
-
-      const terminalTool = new TerminalTool(devSupervisor);
-
-      const result = await terminalTool.executeCommand(appPath, {
-        command: 'npm install',
-        timeout: IMPORT_TIMEOUTS.INSTALL,
-      });
-
-      const response: { success: boolean; output?: string; error?: string; exitCode?: number } = {
-        success: result.success,
-        exitCode: result.exitCode,
-      };
-      const combinedOutput = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
-      if (combinedOutput) response.output = combinedOutput;
-      if (!result.success) {
-        response.error = result.stderr || 'npm install failed';
-      }
-      return response;
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'npm install failed',
-      };
-    }
-  }
-
-  /**
-   * Run npm build via dev-supervisor
-   */
-  private async runNpmBuild(
-    appId: string,
-    appPath: string
-  ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
-    try {
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-
-      if (!devSupervisor) {
-        return {
-          success: false,
-          error: 'Dev supervisor not available',
-        };
-      }
-
-      const terminalTool = new TerminalTool(devSupervisor);
-
-      const result = await terminalTool.executeCommand(appPath, {
-        command: 'npm run build',
-        timeout: IMPORT_TIMEOUTS.BUILD,
-      });
-
-      const response: { success: boolean; output?: string; error?: string; exitCode?: number } = {
-        success: result.success,
-        exitCode: result.exitCode,
-      };
-      const combinedOutput = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
-      if (combinedOutput) response.output = combinedOutput;
-      if (!result.success) {
-        response.error = result.stderr || 'npm run build failed';
-      }
-      return response;
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'npm run build failed',
-      };
-    }
-  }
-
-  /**
    * Commit imported code to git
    */
   private async gitCommit(
@@ -990,82 +879,6 @@ export class ProjectImportService {
         appId,
         error: error instanceof Error ? error.message : String(error),
       });
-    }
-  }
-
-  /**
-   * Stop the dev server
-   */
-  private async stopDevServer(appId: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-
-      if (!devSupervisor) {
-        return { success: false, error: 'Dev supervisor not available' };
-      }
-
-      // Send stop command
-      const success = await devSupervisor.stopProcess();
-
-      const result: { success: boolean; error?: string } = { success };
-      if (!success) result.error = 'Failed to stop dev server';
-      return result;
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to stop dev server',
-      };
-    }
-  }
-
-  /**
-   * Restart the dev server
-   * @param appId - App ID
-   * @param command - Optional command to start the dev server with (used for imported apps with custom config)
-   */
-  private async restartDevServer(appId: string, command?: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-
-      if (!devSupervisor) {
-        return { success: false, error: 'Dev supervisor not available' };
-      }
-
-      if (command) {
-        this.logger.info('project-import.restart.with-command', { appId, command });
-        await devSupervisor.stopProcess();
-
-        if (!command.trim()) {
-          return { success: false, error: 'Invalid command: empty after port substitution' };
-        }
-
-        if (command.includes('&&') || command.includes(';') || command.includes('|')) {
-          this.logger.warn('project-import.restart.suspicious-command', { appId, command: command });
-        }
-
-        const escapedCommand = command.replace(/"/g, '\\"');
-        const processInfo = await devSupervisor.startProcess({
-          command: `sh -c "${escapedCommand}"`,
-          working_dir: '/app',
-        });
-
-        if (processInfo.state === 'error') {
-          return { success: false, error: processInfo.error || 'Failed to start process with custom command' };
-        }
-
-        return { success: true };
-      }
-
-      const success = await devSupervisor.restartProcess({ graceful: true });
-
-      const result: { success: boolean; error?: string } = { success };
-      if (!success) result.error = 'Failed to restart dev server';
-      return result;
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to restart dev server',
-      };
     }
   }
 

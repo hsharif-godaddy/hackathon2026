@@ -1225,12 +1225,24 @@ export class GitUtils {
     remoteName: string,
     branch: string,
     options: GitCommandOptions = {},
-    mergeStrategy?: 'theirs' | 'ours'
+    mergeStrategy?: 'theirs' | 'ours',
+    allowUnrelatedHistories?: boolean,
+    noRebase?: boolean
   ): Promise<GitCommandResult> {
     const args = ['pull'];
 
+    // --no-rebase tells git to use merge strategy (not rebase) for divergent branches
+    if (noRebase) {
+      args.push('--no-rebase');
+    }
+
+    // -X theirs/ours controls how conflicts are resolved during merge
     if (mergeStrategy) {
       args.push('-X', mergeStrategy);
+    }
+
+    if (allowUnrelatedHistories) {
+      args.push('--allow-unrelated-histories');
     }
 
     args.push(remoteName, branch);

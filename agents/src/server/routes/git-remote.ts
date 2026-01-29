@@ -8,6 +8,7 @@ import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { isSupportedProjectOnHost, SUPPORTED_BUILD_TOOLS } from '../middleware/git-import-validation.js';
 import { getErrorMessage } from '../../utils/error.js';
 import { isCapabilityEnabled } from '../../utils/capability-config.js';
+import { appRestartService } from '../../services/AppRestartService.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -198,10 +199,16 @@ router.post(
  *
  * Push to remote repository
  *
+ * Supports two patterns:
+ * - PaaS pattern: Provide both 'token' AND 'repoUrl' together (skips database/config lookup)
+ * - AiroAppBuilder pattern: Omit both 'token' and 'repoUrl' (uses database config + secrets API)
+ *
  * Request body:
  * - remoteName: string (optional) - Remote name (default: 'origin')
  * - branch: string (optional) - Branch to push (default: current branch)
  * - forcePush: boolean (optional) - Whether to force push (default: false)
+ * - token: string (optional, required with repoUrl for PaaS) - GitHub token for authentication
+ * - repoUrl: string (optional, required with token for PaaS) - Repository URL
  */
 router.post(
   '/apps/:id/git/push',
@@ -209,7 +216,7 @@ router.post(
   validateAppOwnership,
   async (req: Request, res: Response) => {
     const appId = req.params.id;
-    const { remoteName, branch, forcePush } = req.body;
+    const { remoteName, branch, forcePush, token, repoUrl } = req.body;
 
     if (!appId) {
       res.status(400).json({ error: 'App ID is required' });
@@ -249,7 +256,9 @@ router.post(
         operation: 'push',
         remoteName: remoteName || 'origin',
         branch,
-        forcePush: forcePush || false
+        forcePush: forcePush || false,
+        token,
+        repoUrl
       });
 
       if (!result.success) {
@@ -292,9 +301,15 @@ router.post(
  *
  * Pull from remote repository
  *
+ * Supports two patterns:
+ * - PaaS pattern: Provide both 'token' AND 'repoUrl' together (skips database/config lookup)
+ * - AiroAppBuilder pattern: Omit both 'token' and 'repoUrl' (uses database config + secrets API)
+ *
  * Request body:
  * - remoteName: string (optional) - Remote name (default: 'origin')
  * - branch: string (optional) - Branch to pull (default: configured default branch)
+ * - token: string (optional, required with repoUrl for PaaS) - GitHub token for authentication
+ * - repoUrl: string (optional, required with token for PaaS) - Repository URL
  */
 router.post(
   '/apps/:id/git/pull',
@@ -302,7 +317,7 @@ router.post(
   validateAppOwnership,
   async (req: Request, res: Response) => {
     const appId = req.params.id;
-    const { remoteName, branch } = req.body;
+    const { remoteName, branch, token, repoUrl } = req.body;
 
     if (!appId) {
       res.status(400).json({ error: 'App ID is required' });
@@ -337,10 +352,16 @@ router.post(
       const gitTool = new GitTool(devSupervisor);
 
       // Execute pull operation
+      // Allow unrelated histories for cases where local repo was initialized separately from remote
+      // Use merge (not rebase) for divergent branches
       const result = await gitTool.executeGitOperation(app.path, {
         operation: 'pull',
         remoteName: remoteName || 'origin',
-        branch
+        branch,
+        token,
+        repoUrl,
+        allowUnrelatedHistories: true,
+        noRebase: true
       });
 
       if (!result.success) {
@@ -390,12 +411,28 @@ router.post(
         return;
       }
 
-      logger.info('git-remote.pull.success', { appId });
+      // Perform restart cycle (same as zip import)
+      const restartResult = await appRestartService.performFullRestartCycle(appId, app.path);
+
+      if (!restartResult.success) {
+        logger.warn('git-remote.pull.restart-failed', {
+          appId,
+          error: restartResult.error,
+          phases: restartResult.phases
+        });
+      }
+
+      logger.info('git-remote.pull.success', { appId, restartSuccess: restartResult.success });
 
       res.json({
         success: true,
         message: 'Successfully pulled from git remote',
-        output: result.output
+        output: result.output,
+        restart: {
+          success: restartResult.success,
+          error: restartResult.error,
+          phases: restartResult.phases
+        }
       });
     } catch (error) {
       logger.error('git-remote.pull.exception', {

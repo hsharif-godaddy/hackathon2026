@@ -9,8 +9,11 @@ import { getNomadAllocConfig } from '../utils/nomad-config.js';
  *
  * Manages ephemeral git credentials for push/pull operations.
  *
+ * TOKEN SOURCES (in priority order):
+ * 1. Token passed directly in request (PaaS pattern)
+ * 2. Token from /alloc/config.json via getNomadAllocConfig() (AiroAppBuilder pattern)
+ *
  * SECURITY:
- * - Token read from /alloc/config.json via getNomadAllocConfig()
  * - Credentials created in /tmp/.git-credentials (ephemeral)
  * - MUST cleanup credentials in finally block after every operation
  */
@@ -22,27 +25,32 @@ export class GitRemoteTokenManager {
   /**
    * Configure git credentials for remote operations
    *
-   * 1. Reads token from /alloc/config.json via getNomadAllocConfig()
+   * 1. Uses provided token OR reads from /alloc/config.json via getNomadAllocConfig()
    * 2. Creates /tmp/.git-credentials with provider-specific format
    * 3. Configures git to use credential helper
    *
    * @param appId - Application ID (for logging)
    * @param repoUrl - Repository URL (to detect provider)
+   * @param token - Optional GitHub token (if provided, bypasses /alloc/config.json lookup - used by PaaS)
    * @throws Error if credential configuration fails
    */
-  async configureGitCredentials(appId: string, repoUrl: string): Promise<void> {
+  async configureGitCredentials(appId: string, repoUrl: string, token?: string): Promise<void> {
     this.logger.info('git-remote.credentials.configure.start', {
       appId,
-      repoUrl
+      repoUrl,
+      tokenSource: token ? 'request' : 'config'
     });
 
     try {
-      // Read token from shared config
-      const nomadConfig = getNomadAllocConfig();
-      const token = nomadConfig?.GITHUB_TOKEN?.VALUE as string | undefined;
+      // Use provided token (PaaS pattern) or read from shared config (AiroAppBuilder pattern)
+      let effectiveToken = token;
+      if (!effectiveToken) {
+        const nomadConfig = getNomadAllocConfig();
+        effectiveToken = nomadConfig?.GITHUB_TOKEN?.VALUE as string | undefined;
+      }
 
-      if (!token) {
-        throw new Error('GITHUB_TOKEN not found in config. Please configure GitHub token via secrets API first.');
+      if (!effectiveToken) {
+        throw new Error('GitHub token not provided in request and not found in config. Please provide token in request body or configure via secrets API.');
       }
 
       // Detect provider to get correct credential format
@@ -50,7 +58,7 @@ export class GitRemoteTokenManager {
       const hostname = provider.getHostname(repoUrl);
 
       // Build bash script with token
-      const script = this.buildCredentialScript(provider.name, hostname, token);
+      const script = this.buildCredentialScript(provider.name, hostname, effectiveToken);
 
       // Execute script inside container via dev-supervisor
       const execResult = await this.devSupervisor.exec({
