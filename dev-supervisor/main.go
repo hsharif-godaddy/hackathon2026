@@ -767,13 +767,40 @@ func parseFlags() *Config {
 	config.ProxyAPIPrefix = getEnvStringWithDefault("DEV_SUPERVISOR_API_PREFIX", "/api")
 	config.ProxyRoutingConfig = getEnvStringWithDefault("DEV_SUPERVISOR_ROUTING_CONFIG", "")
 
-	// Parse ALLOWED_ORIGINS (comma-separated list)
+	// Parse allowed origins using the same logic as vite.config.ts
+	// This ensures dev-supervisor and Vite have identical CORS configurations
+	var allowedOrigins []string
+
+	// 1. Add FRONTEND_DOMAIN with http/https prefixes (if set)
+	frontendDomain := os.Getenv("FRONTEND_DOMAIN")
+	if frontendDomain != "" {
+		allowedOrigins = append(allowedOrigins,
+			frontendDomain,
+			"http://"+frontendDomain,
+			"https://"+frontendDomain,
+		)
+	}
+
+	// 2. Add ALLOWED_ORIGINS (comma-separated list, if set)
 	allowedOriginsStr := os.Getenv("ALLOWED_ORIGINS")
 	if allowedOriginsStr != "" {
-		config.AllowedOrigins = strings.Split(allowedOriginsStr, ",")
-		// Trim whitespace from each origin
-		for i := range config.AllowedOrigins {
-			config.AllowedOrigins[i] = strings.TrimSpace(config.AllowedOrigins[i])
+		origins := strings.Split(allowedOriginsStr, ",")
+		allowedOrigins = append(allowedOrigins, origins...)
+	}
+
+	// 3. Add VITE_PARENT_ORIGIN (if set)
+	viteParentOrigin := os.Getenv("VITE_PARENT_ORIGIN")
+	if viteParentOrigin != "" {
+		allowedOrigins = append(allowedOrigins, viteParentOrigin)
+	}
+
+	// Trim whitespace and remove duplicates
+	seenOrigins := make(map[string]bool)
+	for _, origin := range allowedOrigins {
+		trimmed := strings.TrimSpace(origin)
+		if trimmed != "" && !seenOrigins[trimmed] {
+			seenOrigins[trimmed] = true
+			config.AllowedOrigins = append(config.AllowedOrigins, trimmed)
 		}
 	}
 

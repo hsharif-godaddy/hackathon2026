@@ -932,6 +932,20 @@ func (p *HTTPProxy) Start() error {
 				slog.Debug("proxying request", logAttrs...)
 			}
 		},
+		// ModifyResponse removes CORS headers from backend responses to prevent duplication
+		// The rs/cors middleware (outer layer) will add the correct CORS headers
+		// This handles cases where backends (like Vite) set their own CORS headers
+		ModifyResponse: func(resp *http.Response) error {
+			// Remove all CORS headers that backends might set
+			// This prevents duplicate CORS headers when both proxy and backend set them
+			resp.Header.Del("Access-Control-Allow-Origin")
+			resp.Header.Del("Access-Control-Allow-Credentials")
+			resp.Header.Del("Access-Control-Allow-Methods")
+			resp.Header.Del("Access-Control-Allow-Headers")
+			resp.Header.Del("Access-Control-Max-Age")
+			resp.Header.Del("Access-Control-Expose-Headers")
+			return nil
+		},
 		Transport: retryTransport,
 		// FlushInterval enables streaming responses and is required for WebSockets
 		// and Server-Sent Events (SSE). Without this, responses are buffered.

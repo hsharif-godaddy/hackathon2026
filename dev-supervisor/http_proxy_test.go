@@ -2549,3 +2549,124 @@ func TestRequestRouter_ActivityTracking(t *testing.T) {
 	//nolint:errcheck // Test cleanup, error not critical
 	procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
 }
+
+// TestModifyResponse_StripsDuplicateCORSHeaders verifies that backend CORS headers
+// are removed to prevent duplicate headers when both proxy and backend set CORS
+func TestModifyResponse_StripsDuplicateCORSHeaders(t *testing.T) {
+	// Create backend that sets its own CORS headers (like Vite does)
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Simulate backend (Vite) setting CORS headers
+		w.Header().Set("Access-Control-Allow-Origin", "http://backend-origin.com")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Max-Age", "3600")
+		w.Header().Set("Access-Control-Expose-Headers", "X-Custom")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		//nolint:errcheck // Test mock response
+		w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	// Create proxy with ModifyResponse that strips CORS headers
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(backendURL)
+		},
+		ModifyResponse: func(resp *http.Response) error {
+			// This is the fix - strip backend CORS headers
+			resp.Header.Del("Access-Control-Allow-Origin")
+			resp.Header.Del("Access-Control-Allow-Credentials")
+			resp.Header.Del("Access-Control-Allow-Methods")
+			resp.Header.Del("Access-Control-Allow-Headers")
+			resp.Header.Del("Access-Control-Max-Age")
+			resp.Header.Del("Access-Control-Expose-Headers")
+			return nil
+		},
+	}
+
+	// Make request through proxy
+	req := httptest.NewRequest("GET", "/", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	// Verify response is successful
+	assert.Equal(t, http.StatusOK, rec.Code, "should get successful response")
+
+	// Verify backend CORS headers were stripped
+	assert.Empty(t, rec.Header().Get("Access-Control-Allow-Origin"),
+		"backend CORS origin header should be removed")
+	assert.Empty(t, rec.Header().Get("Access-Control-Allow-Credentials"),
+		"backend CORS credentials header should be removed")
+	assert.Empty(t, rec.Header().Get("Access-Control-Allow-Methods"),
+		"backend CORS methods header should be removed")
+	assert.Empty(t, rec.Header().Get("Access-Control-Allow-Headers"),
+		"backend CORS headers header should be removed")
+	assert.Empty(t, rec.Header().Get("Access-Control-Max-Age"),
+		"backend CORS max-age header should be removed")
+	assert.Empty(t, rec.Header().Get("Access-Control-Expose-Headers"),
+		"backend CORS expose-headers header should be removed")
+
+	// Verify other headers are preserved
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"),
+		"other headers should be preserved")
+	assert.Equal(t, `{"status":"ok"}`, rec.Body.String(),
+		"response body should be preserved")
+}
+
+// TestModifyResponse_PreservesNonCORSHeaders verifies that only CORS headers
+// are removed, and other headers pass through correctly
+func TestModifyResponse_PreservesNonCORSHeaders(t *testing.T) {
+	// Create backend with various headers
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Cache-Control", "max-age=3600")
+		w.Header().Set("X-Custom-Header", "custom-value")
+		w.Header().Set("Set-Cookie", "session=abc123")
+		// Also set CORS headers to be stripped
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+		//nolint:errcheck // Test mock response
+		w.Write([]byte("<html></html>"))
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	// Create proxy with ModifyResponse
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(backendURL)
+		},
+		ModifyResponse: func(resp *http.Response) error {
+			resp.Header.Del("Access-Control-Allow-Origin")
+			resp.Header.Del("Access-Control-Allow-Credentials")
+			resp.Header.Del("Access-Control-Allow-Methods")
+			resp.Header.Del("Access-Control-Allow-Headers")
+			resp.Header.Del("Access-Control-Max-Age")
+			resp.Header.Del("Access-Control-Expose-Headers")
+			return nil
+		},
+	}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	// Verify CORS headers removed
+	assert.Empty(t, rec.Header().Get("Access-Control-Allow-Origin"))
+
+	// Verify non-CORS headers preserved
+	assert.Equal(t, "text/html", rec.Header().Get("Content-Type"))
+	assert.Equal(t, "max-age=3600", rec.Header().Get("Cache-Control"))
+	assert.Equal(t, "custom-value", rec.Header().Get("X-Custom-Header"))
+	assert.Equal(t, "session=abc123", rec.Header().Get("Set-Cookie"))
+	assert.Equal(t, "<html></html>", rec.Body.String())
+}
