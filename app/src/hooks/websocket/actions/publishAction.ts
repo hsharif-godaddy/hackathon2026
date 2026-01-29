@@ -187,38 +187,48 @@ export const publishAction: ClientActionExecutor = async (params) => {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
 
-      // If this is a build error, store it for the UI to handle
-      if (response.status === 400 && errorData.details) {
+      // If this is a build/runtime error with details or logs, store it for the UI to handle
+      // This includes both 400 (build errors) and 500 (supervisor/runtime errors)
+      if (errorData.details || errorData.logs) {
         try {
           const setBuildErrorDetails = useDevelopPageStore.getState().setBuildErrorDetails
+
+          // For errors with logs (e.g., supervisor failures), include them in details
+          const errorDetails = errorData.details || (errorData.logs ?
+            errorData.logs.map((log: any) => log.message || log).join('\n') :
+            'Unknown error');
+
           setBuildErrorDetails(appId, {
-            error: errorData.error || 'Build failed',
-            details: errorData.details,
+            error: errorData.error || 'Publish failed',
+            details: errorDetails,
             exitCode: errorData.exitCode,
           })
 
-          // Automatically send build error logs to agent
-          logger.info('websocket.client-action.publish.build-error.auto-send-to-agent', {
+          // Automatically send error logs to agent for all errors with details/logs
+          logger.info('websocket.client-action.publish.error.auto-send-to-agent', {
             appId,
             error: errorData.error,
+            status: response.status,
             hasDetails: !!errorData.details,
+            hasLogs: !!errorData.logs,
             exitCode: errorData.exitCode
           })
 
-          // Dispatch event to automatically send build error to agent
+          // Dispatch event to automatically send error to agent
           // The develop page listens for this event and handles the error fix request
           if (typeof window !== 'undefined') {
             window.postMessage({
               type: 'build-error-fix-request',
               appId,
-              errorMessage: errorData.error || 'Build failed',
-              errorDetails: errorData.details,
+              errorMessage: errorData.error || 'Publish failed',
+              errorDetails: errorDetails,
+              logs: errorData.logs,
               exitCode: errorData.exitCode,
               autoSend: true // Flag to indicate this was auto-triggered
             }, window.location.origin)
           }
         } catch (storeError) {
-          logger.warn('websocket.client-action.publish.build-error-store-failed', {
+          logger.warn('websocket.client-action.publish.error-store-failed', {
             appId,
             error: storeError instanceof Error ? storeError.message : String(storeError),
           })
@@ -250,7 +260,13 @@ export const publishAction: ClientActionExecutor = async (params) => {
         status: response.status,
         error: errorData.error,
       })
-      throw new Error(errorData.error || `Publish failed with status ${response.status}`)
+
+      // Create error with additional metadata attached
+      const error: any = new Error(errorData.error || `Publish failed with status ${response.status}`)
+      error.errorDetails = errorData.details
+      error.logs = errorData.logs
+      error.exitCode = errorData.exitCode
+      throw error
     }
 
     const result = await response.json()

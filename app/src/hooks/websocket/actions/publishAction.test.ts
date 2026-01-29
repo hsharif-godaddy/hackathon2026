@@ -554,6 +554,65 @@ describe('publishAction', () => {
         exitCode: 1,
       })
     })
+
+    it('should handle supervisor errors with logs (500 status)', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      const mockLogs = [
+        { message: 'Starting application', source: 'stdout', timestamp: '2026-01-27T22:17:47Z' },
+        { message: 'Error: Missing parameter name', source: 'stderr', timestamp: '2026-01-27T22:21:49Z' },
+      ]
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => ({
+          error: 'Publish supervisor failed',
+          details: 'Health check failed after restart',
+          logs: mockLogs,
+          exitCode: 1,
+          healthStatus: 'unhealthy',
+        }),
+      } as Response)
+
+      await expect(publishAction(params, context)).rejects.toThrow('Publish supervisor failed')
+
+      expect(mockStoreActions.setBuildErrorDetails).toHaveBeenCalledWith('app-123', {
+        error: 'Publish supervisor failed',
+        details: 'Health check failed after restart',
+        exitCode: 1,
+      })
+    })
+
+    it('should handle errors with only logs (no details field)', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      const mockLogs = [
+        { message: 'Starting application' },
+        { message: 'Fatal error occurred' },
+      ]
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => ({
+          error: 'Runtime error',
+          logs: mockLogs,
+          exitCode: 1,
+        }),
+      } as Response)
+
+      await expect(publishAction(params, context)).rejects.toThrow('Runtime error')
+
+      // Should extract logs into details field
+      expect(mockStoreActions.setBuildErrorDetails).toHaveBeenCalledWith('app-123', {
+        error: 'Runtime error',
+        details: 'Starting application\nFatal error occurred',
+        exitCode: 1,
+      })
+    })
   })
 
   describe('error state management', () => {

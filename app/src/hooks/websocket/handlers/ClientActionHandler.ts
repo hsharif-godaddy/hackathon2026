@@ -81,15 +81,27 @@ export class ClientActionHandler implements MessageHandler {
       })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
+
+      // Extract additional error metadata if available
+      const errorDetails = (error as any)?.errorDetails
+      const logs = (error as any)?.logs
+      const exitCode = (error as any)?.exitCode
+
       logger.error('websocket.client-action.error', {
         action,
         requestId,
         error: errorMessage,
+        hasErrorDetails: !!errorDetails,
+        hasLogs: !!logs,
+        exitCode,
       })
 
       await this.sendResult(context, requestId, {
         success: false,
         error: errorMessage,
+        errorDetails,
+        logs,
+        exitCode,
       })
     }
   }
@@ -97,7 +109,14 @@ export class ClientActionHandler implements MessageHandler {
   private async sendResult(
     context: MessageContext,
     requestId: string,
-    result: { success: boolean; result?: unknown; error?: string }
+    result: {
+      success: boolean
+      result?: unknown
+      error?: string
+      errorDetails?: string
+      logs?: Array<{ message: string; source?: string; timestamp?: string }>
+      exitCode?: number
+    }
   ): Promise<void> {
     context.socket.emit('client_action_result', {
       requestId,

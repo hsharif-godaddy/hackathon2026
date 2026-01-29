@@ -224,30 +224,39 @@ export function usePublishApp() {
       if (!response.ok) {
         const errorData = await response.json();
 
-        // If this is a build error (400 status with details), store it for the UI to handle
-        if (response.status === 400 && errorData.details) {
+        // If this is a build/runtime error with details or logs, store it for the UI to handle
+        // This includes both 400 (build errors) and 500 (supervisor/runtime errors)
+        if (errorData.details || errorData.logs) {
+          // For errors with logs (e.g., supervisor failures), include them in details
+          const errorDetails = errorData.details || (errorData.logs ?
+            errorData.logs.map((log: any) => log.message || log).join('\n') :
+            'Unknown error');
+
           setBuildErrorDetails(appId, {
-            error: errorData.error || 'Build failed',
-            details: errorData.details,
+            error: errorData.error || 'Publish failed',
+            details: errorDetails,
             exitCode: errorData.exitCode
           });
 
-          // Automatically send build error logs to agent
-          logger.info('publish.build-error.auto-send-to-agent', {
+          // Automatically send error logs to agent for all errors with details/logs
+          logger.info('publish.error.auto-send-to-agent', {
             appId,
             error: errorData.error,
+            status: response.status,
             hasDetails: !!errorData.details,
+            hasLogs: !!errorData.logs,
             exitCode: errorData.exitCode
           });
 
-          // Dispatch event to automatically send build error to agent
+          // Dispatch event to automatically send error to agent
           // The develop page listens for this event and handles the error fix request
           if (typeof window !== 'undefined') {
             window.postMessage({
               type: 'build-error-fix-request',
               appId,
-              errorMessage: errorData.error || 'Build failed',
-              errorDetails: errorData.details,
+              errorMessage: errorData.error || 'Publish failed',
+              errorDetails: errorDetails,
+              logs: errorData.logs,
               exitCode: errorData.exitCode,
               autoSend: true // Flag to indicate this was auto-triggered
             }, window.location.origin);

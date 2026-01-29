@@ -20,6 +20,9 @@ export interface PublishResult {
   deploymentStatus?: string
   deploymentMessage?: string
   error?: string
+  errorDetails?: string
+  logs?: Array<{ message: string; source?: string; timestamp?: string }>
+  exitCode?: number
 }
 
 /**
@@ -49,10 +52,16 @@ export async function executePublish(
       logger.error('publish-client.failed', {
         appId,
         error: clientResult.error,
+        hasErrorDetails: !!clientResult.errorDetails,
+        hasLogs: !!clientResult.logs,
+        exitCode: clientResult.exitCode,
       })
       return {
         success: false,
         error: clientResult.error || 'Publish failed',
+        errorDetails: clientResult.errorDetails,
+        logs: clientResult.logs,
+        exitCode: clientResult.exitCode,
       }
     }
 

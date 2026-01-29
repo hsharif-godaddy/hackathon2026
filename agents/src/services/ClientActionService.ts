@@ -20,6 +20,9 @@ export interface ClientActionResult {
   success: boolean
   result?: unknown
   error?: string
+  errorDetails?: string
+  logs?: Array<{ message: string; source?: string; timestamp?: string }>
+  exitCode?: number
 }
 
 /**
@@ -99,8 +102,11 @@ export class ClientActionService {
     success: boolean
     result?: unknown
     error?: string
+    errorDetails?: string
+    logs?: Array<{ message: string; source?: string; timestamp?: string }>
+    exitCode?: number
   }): void {
-    const { requestId, success, result, error } = data
+    const { requestId, success, result, error, errorDetails, logs, exitCode } = data
     const pending = this.pendingRequests.get(requestId)
 
     if (!pending) {
@@ -127,8 +133,17 @@ export class ClientActionService {
         requestId,
         conversationId: this.conversationId,
         error,
+        hasErrorDetails: !!errorDetails,
+        hasLogs: !!logs,
+        exitCode,
       })
-      pending.resolve({ success: false, error: error || 'Unknown error' })
+      pending.resolve({
+        success: false,
+        error: error || 'Unknown error',
+        errorDetails,
+        logs,
+        exitCode,
+      })
     }
   }
 

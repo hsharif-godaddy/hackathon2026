@@ -24,9 +24,15 @@ export const publishClientAITool: Tool = createTool(
   `Publish the app to production.
 
 WHEN TO USE:
-- User explicitly requests to publish ("publish my site", "deploy to production")
-- Changes are committed and build is passing
-- App is ready for production deployment`,
+- ONLY when user explicitly requests to publish ("publish my site", "deploy to production", "push to production")
+
+NEVER USE:
+- After making edits or fixes
+- After committing changes
+- When you think the app is "ready"
+- Automatically after completing a feature
+
+IMPORTANT: Always call publishStatus after this tool to verify the app started successfully.`,
   z.object({
     commitHash: z
       .string()
@@ -60,30 +66,49 @@ WHEN TO USE:
     }
     const result = await executePublish(publishOptions, clientActionService)
 
-    // If publish failed, throw error to inform agent
+    // If publish failed, throw detailed error to inform agent AND show error in UI
     if (!result.success) {
-      throw new Error(result.error || 'Publish failed')
+      let errorMessage = `Publish failed: ${result.error || 'Unknown error'}`
+
+      // Include detailed error information if available
+      if (result.errorDetails) {
+        errorMessage += `\n\nDetails:\n${result.errorDetails}`
+      }
+
+      // Include logs if available
+      if (result.logs && result.logs.length > 0) {
+        errorMessage += '\n\nLogs:\n'
+        for (const log of result.logs) {
+          const timestamp = log.timestamp ? `[${log.timestamp}] ` : ''
+          errorMessage += `${timestamp}${log.message}\n`
+        }
+      }
+
+      // Include exit code if available
+      if (result.exitCode !== undefined) {
+        errorMessage += `\nExit code: ${result.exitCode}`
+      }
+
+      throw new Error(errorMessage)
     }
 
-    // Build success message
+    // Build response message
     const commitInfo = result.commitHash ? result.commitHash.substring(0, 7) : 'HEAD'
-    let message = `Successfully published commit ${commitInfo}`
+    let message = `Successfully published commit ${commitInfo}.`
 
     if (result.deploymentId) {
-      message += `\n\nDeployment ID: ${result.deploymentId}`
+      message += `\nDeployment ID: ${result.deploymentId}`
       if (result.deploymentStatus) {
         message += `\nStatus: ${result.deploymentStatus}`
       }
       if (result.deploymentMessage) {
         message += `\n${result.deploymentMessage}`
       }
-      message += '\n\nThe site will be live shortly. You can monitor deployment progress in the History tab.'
-    } else {
-      message += '\n\nArchive created successfully.'
-      if (result.archivePath) {
-        message += `\nArchive path: ${result.archivePath}`
-      }
+    } else if (result.archivePath) {
+      message += `\nArchive path: ${result.archivePath}`
     }
+
+    message += '\n\nUse publishStatus to verify the app started successfully.'
 
     return message
   }

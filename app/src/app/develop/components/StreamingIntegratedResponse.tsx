@@ -140,7 +140,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
               const toolCall: ContentBlock['toolCall'] = {
                 id: toolId,
                 name: segment.toolCall.name,
-                status: (segment.type === 'tool_result' ? 'completed' : 'running') as 'running' | 'completed' | 'error',
+                status: segment.toolCall.status || (segment.type === 'tool_result' ? 'completed' : 'running') as 'running' | 'completed' | 'error',
                 input: segment.toolCall.input,
                 result: segment.toolCall.result,
                 error: segment.toolCall.error,

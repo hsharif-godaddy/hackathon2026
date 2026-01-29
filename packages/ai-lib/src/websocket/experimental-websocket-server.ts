@@ -1045,14 +1045,15 @@ export class WebSocketServer {
           toolCall: toolData
         })
       } else if (type === 'tool_result' && data?.tool) {
-        const tool = data.tool as { id: string; input?: unknown; output?: string; result?: string }
+        const tool = data.tool as { id: string; input?: unknown; output?: string; result?: string; error?: string; is_error?: boolean }
         const toolId = tool.id
         const existingTool = conversation.pendingToolCalls.get(toolId)
 
         if (existingTool) {
           existingTool.input = tool.input || existingTool.input
           existingTool.result = tool.output ?? content ?? tool.result
-          existingTool.status = 'completed'
+          existingTool.error = tool.error
+          existingTool.status = (tool.error || tool.is_error) ? 'error' : 'completed'
           existingTool.endTime = timestamp
 
           if (existingTool.startTime && timestamp) {
