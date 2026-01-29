@@ -59,18 +59,7 @@ func NewJWTMiddleware(config JWTMiddlewareConfig) *JWTMiddleware {
  */
 func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Handle OPTIONS preflight requests without authentication
-		// Preflight requests don't carry Authorization headers by design
-		// IMPORTANT: Handle OPTIONS even when JWT is disabled to ensure proper CORS headers
-		if r.Method == "OPTIONS" {
-			slog.Debug("jwt.middleware.preflight", "path", r.URL.Path, "jwt_enabled", m.config.Enabled)
-			SetCORSHeaders(w, r, m.config.AllowedOrigins)
-			w.Header().Set("Access-Control-Max-Age", "86400") // Cache preflight for 24 hours
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		// Skip remaining JWT validation if disabled
+		// Skip JWT validation if disabled
 		if !m.config.Enabled {
 			next.ServeHTTP(w, r)
 			return
@@ -187,11 +176,7 @@ func (m *JWTMiddleware) returnError(w http.ResponseWriter, r *http.Request, reas
 		"path", r.URL.Path,
 		"reason", reason)
 
-	// Set CORS headers for cross-origin requests
-	// Dev-supervisor only listens on internal loopback and sits behind a trusted proxy,
-	// so we echo the Origin header when provided (same pattern as static file handler)
-	m.setCORSHeaders(w, r)
-
+	// CORS headers are set by CORS middleware (outermost layer)
 	w.Header().Set("WWW-Authenticate", "Bearer")
 	http.Error(w, "Unauthorized", http.StatusUnauthorized)
 }
@@ -275,9 +260,7 @@ func (m *JWTMiddleware) redirect(w http.ResponseWriter, r *http.Request, reason 
 		"reason", reason,
 		"redirectURL", redirectURL)
 
-	// Set CORS headers for cross-origin requests before redirect
-	m.setCORSHeaders(w, r)
-
+	// CORS headers are set by CORS middleware (outermost layer)
 	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 }
 
@@ -391,88 +374,5 @@ func (m *JWTMiddleware) isAPIOrJSONRequest(r *http.Request) bool {
 	return strings.Contains(contentType, "application/json")
 }
 
-/**
- * setCORSHeaders sets CORS headers for cross-origin requests with origin validation
- *
- * @param w - Response writer
- * @param r - HTTP request
- */
-func (m *JWTMiddleware) setCORSHeaders(w http.ResponseWriter, r *http.Request) {
-	SetCORSHeaders(w, r, m.config.AllowedOrigins)
-}
-
-/**
- * isOriginAllowed checks if an origin is allowed based on whitelist
- *
- * @param origin - Origin header value
- * @param allowedOrigins - Whitelist of allowed origins (empty = allow all)
- * @returns true if origin is allowed, false otherwise
- */
-func isOriginAllowed(origin string, allowedOrigins []string) bool {
-	// If no whitelist configured, allow all
-	if len(allowedOrigins) == 0 {
-		return true
-	}
-
-	// Check if origin is in whitelist
-	for _, allowedOrigin := range allowedOrigins {
-		if origin == allowedOrigin {
-			return true
-		}
-	}
-
-	return false
-}
-
-/**
- * setCORSHeadersOnHeader sets CORS headers directly on an http.Header
- *
- * @param header - Response header to modify
- * @param origin - Origin header value from request
- * @param allowedOrigins - Whitelist of allowed origins (empty = allow all)
- */
-func setCORSHeadersOnHeader(header http.Header, origin string, allowedOrigins []string) {
-	// Only set CORS headers (or log) for actual cross-origin browser requests.
-	// If Origin is empty, the request is not a CORS request.
-	if origin == "" {
-		return
-	}
-
-	// Validate origin against whitelist
-	if !isOriginAllowed(origin, allowedOrigins) {
-		// Origin not in whitelist - don't set CORS headers
-		slog.Debug("cors.origin.rejected", "origin", origin)
-		return
-	}
-
-	// Set CORS headers
-	if len(allowedOrigins) > 0 {
-		// Whitelist mode - echo the validated origin
-		header.Add("Vary", "Origin")
-		header.Set("Access-Control-Allow-Origin", origin)
-	} else {
-		// Permissive mode - use wildcard or echo origin
-		if origin == "" {
-			origin = "*"
-		} else {
-			header.Add("Vary", "Origin")
-		}
-		header.Set("Access-Control-Allow-Origin", origin)
-	}
-
-	header.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD")
-	header.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept")
-	header.Set("Access-Control-Allow-Credentials", "true")
-}
-
-/**
- * SetCORSHeaders sets CORS headers for cross-origin requests with origin validation
- *
- * @param w - Response writer
- * @param r - HTTP request
- * @param allowedOrigins - Whitelist of allowed origins (empty = allow all)
- */
-func SetCORSHeaders(w http.ResponseWriter, r *http.Request, allowedOrigins []string) {
-	origin := r.Header.Get("Origin")
-	setCORSHeadersOnHeader(w.Header(), origin, allowedOrigins)
-}
+// CORS utility functions removed - CORS is now handled by rs/cors middleware
+// See http_proxy.go middleware chain setup for CORS configuration

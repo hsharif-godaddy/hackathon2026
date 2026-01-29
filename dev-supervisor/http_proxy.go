@@ -21,24 +21,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rs/cors"
 )
 
 const (
 	protoHTTP  = "http"
 	protoHTTPS = "https"
 )
-
-// allowedHTTPMethods defines the HTTP methods accepted by the reverse proxy
-// Matches RFC 9110 safe and unsafe methods commonly used in REST APIs
-var allowedHTTPMethods = map[string]bool{
-	http.MethodGet:     true,
-	http.MethodHead:    true,
-	http.MethodPost:    true,
-	http.MethodPut:     true,
-	http.MethodPatch:   true,
-	http.MethodDelete:  true,
-	http.MethodOptions: true,
-}
 
 func determineForwardedProto(req *http.Request) string {
 	if raw := strings.TrimSpace(req.Header.Get("X-Forwarded-Proto")); raw != "" {
@@ -176,13 +166,13 @@ type ProxyHealthResponse struct {
 
 /**
  * responseWriter wraps http.ResponseWriter to capture status code and response size
- * Implements http.Hijacker to support WebSocket upgrades through the proxy
+ * Used by loggingMiddleware for request logging
+ * Implements http.Hijacker and http.Flusher interfaces for WebSocket and SSE support
  */
 type responseWriter struct {
 	http.ResponseWriter
 	statusCode int
 	size       int
-	procMgr    *ProcessManager // For WebSocket tracking
 }
 
 func (rw *responseWriter) WriteHeader(code int) {
@@ -197,55 +187,19 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 }
 
 // Hijack implements http.Hijacker interface to support WebSocket upgrades
-// This is required for the reverse proxy to upgrade HTTP connections to WebSocket
-// Also registers the hijacked connection with ProcessManager for idle tracking
+// Delegates to the underlying ResponseWriter if it implements Hijacker
 func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	hijacker, ok := rw.ResponseWriter.(http.Hijacker)
 	if !ok {
 		return nil, nil, fmt.Errorf("underlying ResponseWriter does not implement http.Hijacker")
 	}
-	conn, buf, err := hijacker.Hijack()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Wrap connection to track WebSocket lifecycle if ProcessManager is available
-	if rw.procMgr != nil {
-		conn = &trackedConn{
-			Conn:    conn,
-			procMgr: rw.procMgr,
-		}
-		rw.procMgr.RegisterWebSocket(conn)
-	}
-
-	return conn, buf, nil
-}
-
-/**
- * trackedConn wraps net.Conn to automatically unregister WebSocket connections
- * when they close, ensuring accurate idle tracking
- */
-type trackedConn struct {
-	net.Conn
-	procMgr *ProcessManager
-	once    sync.Once
-}
-
-func (tc *trackedConn) Close() error {
-	// Unregister exactly once, even if Close is called multiple times
-	tc.once.Do(func() {
-		if tc.procMgr != nil {
-			tc.procMgr.UnregisterWebSocket(tc)
-		}
-	})
-	return tc.Conn.Close()
+	return hijacker.Hijack()
 }
 
 // Flush implements http.Flusher interface to support Server-Sent Events (SSE)
-// and chunked transfer encoding. This is required for streaming responses.
+// and chunked transfer encoding. Delegates to underlying ResponseWriter if it implements Flusher.
 func (rw *responseWriter) Flush() {
-	flusher, ok := rw.ResponseWriter.(http.Flusher)
-	if ok {
+	if flusher, ok := rw.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
 }
@@ -263,71 +217,6 @@ type RequestRouter struct {
 	allowedOrigins        []string
 	procMgr               *ProcessManager
 	startOnRequestEnabled bool
-}
-
-/**
- * isCORSPreflight returns true if the request is a CORS preflight OPTIONS request.
- * CORS preflight requests have either Access-Control-Request-Method or
- * Access-Control-Request-Headers headers, which distinguish them from regular
- * OPTIONS requests used for API discovery.
- */
-func isCORSPreflight(r *http.Request) bool {
-	return r.Method == http.MethodOptions &&
-		(r.Header.Get("Access-Control-Request-Method") != "" ||
-			r.Header.Get("Access-Control-Request-Headers") != "")
-}
-
-// isCORSPreflight is a convenience method for RequestRouter
-func (rr *RequestRouter) isCORSPreflight(r *http.Request) bool {
-	return isCORSPreflight(r)
-}
-
-func (rr *RequestRouter) writeStaticOptionsResponse(w http.ResponseWriter, r *http.Request) {
-	origin := r.Header.Get("Origin")
-
-	// Validate origin against whitelist
-	if !isOriginAllowed(origin, rr.allowedOrigins) {
-		// Origin not in whitelist - return without CORS headers
-		slog.Debug("cors.static.origin.rejected", "origin", origin)
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-
-	// Set CORS headers
-	if len(rr.allowedOrigins) > 0 {
-		// Whitelist mode - echo the validated origin
-		w.Header().Add("Vary", "Origin")
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-	} else {
-		// Permissive mode - use wildcard or echo origin
-		if origin == "" {
-			origin = "*"
-		} else {
-			w.Header().Add("Vary", "Origin")
-		}
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-	}
-
-	// Determine which methods to advertise based on context
-	// CORS preflight: advertise all allowed methods (browser needs to know what API supports)
-	// Static file OPTIONS: advertise only safe methods (static files don't support mutations)
-	var allowedMethodsStr string
-	if r.Header.Get("Access-Control-Request-Method") != "" || r.Header.Get("Access-Control-Request-Headers") != "" {
-		// CORS preflight - advertise all methods
-		allowedMethodsStr = "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS"
-	} else {
-		// Static file OPTIONS - only safe methods
-		allowedMethodsStr = "GET, HEAD, OPTIONS"
-	}
-
-	w.Header().Set("Access-Control-Allow-Methods", allowedMethodsStr)
-	w.Header().Set("Allow", allowedMethodsStr)
-
-	if reqHeaders := r.Header.Get("Access-Control-Request-Headers"); reqHeaders != "" {
-		w.Header().Set("Access-Control-Allow-Headers", reqHeaders)
-	}
-
-	w.WriteHeader(http.StatusNoContent)
 }
 
 /**
@@ -468,12 +357,10 @@ func activityTrackingMiddleware(next http.Handler, procMgr *ProcessManager, excl
 		// Track request start (always count in-flight requests)
 		procMgr.TrackRequest()
 
-		// Determine if this request should update activity at start
-		// Skip CORS preflight (automated browser behavior), health checks, and monitoring
-		shouldUpdateActivityAtStart := !isCORSPreflight(r) && !isPathExcluded(r.URL.Path, excludedPaths)
-
 		// Update activity at request start for non-excluded paths
-		if shouldUpdateActivityAtStart {
+		// Skip health checks and monitoring to prevent automated probes from keeping apps alive
+		// Note: CORS preflight is handled by CORS middleware and never reaches here
+		if !isPathExcluded(r.URL.Path, excludedPaths) {
 			procMgr.UpdateActivity()
 		}
 
@@ -488,9 +375,9 @@ func activityTrackingMiddleware(next http.Handler, procMgr *ProcessManager, excl
 
 /**
  * loggingMiddleware wraps an http.Handler to log requests with response details
- * Optionally tracks WebSocket connections if procMgr is provided
+ * Single responsibility: Observe and record HTTP request/response details
  */
-func loggingMiddleware(next http.Handler, procMgr *ProcessManager) http.Handler {
+func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
@@ -499,7 +386,6 @@ func loggingMiddleware(next http.Handler, procMgr *ProcessManager) http.Handler 
 			ResponseWriter: w,
 			statusCode:     http.StatusOK, // Default to 200 if WriteHeader not called
 			size:           0,
-			procMgr:        procMgr, // Enable WebSocket tracking if available
 		}
 
 		// Call next handler
@@ -539,32 +425,10 @@ func loggingMiddleware(next http.Handler, procMgr *ProcessManager) http.Handler 
 /**
  * ServeHTTP implements http.Handler interface for RequestRouter
  * Routes requests based on path, method, and configuration
+ *
+ * Note: CORS and HTTP method validation are handled by middleware layers
  */
 func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Handle CORS preflight OPTIONS - static response, no startup, no activity
-	// CORS preflight is automated browser behavior and should not be treated as user activity
-	if rr.isCORSPreflight(r) {
-		slog.Debug("http.options.preflight",
-			"path", r.URL.Path,
-			"origin", r.Header.Get("Origin"),
-			"request_method", r.Header.Get("Access-Control-Request-Method"))
-		rr.writeStaticOptionsResponse(w, r)
-		return
-	}
-
-	// Validate HTTP method - reject unsupported methods
-	// Allowed: GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS
-	// Reject: CONNECT, TRACE, and any unknown methods
-	if !allowedHTTPMethods[r.Method] {
-		slog.Debug("http.method.rejected",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"remote_addr", r.RemoteAddr)
-		w.Header().Set("Allow", "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS")
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	// Check if we need to auto-start (any request can trigger it)
 	if rr.procMgr != nil && rr.startOnRequestEnabled {
 		status := rr.procMgr.GetStatus()
@@ -603,13 +467,10 @@ func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Static serving enabled - handle safe HTTP methods for static content
 	// Handle GET, HEAD, OPTIONS for static assets (browsers use HEAD for cache validation)
+	// Note: CORS preflight is handled by CORS middleware before reaching here
 	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
 		// Has file extension? Serve as static file directly
 		if path.Ext(r.URL.Path) != "" {
-			if r.Method == http.MethodOptions {
-				rr.writeStaticOptionsResponse(w, r)
-				return
-			}
 			slog.Debug("serving static file", "path", r.URL.Path, "method", r.Method)
 			rr.staticHandler.ServeHTTP(w, r)
 			return
@@ -625,10 +486,6 @@ func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			// If file was found (not 404), copy the response to the real writer
 			if recorder.Code != http.StatusNotFound {
-				if r.Method == http.MethodOptions {
-					rr.writeStaticOptionsResponse(w, r)
-					return
-				}
 				// Copy headers from recorder to real response
 				maps.Copy(w.Header(), recorder.Header())
 
@@ -1079,14 +936,7 @@ func (p *HTTPProxy) Start() error {
 		// FlushInterval enables streaming responses and is required for WebSockets
 		// and Server-Sent Events (SSE). Without this, responses are buffered.
 		FlushInterval: -1, // Flush immediately (required for WebSockets)
-		// ModifyResponse sets CORS headers on all successful responses
-		// This enables cross-origin requests from the builder app to preview apps
-		ModifyResponse: func(resp *http.Response) error {
-			// Set CORS headers for cross-origin requests
-			origin := resp.Request.Header.Get("Origin")
-			setCORSHeadersOnHeader(resp.Header, origin, p.config.AllowedOrigins)
-			return nil
-		},
+		// Note: CORS headers are set by CORS middleware (outermost layer)
 	}
 
 	// Custom error handler
@@ -1113,9 +963,7 @@ func (p *HTTPProxy) Start() error {
 				"remote_addr", r.RemoteAddr)
 		}
 
-		// Set CORS headers for cross-origin requests
-		SetCORSHeaders(w, r, p.config.AllowedOrigins)
-
+		// CORS headers are set by CORS middleware (outermost layer)
 		// Return appropriate status code with generic error message to avoid information disclosure
 		// Use http.Error to avoid XSS vulnerability from fmt.Fprintf
 		// Detailed error information is already logged above
@@ -1173,8 +1021,16 @@ func (p *HTTPProxy) Start() error {
 		}
 	}
 
-	// Build middleware chain: logging -> JWT -> activity -> mux
-	// JWT comes first so only authenticated requests count as activity
+	// Build middleware chain (outermost to innermost):
+	// logging -> CORS -> method validation -> JWT -> connection tracking -> activity -> router
+	//
+	// This order ensures:
+	// - All requests are logged (logging first)
+	// - CORS is handled before authentication (preflight has no auth)
+	// - Only valid HTTP methods proceed (early rejection)
+	// - Authentication happens before activity tracking
+	// - WebSocket connections are tracked for idle monitoring
+	// - Only authenticated requests count as activity
 	handler := http.Handler(mux)
 
 	// Determine excluded paths for activity tracking
@@ -1185,12 +1041,15 @@ func (p *HTTPProxy) Start() error {
 		activityExcludedPaths = []string{}
 	}
 
-	// Wrap with activity tracking middleware
-	// Tracks in-flight requests for idle monitoring (no-op if start-on-request disabled)
+	// Activity tracking middleware (tracks requests for idle monitoring)
 	// Placed after JWT so only authenticated requests count as activity
 	handler = activityTrackingMiddleware(handler, p.procMgr, activityExcludedPaths)
 
-	// Add JWT middleware if enabled
+	// Connection tracking middleware (tracks WebSocket connections)
+	// Wraps response writer to intercept Hijack() calls
+	handler = connectionTrackingMiddleware(handler, p.procMgr)
+
+	// JWT middleware (if enabled)
 	if p.config.JWTEnabled {
 		if p.config.JWKSUrl == "" {
 			return fmt.Errorf("JWT authentication enabled but JWKS_URL not configured")
@@ -1228,9 +1087,34 @@ func (p *HTTPProxy) Start() error {
 			"excludedPaths", p.config.JWTExcludedPaths)
 	}
 
-	// Wrap with logging middleware (outermost layer)
-	// Pass procMgr for WebSocket connection tracking
-	handler = loggingMiddleware(handler, p.procMgr)
+	// HTTP method validation middleware
+	// Rejects unsupported methods (CONNECT, TRACE, etc.)
+	handler = methodValidationMiddleware(handler)
+
+	// CORS middleware using rs/cors library
+	// Handles CORS for all requests (preflight, actual requests, errors)
+	corsMiddleware := cors.New(cors.Options{
+		AllowedOrigins: p.config.AllowedOrigins,
+		AllowedMethods: []string{
+			http.MethodGet,
+			http.MethodHead,
+			http.MethodPost,
+			http.MethodPut,
+			http.MethodPatch,
+			http.MethodDelete,
+			http.MethodOptions,
+		},
+		// Allow all headers including custom ones (X-Requested-With, X-CSRF-Token, analytics headers, etc.)
+		// This is required for builder UI and prevents preflight failures
+		AllowedHeaders:   []string{"*"},
+		AllowCredentials: true,
+		MaxAge:           86400, // Cache preflight for 24 hours
+	})
+	handler = corsMiddleware.Handler(handler)
+
+	// Logging middleware (outermost layer)
+	// Logs all requests with response details
+	handler = loggingMiddleware(handler)
 
 	// Create HTTP server with middleware-wrapped handler
 	p.server = &http.Server{
@@ -1633,14 +1517,7 @@ func (p *HTTPProxy) loadTLSConfig() (*tls.Config, error) {
 func (p *HTTPProxy) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("proxy.health.check", "remote_addr", r.RemoteAddr)
 
-	// Allow cross-origin health checks from the builder UI (e.g. local.gasket.dev-godaddy.com)
-	// so client-side polling can determine when the preview app is ready.
-	SetCORSHeaders(w, r, p.config.AllowedOrigins)
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
+	// CORS headers are set by CORS middleware (outermost layer)
 	// Set content type
 	w.Header().Set("Content-Type", "application/json")
 

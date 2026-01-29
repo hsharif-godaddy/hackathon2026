@@ -1144,6 +1144,10 @@ func TestRequestRouter_StaticFileWithExtension_HEAD(t *testing.T) {
 }
 
 func TestRequestRouter_StaticFileWithExtension_OPTIONS(t *testing.T) {
+	// After CORS refactoring: RequestRouter no longer handles CORS
+	// CORS is handled by rs/cors middleware (placed before router in chain)
+	// Router now forwards OPTIONS to http.FileServer which returns 200
+
 	// Create temporary static file
 	tmpDir := t.TempDir()
 	jsFile := path.Join(tmpDir, "app.js")
@@ -1162,24 +1166,23 @@ func TestRequestRouter_StaticFileWithExtension_OPTIONS(t *testing.T) {
 	}
 
 	req := httptest.NewRequest("OPTIONS", "/app.js", nil)
-	req.Header.Set("Origin", "https://example.com")
-	req.Header.Set("Access-Control-Request-Headers", "X-Test-Header")
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("expected status 204, got: %d", rec.Code)
+	// Router no longer handles CORS - it forwards to http.FileServer
+	// http.FileServer returns 200 for OPTIONS (not 204)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200 from http.FileServer, got: %d", rec.Code)
 	}
-	if rec.Header().Get("Access-Control-Allow-Origin") != "https://example.com" {
-		t.Errorf("expected Access-Control-Allow-Origin echo, got %s", rec.Header().Get("Access-Control-Allow-Origin"))
-	}
-	if rec.Header().Get("Access-Control-Allow-Headers") != "X-Test-Header" {
-		t.Errorf("expected Access-Control-Allow-Headers to mirror request, got %s", rec.Header().Get("Access-Control-Allow-Headers"))
-	}
+	// CORS headers are NOT set by router - that's done by CORS middleware
+	// This test just verifies router routing behavior, not CORS
 }
 
 func TestRequestRouter_ExtensionlessStaticFile_OPTIONS(t *testing.T) {
+	// After CORS refactoring: RequestRouter no longer handles CORS or OPTIONS specially
+	// OPTIONS requests are routed like any other method
+
 	tmpDir := t.TempDir()
 	file := path.Join(tmpDir, ".well-known")
 	if err := os.WriteFile(file, []byte("data"), 0600); err != nil {
@@ -1198,11 +1201,9 @@ func TestRequestRouter_ExtensionlessStaticFile_OPTIONS(t *testing.T) {
 
 	router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("expected 204 for OPTIONS, got %d", rec.Code)
-	}
-	if rec.Header().Get("Allow") != "GET, HEAD, OPTIONS" {
-		t.Fatalf("expected Allow header to advertise safe methods, got %s", rec.Header().Get("Allow"))
+	// Router forwards to http.FileServer, which returns 200 for OPTIONS on existing files
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for OPTIONS from http.FileServer, got %d", rec.Code)
 	}
 }
 
