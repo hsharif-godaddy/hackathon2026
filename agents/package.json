@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "dev": "GASKET_ENV=local.dev node load-env.cjs pnpm run dev:watch",
-    "dev:watch": "pnpm run prebuild && tsx watch src/server/app.ts",
+    "dev:watch": "pnpm run prebuild && tsx watch --ignore 'node_modules/**' --ignore 'dist/**' --ignore 'data/**' --ignore 'tests/**' --ignore '**/*.test.ts' --ignore '**/*.md' src/server/app.ts",
     "local:test": "GASKET_ENV=local.test node load-env.cjs pnpm run dev:watch",
     "local:prod": "GASKET_ENV=local.prod node load-env.cjs pnpm run dev:watch",
     "prebuild": "cd ../packages/ai-lib && pnpm run build",

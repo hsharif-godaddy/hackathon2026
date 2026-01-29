@@ -711,4 +711,173 @@ describe('AiroMgmtClient', () => {
       );
     });
   });
+
+  describe('#recordExport', () => {
+    it('should record an export event', async () => {
+      const mockExportResponse = {
+        id: 'export-123',
+        subscriptionId: 'sub-123',
+        appId: 'app-789',
+        exportedAt: '2025-01-15T10:00:00Z'
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockExportResponse
+      });
+
+      const result = await client.recordExport(
+        'sub-123',
+        'sys-456',
+        'app-789',
+        {
+          initiatedBy: 'customer-123',
+          exportedAt: '2025-01-15T10:00:00Z',
+          appName: 'my-app'
+        }
+      );
+
+      expect(result).toEqual(mockExportResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems/sys-456/apps/app-789/exports',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            initiatedBy: 'customer-123',
+            exportedAt: '2025-01-15T10:00:00Z',
+            appName: 'my-app'
+          })
+        })
+      );
+    });
+
+    it('should return null on failure', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => 'Internal Server Error'
+      });
+
+      const result = await client.recordExport(
+        'sub-123',
+        'sys-456',
+        'app-789',
+        {
+          initiatedBy: 'customer-123',
+          exportedAt: '2025-01-15T10:00:00Z',
+          appName: 'my-app'
+        }
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null on network error', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      const result = await client.recordExport(
+        'sub-123',
+        'sys-456',
+        'app-789',
+        {
+          initiatedBy: 'customer-123',
+          exportedAt: '2025-01-15T10:00:00Z',
+          appName: 'my-app'
+        }
+      );
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('#getAppExports', () => {
+    it('should list exports for an app', async () => {
+      const mockExportsResponse = {
+        exports: [
+          {
+            id: 'export-123',
+            initiatedBy: 'customer-123',
+            exportedAt: '2025-01-15T10:00:00Z'
+          },
+          {
+            id: 'export-456',
+            initiatedBy: 'customer-123',
+            exportedAt: '2025-01-16T10:00:00Z'
+          }
+        ],
+        total: 2
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockExportsResponse
+      });
+
+      const result = await client.getAppExports('sub-123', 'sys-456', 'app-789');
+
+      expect(result).toEqual(mockExportsResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems/sys-456/apps/app-789/exports',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
+    });
+
+    it('should handle empty exports', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ exports: [], total: 0 })
+      });
+
+      const result = await client.getAppExports('sub-123', 'sys-456', 'app-789');
+
+      expect(result.exports).toEqual([]);
+      expect(result.total).toBe(0);
+    });
+  });
+
+  describe('#getExportsStatus', () => {
+    it('should return export status for subscription', async () => {
+      const mockStatusResponse = {
+        eligibleForRefund: true,
+        lastExportedAt: null,
+        totalExports: 0
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockStatusResponse
+      });
+
+      const result = await client.getExportsStatus('sub-123');
+
+      expect(result).toEqual(mockStatusResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/exports/status',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
+    });
+
+    it('should return not eligible when exports exist', async () => {
+      const mockStatusResponse = {
+        eligibleForRefund: false,
+        lastExportedAt: '2025-01-15T10:00:00Z',
+        totalExports: 3
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockStatusResponse
+      });
+
+      const result = await client.getExportsStatus('sub-123');
+
+      expect(result.eligibleForRefund).toBe(false);
+      expect(result.lastExportedAt).toBe('2025-01-15T10:00:00Z');
+      expect(result.totalExports).toBe(3);
+    });
+  });
 });

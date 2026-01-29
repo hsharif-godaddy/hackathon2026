@@ -1,109 +1,103 @@
 import { useState } from 'react'
 
-import { dynamicApiConfigService } from '@/config/dynamic-api'
-import { regenerateToken } from '@/lib/jwt-regeneration'
+import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 
 interface UseDownloadAppResult {
-  download: (appId: string) => Promise<void>
+  download: () => Promise<void>
   isDownloading: boolean
   error: string | null
+}
+
+interface DownloadResponse {
+  downloadUrl: string
+  token: string
+  filename: string
+  tracked: boolean
+  exportId?: string
 }
 
 /**
  * Hook for downloading app files as a zip archive
  *
- * @example
- * ```tsx
- * const { download, isDownloading, error } = useDownloadApp()
+ * Flow:
+ * 1. Call /api/apps/[id]/download to track export and get download URL
+ * 2. Fetch directly from agent using the provided token
+ * 3. Trigger browser download
  *
- * const handleDownload = async () => {
- *   await download('app-123')
- * }
- * ```
+ *
+ * @param appId - The app/site ID to download (null disables the hook)
  */
-export function useDownloadApp(): UseDownloadAppResult {
+export function useDownloadApp(appId: string | null): UseDownloadAppResult {
   const [isDownloading, setIsDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const download = async (appId: string) => {
+  const download = async () => {
+    if (!appId) {
+      throw new Error('App ID is required for download')
+    }
+
     setIsDownloading(true)
     setError(null)
 
     try {
       logger.info('app.download.start', { appId })
 
-      // Step 1: Regenerate JWT with fresh permissions
-      logger.info('app.download.regenerate_token', { appId })
-      const tokenResult = await regenerateToken({ siteId: appId, force: true })
-
-      // Step 2: Get agent URL for this site
-      const apiConfig = await dynamicApiConfigService.getConfigForSite(appId)
-
-      if (!apiConfig.agentUrl) {
-        throw new Error('Agent URL not available for this site')
-      }
-
-      // Step 3: Call agent service directly with fresh token
-      const downloadUrl = `${apiConfig.agentUrl}/apps/${appId}/zip`
-      logger.info('app.download.fetching', { appId, url: downloadUrl })
-
-      const response = await fetch(downloadUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${tokenResult.token}`,
-        },
+      const response = await appFetch(`/api/apps/${appId}/download`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
       })
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Failed to download app files' }))
-        logger.error('app.download.response_error', {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to initiate download' }))
+        logger.error('app.download.init_error', {
           appId,
           status: response.status,
-          statusText: response.statusText,
           errorData,
         })
-
-        // Use detailed error message if available
-        const errorMessage = errorData.details || errorData.error || `Download failed: ${response.status}`
-        throw new Error(errorMessage)
+        throw new Error(errorData.details || errorData.error || `Download failed: ${response.status}`)
       }
 
-      // Get the blob from the response
-      const blob = await response.blob()
+      const data: DownloadResponse = await response.json()
 
-      // Get filename from Content-Disposition header or use default
-      const contentDisposition = response.headers.get('Content-Disposition')
-      let filename = `app-${appId}.zip`
+      logger.info('app.download.fetching', {
+        appId,
+        tracked: data.tracked,
+        exportId: data.exportId,
+      })
 
-      if (contentDisposition) {
-        const matches = /filename="?([^"]+)"?/.exec(contentDisposition)
-        if (matches && matches[1]) {
-          filename = matches[1]
-        }
+      const agentResponse = await fetch(data.downloadUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${data.token}`,
+        },
+      })
+
+      if (!agentResponse.ok) {
+        logger.error('app.download.agent_error', {
+          appId,
+          status: agentResponse.status,
+        })
+        throw new Error(`Download failed: ${agentResponse.status}`)
       }
 
-      // Create a download link and trigger it
+      // Step 3: Get blob and trigger download
+      const blob = await agentResponse.blob()
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = filename
+      link.download = data.filename
       document.body.appendChild(link)
 
       try {
         link.click()
-        logger.info('app.download.success', { appId, filename })
       } finally {
-        // Always cleanup DOM and URL, even if click fails
         document.body.removeChild(link)
         window.URL.revokeObjectURL(url)
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred'
-      logger.error('app.download.error', {
-        appId,
-        error: errorMessage,
-      })
+      logger.error('app.download.error', { appId, error: errorMessage })
       setError(errorMessage)
       throw err
     } finally {

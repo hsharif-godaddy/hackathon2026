@@ -1,9 +1,9 @@
-import { beforeEach,describe, expect, it, vi } from 'vitest';
+/* eslint-disable react-hooks/rules-of-hooks */
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { useDownloadApp } from './useDownloadApp';
 
-// Mock dependencies
 vi.mock('@/lib/request-context', () => ({
   logger: {
     info: vi.fn(),
@@ -13,40 +13,17 @@ vi.mock('@/lib/request-context', () => ({
   },
 }));
 
-vi.mock('@/lib/jwt-regeneration', () => ({
-  regenerateToken: vi.fn(),
+vi.mock('@/lib/gasket-config', () => ({
+  appFetch: vi.fn(),
 }));
 
-vi.mock('@/config/dynamic-api', () => ({
-  dynamicApiConfigService: {
-    getConfigForSite: vi.fn(),
-  },
-}));
-
-const mockRegenerateToken = vi.mocked((await import('@/lib/jwt-regeneration')).regenerateToken);
-const mockDynamicApiConfigService = vi.mocked((await import('@/config/dynamic-api')).dynamicApiConfigService);
+const mockAppFetch = vi.mocked((await import('@/lib/gasket-config')).appFetch);
+const mockGlobalFetch = vi.fn();
+global.fetch = mockGlobalFetch;
 
 describe('useDownloadApp', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-
-    // Setup default mocks for JWT regeneration and API config
-    mockRegenerateToken.mockResolvedValue({
-      token: 'mock-jwt-token',
-      expires: new Date(Date.now() + 43200000).toISOString(),
-      siteId: 'test-site',
-      type: 'jwt',
-    });
-
-    mockDynamicApiConfigService.getConfigForSite.mockResolvedValue({
-      baseUrl: 'http://localhost:3000',
-      wsUrl: 'ws://localhost:4000',
-      agentUrl: 'http://localhost:4000',
-      isStatic: false,
-    });
-
-    // Mock global fetch for agent service calls
-    global.fetch = vi.fn();
 
     // Setup DOM
     if (!document.body) {
@@ -68,32 +45,43 @@ describe('useDownloadApp', () => {
     document.body.removeChild = vi.fn(originalRemoveChild);
   });
 
-  it('should initialize with correct default state', () => {
-    const { result } = renderHook(() => useDownloadApp());
+  it('should initialize with correct default state', function initState() {
+    const { result } = renderHook(() => useDownloadApp('test-app-id'));
 
     expect(result.current.isDownloading).toBe(false);
     expect(result.current.error).toBeNull();
     expect(result.current.download).toBeDefined();
   });
 
-  it('should successfully download a file', async () => {
-    const mockBlob = new Blob(['test content'], { type: 'application/zip' });
-    const mockResponse = {
+  it('should get download URL and fetch directly from agent', async function downloadFile() {
+    // Step 1: API returns download URL and token
+    const apiResponse = {
       ok: true,
-      blob: vi.fn().mockResolvedValue(mockBlob),
-      headers: new Headers({
-        'Content-Disposition': 'attachment; filename="test-app.zip"',
+      json: vi.fn().mockResolvedValue({
+        downloadUrl: 'https://agent.example.com/apps/test-app-id/zip',
+        token: 'agent-jwt-token',
+        filename: 'test-app.zip',
+        tracked: true,
+        exportId: 'export-123',
       }),
     } as unknown as Response;
 
-    vi.mocked(global.fetch).mockResolvedValueOnce(mockResponse);
+    // Step 2: Agent returns zip file
+    const mockBlob = new Blob(['test content'], { type: 'application/zip' });
+    const agentResponse = {
+      ok: true,
+      blob: vi.fn().mockResolvedValue(mockBlob),
+    } as unknown as Response;
 
-    const { result } = renderHook(() => useDownloadApp());
+    mockAppFetch.mockResolvedValueOnce(apiResponse);
+    mockGlobalFetch.mockResolvedValueOnce(agentResponse);
+
+    const { result } = renderHook(() => useDownloadApp('test-app-id'));
 
     expect(result.current.isDownloading).toBe(false);
 
     act(() => {
-      result.current.download('test-app-id');
+      result.current.download();
     });
 
     // Should be downloading
@@ -106,43 +94,75 @@ describe('useDownloadApp', () => {
       expect(result.current.isDownloading).toBe(false);
     });
 
-    // Verify JWT was regenerated
-    expect(mockRegenerateToken).toHaveBeenCalledWith({ siteId: 'test-app-id', force: true });
-
-    // Verify API config was fetched
-    expect(mockDynamicApiConfigService.getConfigForSite).toHaveBeenCalledWith('test-app-id');
-
-    // Verify download was triggered with correct URL and auth header
-    expect(global.fetch).toHaveBeenCalledWith(
-      'http://localhost:4000/apps/test-app-id/zip',
+    // Verify API was called to get download URL
+    expect(mockAppFetch).toHaveBeenCalledWith(
+      '/api/apps/test-app-id/download',
       expect.objectContaining({
-        method: 'GET',
-        headers: expect.objectContaining({
-          'Authorization': 'Bearer mock-jwt-token',
-        }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
       })
     );
+
+    // Verify agent was called directly with token
+    expect(mockGlobalFetch).toHaveBeenCalledWith(
+      'https://agent.example.com/apps/test-app-id/zip',
+      expect.objectContaining({
+        method: 'GET',
+        headers: { 'Authorization': 'Bearer agent-jwt-token' },
+      })
+    );
+
     expect(global.URL.createObjectURL).toHaveBeenCalledWith(mockBlob);
     expect(global.URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
     expect(result.current.error).toBeNull();
   });
 
-  it('should handle API error response', async () => {
+  it('should handle untracked downloads (legacy sites)', async function untrackedDownload() {
+    const apiResponse = {
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        downloadUrl: 'https://agent.example.com/apps/legacy-app-id/zip',
+        token: 'agent-jwt-token',
+        filename: 'legacy-app.zip',
+        tracked: false,
+      }),
+    } as unknown as Response;
+
+    const mockBlob = new Blob(['test content'], { type: 'application/zip' });
+    const agentResponse = {
+      ok: true,
+      blob: vi.fn().mockResolvedValue(mockBlob),
+    } as unknown as Response;
+
+    mockAppFetch.mockResolvedValueOnce(apiResponse);
+    mockGlobalFetch.mockResolvedValueOnce(agentResponse);
+
+    const { result } = renderHook(() => useDownloadApp('legacy-app-id'));
+
+    await act(async () => {
+      await result.current.download();
+    });
+
+    // Download should succeed even if not tracked
+    expect(result.current.isDownloading).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(global.URL.createObjectURL).toHaveBeenCalledWith(mockBlob);
+  });
+
+  it('should handle API error response', async function apiError() {
     const mockResponse = {
       ok: false,
       status: 404,
-      statusText: 'Not Found',
-      json: vi.fn().mockResolvedValue({ error: 'App not found' }),
-      headers: new Headers(),
+      json: vi.fn().mockResolvedValue({ error: 'Site not found' }),
     } as unknown as Response;
 
-    vi.mocked(global.fetch).mockResolvedValueOnce(mockResponse);
+    mockAppFetch.mockResolvedValueOnce(mockResponse);
 
-    const { result } = renderHook(() => useDownloadApp());
+    const { result } = renderHook(() => useDownloadApp('non-existent-app'));
 
     await act(async () => {
       try {
-        await result.current.download('non-existent-app');
+        await result.current.download();
       } catch (error) {
         // Expected to throw
       }
@@ -150,18 +170,83 @@ describe('useDownloadApp', () => {
 
     await waitFor(() => {
       expect(result.current.isDownloading).toBe(false);
-      expect(result.current.error).toBe('App not found');
+      expect(result.current.error).toBe('Site not found');
     });
+
+    // Agent should NOT be called if API fails
+    expect(mockGlobalFetch).not.toHaveBeenCalled();
   });
 
-  it('should handle network error', async () => {
-    vi.mocked(global.fetch).mockRejectedValueOnce(new Error('Network error'));
+  it('should handle agent error response', async function agentError() {
+    const apiResponse = {
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        downloadUrl: 'https://agent.example.com/apps/test-app-id/zip',
+        token: 'agent-jwt-token',
+        filename: 'test-app.zip',
+        tracked: true,
+      }),
+    } as unknown as Response;
 
-    const { result } = renderHook(() => useDownloadApp());
+    const agentResponse = {
+      ok: false,
+      status: 500,
+    } as unknown as Response;
+
+    mockAppFetch.mockResolvedValueOnce(apiResponse);
+    mockGlobalFetch.mockResolvedValueOnce(agentResponse);
+
+    const { result } = renderHook(() => useDownloadApp('test-app-id'));
 
     await act(async () => {
       try {
-        await result.current.download('test-app-id');
+        await result.current.download();
+      } catch (error) {
+        // Expected to throw
+      }
+    });
+
+    await waitFor(() => {
+      expect(result.current.isDownloading).toBe(false);
+      expect(result.current.error).toBe('Download failed: 500');
+    });
+  });
+
+  it('should handle paywall error (403)', async function paywallError() {
+    const mockResponse = {
+      ok: false,
+      status: 403,
+      json: vi.fn().mockResolvedValue({
+        error: 'Download requires Paid subscription',
+        details: 'No active subscription',
+      }),
+    } as unknown as Response;
+
+    mockAppFetch.mockResolvedValueOnce(mockResponse);
+
+    const { result } = renderHook(() => useDownloadApp('paid-app'));
+
+    await act(async () => {
+      try {
+        await result.current.download();
+      } catch (error) {
+        // Expected to throw
+      }
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe('No active subscription');
+    });
+  });
+
+  it('should handle network error', async function networkError() {
+    mockAppFetch.mockRejectedValueOnce(new Error('Network error'));
+
+    const { result } = renderHook(() => useDownloadApp('test-app-id'));
+
+    await act(async () => {
+      try {
+        await result.current.download();
       } catch (error) {
         // Expected to throw
       }
@@ -173,107 +258,74 @@ describe('useDownloadApp', () => {
     });
   });
 
-  it('should extract filename from Content-Disposition header', async () => {
-    const mockBlob = new Blob(['test'], { type: 'application/zip' });
-    const mockResponse = {
+  it('should use filename from API response', async function useApiFilename() {
+    const apiResponse = {
       ok: true,
-      blob: vi.fn().mockResolvedValue(mockBlob),
-      headers: new Headers({
-        'Content-Disposition': 'attachment; filename="my-custom-app.zip"',
+      json: vi.fn().mockResolvedValue({
+        downloadUrl: 'https://agent.example.com/apps/test-app-id/zip',
+        token: 'agent-jwt-token',
+        filename: 'My-Custom-App.zip',
+        tracked: true,
       }),
     } as unknown as Response;
 
-    vi.mocked(global.fetch).mockResolvedValueOnce(mockResponse);
+    const mockBlob = new Blob(['test'], { type: 'application/zip' });
+    const agentResponse = {
+      ok: true,
+      blob: vi.fn().mockResolvedValue(mockBlob),
+    } as unknown as Response;
 
-    const { result } = renderHook(() => useDownloadApp());
+    mockAppFetch.mockResolvedValueOnce(apiResponse);
+    mockGlobalFetch.mockResolvedValueOnce(agentResponse);
+
+    const { result } = renderHook(() => useDownloadApp('test-app-id'));
 
     const createElementSpy = vi.spyOn(document, 'createElement');
 
     await act(async () => {
-      await result.current.download('test-app-id');
+      await result.current.download();
     });
 
     await waitFor(() => {
       expect(result.current.isDownloading).toBe(false);
     });
 
-    // Verify link element was created with correct filename
+    // Verify link element was created with correct filename from API
     expect(createElementSpy).toHaveBeenCalledWith('a');
     const createdElement = createElementSpy.mock.results[0]?.value as HTMLAnchorElement;
-    expect(createdElement?.download).toBe('my-custom-app.zip');
+    expect(createdElement?.download).toBe('My-Custom-App.zip');
   });
 
-  it('should use fallback filename when Content-Disposition is missing', async () => {
-    const mockBlob = new Blob(['test'], { type: 'application/zip' });
-    const mockResponse = {
+  it('should throw error when appId is null', async function nullAppId() {
+    const { result } = renderHook(() => useDownloadApp(null));
+
+    await expect(result.current.download()).rejects.toThrow('App ID is required for download');
+  });
+
+  it('should cleanup resources on unmount', async function cleanup() {
+    const apiResponse = {
       ok: true,
-      blob: vi.fn().mockResolvedValue(mockBlob),
-      headers: new Headers(),
-    } as unknown as Response;
-
-    vi.mocked(global.fetch).mockResolvedValueOnce(mockResponse);
-
-    const { result } = renderHook(() => useDownloadApp());
-
-    const createElementSpy = vi.spyOn(document, 'createElement');
-
-    await act(async () => {
-      await result.current.download('my-app-123');
-    });
-
-    await waitFor(() => {
-      expect(result.current.isDownloading).toBe(false);
-    });
-
-    const createdElement = createElementSpy.mock.results[0]?.value as HTMLAnchorElement;
-    expect(createdElement?.download).toBe('app-my-app-123.zip');
-  });
-
-  it('should handle detailed error messages', async () => {
-    const mockResponse = {
-      ok: false,
-      status: 403,
-      statusText: 'Forbidden',
       json: vi.fn().mockResolvedValue({
-        error: 'Download not allowed',
-        details: 'This app does not have local files. Only local development apps can be downloaded.',
+        downloadUrl: 'https://agent.example.com/apps/test-app-id/zip',
+        token: 'agent-jwt-token',
+        filename: 'test-app.zip',
+        tracked: true,
       }),
-      headers: new Headers(),
     } as unknown as Response;
 
-    vi.mocked(global.fetch).mockResolvedValueOnce(mockResponse);
-
-    const { result } = renderHook(() => useDownloadApp());
-
-    await act(async () => {
-      try {
-        await result.current.download('production-app');
-      } catch (error) {
-        // Expected
-      }
-    });
-
-    await waitFor(() => {
-      expect(result.current.error).toBe(
-        'This app does not have local files. Only local development apps can be downloaded.'
-      );
-    });
-  });
-
-  it('should cleanup resources on unmount', async () => {
     const mockBlob = new Blob(['test'], { type: 'application/zip' });
-    const mockResponse = {
+    const agentResponse = {
       ok: true,
       blob: vi.fn().mockResolvedValue(mockBlob),
-      headers: new Headers(),
     } as unknown as Response;
 
-    vi.mocked(global.fetch).mockResolvedValueOnce(mockResponse);
+    mockAppFetch.mockResolvedValueOnce(apiResponse);
+    mockGlobalFetch.mockResolvedValueOnce(agentResponse);
 
-    const { result, unmount } = renderHook(() => useDownloadApp());
+    const { result, unmount } = renderHook(() => useDownloadApp('test-app-id'));
 
     await act(async () => {
-      await result.current.download('test-app-id');
+      await result.current.download();
     });
 
     unmount();

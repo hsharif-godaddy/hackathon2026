@@ -46,14 +46,14 @@ describe('ProjectPanel', () => {
   it('should render without crashing', () => {
     renderWithProviders(<ProjectPanel />);
 
-    expect(screen.getByRole('button', { name: /Download Files/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /builder_settings_project_download_button/i })).toBeInTheDocument();
   });
 
   describe('Download button tracking', () => {
     it('should have correct EID attribute on download button', () => {
       renderWithProviders(<ProjectPanel />);
 
-      const downloadButton = screen.getByRole('button', { name: /Download Files/i });
+      const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_button/i });
       expect(downloadButton).toHaveAttribute('data-eid', 'appbuilder.settings.project.app_download.click');
     });
 
@@ -84,7 +84,7 @@ describe('ProjectPanel', () => {
 
       renderWithProviders(<ProjectPanel />);
 
-      const downloadButton = screen.getByRole('button', { name: /Download Files/i });
+      const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_button/i });
       await user.click(downloadButton);
 
       await waitFor(() => {
@@ -97,7 +97,7 @@ describe('ProjectPanel', () => {
       });
     });
 
-    it('should trigger download with correct appId after paywall check', async () => {
+    it('should trigger download after paywall check', async () => {
       const user = userEvent.setup();
       const mockDownload = vi.fn();
       const mockCheckAndShowPaywall = vi.fn((callback) => callback());
@@ -118,12 +118,13 @@ describe('ProjectPanel', () => {
 
       renderWithProviders(<ProjectPanel />);
 
-      const downloadButton = screen.getByRole('button', { name: /Download Files/i });
+      const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_button/i });
       await user.click(downloadButton);
 
       await waitFor(() => {
         expect(mockCheckAndShowPaywall).toHaveBeenCalled();
-        expect(mockDownload).toHaveBeenCalledWith('test-app-123');
+        // download() is called without args - appId is passed to hook initialization
+        expect(mockDownload).toHaveBeenCalled();
       });
     });
 
@@ -136,7 +137,7 @@ describe('ProjectPanel', () => {
 
       renderWithProviders(<ProjectPanel />);
 
-      const downloadButton = screen.getByRole('button', { name: /Downloading.../i });
+      const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_downloading/i });
       expect(downloadButton).toBeDisabled();
     });
 
@@ -151,8 +152,8 @@ describe('ProjectPanel', () => {
 
       renderWithProviders(<ProjectPanel />);
 
-      // When polling, button text changes to "Downloading..." so we need to find it differently
-      const downloadButton = screen.getByRole('button', { name: /Downloading/i });
+      // When polling, button text changes to downloading key
+      const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_downloading/i });
       expect(downloadButton).toBeDisabled();
     });
 
@@ -173,7 +174,7 @@ describe('ProjectPanel', () => {
 
       renderWithProviders(<ProjectPanel />);
 
-      const downloadButton = screen.getByRole('button', { name: /Download Files/i });
+      const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_button/i });
       expect(downloadButton).not.toBeDisabled();
     });
   });

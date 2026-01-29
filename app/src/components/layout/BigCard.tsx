@@ -7,7 +7,7 @@ import { StatusValue } from "@/app/develop/components/types";
 import { useTranslations } from "@/hooks/useTranslations";
 
 interface BigCardProps {
-  children: React.ReactNode
+  children?: React.ReactNode
   title?: string
   description?: string
   status?: StatusValue

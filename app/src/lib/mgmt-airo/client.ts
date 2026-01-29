@@ -845,4 +845,109 @@ export class AiroMgmtClient {
       { logEvent: 'mgmt-airo.update-secrets' }
     );
   }
+
+  /**
+   * Record an app export event for refund eligibility tracking
+   *
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - Application ID
+   * @param exportData - Export details
+   * @param exportData.initiatedBy - Customer ID of the logged-in user (for refund eligibility)
+   * @param exportData.exportedAt - ISO timestamp of export
+   * @param exportData.appName - Name of the app
+   * @param exportData.metadata - Optional metadata (includes shopperId and auth details for audit trail)
+   * @returns Promise resolving to export record response
+   */
+  async recordExport(
+    subscriptionId: string,
+    systemId: string,
+    appId: string,
+    exportData: {
+      initiatedBy: string;
+      exportedAt: string;
+      appName: string;
+      metadata?: Record<string, any>;
+    }
+  ): Promise<{ id: string; subscriptionId: string; appId: string; exportedAt: string } | null> {
+    try {
+      return await this.request<{ id: string; subscriptionId: string; appId: string; exportedAt: string }>(
+        'POST',
+        `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/exports`,
+        exportData,
+        { logEvent: 'mgmt-airo.record-export' }
+      );
+    } catch (error) {
+      // Log but don't throw - export tracking is non-critical
+      logger.warn('mgmt-airo.record-export.failed', {
+        subscriptionId,
+        systemId,
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Get exports for an app
+   *
+   * Lists export records for a specific app.
+   *
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - App ID
+   * @returns Promise resolving to exports list
+   */
+  async getAppExports(
+    subscriptionId: string,
+    systemId: string,
+    appId: string
+  ): Promise<{
+    exports: Array<{
+      id: string;
+      initiatedBy: string;
+      exportedAt: string;
+    }>;
+    total: number;
+  }> {
+    return await this.request<{
+      exports: Array<{
+        id: string;
+        initiatedBy: string;
+        exportedAt: string;
+      }>;
+      total: number;
+    }>(
+      'GET',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/exports`,
+      undefined,
+      { logEvent: 'mgmt-airo.get-app-exports' }
+    );
+  }
+
+  /**
+   * Get export status for a subscription
+   *
+   * Checks refund eligibility status based on export history.
+   *
+   * @param subscriptionId - Subscription ID
+   * @returns Promise resolving to export status
+   */
+  async getExportsStatus(subscriptionId: string): Promise<{
+    eligibleForRefund: boolean;
+    lastExportedAt: string | null;
+    totalExports: number;
+  }> {
+    return await this.request<{
+      eligibleForRefund: boolean;
+      lastExportedAt: string | null;
+      totalExports: number;
+    }>(
+      'GET',
+      `/api/airo/v1/subscriptions/${subscriptionId}/exports/status`,
+      undefined,
+      { logEvent: 'mgmt-airo.get-exports-status' }
+    );
+  }
 }

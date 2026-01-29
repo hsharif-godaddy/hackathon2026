@@ -15,7 +15,7 @@ import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation'
 export default function ProjectPanel() {
   const t = useTranslations()
   const appId = useAppIdFromParams()
-  const { download, isDownloading } = useDownloadApp()
+  const { download, isDownloading } = useDownloadApp(appId)
 
   // Use shared paywall modal hook
   const { checkAndShowPaywall, PaywallModal, isPolling, isPaywallLoading } = usePaywallModal({
@@ -23,12 +23,10 @@ export default function ProjectPanel() {
     source: 'download',
     onPurchaseSuccess: async () => {
       // Trigger download after successful purchase
-      if (appId) {
-        try {
-          await download(appId)
-        } catch (err) {
-          // Error already logged in hook
-        }
+      try {
+        await download()
+      } catch (err) {
+        // Error already logged in hook
       }
     },
   })
@@ -46,7 +44,7 @@ export default function ProjectPanel() {
 
     await checkAndShowPaywall(async () => {
       try {
-        await download(appId)
+        await download()
       } catch (err) {
         // Error already logged in hook
       }
@@ -59,23 +57,23 @@ export default function ProjectPanel() {
       <Box gap='lg' className='@container'>
       <BigCard
         title={t('builder_settings_project_download_title', void 0, 'Download Application')}
+        hideStatus
+        button={
+          <Button
+            onClick={handleDownload}
+            disabled={isDownloading || isPolling || isPaywallLoading || !appId}
+            design='primary'
+            size='md'
+            data-eid={generateClickEID('settings.project.app_download')}
+            icon={isDownloading || isPolling ? <Spinner size='sm' /> : <DownloadIcon />}
+            text={isDownloading || isPolling
+              ? t('builder_settings_project_download_downloading')
+              : t('builder_settings_project_download_button')
+            }
+          />
+        }
         description={t('builder_settings_project_download_desc', void 0, 'Download all your application files as a ZIP archive')}
       >
-        <Button
-          onClick={handleDownload}
-          disabled={isDownloading || isPolling || isPaywallLoading || !appId}
-          design='primary'
-          size='md'
-          data-eid={generateClickEID('settings.project.app_download')}
-        >
-          <Box orientation='horizontal' gap='sm'>
-            {(isDownloading || isPolling) ? <Spinner size='sm' /> : <DownloadIcon />}
-            {isDownloading || isPolling
-              ? t('builder_settings_project_download_downloading', void 0, 'Downloading...')
-              : t('builder_settings_project_download_button', void 0, 'Download Files')
-            }
-          </Box>
-        </Button>
       </BigCard>
     </Box>
     </>
