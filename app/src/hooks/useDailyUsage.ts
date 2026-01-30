@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { appService, type DailyUsageInfo } from '@/services/AppService'
+import { useActiveSubscription } from '@/hooks/useActiveSubscription'
+import { appFetch } from '@/lib/gasket-config'
+import { type DailyUsageInfo } from '@/services/AppService'
 import { WarningLevel } from '@/types/usage'
 
 const WARNING_THRESHOLD = 50
@@ -32,19 +34,19 @@ export function formatResetTime(resetTime: string | null): FormattedResetTime | 
   return { dayKey, timeString }
 }
 
-function getToastShownKey(appId: string): string {
+function getToastShownKey(): string {
   const today = new Date().toISOString().split('T')[0]
-  return `usage_toast_shown_${appId}_${today}`
+  return `usage_toast_shown_${today}`
 }
 
-function hasToastBeenShown(appId: string): boolean {
+function hasToastBeenShown(): boolean {
   if (typeof window === 'undefined') return true
-  return localStorage.getItem(getToastShownKey(appId)) === 'true'
+  return localStorage.getItem(getToastShownKey()) === 'true'
 }
 
-function markToastShown(appId: string): void {
+function markToastShown(): void {
   if (typeof window === 'undefined') return
-  localStorage.setItem(getToastShownKey(appId), 'true')
+  localStorage.setItem(getToastShownKey(), 'true')
 }
 
 export interface UseDailyUsageOptions {
@@ -53,52 +55,58 @@ export interface UseDailyUsageOptions {
 }
 
 /**
- * React Query hook for fetching daily usage
+ * Fetch token budget from mgmt-airo via API route
+ */
+async function fetchTokenBudget(subscriptionId: string): Promise<DailyUsageInfo> {
+  const response = await appFetch(`/api/token-budget/${encodeURIComponent(subscriptionId)}`)
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch token budget: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * React Query hook for fetching daily usage from mgmt-airo token-budget API
  */
 export function useDailyUsage(options: UseDailyUsageOptions) {
   const { appId, enabled = true } = options
   const queryClient = useQueryClient()
-  const prevAppIdRef = useRef(appId)
-
-  // Cancel in-flight queries for the PREVIOUS appId when appId changes
-  useEffect(() => {
-    if (prevAppIdRef.current && prevAppIdRef.current !== appId) {
-      queryClient.cancelQueries({ queryKey: ['daily-usage', prevAppIdRef.current] })
-    }
-    prevAppIdRef.current = appId
-  }, [appId, queryClient])
+  const { data: subscription } = useActiveSubscription()
+  const subscriptionId = subscription?.id
 
   const query = useQuery({
-    queryKey: ['daily-usage', appId],
-    queryFn: async function fetchDailyUsage(): Promise<DailyUsageInfo> {
-      if (!appId) {
-        throw new Error('App ID is required')
+    queryKey: ['token-budget', subscriptionId],
+    queryFn: () => {
+      if (!subscriptionId) {
+        return Promise.reject(new Error('Subscription ID is required to fetch token budget'))
       }
-      return appService.getDailyUsage(appId)
+      return fetchTokenBudget(subscriptionId)
     },
-    enabled: enabled && !!appId,
+    enabled: enabled && !!appId && !!subscriptionId,
     staleTime: 30_000,
     retry: 1
   })
 
   // listen for usage-refresh events (fired when messages complete)
   useEffect(() => {
-    if (!appId) return
+    if (!appId || !subscriptionId) return
 
     const handleRefresh = () => {
-      queryClient.invalidateQueries({ queryKey: ['daily-usage', appId] })
+      queryClient.invalidateQueries({ queryKey: ['token-budget', subscriptionId] })
     }
 
     window.addEventListener('usage-refresh', handleRefresh)
     return () => window.removeEventListener('usage-refresh', handleRefresh)
-  }, [appId, queryClient])
+  }, [appId, subscriptionId, queryClient])
 
   // track previous percentage to detect 90% threshold crossing
   const prevPercentageRef = useRef<number | null>(null)
 
-  // show toast when crossing 90% threshold (once per day)
+  // show toast when crossing 90% threshold (once per day, per-customer)
   useEffect(() => {
-    if (!appId || !query.data) return
+    if (!query.data) return
 
     const { percentage } = query.data
     const prevPercentage = prevPercentageRef.current
@@ -109,14 +117,14 @@ export function useDailyUsage(options: UseDailyUsageOptions) {
 
     // check if crossed 90% threshold
     if (prevPercentage < TOAST_THRESHOLD && percentage >= TOAST_THRESHOLD) {
-      if (!hasToastBeenShown(appId)) {
-        markToastShown(appId)
+      if (!hasToastBeenShown()) {
+        markToastShown()
         window.dispatchEvent(new CustomEvent('usage-warning', {
           detail: { percentage, resetTime: query.data.resetTime }
         }))
       }
     }
-  }, [appId, query.data])
+  }, [query.data])
 
   const warningLevel = useMemo<WarningLevel>(() => {
     if (!query.data) return WarningLevel.NONE
@@ -142,6 +150,6 @@ export function useDailyUsage(options: UseDailyUsageOptions) {
     warningLevel,
     formattedResetTime,
     isWarningBannerActive,
-    refresh: () => queryClient.invalidateQueries({ queryKey: ['daily-usage', appId] })
+    refresh: () => queryClient.invalidateQueries({ queryKey: ['token-budget', subscriptionId] })
   }
 }

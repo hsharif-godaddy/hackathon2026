@@ -112,7 +112,10 @@ export interface TokenUsage {
 
 export interface DailyUsageInfo {
   percentage: number
-  resetTime: string
+  resetTime: string | null
+  spend?: number
+  maxBudget?: number
+  budgetDuration?: string
 }
 
 export interface FileNode {

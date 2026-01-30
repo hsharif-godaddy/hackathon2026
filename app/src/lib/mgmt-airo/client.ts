@@ -27,6 +27,7 @@ import {
   type AiroSignupResponse,
   type AiroSubscription,
   type AiroSystem,
+  type AiroTokenBudgetResponse,
   type AiroUpdateAppPayload,
   type AiroUpdateAttributePayload,
   type AiroUpdateProjectDomainPayload,
@@ -843,6 +844,23 @@ export class AiroMgmtClient {
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/secrets`,
       payload,
       { logEvent: 'mgmt-airo.update-secrets' }
+    );
+  }
+
+  /**
+   * Get token budget for a subscription
+   *
+   * Returns the current spend and budget limits for a subscription.
+   *
+   * @param subscriptionId - The subscription ID
+   * @returns Promise resolving to token budget response
+   */
+  async getTokenBudget(subscriptionId: string): Promise<AiroTokenBudgetResponse> {
+    return this.request<AiroTokenBudgetResponse>(
+      'GET',
+      `/api/airo/v1/subscriptions/${subscriptionId}/token-budget`,
+      undefined,
+      { logEvent: 'mgmt-airo.get-token-budget', noCache: true }
     );
   }
 

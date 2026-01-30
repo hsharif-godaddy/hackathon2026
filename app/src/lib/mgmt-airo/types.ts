@@ -639,3 +639,17 @@ export interface AiroUpdateSecretsResponse {
   artifactId?: string;
   statusJobId?: string;
 }
+
+/**
+ * Token budget response from mgmt-airo
+ * GET /airo/v1/subscriptions/token-budget
+ */
+export interface AiroTokenBudgetResponse {
+  userId: string;
+  spend: number;
+  budget: {
+    budgetId: string;
+    budgetDuration: string;
+    maxBudget: number;
+  };
+}

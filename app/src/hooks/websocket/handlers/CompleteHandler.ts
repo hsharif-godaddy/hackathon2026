@@ -155,8 +155,13 @@ export class CompleteHandler implements MessageHandler {
     // Handle commit selection and preview refresh
     await context.helpers.handleCommitComplete(data.data?.commitHash as string | undefined)
 
-    // Trigger usage refresh after message completes
-    window.dispatchEvent(new CustomEvent('usage-refresh'))
+    // Trigger usage refresh after message completes with delays
+    // mgmt-airo spend data may take time to propagate after chat completion
+    for (const delay of [5_000, 30_000]) {
+      setTimeout(function dispatchRefresh() {
+        window.dispatchEvent(new CustomEvent('usage-refresh'))
+      }, delay)
+    }
 
     // Note: We intentionally do NOT clear the stored socket ID here anymore.
     // Preserving it allows for recovery if the user reloads the page shortly after completion.
