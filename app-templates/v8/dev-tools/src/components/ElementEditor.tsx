@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { toPng } from 'html-to-image'
 import { safePostMessage } from '../utils/postMessage'
 import {
@@ -44,6 +44,76 @@ interface ElementEditorProps {
   stopInlineEditing: () => void
   cancelInlineEditing: () => void
   _onStyleApply?: (styles: Record<string, string>) => void
+}
+
+/**
+ * Toolbar button variants (main toolbar only, not used in dropdowns):
+ * - icon: Single icon only (Bold, Italic, Close). No label.
+ * - trigger: Dropdown opener with chevron (font size, color, spacing).
+ */
+type ToolbarButtonVariant = 'icon' | 'trigger'
+
+interface ToolbarButtonProps {
+  selected?: boolean
+  disabled?: boolean
+  variant: ToolbarButtonVariant
+  children: React.ReactNode
+  onClick?: () => void
+  style?: React.CSSProperties
+}
+
+function ToolbarButton({
+  selected = false,
+  disabled = false,
+  variant,
+  children,
+  onClick,
+  style: styleOverride = {}
+}: ToolbarButtonProps) {
+  const baseStyle: React.CSSProperties = {
+    border: 'none',
+    borderRadius: '6px',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.4 : 1,
+    backgroundColor: selected ? '#3b82f6' : 'transparent',
+    color: selected ? '#fff' : '#374151'
+  }
+
+  const variantStyle: React.CSSProperties =
+    variant === 'icon'
+      ? { padding: '6px' }
+      : {
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          padding: '6px 8px',
+          fontSize: '14px'
+        }
+
+  const style: React.CSSProperties = { ...baseStyle, ...variantStyle, ...styleOverride }
+
+  const onMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (disabled) return
+    e.currentTarget.style.backgroundColor = selected ? '#3b82f6' : '#f3f4f6'
+  }
+
+  const onMouseLeave = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.currentTarget.style.backgroundColor = selected ? '#3b82f6' : 'transparent'
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={style}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
+      {children}
+      {variant === 'trigger' && <ChevronDown style={{ width: '12px', height: '12px' }} />}
+    </button>
+  )
 }
 
 export default function ElementEditor({
@@ -763,6 +833,17 @@ export default function ElementEditor({
     return null
   }
 
+  // Button shared styles
+  const disabledOpacity = 0.4
+
+  // Compute element once for reuse in render
+  const element = selectedElement ? findElement(selectedElement) : null
+  const imageInfo = element ? isImageElement(element) : { isImage: false, type: null, imageUrl: null }
+  const shouldDisableFontControls = imageInfo.isImage && imageInfo.type === 'img'
+  const fontControlDisabledStyle = shouldDisableFontControls
+    ? { opacity: disabledOpacity, cursor: 'not-allowed' as const }
+    : {}
+
   return (
     <div
       data-dev-tools="element-editor"
@@ -793,31 +874,18 @@ export default function ElementEditor({
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         {/* Font Size */}
         <div style={{ position: 'relative' }}>
-          <button
+          <ToolbarButton
+            variant="trigger"
+            disabled={shouldDisableFontControls}
             onClick={() => {
               setShowFontSizeDropdown(!showFontSizeDropdown)
               setShowColorDropdown(false)
               setShowSpacingDropdown(false)
             }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '6px 8px',
-              fontSize: '14px',
-              color: '#374151',
-              backgroundColor: 'transparent',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
             <FileText style={{ width: '16px', height: '16px' }} />
             <span>{getCurrentFontSize()}</span>
-            <ChevronDown style={{ width: '12px', height: '12px' }} />
-          </button>
+          </ToolbarButton>
 
           {showFontSizeDropdown && (
             <div
@@ -858,7 +926,8 @@ export default function ElementEditor({
                         borderColor: currentStyles.fontSize === preset.value ? '#3b82f6' : '#d1d5db',
                         backgroundColor: currentStyles.fontSize === preset.value ? '#eff6ff' : '#ffffff',
                         color: currentStyles.fontSize === preset.value ? '#2563eb' : '#374151',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        ...fontControlDisabledStyle
                       }}
                       onMouseEnter={(e) => {
                         if (currentStyles.fontSize !== preset.value) {
@@ -868,6 +937,7 @@ export default function ElementEditor({
                       onMouseLeave={(e) => {
                         e.currentTarget.style.backgroundColor = currentStyles.fontSize === preset.value ? '#eff6ff' : '#ffffff'
                       }}
+                      disabled={shouldDisableFontControls}
                     >
                       {preset.label}
                     </button>
@@ -908,79 +978,41 @@ export default function ElementEditor({
         </div>
 
         {/* Font Weight */}
-        <button
+        <ToolbarButton
+          variant="icon"
+          selected={currentStyles.fontWeight === 'font-bold'}
+          disabled={shouldDisableFontControls}
           onClick={() => {
             const newWeight = currentStyles.fontWeight === 'font-bold' ? 'font-normal' : 'font-bold'
             updateStyle('fontWeight', newWeight)
           }}
-          style={{
-            padding: '6px',
-            borderRadius: '6px',
-            border: 'none',
-            backgroundColor: currentStyles.fontWeight === 'font-bold' ? '#3b82f6' : 'transparent',
-            color: currentStyles.fontWeight === 'font-bold' ? 'white' : '#374151',
-            cursor: 'pointer'
-          }}
-          onMouseEnter={(e) => {
-            if (currentStyles.fontWeight !== 'font-bold') {
-              e.currentTarget.style.backgroundColor = '#f3f4f6'
-            }
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = currentStyles.fontWeight === 'font-bold' ? '#3b82f6' : 'transparent'
-          }}
         >
           <Bold style={{ width: '16px', height: '16px' }} />
-        </button>
+        </ToolbarButton>
 
         {/* Font Style (Italic) */}
-        <button
+        <ToolbarButton
+          variant="icon"
+          selected={currentStyles.fontStyle === 'italic'}
+          disabled={shouldDisableFontControls}
           onClick={() => {
             const newStyle = currentStyles.fontStyle === 'italic' ? 'font-not-italic' : 'italic'
             updateStyle('fontStyle', newStyle)
           }}
-          style={{
-            padding: '6px',
-            borderRadius: '6px',
-            border: 'none',
-            backgroundColor: currentStyles.fontStyle === 'italic' ? '#3b82f6' : 'transparent',
-            color: currentStyles.fontStyle === 'italic' ? 'white' : '#374151',
-            cursor: 'pointer'
-          }}
-          onMouseEnter={(e) => {
-            if (currentStyles.fontStyle !== 'italic') {
-              e.currentTarget.style.backgroundColor = '#f3f4f6'
-            }
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = currentStyles.fontStyle === 'italic' ? '#3b82f6' : 'transparent'
-          }}
         >
           <Italic style={{ width: '16px', height: '16px' }} />
-        </button>
+        </ToolbarButton>
 
         {/* Color */}
         <div style={{ position: 'relative' }}>
-          <button
+          <ToolbarButton
+            variant="trigger"
+            disabled={shouldDisableFontControls}
             onClick={() => {
               setShowColorDropdown(!showColorDropdown)
               setShowFontSizeDropdown(false)
               setShowSpacingDropdown(false)
             }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '6px 8px',
-              fontSize: '14px',
-              color: '#374151',
-              backgroundColor: 'transparent',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
             <div style={{
               width: '16px',
@@ -989,8 +1021,7 @@ export default function ElementEditor({
               border: '1px solid #d1d5db',
               backgroundColor: getCurrentColor()
             }}></div>
-            <ChevronDown style={{ width: '12px', height: '12px' }} />
-          </button>
+          </ToolbarButton>
 
           {showColorDropdown && (
             <div
@@ -1035,7 +1066,7 @@ export default function ElementEditor({
                     onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
                     onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
                     title={colorOption.label}
-                  ></button>
+                  />
                 ))}
               </div>
             </div>
@@ -1044,26 +1075,13 @@ export default function ElementEditor({
 
         {/* Background/Spacing */}
         <div style={{ position: 'relative' }}>
-          <button
+          <ToolbarButton
+            variant="trigger"
             onClick={() => {
               setShowSpacingDropdown(!showSpacingDropdown)
               setShowFontSizeDropdown(false)
               setShowColorDropdown(false)
             }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '6px 8px',
-              fontSize: '14px',
-              color: '#374151',
-              backgroundColor: 'transparent',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
             <div style={{
               width: '16px',
@@ -1072,8 +1090,7 @@ export default function ElementEditor({
               border: '1px solid #d1d5db',
               backgroundColor: getCurrentBgColor()
             }}></div>
-            <ChevronDown style={{ width: '12px', height: '12px' }} />
-          </button>
+          </ToolbarButton>
 
           {showSpacingDropdown && (
             <div
@@ -1257,7 +1274,7 @@ export default function ElementEditor({
             border: `1px solid ${isCapturingScreenshot ? '#d1d5db' : '#bfdbfe'}`,
             borderRadius: '6px',
             cursor: isCapturingScreenshot ? 'not-allowed' : 'pointer',
-            opacity: isCapturingScreenshot ? 0.6 : 1
+            opacity: isCapturingScreenshot ? disabledOpacity : 1
           }}
           onMouseEnter={(e) => {
             if (!isCapturingScreenshot) {
@@ -1277,9 +1294,7 @@ export default function ElementEditor({
 
         {/* Replace Image Button - Show only for image elements or elements with background images */}
         {selectedElement && (() => {
-          const element = findElement(selectedElement)
           if (!element) return null
-          const imageInfo = isImageElement(element)
           return imageInfo.isImage && (
             <button
               onClick={async () => {
@@ -1329,7 +1344,7 @@ export default function ElementEditor({
                 border: `1px solid ${isCapturingScreenshot ? '#d1d5db' : '#ddd6fe'}`,
                 borderRadius: '6px',
                 cursor: isCapturingScreenshot ? 'not-allowed' : 'pointer',
-                opacity: isCapturingScreenshot ? 0.6 : 1
+                opacity: isCapturingScreenshot ? disabledOpacity : 1
               }}
               onMouseEnter={(e) => {
                 if (!isCapturingScreenshot) {
@@ -1354,21 +1369,9 @@ export default function ElementEditor({
         <div style={{ width: '1px', height: '24px', backgroundColor: '#d1d5db' }}></div>
 
         {/* Close Button */}
-        <button
-          onClick={onClose}
-          style={{
-            padding: '6px',
-            borderRadius: '6px',
-            border: 'none',
-            backgroundColor: 'transparent',
-            color: '#6b7280',
-            cursor: 'pointer'
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-        >
+        <ToolbarButton variant="icon" onClick={onClose}>
           <X style={{ width: '16px', height: '16px' }} />
-        </button>
+        </ToolbarButton>
         </div>
       </div>
     </div>
