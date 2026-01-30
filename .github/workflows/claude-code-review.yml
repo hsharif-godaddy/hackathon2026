@@ -55,6 +55,11 @@ jobs:
             - Add new inline review comments ONLY for new issues that require changes
             - Do NOT add inline comments for positive feedback
         6. DO NOT create a new review summary - only post a progress update comment
+        7. After completing your update, manage the ready-for-human-review label:
+           - If ALL previously identified issues are resolved AND no new issues found:
+             → Add the "ready-for-human-review" label using mcp__github__add_labels_to_issue
+           - If ANY issues remain unresolved OR new issues were found:
+             → Remove the "ready-for-human-review" label if present using mcp__github__remove_label_from_issue
 
         Use mcp__github__create_or_update_issue_comment to post the update.' || '
         ## NEW REVIEW EVENT
@@ -65,4 +70,9 @@ jobs:
         3. Add inline comments ONLY for specific code that needs changes
         4. DO NOT add inline comments for positive feedback - include positive feedback in the summary section only
         5. Submit the review with event type COMMENT (not REQUEST_CHANGES) to publish as non-blocking feedback
+        6. After completing your review, manage the ready-for-human-review label:
+           - If you found NO issues requiring changes:
+             → Add the "ready-for-human-review" label using mcp__github__add_labels_to_issue
+           - If you found issues requiring changes:
+             → Remove the "ready-for-human-review" label if present using mcp__github__remove_label_from_issue
         ' }}
