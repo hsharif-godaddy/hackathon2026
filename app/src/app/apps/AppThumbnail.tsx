@@ -1,5 +1,8 @@
+import clsx from 'clsx'
 import { useEffect,useState } from 'react'
-import { CodeBracketIcon } from '@heroicons/react/24/outline'
+import Box from '@ux/box'
+import CodeIcon from '@ux/icon/code'
+import Skeleton from '@ux/skeleton'
 
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { agentFetch } from '@/lib/agent-fetch'
@@ -10,7 +13,21 @@ interface AppThumbnailProps {
   size?: 'xs' | 'sm' | 'md' | 'lg'
 }
 
-export default function AppThumbnail({ siteId, siteName, size = 'md' }: AppThumbnailProps) {
+const SIZE_CLASS_MAP = {
+  xs: 'size-6',
+  sm: 'size-12',
+  md: 'size-10',
+  lg: 'size-16'
+} as const;
+
+const ICON_SIZE_MAP = {
+  xs: 'size-3',
+  sm: 'size-4',
+  md: 'size-4',
+  lg: 'size-5'
+} as const;
+
+export default function AppThumbnail({ siteId, siteName, size }: AppThumbnailProps) {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -60,50 +77,50 @@ export default function AppThumbnail({ siteId, siteName, size = 'md' }: AppThumb
     }
   }, [siteId])
 
-  const sizeClasses =
-    size === 'xs' ? 'w-6 h-6' :
-    size === 'sm' ? 'w-12 h-12' :
-    size === 'lg' ? 'w-16 h-16' :
-    'w-10 h-10'
-  const iconSize =
-    size === 'xs' ? 'w-3 h-3' :
-    size === 'lg' ? 'w-5 h-5' :
-    'w-4 h-4'
+  const containerSize = size ? clsx(SIZE_CLASS_MAP[size], 'shrink-0') : 'w-full h-full'
+  const iconSize = size ? ICON_SIZE_MAP[size] : ICON_SIZE_MAP.md
+  const rounding = size ? 'rounded-md' : 'rounded-lg'
+  const containerClasses = clsx(containerSize, rounding)
+  const borderClasses = 'border-1 border-intents-ux-borderColor'
 
   if (loading) {
     return (
-      <div
+      <Box
         data-testid="app-thumbnail-loading"
-        className={`${sizeClasses} shrink-0 rounded-md bg-intents-ux-boxHighContrast-backgroundColor transition-all duration-300 flex items-center justify-center`}
+        blockAlignChildren="center"
+        inlineAlignChildren="center"
+        className={clsx(containerClasses)}
       >
-        <div className="animate-pulse">
-          <CodeBracketIcon className={`${iconSize}`} />
-        </div>
-      </div>
+        <Skeleton height="100%" width="100%" />
+      </Box>
     )
   }
 
   if (error || !thumbnailUrl) {
     return (
-      <div
+      <Box
         data-testid="app-thumbnail-fallback"
-        className={`${sizeClasses} shrink-0 rounded-md bg-intents-ux-boxHighContrast-backgroundColor transition-all duration-300 flex items-center justify-center`}
+        blockAlignChildren="center"
+        inlineAlignChildren="center"
+        className={clsx(containerClasses, borderClasses, 'bg-intents-ux-boxLowContrast-backgroundColor')}
       >
-        <CodeBracketIcon className={`${iconSize}`} />
-      </div>
+        <CodeIcon className={iconSize} />
+      </Box>
     )
   }
 
   return (
-    <div
+    <Box
       data-testid="app-thumbnail"
-      className={`${sizeClasses} shrink-0 rounded-md overflow-hidden bg-intents-ux-boxHighContrast-backgroundColor transition-all duration-300`}
+      blockAlignChildren="center"
+      inlineAlignChildren="center"
+      className={clsx(containerClasses,borderClasses, 'overflow-hidden')}
     >
       <img /* eslint-disable-line @next/next/no-img-element */
         src={thumbnailUrl}
         alt={`Screenshot of ${siteName}`}
-        className="w-full h-full object-cover"
+        className="w-full h-full object-cover object-top"
       />
-    </div>
+    </Box>
   )
 }

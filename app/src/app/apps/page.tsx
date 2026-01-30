@@ -96,9 +96,11 @@ function SitesPageContent() {
         <div className="mb-4">
           <Box orientation="horizontal" gap="md" data-partial="componentAiro">
             {t('builder_apps_title')}
-            <Tag emphasis="highlight">
-              {t('builder_apps_count', { count: totalSites })}
-            </Tag>
+            <div>
+              <Tag emphasis="highlight">
+                {t('builder_apps_count', { count: totalSites })}
+              </Tag>
+            </div>
           </Box>
         </div>
 
@@ -114,7 +116,7 @@ function SitesPageContent() {
           </div>
         )}
 
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-2 md:gap-3 md:grid-cols-2 xl:grid-cols-3">
           <AppCardEmptyState />
           {totalSites > 0 && sites.map((site) => (
             <AppCard

@@ -67,6 +67,13 @@ global.IntersectionObserver = vi.fn().mockImplementation(() => ({
   takeRecords: () => [],
 }));
 
+// Mock ResizeObserver
+global.ResizeObserver = vi.fn().mockImplementation(() => ({
+  observe: vi.fn(),
+  unobserve: vi.fn(),
+  disconnect: vi.fn(),
+}));
+
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
