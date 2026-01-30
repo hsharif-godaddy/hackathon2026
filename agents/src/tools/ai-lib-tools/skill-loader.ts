@@ -160,6 +160,18 @@ export const skillAITool: Tool = createTool(
         response.dependenciesFailed = result.dependenciesFailed;
       }
 
+      // Include skill dependencies (from skill-deps) if available
+      if (result.skillDependenciesInstalled && result.skillDependenciesInstalled.length > 0) {
+        response.skillDependenciesInstalled = result.skillDependenciesInstalled;
+      }
+
+      // Include dependent skill instructions if available
+      if (result.dependentInstructions && Object.keys(result.dependentInstructions).length > 0) {
+        response.dependentInstructions = result.dependentInstructions;
+        const depSkills = Object.keys(result.dependentInstructions).join(', ');
+        response.message = `${response.message}\n\nDependent skill instructions loaded: ${depSkills}`;
+      }
+
       return response;
     }
 

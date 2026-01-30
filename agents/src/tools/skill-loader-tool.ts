@@ -16,6 +16,18 @@ export interface SkillLoaderOptions {
 }
 
 /**
+ * Configuration for a skill dependency
+ */
+export interface SkillDependencyConfig {
+  /** Whether to install templates from the dependency skill */
+  templates?: boolean;
+  /** Whether to include instructions from the dependency skill */
+  instructions?: boolean;
+  /** Whether to overwrite existing files in the app */
+  overwrite?: boolean;
+}
+
+/**
  * Options for installing skill templates
  */
 export interface InstallTemplatesOptions {
@@ -25,6 +37,10 @@ export interface InstallTemplatesOptions {
   appPath: string;
   /** App ID for terminal command execution */
   appId: string;
+  /** @internal Set of skills being installed to prevent circular dependencies */
+  installingSkills?: Set<string>;
+  /** @internal Configuration for this installation (from skill-deps) */
+  config?: SkillDependencyConfig;
 }
 
 /**
@@ -89,6 +105,10 @@ export interface InstallTemplatesResult {
   dependenciesFailed?: number;
   /** True if some dependencies failed but templates succeeded */
   partialSuccess?: boolean;
+  /** List of skill dependencies that were installed (from skill-deps) */
+  skillDependenciesInstalled?: string[];
+  /** Instructions from dependent skills (key: skill name, value: instructions) */
+  dependentInstructions?: Record<string, string>;
   /** Error message if operation failed */
   error?: string;
 }
@@ -258,7 +278,20 @@ export class SkillLoaderTool {
    * Copies template files without going through LLM context
    */
   async installTemplates(options: InstallTemplatesOptions): Promise<InstallTemplatesResult> {
-    const { skill, appPath, appId } = options;
+    const { skill, appPath, appId, installingSkills = new Set<string>(), config = {} } = options;
+
+    // Prevent circular dependencies
+    if (installingSkills.has(skill)) {
+      this.logger.warn('skill.install.circular_dependency', { skill });
+      return {
+        success: true,
+        skill,
+        filesInstalled: 0,
+        installedFiles: []
+      };
+    }
+
+    installingSkills.add(skill);
 
     this.logger.info('skill.install.start', {
       skill,
@@ -266,6 +299,63 @@ export class SkillLoaderTool {
     });
 
     try {
+      // Handle skill-deps from frontmatter (install dependencies first)
+      const skillFile = this.getSkillPath(skill, 'skill.md');
+      const skillContent = await fs.readFile(skillFile, 'utf-8');
+      const { data } = matter(skillContent);
+
+      const skillDeps = data['skill-deps'] as Record<string, SkillDependencyConfig> | undefined;
+      const installedSkillDeps: string[] = [];
+      const dependentInstructions: Record<string, string> = {};
+
+      if (skillDeps) {
+        for (const [depSkill, depConfig] of Object.entries(skillDeps)) {
+          if (depConfig.templates) {
+            this.logger.info('skill.install.dependency', {
+              skill,
+              dependency: depSkill
+            });
+
+            const depResult = await this.installTemplates({
+              skill: depSkill,
+              appPath,
+              appId,
+              installingSkills,
+              config: depConfig
+            });
+
+            installedSkillDeps.push(depSkill);
+
+            // Collect dependent instructions if requested
+            if (depConfig.instructions && depResult.success) {
+              try {
+                const depSkillFile = this.getSkillPath(depSkill, 'skill.md');
+                const depInstructions = await fs.readFile(depSkillFile, 'utf-8');
+
+                this.logger.info('skill.install.dependency_instructions_loaded', {
+                  skill,
+                  dependency: depSkill,
+                  size: depInstructions.length
+                });
+
+                dependentInstructions[depSkill] = depInstructions;
+
+                // Also collect instructions from recursive dependencies
+                if (depResult.dependentInstructions) {
+                  Object.assign(dependentInstructions, depResult.dependentInstructions);
+                }
+              } catch (error) {
+                this.logger.warn('skill.install.dependency_instructions_failed', {
+                  skill,
+                  dependency: depSkill,
+                  error: error instanceof Error ? error.message : String(error)
+                });
+              }
+            }
+          }
+        }
+      }
+
       // Use helper to safely construct paths (validates internally)
       const templatesDir = this.getSkillPath(skill, 'templates');
 
@@ -300,6 +390,20 @@ export class SkillLoaderTool {
         const destPath = this.getDestinationPath(skill, template.path, appPath);
 
         try {
+          // Handle overwrite: false (skip if file exists)
+          if (config.overwrite === false) {
+            try {
+              await fs.access(destPath);
+              this.logger.info('skill.install.skip_existing', {
+                skill,
+                path: destPath
+              });
+              continue;
+            } catch {
+              // File doesn't exist, proceed with install
+            }
+          }
+
           // Ensure destination directory exists
           const destDir = path.dirname(destPath);
           await fs.mkdir(destDir, { recursive: true });
@@ -332,7 +436,8 @@ export class SkillLoaderTool {
         skill,
         filesInstalled: installedFiles.length,
         dependenciesInstalled: dependencyResults.length,
-        dependenciesFailed: failedDeps
+        dependenciesFailed: failedDeps,
+        skillDependenciesInstalled: installedSkillDeps.length
       });
 
       const result: InstallTemplatesResult = {
@@ -350,6 +455,14 @@ export class SkillLoaderTool {
         result.dependenciesFailed = failedDeps;
         // Indicate partial success: templates installed but some deps failed
         result.partialSuccess = true;
+      }
+
+      if (installedSkillDeps.length > 0) {
+        result.skillDependenciesInstalled = installedSkillDeps;
+      }
+
+      if (Object.keys(dependentInstructions).length > 0) {
+        result.dependentInstructions = dependentInstructions;
       }
 
       return result;

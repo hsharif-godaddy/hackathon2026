@@ -54,6 +54,7 @@ interface SkillInstallResult {
   installedFiles: string[]
   dependenciesInstalled?: DependencyInstallResult[]
   dependenciesFailed?: number
+  skillDependenciesInstalled?: string[]
 }
 
 /**
@@ -271,7 +272,8 @@ function renderSkillInstall(
   skillName: string,
   filesInstalled: number,
   installedFiles: string[],
-  dependenciesInstalled?: DependencyInstallResult[]
+  dependenciesInstalled?: DependencyInstallResult[],
+  skillDependenciesInstalled?: string[]
 ): React.JSX.Element {
   const succeededPackages = dependenciesInstalled?.filter(d => d.success) || []
 
@@ -281,6 +283,20 @@ function renderSkillInstall(
         <Package className="w-4 h-4 text-foreground/60" />
         <h2 className="text-lg font-semibold text-foreground">{formatSkillName(skillName)}</h2>
       </div>
+
+      {/* Skill Dependencies Section (from skill-deps) */}
+      {skillDependenciesInstalled && skillDependenciesInstalled.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-xs font-medium text-foreground/70">Dependent skills installed:</div>
+          <div className="flex flex-wrap gap-1">
+            {skillDependenciesInstalled.map((depSkill, index) => (
+              <span key={index} className="text-xs font-mono bg-intents-ux-boxLowContrast-backgroundColor px-1.5 py-0.5 rounded text-foreground/80">
+                {depSkill}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Packages Section - only show succeeded */}
       {succeededPackages.length > 0 && (
@@ -376,7 +392,8 @@ export default function SkillToolRenderer({
         parsedResult.skill,
         'filesInstalled' in parsedResult ? parsedResult.filesInstalled : 0,
         'installedFiles' in parsedResult ? parsedResult.installedFiles : [],
-        'dependenciesInstalled' in parsedResult ? parsedResult.dependenciesInstalled : undefined
+        'dependenciesInstalled' in parsedResult ? parsedResult.dependenciesInstalled : undefined,
+        'skillDependenciesInstalled' in parsedResult ? parsedResult.skillDependenciesInstalled : undefined
       )
     }
   }
