@@ -386,7 +386,12 @@ func (hm *HealthMonitor) performTCPCheck(ctx context.Context, healthCheck *Healt
 	return true, fmt.Sprintf("Connected to %s", healthCheck.Address), nil
 }
 
-func (hm *HealthMonitor) processHealthCheckResult(success bool, message string, checkTime time.Time, duration time.Duration) {
+func (hm *HealthMonitor) processHealthCheckResult(
+	success bool,
+	message string,
+	checkTime time.Time,
+	duration time.Duration,
+) {
 	// Get current health check config atomically
 	healthCheck := hm.healthCheck.Load()
 	if healthCheck == nil {
@@ -430,12 +435,22 @@ func (hm *HealthMonitor) processHealthCheckResult(success bool, message string, 
 			Timestamp: checkTime,
 			Source:    "health_monitor",
 			Level:     logLevel,
-			Message:   fmt.Sprintf("Health check %s: %s (took %v)", strings.ToLower(string(hm.result.Status)), message, duration),
+			Message: fmt.Sprintf(
+				"Health check %s: %s (took %v)",
+				strings.ToLower(string(hm.result.Status)),
+				message,
+				duration,
+			),
 		})
 	}
 }
 
-func (hm *HealthMonitor) updateResult(status HealthStatus, message string, checkTime time.Time, duration time.Duration) {
+func (hm *HealthMonitor) updateResult(
+	status HealthStatus,
+	message string,
+	checkTime time.Time,
+	duration time.Duration,
+) {
 	hm.result.Status = status
 	hm.result.Message = message
 	hm.result.LastCheck = checkTime
@@ -463,7 +478,11 @@ func (hm *HealthMonitor) attemptRestart() {
 				Timestamp: now,
 				Source:    "health_monitor",
 				Level:     logLevelError,
-				Message:   fmt.Sprintf("Max restarts (%d) exceeded in window %v, not restarting", hm.restartPolicy.MaxRestarts, hm.restartPolicy.RestartWindow.ToDuration()),
+				Message: fmt.Sprintf(
+					"Max restarts (%d) exceeded in window %v, not restarting",
+					hm.restartPolicy.MaxRestarts,
+					hm.restartPolicy.RestartWindow.ToDuration(),
+				),
 			})
 		}
 		return
@@ -490,7 +509,11 @@ func (hm *HealthMonitor) attemptRestart() {
 			Timestamp: now,
 			Source:    "health_monitor",
 			Level:     logLevelWarning,
-			Message:   fmt.Sprintf("Attempting restart #%d after %v delay due to health check failure", hm.restartCount, delay),
+			Message: fmt.Sprintf(
+				"Attempting restart #%d after %v delay due to health check failure",
+				hm.restartCount,
+				delay,
+			),
 		})
 	}
 

@@ -128,7 +128,11 @@ func peerSecMiddleware(allowedTypes []string) func(http.Handler) http.Handler {
 			sec := peerSecFromContext(r.Context())
 			if sec == nil {
 				slog.Warn("peer_sec.missing", "path", r.URL.Path, "method", r.Method)
-				http.Error(w, `{"error":"security_context_required","message":"SELinux security context not available"}`, http.StatusForbidden)
+				http.Error(
+					w,
+					`{"error":"security_context_required","message":"SELinux security context not available"}`,
+					http.StatusForbidden,
+				)
 				return
 			}
 
@@ -140,7 +144,11 @@ func peerSecMiddleware(allowedTypes []string) func(http.Handler) http.Handler {
 					"allowed_types", allowedTypes,
 					"raw", sec.Raw,
 				)
-				http.Error(w, `{"error":"unauthorized_context","message":"SELinux type not authorized to access this API"}`, http.StatusForbidden)
+				http.Error(
+					w,
+					`{"error":"unauthorized_context","message":"SELinux type not authorized to access this API"}`,
+					http.StatusForbidden,
+				)
 				return
 			}
 

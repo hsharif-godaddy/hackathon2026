@@ -1,7 +1,7 @@
 //go:build !windows
 // +build !windows
 
-package main
+package process
 
 import (
 	"log/slog"
@@ -11,11 +11,6 @@ import (
 	"syscall"
 	"time"
 )
-
-type childProcessInfo struct {
-	process        *os.Process
-	managedProcess *ManagedProcess
-}
 
 type PID1Manager struct {
 	mu               sync.RWMutex
@@ -56,7 +51,7 @@ func (pm *PID1Manager) Start(shutdownCallback func()) {
 	}
 }
 
-func (pm *PID1Manager) RegisterChildProcess(process *os.Process, managedProcess *ManagedProcess) bool {
+func (pm *PID1Manager) RegisterChildProcess(process *os.Process, managedProcess ManagedProcess) bool {
 	if process == nil {
 		return false
 	}
@@ -86,14 +81,14 @@ func (pm *PID1Manager) UnregisterChildProcess(pid int) {
 	slog.Debug("unregistered child process", "pid", pid)
 }
 
-func (pm *PID1Manager) shouldManageChildLifecycle(managedProcess *ManagedProcess) bool {
+func (pm *PID1Manager) shouldManageChildLifecycle(managedProcess ManagedProcess) bool {
 	return pm.isPID1 && managedProcess != nil
 }
 
-func (pm *PID1Manager) startManagedWatcher(pid int, managedProcess *ManagedProcess) {
+func (pm *PID1Manager) startManagedWatcher(pid int, managedProcess ManagedProcess) {
 	go func() {
-		err := managedProcess.safeWait()
-		managedProcess.notifyPID1WaitResult(err)
+		err := managedProcess.SafeWait()
+		managedProcess.NotifyPID1WaitResult(err)
 		pm.UnregisterChildProcess(pid)
 	}()
 }
@@ -246,4 +241,29 @@ func (pm *PID1Manager) IsShuttingDown() bool {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 	return pm.isShuttingDown
+}
+
+// SetPID1ForTesting allows tests to override the isPID1 detection.
+// This should only be used in tests to simulate PID 1 behavior.
+func (pm *PID1Manager) SetPID1ForTesting(isPID1 bool) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.isPID1 = isPID1
+}
+
+// SetSignalForwardingForTesting allows tests to override signal forwarding behavior.
+// This should only be used in tests.
+func (pm *PID1Manager) SetSignalForwardingForTesting(enabled bool) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.signalForwarding = enabled
+}
+
+// IsChildProcessTracked returns true if the given PID is tracked by the manager.
+// This is primarily useful for testing.
+func (pm *PID1Manager) IsChildProcessTracked(pid int) bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	_, tracked := pm.childProcesses[pid]
+	return tracked
 }

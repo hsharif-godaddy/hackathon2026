@@ -190,7 +190,10 @@ func TestLogManager_GetLogs(t *testing.T) {
 			validateFunc: func(logs []LogEntry) error {
 				// Should get the last 3 logs
 				if logs[len(logs)-1].Message != "stdout message 3" {
-					return fmt.Errorf("expected last message to be 'stdout message 3', got '%s'", logs[len(logs)-1].Message)
+					return fmt.Errorf(
+						"expected last message to be 'stdout message 3', got '%s'",
+						logs[len(logs)-1].Message,
+					)
 				}
 				return nil
 			},

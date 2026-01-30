@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 )
 
 // mockConn implements net.Conn for testing
@@ -25,7 +27,7 @@ func (m *mockConn) SetWriteDeadline(_ time.Time) error { return nil }
 
 func TestProcessManager_NewProcessManager(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
@@ -53,7 +55,7 @@ func TestProcessManager_NewProcessManager(t *testing.T) {
 
 func TestProcessManager_StartProcess(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	tests := []struct {
@@ -121,7 +123,7 @@ func TestProcessManager_StartProcess(t *testing.T) {
 
 func TestProcessManager_StopProcess(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Test stopping when no process is running
@@ -166,7 +168,7 @@ func TestProcessManager_StopProcess(t *testing.T) {
 
 func TestProcessManager_RestartProcess(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Test restart with no previous command
@@ -199,7 +201,12 @@ func TestProcessManager_RestartProcess(t *testing.T) {
 
 	// Check status immediately after restart
 	immediateStatus := pm.GetStatus()
-	t.Logf("Status immediately after restart: State=%s, PID=%d, Error=%s", immediateStatus.State, immediateStatus.PID, immediateStatus.Error)
+	t.Logf(
+		"Status immediately after restart: State=%s, PID=%d, Error=%s",
+		immediateStatus.State,
+		immediateStatus.PID,
+		immediateStatus.Error,
+	)
 
 	// Wait and check status multiple times to see if it stabilizes
 	for i := 0; i < 5; i++ {
@@ -214,7 +221,11 @@ func TestProcessManager_RestartProcess(t *testing.T) {
 
 	finalStatus := pm.GetStatus()
 	if finalStatus.State != ProcessStateRunning {
-		t.Errorf("Expected process to be running after restart, got: %s (error: %s)", finalStatus.State, finalStatus.Error)
+		t.Errorf(
+			"Expected process to be running after restart, got: %s (error: %s)",
+			finalStatus.State,
+			finalStatus.Error,
+		)
 	}
 
 	// PID should be different (new process)
@@ -232,7 +243,7 @@ func TestProcessManager_RestartProcess(t *testing.T) {
 
 func TestProcessManager_ConfigureHealthCheck(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	healthCheck := &HealthCheck{
@@ -271,7 +282,7 @@ func TestProcessManager_ConfigureHealthCheck(t *testing.T) {
 
 func TestProcessManager_EnableStartOnRequest(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	idleTimeout := 5 * time.Second
@@ -290,7 +301,7 @@ func TestProcessManager_EnableStartOnRequest(t *testing.T) {
 
 func TestProcessManager_UpdateActivity(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	pm.EnableStartOnRequest(5*time.Second, 1*time.Second)
@@ -316,7 +327,7 @@ func TestProcessManager_UpdateActivity(t *testing.T) {
 
 func TestProcessManager_WebSocketTracking(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	pm.EnableStartOnRequest(5*time.Second, 1*time.Second)
@@ -354,7 +365,7 @@ func TestProcessManager_WebSocketTracking(t *testing.T) {
 
 func TestProcessManager_IdleStopWithWebSocket(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a long-running process
@@ -393,14 +404,13 @@ func TestProcessManager_IdleStopWithWebSocket(t *testing.T) {
 	// Clean up
 	pm.StopIdleMonitor()
 	if status.State == ProcessStateRunning {
-		//nolint:errcheck // Test cleanup, error not critical
 		pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
 	}
 }
 
 func TestProcessManager_GetStartRequest(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Test when no process has been started
@@ -424,13 +434,12 @@ func TestProcessManager_GetStartRequest(t *testing.T) {
 	assert.Equal(t, startReq.WorkingDir, req.WorkingDir, "working dir should match")
 
 	// Clean up
-	//nolint:errcheck // Test cleanup, error not critical
 	pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
 }
 
 func TestProcessManager_StopIdleMonitor(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	pm.EnableStartOnRequest(5*time.Second, 100*time.Millisecond)
@@ -452,7 +461,7 @@ func TestProcessManager_StopIdleMonitor(t *testing.T) {
 // restarts correctly after an auto-start cycle
 func TestProcessManager_IdleMonitorRestartsAfterAutoStart(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a long-running process
@@ -507,7 +516,7 @@ func TestProcessManager_IdleMonitorRestartsAfterAutoStart(t *testing.T) {
 // restarts properly after a manual restart operation
 func TestProcessManager_IdleMonitorRestartsAfterRestart(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a long-running process
@@ -549,7 +558,7 @@ func TestProcessManager_IdleMonitorRestartsAfterRestart(t *testing.T) {
 // multiple times doesn't leak goroutines
 func TestProcessManager_EnableStartOnRequestTwice(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Enable start-on-request first time
@@ -572,7 +581,7 @@ func TestProcessManager_EnableStartOnRequestTwice(t *testing.T) {
 // TestProcessManager_InFlightRequestsBlockIdle tests that in-flight requests prevent idle shutdown
 func TestProcessManager_InFlightRequestsBlockIdle(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a long-running process
@@ -605,7 +614,12 @@ func TestProcessManager_InFlightRequestsBlockIdle(t *testing.T) {
 
 	// Process should now be stopped (idle timeout elapsed since completion)
 	status = pm.GetStatus()
-	assert.Equal(t, ProcessStateStopped, status.State, "process should be stopped after request completes and idle timeout")
+	assert.Equal(
+		t,
+		ProcessStateStopped,
+		status.State,
+		"process should be stopped after request completes and idle timeout",
+	)
 
 	// Cleanup
 	pm.StopIdleMonitor()
@@ -614,7 +628,7 @@ func TestProcessManager_InFlightRequestsBlockIdle(t *testing.T) {
 // TestProcessManager_HealthCheckDoesNotPreventIdle tests that health checks don't keep app alive
 func TestProcessManager_HealthCheckDoesNotPreventIdle(t *testing.T) {
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a long-running process

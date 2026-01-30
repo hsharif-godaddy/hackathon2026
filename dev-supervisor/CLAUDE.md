@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 dev-supervisor is a **Go-based** containerized service that acts as PID 1 in development Docker containers. It provides centralized process lifecycle management, health monitoring, HTTP/SMTP proxying, JWT authentication, and log streaming through a Unix socket API.
 
 **Key Characteristics:**
+
 - Pure Go project (no Node.js/pnpm) using Go 1.25
 - Cross-platform with Linux-optimized features
 - Unix socket API for IPC (with optional TCP mode for development)
@@ -68,6 +69,7 @@ Platform-specific files:
 ## Key Commands
 
 **Setup:**
+
 ```bash
 cd dev-supervisor
 go mod download                  # Install dependencies
@@ -75,6 +77,7 @@ make deps                        # Alternative: download + tidy
 ```
 
 **Development:**
+
 ```bash
 make build                       # Build binary to dist/
 make run                         # Build and run locally
@@ -89,6 +92,7 @@ make check                       # Run all checks (fmt, vet, lint, test)
 ```
 
 **Testing individual components:**
+
 ```bash
 go test -v -run TestProcessManager    # Run specific test
 go test -v ./internal/config          # Test specific package
@@ -97,6 +101,7 @@ go test -v -tags=docker_integration   # Run Docker integration tests
 ```
 
 **Multi-platform builds:**
+
 ```bash
 make build-all                   # linux/darwin/windows amd64/arm64
 GOOS=linux GOARCH=amd64 go build -o dev-supervisor-linux .
@@ -113,6 +118,7 @@ make lint                        # Check linting
 ```
 
 **Or individually:**
+
 ```bash
 go fmt ./...                     # Standard formatting
 gofmt -s -w .                    # Format with simplify
@@ -123,18 +129,25 @@ Formatting is **enforced** - CI will fail on unformatted code.
 </go_formatting>
 
 <golangci_lint_configuration>
+**Version:** v2.8.0 (required for CI/local consistency)
+
 See `.golangci.yml` for enabled linters:
 
 - **Security:** gosec, errcheck
-- **Style:** gofmt, goimports, stylecheck, revive
+- **Style:** revive (gofmt/goimports are formatters in v2)
 - **Performance:** gocritic (performance tag)
 - **Complexity:** gocyclo (max 15), goconst
-- **Correctness:** govet, staticcheck, typecheck
+- **Correctness:** govet, staticcheck (includes former gosimple/stylecheck)
 
 **Line length:** 120 characters (lll linter)
 
+**Configuration format:** v2 (uses `linters.settings` and `formatters.settings`)
+
 **Disabled checks:**
+
 - `fieldalignment` (govet) - not worth refactoring for minimal gain
+
+**Note:** gosimple, stylecheck, and typecheck were removed in v2 (merged into staticcheck or made core functionality).
 </golangci_lint_configuration>
 
 <error_handling>
@@ -154,10 +167,11 @@ if req.Command == "" {
 ```
 
 **Never:**
+
 - Ignore errors with `_` unless justified
 - Use naked `return err` (add context with fmt.Errorf)
 - Panic except in init/main for unrecoverable errors
-</error_handling>
+  </error_handling>
 
 <naming_conventions>
 Follow Go standard conventions:
@@ -170,15 +184,17 @@ Follow Go standard conventions:
 - **Acronyms:** preserve case (`HTTPProxy`, `JSONData`, `APIResponse`, `JWTValidator`, `SMTPProxy`)
 
 **File naming:**
+
 - `feature.go` - cross-platform implementation
 - `feature_linux.go` - Linux-specific (requires `//go:build linux`)
 - `feature_fallback.go` - Non-Linux fallback (requires `//go:build !linux`)
 - `feature_test.go` - standard tests
 - `feature_integration_test.go` - integration tests
-</naming_conventions>
+  </naming_conventions>
 
 <comments_and_documentation>
 **Required:**
+
 - Exported functions/types must have doc comments
 - Build tags must be at the very top with blank line after
 - WHY not WHAT (code should be self-documenting)
@@ -196,10 +212,11 @@ type PortDiscovery struct {
 ```
 
 **Avoid:**
+
 - Obvious comments ("This function starts the process")
 - Commented-out code (delete it, use git)
 - TODO comments without issue numbers
-</comments_and_documentation>
+  </comments_and_documentation>
 
 ## Architecture Patterns
 
@@ -228,11 +245,12 @@ func NewPortDiscovery() PortDiscovery {
 ```
 
 **Benefits:**
+
 - No runtime platform checks (`if runtime.GOOS == "linux"`)
 - Compiler enforces correctness
 - Easy to test each implementation
 - Clear separation of concerns
-</platform_abstraction>
+  </platform_abstraction>
 
 <unix_socket_api>
 **API exposed over Unix domain socket (or TCP in dev mode):**
@@ -247,11 +265,13 @@ http.HandleFunc("/health-config", handleHealthConfig)
 ```
 
 **Client usage:**
+
 ```bash
 curl --unix-socket /tmp/supervisor/dev-supervisor.sock http://localhost/health
 ```
 
 **TCP mode (development only):**
+
 ```bash
 # Enable TCP mode for easier debugging
 DEV_SUPERVISOR_USE_TCP=true DEV_SUPERVISOR_TCP_PORT=8080 ./dev-supervisor
@@ -259,11 +279,12 @@ curl http://localhost:8080/health
 ```
 
 **Key patterns:**
+
 - Request/response structs for JSON serialization
 - Validation at API boundary
 - Structured error responses
 - Graceful shutdown handling
-</unix_socket_api>
+  </unix_socket_api>
 
 <configuration_management>
 **Environment variable driven with `internal/config` package:**
@@ -282,12 +303,14 @@ config := config.LoadConfig()
 ```
 
 **Environment variable conventions:**
+
 - **Primary prefix:** `DEV_SUPERVISOR_*` (most settings)
 - **v4 socket path:** `AIRO_SUPERVISOR_SOCKET_PATH` (preferred)
 - **v3 socket path:** `DEV_SUPERVISOR_SOCKET_PATH` (backward compatibility)
 - **Global vars:** `SITE_ID`, `NOMAD_TASK_NAME`, `ALLOWED_ORIGINS`
 
 **Helper functions in `internal/config/env.go`:**
+
 ```go
 GetEnvStringWithDefault(key, defaultValue string) string
 GetEnvBoolWithDefault(key string, defaultValue bool) bool
@@ -296,10 +319,11 @@ GetEnvDurationWithDefault(key string, defaultValue time.Duration) time.Duration
 ```
 
 **Validation:**
+
 - Validate on load, fail fast
 - Provide sensible defaults
 - Document in README.md and config.go comments
-</configuration_management>
+  </configuration_management>
 
 <http_proxy_architecture>
 **TLS reverse proxy with multiple modes:**
@@ -326,6 +350,7 @@ GetEnvDurationWithDefault(key string, defaultValue time.Duration) time.Duration
    - OPTIONS preflight support
 
 **Configuration:**
+
 ```bash
 DEV_SUPERVISOR_ENABLE_PROXY=true
 DEV_SUPERVISOR_PROXY_PORT=443
@@ -336,6 +361,7 @@ DEV_SUPERVISOR_PROXY_KEY_PATH=/path/to/key.pem
 DEV_SUPERVISOR_SERVE_STATIC=true
 DEV_SUPERVISOR_STATIC_ROOT=/app/dist/client
 ```
+
 </http_proxy_architecture>
 
 <smtp_proxy_architecture>
@@ -346,6 +372,7 @@ DEV_SUPERVISOR_STATIC_ROOT=/app/dist/client
 - Automatically injects tracking headers from environment variables
 
 **Injected headers:**
+
 ```
 X-SITE-UID: ${SITE_ID}
 X-PRODUCT: ${PRODUCT} (default: airo-app-builder)
@@ -354,11 +381,13 @@ X-DATACENTER: ${NOMAD_DC}
 ```
 
 **Configuration:**
+
 ```bash
 SMTP_DESTINATION=smtp.example.com:587
 SITE_ID=app-123
 PRODUCT=my-app
 ```
+
 </smtp_proxy_architecture>
 
 <start_on_request_mode>
@@ -371,6 +400,7 @@ Preview variant supports automatic start/stop of idle apps to reduce resource us
 - **Safety:** Only enabled when `NOMAD_TASK_NAME=preview`
 
 **Configuration:**
+
 ```bash
 DEV_SUPERVISOR_ENABLE_START_ON_REQUEST=true
 DEV_SUPERVISOR_IDLE_TIMEOUT=30m        # Stop after 30 minutes of inactivity
@@ -384,30 +414,37 @@ DEV_SUPERVISOR_IDLE_CHECK_INTERVAL=30s # Check idle status every 30 seconds
 
 <three_tier_testing>
 **Tier 1: Cross-Platform Unit Tests** (90% of tests)
+
 - Run on macOS, Linux, Windows
 - Test business logic, API, health monitoring
 - No build tags needed
+
 ```bash
 make test
 go test -v -race ./...
 ```
 
 **Tier 2: Linux-Specific Unit Tests**
+
 - Automatic on Linux, skipped on macOS/Windows
 - Files: `*_linux_test.go` with `//go:build linux`
 - Tests port discovery, orphan reaping, SELinux peer validation
+
 ```bash
 go test ./...  # Auto-skips on non-Linux
 ```
 
 **Tier 3: Docker Integration Tests**
+
 - Tests actual container behavior as PID 1
 - Runs from any platform with Docker
 - Tag: `//go:build docker_integration`
+
 ```bash
 make test-docker
 go test -v -tags=docker_integration
 ```
+
 </three_tier_testing>
 
 <test_patterns>
@@ -473,6 +510,7 @@ func TestLinuxOnlyFeature(t *testing.T) {
 ```
 
 **Cleanup with t.Cleanup:**
+
 ```go
 func TestWithCleanup(t *testing.T) {
     resource := setupResource()
@@ -482,6 +520,7 @@ func TestWithCleanup(t *testing.T) {
     // Test code
 }
 ```
+
 </test_patterns>
 
 ## Critical Rules
@@ -495,31 +534,36 @@ When acting as PID 1 in containers:
 4. **Exit code propagation:** Exit with supervised process's exit code
 
 **Never:**
+
 - Exit without cleaning up
 - Ignore signals
 - Leave orphaned processes
 - Skip calling SetDefaultGOMAXPROCS() (container awareness)
-</pid1_responsibilities>
+  </pid1_responsibilities>
 
 <integration_with_monorepo>
 **dev-supervisor is called by:**
+
 - `app/src/lib/dev-environment/adapters/DockerAppService.ts`
 - `app/src/lib/dev-environment/docker-compose-generator.ts`
 
 **Socket is mounted at:**
+
 - Container: `/tmp/supervisor/dev-supervisor.sock`
 - Host: `/tmp/apps/{appId}/supervisor/dev-supervisor.sock`
 
 **Logs are exposed via:**
+
 - WebSocket API: `ws://localhost/logs/stream`
 - Log manager: `internal/logs/`
 
 **When changing the API:**
+
 1. Update TypeScript client in `app/src/lib/dev-environment/`
 2. Test end-to-end with Docker Compose
 3. Update API documentation in README.md
 4. Consider backward compatibility
-</integration_with_monorepo>
+   </integration_with_monorepo>
 
 <build_and_deployment>
 **Docker multi-stage build with Alpine:**
@@ -539,33 +583,38 @@ ENTRYPOINT ["/usr/local/bin/dev-supervisor"]
 **Binary is statically linked** - no external dependencies required.
 
 **Deployment:**
+
 - Built in CI/CD pipeline
 - Pushed to Docker registry
 - Used in generated `docker-compose.yml` files
 - Can be copied from Docker image using `COPY --from`
-</build_and_deployment>
+  </build_and_deployment>
 
 <security_considerations>
 **SELinux peer validation** (`peer_sec_linux.go`):
+
 - Validates peer SELinux context on Unix socket connections
 - Only allows whitelisted types (default: `airo_agent_container.process`)
 - Configurable via `DEV_SUPERVISOR_ALLOWED_SELINUX_TYPES`
 
 **JWT authentication:**
+
 - Site-scoped validation prevents cross-site token usage
 - Public key caching with TTL (5 minutes)
 - Generic error messages prevent information disclosure
 - TLS verification for JWKS endpoint (skip only in local dev)
 
 **SMTP proxy:**
+
 - Localhost-only listening (127.0.0.1:2525)
 - No authentication passthrough (adds tracking only)
 
 **HTTP proxy:**
+
 - TLS certificate/key validation
 - CORS origin whitelisting
 - Path-based auth exclusions for health endpoints
-</security_considerations>
+  </security_considerations>
 
 ## Working with Claude
 
@@ -575,11 +624,12 @@ Implement changes directly. When asked to improve or fix something, make the cha
 
 <read_before_editing>
 **ALWAYS read the full function/file before editing:**
+
 - Understand context and dependencies
 - Check for existing patterns
 - Ensure consistency with surrounding code
 - Never guess at implementation details
-</read_before_editing>
+  </read_before_editing>
 
 <go_idioms>
 Follow standard Go idioms:
@@ -594,9 +644,10 @@ Follow standard Go idioms:
 - Use context for cancellation and timeouts
 
 **Resources:**
+
 - [Effective Go](https://go.dev/doc/effective_go)
 - [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments)
-</go_idioms>
+  </go_idioms>
 
 <structured_logging>
 Use `log/slog` with structured fields:
@@ -613,11 +664,12 @@ slog.Error("process.start.failed",
 ```
 
 **Logging behavior:**
+
 - Terminal: human-readable text format with key=value pairs
 - Non-terminal (Docker/pipe): JSON format for aggregation
 - Log level: Info by default, Debug for troubleshooting
 - No emojis or user-facing formatting
-</structured_logging>
+  </structured_logging>
 
 ## Additional Documentation
 
@@ -640,12 +692,14 @@ Before submitting changes:
 - [ ] Integration tested with monorepo (`docker-compose up` in root)
 
 **For API changes:**
+
 - [ ] TypeScript client updated in `../app/src/lib/dev-environment/`
 - [ ] End-to-end tested with real app lifecycle
 - [ ] README.md API documentation updated
 - [ ] Backward compatibility considered
 
 **For new platform-specific code:**
+
 - [ ] Interface defined for abstraction
 - [ ] Linux implementation in `*_linux.go` with `//go:build linux`
 - [ ] Fallback implementation in `*_fallback.go` with `//go:build !linux`
@@ -653,6 +707,7 @@ Before submitting changes:
 - [ ] Linux-specific tests in `*_linux_test.go`
 
 **For configuration changes:**
+
 - [ ] Environment variables documented in README.md
 - [ ] Default values are sensible
 - [ ] Backward compatibility maintained (where possible)

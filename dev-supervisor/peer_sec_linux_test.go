@@ -122,7 +122,6 @@ func TestPeerSecFromContext(t *testing.T) {
 func TestPeerSecMiddleware(t *testing.T) {
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		//nolint:errcheck // required due to check-blank:true in .golangci.yml
 		_, _ = w.Write([]byte("OK"))
 	})
 

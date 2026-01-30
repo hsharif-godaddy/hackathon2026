@@ -80,7 +80,6 @@ func TestLinuxPortDiscovery_GetProcessPorts(t *testing.T) {
 		}
 		defer func() {
 			if cmd.Process != nil {
-				//nolint:errcheck // Test cleanup, error doesn't matter
 				_ = cmd.Process.Kill()
 			}
 		}()

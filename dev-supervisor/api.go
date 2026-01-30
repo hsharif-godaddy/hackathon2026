@@ -279,7 +279,12 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogsStream(w http.ResponseWriter, _ *http.Request) {
-	s.sendError(w, http.StatusNotImplemented, "not_implemented", "Real-time log streaming removed - use GET /logs for log retrieval")
+	s.sendError(
+		w,
+		http.StatusNotImplemented,
+		"not_implemented",
+		"Real-time log streaming removed - use GET /logs for log retrieval",
+	)
 }
 
 func (s *Server) handleHealthConfigGet(w http.ResponseWriter, _ *http.Request) {
@@ -547,7 +552,12 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 	restartStartTime := time.Now()
 	if err := s.procMgr.Restart(restartReq); err != nil {
 		slog.Error("publish.restart.failed", "error", err, "commit_hash", req.CommitHash)
-		s.sendError(w, http.StatusInternalServerError, "restart_failed", fmt.Sprintf("Symlink updated but process restart failed: %s", err.Error()))
+		s.sendError(
+			w,
+			http.StatusInternalServerError,
+			"restart_failed",
+			fmt.Sprintf("Symlink updated but process restart failed: %s", err.Error()),
+		)
 		return
 	}
 
@@ -662,10 +672,7 @@ func (s *Server) handlePublishStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	includeLogs := true
-	if includeLogsParam == "false" {
-		includeLogs = false
-	}
+	includeLogs := includeLogsParam != "false"
 
 	// Get dist directory from environment
 	distDir := config.GetEnvStringWithDefault("DIST_DIR", "/dist")
@@ -728,6 +735,7 @@ func (s *Server) handlePublishStatus(w http.ResponseWriter, r *http.Request) {
 				healthStatus = string(HealthStatusUnhealthy)
 				healthMessage = fmt.Sprintf("Connection failed: %v", err)
 			} else {
+				//nolint:gosec // G104: Intentionally ignoring error
 				resp.Body.Close()
 				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 					healthStatus = string(HealthStatusHealthy)
@@ -848,6 +856,7 @@ func (s *Server) waitForAppHealthy(targetURL string, timeout time.Duration) (boo
 			resp, err := client.Do(req)
 			cancel()
 			if err == nil {
+				//nolint:gosec // G104: Intentionally ignoring error
 				resp.Body.Close()
 				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 					slog.Debug("publish.health_check.success",

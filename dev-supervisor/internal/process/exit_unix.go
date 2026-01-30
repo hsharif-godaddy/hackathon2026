@@ -1,6 +1,6 @@
-//go:build darwin
+//go:build !darwin && unix
 
-package main
+package process
 
 import (
 	"os/exec"
@@ -17,14 +17,14 @@ func isShellSignalExitCode(exitCode int) bool {
 		exitCode == 128+int(syscall.SIGKILL) // 137 - forced shutdown
 }
 
-// isExpectedSignalExit checks if an error from cmd.Wait() is from an expected signal termination.
+// IsExpectedSignalExit checks if an error from cmd.Wait() is from an expected signal termination.
 // Expected signals are those used for graceful shutdown (SIGTERM, SIGINT) or force kill (SIGKILL).
 // Crash signals like SIGSEGV, SIGABRT, etc. are NOT considered expected.
 //
-// On Darwin (macOS), we use syscall.WaitStatus to properly inspect the signal that caused termination.
+// On Unix systems (Linux, etc.), we use syscall.WaitStatus to properly inspect the signal that caused termination.
 //
 // Returns (expected, exitCode). exitCode is nil if the error doesn't contain an exit code.
-func isExpectedSignalExit(err error) (bool, *int) {
+func IsExpectedSignalExit(err error) (bool, *int) {
 	if err == nil {
 		code := 0
 		return true, &code
@@ -48,7 +48,7 @@ func isExpectedSignalExit(err error) (bool, *int) {
 	// Check if process was terminated by a signal
 	if waitStatus.Signaled() {
 		signal := waitStatus.Signal()
-		// Use 128 + signal convention for consistency with Linux
+		// On Linux, exit code is 128 + signal number
 		exitCode := 128 + int(signal)
 
 		// Expected signals (matching Docker's shutdown pattern):

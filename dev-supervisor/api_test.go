@@ -86,7 +86,20 @@ func TestHandleInfo(t *testing.T) {
 	}
 
 	// Check required fields
-	expectedFields := []string{"name", "version", "pid", "is_pid1", "socket_path", "uptime", "process", "health", "restarts", "logs", "child_count", "shutting_down"}
+	expectedFields := []string{
+		"name",
+		"version",
+		"pid",
+		"is_pid1",
+		"socket_path",
+		"uptime",
+		"process",
+		"health",
+		"restarts",
+		"logs",
+		"child_count",
+		"shutting_down",
+	}
 	for _, field := range expectedFields {
 		if _, exists := response[field]; !exists {
 			t.Errorf("Expected field '%s' in info response", field)
@@ -767,8 +780,11 @@ func TestHandleProcessStartValidationErrors(t *testing.T) {
 			expected: "validation_failed",
 		},
 		{
-			name:     "env var value too large",
-			request:  ProcessStartRequest{Command: "echo test", Env: map[string]string{"TEST": strings.Repeat("x", 40000)}},
+			name: "env var value too large",
+			request: ProcessStartRequest{
+				Command: "echo test",
+				Env:     map[string]string{"TEST": strings.Repeat("x", 40000)},
+			},
 			expected: "validation_failed",
 		},
 	}

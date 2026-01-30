@@ -2,6 +2,8 @@ name: dev-supervisor CI
 
 on:
   push:
+    branches:
+      - main
     paths:
       - "dev-supervisor/**"
       - ".github/workflows/dev-supervisor.yml"
@@ -25,24 +27,14 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: "1.25"
+          cache-dependency-path: dev-supervisor/go.sum
 
-      - name: Cache Go modules
-        uses: actions/cache@v5
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
         with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('dev-supervisor/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
-      - name: Install golangci-lint
-        run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-
-      - name: Run golangci-lint
-        working-directory: dev-supervisor
-        run: golangci-lint run --timeout=5m ./...
+          version: v2.8.0
+          working-directory: dev-supervisor
+          args: --timeout=5m
 
       - name: Run go vet
         working-directory: dev-supervisor
@@ -71,6 +63,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: "1.25"
+          cache-dependency-path: dev-supervisor/go.sum
 
       - name: Cache Go modules
         uses: actions/cache@v5
@@ -136,6 +129,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: "1.25"
+          cache-dependency-path: dev-supervisor/go.sum
 
       - name: Cache Go modules
         uses: actions/cache@v5

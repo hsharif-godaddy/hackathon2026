@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package process
 
 import (
 	"os/exec"
@@ -19,11 +19,11 @@ const (
 	// so we only treat 0 and STATUS_CONTROL_C_EXIT as expected
 )
 
-// isExpectedSignalExit checks if an error from cmd.Wait() is from an expected signal termination.
+// IsExpectedSignalExit checks if an error from cmd.Wait() is from an expected signal termination.
 // On Windows, process termination works differently than Unix signals, but we check for expected exit codes.
 //
 // Returns (expected, exitCode). exitCode is nil if the error doesn't contain an exit code.
-func isExpectedSignalExit(err error) (bool, *int) {
+func IsExpectedSignalExit(err error) (bool, *int) {
 	if err == nil {
 		code := 0
 		return true, &code

@@ -18,6 +18,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 )
 
 const testProxyResponse = "proxy"
@@ -1309,7 +1311,10 @@ func TestStaticFileHandler_CacheHeaders(t *testing.T) {
 	}
 
 	jsFile := path.Join(staticDir, "app.js")
-	htmlFile := path.Join(staticDir, "page.html") // Use "page.html" instead of "index.html" to avoid FileServer redirect
+	htmlFile := path.Join(
+		staticDir,
+		"page.html",
+	) // Use "page.html" instead of "index.html" to avoid FileServer redirect
 
 	if err := os.WriteFile(jsFile, []byte("console.log('test')"), 0600); err != nil {
 		t.Fatal(err)
@@ -2079,7 +2084,11 @@ func TestReverseProxy_IgnoresInvalidForwardedProto(t *testing.T) {
 	proxy.reverseProxy.ServeHTTP(rec, req)
 
 	if capturedHeaders.Get("X-Forwarded-Proto") != protoHTTP {
-		t.Fatalf("expected invalid header to fall back to '%s', got %s", protoHTTP, capturedHeaders.Get("X-Forwarded-Proto"))
+		t.Fatalf(
+			"expected invalid header to fall back to '%s', got %s",
+			protoHTTP,
+			capturedHeaders.Get("X-Forwarded-Proto"),
+		)
 	}
 }
 
@@ -2338,13 +2347,12 @@ func TestAiroPath_ExactAiroPath_Returns404(t *testing.T) {
 func TestRequestRouter_AutoStartWhenStopped(t *testing.T) {
 	// Create process manager with a simple echo process
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	procMgr := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a simple HTTP server process
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		//nolint:errcheck // Test mock response, error not critical
 		w.Write([]byte("backend response"))
 	}))
 	defer backend.Close()
@@ -2395,7 +2403,6 @@ func TestRequestRouter_AutoStartWhenStopped(t *testing.T) {
 
 	// Clean up
 	<-done
-	//nolint:errcheck // Test cleanup, error not critical
 	procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
 }
 
@@ -2403,13 +2410,12 @@ func TestRequestRouter_AutoStartWhenStopped(t *testing.T) {
 func TestRequestRouter_NoAutoStartWhenRunning(t *testing.T) {
 	// Create process manager
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	procMgr := NewProcessManager(logMgr, pid1Mgr)
 
 	// Create backend server
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		//nolint:errcheck // Test mock response, error not critical
 		w.Write([]byte("backend response"))
 	}))
 	defer backend.Close()
@@ -2447,7 +2453,6 @@ func TestRequestRouter_NoAutoStartWhenRunning(t *testing.T) {
 	assert.Equal(t, status.PID, newStatus.PID, "PID should remain the same")
 
 	// Clean up
-	//nolint:errcheck // Test cleanup, error not critical
 	procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
 }
 
@@ -2455,13 +2460,12 @@ func TestRequestRouter_NoAutoStartWhenRunning(t *testing.T) {
 func TestRequestRouter_NoAutoStartWhenDisabled(t *testing.T) {
 	// Create process manager
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	procMgr := NewProcessManager(logMgr, pid1Mgr)
 
 	// Create backend server
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		//nolint:errcheck // Test mock response, error not critical
 		w.Write([]byte("backend response"))
 	}))
 	defer backend.Close()
@@ -2495,7 +2499,7 @@ func TestRequestRouter_NoAutoStartWhenDisabled(t *testing.T) {
 func TestRequestRouter_ActivityTracking(t *testing.T) {
 	// Create process manager
 	logMgr := NewLogManager(100)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	procMgr := NewProcessManager(logMgr, pid1Mgr)
 
 	// Enable start-on-request to enable activity tracking
@@ -2518,7 +2522,6 @@ func TestRequestRouter_ActivityTracking(t *testing.T) {
 	// Create backend server
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		//nolint:errcheck // Test mock response, error not critical
 		w.Write([]byte("backend response"))
 	}))
 	defer backend.Close()
@@ -2546,7 +2549,6 @@ func TestRequestRouter_ActivityTracking(t *testing.T) {
 
 	// Clean up
 	procMgr.StopIdleMonitor()
-	//nolint:errcheck // Test cleanup, error not critical
 	procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
 }
 
@@ -2564,7 +2566,6 @@ func TestModifyResponse_StripsDuplicateCORSHeaders(t *testing.T) {
 		w.Header().Set("Access-Control-Expose-Headers", "X-Custom")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		//nolint:errcheck // Test mock response
 		w.Write([]byte(`{"status":"ok"}`))
 	}))
 	defer backend.Close()
@@ -2631,7 +2632,6 @@ func TestModifyResponse_PreservesNonCORSHeaders(t *testing.T) {
 		// Also set CORS headers to be stripped
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.WriteHeader(http.StatusOK)
-		//nolint:errcheck // Test mock response
 		w.Write([]byte("<html></html>"))
 	}))
 	defer backend.Close()

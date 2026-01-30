@@ -214,7 +214,6 @@ func TestHealthMonitor_CommandHealthCheck(t *testing.T) {
 	}
 }
 
-//nolint:dupl // This is acceptable test duplication for different scenarios
 func TestHealthMonitor_HTTPHealthCheck(t *testing.T) {
 	t.Parallel()
 	// Create test HTTP server
@@ -252,7 +251,6 @@ func TestHealthMonitor_HTTPHealthCheck(t *testing.T) {
 	}
 }
 
-//nolint:dupl // This is acceptable test duplication for different scenarios
 func TestHealthMonitor_HTTPHealthCheckFailure(t *testing.T) {
 	t.Parallel()
 	// Create test HTTP server that returns error

@@ -143,7 +143,10 @@ func TestConcurrentRestarts(t *testing.T) {
 
 	// Find an available port for testing
 	testPort := findAvailablePort(t)
-	testCommand := fmt.Sprintf("python3 -c 'import http.server; import socketserver; handler = http.server.SimpleHTTPRequestHandler; httpd = socketserver.TCPServer((\"\", %d), handler); httpd.serve_forever()'", testPort)
+	testCommand := fmt.Sprintf(
+		"python3 -c 'import http.server; import socketserver; handler = http.server.SimpleHTTPRequestHandler; httpd = socketserver.TCPServer((\"\", %d), handler); httpd.serve_forever()'",
+		testPort,
+	)
 
 	// Start initial process
 	startReq := ProcessStartRequest{
@@ -210,7 +213,12 @@ func TestConcurrentRestarts(t *testing.T) {
 	// Verify final process is still running
 	status := server.procMgr.GetStatus()
 	if status.State != ProcessStateRunning {
-		t.Fatalf("Process should be running after concurrent restarts, got: %s (Error: %q, PID: %d)", status.State, status.Error, status.PID)
+		t.Fatalf(
+			"Process should be running after concurrent restarts, got: %s (Error: %q, PID: %d)",
+			status.State,
+			status.Error,
+			status.PID,
+		)
 	}
 
 	// Clean up
@@ -326,7 +334,10 @@ func BenchmarkRestartWithPortWait(b *testing.B) {
 	// Use a lightweight command for benchmarking
 	testPort := findAvailablePortForBench(b)
 	startReq := ProcessStartRequest{
-		Command:    fmt.Sprintf("python3 -c 'import socket; s=socket.socket(); s.bind((\"\", %d)); s.listen(1); s.accept()'", testPort),
+		Command: fmt.Sprintf(
+			"python3 -c 'import socket; s=socket.socket(); s.bind((\"\", %d)); s.listen(1); s.accept()'",
+			testPort,
+		),
 		WorkingDir: tempDir,
 	}
 
@@ -354,7 +365,6 @@ func BenchmarkRestartWithPortWait(b *testing.B) {
 }
 
 func findAvailablePortForBench(b *testing.B) int {
-	//nolint:gosec // G102: Binding to all interfaces is intentional for test
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		b.Fatal(err)

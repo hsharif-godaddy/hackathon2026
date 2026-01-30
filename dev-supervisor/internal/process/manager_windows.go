@@ -1,7 +1,7 @@
 //go:build windows
 // +build windows
 
-package main
+package process
 
 import (
 	"log/slog"
@@ -36,7 +36,7 @@ func (pm *PID1Manager) Start(shutdownCallback func()) {
 	pm.setupBasicSignalHandling()
 }
 
-func (pm *PID1Manager) RegisterChildProcess(process *os.Process, managedProcess *ManagedProcess) bool {
+func (pm *PID1Manager) RegisterChildProcess(process *os.Process, managedProcess ManagedProcess) bool {
 	if process == nil {
 		return false
 	}

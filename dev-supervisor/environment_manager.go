@@ -75,6 +75,7 @@ func (em *EnvironmentManager) SetVariables(req EnvironmentSetRequest) error {
 	for key, value := range req.Variables {
 		em.variables[key] = value
 		// Also set in current process environment
+		//nolint:gosec // G104: Intentionally ignoring error
 		os.Setenv(key, value)
 	}
 
@@ -122,6 +123,7 @@ func (em *EnvironmentManager) ResetToDefaults() error {
 	// Restore defaults
 	for key, value := range em.defaults {
 		em.variables[key] = value
+		//nolint:gosec // G104: Intentionally ignoring error
 		os.Setenv(key, value)
 	}
 
@@ -178,14 +180,15 @@ func isValidEnvVarName(name string) bool {
 
 	// First character must be letter or underscore
 	first := name[0]
-	if !((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z') || first == '_') {
+	if first < 'A' || (first > 'Z' && first < '_') || (first > '_' && first < 'a') || first > 'z' {
 		return false
 	}
 
 	// Remaining characters can be letters, digits, or underscore
 	for i := 1; i < len(name); i++ {
 		char := name[i]
-		if !((char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '_') {
+		if char < '0' || (char > '9' && char < 'A') || (char > 'Z' && char < '_') || (char > '_' && char < 'a') ||
+			char > 'z' {
 			return false
 		}
 	}

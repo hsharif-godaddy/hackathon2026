@@ -701,7 +701,11 @@ func NewHTTPProxy(cfg HTTPProxyConfig) *HTTPProxy {
 	if cfg.InitialBackoff == 0 {
 		envInitialBackoffMs := config.GetEnvIntWithDefault("DEV_SUPERVISOR_PROXY_INITIAL_BACKOFF_MS", 100)
 		if envInitialBackoffMs <= 0 {
-			slog.Warn("invalid DEV_SUPERVISOR_PROXY_INITIAL_BACKOFF_MS value, using default", "invalid_value", envInitialBackoffMs)
+			slog.Warn(
+				"invalid DEV_SUPERVISOR_PROXY_INITIAL_BACKOFF_MS value, using default",
+				"invalid_value",
+				envInitialBackoffMs,
+			)
 			envInitialBackoffMs = 100
 		}
 		cfg.InitialBackoff = time.Duration(envInitialBackoffMs) * time.Millisecond
@@ -710,7 +714,11 @@ func NewHTTPProxy(cfg HTTPProxyConfig) *HTTPProxy {
 	if cfg.MaxBackoff == 0 {
 		envMaxBackoffMs := config.GetEnvIntWithDefault("DEV_SUPERVISOR_PROXY_MAX_BACKOFF_MS", 2000)
 		if envMaxBackoffMs <= 0 {
-			slog.Warn("invalid DEV_SUPERVISOR_PROXY_MAX_BACKOFF_MS value, using default", "invalid_value", envMaxBackoffMs)
+			slog.Warn(
+				"invalid DEV_SUPERVISOR_PROXY_MAX_BACKOFF_MS value, using default",
+				"invalid_value",
+				envMaxBackoffMs,
+			)
 			envMaxBackoffMs = 2000
 		}
 		cfg.MaxBackoff = time.Duration(envMaxBackoffMs) * time.Millisecond
@@ -1144,6 +1152,7 @@ func (p *HTTPProxy) Start() error {
 
 	// Create listener (TLS or plain HTTP)
 	listenAddr := fmt.Sprintf(":%d", p.config.ListenPort)
+	//nolint:noctx // Long-lived server listener, no request context available
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return fmt.Errorf("failed to create listener on port %d: %w", p.config.ListenPort, err)
@@ -1339,7 +1348,9 @@ func (p *HTTPProxy) validateStaticServingConfig(routingConfig RoutingConfig) err
 	}
 
 	if staticRoot == "" {
-		return fmt.Errorf("static root must be specified when static serving is enabled (via DEV_SUPERVISOR_STATIC_ROOT env var or static_root in routing config)")
+		return fmt.Errorf(
+			"static root must be specified when static serving is enabled (via DEV_SUPERVISOR_STATIC_ROOT env var or static_root in routing config)",
+		)
 	}
 
 	// Check if static root exists (warn but don't fail - directory may be created after startup)
@@ -1551,7 +1562,10 @@ func (p *HTTPProxy) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Perform HTTP GET to target with timeout
-	targetURL := fmt.Sprintf("http://%s/", net.JoinHostPort(p.config.TargetHost, fmt.Sprintf("%d", p.config.TargetPort)))
+	targetURL := fmt.Sprintf(
+		"http://%s/",
+		net.JoinHostPort(p.config.TargetHost, fmt.Sprintf("%d", p.config.TargetPort)),
+	)
 
 	client := &http.Client{
 		Timeout: 3 * time.Second,

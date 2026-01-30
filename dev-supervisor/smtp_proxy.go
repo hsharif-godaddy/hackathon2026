@@ -68,6 +68,7 @@ func (p *SMTPProxy) Start() error {
 	p.server.Domain = "localhost"
 	p.server.AllowInsecureAuth = true
 
+	//nolint:noctx // Long-lived SMTP server listener, no request context available
 	listener, err := net.Listen("tcp", p.listenAddr)
 	if err != nil {
 		return fmt.Errorf("failed to start SMTP proxy: %w", err)
@@ -188,6 +189,7 @@ func (s *proxySession) Data(r io.Reader) error {
 	}
 
 	if _, err := w.Write(modifiedData); err != nil {
+		//nolint:gosec // G104: Intentionally ignoring error
 		w.Close()
 		return fmt.Errorf("failed to write email data: %w", err)
 	}

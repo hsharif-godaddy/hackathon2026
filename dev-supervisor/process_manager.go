@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
+	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 )
 
 type ProcessState string
@@ -88,12 +89,14 @@ type ManagedProcess struct {
 func isPortAvailable(port int) bool {
 	// Try to bind to 0.0.0.0 (all interfaces) to check if port is truly available
 	// This matches how servers typically bind and will fail if anything is using the port
+	//nolint:noctx // Port availability check, no request context available
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		// Can't bind - port is still in use
 		return false
 	}
 	// Successfully bound - port is available, close immediately
+	//nolint:gosec // G104: Intentionally ignoring error
 	listener.Close()
 	return true
 }
@@ -138,7 +141,7 @@ type ProcessManager struct {
 	currentProcess        *ManagedProcess // nil when no process running
 	logMgr                *LogManager
 	healthMon             *HealthMonitor
-	pid1Mgr               *PID1Manager
+	pid1Mgr               *process.PID1Manager
 	portDiscovery         PortDiscovery
 	restartCount          int
 	enableLogging         bool // Control whether to log child process stdout/stderr
@@ -154,7 +157,7 @@ type ProcessManager struct {
 	activeWebSockets      sync.Map // map[net.Conn]bool - tracks active WS connections
 }
 
-func NewProcessManager(logMgr *LogManager, pid1Mgr *PID1Manager) *ProcessManager {
+func NewProcessManager(logMgr *LogManager, pid1Mgr *process.PID1Manager) *ProcessManager {
 	return &ProcessManager{
 		logMgr:                logMgr,
 		pid1Mgr:               pid1Mgr,
@@ -212,7 +215,12 @@ func NewManagedProcess(config ProcessStartRequest) (*ManagedProcess, error) {
 }
 
 // Start starts the managed process and begins monitoring it
-func (mp *ManagedProcess) Start(logMgr *LogManager, pid1Mgr *PID1Manager, enableLogging bool, outputToStructuredLog bool) error {
+func (mp *ManagedProcess) Start(
+	logMgr *LogManager,
+	pid1Mgr *process.PID1Manager,
+	enableLogging bool,
+	outputToStructuredLog bool,
+) error {
 	// Set up pipes for stdout and stderr
 	stdout, err := mp.cmd.StdoutPipe()
 	if err != nil {
@@ -294,7 +302,7 @@ func (mp *ManagedProcess) Stop(signal string, timeout int) error {
 	// Wait for process to exit with timeout
 	done := make(chan error, 1)
 	go func() {
-		done <- mp.safeWait()
+		done <- mp.SafeWait()
 	}()
 
 	select {
@@ -305,7 +313,7 @@ func (mp *ManagedProcess) Stop(signal string, timeout int) error {
 
 		mp.info.State = ProcessStateStopped
 		if err != nil {
-			expected, exitCode := isExpectedSignalExit(err)
+			expected, exitCode := process.IsExpectedSignalExit(err)
 			mp.info.ExitCode = exitCode
 
 			// Log the exit status
@@ -374,7 +382,8 @@ func (mp *ManagedProcess) WaitForCompletion() {
 	<-mp.done
 }
 
-func (mp *ManagedProcess) notifyPID1WaitResult(err error) {
+// NotifyPID1WaitResult notifies the PID1 manager of wait results
+func (mp *ManagedProcess) NotifyPID1WaitResult(err error) {
 	mp.externalWaitCh <- err
 }
 
@@ -385,8 +394,8 @@ func (mp *ManagedProcess) GetInfo() ProcessInfo {
 	return mp.info
 }
 
-// safeWait ensures that cmd.Wait() is only called once, even from multiple goroutines
-func (mp *ManagedProcess) safeWait() error {
+// SafeWait ensures that cmd.Wait() is only called once, even from multiple goroutines
+func (mp *ManagedProcess) SafeWait() error {
 	mp.waitOnce.Do(func() {
 		mp.waitErr = mp.cmd.Wait()
 		close(mp.waitDone)
@@ -398,18 +407,18 @@ func (mp *ManagedProcess) safeWait() error {
 }
 
 // waitForCompletion handles process completion and cleanup
-func (mp *ManagedProcess) waitForCompletion(pid1Mgr *PID1Manager) {
+func (mp *ManagedProcess) waitForCompletion(pid1Mgr *process.PID1Manager) {
 	defer close(mp.done) // Signal completion when this function exits
 
 	var err error
 	if mp.usePID1Wait {
 		err = <-mp.externalWaitCh
 	} else {
-		err = mp.safeWait()
+		err = mp.SafeWait()
 	}
 
 	mp.infoMu.Lock()
-	expected, exitCode := isExpectedSignalExit(err)
+	expected, exitCode := process.IsExpectedSignalExit(err)
 	mp.info.ExitCode = exitCode
 
 	if expected {

@@ -1,6 +1,6 @@
 # dev-supervisor Makefile
 
-.PHONY: build clean test test-all test-docker test-docker-go lint fmt fmt-fix vet run help install deps
+.PHONY: build clean test test-all test-docker test-docker-go lint lint-all fmt fmt-fix vet run help install deps
 
 # Build variables
 BINARY_NAME := dev-supervisor
@@ -15,7 +15,7 @@ LDFLAGS := -ldflags="-w -s -X main.Version=${VERSION}"
 build:
 	@echo "Building ${BINARY_NAME}..."
 	@mkdir -p ${BUILD_DIR}
-	go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME} .
+	CGO_ENABLED=0 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME} .
 
 ## Build for multiple platforms
 build-all:
@@ -66,15 +66,26 @@ test-docker-go:
 
 ## Run linter
 lint:
+	@echo "Verifying linter configuration..."
+	@golangci-lint config verify
 	@echo "Running linter..."
-	golangci-lint run --timeout=5m ./...
+	@golangci-lint run --timeout=5m ./...
+
+## Run linter for all platforms (catches Linux-specific files on macOS)
+lint-all:
+	@echo "Verifying linter configuration..."
+	@golangci-lint config verify
+	@echo "Running linter for current platform..."
+	@golangci-lint run --timeout=5m ./...
+	@echo "Running linter for Linux (platform-specific files)..."
+	@GOOS=linux golangci-lint run --timeout=5m ./...
 
 ## Format code (check only)
 fmt:
 	@echo "Checking code formatting..."
-	@if [ -n "$$(gofmt -l .)" ]; then \
+	@if [ -n "$$(gofmt -s -l .)" ]; then \
 		echo "The following files are not properly formatted:"; \
-		gofmt -l .; \
+		gofmt -s -l .; \
 		echo "Run 'make fmt-fix' to fix formatting issues."; \
 		exit 1; \
 	else \
@@ -116,7 +127,13 @@ deps:
 ## Install golangci-lint
 install-lint:
 	@echo "Installing golangci-lint..."
-	@which golangci-lint > /dev/null || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(shell go env GOPATH)/bin v1.55.2
+	@CURRENT_VERSION=$$(golangci-lint version 2>/dev/null | grep -oE '(v)?[0-9]+\.[0-9]+\.[0-9]+' | head -1); \
+	if [ "$$CURRENT_VERSION" != "2.8.0" ] && [ "$$CURRENT_VERSION" != "v2.8.0" ]; then \
+		echo "Current version: $$CURRENT_VERSION, installing v2.8.0..."; \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(shell go env GOPATH)/bin v2.8.0; \
+	else \
+		echo "golangci-lint v2.8.0 is already installed"; \
+	fi
 
 ## Run all checks (format, vet, lint, test)
 check: fmt-fix vet lint test

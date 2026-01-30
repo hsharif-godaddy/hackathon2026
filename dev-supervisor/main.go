@@ -17,6 +17,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
+	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 )
 
 const (
@@ -88,7 +89,7 @@ type Server struct {
 	cmdExec                *CommandExecutor
 	envMgr                 *EnvironmentManager
 	logMgr                 *LogManager
-	pid1Mgr                *PID1Manager
+	pid1Mgr                *process.PID1Manager
 	smtpProxy              *SMTPProxy
 	httpProxy              *HTTPProxy
 	startTime              time.Time
@@ -110,12 +111,14 @@ type ErrorResponse struct {
 
 func NewServer() *Server {
 	logMgr := NewLogManager(10000)
-	pid1Mgr := NewPID1Manager()
+	pid1Mgr := process.NewPID1Manager()
 	procMgr := NewProcessManager(logMgr, pid1Mgr)
 
 	// Set default configuration
-	procMgr.SetProcessLogging(true)                                  // Default: enable child process logging
-	procMgr.SetStructuredLogging(config.GetProcessLoggingToStdout()) // Default: enable structured output, configurable via env
+	procMgr.SetProcessLogging(true) // Default: enable child process logging
+	procMgr.SetStructuredLogging(
+		config.GetProcessLoggingToStdout(),
+	) // Default: enable structured output, configurable via env
 
 	s := &Server{
 		router:                 mux.NewRouter(),
@@ -208,8 +211,10 @@ func (s *Server) waitForServerReady(address string, useTCP bool) error {
 			return fmt.Errorf("server failed to become ready within %v", serverReadyTimeout)
 		default:
 			// Try to connect to the socket/port
+			//nolint:noctx // Infrastructure health check, no request context
 			conn, err := net.Dial(network, address)
 			if err == nil {
+				//nolint:gosec // G104: Intentionally ignoring error
 				conn.Close()
 				return nil
 			}
@@ -283,7 +288,13 @@ func (s *Server) startHTTPProxyIfEnabled() error {
 		slog.Error("failed to start HTTP proxy", "error", err)
 		return err
 	}
-	slog.Info("HTTP proxy started", "listen_port", s.config.ProxyPort, "target", fmt.Sprintf("%s:%d", s.config.ProxyTargetHost, s.config.ProxyTargetPort))
+	slog.Info(
+		"HTTP proxy started",
+		"listen_port",
+		s.config.ProxyPort,
+		"target",
+		fmt.Sprintf("%s:%d", s.config.ProxyTargetHost, s.config.ProxyTargetPort),
+	)
 	return nil
 }
 
@@ -294,12 +305,14 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 	}
 
 	// Create Unix domain socket listener
+	//nolint:noctx // Long-lived server listener, no request context available
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		return err
 	}
 
 	// Set socket permissions (non-fatal if it fails)
+	//nolint:gosec // G302: Unix socket needs broad permissions for IPC
 	if err := os.Chmod(socketPath, 0666); err != nil {
 		slog.Warn("failed to set socket permissions, continuing anyway", "socket_path", socketPath, "error", err)
 	}
@@ -419,6 +432,7 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 
 func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) error {
 	// Create TCP listener
+	//nolint:noctx // Long-lived server listener, no request context available
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		return fmt.Errorf("failed to create TCP listener on port %s: %w", port, err)
@@ -616,7 +630,12 @@ func parseFlags() *Config {
 
 	flag.StringVar(&socketPath, "socket", "", "Unix domain socket path (overrides DEV_SUPERVISOR_SOCKET_PATH)")
 	flag.BoolVar(&useTCP, "tcp", false, "Use TCP instead of Unix socket (INSECURE - development only)")
-	flag.StringVar(&tcpPort, "port", "", "TCP port to listen on when using -tcp flag (overrides DEV_SUPERVISOR_TCP_PORT)")
+	flag.StringVar(
+		&tcpPort,
+		"port",
+		"",
+		"TCP port to listen on when using -tcp flag (overrides DEV_SUPERVISOR_TCP_PORT)",
+	)
 	flag.BoolVar(&showVersion, "version", false, "Show version and exit")
 	flag.BoolVar(&showVersionShort, "v", false, "Show version and exit (shorthand)")
 	flag.BoolVar(&showHelp, "help", false, "Show help and exit")
@@ -634,22 +653,37 @@ func parseFlags() *Config {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", AppName)
 		fmt.Fprintf(os.Stderr, "%s - A containerized service that acts as PID 1 in Docker containers,\n", AppName)
-		fmt.Fprintf(os.Stderr, "providing centralized process management through an HTTP API over Unix domain sockets or TCP.\n\n")
+		fmt.Fprintf(
+			os.Stderr,
+			"providing centralized process management through an HTTP API over Unix domain sockets or TCP.\n\n",
+		)
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "Environment Variables:\n")
-		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_SOCKET_PATH        Path for Unix domain socket (default: /tmp/dev-supervisor.sock)\n")
-		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_USE_TCP            Enable TCP mode instead of Unix socket (set to 'true')\n")
+		fmt.Fprintf(
+			os.Stderr,
+			"  DEV_SUPERVISOR_SOCKET_PATH        Path for Unix domain socket (default: /tmp/dev-supervisor.sock)\n",
+		)
+		fmt.Fprintf(
+			os.Stderr,
+			"  DEV_SUPERVISOR_USE_TCP            Enable TCP mode instead of Unix socket (set to 'true')\n",
+		)
 		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_TCP_PORT           TCP port to listen on (default: 8080)\n")
-		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_LOG_LEVEL          Log level: debug, info, warn, error (default: info)\n")
+		fmt.Fprintf(
+			os.Stderr,
+			"  DEV_SUPERVISOR_LOG_LEVEL          Log level: debug, info, warn, error (default: info)\n",
+		)
 		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_ENABLE_PROXY       Enable HTTP proxy mode (set to 'true')\n")
 		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_PROXY_PORT         HTTP proxy listen port\n")
 		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_PROXY_TARGET_HOST  HTTP proxy target host (default: localhost)\n")
 		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_PROXY_TARGET_PORT  HTTP proxy target port (default: 8080)\n")
 		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_PROXY_CERT_PATH    Path to TLS certificate\n")
 		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_PROXY_KEY_PATH     Path to TLS private key\n")
-		fmt.Fprintf(os.Stderr, "  SMTP_DESTINATION                  SMTP server destination for proxy (default: relay-hosting.secureserver.net:25)\n")
+		fmt.Fprintf(
+			os.Stderr,
+			"  SMTP_DESTINATION                  SMTP server destination for proxy (default: relay-hosting.secureserver.net:25)\n",
+		)
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "SMTP Proxy Headers (automatically injected):\n")
 		fmt.Fprintf(os.Stderr, "  SITE_ID                     Sets X-SITE-UID header (default: unknown)\n")
@@ -658,7 +692,11 @@ func parseFlags() *Config {
 		fmt.Fprintf(os.Stderr, "  NOMAD_DC                    Sets X-DATACENTER header (default: unknown)\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
-		fmt.Fprintf(os.Stderr, "  %s                                    # Use default settings (Unix socket)\n", AppName)
+		fmt.Fprintf(
+			os.Stderr,
+			"  %s                                    # Use default settings (Unix socket)\n",
+			AppName,
+		)
 		fmt.Fprintf(os.Stderr, "  %s -socket /app/supervisor.sock       # Custom socket path\n", AppName)
 		fmt.Fprintf(os.Stderr, "  %s -tcp -port 9090                    # TCP mode on port 9090 (INSECURE)\n", AppName)
 		fmt.Fprintf(os.Stderr, "  %s -shutdown-timeout 30s              # Custom shutdown timeout\n", AppName)
