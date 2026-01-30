@@ -270,7 +270,7 @@ if (config.enableJwtAuth) {
   // Smart redirect configuration
   env.DEV_SUPERVISOR_JWT_REDIRECT_URL = `${ssoLoginUrl}?app=airo-builder&redirect={url}`;
   env.DEV_SUPERVISOR_JWT_BUILDER_BASE_URL = appUrl;
-  env.DEV_SUPERVISOR_JWT_EXCLUDED_PATHS = "/api/health";
+  env.DEV_SUPERVISOR_JWT_EXCLUDED_PATHS = "/airo/health";
 
   // SITE_ID is required for authorization check
   env.SITE_ID = config.appId;

@@ -195,7 +195,7 @@ func parseAllowedOrigins() []string {
 
 // parseJWTExcludedPaths parses JWT excluded paths from environment
 func parseJWTExcludedPaths() []string {
-	excludedPathsStr := GetEnvStringWithDefault("DEV_SUPERVISOR_JWT_EXCLUDED_PATHS", "/api/health")
+	excludedPathsStr := GetEnvStringWithDefault("DEV_SUPERVISOR_JWT_EXCLUDED_PATHS", "/airo/health")
 	if excludedPathsStr == "" {
 		return nil
 	}

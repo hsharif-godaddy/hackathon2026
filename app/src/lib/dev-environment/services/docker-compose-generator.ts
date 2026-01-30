@@ -141,7 +141,7 @@ export class DockerComposeGenerator {
 			// Redirects to: https://airo-builder.{env}-godaddy.com/?redirect=%2Fdevelop%2F{siteId}%3FsiteId%3D{siteId}
 			env.DEV_SUPERVISOR_JWT_REDIRECT_URL = `${ssoLoginUrl}?app=airo-builder&redirect={url}`;
 			env.DEV_SUPERVISOR_JWT_BUILDER_BASE_URL = appUrl; // Builder base URL for smart redirects
-			env.DEV_SUPERVISOR_JWT_EXCLUDED_PATHS = "/api/health";
+			env.DEV_SUPERVISOR_JWT_EXCLUDED_PATHS = "/airo/health";
 
 			// Auth failure handling uses hybrid mode (hardcoded in dev-supervisor):
 			// - Browser requests (Accept: text/html): Redirect to SSO login page

@@ -475,7 +475,7 @@ JWT authentication is configured via environment variables:
 | `DEV_SUPERVISOR_JWT_AUDIENCE`         | Yes\*    | Expected audience claim (e.g., `agents-service`)                                            |
 | `DEV_SUPERVISOR_JWT_REDIRECT_URL`     | Yes\*    | SSO login redirect URL with `{url}` placeholder                                             |
 | `DEV_SUPERVISOR_JWT_BUILDER_BASE_URL` | Yes\*    | Builder base URL for smart redirects                                                        |
-| `DEV_SUPERVISOR_JWT_EXCLUDED_PATHS`   | No       | Comma-separated paths to exclude from auth (default: `/api/health`)                         |
+| `DEV_SUPERVISOR_JWT_EXCLUDED_PATHS`   | No       | Comma-separated paths to exclude from auth (default: `/airo/health`)                        |
 | `SITE_ID`                             | Yes\*    | Site/app ID for siteId claim validation                                                     |
 | `ALLOWED_ORIGINS`                     | No       | Comma-separated CORS allowed origins                                                        |
 
@@ -538,7 +538,7 @@ DEV_SUPERVISOR_JWT_REDIRECT_URL=https://sso.dev-godaddy.com/login?app=airo-build
 DEV_SUPERVISOR_JWT_BUILDER_BASE_URL=https://local.gasket.dev-godaddy.com:8443
 
 # Excluded paths (no auth required)
-DEV_SUPERVISOR_JWT_EXCLUDED_PATHS=/api/health
+DEV_SUPERVISOR_JWT_EXCLUDED_PATHS=/airo/health
 
 # Site ID for validation
 SITE_ID=fc10ea7a-24ce-491e-9134-0604d423e8bc
