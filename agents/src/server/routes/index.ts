@@ -21,3 +21,4 @@ export { conversationsRouter } from './conversations.js';
 export { default as gitRemoteRouter } from './git-remote.js';
 export { default as socialRouter } from './social.js';
 export { customerLogsRouter } from './customer-logs.js';
+export { default as zipImportRouter } from './zip-import.js';

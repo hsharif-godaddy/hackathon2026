@@ -5,10 +5,9 @@ import { GitTool } from '../../tools/git-tool.js';
 import { Logger } from '../../logging/index.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
-import { isSupportedProjectOnHost, SUPPORTED_BUILD_TOOLS } from '../middleware/git-import-validation.js';
 import { getErrorMessage } from '../../utils/error.js';
 import { isCapabilityEnabled } from '../../utils/capability-config.js';
-import { appRestartService } from '../../services/AppRestartService.js';
+import { gitOpsService } from '../../services/GitOpsService.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -16,30 +15,22 @@ const gitRemoteConfigRepo = new GitRemoteConfigRepository();
 const logger = Logger.create({ service: 'git-remote-routes' });
 
 /**
- * Map app template version to product family
- *
- * @param templateVersion - Template version from app record (e.g., "v8")
- * @returns Product family identifier (e.g., "aab-v1", "paas-nodejs-v1")
+ * Maps GitOps error codes to HTTP status codes
  */
-function getProductFamily(templateVersion?: string): string {
-  // Default to aab-v1 for all current templates
-  // Future: Add logic to detect PaaS templates and return "paas-nodejs-v1"
-  if (!templateVersion) {
-    return 'aab-v1';
+function getHttpStatusForErrorCode(errorCode: string | undefined): number {
+  switch (errorCode) {
+    case 'APP_NOT_FOUND':
+    case 'JOB_NOT_FOUND':
+      return 404;
+    case 'CONTAINER_UNAVAILABLE':
+      return 503;
+    case 'JOB_IN_PROGRESS':
+      return 409;
+    case 'FORBIDDEN':
+      return 403;
+    default:
+      return 500;
   }
-
-  // AAB templates: v1, v2, v3, v4, v5, v6, v7, v8, etc.
-  if (templateVersion.match(/^v\d+$/)) {
-    return 'aab-v1';
-  }
-
-  // PaaS Node.js templates (future)
-  if (templateVersion.startsWith('paas-nodejs-')) {
-    return 'paas-nodejs-v1';
-  }
-
-  // Default to aab-v1
-  return 'aab-v1';
 }
 
 /**
@@ -63,7 +54,7 @@ function requireGitRemoteSync(req: Request, res: Response, next: NextFunction): 
     } else if (requestPath.endsWith('/git/pull')) {
       isGitSyncEnabled = isCapabilityEnabled('CODE_SYNC_GIT_PULL');
       requiredCapability = 'CODE_SYNC_GIT_PULL';
-    } else if (requestPath.endsWith('/git/remote/status') || requestPath.endsWith('/git/remote/configure')) {
+    } else if (requestPath.endsWith('/git/remote/status') || requestPath.endsWith('/git/remote/configure') || requestPath.includes('/git/sync/status/')) {
       isGitSyncEnabled = isCapabilityEnabled('CODE_SYNC_GIT_PUSH') || isCapabilityEnabled('CODE_SYNC_GIT_PULL');
       requiredCapability = 'CODE_SYNC_GIT_PUSH or CODE_SYNC_GIT_PULL';
     } else {
@@ -197,7 +188,7 @@ router.post(
 /**
  * POST /apps/:id/git/push
  *
- * Push to remote repository
+ * Push to remote repository (async operation)
  *
  * Supports two patterns:
  * - PaaS pattern: Provide both 'token' AND 'repoUrl' together (skips database/config lookup)
@@ -209,6 +200,8 @@ router.post(
  * - forcePush: boolean (optional) - Whether to force push (default: false)
  * - token: string (optional, required with repoUrl for PaaS) - GitHub token for authentication
  * - repoUrl: string (optional, required with token for PaaS) - Repository URL
+ *
+ * Returns 202 Accepted with job ID for tracking
  */
 router.post(
   '/apps/:id/git/push',
@@ -223,83 +216,36 @@ router.post(
       return;
     }
 
-    logger.info('git-remote.push.begin', {
+    const result = await gitOpsService.startPush({
       appId,
-      remoteName: remoteName || 'origin',
+      remoteName,
       branch,
-      forcePush: forcePush || false
+      forcePush,
+      token,
+      repoUrl,
     });
 
-    try {
-      // Get app
-      const app = appRepository.findById(appId);
-      if (!app) {
-        res.status(404).json({ error: 'App not found' });
-        return;
-      }
-
-      // Get dev-supervisor for the app
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor || !devSupervisor.isAvailable()) {
-        res.status(503).json({
-          error: 'App container is not available',
-          message: 'The app container must be running to push to git remote'
-        });
-        return;
-      }
-
-      // Create git tool with dev-supervisor
-      const gitTool = new GitTool(devSupervisor);
-
-      // Execute push operation
-      const result = await gitTool.executeGitOperation(app.path, {
-        operation: 'push',
-        remoteName: remoteName || 'origin',
-        branch,
-        forcePush: forcePush || false,
-        token,
-        repoUrl
+    if (!result.success) {
+      res.status(getHttpStatusForErrorCode(result.errorCode)).json({
+        error: result.error,
+        ...(result.existingJobId && { existingJobId: result.existingJobId }),
       });
-
-      if (!result.success) {
-        logger.error('git-remote.push.error', {
-          appId,
-          error: result.error
-        });
-
-        res.status(400).json({
-          error: 'Failed to push to git remote',
-          message: result.error,
-          details: result.output
-        });
-        return;
-      }
-
-      logger.info('git-remote.push.success', { appId });
-
-      res.json({
-        success: true,
-        message: 'Successfully pushed to git remote',
-        output: result.output
-      });
-    } catch (error) {
-      logger.error('git-remote.push.exception', {
-        appId,
-        error: getErrorMessage(error)
-      });
-
-      res.status(500).json({
-        error: 'Internal server error',
-        message: getErrorMessage(error)
-      });
+      return;
     }
+
+    res.status(202).json({
+      success: true,
+      message: 'Git push operation started',
+      jobId: result.jobId,
+      status: result.status,
+    });
   }
 );
 
 /**
  * POST /apps/:id/git/pull
  *
- * Pull from remote repository
+ * Pull from remote repository (async operation)
  *
  * Supports two patterns:
  * - PaaS pattern: Provide both 'token' AND 'repoUrl' together (skips database/config lookup)
@@ -310,6 +256,8 @@ router.post(
  * - branch: string (optional) - Branch to pull (default: configured default branch)
  * - token: string (optional, required with repoUrl for PaaS) - GitHub token for authentication
  * - repoUrl: string (optional, required with token for PaaS) - Repository URL
+ *
+ * Returns 202 Accepted with job ID for tracking
  */
 router.post(
   '/apps/:id/git/pull',
@@ -324,127 +272,28 @@ router.post(
       return;
     }
 
-    logger.info('git-remote.pull.begin', {
+    const result = await gitOpsService.startPull({
       appId,
-      remoteName: remoteName || 'origin',
-      branch
+      remoteName,
+      branch,
+      token,
+      repoUrl,
     });
 
-    try {
-      // Get app
-      const app = appRepository.findById(appId);
-      if (!app) {
-        res.status(404).json({ error: 'App not found' });
-        return;
-      }
-
-      // Get dev-supervisor for the app
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor || !devSupervisor.isAvailable()) {
-        res.status(503).json({
-          error: 'App container is not available',
-          message: 'The app container must be running to pull from git remote'
-        });
-        return;
-      }
-
-      // Create git tool with dev-supervisor
-      const gitTool = new GitTool(devSupervisor);
-
-      // Execute pull operation
-      // Allow unrelated histories for cases where local repo was initialized separately from remote
-      // Use merge (not rebase) for divergent branches
-      const result = await gitTool.executeGitOperation(app.path, {
-        operation: 'pull',
-        remoteName: remoteName || 'origin',
-        branch,
-        token,
-        repoUrl,
-        allowUnrelatedHistories: true,
-        noRebase: true
+    if (!result.success) {
+      res.status(getHttpStatusForErrorCode(result.errorCode)).json({
+        error: result.error,
+        ...(result.existingJobId && { existingJobId: result.existingJobId }),
       });
-
-      if (!result.success) {
-        logger.error('git-remote.pull.error', {
-          appId,
-          error: result.error
-        });
-
-        res.status(400).json({
-          error: 'Failed to pull from git remote',
-          message: result.error,
-          details: result.output
-        });
-        return;
-      }
-
-      // Validate pulled code uses a supported build tool
-      const supportedToolNames = SUPPORTED_BUILD_TOOLS.map(t => t.name).join(', ');
-      if (!isSupportedProjectOnHost(app.path)) {
-        logger.warn('git-remote.pull.unsupported-project', { appId, supportedTools: supportedToolNames });
-
-        // Rollback the pull using ORIG_HEAD (set by git before pull/merge operations)
-        // This correctly handles multi-commit pulls and fast-forwards
-        const rollbackResult = await gitTool.executeGitOperation(app.path, {
-          operation: 'reset',
-          options: { mode: 'hard', hash: 'ORIG_HEAD' }
-        });
-
-        if (!rollbackResult.success) {
-          logger.error('git-remote.pull.rollback-failed', {
-            appId,
-            error: rollbackResult.error
-          });
-
-          res.status(500).json({
-            error: `Only ${supportedToolNames}-based projects are supported`,
-            message: `The pulled code does not use a supported build tool. Attempted rollback failed - repository may be in inconsistent state.`,
-            rollbackError: rollbackResult.error
-          });
-          return;
-        }
-
-        res.status(400).json({
-          error: `Only ${supportedToolNames}-based projects are supported`,
-          message: `The pulled code does not use a supported build tool (${supportedToolNames}). Changes have been rolled back.`
-        });
-        return;
-      }
-
-      // Perform restart cycle (same as zip import)
-      const restartResult = await appRestartService.performFullRestartCycle(appId, app.path);
-
-      if (!restartResult.success) {
-        logger.warn('git-remote.pull.restart-failed', {
-          appId,
-          error: restartResult.error,
-          phases: restartResult.phases
-        });
-      }
-
-      logger.info('git-remote.pull.success', { appId, restartSuccess: restartResult.success });
-
-      res.json({
-        success: true,
-        message: 'Successfully pulled from git remote',
-        output: result.output,
-        restart: {
-          success: restartResult.success,
-          error: restartResult.error,
-          phases: restartResult.phases
-        }
-      });
-    } catch (error) {
-      logger.error('git-remote.pull.exception', {
-        appId,
-        error: getErrorMessage(error)
-      });
-
-      res.status(500).json({
-        error: 'Internal server error',
-        message: getErrorMessage(error)
-      });
+      return;
     }
+
+    res.status(202).json({
+      success: true,
+      message: 'Git pull operation started',
+      jobId: result.jobId,
+      status: result.status,
+    });
   }
 );
 
@@ -501,6 +350,49 @@ router.get(
         message: getErrorMessage(error)
       });
     }
+  }
+);
+
+/**
+ * GET /apps/:id/git/sync/status/:jobId
+ *
+ * Get status of a specific git sync operation by job ID
+ */
+router.get(
+  '/apps/:id/git/sync/status/:jobId',
+  requireGitRemoteSync,
+  validateAppOwnership,
+  async (req: Request, res: Response) => {
+    const appId = req.params.id;
+    const jobId = req.params.jobId;
+
+    if (!appId || !jobId) {
+      res.status(400).json({ error: 'App ID and Job ID are required' });
+      return;
+    }
+
+    const result = await gitOpsService.getJobStatus(appId, jobId);
+
+    if (!result.success) {
+      res.status(getHttpStatusForErrorCode(result.errorCode)).json({
+        error: result.error,
+      });
+      return;
+    }
+
+    const job = result.job!;
+    res.json({
+      success: true,
+      jobId: job.id,
+      appId: job.appId,
+      status: job.status,
+      sourceType: job.sourceType,
+      errorMessage: job.status === 'failed' ? job.errorMessage : undefined,
+      errorStage: job.status === 'failed' ? job.errorStage : undefined,
+      createdAt: job.createdAt.toISOString(),
+      updatedAt: job.updatedAt.toISOString(),
+      completedAt: job.completedAt?.toISOString(),
+    });
   }
 );
 

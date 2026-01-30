@@ -47,12 +47,11 @@ interface ImportJobRow {
  */
 export interface CreateImportJobParams {
   appId: string;
-  sourceType: 'zip' | 'git';
+  sourceType: 'zip' | 'git_pull' | 'git_push';
   // For zip imports
   zipFileName?: string;
   zipFileSize?: number;
-  // For git imports
-  gitUrl?: string;
+  // For git_pull/git_push operations
   gitBranch?: string;
 }
 
@@ -93,7 +92,7 @@ export class ImportJobRepository {
       id: row.id,
       appId: row.app_id,
       status: row.status as ImportJobStatus,
-      sourceType: row.source_type as 'zip' | 'git',
+      sourceType: row.source_type as 'zip' | 'git_pull' | 'git_push',
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     };
@@ -125,7 +124,7 @@ export class ImportJobRepository {
    * @returns Created import job
    */
   async create(params: CreateImportJobParams): Promise<ImportJob> {
-    const { appId, sourceType, zipFileName, zipFileSize, gitUrl, gitBranch } = params;
+    const { appId, sourceType, zipFileName, zipFileSize, gitBranch } = params;
     const id = nanoid();
 
     try {
@@ -147,23 +146,21 @@ export class ImportJobRepository {
           zipFileName,
           zipFileSize,
         });
-      } else {
+      } else if (sourceType === 'git_pull' || sourceType === 'git_push') {
         const stmt = this.db.prepare(`
           INSERT INTO import_jobs (
             id, app_id, status, source_type,
-            zip_file_name, zip_file_size,
-            git_url, git_branch
+            git_branch
           )
-          VALUES (?, ?, 'pending', 'git', NULL, NULL, ?, ?)
+          VALUES (?, ?, 'pending', ?, ?)
         `);
 
-        stmt.run(id, appId, gitUrl, gitBranch || null);
+        stmt.run(id, appId, sourceType, gitBranch);
 
         this.logger.info('import-job.create.success', {
           jobId: id,
           appId,
           sourceType,
-          gitUrl,
           gitBranch,
         });
       }

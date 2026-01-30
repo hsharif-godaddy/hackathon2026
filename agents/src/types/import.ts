@@ -18,6 +18,8 @@ export enum ImportJobStatus {
   INSTALLING = 'installing',
   BUILDING = 'building',
   COMMITTING = 'committing',
+  PUSHING = 'pushing',
+  PULLING = 'pulling',
   RESTARTING = 'restarting',
   COMPLETED = 'completed',
   FAILED = 'failed',
@@ -95,8 +97,8 @@ export interface ImportJob {
   appId: string;
   /** Current status of the import job */
   status: ImportJobStatus;
-  /** Source type for the import (zip or git) */
-  sourceType: 'zip' | 'git';
+  /** Source type for the import (zip, git_pull, or git_push) */
+  sourceType: 'zip' | 'git_pull' | 'git_push';
   /** Original filename of the uploaded zip (for zip imports only) */
   zipFileName?: string;
   /** Size of the uploaded zip in bytes (for zip imports only) */
@@ -157,8 +159,8 @@ export interface CreateImportResponse {
   importJobId?: string;
   /** Current status */
   status?: ImportJobStatus;
-  /** Source type (zip or git) */
-  sourceType?: 'zip' | 'git';
+  /** Source type (zip, git_pull, or git_push) */
+  sourceType?: 'zip' | 'git_pull' | 'git_push';
   /** Error message if failed */
   error?: string;
   /** Validation errors */

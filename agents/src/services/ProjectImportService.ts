@@ -30,17 +30,12 @@ import {
 export interface StartImportParams {
   appId: string;
   appName: string;
-  sourceType: 'zip' | 'git';
+  sourceType: 'zip';
 
   // For zip imports
   zipPath?: string;
   zipFileName?: string;
   zipFileSize?: number;
-
-  // For git imports
-  gitUrl?: string;
-  gitToken?: string;
-  gitBranch?: string;
 }
 
 /**
@@ -72,28 +67,16 @@ export class ProjectImportService {
     this.logger.info('project-import.start', {
       appId,
       sourceType,
-      ...(sourceType === 'zip' && {
-        zipFileName: params.zipFileName,
-        zipFileSize: params.zipFileSize,
-      }),
-      ...(sourceType === 'git' && {
-        gitUrl: params.gitUrl,
-        gitBranch: params.gitBranch,
-      }),
+      zipFileName: params.zipFileName,
+      zipFileSize: params.zipFileSize,
     });
 
     // Create import job
     const job = await this.importJobRepo.create({
       appId,
       sourceType,
-      ...(sourceType === 'zip' && {
-        zipFileName: params.zipFileName!,
-        zipFileSize: params.zipFileSize!,
-      }),
-      ...(sourceType === 'git' && {
-        gitUrl: params.gitUrl!,
-        gitBranch: params.gitBranch,
-      }),
+      zipFileName: params.zipFileName!,
+      zipFileSize: params.zipFileSize!,
     });
 
     // Start background processing (don't await)
@@ -150,111 +133,78 @@ export class ProjectImportService {
         throw new Error('Dev supervisor not available for container operations');
       }
 
-      // Branch based on source type
-      if (sourceType === 'git') {
-        // Git clone flow
-        await this.updateStatus(jobId, ImportJobStatus.EXTRACTING); // Reuse "extracting" status for "cloning"
+      // Zip import flow
+      const zipPath = params.zipPath!;
 
-        const cloneResult = await gitCloneService.cloneRepository(devSupervisor, {
-          appId,
-          gitUrl: params.gitUrl!,
-          gitToken: params.gitToken!,
-          gitBranch: params.gitBranch,
-        });
+      // Phase 1: Validate zip on agent (security checks)
+      await this.updateStatus(jobId, ImportJobStatus.VALIDATING);
+      const securityValidation = await zipSecurityService.validate(zipPath);
 
-        if (!cloneResult.success) {
-          await this.importJobRepo.markFailed(
-            jobId,
-            cloneResult.error || 'Git clone failed',
-            ImportJobStatus.EXTRACTING,
-            cloneResult.validationErrors
-          );
-          return;
-        }
-
-        containerProjectPath = cloneResult.clonePath!;
-
-        // Update job with git info
-        await this.importJobRepo.update(jobId, {
-          gitUrl: params.gitUrl,
-          gitBranch: params.gitBranch,
-          gitCommitHash: cloneResult.commitHash,
-        });
-
-      } else {
-        // Zip import flow (existing logic)
-        const zipPath = params.zipPath!;
-
-        // Phase 1: Validate zip on agent (security checks)
-        await this.updateStatus(jobId, ImportJobStatus.VALIDATING);
-        const securityValidation = await zipSecurityService.validate(zipPath);
-
-        if (!securityValidation.valid) {
-          this.logger.warn('project-import.security-validation.failed', {
-            jobId,
-            appId,
-            errors: securityValidation.errors,
-            stats: securityValidation.stats,
-          });
-
-          await this.importJobRepo.markFailed(
-            jobId,
-            'Zip security validation failed',
-            ImportJobStatus.VALIDATING,
-            securityValidation.errors
-          );
-          await this.cleanupZipFile(zipPath);
-          return;
-        }
-
-        this.logger.info('project-import.security-validation.success', {
+      if (!securityValidation.valid) {
+        this.logger.warn('project-import.security-validation.failed', {
           jobId,
           appId,
+          errors: securityValidation.errors,
           stats: securityValidation.stats,
         });
 
-        // Phase 2: Copy zip to container via shared filesystem
-        await this.updateStatus(jobId, ImportJobStatus.EXTRACTING);
-
-        const agentZipPath = join(app.path, `.import-${jobId}.zip`);
-        containerZipPath = `/app/.import-${jobId}.zip`;
-        containerExtractPath = `/app/.import-${jobId}-extract`;
-
-        this.logger.info('project-import.copy-zip-to-container', {
+        await this.importJobRepo.markFailed(
           jobId,
-          appId,
-          sourceZipPath: zipPath,
-          agentZipPath,
-          containerZipPath,
-        });
-
-        // Copy zip file to container via shared filesystem mount (agent-side path)
-        await cp(zipPath, agentZipPath);
-
-        // Phase 3: Extract zip inside container (container-side paths for dev-supervisor)
-        const extractResult = await this.extractZipInContainer(
-          devSupervisor,
-          containerZipPath,
-          containerExtractPath
+          'Zip security validation failed',
+          ImportJobStatus.VALIDATING,
+          securityValidation.errors
         );
-
-        if (!extractResult.success) {
-          await this.importJobRepo.markFailed(
-            jobId,
-            'Zip extraction failed in container',
-            ImportJobStatus.EXTRACTING,
-            extractResult.errors
-          );
-          await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
-          if (sourceType === 'zip' && params.zipPath) await this.cleanupZipFile(params.zipPath!);
-          return;
-        }
-
-        containerProjectPath = containerExtractPath;
+        await this.cleanupZipFile(zipPath);
+        return;
       }
 
-      // SHARED FLOW: Both zip and git converge here
-      // At this point, containerProjectPath contains either extracted zip or cloned repo
+      this.logger.info('project-import.security-validation.success', {
+        jobId,
+        appId,
+        stats: securityValidation.stats,
+      });
+
+      // Phase 2: Copy zip to container via shared filesystem
+      await this.updateStatus(jobId, ImportJobStatus.EXTRACTING);
+
+      const agentZipPath = join(app.path, `.import-${jobId}.zip`);
+      containerZipPath = `/app/.import-${jobId}.zip`;
+      containerExtractPath = `/app/.import-${jobId}-extract`;
+
+      this.logger.info('project-import.copy-zip-to-container', {
+        jobId,
+        appId,
+        sourceZipPath: zipPath,
+        agentZipPath,
+        containerZipPath,
+      });
+
+      // Copy zip file to container via shared filesystem mount (agent-side path)
+      await cp(zipPath, agentZipPath);
+
+      // Phase 3: Extract zip inside container (container-side paths for dev-supervisor)
+      const extractResult = await this.extractZipInContainer(
+        devSupervisor,
+        containerZipPath,
+        containerExtractPath
+      );
+
+      if (!extractResult.success) {
+        await this.importJobRepo.markFailed(
+          jobId,
+          'Zip extraction failed in container',
+          ImportJobStatus.EXTRACTING,
+          extractResult.errors
+        );
+        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+        await this.cleanupZipFile(params.zipPath!);
+        return;
+      }
+
+      containerProjectPath = containerExtractPath;
+
+      // Continue with shared flow
+      // At this point, containerProjectPath contains the extracted zip
 
       // Phase 4: Validate project structure in container
       await this.updateStatus(jobId, ImportJobStatus.VALIDATING);

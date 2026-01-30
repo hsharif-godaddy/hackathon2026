@@ -457,7 +457,7 @@ function createImportJobsTable(db: Database): void {
         'copying', 'installing', 'building', 'committing', 'restarting',
         'completed', 'failed'
       )),
-      source_type TEXT NOT NULL DEFAULT 'zip' CHECK(source_type IN ('zip', 'git')),
+      source_type TEXT NOT NULL DEFAULT 'zip' CHECK(source_type IN ('zip', 'git_pull', 'git_push')),
       zip_file_name TEXT,
       zip_file_size INTEGER,
       git_url TEXT,
@@ -837,6 +837,100 @@ function createTriggers(db: Database): void {
 }
 
 /**
+ * Migration: Update source_type CHECK constraint to replace 'git' with 'git_pull' and 'git_push'
+ *
+ * SQLite doesn't support ALTER COLUMN, so we need to recreate the table.
+ * This is safe because we copy all data and use a transaction.
+ * Note: We intentionally do NOT migrate existing git data - it will be discarded.
+ *
+ * @param db - Database instance
+ */
+function migrateSourceTypeConstraint(db: Database): void {
+  try {
+    // Check current constraint by trying to insert a git_pull value
+    const testStmt = db.prepare(`
+      INSERT INTO import_jobs (id, app_id, status, source_type)
+      VALUES ('__test_constraint__', '__test__', 'pending', 'git_pull')
+    `);
+
+    try {
+      testStmt.run();
+      // If we get here, constraint already allows git_pull - clean up and return
+      db.prepare(`DELETE FROM import_jobs WHERE id = '__test_constraint__'`).run();
+      logger.info('database.migration.source-type-constraint.skipped', {
+        reason: 'Constraint already allows git_pull/git_push',
+      });
+      return;
+    } catch {
+      // Constraint violation expected - need to migrate
+      logger.info('database.migration.source-type-constraint.start', {
+        reason: 'Updating CHECK constraint to replace git with git_pull and git_push',
+      });
+    }
+
+    // SQLite requires table recreation to modify CHECK constraint
+    // Note: existing git data is NOT preserved - only zip import data is migrated
+    db.exec(`
+      BEGIN TRANSACTION;
+
+      -- Create new table with updated constraint (no 'git', only 'zip', 'git_pull', 'git_push')
+      CREATE TABLE import_jobs_new (
+        id TEXT PRIMARY KEY,
+        app_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN (
+          'pending', 'creating_container', 'extracting', 'validating',
+          'copying', 'installing', 'building', 'committing', 'restarting',
+          'completed', 'failed'
+        )),
+        source_type TEXT NOT NULL DEFAULT 'zip' CHECK(source_type IN ('zip', 'git_pull', 'git_push')),
+        zip_file_name TEXT,
+        zip_file_size INTEGER,
+        git_url TEXT,
+        git_branch TEXT,
+        git_commit_hash TEXT,
+        extracted_path TEXT,
+        detected_package_manager TEXT CHECK(detected_package_manager IN ('npm', 'yarn', 'pnpm')),
+        has_build_script BOOLEAN,
+        has_dev_script BOOLEAN,
+        validation_errors TEXT,
+        install_output TEXT,
+        build_output TEXT,
+        error_message TEXT,
+        error_stage TEXT,
+        started_at DATETIME,
+        completed_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+      );
+
+      -- Copy only zip import data (discard all git data as requested)
+      INSERT INTO import_jobs_new SELECT * FROM import_jobs WHERE source_type = 'zip';
+
+      -- Drop old table and rename new one
+      DROP TABLE import_jobs;
+      ALTER TABLE import_jobs_new RENAME TO import_jobs;
+
+      -- Recreate indexes
+      CREATE INDEX IF NOT EXISTS idx_import_jobs_app_id ON import_jobs(app_id);
+      CREATE INDEX IF NOT EXISTS idx_import_jobs_status ON import_jobs(status);
+      CREATE INDEX IF NOT EXISTS idx_import_jobs_created_at ON import_jobs(created_at);
+
+      COMMIT;
+    `);
+
+    logger.info('database.migration.source-type-constraint.success', {
+      message: 'Successfully updated source_type CHECK constraint (git data discarded)',
+    });
+  } catch (err) {
+    logger.error('database.migration.source-type-constraint.failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    // Don't throw - migration failures shouldn't break app startup
+  }
+}
+
+/**
  * Apply migrations for existing databases
  * This handles adding new columns to existing tables without breaking existing data
  */
@@ -1047,6 +1141,9 @@ function applyMigrations(db: Database): void {
 
   // Add quality tracking columns to conversation_summaries if they don't exist
   migrateSummariesQualityTracking(db);
+
+  // Migrate source_type CHECK constraint to include git_pull and git_push (remove unused 'git')
+  migrateSourceTypeConstraint(db);
 }
 
 /**

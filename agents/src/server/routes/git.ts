@@ -1,97 +1,27 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import { rm } from 'node:fs/promises';
-import { existsSync, mkdirSync } from 'node:fs';
-import multer from 'multer';
-import { nanoid } from 'nanoid';
+import { Router, Request, Response } from 'express';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
-import { ImportJobRepository } from '../../database/repositories/ImportJobRepository.js';
 import { GitTool } from '../../tools/git-tool.js';
 import { GitUtils } from '../../utils/git.js';
 import { Logger, log } from '../../logging/index.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
-import { projectImportService } from '../../services/ProjectImportService.js';
-import { zipSecurityService } from '../../services/ZipSecurityService.js';
-import { getZipImportLimits } from '../../services/features.js';
 import {
   ImportJobStatus,
   type CreateImportResponse,
   type ImportStatusResponse,
-  type ImportProgress,
   type ValidationError,
 } from '../../types/import.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
-import {importType, validateGitImport} from '../middleware/git-import-validation.js';
-import { isCapabilityEnabled } from '../../utils/capability-config.js';
+import { importType, validateGitImport } from '../middleware/git-import-validation.js';
+import {
+  requireZipImportFeature,
+  handleZipImport,
+  getStageInfo,
+  importJobRepo,
+} from './zip-import.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
-const importJobRepo = new ImportJobRepository();
 const importLogger = Logger.create({ service: 'import-routes' });
-
-/**
- * Temporary directory for zip uploads before validation
- *
- * @see docs/zip-import-plan.md for design decision rationale
- */
-const TEMP_UPLOAD_DIR = process.env.IMPORT_TEMP_DIR || '/tmp/airo-imports';
-if (!existsSync(TEMP_UPLOAD_DIR)) {
-  mkdirSync(TEMP_UPLOAD_DIR, { recursive: true });
-}
-
-/**
- * Configure multer for zip file uploads
- *
- * Files are stored in TEMP_UPLOAD_DIR until validated, then copied to the
- * app's shared mount for container-side processing.
- */
-const zipUpload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => {
-      cb(null, TEMP_UPLOAD_DIR);
-    },
-    filename: (_req, file, cb) => {
-      const uniqueSuffix = `${Date.now()}-${nanoid(8)}`;
-      cb(null, `import-${uniqueSuffix}.zip`);
-    },
-  }),
-  limits: {
-    fileSize: getZipImportLimits().maxZipSize,
-    files: 1,
-  },
-  fileFilter: (_req, file, cb) => {
-    const allowedMimeTypes = [
-      'application/zip',
-      'application/x-zip-compressed',
-      'application/x-zip',
-      'multipart/x-zip',
-    ];
-
-    if (allowedMimeTypes.includes(file.mimetype) || file.originalname.endsWith('.zip')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only ZIP files are allowed'));
-    }
-  },
-});
-
-/**
- * Middleware to check if zip import feature is enabled
- *
- * Requires ENABLE_ZIP_IMPORT=true environment variable.
- */
-function requireZipImportFeature(req: Request, res: Response, next: NextFunction): void {
-  const isZipUploadEnabled: boolean = process.env.ENABLE_ZIP_IMPORT === 'true' || isCapabilityEnabled("CODE_SYNC_ZIP_UPLOAD");
-  if (!isZipUploadEnabled) {
-    res.status(403).json({
-      success: false,
-      error: 'Zip import feature is not enabled',
-      details: 'Enable CODE_SYNC_ZIP_UPLOAD capability via /alloc/config.json',
-    });
-    return;
-  }
-
-  next();
-}
 
 /**
  * Get commit history for an app
@@ -451,58 +381,13 @@ router.post('/apps/:id/git/restore', async (req, res) => {
 
 // =============================================================================
 // ZIP IMPORT ROUTES (Feature-flagged with ENABLE_ZIP_IMPORT)
+// Legacy endpoints for backward compatibility - new code should use /apps/:id/zip/upload
 // =============================================================================
 
 /**
- * Ordered list of import stages for progress tracking
- */
-const STAGE_ORDER: ImportJobStatus[] = [
-  ImportJobStatus.PENDING,
-  ImportJobStatus.CREATING_CONTAINER,
-  ImportJobStatus.EXTRACTING,
-  ImportJobStatus.VALIDATING,
-  ImportJobStatus.COPYING,
-  ImportJobStatus.INSTALLING,
-  ImportJobStatus.BUILDING,
-  ImportJobStatus.COMMITTING,
-  ImportJobStatus.RESTARTING,
-  ImportJobStatus.COMPLETED,
-];
-
-const STAGE_MESSAGES: Record<ImportJobStatus, string> = {
-  [ImportJobStatus.PENDING]: 'Import job created, waiting to start...',
-  [ImportJobStatus.CREATING_CONTAINER]: 'Creating app container...',
-  [ImportJobStatus.EXTRACTING]: 'Extracting zip file...',
-  [ImportJobStatus.VALIDATING]: 'Validating project structure...',
-  [ImportJobStatus.COPYING]: 'Copying files to container...',
-  [ImportJobStatus.INSTALLING]: 'Installing dependencies...',
-  [ImportJobStatus.BUILDING]: 'Building project...',
-  [ImportJobStatus.COMMITTING]: 'Committing to git...',
-  [ImportJobStatus.RESTARTING]: 'Restarting dev server...',
-  [ImportJobStatus.COMPLETED]: 'Import completed successfully!',
-  [ImportJobStatus.FAILED]: 'Import failed',
-};
-
-/**
- * Get stage information for progress display
- */
-function getStageInfo(status: ImportJobStatus): ImportProgress {
-  const stageIndex = STAGE_ORDER.indexOf(status);
-
-  const result: ImportProgress = {
-    stage: status,
-    message: STAGE_MESSAGES[status] || 'Unknown status',
-  };
-
-  if (status !== ImportJobStatus.FAILED && stageIndex >= 0) {
-    result.stageNumber = stageIndex + 1;
-  }
-
-  return result;
-}
-
-/**
  * POST /apps/:id/git/replace - Replace entire codebase from a zip file or git repository
+ *
+ * DEPRECATED: Use POST /apps/:id/zip/upload for new integrations.
  *
  * DESTRUCTIVE: Deletes all existing code and replaces it with new contents.
  *
@@ -533,7 +418,6 @@ router.post(
   validateGitImport,
   async (req: Request, res: Response) => {
     const { id: appId } = req.params;
-    const contentType = req.headers['content-type'] || '';
 
     try {
       if (!appId) {
@@ -593,143 +477,23 @@ router.post(
 );
 
 /**
- * Handle zip file import
+ * Handle git repository import
+ *
+ * Note: Git clone import is no longer supported. Use git pull/push for syncing.
  */
-async function handleZipImport(req: Request, res: Response, appId: string): Promise<Response> {
-  return new Promise((resolve) => {
-    zipUpload.single('zipFile')(req, res, async (err) => {
-      let zipPath: string | null = null;
+async function handleGitImport(_req: Request, res: Response, appId: string): Promise<Response> {
+  importLogger.warn('route.git.replace.git.not-supported', { appId });
 
-      try {
-        if (err) {
-          return resolve(res.status(400).json({
-            success: false,
-            error: err.message || 'Failed to upload zip file',
-          } as CreateImportResponse));
-        }
-
-        if (!req.file) {
-          return resolve(res.status(400).json({
-            success: false,
-            error: 'Zip file is required',
-          } as CreateImportResponse));
-        }
-
-        zipPath = req.file.path;
-
-        importLogger.info('route.git.replace.zip.start', {
-          appId,
-          zipFileName: req.file.originalname,
-          zipFileSize: req.file.size,
-        });
-
-        const validation = await zipSecurityService.validate(zipPath);
-        if (!validation.valid) {
-          await rm(zipPath, { force: true });
-
-          const sanitizedErrors = validation.errors.map(err => ({
-            key: err.key,
-            message: err.message,
-          }));
-
-          return resolve(res.status(400).json({
-            success: false,
-            error: 'Invalid zip file',
-            validationErrors: sanitizedErrors,
-          } as CreateImportResponse));
-        }
-
-        const importJob = await projectImportService.startImport({
-          appId,
-          appName: appId,
-          sourceType: 'zip',
-          zipPath,
-          zipFileName: req.file.originalname,
-          zipFileSize: req.file.size,
-        });
-
-        importLogger.info('route.git.replace.zip.success', {
-          appId,
-          importJobId: importJob.id,
-        });
-
-        return resolve(res.status(202).json({
-          success: true,
-          appId,
-          importJobId: importJob.id,
-          status: importJob.status,
-          sourceType: 'zip',
-        } as CreateImportResponse));
-
-      } catch (error) {
-        if (zipPath) {
-          try {
-            await rm(zipPath, { force: true });
-          } catch {
-            // Ignore cleanup errors
-          }
-        }
-
-        log.error(importLogger, 'route.git.replace.zip.error', error as Error, { appId });
-
-        return resolve(res.status(500).json({
-          success: false,
-          error: error instanceof Error ? error.message : 'Internal server error',
-        } as CreateImportResponse));
-      }
-    });
+  return res.status(501).json({
+    success: false,
+    error: 'Git clone import is no longer supported. Use git pull/push for syncing with existing repositories.',
   });
 }
 
 /**
- * Handle git repository import
- *
- * Note: gitUrl and gitToken are pre-validated by validateGitImport middleware
- */
-async function handleGitImport(req: Request, res: Response, appId: string): Promise<Response> {
-  try {
-    const { gitUrl, gitToken, gitBranch } = req.body;
-
-    importLogger.info('route.git.replace.git.start', {
-      appId,
-      gitUrl,
-      gitBranch: gitBranch || 'default',
-    });
-
-    const importJob = await projectImportService.startImport({
-      appId,
-      appName: appId,
-      sourceType: 'git',
-      gitUrl,
-      gitToken,
-      gitBranch: gitBranch || undefined,
-    });
-
-    importLogger.info('route.git.replace.git.success', {
-      appId,
-      importJobId: importJob.id,
-    });
-
-    return res.status(202).json({
-      success: true,
-      appId,
-      importJobId: importJob.id,
-      status: importJob.status,
-      sourceType: 'git',
-    } as CreateImportResponse);
-
-  } catch (error) {
-    log.error(importLogger, 'route.git.replace.git.error', error as Error, { appId });
-
-    return res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Internal server error',
-    } as CreateImportResponse);
-  }
-}
-
-/**
  * GET /apps/:id/git/replace/status - Get the current status of a codebase replacement
+ *
+ * DEPRECATED: Use GET /apps/:id/zip/upload/status for new integrations.
  *
  * FEATURE FLAG: Requires ENABLE_ZIP_IMPORT=true environment variable.
  *
