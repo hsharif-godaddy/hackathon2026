@@ -35,7 +35,6 @@ import { usePageTiming } from '@/hooks/usePageTiming'
 import { usePaywallPrefetch } from '@/hooks/usePaywallPrefetch'
 import { useRumAppContext } from '@/hooks/useRumAppContext'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useSyncResponsiveState } from '@/hooks/useSyncResponsiveState'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
@@ -89,8 +88,6 @@ function DevelopPageContent() {
       });
     }
   }, [hibernation.resumeComplete, appId]);
-
-  const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
 
   // Server polling store - only used for cleanup on unmount
   // Note: Server polling lifecycle is managed by PreviewPane component
@@ -853,8 +850,8 @@ function DevelopPageContent() {
                 ease: [0.4, 0, 0.2, 1]
               }}
             >
-              {isPublishButtonEnabled && <PublishStatusAlert />}
-              {isPublishButtonEnabled && <PostPublishGoLiveModal appId={appId} />}
+              <PublishStatusAlert />
+              <PostPublishGoLiveModal appId={appId} />
 
               <PreviewPane
                 onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
@@ -904,8 +901,8 @@ function DevelopPageContent() {
                       willChange: 'opacity'
                     }}
                   >
-                    {isPublishButtonEnabled && <PublishStatusAlert />}
-                    {isPublishButtonEnabled && <PostPublishGoLiveModal appId={appId} />}
+                    <PublishStatusAlert />
+                    <PostPublishGoLiveModal appId={appId} />
 
                     <PreviewPane
                       onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
