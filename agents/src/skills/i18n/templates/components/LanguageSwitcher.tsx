@@ -40,7 +40,7 @@ export default function LanguageSwitcher({
     // Build pattern from supported codes to handle all formats (en, en-US, fil, etc.)
     const langPattern = supportedLanguages.map((l) => l.code).join('|');
     const regex = new RegExp(`^/(${langPattern})(/|$)`);
-    const newPath = location.pathname.replace(regex, `/${languageCode}$1`);
+    const newPath = location.pathname.replace(regex, `/${languageCode}$2`);
     navigate(newPath || `/${languageCode}`);
   };
 
