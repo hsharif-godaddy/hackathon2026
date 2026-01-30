@@ -1,6 +1,10 @@
 'use client'
 
+import clsx from 'clsx'
+import { useEffect, useRef } from 'react'
+import { useIntl } from 'react-intl'
 import Button from '@ux/button'
+import MicIcon from '@ux/icon/mic'
 import PlusIcon from '@ux/icon/plus'
 import SendIcon from '@ux/icon/send'
 
@@ -9,6 +13,7 @@ import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/Asset
 import type { SendMessageOptions } from '@/app/develop/components/chat/ChatContext'
 import UsageGauge from '@/app/develop/components/chat/UsageGauge'
 import type { AiEditContext } from '@/app/develop/components/types'
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -42,11 +47,43 @@ export default function ChatInput({
   onClearAiEditContext,
 }: ChatInputProps) {
   const t = useTranslations();
+  const { locale } = useIntl();
   const isMobile = useDevelopPageStore((state) => state.isMobile);
   const isAssetManagerOpen = useDevelopPageStore((state) => state.isAssetManagerOpen);
   const setIsAssetManagerOpen = useDevelopPageStore((state) => state.setIsAssetManagerOpen);
   const { data: isAssetManagerEnabled } = useSwitchboard('appbuilder-image-manager');
   const canAddAsset = selectedAssets.length < maxAssets;
+
+  const textBeforeListeningRef = useRef('')
+
+  const {
+    isListening,
+    isSupported: isSpeechSupported,
+    toggle: toggleSpeech,
+    transcript: speechTranscript,
+    stop: stopSpeech,
+  } = useSpeechRecognition({ language: locale })
+
+  useEffect(function ensureMicrophoneOffOnMount() {
+    if (isSpeechSupported) {
+      stopSpeech()
+    }
+  }, [isSpeechSupported, stopSpeech])
+
+  useEffect(function syncSpeechTranscript() {
+    if (isListening && speechTranscript) {
+      const baseText = textBeforeListeningRef.current
+      const separator = baseText && !baseText.endsWith(' ') ? ' ' : ''
+      const newText = baseText + separator + speechTranscript
+      onInputChange(newText)
+    }
+  }, [isListening, speechTranscript, onInputChange])
+
+  useEffect(function captureTextOnListeningStart() {
+    if (isListening) {
+      textBeforeListeningRef.current = inputValue
+    }
+  }, [isListening]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -89,11 +126,14 @@ export default function ChatInput({
               <textarea
                 id="chat-input-textarea"
                 value={inputValue}
-                onChange={(e) => onInputChange(e.target.value)}
+                onChange={(e) => {
+                  if (isListening) return
+                  onInputChange(e.target.value)
+                }}
                 onKeyDown={onKeyDown}
                 placeholder={isDisabled ? t('builder_chatinput_processing') : t('builder_chatinput_ask_airo')}
                 rows={3}
-                disabled={isDisabled}
+                disabled={isDisabled || isListening}
                 className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-base md:text-sm chat-input-text`}
               />
             </div>
@@ -117,17 +157,36 @@ export default function ChatInput({
               <UsageGauge appId={appId} />
             </div>
 
-            <Button
-              id="chat-send-button"
-              onClick={() => onSendMessage()}
-              data-eid={generateClickEID('develop.prompt.send')}
-              disabled={!inputValue?.trim() || isDisabled}
-              aria-label={t('builder_chatinput_send')}
-              design="primary"
-              icon={<SendIcon />}
-              size="sm"
-              data-partial="componentAiro"
-            />
+            <div className="flex items-center gap-0.5">
+              {isSpeechSupported && (
+                <Button
+                  onClick={toggleSpeech}
+                  onMouseDown={(e) => e.preventDefault()}
+                  data-eid={generateClickEID('develop.prompt.speech')}
+                  disabled={isDisabled}
+                  design="control"
+                  className={clsx(
+                    'cursor-pointer !rounded-full aspect-square !border-none !outline-none !ring-0',
+                    isListening
+                      ? '!bg-intents-ux-boxLowContrast-backgroundColor [&_svg]:!text-intents-ux-box-foregroundColor'
+                      : '!bg-transparent'
+                  )}
+                  icon={<MicIcon />}
+                  size="sm"
+                />
+              )}
+              <Button
+                id="chat-send-button"
+                onClick={() => onSendMessage()}
+                data-eid={generateClickEID('develop.prompt.send')}
+                disabled={!inputValue?.trim() || isDisabled}
+                aria-label={t('builder_chatinput_send')}
+                design="primary"
+                icon={<SendIcon />}
+                size="sm"
+                data-partial="componentAiro"
+              />
+            </div>
           </div>
         </div>
       </div>

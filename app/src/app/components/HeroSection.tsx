@@ -1,14 +1,16 @@
 import clsx from 'clsx'
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo,useRef, useState } from 'react'
-import { FormattedMessage } from 'react-intl'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { FormattedMessage, useIntl } from 'react-intl'
 import Alert from '@ux/alert'
 import Box from '@ux/box'
 import Button from '@ux/button'
+import MicIcon from '@ux/icon/mic'
 import SendIcon from '@ux/icon/send'
 import Spinner from '@ux/spinner'
 import { text } from '@ux/text'
 
 import ExamplesSection from '@/app/components/HeroExamples'
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useResponsive } from '@/hooks/useResponsive'
 import { useTranslations } from '@/hooks/useTranslations'
 import { MAX_PROMPT_LENGTH } from '@/lib/features'
@@ -25,13 +27,45 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   onExampleClick
 }, ref) => {
   const t = useTranslations();
+  const { locale } = useIntl();
   const [isTyping, setIsTyping] = useState(false)
   const [displayText, setDisplayText] = useState(promptText)
   const [isFocused, setIsFocused] = useState(false)
   const [animatedPlaceholder, setAnimatedPlaceholder] = useState('')
 
-  // Keep expanded if focused OR has content
-  const isExpanded = isFocused || displayText.trim().length > 0
+  // Speech recognition - track text before listening started
+  const textBeforeListeningRef = useRef('')
+
+  const {
+    isListening,
+    isSupported: isSpeechSupported,
+    toggle: toggleSpeech,
+    transcript: speechTranscript,
+  } = useSpeechRecognition({ language: locale })
+
+  // Update text when speech transcript changes (replace, don't append)
+  useEffect(function syncSpeechTranscript() {
+    if (isListening && speechTranscript) {
+      const baseText = textBeforeListeningRef.current
+      const separator = baseText && !baseText.endsWith(' ') ? ' ' : ''
+      const newText = baseText + separator + speechTranscript
+      setDisplayText(newText)
+      setPromptText(newText)
+    }
+  }, [isListening, speechTranscript, setPromptText])
+
+  // Store text when listening starts
+  // Note: displayText is intentionally omitted from dependencies. We want to capture
+  // the current displayText value only when listening starts, not re-run this effect
+  // when displayText changes during listening (which would overwrite the captured value).
+  useEffect(function captureTextOnListeningStart() {
+    if (isListening) {
+      textBeforeListeningRef.current = displayText
+    }
+  }, [isListening]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep expanded if focused OR has content OR listening
+  const isExpanded = isFocused || displayText.trim().length > 0 || isListening
   const animationQueueRef = useRef<string[]>([])
   const lastErrorClearRef = useRef<string>('')
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -262,7 +296,10 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 data-testid="homepage-prompt-input"
                 value={displayText}
                 onChange={(e) => {
-                  if (isTyping) return // Prevent user input during typing animation
+                  // Block input during typing animation or speech recognition to prevent
+                  // conflicts between manual typing, animated text, and voice transcript.
+                  // Users can stop listening to edit the transcript.
+                  if (isTyping || isListening) return
                   const newValue = e.target.value
                   isUserTypingRef.current = true
                   setDisplayText(newValue)
@@ -279,7 +316,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   isUserTypingRef.current = false
                 }}
                 rows={5}
-                disabled={isLoading}
+                disabled={isLoading || isListening}
                 maxLength={MAX_PROMPT_LENGTH + 1}
                 className={clsx('!bg-intents-ux-box-backgroundColor relative pl-3 sm:pl-4 pr-8 sm:pr-12 py-2.5 sm:py-3 w-full text-md sm:text-xl leading-[1.5] font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
                   'h-24 md:h-32 rounded-2xl': isExpanded,
@@ -287,20 +324,42 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 })}
                 placeholder={isTyping ? "" : animatedPlaceholder}
               />
-              <Button
-                onClick={onStartBuilding}
-                data-partial="componentAiro"
-                data-eid={generateClickEID('homepage.prompt.submit')}
-                disabled={!promptText.trim() || isLoading || isTyping || promptText.length >= MAX_PROMPT_LENGTH}
-                design='primary'
-                className={clsx('group cursor-pointer absolute transition-all duration-300 flex items-center disabled:opacity-50 disabled:cursor-not-allowed !rounded-full aspect-square !border-none right-1.5', {
-                  'bottom-1/2 translate-y-1/2': !isExpanded,
-                  'bottom-1.5': isExpanded
-                })}
-                icon={isLoading ? <Spinner size='sm' /> : <SendIcon />}
-                aria-label={isLoading ? t('builder_homepage_hero_prompt_button_loading') : t('builder_homepage_hero_prompt_button')}
-                size={isMobile ? 'sm' : 'md'}
-              />
+
+
+              {/* Action Buttons Container */}
+              <div className={clsx('absolute flex items-center right-1.5 transition-all duration-300', {
+                'bottom-1/2 translate-y-1/2 -space-x-1': !isExpanded,
+                'bottom-1.5 gap-1': isExpanded
+              })}>
+                {isSpeechSupported && (
+                  <Button
+                    onClick={toggleSpeech}
+                    onMouseDown={(e) => e.preventDefault()}
+                    data-eid={generateClickEID('homepage.prompt.speech')}
+                    disabled={isLoading || isTyping}
+                    design="control"
+                    className={clsx(
+                      'cursor-pointer !rounded-full aspect-square !border-none !outline-none !ring-0',
+                      isListening
+                        ? '!bg-intents-ux-boxLowContrast-backgroundColor [&_svg]:!text-intents-ux-box-foregroundColor'
+                        : '!bg-transparent'
+                    )}
+                    icon={<MicIcon />}
+                    size={isMobile ? 'sm' : 'md'}
+                  />
+                )}
+                <Button
+                  onClick={onStartBuilding}
+                  data-partial="componentAiro"
+                  data-eid={generateClickEID('homepage.prompt.submit')}
+                  disabled={!promptText.trim() || isLoading || isTyping || promptText.length >= MAX_PROMPT_LENGTH}
+                  design='primary'
+                  className='cursor-pointer !rounded-full aspect-square !border-none'
+                  icon={isLoading ? <Spinner size='sm' /> : <SendIcon />}
+                  aria-label={isLoading ? t('builder_homepage_hero_prompt_button_loading') : t('builder_homepage_hero_prompt_button')}
+                  size={isMobile ? 'sm' : 'md'}
+                />
+              </div>
             </Box>
           </div>
           {promptText.length >= MAX_PROMPT_LENGTH && isExpanded && (
