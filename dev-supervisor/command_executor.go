@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"errors"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -51,7 +51,7 @@ func NewCommandExecutor() *CommandExecutor {
 
 func (ce *CommandExecutor) Execute(req CommandRequest) (*CommandResult, error) {
 	if req.Command == "" {
-		return nil, fmt.Errorf("command is required")
+		return nil, errors.New("command is required")
 	}
 
 	commandPreview := commandLogPreview(req.Command)
@@ -125,7 +125,8 @@ func (ce *CommandExecutor) Execute(req CommandRequest) (*CommandResult, error) {
 
 	// Get exit code
 	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) {
 			result.ExitCode = exitError.ExitCode()
 		} else {
 			result.Error = err.Error()

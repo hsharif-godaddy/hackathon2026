@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -14,11 +15,13 @@ import (
 )
 
 // Duration is a custom type that can unmarshal from JSON duration strings like "30s", "5m"
+//
+//nolint:recvcheck // UnmarshalJSON requires pointer receiver to modify value, others use value receiver for convenience
 type Duration time.Duration
 
 // UnmarshalJSON implements json.Unmarshaler for Duration
 func (d *Duration) UnmarshalJSON(b []byte) error {
-	var v interface{}
+	var v any
 	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}
@@ -131,57 +134,67 @@ func NewHealthMonitor(logMgr *LogManager) *HealthMonitor {
 }
 
 func (hm *HealthMonitor) Configure(healthCheck *HealthCheck, restartPolicy *RestartPolicy) {
-	// Store health check configuration atomically
-	if healthCheck != nil {
-		// Make a copy and apply defaults to avoid mutating the original
-		hcCopy := *healthCheck
+	hm.configureHealthCheck(healthCheck)
+	hm.configureRestartPolicy(restartPolicy)
+}
 
-		if hcCopy.Interval == 0 {
-			hcCopy.Interval = Duration(30 * time.Second)
-		}
-		if hcCopy.Timeout == 0 {
-			hcCopy.Timeout = Duration(10 * time.Second)
-		}
-		if hcCopy.Retries == 0 {
-			hcCopy.Retries = 3
-		}
-		if hcCopy.StartPeriod == 0 {
-			hcCopy.StartPeriod = Duration(60 * time.Second)
-		}
-		if hcCopy.SuccessThreshold == 0 {
-			hcCopy.SuccessThreshold = 1
-		}
-		if hcCopy.FailureThreshold == 0 {
-			hcCopy.FailureThreshold = 3
-		}
-
-		// Store the immutable copy
-		hm.healthCheck.Store(&hcCopy)
-	} else {
+// configureHealthCheck applies defaults and stores health check configuration
+func (hm *HealthMonitor) configureHealthCheck(healthCheck *HealthCheck) {
+	if healthCheck == nil {
 		hm.healthCheck.Store(nil)
+		return
 	}
 
-	// Restart policy still needs mutex as it's accessed less frequently
+	// Make a copy and apply defaults to avoid mutating the original
+	hcCopy := *healthCheck
+
+	if hcCopy.Interval == 0 {
+		hcCopy.Interval = Duration(30 * time.Second)
+	}
+	if hcCopy.Timeout == 0 {
+		hcCopy.Timeout = Duration(10 * time.Second)
+	}
+	if hcCopy.Retries == 0 {
+		hcCopy.Retries = 3
+	}
+	if hcCopy.StartPeriod == 0 {
+		hcCopy.StartPeriod = Duration(60 * time.Second)
+	}
+	if hcCopy.SuccessThreshold == 0 {
+		hcCopy.SuccessThreshold = 1
+	}
+	if hcCopy.FailureThreshold == 0 {
+		hcCopy.FailureThreshold = 3
+	}
+
+	// Store the immutable copy
+	hm.healthCheck.Store(&hcCopy)
+}
+
+// configureRestartPolicy applies defaults and stores restart policy configuration
+func (hm *HealthMonitor) configureRestartPolicy(restartPolicy *RestartPolicy) {
 	hm.mu.Lock()
 	hm.restartPolicy = restartPolicy
 	hm.mu.Unlock()
 
-	if hm.restartPolicy != nil && hm.restartPolicy.Enabled {
-		if hm.restartPolicy.MaxRestarts == 0 {
-			hm.restartPolicy.MaxRestarts = 5
-		}
-		if hm.restartPolicy.RestartWindow == 0 {
-			hm.restartPolicy.RestartWindow = Duration(5 * time.Minute)
-		}
-		if hm.restartPolicy.BackoffMultiplier == 0 {
-			hm.restartPolicy.BackoffMultiplier = 2.0
-		}
-		if hm.restartPolicy.MaxBackoff == 0 {
-			hm.restartPolicy.MaxBackoff = Duration(5 * time.Minute)
-		}
-		if hm.restartPolicy.InitialDelay == 0 {
-			hm.restartPolicy.InitialDelay = Duration(1 * time.Second)
-		}
+	if restartPolicy == nil || !restartPolicy.Enabled {
+		return
+	}
+
+	if hm.restartPolicy.MaxRestarts == 0 {
+		hm.restartPolicy.MaxRestarts = 5
+	}
+	if hm.restartPolicy.RestartWindow == 0 {
+		hm.restartPolicy.RestartWindow = Duration(5 * time.Minute)
+	}
+	if hm.restartPolicy.BackoffMultiplier == 0 {
+		hm.restartPolicy.BackoffMultiplier = 2.0
+	}
+	if hm.restartPolicy.MaxBackoff == 0 {
+		hm.restartPolicy.MaxBackoff = Duration(5 * time.Minute)
+	}
+	if hm.restartPolicy.InitialDelay == 0 {
+		hm.restartPolicy.InitialDelay = Duration(1 * time.Second)
 	}
 }
 
@@ -224,11 +237,11 @@ func (hm *HealthMonitor) GetStatus() HealthResult {
 	return hm.result
 }
 
-func (hm *HealthMonitor) GetRestartStats() map[string]interface{} {
+func (hm *HealthMonitor) GetRestartStats() map[string]any {
 	hm.mu.RLock()
 	defer hm.mu.RUnlock()
 
-	stats := map[string]interface{}{
+	stats := map[string]any{
 		"total_restarts":  hm.restartCount,
 		"recent_restarts": 0,
 	}
@@ -321,7 +334,7 @@ func (hm *HealthMonitor) performHealthCheck(ctx context.Context) {
 
 func (hm *HealthMonitor) performCommandCheck(ctx context.Context, healthCheck *HealthCheck) (bool, string, error) {
 	if healthCheck.Command == "" {
-		return false, "No command specified", fmt.Errorf("empty command")
+		return false, "No command specified", errors.New("empty command")
 	}
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, healthCheck.Timeout.ToDuration())
@@ -341,14 +354,14 @@ func (hm *HealthMonitor) performCommandCheck(ctx context.Context, healthCheck *H
 
 func (hm *HealthMonitor) performHTTPCheck(ctx context.Context, healthCheck *HealthCheck) (bool, string, error) {
 	if healthCheck.URL == "" {
-		return false, "No URL specified", fmt.Errorf("empty URL")
+		return false, "No URL specified", errors.New("empty URL")
 	}
 
 	client := &http.Client{
 		Timeout: healthCheck.Timeout.ToDuration(),
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", healthCheck.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthCheck.URL, nil)
 	if err != nil {
 		return false, "Failed to create request", err
 	}
@@ -363,12 +376,12 @@ func (hm *HealthMonitor) performHTTPCheck(ctx context.Context, healthCheck *Heal
 		return true, fmt.Sprintf("HTTP %d", resp.StatusCode), nil
 	}
 
-	return false, fmt.Sprintf("HTTP %d", resp.StatusCode), fmt.Errorf("unhealthy status code")
+	return false, fmt.Sprintf("HTTP %d", resp.StatusCode), errors.New("unhealthy status code")
 }
 
 func (hm *HealthMonitor) performTCPCheck(ctx context.Context, healthCheck *HealthCheck) (bool, string, error) {
 	if healthCheck.Address == "" {
-		return false, "No address specified", fmt.Errorf("empty address")
+		return false, "No address specified", errors.New("empty address")
 	}
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, healthCheck.Timeout.ToDuration())
@@ -402,24 +415,9 @@ func (hm *HealthMonitor) processHealthCheckResult(
 	defer hm.mu.Unlock()
 
 	if success {
-		hm.result.Successes++
-		hm.result.Failures = 0
-
-		if hm.result.Successes >= healthCheck.SuccessThreshold {
-			hm.result.Status = HealthStatusHealthy
-		}
+		hm.handleHealthSuccess(healthCheck)
 	} else {
-		hm.result.Failures++
-		hm.result.Successes = 0
-
-		if hm.result.Failures >= healthCheck.FailureThreshold {
-			hm.result.Status = HealthStatusUnhealthy
-
-			// Trigger restart if policy is enabled
-			if hm.restartPolicy != nil && hm.restartPolicy.Enabled {
-				go hm.attemptRestart()
-			}
-		}
+		hm.handleHealthFailure(healthCheck)
 	}
 
 	hm.updateResult(hm.result.Status, message, checkTime, duration)
@@ -442,6 +440,31 @@ func (hm *HealthMonitor) processHealthCheckResult(
 				duration,
 			),
 		})
+	}
+}
+
+// handleHealthSuccess updates counters and status when health check succeeds
+func (hm *HealthMonitor) handleHealthSuccess(healthCheck *HealthCheck) {
+	hm.result.Successes++
+	hm.result.Failures = 0
+
+	if hm.result.Successes >= healthCheck.SuccessThreshold {
+		hm.result.Status = HealthStatusHealthy
+	}
+}
+
+// handleHealthFailure updates counters and status when health check fails
+func (hm *HealthMonitor) handleHealthFailure(healthCheck *HealthCheck) {
+	hm.result.Failures++
+	hm.result.Successes = 0
+
+	if hm.result.Failures >= healthCheck.FailureThreshold {
+		hm.result.Status = HealthStatusUnhealthy
+
+		// Trigger restart if policy is enabled
+		if hm.restartPolicy != nil && hm.restartPolicy.Enabled {
+			go hm.attemptRestart()
+		}
 	}
 }
 
@@ -490,7 +513,7 @@ func (hm *HealthMonitor) attemptRestart() {
 
 	// Calculate backoff delay
 	delay := hm.restartPolicy.InitialDelay.ToDuration()
-	for i := 0; i < recentRestarts; i++ {
+	for range recentRestarts {
 		delay = time.Duration(float64(delay) * hm.restartPolicy.BackoffMultiplier)
 		if delay > hm.restartPolicy.MaxBackoff.ToDuration() {
 			delay = hm.restartPolicy.MaxBackoff.ToDuration()

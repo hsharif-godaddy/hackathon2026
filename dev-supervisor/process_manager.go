@@ -171,7 +171,7 @@ func NewProcessManager(logMgr *LogManager, pid1Mgr *process.PID1Manager) *Proces
 // NewManagedProcess creates a new process instance
 func NewManagedProcess(config ProcessStartRequest) (*ManagedProcess, error) {
 	if config.Command == "" {
-		return nil, fmt.Errorf("command is required")
+		return nil, errors.New("command is required")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -312,59 +312,7 @@ func (mp *ManagedProcess) Stop(signal string, timeout int) error {
 		defer mp.infoMu.Unlock()
 
 		mp.info.State = ProcessStateStopped
-		if err != nil {
-			expected, exitCode := process.IsExpectedSignalExit(err)
-			mp.info.ExitCode = exitCode
-
-			// Log the exit status
-			if expected {
-				if exitCode != nil {
-					slog.Info("process stopped",
-						slog.GroupAttrs("process_exit",
-							slog.Int("exit_code", *exitCode),
-							slog.Bool("expected", true),
-						),
-					)
-				} else {
-					slog.Info("process stopped",
-						slog.GroupAttrs("process_exit",
-							slog.Bool("expected", true),
-							slog.String("note", "no exit code available"),
-						),
-					)
-				}
-			} else {
-				if exitCode != nil {
-					slog.Warn("process stopped with unexpected exit code",
-						slog.GroupAttrs("process_exit",
-							slog.Int("exit_code", *exitCode),
-							slog.Bool("expected", false),
-						),
-						slog.String("error", err.Error()),
-					)
-				} else {
-					slog.Warn("process stopped with unexpected error",
-						slog.GroupAttrs("process_exit",
-							slog.Bool("expected", false),
-						),
-						slog.String("error", err.Error()),
-					)
-				}
-				mp.info.State = ProcessStateError
-				mp.info.Error = err.Error()
-				return err
-			}
-		} else {
-			code := 0
-			mp.info.ExitCode = &code
-			slog.Info("process stopped cleanly",
-				slog.GroupAttrs("process_exit",
-					slog.Int("exit_code", 0),
-					slog.Bool("expected", true),
-				),
-			)
-		}
-		return nil
+		return mp.handleProcessExit(err)
 	case <-time.After(timeoutDuration):
 		// Force kill if timeout exceeded
 		if err := mp.cmd.Process.Kill(); err != nil {
@@ -441,6 +389,74 @@ func (mp *ManagedProcess) waitForCompletion(pid1Mgr *process.PID1Manager) {
 	// Cancel context
 	if mp.cancel != nil {
 		mp.cancel()
+	}
+}
+
+// handleProcessExit processes the exit status and logs appropriately
+// Must be called with infoMu locked
+func (mp *ManagedProcess) handleProcessExit(err error) error {
+	if err == nil {
+		code := 0
+		mp.info.ExitCode = &code
+		slog.Info("process stopped cleanly",
+			slog.GroupAttrs("process_exit",
+				slog.Int("exit_code", 0),
+				slog.Bool("expected", true),
+			),
+		)
+		return nil
+	}
+
+	expected, exitCode := process.IsExpectedSignalExit(err)
+	mp.info.ExitCode = exitCode
+
+	if expected {
+		mp.logExpectedExit(exitCode)
+		return nil
+	}
+
+	mp.logUnexpectedExit(exitCode, err)
+	mp.info.State = ProcessStateError
+	mp.info.Error = err.Error()
+	return err
+}
+
+// logExpectedExit logs an expected process exit
+func (mp *ManagedProcess) logExpectedExit(exitCode *int) {
+	if exitCode != nil {
+		slog.Info("process stopped",
+			slog.GroupAttrs("process_exit",
+				slog.Int("exit_code", *exitCode),
+				slog.Bool("expected", true),
+			),
+		)
+	} else {
+		slog.Info("process stopped",
+			slog.GroupAttrs("process_exit",
+				slog.Bool("expected", true),
+				slog.String("note", "no exit code available"),
+			),
+		)
+	}
+}
+
+// logUnexpectedExit logs an unexpected process exit
+func (mp *ManagedProcess) logUnexpectedExit(exitCode *int, err error) {
+	if exitCode != nil {
+		slog.Warn("process stopped with unexpected exit code",
+			slog.GroupAttrs("process_exit",
+				slog.Int("exit_code", *exitCode),
+				slog.Bool("expected", false),
+			),
+			slog.String("error", err.Error()),
+		)
+	} else {
+		slog.Warn("process stopped with unexpected error",
+			slog.GroupAttrs("process_exit",
+				slog.Bool("expected", false),
+			),
+			slog.String("error", err.Error()),
+		)
 	}
 }
 
@@ -529,7 +545,7 @@ func (pm *ProcessManager) Stop(req ProcessStopRequest) error {
 	defer pm.mu.Unlock()
 
 	if pm.currentProcess == nil {
-		return fmt.Errorf("no process is running")
+		return errors.New("no process is running")
 	}
 
 	status := pm.currentProcess.GetInfo()
@@ -561,7 +577,7 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 	if pm.currentProcess == nil {
 		slog.Error("restart failed: no process to restart",
 			"restart_count", pm.restartCount)
-		return fmt.Errorf("no previous process to restart")
+		return errors.New("no previous process to restart")
 	}
 
 	currentStatus := pm.currentProcess.GetInfo()
@@ -574,69 +590,12 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 	config := pm.currentProcess.config
 
 	// Get ports using the safest approach: explicit config first, then runtime discovery
-	var ports []int
-
-	// Option 1: Use explicitly configured ports (safest)
-	if len(config.Ports) > 0 {
-		ports = config.Ports
-		slog.Info("using explicitly configured ports", "ports", ports)
-	} else {
-		// Option 2: Runtime discovery via /proc/net/tcp (safer than command parsing)
-		processInfo := pm.currentProcess.GetInfo()
-		if processInfo.PID > 0 {
-			var err error
-			ports, err = pm.portDiscovery.GetProcessPorts(processInfo.PID)
-			if err != nil {
-				slog.Warn("failed to discover process ports", "pid", processInfo.PID, "error", err)
-				// No ports to wait for - continue with restart
-				ports = nil
-			} else if len(ports) > 0 {
-				slog.Info("discovered ports in use by process", "pid", processInfo.PID, "ports", ports)
-			}
-		}
-	}
+	ports := pm.discoverProcessPorts(config)
 
 	// Stop current process if running (recheck status)
 	if currentStatus.State == ProcessStateRunning {
-		stopReq := ProcessStopRequest{
-			Signal:  "SIGTERM",
-			Timeout: 30,
-		}
-		if !req.Graceful {
-			stopReq.Signal = "SIGKILL"
-			stopReq.Timeout = 5
-		}
-
-		slog.Info("stopping process",
-			"signal", stopReq.Signal,
-			"timeout_seconds", stopReq.Timeout,
-			"pid", currentStatus.PID)
-
-		// Stop idle monitoring if enabled
-		if pm.idleMonitorCancel != nil {
-			pm.idleMonitorCancel()
-			pm.idleMonitorCancel = nil
-			slog.Debug("idle_monitor.stopped_on_restart")
-		}
-
-		// Stop health monitoring
-		pm.healthMon.Stop()
-
-		// Stop the current process
-		if err := pm.currentProcess.Stop(stopReq.Signal, stopReq.Timeout); err != nil {
-			return fmt.Errorf("failed to stop process for restart: %w", err)
-		}
-
-		// Wait for the process to fully stop
-		pm.currentProcess.WaitForCompletion()
-
-		// Wait for ports to become available after process termination
-		// This prevents "address already in use" errors during restart
-		if len(ports) > 0 {
-			if err := waitForPortsAvailable(ports, defaultPortWaitTimeout); err != nil {
-				slog.Warn("port availability timeout during restart", "ports", ports, "error", err)
-				// Continue with restart despite port wait timeout - the new process start will fail if ports are still in use
-			}
+		if err := pm.stopProcessForRestart(req, currentStatus, ports); err != nil {
+			return err
 		}
 	}
 
@@ -1021,4 +980,78 @@ func (pm *ProcessManager) checkIdleAndStop() {
 			"pid", status.PID,
 			"uptime", time.Since(status.StartTime))
 	}
+}
+
+// discoverProcessPorts discovers the ports used by the current process
+func (pm *ProcessManager) discoverProcessPorts(config ProcessStartRequest) []int {
+	// Option 1: Use explicitly configured ports (safest)
+	if len(config.Ports) > 0 {
+		slog.Info("using explicitly configured ports", "ports", config.Ports)
+		return config.Ports
+	}
+
+	// Option 2: Runtime discovery via /proc/net/tcp (safer than command parsing)
+	processInfo := pm.currentProcess.GetInfo()
+	if processInfo.PID <= 0 {
+		return nil
+	}
+
+	ports, err := pm.portDiscovery.GetProcessPorts(processInfo.PID)
+	if err != nil {
+		slog.Warn("failed to discover process ports", "pid", processInfo.PID, "error", err)
+		return nil
+	}
+
+	if len(ports) > 0 {
+		slog.Info("discovered ports in use by process", "pid", processInfo.PID, "ports", ports)
+	}
+	return ports
+}
+
+// stopProcessForRestart stops the current process in preparation for restart
+func (pm *ProcessManager) stopProcessForRestart(
+	req ProcessRestartRequest, currentStatus ProcessInfo, ports []int,
+) error {
+	stopReq := ProcessStopRequest{
+		Signal:  "SIGTERM",
+		Timeout: 30,
+	}
+	if !req.Graceful {
+		stopReq.Signal = "SIGKILL"
+		stopReq.Timeout = 5
+	}
+
+	slog.Info("stopping process",
+		"signal", stopReq.Signal,
+		"timeout_seconds", stopReq.Timeout,
+		"pid", currentStatus.PID)
+
+	// Stop idle monitoring if enabled
+	if pm.idleMonitorCancel != nil {
+		pm.idleMonitorCancel()
+		pm.idleMonitorCancel = nil
+		slog.Debug("idle_monitor.stopped_on_restart")
+	}
+
+	// Stop health monitoring
+	pm.healthMon.Stop()
+
+	// Stop the current process
+	if err := pm.currentProcess.Stop(stopReq.Signal, stopReq.Timeout); err != nil {
+		return fmt.Errorf("failed to stop process for restart: %w", err)
+	}
+
+	// Wait for the process to fully stop
+	pm.currentProcess.WaitForCompletion()
+
+	// Wait for ports to become available after process termination
+	// This prevents "address already in use" errors during restart
+	if len(ports) > 0 {
+		if err := waitForPortsAvailable(ports, defaultPortWaitTimeout); err != nil {
+			slog.Warn("port availability timeout during restart", "ports", ports, "error", err)
+			// Continue with restart despite port wait timeout - the new process start will fail if ports are still in use
+		}
+	}
+
+	return nil
 }

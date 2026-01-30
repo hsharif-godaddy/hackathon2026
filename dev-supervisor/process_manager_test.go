@@ -17,8 +17,8 @@ type mockConn struct {
 }
 
 func (m *mockConn) Close() error                       { return nil }
-func (m *mockConn) Read(_ []byte) (n int, err error)   { return 0, nil }
-func (m *mockConn) Write(b []byte) (n int, err error)  { return len(b), nil }
+func (m *mockConn) Read(_ []byte) (int, error)         { return 0, nil }
+func (m *mockConn) Write(b []byte) (int, error)        { return len(b), nil }
 func (m *mockConn) LocalAddr() net.Addr                { return nil }
 func (m *mockConn) RemoteAddr() net.Addr               { return nil }
 func (m *mockConn) SetDeadline(_ time.Time) error      { return nil }
@@ -33,6 +33,7 @@ func TestProcessManager_NewProcessManager(t *testing.T) {
 
 	if pm == nil {
 		t.Fatal("Expected non-nil ProcessManager")
+		return
 	}
 
 	if pm.logMgr != logMgr {
@@ -209,7 +210,7 @@ func TestProcessManager_RestartProcess(t *testing.T) {
 	)
 
 	// Wait and check status multiple times to see if it stabilizes
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		time.Sleep(200 * time.Millisecond)
 		status := pm.GetStatus()
 		t.Logf("Status check %d: State=%s, PID=%d, Error=%s", i+1, status.State, status.PID, status.Error)
@@ -644,7 +645,7 @@ func TestProcessManager_HealthCheckDoesNotPreventIdle(t *testing.T) {
 
 	// Simulate periodic health checks (don't call UpdateActivity - middleware handles this)
 	// In real scenario, health checks increment/decrement counter but don't update activity
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		pm.TrackRequest()
 		pm.inFlightRequests.Add(-1) // Complete without updating activity
 		time.Sleep(100 * time.Millisecond)

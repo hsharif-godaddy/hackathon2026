@@ -33,6 +33,7 @@ func TestManagedProcess_PID1ManagedWait(t *testing.T) {
 
 	if managedProcess == nil {
 		t.Fatal("expected managed process to be present")
+		return
 	}
 
 	if !managedProcess.usePID1Wait {
@@ -112,7 +113,7 @@ func TestPID1OrphanReaping(t *testing.T) {
 
 	t.Run("multiple orphans are reaped", func(t *testing.T) {
 		// Spawn multiple orphans
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			cmd := exec.Command("sh", "-c", "(sleep 3 &); exit 0")
 			if err := cmd.Run(); err != nil {
 				t.Logf("parent %d exited with error: %v", i, err)

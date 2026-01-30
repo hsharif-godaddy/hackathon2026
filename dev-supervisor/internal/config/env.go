@@ -59,7 +59,7 @@ func GetAllowedSELinuxTypes() []string {
 	}
 
 	var result []string
-	for _, t := range strings.Split(value, ",") {
+	for t := range strings.SplitSeq(value, ",") {
 		if trimmed := strings.TrimSpace(t); trimmed != "" {
 			result = append(result, trimmed)
 		}

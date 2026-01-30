@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -15,17 +17,17 @@ const (
 // validateProcessStartRequest validates a process start request
 func validateProcessStartRequest(req ProcessStartRequest) error {
 	if strings.TrimSpace(req.Command) == "" {
-		return fmt.Errorf("command cannot be empty")
+		return errors.New("command cannot be empty")
 	}
 
 	// Check for potentially dangerous commands
 	if isDangerousCommand(req.Command) {
-		return fmt.Errorf("potentially dangerous command detected")
+		return errors.New("potentially dangerous command detected")
 	}
 
 	// Validate working directory if provided
 	if req.WorkingDir != "" && !isValidPath(req.WorkingDir) {
-		return fmt.Errorf("invalid working directory path")
+		return errors.New("invalid working directory path")
 	}
 
 	// Validate environment variables
@@ -44,25 +46,25 @@ func validateProcessStartRequest(req ProcessStartRequest) error {
 // validateCommandRequest validates a command execution request
 func validateCommandRequest(req CommandRequest) error {
 	if strings.TrimSpace(req.Command) == "" {
-		return fmt.Errorf("command cannot be empty")
+		return errors.New("command cannot be empty")
 	}
 
 	// Check timeout limits
 	if req.Timeout < 0 {
-		return fmt.Errorf("timeout cannot be negative")
+		return errors.New("timeout cannot be negative")
 	}
 	if req.Timeout > 3600 { // 1 hour max
-		return fmt.Errorf("timeout cannot exceed 3600 seconds")
+		return errors.New("timeout cannot exceed 3600 seconds")
 	}
 
 	// Validate working directory if provided
 	if req.WorkingDir != "" && !isValidPath(req.WorkingDir) {
-		return fmt.Errorf("invalid working directory path")
+		return errors.New("invalid working directory path")
 	}
 
 	// Check for potentially dangerous commands
 	if isDangerousCommand(req.Command) {
-		return fmt.Errorf("potentially dangerous command detected")
+		return errors.New("potentially dangerous command detected")
 	}
 
 	return nil
@@ -71,11 +73,11 @@ func validateCommandRequest(req CommandRequest) error {
 // validateEnvironmentSetRequest validates an environment set request
 func validateEnvironmentSetRequest(req EnvironmentSetRequest) error {
 	if len(req.Variables) == 0 {
-		return fmt.Errorf("no variables provided")
+		return errors.New("no variables provided")
 	}
 
 	if len(req.Variables) > 1000 { // Reasonable limit
-		return fmt.Errorf("too many environment variables (max: 1000)")
+		return errors.New("too many environment variables (max: 1000)")
 	}
 
 	for key, value := range req.Variables {
@@ -163,13 +165,7 @@ func isProtectedEnvVar(name string) bool {
 	}
 
 	name = strings.ToUpper(name)
-	for _, p := range protected {
-		if name == p {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(protected, name)
 }
 
 // sanitizeCommand performs basic command sanitization

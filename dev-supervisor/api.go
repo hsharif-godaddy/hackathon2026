@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -45,7 +47,7 @@ func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
 	healthStatus := s.procMgr.GetHealthStatus()
 	restartStats := s.procMgr.GetRestartStats()
 
-	info := map[string]interface{}{
+	info := map[string]any{
 		"name":                    AppName,
 		"version":                 Version,
 		"pid":                     os.Getpid(),
@@ -291,7 +293,7 @@ func (s *Server) handleHealthConfigGet(w http.ResponseWriter, _ *http.Request) {
 	status := s.procMgr.GetHealthStatus()
 	stats := s.procMgr.GetRestartStats()
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"health_status": status,
 		"restart_stats": stats,
 	}
@@ -397,7 +399,7 @@ func (s *Server) handleRestartStats(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) handleLogsConfigGet(w http.ResponseWriter, _ *http.Request) {
 	enabled := s.procMgr.GetProcessLogging()
-	response := map[string]interface{}{
+	response := map[string]any{
 		"process_logging_enabled": enabled,
 	}
 
@@ -430,7 +432,7 @@ func (s *Server) handleLogsConfigSet(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]any{
 		"status":                  "configured",
 		"process_logging_enabled": req.ProcessLoggingEnabled,
 	}); err != nil {
@@ -441,7 +443,7 @@ func (s *Server) handleLogsConfigSet(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleProxyStatus(w http.ResponseWriter, _ *http.Request) {
 	if s.httpProxy == nil {
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"enabled": false,
 			"running": false,
 		}); err != nil {
@@ -463,7 +465,7 @@ func (s *Server) handleProxyConfig(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 
-	config := map[string]interface{}{
+	config := map[string]any{
 		"enabled":       s.config.ProxyEnabled,
 		"listen_port":   s.config.ProxyPort,
 		"target_host":   s.config.ProxyTargetHost,
@@ -570,78 +572,17 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 	var healthStatus string
 	var healthCheckDuration time.Duration
 	if req.WaitForHealthy {
-		// Give the process a moment to start before health checking
-		// Node.js apps typically take 1-3 seconds to bind to a port
-		initialDelay := 2 * time.Second
-		slog.Debug("publish.health_check.initial_delay", "delay", initialDelay.String())
-		time.Sleep(initialDelay)
-
-		healthCheckURL := s.getPublishHealthCheckURL()
-		slog.Info("publish.health_check.begin",
-			"commit_hash", req.CommitHash,
-			"target", healthCheckURL,
-			"timeout_seconds", req.HealthTimeoutSeconds)
-
-		healthCheckStart := time.Now()
-		healthy, healthErr := s.waitForAppHealthy(healthCheckURL, time.Duration(req.HealthTimeoutSeconds)*time.Second)
-		healthCheckDuration = time.Since(healthCheckStart)
-
-		if !healthy {
-			healthStatus = string(HealthStatusUnhealthy)
-			if healthErr != nil && healthErr.Error() == "timeout" {
-				healthStatus = "timeout"
-			}
-
-			// Get recent logs to help diagnose the issue
-			logsReq := LogsGetRequest{Lines: 200}
-			logsResp, logsErr := s.logMgr.GetLogs(logsReq)
-			if logsErr != nil {
-				slog.Warn("publish.health_check.logs_error", "error", logsErr)
-			}
-
-			slog.Error("publish.health_check.failed",
-				"commit_hash", req.CommitHash,
-				"health_status", healthStatus,
-				"duration", healthCheckDuration.String(),
-				"error", healthErr)
-
-			response := map[string]interface{}{
-				"status":              "error",
-				"error":               "Health check failed after restart",
-				"version":             req.CommitHash,
-				"healthStatus":        healthStatus,
-				"healthCheckDuration": healthCheckDuration.String(),
-				"startupTime":         restartDuration.String(),
-			}
-
-			if logsResp != nil && len(logsResp.Logs) > 0 {
-				// Convert logs to simple format for response
-				logMessages := make([]map[string]string, 0, len(logsResp.Logs))
-				for _, log := range logsResp.Logs {
-					logMessages = append(logMessages, map[string]string{
-						"timestamp": log.Timestamp.Format(time.RFC3339),
-						"source":    log.Source,
-						"message":   log.Message,
-					})
-				}
-				response["logs"] = logMessages
-			}
-
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			if err := json.NewEncoder(w).Encode(response); err != nil {
-				slog.Error("failed to encode JSON response", "error", err)
-			}
+		status, duration, shouldReturn := s.performHealthCheckAfterPublish(
+			w, req.CommitHash, req.HealthTimeoutSeconds, restartDuration,
+		)
+		healthStatus = status
+		healthCheckDuration = duration
+		if shouldReturn {
 			return
 		}
-
-		healthStatus = string(HealthStatusHealthy)
-		slog.Info("publish.health_check.success",
-			"commit_hash", req.CommitHash,
-			"duration", healthCheckDuration.String())
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"status":      "success",
 		"version":     req.CommitHash,
 		"startupTime": restartDuration.String(),
@@ -679,79 +620,20 @@ func (s *Server) handlePublishStatus(w http.ResponseWriter, r *http.Request) {
 	currentSymlink := filepath.Join(distDir, "current")
 
 	// Build response
-	response := make(map[string]interface{})
+	response := make(map[string]any)
 	warnings := []string{}
 
 	// Get version from symlink
-	var version interface{}
-	symlinkTarget, err := os.Readlink(currentSymlink)
-	if err != nil {
-		if os.IsNotExist(err) {
-			warnings = append(warnings, "no_current_symlink")
-			slog.Debug("publish.status.no_symlink", "path", currentSymlink)
-		} else {
-			warnings = append(warnings, "symlink_read_error")
-			slog.Warn("publish.status.symlink_error", "error", err)
-		}
-	} else {
-		// Extract commit hash from archive filename (e.g., /dist/abc123.tar.gz -> abc123)
-		archiveFilename := filepath.Base(symlinkTarget)
-		if strings.HasSuffix(archiveFilename, tarGzExtension) {
-			commitHash := strings.TrimSuffix(archiveFilename, tarGzExtension)
-			version = commitHash
-
-			// Check if archive exists
-			archivePath := symlinkTarget
-			if !filepath.IsAbs(symlinkTarget) {
-				archivePath = filepath.Join(distDir, symlinkTarget)
-			}
-			if _, err := os.Stat(archivePath); os.IsNotExist(err) {
-				warnings = append(warnings, "missing_archive")
-				slog.Warn("publish.status.missing_archive", "path", archivePath)
-			}
-		}
-	}
+	version := s.extractVersionFromSymlink(currentSymlink, distDir, &warnings)
 	response["version"] = version
 
 	// Get process status first (needed for health check decision)
 	processInfo := s.procMgr.GetStatus()
 
 	// Perform active health check if process is running
-	var healthStatus string
-	var healthMessage string
-	if processInfo.State == ProcessStateRunning {
-		healthCheckURL := s.getPublishHealthCheckURL()
-		client := &http.Client{Timeout: healthCheckInitialTimeout}
-		ctx, cancel := context.WithTimeout(context.Background(), healthCheckInitialTimeout)
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthCheckURL, nil)
-		if err != nil {
-			cancel()
-			healthStatus = string(HealthStatusUnhealthy)
-			healthMessage = fmt.Sprintf("Request creation failed: %v", err)
-		} else {
-			resp, err := client.Do(req)
-			cancel()
-			if err != nil {
-				healthStatus = string(HealthStatusUnhealthy)
-				healthMessage = fmt.Sprintf("Connection failed: %v", err)
-			} else {
-				//nolint:gosec // G104: Intentionally ignoring error
-				resp.Body.Close()
-				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-					healthStatus = string(HealthStatusHealthy)
-					healthMessage = fmt.Sprintf("HTTP %d", resp.StatusCode)
-				} else {
-					healthStatus = string(HealthStatusUnhealthy)
-					healthMessage = fmt.Sprintf("HTTP %d", resp.StatusCode)
-				}
-			}
-		}
-	} else {
-		healthStatus = "stopped"
-		healthMessage = fmt.Sprintf("Process is %s", processInfo.State)
-	}
+	healthStatus, healthMessage := s.checkProcessHealth(processInfo)
 
-	response["health"] = map[string]interface{}{
+	response["health"] = map[string]any{
 		"status":  healthStatus,
 		"message": healthMessage,
 	}
@@ -759,7 +641,7 @@ func (s *Server) handlePublishStatus(w http.ResponseWriter, r *http.Request) {
 	if processInfo.State == ProcessStateRunning && !processInfo.StartTime.IsZero() {
 		uptime = time.Since(processInfo.StartTime).Round(time.Second).String()
 	}
-	response["process"] = map[string]interface{}{
+	response["process"] = map[string]any{
 		"state":  string(processInfo.State),
 		"pid":    processInfo.PID,
 		"uptime": uptime,
@@ -771,7 +653,7 @@ func (s *Server) handlePublishStatus(w http.ResponseWriter, r *http.Request) {
 		logsResp, err := s.logMgr.GetLogs(logsReq)
 		if err != nil {
 			slog.Warn("publish.status.logs_error", "error", err)
-			response["logs"] = []interface{}{}
+			response["logs"] = []any{}
 		} else if logsResp != nil && len(logsResp.Logs) > 0 {
 			logEntries := make([]map[string]string, 0, len(logsResp.Logs))
 			for _, log := range logsResp.Logs {
@@ -783,7 +665,7 @@ func (s *Server) handlePublishStatus(w http.ResponseWriter, r *http.Request) {
 			}
 			response["logs"] = logEntries
 		} else {
-			response["logs"] = []interface{}{}
+			response["logs"] = []any{}
 		}
 	}
 
@@ -798,6 +680,154 @@ func (s *Server) handlePublishStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// checkProcessHealth checks the health status of the running process
+func (s *Server) checkProcessHealth(processInfo ProcessInfo) (string, string) {
+	if processInfo.State != ProcessStateRunning {
+		return "stopped", fmt.Sprintf("Process is %s", processInfo.State)
+	}
+
+	healthCheckURL := s.getPublishHealthCheckURL()
+	client := &http.Client{Timeout: healthCheckInitialTimeout}
+	ctx, cancel := context.WithTimeout(context.Background(), healthCheckInitialTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthCheckURL, nil)
+	if err != nil {
+		return string(HealthStatusUnhealthy), fmt.Sprintf("Request creation failed: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return string(HealthStatusUnhealthy), fmt.Sprintf("Connection failed: %v", err)
+	}
+	//nolint:gosec // G104: Intentionally ignoring error
+	resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return string(HealthStatusHealthy), fmt.Sprintf("HTTP %d", resp.StatusCode)
+	}
+	return string(HealthStatusUnhealthy), fmt.Sprintf("HTTP %d", resp.StatusCode)
+}
+
+// extractVersionFromSymlink extracts the version from the symlink and updates warnings
+func (s *Server) extractVersionFromSymlink(currentSymlink, distDir string, warnings *[]string) any {
+	symlinkTarget, err := os.Readlink(currentSymlink)
+	if err != nil {
+		if os.IsNotExist(err) {
+			*warnings = append(*warnings, "no_current_symlink")
+			slog.Debug("publish.status.no_symlink", "path", currentSymlink)
+		} else {
+			*warnings = append(*warnings, "symlink_read_error")
+			slog.Warn("publish.status.symlink_error", "error", err)
+		}
+		return nil
+	}
+
+	// Extract commit hash from archive filename (e.g., /dist/abc123.tar.gz -> abc123)
+	archiveFilename := filepath.Base(symlinkTarget)
+	before, ok := strings.CutSuffix(archiveFilename, tarGzExtension)
+	if !ok {
+		return nil
+	}
+
+	commitHash := before
+
+	// Check if archive exists
+	archivePath := symlinkTarget
+	if !filepath.IsAbs(symlinkTarget) {
+		archivePath = filepath.Join(distDir, symlinkTarget)
+	}
+	if _, err := os.Stat(archivePath); os.IsNotExist(err) {
+		*warnings = append(*warnings, "missing_archive")
+		slog.Warn("publish.status.missing_archive", "path", archivePath)
+	}
+
+	return commitHash
+}
+
+// performHealthCheckAfterPublish performs the health check after publishing and returns
+// the health status, duration, and whether the handler should return early
+func (s *Server) performHealthCheckAfterPublish(
+	w http.ResponseWriter, commitHash string, healthTimeoutSeconds int, restartDuration time.Duration,
+) (string, time.Duration, bool) {
+	// Give the process a moment to start before health checking
+	// Node.js apps typically take 1-3 seconds to bind to a port
+	initialDelay := 2 * time.Second
+	slog.Debug("publish.health_check.initial_delay", "delay", initialDelay.String())
+	time.Sleep(initialDelay)
+
+	healthCheckURL := s.getPublishHealthCheckURL()
+	slog.Info("publish.health_check.begin",
+		"commit_hash", commitHash,
+		"target", healthCheckURL,
+		"timeout_seconds", healthTimeoutSeconds)
+
+	healthCheckStart := time.Now()
+	healthy, healthErr := s.waitForAppHealthy(healthCheckURL, time.Duration(healthTimeoutSeconds)*time.Second)
+	healthCheckDuration := time.Since(healthCheckStart)
+
+	if !healthy {
+		return s.handleUnhealthyPublish(w, commitHash, restartDuration, healthCheckDuration, healthErr)
+	}
+
+	slog.Info("publish.health_check.success",
+		"commit_hash", commitHash,
+		"duration", healthCheckDuration.String())
+	return string(HealthStatusHealthy), healthCheckDuration, false
+}
+
+// handleUnhealthyPublish handles the case where health check fails after publish
+func (s *Server) handleUnhealthyPublish(
+	w http.ResponseWriter, commitHash string, restartDuration, healthCheckDuration time.Duration, healthErr error,
+) (string, time.Duration, bool) {
+	healthStatus := string(HealthStatusUnhealthy)
+	if healthErr != nil && healthErr.Error() == "timeout" {
+		healthStatus = "timeout"
+	}
+
+	// Get recent logs to help diagnose the issue
+	logsReq := LogsGetRequest{Lines: 200}
+	logsResp, logsErr := s.logMgr.GetLogs(logsReq)
+	if logsErr != nil {
+		slog.Warn("publish.health_check.logs_error", "error", logsErr)
+	}
+
+	slog.Error("publish.health_check.failed",
+		"commit_hash", commitHash,
+		"health_status", healthStatus,
+		"duration", healthCheckDuration.String(),
+		"error", healthErr)
+
+	response := map[string]any{
+		"status":              "error",
+		"error":               "Health check failed after restart",
+		"version":             commitHash,
+		"healthStatus":        healthStatus,
+		"healthCheckDuration": healthCheckDuration.String(),
+		"startupTime":         restartDuration.String(),
+	}
+
+	if logsResp != nil && len(logsResp.Logs) > 0 {
+		// Convert logs to simple format for response
+		logMessages := make([]map[string]string, 0, len(logsResp.Logs))
+		for _, log := range logsResp.Logs {
+			logMessages = append(logMessages, map[string]string{
+				"timestamp": log.Timestamp.Format(time.RFC3339),
+				"source":    log.Source,
+				"message":   log.Message,
+			})
+		}
+		response["logs"] = logMessages
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		slog.Error("failed to encode JSON response", "error", err)
+	}
+	return healthStatus, healthCheckDuration, true
+}
+
 // getPublishHealthCheckURL returns the URL to use for health checking the published app
 // Uses proxy target config if proxy is enabled, otherwise falls back to localhost:20001
 func (s *Server) getPublishHealthCheckURL() string {
@@ -809,7 +839,7 @@ func (s *Server) getPublishHealthCheckURL() string {
 		if hostSet && portSet {
 			port, err := strconv.Atoi(portValue)
 			if err == nil && host != "" && port > 0 {
-				url := fmt.Sprintf("http://%s:%d/", host, port)
+				url := "http://" + net.JoinHostPort(host, portValue) + "/"
 				slog.Debug("publish.health_check.target", "url", url, "source", "proxy_config")
 				return url
 			}
@@ -839,52 +869,59 @@ func (s *Server) waitForAppHealthy(targetURL string, timeout time.Duration) (boo
 
 	for time.Now().Before(deadline) {
 		attempt++
-		client := &http.Client{
-			Timeout: currentTimeout,
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), currentTimeout)
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
-		if err != nil {
-			cancel()
-			slog.Debug("publish.health_check.attempt",
-				"attempt", attempt,
-				"error", err.Error(),
-				"timeout", currentTimeout.String(),
-				"healthy", false)
-		} else {
-			resp, err := client.Do(req)
-			cancel()
-			if err == nil {
-				//nolint:gosec // G104: Intentionally ignoring error
-				resp.Body.Close()
-				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-					slog.Debug("publish.health_check.success",
-						"attempt", attempt,
-						"timeout", currentTimeout.String())
-					return true, nil
-				}
-				slog.Debug("publish.health_check.attempt",
-					"attempt", attempt,
-					"status_code", resp.StatusCode,
-					"timeout", currentTimeout.String(),
-					"healthy", false)
-			} else {
-				slog.Debug("publish.health_check.attempt",
-					"attempt", attempt,
-					"error", err.Error(),
-					"timeout", currentTimeout.String(),
-					"healthy", false)
-			}
+		if s.attemptHealthCheck(targetURL, currentTimeout, attempt) {
+			return true, nil
 		}
 
 		// Increase timeout for next attempt
 		currentTimeout += healthCheckTimeoutIncrease
-
 		time.Sleep(healthCheckInterval)
 	}
 
-	return false, fmt.Errorf("timeout")
+	return false, errors.New("timeout")
+}
+
+// attemptHealthCheck performs a single health check attempt
+func (s *Server) attemptHealthCheck(targetURL string, timeout time.Duration, attempt int) bool {
+	client := &http.Client{Timeout: timeout}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
+	if err != nil {
+		slog.Debug("publish.health_check.attempt",
+			"attempt", attempt,
+			"error", err.Error(),
+			"timeout", timeout.String(),
+			"healthy", false)
+		return false
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Debug("publish.health_check.attempt",
+			"attempt", attempt,
+			"error", err.Error(),
+			"timeout", timeout.String(),
+			"healthy", false)
+		return false
+	}
+	//nolint:gosec // G104: Intentionally ignoring error
+	resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		slog.Debug("publish.health_check.success",
+			"attempt", attempt,
+			"timeout", timeout.String())
+		return true
+	}
+
+	slog.Debug("publish.health_check.attempt",
+		"attempt", attempt,
+		"status_code", resp.StatusCode,
+		"timeout", timeout.String(),
+		"healthy", false)
+	return false
 }
 
 // Helper functions

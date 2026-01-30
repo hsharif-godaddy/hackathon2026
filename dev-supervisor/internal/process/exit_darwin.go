@@ -3,6 +3,7 @@
 package process
 
 import (
+	"errors"
 	"os/exec"
 	"syscall"
 )
@@ -30,8 +31,8 @@ func IsExpectedSignalExit(err error) (bool, *int) {
 		return true, &code
 	}
 
-	exitError, ok := err.(*exec.ExitError)
-	if !ok {
+	var exitError *exec.ExitError
+	if !errors.As(err, &exitError) {
 		return false, nil
 	}
 

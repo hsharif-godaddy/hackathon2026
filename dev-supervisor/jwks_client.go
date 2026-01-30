@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -267,7 +268,7 @@ func (c *JWKSClient) jwkToRSAPublicKey(jwk *JWK) (*rsa.PublicKey, error) {
 		slog.Error("jwks.decode.exponent_overflow",
 			"exponent", eInt64,
 			"kid", jwk.Kid)
-		return nil, fmt.Errorf("RSA exponent too large for int type")
+		return nil, errors.New("RSA exponent too large for int type")
 	}
 
 	// Create RSA public key

@@ -34,7 +34,7 @@ func NewTestClient(socketPath string) *TestClient {
 }
 
 // makeRequest sends an HTTP request to the dev-supervisor API
-func (tc *TestClient) makeRequest(method, path string, body interface{}) (*http.Response, error) {
+func (tc *TestClient) makeRequest(method, path string, body any) (*http.Response, error) {
 	var bodyReader *bytes.Reader
 	if body != nil {
 		bodyBytes, err := json.Marshal(body)
@@ -66,7 +66,7 @@ func (tc *TestClient) makeRequest(method, path string, body interface{}) (*http.
 }
 
 // parseJSONResponse parses a JSON response into the provided interface
-func (tc *TestClient) parseJSONResponse(resp *http.Response, target interface{}) error {
+func (tc *TestClient) parseJSONResponse(resp *http.Response, target any) error {
 	defer resp.Body.Close()
 	return json.NewDecoder(resp.Body).Decode(target)
 }
@@ -83,12 +83,9 @@ type IntegrationTestSuite struct {
 func SetupTestSuite(t *testing.T) *IntegrationTestSuite {
 	configureSMTPTestEnv(t)
 
-	// Create temporary directory for test files
-	// Use /tmp directly with short name to avoid macOS socket path length limit (104 chars)
-	tempDir, err := os.MkdirTemp("/tmp", "ds-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
+	// Create temporary directory for test files (auto-cleaned up by t.TempDir)
+	// Note: t.TempDir() typically uses /tmp on Unix systems
+	tempDir := t.TempDir()
 
 	// Create unique socket path for this test (keep it short for macOS)
 	socketPath := filepath.Join(tempDir, "test.sock")
@@ -129,8 +126,7 @@ func SetupTestSuite(t *testing.T) *IntegrationTestSuite {
 
 // TeardownTestSuite cleans up the test environment
 func (suite *IntegrationTestSuite) TeardownTestSuite(_ *testing.T) {
-	// Clean up temp directory
-	os.RemoveAll(suite.tempDir)
+	// Temp directory cleanup is handled automatically by t.TempDir()
 }
 
 // startTestServer starts the server with test configuration
@@ -172,7 +168,7 @@ func (suite *IntegrationTestSuite) startTestServer() error {
 // waitForServer waits for the server to become available
 func (suite *IntegrationTestSuite) waitForServer(t *testing.T) {
 	maxAttempts := 30
-	for i := 0; i < maxAttempts; i++ {
+	for range maxAttempts {
 		resp, err := suite.client.makeRequest("GET", "/health", nil)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			resp.Body.Close()
@@ -214,6 +210,32 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
+// verifyProcessStopResponse checks the HTTP response from a process stop request
+func (suite *IntegrationTestSuite) verifyProcessStopResponse(t *testing.T, resp *http.Response) {
+	if resp.StatusCode == http.StatusOK {
+		resp.Body.Close()
+		return
+	}
+
+	// Read error response for debugging
+	var errorResp map[string]any
+	if parseErr := suite.client.parseJSONResponse(resp, &errorResp); parseErr != nil {
+		t.Fatalf("Expected status 200, got %d", resp.StatusCode)
+		return
+	}
+
+	// If the process already finished, that's actually okay for our test
+	if errorResp["error"] == "stop_failed" &&
+		errorResp["message"] != nil &&
+		resp.StatusCode == http.StatusBadRequest {
+		t.Logf("Process already finished (expected for some commands): %v", errorResp["message"])
+		resp.Body.Close()
+		return
+	}
+
+	t.Fatalf("Expected status 200, got %d. Error: %v", resp.StatusCode, errorResp)
+}
+
 // TestInfoEndpoint tests the system info endpoint
 func TestInfoEndpoint(t *testing.T) {
 	suite := SetupTestSuite(t)
@@ -228,7 +250,7 @@ func TestInfoEndpoint(t *testing.T) {
 		t.Fatalf("Expected status 200, got %d", resp.StatusCode)
 	}
 
-	var info map[string]interface{}
+	var info map[string]any
 	if err := suite.client.parseJSONResponse(resp, &info); err != nil {
 		t.Fatalf("Failed to parse info response: %v", err)
 	}
@@ -386,25 +408,7 @@ func TestProcessLifecycle(t *testing.T) {
 		t.Fatalf("Process stop failed: %v", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		// Read error response for debugging
-		var errorResp map[string]interface{}
-		if parseErr := suite.client.parseJSONResponse(resp, &errorResp); parseErr == nil {
-			// If the process already finished, that's actually okay for our test
-			if errorResp["error"] == "stop_failed" &&
-				errorResp["message"] != nil &&
-				resp.StatusCode == http.StatusBadRequest {
-				t.Logf("Process already finished (expected for some commands): %v", errorResp["message"])
-				resp.Body.Close()
-			} else {
-				t.Fatalf("Expected status 200, got %d. Error: %v", resp.StatusCode, errorResp)
-			}
-		} else {
-			t.Fatalf("Expected status 200, got %d", resp.StatusCode)
-		}
-	} else {
-		resp.Body.Close()
-	}
+	suite.verifyProcessStopResponse(t, resp)
 
 	// Wait for process to stop
 	time.Sleep(200 * time.Millisecond)
@@ -569,7 +573,7 @@ func TestHealthMonitoring(t *testing.T) {
 		t.Fatalf("Restart stats failed: %v", err)
 	}
 
-	var restartStats map[string]interface{}
+	var restartStats map[string]any
 	if err = suite.client.parseJSONResponse(resp, &restartStats); err != nil {
 		t.Fatalf("Failed to parse restart stats: %v", err)
 	}
@@ -655,7 +659,7 @@ func TestInvalidRequests(t *testing.T) {
 		name           string
 		method         string
 		path           string
-		body           interface{}
+		body           any
 		expectedStatus int
 	}{
 		{

@@ -53,10 +53,7 @@ func (lm *LogManager) AddLog(entry LogEntry) {
 	// Trim buffer if it exceeds max size
 	if len(lm.logs) > lm.maxLogs {
 		// Remove oldest 10% when buffer is full
-		removeCount := lm.maxLogs / 10
-		if removeCount < 1 {
-			removeCount = 1
-		}
+		removeCount := max(lm.maxLogs/10, 1)
 		lm.logs = lm.logs[removeCount:]
 	}
 }
@@ -109,11 +106,11 @@ func (lm *LogManager) GetLogs(req LogsGetRequest) (*LogsGetResponse, error) {
 	}, nil
 }
 
-func (lm *LogManager) GetStats() map[string]interface{} {
+func (lm *LogManager) GetStats() map[string]any {
 	lm.mu.RLock()
 	defer lm.mu.RUnlock()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"total_logs": len(lm.logs),
 		"max_logs":   lm.maxLogs,
 	}

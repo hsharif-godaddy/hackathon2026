@@ -87,7 +87,7 @@ func TestIsWebSocketUpgrade(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/", nil)
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			for k, v := range tt.headers {
 				req.Header.Set(k, v)
 			}
@@ -112,7 +112,7 @@ func TestResponseWriterImplementsHijacker(t *testing.T) {
 		}
 
 		// Verify it implements http.Hijacker using type assertion
-		hijacker, ok := interface{}(rw).(http.Hijacker)
+		hijacker, ok := any(rw).(http.Hijacker)
 		if !ok {
 			t.Error("responseWriter does not implement http.Hijacker interface")
 			return
@@ -130,7 +130,7 @@ func TestResponseWriterImplementsHijacker(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	req, err := http.NewRequestWithContext(ctx, "GET", server.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestResponseWriterImplementsFlusher(t *testing.T) {
 		}
 
 		// Verify it implements http.Flusher using type assertion
-		flusher, ok := interface{}(rw).(http.Flusher)
+		flusher, ok := any(rw).(http.Flusher)
 		if !ok {
 			t.Error("responseWriter does not implement http.Flusher interface")
 			return
@@ -183,7 +183,7 @@ func TestResponseWriterImplementsFlusher(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	req, err := http.NewRequestWithContext(ctx, "GET", server.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
 	}
@@ -349,7 +349,7 @@ func TestValidateConfig_HTTPMode_NonExistentKey(t *testing.T) {
 // Helper function to create temporary test certificate
 func createTempCert(t *testing.T) string {
 	t.Helper()
-	certFile, err := os.CreateTemp("", "cert-*.pem")
+	certFile, err := os.CreateTemp(t.TempDir(), "cert-*.pem")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +366,7 @@ func createTempCert(t *testing.T) string {
 // Helper function to create temporary test key
 func createTempKey(t *testing.T) string {
 	t.Helper()
-	keyFile, err := os.CreateTemp("", "key-*.pem")
+	keyFile, err := os.CreateTemp(t.TempDir(), "key-*.pem")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -549,7 +549,7 @@ func TestLoadRoutingConfig_NonExistentFile(t *testing.T) {
 
 func TestLoadRoutingConfig_MalformedJSON(t *testing.T) {
 	// Create temporary file with malformed JSON
-	tmpFile, err := os.CreateTemp("", "config-*.json")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -577,7 +577,7 @@ func TestLoadRoutingConfig_MalformedJSON(t *testing.T) {
 
 func TestLoadRoutingConfig_ValidJSON(t *testing.T) {
 	// Create temporary file with valid JSON
-	tmpFile, err := os.CreateTemp("", "config-*.json")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -675,7 +675,7 @@ func TestLoadRoutingConfig_EnvVarSPAMode(t *testing.T) {
 
 func TestLoadRoutingConfig_JSONOverridesEnvVar(t *testing.T) {
 	// Create temporary file with JSON config
-	tmpFile, err := os.CreateTemp("", "config-*.json")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -723,7 +723,7 @@ func TestLoadRoutingConfig_JSONOverridesEnvVar(t *testing.T) {
 
 func TestLoadRoutingConfig_ForwardRulesWarning(t *testing.T) {
 	// Create temporary file with forward rules
-	tmpFile, err := os.CreateTemp("", "config-*.json")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -762,7 +762,7 @@ func TestLoadRoutingConfig_ForwardRulesWarning(t *testing.T) {
 
 func TestLoadRoutingConfig_SPAModeOmittedInJSON(t *testing.T) {
 	// Test that omitting spa_mode in JSON preserves the env var value
-	tmpFile, err := os.CreateTemp("", "config-*.json")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -802,7 +802,7 @@ func TestLoadRoutingConfig_SPAModeOmittedInJSON(t *testing.T) {
 
 func TestLoadRoutingConfig_SPAModeExplicitlyFalseInJSON(t *testing.T) {
 	// Test that explicitly setting spa_mode: false in JSON overrides env var
-	tmpFile, err := os.CreateTemp("", "config-*.json")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -836,7 +836,7 @@ func TestLoadRoutingConfig_SPAModeExplicitlyFalseInJSON(t *testing.T) {
 
 func TestLoadRoutingConfig_DisableCachingWithoutMaxAge(t *testing.T) {
 	// Test that enable_caching: false works without providing max_age
-	tmpFile, err := os.CreateTemp("", "config-*.json")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -876,7 +876,7 @@ func TestLoadRoutingConfig_DisableCachingWithoutMaxAge(t *testing.T) {
 
 func TestLoadRoutingConfig_EnableCachingWithCustomMaxAge(t *testing.T) {
 	// Test that both enable_caching and max_age can be set together
-	tmpFile, err := os.CreateTemp("", "config-*.json")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -920,7 +920,7 @@ func TestLoadRoutingConfig_EnableCachingWithCustomMaxAge(t *testing.T) {
 func TestLoadRoutingConfig_EmptyCacheControlPreservesDefaults(t *testing.T) {
 	// Test that an empty cache_control object {} doesn't overwrite defaults
 	// This verifies the fix for the boolean zero-value issue
-	tmpFile, err := os.CreateTemp("", "config-*.json")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -962,7 +962,7 @@ func TestJSONOnlyConfiguration(t *testing.T) {
 	// This test verifies that an operator can configure static serving
 	// entirely via JSON config without setting any env vars
 	tmpDir := t.TempDir()
-	tmpFile, err := os.CreateTemp("", "config-*.json")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1041,7 +1041,7 @@ func TestRequestRouter_APIRoute(t *testing.T) {
 		isProductionMode: true,
 	}
 
-	req := httptest.NewRequest("GET", "/api/users", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1069,7 +1069,7 @@ func TestRequestRouter_StaticServingDisabled(t *testing.T) {
 		isProductionMode: false, // Static serving disabled
 	}
 
-	req := httptest.NewRequest("GET", "/app.js", nil)
+	req := httptest.NewRequest(http.MethodGet, "/app.js", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1100,7 +1100,7 @@ func TestRequestRouter_StaticFileWithExtension_GET(t *testing.T) {
 		isProductionMode: true,
 	}
 
-	req := httptest.NewRequest("GET", "/app.js", nil)
+	req := httptest.NewRequest(http.MethodGet, "/app.js", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1131,7 +1131,7 @@ func TestRequestRouter_StaticFileWithExtension_HEAD(t *testing.T) {
 		isProductionMode: true,
 	}
 
-	req := httptest.NewRequest("HEAD", "/app.js", nil)
+	req := httptest.NewRequest(http.MethodHead, "/app.js", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1167,7 +1167,7 @@ func TestRequestRouter_StaticFileWithExtension_OPTIONS(t *testing.T) {
 		isProductionMode: true,
 	}
 
-	req := httptest.NewRequest("OPTIONS", "/app.js", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/app.js", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1198,7 +1198,7 @@ func TestRequestRouter_ExtensionlessStaticFile_OPTIONS(t *testing.T) {
 		isProductionMode: true,
 	}
 
-	req := httptest.NewRequest("OPTIONS", "/.well-known", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/.well-known", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1225,7 +1225,7 @@ func TestRequestRouter_SPAFallback(t *testing.T) {
 		spaFallback:      indexFile,
 	}
 
-	req := httptest.NewRequest("GET", "/users/profile", nil)
+	req := httptest.NewRequest(http.MethodGet, "/users/profile", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1261,7 +1261,7 @@ func TestRequestRouter_SPAFallback_HeadRequest(t *testing.T) {
 	}
 
 	// HEAD requests to client-side routes should go to static handler, not SPA fallback
-	req := httptest.NewRequest("HEAD", "/users/profile", nil)
+	req := httptest.NewRequest(http.MethodHead, "/users/profile", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1287,7 +1287,7 @@ func TestRequestRouter_PostRequest_ProxyToBackend(t *testing.T) {
 		isProductionMode: true,
 	}
 
-	req := httptest.NewRequest("POST", "/submit", nil)
+	req := httptest.NewRequest(http.MethodPost, "/submit", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1334,7 +1334,7 @@ func TestStaticFileHandler_CacheHeaders(t *testing.T) {
 	handler := newStaticFileHandler(staticDir, cacheSettings)
 
 	// Test .js file (should have long cache)
-	req := httptest.NewRequest("GET", "/app.js", nil)
+	req := httptest.NewRequest(http.MethodGet, "/app.js", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -1354,7 +1354,7 @@ func TestStaticFileHandler_CacheHeaders(t *testing.T) {
 
 	// Test .html file (should have no cache)
 	// Note: Using "page.html" instead of "index.html" because FileServer redirects index.html to ./
-	req = httptest.NewRequest("GET", "/page.html", nil)
+	req = httptest.NewRequest(http.MethodGet, "/page.html", nil)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -1382,7 +1382,7 @@ func TestStaticFileHandler_CachingDisabled(t *testing.T) {
 
 	handler := newStaticFileHandler(tmpDir, cacheSettings)
 
-	req := httptest.NewRequest("GET", "/app.js", nil)
+	req := httptest.NewRequest(http.MethodGet, "/app.js", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -1427,7 +1427,7 @@ func TestRequestRouter_ExtensionlessFile_ServedBeforeSPA(t *testing.T) {
 		spaFallback:      indexFile,
 	}
 
-	req := httptest.NewRequest("GET", "/.well-known/apple-app-site-association", nil)
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/apple-app-site-association", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1458,7 +1458,7 @@ func TestRequestRouter_ExtensionlessPath_FallsBackToSPA(t *testing.T) {
 	}
 
 	// Request for non-existent extensionless path should fall back to SPA
-	req := httptest.NewRequest("GET", "/users/profile", nil)
+	req := httptest.NewRequest(http.MethodGet, "/users/profile", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1489,7 +1489,7 @@ func TestRequestRouter_ExtensionlessPath_HEAD_Returns404(t *testing.T) {
 
 	// HEAD requests to client-side routes receive 404, not SPA fallback
 	// This is documented behavior: HEAD on a client-side route is unusual
-	req := httptest.NewRequest("HEAD", "/users/profile", nil)
+	req := httptest.NewRequest(http.MethodHead, "/users/profile", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1525,7 +1525,7 @@ func TestRequestRouter_ExtensionlessFile_HEAD_Returns200(t *testing.T) {
 		spaFallback:      indexFile,
 	}
 
-	req := httptest.NewRequest("HEAD", "/.well-known/apple-app-site-association", nil)
+	req := httptest.NewRequest(http.MethodHead, "/.well-known/apple-app-site-association", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1575,7 +1575,7 @@ func TestRequestRouter_ExtensionlessFile_CacheHeaders(t *testing.T) {
 		spaFallback:      indexFile,
 	}
 
-	req := httptest.NewRequest("GET", "/.well-known/assetlinks.json", nil)
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/assetlinks.json", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1609,7 +1609,7 @@ func TestRequestRouter_SPAFallback_CorrectContentType(t *testing.T) {
 	}
 
 	// Request for non-existent extensionless path should fall back to SPA
-	req := httptest.NewRequest("GET", "/users/profile", nil)
+	req := httptest.NewRequest(http.MethodGet, "/users/profile", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1649,7 +1649,7 @@ func TestRequestRouter_HeadRequest_NoSPAMode_ProxiesToBackend(t *testing.T) {
 	}
 
 	// HEAD request to extensionless path with SPA mode off should proxy to backend
-	req := httptest.NewRequest("HEAD", "/health", nil)
+	req := httptest.NewRequest(http.MethodHead, "/health", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1679,7 +1679,7 @@ func TestRequestRouter_OptionsRequest_NoSPAMode_ProxiesToBackend(t *testing.T) {
 	}
 
 	// OPTIONS request (CORS preflight) with SPA mode off should proxy to backend
-	req := httptest.NewRequest("OPTIONS", "/dynamic-route", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/dynamic-route", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1716,7 +1716,7 @@ func TestRequestRouter_GetRequest_NoSPAMode_ProxiesToBackend(t *testing.T) {
 	}
 
 	// GET request to extensionless path with SPA mode off should proxy to backend
-	req := httptest.NewRequest("GET", "/dynamic-route", nil)
+	req := httptest.NewRequest(http.MethodGet, "/dynamic-route", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1747,7 +1747,7 @@ func TestRequestRouter_RootPath_IndexHTML_GetsNoCacheHeaders(t *testing.T) {
 	}
 
 	// Request to / should serve index.html with no-cache headers
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1797,7 +1797,7 @@ func TestRequestRouter_SubdirectoryIndexHTML_GetsNoCacheHeaders(t *testing.T) {
 	}
 
 	// Request to /about/ should serve index.html with no-cache headers
-	req := httptest.NewRequest("GET", "/about/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/about/", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1836,7 +1836,7 @@ func TestRequestRouter_ExtensionlessNonHTML_NoCacheNotForced(t *testing.T) {
 		spaFallback:      "",
 	}
 
-	req := httptest.NewRequest("GET", "/.well-known/apple-app-site-association", nil)
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/apple-app-site-association", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -1906,7 +1906,7 @@ func TestReverseProxy_PreservesUpstreamXForwardedProto(t *testing.T) {
 		},
 	}
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/test", nil)
 	req.Header.Set("X-Forwarded-Proto", protoHTTPS) // Upstream proxy set this
 	req.RemoteAddr = testRemoteAddr
 
@@ -1967,7 +1967,7 @@ func TestReverseProxy_DefaultsXForwardedProtoToRequestScheme(t *testing.T) {
 		},
 	}
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/test", nil)
 	// No X-Forwarded-Proto header set
 	req.RemoteAddr = testRemoteAddr
 
@@ -2022,7 +2022,7 @@ func TestReverseProxy_DefaultsXForwardedProtoToHTTPSWhenTLS(t *testing.T) {
 		},
 	}
 
-	req := httptest.NewRequest("GET", "https://example.com/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "https://example.com/test", nil)
 	req.RemoteAddr = testRemoteAddr
 	req.TLS = &tls.ConnectionState{}
 
@@ -2076,7 +2076,7 @@ func TestReverseProxy_IgnoresInvalidForwardedProto(t *testing.T) {
 		},
 	}
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/test", nil)
 	req.Header.Set("X-Forwarded-Proto", "ftp") // invalid value should be ignored
 	req.RemoteAddr = testRemoteAddr
 
@@ -2140,7 +2140,7 @@ func TestReverseProxy_PassesThroughXForwardedFor(t *testing.T) {
 		},
 	}
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/test", nil)
 	req.Header.Set("X-Forwarded-For", "203.0.113.42, 198.51.100.1") // Upstream chain
 	req.RemoteAddr = testRemoteAddr
 
@@ -2184,7 +2184,7 @@ func TestAiroPath_HealthEndpoint_Returns200(t *testing.T) {
 	})
 
 	// Test /airo/health
-	req := httptest.NewRequest("GET", "/airo/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/airo/health", nil)
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
@@ -2224,7 +2224,7 @@ func TestAiroPath_UnmatchedPath_Returns404(t *testing.T) {
 	mux.Handle("/", proxyHandler)
 
 	// Test /airo/foo
-	req := httptest.NewRequest("GET", "/airo/foo", nil)
+	req := httptest.NewRequest(http.MethodGet, "/airo/foo", nil)
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
@@ -2257,7 +2257,7 @@ func TestAiroPath_MultipleUnmatchedPaths_Return404(t *testing.T) {
 
 	for _, path := range testPaths {
 		t.Run(path, func(t *testing.T) {
-			req := httptest.NewRequest("GET", path, nil)
+			req := httptest.NewRequest(http.MethodGet, path, nil)
 			rec := httptest.NewRecorder()
 
 			mux.ServeHTTP(rec, req)
@@ -2301,7 +2301,7 @@ func TestAiroPath_NonAiroPaths_ProxyToBackend(t *testing.T) {
 
 	for _, path := range testPaths {
 		t.Run(path, func(t *testing.T) {
-			req := httptest.NewRequest("GET", path, nil)
+			req := httptest.NewRequest(http.MethodGet, path, nil)
 			rec := httptest.NewRecorder()
 
 			mux.ServeHTTP(rec, req)
@@ -2332,7 +2332,7 @@ func TestAiroPath_ExactAiroPath_Returns404(t *testing.T) {
 
 	// Test /airo (without trailing slash)
 	// Go's ServeMux will redirect /airo to /airo/ automatically
-	req := httptest.NewRequest("GET", "/airo", nil)
+	req := httptest.NewRequest(http.MethodGet, "/airo", nil)
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
@@ -2383,7 +2383,7 @@ func TestRequestRouter_AutoStartWhenStopped(t *testing.T) {
 	require.Equal(t, ProcessStateStopped, status.State)
 
 	// Make a request - should trigger auto-start
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 
 	// Start goroutine to handle the request
@@ -2442,7 +2442,7 @@ func TestRequestRouter_NoAutoStartWhenRunning(t *testing.T) {
 	require.Equal(t, ProcessStateRunning, status.State)
 
 	// Make a request - should NOT trigger auto-start (process already running)
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -2485,7 +2485,7 @@ func TestRequestRouter_NoAutoStartWhenDisabled(t *testing.T) {
 	require.Equal(t, ProcessStateStopped, status.State)
 
 	// Make a request - should NOT trigger auto-start
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -2537,7 +2537,7 @@ func TestRequestRouter_ActivityTracking(t *testing.T) {
 	}
 
 	// Make a proxied request
-	req := httptest.NewRequest("GET", "/api/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -2591,7 +2591,7 @@ func TestModifyResponse_StripsDuplicateCORSHeaders(t *testing.T) {
 	}
 
 	// Make request through proxy
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 
 	proxy.ServeHTTP(rec, req)
@@ -2616,7 +2616,7 @@ func TestModifyResponse_StripsDuplicateCORSHeaders(t *testing.T) {
 	// Verify other headers are preserved
 	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"),
 		"other headers should be preserved")
-	assert.Equal(t, `{"status":"ok"}`, rec.Body.String(),
+	assert.JSONEq(t, `{"status":"ok"}`, rec.Body.String(),
 		"response body should be preserved")
 }
 
@@ -2655,7 +2655,7 @@ func TestModifyResponse_PreservesNonCORSHeaders(t *testing.T) {
 		},
 	}
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 
 	proxy.ServeHTTP(rec, req)

@@ -18,6 +18,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -60,7 +61,7 @@ func determineForwardedProto(req *http.Request) string {
  * @returns client IP address string or empty string
  */
 func getClientIP(req *http.Request) string {
-	return strings.TrimSpace(req.Header.Get("CF-Connecting-IP"))
+	return strings.TrimSpace(req.Header.Get("Cf-Connecting-Ip"))
 }
 
 /**
@@ -88,7 +89,7 @@ func getSrcIPAndPort(remoteAddr string) (string, string) {
  * @returns CF-Ray value or empty string
  */
 func getRayID(req *http.Request) string {
-	return strings.TrimSpace(req.Header.Get("CF-Ray"))
+	return strings.TrimSpace(req.Header.Get("Cf-Ray"))
 }
 
 /**
@@ -173,6 +174,7 @@ type ProxyHealthResponse struct {
  */
 type responseWriter struct {
 	http.ResponseWriter
+
 	statusCode int
 	size       int
 }
@@ -193,7 +195,7 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	hijacker, ok := rw.ResponseWriter.(http.Hijacker)
 	if !ok {
-		return nil, nil, fmt.Errorf("underlying ResponseWriter does not implement http.Hijacker")
+		return nil, nil, errors.New("underlying ResponseWriter does not implement http.Hijacker")
 	}
 	return hijacker.Hijack()
 }
@@ -319,6 +321,84 @@ func (rr *RequestRouter) handleAutoStart(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}
+}
+
+// handleStaticRequest handles static file serving and SPA fallback
+// Returns true if the request was handled, false if it should fall through to proxy
+func (rr *RequestRouter) handleStaticRequest(w http.ResponseWriter, r *http.Request) bool {
+	// Has file extension? Serve as static file directly
+	if path.Ext(r.URL.Path) != "" {
+		slog.Debug("serving static file", "path", r.URL.Path, "method", r.Method)
+		rr.staticHandler.ServeHTTP(w, r)
+		return true
+	}
+
+	// No extension - first try to serve as a real file (e.g., /.well-known/apple-app-site-association)
+	// If the file doesn't exist (404), fall back to SPA for GET requests or proxy for HEAD/OPTIONS
+	if rr.staticHandler != nil {
+		if handled := rr.tryServeStaticFile(w, r); handled {
+			return true
+		}
+	}
+
+	// SPA fallback for GET requests (serve index.html with no-cache)
+	if rr.spaFallback != "" && r.Method == http.MethodGet {
+		slog.Debug("SPA fallback", "path", r.URL.Path)
+		// Set no-cache headers for SPA shell (index.html should never be cached)
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		http.ServeFile(w, r, rr.spaFallback)
+		return true
+	}
+
+	return false
+}
+
+// tryServeStaticFile attempts to serve a file from the static handler
+// Returns true if the request was handled (file found or 404 returned), false if it should fall through
+func (rr *RequestRouter) tryServeStaticFile(w http.ResponseWriter, r *http.Request) bool {
+	// Use an isolated recorder to probe if the file exists without contaminating
+	// the real response writer's headers (avoids Content-Type: text/plain leak)
+	recorder := httptest.NewRecorder()
+	rr.staticHandler.ServeHTTP(recorder, r)
+
+	// If file was found (not 404), copy the response to the real writer
+	if recorder.Code != http.StatusNotFound {
+		// Copy headers from recorder to real response
+		maps.Copy(w.Header(), recorder.Header())
+
+		// If serving HTML (e.g., index.html from a directory request like /),
+		// override with strict no-cache headers to prevent stale app shell.
+		// This is critical for SPA deployments where the HTML shell must always
+		// be fresh to load the correct versioned JS/CSS bundles.
+		contentType := recorder.Header().Get("Content-Type")
+		if strings.Contains(contentType, "text/html") {
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+		}
+
+		w.WriteHeader(recorder.Code)
+		// Safe: Static file proxy serving disk content (images, CSS, JS), not user input.
+		// Semgrep G203 false positive - HTML escaping would corrupt binary/structured files.
+		if _, err := w.Write(recorder.Body.Bytes()); err != nil {
+			slog.Error("failed to write response body", "error", err)
+		}
+		return true
+	}
+
+	// File not found - behavior depends on method and SPA mode:
+	// - GET with SPA enabled: fall through to SPA fallback below
+	// - GET without SPA: fall through to proxy backend
+	// - HEAD/OPTIONS with SPA enabled: return 404 (client-side routes don't exist as files)
+	// - HEAD/OPTIONS without SPA: fall through to proxy backend (for health checks, CORS preflight)
+	if r.Method != http.MethodGet && rr.spaFallback != "" {
+		http.NotFound(w, r)
+		return true
+	}
+
+	return false
 }
 
 /**
@@ -471,63 +551,7 @@ func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Handle GET, HEAD, OPTIONS for static assets (browsers use HEAD for cache validation)
 	// Note: CORS preflight is handled by CORS middleware before reaching here
 	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
-		// Has file extension? Serve as static file directly
-		if path.Ext(r.URL.Path) != "" {
-			slog.Debug("serving static file", "path", r.URL.Path, "method", r.Method)
-			rr.staticHandler.ServeHTTP(w, r)
-			return
-		}
-
-		// No extension - first try to serve as a real file (e.g., /.well-known/apple-app-site-association)
-		// If the file doesn't exist (404), fall back to SPA for GET requests or proxy for HEAD/OPTIONS
-		if rr.staticHandler != nil {
-			// Use an isolated recorder to probe if the file exists without contaminating
-			// the real response writer's headers (avoids Content-Type: text/plain leak)
-			recorder := httptest.NewRecorder()
-			rr.staticHandler.ServeHTTP(recorder, r)
-
-			// If file was found (not 404), copy the response to the real writer
-			if recorder.Code != http.StatusNotFound {
-				// Copy headers from recorder to real response
-				maps.Copy(w.Header(), recorder.Header())
-
-				// If serving HTML (e.g., index.html from a directory request like /),
-				// override with strict no-cache headers to prevent stale app shell.
-				// This is critical for SPA deployments where the HTML shell must always
-				// be fresh to load the correct versioned JS/CSS bundles.
-				contentType := recorder.Header().Get("Content-Type")
-				if strings.Contains(contentType, "text/html") {
-					w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-					w.Header().Set("Pragma", "no-cache")
-					w.Header().Set("Expires", "0")
-				}
-
-				w.WriteHeader(recorder.Code)
-				if _, err := w.Write(recorder.Body.Bytes()); err != nil {
-					slog.Error("failed to write response body", "error", err)
-				}
-				return
-			}
-
-			// File not found - behavior depends on method and SPA mode:
-			// - GET with SPA enabled: fall through to SPA fallback below
-			// - GET without SPA: fall through to proxy backend
-			// - HEAD/OPTIONS with SPA enabled: return 404 (client-side routes don't exist as files)
-			// - HEAD/OPTIONS without SPA: fall through to proxy backend (for health checks, CORS preflight)
-			if r.Method != http.MethodGet && rr.spaFallback != "" {
-				http.NotFound(w, r)
-				return
-			}
-		}
-
-		// SPA fallback for GET requests (serve index.html with no-cache)
-		if rr.spaFallback != "" && r.Method == http.MethodGet {
-			slog.Debug("SPA fallback", "path", r.URL.Path)
-			// Set no-cache headers for SPA shell (index.html should never be cached)
-			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-			w.Header().Set("Pragma", "no-cache")
-			w.Header().Set("Expires", "0")
-			http.ServeFile(w, r, rr.spaFallback)
+		if handled := rr.handleStaticRequest(w, r); handled {
 			return
 		}
 	}
@@ -812,7 +836,7 @@ func (p *HTTPProxy) Start() error {
 	defer p.mu.Unlock()
 
 	if p.running {
-		return fmt.Errorf("HTTP proxy already running")
+		return errors.New("HTTP proxy already running")
 	}
 
 	// Validate configuration
@@ -1076,13 +1100,13 @@ func (p *HTTPProxy) Start() error {
 	// JWT middleware (if enabled)
 	if p.config.JWTEnabled {
 		if p.config.JWKSUrl == "" {
-			return fmt.Errorf("JWT authentication enabled but JWKS_URL not configured")
+			return errors.New("JWT authentication enabled but JWKS_URL not configured")
 		}
 		if p.config.SiteID == "" {
-			return fmt.Errorf("JWT authentication enabled but SITE_ID not configured")
+			return errors.New("JWT authentication enabled but SITE_ID not configured")
 		}
 		if p.config.JWTBuilderBaseURL == "" {
-			return fmt.Errorf("JWT authentication enabled but DEV_SUPERVISOR_JWT_BUILDER_BASE_URL not configured")
+			return errors.New("JWT authentication enabled but DEV_SUPERVISOR_JWT_BUILDER_BASE_URL not configured")
 		}
 
 		// Create JWT validator
@@ -1262,7 +1286,7 @@ func (p *HTTPProxy) GetStatus() HTTPProxyStatus {
 	}
 
 	if p.running {
-		targetURL := fmt.Sprintf("http://%s:%d", p.config.TargetHost, p.config.TargetPort)
+		targetURL := "http://" + net.JoinHostPort(p.config.TargetHost, strconv.Itoa(p.config.TargetPort))
 		status.TargetURL = targetURL
 		status.Uptime = time.Since(p.startTime).String()
 	}
@@ -1300,7 +1324,7 @@ func (p *HTTPProxy) validateConfig() error {
 	}
 
 	if p.config.TargetHost == "" {
-		return fmt.Errorf("target host cannot be empty")
+		return errors.New("target host cannot be empty")
 	}
 
 	// TLS certificates are optional - if provided, both cert and key must be specified
@@ -1348,7 +1372,7 @@ func (p *HTTPProxy) validateStaticServingConfig(routingConfig RoutingConfig) err
 	}
 
 	if staticRoot == "" {
-		return fmt.Errorf(
+		return errors.New(
 			"static root must be specified when static serving is enabled (via DEV_SUPERVISOR_STATIC_ROOT env var or static_root in routing config)",
 		)
 	}
@@ -1357,14 +1381,12 @@ func (p *HTTPProxy) validateStaticServingConfig(routingConfig RoutingConfig) err
 	if _, err := os.Stat(staticRoot); os.IsNotExist(err) {
 		slog.Warn("static root directory does not exist at startup, will be unavailable until created",
 			"path", staticRoot)
-	} else {
+	} else if routingConfig.SPAMode {
 		// Only check index.html if directory exists and SPA mode is enabled
-		if routingConfig.SPAMode {
-			indexPath := filepath.Join(staticRoot, "index.html")
-			if _, err := os.Stat(indexPath); os.IsNotExist(err) {
-				slog.Warn("index.html not found in static root, SPA fallback may not work",
-					"path", indexPath)
-			}
+		indexPath := filepath.Join(staticRoot, "index.html")
+		if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+			slog.Warn("index.html not found in static root, SPA fallback may not work",
+				"path", indexPath)
 		}
 	}
 
@@ -1440,65 +1462,80 @@ func (p *HTTPProxy) loadRoutingConfig() (RoutingConfig, error) {
 
 	// Load from JSON file if specified (JSON config takes precedence over env vars)
 	if p.config.ConfigPath != "" {
-		slog.Info("loading routing config from file", "path", p.config.ConfigPath)
-
-		// Check if file exists
-		if _, err := os.Stat(p.config.ConfigPath); os.IsNotExist(err) {
-			return config, fmt.Errorf("routing config file not found: %s", p.config.ConfigPath)
+		if err := p.loadRoutingConfigFromFile(&config); err != nil {
+			return config, err
 		}
-
-		// Read file
-		data, err := os.ReadFile(p.config.ConfigPath)
-		if err != nil {
-			return config, fmt.Errorf("failed to read routing config file: %w", err)
-		}
-
-		// Unmarshal JSON using pointer struct to distinguish "not set" from "set to false/zero"
-		var fileConfig routingConfigJSON
-		if err := json.Unmarshal(data, &fileConfig); err != nil {
-			return config, fmt.Errorf("failed to parse routing config JSON: %w", err)
-		}
-
-		// Merge file config with defaults (file config takes precedence)
-		// Only override values that were explicitly set in JSON (non-nil pointers)
-		if fileConfig.StaticRoot != nil && *fileConfig.StaticRoot != "" {
-			config.StaticRoot = *fileConfig.StaticRoot
-		}
-		if fileConfig.APIPrefix != nil && *fileConfig.APIPrefix != "" {
-			config.APIPrefix = *fileConfig.APIPrefix
-		}
-		if fileConfig.SPAMode != nil {
-			config.SPAMode = *fileConfig.SPAMode
-		}
-
-		// Merge cache control settings
-		if fileConfig.CacheControl != nil {
-			// Copy EnableCaching only if explicitly set in JSON
-			if fileConfig.CacheControl.EnableCaching != nil {
-				config.CacheControl.EnableCaching = *fileConfig.CacheControl.EnableCaching
-			}
-
-			// Copy MaxAge only if explicitly set in JSON
-			if fileConfig.CacheControl.MaxAge != nil {
-				config.CacheControl.MaxAge = *fileConfig.CacheControl.MaxAge
-			}
-		} else if fileConfig.EnableCaching != nil {
-			// Support deprecated top-level enable_caching for backward compatibility
-			config.CacheControl.EnableCaching = *fileConfig.EnableCaching
-		}
-
-		if fileConfig.ForwardRules != nil {
-			config.ForwardRules = fileConfig.ForwardRules
-			slog.Warn("forward_rules are not yet implemented and will be ignored",
-				"rule_count", len(fileConfig.ForwardRules))
-		}
-
-		slog.Info("routing config loaded successfully",
-			"api_prefix", config.APIPrefix,
-			"spa_mode", config.SPAMode)
 	}
 
 	return config, nil
+}
+
+// loadRoutingConfigFromFile loads routing configuration from a JSON file
+func (p *HTTPProxy) loadRoutingConfigFromFile(config *RoutingConfig) error {
+	slog.Info("loading routing config from file", "path", p.config.ConfigPath)
+
+	// Check if file exists
+	if _, err := os.Stat(p.config.ConfigPath); os.IsNotExist(err) {
+		return fmt.Errorf("routing config file not found: %s", p.config.ConfigPath)
+	}
+
+	// Read file
+	data, err := os.ReadFile(p.config.ConfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to read routing config file: %w", err)
+	}
+
+	// Unmarshal JSON using pointer struct to distinguish "not set" from "set to false/zero"
+	var fileConfig routingConfigJSON
+	if err := json.Unmarshal(data, &fileConfig); err != nil {
+		return fmt.Errorf("failed to parse routing config JSON: %w", err)
+	}
+
+	// Merge file config with defaults (file config takes precedence)
+	p.mergeRoutingConfig(config, &fileConfig)
+
+	slog.Info("routing config loaded successfully",
+		"api_prefix", config.APIPrefix,
+		"static_root", config.StaticRoot,
+		"spa_mode", config.SPAMode)
+
+	return nil
+}
+
+// mergeRoutingConfig merges file configuration with defaults
+func (p *HTTPProxy) mergeRoutingConfig(config *RoutingConfig, fileConfig *routingConfigJSON) {
+	// Only override values that were explicitly set in JSON (non-nil pointers)
+	if fileConfig.StaticRoot != nil && *fileConfig.StaticRoot != "" {
+		config.StaticRoot = *fileConfig.StaticRoot
+	}
+	if fileConfig.APIPrefix != nil && *fileConfig.APIPrefix != "" {
+		config.APIPrefix = *fileConfig.APIPrefix
+	}
+	if fileConfig.SPAMode != nil {
+		config.SPAMode = *fileConfig.SPAMode
+	}
+
+	// Merge cache control settings
+	if fileConfig.CacheControl != nil {
+		// Copy EnableCaching only if explicitly set in JSON
+		if fileConfig.CacheControl.EnableCaching != nil {
+			config.CacheControl.EnableCaching = *fileConfig.CacheControl.EnableCaching
+		}
+
+		// Copy MaxAge only if explicitly set in JSON
+		if fileConfig.CacheControl.MaxAge != nil {
+			config.CacheControl.MaxAge = *fileConfig.CacheControl.MaxAge
+		}
+	} else if fileConfig.EnableCaching != nil {
+		// Support deprecated top-level enable_caching for backward compatibility
+		config.CacheControl.EnableCaching = *fileConfig.EnableCaching
+	}
+
+	if fileConfig.ForwardRules != nil {
+		config.ForwardRules = fileConfig.ForwardRules
+		slog.Warn("forward_rules are not yet implemented and will be ignored",
+			"rule_count", len(fileConfig.ForwardRules))
+	}
 }
 
 /**
@@ -1564,7 +1601,7 @@ func (p *HTTPProxy) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	// Perform HTTP GET to target with timeout
 	targetURL := fmt.Sprintf(
 		"http://%s/",
-		net.JoinHostPort(p.config.TargetHost, fmt.Sprintf("%d", p.config.TargetPort)),
+		net.JoinHostPort(p.config.TargetHost, strconv.Itoa(p.config.TargetPort)),
 	)
 
 	client := &http.Client{

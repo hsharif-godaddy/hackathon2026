@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"net"
-	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -17,16 +16,18 @@ func configureSMTPTestEnv(t *testing.T) {
 	t.Setenv("SMTP_DESTINATION", fmt.Sprintf("127.0.0.1:%d", destPort))
 }
 
-// shortTempDir creates a temp directory with a short path to avoid macOS socket path length limit (104 chars)
+// shortTempDir creates a temp directory for testing
+// Note: Uses t.TempDir() which typically creates directories in /tmp on Unix systems
 func shortTempDir(t testing.TB) string {
-	tempDir, err := os.MkdirTemp("/tmp", "ds-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
+	// t.TempDir() automatically handles cleanup
+	if testingT, ok := t.(*testing.T); ok {
+		return testingT.TempDir()
 	}
-	t.Cleanup(func() {
-		os.RemoveAll(tempDir)
-	})
-	return tempDir
+	if testingB, ok := t.(*testing.B); ok {
+		return testingB.TempDir()
+	}
+	t.Fatal("unexpected testing.TB type")
+	return ""
 }
 
 func TestPortReuseAfterRestart(t *testing.T) {
@@ -83,7 +84,7 @@ func TestPortReuseAfterRestart(t *testing.T) {
 
 	// Perform sequential restarts - realistic scenario for Node.js servers
 	numRestarts := 10
-	for i := 0; i < numRestarts; i++ {
+	for i := range numRestarts {
 		t.Logf("Performing restart %d/%d", i+1, numRestarts)
 
 		restartStart := time.Now()
@@ -168,12 +169,12 @@ func TestConcurrentRestarts(t *testing.T) {
 	var mu sync.Mutex
 	results := make([]error, 0, numGoroutines*numRestartsPerGoroutine)
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(goroutineID int) {
 			defer wg.Done()
 
-			for j := 0; j < numRestartsPerGoroutine; j++ {
+			for j := range numRestartsPerGoroutine {
 				err := server.procMgr.Restart(ProcessRestartRequest{Graceful: true})
 
 				mu.Lock()
@@ -348,9 +349,8 @@ func BenchmarkRestartWithPortWait(b *testing.B) {
 	time.Sleep(200 * time.Millisecond) // Let process start
 
 	// Reset timer and run benchmark
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if err := server.procMgr.Restart(ProcessRestartRequest{Graceful: true}); err != nil {
 			b.Fatalf("Restart failed: %v", err)
 		}

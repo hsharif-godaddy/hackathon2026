@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -55,7 +56,7 @@ func (p *SMTPProxy) Start() error {
 	defer p.mu.Unlock()
 
 	if p.running {
-		return fmt.Errorf("SMTP proxy already running")
+		return errors.New("SMTP proxy already running")
 	}
 
 	backend := &proxyBackend{
@@ -153,7 +154,7 @@ func (s *proxySession) Rcpt(to string, _ *smtp.RcptOptions) error {
 
 func (s *proxySession) Data(r io.Reader) error {
 	if s.backend == nil {
-		return fmt.Errorf("backend not initialized")
+		return errors.New("backend not initialized")
 	}
 
 	data, err := io.ReadAll(r)

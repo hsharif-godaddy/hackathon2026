@@ -12,6 +12,7 @@ func TestEnvironmentManager_NewEnvironmentManager(t *testing.T) {
 
 	if em == nil {
 		t.Fatal("Expected non-nil EnvironmentManager")
+		return
 	}
 
 	if em.variables == nil {
@@ -101,6 +102,7 @@ func TestEnvironmentManager_SetVariables(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := em.SetVariables(tt.request)
 
 			if tt.expectError && err == nil {
@@ -157,6 +159,7 @@ func TestEnvironmentManager_GetVariables(t *testing.T) {
 
 	if response.Variables == nil {
 		t.Fatal("Expected non-nil variables map")
+		return
 	}
 
 	// Check our test variables are present
@@ -404,6 +407,7 @@ func TestIsValidEnvVarName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := isValidEnvVarName(tt.varName)
 			if result != tt.expected {
 				t.Errorf("isValidEnvVarName(%s) = %v, expected %v", tt.varName, result, tt.expected)

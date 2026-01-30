@@ -2,7 +2,7 @@ package main
 
 import (
 	"bufio"
-	"fmt"
+	"errors"
 	"net"
 	"net/http"
 	"sync"
@@ -42,6 +42,7 @@ func connectionTrackingMiddleware(next http.Handler, procMgr *ProcessManager) ht
  */
 type connectionTrackingWriter struct {
 	http.ResponseWriter
+
 	procMgr *ProcessManager
 }
 
@@ -50,7 +51,7 @@ type connectionTrackingWriter struct {
 func (w *connectionTrackingWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	hijacker, ok := w.ResponseWriter.(http.Hijacker)
 	if !ok {
-		return nil, nil, fmt.Errorf("underlying ResponseWriter does not implement http.Hijacker")
+		return nil, nil, errors.New("underlying ResponseWriter does not implement http.Hijacker")
 	}
 
 	conn, buf, err := hijacker.Hijack()
@@ -84,6 +85,7 @@ func (w *connectionTrackingWriter) Flush() {
  */
 type trackedConnection struct {
 	net.Conn
+
 	procMgr *ProcessManager
 	once    sync.Once
 }

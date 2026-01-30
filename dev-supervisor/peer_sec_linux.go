@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -29,7 +30,7 @@ type peerSecContextKey struct{}
 func getPeerSecContext(conn net.Conn) (*SELinuxContext, error) {
 	unixConn, ok := conn.(*net.UnixConn)
 	if !ok {
-		return nil, fmt.Errorf("not a Unix socket connection")
+		return nil, errors.New("not a Unix socket connection")
 	}
 
 	rawConn, err := unixConn.SyscallConn()
@@ -61,7 +62,7 @@ func getPeerSecContext(conn net.Conn) (*SELinuxContext, error) {
 // Format: user:role:type:level (e.g., "system_u:system_r:container_t:s0:c1,c2")
 func parseSELinuxContext(raw string) (*SELinuxContext, error) {
 	if raw == "" {
-		return nil, fmt.Errorf("empty security context")
+		return nil, errors.New("empty security context")
 	}
 
 	parts := strings.SplitN(raw, ":", 4)
@@ -95,10 +96,10 @@ func peerSecFromContext(ctx context.Context) *SELinuxContext {
 func connContextWithPeerSec(ctx context.Context, conn net.Conn) context.Context {
 	sec, err := getPeerSecContext(conn)
 	if err != nil {
-		slog.Debug("peer_sec.extract_failed", "error", err)
+		slog.DebugContext(ctx, "peer_sec.extract_failed", "error", err)
 		return ctx
 	}
-	slog.Debug("peer_sec.extracted",
+	slog.DebugContext(ctx, "peer_sec.extracted",
 		"type", sec.Type,
 		"user", sec.User,
 		"role", sec.Role,

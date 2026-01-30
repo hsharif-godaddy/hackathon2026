@@ -112,6 +112,7 @@ func TestPeerSecFromContext(t *testing.T) {
 		sec := peerSecFromContext(ctx)
 		if sec == nil {
 			t.Fatal("expected context, got nil")
+			return
 		}
 		if sec.Type != expected.Type {
 			t.Errorf("Type = %q, want %q", sec.Type, expected.Type)
@@ -130,7 +131,7 @@ func TestPeerSecMiddleware(t *testing.T) {
 
 	t.Run("rejects request without security context", func(t *testing.T) {
 		t.Setenv("NOMAD_ALLOC_DIR", "/alloc")
-		req := httptest.NewRequest("GET", "/test", nil)
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rec := httptest.NewRecorder()
 
 		middleware.ServeHTTP(rec, req)
@@ -142,7 +143,7 @@ func TestPeerSecMiddleware(t *testing.T) {
 
 	t.Run("rejects request with unauthorized SELinux type", func(t *testing.T) {
 		t.Setenv("NOMAD_ALLOC_DIR", "/alloc")
-		req := httptest.NewRequest("GET", "/test", nil)
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		ctx := context.WithValue(req.Context(), peerSecContextKey{}, &SELinuxContext{
 			User:  "system_u",
 			Role:  "system_r",
@@ -162,7 +163,7 @@ func TestPeerSecMiddleware(t *testing.T) {
 
 	t.Run("allows request with authorized SELinux type", func(t *testing.T) {
 		t.Setenv("NOMAD_ALLOC_DIR", "/alloc")
-		req := httptest.NewRequest("GET", "/test", nil)
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		ctx := context.WithValue(req.Context(), peerSecContextKey{}, &SELinuxContext{
 			User:  "system_u",
 			Role:  "system_r",
@@ -182,7 +183,7 @@ func TestPeerSecMiddleware(t *testing.T) {
 
 	t.Run("bypasses restriction when nomad env missing", func(t *testing.T) {
 		t.Setenv("NOMAD_ALLOC_DIR", "")
-		req := httptest.NewRequest("GET", "/test", nil)
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rec := httptest.NewRecorder()
 
 		middleware.ServeHTTP(rec, req)

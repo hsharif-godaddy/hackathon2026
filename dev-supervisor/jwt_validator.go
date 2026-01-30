@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -14,11 +15,7 @@ import (
  * Supports both custom JWT tokens and GoDaddy SSO IDP tokens
  */
 type JWTClaims struct {
-	// Standard OIDC claims (optional - not present in GoDaddy SSO tokens)
-	Issuer   string `json:"iss"` // Issuer (e.g., "airo-app")
-	Audience string `json:"aud"` // Audience (e.g., "agents-service")
-	Expiry   int64  `json:"exp"` // Expiration timestamp
-	IssuedAt int64  `json:"iat"` // Issued at timestamp
+	jwt.RegisteredClaims
 
 	// Custom claims (airo-app JWT)
 	SiteID string `json:"siteId"` // Site/App ID (custom JWT)
@@ -27,8 +24,6 @@ type JWTClaims struct {
 	ShopperID string `json:"shopperId"` // GoDaddy shopper ID
 	CID       string `json:"cid"`       // GoDaddy customer ID
 	Type      string `json:"typ"`       // Token type (e.g., "idp")
-
-	jwt.RegisteredClaims
 }
 
 /**
@@ -84,7 +79,7 @@ func (v *JWTValidator) ValidateToken(tokenString string) ValidationResult {
 	}
 
 	// Parse token and extract kid from header
-	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (any, error) {
 		// Validate signing method
 		if token.Method.Alg() != "RS256" {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -93,7 +88,7 @@ func (v *JWTValidator) ValidateToken(tokenString string) ValidationResult {
 		// Extract kid from header
 		kid, ok := token.Header["kid"].(string)
 		if !ok {
-			return nil, fmt.Errorf("kid not found in token header")
+			return nil, errors.New("kid not found in token header")
 		}
 
 		// Get public key from JWKS

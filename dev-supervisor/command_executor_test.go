@@ -13,6 +13,7 @@ func TestCommandExecutor_NewCommandExecutor(t *testing.T) {
 
 	if executor == nil {
 		t.Fatal("Expected non-nil CommandExecutor")
+		return
 	}
 
 	if executor.defaultTimeout != 30 {
@@ -34,12 +35,8 @@ func TestCommandExecutor_Execute(t *testing.T) {
 	t.Parallel()
 	executor := NewCommandExecutor()
 
-	// Create temp directory for testing
-	tempDir, err := os.MkdirTemp("", "command-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	// Create temp directory for testing (auto-cleaned up by t.TempDir)
+	tempDir := t.TempDir()
 
 	tests := []struct {
 		name           string
@@ -169,6 +166,7 @@ func TestCommandExecutor_Execute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := executor.Execute(tt.request)
 
 			// Check error expectation
@@ -189,6 +187,7 @@ func TestCommandExecutor_Execute(t *testing.T) {
 			// Validate result
 			if result == nil {
 				t.Fatal("Expected non-nil result")
+				return
 			}
 
 			if result.Command != tt.request.Command {
@@ -251,11 +250,8 @@ func TestCommandExecutor_ExecuteComplexCommands(t *testing.T) {
 	t.Parallel()
 	executor := NewCommandExecutor()
 
-	tempDir, err := os.MkdirTemp("", "command-complex-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	// Create temp directory for testing (auto-cleaned up by t.TempDir)
+	tempDir := t.TempDir()
 
 	tests := []struct {
 		name    string
@@ -285,6 +281,7 @@ func TestCommandExecutor_ExecuteComplexCommands(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			request := CommandRequest{
 				Command:       tt.command,
 				CaptureOutput: true,

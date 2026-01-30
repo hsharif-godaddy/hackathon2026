@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"sort"
 	"strings"
@@ -51,7 +53,7 @@ func (em *EnvironmentManager) SetVariables(req EnvironmentSetRequest) error {
 	defer em.mu.Unlock()
 
 	if len(req.Variables) == 0 {
-		return fmt.Errorf("no variables provided")
+		return errors.New("no variables provided")
 	}
 
 	// Validate variable names and check for protected variables
@@ -88,9 +90,7 @@ func (em *EnvironmentManager) GetVariables() EnvironmentGetResponse {
 
 	// Create a copy of variables
 	variables := make(map[string]string)
-	for key, value := range em.variables {
-		variables[key] = value
-	}
+	maps.Copy(variables, em.variables)
 
 	return EnvironmentGetResponse{
 		Variables: variables,

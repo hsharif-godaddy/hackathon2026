@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -9,7 +10,7 @@ import (
 )
 
 func TestGetSocketPath(t *testing.T) {
-	t.Parallel()
+	// Note: Cannot use t.Parallel() with t.Setenv() since env vars are process-global
 	tests := []struct {
 		name     string
 		envValue string
@@ -34,21 +35,10 @@ func TestGetSocketPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save original value
-			originalValue := os.Getenv("AIRO_SUPERVISOR_SOCKET_PATH")
-			defer func() {
-				if originalValue == "" {
-					os.Unsetenv("AIRO_SUPERVISOR_SOCKET_PATH")
-				} else {
-					os.Setenv("AIRO_SUPERVISOR_SOCKET_PATH", originalValue)
-				}
-			}()
-
-			// Set test value
-			if tt.envValue == "" {
-				os.Unsetenv("AIRO_SUPERVISOR_SOCKET_PATH")
-			} else {
-				os.Setenv("AIRO_SUPERVISOR_SOCKET_PATH", tt.envValue)
+			// Note: Cannot use t.Parallel() with t.Setenv() since env vars are process-global
+			// Set test value (t.Setenv auto-restores original value)
+			if tt.envValue != "" {
+				t.Setenv("AIRO_SUPERVISOR_SOCKET_PATH", tt.envValue)
 			}
 
 			// Test function
@@ -62,7 +52,7 @@ func TestGetSocketPath(t *testing.T) {
 
 // TestParseAllowedOrigins tests that allowed origins are parsed using the same logic as vite.config.ts
 func TestParseAllowedOrigins(t *testing.T) {
-	t.Parallel()
+	// Note: Cannot use t.Parallel() since subtests manipulate env vars
 	tests := []struct {
 		name             string
 		frontendDomain   string
@@ -161,6 +151,7 @@ func TestParseAllowedOrigins(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Note: Cannot use t.Parallel() since env vars are process-global
 			// Save and restore original env values
 			origFrontend := os.Getenv("FRONTEND_DOMAIN")
 			origAllowed := os.Getenv("ALLOWED_ORIGINS")
@@ -212,13 +203,7 @@ func TestParseAllowedOrigins(t *testing.T) {
 
 			// Verify expected values are present
 			for _, expected := range tt.shouldContain {
-				found := false
-				for _, actual := range result {
-					if actual == expected {
-						found = true
-						break
-					}
-				}
+				found := slices.Contains(result, expected)
 				if !found {
 					t.Errorf("Expected to find %q in result, but didn't. Result: %v", expected, result)
 				}

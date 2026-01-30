@@ -16,6 +16,7 @@ func TestHealthMonitor_NewHealthMonitor(t *testing.T) {
 
 	if hm == nil {
 		t.Fatal("Expected non-nil HealthMonitor")
+		return
 	}
 
 	if hm.logMgr != logMgr {
@@ -158,8 +159,6 @@ func TestHealthMonitor_StartStop(t *testing.T) {
 
 func TestHealthMonitor_CommandHealthCheck(t *testing.T) {
 	t.Parallel()
-	logMgr := NewLogManager(100)
-	hm := NewHealthMonitor(logMgr)
 
 	tests := []struct {
 		name           string
@@ -189,6 +188,11 @@ func TestHealthMonitor_CommandHealthCheck(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			// Create separate instances for each parallel test to avoid race conditions
+			logMgr := NewLogManager(100)
+			hm := NewHealthMonitor(logMgr)
+
 			healthCheck := &HealthCheck{
 				Type:             HealthCheckTypeCommand,
 				Command:          tt.command,

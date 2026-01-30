@@ -16,7 +16,7 @@ const (
 )
 
 // Test helper function to marshal JSON with error handling
-func mustMarshalJSON(t *testing.T, v interface{}) []byte {
+func mustMarshalJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -31,7 +31,7 @@ func TestHandleHealth(t *testing.T) {
 	server := NewServer()
 	server.startTime = time.Now().Add(-5 * time.Minute) // Set server as running for 5 minutes
 
-	req := httptest.NewRequest("GET", "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
 
 	server.handleHealth(w, req)
@@ -71,7 +71,7 @@ func TestHandleInfo(t *testing.T) {
 	server := NewServer()
 	server.startTime = time.Now().Add(-10 * time.Minute)
 
-	req := httptest.NewRequest("GET", "/info", nil)
+	req := httptest.NewRequest(http.MethodGet, "/info", nil)
 	w := httptest.NewRecorder()
 
 	server.handleInfo(w, req)
@@ -80,7 +80,7 @@ func TestHandleInfo(t *testing.T) {
 		t.Errorf("Expected status code 200, got %d", w.Code)
 	}
 
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestHandleProcessStart(t *testing.T) {
 	}
 
 	reqBody := mustMarshalJSON(t, startReq)
-	req := httptest.NewRequest("POST", "/process/start", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequest(http.MethodPost, "/process/start", bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -162,7 +162,7 @@ func TestHandleProcessStartInvalidJSON(t *testing.T) {
 	server := NewServer()
 
 	// Test invalid JSON
-	req := httptest.NewRequest("POST", "/process/start", strings.NewReader("invalid json"))
+	req := httptest.NewRequest(http.MethodPost, "/process/start", strings.NewReader("invalid json"))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -193,7 +193,7 @@ func TestHandleProcessStartEmptyCommand(t *testing.T) {
 	}
 
 	reqBody := mustMarshalJSON(t, startReq)
-	req := httptest.NewRequest("POST", "/process/start", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequest(http.MethodPost, "/process/start", bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -209,7 +209,7 @@ func TestHandleProcessStatus(t *testing.T) {
 
 	server := NewServer()
 
-	req := httptest.NewRequest("GET", "/process/status", nil)
+	req := httptest.NewRequest(http.MethodGet, "/process/status", nil)
 	w := httptest.NewRecorder()
 
 	server.handleProcessStatus(w, req)
@@ -253,7 +253,7 @@ func TestHandleProcessStop(t *testing.T) {
 	}
 
 	reqBody := mustMarshalJSON(t, stopReq)
-	req := httptest.NewRequest("POST", "/process/stop", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequest(http.MethodPost, "/process/stop", bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -296,7 +296,7 @@ func TestHandleProcessRestart(t *testing.T) {
 	}
 
 	reqBody := mustMarshalJSON(t, restartReq)
-	req := httptest.NewRequest("POST", "/process/restart", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequest(http.MethodPost, "/process/restart", bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -335,7 +335,7 @@ func TestHandleExec(t *testing.T) {
 	}
 
 	reqBody := mustMarshalJSON(t, execReq)
-	req := httptest.NewRequest("POST", "/exec", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequest(http.MethodPost, "/exec", bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -374,7 +374,7 @@ func TestHandleExecInvalidCommand(t *testing.T) {
 	}
 
 	reqBody := mustMarshalJSON(t, execReq)
-	req := httptest.NewRequest("POST", "/exec", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequest(http.MethodPost, "/exec", bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -390,7 +390,7 @@ func TestHandleEnvironmentGet(t *testing.T) {
 
 	server := NewServer()
 
-	req := httptest.NewRequest("GET", "/environment", nil)
+	req := httptest.NewRequest(http.MethodGet, "/environment", nil)
 	w := httptest.NewRecorder()
 
 	server.handleEnvironmentGet(w, req)
@@ -424,7 +424,7 @@ func TestHandleEnvironmentSet(t *testing.T) {
 	}
 
 	reqBody := mustMarshalJSON(t, setReq)
-	req := httptest.NewRequest("PUT", "/environment", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequest(http.MethodPut, "/environment", bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -449,7 +449,7 @@ func TestHandleEnvironmentReset(t *testing.T) {
 
 	server := NewServer()
 
-	req := httptest.NewRequest("DELETE", "/environment", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/environment", nil)
 	w := httptest.NewRecorder()
 
 	server.handleEnvironmentReset(w, req)
@@ -481,7 +481,7 @@ func TestHandleLogs(t *testing.T) {
 		Level:     "info",
 	})
 
-	req := httptest.NewRequest("GET", "/logs?lines=10", nil)
+	req := httptest.NewRequest(http.MethodGet, "/logs?lines=10", nil)
 	w := httptest.NewRecorder()
 
 	server.handleLogs(w, req)
@@ -509,7 +509,7 @@ func TestHandleLogsStream(t *testing.T) {
 
 	server := NewServer()
 
-	req := httptest.NewRequest("GET", "/logs/stream", nil)
+	req := httptest.NewRequest(http.MethodGet, "/logs/stream", nil)
 	w := httptest.NewRecorder()
 
 	server.handleLogsStream(w, req)
@@ -534,7 +534,7 @@ func TestHandleHealthConfigGet(t *testing.T) {
 
 	server := NewServer()
 
-	req := httptest.NewRequest("GET", "/health-config", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health-config", nil)
 	w := httptest.NewRecorder()
 
 	server.handleHealthConfigGet(w, req)
@@ -543,7 +543,7 @@ func TestHandleHealthConfigGet(t *testing.T) {
 		t.Errorf("Expected status code 200, got %d", w.Code)
 	}
 
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
@@ -578,7 +578,7 @@ func TestHandleHealthConfigSet(t *testing.T) {
 	}
 
 	reqBody := mustMarshalJSON(t, configReq)
-	req := httptest.NewRequest("PUT", "/health-config", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequest(http.MethodPut, "/health-config", bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -603,7 +603,7 @@ func TestHandleHealthStatus(t *testing.T) {
 
 	server := NewServer()
 
-	req := httptest.NewRequest("GET", "/health-config/status", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health-config/status", nil)
 	w := httptest.NewRecorder()
 
 	server.handleHealthStatus(w, req)
@@ -628,7 +628,7 @@ func TestHandleRestartStats(t *testing.T) {
 
 	server := NewServer()
 
-	req := httptest.NewRequest("GET", "/health-config/restart-stats", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health-config/restart-stats", nil)
 	w := httptest.NewRecorder()
 
 	server.handleRestartStats(w, req)
@@ -637,7 +637,7 @@ func TestHandleRestartStats(t *testing.T) {
 		t.Errorf("Expected status code 200, got %d", w.Code)
 	}
 
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
@@ -709,6 +709,7 @@ func TestAPIContentTypeHeaders(t *testing.T) {
 
 	for _, endpoint := range endpoints {
 		t.Run(endpoint.method+"_"+strings.ReplaceAll(endpoint.path, "/", "_"), func(t *testing.T) {
+			t.Parallel()
 			var req *http.Request
 			if endpoint.body != "" {
 				req = httptest.NewRequest(endpoint.method, endpoint.path, strings.NewReader(endpoint.body))
@@ -791,8 +792,9 @@ func TestHandleProcessStartValidationErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			reqBody := mustMarshalJSON(t, tt.request)
-			req := httptest.NewRequest("POST", "/process/start", bytes.NewBuffer(reqBody))
+			req := httptest.NewRequest(http.MethodPost, "/process/start", bytes.NewBuffer(reqBody))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
@@ -819,7 +821,7 @@ func TestHandleProcessStopInvalidJSON(t *testing.T) {
 
 	server := NewServer()
 
-	req := httptest.NewRequest("POST", "/process/stop", strings.NewReader("invalid json"))
+	req := httptest.NewRequest(http.MethodPost, "/process/stop", strings.NewReader("invalid json"))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -844,7 +846,7 @@ func TestHandleProcessRestartInvalidJSON(t *testing.T) {
 
 	server := NewServer()
 
-	req := httptest.NewRequest("POST", "/process/restart", strings.NewReader("invalid json"))
+	req := httptest.NewRequest(http.MethodPost, "/process/restart", strings.NewReader("invalid json"))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -898,8 +900,9 @@ func TestHandleExecValidationErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			reqBody := mustMarshalJSON(t, tt.request)
-			req := httptest.NewRequest("POST", "/exec", bytes.NewBuffer(reqBody))
+			req := httptest.NewRequest(http.MethodPost, "/exec", bytes.NewBuffer(reqBody))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
@@ -926,7 +929,7 @@ func TestHandleEnvironmentSetInvalidJSON(t *testing.T) {
 
 	server := NewServer()
 
-	req := httptest.NewRequest("PUT", "/environment", strings.NewReader("invalid json"))
+	req := httptest.NewRequest(http.MethodPut, "/environment", strings.NewReader("invalid json"))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -980,8 +983,9 @@ func TestHandleEnvironmentSetValidationErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			reqBody := mustMarshalJSON(t, tt.request)
-			req := httptest.NewRequest("PUT", "/environment", bytes.NewBuffer(reqBody))
+			req := httptest.NewRequest(http.MethodPut, "/environment", bytes.NewBuffer(reqBody))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
@@ -1029,7 +1033,7 @@ func TestHandleEnvironmentSetWithRestart(t *testing.T) {
 	}
 
 	reqBody := mustMarshalJSON(t, setReq)
-	req := httptest.NewRequest("PUT", "/environment", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequest(http.MethodPut, "/environment", bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -1062,7 +1066,7 @@ func TestHandleHealthConfigSetInvalidJSON(t *testing.T) {
 
 	server := NewServer()
 
-	req := httptest.NewRequest("PUT", "/health-config", strings.NewReader("invalid json"))
+	req := httptest.NewRequest(http.MethodPut, "/health-config", strings.NewReader("invalid json"))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -1100,7 +1104,7 @@ func TestHandleHealthConfigSetPartialConfig(t *testing.T) {
 	}
 
 	reqBody := mustMarshalJSON(t, configReq)
-	req := httptest.NewRequest("PUT", "/health-config", bytes.NewBuffer(reqBody))
+	req := httptest.NewRequest(http.MethodPut, "/health-config", bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -1128,7 +1132,7 @@ func TestHandleLogsWithFilters(t *testing.T) {
 	}
 
 	// Test with source filter (this is what the log manager actually supports)
-	req := httptest.NewRequest("GET", "/logs?source=test1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/logs?source=test1", nil)
 	w := httptest.NewRecorder()
 
 	server.handleLogs(w, req)

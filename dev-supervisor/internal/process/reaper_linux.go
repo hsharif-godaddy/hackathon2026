@@ -3,6 +3,7 @@
 package process
 
 import (
+	"errors"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -47,7 +48,7 @@ func (pm *PID1Manager) reapExitedChildren() {
 		var info siginfoChild
 		err := waitidRetry(unix.P_ALL, 0, &info, unix.WEXITED|unix.WNOHANG|unix.WNOWAIT)
 		if err != nil {
-			if err == syscall.ECHILD {
+			if errors.Is(err, syscall.ECHILD) {
 				return
 			}
 
@@ -69,7 +70,7 @@ func (pm *PID1Manager) reapExitedChildren() {
 		}
 
 		if err := waitidRetry(unix.P_PID, int(info.Pid), &info, unix.WEXITED); err != nil {
-			if err == syscall.ECHILD {
+			if errors.Is(err, syscall.ECHILD) {
 				continue
 			}
 
@@ -84,7 +85,7 @@ func (pm *PID1Manager) reapExitedChildren() {
 func waitidRetry(idType int, pid int, info *siginfoChild, options int) error {
 	for {
 		err := unix.Waitid(idType, pid, siginfoToUnix(info), options, nil)
-		if err == syscall.EINTR {
+		if errors.Is(err, syscall.EINTR) {
 			continue
 		}
 		return err

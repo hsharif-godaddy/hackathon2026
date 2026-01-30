@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -66,8 +67,8 @@ func parseGodebugSettings() map[string]string {
 		return settings
 	}
 
-	entries := strings.Split(raw, ",")
-	for _, entry := range entries {
+	entries := strings.SplitSeq(raw, ",")
+	for entry := range entries {
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
 			continue
@@ -546,7 +547,7 @@ func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) erro
 // StartCommandOnStartup starts a command when dev-supervisor starts
 func (s *Server) StartCommandOnStartup(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("no command provided")
+		return errors.New("no command provided")
 	}
 
 	// Build the full command with proper argument handling
@@ -554,7 +555,7 @@ func (s *Server) StartCommandOnStartup(args []string) error {
 
 	// Validate command is not empty after joining
 	if strings.TrimSpace(fullCommand) == "" {
-		return fmt.Errorf("command cannot be empty")
+		return errors.New("command cannot be empty")
 	}
 
 	// Convert environment slice to map
@@ -750,7 +751,39 @@ func parseFlags() *Config {
 }
 
 func showVersion() {
-	fmt.Printf("%s version %s\n", AppName, Version)
+	fmt.Fprintf(os.Stdout, "%s version %s\n", AppName, Version)
+}
+
+// startServerWithCommand starts the server in the background and then starts the specified command
+func startServerWithCommand(server *Server, cfg *config.Config, args []string) {
+	slog.Info("auto-starting command", "command", args)
+
+	// Start the server in a goroutine so we can also start the command
+	go func() {
+		if err := server.StartWithConfig(cfg); err != nil {
+			slog.Error("failed to start server", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	// Wait for server to be ready
+	address := cfg.SocketPath
+	if cfg.UseTCP {
+		address = cfg.TCPPort
+	}
+	if err := server.waitForServerReady(address, cfg.UseTCP); err != nil {
+		slog.Error("server failed to start", "error", err)
+		os.Exit(1)
+	}
+
+	// Start the specified command
+	if err := server.StartCommandOnStartup(args); err != nil {
+		slog.Error("failed to start initial command", "error", err, "command", args)
+		os.Exit(1)
+	}
+
+	// Wait for shutdown signals
+	server.WaitForShutdown()
 }
 
 func main() {
@@ -791,34 +824,7 @@ func main() {
 	// Check for additional command arguments to auto-start
 	args := flag.Args()
 	if len(args) > 0 {
-		slog.Info("auto-starting command", "command", args)
-
-		// Start the server in a goroutine so we can also start the command
-		go func() {
-			if err := server.StartWithConfig(cfg); err != nil {
-				slog.Error("failed to start server", "error", err)
-				os.Exit(1)
-			}
-		}()
-
-		// Wait for server to be ready
-		address := cfg.SocketPath
-		if cfg.UseTCP {
-			address = cfg.TCPPort
-		}
-		if err := server.waitForServerReady(address, cfg.UseTCP); err != nil {
-			slog.Error("server failed to start", "error", err)
-			os.Exit(1)
-		}
-
-		// Start the specified command
-		if err := server.StartCommandOnStartup(args); err != nil {
-			slog.Error("failed to start initial command", "error", err, "command", args)
-			os.Exit(1)
-		}
-
-		// Wait for shutdown signals
-		server.WaitForShutdown()
+		startServerWithCommand(server, cfg, args)
 	} else {
 		// No command specified, just start the server normally
 		if err := server.StartWithConfig(cfg); err != nil {

@@ -18,6 +18,7 @@ func TestLogManager_NewLogManager(t *testing.T) {
 
 	if lm == nil {
 		t.Fatal("Expected non-nil LogManager")
+		return
 	}
 
 	if lm.maxLogs != maxLogs {
@@ -126,7 +127,7 @@ func TestLogManager_LogBufferTrimming(t *testing.T) {
 
 	// Add more logs than the buffer can hold
 	numLogs := 20
-	for i := 0; i < numLogs; i++ {
+	for i := range numLogs {
 		entry := LogEntry{
 			Timestamp: time.Now().Add(time.Duration(i) * time.Millisecond),
 			Source:    "test",
@@ -229,6 +230,7 @@ func TestLogManager_GetLogs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			logs, err := lm.GetLogs(tt.request)
 			if err != nil {
 				t.Fatalf("Failed to get logs: %v", err)
@@ -259,10 +261,9 @@ func TestLogManagerConcurrentAccess(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		for workerID := 0; workerID < workers; workerID++ {
-			workerID := workerID
+		for workerID := range workers {
 			wg.Go(func() {
-				for entry := 0; entry < entriesPerWorker; entry++ {
+				for entry := range entriesPerWorker {
 					lm.AddLog(LogEntry{
 						Timestamp: time.Now(),
 						Source:    fmt.Sprintf("worker-%d", workerID),
@@ -371,7 +372,7 @@ func TestLogManager_GetStats(t *testing.T) {
 	}
 
 	// Add some logs and test again
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		entry := LogEntry{
 			Timestamp: time.Now(),
 			Source:    "test",
@@ -445,6 +446,7 @@ func TestLogManager_ParseLogsGetRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// Create mock HTTP request
 			req := &http.Request{
 				URL: &url.URL{},
@@ -485,11 +487,11 @@ func TestLogManager_ConcurrentAccess(t *testing.T) {
 
 	done := make(chan bool, numGoroutines)
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(goroutineID int) {
 			defer func() { done <- true }()
 
-			for j := 0; j < logsPerGoroutine; j++ {
+			for j := range logsPerGoroutine {
 				entry := LogEntry{
 					Timestamp: time.Now(),
 					Source:    fmt.Sprintf("goroutine-%d", goroutineID),
@@ -502,7 +504,7 @@ func TestLogManager_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Wait for all goroutines to complete
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		<-done
 	}
 
@@ -521,11 +523,11 @@ func TestLogManager_ConcurrentAccess(t *testing.T) {
 	writeDone := make(chan bool, 2)
 
 	// Start readers
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		go func() {
 			defer func() { readDone <- true }()
 
-			for j := 0; j < 10; j++ {
+			for range 10 {
 				_, err := lm.GetLogs(LogsGetRequest{Lines: 50})
 				if err != nil {
 					t.Errorf("Concurrent read failed: %v", err)
@@ -536,11 +538,11 @@ func TestLogManager_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Start writers
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		go func(writerID int) {
 			defer func() { writeDone <- true }()
 
-			for j := 0; j < 50; j++ {
+			for j := range 50 {
 				entry := LogEntry{
 					Timestamp: time.Now(),
 					Source:    fmt.Sprintf("concurrent-writer-%d", writerID),
@@ -554,10 +556,10 @@ func TestLogManager_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Wait for all concurrent operations
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		<-readDone
 	}
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		<-writeDone
 	}
 

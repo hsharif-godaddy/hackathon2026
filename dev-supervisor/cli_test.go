@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"os"
 	"testing"
 	"time"
 
@@ -70,10 +69,6 @@ func TestFlagParsing(t *testing.T) {
 }
 
 func TestGetSocketPathFromEnv(t *testing.T) {
-	// Save original env var
-	origPath := os.Getenv("DEV_SUPERVISOR_SOCKET_PATH")
-	defer os.Setenv("DEV_SUPERVISOR_SOCKET_PATH", origPath)
-
 	tests := []struct {
 		name     string
 		envValue string
@@ -93,21 +88,9 @@ func TestGetSocketPathFromEnv(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save and restore original value
-			originalValue := os.Getenv("AIRO_SUPERVISOR_SOCKET_PATH")
-			defer func() {
-				if originalValue == "" {
-					os.Unsetenv("AIRO_SUPERVISOR_SOCKET_PATH")
-				} else {
-					os.Setenv("AIRO_SUPERVISOR_SOCKET_PATH", originalValue)
-				}
-			}()
-
-			// Set test value
-			if tt.envValue == "" {
-				os.Unsetenv("AIRO_SUPERVISOR_SOCKET_PATH")
-			} else {
-				os.Setenv("AIRO_SUPERVISOR_SOCKET_PATH", tt.envValue)
+			// Set test value (t.Setenv automatically restores original value)
+			if tt.envValue != "" {
+				t.Setenv("AIRO_SUPERVISOR_SOCKET_PATH", tt.envValue)
 			}
 
 			result := config.GetSocketPath()
@@ -159,18 +142,9 @@ func TestServerGetConfiguredSocketPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save and restore original value to avoid test pollution
-			originalValue := os.Getenv("AIRO_SUPERVISOR_SOCKET_PATH")
-			defer func() {
-				if originalValue == "" {
-					os.Unsetenv("AIRO_SUPERVISOR_SOCKET_PATH")
-				} else {
-					os.Setenv("AIRO_SUPERVISOR_SOCKET_PATH", originalValue)
-				}
-			}()
-
-			// Reset to default for this test
-			os.Unsetenv("AIRO_SUPERVISOR_SOCKET_PATH")
+			// Reset to default for this test (t.Setenv auto-restores original value)
+			// Setting to empty string is equivalent to unset for this test's purposes
+			t.Setenv("AIRO_SUPERVISOR_SOCKET_PATH", "")
 
 			server := NewServer()
 			server.config = tt.config

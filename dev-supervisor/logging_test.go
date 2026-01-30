@@ -30,6 +30,7 @@ func TestLoggingFormat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// Capture output
 			var buf bytes.Buffer
 			var handler slog.Handler
@@ -94,6 +95,7 @@ func TestTerminalDetection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := isTerminal(tt.file)
 			if result != tt.expected {
 				t.Logf("Terminal detection for %s: got %v, expected %v", tt.name, result, tt.expected)
@@ -126,21 +128,10 @@ func TestAppIdLogging(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save and restore original SITE_ID
-			originalSiteID := os.Getenv("SITE_ID")
-			defer func() {
-				if originalSiteID != "" {
-					os.Setenv("SITE_ID", originalSiteID)
-				} else {
-					os.Unsetenv("SITE_ID")
-				}
-			}()
-
-			// Set or unset SITE_ID based on test case
+			// Note: Cannot use t.Parallel() with t.Setenv() since env vars are process-global
+			// Set SITE_ID based on test case (t.Setenv auto-restores original value)
 			if tt.setSiteID {
-				os.Setenv("SITE_ID", tt.siteID)
-			} else {
-				os.Unsetenv("SITE_ID")
+				t.Setenv("SITE_ID", tt.siteID)
 			}
 
 			// Capture output

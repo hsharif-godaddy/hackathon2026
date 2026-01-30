@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"slices"
 	"testing"
 	"time"
 )
@@ -46,15 +47,7 @@ func TestLinuxPortDiscovery_GetProcessPorts(t *testing.T) {
 		}
 
 		// Check if our test port is in the discovered ports
-		found := false
-		for _, p := range ports {
-			if p == port {
-				found = true
-				break
-			}
-		}
-
-		if !found {
+		if !slices.Contains(ports, port) {
 			t.Errorf("expected to find port %d in discovered ports %v", port, ports)
 		}
 	})
