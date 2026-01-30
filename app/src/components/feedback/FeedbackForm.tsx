@@ -51,28 +51,33 @@ export function FeedbackForm({
     }
   }
 
-  async function onSubmit(data: any) {
-    if (isLocalhost()) {
-      await new Promise(resolve => setTimeout(resolve, 500));
-
+  function onSubmit(data: any) {
+    // Close immediately (optimistic UI)
+    if (onSubmitSuccess) {
       const mockResponse = {
         success: true,
-        message: 'Feedback submitted successfully (mock)'
+        message: 'Feedback submitted successfully'
       };
+      onSubmitSuccess(mockResponse);
+    } else {
+      onClose();
+    }
 
-      await sendToSlack(data);
-
-      if (onSubmitSuccess) {
-        onSubmitSuccess(mockResponse);
-      } else {
-        onClose();
-      }
+    // Fire and forget - submit in background
+    if (isLocalhost()) {
+      // Send to Slack in background
+      sendToSlack(data).catch((err) => {
+        logger.warn('feedback.slack.background_send_failed', {
+          feedbackId: config.pk,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      });
       return;
     }
 
-    // Production: submit to API
+    // Production: submit to API in background
     const baseUrl = getBaseUrl();
-    await fetch(baseUrl + "feedbacks/" + encodeURIComponent(config.pk), {
+    fetch(baseUrl + "feedbacks/" + encodeURIComponent(config.pk), {
       mode: "cors",
       method: "POST",
       credentials: "include",
@@ -90,12 +95,9 @@ export function FeedbackForm({
       .then(async (res) => {
         // Send to Slack after successful database save
         await sendToSlack(data);
-
-        if (onSubmitSuccess) {
-          onSubmitSuccess(res);
-        } else {
-          onClose();
-        }
+        logger.info('feedback.submit.success', {
+          feedbackId: config.pk,
+        });
       })
       .catch((err) => {
         if (onSubmitError) {
@@ -200,7 +202,6 @@ export function FeedbackForm({
             type="submit"
             design="primary"
             text={t('builder_common_submit')}
-            disabled={formState.isSubmitting}
             data-eid={eids?.submitButton}
           />
           <Button

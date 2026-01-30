@@ -26,6 +26,8 @@ const mockAuthContext = {
   }
 };
 
+const mockSendSlackMessage = vi.fn();
+
 vi.mock('@/lib/request-context', () => ({
   logger: mockLogger
 }));
@@ -36,9 +38,9 @@ vi.mock('@/lib/customer-auth', () => ({
   }
 }));
 
-// Mock global fetch
-const mockFetch = vi.fn();
-global.fetch = mockFetch;
+vi.mock('@/lib/slack-webhook', () => ({
+  sendSlackMessage: mockSendSlackMessage
+}));
 
 /**
  * Helper to create mock NextRequest for POST
@@ -60,7 +62,7 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
 
   beforeEach(function setup() {
     vi.clearAllMocks();
-    mockFetch.mockClear();
+    mockSendSlackMessage.mockClear();
     // Set default webhook URL for tests
     process.env.SLACK_FEEDBACK_WEBHOOK_URL = 'https://hooks.slack.com/services/TEST/WEBHOOK/URL';
   });
@@ -147,8 +149,8 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
         })
       );
 
-      // Should not call fetch when webhook is not configured
-      expect(mockFetch).not.toHaveBeenCalled();
+      // Should not call sendSlackMessage when webhook is not configured
+      expect(mockSendSlackMessage).not.toHaveBeenCalled();
     });
 
     it('should use webhook URL from environment variable', async function useEnvWebhookUrl() {
@@ -156,11 +158,8 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
 
       const { POST } = await import('./route');
 
-      // Mock the internal fetch to parent route
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true })
+      mockSendSlackMessage.mockResolvedValueOnce({
+        success: true
       });
 
       const request = createMockRequest({
@@ -172,13 +171,11 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
 
       expect(response.status).toBe(200);
 
-      // Verify fetch was called with internal endpoint
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:3000/api/slack-webhook',
-        expect.objectContaining({
-          method: 'POST',
-          body: expect.stringContaining('ENV/WEBHOOK/URL')
-        })
+      // Verify sendSlackMessage was called with webhook URL from env
+      expect(mockSendSlackMessage).toHaveBeenCalledWith(
+        'https://hooks.slack.com/services/ENV/WEBHOOK/URL',
+        'Test Feedback',
+        'Test Message'
       );
     });
   });
@@ -187,10 +184,8 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
     it('should successfully send feedback to Slack', async function successfulSend() {
       const { POST } = await import('./route');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true })
+      mockSendSlackMessage.mockResolvedValueOnce({
+        success: true
       });
 
       const request = createMockRequest({
@@ -209,10 +204,8 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
     it('should handle feedback with minimal data', async function minimalFeedback() {
       const { POST } = await import('./route');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true })
+      mockSendSlackMessage.mockResolvedValueOnce({
+        success: true
       });
 
       const request = createMockRequest({
@@ -228,10 +221,8 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
     it('should handle feedback with long messages', async function longMessage() {
       const { POST } = await import('./route');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true })
+      mockSendSlackMessage.mockResolvedValueOnce({
+        success: true
       });
 
       const longComment = 'A'.repeat(2000);
@@ -248,13 +239,13 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
   });
 
   describe('POST - Error Handling', function errorTests() {
-    it('should handle parent route returning 404', async function parentRoute404() {
+    it('should handle Slack send returning 404', async function slackSend404() {
       const { POST } = await import('./route');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        json: async () => ({ error: 'Not Found' })
+      mockSendSlackMessage.mockResolvedValueOnce({
+        success: false,
+        error: 'Invalid webhook URL',
+        status: 404
       });
 
       const request = createMockRequest({
@@ -266,16 +257,16 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
       const data = await response.json();
 
       expect(response.status).toBe(404);
-      expect(data.error).toBe('Failed to send notification to Slack');
+      expect(data.error).toBe('Invalid webhook URL');
     });
 
-    it('should handle parent route returning 500', async function parentRoute500() {
+    it('should handle Slack send returning 500', async function slackSend500() {
       const { POST } = await import('./route');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        json: async () => ({ error: 'Internal Server Error' })
+      mockSendSlackMessage.mockResolvedValueOnce({
+        success: false,
+        error: 'Failed to send message to Slack',
+        status: 500
       });
 
       const request = createMockRequest({
@@ -287,13 +278,13 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
       const data = await response.json();
 
       expect(response.status).toBe(500);
-      expect(data.error).toBe('Failed to send notification to Slack');
+      expect(data.error).toBe('Failed to send message to Slack');
     });
 
-    it('should handle network errors', async function networkError() {
+    it('should handle Slack utility errors', async function slackUtilityError() {
       const { POST } = await import('./route');
 
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      mockSendSlackMessage.mockRejectedValueOnce(new Error('Network error'));
 
       const request = createMockRequest({
         title: 'Test Feedback',
@@ -307,13 +298,12 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
       expect(data.error).toBe('Internal server error');
     });
 
-    it('should handle parent route JSON parse errors', async function jsonParseError() {
+    it('should handle Slack send with no status code', async function noStatusCode() {
       const { POST } = await import('./route');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        json: vi.fn().mockRejectedValue(new Error('Invalid JSON'))
+      mockSendSlackMessage.mockResolvedValueOnce({
+        success: false,
+        error: 'Unknown error'
       });
 
       const request = createMockRequest({
@@ -325,7 +315,7 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
       const data = await response.json();
 
       expect(response.status).toBe(500);
-      expect(data.error).toBe('Failed to send notification to Slack');
+      expect(data.error).toBe('Unknown error');
     });
   });
 
@@ -333,10 +323,8 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
     it('should log successful feedback send', async function logSuccess() {
       const { POST } = await import('./route');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true })
+      mockSendSlackMessage.mockResolvedValueOnce({
+        success: true
       });
 
       const request = createMockRequest({
@@ -366,10 +354,10 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
     it('should log feedback send failures', async function logFailure() {
       const { POST } = await import('./route');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        json: async () => ({ error: 'Internal Server Error' })
+      mockSendSlackMessage.mockResolvedValueOnce({
+        success: false,
+        error: 'Failed to send message to Slack',
+        status: 500
       });
 
       const request = createMockRequest({
@@ -383,6 +371,7 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
         'feedback.slack.send_failed',
         expect.objectContaining({
           title: 'New Feedback',
+          error: 'Failed to send message to Slack',
           status: 500
         })
       );
@@ -433,10 +422,8 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
     it('should not expose webhook URL in response', async function noWebhookInResponse() {
       const { POST } = await import('./route');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true })
+      mockSendSlackMessage.mockResolvedValueOnce({
+        success: true
       });
 
       const request = createMockRequest({
@@ -456,10 +443,8 @@ describe('/api/slack-webhook/feedback', function feedbackWebhookTests() {
     it('should not log webhook URL', async function noWebhookInLogs() {
       const { POST } = await import('./route');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true })
+      mockSendSlackMessage.mockResolvedValueOnce({
+        success: true
       });
 
       const request = createMockRequest({

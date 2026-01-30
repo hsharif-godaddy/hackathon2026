@@ -2,7 +2,6 @@
  * Feedback Slack Notification API Endpoint
  *
  * Sends feedback submissions to Slack webhook (server-side only).
- * Reuses the generic slack-webhook logic but keeps the webhook URL server-side.
  *
  * Security: Webhook URL is stored in SLACK_FEEDBACK_WEBHOOK_URL (server-only env var)
  * without NEXT_PUBLIC_ prefix, preventing client exposure.
@@ -20,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
+import { sendSlackMessage } from '@/lib/slack-webhook';
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
@@ -34,7 +34,6 @@ interface FeedbackPayload {
 
 /**
  * POST handler for sending feedback to Slack
- * Delegates to parent /api/slack-webhook with server-side webhook URL
  *
  * @param request - Incoming request with feedback data
  * @param authContext - Customer authentication context
@@ -92,30 +91,18 @@ export const POST = withCustomerAuth(async (
       messageLength: payload.message.length,
     });
 
-    // Delegate to parent /api/slack-webhook route with server-side webhook URL
-    const baseUrl = request.nextUrl.origin;
-    const response = await fetch(`${baseUrl}/api/slack-webhook`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        webhookUrl,
-        title: payload.title,
-        message: payload.message,
-      }),
-    });
+    // Send message to Slack directly using shared utility
+    const result = await sendSlackMessage(webhookUrl, payload.title, payload.message);
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+    if (!result.success) {
       logger.error('feedback.slack.send_failed', {
         title: payload.title,
-        status: response.status,
-        error: errorData,
+        error: result.error,
+        status: result.status,
       });
       return NextResponse.json(
-        { error: 'Failed to send notification to Slack', details: errorData },
-        { status: response.status }
+        { error: result.error || 'Failed to send notification to Slack' },
+        { status: result.status || 500 }
       );
     }
 

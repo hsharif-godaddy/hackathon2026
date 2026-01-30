@@ -2,8 +2,8 @@ import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { SubscriptionPlan } from '@/types/credits';
 import { renderHookWithProviders } from '@/tests/test-utils';
+import { SubscriptionPlan } from '@/types/credits';
 
 // Mock dependencies
 vi.mock('@/lib/logging', () => ({
@@ -35,11 +35,11 @@ vi.mock('./useUpdateEntitlement', () => ({
   }),
 }));
 
+import { useEntitlements } from './useEntitlements';
 import { usePaywallEligibility } from './usePaywallEligibility';
 import { usePaywallFeatureFlags } from './usePaywallFeatureFlags';
-import { useSubscription } from './useSubscription';
-import { useEntitlements } from './useEntitlements';
 import { useProjects } from './useProjects';
+import { useSubscription } from './useSubscription';
 
 describe('usePaywallEligibility', function hook() {
   beforeEach(function setup() {
