@@ -244,7 +244,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   )
 
   const media = (
-    <div className="w-full sm:w-1/2 min-h-[128px] sm:max-h-[192px] rounded-lg overflow-hidden">
+    <div className="w-full sm:w-1/2 h-[144px] sm:h-[192px] rounded-lg overflow-hidden">
       <AppThumbnail
         siteId={site.id}
         siteName={site.name || t('builder_apps_alert_delete_untitled')}
