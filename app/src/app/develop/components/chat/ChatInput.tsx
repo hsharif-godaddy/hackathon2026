@@ -52,6 +52,7 @@ export default function ChatInput({
   const isAssetManagerOpen = useDevelopPageStore((state) => state.isAssetManagerOpen);
   const setIsAssetManagerOpen = useDevelopPageStore((state) => state.setIsAssetManagerOpen);
   const { data: isAssetManagerEnabled } = useSwitchboard('appbuilder-image-manager');
+  const { data: isChatGaugeEnabled } = useSwitchboard('appbuilder-chat-gauge');
   const canAddAsset = selectedAssets.length < maxAssets;
 
   const textBeforeListeningRef = useRef('')
@@ -154,7 +155,7 @@ export default function ChatInput({
                   size="sm"
                 />
               )}
-              <UsageGauge appId={appId} />
+              {isChatGaugeEnabled && <UsageGauge appId={appId} />}
             </div>
 
             <div className="flex items-center gap-0.5">

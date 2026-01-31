@@ -11,7 +11,14 @@ const mockDevelopStore = {
   isMobile: false,
   isAssetManagerOpen: false,
   setIsAssetManagerOpen: vi.fn(),
+  openUpgradeModal: vi.fn(),
 };
+
+const mockUseSwitchboard = vi.hoisted(() => vi.fn((feature: string) => {
+  if (feature === 'appbuilder-image-manager') return { data: true };
+  if (feature === 'appbuilder-chat-gauge') return { data: true };
+  return { data: false };
+}));
 
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id) => id),
@@ -20,10 +27,20 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => selector(mockDevelopStore),
 }));
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: (feature: string) => {
-    if (feature === 'appbuilder-image-manager') return { data: true };
-    return { data: false };
-  },
+  useSwitchboard: mockUseSwitchboard,
+}));
+vi.mock('@/hooks/useDailyUsage', () => ({
+  useDailyUsage: () => ({
+    data: { percentage: 50, used: 50, limit: 100 },
+    isLoading: false,
+    formattedResetTime: { dayKey: 'today', timeString: '12:00 PM' },
+  }),
+}));
+vi.mock('@/hooks/useTranslations', () => ({
+  useTranslations: () => (key: string) => key,
+}));
+vi.mock('@/lib/logging', () => ({
+  shipAnalyticsLog: vi.fn(),
 }));
 
 describe('ChatInput', () => {
@@ -38,6 +55,11 @@ describe('ChatInput', () => {
     vi.clearAllMocks();
     mockDevelopStore.isMobile = false;
     mockDevelopStore.isAssetManagerOpen = false;
+    mockUseSwitchboard.mockImplementation((feature: string) => {
+      if (feature === 'appbuilder-image-manager') return { data: true };
+      if (feature === 'appbuilder-chat-gauge') return { data: true };
+      return { data: false };
+    });
   });
 
   it('should render without crashing', () => {
@@ -255,5 +277,31 @@ describe('ChatInput', () => {
 
     const mediaButton = screen.getByRole('button', { name: 'builder_chat_toolbar_button_media' });
     expect(mediaButton).not.toBeDisabled();
+  });
+
+  describe('UsageGauge feature flag', () => {
+    it('should render UsageGauge when feature flag is enabled', () => {
+      mockUseSwitchboard.mockImplementation((feature: string) => {
+        if (feature === 'appbuilder-image-manager') return { data: true };
+        if (feature === 'appbuilder-chat-gauge') return { data: true };
+        return { data: false };
+      });
+
+      renderWithProviders(<ChatInput {...defaultProps} appId="test-app-123" />);
+
+      expect(screen.getByRole('button', { name: /builder_usage_gauge_aria_label/i })).toBeInTheDocument();
+    });
+
+    it('should not render UsageGauge when feature flag is disabled', () => {
+      mockUseSwitchboard.mockImplementation((feature: string) => {
+        if (feature === 'appbuilder-image-manager') return { data: true };
+        if (feature === 'appbuilder-chat-gauge') return { data: false };
+        return { data: false };
+      });
+
+      renderWithProviders(<ChatInput {...defaultProps} appId="test-app-123" />);
+
+      expect(screen.queryByRole('button', { name: /builder_usage_gauge_aria_label/i })).not.toBeInTheDocument();
+    });
   });
 });
