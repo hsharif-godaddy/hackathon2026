@@ -48,6 +48,7 @@
     "@babel/parser": "^7.28.0",
     "@babel/traverse": "^7.28.0",
     "@babel/types": "^7.28.0",
+    "@godaddy/goknowb-client": "^1.0.6",
     "@langfuse/otel": "^4.5.1",
     "@langfuse/tracing": "^4.5.1",
     "@openai/agents": "^0.0.17",

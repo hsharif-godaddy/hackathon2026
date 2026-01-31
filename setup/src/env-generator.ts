@@ -50,6 +50,7 @@ export interface AgentsEnvConfig {
 	mysqlRootUser: string;
 	mysqlRootPass: string;
 	ssoJwt?: string;
+	knowbSsoJwt?: string;
 }
 
 export class EnvGenerator {
@@ -773,12 +774,31 @@ MYSQL_ROOT_USER=${config.mysqlRootUser}
 MYSQL_ROOT_PASS=${config.mysqlRootPass}
 `;
 
+		// KnowB Configuration
+		if (config.knowbSsoJwt) {
+			envContent += `
+# KnowB Knowledge Base Configuration
+# Used for RAG (Retrieval-Augmented Generation) searches
+# CLI tool available: pnpm --filter @airo/agents tsx scripts/knowb-cli.ts
+SSO_JWT=${config.knowbSsoJwt}
+# GODADDY_API_BASE_URL=https://knowb.api.int.test-godaddy.com
+`;
+		} else {
+			envContent += `
+# KnowB Knowledge Base Configuration (Not configured - run setup again to configure)
+# Used for RAG (Retrieval-Augmented Generation) searches
+# CLI tool available: pnpm --filter @airo/agents tsx scripts/knowb-cli.ts
+# SSO_JWT=<your-sso-jwt-token>
+# GODADDY_API_BASE_URL=https://knowb.api.int.test-godaddy.com
+`;
+		}
+
 		if (gettyConfig) {
 			envContent += gettyConfig;
 		} else if (config.ssoJwt) {
 			envContent += `
 # Required for Getty Images (Legacy SSO JWT)
-SSO_JWT=${config.ssoJwt}
+# Note: If SSO_JWT is set above for KnowB, it will also be used for Getty
 `;
 		} else {
 			envContent += `
@@ -1028,6 +1048,63 @@ JWKS_URL=${envConfig.jwksUrl}
 			ssoJwt = (await this.handleLegacySSO()) || undefined;
 		}
 
+		// KnowB Configuration
+		console.log(chalk.cyan("\n📚 KnowB Knowledge Base Configuration"));
+		console.log(chalk.gray("KnowB enables RAG (Retrieval-Augmented Generation) for design style searches."));
+		console.log(chalk.gray("CLI tool available: pnpm --filter @airo/agents tsx scripts/knowb-cli.ts"));
+
+		let knowbSsoJwt: string | undefined;
+
+		const defaultConfigureKnowb = "skip";
+		let configureKnowb = defaultConfigureKnowb;
+
+		if (yesToAll) {
+			console.log(chalk.gray("Automated mode: skipping KnowB configuration"));
+		} else {
+			const response = await inquirer.prompt([
+				{
+					type: "list",
+					name: "configureKnowb",
+					message: "How would you like to configure KnowB?",
+					choices: [
+						{ name: "Generate SSO JWT token (requires ssojwt binary)", value: "generate" },
+						{ name: "Enter SSO JWT token manually", value: "manual" },
+						{ name: "Skip KnowB configuration", value: "skip" }
+					],
+					default: defaultConfigureKnowb
+				}
+			]);
+			configureKnowb = response.configureKnowb;
+		}
+
+		if (configureKnowb === "generate") {
+			const hasSsoJwtBinary = await this.checkSsoJwtBinary();
+			if (hasSsoJwtBinary) {
+				console.log(chalk.blue("🔄 Generating SSO JWT token for KnowB (test environment)..."));
+				const token = await this.getSsoJwtToken();
+				if (token) {
+					knowbSsoJwt = token;
+					console.log(chalk.green("✅ SSO JWT token generated successfully"));
+				} else {
+					console.log(chalk.yellow("⚠️  Failed to generate token. You can configure KnowB later."));
+				}
+			} else {
+				console.log(chalk.yellow("⚠️  ssojwt binary not found."));
+				console.log(chalk.blue("📦 Install from: https://github.com/gdcorp-engineering/ssojwt"));
+			}
+		} else if (configureKnowb === "manual") {
+			const { token } = await inquirer.prompt([
+				{
+					type: "password",
+					name: "token",
+					message: "Enter your SSO JWT token:",
+					validate: (input) => input.length > 0 || "SSO JWT Token is required",
+				},
+			]);
+			knowbSsoJwt = token;
+			console.log(chalk.green("✅ SSO JWT token configured"));
+		}
+
 		const commerceAgentsConfig = await this.promptCommerceConfig(
 			!yesToAll,
 			commerceResult,
@@ -1045,6 +1122,7 @@ JWKS_URL=${envConfig.jwksUrl}
 			mysqlRootUser: mysqlConfig.mysqlRootUser,
 			mysqlRootPass: mysqlConfig.mysqlRootPass,
 			ssoJwt,
+			knowbSsoJwt,
 		};
 
 		const envContent = this.generateAgentsEnvContent(config, gettyConfig, commerceAgentsConfig);
@@ -1079,6 +1157,12 @@ JWKS_URL=${envConfig.jwksUrl}
 		console.log(`Template Directory: ${config.appTemplateDir}`);
 		console.log(`MySQL Host: ${config.mysqlRootHost}:${config.mysqlRootPort}`);
 		console.log(`MySQL User: ${config.mysqlRootUser}`);
+
+		let knowbStatus = "Not configured";
+		if (knowbSsoJwt) {
+			knowbStatus = "SSO JWT configured";
+		}
+		console.log(`KnowB: ${knowbStatus}`);
 
 		let gettyStatus = "Not configured";
 		if (gettyConfig) {
@@ -1140,7 +1224,7 @@ JWKS_URL=${envConfig.jwksUrl}
 	async getSsoJwtToken(): Promise<string | null> {
 		try {
 			const { execa } = await import("execa");
-			const { stdout: token } = await execa('ssojwt');
+			const { stdout: token } = await execa('ssojwt', ['-e', 'test']);
 			return token.trim();
 		} catch (error) {
 			console.log(chalk.red("❌ Failed to generate SSO JWT token"));
@@ -1164,7 +1248,7 @@ JWKS_URL=${envConfig.jwksUrl}
 			]);
 
 			if (useSsoJwt) {
-				console.log(chalk.blue("🔄 Generating SSO JWT token..."));
+				console.log(chalk.blue("🔄 Generating SSO JWT token (test environment)..."));
 				const token = await this.getSsoJwtToken();
 				if (token) {
 					console.log(chalk.green("✅ SSO JWT token generated successfully"));

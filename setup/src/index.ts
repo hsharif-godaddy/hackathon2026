@@ -13,6 +13,7 @@ import { CommerceConfigSetup } from './commerce-config.js';
 import { CertConfigSetup } from './cert-config.js';
 import { JWTKeysGenerator } from './jwt-keys-generator.js';
 import { CASetup } from './ca-setup.js';
+import { KnowBConfigSetup } from './knowb-config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '../..');
@@ -95,6 +96,7 @@ async function selectiveConfiguration(): Promise<void> {
   const certSetup = new CertConfigSetup();
   const jwtGenerator = new JWTKeysGenerator(projectRoot);
   const caSetup = new CASetup(projectRoot);
+  const knowbSetup = new KnowBConfigSetup();
 
   while (true) {
     printSelectiveHeader();
@@ -109,6 +111,7 @@ async function selectiveConfiguration(): Promise<void> {
       { name: '🤖 Configure Agents Environment (.env)', value: 'agents-env' },
       { name: '🔐 Generate JWT Keys', value: 'jwt-keys' },
       { name: '🖼️  Configure Getty Images Proxy', value: 'getty-config' },
+      { name: '📚 Configure KnowB Knowledge Base', value: 'knowb-config' },
       { name: '🛒 Configure GoDaddy Commerce OAuth', value: 'commerce-config' },
       { name: '📜 Configure Client Certificates', value: 'cert-config' },
       { name: '🗄️  Check MySQL Container Status', value: 'mysql-check' },
@@ -155,6 +158,9 @@ async function selectiveConfiguration(): Promise<void> {
         case 'getty-config':
           await gettySetup.setup();
           break;
+        case 'knowb-config':
+          await configureKnowB(knowbSetup);
+          break;
         case 'commerce-config':
           await commerceSetup.setup();
           break;
@@ -168,7 +174,7 @@ async function selectiveConfiguration(): Promise<void> {
           await startMySQLContainer();
           break;
         case 'status-check':
-          await checkCurrentStatus(envGenerator, gettySetup, commerceSetup, certSetup, jwtGenerator, caSetup);
+          await checkCurrentStatus(envGenerator, gettySetup, knowbSetup, commerceSetup, certSetup, jwtGenerator, caSetup);
           break;
       }
     } catch (error) {
@@ -225,7 +231,29 @@ async function startMySQLContainer(): Promise<void> {
   }
 }
 
-async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyConfigSetup, commerceSetup: CommerceConfigSetup, certSetup: CertConfigSetup, jwtGenerator: JWTKeysGenerator, caSetup: CASetup): Promise<void> {
+async function configureKnowB(knowbSetup: KnowBConfigSetup): Promise<void> {
+  const result = await knowbSetup.setup();
+
+  if (result.success && result.token) {
+    console.log('');
+    const { updateEnv } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'updateEnv',
+        message: 'Update agents/.env with this configuration?',
+        default: true
+      }
+    ]);
+
+    if (updateEnv) {
+      await knowbSetup.updateAgentsEnv(projectRoot, result.token);
+    } else {
+      console.log(chalk.yellow('Remember to add the configuration to agents/.env manually'));
+    }
+  }
+}
+
+async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyConfigSetup, knowbSetup: KnowBConfigSetup, commerceSetup: CommerceConfigSetup, certSetup: CertConfigSetup, jwtGenerator: JWTKeysGenerator, caSetup: CASetup): Promise<void> {
   console.log(chalk.cyan('🔍 Current Configuration Status'));
   console.log('');
 
@@ -271,6 +299,15 @@ async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyC
   const gettyConfigured = await gettySetup.quickCheck();
   if (!gettyConfigured) {
     console.log(chalk.yellow('  ⚠️  Getty Images not configured or inaccessible'));
+  }
+
+  console.log('');
+
+  // Check KnowB configuration
+  console.log(chalk.blue('📚 KnowB Knowledge Base:'));
+  const knowbConfigured = await knowbSetup.quickCheck();
+  if (!knowbConfigured) {
+    console.log(chalk.yellow('  ⚠️  KnowB not configured (ssojwt binary required)'));
   }
 
   console.log('');
