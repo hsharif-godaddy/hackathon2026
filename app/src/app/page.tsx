@@ -15,6 +15,7 @@ import { useAuthContext } from '@/components/providers/AuthProvider'
 import { useSafariClass } from '@/hooks/useSafariClass'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useTranslations } from '@/hooks/useTranslations'
+import { getErrorMessage } from '@/lib/errors'
 import { isFeatureEnabled } from '@/lib/features'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
@@ -66,6 +67,22 @@ function HomeContent() {
     return () => setIsRedirecting(false)
   }, [])
 
+  // Helper function to save prompt to localStorage with error handling
+  const savePromptForRetry = useCallback((prompt: string, context: 'login' | 'session-refresh') => {
+    try {
+      localStorage.setItem('airo-pending-prompt', prompt);
+      logger.info('homepage.prompt.save', {
+        context,
+        promptLength: prompt.length
+      });
+    } catch (error) {
+      logger.warn('homepage.prompt.save.error', {
+        context,
+        error: getErrorMessage(error)
+      });
+    }
+  }, [])
+
   // Use useCallback to ensure the function reference stays stable
   const handleStartBuilding = useCallback(async (overridePrompt?: string) => {
     // Handle case where this is called as an event handler (overridePrompt would be a MouseEvent)
@@ -99,11 +116,12 @@ function HomeContent() {
       // Step 1: Quick auth check - show in-app SSO login if needed
       // Auth state is now definitively resolved (authIsLoading is false)
       if (!isAuthDisabled && !isAuthenticated) {
-        logger.info('page.auth.sso-login', 'User not authenticated, showing SSO login')
+        logger.info('page.auth.sso-login', {
+          action: 'showing-sso-login'
+        });
 
         // Save the prompt to localStorage before showing login
-        localStorage.setItem('airo-pending-prompt', promptToUse)
-        logger.info('homepage.prompt.save', { message: 'Saved prompt to localStorage before login' })
+        savePromptForRetry(promptToUse, 'login');
 
         signIn({ onShowMockLogin: () => setShowMockLogin(true) });
         setIsLoading(false);
@@ -121,6 +139,24 @@ function HomeContent() {
       })
 
       if (!createSiteResponse.ok) {
+        // Check if this is a session stale/expired error (401 with requiresRefresh)
+        // In this case, trigger SSO login to refresh the session instead of showing error
+        if (createSiteResponse.status === 401 && createSiteResponse.authMetadata?.requiresRefresh) {
+          logger.info('homepage.session-stale', {
+            action: 'triggering-sso-login',
+            phase: 'quick-create'
+          });
+
+          // Save the prompt to localStorage before showing login
+          savePromptForRetry(promptToUse, 'session-refresh');
+
+          signIn({ onShowMockLogin: () => setShowMockLogin(true) });
+          setIsLoading(false);
+          setIsRedirecting(false);
+          return;
+        }
+
+        // For other errors, extract and throw
         const errorData = await createSiteResponse.json().catch(() => ({}))
         throw new Error(errorData.message || errorData.error || 'Failed to create site')
       }
@@ -179,7 +215,7 @@ function HomeContent() {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, authIsLoading, signIn, t])
+  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, authIsLoading, signIn, savePromptForRetry, t])
 
   // Restore prompt from localStorage after login and clear it
   useEffect(() => {

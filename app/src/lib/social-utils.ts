@@ -1,11 +1,8 @@
+import { getErrorMessage } from '@/lib/errors'
 import { logger } from '@/lib/request-context'
 import { isFacebookConnection, isGoogleConnection, isInstagramConnection, isTikTokConnection, isYelpConnection } from '@/lib/utils/social-type-guards'
 import type { EnrichedSocialConnection,SocialConnection } from '@/types/social'
 import { SocialFlowAction } from '@/types/social'
-
-export function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 export function isRetryableError(error: Error): boolean {
   const message = error.message.toLowerCase()

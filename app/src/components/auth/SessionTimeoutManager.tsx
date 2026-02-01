@@ -4,8 +4,8 @@ import { useEffect, useRef } from 'react';
 
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { getAuthTokenFromCookie } from '@/lib/auth/cookie-utils';
+import { getErrorMessage } from '@/lib/errors';
 import { logger } from '@/lib/request-context';
-import { getErrorMessage } from '@/lib/social-utils';
 import { decodeJWT } from '@/lib/utils/jwt-utils';
 
 const WARNING_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
