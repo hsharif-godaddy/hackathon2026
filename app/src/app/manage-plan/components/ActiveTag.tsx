@@ -35,7 +35,7 @@ export default function ActiveTag({ tooltipText }: ActiveTagProps) {
 
       {showTooltip && tooltipText && (
         <Tooltip className="z-50" anchorRef={anchorRef}>
-          <div className="p-1">
+          <div className="p-1 max-w-32">
             <text.p as="paragraph" size={-1} text={tooltipText} />
           </div>
         </Tooltip>

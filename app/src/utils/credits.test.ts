@@ -9,7 +9,6 @@ import {
   getBillingPeriod,
   getCreditPackGrants,
   getMonthlyPlanGrant,
-  getPackName,
   getPlanDisplayLabelKey,
 } from '@/utils/credits';
 
@@ -265,23 +264,6 @@ describe('credits', function creditsTests() {
       expect(periodStart).toBeInstanceOf(Date);
       expect(periodEnd).toBeInstanceOf(Date);
       expect(periodEnd.getTime()).toBeGreaterThan(periodStart.getTime());
-    });
-  });
-
-  describe('#getPackName', function getPackNameTests() {
-    it('should return small pack key for credits <= 2500', function smallPack() {
-      expect(getPackName(2500)).toBe('builder_manageplan_pack_small');
-      expect(getPackName(1000)).toBe('builder_manageplan_pack_small');
-    });
-
-    it('should return medium pack key for credits <= 5000', function mediumPack() {
-      expect(getPackName(5000)).toBe('builder_manageplan_pack_medium');
-      expect(getPackName(3000)).toBe('builder_manageplan_pack_medium');
-    });
-
-    it('should return large pack key for credits > 5000', function largePack() {
-      expect(getPackName(10000)).toBe('builder_manageplan_pack_large');
-      expect(getPackName(5001)).toBe('builder_manageplan_pack_large');
     });
   });
 

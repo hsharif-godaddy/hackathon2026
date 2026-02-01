@@ -52,28 +52,12 @@ describe('CreditGrantRow', function creditGrantRowTests() {
       expect(screen.getByText(/builder_manageplan_purchased_on/)).toBeInTheDocument();
     });
 
-    it('should render pack name based on creditsMax', function renderPackName() {
+    it('should render pack name', function renderPackName() {
       renderWithProviders(
         <CreditGrantRow grant={createMockGrant({ creditsMax: 5000 })} locale="en-US" />
       );
 
-      expect(screen.getByText('builder_manageplan_pack_medium')).toBeInTheDocument();
-    });
-
-    it('should render small pack name for <= 2500 credits', function smallPack() {
-      renderWithProviders(
-        <CreditGrantRow grant={createMockGrant({ creditsMax: 2500 })} locale="en-US" />
-      );
-
-      expect(screen.getByText('builder_manageplan_pack_small')).toBeInTheDocument();
-    });
-
-    it('should render large pack name for > 5000 credits', function largePack() {
-      renderWithProviders(
-        <CreditGrantRow grant={createMockGrant({ creditsMax: 10000 })} locale="en-US" />
-      );
-
-      expect(screen.getByText('builder_manageplan_pack_large')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_pack')).toBeInTheDocument();
     });
 
     it('should render credits spent and max', function renderCredits() {
@@ -159,7 +143,7 @@ describe('CreditGrantRow', function creditGrantRowTests() {
       // Component should render without errors when unavailable
       expect(container.firstChild).toBeInTheDocument();
       // The pack name should still be rendered
-      expect(screen.getByText('builder_manageplan_pack_medium')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_pack')).toBeInTheDocument();
     });
 
     it('should pass isExpired to CreditProgressBar when unavailable', function expiredProgressBar() {

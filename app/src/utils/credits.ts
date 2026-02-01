@@ -113,15 +113,6 @@ export function formatFullCreditDate(dateString: string, locale?: string): strin
 }
 
 /**
- * Get translation key for credit pack name based on credits max
- */
-export function getPackName(creditsMax: number): string {
-  if (creditsMax <= 2500) return 'builder_manageplan_pack_small';
-  if (creditsMax <= 5000) return 'builder_manageplan_pack_medium';
-  return 'builder_manageplan_pack_large';
-}
-
-/**
  * Determine subscription plan from subscription data
  * Handles both new plan field and legacy productId mapping
  */

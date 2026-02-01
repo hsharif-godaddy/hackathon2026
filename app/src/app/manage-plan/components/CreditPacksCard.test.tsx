@@ -66,7 +66,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
       );
 
       // Each pack should be rendered - check for pack names
-      const packNames = screen.getAllByText('builder_manageplan_pack_medium');
+      const packNames = screen.getAllByText('builder_manageplan_pack');
       expect(packNames).toHaveLength(3);
     });
 
@@ -252,7 +252,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
       );
 
       expect(screen.getByText('builder_manageplan_credits_description')).toBeInTheDocument();
-      expect(screen.getByText('builder_manageplan_pack_medium')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_pack')).toBeInTheDocument();
     });
 
     it('should render packs for Starter plan', function starterWithPacks() {
@@ -291,7 +291,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
       );
 
       // The component should render without errors with locale
-      expect(screen.getByText('builder_manageplan_pack_medium')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_pack')).toBeInTheDocument();
     });
   });
 });
