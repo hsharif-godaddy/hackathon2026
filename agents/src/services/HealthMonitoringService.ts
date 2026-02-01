@@ -135,8 +135,10 @@ export class HealthMonitoringService {
 
   /**
    * Create default health check configuration for HTTP applications
+   * Uses /airo/health by default as it checks the full stack (proxy + app)
+   * and is excluded from JWT authentication
    */
-  static createHttpHealthCheck(port: number, path: string = '/'): HealthCheckConfig {
+  static createHttpHealthCheck(port: number, path: string = '/airo/health'): HealthCheckConfig {
     return {
       type: 'http',
       url: `http://localhost:${port}${path}`,

@@ -31,7 +31,8 @@ async function getPreviewAppToken(siteId: string): Promise<string | null> {
   try {
     const response = await fetch(`/api/auth/token?siteId=${encodeURIComponent(siteId)}`, {
       method: 'GET',
-      credentials: 'include'
+      credentials: 'include',
+      cache: 'no-store' // Prevent browser cache from mixing tokens between apps
     })
 
     if (!response.ok) {
@@ -73,6 +74,7 @@ interface PollingState {
   currentInterval: number
   timeoutId: NodeJS.Timeout | null
   lastPollTime: number | null
+  realAppId: string | null  // Resolved app ID for auth/health checks (null until transition)
 }
 
 interface ServerPollingStore {
@@ -114,6 +116,19 @@ export const useServerPollingStore = create<ServerPollingStore>()(
     servers: new Map(),
 
     startPollingForServer: (appId: string) => {
+      // De-dup: if any existing entry is polling for the same real app ID, skip
+      // Check both realAppId (set after transition) and server.appId (may be set before realAppId)
+      const existingForReal = Array.from(get().servers.values()).find(
+        (state) => state.isPolling && (state.realAppId === appId || state.server?.appId === appId)
+      )
+      if (existingForReal) {
+        logger.debug('server-polling.duplicate-prevented', {
+          message: 'Skipping start - existing entry already polling for this app',
+          appId
+        })
+        return
+      }
+
       const existing = get().servers.get(appId)
 
       // Don't start if already polling
@@ -122,14 +137,22 @@ export const useServerPollingStore = create<ServerPollingStore>()(
       }
 
       set((state) => {
-        state.servers.set(appId, {
-          server: null,
-          isPolling: true,
-          pollCount: 0,
-          currentInterval: POLLING_INTERVALS.initial,
-          timeoutId: null,
-          lastPollTime: null
-        })
+        const existingState = state.servers.get(appId)
+        if (existingState) {
+          // Reuse existing state to preserve server info, poll count, etc.
+          existingState.isPolling = true
+        } else {
+          // Create new state
+          state.servers.set(appId, {
+            server: null,
+            isPolling: true,
+            pollCount: 0,
+            currentInterval: POLLING_INTERVALS.initial,
+            timeoutId: null,
+            lastPollTime: null,
+            realAppId: null
+          })
+        }
       })
 
       // Start immediate poll
@@ -167,11 +190,11 @@ export const useServerPollingStore = create<ServerPollingStore>()(
       const { servers } = get()
 
       // Stop all polling
-      for (const [_appId, pollingState] of servers) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      servers.forEach((pollingState) => {
         if (pollingState.timeoutId) {
           clearTimeout(pollingState.timeoutId)
         }
-      }
+      })
 
       set((state) => {
         state.servers.clear()
@@ -186,6 +209,9 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         return
       }
 
+      // Use realAppId if available, otherwise original appId
+      let effectiveAppId = pollingState.realAppId ?? appId
+
       try {
         logger.debug('server-polling.attempt', { message: 'Polling server', appId, attempt: pollingState.pollCount + 1 })
 
@@ -198,21 +224,39 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         const data = await response.json()
         const serverData = data.server
 
+        // Handle temporary ID → real ID transition (e.g., dev-job-* → real appId)
+        // Store realAppId on the polling state, but keep entry under original key
+        if (serverData.appId && serverData.appId !== appId) {
+          set((state) => {
+            const current = state.servers.get(appId)
+            if (current) {
+              current.realAppId = serverData.appId
+            }
+          })
+          effectiveAppId = serverData.appId
+          logger.info('server-polling.appid-transition', {
+            message: 'App ID transitioned from temp to real',
+            tempId: appId,
+            realId: effectiveAppId
+          })
+        }
+
         // If we have a URL, perform actual health check.
         // Note: For local dev + JWT-protected preview apps, this also bootstraps auth by
         // setting the preview-domain auth cookie via Authorization header.
+        // Use effectiveAppId to ensure JWT is requested for the real allocated app ID
         let healthCheckPassed = false
         if ((serverData.status === 'running' || serverData.status === 'starting') && serverData.url) {
-          logger.debug('server-polling.health-check', { message: 'Performing health check', appId, url: serverData.url, status: serverData.status })
-          healthCheckPassed = await get()._checkUrlHealth(serverData.url, appId)
-          logger.debug('server-polling.health-check-result', { message: 'Health check result', appId, passed: healthCheckPassed })
+          logger.debug('server-polling.health-check', { message: 'Performing health check', appId: effectiveAppId, url: serverData.url, status: serverData.status })
+          healthCheckPassed = await get()._checkUrlHealth(serverData.url, effectiveAppId)
+          logger.debug('server-polling.health-check-result', { message: 'Health check result', appId: effectiveAppId, passed: healthCheckPassed })
         }
 
         set((state) => {
           const currentState = state.servers.get(appId)
           if (currentState) {
             currentState.server = {
-              appId: serverData.appId,
+              appId: serverData.appId || effectiveAppId, // Fallback to effectiveAppId if server doesn't return one
               port: serverData.port,
               url: serverData.url,
               status: serverData.status,
@@ -228,29 +272,32 @@ export const useServerPollingStore = create<ServerPollingStore>()(
 
         // Stop polling only if server is ready AND health check passed
         if (serverData.status === 'running' && serverData.url && healthCheckPassed) {
-          logger.info('server-polling.ready', { message: 'Server is ready and health check passed', appId, url: serverData.url })
+          logger.info('server-polling.ready', { message: 'Server is ready and health check passed', appId: effectiveAppId, url: serverData.url })
           get().stopPollingForServer(appId)
           return
         }
 
         // Stop polling if server failed permanently
         if (serverData.status === 'failed') {
-          logger.warn('server-polling.failed', { message: 'Server failed permanently', appId })
+          logger.warn('server-polling.failed', { message: 'Server failed permanently', appId: effectiveAppId })
           get().stopPollingForServer(appId)
           return
         }
 
         // Schedule next poll with backoff
-        get()._scheduleNextPoll(appId)
+        const currentState = get().servers.get(appId)
+        if (currentState?.isPolling) {
+          get()._scheduleNextPoll(appId)
+        }
 
       } catch (error) {
-        logger.error('server-polling.error', { message: 'Error polling server', appId, error: error instanceof Error ? error.message : String(error) })
+        logger.error('server-polling.error', { message: 'Error polling server', appId: effectiveAppId, error: error instanceof Error ? error.message : String(error) })
 
         set((state) => {
           const currentState = state.servers.get(appId)
           if (currentState) {
             currentState.server = {
-              appId,
+              appId: effectiveAppId,
               port: null,
               url: null,
               status: 'error',
@@ -264,7 +311,10 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         })
 
         // Continue polling on error, but with backoff
-        get()._scheduleNextPoll(appId)
+        const errorState = get().servers.get(appId)
+        if (errorState?.isPolling) {
+          get()._scheduleNextPoll(appId)
+        }
       }
     },
 
@@ -318,6 +368,10 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         // 3. Set auth_idp cookie on preview app's domain
         // 4. Subsequent iframe navigation uses the cookie automatically
         const token = await getPreviewAppToken(appId)
+        
+        // Debug: Log URL being checked to detect stale allocation IDs
+        const urlHostname = new URL(url).hostname
+        logger.debug('server-polling.health-check.url', { appId, url, hostname: urlHostname })
 
         const response = await fetch(url, {
           signal: controller.signal,
@@ -337,9 +391,9 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         return response.ok
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
-          logger.debug('server-polling.health-check.timeout', { message: 'Health check timed out', url })
+          logger.debug('server-polling.health-check.timeout', { message: 'Health check timed out', appId, url })
         } else {
-          logger.debug('server-polling.health-check.failed', { message: 'Health check failed', url, error: error instanceof Error ? error.message : String(error) })
+          logger.debug('server-polling.health-check.failed', { message: 'Health check failed', appId, url, error: error instanceof Error ? error.message : String(error) })
         }
         return false
       }

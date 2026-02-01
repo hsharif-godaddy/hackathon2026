@@ -176,7 +176,7 @@ describe('HealthMonitoringService', () => {
       expect(mockDevSupervisorClient.configureHealthCheck).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'http',
-          url: 'http://localhost:3000/health',
+          url: 'http://localhost:3000/airo/health',
           interval: '30s',
           timeout: '10s',
           failure_threshold: 3
@@ -258,7 +258,7 @@ describe('HealthMonitoringService', () => {
 
       expect(config).toEqual({
         type: 'http',
-        url: 'http://localhost:3000/health',
+        url: 'http://localhost:3000/airo/health',
         interval: '30s',
         timeout: '10s',
         failure_threshold: 3,
