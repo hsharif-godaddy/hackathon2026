@@ -1,15 +1,11 @@
 'use client'
 
 import { FileText } from 'lucide-react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 import { useTranslations } from '@/hooks/useTranslations'
-import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useSitesStore } from '@/stores/useSitesStore'
-import { useSiteStore } from '@/stores/useSiteStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import KeyValueTable from './KeyValueTable'
 import ToolHeader from './ToolHeader'
@@ -19,7 +15,10 @@ import ToolModal from './ToolModal'
  * Custom renderer for setProjectName tool
  *
  * Shows "Project name set to {name}" with a file icon.
- * Updates control plane (via updateSite API) and all relevant UI stores when the tool completes.
+ * 
+ * IMPORTANT: This is a display-only component for historical tool results.
+ * The actual control plane update happens in ToolResultHandler when the tool
+ * first completes. Re-applying updates here would overwrite manual renames.
  */
 export default function SetProjectNameToolRenderer({
   toolName: _toolName,
@@ -29,74 +28,27 @@ export default function SetProjectNameToolRenderer({
 }: DefaultToolRendererProps) {
   const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [hasUpdatedControlPlane, setHasUpdatedControlPlane] = useState(false)
   const params = useParams()
-  const router = useRouter()
   const appId = params?.id as string | undefined
 
   // Extract project name from input
   const projectName = (input && typeof input === 'object' && (input as any).name) || null
 
-  // Update control plane and UI stores when tool completes successfully
+  // DON'T update control plane when re-rendering historical tool results!
+  // This tool renderer is purely for display when viewing conversation history.
+  // The actual name update happens server-side when the tool first executes.
+  // Re-applying it here would overwrite any manual renames the user made.
   useEffect(
-    function updateControlPlaneAndStores() {
-      if (
-        toolStatus === 'completed' &&
-        appId &&
-        projectName &&
-        !hasUpdatedControlPlane
-      ) {
-        // Mark as updated to prevent duplicate calls
-        setHasUpdatedControlPlane(true)
-
-        logger.info('set-project-name.renderer.updating', {
+    function logToolRendering() {
+      if (toolStatus === 'completed' && appId && projectName) {
+        logger.info('set-project-name.renderer.display-only', {
           appId,
-          projectName
-        })
-
-        // Update control plane via updateSite API
-        appFetch(`/api/sites/${appId}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ name: projectName }),
-        }).then(async (response) => {
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}))
-            throw new Error(errorData.error || `Update failed: ${response.status}`)
-          }
-
-          logger.info('set-project-name.control-plane.success', {
-            appId,
-            projectName
-          })
-
-          // Update site store (main cache)
-          useSiteStore.getState().updateSite(appId, { name: projectName })
-
-          // Update sites list store (used by dropdown)
-          useSitesStore.getState().updateSite(appId, { name: projectName })
-
-          // Update develop page store's local site state
-          useDevelopPageStore.setState((state) => {
-            if (state.site) {
-              state.site.name = projectName
-            } 
-          })
-
-          // Refresh router to update any cached data
-          router.refresh()
-        }).catch((error) => {
-          logger.error('set-project-name.control-plane.error', {
-            appId,
-            projectName,
-            error: error instanceof Error ? error.message : String(error)
-          })
+          projectName,
+          message: 'Rendering historical setProjectName tool result (display only, no updates)'
         })
       }
     },
-    [toolStatus, appId, projectName, t, hasUpdatedControlPlane, router]
+    [toolStatus, appId, projectName]
   )
 
   const hasDetails = Boolean(input || result)

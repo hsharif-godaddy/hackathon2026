@@ -4,10 +4,13 @@ import { FormattedMessage } from 'react-intl';
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Card, { MediaCard } from '@ux/card'
+import EditIcon from '@ux/icon/edit'
 import MenuIcon from '@ux/icon/menu'
+import Modal from '@ux/modal'
 import PlusIcon from '@ux/icon/plus'
 import SettingsIcon from '@ux/icon/settings'
 import ShowIcon from '@ux/icon/show'
+import TextInput from '@ux/text-input'
 import TrashIcon from '@ux/icon/trash'
 import WebsiteIcon from '@ux/icon/website'
 import { Menu, MenuButton, MenuItem, MenuList, MenuSeparator } from '@ux/menu'
@@ -15,6 +18,7 @@ import Tag from '@ux/tag'
 import text from '@ux/text'
 
 import AppThumbnail from '@/app/apps/AppThumbnail'
+import { useAppRename } from '@/hooks/useAppRename'
 import { useMenuClickPrevention } from '@/hooks/useMenuClickPrevention'
 import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch } from '@/lib/gasket-config'
@@ -55,9 +59,13 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [alertState, setAlertState] = useState<AlertState>({ siteId: null, type: null, message: '' })
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null)
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
+  const [newName, setNewName] = useState(site.name || '')
+  const [renameError, setRenameError] = useState<string | null>(null)
 
   const { menuWrapperProps, menuItemProps, shouldPreventClick } = useMenuClickPrevention()
   const deleteSite = useSitesStore((state) => state.deleteSite)
+  const { mutate: renameApp, isPending: isRenamePending } = useAppRename()
 
   useEffect(() => {
     const fetchSiteDetails = async () => {
@@ -112,6 +120,54 @@ export default function AppCard({ site }: { site: SiteInfo }) {
 
   const clearAlert = () => {
     setAlertState({ siteId: null, type: null, message: '' })
+  }
+
+  const openRenameDialog = () => {
+    setNewName(site.name || '')
+    setRenameError(null)
+    setIsRenameDialogOpen(true)
+  }
+
+  const closeRenameDialog = () => {
+    setIsRenameDialogOpen(false)
+    setNewName(site.name || '')
+    setRenameError(null)
+  }
+
+  const handleRename = () => {
+    const trimmed = newName.trim()
+
+    // Validation: empty name
+    if (!trimmed) {
+      setRenameError(t('builder_apps_rename_error_empty'))
+      return
+    }
+
+    // Validation: length limits (reasonable UI constraint)
+    if (trimmed.length > 100) {
+      setRenameError(t('builder_apps_rename_error_too_long'))
+      return
+    }
+
+    // No change - close dialog
+    if (trimmed === site.name) {
+      closeRenameDialog()
+      return
+    }
+
+    renameApp(
+      { appId: site.id, newName: trimmed },
+      {
+        onSuccess: () => {
+          logger.info('app-card.rename.success', { appId: site.id, newName: trimmed })
+          closeRenameDialog()
+        },
+        onError: (error) => {
+          logger.error('app-card.rename.error', { appId: site.id, error: error.message })
+          setRenameError(error.message || t('builder_apps_rename_error_failed'))
+        }
+      }
+    )
   }
 
   // Inline alert component
@@ -197,6 +253,16 @@ export default function AppCard({ site }: { site: SiteInfo }) {
               <text.span>{t('builder_apps_menu_settings')}</text.span>
             </Box>
           </MenuItem>
+          <MenuItem
+            {...menuItemProps()}
+            data-eid={generateClickEID('apps.app.rename')}
+            onClick={openRenameDialog}
+          >
+            <Box orientation="horizontal" gap="sm">
+              <EditIcon />
+              <text.span>{t('builder_common_rename')}</text.span>
+            </Box>
+          </MenuItem>
           <MenuSeparator />
           <MenuItem
             {...menuItemProps()}
@@ -253,34 +319,94 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   )
 
   return (
-    <MediaCard
-      as="button"
-      onClick={(e) => {
-        if (shouldPreventClick(e)) {
-          return;
-        }
-        router.push(`/develop/${site.id}?siteId=${site.id}`);
-      }}
-      data-eid={generateClickEID('apps.app.edit')}
-      aria-label={t('builder_common_edit') + ' ' + site.name || t('builder_apps_alert_delete_untitled')}
-      className="sm:!flex-row"
-      cornerActions={cornerActions}
-      title={title}
-      description={description}
-      media={media}
-      mediaBleed={false}
-      mediaStart={true}
-    >
-      {/* Inline Alert */}
-      {alertState.siteId === site.id && alertState.type && (
-        <InlineAlert
-          siteId={site.id}
-          message={alertState.message}
-          onConfirm={() => handleDeleteSite(site.id)}
-          onCancel={clearAlert}
-        />
+    <>
+      <MediaCard
+        as="button"
+        onClick={(e) => {
+          if (shouldPreventClick(e)) {
+            return;
+          }
+          router.push(`/develop/${site.id}?siteId=${site.id}`);
+        }}
+        data-eid={generateClickEID('apps.app.edit')}
+        aria-label={t('builder_common_edit') + ' ' + site.name || t('builder_apps_alert_delete_untitled')}
+        className="sm:!flex-row"
+        cornerActions={cornerActions}
+        title={title}
+        description={description}
+        media={media}
+        mediaBleed={false}
+        mediaStart={true}
+      >
+        {/* Inline Alert */}
+        {alertState.siteId === site.id && alertState.type && (
+          <InlineAlert
+            siteId={site.id}
+            message={alertState.message}
+            onConfirm={() => handleDeleteSite(site.id)}
+            onCancel={clearAlert}
+          />
+        )}
+      </MediaCard>
+
+      {/* Rename Modal - Outside MediaCard to prevent event bubbling */}
+      {isRenameDialogOpen && (
+        <Modal
+          title={t('builder_apps_rename_title')}
+          onClose={closeRenameDialog}
+          centered
+          focusLock={false}
+        >
+          <Box orientation="vertical" gap="md" className="max-w-md">
+            <text.p size={0} emphasis="passive">
+              {t('builder_apps_rename_description')}
+            </text.p>
+            
+            <Box orientation="vertical" gap="sm">
+              <TextInput
+                id="app-name"
+                label={t('builder_apps_rename_label')}
+                value={newName}
+                onChange={(value) => {
+                  setNewName(value)
+                  setRenameError(null)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !isRenamePending) {
+                    handleRename()
+                  }
+                }}
+                errorMessage={renameError || undefined}
+                disabled={isRenamePending}
+                visualSize="sm"
+                placeholder={t('builder_apps_rename_placeholder')}
+                multiline={false}
+                data-eid={generateClickEID('apps.app.rename_dialog_input')}
+              />
+            </Box>
+            
+            <Box orientation="horizontal" gap="sm" className="pt-4 justify-end">
+              <Button
+                onClick={closeRenameDialog}
+                disabled={isRenamePending}
+                design="secondary"
+                size="sm"
+                text={t('builder_common_cancel')}
+                data-eid={generateClickEID('apps.app.rename_dialog_cancel')}
+              />
+              <Button
+                onClick={handleRename}
+                disabled={isRenamePending}
+                design="primary"
+                size="sm"
+                text={isRenamePending ? t('builder_apps_rename_saving') : t('builder_common_rename')}
+                data-eid={generateClickEID('apps.app.rename_dialog_save')}
+              />
+            </Box>
+          </Box>
+        </Modal>
       )}
-    </MediaCard>
+    </>
   )
 }
 
