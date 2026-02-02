@@ -8,28 +8,28 @@ Before creating the design plan, identify the 3 most important details for this 
 
 ## Available Details
 
-| Detail                   | Design Impact                                                                               |
-| ------------------------ | ------------------------------------------------------------------------------------------- |
-| **Business name**        | Branding, identity consistency, domain suggestions                                          |
-| **Industry**             | Determines appropriate design patterns, imagery, and content structure                      |
-| **Business description** | Helps understand unique value proposition and key messaging                                 |
-| **Primary goal**         | Shapes CTA placement, content hierarchy, conversion flows (buy, learn, contact, book)       |
-| **Target audience**      | Age (typography size, UI complexity), gender (imagery, tone), income (sophistication level) |
-| **Location/region**      | Language, currency, imagery, cultural references, local SEO                                 |
-| **Brand personality**    | Overall aesthetic direction (playful, professional, bold, elegant, minimal)                 |
-| **Formality level**      | Tone of voice, language style, interaction patterns (casual, balanced, formal)              |
-| **Desired emotion**      | Color psychology, imagery mood, pacing (trust, excitement, calm, urgency, inspiration)      |
-| **Product type**         | Layout structure, imagery needs, feature emphasis (physical, digital, services)             |
-| **Content amount**       | Page density, whitespace, reading patterns (minimal, moderate, information-heavy)           |
-| **Imagery preference**   | Visual style direction, production needs (photography, illustrations, icons, video)         |
-| **Typography feel**      | Font selection, hierarchy approach (traditional, modern, decorative)                        |
-| **Color preference**     | Palette direction, mood creation (bright, muted, neutral, bold)                             |
-| **Animation level**      | Motion design, interaction feedback (none, subtle, dynamic)                                 |
-| **Device priority**      | Layout approach, navigation patterns, touch targets (mobile-first, desktop-first)           |
-| **Price positioning**    | Design sophistication, trust signals, feature emphasis (budget, mid-market, premium)        |
-| **Competitor style**     | Differentiation strategy, industry conventions (blend in, stand out)                        |
-| **Trust signals**        | Social proof prominence, credibility elements (reviews, credentials, testimonials, minimal) |
-| **Visual showcase**      | Content structure, imagery ratio (portfolio-heavy, product-focused, text-driven)            |
+| Detail                   | Design Impact                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------------ |
+| **Business name**        | Branding, identity consistency, domain suggestions                                                     |
+| **Industry**             | Determines appropriate design patterns, imagery, and content structure                                 |
+| **Business description** | Helps understand unique value proposition and key messaging                                            |
+| **Primary goal**         | Shapes CTA placement, content hierarchy, conversion flows (buy, learn, contact, book)                  |
+| **Target audience**      | Age (typography size, UI complexity), gender (imagery, tone), income (sophistication level)            |
+| **Location/region**      | Language, currency, imagery, cultural references, local SEO                                            |
+| **Brand personality**    | Overall aesthetic direction (playful, professional, bold, elegant, minimal)                            |
+| **Formality level**      | Tone of voice, language style, interaction patterns (casual, balanced, formal)                         |
+| **Desired emotion**      | Color psychology, imagery mood, pacing (trust, excitement, calm, urgency, inspiration)                 |
+| **Product type**         | Layout structure, imagery needs, feature emphasis (physical, digital, services)                        |
+| **Content amount**       | Page density, whitespace, reading patterns (minimal, moderate, information-heavy)                      |
+| **Imagery preference**   | Visual style direction, production needs (photography, illustrations, icons, video, abstract graphics) |
+| **Typography feel**      | Font selection, hierarchy approach (traditional, modern, decorative)                                   |
+| **Color preference**     | Palette direction, mood creation (bright, muted, neutral, bold)                                        |
+| **Animation level**      | Motion design, interaction feedback (none, subtle, dynamic)                                            |
+| **Device priority**      | Layout approach, navigation patterns, touch targets (mobile-first, desktop-first)                      |
+| **Price positioning**    | Design sophistication, trust signals, feature emphasis (budget, mid-market, premium)                   |
+| **Competitor style**     | Differentiation strategy, industry conventions (blend in, stand out)                                   |
+| **Trust signals**        | Social proof prominence, credibility elements (reviews, credentials, testimonials, minimal)            |
+| **Visual showcase**      | Content structure, imagery ratio (portfolio-heavy, product-focused, text-driven)                       |
 
 ## Detail Selection Process
 
@@ -202,15 +202,16 @@ These rules exist because asking too many questions frustrates users:
 
 After determining the 3 key details, use them to inform:
 
-| Design Element         | Influenced By                                           |
-| ---------------------- | ------------------------------------------------------- |
-| Typography choices     | Target audience (age), typography feel, formality level |
-| Layout complexity      | Device priority, content amount, target audience        |
-| Trust signals          | Trust signals needed, price positioning, industry       |
-| Content structure      | Content amount, product type, visual showcase           |
-| Visual style           | Brand personality, color preference, imagery preference |
-| Tone and messaging     | Formality level, desired emotion, brand personality     |
-| Motion and interaction | Animation level, device priority, brand personality     |
-| Section emphasis       | Primary goal, product type, visual showcase             |
+| Design Element         | Influenced By                                                                |
+| ---------------------- | ---------------------------------------------------------------------------- |
+| Typography choices     | Target audience (age), typography feel, formality level                      |
+| Layout complexity      | Device priority, content amount, target audience                             |
+| Trust signals          | Trust signals needed, price positioning, industry                            |
+| Content structure      | Content amount, product type, visual showcase                                |
+| Visual style           | Brand personality, color preference, imagery preference                      |
+| Visual elements        | Industry, brand personality, product type (see Visual Element Strategy)      |
+| Tone and messaging     | Formality level, desired emotion, brand personality                          |
+| Motion and interaction | Animation level, device priority, brand personality (see Animation Strategy) |
+| Section emphasis       | Primary goal, product type, visual showcase                                  |
 
 Include the 3 key project details in your handoff prompt so the develop agent understands the personalization context.
