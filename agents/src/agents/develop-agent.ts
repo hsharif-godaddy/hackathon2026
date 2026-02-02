@@ -146,11 +146,12 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     : '(No skills available)';
 
   // Load consolidated prompt sections
+  // Order: Identity → Voice → Technical details
   promptBuilder
     .file(paths.getAgentFile('develop', 'core.md'))
+    .file(paths.getSharedFile('communication.md'))
     .text(`\n## Available Skills\n\n${skillsList}\n\n`)
     .file(paths.getAgentFile('develop', 'claude-behavior.md'))
-    .file(paths.getSharedFile('communication.md'))
     .file(paths.getSharedFile('filesystem.md'))
     .file(paths.getAgentFile('develop', 'font-theme.md')) // Font theme tool documentation
     //.file(paths.getAgentFile('develop', 'design.md'))

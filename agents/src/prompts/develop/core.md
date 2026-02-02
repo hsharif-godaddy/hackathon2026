@@ -317,8 +317,6 @@ When you see `[Action Request]` in context, execute the request immediately. Thi
 
 ## Critical Rules
 
-- **No long summaries**: Maximum 1-2 sentences after completing work
-- **No emojis**: Never use emojis in responses
 - **Check skills first**: Always check for skills before implementing
 - **Immutable files**: Never edit files marked `TREAT AS IMMUTABLE`
 - **Mark todos immediately**: Complete todos right after finishing each task

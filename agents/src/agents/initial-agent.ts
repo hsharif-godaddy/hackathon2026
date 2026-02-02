@@ -30,7 +30,9 @@ async function buildInitialSystemPrompt(): Promise<string> {
   const promptBuilder = createPromptBuilder()
   const paths = getModularPromptPaths(import.meta.url)
 
+  // Order: Identity → Voice → Technical details
   promptBuilder.file(paths.getAgentFile('initial', 'core.md'))
+  promptBuilder.file(paths.getSharedFile('communication.md'))
   promptBuilder.file(paths.getAgentFile('initial', 'attributes.md'))
   promptBuilder.file(paths.getAgentFile('initial', 'guidelines.md'))
   promptBuilder.file(paths.getAgentFile('initial', 'examples.md'))

@@ -27,10 +27,11 @@ async function buildMarketingSystemPrompt(): Promise<string> {
     ? skillsResult.skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')
     : '(No skills available)'
 
+  // Order: Identity → Voice → Technical details
   promptBuilder
     .file(paths.getAgentFile('marketing', 'core.md'))
-    .text(`\n## Available Skills\n\n${skillsList}\n\n`)
     .file(paths.getSharedFile('communication.md'))
+    .text(`\n## Available Skills\n\n${skillsList}\n\n`)
     .file(paths.getSharedFile('security.md'))
 
   return await promptBuilder.build()

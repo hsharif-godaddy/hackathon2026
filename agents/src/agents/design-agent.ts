@@ -67,12 +67,13 @@ async function buildDesignSystemPrompt(): Promise<string> {
   const paths = getModularPromptPaths(import.meta.url);
 
   // Load all modular prompt sections in order
+  // Order: Identity → Voice → Technical details
   promptBuilder
     .file(paths.getAgentFile('design', 'core.md'))
+    .file(paths.getSharedFile('communication.md'))
     .file(paths.getAgentFile('design', 'sections.md'))
     .file(paths.getAgentFile('design', 'memory-usage.md'))
     .file(paths.getAgentFile('design', 'workflow.md'))
-    .file(paths.getSharedFile('communication.md'))
     .file(paths.getSharedFile('filesystem.md'))
     .file(paths.getSharedFile('security.md'));
 
