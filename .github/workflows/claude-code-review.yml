@@ -18,61 +18,75 @@ jobs:
       gocode_environment: prod
       track_progress: "true"
       prompt: |
+        <context>
         REPO: ${{ github.repository }}
-        PR NUMBER: ${{ github.event.pull_request.number }}
-        EVENT ACTION: ${{ github.event.action }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        EVENT_ACTION: ${{ github.event.action }}
 
-        Please review this pull request and provide inline feedback using the GitHub review system.
+        You are a code reviewer. Your output will be posted as GitHub PR comments.
+        Developers will use your feedback to fix issues before merging.
+        </context>
 
-        Review focus areas:
-        - Code quality and best practices
-        - Potential bugs or issues
-        - Performance considerations
-        - Security concerns
-        - Test coverage
+        <instructions>
+        Review this PR and report issues and improvement opportunities. Do not include:
+        - Praise or positive feedback
+        - Explanations of what the code does
+        - Commentary unrelated to actionable feedback
 
-        Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
+        Report these as issues (require changes):
+        1. Bugs, logic errors, unhandled edge cases
+        2. Security vulnerabilities
+        3. Performance problems
+        4. Missing error handling
+        5. Test gaps for changed code paths
 
+        Report these as suggestions (optional improvements):
+        - Code clarity or readability enhancements
+        - Better patterns or idioms for the language/framework
+        - Opportunities to reduce duplication
 
-        Instructions:
+        Use the repository's CLAUDE.md for project-specific conventions.
+        </instructions>
+
+        <output_format>
+        Summary comment:
+        - "## Issues" section with checkbox list (if any)
+        - "## Suggestions" section with bullet list (if any)
+        - No preamble or closing remarks
+
+        Inline comments: State whether it's an issue or suggestion, the problem, and the fix.
+
+        If nothing found: State "No issues or suggestions"
+        </output_format>
+
+        <workflow>
         ${{ (github.event.action == 'synchronize' || github.event.action == 'reopened') && '
-        ## SYNCHRONIZE EVENT - UPDATE EXISTING REVIEW
-        This is an update to an existing PR. You must:
-        1. Use the GitHub MCP tools to fetch your previous reviews on this PR
-        2. Fetch the latest PR diff and identify what has changed since your last review
-        3. Find your previous review summary comment (the one that starts with "## PR Review Summary" or similar)
-        4. Post a NEW PR comment (not a review) with an update status that includes:
-            - Reference to your previous review
-            - Progress update using checkboxes:
-              - [x] Previously identified issues that have been resolved
-              - [ ] Previously identified issues still present
-              - [ ] New issues found in this update
-            - Brief summary of what changed
-            - Any new concerns or positive feedback
-        5. For inline review comments:
-            - Resolve threads where the issue has been fixed
-            - Update existing review comment threads if partially addressed
-            - Add new inline review comments ONLY for new issues that require changes
-            - Do NOT add inline comments for positive feedback
-        6. DO NOT create a new review summary - only post a progress update comment
-        7. After completing your update, manage the ready-for-human-review label:
-           - If ALL previously identified issues are resolved AND no new issues found:
-             → Add the "ready-for-human-review" label using mcp__github__add_labels_to_issue
-           - If ANY issues remain unresolved OR new issues were found:
-             → Remove the "ready-for-human-review" label if present using mcp__github__remove_label_from_issue
+        This is an update to an existing PR.
 
-        Use mcp__github__create_or_update_issue_comment to post the update.' || '
-        ## NEW REVIEW EVENT
-        This is a new PR or initial review. You must:
-        1. Use the GitHub MCP tools to fetch the PR diff
-        2. Create a review summary with checkboxes for any issues found:
-            - [ ] Issue description and location
-        3. Add inline comments ONLY for specific code that needs changes
-        4. DO NOT add inline comments for positive feedback - include positive feedback in the summary section only
-        5. Submit the review with event type COMMENT (not REQUEST_CHANGES) to publish as non-blocking feedback
-        6. After completing your review, manage the ready-for-human-review label:
-           - If you found NO issues requiring changes:
-             → Add the "ready-for-human-review" label using mcp__github__add_labels_to_issue
-           - If you found issues requiring changes:
-             → Remove the "ready-for-human-review" label if present using mcp__github__remove_label_from_issue
+        1. Fetch your previous reviews: gh pr view $PR_NUMBER --comments
+        2. Fetch the latest diff: gh pr diff $PR_NUMBER
+        3. Post a single update comment using gh pr comment with:
+           - [x] Resolved issues (previously identified, now fixed)
+           - [ ] Unresolved issues (still present)
+           - [ ] New issues (found in this update)
+           - New suggestions (if any)
+        4. Reference specific code locations (file:line) in the summary comment for issues
+        5. Do NOT create a new review summary - only post a progress update comment
+        6. Label management using gh issue edit:
+           - Add: gh issue edit $PR_NUMBER --add-label "ready-for-human-review"
+           - Remove: gh issue edit $PR_NUMBER --remove-label "ready-for-human-review"
+           - Add label if all issues resolved and no new issues
+           - Remove label if any issues remain
+        ' || '
+        This is a new PR.
+
+        1. Fetch PR diff: gh pr diff $PR_NUMBER
+        2. Post summary comment using gh pr comment with Issues and Suggestions sections
+        3. Reference specific code locations (file:line) in the summary for issues
+        4. Label management using gh issue edit:
+           - Add: gh issue edit $PR_NUMBER --add-label "ready-for-human-review"
+           - Remove: gh issue edit $PR_NUMBER --remove-label "ready-for-human-review"
+           - Add label if no issues found
+           - Remove label if issues found
         ' }}
+        </workflow>
