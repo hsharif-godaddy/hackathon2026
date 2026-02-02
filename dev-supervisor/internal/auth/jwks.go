@@ -1,4 +1,4 @@
-package main
+package auth
 
 import (
 	"context"
@@ -16,9 +16,7 @@ import (
 	"time"
 )
 
-/**
- * JWK represents a JSON Web Key (RFC 7517)
- */
+// JWK represents a JSON Web Key (RFC 7517)
 type JWK struct {
 	Kty string `json:"kty"` // Key type (RSA)
 	Kid string `json:"kid"` // Key ID
@@ -28,26 +26,20 @@ type JWK struct {
 	E   string `json:"e"`   // RSA exponent (base64url encoded)
 }
 
-/**
- * JWKSResponse represents the standard RFC 7517 JWKS response
- * This is the format returned by builder's /.well-known/jwks.json endpoint
- */
+// JWKSResponse represents the standard RFC 7517 JWKS response
+// This is the format returned by builder's /.well-known/jwks.json endpoint
 type JWKSResponse struct {
 	Keys []JWK `json:"keys"` // Array of JSON Web Keys
 }
 
-/**
- * cachedKey stores a parsed RSA public key with its expiration time
- */
+// cachedKey stores a parsed RSA public key with its expiration time
 type cachedKey struct {
 	publicKey *rsa.PublicKey
 	expiresAt time.Time
 }
 
-/**
- * JWKSClient fetches and caches public keys from standard RFC 7517 JWKS endpoint
- * Expects standard JWKS URL (e.g., https://local.gasket.dev-godaddy.com:8443/.well-known/jwks.json)
- */
+// JWKSClient fetches and caches public keys from standard RFC 7517 JWKS endpoint
+// Expects standard JWKS URL (e.g., https://local.gasket.dev-godaddy.com:8443/.well-known/jwks.json)
 type JWKSClient struct {
 	mu         sync.RWMutex
 	jwksURL    string
@@ -56,14 +48,7 @@ type JWKSClient struct {
 	httpClient *http.Client
 }
 
-/**
- * NewJWKSClient creates a new JWKS client
- *
- * @param jwksURL - Standard JWKS endpoint URL (e.g., /.well-known/jwks.json)
- * @param cacheTTL - Cache duration for keys (default: 5 minutes)
- * @param skipTLSVerify - Skip TLS certificate verification (for local dev with self-signed certs)
- * @returns Initialized JWKSClient
- */
+// NewJWKSClient creates a new JWKS client
 func NewJWKSClient(jwksURL string, cacheTTL time.Duration, skipTLSVerify bool) *JWKSClient {
 	if cacheTTL == 0 {
 		cacheTTL = 5 * time.Minute
@@ -94,12 +79,7 @@ func NewJWKSClient(jwksURL string, cacheTTL time.Duration, skipTLSVerify bool) *
 	}
 }
 
-/**
- * GetPublicKey fetches a public key by key ID, using cache when available
- *
- * @param kid - Key ID from JWT header
- * @returns RSA public key or error
- */
+// GetPublicKey fetches a public key by key ID, using cache when available
 func (c *JWKSClient) GetPublicKey(kid string) (*rsa.PublicKey, error) {
 	// Check cache first
 	c.mu.RLock()
@@ -116,13 +96,8 @@ func (c *JWKSClient) GetPublicKey(kid string) (*rsa.PublicKey, error) {
 	return c.fetchAndCacheKey(kid)
 }
 
-/**
- * fetchAndCacheKey fetches JWKS from standard RFC 7517 endpoint and extracts key by ID
- * Fetches all keys from JWKS endpoint and finds the one matching the requested kid
- *
- * @param kid - Key ID to fetch
- * @returns RSA public key or error
- */
+// fetchAndCacheKey fetches JWKS from standard RFC 7517 endpoint and extracts key by ID
+// Fetches all keys from JWKS endpoint and finds the one matching the requested kid
 func (c *JWKSClient) fetchAndCacheKey(kid string) (*rsa.PublicKey, error) {
 	slog.Debug("jwks.fetch.standard", "kid", kid, "url", c.jwksURL)
 
@@ -227,12 +202,7 @@ func (c *JWKSClient) fetchAndCacheKey(kid string) (*rsa.PublicKey, error) {
 	return publicKey, nil
 }
 
-/**
- * jwkToRSAPublicKey converts a JWK to an RSA public key
- *
- * @param jwk - JSON Web Key
- * @returns RSA public key or error
- */
+// jwkToRSAPublicKey converts a JWK to an RSA public key
 func (c *JWKSClient) jwkToRSAPublicKey(jwk *JWK) (*rsa.PublicKey, error) {
 	// Validate key type
 	if jwk.Kty != "RSA" {
@@ -280,9 +250,7 @@ func (c *JWKSClient) jwkToRSAPublicKey(jwk *JWK) (*rsa.PublicKey, error) {
 	return publicKey, nil
 }
 
-/**
- * ClearCache removes all cached keys (useful for key rotation)
- */
+// ClearCache removes all cached keys (useful for key rotation)
 func (c *JWKSClient) ClearCache() {
 	c.mu.Lock()
 	defer c.mu.Unlock()

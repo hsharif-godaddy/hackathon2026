@@ -1,4 +1,4 @@
-package main
+package auth
 
 import (
 	"fmt"
@@ -8,17 +8,16 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
 )
 
 var siteIDPattern = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 
-/**
- * JWTMiddlewareConfig defines configuration for JWT middleware
- *
- * Authentication failure handling uses hybrid mode:
- * - Browser requests (text/html): Redirect to SSO login page
- * - API/JSON requests: Return 401 Unauthorized with JSON error
- */
+// JWTMiddlewareConfig defines configuration for JWT middleware
+// Authentication failure handling uses hybrid mode:
+// - Browser requests (text/html): Redirect to SSO login page
+// - API/JSON requests: Return 401 Unauthorized with JSON error
 type JWTMiddlewareConfig struct {
 	Enabled        bool // Enable JWT validation
 	Validator      *JWTValidator
@@ -30,19 +29,12 @@ type JWTMiddlewareConfig struct {
 	AllowedOrigins []string // CORS allowed origins (whitelist)
 }
 
-/**
- * JWTMiddleware wraps HTTP handlers with JWT authentication
- */
+// JWTMiddleware wraps HTTP handlers with JWT authentication
 type JWTMiddleware struct {
 	config JWTMiddlewareConfig
 }
 
-/**
- * NewJWTMiddleware creates a new JWT middleware
- *
- * @param config - Middleware configuration
- * @returns Initialized JWTMiddleware
- */
+// NewJWTMiddleware creates a new JWT middleware
 func NewJWTMiddleware(config JWTMiddlewareConfig) *JWTMiddleware {
 	// Set defaults
 	if config.APIPrefix == "" {
@@ -54,12 +46,7 @@ func NewJWTMiddleware(config JWTMiddlewareConfig) *JWTMiddleware {
 	}
 }
 
-/**
- * Wrap wraps an http.Handler with JWT authentication
- *
- * @param next - Next handler in the chain
- * @returns Wrapped handler
- */
+// Wrap wraps an http.Handler with JWT authentication
 func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Skip JWT validation if disabled
@@ -69,7 +56,7 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		}
 
 		// Check if path is excluded from validation
-		if isPathExcluded(r.URL.Path, m.config.ExcludedPaths) {
+		if middleware.IsPathExcluded(r.URL.Path, m.config.ExcludedPaths) {
 			slog.Debug("jwt.middleware.path_excluded", "path", r.URL.Path)
 			next.ServeHTTP(w, r)
 			return
@@ -147,17 +134,10 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 	})
 }
 
-/**
- * handleAuthFailure handles authentication failures using hybrid mode
- *
- * Hybrid mode behavior:
- * - Browser requests (Accept: text/html): Redirect to SSO login page
- * - API/JSON requests: Return 401 Unauthorized with JSON error
- *
- * @param w - Response writer
- * @param r - HTTP request
- * @param reason - Reason for auth failure
- */
+// handleAuthFailure handles authentication failures using hybrid mode
+// Hybrid mode behavior:
+// - Browser requests (Accept: text/html): Redirect to SSO login page
+// - API/JSON requests: Return 401 Unauthorized with JSON error
 func (m *JWTMiddleware) handleAuthFailure(w http.ResponseWriter, r *http.Request, reason string) {
 	// Hybrid mode: redirect browsers, return 401 for APIs
 	if m.isAPIOrJSONRequest(r) {
@@ -167,13 +147,7 @@ func (m *JWTMiddleware) handleAuthFailure(w http.ResponseWriter, r *http.Request
 	}
 }
 
-/**
- * returnError returns a 401 Unauthorized error
- *
- * @param w - Response writer
- * @param r - HTTP request
- * @param reason - Reason for auth failure
- */
+// returnError returns a 401 Unauthorized error
 func (m *JWTMiddleware) returnError(w http.ResponseWriter, r *http.Request, reason string) {
 	slog.Info("jwt.middleware.returning_401",
 		"path", r.URL.Path,
@@ -184,13 +158,7 @@ func (m *JWTMiddleware) returnError(w http.ResponseWriter, r *http.Request, reas
 	http.Error(w, "Unauthorized", http.StatusUnauthorized)
 }
 
-/**
- * redirect redirects to configured login page
- *
- * @param w - Response writer
- * @param r - HTTP request
- * @param reason - Reason for auth failure
- */
+// redirect redirects to configured login page
 func (m *JWTMiddleware) redirect(w http.ResponseWriter, r *http.Request, reason string) {
 	redirectURL := m.config.RedirectURL
 
@@ -267,21 +235,14 @@ func (m *JWTMiddleware) redirect(w http.ResponseWriter, r *http.Request, reason 
 	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 }
 
-/**
- * buildSmartRedirectURL builds a smart redirect URL for preview app access
- *
- * When users access preview apps directly, we want to redirect them to the builder
- * with that specific app open, not just the homepage.
- *
- * Works for both:
- * - localhost:5001 (local development) - SITE_ID from docker-compose
- * - 41gb5nrnyl.c4.test-airoapp.ai (production) - SITE_ID from deployment config
- *
- * Builder URL format (root with redirect query so SSO allowlists the origin):
- * - https://airo-builder.{env}-godaddy.com/?redirect=%2Fdevelop%2F{siteId}%3FsiteId%3D{siteId}
- *
- * @returns Smart redirect URL or empty string if SITE_ID not configured
- */
+// buildSmartRedirectURL builds a smart redirect URL for preview app access
+// When users access preview apps directly, we want to redirect them to the builder
+// with that specific app open, not just the homepage.
+// Works for both:
+// - localhost:5001 (local development) - SITE_ID from docker-compose
+// - 41gb5nrnyl.c4.test-airoapp.ai (production) - SITE_ID from deployment config
+// Builder URL format (root with redirect query so SSO allowlists the origin):
+// - https://airo-builder.{env}-godaddy.com/?redirect=%2Fdevelop%2F{siteId}%3FsiteId%3D{siteId}
 func (m *JWTMiddleware) buildSmartRedirectURL() string {
 	// Use SITE_ID from environment (set by docker-compose or production deployment)
 	siteID := m.config.SiteID
@@ -334,13 +295,8 @@ func (m *JWTMiddleware) buildSmartRedirectURL() string {
 	return smartURL
 }
 
-/**
- * isAllowedRedirectHost validates if a host is allowed for redirects
- * Prevents open redirect vulnerabilities by checking against configured redirect URL
- *
- * @param host - Host to validate
- * @returns true if host is allowed
- */
+// isAllowedRedirectHost validates if a host is allowed for redirects
+// Prevents open redirect vulnerabilities by checking against configured redirect URL
 func (m *JWTMiddleware) isAllowedRedirectHost(host string) bool {
 	// Parse the configured redirect URL to get the base host
 	configuredURL, err := url.Parse(m.config.RedirectURL)
@@ -368,13 +324,8 @@ func (m *JWTMiddleware) isAllowedRedirectHost(host string) bool {
 	return false
 }
 
-/**
- * isAPIOrJSONRequest checks if the request is an API or JSON request
- * Used in hybrid mode to determine whether to redirect or return 401
- *
- * @param r - HTTP request
- * @returns true if this is an API/JSON request
- */
+// isAPIOrJSONRequest checks if the request is an API or JSON request
+// Used in hybrid mode to determine whether to redirect or return 401
 func (m *JWTMiddleware) isAPIOrJSONRequest(r *http.Request) bool {
 	// Check if path starts with API prefix
 	if strings.HasPrefix(r.URL.Path, m.config.APIPrefix) {

@@ -33,9 +33,6 @@ dev-supervisor/
 ├── http_proxy.go                   # Reverse proxy with TLS/WebSocket/static serving
 ├── smtp_proxy.go                   # SMTP proxy with header injection
 ├── health_monitor.go               # Configurable health checks
-├── jwt_middleware.go               # JWT authentication middleware
-├── jwt_validator.go                # JWT validation logic
-├── jwks_client.go                  # JWKS client for public key fetching
 ├── command_executor.go             # Command execution with output capture
 ├── environment_manager.go          # Environment variable management
 ├── log_manager.go                  # Log buffering and management
@@ -43,12 +40,18 @@ dev-supervisor/
 ├── port_discovery_fallback.go     # Fallback for non-Linux platforms
 ├── peer_sec_linux.go              # SELinux peer security validation
 ├── internal/
+│   ├── auth/
+│   │   ├── middleware.go          # JWT authentication middleware
+│   │   ├── validator.go           # JWT validation logic
+│   │   └── jwks.go                # JWKS client for public key fetching
 │   ├── config/
 │   │   ├── config.go              # Configuration struct and loading
 │   │   └── env.go                 # Environment variable helpers
-│   └── logs/
-│       ├── manager.go             # Log management implementation
-│       └── types.go               # Log types and interfaces
+│   ├── logs/
+│   │   ├── manager.go             # Log management implementation
+│   │   └── types.go               # Log types and interfaces
+│   └── middleware/
+│       └── utils.go               # Shared middleware utilities
 ├── test/
 │   ├── Dockerfile.integration     # Docker image for integration tests
 │   ├── docker-integration-tests.sh # Bash test suite
@@ -337,7 +340,7 @@ GetEnvDurationWithDefault(key string, defaultValue time.Duration) time.Duration
    - Request/response logging with CF-Ray tracing
    - Retry logic with configurable backoff
 
-2. **JWT authentication** (`jwt_middleware.go`, `jwt_validator.go`, `jwks_client.go`):
+2. **JWT authentication** (`internal/auth/`):
    - JWKS-based public key validation (RFC 7517)
    - Site-scoped token validation (siteId claim)
    - Hybrid auth failure handling (browser redirect vs API 401)

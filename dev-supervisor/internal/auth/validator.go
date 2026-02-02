@@ -1,4 +1,4 @@
-package main
+package auth
 
 import (
 	"errors"
@@ -10,10 +10,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-/**
- * JWTClaims represents the expected JWT claims structure
- * Supports both custom JWT tokens and GoDaddy SSO IDP tokens
- */
+// JWTClaims represents the expected JWT claims structure
+// Supports both custom JWT tokens and GoDaddy SSO IDP tokens
 type JWTClaims struct {
 	jwt.RegisteredClaims
 
@@ -26,37 +24,26 @@ type JWTClaims struct {
 	Type      string `json:"typ"`       // Token type (e.g., "idp")
 }
 
-/**
- * JWTValidatorConfig defines configuration for JWT validation
- */
+// JWTValidatorConfig defines configuration for JWT validation
 type JWTValidatorConfig struct {
 	JWKSUrl       string // JWKS endpoint URL
 	SkipTLSVerify bool   // Skip TLS certificate verification (local dev only)
 }
 
-/**
- * JWTValidator validates JWT tokens using JWKS public keys
- */
+// JWTValidator validates JWT tokens using JWKS public keys
 type JWTValidator struct {
 	config     JWTValidatorConfig
 	jwksClient *JWKSClient
 }
 
-/**
- * ValidationResult contains the result of JWT validation
- */
+// ValidationResult contains the result of JWT validation
 type ValidationResult struct {
 	Valid  bool
 	Reason string
 	Claims *JWTClaims // Parsed claims if validation succeeded
 }
 
-/**
- * NewJWTValidator creates a new JWT validator
- *
- * @param config - Validator configuration
- * @returns Initialized JWTValidator
- */
+// NewJWTValidator creates a new JWT validator
 func NewJWTValidator(config JWTValidatorConfig) *JWTValidator {
 	return &JWTValidator{
 		config:     config,
@@ -64,12 +51,7 @@ func NewJWTValidator(config JWTValidatorConfig) *JWTValidator {
 	}
 }
 
-/**
- * ValidateToken validates a JWT token and returns the validation result
- *
- * @param tokenString - JWT token to validate
- * @returns ValidationResult with details
- */
+// ValidateToken validates a JWT token and returns the validation result
 func (v *JWTValidator) ValidateToken(tokenString string) ValidationResult {
 	if tokenString == "" {
 		return ValidationResult{
@@ -142,13 +124,9 @@ func (v *JWTValidator) ValidateToken(tokenString string) ValidationResult {
 	}
 }
 
-/**
- * sanitizeErrorMessage returns a generic error message
- * Returns only "unauthorized" to prevent information disclosure and timing attacks
- * Detailed error information is logged server-side for debugging
- *
- * @returns Generic error message (always "unauthorized")
- */
+// sanitizeErrorMessage returns a generic error message
+// Returns only "unauthorized" to prevent information disclosure and timing attacks
+// Detailed error information is logged server-side for debugging
 func (v *JWTValidator) sanitizeErrorMessage() string {
 	// Always return generic message to prevent:
 	// 1. Information disclosure (revealing token state)
@@ -159,12 +137,7 @@ func (v *JWTValidator) sanitizeErrorMessage() string {
 	return "unauthorized"
 }
 
-/**
- * ExtractTokenFromHeader extracts JWT token from Authorization header
- *
- * @param authHeader - Authorization header value
- * @returns Token string or empty string if not found
- */
+// ExtractTokenFromHeader extracts JWT token from Authorization header
 func ExtractTokenFromHeader(authHeader string) string {
 	if authHeader == "" {
 		return ""

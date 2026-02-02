@@ -25,7 +25,9 @@ import (
 
 	"github.com/rs/cors"
 
+	"github.com/airo-ai-builder/dev-supervisor/internal/auth"
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
+	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
 	"github.com/airo-ai-builder/dev-supervisor/internal/proxy/routing"
 )
 
@@ -403,28 +405,6 @@ func (rr *RequestRouter) tryServeStaticFile(w http.ResponseWriter, r *http.Reque
 }
 
 /**
- * isPathExcluded checks if a request path matches any excluded path
- * Used to prevent health checks and monitoring from keeping apps alive
- * Matches JWT middleware logic for consistency
- */
-func isPathExcluded(path string, excludedPaths []string) bool {
-	for _, excluded := range excludedPaths {
-		// Exclude exact path matches
-		if path == excluded {
-			return true
-		}
-
-		// For directory-style exclusions (ending with "/"), use prefix matching.
-		// This avoids unintentionally excluding paths like "/healthcheck" when
-		// only "/health" is configured as an excluded path.
-		if strings.HasSuffix(excluded, "/") && strings.HasPrefix(path, excluded) {
-			return true
-		}
-	}
-	return false
-}
-
-/**
  * activityTrackingMiddleware wraps an http.Handler to track in-flight requests
  * for idle monitoring. Only active when start-on-request is enabled.
  * Excludes health checks, monitoring paths, and CORS preflight from updating activity at request start.
@@ -443,7 +423,7 @@ func activityTrackingMiddleware(next http.Handler, procMgr *ProcessManager, excl
 		// Update activity at request start for non-excluded paths
 		// Skip health checks and monitoring to prevent automated probes from keeping apps alive
 		// Note: CORS preflight is handled by CORS middleware and never reaches here
-		if !isPathExcluded(r.URL.Path, excludedPaths) {
+		if !middleware.IsPathExcluded(r.URL.Path, excludedPaths) {
 			procMgr.UpdateActivity()
 		}
 
@@ -1065,13 +1045,13 @@ func (p *HTTPProxy) Start() error {
 		}
 
 		// Create JWT validator
-		validator := NewJWTValidator(JWTValidatorConfig{
+		validator := auth.NewJWTValidator(auth.JWTValidatorConfig{
 			JWKSUrl:       p.config.JWKSUrl,
 			SkipTLSVerify: p.config.JWKSSkipTLSVerify,
 		})
 
 		// Create JWT middleware (uses hybrid mode: redirects browsers, 401 for APIs)
-		jwtMiddleware := NewJWTMiddleware(JWTMiddlewareConfig{
+		jwtMiddleware := auth.NewJWTMiddleware(auth.JWTMiddlewareConfig{
 			Enabled:        true,
 			Validator:      validator,
 			RedirectURL:    p.config.JWTRedirectURL,
