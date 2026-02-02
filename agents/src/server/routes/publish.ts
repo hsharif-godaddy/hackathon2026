@@ -8,9 +8,14 @@ import { Router } from 'express';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import type { DevSupervisorClient, PublishResponse, PublishSuccessResponse } from '../../services/DevSupervisorClient.js';
 import { requirePermission } from '../middleware/require-permission.js';
+import { validateAppOwnership } from '../middleware/app-ownership.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
+
+// SECURITY: Apply ownership validation to all publish routes
+// Prevents cross-tenant access to build artifacts and source archives
+router.use('/apps/:id', validateAppOwnership);
 
 /**
  * POST /apps/:id/publish

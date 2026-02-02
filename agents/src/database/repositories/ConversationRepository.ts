@@ -67,6 +67,31 @@ export class ConversationRepository {
   }
 
   /**
+   * Get multiple conversations by IDs in a single query (batch operation)
+   */
+  async findByIds(conversationIds: string[]): Promise<Conversation[]> {
+    if (conversationIds.length === 0) {
+      return [];
+    }
+
+    const placeholders = conversationIds.map(() => '?').join(',');
+    const stmt = this.db.prepare(`
+      SELECT * FROM conversations
+      WHERE id IN (${placeholders})
+    `);
+    const rows = stmt.all(...conversationIds) as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      appId: row.app_id,
+      agentId: row.agent_id,
+      title: row.title,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at)
+    }));
+  }
+
+  /**
    * Get all conversations for an app
    */
   async getByAppId(appId: string): Promise<Conversation[]> {

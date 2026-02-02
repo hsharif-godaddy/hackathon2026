@@ -30,11 +30,13 @@ import { TokenUsageRepository } from '../../database/index.js';
 import { ServerManagementTool } from '../../tools/server-management-tool.js';
 import { getNameSuggestionService } from '../../services/name-suggestion.js';
 import { Logger, log } from '../../logging/index.js';
-import { getFeatures } from '../../services/features.js';
+import { getFeatures, BYPASS_SITE_IDS } from '../../services/features.js';
 import { searchCode } from '../../utils/code-search.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
+import { validateAppOwnership } from '../middleware/app-ownership.js';
 
 const router: IRouter = Router();
+
 const appRepo = new AppRepository();
 const directoryTool = new DirectoryListingTool();
 const readFileTool = new ReadFileTool();
@@ -45,24 +47,45 @@ const tokenUsageRepo = new TokenUsageRepository();
 const logger = Logger.create({ service: 'apps-routes' });
 
 /**
- * GET /apps - List all apps
+ * GET /apps - List all apps (scoped to authenticated user's siteId)
  */
 router.get('/', (req: Request, res: Response) => {
   try {
+    const authReq = req as AuthenticatedRequest;
+
+    // Ensure authentication context exists
+    if (!authReq.agentContext || !authReq.agentContext.siteId) {
+      return res.status(401).json({
+        error: 'Authentication required',
+        requiresAuth: true,
+      });
+    }
+
+    const authenticatedSiteId = authReq.agentContext.siteId;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = (page - 1) * limit;
 
-    const apps = appRepo.findAll(limit, offset);
-    const total = appRepo.count();
-    const totalPages = Math.ceil(total / limit);
+    // SECURITY: Only return apps belonging to authenticated siteId
+    // unless it's a bypass site (for dev/testing)
+    const isBypassSite = BYPASS_SITE_IDS.includes(authenticatedSiteId);
+    const allApps = appRepo.findAll(limit, offset);
+    const apps = isBypassSite
+      ? allApps
+      : allApps.filter(app => app.id === authenticatedSiteId);
+
+    const totalCount = isBypassSite
+      ? appRepo.count()
+      : appRepo.findAll().filter(app => app.id === authenticatedSiteId).length;
+
+    const totalPages = Math.ceil(totalCount / limit);
 
     return res.json({
       apps,
       pagination: {
         page,
         limit,
-        total,
+        total: totalCount,
         totalPages,
         hasNext: page < totalPages,
         hasPrev: page > 1,
@@ -100,6 +123,26 @@ router.get('/config', async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+/**
+ * SECURITY: Apply ownership validation to all routes with :id parameter.
+ *
+ * This middleware protects against cross-tenant access where an attacker with valid
+ * credentials for Site A attempts to access Site B's app by changing the :id parameter.
+ *
+ * Placement: MUST be before any :id routes to protect them.
+ *
+ * Regex pattern: Strictly matches valid app ID formats only:
+ * - nanoID (production): exactly 10 chars, lowercase alphanumeric, e.g., "jm2t5p2rxr"
+ * - UUID (local dev): exactly 36 chars, 8-4-4-4-12 format with hyphens, e.g., "025ec5f4-2c3a-4d68-8409-3bf98df915a3"
+ *
+ * Static routes like /create, /register, /servers do not match this pattern and
+ * are handled by their specific route definitions above.
+ */
+router.use(
+  '/:id([a-z0-9]{10}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})',
+  validateAppOwnership
+);
 
 /**
  * GET /apps/:id - Get a specific app

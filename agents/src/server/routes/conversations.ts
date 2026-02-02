@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import type { Router as RouterType } from 'express';
 import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
 import { Logger } from '../../logging/index.js';
+import { validateAppOwnershipFromQuery, validateConversationOwnership, type ConversationRequest } from '../middleware/app-ownership.js';
 
 const router: RouterType = Router();
 const logger = Logger.create({ service: 'conversations-routes' });
@@ -9,8 +10,9 @@ const logger = Logger.create({ service: 'conversations-routes' });
 /**
  * GET /api/conversations
  * Get all conversations for an app
+ * SECURITY: Ownership validation prevents cross-tenant conversation listing
  */
-router.get('/api/conversations', async (req: Request, res: Response) => {
+router.get('/api/conversations', validateAppOwnershipFromQuery('appId'), async (req: Request, res: Response) => {
   try {
     const appId = req.query.appId as string;
 
@@ -64,41 +66,19 @@ router.get('/api/conversations', async (req: Request, res: Response) => {
 /**
  * GET /api/conversations/:id/messages
  * Get all messages for a specific conversation with full details
- *
- * Requires appId query parameter to validate ownership
+ * SECURITY: Conversation ownership validation prevents cross-tenant message access
+ * The validateConversationOwnership middleware loads the conversation and validates ownership
  */
-router.get('/api/conversations/:id/messages', async (req: Request, res: Response) => {
+router.get('/api/conversations/:id/messages', validateConversationOwnership(), async (req: Request, res: Response) => {
   try {
-    const conversationId = req.params.id;
-    const appId = req.query.appId as string;
-
-    if (!conversationId) {
-      return res.status(400).json({ error: 'conversationId is required' });
-    }
-
-    if (!appId) {
-      return res.status(400).json({ error: 'appId query parameter is required' });
-    }
+    // Type-safe access to validated conversation data
+    const authReq = req as ConversationRequest;
+    const conversationId = authReq.conversation!.id;
+    const appId = authReq.conversation!.appId;
 
     logger.debug('conversations.messages.begin', { conversationId, appId });
 
     const conversationRepo = new ConversationRepository();
-
-    // Validate conversation exists and belongs to the requesting app
-    const conversation = await conversationRepo.getById(conversationId);
-    if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
-    }
-
-    if (conversation.appId !== appId) {
-      logger.warn('conversations.messages.unauthorized', {
-        conversationId,
-        requestedAppId: appId,
-        actualAppId: conversation.appId
-      });
-      return res.status(403).json({ error: 'Unauthorized access to conversation' });
-    }
-
     const messages = await conversationRepo.getMessages(conversationId);
 
     const formattedMessages = messages.map(message => ({
@@ -139,9 +119,10 @@ router.get('/api/conversations/:id/messages', async (req: Request, res: Response
  * This enables widgets to persist their state changes to conversation history
  * so the final state is preserved across page refreshes.
  *
+ * SECURITY: Ownership validation prevents cross-tenant conversation access
  * Requires appId query parameter to validate ownership
  */
-router.patch('/api/conversations/:id/tools/:toolId', async (req: Request, res: Response) => {
+router.patch('/api/conversations/:id/tools/:toolId', validateAppOwnershipFromQuery('appId'), async (req: Request, res: Response) => {
   try {
     const conversationId = req.params.id;
     const toolId = req.params.toolId;

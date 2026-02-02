@@ -1,11 +1,30 @@
-import { Router, Request, Response } from 'express'
+import { Router, Request, Response, NextFunction } from 'express'
 import { logger, log } from '../../logging/index.js'
 import { buildDebugContext } from '../../utils/context-builder.js'
 import { countTokens } from '../../utils/token-counter.js'
 import { createPromptBuilder } from '@airo/ai-lib'
 import { getModularPromptPaths } from '../../utils/prompt-utils.js'
+import { validateAppOwnership } from '../middleware/app-ownership.js'
 
 const router: Router = Router()
+
+/**
+ * Custom validator that works with :appId parameter name
+ * Temporarily maps appId to id for validateAppOwnership compatibility
+ */
+function validateAppIdParam(req: Request, res: Response, next: NextFunction): void {
+  const originalAppId = req.params.appId;
+  if (originalAppId) {
+    req.params.id = originalAppId;
+  }
+  validateAppOwnership(req, res, () => {
+    // Restore original param name
+    if (originalAppId) {
+      delete req.params.id;
+    }
+    next();
+  });
+}
 
 // Token counting model for debug context analysis
 const TOKEN_COUNTING_MODEL = 'claude-sonnet-4'
@@ -56,7 +75,7 @@ interface ContextDebugResponse {
 /**
  * GET /debug/context/:appId - Debug context building for an app
  */
-router.get('/context/:appId', async (req: Request, res: Response): Promise<void> => {
+router.get('/context/:appId', validateAppIdParam, async (req: Request, res: Response): Promise<void> => {
   try {
     const appId = req.params.appId
     if (!appId) {

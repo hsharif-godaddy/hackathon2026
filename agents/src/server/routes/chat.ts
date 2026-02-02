@@ -1,7 +1,10 @@
-import { Router, IRouter } from 'express';
+import { Router, IRouter, Request, Response, NextFunction } from 'express';
 import { globalTracer } from '../../utils/index.js';
 import { conversationRepository } from '../../database/repositories/index.js';
 import { logger } from '../../logging/index.js';
+import { validateAppOwnershipFromBody, validateConversationOwnership } from '../middleware/app-ownership.js';
+import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
+import { BYPASS_SITE_IDS } from '../../services/features.js';
 
 const router: IRouter = Router();
 const conversationRepo = conversationRepository;
@@ -9,6 +12,37 @@ const conversationRepo = conversationRepository;
 // Helper function to extract error message
 const getErrorMessage = (error: unknown): string => {
   return error instanceof Error ? error.message : String(error);
+};
+
+// SECURITY: Middleware to validate :appId param matches authenticated siteId
+// Similar to validateAppOwnership but for routes using :appId instead of :id
+const validateAppIdParam = (req: Request, res: Response, next: NextFunction): void => {
+  const authReq = req as AuthenticatedRequest;
+  const authenticatedSiteId = authReq.agentContext?.siteId;
+  const requestedAppId = req.params.appId;
+
+  if (!authenticatedSiteId) {
+    res.status(401).json({ error: 'Authentication required', requiresAuth: true });
+    return;
+  }
+
+  if (!requestedAppId) {
+    res.status(400).json({ error: 'appId is required' });
+    return;
+  }
+
+  if (!BYPASS_SITE_IDS.includes(authenticatedSiteId) && authenticatedSiteId !== requestedAppId) {
+    logger.error('route.chat.ownership.denied', {
+      message: 'SECURITY VIOLATION: Cross-tenant conversation access attempt',
+      authenticatedSiteId,
+      requestedAppId,
+      path: req.path
+    }, { tags: ['security', 'authorization-failure', 'cross-tenant-attempt'] });
+    res.status(403).json({ error: 'Access denied' });
+    return;
+  }
+
+  next();
 };
 
 
@@ -45,9 +79,10 @@ router.delete('/traces', (req, res) => {
 /**
  * GET /agent/conversations/:appId - Get conversations for an app with pagination
  * Query params: limit, offset
+ * SECURITY: Ownership validation prevents cross-tenant conversation listing
  */
-router.get('/conversations/:appId', async (req, res) => {
-  const { appId } = req.params;
+router.get('/conversations/:appId', validateAppIdParam, async (req, res) => {
+  const appId = req.params.appId!; // Validated by validateAppIdParam middleware
   const { limit, offset } = req.query;
   
   const limitNum = limit ? parseInt(limit as string, 10) : 1; // Default to 1 for initial load
@@ -102,19 +137,57 @@ router.get('/conversations/:appId', async (req, res) => {
  * GET /agent/conversations/:appId/messages - Get messages from multiple conversations
  * Query params: conversationIds (comma-separated)
  * NOTE: This route must come before /:conversationId to avoid conflicts
+ * SECURITY: Ownership validation prevents cross-tenant message access
  */
-router.get('/conversations/:appId/messages', async (req, res) => {
-  const { appId } = req.params;
+router.get('/conversations/:appId/messages', validateAppIdParam, async (req, res) => {
+  const appId = req.params.appId!; // Validated by validateAppIdParam middleware
   const { conversationIds } = req.query;
-  
+
   if (!conversationIds) {
     return res.status(400).json({ error: 'conversationIds query parameter is required' });
   }
-  
+
   const ids = (conversationIds as string).split(',').map(id => id.trim());
 
   try {
-    
+    // SECURITY: Validate that all requested conversations belong to the authenticated app
+    if (ids.length > 0) {
+      // Fetch all conversations in one query (optimized batch query)
+      const conversations = await conversationRepo.findByIds(ids);
+
+      // Check that all requested IDs were found
+      if (conversations.length !== ids.length) {
+        const foundIds = new Set(conversations.map(c => c.id));
+        const missingIds = ids.filter(id => !foundIds.has(id));
+        logger.warn('chat.messages.conversation-not-found', {
+          appId,
+          requestedIds: ids,
+          foundIds: Array.from(foundIds),
+          missingIds
+        });
+        return res.status(404).json({
+          error: 'One or more conversations not found'
+        });
+      }
+
+      // Check ownership for all conversations
+      const unauthorizedConv = conversations.find(conv => conv.appId !== appId);
+      if (unauthorizedConv) {
+        logger.error('chat.messages.cross-tenant-attempt', {
+          message: 'SECURITY VIOLATION: Attempted to fetch conversation from different app',
+          authenticatedAppId: appId,
+          conversationId: unauthorizedConv.id,
+          conversationAppId: unauthorizedConv.appId,
+          severity: 'HIGH'
+        }, { tags: ['security', 'authorization-failure', 'cross-tenant-attempt'] });
+
+        return res.status(403).json({
+          error: 'Access denied',
+          message: 'Cannot access conversations from different app'
+        });
+      }
+    }
+
     // Get all messages for the specified conversations in a single query
     const allMessages = await conversationRepo.getMessagesBatch(ids);
     
@@ -140,9 +213,10 @@ router.get('/conversations/:appId/messages', async (req, res) => {
 
 /**
  * GET /agent/conversations/:appId/:conversationId - Get conversation with messages
+ * SECURITY: Validates both appId ownership and that conversationId belongs to that app
  */
-router.get('/conversations/:appId/:conversationId', async (req, res) => {
-  const { conversationId } = req.params;
+router.get('/conversations/:appId/:conversationId', validateAppIdParam, validateConversationOwnership('conversationId'), async (req, res) => {
+  const conversationId = req.params.conversationId!; // Validated by validateConversationOwnership middleware
 
   try {
     
@@ -169,8 +243,9 @@ router.get('/conversations/:appId/:conversationId', async (req, res) => {
 
 /**
  * POST /agent/conversations - Create a new conversation
+ * SECURITY: Ownership validation prevents creating conversations for other tenants
  */
-router.post('/conversations', async (req, res) => {
+router.post('/conversations', validateAppOwnershipFromBody('appId'), async (req, res) => {
   const { appId, agentId, title } = req.body;
 
   try {
@@ -194,9 +269,10 @@ router.post('/conversations', async (req, res) => {
 
 /**
  * PUT /agent/conversations/:conversationId/title - Update conversation title
+ * SECURITY: Validates that conversation belongs to authenticated tenant
  */
-router.put('/conversations/:conversationId/title', async (req, res) => {
-  const { conversationId } = req.params;
+router.put('/conversations/:conversationId/title', validateConversationOwnership('conversationId'), async (req, res) => {
+  const conversationId = req.params.conversationId!; // Validated by validateConversationOwnership middleware
   const { title } = req.body;
 
   try {
@@ -219,9 +295,10 @@ router.put('/conversations/:conversationId/title', async (req, res) => {
 
 /**
  * DELETE /agent/conversations/:conversationId - Delete a conversation
+ * SECURITY: Validates that conversation belongs to authenticated tenant
  */
-router.delete('/conversations/:conversationId', async (req, res) => {
-  const { conversationId } = req.params;
+router.delete('/conversations/:conversationId', validateConversationOwnership('conversationId'), async (req, res) => {
+  const conversationId = req.params.conversationId!; // Validated by validateConversationOwnership middleware
 
   try {
     await conversationRepo.delete(conversationId);

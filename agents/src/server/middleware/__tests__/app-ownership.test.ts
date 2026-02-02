@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
-import { validateAppOwnership } from '../app-ownership.js';
+import {
+  validateAppOwnership,
+  validateAppOwnershipFromBody,
+  validateAppOwnershipFromQuery,
+  validateConversationOwnership
+} from '../app-ownership.js';
 import { AuthenticatedRequest } from '../jwt-auth.js';
 import { BYPASS_SITE_IDS } from '../../../services/index.js';
 
@@ -280,6 +285,370 @@ describe('validateAppOwnership middleware', () => {
         message: 'Agent can only access its authenticated site',
       });
       expect(mockNext).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('validateAppOwnershipFromBody middleware', () => {
+  let mockReq: Partial<AuthenticatedRequest>;
+  let mockRes: Partial<Response>;
+  let mockNext: NextFunction;
+  let jsonSpy: any;
+  let statusSpy: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mockReq = {
+      body: {},
+      path: '/files/upload',
+      method: 'POST',
+      agentContext: {
+        siteId: 'authenticated-site',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000),
+      },
+    };
+
+    jsonSpy = vi.fn();
+    statusSpy = vi.fn().mockReturnValue({ json: jsonSpy });
+    mockRes = {
+      status: statusSpy,
+      json: jsonSpy,
+    };
+
+    mockNext = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('Authentication validation', () => {
+    it('should return 401 when agentContext is missing', () => {
+      delete mockReq.agentContext;
+      const middleware = validateAppOwnershipFromBody('appId');
+
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(401);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        error: 'Authentication required',
+        requiresAuth: true,
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Body field validation', () => {
+    it('should return 400 when body field is missing', () => {
+      mockReq.body = {};
+      const middleware = validateAppOwnershipFromBody('appId');
+
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        success: false,
+        error: 'App ID is required',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 when body field is not a string', () => {
+      mockReq.body = { appId: 123 };
+      const middleware = validateAppOwnershipFromBody('appId');
+
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Ownership validation', () => {
+    it('should return 403 when body.appId does not match authenticated siteId', () => {
+      mockReq.body = { appId: 'different-site' };
+      mockReq.agentContext = {
+        siteId: 'authenticated-site',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000),
+      };
+      const middleware = validateAppOwnershipFromBody('appId');
+
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(403);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        success: false,
+        error: 'Access denied',
+        message: 'Agent can only access its authenticated site',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should call next() when body.appId matches authenticated siteId', () => {
+      mockReq.body = { appId: 'authenticated-site' };
+      mockReq.agentContext = {
+        siteId: 'authenticated-site',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000),
+      };
+      const middleware = validateAppOwnershipFromBody('appId');
+
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+      expect(statusSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Custom field names', () => {
+    it('should validate custom field name from body', () => {
+      mockReq.body = { customField: 'authenticated-site' };
+      mockReq.agentContext = {
+        siteId: 'authenticated-site',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000),
+      };
+      const middleware = validateAppOwnershipFromBody('customField');
+
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+      expect(statusSpy).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('validateAppOwnershipFromQuery middleware', () => {
+  let mockReq: Partial<AuthenticatedRequest>;
+  let mockRes: Partial<Response>;
+  let mockNext: NextFunction;
+  let jsonSpy: any;
+  let statusSpy: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mockReq = {
+      query: {},
+      path: '/api/conversations',
+      method: 'GET',
+      agentContext: {
+        siteId: 'authenticated-site',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000),
+      },
+    };
+
+    jsonSpy = vi.fn();
+    statusSpy = vi.fn().mockReturnValue({ json: jsonSpy });
+    mockRes = {
+      status: statusSpy,
+      json: jsonSpy,
+    };
+
+    mockNext = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('Authentication validation', () => {
+    it('should return 401 when agentContext is missing', () => {
+      delete mockReq.agentContext;
+      const middleware = validateAppOwnershipFromQuery('appId');
+
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(401);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        error: 'Authentication required',
+        requiresAuth: true,
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Query parameter validation', () => {
+    it('should return 400 when query parameter is missing', () => {
+      mockReq.query = {};
+      const middleware = validateAppOwnershipFromQuery('appId');
+
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        success: false,
+        error: 'App ID is required',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 when query parameter is not a string', () => {
+      mockReq.query = { appId: ['array', 'value'] };
+      const middleware = validateAppOwnershipFromQuery('appId');
+
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Ownership validation', () => {
+    it('should return 403 when query.appId does not match authenticated siteId', () => {
+      mockReq.query = { appId: 'different-site' };
+      mockReq.agentContext = {
+        siteId: 'authenticated-site',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000),
+      };
+      const middleware = validateAppOwnershipFromQuery('appId');
+
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(403);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        success: false,
+        error: 'Access denied',
+        message: 'Agent can only access its authenticated site',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should call next() when query.appId matches authenticated siteId', () => {
+      mockReq.query = { appId: 'authenticated-site' };
+      mockReq.agentContext = {
+        siteId: 'authenticated-site',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000),
+      };
+      const middleware = validateAppOwnershipFromQuery('appId');
+
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+      expect(statusSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Custom field names', () => {
+    it('should validate custom query parameter name', () => {
+      mockReq.query = { customParam: 'authenticated-site' };
+      mockReq.agentContext = {
+        siteId: 'authenticated-site',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000),
+      };
+      const middleware = validateAppOwnershipFromQuery('customParam');
+
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+      expect(statusSpy).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('validateConversationOwnership middleware', () => {
+  let mockReq: Partial<AuthenticatedRequest>;
+  let mockRes: Partial<Response>;
+  let mockNext: NextFunction;
+  let jsonSpy: any;
+  let statusSpy: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mockReq = {
+      params: {},
+      path: '/api/conversations/conv-123/messages',
+      method: 'GET',
+      agentContext: {
+        siteId: 'authenticated-site',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000),
+      },
+    };
+
+    jsonSpy = vi.fn();
+    statusSpy = vi.fn().mockReturnValue({ json: jsonSpy });
+    mockRes = {
+      status: statusSpy,
+      json: jsonSpy,
+    };
+
+    mockNext = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('Authentication validation', () => {
+    it('should return 401 when agentContext is missing', async () => {
+      delete mockReq.agentContext;
+      const middleware = validateConversationOwnership();
+
+      await middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(401);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        error: 'Authentication required',
+        requiresAuth: true,
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Parameter validation', () => {
+    it('should return 400 when conversationId parameter is missing', async () => {
+      mockReq.params = {};
+      const middleware = validateConversationOwnership();
+
+      await middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith({
+        success: false,
+        error: 'Conversation ID is required',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Conversation loading and validation', () => {
+    it.skip('should return 404 when conversation does not exist', async () => {
+      // TODO: Implement with proper DB mocking infrastructure
+      // This test requires mocking the ConversationRepository which needs
+      // a proper vitest mock setup for ESM modules
+      expect(true).toBe(true);
+    });
+
+    it.skip('should return 403 when conversation belongs to different tenant', async () => {
+      // TODO: Implement with proper DB mocking infrastructure
+      // This test requires mocking the ConversationRepository which needs
+      // a proper vitest mock setup for ESM modules
+      expect(true).toBe(true);
+    });
+
+    it.skip('should call next() and attach conversation when ownership is valid', async () => {
+      // TODO: Implement with proper DB mocking infrastructure
+      // This test requires mocking the ConversationRepository which needs
+      // a proper vitest mock setup for ESM modules
+      expect(true).toBe(true);
+    });
+  });
+
+  describe('Custom parameter names', () => {
+    it.skip('should validate conversation from custom parameter name', async () => {
+      // TODO: Implement with proper DB mocking infrastructure
+      // This test requires mocking the ConversationRepository which needs
+      // a proper vitest mock setup for ESM modules
+      expect(true).toBe(true);
     });
   });
 });

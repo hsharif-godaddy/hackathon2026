@@ -2,11 +2,16 @@ import { Router, Request, Response, IRouter } from 'express';
 import { AppRepository } from '../../database/index.js';
 import { MySQLUtils, isSystemTable } from '../../utils/mysql-utils.js';
 import { Logger, log } from '../../logging/index.js';
+import { validateAppOwnership } from '../middleware/app-ownership.js';
 
 const router: IRouter = Router();
 const appRepo = new AppRepository();
 const mysqlUtils = new MySQLUtils();
 const logger = Logger.create({ service: 'db-routes' });
+
+// SECURITY: Apply ownership validation to all database routes
+// Prevents cross-tenant access to database credentials and data
+router.use('/apps/:id', validateAppOwnership);
 
 /**
  * GET /apps/:id/database/tables - Get database tables for an app

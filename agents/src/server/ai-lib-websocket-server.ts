@@ -13,7 +13,7 @@ import {
   type HistoryProvider,
   type PersistedMessage
 } from '@airo/ai-lib'
-import { auth, AuthType } from '../services/features.js'
+import { auth, AuthType, BYPASS_SITE_IDS } from '../services/features.js'
 import apm from 'elastic-apm-node'
 import { observe, updateActiveObservation } from '@langfuse/tracing'
 
@@ -665,21 +665,64 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           const appRepo = new AppRepository();
           const app = appRepo.findById(appId);
           const appPath = app?.path;
-          
+
           const modelName = getModelOverride() || metadata.modelName || 'sonnet';
           const historyLoader = conversationContextManager.getHistoryLoader();
-          
-          const llmMessages = await historyLoader.loadMessagesWithSummarization(
-            appId,
+
+          // SECURITY: Verify conversation belongs to authenticated appId
+          // This prevents cross-tenant data exfiltration where an attacker sends a valid
+          // appId (their own, which passes context validation) but a conversationId from
+          // another tenant. We must verify the conversation.appId matches the authenticated
+          // metadata.appId before loading any messages.
+          const conversationRepo = new ConversationRepository();
+          const conversation = await conversationRepo.getById(conversationId);
+
+          if (!conversation) {
+            contextLogger.warn('websocket.message.provider.conversation_not_found', {
+              message: 'Conversation not found',
+              conversationId,
+              appId
+            });
+            return [];
+          }
+
+          // CRITICAL: Verify conversation ownership
+          if (conversation.appId !== appId) {
+            logger.error('websocket.message.provider.cross_tenant_attempt', {
+              message: 'SECURITY VIOLATION: Cross-tenant conversation access attempt',
+              authenticatedAppId: appId,
+              requestedConversationId: conversationId,
+              conversationAppId: conversation.appId,
+              severity: 'CRITICAL'
+            }, { tags: ['security', 'authorization-failure', 'cross-tenant-attempt'] });
+            return [];
+          }
+
+          // SECURITY FIX: Load messages for the SPECIFIC conversation, not all app conversations
+          // Previous implementation loaded ALL conversations for the app, causing:
+          // 1. Privacy leak: Users could see other users' messages
+          // 2. Token exhaustion: Merged history exceeded context limits
+          // 3. Authorization bypass: Conversation-level access controls were ignored
+          //
+          // Note: For new conversations or when cross-conversation context is explicitly needed,
+          // use loadMessagesWithSummarization(appId, ...) in a dedicated recovery flow.
+          // Normal message streams MUST be scoped to the active conversation.
+          const llmMessages = await historyLoader.loadMessagesWithTokenLimitByConversationId(
+            conversationId,  // Load ONLY this conversation's messages
             40000,
             modelName,
             true,
-            appPath,
-            true
+            appPath
           );
-          
+
           const formattedMessages = historyLoader.formatMessagesForAISDK(llmMessages, appId, agentName);
-          
+
+          contextLogger.debug('websocket.message.provider.loaded', {
+            message: 'Loaded messages for specific conversation',
+            conversationId,
+            messageCount: formattedMessages.length
+          });
+
           return formattedMessages;
         } catch (error) {
           logger.error('websocket.message.provider.failure', {
@@ -995,10 +1038,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
       },
 
-      // Context extractor to validate appId
+      // Context extractor - basic validation only
       // NOTE: _userMessage is set in processContext() in ai-lib, NOT here
       // because contextExtractor only receives data.context, not data.message
-      contextExtractor: (rawContext: Record<string, unknown>, _socketContext?: any) => {
+      // SECURITY: Tenant isolation is enforced at the onConnection middleware level
+      // where we have access to the socket and JWT claims
+      contextExtractor: (rawContext: Record<string, unknown>) => {
         // Extract appId from context metadata
         const metadata = rawContext.metadata as any
         const appId = metadata?.appId
@@ -1007,10 +1052,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           throw new Error('appId is required in context.metadata.appId')
         }
 
-        // Authentication already validated at WebSocket handshake
+        // Basic context logging
         const contextLogger = log.forApp(appId);
-        contextLogger.debug('websocket.context.validated', {
-          message: 'Context validated - authentication passed at handshake',
+        contextLogger.debug('websocket.context.extracted', {
+          message: 'Context extracted',
+          appId,
           contextKeys: Object.keys(rawContext),
           hasMetadata: !!rawContext.metadata,
           hasAppContext: !!rawContext.appContext,
@@ -1644,9 +1690,24 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Add token refresh handler for this socket
         socket.on('tokenRefresh', async (data) => {
           try {
+            // SECURITY: Store original siteId to prevent tenant switching attacks
+            const originalSiteId = socket.handshake.auth.agentContext?.siteId;
+
+            if (!originalSiteId) {
+              logger.error('websocket.auth.token_refresh.no_original_siteid', {
+                message: 'Token refresh attempted but no original siteId found',
+                socketId: socket.id
+              }, {
+                tags: ['security']
+              });
+              socket.emit('tokenRefreshError', { error: 'Session state invalid - please reconnect' });
+              return;
+            }
+
             logger.info('websocket.auth.token_refresh.requested', {
               message: 'Token refresh requested',
-              siteId: socket.handshake.auth.siteId
+              siteId: originalSiteId,
+              socketId: socket.id
             }, {
               tags: ['security']
             });
@@ -1655,8 +1716,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
             if (!refreshResult.valid) {
               logger.warn('websocket.auth.token_refresh.failed', {
-                message: 'Token refresh failed',
-                reason: refreshResult.reason
+                message: 'Token refresh failed - invalid token',
+                reason: refreshResult.reason,
+                siteId: originalSiteId
               }, {
                 tags: ['security']
               });
@@ -1679,24 +1741,52 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               logger.warn('websocket.auth.token_refresh.ttl_failed', {
                 message: 'Token refresh TTL validation failed',
                 error: refreshTTLValidation.error,
-                tokenTTL: refreshAgentContext.exp - refreshAgentContext.iat
+                tokenTTL: refreshAgentContext.exp - refreshAgentContext.iat,
+                siteId: originalSiteId
+              }, {
+                tags: ['security']
               });
               socket.emit('tokenRefreshError', { error: refreshTTLValidation.error });
               return;
             }
 
-            // Update socket auth data with new token
+            // SECURITY: Verify new token's siteId matches the original authenticated siteId
+            // This prevents an attacker from upgrading their session to a different tenant
+            // by presenting a valid JWT for another customer during token refresh
+            if (refreshAgentContext.siteId !== originalSiteId) {
+              logger.error('websocket.auth.token_refresh.siteid_mismatch', {
+                message: 'SECURITY VIOLATION: Token refresh attempted with different siteId',
+                originalSiteId,
+                newSiteId: refreshAgentContext.siteId,
+                socketId: socket.id,
+                action: 'disconnecting_socket'
+              }, {
+                tags: ['security', 'authorization-failure']
+              });
+              socket.emit('tokenRefreshError', {
+                error: 'Token tenant mismatch - please reconnect with correct credentials'
+              });
+              // Force disconnect to prevent any further abuse of this connection
+              socket.disconnect(true);
+              return;
+            }
+
+            // SECURITY: Preserve existing auth metadata (previousSocketId, etc.)
+            // This maintains session recovery capability and prevents loss of important context
+            const preservedAuth = socket.handshake.auth;
             socket.handshake.auth = {
+              ...preservedAuth,  // Preserve previousSocketId and other metadata
               token: data.newToken,
               decoded: refreshResult.claims,
               agentContext: refreshAgentContext
             };
 
             logger.info('websocket.auth.token_refresh.success', {
-              message: 'Token refreshed successfully',
-              siteId: refreshResult.claims?.siteId,
+              message: 'Token refreshed successfully - siteId verified',
+              siteId: refreshAgentContext.siteId,
               tokenTTL: refreshAgentContext.exp - refreshAgentContext.iat,
-              expiryTime: new Date((refreshResult.claims?.exp || 0) * 1000).toISOString()
+              expiryTime: new Date((refreshResult.claims?.exp || 0) * 1000).toISOString(),
+              preservedMetadata: Object.keys(preservedAuth).filter(k => k !== 'token' && k !== 'decoded' && k !== 'agentContext')
             }, {
               tags: ['security']
             });
@@ -1709,7 +1799,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             logger.error('websocket.auth.token_refresh.error', {
               message: 'Token refresh error',
-              error: errorMessage
+              error: errorMessage,
+              socketId: socket.id
             }, {
               tags: ['security']
             });
@@ -1726,6 +1817,86 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           error: errorMessage
         });
         next(new Error(`Authentication failed: ${errorMessage}`));
+      }
+    });
+
+    // SECURITY: Add message-level tenant isolation validation
+    // This intercepts chat messages and validates that the appId in the message context
+    // matches the authenticated JWT siteId. This prevents cross-tenant data exfiltration
+    // where an attacker with valid credentials for tenant A attempts to access tenant B's
+    // data by sending tenant B's appId in the message.
+    wsServer.getIO().on('connection', (socket: any) => {
+      // Store original chat handler
+      const originalChatHandler = socket._events['chat'];
+      const originalChatMessageHandler = socket._events['chat_message'];
+
+      // Wrap chat handler with tenant validation
+      const createValidatedHandler = (originalHandler: any) => {
+        return async function(this: any, ...args: any[]) {
+          const data = args[0];
+          const authenticatedSiteId = socket.handshake.auth?.agentContext?.siteId;
+          const requestedAppId = data?.context?.metadata?.appId;
+
+          // Skip validation for BYPASS_SITE_IDS (dev/test sites)
+          if (BYPASS_SITE_IDS.includes(authenticatedSiteId)) {
+            // Allow bypass sites to access any appId
+            return originalHandler.apply(this, args);
+          }
+
+          if (!authenticatedSiteId) {
+            logger.error('websocket.message.no_authenticated_siteid', {
+              message: 'SECURITY VIOLATION: No authenticated siteId in socket',
+              socketId: socket.id,
+              hasAgentContext: !!socket.handshake.auth?.agentContext
+            }, { tags: ['security', 'authorization-failure'] });
+            socket.emit('error', {
+              type: 'authorization_error',
+              message: 'Authentication context missing'
+            });
+            return;
+          }
+
+          if (!requestedAppId) {
+            logger.warn('websocket.message.no_app_id', {
+              message: 'No appId in message context',
+              socketId: socket.id
+            });
+            socket.emit('error', {
+              type: 'validation_error',
+              message: 'appId required in message context'
+            });
+            return;
+          }
+
+          // CRITICAL: Verify appId matches authenticated siteId
+          if (requestedAppId !== authenticatedSiteId) {
+            logger.error('websocket.message.cross_tenant_attempt', {
+              message: 'SECURITY VIOLATION: Cross-tenant access attempt via WebSocket message',
+              authenticatedSiteId,
+              requestedAppId,
+              socketId: socket.id,
+              severity: 'CRITICAL'
+            }, { tags: ['security', 'authorization-failure', 'cross-tenant-attempt'] });
+            socket.emit('error', {
+              type: 'authorization_error',
+              message: 'Access denied: appId does not match authenticated tenant'
+            });
+            return;
+          }
+
+          // Validation passed - call original handler
+          return originalHandler.apply(this, args);
+        };
+      };
+
+      // Wrap both chat event handlers
+      if (originalChatHandler) {
+        socket.off('chat', originalChatHandler);
+        socket.on('chat', createValidatedHandler(originalChatHandler));
+      }
+      if (originalChatMessageHandler) {
+        socket.off('chat_message', originalChatMessageHandler);
+        socket.on('chat_message', createValidatedHandler(originalChatMessageHandler));
       }
     });
 

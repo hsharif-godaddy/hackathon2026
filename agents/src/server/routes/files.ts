@@ -1,7 +1,9 @@
-import { Router, Request, Response, IRouter } from 'express'
+import { Router, Request, Response, NextFunction, IRouter } from 'express'
 import multer from 'multer'
 import { fileUploadService } from '../../services/FileUploadService.js'
 import { logger, log } from '../../logging/index.js'
+import { validateAppOwnershipFromBody } from '../middleware/app-ownership.js'
+import type { AuthenticatedRequest } from '../middleware/jwt-auth.js'
 
 const router: IRouter = Router()
 
@@ -13,7 +15,40 @@ const upload = multer({
   }
 })
 
-router.post('/upload', upload.array('files', 5), async (req: Request, res: Response) => {
+// SECURITY: Middleware to validate appId from params for file routes
+// Validates that params.appId matches authenticated siteId
+const validateAppIdParam = (req: Request, res: Response, next: NextFunction): void => {
+  const authReq = req as AuthenticatedRequest;
+  const authenticatedSiteId = authReq.agentContext?.siteId;
+  const requestedAppId = req.params.appId;
+
+  if (!authenticatedSiteId) {
+    res.status(401).json({ error: 'Authentication required', requiresAuth: true });
+    return;
+  }
+
+  if (!requestedAppId) {
+    res.status(400).json({ error: 'appId is required' });
+    return;
+  }
+
+  if (authenticatedSiteId !== requestedAppId) {
+    logger.error('route.files.ownership.denied', {
+      message: 'SECURITY VIOLATION: Cross-tenant file access attempt',
+      authenticatedSiteId,
+      requestedAppId,
+      path: req.path
+    }, { tags: ['security', 'authorization-failure', 'cross-tenant-attempt'] });
+    res.status(403).json({ error: 'Access denied' });
+    return;
+  }
+
+  next();
+};
+
+// SECURITY: Apply ownership validation AFTER multer parses multipart body
+// Multer must run first to populate req.body from multipart/form-data
+router.post('/upload', upload.array('files', 5), validateAppOwnershipFromBody('appId'), async (req: Request, res: Response) => {
   try {
     const { appId } = req.body
 
@@ -74,7 +109,8 @@ router.post('/upload', upload.array('files', 5), async (req: Request, res: Respo
   }
 })
 
-router.get('/:appId/:uploadId', async (req: Request, res: Response) => {
+// SECURITY: Apply ownership validation to get/delete routes (params.appId)
+router.get('/:appId/:uploadId', validateAppIdParam, async (req: Request, res: Response) => {
   try {
     const { appId, uploadId } = req.params
 
@@ -119,7 +155,7 @@ router.get('/:appId/:uploadId', async (req: Request, res: Response) => {
   }
 })
 
-router.delete('/:appId/:uploadId', async (req: Request, res: Response) => {
+router.delete('/:appId/:uploadId', validateAppIdParam, async (req: Request, res: Response) => {
   try {
     const { appId, uploadId } = req.params
 

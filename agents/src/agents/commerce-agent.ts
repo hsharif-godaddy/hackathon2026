@@ -91,7 +91,7 @@ async function buildCommerceSystemPrompt(): Promise<string> {
 /**
  * Create the Commerce Agent configuration
  */
-export async function createCommerceAgent(options?: { appPath?: string }): Promise<AgentConfig> {
+export async function createCommerceAgent(_options?: { appPath?: string }): Promise<AgentConfig> {
   const systemPrompt = await buildCommerceSystemPrompt();
   const { model, modelName } = await getAgentModelWithName('fast'); // Use fast model for simple data retrieval
 

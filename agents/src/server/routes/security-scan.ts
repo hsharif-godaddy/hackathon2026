@@ -24,6 +24,7 @@ import { z } from 'zod';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { logger } from '../../logging/index.js';
+import { validateAppOwnershipFromBody } from '../middleware/app-ownership.js';
 
 const securityScanSchema = z.object({
   appId: z.string(),
@@ -77,7 +78,7 @@ interface EslintFileResult {
 const router: IRouter = Router();
 const appRepo = new AppRepository();
 
-router.post('/security-scan', async (req: Request, res: Response) => {
+router.post('/security-scan', validateAppOwnershipFromBody('appId'), async (req: Request, res: Response) => {
   try {
     const { appId, production } = securityScanSchema.parse(req.body);
 

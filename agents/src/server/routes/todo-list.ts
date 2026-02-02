@@ -1,9 +1,28 @@
-import { Router, type IRouter } from 'express'
+import { Router, type IRouter, Request, Response, NextFunction } from 'express'
 import { CreateItemInput, TodoListRepository } from '../../database/repositories/TodoListRepository.js';
 import { logger } from '../../logging/index.js'
+import { validateAppOwnership } from '../middleware/app-ownership.js';
 
 const router: IRouter = Router()
 const todoListRepo = new TodoListRepository()
+
+/**
+ * Custom validator that works with :appId parameter name
+ * Temporarily maps appId to id for validateAppOwnership compatibility
+ */
+function validateAppIdParam(req: Request, res: Response, next: NextFunction): void {
+  const originalAppId = req.params.appId;
+  if (originalAppId) {
+    req.params.id = originalAppId;
+  }
+  validateAppOwnership(req, res, () => {
+    // Restore original param name
+    if (originalAppId) {
+      delete req.params.id;
+    }
+    next();
+  });
+}
 
 /**
  * Extract error message from unknown error type
@@ -15,7 +34,7 @@ function getErrorMessage(error: unknown): string {
 /**
  * GET /agent/todo-lists/:appId - Get all todo lists for an app
  */
-router.get('/todo-lists/:appId', async (req, res) => {
+router.get('/todo-lists/:appId', validateAppIdParam, async (req, res) => {
   const { appId } = req.params
 
   try {
@@ -41,7 +60,7 @@ router.get('/todo-lists/:appId', async (req, res) => {
  *
  * Body: { name: string; description?: string; items?: CreateItemInput[] }
  */
-router.post('/todo-lists/:appId', async (req, res) => {
+router.post('/todo-lists/:appId', validateAppIdParam, async (req, res) => {
   const { appId } = req.params
   const { name, description, items }: { name: string; description?: string; items?: CreateItemInput[] }  = req.body
 
@@ -78,7 +97,7 @@ router.post('/todo-lists/:appId', async (req, res) => {
  *
  * Returns the most recently updated list for the app, or null if no lists exist.
  */
-router.get('/todo-lists/:appId/current', async (req, res) => {
+router.get('/todo-lists/:appId/current', validateAppIdParam, async (req, res) => {
   const { appId } = req.params
 
   try {
@@ -122,7 +141,7 @@ router.get('/todo-lists/:appId/current', async (req, res) => {
  * The "current" list is determined by the most recently updated list,
  * so we update the list's timestamp to make it current.
  */
-router.post('/todo-lists/:appId/current', async (req, res) => {
+router.post('/todo-lists/:appId/current', validateAppIdParam, async (req, res) => {
   const { appId } = req.params
   const { listId } = req.body
 

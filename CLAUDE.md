@@ -112,14 +112,12 @@ cd dev-supervisor && golangci-lint run
 
 ### Core Services
 
-| Service             | Package        | Port | Purpose                                                             |
-| ------------------- | -------------- | ---- | ------------------------------------------------------------------- |
-| **agents/**         | `@airo/agents` | 4000 | Express API, agent registry, app lifecycle, SQLite, WebSocket       |
-| **app/**            | `website`      | 3000 | Next.js builder UI, Monaco, chat, MySQL/Prisma, GoDaddy SSO, UXCore |
-| **proxy/**          | `airo-proxy`   | N/A  | Getty Images API proxy with SSO authentication                      |
-| **dev-supervisor/** | Go project     | N/A  | Go-based process supervisor with HTTP proxy, TLS, PID1 management   |
-
-**dev-supervisor:** Standalone Go project - see [dev-supervisor/CLAUDE.md](dev-supervisor/CLAUDE.md) for Go-specific guidelines.
+| Service             | Package        | Port | Purpose                                                                                                                      |
+| ------------------- | -------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------- |
+| **agents/**         | `@airo/agents` | 4000 | Express API, agent registry, app lifecycle, SQLite, WebSocket - see [agents/CLAUDE.md](agents/CLAUDE.md)                     |
+| **app/**            | `website`      | 3000 | Next.js builder UI, Monaco, chat, MySQL/Prisma, GoDaddy SSO, UXCore                                                          |
+| **proxy/**          | `airo-proxy`   | N/A  | Getty Images API proxy with SSO authentication                                                                               |
+| **dev-supervisor/** | Go project     | N/A  | Go-based process supervisor with HTTP proxy, TLS, PID1 management - see [dev-supervisor/CLAUDE.md](dev-supervisor/CLAUDE.md) |
 
 _Additional services:_ `website/` (marketing), `app-templates/` (v8 template), `packages/ai-lib/` (shared AI utils), `packages/design-extractor/` (PDF RAG), `setup/` (config utility), `e2e/` (E2E tests)
 
@@ -151,40 +149,6 @@ _Additional services:_ `website/` (marketing), `app-templates/` (v8 template), `
 
 - Async setup with auto recovery and cleanup
 - **DO NOT edit** `/tmp/apps/{appId}/app/` (generated output)
-
-### AI Agent System
-
-**Registry & Base:**
-
-- Base class: `agents/src/base/base-agent.ts`
-- Registry: `agents/src/registry/agent-registry.ts`
-- Factory: `agents/src/agents/ai-lib-agents/index.ts`
-- Prompts: `agents/src/prompts/`
-
-**Available Agents:** InitialAgent, DevelopAgent, DesignAgent, ColorSchemeAgent, MarketingAgent, CommerceAgent, ExampleAgent
-_Explore `agents/src/agents/` directory for implementations_
-
-**Feature Flags:**
-
-- Configuration: `agents/src/services/features.ts`
-- Key flags: `ENABLE_COMMERCE_AGENT`, `ENABLE_SOCIAL`
-- Usage: `agents.isEnabled("commerce")` / `agents.isEnabled("social")`
-
-### Tools
-
-**Location:** `agents/src/tools/`
-
-**Categories:**
-
-- File operations: file-edit, read-file, directory-listing
-- Development: git-tool, terminal, grep-tool
-- Code manipulation: ast-style-editor, ast-text-editor, ast-editor-base
-- Infrastructure: server-management-tool, mysql-tool, secrets-management-tool, view-logs-tool
-- AI: memory-tool, rag-tool, skill-loader-tool
-- Media: media-search-tool (Getty/DALL-E integration)
-- Specialized: commerce-product-tool, website-scraper-tool, app-plan-tool, css-color-tool, todo-list-tool, icons-validator
-
-_Explore the tools directory for complete list and implementations_
 
 ### WebSocket Architecture
 
@@ -277,20 +241,18 @@ When you pull code with Prisma schema updates, you MUST run both:
 
 **Configuration files:**
 
-- Agents: `agents/.env.example`
+- Agents: `agents/.env.example` - see [agents/CLAUDE.md](agents/CLAUDE.md) for details
 - App: `app/.env.example`
-
-**Key variables:**
-
-- AI: `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL`
-- Database: `MYSQL_ROOT_*` (agents), `DATABASE_URL` (app)
-- Logging: `LOG_LEVEL`, `LOG_DOMAINS`, `LOG_DISABLED_DOMAINS`
-- Features: `ENABLE_COMMERCE_AGENT`, `ENABLE_SOCIAL`
-- Media: `GETTY_API_URL`, `GETTY_TOKEN`, `IMAGE_SEARCH_DRIVER`
 
 **Setup:** Use `./setup.sh` or `pnpm --filter airo-setup start` - don't create manually
 
-_See `.env.example` files and `agents/src/services/features.ts` for complete configuration options_
+**Key variables:**
+
+- AI: `OPENAI_API_KEY`, `OPENAI_MODEL`
+- Database: `DATABASE_URL` (app MySQL)
+- Logging: `LOG_LEVEL`, `LOG_DOMAINS`
+
+_See individual `.env.example` files for complete options_
 
 ## Logging Standards
 
@@ -324,11 +286,6 @@ logger.error("conversation.load.failure", {
   error: getErrorMessage(error),
 });
 ```
-
-**Event Categories:** `agents/src/logging/events/index.ts`
-
-- appCreationEvents, appServerEvents, appDockerEvents, conversationHistoryEvents,
-- webSocketConnectionEvents, toolGitEvents, toolFileEditEvents, llmEvents, and more
 
 **Control:**
 
@@ -400,6 +357,7 @@ Context auto-compacts at limits. Complete tasks fully regardless of budget. Save
 - Logging: `LOGGING-GUIDE.md`
 - Local setup: `app/LOCAL_SETUP.md`
 - Mock auth: `app/MOCK-AUTH-SETUP.md`
+- **Agents security:** `agents/CLAUDE.md` - Authorization patterns and route protection
 
 ## Pull Request Guidelines
 

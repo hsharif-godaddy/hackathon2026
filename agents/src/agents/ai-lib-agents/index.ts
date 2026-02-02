@@ -18,7 +18,6 @@ import {
   createMarketingAgent,
   createInitialAgent,
   createCommerceAgent,
-  createExampleAgent,
   DevelopAgent,
   MarketingAgent,
   CommerceAgent,
@@ -80,7 +79,9 @@ export async function createUnifiedAgentFactory(options?: {
     stateManager
   })
 
-  const endConversationTool = createEndConversationTool({
+  // End conversation tool created but not currently used in agent configs
+  // Kept for future handoff completion functionality
+  createEndConversationTool({
     stateManager,
     defaultAgentId: 'develop'
   })
@@ -151,12 +152,12 @@ export const aiLibAgentFactories = {
     await agent.initialize()
     return agent.getAgent()
   },
-  commerce: async (context?: EnhancedAgentContext) => {
+  commerce: async (_context?: EnhancedAgentContext) => {
     const agent = new CommerceAgent()
     await agent.initialize()
     return agent.getAgent()
   },
-  example: async (context?: EnhancedAgentContext) => {
+  example: async (_context?: EnhancedAgentContext) => {
     const agent = new ExampleAgent()
     await agent.initialize()
     return agent.getAgent()

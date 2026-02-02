@@ -25,10 +25,11 @@ const importLogger = Logger.create({ service: 'import-routes' });
 
 /**
  * Get commit history for an app
+ * SECURITY: Ownership validation prevents cross-tenant git history access
  */
-router.get('/apps/:id/git/history', async (req, res) => {
+router.get('/apps/:id/git/history', validateAppOwnership, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id!; // Validated by validateAppOwnership middleware
     const { count = 30 } = req.query;
     const contextLogger = log.forApp(id);
 
@@ -82,7 +83,7 @@ router.get('/apps/:id/git/history', async (req, res) => {
       currentCommit: currentCommit
     });
   } catch (error) {
-    const contextLogger = log.forApp(req.params.id);
+    const contextLogger = log.forApp(req.params.id!);
     log.error(contextLogger, 'route.git.history.error', error as Error, {});
     return res.status(500).json({
       error: 'Failed to get commit history',
@@ -94,10 +95,11 @@ router.get('/apps/:id/git/history', async (req, res) => {
 /**
  * Checkout a specific commit for viewing purposes
  * Note: Any changes should be made on the main branch, not in detached HEAD state
+ * SECURITY: Ownership validation prevents cross-tenant git checkout operations
  */
-router.post('/apps/:id/git/checkout', async (req, res) => {
+router.post('/apps/:id/git/checkout', validateAppOwnership, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id!; // Validated by validateAppOwnership middleware
     const { commitHash } = req.body;
     const contextLogger = log.forApp(id);
 
@@ -220,7 +222,7 @@ router.post('/apps/:id/git/checkout', async (req, res) => {
       isDetachedHead: true
     });
   } catch (error) {
-    const contextLogger = log.forApp(req.params.id);
+    const contextLogger = log.forApp(req.params.id!);
     log.error(contextLogger, 'route.git.checkout.error', error as Error, {});
     return res.status(500).json({
       error: 'Failed to checkout commit',
@@ -232,10 +234,11 @@ router.post('/apps/:id/git/checkout', async (req, res) => {
 /**
  * Return to the main branch (or specified branch) to ensure changes are made on HEAD
  * This is critical for preventing detached HEAD state issues
+ * SECURITY: Ownership validation prevents cross-tenant git operations
  */
-router.post('/apps/:id/git/return', async (req, res) => {
+router.post('/apps/:id/git/return', validateAppOwnership, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id!; // Validated by validateAppOwnership middleware
     const { branch = 'main' } = req.body;
     const contextLogger = log.forApp(id);
 
@@ -296,7 +299,7 @@ router.post('/apps/:id/git/return', async (req, res) => {
       previousState: statusResult.success ? statusResult.currentBranch : 'unknown'
     });
   } catch (error) {
-    const contextLogger = log.forApp(req.params.id);
+    const contextLogger = log.forApp(req.params.id!);
     log.error(contextLogger, 'route.git.return-to-branch.error', error as Error, {});
     return res.status(500).json({
       error: 'Failed to return to branch',
@@ -308,10 +311,11 @@ router.post('/apps/:id/git/return', async (req, res) => {
 /**
  * Restore files from a specific commit
  * Implements git restore functionality with auto-commit
+ * SECURITY: Ownership validation prevents cross-tenant git restore operations
  */
-router.post('/apps/:id/git/restore', async (req, res) => {
+router.post('/apps/:id/git/restore', validateAppOwnership, async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id!; // Validated by validateAppOwnership middleware
     const { commitHash } = req.body;
     const contextLogger = log.forApp(id);
 
@@ -370,7 +374,7 @@ router.post('/apps/:id/git/restore', async (req, res) => {
       previousState: statusResult.success ? statusResult.currentBranch : 'unknown'
     });
   } catch (error) {
-    const contextLogger = log.forApp(req.params.id);
+    const contextLogger = log.forApp(req.params.id!);
     log.error(contextLogger, 'route.git.restore-files.error', error as Error, {});
     return res.status(500).json({
       error: 'Failed to restore files from commit',
@@ -417,7 +421,7 @@ router.post(
   validateAppOwnership,
   validateGitImport,
   async (req: Request, res: Response) => {
-    const { id: appId } = req.params;
+    const appId = req.params.id!; // Validated by validateAppOwnership middleware
 
     try {
       if (!appId) {
@@ -503,7 +507,7 @@ async function handleGitImport(_req: Request, res: Response, appId: string): Pro
  */
 router.get('/apps/:id/git/replace/status', requireZipImportFeature, validateAppOwnership, async (req: Request, res: Response) => {
   try {
-    const { id: appId } = req.params;
+    const appId = req.params.id!; // Validated by validateAppOwnership middleware
 
     if (!appId) {
       return res.status(400).json({
