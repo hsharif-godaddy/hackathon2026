@@ -68,6 +68,7 @@ interface FeatureConfig {
   // Widget/Feature enablement configuration
   enabledFeatures: {
     sessionFeedback: boolean
+    imageAnalysisEnabled: boolean
   }
 }
 
@@ -205,7 +206,8 @@ function parseEnvironmentFeatures(): FeatureConfig {
 
     // Widget/Feature enablement configuration
     enabledFeatures: {
-      sessionFeedback: process.env.ENABLE_SESSION_FEEDBACK === 'true'
+      sessionFeedback: process.env.ENABLE_SESSION_FEEDBACK === 'true',
+      imageAnalysisEnabled: process.env.IMAGE_ANALYSIS_ENABLED !== 'false'
     }
   }
 }

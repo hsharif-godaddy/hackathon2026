@@ -13,9 +13,17 @@ import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 
+interface ImageAnalysis {
+  description: string
+  composition: string
+  usageContext: string
+}
+
 interface ImageResult {
   prompt: string
   url: string
+  analysis?: ImageAnalysis | null
+  relevanceScore?: number | null
 }
 
 interface VideoResult {
@@ -81,14 +89,25 @@ export default function MediaSearchToolRenderer({
       }
 
       if (parsedResult && (mediaType === 'image' || mediaType === 'generate')) {
+        const prompt = typeof parsedResult.prompt === 'string' ? parsedResult.prompt : 'Image'
+
+        // Handle images array with full analysis data (from ImageAnalysisService)
+        if (parsedResult.images && Array.isArray(parsedResult.images)) {
+          parsedResult.images.forEach((img: any) => {
+            images.push({
+              prompt,
+              url: img.url,
+              analysis: img.analysis || null,
+              relevanceScore: img.relevanceScore ?? null
+            })
+          })
+        }
         // Handle single image result (search or generation)
-        if (parsedResult.url) {
-          const prompt = typeof parsedResult.prompt === 'string' ? parsedResult.prompt : 'Image'
+        else if (parsedResult.url) {
           images.push({ prompt, url: parsedResult.url })
         }
-        // Handle multiple URLs for single prompt
+        // Handle multiple URLs for single prompt (legacy format)
         else if (parsedResult.urls && Array.isArray(parsedResult.urls)) {
-          const prompt = typeof parsedResult.prompt === 'string' ? parsedResult.prompt : 'Image'
           parsedResult.urls.forEach((url: string) => {
             images.push({ prompt, url })
           })
@@ -288,6 +307,11 @@ export default function MediaSearchToolRenderer({
                     <div className="text-sm font-semibold italic mb-1 text-foreground/70">
                       {images[selectedImageIndex]?.prompt}
                     </div>
+                    {images[selectedImageIndex]?.analysis?.description && (
+                      <div className="text-sm text-foreground/60 mb-2 max-w-2xl text-center">
+                        {images[selectedImageIndex].analysis.description}
+                      </div>
+                    )}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={ensureHttps(images[selectedImageIndex]?.url)}
