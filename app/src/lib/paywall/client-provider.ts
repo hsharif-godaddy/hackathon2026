@@ -121,12 +121,12 @@ export class ClientPaywallProvider implements PaywallDataProvider {
   /**
    * Get account-level subscription (app-agnostic)
    *
-   * Calls /api/subscription to get the user's subscription.
+   * Calls /api/subscriptions to get the user's subscription.
    *
    * @returns Promise with account subscription data
    */
   async getAccountSubscription(): Promise<AccountSubscription | undefined> {
-    const response = await appFetch('/api/subscription', {
+    const response = await appFetch('/api/subscriptions', {
       credentials: 'include',
     });
 
@@ -135,7 +135,7 @@ export class ClientPaywallProvider implements PaywallDataProvider {
     }
 
     const data = await response.json();
-    return data?.data?.subscription;
+    return data?.data?.active;
   }
 
   /**

@@ -29,12 +29,6 @@ export const useUpdateEntitlement = () => {
         throw new Error('subscriptionId and entitlementId are required');
       }
 
-      logger.info('update-entitlement.mutation.start', {
-        subscriptionId,
-        entitlementId,
-        ...(appId && { appId })
-      });
-
       const url = `/api/entitlements/${encodeURIComponent(subscriptionId)}/update`;
 
       const response = await fetch(url, {
@@ -60,11 +54,6 @@ export const useUpdateEntitlement = () => {
       }
 
       if (data.success && data.data) {
-        logger.info('update-entitlement.mutation.success', {
-          subscriptionId,
-          entitlementId,
-          newEntitlementId: data.data.entitlementId
-        });
         return {
           success: true,
           message: data.message,
@@ -80,16 +69,13 @@ export const useUpdateEntitlement = () => {
         throw new Error(errorMessage);
       }
     },
-    onSuccess: (result, variables) => {
-      logger.info('update-entitlement.mutation.completed', {
-        subscriptionId: variables.subscriptionId,
-        entitlementId: variables.entitlementId,
-        success: result.success
-      });
-
+    onSuccess: () => {
       // Invalidate related queries that might be affected by the entitlement update
       queryClient.invalidateQueries({
-        queryKey: ['subscription']
+        queryKey: ['subscriptions']
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['active-subscription']
       });
       queryClient.invalidateQueries({
         queryKey: ['entitlements-by-subscription']

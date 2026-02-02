@@ -56,7 +56,8 @@ const SinglePlanUpgradeContainer = ({
     shipAnalyticsLog('airoplus.purchase.in-app', { source })
 
     // Invalidate paywall-related queries so UI updates with new subscription status
-    queryClient.invalidateQueries({ queryKey: ['subscription'] })
+    queryClient.invalidateQueries({ queryKey: ['subscriptions'] })
+    queryClient.invalidateQueries({ queryKey: ['active-subscription'] })
     queryClient.invalidateQueries({ queryKey: ['paywall-feature-flags'] })
     queryClient.invalidateQueries({ queryKey: ['entitlements'] })
     queryClient.invalidateQueries({ queryKey: ['projects'] })

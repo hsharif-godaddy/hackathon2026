@@ -16,13 +16,13 @@ import {
   PlanCreditCard,
 } from '@/app/manage-plan/components';
 import { ProtectedRoute } from '@/components/auth';
-import { useActiveSubscription } from '@/hooks/useActiveSubscription';
 import { useCreditGrants } from '@/hooks/useCreditGrants';
 import { useGasketData } from '@/hooks/useGasketData';
+import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
-import type { CreditGrant, Subscription } from '@/types/credits';
+import type { CreditGrant } from '@/types/credits';
 import { SubscriptionPlan } from '@/types/credits';
 import {
   formatFullCreditDate,
@@ -30,19 +30,10 @@ import {
   getCreditPackGrants,
   getMonthlyPlanGrant,
   getPlanDisplayLabelKey,
+  getPlanFromSubscription,
 } from '@/utils/credits';
 import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation';
-
-/**
- * Mock subscription data
- */
-// const DEFAULT_SUBSCRIPTION = {
-//   builderEntitlementId: '55aa4158-c62e-11f0-7c68-d205a6ffb798',
-//   plan: SubscriptionPlan.Free,
-//   updatedAt: new Date().toISOString(),
-//   renewsAt: null,
-// };
 
 function ManagePlanContent() {
   const t = useTranslations();
@@ -66,51 +57,18 @@ function ManagePlanContent() {
   }, []);
 
   const {
-    data: subscriptionData,
+    data: subscription,
     isLoading: isSubscriptionLoading,
     isError: isSubscriptionError,
-  } = useActiveSubscription();
+  } = useSubscription();
 
   const {
     data: grantsData,
     isLoading: isGrantsLoading,
     isError: isGrantsError,
   } = useCreditGrants({
-    subscriptionId: subscriptionData?.id,
+    subscriptionId: subscription?.id,
   });
-
-  // TODO: clean up this merge API data with defaults (spread mock data into response)
-  const subscription: Subscription = {
-    // ...DEFAULT_SUBSCRIPTION,
-    ...subscriptionData,
-  };
-  const grants: CreditGrant[] = grantsData || [];
-
-  const monthlyGrant = getMonthlyPlanGrant(grants);
-  const creditPacks = getCreditPackGrants(grants);
-  const activeGrant = getActiveGrant(grants);
-
-  const planLabelKey = getPlanDisplayLabelKey(subscription.plan);
-  const planDisplayLabel = planLabelKey ? t(planLabelKey) : '';
-  const isFreePlan = subscription.plan === SubscriptionPlan.Free;
-  const hasCreditsNoPlan = creditPacks.length > 0 && isFreePlan;
-  const paywallSourceId = paywallSource ?? 'manage_plan';
-
-  // Calculate reset date from monthly grant useBefore or subscription renewsAt
-  const resetDate = monthlyGrant
-    ? formatFullCreditDate(monthlyGrant.useBefore, locale)
-    : subscription.renewsAt
-      ? formatFullCreditDate(subscription.renewsAt, locale)
-      : null;
-
-  // Calculate reset time from monthly grant created time
-  const resetTime = monthlyGrant
-    ? new Date(monthlyGrant.createdAt).toLocaleTimeString(locale, {
-        hour: 'numeric',
-        minute: '2-digit',
-        timeZoneName: 'short',
-      })
-    : null;
 
   if (isSubscriptionLoading || isGrantsLoading) {
     return (
@@ -129,6 +87,35 @@ function ManagePlanContent() {
       </PageLayout>
     );
   }
+
+  const grants: CreditGrant[] = grantsData || [];
+
+  const monthlyGrant = getMonthlyPlanGrant(grants);
+  const creditPacks = getCreditPackGrants(grants);
+  const activeGrant = getActiveGrant(grants);
+
+  const currentPlan = getPlanFromSubscription(subscription);
+  const planLabelKey = getPlanDisplayLabelKey(currentPlan);
+  const planDisplayLabel = planLabelKey ? t(planLabelKey) : '';
+  const isFreePlan = currentPlan === SubscriptionPlan.Free;
+  const hasCreditsNoPlan = creditPacks.length > 0 && isFreePlan;
+  const paywallSourceId = paywallSource ?? 'manage_plan';
+
+  // Calculate reset date from monthly grant useBefore or subscription renewsAt
+  const resetDate = monthlyGrant
+    ? formatFullCreditDate(monthlyGrant.useBefore, locale)
+    : subscription.renewsAt
+      ? formatFullCreditDate(subscription.renewsAt, locale)
+      : null;
+
+  // Calculate reset time from monthly grant created time
+  const resetTime = monthlyGrant
+    ? new Date(monthlyGrant.createdAt).toLocaleTimeString(locale, {
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZoneName: 'short',
+      })
+    : null;
 
   return (
     <>
@@ -222,7 +209,7 @@ function ManagePlanContent() {
 
               <CreditPacksCard
                 creditPacks={creditPacks}
-                subscriptionPlan={subscription.plan}
+                subscriptionPlan={currentPlan}
                 activeGrantId={activeGrant?.id}
                 locale={locale}
                 onOpenPaywall={openPaywall}

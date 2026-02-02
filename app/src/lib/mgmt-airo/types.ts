@@ -653,3 +653,62 @@ export interface AiroTokenBudgetResponse {
     maxBudget: number;
   };
 }
+
+/**
+ * Create builder plan request payload
+ */
+export interface AiroCreateBuilderPlanPayload {
+  plan?: SubscriptionPlan;
+}
+
+/**
+ * Create builder plan response
+ */
+export interface AiroCreateBuilderPlanResponse {
+  subscriptionId: string;
+  plan: SubscriptionPlan;
+  builderEntitlementId: string;
+  message?: string;
+}
+
+/**
+ * Grant type enum from the control plane API
+ */
+export enum AiroGrantType {
+  PlanMonthly = 'plan-monthly',
+  CreditPack = 'credit-pack',
+}
+
+/**
+ * Final state of a grant
+ */
+export enum AiroGrantFinalState {
+  Consumed = 'consumed',
+  Expired = 'expired',
+}
+
+/**
+ * Credit grant from the control plane API
+ */
+export interface AiroCreditGrant {
+  id: string;
+  subscriptionId: string;
+  type: AiroGrantType;
+  llmBudgetUserId: string;
+  llmBudgetId: string;
+  creditsMax: number;
+  creditsSpent: number;
+  isAvailable: boolean;
+  finalState: AiroGrantFinalState | null;
+  useBefore: string;
+  consumedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Get credit grants response from mgmt-airo
+ */
+export interface AiroGetCreditGrantsResponse {
+  grants: AiroCreditGrant[];
+}

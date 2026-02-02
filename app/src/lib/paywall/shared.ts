@@ -5,6 +5,10 @@
  * used by both client-side and server-side paywall implementations.
  */
 
+import type { AiroSubscription } from '@/lib/mgmt-airo';
+import { SubscriptionPlan } from '@/types/credits';
+import { getPlanFromSubscription } from '@/utils/credits';
+
 /**
  * Paywall feature flag and configuration constants
  */
@@ -76,6 +80,68 @@ export interface ProjectEdge {
       plan: string;
     };
   };
+}
+
+/**
+ * Valid subscription plans configuration
+ */
+export const SUBSCRIPTION_PLAN_CONFIG = {
+  /**
+   * Valid plans when new paid plans feature is enabled (appbuilder-manage-plan flag)
+   * Includes free, starter, and airoPlus plans
+   */
+  NEW_VALID_PLANS: [SubscriptionPlan.Free, SubscriptionPlan.Starter, SubscriptionPlan.AiroPlus] as const,
+
+  /**
+   * Valid plans when new paid plans feature is disabled (legacy behavior)
+   * Only includes airoPlus plan
+   */
+  LEGACY_VALID_PLANS: [SubscriptionPlan.AiroPlus] as const,
+} as const;
+
+/**
+ * Plan priority ranking for selecting the best subscription
+ *
+ * Higher numbers indicate higher priority plans. Used when a user has
+ * multiple subscriptions to determine which one to use.
+ *
+ * Priority order: Starter > AiroPlus > Free > None
+ */
+export const PLAN_PRIORITY: Record<SubscriptionPlan, number> = {
+  [SubscriptionPlan.Starter]: 4,
+  [SubscriptionPlan.AiroPlus]: 3,
+  [SubscriptionPlan.Free]: 2,
+  [SubscriptionPlan.None]: 1,
+};
+
+/**
+ * Check if a subscription has a valid builder plan
+ *
+ * Uses the explicit plan field if set, otherwise derives the plan from
+ * productId/isTrial for legacy subscriptions.
+ *
+ * @param subscription - Subscription object with optional plan property
+ * @param validPlans - Array of valid plans to check against
+ * @returns True if subscription has a valid plan
+ */
+export function hasValidPlan(
+  subscription: AiroSubscription,
+  validPlans: readonly SubscriptionPlan[],
+): boolean {
+  const plan = subscription.plan ?? getPlanFromSubscription(subscription) ?? SubscriptionPlan.None;
+  return (validPlans as readonly SubscriptionPlan[]).includes(plan);
+}
+
+/**
+ * Get the appropriate valid plans based on feature flag state
+ *
+ * @param isManagePlanEnabled - Whether the appbuilder-manage-plan flag is enabled
+ * @returns Array of valid subscription plans
+ */
+export function getValidPlans(isManagePlanEnabled: boolean): readonly SubscriptionPlan[] {
+  return isManagePlanEnabled
+    ? SUBSCRIPTION_PLAN_CONFIG.NEW_VALID_PLANS
+    : SUBSCRIPTION_PLAN_CONFIG.LEGACY_VALID_PLANS;
 }
 
 /**

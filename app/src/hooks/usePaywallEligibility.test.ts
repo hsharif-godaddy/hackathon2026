@@ -54,8 +54,11 @@ describe('usePaywallEligibility', function hook() {
 
     vi.mocked(useSubscription).mockReturnValue({
       data: { id: 'sub-123', plan: SubscriptionPlan.Free, status: 'active' },
+      subscriptions: [{ id: 'sub-123', plan: SubscriptionPlan.Free, status: 'active' }],
       isLoading: false,
       isError: false,
+      error: null,
+      refetch: vi.fn(),
     } as any);
 
     vi.mocked(useEntitlements).mockReturnValue({
@@ -88,8 +91,11 @@ describe('usePaywallEligibility', function hook() {
     it('should not show paywall for active AiroPlus plan', function airoPlus() {
       vi.mocked(useSubscription).mockReturnValue({
         data: { id: 'sub-plus', plan: SubscriptionPlan.AiroPlus, status: 'active' },
+        subscriptions: [{ id: 'sub-plus', plan: SubscriptionPlan.AiroPlus, status: 'active' }],
         isLoading: false,
         isError: false,
+        error: null,
+        refetch: vi.fn(),
       } as any);
 
       const { result } = renderHookWithProviders(() => usePaywallEligibility());
@@ -100,8 +106,11 @@ describe('usePaywallEligibility', function hook() {
     it('should not show paywall for active Starter plan', function starter() {
       vi.mocked(useSubscription).mockReturnValue({
         data: { id: 'sub-starter', plan: SubscriptionPlan.Starter, status: 'active' },
+        subscriptions: [{ id: 'sub-starter', plan: SubscriptionPlan.Starter, status: 'active' }],
         isLoading: false,
         isError: false,
+        error: null,
+        refetch: vi.fn(),
       } as any);
 
       const { result } = renderHookWithProviders(() => usePaywallEligibility());
@@ -112,8 +121,11 @@ describe('usePaywallEligibility', function hook() {
     it('should show paywall for inactive AiroPlus plan', function inactiveAiroPlus() {
       vi.mocked(useSubscription).mockReturnValue({
         data: { id: 'sub-plus', plan: SubscriptionPlan.AiroPlus, status: 'cancelled' },
+        subscriptions: [{ id: 'sub-plus', plan: SubscriptionPlan.AiroPlus, status: 'cancelled' }],
         isLoading: false,
         isError: false,
+        error: null,
+        refetch: vi.fn(),
       } as any);
 
       const { result } = renderHookWithProviders(() => usePaywallEligibility());
@@ -124,8 +136,11 @@ describe('usePaywallEligibility', function hook() {
     it('should show paywall for Free plan without entitlements', function freePlan() {
       vi.mocked(useSubscription).mockReturnValue({
         data: { id: 'sub-free', plan: SubscriptionPlan.Free, status: 'active' },
+        subscriptions: [{ id: 'sub-free', plan: SubscriptionPlan.Free, status: 'active' }],
         isLoading: false,
         isError: false,
+        error: null,
+        refetch: vi.fn(),
       } as any);
 
       const { result } = renderHookWithProviders(() => usePaywallEligibility());
@@ -138,8 +153,11 @@ describe('usePaywallEligibility', function hook() {
     it('should not show paywall when user has entitlements', function hasEntitlements() {
       vi.mocked(useSubscription).mockReturnValue({
         data: { id: 'sub-free', plan: SubscriptionPlan.Free, status: 'active' },
+        subscriptions: [{ id: 'sub-free', plan: SubscriptionPlan.Free, status: 'active' }],
         isLoading: false,
         isError: false,
+        error: null,
+        refetch: vi.fn(),
       } as any);
 
       vi.mocked(useEntitlements).mockReturnValue({
@@ -156,8 +174,11 @@ describe('usePaywallEligibility', function hook() {
     it('should not show paywall when user has matching Airo Plus project', function matchingProject() {
       vi.mocked(useSubscription).mockReturnValue({
         data: { id: 'sub-free', plan: SubscriptionPlan.Free, status: 'active' },
+        subscriptions: [{ id: 'sub-free', plan: SubscriptionPlan.Free, status: 'active' }],
         isLoading: false,
         isError: false,
+        error: null,
+        refetch: vi.fn(),
       } as any);
 
       vi.mocked(useProjects).mockReturnValue({
@@ -199,8 +220,11 @@ describe('usePaywallEligibility', function hook() {
     it('should show loading when subscription is loading', function subscriptionLoading() {
       vi.mocked(useSubscription).mockReturnValue({
         data: undefined,
+        subscriptions: [],
         isLoading: true,
         isError: false,
+        error: null,
+        refetch: vi.fn(),
       } as any);
 
       const { result } = renderHookWithProviders(() => usePaywallEligibility());
@@ -226,8 +250,11 @@ describe('usePaywallEligibility', function hook() {
     it('should show paywall when subscription has error', function subscriptionError() {
       vi.mocked(useSubscription).mockReturnValue({
         data: undefined,
+        subscriptions: [],
         isLoading: false,
         isError: true,
+        error: new Error('Subscription fetch failed'),
+        refetch: vi.fn(),
       } as any);
 
       const { result } = renderHookWithProviders(() => usePaywallEligibility());

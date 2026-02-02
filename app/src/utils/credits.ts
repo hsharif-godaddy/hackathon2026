@@ -1,3 +1,4 @@
+import type { AiroSubscription } from '@/lib/mgmt-airo';
 import type { CreditGrant } from '@/types/credits';
 import { GrantType, SubscriptionPlan } from '@/types/credits';
 
@@ -70,7 +71,7 @@ export function getActiveGrant(grants: CreditGrant[]): CreditGrant | undefined {
  */
 export function formatCreditDate(dateString: string, locale?: string): string {
   const date = new Date(dateString);
-  return date.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 /**
@@ -116,18 +117,19 @@ export function formatFullCreditDate(dateString: string, locale?: string): strin
  * Determine subscription plan from subscription data
  * Handles both new plan field and legacy productId mapping
  */
-export function getPlanFromSubscription(subscription: {
-  plan?: SubscriptionPlan;
-  productId?: string;
-  isTrial?: boolean;
-}): SubscriptionPlan {
-  if (subscription.plan) {
+export function getPlanFromSubscription(
+  subscription: Pick<AiroSubscription, 'plan' | 'productId' | 'builderEntitlementId' | 'isTrial'>
+): SubscriptionPlan {
+  // If plan field has a valid value, use it (even if "none" - will trigger auto-creation)
+  if (subscription?.plan) {
     return subscription.plan;
   }
 
-  // Legacy product ID mapping
-  if (subscription.productId === 'aab-v1') {
-    return subscription.isTrial ? SubscriptionPlan.Free : SubscriptionPlan.AiroPlus;
+  // Legacy product ID mapping (when plan is undefined, null, or empty)
+  if (subscription?.productId === 'aab-v1' && !subscription.builderEntitlementId) {
+    // Trial users: return None to trigger auto-creation
+    // Non-trial users: return AiroPlus (legacy paid users)
+    return subscription.isTrial ? SubscriptionPlan.None : SubscriptionPlan.AiroPlus;
   }
 
   return SubscriptionPlan.None;

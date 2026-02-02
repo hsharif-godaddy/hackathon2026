@@ -1,6 +1,6 @@
-import { afterEach,describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { getRootDomain } from './getRootDomain';
+import { getRootDomain, getRootDomainFromHeaders } from './getRootDomain';
 
 describe('getRootDomain', () => {
   const originalWindow = global.window;
@@ -24,6 +24,14 @@ describe('getRootDomain', () => {
       } as Window & typeof globalThis;
 
       expect(getRootDomain()).toBe('test-godaddy.com');
+    });
+
+    it('should handle production domain', () => {
+      global.window = {
+        location: { hostname: 'airo-builder.godaddy.com' },
+      } as Window & typeof globalThis;
+
+      expect(getRootDomain()).toBe('godaddy.com');
     });
 
     it('should extract root domain from simple subdomain', () => {
@@ -127,20 +135,36 @@ describe('getRootDomain', () => {
   });
 
   describe('edge cases', () => {
-    it('should return empty string for localhost', () => {
+    it('should return dev fallback for localhost', () => {
       global.window = {
         location: { hostname: 'localhost' },
       } as Window & typeof globalThis;
 
-      expect(getRootDomain()).toBe('');
+      expect(getRootDomain()).toBe('dev-godaddy.com');
     });
 
-    it('should return empty string for single word hostname', () => {
+    it('should return dev fallback for 127.0.0.1', () => {
+      global.window = {
+        location: { hostname: '127.0.0.1' },
+      } as Window & typeof globalThis;
+
+      expect(getRootDomain()).toBe('dev-godaddy.com');
+    });
+
+    it('should return dev fallback for local.gasket.dev-godaddy.com', () => {
+      global.window = {
+        location: { hostname: 'local.gasket.dev-godaddy.com' },
+      } as Window & typeof globalThis;
+
+      expect(getRootDomain()).toBe('dev-godaddy.com');
+    });
+
+    it('should return null for single word hostname', () => {
       global.window = {
         location: { hostname: 'singleword' },
       } as Window & typeof globalThis;
 
-      expect(getRootDomain()).toBe('');
+      expect(getRootDomain()).toBeNull();
     });
 
     it('should handle IP addresses', () => {
@@ -215,5 +239,57 @@ describe('getRootDomain', () => {
       expect(result1).toBe(result2);
       expect(result1).toBe('example.com');
     });
+  });
+});
+
+describe('getRootDomainFromHeaders', () => {
+  it('should extract root domain from headers', () => {
+    const headers = new Headers({ host: 'airo-builder.test-godaddy.com' });
+    expect(getRootDomainFromHeaders(headers)).toBe('test-godaddy.com');
+  });
+
+  it('should handle host with port number', () => {
+    const headers = new Headers({ host: 'airo-builder.test-godaddy.com:3000' });
+    expect(getRootDomainFromHeaders(headers)).toBe('test-godaddy.com');
+  });
+
+  it('should handle production domain', () => {
+    const headers = new Headers({ host: 'airo-builder.godaddy.com' });
+    expect(getRootDomainFromHeaders(headers)).toBe('godaddy.com');
+  });
+
+  it('should return dev fallback for localhost', () => {
+    const headers = new Headers({ host: 'localhost:3000' });
+    expect(getRootDomainFromHeaders(headers)).toBe('dev-godaddy.com');
+  });
+
+  it('should return dev fallback for 127.0.0.1', () => {
+    const headers = new Headers({ host: '127.0.0.1:8080' });
+    expect(getRootDomainFromHeaders(headers)).toBe('dev-godaddy.com');
+  });
+
+  it('should return dev fallback for local.gasket.dev-godaddy.com', () => {
+    const headers = new Headers({ host: 'local.gasket.dev-godaddy.com' });
+    expect(getRootDomainFromHeaders(headers)).toBe('dev-godaddy.com');
+  });
+
+  it('should return null when host header is missing', () => {
+    const headers = new Headers();
+    expect(getRootDomainFromHeaders(headers)).toBeNull();
+  });
+
+  it('should replace ote with stg', () => {
+    const headers = new Headers({ host: 'airo-builder.stg-godaddy.com' });
+    expect(getRootDomainFromHeaders(headers)).toBe('stg-godaddy.com');
+  });
+
+  it('should handle multi-level subdomains', () => {
+    const headers = new Headers({ host: 'api.staging.example.com' });
+    expect(getRootDomainFromHeaders(headers)).toBe('example.com');
+  });
+
+  it('should return null for invalid hostname', () => {
+    const headers = new Headers({ host: 'singleword' });
+    expect(getRootDomainFromHeaders(headers)).toBeNull();
   });
 });

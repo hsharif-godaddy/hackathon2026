@@ -57,38 +57,10 @@ export enum SubscriptionPlan {
 }
 
 /**
- * Subscription data from the control plane API
- * GET /airo/v1/subscriptions/:subscriptionId
+ * Subscription status types
  */
-export interface Subscription {
-  id: string
-  productId: string
-  customerId: string
-  status: 'active' | 'inactive' | 'cancelled'
-  isTrial: boolean
-  /** @deprecated Use plan instead */
-  tokenBudgetId: string
-  /** Airo Plus entitlement ID */
-  entitlementId: string
-  /** Airo Builder entitlement ID */
-  builderEntitlementId: string | null
-  /** Current plan type */
-  plan: SubscriptionPlan
-  createdAt: string
-  updatedAt: string
-  /** When the Airo Builder entitlement renews */
-  renewsAt: string | null
-}
-
-/**
- * Extended subscription data with Airo Builder plan info
- * These fields are added when appbuilder-manage-plan feature is enabled
- */
-export interface SubscriptionPlanInfo {
-  /** Airo Builder entitlement ID */
-  builderEntitlementId: string | null
-  /** Current plan type */
-  plan: SubscriptionPlan
-  /** When the Airo Builder entitlement renews */
-  renewsAt: string | null
+export enum SubscriptionStatus {
+  Active = 'active',
+  Inactive = 'inactive',
+  Cancelled = 'cancelled',
 }

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { useActiveSubscription } from '@/hooks/useActiveSubscription'
+import { useSubscription } from '@/hooks/useSubscription'
 import { appFetch } from '@/lib/gasket-config'
 import { type DailyUsageInfo } from '@/services/AppService'
 import { WarningLevel } from '@/types/usage'
@@ -73,7 +73,7 @@ async function fetchTokenBudget(subscriptionId: string): Promise<DailyUsageInfo>
 export function useDailyUsage(options: UseDailyUsageOptions) {
   const { appId, enabled = true } = options
   const queryClient = useQueryClient()
-  const { data: subscription } = useActiveSubscription()
+  const { data: subscription } = useSubscription()
   const subscriptionId = subscription?.id
 
   const query = useQuery({

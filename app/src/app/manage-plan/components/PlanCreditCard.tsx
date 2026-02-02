@@ -35,7 +35,7 @@ export default function PlanCreditCard({ grant, isActive = false, locale }: Plan
 
   return (
     <div
-      className="flex flex-col items-center gap-2 bg-ai-light/4 border border-ai-light/20 rounded-lg p-4 relative"
+      className="flex flex-col items-center gap-2 bg-ai-light/4 border border-ai-light/20 rounded-lg p-4 relative max-h-44"
     >
       {isActive && (
         <ActiveTag tooltipText={t('builder_manageplan_using_monthly')} />

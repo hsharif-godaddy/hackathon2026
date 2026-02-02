@@ -5,13 +5,15 @@
  * Uses direct service clients and explicit JWT authentication.
  */
 
-import { AIRO_OWNER_PRODUCTS, AiroMgmtClient } from '@/lib/mgmt-airo';
+import { AIRO_OWNER_PRODUCTS, AiroHttpError, AiroMgmtClient, type AiroSubscription } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
+import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { VentureService } from '@/lib/venture-service';
-import { SubscriptionPlan } from '@/types/credits';
+import { SubscriptionPlan, SubscriptionStatus } from '@/types/credits';
 import { getPlanFromSubscription } from '@/utils/credits';
+import { getRootDomainFromHeaders } from '@/utils/getRootDomain';
 import type { AccountSubscription, PaywallDataProvider, SwitchboardFlagsResult } from './providers';
-import { PAYWALL_CONFIG, type ProjectEdge } from './shared';
+import { getValidPlans, PAYWALL_CONFIG, PLAN_PRIORITY, type ProjectEdge } from './shared';
 
 /**
  * Server-side implementation of paywall data provider
@@ -42,46 +44,13 @@ export class ServerPaywallProvider implements PaywallDataProvider {
   /**
    * Get root domain from request headers
    *
-   * Extracts the root domain from the Host header and transforms
-   * 'ote' to 'stg' for staging environments.
-   *
-   * For local development (localhost or 127.0.0.1), returns a fallback
-   * domain from the PAYWALL_DEV_DOMAIN environment variable, or defaults
-   * to 'test-godaddy.com'.
+   * Uses the shared getRootDomainFromHeaders utility to extract the root domain
+   * from the Host header, with proper handling for development environments.
    *
    * @returns Root domain or null if header not found
    */
   getRootDomain(): string | null {
-    const host = this.headers.get('host');
-
-    if (!host) {
-      logger.warn('paywall.server-provider.no-host-header', {
-        message: 'Host header is missing or null',
-      });
-      return null;
-    }
-
-    // Strip port number if present (e.g., "example.com:8443" -> "example.com")
-    const hostWithoutPort = host.split(':')[0];
-
-    // Development fallback for local development domains
-    // Matches: localhost, 127.0.0.1, local.gasket.dev-godaddy.com
-    if (
-      hostWithoutPort.startsWith('localhost') ||
-      hostWithoutPort.startsWith('127.0.0.1') ||
-      hostWithoutPort === 'local.gasket.dev-godaddy.com'
-    ) {
-      const fallbackDomain = process.env.PAYWALL_DEV_DOMAIN || 'dev-godaddy.com';
-      logger.info('paywall.server-provider.local-dev-fallback', {
-        host: hostWithoutPort,
-        fallbackDomain,
-      });
-      return fallbackDomain;
-    }
-
-    // Extract root domain (e.g., "builder.test-godaddy.com" -> "test-godaddy.com")
-    const matches = hostWithoutPort.match(/([\w-]+\.\w+)$/);
-    return matches ? matches[0].replace('ote', 'stg') : null;
+    return getRootDomainFromHeaders(this.headers);
   }
 
   /**
@@ -178,29 +147,44 @@ export class ServerPaywallProvider implements PaywallDataProvider {
    * Gets the customer's subscription with plan information.
    * Prioritizes active paid subscriptions over free ones.
    *
+   * When appbuilder-manage-plan flag is enabled:
+   * - Checks for free/starter/airoPlus plans
+   * - Auto-creates free plan if subscription exists but has no valid plan
+   *
+   * When appbuilder-manage-plan flag is disabled (legacy):
+   * - Only checks for airoPlus plans
+   * - Does not auto-create plans
+   *
    * @returns Promise with account subscription data
    */
   async getAccountSubscription(): Promise<AccountSubscription | undefined> {
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
     const client = new AiroMgmtClient({ baseUrl, jwt: this.jwt });
 
-    const subscriptions = await client.getSubscriptions(
+    // Check if new paid plans feature is enabled
+    const isManagePlanEnabled = await checkSwitchboardFlag(
+      'appbuilder-manage-plan',
+      this.jwt,
+      this.headers
+    );
+
+    logger.info('paywall.server-provider.get-account-subscription', {
+      message: 'Fetching account subscription',
+      managePlanEnabled: isManagePlanEnabled
+    });
+
+    let subscriptions = await client.getSubscriptions(
       AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER
     );
 
     // Prioritize active paid subscriptions
-    // Order of precedence: airoPlus > starter > free > none
-    let bestSubscription = null;
-    const planPriority: Record<SubscriptionPlan, number> = {
-      [SubscriptionPlan.AiroPlus]: 4,
-      [SubscriptionPlan.Starter]: 3,
-      [SubscriptionPlan.Free]: 2,
-      [SubscriptionPlan.None]: 1
-    };
+    // Order of precedence: starter > airoPlus > free > none
+    // AiroPlus is legacy but maintains paid access during transition
+    let bestSubscription: (AiroSubscription & { plan: SubscriptionPlan }) | null = null;
 
     for (const subscription of subscriptions) {
       // Skip inactive subscriptions unless we have nothing else
-      if (subscription.status !== 'active' && bestSubscription) {
+      if (subscription.status !== SubscriptionStatus.Active && bestSubscription) {
         continue;
       }
 
@@ -209,7 +193,7 @@ export class ServerPaywallProvider implements PaywallDataProvider {
 
       // Keep the subscription with the highest priority plan
       if (!bestSubscription ||
-          (planPriority[plan] || 0) > (planPriority[bestSubscription.plan] || 0)) {
+          (PLAN_PRIORITY[plan] || 0) > (PLAN_PRIORITY[bestSubscription.plan] || 0)) {
         bestSubscription = {
           ...subscription,
           plan
@@ -217,14 +201,110 @@ export class ServerPaywallProvider implements PaywallDataProvider {
       }
     }
 
+    // Use appropriate plan validation based on feature flag
+    const validPlans = getValidPlans(isManagePlanEnabled);
+    const hasValidPlan = bestSubscription && validPlans.includes(bestSubscription.plan);
+
+    // Only auto-create free plan if new paid plans feature is enabled
+    if (isManagePlanEnabled && subscriptions.length > 0 && !hasValidPlan) {
+      // Use the first active subscription, or fall back to first subscription
+      const targetSubscription = subscriptions.find(sub => sub.status === SubscriptionStatus.Active) || subscriptions[0];
+
+      logger.info('paywall.server-provider.creating-free-plan', {
+        subscriptionId: targetSubscription.id,
+        message: 'No valid builder plan found, creating free plan'
+      });
+
+      try {
+        // Idempotency check: verify plan still doesn't exist before creating
+        // Handles race condition if another request already created the plan
+        // Force fresh data by bypassing cache
+        const recheckSubscription = await client.getSubscription(targetSubscription.id, { noCache: true });
+        const recheckPlan = getPlanFromSubscription(recheckSubscription);
+        const recheckHasValidPlan = (validPlans as readonly SubscriptionPlan[]).includes(recheckPlan);
+
+        if (!recheckHasValidPlan) {
+          try {
+            await client.createBuilderPlan(targetSubscription.id, { plan: SubscriptionPlan.Free });
+
+            logger.info('paywall.server-provider.free-plan-created', {
+              subscriptionId: targetSubscription.id
+            });
+          } catch (createError) {
+            // Handle 409 Conflict - plan was created by another request (race condition)
+            if (createError instanceof AiroHttpError && createError.status === 409) {
+              logger.info('paywall.server-provider.plan-exists-race-condition', {
+                subscriptionId: targetSubscription.id,
+                message: 'Plan was created concurrently by another request'
+              });
+              // Treat as success - the plan exists, which is what we wanted
+            } else {
+              // Re-throw other errors
+              throw createError;
+            }
+          }
+        } else {
+          logger.info('paywall.server-provider.plan-already-exists', {
+            subscriptionId: targetSubscription.id,
+            plan: recheckPlan,
+            message: 'Plan was created by another request, skipping creation'
+          });
+        }
+
+        // Refetch subscriptions to get updated data with the new plan
+        subscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
+
+        // Re-evaluate best subscription with updated data
+        bestSubscription = null;
+        for (const subscription of subscriptions) {
+          if (subscription.status !== SubscriptionStatus.Active && bestSubscription) {
+            continue;
+          }
+          const plan = getPlanFromSubscription(subscription);
+          if (!bestSubscription ||
+              (PLAN_PRIORITY[plan] || 0) > (PLAN_PRIORITY[bestSubscription.plan] || 0)) {
+            bestSubscription = { ...subscription, plan };
+          }
+        }
+      } catch (planError) {
+        logger.error('paywall.server-provider.create-plan-error', {
+          subscriptionId: targetSubscription.id,
+          error: planError instanceof Error ? planError.message : String(planError),
+          errorType: planError instanceof AiroHttpError ? `HTTP ${planError.status}` : 'Unknown'
+        });
+
+        // Always refetch to get current state, even on error
+        try {
+          subscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
+
+          // Re-evaluate best subscription with refetched data
+          bestSubscription = null;
+          for (const subscription of subscriptions) {
+            if (subscription.status !== SubscriptionStatus.Active && bestSubscription) {
+              continue;
+            }
+            const plan = getPlanFromSubscription(subscription);
+            if (!bestSubscription ||
+                (PLAN_PRIORITY[plan] || 0) > (PLAN_PRIORITY[bestSubscription.plan] || 0)) {
+              bestSubscription = { ...subscription, plan };
+            }
+          }
+        } catch (refetchError) {
+          logger.error('paywall.server-provider.refetch-error', {
+            error: refetchError instanceof Error ? refetchError.message : String(refetchError)
+          });
+        }
+        // Continue with existing subscription data if refetch fails
+      }
+    }
+
     if (!bestSubscription) {
-      // No subscription found - return a default free plan
-      return {
-        plan: SubscriptionPlan.Free,
-        status: 'active',
-        isTrial: false,
-        customerId: this.customerId
-      };
+      // No subscription found - user needs to sign up first
+      logger.info('paywall.server-provider.no-subscription', {
+        customerId: this.customerId,
+        message: 'No subscription found for customer'
+      });
+      return undefined;
     }
 
     // Try to fetch full subscription details via entitlements endpoint

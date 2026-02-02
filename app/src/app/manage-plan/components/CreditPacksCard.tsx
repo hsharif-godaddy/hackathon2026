@@ -68,10 +68,10 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
   }
 
   return (
-    <div className="flex flex-col md:col-span-2">
-      <text.p as="paragraph" className="mb-2" text={t('builder_manageplan_credits_description')} />
+    <div className="flex flex-col md:col-span-2 md:max-h-60">
+      <text.p as="paragraph" className="mb-2 flex-shrink-0" text={t('builder_manageplan_credits_description')} />
 
-      <div className="flex flex-col max-h-80 overflow-y-auto">
+      <div className="flex flex-col flex-1 min-h-0 overflow-y-auto pr-1">
         {creditPacks.map(function renderGrant(grant) {
           return (
             <CreditGrantRow

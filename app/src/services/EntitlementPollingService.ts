@@ -43,7 +43,7 @@ export class EntitlementPollingService {
           }
 
           // Get the account-level subscription
-          const subscriptionUrl = '/api/subscription';
+          const subscriptionUrl = '/api/subscriptions';
           const subscriptionResponse = await fetch(subscriptionUrl, {
             credentials: 'include',
           });
@@ -60,7 +60,7 @@ export class EntitlementPollingService {
             throw new Error(errorMessage);
           }
 
-          if (!subscriptionData.success || !subscriptionData.data?.subscription) {
+          if (!subscriptionData.success || !subscriptionData.data?.active) {
             const errorMessage = subscriptionData.error || 'Failed to get subscription data';
             logger.error('entitlement-polling.account-subscription.failed', {
               attempt: attempts,
@@ -69,7 +69,7 @@ export class EntitlementPollingService {
             throw new Error(errorMessage);
           }
 
-          const subscription = subscriptionData.data.subscription;
+          const subscription = subscriptionData.data.active;
 
           // Check if the subscription plan indicates access
           if (subscription.plan === SubscriptionPlan.AiroPlus || subscription.plan === SubscriptionPlan.Starter) {

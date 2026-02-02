@@ -48,8 +48,8 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: () => mockUseSwitchboard(),
 }));
 
-vi.mock('@/hooks/useActiveSubscription', () => ({
-  useActiveSubscription: () => mockUseActiveSubscription(),
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: () => mockUseActiveSubscription(),
 }));
 
 vi.mock('@/hooks/useCreditGrants', () => ({

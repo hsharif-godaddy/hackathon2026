@@ -11,11 +11,15 @@ import {
   type AiroCreateAppPayload,
   type AiroCreateAppResponse,
   type AiroCreateAttributePayload,
+  type AiroCreateBuilderPlanPayload,
+  type AiroCreateBuilderPlanResponse,
+  type AiroCreditGrant,
   type AiroCustomer,
   type AiroDeleteAppResponse,
   type AiroDeployAppResponse,
   type AiroDeploymentsResponse,
   type AiroDomainCheckResponse,
+  type AiroGetCreditGrantsResponse,
   AiroHttpError,
   type AiroJobStatus,
   type AiroMgmtClientConfig,
@@ -285,6 +289,28 @@ export class AiroMgmtClient {
   async getActiveSubscription(): Promise<AiroSubscription | null> {
     const subscriptions = await this.getSubscriptions();
     return subscriptions.length > 0 ? subscriptions[0] : null;
+  }
+
+  /**
+   * Get a single subscription by ID
+   *
+   * GET /api/airo/v1/subscriptions/:subscriptionId
+   *
+   * @param subscriptionId - The subscription ID to fetch
+   * @param options - Optional configuration
+   * @param options.noCache - Bypass cache and fetch fresh data
+   * @returns Promise resolving to the subscription data
+   */
+  async getSubscription(
+    subscriptionId: string,
+    options: { noCache?: boolean } = {}
+  ): Promise<AiroSubscription> {
+    return this.request<AiroSubscription>(
+      'GET',
+      `/api/airo/v1/subscriptions/${subscriptionId}`,
+      undefined,
+      { logEvent: 'mgmt-airo.get-subscription', noCache: options.noCache }
+    );
   }
 
   /**
@@ -577,6 +603,57 @@ export class AiroMgmtClient {
       payload,
       { logEvent: 'mgmt-airo.update-entitlement' }
     );
+  }
+
+  /**
+   * Create a builder plan for a subscription
+   *
+   * POST /api/airo/v1/subscriptions/:subscriptionId/builder-plan
+   *
+   * Creates a free builder plan for users who don't have one.
+   * This ensures all users accessing the develop page have a valid plan.
+   *
+   * @param subscriptionId - Subscription ID
+   * @param payload - Optional payload with plan type (defaults to free)
+   * @returns Promise resolving to the created builder plan details
+   */
+  async createBuilderPlan(
+    subscriptionId: string,
+    payload?: AiroCreateBuilderPlanPayload
+  ): Promise<AiroCreateBuilderPlanResponse> {
+    return this.request<AiroCreateBuilderPlanResponse>(
+      'POST',
+      `/api/airo/v1/subscriptions/${subscriptionId}/builder-plan`,
+      payload || {},
+      { logEvent: 'mgmt-airo.create-builder-plan' }
+    );
+  }
+
+  /**
+   * Get credit grants for a subscription
+   *
+   * GET /api/airo/v1/subscriptions/:subscriptionId/credits/grants
+   *
+   * Returns the credit grants (monthly plan and credit packs) for a subscription.
+   * Grants are ordered by `useBefore` date to determine which should be used first.
+   *
+   * @param subscriptionId - Subscription ID
+   * @param syncSpend - Whether to sync spend data before returning (default: true)
+   * @returns Promise resolving to array of credit grants
+   */
+  async getCreditGrants(
+    subscriptionId: string,
+    syncSpend = true
+  ): Promise<AiroCreditGrant[]> {
+    const params = new URLSearchParams({ syncSpend: syncSpend.toString() });
+    const response = await this.request<AiroGetCreditGrantsResponse>(
+      'GET',
+      `/api/airo/v1/subscriptions/${subscriptionId}/credits/grants?${params.toString()}`,
+      undefined,
+      { logEvent: 'mgmt-airo.get-credit-grants', noCache: true }
+    );
+
+    return response.grants || [];
   }
 
   /**

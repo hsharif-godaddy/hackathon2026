@@ -116,7 +116,8 @@ export function usePaywallModal({
 
       // Invalidate paywall-related queries to update UI immediately
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['subscription'] }),
+        queryClient.invalidateQueries({ queryKey: ['subscriptions'] }),
+        queryClient.invalidateQueries({ queryKey: ['active-subscription'] }),
         queryClient.invalidateQueries({ queryKey: ['entitlements'] }),
         queryClient.invalidateQueries({ queryKey: ['projects'] }),
       ])

@@ -39,7 +39,7 @@ describe('EntitlementPollingService', () => {
         json: async () => ({
           success: true,
           data: {
-            subscription: {
+            active: {
               id: 'sub-123',
               plan: SubscriptionPlan.AiroPlus,
               builderEntitlementId: 'builder-ent-456',
@@ -57,7 +57,7 @@ describe('EntitlementPollingService', () => {
       expect(result.success).toBe(true);
       expect(result.data?.subscriptionId).toBe('sub-123');
       expect(result.data?.entitlementId).toBe('builder-ent-456');
-      expect(mockFetch).toHaveBeenCalledWith('/api/subscription', {
+      expect(mockFetch).toHaveBeenCalledWith('/api/subscriptions', {
         credentials: 'include',
       });
     });
@@ -69,7 +69,7 @@ describe('EntitlementPollingService', () => {
         json: async () => ({
           success: true,
           data: {
-            subscription: {
+            active: {
               id: 'sub-starter',
               plan: SubscriptionPlan.Starter,
               builderEntitlementId: 'builder-starter-123',
@@ -90,13 +90,13 @@ describe('EntitlementPollingService', () => {
       let entitlementCallCount = 0;
 
       mockFetch.mockImplementation(async (url) => {
-        if (url === '/api/subscription') {
+        if (url === '/api/subscriptions') {
           return {
             ok: true,
             json: async () => ({
               success: true,
               data: {
-                subscription: {
+                active: {
                   id: 'sub-free',
                   plan: SubscriptionPlan.Free,
                 },
@@ -171,13 +171,13 @@ describe('EntitlementPollingService', () => {
     it('should timeout after max attempts', async () => {
       const mockFetch = vi.mocked(global.fetch);
       mockFetch.mockImplementation(async (url) => {
-        if (url === '/api/subscription') {
+        if (url === '/api/subscriptions') {
           return {
             ok: true,
             json: async () => ({
               success: true,
               data: {
-                subscription: {
+                active: {
                   id: 'sub-free',
                   plan: SubscriptionPlan.Free,
                 },
@@ -212,13 +212,13 @@ describe('EntitlementPollingService', () => {
       const statusCallback = vi.fn();
 
       mockFetch.mockImplementation(async (url) => {
-        if (url === '/api/subscription') {
+        if (url === '/api/subscriptions') {
           return {
             ok: true,
             json: async () => ({
               success: true,
               data: {
-                subscription: {
+                active: {
                   id: 'sub-free',
                   plan: SubscriptionPlan.Free,
                 },
@@ -256,7 +256,7 @@ describe('EntitlementPollingService', () => {
         json: async () => ({
           success: true,
           data: {
-            subscription: {
+            active: {
               id: 'sub-123',
               plan: SubscriptionPlan.AiroPlus,
               builderEntitlementId: 'builder-primary',
@@ -278,7 +278,7 @@ describe('EntitlementPollingService', () => {
         json: async () => ({
           success: true,
           data: {
-            subscription: {
+            active: {
               id: 'sub-123',
               plan: SubscriptionPlan.AiroPlus,
               entitlementId: 'legacy-ent',
@@ -299,7 +299,7 @@ describe('EntitlementPollingService', () => {
         json: async () => ({
           success: true,
           data: {
-            subscription: {
+            active: {
               id: 'sub-123',
               plan: SubscriptionPlan.AiroPlus,
             },

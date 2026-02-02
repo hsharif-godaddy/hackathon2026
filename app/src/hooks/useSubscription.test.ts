@@ -30,7 +30,13 @@ describe('useSubscription', function hooks() {
 
       vi.mocked(appFetch).mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ data: { subscription: mockSubscription } }),
+        json: () => Promise.resolve({
+          success: true,
+          data: {
+            subscriptions: [mockSubscription],
+            active: mockSubscription
+          }
+        }),
       } as Response);
 
       const { result } = renderHookWithProviders(() => useSubscription());
@@ -40,9 +46,10 @@ describe('useSubscription', function hooks() {
       });
 
       expect(result.current.data).toEqual(mockSubscription);
+      expect(result.current.subscriptions).toEqual([mockSubscription]);
     });
 
-    it('returns null when API returns not ok', async function notOk() {
+    it('returns undefined and sets error when API returns not ok', async function notOk() {
       vi.mocked(appFetch).mockResolvedValue({
         ok: false,
         status: 404,
@@ -54,13 +61,20 @@ describe('useSubscription', function hooks() {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(result.current.data).toBeNull();
+      expect(result.current.data).toBeUndefined();
+      expect(result.current.isError).toBe(true);
     });
 
-    it('returns null when subscription is missing from response', async function missing() {
+    it('returns undefined when subscription is missing from response', async function missing() {
       vi.mocked(appFetch).mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ data: {} }),
+        json: () => Promise.resolve({
+          success: true,
+          data: {
+            subscriptions: [],
+            active: null
+          }
+        }),
       } as Response);
 
       const { result } = renderHookWithProviders(() => useSubscription());
@@ -69,19 +83,26 @@ describe('useSubscription', function hooks() {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(result.current.data).toBeNull();
+      expect(result.current.data).toBeUndefined();
+      expect(result.current.subscriptions).toEqual([]);
     });
 
     it('calls API with correct endpoint and credentials', async function endpoint() {
       vi.mocked(appFetch).mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ data: { subscription: { id: 'sub-123' } } }),
+        json: () => Promise.resolve({
+          success: true,
+          data: {
+            subscriptions: [{ id: 'sub-123' }],
+            active: { id: 'sub-123' }
+          }
+        }),
       } as Response);
 
       renderHookWithProviders(() => useSubscription());
 
       await waitFor(() => {
-        expect(appFetch).toHaveBeenCalledWith('/api/subscription', { credentials: 'include' });
+        expect(appFetch).toHaveBeenCalledWith('/api/subscriptions', { credentials: 'include' });
       });
     });
 
@@ -95,7 +116,13 @@ describe('useSubscription', function hooks() {
 
       vi.mocked(appFetch).mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ data: { subscription: mockSubscription } }),
+        json: () => Promise.resolve({
+          success: true,
+          data: {
+            subscriptions: [mockSubscription],
+            active: mockSubscription
+          }
+        }),
       } as Response);
 
       const { result } = renderHookWithProviders(() => useSubscription());
@@ -106,6 +133,7 @@ describe('useSubscription', function hooks() {
 
       expect(result.current.data?.plan).toBe(SubscriptionPlan.Free);
       expect(result.current.data?.isTrial).toBe(true);
+      expect(result.current.subscriptions).toEqual([mockSubscription]);
     });
   });
 });

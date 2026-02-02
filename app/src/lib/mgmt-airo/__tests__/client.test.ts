@@ -261,6 +261,36 @@ describe('AiroMgmtClient', () => {
     });
   });
 
+  describe('getSubscription', () => {
+    it('should fetch a single subscription by ID', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => MOCK_SUBSCRIPTION
+      });
+
+      const result = await client.getSubscription('sub-123');
+
+      expect(result).toEqual(MOCK_SUBSCRIPTION);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
+    });
+
+    it('should throw error when subscription not found', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        json: async () => ({ error: 'Subscription not found' })
+      });
+
+      await expect(client.getSubscription('non-existent')).rejects.toThrow();
+    });
+  });
+
   describe('getSystems', () => {
     it('should return systems with mapped id field', async () => {
       const systemsResponse = [{
@@ -709,6 +739,163 @@ describe('AiroMgmtClient', () => {
           })
         })
       );
+    });
+  });
+
+  describe('createBuilderPlan', () => {
+    it('should create a free builder plan for subscription', async () => {
+      const createPlanResponse = {
+        subscriptionId: 'sub-123',
+        plan: 'free',
+        builderEntitlementId: 'builder-ent-456',
+        message: 'Builder plan created'
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => createPlanResponse
+      });
+
+      const result = await client.createBuilderPlan('sub-123', { plan: 'free' as any });
+
+      expect(result).toEqual(createPlanResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/builder-plan',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json'
+          }),
+          body: JSON.stringify({ plan: 'free' })
+        })
+      );
+    });
+
+    it('should create builder plan with empty payload when no options provided', async () => {
+      const createPlanResponse = {
+        subscriptionId: 'sub-123',
+        plan: 'free',
+        builderEntitlementId: 'builder-ent-456'
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => createPlanResponse
+      });
+
+      await client.createBuilderPlan('sub-123');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/builder-plan',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({})
+        })
+      );
+    });
+  });
+
+  describe('getCreditGrants', () => {
+    const MOCK_GRANTS = {
+      grants: [
+        {
+          id: 'grant-1',
+          subscriptionId: 'sub-123',
+          type: 'plan-monthly',
+          llmBudgetUserId: 'airo-builder:grant:grant-1',
+          llmBudgetId: 'budget-123',
+          creditsMax: 1500,
+          creditsSpent: 500,
+          isAvailable: true,
+          finalState: null,
+          useBefore: '2026-02-09T00:00:00.000Z',
+          consumedAt: null,
+          createdAt: '2026-01-09T00:00:00.000Z',
+          updatedAt: '2026-01-14T00:00:00.000Z',
+        },
+        {
+          id: 'grant-2',
+          subscriptionId: 'sub-123',
+          type: 'credit-pack',
+          llmBudgetUserId: 'airo-builder:grant:grant-2',
+          llmBudgetId: 'budget-456',
+          creditsMax: 2500,
+          creditsSpent: 2500,
+          isAvailable: false,
+          finalState: 'consumed',
+          useBefore: '2026-02-01T00:00:00.000Z',
+          consumedAt: '2026-01-05T00:00:00.000Z',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-05T00:00:00.000Z',
+        }
+      ]
+    };
+
+    it('should return credit grants for subscription', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => MOCK_GRANTS
+      });
+
+      const result = await client.getCreditGrants('sub-123');
+
+      expect(result).toEqual(MOCK_GRANTS.grants);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/credits/grants?syncSpend=true',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
+    });
+
+    it('should pass syncSpend=true by default', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => MOCK_GRANTS
+      });
+
+      await client.getCreditGrants('sub-123');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('syncSpend=true'),
+        expect.any(Object)
+      );
+    });
+
+    it('should pass syncSpend=false when specified', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => MOCK_GRANTS
+      });
+
+      await client.getCreditGrants('sub-123', false);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('syncSpend=false'),
+        expect.any(Object)
+      );
+    });
+
+    it('should return empty array when no grants exist', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ grants: [] })
+      });
+
+      const result = await client.getCreditGrants('sub-123');
+
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array when grants key is missing', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({})
+      });
+
+      const result = await client.getCreditGrants('sub-123');
+
+      expect(result).toEqual([]);
     });
   });
 
