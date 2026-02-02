@@ -8,15 +8,28 @@ import {
   setSpanAppId,
   setSpanJobId,
   withCustomerAuth} from '@/lib/customer-auth';
+import { AIRO_PRODUCT_IDS } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
+import { CreateSiteParams } from '@/lib/control-plane/types';
 
 // POST /api/sites/quick-create - Fast site creation
 // Uses control plane adapter (V2 or Legacy)
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
   try {
     const body = await request.json();
-    const { prompt, initialPrompt } = body;
+    const { prompt, initialPrompt, productId } = body;
     const { user } = authContext;
+
+    // Validate productId if provided
+    if (productId) {
+      const validProductIds = Object.values(AIRO_PRODUCT_IDS);
+      if (!validProductIds.includes(productId)) {
+        return NextResponse.json(
+          { error: `Invalid productId. Must be one of: ${validProductIds.join(', ')}` },
+          { status: 400 }
+        );
+      }
+    }
 
     // Customer must have an account to create sites
     if (!customerHasAccount(user)) {
@@ -44,12 +57,15 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     // Use control plane adapter (automatically handles V2 vs Legacy)
     const adapter = getControlPlaneAdapter();
-    const result = await adapter.createSite({
+
+    const createSiteParams = {
       accountId: account_id,
       prompt: projectPrompt.trim(),
-      jwt: authContext.jwt
-    });
+      jwt: authContext.jwt,
+      productId,
+    } as CreateSiteParams;
 
+    const result = await adapter.createSite(createSiteParams);
     if (!result.success) {
       throw new Error(result.error || 'Failed to create site');
     }

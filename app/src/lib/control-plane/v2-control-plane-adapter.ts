@@ -164,7 +164,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       const response = await client.signup({
         datacenter: process.env.MGMT_AIRO_DATACENTER || 'sxb1',
         isTrial: true,
-        productId: process.env.MGMT_AIRO_PRODUCT_ID || AIRO_PRODUCT_IDS.AAB_V1,
+        productId: params.productId || process.env.MGMT_AIRO_PRODUCT_ID || AIRO_PRODUCT_IDS.AAB_V1,
         initialPrompt: params.prompt,
         appConfigs: [{
           templateName: 'default',

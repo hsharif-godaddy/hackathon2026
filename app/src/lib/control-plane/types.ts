@@ -104,6 +104,7 @@ export interface CreateSiteParams {
   accountId: string;
   prompt: string;
   jwt: string;
+  productId?: string; // V2 only: Product ID to create site under (defaults to "aab-v1")
 }
 
 /**
