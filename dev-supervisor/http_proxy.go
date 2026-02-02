@@ -26,6 +26,7 @@ import (
 	"github.com/rs/cors"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
+	"github.com/airo-ai-builder/dev-supervisor/internal/proxy/routing"
 )
 
 const (
@@ -565,57 +566,6 @@ func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 /**
- * RoutingConfig defines advanced routing rules loaded from JSON file (optional)
- */
-type RoutingConfig struct {
-	StaticRoot   string        `json:"static_root"`
-	SPAMode      bool          `json:"spa_mode"`
-	APIPrefix    string        `json:"api_prefix"`
-	ForwardRules []ForwardRule `json:"forward_rules"`
-	CacheControl CacheSettings `json:"cache_control"`
-}
-
-/**
- * routingConfigJSON is used for unmarshalling JSON with optional fields
- * Uses pointers so we can distinguish between "not set" and "set to false/zero"
- */
-type routingConfigJSON struct {
-	StaticRoot    *string            `json:"static_root"`
-	SPAMode       *bool              `json:"spa_mode"`
-	APIPrefix     *string            `json:"api_prefix"`
-	ForwardRules  []ForwardRule      `json:"forward_rules"`
-	CacheControl  *cacheSettingsJSON `json:"cache_control"`
-	EnableCaching *bool              `json:"enable_caching"` // Deprecated, use cache_control.enable_caching
-}
-
-/**
- * cacheSettingsJSON is used for unmarshalling cache settings from JSON
- * Uses pointers so we can distinguish between "not set" and "set to false/zero"
- */
-type cacheSettingsJSON struct {
-	EnableCaching *bool           `json:"enable_caching"`
-	MaxAge        *map[string]int `json:"max_age"` // file extension -> seconds
-}
-
-/**
- * ForwardRule defines a custom routing rule for advanced request forwarding
- */
-type ForwardRule struct {
-	PathPattern string   `json:"path_pattern"` // Regex or glob pattern
-	TargetURL   string   `json:"target_url"`   // Where to forward
-	Rewrite     string   `json:"rewrite"`      // Optional path rewrite
-	Methods     []string `json:"methods"`      // HTTP methods (default: all)
-}
-
-/**
- * CacheSettings defines cache control headers for static assets
- */
-type CacheSettings struct {
-	EnableCaching bool           `json:"enable_caching"`
-	MaxAge        map[string]int `json:"max_age"` // file extension -> seconds
-}
-
-/**
  * retryTransport wraps an http.RoundTripper with retry logic
  * Retries connection errors with exponential backoff
  */
@@ -1019,7 +969,12 @@ func (p *HTTPProxy) Start() error {
 	}
 
 	// Load routing configuration (with error handling)
-	routingConfig, err := p.loadRoutingConfig()
+	routingConfig, err := routing.LoadConfig(routing.LoadOptions{
+		ConfigPath: p.config.ConfigPath,
+		APIPrefix:  p.config.APIPrefix,
+		StaticRoot: p.config.StaticRoot,
+		SPAMode:    p.config.SPAMode,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to load routing configuration: %w", err)
 	}
@@ -1062,7 +1017,7 @@ func (p *HTTPProxy) Start() error {
 			staticRoot = p.config.StaticRoot
 		}
 
-		router.staticHandler = newStaticFileHandler(staticRoot, routingConfig.CacheControl)
+		router.staticHandler = routing.NewStaticFileHandler(staticRoot, routingConfig.CacheControl)
 
 		if routingConfig.SPAMode {
 			router.spaFallback = filepath.Join(staticRoot, "index.html")
@@ -1353,13 +1308,13 @@ func (p *HTTPProxy) validateConfig() error {
 /**
  * validateStaticServingConfig validates static serving configuration after routing config is loaded
  *
- * This validation happens after loadRoutingConfig() so it can validate the merged configuration
+ * This validation happens after routing.LoadConfig() so it can validate the merged configuration
  * (env vars + JSON config) rather than just env vars.
  *
  * @param routingConfig - The merged routing configuration to validate
  * @returns error if configuration is invalid
  */
-func (p *HTTPProxy) validateStaticServingConfig(routingConfig RoutingConfig) error {
+func (p *HTTPProxy) validateStaticServingConfig(routingConfig routing.Config) error {
 	if !p.config.EnableStaticServing {
 		slog.Info("static file serving disabled, proxying all requests to backend")
 		return nil
@@ -1398,144 +1353,6 @@ func (p *HTTPProxy) validateStaticServingConfig(routingConfig RoutingConfig) err
 		"using_default_root", isDefault)
 
 	return nil
-}
-
-/**
- * newStaticFileHandler creates an http.Handler for serving static files with caching
- *
- * @param root - Root directory for static files
- * @param cacheSettings - Cache control settings for different file types
- * @returns http.Handler that serves static files with appropriate cache headers
- */
-func newStaticFileHandler(root string, cacheSettings CacheSettings) http.Handler {
-	fs := http.FileServer(http.Dir(root))
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Ensure intermediaries cache distinct variants per negotiated encoding
-		w.Header().Add("Vary", "Accept-Encoding")
-
-		// Set cache headers based on file extension
-		if cacheSettings.EnableCaching {
-			ext := path.Ext(r.URL.Path)
-			if maxAge, ok := cacheSettings.MaxAge[ext]; ok {
-				w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAge))
-			}
-		}
-
-		fs.ServeHTTP(w, r)
-	})
-}
-
-/**
- * loadRoutingConfig loads routing configuration from file or returns defaults
- *
- * @returns RoutingConfig with merged settings or error if file operations fail
- */
-func (p *HTTPProxy) loadRoutingConfig() (RoutingConfig, error) {
-	// Default config
-	config := RoutingConfig{
-		APIPrefix: "/api",
-		SPAMode:   true,
-		CacheControl: CacheSettings{
-			EnableCaching: true,
-			MaxAge: map[string]int{
-				".js":    31536000, // 1 year (content-hashed)
-				".css":   31536000,
-				".woff2": 31536000,
-				".png":   2592000, // 30 days
-				".jpg":   2592000,
-				".svg":   2592000,
-				".html":  0, // Never cache (SPA shell)
-				".json":  0,
-			},
-		},
-	}
-
-	// Apply environment variable overrides to defaults
-	if p.config.APIPrefix != "" {
-		config.APIPrefix = p.config.APIPrefix
-	}
-	if p.config.StaticRoot != "" {
-		config.StaticRoot = p.config.StaticRoot
-	}
-	config.SPAMode = p.config.SPAMode
-
-	// Load from JSON file if specified (JSON config takes precedence over env vars)
-	if p.config.ConfigPath != "" {
-		if err := p.loadRoutingConfigFromFile(&config); err != nil {
-			return config, err
-		}
-	}
-
-	return config, nil
-}
-
-// loadRoutingConfigFromFile loads routing configuration from a JSON file
-func (p *HTTPProxy) loadRoutingConfigFromFile(config *RoutingConfig) error {
-	slog.Info("loading routing config from file", "path", p.config.ConfigPath)
-
-	// Check if file exists
-	if _, err := os.Stat(p.config.ConfigPath); os.IsNotExist(err) {
-		return fmt.Errorf("routing config file not found: %s", p.config.ConfigPath)
-	}
-
-	// Read file
-	data, err := os.ReadFile(p.config.ConfigPath)
-	if err != nil {
-		return fmt.Errorf("failed to read routing config file: %w", err)
-	}
-
-	// Unmarshal JSON using pointer struct to distinguish "not set" from "set to false/zero"
-	var fileConfig routingConfigJSON
-	if err := json.Unmarshal(data, &fileConfig); err != nil {
-		return fmt.Errorf("failed to parse routing config JSON: %w", err)
-	}
-
-	// Merge file config with defaults (file config takes precedence)
-	p.mergeRoutingConfig(config, &fileConfig)
-
-	slog.Info("routing config loaded successfully",
-		"api_prefix", config.APIPrefix,
-		"static_root", config.StaticRoot,
-		"spa_mode", config.SPAMode)
-
-	return nil
-}
-
-// mergeRoutingConfig merges file configuration with defaults
-func (p *HTTPProxy) mergeRoutingConfig(config *RoutingConfig, fileConfig *routingConfigJSON) {
-	// Only override values that were explicitly set in JSON (non-nil pointers)
-	if fileConfig.StaticRoot != nil && *fileConfig.StaticRoot != "" {
-		config.StaticRoot = *fileConfig.StaticRoot
-	}
-	if fileConfig.APIPrefix != nil && *fileConfig.APIPrefix != "" {
-		config.APIPrefix = *fileConfig.APIPrefix
-	}
-	if fileConfig.SPAMode != nil {
-		config.SPAMode = *fileConfig.SPAMode
-	}
-
-	// Merge cache control settings
-	if fileConfig.CacheControl != nil {
-		// Copy EnableCaching only if explicitly set in JSON
-		if fileConfig.CacheControl.EnableCaching != nil {
-			config.CacheControl.EnableCaching = *fileConfig.CacheControl.EnableCaching
-		}
-
-		// Copy MaxAge only if explicitly set in JSON
-		if fileConfig.CacheControl.MaxAge != nil {
-			config.CacheControl.MaxAge = *fileConfig.CacheControl.MaxAge
-		}
-	} else if fileConfig.EnableCaching != nil {
-		// Support deprecated top-level enable_caching for backward compatibility
-		config.CacheControl.EnableCaching = *fileConfig.EnableCaching
-	}
-
-	if fileConfig.ForwardRules != nil {
-		config.ForwardRules = fileConfig.ForwardRules
-		slog.Warn("forward_rules are not yet implemented and will be ignored",
-			"rule_count", len(fileConfig.ForwardRules))
-	}
 }
 
 /**

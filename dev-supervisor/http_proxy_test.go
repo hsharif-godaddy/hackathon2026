@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
+	"github.com/airo-ai-builder/dev-supervisor/internal/proxy/routing"
 )
 
 const testProxyResponse = "proxy"
@@ -390,7 +391,7 @@ func TestValidateStaticServingConfig_MissingRoot(t *testing.T) {
 		},
 	}
 
-	routingConfig := RoutingConfig{
+	routingConfig := routing.Config{
 		StaticRoot: "", // Empty in both env and routing config
 		SPAMode:    true,
 	}
@@ -411,7 +412,7 @@ func TestValidateStaticServingConfig_NonExistentRoot(t *testing.T) {
 		},
 	}
 
-	routingConfig := RoutingConfig{
+	routingConfig := routing.Config{
 		StaticRoot: "/nonexistent/path",
 		SPAMode:    true,
 	}
@@ -433,7 +434,7 @@ func TestValidateStaticServingConfig_ValidRoot(t *testing.T) {
 		},
 	}
 
-	routingConfig := RoutingConfig{
+	routingConfig := routing.Config{
 		StaticRoot: tmpDir,
 		SPAMode:    false,
 	}
@@ -454,7 +455,7 @@ func TestValidateStaticServingConfig_SPAMode_MissingIndexHTML(t *testing.T) {
 		},
 	}
 
-	routingConfig := RoutingConfig{
+	routingConfig := routing.Config{
 		StaticRoot: tmpDir,
 		SPAMode:    true,
 	}
@@ -477,7 +478,7 @@ func TestValidateStaticServingConfig_JSONStaticRoot(t *testing.T) {
 		},
 	}
 
-	routingConfig := RoutingConfig{
+	routingConfig := routing.Config{
 		StaticRoot: tmpDir, // Set in JSON config
 		SPAMode:    true,
 	}
@@ -495,7 +496,7 @@ func TestValidateStaticServingConfig_Disabled(t *testing.T) {
 		},
 	}
 
-	routingConfig := RoutingConfig{
+	routingConfig := routing.Config{
 		StaticRoot: "", // Empty but shouldn't matter
 		SPAMode:    true,
 	}
@@ -503,457 +504,6 @@ func TestValidateStaticServingConfig_Disabled(t *testing.T) {
 	err := proxy.validateStaticServingConfig(routingConfig)
 	if err != nil {
 		t.Errorf("expected no error when static serving is disabled, got: %v", err)
-	}
-}
-
-// Unit tests for loadRoutingConfig()
-func TestLoadRoutingConfig_Defaults(t *testing.T) {
-	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
-			ConfigPath: "",
-			SPAMode:    true, // Set explicitly to match default from getEnvBoolWithDefault in main.go
-		},
-	}
-
-	config, err := proxy.loadRoutingConfig()
-	if err != nil {
-		t.Errorf("expected no error with default config, got: %v", err)
-	}
-
-	if config.APIPrefix != "/api" {
-		t.Errorf("expected default API prefix '/api', got: %s", config.APIPrefix)
-	}
-	if !config.SPAMode {
-		t.Error("expected SPAMode to be true by default")
-	}
-	if !config.CacheControl.EnableCaching {
-		t.Error("expected caching to be enabled by default")
-	}
-}
-
-func TestLoadRoutingConfig_NonExistentFile(t *testing.T) {
-	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
-			ConfigPath: "/nonexistent/config.json",
-		},
-	}
-
-	_, err := proxy.loadRoutingConfig()
-	if err == nil {
-		t.Error("expected error when config file does not exist, got nil")
-	}
-	if !strings.Contains(err.Error(), "routing config file not found") {
-		t.Errorf("expected error about missing file, got: %v", err)
-	}
-}
-
-func TestLoadRoutingConfig_MalformedJSON(t *testing.T) {
-	// Create temporary file with malformed JSON
-	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, writeErr := tmpFile.WriteString("{ invalid json }"); writeErr != nil {
-		t.Fatal(writeErr)
-	}
-	tmpFile.Close()
-
-	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
-			ConfigPath: tmpFile.Name(),
-		},
-	}
-
-	_, loadErr := proxy.loadRoutingConfig()
-	if loadErr == nil {
-		t.Error("expected error when JSON is malformed, got nil")
-	}
-	if !strings.Contains(loadErr.Error(), "failed to parse routing config JSON") {
-		t.Errorf("expected error about malformed JSON, got: %v", loadErr)
-	}
-}
-
-func TestLoadRoutingConfig_ValidJSON(t *testing.T) {
-	// Create temporary file with valid JSON
-	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	config := RoutingConfig{
-		StaticRoot: "/custom/root",
-		SPAMode:    false,
-		APIPrefix:  "/custom-api",
-		CacheControl: CacheSettings{
-			EnableCaching: true,
-			MaxAge: map[string]int{
-				".js": 3600,
-			},
-		},
-	}
-
-	data, marshalErr := json.Marshal(config)
-	if marshalErr != nil {
-		t.Fatal(marshalErr)
-	}
-	if _, writeErr := tmpFile.Write(data); writeErr != nil {
-		t.Fatal(writeErr)
-	}
-	tmpFile.Close()
-
-	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
-			ConfigPath: tmpFile.Name(),
-		},
-	}
-
-	loaded, err := proxy.loadRoutingConfig()
-	if err != nil {
-		t.Errorf("expected no error with valid JSON, got: %v", err)
-	}
-	if loaded.StaticRoot != "/custom/root" {
-		t.Errorf("expected static root '/custom/root', got: %s", loaded.StaticRoot)
-	}
-	if loaded.SPAMode {
-		t.Error("expected SPAMode to be false")
-	}
-	if loaded.APIPrefix != "/custom-api" {
-		t.Errorf("expected API prefix '/custom-api', got: %s", loaded.APIPrefix)
-	}
-}
-
-func TestLoadRoutingConfig_EnvVarAPIPrefix(t *testing.T) {
-	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
-			APIPrefix: "/custom-env-api",
-		},
-	}
-
-	loaded, err := proxy.loadRoutingConfig()
-	if err != nil {
-		t.Errorf("expected no error, got: %v", err)
-	}
-	if loaded.APIPrefix != "/custom-env-api" {
-		t.Errorf("expected API prefix from env var '/custom-env-api', got: %s", loaded.APIPrefix)
-	}
-}
-
-func TestLoadRoutingConfig_EnvVarStaticRoot(t *testing.T) {
-	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
-			StaticRoot: "/env/static",
-		},
-	}
-
-	loaded, err := proxy.loadRoutingConfig()
-	if err != nil {
-		t.Errorf("expected no error, got: %v", err)
-	}
-	if loaded.StaticRoot != "/env/static" {
-		t.Errorf("expected static root from env var '/env/static', got: %s", loaded.StaticRoot)
-	}
-}
-
-func TestLoadRoutingConfig_EnvVarSPAMode(t *testing.T) {
-	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
-			SPAMode: false,
-		},
-	}
-
-	loaded, err := proxy.loadRoutingConfig()
-	if err != nil {
-		t.Errorf("expected no error, got: %v", err)
-	}
-	if loaded.SPAMode {
-		t.Error("expected SPAMode from env var to be false")
-	}
-}
-
-func TestLoadRoutingConfig_JSONOverridesEnvVar(t *testing.T) {
-	// Create temporary file with JSON config
-	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	config := RoutingConfig{
-		APIPrefix:  "/json-api",
-		StaticRoot: "/json/static",
-		SPAMode:    false,
-	}
-
-	data, marshalErr := json.Marshal(config)
-	if marshalErr != nil {
-		t.Fatal(marshalErr)
-	}
-	if _, writeErr := tmpFile.Write(data); writeErr != nil {
-		t.Fatal(writeErr)
-	}
-	tmpFile.Close()
-
-	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
-			APIPrefix:  "/env-api",
-			StaticRoot: "/env/static",
-			SPAMode:    true,
-			ConfigPath: tmpFile.Name(),
-		},
-	}
-
-	loaded, err := proxy.loadRoutingConfig()
-	if err != nil {
-		t.Errorf("expected no error, got: %v", err)
-	}
-	// JSON config should override env vars
-	if loaded.APIPrefix != "/json-api" {
-		t.Errorf("expected JSON to override env var '/json-api', got: %s", loaded.APIPrefix)
-	}
-	if loaded.StaticRoot != "/json/static" {
-		t.Errorf("expected JSON to override env var '/json/static', got: %s", loaded.StaticRoot)
-	}
-	if loaded.SPAMode {
-		t.Error("expected JSON to override env var SPAMode to false")
-	}
-}
-
-func TestLoadRoutingConfig_ForwardRulesWarning(t *testing.T) {
-	// Create temporary file with forward rules
-	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	config := RoutingConfig{
-		ForwardRules: []ForwardRule{
-			{PathPattern: "/test", TargetURL: "http://example.com"},
-		},
-	}
-
-	data, marshalErr := json.Marshal(config)
-	if marshalErr != nil {
-		t.Fatal(marshalErr)
-	}
-	if _, writeErr := tmpFile.Write(data); writeErr != nil {
-		t.Fatal(writeErr)
-	}
-	tmpFile.Close()
-
-	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
-			ConfigPath: tmpFile.Name(),
-		},
-	}
-
-	loaded, err := proxy.loadRoutingConfig()
-	if err != nil {
-		t.Errorf("expected no error, got: %v", err)
-	}
-	if len(loaded.ForwardRules) != 1 {
-		t.Errorf("expected 1 forward rule, got: %d", len(loaded.ForwardRules))
-	}
-	// Note: The warning is logged but we can't test it easily without capturing logs
-}
-
-func TestLoadRoutingConfig_SPAModeOmittedInJSON(t *testing.T) {
-	// Test that omitting spa_mode in JSON preserves the env var value
-	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	// JSON with only cache settings, spa_mode omitted
-	jsonContent := `{
-		"cache_control": {
-			"enable_caching": true,
-			"max_age": {
-				".js": 3600
-			}
-		}
-	}`
-	if _, writeErr := tmpFile.WriteString(jsonContent); writeErr != nil {
-		t.Fatal(writeErr)
-	}
-	tmpFile.Close()
-
-	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
-			SPAMode:    true, // Set via env var
-			ConfigPath: tmpFile.Name(),
-		},
-	}
-
-	loaded, loadErr := proxy.loadRoutingConfig()
-	if loadErr != nil {
-		t.Errorf("expected no error, got: %v", loadErr)
-	}
-
-	// SPAMode should still be true (from env var), not overwritten to false
-	if !loaded.SPAMode {
-		t.Error("expected SPAMode to remain true when omitted from JSON")
-	}
-}
-
-func TestLoadRoutingConfig_SPAModeExplicitlyFalseInJSON(t *testing.T) {
-	// Test that explicitly setting spa_mode: false in JSON overrides env var
-	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	jsonContent := `{
-		"spa_mode": false
-	}`
-	if _, writeErr := tmpFile.WriteString(jsonContent); writeErr != nil {
-		t.Fatal(writeErr)
-	}
-	tmpFile.Close()
-
-	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
-			SPAMode:    true, // Set via env var
-			ConfigPath: tmpFile.Name(),
-		},
-	}
-
-	loaded, loadErr := proxy.loadRoutingConfig()
-	if loadErr != nil {
-		t.Errorf("expected no error, got: %v", loadErr)
-	}
-
-	// SPAMode should be false (from JSON), overriding env var
-	if loaded.SPAMode {
-		t.Error("expected SPAMode to be false when explicitly set in JSON")
-	}
-}
-
-func TestLoadRoutingConfig_DisableCachingWithoutMaxAge(t *testing.T) {
-	// Test that enable_caching: false works without providing max_age
-	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	jsonContent := `{
-		"cache_control": {
-			"enable_caching": false
-		}
-	}`
-	if _, writeErr := tmpFile.WriteString(jsonContent); writeErr != nil {
-		t.Fatal(writeErr)
-	}
-	tmpFile.Close()
-
-	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
-			ConfigPath: tmpFile.Name(),
-		},
-	}
-
-	loaded, loadErr := proxy.loadRoutingConfig()
-	if loadErr != nil {
-		t.Errorf("expected no error, got: %v", loadErr)
-	}
-
-	// EnableCaching should be false
-	if loaded.CacheControl.EnableCaching {
-		t.Error("expected EnableCaching to be false when set in JSON")
-	}
-
-	// MaxAge should still have defaults
-	if loaded.CacheControl.MaxAge[".js"] != 31536000 {
-		t.Errorf("expected default max_age for .js to be preserved, got: %d", loaded.CacheControl.MaxAge[".js"])
-	}
-}
-
-func TestLoadRoutingConfig_EnableCachingWithCustomMaxAge(t *testing.T) {
-	// Test that both enable_caching and max_age can be set together
-	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	jsonContent := `{
-		"cache_control": {
-			"enable_caching": false,
-			"max_age": {
-				".js": 3600
-			}
-		}
-	}`
-	if _, writeErr := tmpFile.WriteString(jsonContent); writeErr != nil {
-		t.Fatal(writeErr)
-	}
-	tmpFile.Close()
-
-	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
-			ConfigPath: tmpFile.Name(),
-		},
-	}
-
-	loaded, loadErr := proxy.loadRoutingConfig()
-	if loadErr != nil {
-		t.Errorf("expected no error, got: %v", loadErr)
-	}
-
-	// EnableCaching should be false
-	if loaded.CacheControl.EnableCaching {
-		t.Error("expected EnableCaching to be false")
-	}
-
-	// MaxAge should be from JSON
-	if loaded.CacheControl.MaxAge[".js"] != 3600 {
-		t.Errorf("expected max_age for .js to be 3600, got: %d", loaded.CacheControl.MaxAge[".js"])
-	}
-}
-
-func TestLoadRoutingConfig_EmptyCacheControlPreservesDefaults(t *testing.T) {
-	// Test that an empty cache_control object {} doesn't overwrite defaults
-	// This verifies the fix for the boolean zero-value issue
-	tmpFile, err := os.CreateTemp(t.TempDir(), "config-*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	// JSON with empty cache_control object
-	jsonContent := `{
-		"cache_control": {}
-	}`
-	if _, writeErr := tmpFile.WriteString(jsonContent); writeErr != nil {
-		t.Fatal(writeErr)
-	}
-	tmpFile.Close()
-
-	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
-			ConfigPath: tmpFile.Name(),
-		},
-	}
-
-	loaded, loadErr := proxy.loadRoutingConfig()
-	if loadErr != nil {
-		t.Errorf("expected no error, got: %v", loadErr)
-	}
-
-	// EnableCaching should remain true (the default)
-	if !loaded.CacheControl.EnableCaching {
-		t.Error("expected EnableCaching to remain true (default), but got false")
-	}
-
-	// MaxAge should have default values
-	if loaded.CacheControl.MaxAge == nil {
-		t.Error("expected MaxAge to have default values")
 	}
 }
 
@@ -975,7 +525,7 @@ func TestJSONOnlyConfiguration(t *testing.T) {
 	}
 
 	// JSON config with all settings
-	config := RoutingConfig{
+	config := routing.Config{
 		StaticRoot: tmpDir,
 		SPAMode:    true,
 		APIPrefix:  "/custom-api",
@@ -1002,7 +552,12 @@ func TestJSONOnlyConfiguration(t *testing.T) {
 	}
 
 	// Load routing config
-	routingConfig, err := proxy.loadRoutingConfig()
+	routingConfig, err := routing.LoadConfig(routing.LoadOptions{
+		ConfigPath: proxy.config.ConfigPath,
+		APIPrefix:  proxy.config.APIPrefix,
+		StaticRoot: proxy.config.StaticRoot,
+		SPAMode:    proxy.config.SPAMode,
+	})
 	if err != nil {
 		t.Errorf("expected no error loading config, got: %v", err)
 	}
@@ -1300,103 +855,6 @@ func TestRequestRouter_PostRequest_ProxyToBackend(t *testing.T) {
 	}
 }
 
-// Unit tests for static file handler with cache control
-func TestStaticFileHandler_CacheHeaders(t *testing.T) {
-	// Create temporary directory with test files in a subdirectory
-	// This avoids issues with FileServer and directory listings
-	tmpDir := t.TempDir()
-	staticDir := path.Join(tmpDir, "static")
-	if err := os.Mkdir(staticDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	jsFile := path.Join(staticDir, "app.js")
-	htmlFile := path.Join(
-		staticDir,
-		"page.html",
-	) // Use "page.html" instead of "index.html" to avoid FileServer redirect
-
-	if err := os.WriteFile(jsFile, []byte("console.log('test')"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(htmlFile, []byte("<html></html>"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	cacheSettings := CacheSettings{
-		EnableCaching: true,
-		MaxAge: map[string]int{
-			".js":   31536000, // 1 year
-			".html": 0,        // No cache
-		},
-	}
-
-	handler := newStaticFileHandler(staticDir, cacheSettings)
-
-	// Test .js file (should have long cache)
-	req := httptest.NewRequest(http.MethodGet, "/app.js", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 for .js file, got: %d", rec.Code)
-	}
-	cacheControl := rec.Header().Get("Cache-Control")
-	if !strings.Contains(cacheControl, "max-age=31536000") {
-		t.Errorf("expected Cache-Control with max-age=31536000, got: %s", cacheControl)
-	}
-
-	// Verify Vary header is set for CDN caching
-	vary := rec.Header().Get("Vary")
-	if vary != "Accept-Encoding" {
-		t.Errorf("expected Vary: Accept-Encoding, got: %s", vary)
-	}
-
-	// Test .html file (should have no cache)
-	// Note: Using "page.html" instead of "index.html" because FileServer redirects index.html to ./
-	req = httptest.NewRequest(http.MethodGet, "/page.html", nil)
-	rec = httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 for .html file, got: %d", rec.Code)
-	}
-	cacheControl = rec.Header().Get("Cache-Control")
-	if !strings.Contains(cacheControl, "max-age=0") {
-		t.Errorf("expected Cache-Control with max-age=0, got: %s", cacheControl)
-	}
-}
-
-func TestStaticFileHandler_CachingDisabled(t *testing.T) {
-	// Create temporary directory with test file
-	tmpDir := t.TempDir()
-	jsFile := path.Join(tmpDir, "app.js")
-
-	if err := os.WriteFile(jsFile, []byte("console.log('test')"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	cacheSettings := CacheSettings{
-		EnableCaching: false,
-	}
-
-	handler := newStaticFileHandler(tmpDir, cacheSettings)
-
-	req := httptest.NewRequest(http.MethodGet, "/app.js", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got: %d", rec.Code)
-	}
-
-	// Should not have Cache-Control header when caching is disabled
-	cacheControl := rec.Header().Get("Cache-Control")
-	if strings.Contains(cacheControl, "max-age") {
-		t.Errorf("expected no cache headers when caching disabled, got: %s", cacheControl)
-	}
-}
-
 // Test that extensionless files are served before SPA fallback
 func TestRequestRouter_ExtensionlessFile_ServedBeforeSPA(t *testing.T) {
 	// Create temporary directory with .well-known file (no extension)
@@ -1553,14 +1011,14 @@ func TestRequestRouter_ExtensionlessFile_CacheHeaders(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cacheSettings := CacheSettings{
+	cacheSettings := routing.CacheSettings{
 		EnableCaching: true,
 		MaxAge: map[string]int{
 			".json": 3600, // 1 hour
 		},
 	}
 
-	staticHandler := newStaticFileHandler(tmpDir, cacheSettings)
+	staticHandler := routing.NewStaticFileHandler(tmpDir, cacheSettings)
 
 	indexFile := path.Join(tmpDir, "index.html")
 	if err := os.WriteFile(indexFile, []byte("<html></html>"), 0600); err != nil {
