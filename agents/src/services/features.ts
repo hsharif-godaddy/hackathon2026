@@ -207,7 +207,7 @@ function parseEnvironmentFeatures(): FeatureConfig {
     // Widget/Feature enablement configuration
     enabledFeatures: {
       sessionFeedback: process.env.ENABLE_SESSION_FEEDBACK === 'true',
-      imageAnalysisEnabled: process.env.IMAGE_ANALYSIS_ENABLED !== 'false'
+      imageAnalysisEnabled: process.env.IMAGE_ANALYSIS_ENABLED === 'true'
     }
   }
 }
