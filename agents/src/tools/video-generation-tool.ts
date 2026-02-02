@@ -25,11 +25,9 @@
 import { execa } from 'execa';
 import fs from 'node:fs';
 import path from 'node:path';
-
 import { nanoid } from 'nanoid';
-
 import { createOpenAIClient } from '@airo/ai-lib';
-
+import { videoApiFetch } from '../helper/video-api-helper.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { logger } from '../logging/index.js';
 import { toolVideoGenerationEvents } from '../logging/events/index.js';
@@ -131,14 +129,10 @@ export class VideoGenerationTool {
 
       try {
         // Use the OpenAI videos API to check status
-        const statusResponse = await this.fetchWithTimeout(
-          `${openaiClient.baseURL}/videos/${videoId}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${openaiClient.apiKey}`,
-              'Content-Type': 'application/json'
-            }
-          }
+        const statusResponse = await videoApiFetch(
+          openaiClient,
+          `/videos/${videoId}`,
+          { headers: { 'Content-Type': 'application/json' } }
         );
 
         if (!statusResponse.ok) {
@@ -171,13 +165,9 @@ export class VideoGenerationTool {
           let downloadAttempts = 0;
           while (downloadAttempts < this.maxRetries) {
             try {
-              const contentResponse = await this.fetchWithTimeout(
-                `${openaiClient.baseURL}/videos/${videoId}/content`,
-                {
-                  headers: {
-                    'Authorization': `Bearer ${openaiClient.apiKey}`
-                  }
-                }
+              const contentResponse = await videoApiFetch(
+                openaiClient,
+                `/videos/${videoId}/content`
               );
 
               if (!contentResponse.ok) {
@@ -273,9 +263,10 @@ export class VideoGenerationTool {
         '-vf', `scale=${resolution.split('x')[0]}:${resolution.split('x')[1]}`,
         '-pix_fmt', 'yuv420p',
         '-r', '30',
+        '-threads', '4',
         '-y',
         tempOutroVideo
-      ]);
+      ], { timeout: 60000 });
 
       logger.debug('Outro video created', { tempOutroVideo });
 
@@ -289,11 +280,13 @@ export class VideoGenerationTool {
         '-safe', '0',
         '-i', concatList,
         '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-threads', '4',
         '-c:a', 'aac',
         '-pix_fmt', 'yuv420p',
         '-y',
         finalVideo
-      ]);
+      ], { timeout: 120000 });
 
       logger.debug('Videos concatenated', { finalVideo });
 
@@ -570,14 +563,12 @@ export class VideoGenerationTool {
           requestBody: JSON.stringify(requestBody, null, 2)
         });
 
-        const createResponse = await fetch(
-          `${openaiClient.baseURL}/videos`,
+        const createResponse = await videoApiFetch(
+          openaiClient,
+          '/videos',
           {
             method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${openaiClient.apiKey}`,
-              'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody)
           }
         );
