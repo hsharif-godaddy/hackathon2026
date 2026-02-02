@@ -853,17 +853,35 @@ function DevelopPageContent() {
               <PublishStatusAlert />
               <PostPublishGoLiveModal appId={appId} />
 
-              <PreviewPane
-                onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
-                showBuildingOverlay={init.ui.showPreviewLoader}
-                isHibernated={hibernation.isHibernated}
-                isResuming={hibernation.isResuming}
-                resumeFailed={hibernation.resumeFailed}
-                onRetryResume={() => hibernation.resume()}
-                isMobile={false}
-              />
+              {/* Preview/Code View */}
+              <div
+                className="absolute inset-0 flex flex-col transition-opacity duration-150"
+                style={{
+                  opacity: activeChatTab !== ChatTab.SETTINGS ? 1 : 0,
+                  pointerEvents: activeChatTab !== ChatTab.SETTINGS ? 'auto' : 'none',
+                }}
+              >
+                <PreviewPane
+                  onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                  showBuildingOverlay={init.ui.showPreviewLoader}
+                  isHibernated={hibernation.isHibernated}
+                  isResuming={hibernation.isResuming}
+                  resumeFailed={hibernation.resumeFailed}
+                  onRetryResume={() => hibernation.resume()}
+                  isMobile={false}
+                />
+              </div>
 
-              <SettingsView />
+              {/* Settings View */}
+              <div
+                className="absolute inset-0 flex flex-col transition-opacity duration-150"
+                style={{
+                  opacity: activeChatTab === ChatTab.SETTINGS ? 1 : 0,
+                  pointerEvents: activeChatTab === ChatTab.SETTINGS ? 'auto' : 'none',
+                }}
+              >
+                <SettingsView />
+              </div>
             </motion.div>
           </div>
         )}
