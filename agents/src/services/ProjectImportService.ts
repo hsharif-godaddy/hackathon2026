@@ -14,6 +14,7 @@ import { ImportJobRepository, UpdateImportJobParams } from '../database/reposito
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { zipSecurityService } from './ZipSecurityService.js';
 import { gitCloneService } from './GitCloneService.js';
+import { modifyViteConfig } from './ViteConfigModifier.js';
 import { appRestartService, DEFAULT_DEV_COMMAND } from './AppRestartService.js';
 import { GitTool } from '../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
@@ -269,7 +270,24 @@ export class ProjectImportService {
         return;
       }
 
-      // Phase 7: Install dependencies (already runs in container via dev-supervisor)
+      // Phase 7: Modify vite config to allow all hosts (for proxy compatibility)
+      // Use '/app' as this is the standard container mount
+      const viteConfigResult = await modifyViteConfig(devSupervisor, '/app');
+      if (viteConfigResult.modified) {
+        this.logger.info('project-import.vite-config.modified', {
+          jobId,
+          appId,
+          configFile: viteConfigResult.configFile,
+        });
+      } else if (viteConfigResult.error) {
+        this.logger.warn('project-import.vite-config.warning', {
+          jobId,
+          appId,
+          error: viteConfigResult.error,
+        });
+      }
+
+      // Phase 8: Install dependencies (already runs in container via dev-supervisor)
       await this.updateStatus(jobId, ImportJobStatus.INSTALLING);
       const installResult = await appRestartService.runNpmInstall(appId, app.path);
 
@@ -294,7 +312,7 @@ export class ProjectImportService {
         return;
       }
 
-      // Phase 8: Build (if script exists)
+      // Phase 9: Build (if script exists)
       if (validation.hasBuildScript) {
         await this.updateStatus(jobId, ImportJobStatus.BUILDING);
         const buildResult = await appRestartService.runNpmBuild(appId, app.path);
@@ -321,12 +339,12 @@ export class ProjectImportService {
         }
       }
 
-      // Phase 9: Create PaaS configuration file for uploaded apps
+      // Phase 10: Create PaaS configuration file for uploaded apps
       this.logger.info('project-import.config.create', { jobId, appId });
       await appRestartService.createPaasConfig(app.path);
       this.logger.info('project-import.config.created', { jobId, appId });
 
-      // Phase 10: Git commit
+      // Phase 11: Git commit
       await this.updateStatus(jobId, ImportJobStatus.COMMITTING);
       const commitResult = await this.gitCommit(appId, app.path);
 
@@ -345,7 +363,7 @@ export class ProjectImportService {
         return;
       }
 
-      // Phase 11: Restart dev server with new command from config
+      // Phase 12: Restart dev server with new command from config
       await this.updateStatus(jobId, ImportJobStatus.RESTARTING);
       const restartResult = await appRestartService.restartDevServer(appId, DEFAULT_DEV_COMMAND);
 
