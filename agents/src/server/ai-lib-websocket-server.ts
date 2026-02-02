@@ -1561,9 +1561,20 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         if (authType === AuthType.NONE) {
           // No authentication required (local development)
+          // Create agentContext with same structure as JWT auth for consistency
+          const siteId = auth.getSiteId(AuthType.NONE);
+          const now = Math.floor(Date.now() / 1000);
           socket.handshake.auth = {
             ...socket.handshake.auth, // Keep previousSocketId!
-            siteId: auth.getSiteId(AuthType.NONE)
+            siteId,
+            agentContext: {
+              siteId,
+              canDownload: true,
+              canPublish: true,
+              isE2S: false,
+              exp: now + 3600,
+              iat: now
+            }
           };
           next();
           return;
@@ -1571,9 +1582,20 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         if (authType === AuthType.MOCK) {
           // Mock authentication for testing
+          // Create agentContext with same structure as JWT auth for consistency
+          const siteId = auth.getSiteId(AuthType.MOCK);
+          const now = Math.floor(Date.now() / 1000);
           socket.handshake.auth = {
             ...socket.handshake.auth, // Keep previousSocketId!
-            siteId: auth.getSiteId(AuthType.MOCK)
+            siteId,
+            agentContext: {
+              siteId,
+              canDownload: true,
+              canPublish: true,
+              isE2S: false,
+              exp: now + 3600,
+              iat: now
+            }
           };
           next();
           return;

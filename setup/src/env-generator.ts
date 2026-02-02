@@ -830,7 +830,7 @@ ENABLE_SOCIAL=false
 		return envContent;
 	}
 
-	async generateAppEnv(yesToAll: boolean = false, commerceResult: CommerceSetupResult | null = null): Promise<void> {
+	async generateAppEnv(yesToAll: boolean = false, commerceResult: CommerceSetupResult | null = null): Promise<{ authType: "none" | "mock" | "jwt" }> {
 		console.log(chalk.cyan("\n📝 Generating App Environment Configuration"));
 
 		const authConfig = await this.promptAuthConfig(yesToAll);
@@ -870,7 +870,7 @@ ENABLE_SOCIAL=false
 
 		const written = await this.writeEnvFileWithPrompt(appEnvPath, envContent, "App", yesToAll);
 		if (!written) {
-			return;
+			return { authType: config.authConfig.authType };
 		}
 
 		console.log(chalk.cyan("\nGenerating environment-specific configuration files..."));
@@ -903,6 +903,8 @@ ENABLE_SOCIAL=false
 		console.log(`   ${chalk.blue('pnpm run local:test')}  → Uses .env.local.test (test SSO)`);
 		console.log(`   ${chalk.blue('pnpm run local:prod')}  → Uses .env.local.prod (prod SSO)`);
 		console.log(`\n   See GETTING_STARTED.md for more details on running different environments.`);
+
+		return { authType: config.authConfig.authType };
 	}
 
 	/**
@@ -942,8 +944,42 @@ JWKS_URL=${envConfig.jwksUrl}
 `;
 	}
 
-	async generateAgentsEnv(yesToAll: boolean = false, commerceResult: CommerceSetupResult | null = null): Promise<void> {
+	async generateAgentsEnv(yesToAll: boolean = false, commerceResult: CommerceSetupResult | null = null, authType?: "none" | "mock" | "jwt"): Promise<void> {
 		console.log(chalk.cyan("\n📝 Generating Agents Environment Configuration"));
+
+		// If authType not provided (standalone mode), prompt for it
+		let resolvedAuthType: "none" | "mock" | "jwt" = authType ?? "jwt";
+		if (!authType) {
+			if (yesToAll) {
+				console.log(chalk.gray(`Automated mode: using JWT authentication (default)`));
+			} else {
+				console.log(chalk.cyan("\n🔐 Authentication Configuration"));
+				console.log(chalk.gray("Choose the authentication type for the agents service:"));
+				console.log(chalk.gray("Note: This should match the app authentication configuration.\n"));
+
+				const response = await inquirer.prompt([
+					{
+						type: "list",
+						name: "authType",
+						message: "Which authentication type would you like to use?",
+						choices: [
+							{
+								name: "JWT - Full authentication with app (Recommended for proper local testing)",
+								value: "jwt",
+								short: "JWT"
+							},
+							{
+								name: "None - No authentication (Some UI functionalities will be degraded)",
+								value: "none",
+								short: "None"
+							},
+						],
+						default: "jwt",
+					},
+				]);
+				resolvedAuthType = response.authType;
+			}
+		}
 
 		const modelConfig = await this.promptModelProvider(yesToAll);
 
@@ -1116,7 +1152,7 @@ JWKS_URL=${envConfig.jwksUrl}
 			appTemplateDir: "app-templates/v8",
 			showUsageCost: true,
 			modelConfig,
-			authType: "none", // Default to no auth for agents service in development
+			authType: resolvedAuthType, // Sync with app authentication type for proper local testing
 			mysqlRootHost: mysqlConfig.mysqlRootHost,
 			mysqlRootPort: parseInt(mysqlConfig.mysqlRootPort, 10),
 			mysqlRootUser: mysqlConfig.mysqlRootUser,

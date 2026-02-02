@@ -5,9 +5,87 @@
 
 import { createRequire } from 'module';
 import { createPublicKey, type JsonWebKey } from 'node:crypto';
+import https from 'node:https';
 import { getJWTAgentConfig, validateJWTAgentConfig } from './jwks-config.js';
-import { auth } from '../services/features.js';
+import { auth, getFeatures } from '../services/features.js';
 import { logger } from '../logging/index.js';
+
+/**
+ * Check if a URL is a local development URL that may use self-signed certificates
+ */
+function isLocalDevUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === 'localhost' ||
+           parsed.hostname === '127.0.0.1' ||
+           parsed.hostname.endsWith('.local') ||
+           parsed.hostname.includes('local.gasket') ||
+           parsed.hostname.includes('.dev-godaddy.com');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fetch JSON from a URL, with support for self-signed certs in development
+ */
+async function fetchJson<T>(url: string, timeoutMs: number = 10000): Promise<T> {
+  const features = getFeatures();
+  const isDev = features.nodeEnv === 'development';
+  const isLocalUrl = isLocalDevUrl(url);
+
+  // For local dev URLs in development mode, accept self-signed certificates
+  if (isDev && isLocalUrl) {
+    return new Promise((resolve, reject) => {
+      const parsed = new URL(url);
+      const options: https.RequestOptions = {
+        hostname: parsed.hostname,
+        port: parsed.port || 443,
+        path: parsed.pathname + parsed.search,
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        rejectUnauthorized: false, // Accept self-signed certs for local dev
+        timeout: timeoutMs
+      };
+
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              resolve(JSON.parse(data));
+            } catch (e) {
+              reject(new Error('Invalid JSON response'));
+            }
+          } else {
+            reject(new Error(`HTTP ${res.statusCode}`));
+          }
+        });
+      });
+
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Request timeout'));
+      });
+
+      req.end();
+    });
+  }
+
+  // For production or non-local URLs, use standard fetch with full SSL verification
+  const response = await fetch(url, {
+    headers: { 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
 
 const require = createRequire(import.meta.url);
 const jwt = require('jsonwebtoken');
@@ -136,24 +214,16 @@ export class JWTValidator {
     }
 
     try {
-      const response = await fetch(this.config.jwksUrl, {
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(10000)
-      });
-
-      if (!response.ok) {
-        throw new Error(`JWKS endpoint returned ${response.status}`);
-      }
-
-      const jwks: { keys: JWK[] } = await response.json();
+      // Use fetchJson which handles self-signed certs for local development
+      const jwks = await fetchJson<{ keys: JWK[] }>(this.config.jwksUrl, 10000);
       const jwk = jwks.keys?.find((key) => key.kid === kid);
-      
+
       if (!jwk) {
         throw new Error(`Key with kid '${kid}' not found in JWKS`);
       }
 
       const publicKey = this.jwkToPem(jwk);
-      
+
       this.keyCache.set(kid, {
         key: publicKey,
         expiresAt: Date.now() + this.cacheTTL

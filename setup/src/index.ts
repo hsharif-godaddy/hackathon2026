@@ -478,8 +478,11 @@ async function fullSetup(yesToAll: boolean = false): Promise<void> {
     console.log(chalk.gray('Generating app/.env with defaults...'));
   }
 
+  // Track auth type from app config to sync with agents
+  let appAuthType: "none" | "mock" | "jwt" = "jwt";
   if (configureApp) {
-    await envGenerator.generateAppEnv(yesToAll, commerceResult);
+    const appResult = await envGenerator.generateAppEnv(yesToAll, commerceResult);
+    appAuthType = appResult.authType;
   }
 
   let configureAgents = yesToAll;
@@ -498,7 +501,8 @@ async function fullSetup(yesToAll: boolean = false): Promise<void> {
   }
 
   if (configureAgents) {
-    await envGenerator.generateAgentsEnv(yesToAll, commerceResult);
+    // Pass the auth type from app config to ensure both services use same auth
+    await envGenerator.generateAgentsEnv(yesToAll, commerceResult, appAuthType);
   }
 
   printSeparator();

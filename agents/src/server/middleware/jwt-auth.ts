@@ -23,19 +23,31 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export class JWTAuthMiddleware {
-  public jwtValidator: ReturnType<typeof getJWTValidator>;
+  private _jwtValidator: ReturnType<typeof getJWTValidator> | null = null;
   private readonly MAX_TOKEN_SIZE = 10000;
   private readonly MAX_WEBSOCKET_TOKEN_TTL_SECONDS = 43200; // 12 hours max for WebSocket tokens
 
   constructor() {
-    // Validate config on startup
-    const configValidation = validateJWTAgentConfig();
+    // Only validate JWT config if we're using JWT authentication
+    // For AUTH_TYPE=none or AUTH_TYPE=mock, JWKS config is not needed
+    const authType = auth.getType();
+    if (authType === AuthType.JWT) {
+      const configValidation = validateJWTAgentConfig();
 
-    if (!configValidation.valid) {
-      throw new Error(`JWT configuration invalid: ${configValidation.errors.join(', ')}`);
+      if (!configValidation.valid) {
+        throw new Error(`JWT configuration invalid: ${configValidation.errors.join(', ')}`);
+      }
     }
+  }
 
-    this.jwtValidator = getJWTValidator();
+  /**
+   * Lazy getter for JWT validator - only initialized when JWT auth is actually used
+   */
+  get jwtValidator(): ReturnType<typeof getJWTValidator> {
+    if (!this._jwtValidator) {
+      this._jwtValidator = getJWTValidator();
+    }
+    return this._jwtValidator;
   }
 
   /**
@@ -76,13 +88,14 @@ export class JWTAuthMiddleware {
       if (authType === AuthType.NONE) {
         // No authentication required (local development)
         // Grant all permissions for local development
+        const now = Math.floor(Date.now() / 1000);
         (req as AuthenticatedRequest).agentContext = {
           siteId: auth.getSiteId(AuthType.NONE),
           canDownload: true,
           canPublish: true,
           isE2S: false,
-          exp: Math.floor(Date.now() / 1000) + 3600,
-          iat: Math.floor(Date.now() / 1000)
+          exp: now + 3600,
+          iat: now
         };
         next();
         return;
@@ -91,13 +104,14 @@ export class JWTAuthMiddleware {
       if (authType === AuthType.MOCK) {
         // Mock authentication for testing
         // Grant all permissions for testing
+        const now = Math.floor(Date.now() / 1000);
         (req as AuthenticatedRequest).agentContext = {
           siteId: auth.getSiteId(AuthType.MOCK),
           canDownload: true,
           canPublish: true,
           isE2S: false,
-          exp: Math.floor(Date.now() / 1000) + 3600,
-          iat: Math.floor(Date.now() / 1000)
+          exp: now + 3600,
+          iat: now
         };
         next();
         return;
