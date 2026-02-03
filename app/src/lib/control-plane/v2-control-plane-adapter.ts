@@ -120,8 +120,10 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           if (error.status === 401) {
             throw error;
           }
-          // If we get 403, customer doesn't exist in mgmt-airo yet - proceed to signup
-          if (error.status === 403) {
+          // If we get 403 or 404, customer doesn't exist in mgmt-airo yet - proceed to signup
+          // 403 = forbidden (no customer record)
+          // 404 = not found (customer record doesn't exist for brand new accounts)
+          if (error.status === 403 || error.status === 404) {
             selectedSubscription = null;
           } else {
             // Re-throw other errors

@@ -42,7 +42,8 @@ export const usePaywallEligibility = (appId?: string): PaywallEligibilityResult 
   );
 
   // Only need additional checks for free/none plans
-  const needsAdditionalChecks = paywallEnabled && subscription && !hasPaidPlan;
+  // Must explicitly convert to boolean for React Query's enabled option
+  const needsAdditionalChecks = Boolean(paywallEnabled && subscription && !hasPaidPlan);
 
   // Step 3: Fetch entitlements (only if needed)
   const { data: entitlementId, isLoading: isEntitlementsLoading } = useEntitlements({

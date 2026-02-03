@@ -147,6 +147,50 @@ describe('usePaywallEligibility', function hook() {
 
       expect(result.current.showPaywall).toBe(true);
     });
+
+    it('should handle undefined subscription for brand new accounts (AIROBUILD-720)', function newAccount() {
+      // Explicitly set paywall enabled to test the exact bug scenario:
+      // paywallEnabled (true) && subscription (undefined) && !hasPaidPlan
+      // Without !! coercion, this evaluates to undefined instead of false
+      vi.mocked(usePaywallFeatureFlags).mockReturnValue({
+        data: { paywall: true, markets: true }, // Explicitly true
+        isLoading: false,
+        isError: false,
+      });
+
+      // Simulate a brand new GoDaddy account with no mgmt-airo subscription yet
+      vi.mocked(useSubscription).mockReturnValue({
+        data: undefined, // No subscription exists yet
+        subscriptions: [],
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      } as any);
+
+      // This test verifies that the hook doesn't crash with React Query error:
+      // "Expected enabled to be a boolean or a callback that returns a boolean"
+      // The bug occurred because: true && undefined && true → undefined (not false)
+      const { result } = renderHookWithProviders(() => usePaywallEligibility());
+
+      // Should show paywall (no subscription = no access) without crashing
+      expect(result.current.showPaywall).toBe(true);
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.isError).toBe(false);
+
+      // Verify that useEntitlements and useProjects were called with enabled: false (not undefined)
+      // This is the critical check - React Query requires boolean, not undefined
+      expect(useEntitlements).toHaveBeenCalledWith(
+        expect.objectContaining({
+          enabled: false, // Must be boolean, not undefined
+        })
+      );
+      expect(useProjects).toHaveBeenCalledWith(
+        expect.objectContaining({
+          enabled: false, // Must be boolean, not undefined
+        })
+      );
+    });
   });
 
   describe('Paywall display logic', function displayLogic() {
