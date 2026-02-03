@@ -209,6 +209,19 @@ export interface IControlPlaneAdapter {
   updateSite(siteId: string, updates: Partial<SiteInfo>, jwt: string): Promise<SiteInfo | null>;
 
   /**
+   * Update site variables (metadata)
+   *
+   * V2: Updates app variables in mgmt-airo
+   * Legacy: Updates site metadata in database (same as updateSite)
+   *
+   * @param siteId - Site identifier
+   * @param variableUpdates - Variables to update
+   * @param jwt - Customer JWT token
+   * @returns Updated site information or null if not found
+   */
+  updateSiteVariables(siteId: string, variableUpdates: Record<string, any>, jwt: string): Promise<SiteInfo | null>;
+
+  /**
    * Get secrets for an app
    *
    * @param appId - Application identifier

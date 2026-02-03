@@ -5,7 +5,10 @@
  * Finalizes the stream, clears state, and triggers post-completion actions.
  */
 
+import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
+import { useSiteStore } from '@/stores/useSiteStore'
+import { useSitesStore } from '@/stores/useSitesStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
 
@@ -154,6 +157,30 @@ export class CompleteHandler implements MessageHandler {
 
     // Handle commit selection and preview refresh
     await context.helpers.handleCommitComplete(data.data?.commitHash as string | undefined)
+
+    // Update site's updated_at timestamp so it moves to top of apps list
+    // Call the backend API to persist a lastInteractionAt variable, then update frontend stores
+    const appId = context.currentAppId
+    if (appId) {
+      appFetch(`/api/sites/${appId}/variables`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lastInteractionAt: new Date().toISOString() })
+      })
+        .then(async (response) => {
+          if (response.ok) {
+            const updatedSite = await response.json()
+            useSiteStore.getState().updateSite(appId, updatedSite)
+            useSitesStore.getState().updateSite(appId, updatedSite)
+          }
+        })
+        .catch((error) => {
+          logger.warn('complete-handler.update-timestamp.failed', {
+            appId,
+            error: error instanceof Error ? error.message : String(error)
+          })
+        })
+    }
 
     // Trigger usage refresh after message completes with delays
     // mgmt-airo spend data may take time to propagate after chat completion

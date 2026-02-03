@@ -515,7 +515,19 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
 
       const client = this.createClient(jwt);
       const apps = await client.getAllAppsForCustomer(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
-      return apps.map(app => this.mapAppToSiteInfo(app, customerId));
+      const sites = apps.map(app => this.mapAppToSiteInfo(app, customerId));
+
+      return sites.sort((a, b) => {
+        const updatedA = new Date(a.updated_at).getTime();
+        const updatedB = new Date(b.updated_at).getTime();
+        const updatedDiff = updatedB - updatedA;
+        if (updatedDiff !== 0) {
+          return updatedDiff;
+        }
+        const createdA = new Date(a.created_at).getTime();
+        const createdB = new Date(b.created_at).getTime();
+        return createdB - createdA;
+      });
     } catch (error: any) {
       // Re-throw 401 for auth redirect
       if (error.status === 401) {

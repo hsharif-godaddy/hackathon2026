@@ -130,7 +130,10 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
     // Get all sites directly from database
     const prismaClient = (this.siteService as any).client;
     const sites = await prismaClient.sites.findMany({
-      orderBy: { created_at: 'desc' }
+      orderBy: [
+        { updated_at: 'desc' },
+        { created_at: 'desc' }
+      ]
     });
 
     return sites.map((site: any) => this.mapToSiteInfo(site));
@@ -325,6 +328,18 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
       });
       throw new Error(`Update failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Update site variables
+   *
+   * Legacy Mode: Delegates to updateSite since variables are stored as site metadata.
+   * This ensures updated_at is always refreshed.
+   */
+  async updateSiteVariables(siteId: string, _variableUpdates: Record<string, any>, jwt: string): Promise<SiteInfo | null> {
+    // In legacy mode, just call updateSite with empty updates to refresh updated_at
+    // The PrismaSiteService always sets updated_at: new Date() on any update
+    return this.updateSite(siteId, {}, jwt);
   }
 
   /**

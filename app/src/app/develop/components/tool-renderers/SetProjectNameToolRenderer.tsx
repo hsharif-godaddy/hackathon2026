@@ -15,7 +15,7 @@ import ToolModal from './ToolModal'
  * Custom renderer for setProjectName tool
  *
  * Shows "Project name set to {name}" with a file icon.
- * 
+ *
  * IMPORTANT: This is a display-only component for historical tool results.
  * The actual control plane update happens in ToolResultHandler when the tool
  * first completes. Re-applying updates here would overwrite manual renames.
@@ -73,7 +73,7 @@ export default function SetProjectNameToolRenderer({
     </ToolModal>
   )
 
-  const displayName = projectName 
+  const displayName = projectName
     ? t('builder_tools_setprojectname_display', { name: projectName }, `Project name: ${projectName}`)
     : t('builder_tools_setprojectname_unknown', undefined, 'Unknown project name')
 
@@ -90,4 +90,3 @@ export default function SetProjectNameToolRenderer({
     </div>
   )
 }
-

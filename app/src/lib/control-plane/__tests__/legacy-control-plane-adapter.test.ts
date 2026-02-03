@@ -422,8 +422,32 @@ describe('LegacyControlPlaneAdapter', () => {
     });
   });
 
-  // Note: LegacyControlPlaneAdapter doesn't implement updateSiteVariables
-  // This method is only available in V2ControlPlaneAdapter
+  describe('updateSiteVariables', () => {
+    it('should call updateSite with empty updates to refresh updated_at', async () => {
+      const updatedSite = {
+        ...MOCK_SITE_DATA,
+        updated_at: new Date('2025-01-02T00:00:00Z')
+      };
+
+      mockSiteService.updateSite.mockResolvedValue(updatedSite);
+
+      const result = await adapter.updateSiteVariables(MOCK_SITE_ID, { lastInteractionAt: '2025-01-02' }, MOCK_JWT);
+
+      expect(result).toBeDefined();
+      expect(result?.id).toBe(MOCK_SITE_ID);
+
+      // Should call updateSite with empty object (legacy mode ignores variable updates)
+      expect(mockSiteService.updateSite).toHaveBeenCalledWith(MOCK_SITE_ID, {});
+    });
+
+    it('should return null when updateSite returns null', async () => {
+      mockSiteService.updateSite.mockResolvedValue(null);
+
+      const result = await adapter.updateSiteVariables(MOCK_SITE_ID, { lastInteractionAt: '2025-01-02' }, MOCK_JWT);
+
+      expect(result).toBeNull();
+    });
+  });
 
   describe('error handling and logging', () => {
     it('should log operations appropriately', async () => {

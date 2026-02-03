@@ -10,6 +10,38 @@ import { AppErrorCode } from '@/types/error-codes'
 // Use SiteInfo from the existing interface for consistency
 export type Site = SiteInfo
 
+/**
+ * Sort sites for display on the apps page
+ *
+ * Sort precedence (highest to lowest priority):
+ * 1. updated_at DESC - most recently interacted apps first
+ * 2. created_at DESC - newest apps first (when updated_at is equal)
+ * 3. id ASC - alphabetical tie-breaker for sort stability
+ *
+ * @param sites - Array of sites to sort
+ * @returns NEW sorted array (triggers React re-renders)
+ */
+function sortSites(sites: Site[]): Site[] {
+  return [...sites].sort((a, b) => {
+    // Compare by updated_at DESC
+    const updatedA = new Date(a.updated_at).getTime()
+    const updatedB = new Date(b.updated_at).getTime()
+    const updatedDiff = updatedB - updatedA
+    if (updatedDiff !== 0) {
+      return updatedDiff
+    }
+    // If updated_at is the same, sort by created_at DESC
+    const createdA = new Date(a.created_at).getTime()
+    const createdB = new Date(b.created_at).getTime()
+    const createdDiff = createdB - createdA
+    if (createdDiff !== 0) {
+      return createdDiff
+    }
+    // Final tie-breaker: sort by id for stability
+    return a.id.localeCompare(b.id)
+  })
+}
+
 interface SitesStore {
   // State
   allSites: Site[]
@@ -109,6 +141,9 @@ export const useSitesStore = create<SitesStore>()(
           sites.forEach(site => {
             state.sitesById[site.id] = site
           })
+
+          // Sort sites after fetching (creates new array for React reactivity)
+          state.allSites = sortSites(state.allSites)
         })
 
       } catch (error) {
@@ -316,6 +351,8 @@ export const useSitesStore = create<SitesStore>()(
           const existingIndex = state.allSites.findIndex(site => site.id === siteId)
           if (existingIndex >= 0) {
             state.allSites[existingIndex] = siteData
+            // Re-sort after updating (creates new array for React reactivity)
+            state.allSites = sortSites(state.allSites)
           }
         })
 
@@ -355,7 +392,13 @@ export const useSitesStore = create<SitesStore>()(
         // Update in allSites
         const siteIndex = state.allSites.findIndex(site => site.id === siteId)
         if (siteIndex >= 0) {
-          Object.assign(state.allSites[siteIndex], updates)
+          // Replace the entire site object to ensure all fields are updated
+          state.allSites[siteIndex] = {
+            ...state.allSites[siteIndex],
+            ...updates
+          }
+          // Re-sort after updating (creates new array for React reactivity)
+          state.allSites = sortSites(state.allSites)
         }
       })
     },
