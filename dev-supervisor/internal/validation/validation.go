@@ -1,4 +1,7 @@
-package main
+// Package validation provides security-focused input validation for API requests.
+// It validates commands, paths, environment variables, and prevents execution
+// of potentially dangerous operations.
+package validation
 
 import (
 	"errors"
@@ -14,8 +17,8 @@ const (
 	MaxCommandLength = 8192
 )
 
-// validateProcessStartRequest validates a process start request
-func validateProcessStartRequest(req ProcessStartRequest) error {
+// ValidateProcessStartRequest validates a process start request
+func ValidateProcessStartRequest(req ProcessStartRequest) error {
 	if strings.TrimSpace(req.Command) == "" {
 		return errors.New("command cannot be empty")
 	}
@@ -32,7 +35,7 @@ func validateProcessStartRequest(req ProcessStartRequest) error {
 
 	// Validate environment variables
 	for key, value := range req.Env {
-		if !isValidEnvVarName(key) {
+		if !IsValidEnvVarName(key) {
 			return fmt.Errorf("invalid environment variable name: %s", key)
 		}
 		if len(value) > MaxEnvVarValueSize {
@@ -43,8 +46,8 @@ func validateProcessStartRequest(req ProcessStartRequest) error {
 	return nil
 }
 
-// validateCommandRequest validates a command execution request
-func validateCommandRequest(req CommandRequest) error {
+// ValidateCommandRequest validates a command execution request
+func ValidateCommandRequest(req CommandRequest) error {
 	if strings.TrimSpace(req.Command) == "" {
 		return errors.New("command cannot be empty")
 	}
@@ -70,8 +73,8 @@ func validateCommandRequest(req CommandRequest) error {
 	return nil
 }
 
-// validateEnvironmentSetRequest validates an environment set request
-func validateEnvironmentSetRequest(req EnvironmentSetRequest) error {
+// ValidateEnvironmentSetRequest validates an environment set request
+func ValidateEnvironmentSetRequest(req EnvironmentSetRequest) error {
 	if len(req.Variables) == 0 {
 		return errors.New("no variables provided")
 	}
@@ -81,7 +84,7 @@ func validateEnvironmentSetRequest(req EnvironmentSetRequest) error {
 	}
 
 	for key, value := range req.Variables {
-		if !isValidEnvVarName(key) {
+		if !IsValidEnvVarName(key) {
 			return fmt.Errorf("invalid environment variable name: %s", key)
 		}
 		if len(value) > MaxEnvVarValueSize {
@@ -168,8 +171,32 @@ func isProtectedEnvVar(name string) bool {
 	return slices.Contains(protected, name)
 }
 
-// sanitizeCommand performs basic command sanitization
-func sanitizeCommand(command string) string {
+// IsValidEnvVarName checks if the environment variable name is valid
+func IsValidEnvVarName(name string) bool {
+	if name == "" {
+		return false
+	}
+
+	// First character must be letter or underscore
+	first := name[0]
+	if first < 'A' || (first > 'Z' && first < '_') || (first > '_' && first < 'a') || first > 'z' {
+		return false
+	}
+
+	// Remaining characters can be letters, digits, or underscore
+	for i := 1; i < len(name); i++ {
+		char := name[i]
+		if char < '0' || (char > '9' && char < 'A') || (char > 'Z' && char < '_') || (char > '_' && char < 'a') ||
+			char > 'z' {
+			return false
+		}
+	}
+
+	return true
+}
+
+// SanitizeCommand performs basic command sanitization
+func SanitizeCommand(command string) string {
 	// Remove null bytes
 	command = strings.ReplaceAll(command, "\x00", "")
 

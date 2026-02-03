@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
 func TestEnvironmentManager_NewEnvironmentManager(t *testing.T) {
@@ -36,13 +38,13 @@ func TestEnvironmentManager_SetVariables(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		request     EnvironmentSetRequest
+		request     validation.EnvironmentSetRequest
 		expectError bool
 		errorMsg    string
 	}{
 		{
 			name: "valid variables",
-			request: EnvironmentSetRequest{
+			request: validation.EnvironmentSetRequest{
 				Variables: map[string]string{
 					"TEST_VAR1": "value1",
 					"TEST_VAR2": "value2",
@@ -52,7 +54,7 @@ func TestEnvironmentManager_SetVariables(t *testing.T) {
 		},
 		{
 			name: "empty variables",
-			request: EnvironmentSetRequest{
+			request: validation.EnvironmentSetRequest{
 				Variables: map[string]string{},
 			},
 			expectError: true,
@@ -60,7 +62,7 @@ func TestEnvironmentManager_SetVariables(t *testing.T) {
 		},
 		{
 			name: "invalid variable name",
-			request: EnvironmentSetRequest{
+			request: validation.EnvironmentSetRequest{
 				Variables: map[string]string{
 					"123INVALID": "value",
 				},
@@ -70,7 +72,7 @@ func TestEnvironmentManager_SetVariables(t *testing.T) {
 		},
 		{
 			name: "variable name with spaces",
-			request: EnvironmentSetRequest{
+			request: validation.EnvironmentSetRequest{
 				Variables: map[string]string{
 					"INVALID NAME": "value",
 				},
@@ -80,7 +82,7 @@ func TestEnvironmentManager_SetVariables(t *testing.T) {
 		},
 		{
 			name: "empty variable name",
-			request: EnvironmentSetRequest{
+			request: validation.EnvironmentSetRequest{
 				Variables: map[string]string{
 					"": "value",
 				},
@@ -90,7 +92,7 @@ func TestEnvironmentManager_SetVariables(t *testing.T) {
 		},
 		{
 			name: "protected variable",
-			request: EnvironmentSetRequest{
+			request: validation.EnvironmentSetRequest{
 				Variables: map[string]string{
 					"PATH": "/custom/path",
 				},
@@ -149,7 +151,7 @@ func TestEnvironmentManager_GetVariables(t *testing.T) {
 		"TEST_GET_VAR2": "value2",
 	}
 
-	req := EnvironmentSetRequest{Variables: testVars}
+	req := validation.EnvironmentSetRequest{Variables: testVars}
 	if err := em.SetVariables(req); err != nil {
 		t.Fatalf("Failed to set test variables: %v", err)
 	}
@@ -180,7 +182,7 @@ func TestEnvironmentManager_GetVariable(t *testing.T) {
 	testKey := "TEST_SINGLE_VAR"
 	testValue := "single_value"
 
-	req := EnvironmentSetRequest{
+	req := validation.EnvironmentSetRequest{
 		Variables: map[string]string{testKey: testValue},
 	}
 
@@ -212,7 +214,7 @@ func TestEnvironmentManager_UnsetVariable(t *testing.T) {
 	testKey := "TEST_UNSET_VAR"
 	testValue := "unset_value"
 
-	req := EnvironmentSetRequest{
+	req := validation.EnvironmentSetRequest{
 		Variables: map[string]string{testKey: testValue},
 	}
 
@@ -255,7 +257,7 @@ func TestEnvironmentManager_ResetToDefaults(t *testing.T) {
 		"TEST_CUSTOM2": "custom2",
 	}
 
-	req := EnvironmentSetRequest{Variables: customVars}
+	req := validation.EnvironmentSetRequest{Variables: customVars}
 	if err := em.SetVariables(req); err != nil {
 		t.Fatalf("Failed to set custom variables: %v", err)
 	}
@@ -296,7 +298,7 @@ func TestEnvironmentManager_GetEnvironmentArray(t *testing.T) {
 		"TEST_ARRAY_VAR2": "array_value2",
 	}
 
-	req := EnvironmentSetRequest{Variables: testVars}
+	req := validation.EnvironmentSetRequest{Variables: testVars}
 	if err := em.SetVariables(req); err != nil {
 		t.Fatalf("Failed to set test variables: %v", err)
 	}
@@ -342,7 +344,7 @@ func TestEnvironmentManager_GetFilteredVariables(t *testing.T) {
 		"OTHER_VAR":        "other_value",
 	}
 
-	req := EnvironmentSetRequest{Variables: testVars}
+	req := validation.EnvironmentSetRequest{Variables: testVars}
 	if err := em.SetVariables(req); err != nil {
 		t.Fatalf("Failed to set test variables: %v", err)
 	}
@@ -408,9 +410,9 @@ func TestIsValidEnvVarName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := isValidEnvVarName(tt.varName)
+			result := validation.IsValidEnvVarName(tt.varName)
 			if result != tt.expected {
-				t.Errorf("isValidEnvVarName(%s) = %v, expected %v", tt.varName, result, tt.expected)
+				t.Errorf("IsValidEnvVarName(%s) = %v, expected %v", tt.varName, result, tt.expected)
 			}
 		})
 	}

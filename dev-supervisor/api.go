@@ -18,6 +18,7 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 	"github.com/airo-ai-builder/dev-supervisor/internal/health"
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
+	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
 // Archive extension used for published version files
@@ -74,20 +75,20 @@ func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleProcessStart(w http.ResponseWriter, r *http.Request) {
-	var req ProcessStartRequest
+	var req validation.ProcessStartRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
 		return
 	}
 
 	// Validate request
-	if err := validateProcessStartRequest(req); err != nil {
+	if err := validation.ValidateProcessStartRequest(req); err != nil {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
 		return
 	}
 
 	// Sanitize command
-	req.Command = sanitizeCommand(req.Command)
+	req.Command = validation.SanitizeCommand(req.Command)
 
 	if err := s.procMgr.Start(req); err != nil {
 		s.sendError(w, http.StatusBadRequest, "start_failed", err.Error())
@@ -151,20 +152,20 @@ func (s *Server) handleProcessStatus(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
-	var req CommandRequest
+	var req validation.CommandRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
 		return
 	}
 
 	// Validate request
-	if err := validateCommandRequest(req); err != nil {
+	if err := validation.ValidateCommandRequest(req); err != nil {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
 		return
 	}
 
 	// Sanitize command
-	req.Command = sanitizeCommand(req.Command)
+	req.Command = validation.SanitizeCommand(req.Command)
 	commandPreview := commandLogPreview(req.Command)
 
 	// Always capture output for LLM usage
@@ -222,14 +223,14 @@ func (s *Server) handleEnvironmentGet(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleEnvironmentSet(w http.ResponseWriter, r *http.Request) {
-	var req EnvironmentSetRequest
+	var req validation.EnvironmentSetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
 		return
 	}
 
 	// Validate request
-	if err := validateEnvironmentSetRequest(req); err != nil {
+	if err := validation.ValidateEnvironmentSetRequest(req); err != nil {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
 		return
 	}

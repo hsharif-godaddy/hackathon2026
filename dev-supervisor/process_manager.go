@@ -20,6 +20,7 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/ports"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
+	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
 type ProcessState string
@@ -52,13 +53,6 @@ type ProcessInfo struct {
 	Error     string       `json:"error,omitempty"`
 }
 
-type ProcessStartRequest struct {
-	Command    string            `json:"command"`
-	Env        map[string]string `json:"env,omitempty"`
-	WorkingDir string            `json:"working_dir,omitempty"`
-	Ports      []int             `json:"ports,omitempty"` // Explicit port specification
-}
-
 type ProcessStopRequest struct {
 	Signal  string `json:"signal,omitempty"`
 	Timeout int    `json:"timeout,omitempty"`
@@ -76,7 +70,7 @@ type ManagedProcess struct {
 	info      ProcessInfo
 	infoMu    sync.RWMutex // Protects info field
 	startTime time.Time
-	config    ProcessStartRequest
+	config    validation.ProcessStartRequest
 	done      chan struct{} // Signals when process cleanup is complete
 
 	// Synchronization for cmd.Wait()
@@ -177,7 +171,7 @@ func NewProcessManager(logMgr logs.Logger, pid1Mgr *process.PID1Manager) *Proces
 }
 
 // NewManagedProcess creates a new process instance
-func NewManagedProcess(config ProcessStartRequest) (*ManagedProcess, error) {
+func NewManagedProcess(config validation.ProcessStartRequest) (*ManagedProcess, error) {
 	if config.Command == "" {
 		return nil, errors.New("command is required")
 	}
@@ -502,7 +496,7 @@ func (mp *ManagedProcess) streamLogs(logMgr logs.Logger, reader io.Reader, sourc
 	}
 }
 
-func (pm *ProcessManager) Start(req ProcessStartRequest) error {
+func (pm *ProcessManager) Start(req validation.ProcessStartRequest) error {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
@@ -782,7 +776,7 @@ func (pm *ProcessManager) StopAllProcesses() {
 }
 
 // GetStartRequest returns the current process start request for auto-restart
-func (pm *ProcessManager) GetStartRequest() *ProcessStartRequest {
+func (pm *ProcessManager) GetStartRequest() *validation.ProcessStartRequest {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
@@ -1050,7 +1044,7 @@ func (pm *ProcessManager) checkIdleAndStop() {
 }
 
 // discoverProcessPorts discovers the ports used by the current process
-func (pm *ProcessManager) discoverProcessPorts(config ProcessStartRequest) []int {
+func (pm *ProcessManager) discoverProcessPorts(config validation.ProcessStartRequest) []int {
 	// Option 1: Use explicitly configured ports (safest)
 	if len(config.Ports) > 0 {
 		slog.Info("using explicitly configured ports", "ports", config.Ports)

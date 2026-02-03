@@ -8,18 +8,13 @@ import (
 	"os"
 	"os/exec"
 	"time"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
 const (
 	defaultTmpDir = "/tmp"
 )
-
-type CommandRequest struct {
-	Command       string `json:"command"`
-	Timeout       int    `json:"timeout,omitempty"`
-	CaptureOutput bool   `json:"capture_output,omitempty"`
-	WorkingDir    string `json:"working_dir,omitempty"`
-}
 
 type CommandResult struct {
 	Command  string `json:"command"`
@@ -49,7 +44,7 @@ func NewCommandExecutor() *CommandExecutor {
 	}
 }
 
-func (ce *CommandExecutor) Execute(req CommandRequest) (*CommandResult, error) {
+func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResult, error) {
 	if req.Command == "" {
 		return nil, errors.New("command is required")
 	}

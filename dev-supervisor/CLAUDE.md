@@ -60,6 +60,9 @@ dev-supervisor/
 │   │   ├── exit.go                # Exit code handling
 │   │   ├── manager.go             # Process manager
 │   │   └── reaper_linux.go        # Zombie process reaping (Linux)
+│   ├── validation/      # ✅ Security-focused input validation
+│   │   ├── validation.go          # Validation functions
+│   │   └── types.go               # Request types
 │   └── proxy/           # ✅ Network proxies
 │       └── smtp/                  # SMTP proxy with header injection
 │           ├── smtp.go            # SMTP proxy implementation
@@ -591,6 +594,90 @@ for _, port := range ports {
 
 </port_discovery_architecture>
 
+<validation_architecture>
+**Validation system** (`internal/validation/`):
+
+Security-focused input validation for API requests.
+
+**Purpose:**
+- Validate commands for dangerous patterns (rm -rf /, fork bombs, etc.)
+- Validate file paths for traversal attempts and null bytes
+- Validate environment variables (name format, size limits, protected vars)
+- Basic command sanitization (null byte removal, length limits)
+- Enforce request limits (timeout, variable count, command length)
+
+**Security Features:**
+- **Command safety:** Detects dangerous patterns (rm -rf /, dd, mkfs, fork bombs)
+- **Path validation:** Requires absolute paths, blocks traversal (..), null bytes
+- **Protected variables:** Prevents modification of PATH, HOME, USER, SHELL, etc.
+- **Size limits:** 32KB env vars, 8KB commands, 1000 variable max
+- **Timeout limits:** Max 1 hour (3600 seconds) for command execution
+
+**Architecture:**
+
+```go
+// Request types
+type ProcessStartRequest struct {
+    Command    string
+    Env        map[string]string
+    WorkingDir string
+    Ports      []int // Explicit port specification
+}
+
+// Validation functions
+func ValidateProcessStartRequest(req ProcessStartRequest) error
+func ValidateCommandRequest(req CommandRequest) error
+func ValidateEnvironmentSetRequest(req EnvironmentSetRequest) error
+
+// Utility functions
+func SanitizeCommand(command string) string
+func IsValidEnvVarName(name string) bool
+
+// Helper functions (package-private)
+func isDangerousCommand(command string) bool
+func isValidPath(path string) bool
+func isProtectedEnvVar(name string) bool
+```
+
+**Usage:**
+
+```go
+import "github.com/airo-ai-builder/dev-supervisor/internal/validation"
+
+req := validation.ProcessStartRequest{
+    Command: "npm start",
+    WorkingDir: "/app",
+}
+
+if err := validation.ValidateProcessStartRequest(req); err != nil {
+    // Handle validation error
+}
+```
+
+**Dangerous Command Patterns:**
+- File system destruction: `rm -rf /`, `mkfs.*`, `fdisk`
+- System shutdown: `init 0`, `init 6`, `kill -9 1`
+- Fork bombs: `:(){ :|:& };:`
+- Permission changes: `chmod -R 777 /`, `chown -R`
+- Low-level operations: `dd if=`
+
+**Protected Environment Variables:**
+- PATH, HOME, USER, SHELL, TERM
+- PWD, OLDPWD
+- UID, GID, EUID, EGID
+
+**Size Limits:**
+- Environment variable values: 32KB (MaxEnvVarValueSize)
+- Command length: 8KB (MaxCommandLength)
+- Environment variable count: 1000 variables
+- Command timeout: 3600 seconds (1 hour)
+
+**Dependencies:**
+- Zero internal dependencies (only stdlib: errors, fmt, slices, strings)
+- Used by: api.go for request validation
+
+</validation_architecture>
+
 <start_on_request_mode>
 **Start-on-request for preview deployments:**
 
@@ -792,6 +879,13 @@ ENTRYPOINT ["/usr/local/bin/dev-supervisor"]
   </build_and_deployment>
 
 <security_considerations>
+**Input validation** (`internal/validation/`):
+
+- Command safety checks prevent dangerous operations
+- Path validation blocks traversal and null byte attacks
+- Environment variable protection prevents system corruption
+- Size and timeout limits prevent resource exhaustion
+
 **SELinux peer validation** (`peer_sec_linux.go`):
 
 - Validates peer SELinux context on Unix socket connections

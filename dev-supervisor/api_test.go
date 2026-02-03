@@ -11,6 +11,7 @@ import (
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/health"
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
+	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
 const (
@@ -124,7 +125,7 @@ func TestHandleProcessStart(t *testing.T) {
 	server := NewServer()
 
 	// Test valid request
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command:    "echo 'test process'",
 		WorkingDir: "/tmp",
 	}
@@ -191,7 +192,7 @@ func TestHandleProcessStartEmptyCommand(t *testing.T) {
 	server := NewServer()
 
 	// Test empty command
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command: "",
 	}
 
@@ -238,7 +239,7 @@ func TestHandleProcessStop(t *testing.T) {
 	server := NewServer()
 
 	// First start a process
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command:    "sleep 10",
 		WorkingDir: "/tmp",
 	}
@@ -282,7 +283,7 @@ func TestHandleProcessRestart(t *testing.T) {
 	server := NewServer()
 
 	// First start a process
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command:    "sleep 30",
 		WorkingDir: "/tmp",
 	}
@@ -331,7 +332,7 @@ func TestHandleExec(t *testing.T) {
 	server := NewServer()
 
 	// Test successful command execution
-	execReq := CommandRequest{
+	execReq := validation.CommandRequest{
 		Command:       "echo 'hello world'",
 		Timeout:       5,
 		CaptureOutput: true,
@@ -372,7 +373,7 @@ func TestHandleExecInvalidCommand(t *testing.T) {
 	server := NewServer()
 
 	// Test empty command
-	execReq := CommandRequest{
+	execReq := validation.CommandRequest{
 		Command: "",
 	}
 
@@ -419,7 +420,7 @@ func TestHandleEnvironmentSet(t *testing.T) {
 	server := NewServer()
 
 	// Test setting environment variables
-	setReq := EnvironmentSetRequest{
+	setReq := validation.EnvironmentSetRequest{
 		Variables: map[string]string{
 			"TEST_VAR": "test_value",
 		},
@@ -765,27 +766,30 @@ func TestHandleProcessStartValidationErrors(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		request  ProcessStartRequest
+		request  validation.ProcessStartRequest
 		expected string
 	}{
 		{
 			name:     "dangerous command",
-			request:  ProcessStartRequest{Command: "rm -rf /"},
+			request:  validation.ProcessStartRequest{Command: "rm -rf /"},
 			expected: "validation_failed",
 		},
 		{
 			name:     "invalid working directory",
-			request:  ProcessStartRequest{Command: "echo test", WorkingDir: "../invalid"},
+			request:  validation.ProcessStartRequest{Command: "echo test", WorkingDir: "../invalid"},
 			expected: "validation_failed",
 		},
 		{
-			name:     "invalid env var name",
-			request:  ProcessStartRequest{Command: "echo test", Env: map[string]string{"123invalid": "value"}},
+			name: "invalid env var name",
+			request: validation.ProcessStartRequest{
+				Command: "echo test",
+				Env:     map[string]string{"123invalid": "value"},
+			},
 			expected: "validation_failed",
 		},
 		{
 			name: "env var value too large",
-			request: ProcessStartRequest{
+			request: validation.ProcessStartRequest{
 				Command: "echo test",
 				Env:     map[string]string{"TEST": strings.Repeat("x", 40000)},
 			},
@@ -876,27 +880,27 @@ func TestHandleExecValidationErrors(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		request  CommandRequest
+		request  validation.CommandRequest
 		expected string
 	}{
 		{
 			name:     "negative timeout",
-			request:  CommandRequest{Command: "echo test", Timeout: -1},
+			request:  validation.CommandRequest{Command: "echo test", Timeout: -1},
 			expected: "validation_failed",
 		},
 		{
 			name:     "timeout too large",
-			request:  CommandRequest{Command: "echo test", Timeout: 5000},
+			request:  validation.CommandRequest{Command: "echo test", Timeout: 5000},
 			expected: "validation_failed",
 		},
 		{
 			name:     "invalid working directory",
-			request:  CommandRequest{Command: "echo test", WorkingDir: "../invalid"},
+			request:  validation.CommandRequest{Command: "echo test", WorkingDir: "../invalid"},
 			expected: "validation_failed",
 		},
 		{
 			name:     "dangerous command",
-			request:  CommandRequest{Command: "rm -rf /"},
+			request:  validation.CommandRequest{Command: "rm -rf /"},
 			expected: "validation_failed",
 		},
 	}
@@ -959,27 +963,29 @@ func TestHandleEnvironmentSetValidationErrors(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		request  EnvironmentSetRequest
+		request  validation.EnvironmentSetRequest
 		expected string
 	}{
 		{
 			name:     "no variables",
-			request:  EnvironmentSetRequest{Variables: map[string]string{}},
+			request:  validation.EnvironmentSetRequest{Variables: map[string]string{}},
 			expected: "validation_failed",
 		},
 		{
 			name:     "invalid env var name",
-			request:  EnvironmentSetRequest{Variables: map[string]string{"123invalid": "value"}},
+			request:  validation.EnvironmentSetRequest{Variables: map[string]string{"123invalid": "value"}},
 			expected: "validation_failed",
 		},
 		{
-			name:     "env var value too large",
-			request:  EnvironmentSetRequest{Variables: map[string]string{"TEST": strings.Repeat("x", 40000)}},
+			name: "env var value too large",
+			request: validation.EnvironmentSetRequest{
+				Variables: map[string]string{"TEST": strings.Repeat("x", 40000)},
+			},
 			expected: "validation_failed",
 		},
 		{
 			name:     "protected env var",
-			request:  EnvironmentSetRequest{Variables: map[string]string{"PATH": "/usr/bin"}},
+			request:  validation.EnvironmentSetRequest{Variables: map[string]string{"PATH": "/usr/bin"}},
 			expected: "validation_failed",
 		},
 	}
@@ -1016,7 +1022,7 @@ func TestHandleEnvironmentSetWithRestart(t *testing.T) {
 	server := NewServer()
 
 	// First start a process
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command:    "sleep 30",
 		WorkingDir: "/tmp",
 	}
@@ -1028,7 +1034,7 @@ func TestHandleEnvironmentSetWithRestart(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Test setting environment variables with restart
-	setReq := EnvironmentSetRequest{
+	setReq := validation.EnvironmentSetRequest{
 		Variables: map[string]string{
 			"TEST_VAR": "test_value",
 		},

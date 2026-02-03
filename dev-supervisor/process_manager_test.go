@@ -11,6 +11,7 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/health"
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
+	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
 // mockConn implements net.Conn for testing
@@ -63,13 +64,13 @@ func TestProcessManager_StartProcess(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		request       ProcessStartRequest
+		request       validation.ProcessStartRequest
 		expectError   bool
 		expectedState ProcessState
 	}{
 		{
 			name: "valid command",
-			request: ProcessStartRequest{
+			request: validation.ProcessStartRequest{
 				Command:    "echo 'hello'",
 				WorkingDir: "/tmp",
 				Env:        map[string]string{"TEST": "value"},
@@ -79,7 +80,7 @@ func TestProcessManager_StartProcess(t *testing.T) {
 		},
 		{
 			name: "empty command",
-			request: ProcessStartRequest{
+			request: validation.ProcessStartRequest{
 				Command: "",
 			},
 			expectError:   true,
@@ -136,7 +137,7 @@ func TestProcessManager_StopProcess(t *testing.T) {
 	}
 
 	// Start a process
-	req := ProcessStartRequest{
+	req := validation.ProcessStartRequest{
 		Command: "echo 'Process starting...' && sleep 10",
 	}
 
@@ -181,7 +182,7 @@ func TestProcessManager_RestartProcess(t *testing.T) {
 	}
 
 	// Start a process first
-	req := ProcessStartRequest{
+	req := validation.ProcessStartRequest{
 		Command:    "echo 'Process starting for restart test...' && exec sleep 10",
 		WorkingDir: "/tmp", // Explicit working directory
 	}
@@ -372,7 +373,7 @@ func TestProcessManager_IdleStopWithWebSocket(t *testing.T) {
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a long-running process
-	req := ProcessStartRequest{
+	req := validation.ProcessStartRequest{
 		Command: "sleep 30",
 	}
 
@@ -421,7 +422,7 @@ func TestProcessManager_GetStartRequest(t *testing.T) {
 	assert.Nil(t, req, "should return nil when no process has been started")
 
 	// Start a process
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command:    "sleep 5",
 		WorkingDir: "/tmp",
 		Env:        map[string]string{"TEST": "value"},
@@ -468,7 +469,7 @@ func TestProcessManager_IdleMonitorRestartsAfterAutoStart(t *testing.T) {
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a long-running process
-	req := ProcessStartRequest{
+	req := validation.ProcessStartRequest{
 		Command:    "sleep 30",
 		WorkingDir: "/tmp",
 	}
@@ -490,7 +491,7 @@ func TestProcessManager_IdleMonitorRestartsAfterAutoStart(t *testing.T) {
 	assert.False(t, pm.IsIdleMonitorRunning(), "idle monitor should be canceled after stop")
 
 	// Simulate auto-start by calling Start() again (this is what handleAutoStart does)
-	req2 := ProcessStartRequest{
+	req2 := validation.ProcessStartRequest{
 		Command:    "sleep 30",
 		WorkingDir: "/tmp",
 	}
@@ -523,7 +524,7 @@ func TestProcessManager_IdleMonitorRestartsAfterRestart(t *testing.T) {
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a long-running process
-	req := ProcessStartRequest{
+	req := validation.ProcessStartRequest{
 		Command:    "sleep 30",
 		WorkingDir: "/tmp",
 	}
@@ -588,7 +589,7 @@ func TestProcessManager_InFlightRequestsBlockIdle(t *testing.T) {
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a long-running process
-	req := ProcessStartRequest{
+	req := validation.ProcessStartRequest{
 		Command:    "sleep 30",
 		WorkingDir: "/tmp",
 	}
@@ -635,7 +636,7 @@ func TestProcessManager_HealthCheckDoesNotPreventIdle(t *testing.T) {
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a long-running process
-	req := ProcessStartRequest{
+	req := validation.ProcessStartRequest{
 		Command:    "sleep 30",
 		WorkingDir: "/tmp",
 	}

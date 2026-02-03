@@ -14,6 +14,7 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/ports"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
+	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
 func TestManagedProcess_PID1ManagedWait(t *testing.T) {
@@ -23,7 +24,7 @@ func TestManagedProcess_PID1ManagedWait(t *testing.T) {
 
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
-	if err := pm.Start(ProcessStartRequest{Command: "echo 'pid1 test'"}); err != nil {
+	if err := pm.Start(validation.ProcessStartRequest{Command: "echo 'pid1 test'"}); err != nil {
 		t.Fatalf("failed to start process: %v", err)
 	}
 
@@ -158,7 +159,7 @@ func TestPID1TrackedVsOrphanedProcesses(t *testing.T) {
 	t.Run("tracked process not reaped by orphan reaper", func(t *testing.T) {
 		// Start a tracked process via ProcessManager
 		pm := NewProcessManager(logMgr, pid1Mgr)
-		if err := pm.Start(ProcessStartRequest{Command: "sleep 5"}); err != nil {
+		if err := pm.Start(validation.ProcessStartRequest{Command: "sleep 5"}); err != nil {
 			t.Fatalf("failed to start tracked process: %v", err)
 		}
 
@@ -220,7 +221,7 @@ func TestPID1Manager_ChildProcessRegistration(t *testing.T) {
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a simple process
-	if err := pm.Start(ProcessStartRequest{Command: "sleep 1"}); err != nil {
+	if err := pm.Start(validation.ProcessStartRequest{Command: "sleep 1"}); err != nil {
 		t.Fatalf("failed to start process: %v", err)
 	}
 

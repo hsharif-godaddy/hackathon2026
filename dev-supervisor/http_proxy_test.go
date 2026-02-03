@@ -19,6 +19,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
+
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 	"github.com/airo-ai-builder/dev-supervisor/internal/proxy/routing"
@@ -1827,7 +1829,7 @@ func TestRequestRouter_AutoStartWhenStopped(t *testing.T) {
 	}
 
 	// Configure and start the process
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command: "sleep 5",
 	}
 	require.NoError(t, procMgr.Start(startReq))
@@ -1890,7 +1892,7 @@ func TestRequestRouter_NoAutoStartWhenRunning(t *testing.T) {
 	}
 
 	// Start the process
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command: "sleep 10",
 	}
 	require.NoError(t, procMgr.Start(startReq))
@@ -1965,7 +1967,7 @@ func TestRequestRouter_ActivityTracking(t *testing.T) {
 	procMgr.EnableStartOnRequest(5*time.Second, 1*time.Second)
 
 	// Start the process
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command: "sleep 10",
 	}
 	require.NoError(t, procMgr.Start(startReq))

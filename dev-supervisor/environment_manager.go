@@ -8,12 +8,9 @@ import (
 	"sort"
 	"strings"
 	"sync"
-)
 
-type EnvironmentSetRequest struct {
-	Variables      map[string]string `json:"variables"`
-	RestartProcess bool              `json:"restart_process,omitempty"`
-}
+	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
+)
 
 type EnvironmentGetResponse struct {
 	Variables map[string]string `json:"variables"`
@@ -48,7 +45,7 @@ func (em *EnvironmentManager) loadCurrentEnvironment() {
 	}
 }
 
-func (em *EnvironmentManager) SetVariables(req EnvironmentSetRequest) error {
+func (em *EnvironmentManager) SetVariables(req validation.EnvironmentSetRequest) error {
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
@@ -65,7 +62,7 @@ func (em *EnvironmentManager) SetVariables(req EnvironmentSetRequest) error {
 	}
 
 	for key := range req.Variables {
-		if !isValidEnvVarName(key) {
+		if !validation.IsValidEnvVarName(key) {
 			return fmt.Errorf("invalid environment variable name: %s", key)
 		}
 		if protectedVars[key] {
@@ -170,28 +167,4 @@ func (em *EnvironmentManager) GetFilteredVariables(filter string) map[string]str
 	}
 
 	return filtered
-}
-
-// isValidEnvVarName checks if the environment variable name is valid
-func isValidEnvVarName(name string) bool {
-	if name == "" {
-		return false
-	}
-
-	// First character must be letter or underscore
-	first := name[0]
-	if first < 'A' || (first > 'Z' && first < '_') || (first > '_' && first < 'a') || first > 'z' {
-		return false
-	}
-
-	// Remaining characters can be letters, digits, or underscore
-	for i := 1; i < len(name); i++ {
-		char := name[i]
-		if char < '0' || (char > '9' && char < 'A') || (char > 'Z' && char < '_') || (char > '_' && char < 'a') ||
-			char > 'z' {
-			return false
-		}
-	}
-
-	return true
 }

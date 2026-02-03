@@ -13,6 +13,7 @@ import (
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/health"
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
+	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
 // TestClient wraps HTTP client for Unix socket communication
@@ -304,7 +305,7 @@ func TestCommandExecution(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			reqBody := CommandRequest{
+			reqBody := validation.CommandRequest{
 				Command:       tc.command,
 				Timeout:       10,
 				CaptureOutput: true,
@@ -358,7 +359,7 @@ func TestProcessLifecycle(t *testing.T) {
 	defer suite.TeardownTestSuite(t)
 
 	// Test process start - use a command that will keep running
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command:    "while true; do sleep 1; done", // Simple infinite loop
 		WorkingDir: suite.tempDir,
 		Env:        map[string]string{"TEST_VAR": "test_value"},
@@ -451,7 +452,7 @@ func TestEnvironmentManagement(t *testing.T) {
 	originalEnvCount := len(envResp.Variables)
 
 	// Test setting environment variables
-	setReq := EnvironmentSetRequest{
+	setReq := validation.EnvironmentSetRequest{
 		Variables: map[string]string{
 			"TEST_VAR1": "value1",
 			"TEST_VAR2": "value2",
@@ -593,7 +594,7 @@ func TestLogManagement(t *testing.T) {
 	defer suite.TeardownTestSuite(t)
 
 	// Start a process that will generate logs
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command:    "echo 'Log entry from process'; echo 'Second log entry'; echo 'Error message' >&2; sleep 2",
 		WorkingDir: suite.tempDir,
 	}
@@ -676,7 +677,7 @@ func TestInvalidRequests(t *testing.T) {
 			name:           "empty command",
 			method:         "POST",
 			path:           "/exec",
-			body:           CommandRequest{Command: ""},
+			body:           validation.CommandRequest{Command: ""},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{

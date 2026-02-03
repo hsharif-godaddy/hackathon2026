@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
 func TestCommandExecutor_NewCommandExecutor(t *testing.T) {
@@ -40,7 +42,7 @@ func TestCommandExecutor_Execute(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		request        CommandRequest
+		request        validation.CommandRequest
 		expectError    bool
 		expectedExit   int
 		expectStdout   bool
@@ -49,7 +51,7 @@ func TestCommandExecutor_Execute(t *testing.T) {
 	}{
 		{
 			name: "successful echo command",
-			request: CommandRequest{
+			request: validation.CommandRequest{
 				Command:       "echo 'Hello World'",
 				CaptureOutput: true,
 				WorkingDir:    tempDir,
@@ -67,7 +69,7 @@ func TestCommandExecutor_Execute(t *testing.T) {
 		},
 		{
 			name: "command with stderr",
-			request: CommandRequest{
+			request: validation.CommandRequest{
 				Command:       "echo 'error message' >&2",
 				CaptureOutput: true,
 				WorkingDir:    tempDir,
@@ -85,7 +87,7 @@ func TestCommandExecutor_Execute(t *testing.T) {
 		},
 		{
 			name: "command with non-zero exit code",
-			request: CommandRequest{
+			request: validation.CommandRequest{
 				Command:       "exit 42",
 				CaptureOutput: true,
 				WorkingDir:    tempDir,
@@ -96,14 +98,14 @@ func TestCommandExecutor_Execute(t *testing.T) {
 		},
 		{
 			name: "empty command",
-			request: CommandRequest{
+			request: validation.CommandRequest{
 				Command: "",
 			},
 			expectError: true,
 		},
 		{
 			name: "command that times out",
-			request: CommandRequest{
+			request: validation.CommandRequest{
 				Command:       "sleep 3",
 				CaptureOutput: true,
 				Timeout:       1, // 1 second timeout
@@ -122,7 +124,7 @@ func TestCommandExecutor_Execute(t *testing.T) {
 		},
 		{
 			name: "working directory test",
-			request: CommandRequest{
+			request: validation.CommandRequest{
 				Command:       "pwd",
 				CaptureOutput: true,
 				WorkingDir:    tempDir,
@@ -140,7 +142,7 @@ func TestCommandExecutor_Execute(t *testing.T) {
 		},
 		{
 			name: "file creation test",
-			request: CommandRequest{
+			request: validation.CommandRequest{
 				Command:       "echo 'test content' > testfile.txt && cat testfile.txt",
 				CaptureOutput: true,
 				WorkingDir:    tempDir,
@@ -228,7 +230,7 @@ func TestCommandExecutor_ExecuteDefaults(t *testing.T) {
 	executor := NewCommandExecutor()
 
 	// Test with minimal request (should use defaults)
-	request := CommandRequest{
+	request := validation.CommandRequest{
 		Command: "echo 'test'",
 	}
 
@@ -282,7 +284,7 @@ func TestCommandExecutor_ExecuteComplexCommands(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			request := CommandRequest{
+			request := validation.CommandRequest{
 				Command:       tt.command,
 				CaptureOutput: true,
 				WorkingDir:    tempDir,

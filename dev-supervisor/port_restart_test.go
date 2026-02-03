@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
 func configureSMTPTestEnv(t *testing.T) {
@@ -66,7 +68,7 @@ func TestPortReuseAfterRestart(t *testing.T) {
 	t.Logf("Testing port reuse with command: %s", testCommand)
 
 	// Start initial process
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command:    testCommand,
 		WorkingDir: tempDir,
 	}
@@ -150,7 +152,7 @@ func TestConcurrentRestarts(t *testing.T) {
 	)
 
 	// Start initial process
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command:    testCommand,
 		WorkingDir: tempDir,
 	}
@@ -258,7 +260,7 @@ func TestExplicitPortConfiguration(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := ProcessStartRequest{
+			req := validation.ProcessStartRequest{
 				Ports: tc.ports,
 			}
 
@@ -334,7 +336,7 @@ func BenchmarkRestartWithPortWait(b *testing.B) {
 
 	// Use a lightweight command for benchmarking
 	testPort := findAvailablePortForBench(b)
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command: fmt.Sprintf(
 			"python3 -c 'import socket; s=socket.socket(); s.bind((\"\", %d)); s.listen(1); s.accept()'",
 			testPort,

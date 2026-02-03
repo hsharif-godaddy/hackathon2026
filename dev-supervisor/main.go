@@ -21,6 +21,7 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 	smtpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/smtp"
+	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
 const (
@@ -579,7 +580,7 @@ func (s *Server) StartCommandOnStartup(args []string) error {
 	}
 
 	// Use the ProcessManager to start the command
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command:    fullCommand,
 		Env:        envMap,
 		WorkingDir: workingDir,
