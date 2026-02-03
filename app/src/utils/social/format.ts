@@ -1,3 +1,5 @@
+import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
+
 /**
  * Formats an array of hashtags into a display string with # prefixes
  * @param hashtags - Array of hashtag strings (without # prefix)
@@ -10,10 +12,10 @@ export function formatHashtags(hashtags: string[] | undefined): string {
 
 /**
  * Capitalizes the first letter of a platform name for display
- * @param platform - Platform identifier (e.g., "facebook", "instagram")
- * @returns Capitalized platform name (e.g., "Facebook", "Instagram")
+ * @param platform - Platform identifier (e.g., "facebook", "instagram", "INSTAGRAM")
+ * @returns Properly formatted platform name (e.g., "Facebook", "Instagram")
  */
 export function formatPlatformName(platform: string): string {
   if (!platform) return ''
-  return platform.charAt(0).toUpperCase() + platform.slice(1)
+  return PLATFORM_TRANSFORMS.toDisplayName(platform)
 }

@@ -53,6 +53,17 @@ export const PLATFORM_TRANSFORMS = {
   },
 
   /**
+   * Convert to display name with proper casing
+   * INSTAGRAM → Instagram
+   * facebook → Facebook
+   * google → Google
+   */
+  toDisplayName: (platform: string): string => {
+    const normalized = platform.toLowerCase().replace('_business_profile', '') as SocialPlatform
+    return ALL_PLATFORM_CONFIG[normalized]?.name || platform.charAt(0).toUpperCase() + platform.slice(1).toLowerCase()
+  },
+
+  /**
    * Convert to API enum format for social-v2 API
    * google → GOOGLE_BUSINESS_PROFILE
    * facebook → FACEBOOK

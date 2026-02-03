@@ -7,6 +7,7 @@ import text from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import { generateClickEID } from '@/utils/instrumentation'
+import { formatPlatformName } from '@/utils/social/format'
 
 interface SocialAuthPromptProps {
   platformName: string
@@ -18,7 +19,7 @@ export const SocialAuthPrompt = memo(function SocialAuthPrompt({
   onConnect
 }: SocialAuthPromptProps) {
   const t = useTranslations()
-  const platform = platformName.charAt(0).toUpperCase() + platformName.slice(1)
+  const platform = formatPlatformName(platformName)
 
   return (
     <Box orientation="vertical" gap="md">

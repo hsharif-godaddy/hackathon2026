@@ -11,7 +11,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { PLATFORM_CONFIG } from '@/lib/social-platforms'
 import { type PendingPublish, PublishFlowState, type PublishResult, type PublishStatus, type SocialPostData } from '@/types/social-posts'
 import { generateClickEID } from '@/utils/instrumentation'
-import { emitPostPublished } from '@/utils/social'
+import { emitPostPublished, formatPlatformName } from '@/utils/social'
 
 interface SocialPublishWidgetProps {
   appId: string
@@ -131,7 +131,7 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
       case PublishFlowState.ReadyToPublish:
         return renderStatusText(t('builder_widgets_socialpublish_preparing'))
       case PublishFlowState.Publishing:
-        return renderStatusText(`${t('builder_widgets_socialpublish_publishing_to')} ${platformConfig?.name || pendingPublish.platform}...`)
+        return renderStatusText(`${t('builder_widgets_socialpublish_publishing_to')} ${platformConfig?.name || formatPlatformName(pendingPublish.platform)}...`)
       case PublishFlowState.Success:
         return renderStatusText(t('builder_widgets_socialpublish_success'), 'success')
       case PublishFlowState.Error:
@@ -143,7 +143,7 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
 
   const renderPublishSuccessSubtext = () => {
     if (publishStatus === PublishFlowState.Success) {
-      const platformName = platformConfig?.name || pendingPublish?.platform || 'platform'
+      const platformName = formatPlatformName(platformConfig?.name || (pendingPublish?.platform))
       return<div className="mb-1">
         <text.p size={-1} text={t('builder_widgets_socialpublish_live_on', { platformName })} />
       </div>

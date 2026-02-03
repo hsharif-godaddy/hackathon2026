@@ -86,7 +86,7 @@ interface CharacterCounterProps {
 
 const CharacterCounter = memo(({ charCount, maxChars, isOverLimit, platform }: CharacterCounterProps) => {
   const t = useTranslations()
-  const platformName = platform.charAt(0).toUpperCase() + platform.slice(1)
+  const platformName = formatPlatformName(platform)
 
   return (
     <div className="mt-1">
