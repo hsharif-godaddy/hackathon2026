@@ -42,7 +42,9 @@ export default function AppPublish({ location }: { location?: string }) {
   const setDeploymentsRefetch = useDevelopPageStore((state) => state.setDeploymentsRefetch);
 
   // Switchboard flags
+  // Coerce to boolean to prevent React Query errors when undefined
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
+  const isPublishButtonEnabledFlag = isPublishButtonEnabled === true;
   const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall');
 
   // Use shared paywall modal hook
@@ -86,7 +88,7 @@ export default function AppPublish({ location }: { location?: string }) {
   const streamingState = useStreamingState();
   const isConversationInProgress = isConversationLoading || streamingState !== 'idle';
 
-  const queryEnabled = isPublishButtonEnabled && isDevelopPage && !!currentAppId && !!site?.agent_url;
+  const queryEnabled = isPublishButtonEnabledFlag && isDevelopPage && !!currentAppId && !!site?.agent_url;
 
   const {
     data: deployments = [],

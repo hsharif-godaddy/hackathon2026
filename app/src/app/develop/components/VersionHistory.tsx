@@ -37,7 +37,9 @@ export default function VersionHistory() {
   const setCommitSelectionError = useGitStore((state) => state.setCommitSelectionError)
 
   const site = useSiteStore((state) => appId ? state.getSite(appId) : null)
+  // Coerce to boolean to prevent React Query errors when undefined
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button')
+  const isPublishButtonEnabledFlag = isPublishButtonEnabled === true
 
   const {
     data,
@@ -65,7 +67,7 @@ export default function VersionHistory() {
 
   const { data: deployments = [] } = useDeploymentsQuery({
     appId: appId || '',
-    enabled: isPublishButtonEnabled && !!appId && !!site?.agent_url && commits.length > 0,
+    enabled: isPublishButtonEnabledFlag && !!appId && !!site?.agent_url && commits.length > 0,
     includeJobData: true,
     limit: commits.length > 150 ? 150 : commits.length,
   })

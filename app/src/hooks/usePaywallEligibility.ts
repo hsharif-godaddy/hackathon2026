@@ -28,7 +28,9 @@ interface PaywallEligibilityResult {
 export const usePaywallEligibility = (appId?: string): PaywallEligibilityResult => {
   // Step 1: Fetch feature flags
   const { data: featureFlags, isLoading: isFlagsLoading, isError: isFlagsError } = usePaywallFeatureFlags();
-  const paywallEnabled = featureFlags?.paywall && featureFlags?.markets;
+  // Explicitly check for true to ensure paywallEnabled is always boolean, never undefined
+  // This prevents React Query errors when used in enabled conditions
+  const paywallEnabled = featureFlags?.paywall === true && featureFlags?.markets === true;
 
   // Step 2: Fetch subscription data (only if paywall enabled)
   const { data: subscription, isLoading: isSubscriptionLoading, isError: isSubscriptionError } = useSubscription();
@@ -42,8 +44,8 @@ export const usePaywallEligibility = (appId?: string): PaywallEligibilityResult 
   );
 
   // Only need additional checks for free/none plans
-  // Must explicitly convert to boolean for React Query's enabled option
-  const needsAdditionalChecks = Boolean(paywallEnabled && subscription && !hasPaidPlan);
+  // Coerce to boolean - when subscription is undefined, the && expression returns undefined
+  const needsAdditionalChecks = !!(paywallEnabled && subscription && !hasPaidPlan);
 
   // Step 3: Fetch entitlements (only if needed)
   const { data: entitlementId, isLoading: isEntitlementsLoading } = useEntitlements({

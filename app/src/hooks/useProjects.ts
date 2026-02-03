@@ -25,12 +25,14 @@ interface UseProjectsOptions {
   enabled?: boolean;
 }
 
-export function useProjects(options?: UseProjectsOptions) {
+export function useProjects(options: UseProjectsOptions = {}) {
+  const { enabled = true } = options;
+
   return useQuery({
     queryKey: QUERY_KEY,
     queryFn: fetch,
     staleTime: STALE_TIME,
-    enabled: options?.enabled,
+    enabled,
   });
 }
 

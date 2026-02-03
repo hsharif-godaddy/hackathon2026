@@ -121,5 +121,26 @@ describe('useProjects', function hooks() {
         expect(appFetch).toHaveBeenCalled();
       });
     });
+
+    it('passes boolean to enabled when options is undefined (regression test)', async function booleanEnabled() {
+      // This test verifies the fix for React Query expecting a boolean for enabled
+      // Previously, options?.enabled would be undefined when options wasn't passed,
+      // causing React Query to throw: "Expected enabled to be a boolean"
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ data: { projects: { edges: [] } } }),
+      } as Response);
+
+      // Call without any options - should default enabled to true (boolean)
+      const { result } = renderHookWithProviders(() => useProjects());
+
+      // Verify the query runs (enabled was truthy boolean, not undefined)
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalled();
+      });
+
+      // Verify no errors were thrown
+      expect(result.current.error).toBeNull();
+    });
   });
 });

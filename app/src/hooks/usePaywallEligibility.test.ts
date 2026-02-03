@@ -307,4 +307,96 @@ describe('usePaywallEligibility', function hook() {
       expect(result.current.isError).toBe(true);
     });
   });
+
+  describe('React Query boolean type safety (regression tests)', function regressionTests() {
+    it('should pass boolean to enabled when feature flags are undefined', function flagsUndefined() {
+      // Regression test: Previously, paywallEnabled would be undefined when featureFlags was undefined,
+      // causing needsAdditionalChecks to be undefined, which React Query rejects
+      vi.mocked(usePaywallFeatureFlags).mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        isError: false,
+      });
+
+      vi.mocked(useSubscription).mockReturnValue({
+        data: { id: 'sub-123', plan: SubscriptionPlan.Free, status: 'active' },
+        subscriptions: [{ id: 'sub-123', plan: SubscriptionPlan.Free, status: 'active' }],
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      } as any);
+
+      // Verify useEntitlements and useProjects are called with boolean enabled
+      renderHookWithProviders(() => usePaywallEligibility());
+
+      // When featureFlags is undefined, paywallEnabled should be false (not undefined)
+      // This means needsAdditionalChecks should be false, and queries should be disabled
+      expect(useEntitlements).toHaveBeenCalledWith(expect.objectContaining({
+        enabled: false,  // Should be boolean false, not undefined
+      }));
+
+      expect(useProjects).toHaveBeenCalledWith(expect.objectContaining({
+        enabled: false,  // Should be boolean false, not undefined
+      }));
+    });
+
+    it('should pass boolean to enabled when subscription is undefined', function subscriptionUndefined() {
+      // Regression test: When subscription is undefined, needsAdditionalChecks should still be boolean
+      vi.mocked(usePaywallFeatureFlags).mockReturnValue({
+        data: { paywall: true, markets: true },
+        isLoading: false,
+        isError: false,
+      });
+
+      vi.mocked(useSubscription).mockReturnValue({
+        data: undefined,
+        subscriptions: [],
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      } as any);
+
+      renderHookWithProviders(() => usePaywallEligibility());
+
+      // When subscription is undefined, needsAdditionalChecks should be false
+      expect(useEntitlements).toHaveBeenCalledWith(expect.objectContaining({
+        enabled: false,  // Should be boolean false, not undefined
+      }));
+
+      expect(useProjects).toHaveBeenCalledWith(expect.objectContaining({
+        enabled: false,  // Should be boolean false, not undefined
+      }));
+    });
+
+    it('should pass true to enabled when on free plan (actual conditional checks needed)', function freePlan() {
+      // Verify that when all conditions are met, enabled is true (boolean), not a truthy object
+      vi.mocked(usePaywallFeatureFlags).mockReturnValue({
+        data: { paywall: true, markets: true },
+        isLoading: false,
+        isError: false,
+      });
+
+      vi.mocked(useSubscription).mockReturnValue({
+        data: { id: 'sub-123', plan: SubscriptionPlan.Free, status: 'active' },
+        subscriptions: [{ id: 'sub-123', plan: SubscriptionPlan.Free, status: 'active' }],
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      } as any);
+
+      renderHookWithProviders(() => usePaywallEligibility());
+
+      // When on free plan with paywall enabled, additional checks are needed
+      expect(useEntitlements).toHaveBeenCalledWith(expect.objectContaining({
+        enabled: true,  // Should be boolean true
+      }));
+
+      expect(useProjects).toHaveBeenCalledWith(expect.objectContaining({
+        enabled: true,  // Should be boolean true
+      }));
+    });
+  });
 });
