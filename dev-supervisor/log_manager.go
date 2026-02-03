@@ -6,14 +6,9 @@ import (
 	"strconv"
 	"sync"
 	"time"
-)
 
-type LogEntry struct {
-	Timestamp time.Time `json:"timestamp"`
-	Source    string    `json:"source"`
-	Message   string    `json:"message"`
-	Level     string    `json:"level,omitempty"`
-}
+	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
+)
 
 type LogsGetRequest struct {
 	Lines  int    `json:"lines,omitempty"`
@@ -22,13 +17,13 @@ type LogsGetRequest struct {
 }
 
 type LogsGetResponse struct {
-	Logs  []LogEntry `json:"logs"`
-	Total int        `json:"total"`
+	Logs  []logs.LogEntry `json:"logs"`
+	Total int             `json:"total"`
 }
 
 type LogManager struct {
 	mu      sync.RWMutex
-	logs    []LogEntry
+	logs    []logs.LogEntry
 	maxLogs int
 }
 
@@ -38,12 +33,12 @@ func NewLogManager(maxLogs int) *LogManager {
 	}
 
 	return &LogManager{
-		logs:    make([]LogEntry, 0),
+		logs:    make([]logs.LogEntry, 0),
 		maxLogs: maxLogs,
 	}
 }
 
-func (lm *LogManager) AddLog(entry LogEntry) {
+func (lm *LogManager) AddLog(entry logs.LogEntry) {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
 
@@ -62,7 +57,7 @@ func (lm *LogManager) GetLogs(req LogsGetRequest) (*LogsGetResponse, error) {
 	lm.mu.RLock()
 	defer lm.mu.RUnlock()
 
-	var filteredLogs []LogEntry
+	var filteredLogs []logs.LogEntry
 
 	// Parse since timestamp if provided
 	var sinceTime time.Time

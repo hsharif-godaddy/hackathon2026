@@ -117,10 +117,10 @@ choco install golang
    - RESTful endpoints for process control
    - Health monitoring and configuration
 
-5. **Health Monitor** (`health_monitor.go`)
-   - Configurable health checks
-   - Automatic restart policies
-   - Backoff strategies
+5. **Health Monitor** (`internal/health/`)
+   - Configurable health checks (command, HTTP, TCP)
+   - Automatic restart policies with exponential backoff
+   - Zero internal dependencies (stdlib only)
 
 ### Platform Abstraction Pattern
 

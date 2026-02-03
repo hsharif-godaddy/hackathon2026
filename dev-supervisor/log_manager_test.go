@@ -8,6 +8,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 )
 
 func TestLogManager_NewLogManager(t *testing.T) {
@@ -45,7 +47,7 @@ func TestLogManager_AddLog(t *testing.T) {
 	lm := NewLogManager(100)
 
 	// Add a single log entry
-	entry := LogEntry{
+	entry := logs.LogEntry{
 		Timestamp: time.Now(),
 		Source:    "test",
 		Message:   "test message",
@@ -77,7 +79,7 @@ func TestLogManager_AddMultipleLogs(t *testing.T) {
 	lm := NewLogManager(100)
 
 	// Add multiple log entries
-	entries := []LogEntry{
+	entries := []logs.LogEntry{
 		{
 			Timestamp: time.Now().Add(-2 * time.Second),
 			Source:    "stdout",
@@ -128,7 +130,7 @@ func TestLogManager_LogBufferTrimming(t *testing.T) {
 	// Add more logs than the buffer can hold
 	numLogs := 20
 	for i := range numLogs {
-		entry := LogEntry{
+		entry := logs.LogEntry{
 			Timestamp: time.Now().Add(time.Duration(i) * time.Millisecond),
 			Source:    "test",
 			Message:   fmt.Sprintf("message %d", i),
@@ -161,7 +163,7 @@ func TestLogManager_GetLogs(t *testing.T) {
 	lm := NewLogManager(100)
 
 	// Add test logs with different sources
-	testLogs := []LogEntry{
+	testLogs := []logs.LogEntry{
 		{Timestamp: time.Now().Add(-5 * time.Second), Source: "stdout", Message: "stdout message 1", Level: "info"},
 		{Timestamp: time.Now().Add(-4 * time.Second), Source: "stderr", Message: "stderr message 1", Level: "error"},
 		{Timestamp: time.Now().Add(-3 * time.Second), Source: "stdout", Message: "stdout message 2", Level: "info"},
@@ -177,7 +179,7 @@ func TestLogManager_GetLogs(t *testing.T) {
 		name          string
 		request       LogsGetRequest
 		expectedCount int
-		validateFunc  func(logs []LogEntry) error
+		validateFunc  func(logs []logs.LogEntry) error
 	}{
 		{
 			name:          "get all logs",
@@ -188,7 +190,7 @@ func TestLogManager_GetLogs(t *testing.T) {
 			name:          "limit logs",
 			request:       LogsGetRequest{Lines: 3},
 			expectedCount: 3,
-			validateFunc: func(logs []LogEntry) error {
+			validateFunc: func(logs []logs.LogEntry) error {
 				// Should get the last 3 logs
 				if logs[len(logs)-1].Message != "stdout message 3" {
 					return fmt.Errorf(
@@ -203,7 +205,7 @@ func TestLogManager_GetLogs(t *testing.T) {
 			name:          "filter by source",
 			request:       LogsGetRequest{Source: "stdout"},
 			expectedCount: 3,
-			validateFunc: func(logs []LogEntry) error {
+			validateFunc: func(logs []logs.LogEntry) error {
 				for _, log := range logs {
 					if log.Source != "stdout" {
 						return fmt.Errorf("expected only stdout logs, got source: %s", log.Source)
@@ -216,7 +218,7 @@ func TestLogManager_GetLogs(t *testing.T) {
 			name:          "filter by source with limit",
 			request:       LogsGetRequest{Source: "stderr", Lines: 1},
 			expectedCount: 1,
-			validateFunc: func(logs []LogEntry) error {
+			validateFunc: func(logs []logs.LogEntry) error {
 				if logs[0].Source != "stderr" {
 					return fmt.Errorf("expected stderr log, got source: %s", logs[0].Source)
 				}
@@ -264,7 +266,7 @@ func TestLogManagerConcurrentAccess(t *testing.T) {
 		for workerID := range workers {
 			wg.Go(func() {
 				for entry := range entriesPerWorker {
-					lm.AddLog(LogEntry{
+					lm.AddLog(logs.LogEntry{
 						Timestamp: time.Now(),
 						Source:    fmt.Sprintf("worker-%d", workerID),
 						Message:   fmt.Sprintf("log-%d", entry),
@@ -301,7 +303,7 @@ func TestLogManager_GetLogsWithSince(t *testing.T) {
 	baseTime := time.Now().Add(-10 * time.Second)
 
 	// Add logs at different times
-	testLogs := []LogEntry{
+	testLogs := []logs.LogEntry{
 		{Timestamp: baseTime.Add(1 * time.Second), Source: "test", Message: "message 1", Level: "info"},
 		{Timestamp: baseTime.Add(2 * time.Second), Source: "test", Message: "message 2", Level: "info"},
 		{Timestamp: baseTime.Add(3 * time.Second), Source: "test", Message: "message 3", Level: "info"},
@@ -373,7 +375,7 @@ func TestLogManager_GetStats(t *testing.T) {
 
 	// Add some logs and test again
 	for i := range 5 {
-		entry := LogEntry{
+		entry := logs.LogEntry{
 			Timestamp: time.Now(),
 			Source:    "test",
 			Message:   fmt.Sprintf("message %d", i),
@@ -492,7 +494,7 @@ func TestLogManager_ConcurrentAccess(t *testing.T) {
 			defer func() { done <- true }()
 
 			for j := range logsPerGoroutine {
-				entry := LogEntry{
+				entry := logs.LogEntry{
 					Timestamp: time.Now(),
 					Source:    fmt.Sprintf("goroutine-%d", goroutineID),
 					Message:   fmt.Sprintf("message %d from goroutine %d", j, goroutineID),
@@ -509,12 +511,12 @@ func TestLogManager_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Verify logs were added (some might be trimmed due to buffer size)
-	logs, err := lm.GetLogs(LogsGetRequest{})
+	result, err := lm.GetLogs(LogsGetRequest{})
 	if err != nil {
 		t.Fatalf("Failed to get logs: %v", err)
 	}
 
-	if len(logs.Logs) == 0 {
+	if len(result.Logs) == 0 {
 		t.Error("Expected some logs after concurrent writes")
 	}
 
@@ -543,7 +545,7 @@ func TestLogManager_ConcurrentAccess(t *testing.T) {
 			defer func() { writeDone <- true }()
 
 			for j := range 50 {
-				entry := LogEntry{
+				entry := logs.LogEntry{
 					Timestamp: time.Now(),
 					Source:    fmt.Sprintf("concurrent-writer-%d", writerID),
 					Message:   fmt.Sprintf("concurrent message %d", j),

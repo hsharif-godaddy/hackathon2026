@@ -271,7 +271,6 @@ make test-docker    # Full integration tests
 dev-supervisor/
 ├── main.go                        # Main application entry point
 ├── api.go                         # HTTP API endpoint handlers
-├── health_monitor.go              # Health monitoring and restart policies
 ├── process_manager.go             # Process lifecycle management
 ├── port_discovery.go              # Port discovery interface
 ├── port_discovery_linux.go        # Linux port discovery implementation

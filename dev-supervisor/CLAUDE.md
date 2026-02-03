@@ -31,7 +31,6 @@ dev-supervisor/
 ├── process_manager.go              # Process lifecycle management
 ├── pid1_manager_unix.go            # PID 1 behavior (signal forwarding, reaping)
 ├── http_proxy.go                   # Reverse proxy with TLS/WebSocket/static serving
-├── health_monitor.go               # Configurable health checks
 ├── command_executor.go             # Command execution with output capture
 ├── environment_manager.go          # Environment variable management
 ├── log_manager.go                  # Log buffering and management
@@ -39,19 +38,25 @@ dev-supervisor/
 ├── port_discovery_fallback.go     # Fallback for non-Linux platforms
 ├── peer_sec_linux.go              # SELinux peer security validation
 ├── internal/
-│   ├── auth/
+│   ├── auth/            # ✅ JWT authentication
 │   │   ├── middleware.go          # JWT authentication middleware
 │   │   ├── validator.go           # JWT validation logic
 │   │   └── jwks.go                # JWKS client for public key fetching
-│   ├── config/
+│   ├── config/          # ✅ Configuration management
 │   │   ├── config.go              # Configuration struct and loading
 │   │   └── env.go                 # Environment variable helpers
-│   ├── logs/
-│   │   ├── manager.go             # Log management implementation
+│   ├── health/          # ✅ Health monitoring
+│   │   ├── monitor.go             # Health check implementation
+│   │   └── monitor_test.go        # Health check tests
+│   ├── logs/            # ✅ Logging types
 │   │   └── types.go               # Log types and interfaces
 │   ├── middleware/
 │   │   └── utils.go               # Shared middleware utilities
-│   └── proxy/
+│   ├── process/         # ✅ Process management utilities
+│   │   ├── exit.go                # Exit code handling
+│   │   ├── manager.go             # Process manager
+│   │   └── reaper_linux.go        # Zombie process reaping (Linux)
+│   └── proxy/           # ✅ Network proxies
 │       └── smtp/                  # SMTP proxy with header injection
 │           ├── smtp.go            # SMTP proxy implementation
 │           └── smtp_test.go       # SMTP proxy tests
@@ -407,6 +412,58 @@ defer proxy.Stop()
 ```
 
 </smtp_proxy_architecture>
+
+<health_monitor_architecture>
+**Health monitoring system** (`internal/health/`):
+
+- Configurable health checks: command, HTTP, TCP
+- Automatic restart on failure with exponential backoff
+- Configurable thresholds and start periods
+- Zero internal dependencies (stdlib only)
+
+**Health check types:**
+- **Command:** Execute shell command (exit 0 = healthy)
+- **HTTP:** GET request with 2xx response = healthy
+- **TCP:** Successful connection = healthy
+
+**Configuration:**
+
+```go
+import "github.com/airo-ai-builder/dev-supervisor/internal/health"
+
+monitor := health.NewMonitor(logMgr)
+monitor.Configure(
+    &health.HealthCheck{
+        Type:             health.HealthCheckTypeHTTP,
+        URL:              "http://localhost:3000/health",
+        Interval:         health.Duration(30 * time.Second),
+        Timeout:          health.Duration(10 * time.Second),
+        FailureThreshold: 3,
+        SuccessThreshold: 1,
+    },
+    &health.RestartPolicy{
+        Enabled:           true,
+        MaxRestarts:       5,
+        RestartWindow:     health.Duration(5 * time.Minute),
+        BackoffMultiplier: 2.0,
+        InitialDelay:      health.Duration(1 * time.Second),
+    },
+)
+
+monitor.Start(func() error {
+    // Restart callback
+    return restartProcess()
+})
+defer monitor.Stop()
+```
+
+**Status:**
+- `healthy` - All checks passing
+- `unhealthy` - Checks failing above threshold
+- `starting` - Within start period (grace time)
+- `disabled` - Monitoring not enabled
+
+</health_monitor_architecture>
 
 <start_on_request_mode>
 **Start-on-request for preview deployments:**

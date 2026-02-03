@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
+	"github.com/airo-ai-builder/dev-supervisor/internal/health"
+	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 )
 
@@ -140,7 +142,7 @@ type ProcessManager struct {
 	mu                    sync.RWMutex
 	currentProcess        *ManagedProcess // nil when no process running
 	logMgr                *LogManager
-	healthMon             *HealthMonitor
+	healthMon             *health.Monitor
 	pid1Mgr               *process.PID1Manager
 	portDiscovery         PortDiscovery
 	restartCount          int
@@ -162,7 +164,7 @@ func NewProcessManager(logMgr *LogManager, pid1Mgr *process.PID1Manager) *Proces
 		logMgr:                logMgr,
 		pid1Mgr:               pid1Mgr,
 		portDiscovery:         NewPortDiscovery(),
-		healthMon:             NewHealthMonitor(logMgr),
+		healthMon:             health.NewMonitor(logMgr),
 		enableLogging:         true,                               // Default: enable child process logging
 		outputToStructuredLog: config.GetProcessLoggingToStdout(), // Default: enable structured logging output, configurable via env
 	}
@@ -477,7 +479,7 @@ func (mp *ManagedProcess) streamLogs(logMgr *LogManager, reader io.Reader, sourc
 		line := scanner.Text()
 
 		// Always add to LogManager for API access
-		logMgr.AddLog(LogEntry{
+		logMgr.AddLog(logs.LogEntry{
 			Timestamp: time.Now(),
 			Source:    source,
 			Message:   line,
@@ -658,13 +660,13 @@ func (pm *ProcessManager) restartProcess() error {
 	return pm.Restart(ProcessRestartRequest{Graceful: true})
 }
 
-func (pm *ProcessManager) ConfigureHealthCheck(healthCheck *HealthCheck, restartPolicy *RestartPolicy) {
+func (pm *ProcessManager) ConfigureHealthCheck(healthCheck *health.HealthCheck, restartPolicy *health.RestartPolicy) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 	pm.healthMon.Configure(healthCheck, restartPolicy)
 }
 
-func (pm *ProcessManager) GetHealthStatus() HealthResult {
+func (pm *ProcessManager) GetHealthStatus() health.HealthResult {
 	return pm.healthMon.GetStatus()
 }
 

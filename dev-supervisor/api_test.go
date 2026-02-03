@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/health"
+	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 )
 
 const (
@@ -474,7 +477,7 @@ func TestHandleLogs(t *testing.T) {
 	server := NewServer()
 
 	// Add some test logs first
-	server.logMgr.AddLog(LogEntry{
+	server.logMgr.AddLog(logs.LogEntry{
 		Timestamp: time.Now(),
 		Source:    "test",
 		Message:   "test log message",
@@ -563,15 +566,15 @@ func TestHandleHealthConfigSet(t *testing.T) {
 	server := NewServer()
 
 	configReq := struct {
-		HealthCheck   *HealthCheck   `json:"health_check,omitempty"`
-		RestartPolicy *RestartPolicy `json:"restart_policy,omitempty"`
+		HealthCheck   *health.HealthCheck   `json:"health_check,omitempty"`
+		RestartPolicy *health.RestartPolicy `json:"restart_policy,omitempty"`
 	}{
-		HealthCheck: &HealthCheck{
-			Type:     HealthCheckTypeCommand,
+		HealthCheck: &health.HealthCheck{
+			Type:     health.HealthCheckTypeCommand,
 			Command:  "echo 'healthy'",
-			Interval: Duration(30 * time.Second),
+			Interval: health.Duration(30 * time.Second),
 		},
-		RestartPolicy: &RestartPolicy{
+		RestartPolicy: &health.RestartPolicy{
 			Enabled:     true,
 			MaxRestarts: 3,
 		},
@@ -612,14 +615,14 @@ func TestHandleHealthStatus(t *testing.T) {
 		t.Errorf("Expected status code 200, got %d", w.Code)
 	}
 
-	var response HealthResult
+	var response health.HealthResult
 	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
 
 	// Should be disabled initially
-	if response.Status != HealthStatusDisabled {
-		t.Errorf("Expected status '%s', got '%s'", HealthStatusDisabled, response.Status)
+	if response.Status != health.HealthStatusDisabled {
+		t.Errorf("Expected status '%s', got '%s'", health.HealthStatusDisabled, response.Status)
 	}
 }
 
@@ -1093,13 +1096,13 @@ func TestHandleHealthConfigSetPartialConfig(t *testing.T) {
 
 	// Test setting only health check
 	configReq := struct {
-		HealthCheck   *HealthCheck   `json:"health_check,omitempty"`
-		RestartPolicy *RestartPolicy `json:"restart_policy,omitempty"`
+		HealthCheck   *health.HealthCheck   `json:"health_check,omitempty"`
+		RestartPolicy *health.RestartPolicy `json:"restart_policy,omitempty"`
 	}{
-		HealthCheck: &HealthCheck{
-			Type:     HealthCheckTypeCommand,
+		HealthCheck: &health.HealthCheck{
+			Type:     health.HealthCheckTypeCommand,
 			Command:  "echo 'healthy'",
-			Interval: Duration(30 * time.Second),
+			Interval: health.Duration(30 * time.Second),
 		},
 	}
 
@@ -1121,7 +1124,7 @@ func TestHandleLogsWithFilters(t *testing.T) {
 	server := NewServer()
 
 	// Add test logs with different sources
-	testLogs := []LogEntry{
+	testLogs := []logs.LogEntry{
 		{Timestamp: time.Now(), Source: "test1", Message: "info message", Level: "info"},
 		{Timestamp: time.Now(), Source: "test2", Message: "error message", Level: "error"},
 		{Timestamp: time.Now(), Source: "test1", Message: "debug message", Level: "debug"},

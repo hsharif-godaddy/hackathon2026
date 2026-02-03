@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/health"
 )
 
 // TestClient wraps HTTP client for Unix socket communication
@@ -518,26 +520,26 @@ func TestHealthMonitoring(t *testing.T) {
 
 	// Test health configuration
 	healthConfig := struct {
-		HealthCheck   *HealthCheck   `json:"health_check"`
-		RestartPolicy *RestartPolicy `json:"restart_policy"`
+		HealthCheck   *health.HealthCheck   `json:"health_check"`
+		RestartPolicy *health.RestartPolicy `json:"restart_policy"`
 	}{
-		HealthCheck: &HealthCheck{
-			Type:             HealthCheckTypeCommand,
+		HealthCheck: &health.HealthCheck{
+			Type:             health.HealthCheckTypeCommand,
 			Command:          "echo 'healthy'",
-			Interval:         Duration(5 * time.Second),
-			Timeout:          Duration(2 * time.Second),
+			Interval:         health.Duration(5 * time.Second),
+			Timeout:          health.Duration(2 * time.Second),
 			Retries:          2,
-			StartPeriod:      Duration(1 * time.Second),
+			StartPeriod:      health.Duration(1 * time.Second),
 			SuccessThreshold: 1,
 			FailureThreshold: 2,
 		},
-		RestartPolicy: &RestartPolicy{
+		RestartPolicy: &health.RestartPolicy{
 			Enabled:           true,
 			MaxRestarts:       3,
-			RestartWindow:     Duration(1 * time.Minute),
+			RestartWindow:     health.Duration(1 * time.Minute),
 			BackoffMultiplier: 1.5,
-			MaxBackoff:        Duration(10 * time.Second),
-			InitialDelay:      Duration(1 * time.Second),
+			MaxBackoff:        health.Duration(10 * time.Second),
+			InitialDelay:      health.Duration(1 * time.Second),
 		},
 	}
 
@@ -557,13 +559,13 @@ func TestHealthMonitoring(t *testing.T) {
 		t.Fatalf("Health status failed: %v", err)
 	}
 
-	var healthResult HealthResult
+	var healthResult health.HealthResult
 	if err = suite.client.parseJSONResponse(resp, &healthResult); err != nil {
 		t.Fatalf("Failed to parse health status: %v", err)
 	}
 
 	// Initially should be disabled (no process running)
-	if healthResult.Status != HealthStatusDisabled {
+	if healthResult.Status != health.HealthStatusDisabled {
 		t.Logf("Health status: %s (expected disabled since no process running)", healthResult.Status)
 	}
 

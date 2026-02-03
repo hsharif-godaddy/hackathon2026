@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/airo-ai-builder/dev-supervisor/internal/health"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 )
 
@@ -247,16 +248,16 @@ func TestProcessManager_ConfigureHealthCheck(t *testing.T) {
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
-	healthCheck := &HealthCheck{
-		Type:             HealthCheckTypeCommand,
+	healthCheck := &health.HealthCheck{
+		Type:             health.HealthCheckTypeCommand,
 		Command:          "echo 'healthy'",
-		Interval:         Duration(10 * time.Second),
-		Timeout:          Duration(5 * time.Second),
+		Interval:         health.Duration(10 * time.Second),
+		Timeout:          health.Duration(5 * time.Second),
 		SuccessThreshold: 1,
 		FailureThreshold: 3,
 	}
 
-	restartPolicy := &RestartPolicy{
+	restartPolicy := &health.RestartPolicy{
 		Enabled:     true,
 		MaxRestarts: 5,
 	}
@@ -266,7 +267,7 @@ func TestProcessManager_ConfigureHealthCheck(t *testing.T) {
 
 	// Get health status
 	status := pm.GetHealthStatus()
-	if status.Status != HealthStatusDisabled {
+	if status.Status != health.HealthStatusDisabled {
 		t.Logf("Health status: %s (expected disabled when no process running)", status.Status)
 	}
 

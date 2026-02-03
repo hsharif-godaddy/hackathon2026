@@ -1,4 +1,4 @@
-package main
+package health
 
 import (
 	"context"
@@ -12,6 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 )
 
 // Duration is a custom type that can unmarshal from JSON duration strings like "30s", "5m"
@@ -54,6 +56,9 @@ func (d Duration) ToDuration() time.Duration {
 	return time.Duration(d)
 }
 
+// HealthCheckType represents the type of health check to perform.
+//
+//nolint:revive // "stuttering" name is intentional for clarity when imported
 type HealthCheckType string
 
 const (
@@ -62,6 +67,9 @@ const (
 	HealthCheckTypeTCP     HealthCheckType = "tcp"
 )
 
+// HealthCheck configures health check behavior.
+//
+//nolint:revive // "stuttering" name is intentional for clarity when imported
 type HealthCheck struct {
 	Type             HealthCheckType `json:"type"`
 	Command          string          `json:"command,omitempty"`
@@ -75,6 +83,9 @@ type HealthCheck struct {
 	FailureThreshold int             `json:"failure_threshold"`
 }
 
+// HealthStatus represents the current health status.
+//
+//nolint:revive // "stuttering" name is intentional for clarity when imported
 type HealthStatus string
 
 const (
@@ -91,6 +102,9 @@ const (
 	logLevelError   = "error"
 )
 
+// HealthResult contains the result of a health check.
+//
+//nolint:revive // "stuttering" name is intentional for clarity when imported
 type HealthResult struct {
 	Status    HealthStatus  `json:"status"`
 	Message   string        `json:"message"`
@@ -109,7 +123,10 @@ type RestartPolicy struct {
 	InitialDelay      Duration `json:"initial_delay"`
 }
 
-type HealthMonitor struct {
+// Monitor performs health checks and manages restart policies.
+// Supports command, HTTP, and TCP health checks with configurable intervals,
+// timeouts, and automatic restarts on failure.
+type Monitor struct {
 	mu            sync.RWMutex
 	healthCheck   atomic.Pointer[HealthCheck]
 	restartPolicy *RestartPolicy
@@ -119,12 +136,14 @@ type HealthMonitor struct {
 	restartCount  int
 	restartTimes  []time.Time
 	onRestart     func() error
-	logMgr        *LogManager
+	logMgr        logs.Logger
 	startTime     time.Time
 }
 
-func NewHealthMonitor(logMgr *LogManager) *HealthMonitor {
-	return &HealthMonitor{
+// NewMonitor creates a new health monitor with disabled status.
+// logMgr can be nil if logging is not needed.
+func NewMonitor(logMgr logs.Logger) *Monitor {
+	return &Monitor{
 		result: HealthResult{
 			Status: HealthStatusDisabled,
 		},
@@ -133,13 +152,13 @@ func NewHealthMonitor(logMgr *LogManager) *HealthMonitor {
 	}
 }
 
-func (hm *HealthMonitor) Configure(healthCheck *HealthCheck, restartPolicy *RestartPolicy) {
+func (hm *Monitor) Configure(healthCheck *HealthCheck, restartPolicy *RestartPolicy) {
 	hm.configureHealthCheck(healthCheck)
 	hm.configureRestartPolicy(restartPolicy)
 }
 
 // configureHealthCheck applies defaults and stores health check configuration
-func (hm *HealthMonitor) configureHealthCheck(healthCheck *HealthCheck) {
+func (hm *Monitor) configureHealthCheck(healthCheck *HealthCheck) {
 	if healthCheck == nil {
 		hm.healthCheck.Store(nil)
 		return
@@ -172,7 +191,7 @@ func (hm *HealthMonitor) configureHealthCheck(healthCheck *HealthCheck) {
 }
 
 // configureRestartPolicy applies defaults and stores restart policy configuration
-func (hm *HealthMonitor) configureRestartPolicy(restartPolicy *RestartPolicy) {
+func (hm *Monitor) configureRestartPolicy(restartPolicy *RestartPolicy) {
 	hm.mu.Lock()
 	hm.restartPolicy = restartPolicy
 	hm.mu.Unlock()
@@ -198,7 +217,7 @@ func (hm *HealthMonitor) configureRestartPolicy(restartPolicy *RestartPolicy) {
 	}
 }
 
-func (hm *HealthMonitor) Start(onRestart func() error) {
+func (hm *Monitor) Start(onRestart func() error) {
 	// Check if health check is configured
 	if hm.healthCheck.Load() == nil {
 		return
@@ -220,7 +239,7 @@ func (hm *HealthMonitor) Start(onRestart func() error) {
 	go hm.monitorLoop(ctx)
 }
 
-func (hm *HealthMonitor) Stop() {
+func (hm *Monitor) Stop() {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
 
@@ -231,13 +250,13 @@ func (hm *HealthMonitor) Stop() {
 	hm.result.Status = HealthStatusDisabled
 }
 
-func (hm *HealthMonitor) GetStatus() HealthResult {
+func (hm *Monitor) GetStatus() HealthResult {
 	hm.mu.RLock()
 	defer hm.mu.RUnlock()
 	return hm.result
 }
 
-func (hm *HealthMonitor) GetRestartStats() map[string]any {
+func (hm *Monitor) GetRestartStats() map[string]any {
 	hm.mu.RLock()
 	defer hm.mu.RUnlock()
 
@@ -266,7 +285,7 @@ func (hm *HealthMonitor) GetRestartStats() map[string]any {
 	return stats
 }
 
-func (hm *HealthMonitor) monitorLoop(ctx context.Context) {
+func (hm *Monitor) monitorLoop(ctx context.Context) {
 	// Get initial health check configuration
 	healthCheck := hm.healthCheck.Load()
 	if healthCheck == nil {
@@ -286,7 +305,7 @@ func (hm *HealthMonitor) monitorLoop(ctx context.Context) {
 	}
 }
 
-func (hm *HealthMonitor) performHealthCheck(ctx context.Context) {
+func (hm *Monitor) performHealthCheck(ctx context.Context) {
 	checkStart := time.Now()
 
 	// Get current health check configuration atomically
@@ -332,7 +351,7 @@ func (hm *HealthMonitor) performHealthCheck(ctx context.Context) {
 	hm.processHealthCheckResult(success, message, checkStart, duration)
 }
 
-func (hm *HealthMonitor) performCommandCheck(ctx context.Context, healthCheck *HealthCheck) (bool, string, error) {
+func (hm *Monitor) performCommandCheck(ctx context.Context, healthCheck *HealthCheck) (bool, string, error) {
 	if healthCheck.Command == "" {
 		return false, "No command specified", errors.New("empty command")
 	}
@@ -352,7 +371,7 @@ func (hm *HealthMonitor) performCommandCheck(ctx context.Context, healthCheck *H
 	return true, strings.TrimSpace(string(output)), nil
 }
 
-func (hm *HealthMonitor) performHTTPCheck(ctx context.Context, healthCheck *HealthCheck) (bool, string, error) {
+func (hm *Monitor) performHTTPCheck(ctx context.Context, healthCheck *HealthCheck) (bool, string, error) {
 	if healthCheck.URL == "" {
 		return false, "No URL specified", errors.New("empty URL")
 	}
@@ -379,7 +398,7 @@ func (hm *HealthMonitor) performHTTPCheck(ctx context.Context, healthCheck *Heal
 	return false, fmt.Sprintf("HTTP %d", resp.StatusCode), errors.New("unhealthy status code")
 }
 
-func (hm *HealthMonitor) performTCPCheck(ctx context.Context, healthCheck *HealthCheck) (bool, string, error) {
+func (hm *Monitor) performTCPCheck(ctx context.Context, healthCheck *HealthCheck) (bool, string, error) {
 	if healthCheck.Address == "" {
 		return false, "No address specified", errors.New("empty address")
 	}
@@ -399,7 +418,7 @@ func (hm *HealthMonitor) performTCPCheck(ctx context.Context, healthCheck *Healt
 	return true, fmt.Sprintf("Connected to %s", healthCheck.Address), nil
 }
 
-func (hm *HealthMonitor) processHealthCheckResult(
+func (hm *Monitor) processHealthCheckResult(
 	success bool,
 	message string,
 	checkTime time.Time,
@@ -429,7 +448,7 @@ func (hm *HealthMonitor) processHealthCheckResult(
 			logLevel = logLevelError
 		}
 
-		hm.logMgr.AddLog(LogEntry{
+		hm.logMgr.AddLog(logs.LogEntry{
 			Timestamp: checkTime,
 			Source:    "health_monitor",
 			Level:     logLevel,
@@ -444,7 +463,7 @@ func (hm *HealthMonitor) processHealthCheckResult(
 }
 
 // handleHealthSuccess updates counters and status when health check succeeds
-func (hm *HealthMonitor) handleHealthSuccess(healthCheck *HealthCheck) {
+func (hm *Monitor) handleHealthSuccess(healthCheck *HealthCheck) {
 	hm.result.Successes++
 	hm.result.Failures = 0
 
@@ -454,7 +473,7 @@ func (hm *HealthMonitor) handleHealthSuccess(healthCheck *HealthCheck) {
 }
 
 // handleHealthFailure updates counters and status when health check fails
-func (hm *HealthMonitor) handleHealthFailure(healthCheck *HealthCheck) {
+func (hm *Monitor) handleHealthFailure(healthCheck *HealthCheck) {
 	hm.result.Failures++
 	hm.result.Successes = 0
 
@@ -468,7 +487,7 @@ func (hm *HealthMonitor) handleHealthFailure(healthCheck *HealthCheck) {
 	}
 }
 
-func (hm *HealthMonitor) updateResult(
+func (hm *Monitor) updateResult(
 	status HealthStatus,
 	message string,
 	checkTime time.Time,
@@ -480,7 +499,7 @@ func (hm *HealthMonitor) updateResult(
 	hm.result.Duration = duration
 }
 
-func (hm *HealthMonitor) attemptRestart() {
+func (hm *Monitor) attemptRestart() {
 	hm.mu.Lock()
 
 	// Check if we've exceeded max restarts in the time window
@@ -497,7 +516,7 @@ func (hm *HealthMonitor) attemptRestart() {
 	if recentRestarts >= hm.restartPolicy.MaxRestarts {
 		hm.mu.Unlock()
 		if hm.logMgr != nil {
-			hm.logMgr.AddLog(LogEntry{
+			hm.logMgr.AddLog(logs.LogEntry{
 				Timestamp: now,
 				Source:    "health_monitor",
 				Level:     logLevelError,
@@ -528,7 +547,7 @@ func (hm *HealthMonitor) attemptRestart() {
 	hm.mu.Unlock()
 
 	if hm.logMgr != nil {
-		hm.logMgr.AddLog(LogEntry{
+		hm.logMgr.AddLog(logs.LogEntry{
 			Timestamp: now,
 			Source:    "health_monitor",
 			Level:     logLevelWarning,
@@ -546,7 +565,7 @@ func (hm *HealthMonitor) attemptRestart() {
 	// Attempt restart
 	if onRestart != nil {
 		if err := onRestart(); err != nil && hm.logMgr != nil {
-			hm.logMgr.AddLog(LogEntry{
+			hm.logMgr.AddLog(logs.LogEntry{
 				Timestamp: time.Now(),
 				Source:    "health_monitor",
 				Level:     logLevelError,

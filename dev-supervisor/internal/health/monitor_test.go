@@ -1,4 +1,4 @@
-package main
+package health //nolint:testpackage // Using same package to test unexported members
 
 import (
 	"net"
@@ -7,12 +7,14 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 )
 
-func TestHealthMonitor_NewHealthMonitor(t *testing.T) {
+func TestHealthMonitor_NewMonitor(t *testing.T) {
 	t.Parallel()
-	logMgr := NewLogManager(100)
-	hm := NewHealthMonitor(logMgr)
+	var logMgr logs.Logger
+	hm := NewMonitor(logMgr)
 
 	if hm == nil {
 		t.Fatal("Expected non-nil HealthMonitor")
@@ -35,8 +37,8 @@ func TestHealthMonitor_NewHealthMonitor(t *testing.T) {
 
 func TestHealthMonitor_Configure(t *testing.T) {
 	t.Parallel()
-	logMgr := NewLogManager(100)
-	hm := NewHealthMonitor(logMgr)
+	var logMgr logs.Logger
+	hm := NewMonitor(logMgr)
 
 	healthCheck := &HealthCheck{
 		Type:             HealthCheckTypeCommand,
@@ -78,8 +80,8 @@ func TestHealthMonitor_Configure(t *testing.T) {
 
 func TestHealthMonitor_ConfigureDefaults(t *testing.T) {
 	t.Parallel()
-	logMgr := NewLogManager(100)
-	hm := NewHealthMonitor(logMgr)
+	var logMgr logs.Logger
+	hm := NewMonitor(logMgr)
 
 	// Test with minimal configuration (should apply defaults)
 	healthCheck := &HealthCheck{
@@ -114,8 +116,8 @@ func TestHealthMonitor_ConfigureDefaults(t *testing.T) {
 
 func TestHealthMonitor_StartStop(t *testing.T) {
 	t.Parallel()
-	logMgr := NewLogManager(100)
-	hm := NewHealthMonitor(logMgr)
+	var logMgr logs.Logger
+	hm := NewMonitor(logMgr)
 
 	// Configure with a simple health check
 	healthCheck := &HealthCheck{
@@ -190,8 +192,8 @@ func TestHealthMonitor_CommandHealthCheck(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			// Create separate instances for each parallel test to avoid race conditions
-			logMgr := NewLogManager(100)
-			hm := NewHealthMonitor(logMgr)
+			var logMgr logs.Logger
+			hm := NewMonitor(logMgr)
 
 			healthCheck := &HealthCheck{
 				Type:             HealthCheckTypeCommand,
@@ -229,8 +231,8 @@ func TestHealthMonitor_HTTPHealthCheck(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logMgr := NewLogManager(100)
-	hm := NewHealthMonitor(logMgr)
+	var logMgr logs.Logger
+	hm := NewMonitor(logMgr)
 
 	healthCheck := &HealthCheck{
 		Type:             HealthCheckTypeHTTP,
@@ -266,8 +268,8 @@ func TestHealthMonitor_HTTPHealthCheckFailure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	logMgr := NewLogManager(100)
-	hm := NewHealthMonitor(logMgr)
+	var logMgr logs.Logger
+	hm := NewMonitor(logMgr)
 
 	healthCheck := &HealthCheck{
 		Type:             HealthCheckTypeHTTP,
@@ -312,8 +314,8 @@ func TestHealthMonitor_TCPHealthCheck(t *testing.T) {
 		}
 	}()
 
-	logMgr := NewLogManager(100)
-	hm := NewHealthMonitor(logMgr)
+	var logMgr logs.Logger
+	hm := NewMonitor(logMgr)
 
 	healthCheck := &HealthCheck{
 		Type:             HealthCheckTypeTCP,
@@ -340,8 +342,8 @@ func TestHealthMonitor_TCPHealthCheck(t *testing.T) {
 
 func TestHealthMonitor_TCPHealthCheckFailure(t *testing.T) {
 	t.Parallel()
-	logMgr := NewLogManager(100)
-	hm := NewHealthMonitor(logMgr)
+	var logMgr logs.Logger
+	hm := NewMonitor(logMgr)
 
 	// Use a port that's definitely not listening
 	healthCheck := &HealthCheck{
@@ -368,8 +370,8 @@ func TestHealthMonitor_TCPHealthCheckFailure(t *testing.T) {
 }
 
 func TestHealthMonitor_RestartPolicy(t *testing.T) {
-	logMgr := NewLogManager(100)
-	hm := NewHealthMonitor(logMgr)
+	var logMgr logs.Logger
+	hm := NewMonitor(logMgr)
 
 	var restartCount atomic.Int64
 	healthCheck := &HealthCheck{
@@ -418,8 +420,8 @@ func TestHealthMonitor_RestartPolicy(t *testing.T) {
 
 func TestHealthMonitor_GetRestartStats(t *testing.T) {
 	t.Parallel()
-	logMgr := NewLogManager(100)
-	hm := NewHealthMonitor(logMgr)
+	var logMgr logs.Logger
+	hm := NewMonitor(logMgr)
 
 	// Test with no restart policy
 	stats := hm.GetRestartStats()

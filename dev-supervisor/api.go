@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
+	"github.com/airo-ai-builder/dev-supervisor/internal/health"
 )
 
 // Archive extension used for published version files
@@ -308,8 +309,8 @@ func (s *Server) handleHealthConfigSet(w http.ResponseWriter, r *http.Request) {
 	slog.Info("health config set request received", "method", r.Method, "content_type", r.Header.Get("Content-Type"))
 
 	var req struct {
-		HealthCheck   *HealthCheck   `json:"health_check,omitempty"`
-		RestartPolicy *RestartPolicy `json:"restart_policy,omitempty"`
+		HealthCheck   *health.HealthCheck   `json:"health_check,omitempty"`
+		RestartPolicy *health.RestartPolicy `json:"restart_policy,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -351,19 +352,19 @@ func (s *Server) handleHealthConfigSet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if req.HealthCheck.Type == HealthCheckTypeHTTP && req.HealthCheck.URL == "" {
+		if req.HealthCheck.Type == health.HealthCheckTypeHTTP && req.HealthCheck.URL == "" {
 			slog.Error("health check validation failed", "error", "URL is required for HTTP health check")
 			s.sendError(w, http.StatusBadRequest, "invalid_request", "URL is required for HTTP health check")
 			return
 		}
 
-		if req.HealthCheck.Type == HealthCheckTypeCommand && req.HealthCheck.Command == "" {
+		if req.HealthCheck.Type == health.HealthCheckTypeCommand && req.HealthCheck.Command == "" {
 			slog.Error("health check validation failed", "error", "command is required for command health check")
 			s.sendError(w, http.StatusBadRequest, "invalid_request", "Command is required for command health check")
 			return
 		}
 
-		if req.HealthCheck.Type == HealthCheckTypeTCP && req.HealthCheck.Address == "" {
+		if req.HealthCheck.Type == health.HealthCheckTypeTCP && req.HealthCheck.Address == "" {
 			slog.Error("health check validation failed", "error", "address is required for TCP health check")
 			s.sendError(w, http.StatusBadRequest, "invalid_request", "Address is required for TCP health check")
 			return
@@ -693,20 +694,20 @@ func (s *Server) checkProcessHealth(processInfo ProcessInfo) (string, string) {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthCheckURL, nil)
 	if err != nil {
-		return string(HealthStatusUnhealthy), fmt.Sprintf("Request creation failed: %v", err)
+		return string(health.HealthStatusUnhealthy), fmt.Sprintf("Request creation failed: %v", err)
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return string(HealthStatusUnhealthy), fmt.Sprintf("Connection failed: %v", err)
+		return string(health.HealthStatusUnhealthy), fmt.Sprintf("Connection failed: %v", err)
 	}
 	//nolint:gosec // G104: Intentionally ignoring error
 	resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return string(HealthStatusHealthy), fmt.Sprintf("HTTP %d", resp.StatusCode)
+		return string(health.HealthStatusHealthy), fmt.Sprintf("HTTP %d", resp.StatusCode)
 	}
-	return string(HealthStatusUnhealthy), fmt.Sprintf("HTTP %d", resp.StatusCode)
+	return string(health.HealthStatusUnhealthy), fmt.Sprintf("HTTP %d", resp.StatusCode)
 }
 
 // extractVersionFromSymlink extracts the version from the symlink and updates warnings
@@ -773,14 +774,14 @@ func (s *Server) performHealthCheckAfterPublish(
 	slog.Info("publish.health_check.success",
 		"commit_hash", commitHash,
 		"duration", healthCheckDuration.String())
-	return string(HealthStatusHealthy), healthCheckDuration, false
+	return string(health.HealthStatusHealthy), healthCheckDuration, false
 }
 
 // handleUnhealthyPublish handles the case where health check fails after publish
 func (s *Server) handleUnhealthyPublish(
 	w http.ResponseWriter, commitHash string, restartDuration, healthCheckDuration time.Duration, healthErr error,
 ) (string, time.Duration, bool) {
-	healthStatus := string(HealthStatusUnhealthy)
+	healthStatus := string(health.HealthStatusUnhealthy)
 	if healthErr != nil && healthErr.Error() == "timeout" {
 		healthStatus = "timeout"
 	}
