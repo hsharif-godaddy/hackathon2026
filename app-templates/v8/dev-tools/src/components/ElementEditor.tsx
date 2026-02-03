@@ -116,6 +116,14 @@ function ToolbarButton({
   )
 }
 
+export const editorTypographyStyles = {
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '1rem',
+  fontWeight: 'normal',
+  fontStyle: 'normal',
+  lineHeight: '1.5'
+}
+
 export default function ElementEditor({
   isOpen,
   onClose,
@@ -867,7 +875,8 @@ export default function ElementEditor({
           padding: '4px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '4px'
+          gap: '4px',
+          ...editorTypographyStyles
         }}
       >
         {/* Toolbar Controls */}

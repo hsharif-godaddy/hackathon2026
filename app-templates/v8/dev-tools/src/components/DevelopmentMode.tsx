@@ -1,6 +1,6 @@
 import { useDevelopmentMode } from '../hooks/useDevelopmentMode'
 import { useState, useEffect } from 'react'
-import ElementEditor from './ElementEditor'
+import ElementEditor, { editorTypographyStyles } from './ElementEditor'
 import { safePostMessage, isOriginAllowed } from '../utils/postMessage'
 import { captureAndResizeScreenshot } from '../utils/screenshot'
 
@@ -300,15 +300,17 @@ export default function DevelopmentMode() {
           data-dev-tools="indicator"
           onMouseEnter={() => setIsIndicatorHovered(true)}
           onMouseLeave={() => setIsIndicatorHovered(false)}
-          className="fixed top-[10px] left-1/2 transform -translate-x-1/2 bg-white text-black px-2 py-0.5 rounded-sm font-semibold text-sm z-999998 shadow-md border border-border transition-opacity duration-200 cursor-pointer"
-          style={{ opacity: isIndicatorHovered ? 0 : 1 }}
+          className="fixed top-[10px] left-1/2 transform -translate-x-1/2 bg-white text-black px-2 py-0.5 rounded-sm z-999998 shadow-md border border-border transition-opacity duration-200 cursor-pointer"
+          style={{ opacity: isIndicatorHovered ? 0 : 1, ...editorTypographyStyles }}
           title="Hover to temporarily hide this indicator"
         >
-          {isInlineEditing ? (
-            <>Editing text - Press Enter to save, Escape to cancel</>
-          ) : (
-            <>Click element to edit</>
-          )}
+          <div className="font-semibold text-sm">
+            {isInlineEditing ? (
+              <>Editing text - Press Enter to save, Escape to cancel</>
+            ) : (
+              <>Click element to edit</>
+            )}
+          </div>
         </div>
       )}
 
