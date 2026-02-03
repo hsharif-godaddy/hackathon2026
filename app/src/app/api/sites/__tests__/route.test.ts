@@ -53,6 +53,10 @@ vi.mock('@/lib/control-plane', () => ({
   getControlPlaneAdapter: vi.fn()
 }));
 
+vi.mock('@/lib/translations/server-intl', () => ({
+  detectLocale: vi.fn().mockResolvedValue('en-US')
+}));
+
 describe('/api/sites', function sitesRouteTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();

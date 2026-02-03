@@ -1,5 +1,6 @@
-import { AIRO_OWNER_PRODUCTS,AIRO_PRODUCT_IDS, AiroMgmtClient } from '@/lib/mgmt-airo';
+import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
+import { getDatacenterFromMarketId } from '@/lib/utils/dc-mapping';
 import { extractCustomerId } from '@/lib/utils/jwt-utils';
 import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore';
 import { CreateSiteParams, CreateSiteResult, DeploySiteOptions, IControlPlaneAdapter, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteInfo, SiteStatus, SiteVariant } from './types';
@@ -164,7 +165,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       }
 
       const response = await client.signup({
-        datacenter: process.env.MGMT_AIRO_DATACENTER || 'sxb1',
+        datacenter: process.env.MGMT_AIRO_DATACENTER || getDatacenterFromMarketId(params.marketId),
         isTrial: true,
         productId: params.productId || process.env.MGMT_AIRO_PRODUCT_ID || AIRO_PRODUCT_IDS.AAB_V1,
         initialPrompt: params.prompt,

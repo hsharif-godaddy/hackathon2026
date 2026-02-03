@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getControlPlaneAdapter } from '@/lib/control-plane';
+import { CreateSiteParams } from '@/lib/control-plane/types';
 import {
   createCustomerAuthError,
   type CustomerAuthContext,
@@ -10,7 +11,7 @@ import {
   withCustomerAuth} from '@/lib/customer-auth';
 import { AIRO_PRODUCT_IDS } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
-import { CreateSiteParams } from '@/lib/control-plane/types';
+import { detectLocale } from '@/lib/translations/server-intl';
 
 // POST /api/sites/quick-create - Fast site creation
 // Uses control plane adapter (V2 or Legacy)
@@ -55,15 +56,19 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     logger.info('sites.quick-create.start', { accountId: account_id });
 
+    // Detect locale for datacenter selection
+    const marketId = await detectLocale();
+
     // Use control plane adapter (automatically handles V2 vs Legacy)
     const adapter = getControlPlaneAdapter();
 
-    const createSiteParams = {
+    const createSiteParams: CreateSiteParams = {
       accountId: account_id,
       prompt: projectPrompt.trim(),
       jwt: authContext.jwt,
       productId,
-    } as CreateSiteParams;
+      marketId
+    };
 
     const result = await adapter.createSite(createSiteParams);
     if (!result.success) {

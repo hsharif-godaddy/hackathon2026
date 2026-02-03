@@ -8,6 +8,7 @@ import {
   customerHasAccount,
   withCustomerAuth} from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
+import { detectLocale } from '@/lib/translations/server-intl';
 
 // Force dynamic rendering to prevent database calls during build
 export const dynamic = 'force-dynamic';
@@ -76,12 +77,16 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Use authenticated user's account ID
     const account_id = user.accountId!;
 
+    // Detect locale for datacenter selection
+    const marketId = await detectLocale();
+
     // Create site using control plane adapter
     const adapter = getControlPlaneAdapter();
     const result = await adapter.createSite({
       accountId: account_id,
       prompt: projectPrompt,
-      jwt: authContext.jwt
+      jwt: authContext.jwt,
+      marketId
     });
 
     if (!result.success) {

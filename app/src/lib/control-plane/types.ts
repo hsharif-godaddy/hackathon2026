@@ -105,6 +105,7 @@ export interface CreateSiteParams {
   prompt: string;
   jwt: string;
   productId?: string; // V2 only: Product ID to create site under (defaults to "aab-v1")
+  marketId?: string; // V2 only: Market ID for datacenter selection (e.g., 'en-US', 'de-DE')
 }
 
 /**
