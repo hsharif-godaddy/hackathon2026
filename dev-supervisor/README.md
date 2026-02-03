@@ -272,12 +272,17 @@ dev-supervisor/
 ├── main.go                        # Main application entry point
 ├── api.go                         # HTTP API endpoint handlers
 ├── process_manager.go             # Process lifecycle management
-├── port_discovery.go              # Port discovery interface
-├── port_discovery_linux.go        # Linux port discovery implementation
-├── port_discovery_fallback.go    # Non-Linux port discovery stub
 ├── command_executor.go            # Command execution functionality
 ├── environment_manager.go         # Environment variable management
 ├── logging.go                     # Logging configuration and management
+├── internal/                      # Internal packages
+│   ├── auth/                      # JWT authentication
+│   ├── config/                    # Configuration management
+│   ├── health/                    # Health monitoring
+│   ├── logs/                      # Log management
+│   ├── ports/                     # Port discovery (Linux /proc, fallback)
+│   ├── process/                   # Process management utilities
+│   └── proxy/smtp/                # SMTP proxy
 ├── *_test.go                      # Cross-platform test files
 ├── *_linux_test.go                # Linux-specific test files
 ├── integration_test.go            # Cross-platform integration tests

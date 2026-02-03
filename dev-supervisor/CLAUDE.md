@@ -33,8 +33,6 @@ dev-supervisor/
 ├── http_proxy.go                   # Reverse proxy with TLS/WebSocket/static serving
 ├── command_executor.go             # Command execution with output capture
 ├── environment_manager.go          # Environment variable management
-├── port_discovery_linux.go         # Linux port discovery (procfs)
-├── port_discovery_fallback.go     # Fallback for non-Linux platforms
 ├── peer_sec_linux.go              # SELinux peer security validation
 ├── internal/
 │   ├── auth/            # ✅ JWT authentication
@@ -53,6 +51,11 @@ dev-supervisor/
 │   │   └── manager_test.go        # Manager tests
 │   ├── middleware/
 │   │   └── utils.go               # Shared middleware utilities
+│   ├── ports/           # ✅ Platform-specific port discovery
+│   │   ├── discovery.go           # Port discovery interface
+│   │   ├── discovery_linux.go     # Linux implementation (/proc)
+│   │   ├── discovery_fallback.go  # Non-Linux no-op
+│   │   └── discovery_linux_test.go # Linux tests
 │   ├── process/         # ✅ Process management utilities
 │   │   ├── exit.go                # Exit code handling
 │   │   ├── manager.go             # Process manager
@@ -76,6 +79,11 @@ Platform-specific files:
 ├── *_darwin.go                    # macOS-only (//go:build darwin)
 ├── *_windows.go                   # Windows-only (//go:build windows)
 └── *_fallback.go                  # Non-Linux fallback (//go:build !linux)
+
+Examples:
+- internal/ports/discovery_linux.go - Linux port discovery via /proc
+- internal/ports/discovery_fallback.go - No-op for other platforms
+- internal/process/reaper_linux.go - Zombie process reaping (Linux only)
 ```
 
 ## Key Commands
@@ -523,6 +531,65 @@ response, err := logMgr.GetLogs(logs.LogsGetRequest{
 - HTTP integration helpers for API endpoints
 
 </logging_architecture>
+
+<port_discovery_architecture>
+**Port discovery system** (`internal/ports/`):
+
+Platform-specific port discovery for process restart coordination.
+
+**Purpose:**
+- Discover which TCP ports a process is listening on
+- Wait for ports to be released before restarting processes
+- Avoid "address already in use" errors during restarts
+
+**Platform Support:**
+- **Linux:** Reads /proc/net/tcp and /proc/PID/fd/ for accurate port detection
+- **Other platforms:** Returns empty slice (graceful degradation)
+
+**Architecture:**
+
+```go
+// Interface for platform-agnostic port discovery
+type Discovery interface {
+    GetProcessPorts(pid int) ([]int, error)
+}
+
+// Linux implementation (//go:build linux)
+type LinuxPortDiscovery struct{}
+func NewDiscovery() Discovery { return &LinuxPortDiscovery{} }
+
+// Fallback implementation (//go:build !linux)
+type FallbackPortDiscovery struct{}
+func NewDiscovery() Discovery { return &FallbackPortDiscovery{} }
+```
+
+**Usage:**
+
+```go
+import "github.com/airo-ai-builder/dev-supervisor/internal/ports"
+
+discovery := ports.NewDiscovery()
+ports, err := discovery.GetProcessPorts(pid)
+if err != nil {
+    // Handle error
+}
+
+// Wait for ports to be released before restart
+for _, port := range ports {
+    // Check if port is still in use
+}
+```
+
+**Graceful Degradation:**
+- Linux: Full port discovery via /proc filesystem
+- Other platforms: Returns empty slice, restarts proceed immediately
+- Port conflicts detected at bind time if discovery unavailable
+
+**Build Tags:**
+- `//go:build linux` - Linux-specific implementation
+- `//go:build !linux` - Fallback for all other platforms
+
+</port_discovery_architecture>
 
 <start_on_request_mode>
 **Start-on-request for preview deployments:**

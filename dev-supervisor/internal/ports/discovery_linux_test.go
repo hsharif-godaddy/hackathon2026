@@ -1,6 +1,6 @@
 //go:build linux
 
-package main
+package ports_test
 
 import (
 	"net"
@@ -9,10 +9,12 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/ports"
 )
 
 func TestLinuxPortDiscovery_GetProcessPorts(t *testing.T) {
-	discovery := NewPortDiscovery()
+	discovery := ports.NewDiscovery()
 
 	t.Run("invalid PID returns error", func(t *testing.T) {
 		_, err := discovery.GetProcessPorts(0)

@@ -107,7 +107,7 @@ choco install golang
    - Signal forwarding
    - Zombie process cleanup
 
-3. **Port Discovery** (`port_discovery*.go`)
+3. **Port Discovery** (`internal/ports/`)
    - Interface-based design for platform abstraction
    - Linux implementation reads `/proc/net/tcp`
    - Fallback implementation for other platforms
@@ -160,7 +160,7 @@ Implementation Files:
 1. **Port Discovery**
    - **Why Linux-only:** Reads `/proc/net/tcp` and `/proc/PID/fd`
    - **Fallback behavior:** Returns empty list (restarts still work)
-   - **Implementation:** `port_discovery_linux.go`
+   - **Implementation:** `internal/ports/discovery_linux.go`
 
 2. **PID 1 Orphan Reaping**
    - **Why Linux-only:** Uses `waitid()` syscall with specific flags
@@ -255,7 +255,7 @@ go test -v ./... | grep "=== RUN"
 
 **Test Files:**
 
-- `port_discovery_linux_test.go` - Port discovery tests
+- `internal/ports/discovery_linux_test.go` - Port discovery tests
 - `pid1_linux_test.go` - PID 1 orphan reaping tests
 - `integration_test.go` - Unix socket integration tests
 
@@ -410,10 +410,10 @@ Always use the modern `//go:build` syntax for new code.
 #### Step 1: Define Interface
 
 ```go
-// port_discovery.go
-package main
+// internal/ports/discovery.go
+package ports
 
-type PortDiscovery interface {
+type Discovery interface {
     GetProcessPorts(pid int) ([]int, error)
 }
 ```
@@ -423,12 +423,12 @@ type PortDiscovery interface {
 ```go
 //go:build linux
 
-// port_discovery_linux.go
-package main
+// internal/ports/discovery_linux.go
+package ports
 
 type LinuxPortDiscovery struct{}
 
-func NewPortDiscovery() PortDiscovery {
+func NewDiscovery() Discovery {
     return &LinuxPortDiscovery{}
 }
 
@@ -443,12 +443,12 @@ func (d *LinuxPortDiscovery) GetProcessPorts(pid int) ([]int, error) {
 ```go
 //go:build !linux
 
-// port_discovery_fallback.go
-package main
+// internal/ports/discovery_fallback.go
+package ports
 
 type FallbackPortDiscovery struct{}
 
-func NewPortDiscovery() PortDiscovery {
+func NewDiscovery() Discovery {
     return &FallbackPortDiscovery{}
 }
 

@@ -18,6 +18,7 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 	"github.com/airo-ai-builder/dev-supervisor/internal/health"
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
+	"github.com/airo-ai-builder/dev-supervisor/internal/ports"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 )
 
@@ -144,7 +145,7 @@ type ProcessManager struct {
 	logMgr                logs.Logger
 	healthMon             *health.Monitor
 	pid1Mgr               *process.PID1Manager
-	portDiscovery         PortDiscovery
+	portDiscovery         ports.Discovery
 	restartCount          int
 	enableLogging         bool // Control whether to log child process stdout/stderr
 	outputToStructuredLog bool // Control whether to output child process logs to structured logging
@@ -163,7 +164,7 @@ func NewProcessManager(logMgr logs.Logger, pid1Mgr *process.PID1Manager) *Proces
 	return &ProcessManager{
 		logMgr:                logMgr,
 		pid1Mgr:               pid1Mgr,
-		portDiscovery:         NewPortDiscovery(),
+		portDiscovery:         ports.NewDiscovery(),
 		healthMon:             health.NewMonitor(logMgr),
 		enableLogging:         true,                               // Default: enable child process logging
 		outputToStructuredLog: config.GetProcessLoggingToStdout(), // Default: enable structured logging output, configurable via env

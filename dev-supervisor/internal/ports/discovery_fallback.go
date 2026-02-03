@@ -1,6 +1,6 @@
 //go:build !linux
 
-package main
+package ports
 
 import (
 	"log/slog"
@@ -9,8 +9,8 @@ import (
 // FallbackPortDiscovery provides a no-op implementation for non-Linux platforms
 type FallbackPortDiscovery struct{}
 
-// NewPortDiscovery creates a platform-specific PortDiscovery implementation
-func NewPortDiscovery() PortDiscovery {
+// NewDiscovery creates a platform-specific Discovery implementation
+func NewDiscovery() Discovery {
 	return &FallbackPortDiscovery{}
 }
 

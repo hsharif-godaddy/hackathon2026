@@ -1,6 +1,6 @@
 //go:build linux
 
-package main
+package ports
 
 import (
 	"fmt"
@@ -14,8 +14,8 @@ import (
 // LinuxPortDiscovery implements port discovery using /proc filesystem
 type LinuxPortDiscovery struct{}
 
-// NewPortDiscovery creates a platform-specific PortDiscovery implementation
-func NewPortDiscovery() PortDiscovery {
+// NewDiscovery creates a platform-specific Discovery implementation
+func NewDiscovery() Discovery {
 	return &LinuxPortDiscovery{}
 }
 
