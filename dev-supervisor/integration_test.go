@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/health"
+	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 )
 
 // TestClient wraps HTTP client for Unix socket communication
@@ -612,7 +613,7 @@ func TestLogManagement(t *testing.T) {
 		t.Fatalf("Get logs failed: %v", err)
 	}
 
-	var logsResp LogsGetResponse
+	var logsResp logs.GetResponse
 	if err = suite.client.parseJSONResponse(resp, &logsResp); err != nil {
 		t.Fatalf("Failed to parse logs response: %v", err)
 	}

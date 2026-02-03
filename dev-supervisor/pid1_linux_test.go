@@ -11,11 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 )
 
 func TestManagedProcess_PID1ManagedWait(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pid1Mgr.SetPID1ForTesting(true)
 
@@ -148,7 +149,7 @@ func TestPID1TrackedVsOrphanedProcesses(t *testing.T) {
 		t.Skip("Test requires running as PID 1 (run in Docker)")
 	}
 
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pid1Mgr.SetPID1ForTesting(true)
 	pid1Mgr.Start(nil)
@@ -213,7 +214,7 @@ func TestPID1Manager_LinuxSpecificCreation(t *testing.T) {
 
 func TestPID1Manager_ChildProcessRegistration(t *testing.T) {
 	// Test child process registration (works on any Linux machine)
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 

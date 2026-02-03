@@ -475,6 +475,9 @@ linters:
         linters: [revive, staticcheck]
       - text: "reassigning variable Usage in other package flag"
         linters: [reassign]
+      - path: 'internal/logs/manager_test\.go'
+        linters:
+          - testpackage # Needs access to private fields for testing
       - path: '_test\.go'
         linters:
           - bodyclose

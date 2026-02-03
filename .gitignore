@@ -10,8 +10,8 @@ build/
 .docker-cache/
 
 # Log directories (but not internal/logs/ source code)
-!**/internal/logs/
 logs/
+!**/internal/logs/
 
 # Log files
 agent.log

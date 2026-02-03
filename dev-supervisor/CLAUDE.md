@@ -33,7 +33,6 @@ dev-supervisor/
 ├── http_proxy.go                   # Reverse proxy with TLS/WebSocket/static serving
 ├── command_executor.go             # Command execution with output capture
 ├── environment_manager.go          # Environment variable management
-├── log_manager.go                  # Log buffering and management
 ├── port_discovery_linux.go         # Linux port discovery (procfs)
 ├── port_discovery_fallback.go     # Fallback for non-Linux platforms
 ├── peer_sec_linux.go              # SELinux peer security validation
@@ -48,8 +47,10 @@ dev-supervisor/
 │   ├── health/          # ✅ Health monitoring
 │   │   ├── monitor.go             # Health check implementation
 │   │   └── monitor_test.go        # Health check tests
-│   ├── logs/            # ✅ Logging types
-│   │   └── types.go               # Log types and interfaces
+│   ├── logs/            # ✅ Log management
+│   │   ├── types.go               # Log types and Logger interface
+│   │   ├── manager.go             # Manager implementation
+│   │   └── manager_test.go        # Manager tests
 │   ├── middleware/
 │   │   └── utils.go               # Shared middleware utilities
 │   ├── process/         # ✅ Process management utilities
@@ -464,6 +465,64 @@ defer monitor.Stop()
 - `disabled` - Monitoring not enabled
 
 </health_monitor_architecture>
+
+<logging_architecture>
+**Log management system** (`internal/logs/`):
+
+- Interface-based logging (`logs.Logger`) for decoupling
+- Buffered in-memory log manager with configurable capacity
+- Automatic buffer trimming (removes oldest 10% when full)
+- Filtering by timestamp, source, and line count
+- Thread-safe with RWMutex protection
+
+**Architecture:**
+
+```go
+// Interface for decoupling (used by health.Monitor, process.Manager)
+type Logger interface {
+    AddLog(entry LogEntry)
+}
+
+// Implementation with buffering and filtering
+type Manager struct {
+    // Thread-safe circular buffer
+    mu      sync.RWMutex
+    logs    []LogEntry
+    maxLogs int
+}
+```
+
+**Usage:**
+
+```go
+import "github.com/airo-ai-builder/dev-supervisor/internal/logs"
+
+// Create manager with max buffer size
+logMgr := logs.NewManager(10000)
+
+// Add logs
+logMgr.AddLog(logs.LogEntry{
+    Timestamp: time.Now(),
+    Source:    "process",
+    Level:     "info",
+    Message:   "Process started",
+})
+
+// Query logs
+response, err := logMgr.GetLogs(logs.LogsGetRequest{
+    Lines:  100,        // Last 100 lines
+    Source: "process",  // Filter by source
+    Since:  "2024-01-01T00:00:00Z", // Since timestamp
+})
+```
+
+**Benefits:**
+- Interface decoupling enables testing and future implementations
+- Circular buffer prevents unbounded memory growth
+- Efficient filtering with timestamp and source
+- HTTP integration helpers for API endpoints
+
+</logging_architecture>
 
 <start_on_request_mode>
 **Start-on-request for preview deployments:**

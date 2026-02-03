@@ -141,7 +141,7 @@ func waitForPortsAvailable(ports []int, timeout time.Duration) error {
 type ProcessManager struct {
 	mu                    sync.RWMutex
 	currentProcess        *ManagedProcess // nil when no process running
-	logMgr                *LogManager
+	logMgr                logs.Logger
 	healthMon             *health.Monitor
 	pid1Mgr               *process.PID1Manager
 	portDiscovery         PortDiscovery
@@ -159,7 +159,7 @@ type ProcessManager struct {
 	activeWebSockets      sync.Map // map[net.Conn]bool - tracks active WS connections
 }
 
-func NewProcessManager(logMgr *LogManager, pid1Mgr *process.PID1Manager) *ProcessManager {
+func NewProcessManager(logMgr logs.Logger, pid1Mgr *process.PID1Manager) *ProcessManager {
 	return &ProcessManager{
 		logMgr:                logMgr,
 		pid1Mgr:               pid1Mgr,
@@ -218,7 +218,7 @@ func NewManagedProcess(config ProcessStartRequest) (*ManagedProcess, error) {
 
 // Start starts the managed process and begins monitoring it
 func (mp *ManagedProcess) Start(
-	logMgr *LogManager,
+	logMgr logs.Logger,
 	pid1Mgr *process.PID1Manager,
 	enableLogging bool,
 	outputToStructuredLog bool,
@@ -463,7 +463,7 @@ func (mp *ManagedProcess) logUnexpectedExit(exitCode *int, err error) {
 }
 
 // streamLogs streams process output to the log manager and optionally to structured logging
-func (mp *ManagedProcess) streamLogs(logMgr *LogManager, reader io.Reader, source string, outputToStructuredLog bool) {
+func (mp *ManagedProcess) streamLogs(logMgr logs.Logger, reader io.Reader, source string, outputToStructuredLog bool) {
 	// Cache PID and command values once to avoid mutex contention on every log line
 	var cachedPID int
 	var cachedCommand string

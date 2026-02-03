@@ -1,22 +1,18 @@
-package main
+package logs
 
 import (
 	"fmt"
-	"net/http"
-	"net/url"
 	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
-
-	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 )
 
-func TestLogManager_NewLogManager(t *testing.T) {
+func TestLogManager_NewManager(t *testing.T) {
 	t.Parallel()
 	// Test with custom max logs
 	maxLogs := 500
-	lm := NewLogManager(maxLogs)
+	lm := NewManager(maxLogs)
 
 	if lm == nil {
 		t.Fatal("Expected non-nil LogManager")
@@ -36,7 +32,7 @@ func TestLogManager_NewLogManager(t *testing.T) {
 	}
 
 	// Test with invalid max logs (should use default)
-	lm2 := NewLogManager(-1)
+	lm2 := NewManager(-1)
 	if lm2.maxLogs != 10000 {
 		t.Errorf("Expected default maxLogs 10000, got %d", lm2.maxLogs)
 	}
@@ -44,10 +40,10 @@ func TestLogManager_NewLogManager(t *testing.T) {
 
 func TestLogManager_AddLog(t *testing.T) {
 	t.Parallel()
-	lm := NewLogManager(100)
+	lm := NewManager(100)
 
 	// Add a single log entry
-	entry := logs.LogEntry{
+	entry := LogEntry{
 		Timestamp: time.Now(),
 		Source:    "test",
 		Message:   "test message",
@@ -56,7 +52,7 @@ func TestLogManager_AddLog(t *testing.T) {
 
 	lm.AddLog(entry)
 
-	logs, err := lm.GetLogs(LogsGetRequest{})
+	logs, err := lm.GetLogs(GetRequest{})
 	if err != nil {
 		t.Fatalf("Failed to get logs: %v", err)
 	}
@@ -76,10 +72,10 @@ func TestLogManager_AddLog(t *testing.T) {
 
 func TestLogManager_AddMultipleLogs(t *testing.T) {
 	t.Parallel()
-	lm := NewLogManager(100)
+	lm := NewManager(100)
 
 	// Add multiple log entries
-	entries := []logs.LogEntry{
+	entries := []LogEntry{
 		{
 			Timestamp: time.Now().Add(-2 * time.Second),
 			Source:    "stdout",
@@ -104,7 +100,7 @@ func TestLogManager_AddMultipleLogs(t *testing.T) {
 		lm.AddLog(entry)
 	}
 
-	logs, err := lm.GetLogs(LogsGetRequest{})
+	logs, err := lm.GetLogs(GetRequest{})
 	if err != nil {
 		t.Fatalf("Failed to get logs: %v", err)
 	}
@@ -125,12 +121,12 @@ func TestLogManager_LogBufferTrimming(t *testing.T) {
 	t.Parallel()
 	// Create log manager with small buffer
 	maxLogs := 10
-	lm := NewLogManager(maxLogs)
+	lm := NewManager(maxLogs)
 
 	// Add more logs than the buffer can hold
 	numLogs := 20
 	for i := range numLogs {
-		entry := logs.LogEntry{
+		entry := LogEntry{
 			Timestamp: time.Now().Add(time.Duration(i) * time.Millisecond),
 			Source:    "test",
 			Message:   fmt.Sprintf("message %d", i),
@@ -139,7 +135,7 @@ func TestLogManager_LogBufferTrimming(t *testing.T) {
 		lm.AddLog(entry)
 	}
 
-	logs, err := lm.GetLogs(LogsGetRequest{})
+	logs, err := lm.GetLogs(GetRequest{})
 	if err != nil {
 		t.Fatalf("Failed to get logs: %v", err)
 	}
@@ -160,10 +156,10 @@ func TestLogManager_LogBufferTrimming(t *testing.T) {
 
 func TestLogManager_GetLogs(t *testing.T) {
 	t.Parallel()
-	lm := NewLogManager(100)
+	lm := NewManager(100)
 
 	// Add test logs with different sources
-	testLogs := []logs.LogEntry{
+	testLogs := []LogEntry{
 		{Timestamp: time.Now().Add(-5 * time.Second), Source: "stdout", Message: "stdout message 1", Level: "info"},
 		{Timestamp: time.Now().Add(-4 * time.Second), Source: "stderr", Message: "stderr message 1", Level: "error"},
 		{Timestamp: time.Now().Add(-3 * time.Second), Source: "stdout", Message: "stdout message 2", Level: "info"},
@@ -177,20 +173,20 @@ func TestLogManager_GetLogs(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		request       LogsGetRequest
+		request       GetRequest
 		expectedCount int
-		validateFunc  func(logs []logs.LogEntry) error
+		validateFunc  func(logs []LogEntry) error
 	}{
 		{
 			name:          "get all logs",
-			request:       LogsGetRequest{},
+			request:       GetRequest{},
 			expectedCount: 5,
 		},
 		{
 			name:          "limit logs",
-			request:       LogsGetRequest{Lines: 3},
+			request:       GetRequest{Lines: 3},
 			expectedCount: 3,
-			validateFunc: func(logs []logs.LogEntry) error {
+			validateFunc: func(logs []LogEntry) error {
 				// Should get the last 3 logs
 				if logs[len(logs)-1].Message != "stdout message 3" {
 					return fmt.Errorf(
@@ -203,9 +199,9 @@ func TestLogManager_GetLogs(t *testing.T) {
 		},
 		{
 			name:          "filter by source",
-			request:       LogsGetRequest{Source: "stdout"},
+			request:       GetRequest{Source: "stdout"},
 			expectedCount: 3,
-			validateFunc: func(logs []logs.LogEntry) error {
+			validateFunc: func(logs []LogEntry) error {
 				for _, log := range logs {
 					if log.Source != "stdout" {
 						return fmt.Errorf("expected only stdout logs, got source: %s", log.Source)
@@ -216,9 +212,9 @@ func TestLogManager_GetLogs(t *testing.T) {
 		},
 		{
 			name:          "filter by source with limit",
-			request:       LogsGetRequest{Source: "stderr", Lines: 1},
+			request:       GetRequest{Source: "stderr", Lines: 1},
 			expectedCount: 1,
-			validateFunc: func(logs []logs.LogEntry) error {
+			validateFunc: func(logs []LogEntry) error {
 				if logs[0].Source != "stderr" {
 					return fmt.Errorf("expected stderr log, got source: %s", logs[0].Source)
 				}
@@ -257,7 +253,7 @@ func TestLogManager_GetLogs(t *testing.T) {
 
 func TestLogManagerConcurrentAccess(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		lm := NewLogManager(100)
+		lm := NewManager(100)
 		const workers = 4
 		const entriesPerWorker = 5
 
@@ -266,7 +262,7 @@ func TestLogManagerConcurrentAccess(t *testing.T) {
 		for workerID := range workers {
 			wg.Go(func() {
 				for entry := range entriesPerWorker {
-					lm.AddLog(logs.LogEntry{
+					lm.AddLog(LogEntry{
 						Timestamp: time.Now(),
 						Source:    fmt.Sprintf("worker-%d", workerID),
 						Message:   fmt.Sprintf("log-%d", entry),
@@ -280,7 +276,7 @@ func TestLogManagerConcurrentAccess(t *testing.T) {
 		wg.Wait()
 		synctest.Wait()
 
-		resp, err := lm.GetLogs(LogsGetRequest{})
+		resp, err := lm.GetLogs(GetRequest{})
 		if err != nil {
 			t.Fatalf("failed to get logs: %v", err)
 		}
@@ -298,12 +294,12 @@ func TestLogManagerConcurrentAccess(t *testing.T) {
 
 func TestLogManager_GetLogsWithSince(t *testing.T) {
 	t.Parallel()
-	lm := NewLogManager(100)
+	lm := NewManager(100)
 
 	baseTime := time.Now().Add(-10 * time.Second)
 
 	// Add logs at different times
-	testLogs := []logs.LogEntry{
+	testLogs := []LogEntry{
 		{Timestamp: baseTime.Add(1 * time.Second), Source: "test", Message: "message 1", Level: "info"},
 		{Timestamp: baseTime.Add(2 * time.Second), Source: "test", Message: "message 2", Level: "info"},
 		{Timestamp: baseTime.Add(3 * time.Second), Source: "test", Message: "message 3", Level: "info"},
@@ -317,7 +313,7 @@ func TestLogManager_GetLogsWithSince(t *testing.T) {
 	// Test filtering by since timestamp - use a whole second to avoid precision issues
 	sinceTime := baseTime.Add(2*time.Second + 1*time.Nanosecond) // Just after message 2
 
-	request := LogsGetRequest{
+	request := GetRequest{
 		Since: sinceTime.Format(time.RFC3339Nano),
 	}
 
@@ -339,9 +335,9 @@ func TestLogManager_GetLogsWithSince(t *testing.T) {
 
 func TestLogManager_GetLogsInvalidSince(t *testing.T) {
 	t.Parallel()
-	lm := NewLogManager(100)
+	lm := NewManager(100)
 
-	request := LogsGetRequest{
+	request := GetRequest{
 		Since: "invalid-timestamp",
 	}
 
@@ -353,7 +349,7 @@ func TestLogManager_GetLogsInvalidSince(t *testing.T) {
 
 func TestLogManager_GetStats(t *testing.T) {
 	t.Parallel()
-	lm := NewLogManager(100)
+	lm := NewManager(100)
 
 	// Test with empty logs
 	stats := lm.GetStats()
@@ -375,7 +371,7 @@ func TestLogManager_GetStats(t *testing.T) {
 
 	// Add some logs and test again
 	for i := range 5 {
-		entry := logs.LogEntry{
+		entry := LogEntry{
 			Timestamp: time.Now(),
 			Source:    "test",
 			Message:   fmt.Sprintf("message %d", i),
@@ -389,99 +385,9 @@ func TestLogManager_GetStats(t *testing.T) {
 	}
 }
 
-func TestLogManager_ParseLogsGetRequest(t *testing.T) {
-	t.Parallel()
-	lm := NewLogManager(100)
-
-	tests := []struct {
-		name           string
-		queryParams    map[string]string
-		expectedLines  int
-		expectedSource string
-		expectedSince  string
-	}{
-		{
-			name:          "empty request",
-			queryParams:   map[string]string{},
-			expectedLines: 0,
-		},
-		{
-			name: "with lines parameter",
-			queryParams: map[string]string{
-				"lines": "50",
-			},
-			expectedLines: 50,
-		},
-		{
-			name: "with source parameter",
-			queryParams: map[string]string{
-				"source": "stdout",
-			},
-			expectedSource: "stdout",
-		},
-		{
-			name: "with since parameter",
-			queryParams: map[string]string{
-				"since": "2023-01-01T10:00:00Z",
-			},
-			expectedSince: "2023-01-01T10:00:00Z",
-		},
-		{
-			name: "with all parameters",
-			queryParams: map[string]string{
-				"lines":  "25",
-				"source": "stderr",
-				"since":  "2023-01-01T10:00:00Z",
-			},
-			expectedLines:  25,
-			expectedSource: "stderr",
-			expectedSince:  "2023-01-01T10:00:00Z",
-		},
-		{
-			name: "invalid lines parameter",
-			queryParams: map[string]string{
-				"lines": "invalid",
-			},
-			expectedLines: 0, // Should default to 0 for invalid input
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			// Create mock HTTP request
-			req := &http.Request{
-				URL: &url.URL{},
-			}
-
-			// Set query parameters
-			query := req.URL.Query()
-			for key, value := range tt.queryParams {
-				query.Set(key, value)
-			}
-			req.URL.RawQuery = query.Encode()
-
-			// Parse request
-			parsedReq := lm.parseLogsGetRequest(req)
-
-			if parsedReq.Lines != tt.expectedLines {
-				t.Errorf("Expected lines %d, got %d", tt.expectedLines, parsedReq.Lines)
-			}
-
-			if parsedReq.Source != tt.expectedSource {
-				t.Errorf("Expected source '%s', got '%s'", tt.expectedSource, parsedReq.Source)
-			}
-
-			if parsedReq.Since != tt.expectedSince {
-				t.Errorf("Expected since '%s', got '%s'", tt.expectedSince, parsedReq.Since)
-			}
-		})
-	}
-}
-
 func TestLogManager_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
-	lm := NewLogManager(1000)
+	lm := NewManager(1000)
 
 	// Test concurrent writes
 	numGoroutines := 10
@@ -494,7 +400,7 @@ func TestLogManager_ConcurrentAccess(t *testing.T) {
 			defer func() { done <- true }()
 
 			for j := range logsPerGoroutine {
-				entry := logs.LogEntry{
+				entry := LogEntry{
 					Timestamp: time.Now(),
 					Source:    fmt.Sprintf("goroutine-%d", goroutineID),
 					Message:   fmt.Sprintf("message %d from goroutine %d", j, goroutineID),
@@ -511,7 +417,7 @@ func TestLogManager_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Verify logs were added (some might be trimmed due to buffer size)
-	result, err := lm.GetLogs(LogsGetRequest{})
+	result, err := lm.GetLogs(GetRequest{})
 	if err != nil {
 		t.Fatalf("Failed to get logs: %v", err)
 	}
@@ -530,7 +436,7 @@ func TestLogManager_ConcurrentAccess(t *testing.T) {
 			defer func() { readDone <- true }()
 
 			for range 10 {
-				_, err := lm.GetLogs(LogsGetRequest{Lines: 50})
+				_, err := lm.GetLogs(GetRequest{Lines: 50})
 				if err != nil {
 					t.Errorf("Concurrent read failed: %v", err)
 				}
@@ -545,7 +451,7 @@ func TestLogManager_ConcurrentAccess(t *testing.T) {
 			defer func() { writeDone <- true }()
 
 			for j := range 50 {
-				entry := logs.LogEntry{
+				entry := LogEntry{
 					Timestamp: time.Now(),
 					Source:    fmt.Sprintf("concurrent-writer-%d", writerID),
 					Message:   fmt.Sprintf("concurrent message %d", j),

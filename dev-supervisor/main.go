@@ -18,6 +18,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
+	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 	smtpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/smtp"
 )
@@ -90,7 +91,7 @@ type Server struct {
 	procMgr                *ProcessManager
 	cmdExec                *CommandExecutor
 	envMgr                 *EnvironmentManager
-	logMgr                 *LogManager
+	logMgr                 *logs.Manager
 	pid1Mgr                *process.PID1Manager
 	smtpProxy              *smtpproxy.Proxy
 	httpProxy              *HTTPProxy
@@ -112,7 +113,7 @@ type ErrorResponse struct {
 }
 
 func NewServer() *Server {
-	logMgr := NewLogManager(10000)
+	logMgr := logs.NewManager(10000)
 	pid1Mgr := process.NewPID1Manager()
 	procMgr := NewProcessManager(logMgr, pid1Mgr)
 

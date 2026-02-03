@@ -17,6 +17,7 @@ import (
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 	"github.com/airo-ai-builder/dev-supervisor/internal/health"
+	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 )
 
 // Archive extension used for published version files
@@ -267,8 +268,25 @@ func (s *Server) handleEnvironmentReset(w http.ResponseWriter, _ *http.Request) 
 	}
 }
 
+// parseLogsGetRequest parses HTTP query parameters into a logs.GetRequest
+func parseLogsGetRequest(r *http.Request) logs.GetRequest {
+	req := logs.GetRequest{}
+
+	// Parse query parameters
+	if lines := r.URL.Query().Get("lines"); lines != "" {
+		if parsed, err := strconv.Atoi(lines); err == nil {
+			req.Lines = parsed
+		}
+	}
+
+	req.Source = r.URL.Query().Get("source")
+	req.Since = r.URL.Query().Get("since")
+
+	return req
+}
+
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
-	req := s.logMgr.parseLogsGetRequest(r)
+	req := parseLogsGetRequest(r)
 	response, err := s.logMgr.GetLogs(req)
 	if err != nil {
 		s.sendError(w, http.StatusBadRequest, "invalid_request", err.Error())
@@ -650,7 +668,7 @@ func (s *Server) handlePublishStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Get logs if requested
 	if includeLogs {
-		logsReq := LogsGetRequest{Lines: lines}
+		logsReq := logs.GetRequest{Lines: lines}
 		logsResp, err := s.logMgr.GetLogs(logsReq)
 		if err != nil {
 			slog.Warn("publish.status.logs_error", "error", err)
@@ -787,7 +805,7 @@ func (s *Server) handleUnhealthyPublish(
 	}
 
 	// Get recent logs to help diagnose the issue
-	logsReq := LogsGetRequest{Lines: 200}
+	logsReq := logs.GetRequest{Lines: 200}
 	logsResp, logsErr := s.logMgr.GetLogs(logsReq)
 	if logsErr != nil {
 		slog.Warn("publish.health_check.logs_error", "error", logsErr)

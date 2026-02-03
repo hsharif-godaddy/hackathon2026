@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 	"github.com/airo-ai-builder/dev-supervisor/internal/proxy/routing"
 )
@@ -1804,7 +1805,7 @@ func TestAiroPath_ExactAiroPath_Returns404(t *testing.T) {
 // Test RequestRouter auto-start when process is stopped
 func TestRequestRouter_AutoStartWhenStopped(t *testing.T) {
 	// Create process manager with a simple echo process
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	procMgr := NewProcessManager(logMgr, pid1Mgr)
 
@@ -1867,7 +1868,7 @@ func TestRequestRouter_AutoStartWhenStopped(t *testing.T) {
 // Test RequestRouter doesn't auto-start when process is already running
 func TestRequestRouter_NoAutoStartWhenRunning(t *testing.T) {
 	// Create process manager
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	procMgr := NewProcessManager(logMgr, pid1Mgr)
 
@@ -1917,7 +1918,7 @@ func TestRequestRouter_NoAutoStartWhenRunning(t *testing.T) {
 // Test RequestRouter doesn't auto-start when startOnRequestEnabled is false
 func TestRequestRouter_NoAutoStartWhenDisabled(t *testing.T) {
 	// Create process manager
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	procMgr := NewProcessManager(logMgr, pid1Mgr)
 
@@ -1956,7 +1957,7 @@ func TestRequestRouter_NoAutoStartWhenDisabled(t *testing.T) {
 // Test activity tracking is called on proxied requests
 func TestRequestRouter_ActivityTracking(t *testing.T) {
 	// Create process manager
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	procMgr := NewProcessManager(logMgr, pid1Mgr)
 

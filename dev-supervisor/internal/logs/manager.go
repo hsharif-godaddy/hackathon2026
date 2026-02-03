@@ -1,44 +1,29 @@
-package main
+package logs
 
 import (
 	"fmt"
-	"net/http"
-	"strconv"
 	"sync"
 	"time"
-
-	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 )
 
-type LogsGetRequest struct {
-	Lines  int    `json:"lines,omitempty"`
-	Source string `json:"source,omitempty"`
-	Since  string `json:"since,omitempty"`
-}
-
-type LogsGetResponse struct {
-	Logs  []logs.LogEntry `json:"logs"`
-	Total int             `json:"total"`
-}
-
-type LogManager struct {
+type Manager struct {
 	mu      sync.RWMutex
-	logs    []logs.LogEntry
+	logs    []LogEntry
 	maxLogs int
 }
 
-func NewLogManager(maxLogs int) *LogManager {
+func NewManager(maxLogs int) *Manager {
 	if maxLogs <= 0 {
 		maxLogs = 10000 // Default buffer size
 	}
 
-	return &LogManager{
-		logs:    make([]logs.LogEntry, 0),
+	return &Manager{
+		logs:    make([]LogEntry, 0),
 		maxLogs: maxLogs,
 	}
 }
 
-func (lm *LogManager) AddLog(entry logs.LogEntry) {
+func (lm *Manager) AddLog(entry LogEntry) {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
 
@@ -53,11 +38,11 @@ func (lm *LogManager) AddLog(entry logs.LogEntry) {
 	}
 }
 
-func (lm *LogManager) GetLogs(req LogsGetRequest) (*LogsGetResponse, error) {
+func (lm *Manager) GetLogs(req GetRequest) (*GetResponse, error) {
 	lm.mu.RLock()
 	defer lm.mu.RUnlock()
 
-	var filteredLogs []logs.LogEntry
+	var filteredLogs []LogEntry
 
 	// Parse since timestamp if provided
 	var sinceTime time.Time
@@ -95,13 +80,13 @@ func (lm *LogManager) GetLogs(req LogsGetRequest) (*LogsGetResponse, error) {
 		filteredLogs = filteredLogs[start:]
 	}
 
-	return &LogsGetResponse{
+	return &GetResponse{
 		Logs:  filteredLogs,
 		Total: len(filteredLogs),
 	}, nil
 }
 
-func (lm *LogManager) GetStats() map[string]any {
+func (lm *Manager) GetStats() map[string]any {
 	lm.mu.RLock()
 	defer lm.mu.RUnlock()
 
@@ -109,21 +94,4 @@ func (lm *LogManager) GetStats() map[string]any {
 		"total_logs": len(lm.logs),
 		"max_logs":   lm.maxLogs,
 	}
-}
-
-// HTTP handler helpers
-func (lm *LogManager) parseLogsGetRequest(r *http.Request) LogsGetRequest {
-	req := LogsGetRequest{}
-
-	// Parse query parameters
-	if lines := r.URL.Query().Get("lines"); lines != "" {
-		if parsed, err := strconv.Atoi(lines); err == nil {
-			req.Lines = parsed
-		}
-	}
-
-	req.Source = r.URL.Query().Get("source")
-	req.Since = r.URL.Query().Get("since")
-
-	return req
 }

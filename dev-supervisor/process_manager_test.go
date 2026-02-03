@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/health"
+	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 )
 
@@ -27,7 +28,7 @@ func (m *mockConn) SetReadDeadline(_ time.Time) error  { return nil }
 func (m *mockConn) SetWriteDeadline(_ time.Time) error { return nil }
 
 func TestProcessManager_NewProcessManager(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 
 	pm := NewProcessManager(logMgr, pid1Mgr)
@@ -56,7 +57,7 @@ func TestProcessManager_NewProcessManager(t *testing.T) {
 }
 
 func TestProcessManager_StartProcess(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
@@ -124,7 +125,7 @@ func TestProcessManager_StartProcess(t *testing.T) {
 }
 
 func TestProcessManager_StopProcess(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
@@ -169,7 +170,7 @@ func TestProcessManager_StopProcess(t *testing.T) {
 }
 
 func TestProcessManager_RestartProcess(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
@@ -244,7 +245,7 @@ func TestProcessManager_RestartProcess(t *testing.T) {
 }
 
 func TestProcessManager_ConfigureHealthCheck(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
@@ -283,7 +284,7 @@ func TestProcessManager_ConfigureHealthCheck(t *testing.T) {
 }
 
 func TestProcessManager_EnableStartOnRequest(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
@@ -302,7 +303,7 @@ func TestProcessManager_EnableStartOnRequest(t *testing.T) {
 }
 
 func TestProcessManager_UpdateActivity(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
@@ -328,7 +329,7 @@ func TestProcessManager_UpdateActivity(t *testing.T) {
 }
 
 func TestProcessManager_WebSocketTracking(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
@@ -366,7 +367,7 @@ func TestProcessManager_WebSocketTracking(t *testing.T) {
 }
 
 func TestProcessManager_IdleStopWithWebSocket(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
@@ -411,7 +412,7 @@ func TestProcessManager_IdleStopWithWebSocket(t *testing.T) {
 }
 
 func TestProcessManager_GetStartRequest(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
@@ -440,7 +441,7 @@ func TestProcessManager_GetStartRequest(t *testing.T) {
 }
 
 func TestProcessManager_StopIdleMonitor(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
@@ -462,7 +463,7 @@ func TestProcessManager_StopIdleMonitor(t *testing.T) {
 // TestProcessManager_IdleMonitorRestartsAfterAutoStart tests that idle monitoring
 // restarts correctly after an auto-start cycle
 func TestProcessManager_IdleMonitorRestartsAfterAutoStart(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
@@ -517,7 +518,7 @@ func TestProcessManager_IdleMonitorRestartsAfterAutoStart(t *testing.T) {
 // TestProcessManager_IdleMonitorRestartsAfterRestart tests that idle monitoring
 // restarts properly after a manual restart operation
 func TestProcessManager_IdleMonitorRestartsAfterRestart(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
@@ -559,7 +560,7 @@ func TestProcessManager_IdleMonitorRestartsAfterRestart(t *testing.T) {
 // TestProcessManager_EnableStartOnRequestTwice tests that calling EnableStartOnRequest
 // multiple times doesn't leak goroutines
 func TestProcessManager_EnableStartOnRequestTwice(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
@@ -582,7 +583,7 @@ func TestProcessManager_EnableStartOnRequestTwice(t *testing.T) {
 
 // TestProcessManager_InFlightRequestsBlockIdle tests that in-flight requests prevent idle shutdown
 func TestProcessManager_InFlightRequestsBlockIdle(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
@@ -629,7 +630,7 @@ func TestProcessManager_InFlightRequestsBlockIdle(t *testing.T) {
 
 // TestProcessManager_HealthCheckDoesNotPreventIdle tests that health checks don't keep app alive
 func TestProcessManager_HealthCheckDoesNotPreventIdle(t *testing.T) {
-	logMgr := NewLogManager(100)
+	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
