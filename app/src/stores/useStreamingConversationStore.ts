@@ -1055,17 +1055,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
           break
       }
 
-      // CRITICAL: Update top-level activeStream to match what's being persisted
-      // ChatPane reads from top-level state.activeStream, so it must be kept in sync
-      // When activeStream is null in append mode, clear it to prevent stale streams
-      // from appearing when later batches don't have an in-progress message
-      const updatedTopLevelActiveStream = activeStream !== null
-        ? activeStream
-        : (mode === 'append' ? null : state.activeStream)
-
       return {
         messages: updatedMessages,
-        activeStream: updatedTopLevelActiveStream,
         appChatHistory: {
           ...state.appChatHistory,
           [appId]: {
