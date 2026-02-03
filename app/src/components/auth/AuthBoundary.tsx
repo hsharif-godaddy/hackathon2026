@@ -38,7 +38,7 @@ interface AuthBoundaryProps {
 export default function AuthBoundary({ children }: AuthBoundaryProps) {
   const t = useTranslations();
   const pathname = usePathname();
-  const { needsReauth, reauthReason, openSsoLogin, isSsoLoginOpen } = useAuthUIStore();
+  const { needsReauth, reauthReason, openSsoLogin, isSsoLoginOpen, setRedirectUrl } = useAuthUIStore();
 
   // Skip auth boundary on homepage - it should work for unauthenticated users
   const isHomepage = pathname === '/' || pathname === '';
@@ -52,11 +52,19 @@ export default function AuthBoundary({ children }: AuthBoundaryProps) {
   }
 
   const handleSignIn = () => {
-    logger.info('auth.boundary.sign-in-clicked', {
-      message: 'User clicked sign in from auth boundary',
-      reason: reauthReason,
-      pathname
-    });
+    // Capture current URL to redirect back after auth success
+    if (typeof window !== 'undefined') {
+      const currentUrl = window.location.pathname + window.location.search + window.location.hash;
+      setRedirectUrl(currentUrl);
+
+      logger.info('auth.boundary.sign-in-clicked', {
+        message: 'User clicked sign in from auth boundary',
+        reason: reauthReason,
+        pathname,
+        redirectUrl: currentUrl
+      });
+    }
+
     openSsoLogin();
   };
 

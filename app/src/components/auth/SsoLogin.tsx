@@ -66,7 +66,7 @@ export default function SsoLogin() {
   const [error, setError] = useState<string | null>(null);
   const [ssoHost, setSsoHost] = useState<string | null>(null);
 
-  const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, clearNeedsReauth } = useAuthUIStore();
+  const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, clearNeedsReauth, redirectUrl, setRedirectUrl } = useAuthUIStore();
   const clearRequiresAuth = useSitesStore((state) => state.clearRequiresAuth);
   const { refreshAuth } = useAuthContext();
 
@@ -78,6 +78,57 @@ export default function SsoLogin() {
   const handleLoad = useCallback(function onSsoLoad() {
     setSsoLoaded();
   }, [setSsoLoaded]);
+
+  /**
+   * Validate redirect URL for security
+   * Prevents auth loops and external redirects
+   */
+  const isValidRedirectUrl = useCallback((url: string): boolean => {
+    if (!url || typeof window === 'undefined') {
+      return false;
+    }
+
+    try {
+      // Parse as absolute URL using current origin as base
+      const parsedUrl = new URL(url, window.location.origin);
+      const currentOrigin = window.location.origin;
+      const currentProtocol = window.location.protocol;
+
+      // Must be same origin and protocol
+      if (parsedUrl.origin !== currentOrigin || parsedUrl.protocol !== currentProtocol) {
+        logger.warn('sso-login.redirect.validation.origin-mismatch', {
+          message: 'Redirect URL origin/protocol mismatch, rejecting',
+          redirectUrl: url,
+          requestedOrigin: parsedUrl.origin,
+          requestedProtocol: parsedUrl.protocol,
+          currentOrigin,
+          currentProtocol
+        });
+        return false;
+      }
+
+      // Prevent auth loops - don't redirect to auth/login pages
+      const pathname = parsedUrl.pathname.toLowerCase();
+      const authPaths = ['/login', '/auth', '/sso'];
+      if (authPaths.some(path => pathname.startsWith(path))) {
+        logger.warn('sso-login.redirect.validation.auth-loop', {
+          message: 'Preventing redirect to auth page (would cause loop)',
+          redirectUrl: url,
+          pathname
+        });
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      logger.warn('sso-login.redirect.validation.invalid-url', {
+        message: 'Invalid redirect URL format',
+        redirectUrl: url,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return false;
+    }
+  }, []);
 
   const redirectToRequestedPath = useCallback(() => {
     if (typeof window === 'undefined') {
@@ -123,6 +174,45 @@ export default function SsoLogin() {
     }
   }, []);
 
+  /**
+   * Apply redirect from store first, then fallback to query param
+   * Returns true if redirect was applied
+   */
+  const applyRedirect = useCallback((): boolean => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+
+    // Priority 1: Check store redirectUrl (set by AuthBoundary when modal opened)
+    if (redirectUrl) {
+      if (isValidRedirectUrl(redirectUrl)) {
+        logger.info('sso-login.redirect.from-store', {
+          message: 'Redirecting to stored URL after SSO login',
+          redirectUrl
+        });
+        try {
+          window.location.assign(redirectUrl);
+          // Clear after successful navigation attempt
+          setRedirectUrl(null);
+          return true;
+        } catch (error) {
+          logger.warn('sso-login.redirect.from-store.failed', {
+            message: 'Failed to navigate to stored redirect URL',
+            redirectUrl,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          // Do not clear redirectUrl here so it can potentially be retried
+        }
+      } else {
+        // Invalid redirect URL in store, clear it
+        setRedirectUrl(null);
+      }
+    }
+
+    // Priority 2: Fallback to query param (external SSO flow)
+    return redirectToRequestedPath();
+  }, [redirectUrl, isValidRedirectUrl, setRedirectUrl, redirectToRequestedPath]);
+
   const handleAuth = useCallback(function onSsoAuth(data?: unknown) {
     logger.info('sso-login.auth.success', {
       message: 'SSO authentication successful',
@@ -138,10 +228,11 @@ export default function SsoLogin() {
     // Refresh auth state to pick up new cookies without full page reload
     refreshAuth();
 
-    if (redirectToRequestedPath()) {
+    // Apply redirect if one was captured
+    if (applyRedirect()) {
       return;
     }
-  }, [closeSsoLogin, clearNeedsReauth, clearRequiresAuth, refreshAuth, redirectToRequestedPath]);
+  }, [closeSsoLogin, clearNeedsReauth, clearRequiresAuth, refreshAuth, applyRedirect]);
 
   // Don't render if not open
   if (!isSsoLoginOpen) {

@@ -26,6 +26,11 @@ interface AuthUIStore {
   loginUrl: string | null;
   /** Additional metadata from the 401 response */
   authMetadata: AuthResponseMetadata | null;
+  /**
+   * URL to redirect to after successful authentication
+   * Captured when SSO modal opens to return user to their original page
+   */
+  redirectUrl: string | null;
 
   // === SSO Modal Actions ===
   /** Open the SSO login modal */
@@ -45,6 +50,8 @@ interface AuthUIStore {
   clearNeedsReauth: () => void;
   /** Convenience: redirect to login URL if set */
   redirectToLogin: () => void;
+  /** Set URL to redirect to after successful authentication */
+  setRedirectUrl: (url: string | null) => void;
 }
 
 /**
@@ -83,6 +90,7 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
   reauthReason: null,
   loginUrl: null,
   authMetadata: null,
+  redirectUrl: null,
 
   // SSO Modal Actions
   openSsoLogin: () => {
@@ -105,7 +113,8 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
     needsReauth: false,
     reauthReason: null,
     loginUrl: null,
-    authMetadata: null
+    authMetadata: null,
+    redirectUrl: null  // Clear redirect URL when clearing auth state
   }),
 
   redirectToLogin: () => {
@@ -113,6 +122,8 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
     if (loginUrl && typeof window !== 'undefined') {
       window.location.href = loginUrl;
     }
-  }
+  },
+
+  setRedirectUrl: (url) => set({ redirectUrl: url })
 }));
 
