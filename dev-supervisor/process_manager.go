@@ -158,6 +158,11 @@ type ProcessManager struct {
 	idleMonitorCancel     context.CancelFunc
 	startOnRequestEnabled bool
 	activeWebSockets      sync.Map // map[net.Conn]bool - tracks active WS connections
+
+	// Health tracking for idled apps
+	// When true, indicates the process was healthy before being idled due to inactivity.
+	// Used by health checks to report "healthy" for idled apps instead of "unhealthy".
+	wasHealthyBeforeIdle atomic.Bool
 }
 
 func NewProcessManager(logMgr logs.Logger, pid1Mgr *process.PID1Manager) *ProcessManager {
@@ -512,6 +517,10 @@ func (pm *ProcessManager) Start(req ProcessStartRequest) error {
 		}
 	}
 
+	// Clear the "was healthy before idle" flag on start
+	// It will be re-evaluated on the next idle stop
+	pm.wasHealthyBeforeIdle.Store(false)
+
 	// Create new managed process
 	managedProcess, err := NewManagedProcess(req)
 	if err != nil {
@@ -556,6 +565,10 @@ func (pm *ProcessManager) Stop(req ProcessStopRequest) error {
 		return fmt.Errorf("process is not running (current state: %s)", status.State)
 	}
 
+	// Clear the "was healthy before idle" flag on explicit stop
+	// This is not an idle stop, so the app should report unhealthy
+	pm.wasHealthyBeforeIdle.Store(false)
+
 	// Stop idle monitoring if enabled
 	// Note: We check and cancel within the lock to prevent race conditions
 	// The idle monitor goroutine will exit cleanly when context is canceled
@@ -572,6 +585,47 @@ func (pm *ProcessManager) Stop(req ProcessStopRequest) error {
 	return pm.currentProcess.Stop(req.Signal, req.Timeout)
 }
 
+// stopForIdle stops the process due to idle timeout and sets wasHealthyBeforeIdle.
+// This is an internal method used by checkIdleAndStop. It sets the "was healthy before idle"
+// flag on successful stop, allowing health checks to report "healthy" for idled apps.
+// The flag is set while holding the lock to prevent race conditions with concurrent Start().
+func (pm *ProcessManager) stopForIdle() error {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if pm.currentProcess == nil {
+		return errors.New("no process is running")
+	}
+
+	status := pm.currentProcess.GetInfo()
+	if status.State != ProcessStateRunning {
+		return fmt.Errorf("process is not running (current state: %s)", status.State)
+	}
+
+	// Stop idle monitoring if enabled
+	if pm.idleMonitorCancel != nil {
+		pm.idleMonitorCancel()
+		pm.idleMonitorCancel = nil
+		slog.Debug("idle_monitor.stopped_on_idle_stop")
+	}
+
+	// Stop health monitoring
+	pm.healthMon.Stop()
+
+	// Stop the managed process
+	err := pm.currentProcess.Stop("SIGTERM", 30)
+	if err == nil {
+		// Set wasHealthyBeforeIdle ONLY on successful stop, while still holding the lock.
+		// This prevents race conditions where a concurrent Start() could set the flag to false
+		// after we release the lock but before we set it to true.
+		// Note: We assume a running process is healthy. If the health monitor is configured
+		// and the process was unhealthy, the health monitor would have restarted the process
+		// before idle timeout triggers.
+		pm.wasHealthyBeforeIdle.Store(true)
+	}
+	return err
+}
+
 func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
@@ -582,6 +636,10 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 			"restart_count", pm.restartCount)
 		return errors.New("no previous process to restart")
 	}
+
+	// Clear the "was healthy before idle" flag on restart
+	// A restart is not an idle stop, so we reset the state
+	pm.wasHealthyBeforeIdle.Store(false)
 
 	currentStatus := pm.currentProcess.GetInfo()
 	slog.Info("restarting process",
@@ -871,6 +929,12 @@ func (pm *ProcessManager) IsStartOnRequestEnabled() bool {
 	return pm.startOnRequestEnabled
 }
 
+// WasHealthyBeforeIdle returns true if the process was healthy before being idled.
+// This is used by health checks to report "healthy" for idled apps instead of "unhealthy".
+func (pm *ProcessManager) WasHealthyBeforeIdle() bool {
+	return pm.wasHealthyBeforeIdle.Load()
+}
+
 // StopIdleMonitor stops the idle monitoring goroutine
 func (pm *ProcessManager) StopIdleMonitor() {
 	pm.mu.Lock()
@@ -965,13 +1029,12 @@ func (pm *ProcessManager) checkIdleAndStop() {
 		"threshold", pm.idleTimeout,
 		"pid", status.PID)
 
-	// Release lock before calling Stop() to avoid deadlock (Stop acquires the same lock)
+	// Release lock before calling stopForIdle() to avoid deadlock
+	// (stopForIdle acquires the lock internally)
 	pm.mu.Unlock()
 
-	err := pm.Stop(ProcessStopRequest{
-		Signal:  "SIGTERM",
-		Timeout: 30,
-	})
+	// stopForIdle sets wasHealthyBeforeIdle=true on success (while holding lock)
+	err := pm.stopForIdle()
 
 	if err != nil {
 		slog.Error("idle.stop_failed",
@@ -981,7 +1044,8 @@ func (pm *ProcessManager) checkIdleAndStop() {
 	} else {
 		slog.Info("idle.stopped",
 			"pid", status.PID,
-			"uptime", time.Since(status.StartTime))
+			"uptime", time.Since(status.StartTime),
+			"was_healthy_before_idle", true)
 	}
 }
 

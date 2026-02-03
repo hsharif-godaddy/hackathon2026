@@ -2129,3 +2129,215 @@ func TestModifyResponse_PreservesNonCORSHeaders(t *testing.T) {
 	assert.Equal(t, "session=abc123", rec.Header().Get("Set-Cookie"))
 	assert.Equal(t, "<html></html>", rec.Body.String())
 }
+
+// TestHTTPProxy_HealthCheck_IdledButWasHealthy tests that health check returns 200
+// for a process that was healthy before being idled (not probing backend)
+func TestHTTPProxy_HealthCheck_IdledButWasHealthy(t *testing.T) {
+	// Create process manager
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	procMgr := NewProcessManager(logMgr, pid1Mgr)
+
+	// Start a process
+	startReq := ProcessStartRequest{
+		Command:    "sleep 30",
+		WorkingDir: "/tmp",
+	}
+	require.NoError(t, procMgr.Start(startReq))
+	time.Sleep(100 * time.Millisecond)
+
+	// Enable start-on-request with short timeout
+	procMgr.EnableStartOnRequest(300*time.Millisecond, 100*time.Millisecond)
+
+	// Wait for idle timeout to stop the process
+	time.Sleep(600 * time.Millisecond)
+
+	// Verify process is stopped and was healthy before idle
+	status := procMgr.GetStatus()
+	require.Equal(t, ProcessStateStopped, status.State, "process should be stopped")
+	require.True(t, procMgr.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be true")
+
+	// Create HTTP proxy with start-on-request enabled
+	proxy := &HTTPProxy{
+		config: HTTPProxyConfig{
+			Enabled:    true,
+			ListenPort: 8080,
+			TargetHost: "localhost",
+			TargetPort: 9999, // Non-existent port (backend not running)
+		},
+		procMgr:               procMgr,
+		startOnRequestEnabled: true,
+	}
+
+	// Call handleHealthCheck directly
+	req := httptest.NewRequest(http.MethodGet, "/airo/health", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.handleHealthCheck(rec, req)
+
+	// Should return 200 with healthy status and reason "idle"
+	assert.Equal(t, http.StatusOK, rec.Code, "health check should return 200 for idled but healthy app")
+
+	var resp ProxyHealthResponse
+	err := json.Unmarshal(rec.Body.Bytes(), &resp)
+	require.NoError(t, err, "should parse JSON response")
+
+	assert.Equal(t, "healthy", resp.Status, "status should be 'healthy'")
+	assert.Equal(t, "idle", resp.Reason, "reason should be 'idle'")
+
+	// Verify cache headers are set
+	assert.Contains(t, rec.Header().Get("Cache-Control"), "no-cache",
+		"should have no-cache in Cache-Control")
+	assert.Contains(t, rec.Header().Get("Cache-Control"), "no-store",
+		"should have no-store in Cache-Control")
+	assert.Equal(t, "no-cache", rec.Header().Get("Pragma"), "should have Pragma: no-cache")
+	assert.Equal(t, "0", rec.Header().Get("Expires"), "should have Expires: 0")
+
+	// Clean up
+	procMgr.StopIdleMonitor()
+}
+
+// TestHTTPProxy_HealthCheck_StoppedNotFromIdle tests that health check returns 503
+// for a process that was stopped explicitly (not from idle)
+func TestHTTPProxy_HealthCheck_StoppedNotFromIdle(t *testing.T) {
+	// Create process manager
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	procMgr := NewProcessManager(logMgr, pid1Mgr)
+
+	// Start a process
+	startReq := ProcessStartRequest{
+		Command:    "sleep 30",
+		WorkingDir: "/tmp",
+	}
+	require.NoError(t, procMgr.Start(startReq))
+	time.Sleep(100 * time.Millisecond)
+
+	// Explicitly stop the process (not from idle)
+	require.NoError(t, procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1}))
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify process is stopped and wasHealthyBeforeIdle is false
+	status := procMgr.GetStatus()
+	require.Equal(t, ProcessStateStopped, status.State, "process should be stopped")
+	require.False(t, procMgr.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be false")
+
+	// Create HTTP proxy with start-on-request enabled
+	proxy := &HTTPProxy{
+		config: HTTPProxyConfig{
+			Enabled:    true,
+			ListenPort: 8080,
+			TargetHost: "localhost",
+			TargetPort: 9999, // Non-existent port (backend not running)
+		},
+		procMgr:               procMgr,
+		startOnRequestEnabled: true,
+	}
+
+	// Call handleHealthCheck directly
+	req := httptest.NewRequest(http.MethodGet, "/airo/health", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.handleHealthCheck(rec, req)
+
+	// Should return 503 with unhealthy status
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code,
+		"health check should return 503 for explicitly stopped app")
+
+	var resp ProxyHealthResponse
+	err := json.Unmarshal(rec.Body.Bytes(), &resp)
+	require.NoError(t, err, "should parse JSON response")
+
+	assert.Equal(t, "unhealthy", resp.Status, "status should be 'unhealthy'")
+	assert.Equal(t, "target not reachable", resp.Reason, "reason should indicate target not reachable")
+}
+
+// TestHTTPProxy_HealthCheck_RunningProcess tests that health check probes
+// the backend when process is running (normal healthy case)
+func TestHTTPProxy_HealthCheck_RunningProcess(t *testing.T) {
+	// Create a real backend that responds to health checks
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	// Create process manager
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	procMgr := NewProcessManager(logMgr, pid1Mgr)
+
+	// Start a process
+	startReq := ProcessStartRequest{
+		Command:    "sleep 30",
+		WorkingDir: "/tmp",
+	}
+	require.NoError(t, procMgr.Start(startReq))
+	time.Sleep(100 * time.Millisecond)
+
+	// Create HTTP proxy pointing to the test backend
+	proxy := &HTTPProxy{
+		config: HTTPProxyConfig{
+			Enabled:    true,
+			ListenPort: 8080,
+			TargetHost: backendURL.Hostname(),
+			TargetPort: mustParsePort(t, backendURL.Port()),
+		},
+		procMgr:               procMgr,
+		startOnRequestEnabled: true,
+	}
+
+	// Call handleHealthCheck directly
+	req := httptest.NewRequest(http.MethodGet, "/airo/health", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.handleHealthCheck(rec, req)
+
+	// Should return 200 with healthy status (probing backend)
+	assert.Equal(t, http.StatusOK, rec.Code, "health check should return 200 for running app")
+
+	var resp ProxyHealthResponse
+	err = json.Unmarshal(rec.Body.Bytes(), &resp)
+	require.NoError(t, err, "should parse JSON response")
+
+	assert.Equal(t, "healthy", resp.Status, "status should be 'healthy'")
+	assert.Empty(t, resp.Reason, "reason should be empty for normal healthy state")
+
+	// Clean up
+	procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
+}
+
+// TestHTTPProxy_HealthCheck_NoStartOnRequest tests that health check behavior
+// is unchanged when start-on-request is disabled
+func TestHTTPProxy_HealthCheck_NoStartOnRequest(t *testing.T) {
+	// Create HTTP proxy with start-on-request DISABLED
+	proxy := &HTTPProxy{
+		config: HTTPProxyConfig{
+			Enabled:    true,
+			ListenPort: 8080,
+			TargetHost: "localhost",
+			TargetPort: 9999, // Non-existent port
+		},
+		procMgr:               nil, // No process manager
+		startOnRequestEnabled: false,
+	}
+
+	// Call handleHealthCheck directly
+	req := httptest.NewRequest(http.MethodGet, "/airo/health", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.handleHealthCheck(rec, req)
+
+	// Should return 503 (backend not reachable, normal behavior)
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code,
+		"health check should return 503 when backend not reachable")
+
+	var resp ProxyHealthResponse
+	err := json.Unmarshal(rec.Body.Bytes(), &resp)
+	require.NoError(t, err, "should parse JSON response")
+
+	assert.Equal(t, "unhealthy", resp.Status, "status should be 'unhealthy'")
+}

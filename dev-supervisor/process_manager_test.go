@@ -662,3 +662,175 @@ func TestProcessManager_HealthCheckDoesNotPreventIdle(t *testing.T) {
 
 	pm.StopIdleMonitor()
 }
+
+// TestProcessManager_WasHealthyBeforeIdle_SetOnIdleStop tests that wasHealthyBeforeIdle
+// is set to true when a process is stopped due to idle timeout
+func TestProcessManager_WasHealthyBeforeIdle_SetOnIdleStop(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Verify initial state is false
+	assert.False(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be false initially")
+
+	// Start a long-running process
+	req := ProcessStartRequest{
+		Command:    "sleep 30",
+		WorkingDir: "/tmp",
+	}
+	require.NoError(t, pm.Start(req), "should start process")
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify flag is still false after start
+	assert.False(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be false after start")
+
+	// Enable start-on-request with short timeout for testing
+	pm.EnableStartOnRequest(300*time.Millisecond, 100*time.Millisecond)
+
+	// Wait for idle timeout to trigger stop
+	time.Sleep(600 * time.Millisecond)
+
+	// Process should be stopped
+	status := pm.GetStatus()
+	assert.Equal(t, ProcessStateStopped, status.State, "process should be stopped after idle timeout")
+
+	// CRITICAL: wasHealthyBeforeIdle should now be true
+	assert.True(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be true after idle stop")
+
+	// Clean up
+	pm.StopIdleMonitor()
+}
+
+// TestProcessManager_WasHealthyBeforeIdle_ClearedOnExplicitStop tests that wasHealthyBeforeIdle
+// is set to false when a process is explicitly stopped (not due to idle)
+func TestProcessManager_WasHealthyBeforeIdle_ClearedOnExplicitStop(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Start a long-running process
+	req := ProcessStartRequest{
+		Command:    "sleep 30",
+		WorkingDir: "/tmp",
+	}
+	require.NoError(t, pm.Start(req), "should start process")
+	time.Sleep(100 * time.Millisecond)
+
+	// Enable start-on-request with short timeout
+	pm.EnableStartOnRequest(300*time.Millisecond, 100*time.Millisecond)
+
+	// Wait for idle timeout to trigger stop
+	time.Sleep(600 * time.Millisecond)
+
+	// Process should be stopped and flag should be true
+	status := pm.GetStatus()
+	assert.Equal(t, ProcessStateStopped, status.State, "process should be stopped")
+	assert.True(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be true after idle stop")
+
+	// Start the process again
+	require.NoError(t, pm.Start(req), "should restart process")
+	time.Sleep(100 * time.Millisecond)
+
+	// Flag should be cleared on start
+	assert.False(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be false after restart")
+
+	// Explicitly stop the process (not due to idle)
+	pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
+	time.Sleep(100 * time.Millisecond)
+
+	// Flag should still be false (explicit stop doesn't set it)
+	assert.False(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be false after explicit stop")
+
+	// Clean up
+	pm.StopIdleMonitor()
+}
+
+// TestProcessManager_WasHealthyBeforeIdle_ClearedOnStart tests that wasHealthyBeforeIdle
+// is cleared when a new process starts
+func TestProcessManager_WasHealthyBeforeIdle_ClearedOnStart(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Manually set the flag to simulate a previous idle state
+	pm.wasHealthyBeforeIdle.Store(true)
+	assert.True(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be true")
+
+	// Start a process
+	req := ProcessStartRequest{
+		Command:    "sleep 5",
+		WorkingDir: "/tmp",
+	}
+	require.NoError(t, pm.Start(req), "should start process")
+	time.Sleep(100 * time.Millisecond)
+
+	// Flag should be cleared
+	assert.False(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be false after start")
+
+	// Clean up
+	pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
+}
+
+// TestProcessManager_WasHealthyBeforeIdle_ClearedOnRestart tests that wasHealthyBeforeIdle
+// is cleared when a process is restarted
+func TestProcessManager_WasHealthyBeforeIdle_ClearedOnRestart(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Start a long-running process
+	req := ProcessStartRequest{
+		Command:    "sleep 30",
+		WorkingDir: "/tmp",
+	}
+	require.NoError(t, pm.Start(req), "should start process")
+	time.Sleep(100 * time.Millisecond)
+
+	// Manually set the flag to simulate a previous idle state
+	pm.wasHealthyBeforeIdle.Store(true)
+	assert.True(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be true before restart")
+
+	// Restart the process
+	err := pm.Restart(ProcessRestartRequest{Graceful: true})
+	require.NoError(t, err, "restart should succeed")
+	time.Sleep(200 * time.Millisecond)
+
+	// Flag should be cleared
+	assert.False(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be false after restart")
+
+	// Clean up
+	pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
+}
+
+// TestProcessManager_WasHealthyBeforeIdle_NotSetOnStopFailure tests that wasHealthyBeforeIdle
+// is not set if the idle stop fails (e.g., process already stopped by another goroutine)
+func TestProcessManager_WasHealthyBeforeIdle_NotSetOnStopFailure(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Verify initial state is false
+	assert.False(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be false initially")
+
+	// Call stopForIdle when no process is running - should fail and not set the flag
+	err := pm.stopForIdle()
+	require.Error(t, err, "stopForIdle should fail when no process is running")
+	assert.False(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should remain false after failed stop")
+
+	// Start a process, then stop it explicitly, then try stopForIdle
+	req := ProcessStartRequest{
+		Command:    "sleep 30",
+		WorkingDir: "/tmp",
+	}
+	require.NoError(t, pm.Start(req), "should start process")
+	time.Sleep(100 * time.Millisecond)
+
+	// Explicitly stop the process
+	require.NoError(t, pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1}))
+	time.Sleep(100 * time.Millisecond)
+
+	// Now try stopForIdle - should fail because process is already stopped
+	err = pm.stopForIdle()
+	require.Error(t, err, "stopForIdle should fail when process is already stopped")
+	assert.False(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should remain false after failed stop")
+}
