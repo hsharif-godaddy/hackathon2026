@@ -1,4 +1,4 @@
-package main
+package smtp_test
 
 import (
 	"fmt"
@@ -8,17 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/emersion/go-smtp"
+	gosmtp "github.com/emersion/go-smtp"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/proxy/smtp"
 )
 
 func TestSMTPProxyStartStop(t *testing.T) {
 	t.Parallel()
 
-	proxy := &SMTPProxy{
-		listenAddr:      "127.0.0.1:0",
-		destinationAddr: "127.0.0.1:25",
-		customHeaders:   make(map[string]string),
-	}
+	proxy := smtp.NewForTesting("127.0.0.1:0", "127.0.0.1:25", make(map[string]string))
 
 	err := proxy.Start()
 	if err != nil {
@@ -39,32 +37,29 @@ func TestSMTPProxyHeaderInjection(t *testing.T) {
 	t.Setenv("NODE_ENV", "test")
 	t.Setenv("NOMAD_DC", "test-dc")
 
-	proxy := &SMTPProxy{
-		listenAddr:      "127.0.0.1:0",
-		destinationAddr: "127.0.0.1:25",
-		customHeaders:   make(map[string]string),
+	proxy := smtp.NewForTesting("127.0.0.1:0", "127.0.0.1:25", make(map[string]string))
+	proxy.LoadHeaders()
+
+	headers := proxy.GetHeaders()
+
+	if len(headers) != 4 {
+		t.Errorf("Expected 4 headers, got %d", len(headers))
 	}
 
-	proxy.loadHeaders()
-
-	if len(proxy.customHeaders) != 4 {
-		t.Errorf("Expected 4 headers, got %d", len(proxy.customHeaders))
+	if headers["X-SITE-UID"] != "test-site-123" {
+		t.Errorf("Expected 'test-site-123', got '%s'", headers["X-SITE-UID"])
 	}
 
-	if proxy.customHeaders["X-SITE-UID"] != "test-site-123" {
-		t.Errorf("Expected 'test-site-123', got '%s'", proxy.customHeaders["X-SITE-UID"])
+	if headers["X-PRODUCT"] != "test-product" {
+		t.Errorf("Expected 'test-product', got '%s'", headers["X-PRODUCT"])
 	}
 
-	if proxy.customHeaders["X-PRODUCT"] != "test-product" {
-		t.Errorf("Expected 'test-product', got '%s'", proxy.customHeaders["X-PRODUCT"])
+	if headers["X-ENVIRONMENT"] != "test" {
+		t.Errorf("Expected 'test', got '%s'", headers["X-ENVIRONMENT"])
 	}
 
-	if proxy.customHeaders["X-ENVIRONMENT"] != "test" {
-		t.Errorf("Expected 'test', got '%s'", proxy.customHeaders["X-ENVIRONMENT"])
-	}
-
-	if proxy.customHeaders["X-DATACENTER"] != "test-dc" {
-		t.Errorf("Expected 'test-dc', got '%s'", proxy.customHeaders["X-DATACENTER"])
+	if headers["X-DATACENTER"] != "test-dc" {
+		t.Errorf("Expected 'test-dc', got '%s'", headers["X-DATACENTER"])
 	}
 }
 
@@ -78,7 +73,7 @@ func TestSMTPProxyE2E(t *testing.T) {
 		receivedEmails: make(chan *mockEmail, 1),
 	}
 
-	mockServer := smtp.NewServer(mockBackend)
+	mockServer := gosmtp.NewServer(mockBackend)
 	mockServer.Addr = "127.0.0.1:0"
 	mockServer.Domain = "test.local"
 	mockServer.AllowInsecureAuth = true
@@ -98,13 +93,8 @@ func TestSMTPProxyE2E(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	proxy := &SMTPProxy{
-		listenAddr:      "127.0.0.1:0",
-		destinationAddr: mockAddr,
-		customHeaders:   make(map[string]string),
-	}
-
-	proxy.loadHeaders()
+	proxy := smtp.NewForTesting("127.0.0.1:0", mockAddr, make(map[string]string))
+	proxy.LoadHeaders()
 
 	err = proxy.Start()
 	if err != nil {
@@ -124,7 +114,7 @@ func TestSMTPProxyE2E(t *testing.T) {
 		t.Fatal("Proxy address is empty")
 	}
 
-	client, err := smtp.Dial(proxyAddr)
+	client, err := gosmtp.Dial(proxyAddr)
 	if err != nil {
 		t.Fatalf("Failed to connect to proxy at %s: %v", proxyAddr, err)
 	}
@@ -189,6 +179,42 @@ func TestSMTPProxyE2E(t *testing.T) {
 	}
 }
 
+func TestSMTPProxyConcurrentHeaderLoad(t *testing.T) {
+	// Set up test environment variables
+	t.Setenv("SITE_ID", "concurrent-test")
+	t.Setenv("PRODUCT", "test-product")
+	t.Setenv("NODE_ENV", "test")
+	t.Setenv("NOMAD_DC", "test-dc")
+
+	proxy := smtp.NewForTesting("127.0.0.1:0", "127.0.0.1:25", make(map[string]string))
+
+	// Call LoadHeaders() concurrently from multiple goroutines
+	const numGoroutines = 10
+	done := make(chan bool, numGoroutines)
+
+	for range numGoroutines {
+		go func() {
+			proxy.LoadHeaders()
+			done <- true
+		}()
+	}
+
+	// Wait for all goroutines to complete
+	for range numGoroutines {
+		<-done
+	}
+
+	// Verify headers were loaded correctly
+	headers := proxy.GetHeaders()
+	if len(headers) != 4 {
+		t.Errorf("Expected 4 headers, got %d", len(headers))
+	}
+
+	if headers["X-SITE-UID"] != "concurrent-test" {
+		t.Errorf("Expected 'concurrent-test', got '%s'", headers["X-SITE-UID"])
+	}
+}
+
 type mockEmail struct {
 	from string
 	to   []string
@@ -199,7 +225,7 @@ type mockSMTPBackend struct {
 	receivedEmails chan *mockEmail
 }
 
-func (b *mockSMTPBackend) NewSession(_ *smtp.Conn) (smtp.Session, error) {
+func (b *mockSMTPBackend) NewSession(_ *gosmtp.Conn) (gosmtp.Session, error) {
 	return &mockSMTPSession{backend: b}, nil
 }
 
@@ -213,12 +239,12 @@ func (s *mockSMTPSession) AuthPlain(_, _ string) error {
 	return nil
 }
 
-func (s *mockSMTPSession) Mail(from string, _ *smtp.MailOptions) error {
+func (s *mockSMTPSession) Mail(from string, _ *gosmtp.MailOptions) error {
 	s.from = from
 	return nil
 }
 
-func (s *mockSMTPSession) Rcpt(to string, _ *smtp.RcptOptions) error {
+func (s *mockSMTPSession) Rcpt(to string, _ *gosmtp.RcptOptions) error {
 	s.to = append(s.to, to)
 	return nil
 }

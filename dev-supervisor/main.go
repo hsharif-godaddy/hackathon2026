@@ -19,6 +19,7 @@ import (
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
+	smtpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/smtp"
 )
 
 const (
@@ -91,7 +92,7 @@ type Server struct {
 	envMgr                 *EnvironmentManager
 	logMgr                 *LogManager
 	pid1Mgr                *process.PID1Manager
-	smtpProxy              *SMTPProxy
+	smtpProxy              *smtpproxy.Proxy
 	httpProxy              *HTTPProxy
 	startTime              time.Time
 	config                 *Config
@@ -128,7 +129,7 @@ func NewServer() *Server {
 		procMgr:                procMgr,
 		cmdExec:                NewCommandExecutor(),
 		envMgr:                 NewEnvironmentManager(),
-		smtpProxy:              NewSMTPProxy(),
+		smtpProxy:              smtpproxy.New(),
 		startTime:              time.Now(),
 		processLogging:         true,                               // Default: enable child process logging
 		processLoggingToStdout: config.GetProcessLoggingToStdout(), // Default: enable structured output, configurable via env

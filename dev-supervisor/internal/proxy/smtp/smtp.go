@@ -1,4 +1,4 @@
-package main
+package smtp
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"net/mail"
 	"sync"
@@ -15,7 +16,9 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 )
 
-type SMTPProxy struct {
+// Proxy is an SMTP proxy that injects custom headers into emails.
+// It listens on localhost and forwards to a configured destination SMTP server.
+type Proxy struct {
 	listenAddr      string
 	destinationAddr string
 	customHeaders   map[string]string
@@ -25,22 +28,47 @@ type SMTPProxy struct {
 	running         bool
 }
 
-func NewSMTPProxy() *SMTPProxy {
+// New creates a new SMTP proxy with configuration from environment variables.
+func New() *Proxy {
 	listenAddr := config.GetEnvStringWithDefault("SMTP_LISTEN_ADDR", "127.0.0.1:25")
 	destinationAddr := config.GetEnvStringWithDefault("SMTP_DESTINATION", "relay-hosting.secureserver.net:25")
 
-	proxy := &SMTPProxy{
+	proxy := &Proxy{
 		listenAddr:      listenAddr,
 		destinationAddr: destinationAddr,
 		customHeaders:   make(map[string]string),
 	}
 
-	proxy.loadHeaders()
+	proxy.LoadHeaders()
 
 	return proxy
 }
 
-func (p *SMTPProxy) loadHeaders() {
+// NewForTesting creates a new SMTP proxy with custom parameters for testing.
+func NewForTesting(listenAddr, destinationAddr string, customHeaders map[string]string) *Proxy {
+	if customHeaders == nil {
+		customHeaders = make(map[string]string)
+	}
+	return &Proxy{
+		listenAddr:      listenAddr,
+		destinationAddr: destinationAddr,
+		customHeaders:   customHeaders,
+	}
+}
+
+// LoadHeaders loads custom headers from environment variables.
+// This is called automatically by New() but can be called explicitly to reload headers.
+//
+// IMPORTANT: Must be called before Start(). Calling LoadHeaders() after Start()
+// will not update headers for the running server, as proxyBackend captures the
+// header map reference at startup time. To update headers for a running server,
+// stop the server, call LoadHeaders(), then start again.
+//
+// Thread-safe: Multiple concurrent calls to LoadHeaders() are safe (uses mutex protection).
+func (p *Proxy) LoadHeaders() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	p.customHeaders = map[string]string{
 		"X-SITE-UID":    config.GetEnvStringWithDefault("SITE_ID", "unknown"),
 		"X-PRODUCT":     config.GetEnvStringWithDefault("PRODUCT", "airo-app-builder"),
@@ -51,7 +79,17 @@ func (p *SMTPProxy) loadHeaders() {
 	slog.Info("loaded SMTP custom headers", "count", len(p.customHeaders))
 }
 
-func (p *SMTPProxy) Start() error {
+// GetHeaders returns a copy of the custom headers for testing/inspection.
+func (p *Proxy) GetHeaders() map[string]string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	headers := make(map[string]string, len(p.customHeaders))
+	maps.Copy(headers, p.customHeaders)
+	return headers
+}
+
+func (p *Proxy) Start() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -90,7 +128,7 @@ func (p *SMTPProxy) Start() error {
 	return nil
 }
 
-func (p *SMTPProxy) Addr() string {
+func (p *Proxy) Addr() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.listener != nil {
@@ -99,7 +137,7 @@ func (p *SMTPProxy) Addr() string {
 	return ""
 }
 
-func (p *SMTPProxy) Stop() error {
+func (p *Proxy) Stop() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

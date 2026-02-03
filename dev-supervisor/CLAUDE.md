@@ -31,7 +31,6 @@ dev-supervisor/
 ├── process_manager.go              # Process lifecycle management
 ├── pid1_manager_unix.go            # PID 1 behavior (signal forwarding, reaping)
 ├── http_proxy.go                   # Reverse proxy with TLS/WebSocket/static serving
-├── smtp_proxy.go                   # SMTP proxy with header injection
 ├── health_monitor.go               # Configurable health checks
 ├── command_executor.go             # Command execution with output capture
 ├── environment_manager.go          # Environment variable management
@@ -50,8 +49,12 @@ dev-supervisor/
 │   ├── logs/
 │   │   ├── manager.go             # Log management implementation
 │   │   └── types.go               # Log types and interfaces
-│   └── middleware/
-│       └── utils.go               # Shared middleware utilities
+│   ├── middleware/
+│   │   └── utils.go               # Shared middleware utilities
+│   └── proxy/
+│       └── smtp/                  # SMTP proxy with header injection
+│           ├── smtp.go            # SMTP proxy implementation
+│           └── smtp_test.go       # SMTP proxy tests
 ├── test/
 │   ├── Dockerfile.integration     # Docker image for integration tests
 │   ├── docker-integration-tests.sh # Bash test suite
@@ -184,7 +187,7 @@ Follow Go standard conventions:
 - **Unexported:** camelCase (`processState`, `startTime`)
 - **Interfaces:** noun or `-er` suffix (`Logger`, `CommandExecutor`)
 - **Constants:** PascalCase or ALL_CAPS for exported, camelCase unexported
-- **Acronyms:** preserve case (`HTTPProxy`, `JSONData`, `APIResponse`, `JWTValidator`, `SMTPProxy`)
+- **Acronyms:** preserve case (`HTTPProxy`, `JSONData`, `APIResponse`, `auth.JWTValidator`, `smtp.Proxy`)
 
 **File naming:**
 
@@ -368,7 +371,7 @@ DEV_SUPERVISOR_STATIC_ROOT=/app/dist/client
 </http_proxy_architecture>
 
 <smtp_proxy_architecture>
-**SMTP proxy with header injection** (`smtp_proxy.go`):
+**SMTP proxy with header injection** (`internal/proxy/smtp/`):
 
 - Listens on `127.0.0.1:2525` (localhost only)
 - Forwards to configurable destination (default: `relay-hosting.secureserver.net:25`)
@@ -389,6 +392,18 @@ X-DATACENTER: ${NOMAD_DC}
 SMTP_DESTINATION=smtp.example.com:587
 SITE_ID=app-123
 PRODUCT=my-app
+```
+
+**Usage:**
+
+```go
+import smtpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/smtp"
+
+proxy := smtpproxy.New()
+if err := proxy.Start(); err != nil {
+    log.Fatal(err)
+}
+defer proxy.Stop()
 ```
 
 </smtp_proxy_architecture>
