@@ -23,6 +23,6 @@ Airo supports multiple ways to add media to your application:
 
 2. **AI-Generated Images**: Request custom AI-generated images by asking me to create or generate specific visuals
 
-3. **Upload Your Own**: Click the file button below the input box in the toolbar to upload your own images, videos, and files. After uploading, just insert and tell me where you want to use that media in your application
+3. **Upload Your Own**: Click the plus button on the left side of the input box to upload your own images, videos, and files. After uploading, just insert and tell me where you want to use that media in your application
 
 All media options are fully integrated and ready to use in your project.

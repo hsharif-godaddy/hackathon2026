@@ -51,22 +51,28 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Fetch GETTY_TOKEN from AWS
+      - name: Fetch certificates and generate SSO JWT
         env:
           AWS_REGION: us-west-2
           ENVIRONMENT: ${{ inputs.environment }}
         run: |
-          # Determine AWS account ID, secret path, and IAM role based on environment
+          echo "Fetching certificates from AWS Secrets Manager..."
+
+          # Determine AWS account ID and IAM role based on environment
           if [ "$ENVIRONMENT" = "PROD" ]; then
             AWS_ACCOUNT_ID="644094189644"
-            SECRET_PATH="/Katana/Secrets/airobuilde/proxy/prod-ecs/VALID_TOKENS"
             IAM_ROLE="GD-AWS-USA-GD-AiroBuilde-Prod-Deploy"
-            echo "Fetching PROD token"
+            SSO_ENDPOINT="https://sso.godaddy.com/v1/secure/api/token"
+            CERT_SECRET_PATH="getty.airo-builder.authclient.int.godaddy.com.crt"
+            KEY_SECRET_PATH="getty.airo-builder.authclient.int.godaddy.com.key"
+            echo "Using PROD environment"
           else
             AWS_ACCOUNT_ID="694282668781"
-            SECRET_PATH="/Katana/Secrets/airobuilde/app/dev-private-ecs/GETTY_TOKEN"
             IAM_ROLE="GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy"
-            echo "Fetching TEST token"
+            SSO_ENDPOINT="https://sso.test-godaddy.com/v1/secure/api/token"
+            CERT_SECRET_PATH="getty.airo-builder.test.authclient.int.godaddy.com.crt"
+            KEY_SECRET_PATH="getty.airo-builder.test.authclient.int.godaddy.com.key"
+            echo "Using TEST environment"
           fi
 
           # Assume role
@@ -75,16 +81,62 @@ jobs:
           --role-session-name knowledge-base-${GITHUB_RUN_ID} \
           --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
 
-          # Fetch token from Secrets Manager
-          GETTY_TOKEN=$(aws secretsmanager get-secret-value \
-            --secret-id "${SECRET_PATH}" \
+          # Fetch certificate from Secrets Manager
+          GETTY_CERT=$(aws secretsmanager get-secret-value \
+            --secret-id "${CERT_SECRET_PATH}" \
             --region "${AWS_REGION}" \
             --query SecretString \
             --output text)
 
-          echo "::add-mask::$GETTY_TOKEN"
-          echo "GETTY_TOKEN=$GETTY_TOKEN" >> $GITHUB_ENV
-          echo "✅ Token retrieved successfully from $SECRET_PATH using role $IAM_ROLE in account $AWS_ACCOUNT_ID"
+          # Fetch key from Secrets Manager
+          GETTY_KEY=$(aws secretsmanager get-secret-value \
+            --secret-id "${KEY_SECRET_PATH}" \
+            --region "${AWS_REGION}" \
+            --query SecretString \
+            --output text)
+
+          echo "✅ Certificates retrieved successfully"
+
+          # Create secure temporary directory with restricted permissions
+          CERT_TEMP_DIR=$(mktemp -d)
+          chmod 700 "$CERT_TEMP_DIR"
+
+          # Ensure cleanup on exit (success or failure)
+          cleanup() {
+            rm -rf "$CERT_TEMP_DIR"
+          }
+          trap cleanup EXIT
+
+          # Save certificates to secure temp directory
+          echo "$GETTY_CERT" > "$CERT_TEMP_DIR/getty.crt"
+          echo "$GETTY_KEY" > "$CERT_TEMP_DIR/getty.key"
+          chmod 600 "$CERT_TEMP_DIR/getty.crt" "$CERT_TEMP_DIR/getty.key"
+
+          # Get SSO JWT token using mTLS (client certificate authentication)
+          echo "Requesting SSO JWT token from $SSO_ENDPOINT..."
+          SSO_RESPONSE=$(curl -s \
+            --cert "$CERT_TEMP_DIR/getty.crt" \
+            --key "$CERT_TEMP_DIR/getty.key" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            -d '{"realm": "cert"}' \
+            "${SSO_ENDPOINT}")
+
+          # Cleanup is handled by trap
+
+          # Extract token from response (try data, access_token, or token fields)
+          SSO_JWT=$(echo "$SSO_RESPONSE" | jq -r '.data // .access_token // .token // empty')
+
+          if [ -z "$SSO_JWT" ] || [ "$SSO_JWT" = "null" ]; then
+            echo "❌ Failed to extract token from SSO response"
+            echo "Response: $SSO_RESPONSE"
+            exit 1
+          fi
+
+          echo "::add-mask::$SSO_JWT"
+          echo "SSO_JWT=$SSO_JWT" >> $GITHUB_ENV
+          echo "✅ SSO JWT token generated successfully"
 
       - name: Upload knowledge base files
         env:
@@ -95,18 +147,18 @@ jobs:
           echo "Branch: ${{ github.ref_name }}"
           echo "Environment: $ENVIRONMENT"
 
-          # Set proxy URL and kbNodeId based on environment
+          # Set API URL and kbNodeId based on environment
           if [ "$ENVIRONMENT" == "PROD" ]; then
-            PROXY_URL="https://airobuilde-proxy-prod-ecs.airobuilde-prod.prod.onkatana.net"
+            API_URL="https://knowb.api.int.godaddy.com/v1/kbnodes"
             KB_NODE_ID="/airo_info"
             echo "Target: Production KB (/airo_info)"
           else
-            PROXY_URL="https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net"
+            API_URL="https://knowb.api.int.test-godaddy.com/v1/kbnodes"
             KB_NODE_ID="/airo_info"
             echo "Target: Test KB (/airo_info)"
           fi
 
-          echo "Using proxy: $PROXY_URL"
+          echo "Using API: $API_URL"
 
           UPLOAD_COUNT=0
           FAILED_COUNT=0
@@ -143,10 +195,10 @@ jobs:
 
             response=$(curl -s -w "\n%{http_code}" \
               -X POST \
-              "${PROXY_URL}/v1/knowb/upload" \
-              -H "Authorization: Bearer ${GETTY_TOKEN}" \
+              "${API_URL}" \
+              -H "Authorization: sso-jwt ${SSO_JWT}" \
               -H "Accept: application/json" \
-              -F "file=@${file}" \
+              -F "files=@${file}" \
               -F "kbNodeId=${KB_NODE_ID}" \
               -F "resourceType=document" \
               -F "metadata={\"filename\":\"${filename}\"}")
