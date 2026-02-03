@@ -78,13 +78,21 @@ router.get('/:appId/customer-logs', async (req: Request, res: Response) => {
   });
 
   try {
-    // Parse sources from query param - supports single value, comma-separated, or array
+    // Parse query params once and reuse
     const parsedSources = parseSourceParam(source);
+    const parsedLines = lines ? parseInt(lines as string, 10) : undefined;
+
+    logger.debug('route.customer-logs.params-parsed', {
+      appId,
+      rawSource: source,
+      parsedSources,
+      parsedLines
+    });
 
     // Build request - let service handle all validation
     const request: CustomerLogsRequest = {
       appId: appId || '',
-      lines: lines ? parseInt(lines as string, 10) : undefined,
+      lines: parsedLines,
       sources: parsedSources,
       target: target as 'preview' | 'publish',
       since: since as string | undefined
@@ -96,11 +104,31 @@ router.get('/:appId/customer-logs', async (req: Request, res: Response) => {
     // Map service response to HTTP response
     if (!result.success) {
       const statusCode = getStatusCode(result.code);
+
+      logger.warn('route.customer-logs.validation-failed', {
+        appId,
+        code: result.code,
+        error: result.error,
+        statusCode,
+        target,
+        lines: parsedLines,
+        sources: parsedSources
+      });
+
       return res.status(statusCode).json({
         error: result.error,
         code: result.code
       });
     }
+
+    logger.info('route.customer-logs.success', {
+      appId,
+      target,
+      logsReturned: result.total,
+      lines: parsedLines,
+      sources: parsedSources,
+      since
+    });
 
     return res.json({
       logs: result.logs,
@@ -109,7 +137,12 @@ router.get('/:appId/customer-logs', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('route.customer-logs.error', {
       appId,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      target,
+      lines,
+      source,
+      since,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      errorType: error instanceof Error ? error.constructor.name : typeof error
     });
 
     return res.status(500).json({
