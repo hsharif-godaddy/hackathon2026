@@ -146,12 +146,13 @@ class KnowBTokenProvider implements TokenProvider {
 
 /**
  * Get KnowB API URL from environment
- * Uses GODADDY_API_BASE_URL directly, falling back to test environment
+ * Priority: KNOWB_URL > GODADDY_API_BASE_URL > test environment fallback
  */
 function getApiUrl(): string {
-  const apiUrl = process.env.GODADDY_API_BASE_URL;
-  if (apiUrl) {
-    return apiUrl;
+  // Prefer dedicated KNOWB_URL, fall back to GODADDY_API_BASE_URL for backward compatibility
+  const knowbUrl = process.env.KNOWB_URL || process.env.GODADDY_API_BASE_URL;
+  if (knowbUrl) {
+    return knowbUrl;
   }
   // Fallback to test environment
   return 'https://knowb.api.int.test-godaddy.com';

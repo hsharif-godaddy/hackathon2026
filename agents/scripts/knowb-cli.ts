@@ -12,10 +12,11 @@
  *   upload <file> [resourceId]  Upload a file to the knowledge base
  *   delete <resourceId>         Delete a resource from the knowledge base
  *   sync                        Trigger sync/indexing on a knowledge base node
+ *   init-media-node             Initialize /airo_media_v2 node with public ACL
  *
  * Environment:
  *   SSO_JWT                     SSO JWT token for local authentication
- *   GODADDY_API_BASE_URL        KnowB API URL (optional, defaults to test)
+ *   KNOWB_URL                   KnowB API URL (optional, defaults to test)
  *   GOCODE_USE_S2S_AUTH         Set to 'true' for S2S authentication
  */
 
@@ -96,9 +97,18 @@ ${colors.yellow}Commands:${colors.reset}
     Options:
       --node <kbNodeId>    Knowledge base node to sync (default: /airo_info)
 
+  ${colors.green}init-media-node${colors.reset} [--url <knowbUrl>] [--node <kbNodeId>]
+    Initialize the media cache node with public read/write ACL.
+    Use this to set up /airo_media_v2 for image analysis caching.
+
+    Options:
+      --url <knowbUrl>     KnowB API URL (default: test environment)
+                           Use https://knowb.api.int.godaddy.com for production
+      --node <kbNodeId>    Node to create (default: /airo_media_v2)
+
 ${colors.yellow}Environment Variables:${colors.reset}
   SSO_JWT                  SSO JWT token for local authentication
-  GODADDY_API_BASE_URL     KnowB API URL (defaults to test environment)
+  KNOWB_URL                KnowB API URL (defaults to test environment)
   GOCODE_USE_S2S_AUTH      Set to 'true' for S2S authentication
 
 ${colors.yellow}Examples:${colors.reset}
@@ -116,6 +126,12 @@ ${colors.yellow}Examples:${colors.reset}
 
   # Sync the knowledge base
   pnpm --filter @airo/agents tsx scripts/knowb-cli.ts sync
+
+  # Initialize media node for TEST environment
+  pnpm --filter @airo/agents tsx scripts/knowb-cli.ts init-media-node
+
+  # Initialize media node for PRODUCTION environment
+  pnpm --filter @airo/agents tsx scripts/knowb-cli.ts init-media-node --url https://knowb.api.int.godaddy.com
 `);
 }
 
@@ -294,6 +310,105 @@ async function syncCommand(_args: string[], options: Record<string, string>): Pr
   logSuccess(`Successfully triggered sync for ${kbNodeId}`);
 }
 
+async function initMediaNodeCommand(_args: string[], options: Record<string, string>): Promise<void> {
+  const knowbUrl = options.url || 'https://knowb.api.int.test-godaddy.com';
+  const kbNodeId = options.node || '/airo_media_v2';
+  const ssoJwt = process.env.SSO_JWT;
+
+  if (!ssoJwt) {
+    logError('SSO_JWT environment variable is required for this command');
+    process.exit(1);
+  }
+
+  logInfo(`Initializing media node: ${kbNodeId}`);
+  logInfo(`KnowB URL: ${knowbUrl}`);
+  console.log('');
+
+  // Create README content for the node
+  const readmeContent = `# Airo Media Cache
+
+This knowledge base node stores cached image analysis results from the ImageAnalysisService.
+
+## Purpose
+
+When AI-powered image search analysis is enabled (\`IMAGE_ANALYSIS_ENABLED=true\`), the service:
+1. Analyzes Getty Images using Claude Haiku vision
+2. Caches the analysis results here for faster subsequent lookups
+3. Scores image relevance using semantic search
+
+## Data Format
+
+Each cached entry contains:
+- \`gettyId\`: The Getty Images asset ID
+- \`analysis\`: AI-generated description, composition, and usage context
+- \`getty\`: Original metadata (title, keywords, dimensions)
+- \`urls\`: Image URLs (thumbnail, preview, highRes)
+- \`analyzedAt\`: Timestamp of analysis
+
+## Management
+
+This node is automatically populated by the ImageAnalysisService.
+Manual management is not typically required.
+`;
+
+  // Create a temporary file
+  const tempFile = '/tmp/airo_media_readme.md';
+  fs.writeFileSync(tempFile, readmeContent);
+
+  // ACL to allow any authenticated user to read/write
+  const acl = JSON.stringify({
+    allowedPrincipals: [
+      { type: '*', id: '*', scope: 'read' },
+      { type: '*', id: '*', scope: 'write' },
+    ],
+  });
+
+  logInfo('Creating node with public read/write ACL...');
+
+  try {
+    // We need to call knowb directly (not through the driver) to pass ACL
+    // Use native FormData (Node.js 18+)
+    const formData = new FormData();
+
+    // Create a Blob from the file content
+    const fileContent = fs.readFileSync(tempFile);
+    const blob = new Blob([fileContent], { type: 'text/markdown' });
+    formData.append('files', blob, 'README.md');
+    formData.append('kbNodeId', kbNodeId);
+    formData.append('resourceType', 'document');
+    formData.append('acl', acl);
+
+    const response = await fetch(`${knowbUrl}/v1/kbnodes`, {
+      method: 'POST',
+      headers: {
+        Authorization: `sso-jwt ${ssoJwt}`,
+        Accept: 'application/json',
+      },
+      body: formData,
+    });
+
+    const responseText = await response.text();
+
+    if (response.ok) {
+      logSuccess(`Successfully created ${kbNodeId}`);
+      log(`Response: ${responseText}`, colors.dim);
+      console.log('');
+      logInfo('Next steps:');
+      log(`  1. Run sync: npx tsx scripts/knowb-cli.ts sync --node ${kbNodeId}`, colors.yellow);
+      log(`  2. Test search: npx tsx scripts/knowb-cli.ts search "test" --node ${kbNodeId}`, colors.yellow);
+    } else {
+      logError(`Failed to create node (HTTP ${response.status})`);
+      log(`Response: ${responseText}`, colors.red);
+      process.exit(1);
+    }
+  } finally {
+    // Clean up temp file
+    if (fs.existsSync(tempFile)) {
+      fs.unlinkSync(tempFile);
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const { command, args, options } = parseArgs(process.argv);
 
@@ -322,6 +437,9 @@ async function main(): Promise<void> {
         break;
       case 'sync':
         await syncCommand(args, options);
+        break;
+      case 'init-media-node':
+        await initMediaNodeCommand(args, options);
         break;
       default:
         logError(`Unknown command: ${command}`);

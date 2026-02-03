@@ -130,7 +130,7 @@ export function extractGettyId(image: GettyImage): string {
  * Configuration constants
  */
 export const CONFIG = {
-  KB_NODE_ID: "/airo_media",
+  KB_NODE_ID: process.env.IMAGE_ANALYSIS_KB_NODE_ID || "/airo_media_v2",
   DEFAULT_THRESHOLD: 0.5,
   DEFAULT_MAX_RESULTS: 5,
   MAX_RESULTS_CAP: 10,
