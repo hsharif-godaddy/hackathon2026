@@ -24,11 +24,13 @@ export class AccountAdapterFactory {
         AccountAdapterFactory.validateDevEnvironment();
       }
       
-      AccountAdapterFactory.instance = isProduction 
-        ? new ProdAccountAdapter() 
+      AccountAdapterFactory.instance = isProduction
+        ? new ProdAccountAdapter()
         : new DevAccountAdapter();
-        
-      logger.info(`🏭 Using ${isProduction ? 'Production' : 'Development'} Account Adapter`);
+
+      logger.info('account.adapter.initialized', {
+        adapterType: isProduction ? 'production' : 'development'
+      });
     }
     return AccountAdapterFactory.instance;
   }
@@ -76,23 +78,26 @@ export class AccountAdapterFactory {
 
     if (foundProductionIndicators.length > 0) {
       const error = new Error(
-        '🚨 FACTORY SAFETY ERROR: Production indicators detected but attempting to create DevAccountAdapter! ' +
+        'FACTORY SAFETY ERROR: Production indicators detected but attempting to create DevAccountAdapter! ' +
         `Found indicators: ${foundProductionIndicators.join(', ')}. ` +
         'Using dev account adapter in production would bypass billing and authentication!'
       );
-      
-      logger.error('🚨 ACCOUNT ADAPTER FACTORY SAFETY VIOLATION:', {
+
+      logger.error('account.adapter.factory.safety.violation', {
+        message: 'Production indicators found when attempting to use dev adapter',
         error: error.message,
         productionIndicators,
         environment: {
           NODE_ENV: process.env.NODE_ENV,
           timestamp: new Date().toISOString()
         }
-      });
+      }, { tags: ['security'] });
 
       throw error;
     }
 
-    logger.info('✅ AccountAdapterFactory: Dev environment validation passed');
+    logger.info('account.adapter.factory.dev.validated', {
+      message: 'Dev environment validation passed'
+    });
   }
 }

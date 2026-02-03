@@ -39,6 +39,11 @@ export class ProdAccountAdapter implements IAccountAdapter {
     return this.mapToAccountInfo(account);
   }
 
+  async getOrCreateAccount(shopperId: string, customerId: string): Promise<AccountInfo> {
+    const account = await this.accountService.getOrCreateAccount(shopperId, customerId);
+    return this.mapToAccountInfo(account);
+  }
+
   async updateAccountStatus(shopperId: string, status: string): Promise<boolean> {
     return await this.accountService.updateAccountStatus(shopperId, status as 'active' | 'suspended' | 'closed');
   }

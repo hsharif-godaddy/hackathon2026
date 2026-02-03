@@ -52,7 +52,20 @@ export interface IAccountAdapter {
    * Create a new account
    */
   createAccount(shopperId: string, customerId: string): Promise<AccountInfo>;
-  
+
+  /**
+   * Get or create account (idempotent - safe for concurrent calls)
+   *
+   * Uses upsert to handle race conditions during account creation.
+   * If account exists, returns existing account. If not, creates new account.
+   * Safe to call concurrently - will not throw unique constraint errors.
+   *
+   * @param shopperId - Shopper ID from JWT (required, used as upsert key)
+   * @param customerId - Customer ID from JWT (required, always present in JWT)
+   * @returns Existing or newly created account
+   */
+  getOrCreateAccount(shopperId: string, customerId: string): Promise<AccountInfo>;
+
   /**
    * Update account status
    */

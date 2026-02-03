@@ -56,13 +56,19 @@ export class DevAccountAdapter implements IAccountAdapter {
 
   async createAccount(shopperId: string, customerId: string): Promise<AccountInfo> {
     // In development, account creation always succeeds
-    logger.info('🔧 Creating mock account for development:', { shopperId, customerId });
+    logger.info('dev.account.create', { shopperId, customerId });
+    return this.createMockAccount(shopperId, customerId);
+  }
+
+  async getOrCreateAccount(shopperId: string, customerId: string): Promise<AccountInfo> {
+    // In development, always return mock account (idempotent by design)
+    logger.info('dev.account.getOrCreate', { shopperId, customerId });
     return this.createMockAccount(shopperId, customerId);
   }
 
   async updateAccountStatus(shopperId: string, status: string): Promise<boolean> {
     // In development, account updates always succeed
-    logger.info('🔧 Updating mock account status for development:', { shopperId, status });
+    logger.info('dev.account.updateStatus', { shopperId, status });
     return true;
   }
 
@@ -97,13 +103,14 @@ export class DevAccountAdapter implements IAccountAdapter {
 
     if (isProduction) {
       const error = new Error(
-        '🚨 SECURITY ERROR: DevAccountAdapter cannot be used in production environments! ' +
+        'SECURITY ERROR: DevAccountAdapter cannot be used in production environments! ' +
         'This adapter provides mock billing data and bypasses authentication, ' +
         'which would create serious security and financial risks in production.'
       );
-      
+
       // Log the error for monitoring systems
-      logger.error('🚨 CRITICAL SECURITY VIOLATION:', {
+      logger.error('dev.account.adapter.security.violation', {
+        message: 'Attempted to use DevAccountAdapter in production environment',
         error: error.message,
         adapter: 'DevAccountAdapter',
         environment: {
@@ -115,12 +122,14 @@ export class DevAccountAdapter implements IAccountAdapter {
         },
         timestamp: new Date().toISOString(),
         stackTrace: error.stack
-      });
+      }, { tags: ['security'] });
 
       throw error;
     }
 
-    logger.info('✅ DevAccountAdapter: Environment validation passed - running in development mode');
+    logger.info('dev.account.adapter.validated', {
+      message: 'Environment validation passed - running in development mode'
+    });
   }
 
   private createMockAccount(shopperId: string, customerId?: string): AccountInfo {

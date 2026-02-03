@@ -57,17 +57,6 @@ export function setSpanJobId(jobId: string): void {
  */
 export const SHOPPER_AUTH_FAILURE_MESSAGE = 'Your account does not have authorization to access this application.';
 
-/**
- * Check if an error is a unique constraint violation (works with both Prisma/MySQL and SQLite)
- * Prisma returns code 'P2002' for unique constraint violations
- */
-function isUniqueConstraintError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const err = error as { code?: string; message?: string };
-  return err.code === 'P2002' ||
-    err.message?.toLowerCase().includes('unique constraint failed') === true;
-}
-
 // Use account adapter factory to get the appropriate service for the environment
 function getAccountService() {
   return AccountAdapterFactory.getInstance();
@@ -109,23 +98,10 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       // Use mock user credentials
       const mockShopperId = MOCK_USER.id;
       const mockCustomerId = MOCK_USER.id;
-      let mockAccount = await getAccountService().getAccountByShopperId(mockShopperId);
 
-      // The account should already exist (created by ensureTestUserExists)
-      if (!mockAccount) {
-        logger.info('auth.mock.account.create', { message: 'Creating mock account for customer auth', mockShopperId, mockCustomerId }, { tags: ['security'] });
-        try {
-          mockAccount = await getAccountService().createAccount(mockShopperId, mockCustomerId);
-          logger.info('auth.mock.account.success', { message: 'Mock account created', accountId: mockAccount.id }, { tags: ['security'] });
-        } catch (error: unknown) {
-          if (isUniqueConstraintError(error)) {
-            mockAccount = await getAccountService().getAccountByShopperId(mockCustomerId);
-            logger.info('auth.mock.account.found', { message: 'Mock account found', accountId: mockAccount?.id }, { tags: ['security'] });
-          } else {
-            throw error;
-          }
-        }
-      }
+      // Use idempotent getOrCreateAccount (safe for concurrent calls)
+      const mockAccount = await getAccountService().getOrCreateAccount(mockShopperId, mockCustomerId);
+      logger.info('auth.mock.account.ready', { message: 'Mock account ready for customer auth', accountId: mockAccount.id }, { tags: ['security'] });
 
       return {
         isAuthenticated: true,
@@ -148,24 +124,10 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       // Ensure dev account exists in database
       const devShopperId = 'dev-user';
       const devCustomerId = 'dev-customer-123';
-      let devAccount = await getAccountService().getAccountByShopperId(devShopperId);
 
-      // Create dev account if it doesn't exist
-      if (!devAccount) {
-        logger.info('auth.dev.account.create', { message: 'Creating dev account for testing', devShopperId, devCustomerId }, { tags: ['security'] });
-        try {
-          devAccount = await getAccountService().createAccount(devShopperId, devCustomerId);
-          logger.info('auth.dev.account.success', { message: 'Dev account created', accountId: devAccount.id }, { tags: ['security'] });
-        } catch (error: any) {
-          // Account might already exist, try to find it
-          if (error.message.includes('UNIQUE constraint failed')) {
-            devAccount = await getAccountService().getAccountByShopperId(devCustomerId);
-            logger.info('auth.dev.account.found', { message: 'Dev account found', accountId: devAccount?.id }, { tags: ['security'] });
-          } else {
-            throw error;
-          }
-        }
-      }
+      // Use idempotent getOrCreateAccount (safe for concurrent calls)
+      const devAccount = await getAccountService().getOrCreateAccount(devShopperId, devCustomerId);
+      logger.info('auth.dev.account.ready', { message: 'Dev account ready for testing', accountId: devAccount.id }, { tags: ['security'] });
 
       return {
         isAuthenticated: true,
@@ -216,26 +178,17 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       };
     }
 
-    // Get or create account for the authenticated shopper
-    let account = await getAccountService().getAccountByShopperId(shopperId);
-
-    // If not found by shopperId, try by customerId
-    if (!account || !account.id) {
-      account = await getAccountService().getAccountByShopperId(customerId);
+    if (!customerId) {
+      return {
+        isAuthenticated: false,
+        user: null,
+        error: 'Invalid token: missing customer ID'
+      };
     }
 
-    if (!account || !account.id) {
-      try {
-        account = await getAccountService().createAccount(shopperId, customerId);
-      } catch (error: unknown) {
-        if (isUniqueConstraintError(error)) {
-          account = await getAccountService().getAccountByShopperId(customerId);
-        }
-        if (!account || !account.id) {
-          throw error;
-        }
-      }
-    }
+    // Get or create account using idempotent upsert
+    // Safe for concurrent calls - will not throw unique constraint errors
+    const account = await getAccountService().getOrCreateAccount(shopperId, customerId);
 
     const authType = result.payload.authType || 'basic';
     const user: CustomerUser = {

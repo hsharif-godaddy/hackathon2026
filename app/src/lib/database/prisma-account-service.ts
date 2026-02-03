@@ -30,9 +30,30 @@ export interface Plan {
 
 export class PrismaAccountService {
   private client: PrismaClient;
+  private defaultPlanIdCache: string | null = null;
 
   constructor() {
     this.client = getPrismaClient();
+  }
+
+  /**
+   * Get default plan ID (cached to avoid repeated queries on hot auth path)
+   */
+  private async getDefaultPlanId(): Promise<string> {
+    if (this.defaultPlanIdCache) {
+      return this.defaultPlanIdCache;
+    }
+
+    const defaultPlan = await this.client.plans.findUnique({
+      where: { name: 'Free' },
+    });
+
+    // Fallback to a stable, hardcoded UUID so that we always have a deterministic
+    // default plan ID even if the "Free" plan record is missing (e.g. in tests or
+    // misconfigured environments). This value must remain in sync with any seeded
+    // "Free" plan ID used elsewhere in the system.
+    this.defaultPlanIdCache = defaultPlan?.id || '550e8400-e29b-41d4-a716-446655440001';
+    return this.defaultPlanIdCache;
   }
 
   /**
@@ -46,7 +67,11 @@ export class PrismaAccountService {
       
       return account ? this.mapAccountFromPrisma(account) : null;
     } catch (error) {
-      logger.error('prisma_account_service', 'Error finding account by shopper_id', { error: error as Error });
+      logger.error('account.findByShopperId.error', {
+        message: 'Error finding account by shopper_id',
+        shopperId,
+        error: error instanceof Error ? error.message : String(error)
+      });
       throw error;
     }
   }
@@ -62,7 +87,11 @@ export class PrismaAccountService {
       
       return account ? this.mapAccountFromPrisma(account) : null;
     } catch (error) {
-      logger.error('prisma_account_service', 'Error finding account by customer_id', { error: error as Error });
+      logger.error('account.findByCustomerId.error', {
+        message: 'Error finding account by customer_id',
+        customerId,
+        error: error instanceof Error ? error.message : String(error)
+      });
       throw error;
     }
   }
@@ -101,7 +130,12 @@ export class PrismaAccountService {
 
       return this.mapAccountFromPrisma(account);
     } catch (error) {
-      logger.error('prisma_account_service', 'Error creating account', { error: error as Error });
+      logger.error('account.create.error', {
+        message: 'Error creating account',
+        shopperId,
+        customerId,
+        error: error instanceof Error ? error.message : String(error)
+      });
       throw error;
     }
   }
@@ -117,27 +151,89 @@ export class PrismaAccountService {
       });
       return !!result;
     } catch (error) {
-      logger.error('prisma_account_service', 'Error updating account status', { error: error as Error });
+      logger.error('account.updateStatus.error', {
+        message: 'Error updating account status',
+        shopperId,
+        status,
+        error: error instanceof Error ? error.message : String(error)
+      });
       return false;
     }
   }
 
   /**
-   * Get or create account for shopper (used in JWT validation)
+   * Get or create account for shopper (idempotent - safe for concurrent calls)
+   *
+   * Uses Prisma upsert to handle race conditions during account creation.
+   * Safe to call concurrently - will not throw unique constraint errors on shopper_id.
+   *
+   * IMPORTANT: If customer_id from JWT doesn't match existing account's customer_id,
+   * this indicates a data integrity issue and will throw an error.
+   *
+   * @param shopperId - Shopper ID from JWT (unique key for upsert)
+   * @param customerId - Customer ID from JWT (always present in JWT)
+   * @returns Existing or newly created account
+   * @throws Error if customer_id mismatch detected (security/data integrity issue)
    */
-  async getOrCreateAccount(shopperId: string, customerId?: string): Promise<Account> {
+  async getOrCreateAccount(shopperId: string, customerId: string): Promise<Account> {
     try {
-      // Try to find existing account
-      let account = await this.findByShopperId(shopperId);
-      
-      if (!account) {
-        // Create new account if not found, use customerId from JWT if available
-        account = await this.createAccount(shopperId, customerId);
+      // Get default plan ID (cached to avoid per-request query)
+      const planId = await this.getDefaultPlanId();
+
+      // Upsert on shopper_id (unique constraint)
+      // If account exists: return existing account unchanged
+      // If not exists: create new account with JWT values
+      const account = await this.client.accounts.upsert({
+        where: { shopper_id: shopperId },
+        update: {
+          // On existing account, don't change any data
+          // Empty update block - Prisma will still fetch the account
+        },
+        create: {
+          id: uuidv4(),
+          shopper_id: shopperId,
+          customer_id: customerId,
+          plan_id: planId,
+          status: AccountStatus.active,
+        },
+      });
+
+      // SECURITY: Validate customer_id matches JWT
+      // If existing account has different customer_id, this is a data integrity issue
+      if (account.customer_id !== customerId) {
+        logger.error('account.customer_id.mismatch', {
+          message: 'Customer ID mismatch - JWT cid does not match stored account',
+          shopperId,
+          jwtCustomerId: customerId,
+          storedCustomerId: account.customer_id,
+          accountId: account.id
+        }, { tags: ['security'] });
+
+        throw new Error(
+          `Account data integrity error: customer_id mismatch for shopper ${shopperId}. ` +
+          `This may indicate an upstream identity issue.`
+        );
       }
 
-      return account;
+      // NOTE: We cannot reliably determine if an account is newly created by comparing timestamps.
+      // The upsert's update block is empty, so updated_at is not modified for existing accounts.
+      // Database triggers, clock precision, or concurrent updates could cause timestamp differences
+      // even for new records. For observability purposes, we log this operation without claiming
+      // to know whether the account was just created or already existed.
+      logger.info('account.getOrCreate.success', {
+        accountId: account.id,
+        shopperId,
+        customerId
+      }, { tags: ['security'] });
+
+      return this.mapAccountFromPrisma(account);
     } catch (error) {
-      logger.error('prisma_account_service', 'Error getting or creating account', { error: error as Error });
+      logger.error('account.getOrCreate.error', {
+        message: 'Failed to get or create account',
+        shopperId,
+        customerId,
+        error: error instanceof Error ? error.message : String(error)
+      }, { tags: ['security'] });
       throw error;
     }
   }
@@ -153,7 +249,10 @@ export class PrismaAccountService {
       
       return accounts.map(account => this.mapAccountFromPrisma(account));
     } catch (error) {
-      logger.error('prisma_account_service', 'Error getting all accounts', { error: error as Error });
+      logger.error('account.getAll.error', {
+        message: 'Error getting all accounts',
+        error: error instanceof Error ? error.message : String(error)
+      });
       throw error;
     }
   }
@@ -193,7 +292,11 @@ export class PrismaAccountService {
       
       return mappedAccount;
     } catch (error) {
-      logger.error('prisma_account_service', 'Error getting account with plan', { error: error as Error });
+      logger.error('account.getWithPlan.error', {
+        message: 'Error getting account with plan',
+        shopperId,
+        error: error instanceof Error ? error.message : String(error)
+      });
       return null;
     }
   }
@@ -214,10 +317,21 @@ export class PrismaAccountService {
         },
       });
 
-      logger.info('prisma_account_service', `✅ Created new plan: ${name} (${id})`);
+      logger.info('plan.create.success', {
+        planId: id,
+        name,
+        siteLimit,
+        price
+      });
       return this.mapPlanFromPrisma(plan);
     } catch (error) {
-      logger.error('prisma_account_service', 'Error creating plan', { error: error as Error });
+      logger.error('plan.create.error', {
+        message: 'Error creating plan',
+        name,
+        siteLimit,
+        price,
+        error: error instanceof Error ? error.message : String(error)
+      });
       throw error;
     }
   }
@@ -233,7 +347,10 @@ export class PrismaAccountService {
       
       return plans.map(plan => this.mapPlanFromPrisma(plan));
     } catch (error) {
-      logger.error('prisma_account_service', 'Error getting all plans', { error: error as Error });
+      logger.error('plan.getAll.error', {
+        message: 'Error getting all plans',
+        error: error instanceof Error ? error.message : String(error)
+      });
       throw error;
     }
   }
