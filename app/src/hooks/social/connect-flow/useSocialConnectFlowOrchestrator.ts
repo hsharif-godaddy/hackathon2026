@@ -10,7 +10,7 @@ import { socialV2Client } from '@/lib/social'
 import { getPlatformStrategy, PLATFORM_CONFIG, PLATFORM_TRANSFORMS, PlatformConfig, SocialPlatform } from '@/lib/social-platforms'
 import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
 import { SocialFlowAction } from '@/types/social'
-import { DEFAULT_SCOPES } from '@/types/social-scopes'
+import { SOCIAL_SCOPES } from '@/types/social-scopes'
 import { AuthStatus, useAuthPopup } from './useAuthPopup'
 import { useSocialConnectFlow } from './useSocialConnectFlow'
 import { FlowState, FlowStep, useSocialConnectFlowStateMachine } from './useSocialConnectFlowStateMachine'
@@ -176,7 +176,7 @@ export function useSocialConnectFlowOrchestrator({
     }
 
     try {
-      const requiredScopes = DEFAULT_SCOPES[strategy.validationPlatform] || []
+      const requiredScopes = SOCIAL_SCOPES[strategy.validationPlatform] || []
       const validation = await socialV2Client.validatePermissions(
         strategy.validationPlatform,
         selectedConnection.userTokenId,

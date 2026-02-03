@@ -6,7 +6,7 @@ import { SOCIAL_CACHE_CONFIG, SocialV2Client } from '@/lib/social'
 import { getPlatformStrategy } from '@/lib/social-platforms'
 import { SocialPlatform, SocialPlatformKey } from '@/types/social'
 import { SocialPostState } from '@/types/social-posts'
-import { DEFAULT_SCOPES } from '@/types/social-scopes'
+import { SOCIAL_SCOPES } from '@/types/social-scopes'
 import { getRootDomain } from '@/utils/getRootDomain'
 
 const socialV2Client = new SocialV2Client()
@@ -224,7 +224,7 @@ export function useSocialAuthUrl(
 
       const rootDomain = getRootDomain() || 'godaddy.com'
       const socialAuthBaseUrl = `https://social-auth.api.${rootDomain}`
-      const requestedScopes = scopes || DEFAULT_SCOPES[platform] || []
+      const requestedScopes = scopes || SOCIAL_SCOPES[platform] || []
       const authUrlEndpoint = `${socialAuthBaseUrl}/platforms/${strategy.authEndpoint}/authorization_url`
 
       const authUrlParams = new URLSearchParams({

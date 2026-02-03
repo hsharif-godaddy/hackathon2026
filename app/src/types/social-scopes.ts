@@ -4,129 +4,74 @@
  * Organized by capability tier for better maintainability and self-documentation.
  * Each tier represents a distinct capability level for social media management.
  *
- * IMPORTANT: Some scopes have dependencies that must be included even if not directly used.
- * For example, pages_manage_posts requires pages_read_engagement to function.
- *
  * Facebook API reference: https://developers.facebook.com/docs/permissions/
+ */
+
+/**
+ * CRITICAL SCOPE DEPENDENCIES (Facebook/Instagram):
+ *
+ * These dependencies MUST be maintained - removing dependency scopes will break functionality:
+ * - pages_manage_posts REQUIRES pages_read_engagement
+ * - pages_manage_engagement REQUIRES pages_read_engagement
+ * - instagram_content_publish REQUIRES instagram_basic
+ * - Any pages_* scope REQUIRES pages_show_list and business_management
+ *
+ * Always validate scope dependencies before removal.
  */
 
 export const FACEBOOK_SCOPES = {
   /**
-   * TIER 1: Core - Essential scopes for any Facebook Page integration
-   * Required to authenticate and identify Pages
+   * Social - Connect, publish, engage, and analyze
+   * Core social media management features for Facebook Pages
    */
-  core: [
-    'pages_show_list',        // List Pages user manages (required for all Page operations)
-    'public_profile',         // Basic user profile info
+  social: [
+    'pages_show_list',
+    'public_profile',
+    'business_management',
+    'pages_manage_posts',
+    'pages_manage_metadata',
+    'pages_read_engagement',
+    'pages_read_user_content',
+    'pages_manage_engagement',
+    'read_insights',
   ],
 
   /**
-   * TIER 2: Publishing - Create and manage posts
-   * Allows posting photos, videos, and text to Facebook Pages
+   * Ad - Paid advertising features
    */
-  publishing: [
-    // 'pages_manage_posts',     // Create, edit, delete Page posts
-    // 'publish_video',       // Live video streaming (future)
-    // 'pages_manage_contents', // Delete posts (future - if separate delete access needed)
+  ad: [
+    'ads_management',
+    'pages_manage_ads',
   ],
-
-  /**
-   * TIER 3: Engagement - Read and respond to audience
-   * NOTE: pages_read_engagement is a REQUIRED dependency for pages_manage_posts
-   */
-  engagement: [
-    'pages_read_engagement',  // Read posts, followers, metadata (REQUIRED for publishing)
-    // 'pages_read_user_content',     // Read user comments/ratings (future)
-    // 'pages_manage_engagement',     // Reply to/manage comments (future)
-  ],
-
-  /**
-   * TIER 4: Analytics - Performance insights (future)
-   */
-  // analytics: [
-  //   'read_insights',       // Page performance metrics
-  // ],
-
-  /**
-   * TIER 5: Messaging - Direct messaging (future)
-   */
-  // messaging: [
-  //   'pages_messaging',     // Manage Messenger conversations
-  //   'pages_manage_metadata', // Required for pages_messaging
-  // ],
-
-  /**
-   * TIER 6: Advertising - Ad management (not currently needed)
-   */
-  // advertising: [
-  //   'pages_manage_ads',
-  // ],
-
-  /**
-   * TIER 7: Advanced - Business management (future)
-   */
-  // advanced: [
-  //   'business_management', // Manage business assets
-  //   'pages_manage_metadata', // Webhooks, settings
-  // ],
 }
 
 export const INSTAGRAM_SCOPES = {
   /**
-   * TIER 1: Core - Essential scopes for any Instagram integration
-   * Required to authenticate and identify Instagram Business accounts
+   * Social - Connect, publish, engage, and analyze
+   * Core social media management features for Instagram Business accounts
    */
-  core: [
-    'pages_show_list',        // List Pages user manages (required for Instagram access)
-    'public_profile',         // Basic user profile info
+  social: [
+    'pages_show_list',
+    'public_profile',
+    'business_management',
+    'instagram_basic',
+    'instagram_content_publish',
+    'pages_manage_posts',
+    'pages_manage_metadata',
+    'pages_read_engagement',
+    'pages_read_user_content',
+    'pages_manage_engagement',
+    'read_insights',
+    'instagram_manage_insights',
   ],
 
   /**
-   * TIER 2: Publishing - Create and manage posts
-   * Allows posting photos and videos to Instagram Business accounts
+   * Ad - Paid advertising features
    */
-  publishing: [
-    'instagram_basic',        // Basic Instagram profile metadata (REQUIRED for content_publish)
-    'instagram_content_publish', // Publish organic feed photos/videos
-    // 'instagram_manage_contents',  // Delete posts (future)
+  ad: [
+    'ads_management',
+    'pages_manage_ads',
   ],
-
-  /**
-   * TIER 3: Engagement - Read and respond to audience
-   * NOTE: pages_read_engagement is a REQUIRED dependency for instagram_content_publish
-   */
-  engagement: [
-    'pages_read_engagement',  // Read Page engagement data (REQUIRED for publishing)
-    // 'instagram_manage_comments',  // Manage comments (future)
-  ],
-
-  /**
-   * TIER 4: Analytics - Performance insights (future)
-   */
-  // analytics: [
-  //   'instagram_manage_insights',  // Performance metrics
-  // ],
-
-  /**
-   * TIER 5: Messaging - Direct messaging (future)
-   */
-  // messaging: [
-  //   'instagram_manage_messages',  // DM management
-  // ],
-
-  /**
-   * TIER 6: Commerce - Shopping features (future)
-   */
-  // commerce: [
-  //   'instagram_shopping_tag_products', // Product tagging
-  // ],
-
-  /**
-   * TIER 7: Advertising - Ad management (not currently needed)
-   */
-  // advertising: [
-  //   'pages_manage_ads',
-  // ],
 }
 
 export const GOOGLE_SCOPES = {
@@ -202,46 +147,34 @@ export const TIKTOK_SCOPES = {
 }
 
 /**
- * Default scopes requested during OAuth for each platform
+ * Social scopes for organic social media management
  *
- * These represent the minimum permissions needed for social content publishing:
- * - Core: Authenticate and identify accounts
- * - Publishing: Create and publish posts
- * - Engagement: Read engagement data (required dependency for publishing)
+ * Follows OAuth principle of least privilege - only requests scopes necessary for
+ * core social media management features (connect, publish, engage, analyze).
  *
- * IMPORTANT: engagement scopes are included as REQUIRED dependencies for publishing,
- * even though we don't directly use engagement features yet.
- *
- * To extend with additional capabilities in the future, add the relevant scope tier:
- * facebook: [...FACEBOOK_SCOPES.core, ...FACEBOOK_SCOPES.publishing, ...FACEBOOK_SCOPES.analytics]
+ * Additional capabilities (advertising) should be requested conditionally via
+ * ADVERTISING_SCOPES when those features are explicitly used.
  */
-export const DEFAULT_SCOPES: Record<string, string[]> = {
-  facebook: [
-    ...FACEBOOK_SCOPES.core,
-    ...FACEBOOK_SCOPES.publishing,
-    ...FACEBOOK_SCOPES.engagement,  // Required dependency for publishing
-  ],
+export const SOCIAL_SCOPES: Record<string, string[]> = {
+  facebook: FACEBOOK_SCOPES.social,
+  instagram: INSTAGRAM_SCOPES.social,
+  google: GOOGLE_SCOPES.businessManagement,
+  whatsapp: WHATSAPP_SCOPES.management,
+  yelp: [...YELP_SCOPES.base, ...YELP_SCOPES.businesses],
+  tiktok: TIKTOK_SCOPES.shop,
+}
 
-  instagram: [
-    ...INSTAGRAM_SCOPES.core,
-    ...INSTAGRAM_SCOPES.publishing,
-    ...INSTAGRAM_SCOPES.engagement,  // Required dependency for publishing
-  ],
-
-  google: [
-    ...GOOGLE_SCOPES.businessManagement,
-  ],
-
-  whatsapp: [
-    ...WHATSAPP_SCOPES.management,
-  ],
-
-  yelp: [
-    ...YELP_SCOPES.base,
-    ...YELP_SCOPES.businesses,
-  ],
-
-  tiktok: [
-    ...TIKTOK_SCOPES.shop,
-  ],
+/**
+ * Advertising scopes for paid advertising features
+ *
+ * REQUIREMENTS:
+ * - Meta app review approval required
+ * - Explicit user consent required
+ * - Business use case justification required
+ *
+ * Only request when user explicitly enables advertising features.
+ */
+export const ADVERTISING_SCOPES: Record<string, string[]> = {
+  facebook: FACEBOOK_SCOPES.ad,
+  instagram: INSTAGRAM_SCOPES.ad,
 }

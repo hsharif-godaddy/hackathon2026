@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { SOCIAL_CACHE_CONFIG } from '@/lib/social'
 import { getPlatformStrategy } from '@/lib/social-platforms'
 import { SocialPlatform } from '@/types/social'
-import { DEFAULT_SCOPES } from '@/types/social-scopes'
+import { SOCIAL_SCOPES } from '@/types/social-scopes'
 import { getRootDomain } from '@/utils/getRootDomain'
 
 interface AuthUrlParams {
@@ -43,7 +43,7 @@ export function useSocialAuthUrl(
       const strategy = getPlatformStrategy(platform)
 
       const socialAuthBaseUrl = `https://social-auth.api.${getRootDomain() || 'godaddy.com'}`
-      const requestedScopes = scopes || DEFAULT_SCOPES[platform] || []
+      const requestedScopes = scopes || SOCIAL_SCOPES[platform] || []
       const authUrlEndpoint = `${socialAuthBaseUrl}/platforms/${strategy.authEndpoint}/authorization_url`
 
       const authUrlParams = new URLSearchParams({
