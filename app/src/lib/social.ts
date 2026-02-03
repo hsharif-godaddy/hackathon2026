@@ -1,6 +1,6 @@
 import { logger } from '@/lib/request-context'
 import type { SocialConnection, SocialPublishResult } from '@/types/social'
-import { SocialPlatformKey } from '@/types/social'
+import { FacebookMediaType, SocialPlatformKey } from '@/types/social'
 import { getRootDomain } from '@/utils/getRootDomain'
 
 const SOCIAL_V2_BASE_URL = `https://social-v2.api.${getRootDomain() || 'godaddy.com'}`
@@ -43,6 +43,12 @@ export const SOCIAL_FLOW_CONFIG = {
   maxRetries: 3,
   displayConnectionsLimit: 2,
 } as const
+
+/**
+ * Permalink fetch retry configuration
+ */
+const MAX_ATTEMPTS = 3
+const RETRY_DELAYS = [2000, 3000]
 
 /**
  * Empty array constants to prevent new references on every render
@@ -376,25 +382,16 @@ export class SocialV2Client {
     mediaId: string
     tokenId: string
     platform: 'facebook' | 'instagram'
-    maxTimeoutMs?: number
-    initialBackoffDelay?: number
-    maxBackoffDelay?: number
-    backoffMultiplier?: number
+    mediaType?: FacebookMediaType
   }): Promise<string | null> {
-    const maxTimeoutMs = params.maxTimeoutMs ?? 60000
-    const initialBackoffDelay = params.initialBackoffDelay ?? 1000
-    const maxBackoffDelay = params.maxBackoffDelay ?? 3000
-    const backoffMultiplier = params.backoffMultiplier ?? 2
+    let field: string
+    if (params.platform === 'instagram') {
+      field = 'permalink'
+    } else {
+      field = params.mediaType === FacebookMediaType.POST ? 'permalink_url' : 'link'
+    }
 
-    const startTime = Date.now()
-    let backoffDelay = initialBackoffDelay
-    let attempt = 0
-
-    const field = params.platform === 'instagram' ? 'permalink' : 'permalink_url'
-
-    while (Date.now() - startTime < maxTimeoutMs) {
-      attempt++
-
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       try {
         const response = await fetch(
           `${SOCIAL_V2_BASE_URL}/facebook/proxy/${FB_API_VERSION}/${params.mediaId}?fields=${field}`,
@@ -419,33 +416,34 @@ export class SocialV2Client {
             logger.info('social.permalink.success', {
               mediaId: params.mediaId,
               platform: params.platform,
-              attempts: attempt
+              attempts: attempt + 1
             })
 
             return permalink
           }
         }
 
-        await new Promise(resolve => setTimeout(resolve, backoffDelay))
-        backoffDelay = Math.min(backoffDelay * backoffMultiplier, maxBackoffDelay)
+        if (attempt < MAX_ATTEMPTS - 1) {
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt]))
+        }
       } catch (error) {
         logger.debug('social.permalink.attempt.failed', {
           mediaId: params.mediaId,
           platform: params.platform,
-          attempt,
+          attempt: attempt + 1,
           error: error instanceof Error ? error.message : 'Unknown error'
         })
 
-        await new Promise(resolve => setTimeout(resolve, backoffDelay))
-        backoffDelay = Math.min(backoffDelay * backoffMultiplier, maxBackoffDelay)
+        if (attempt < MAX_ATTEMPTS - 1) {
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt]))
+        }
       }
     }
 
-    logger.warn('social.permalink.timeout', {
+    logger.warn('social.permalink.max_attempts', {
       mediaId: params.mediaId,
       platform: params.platform,
-      attempts: attempt,
-      timeoutMs: maxTimeoutMs
+      attempts: MAX_ATTEMPTS
     })
 
     return null
@@ -458,10 +456,12 @@ export class SocialV2Client {
     imageUrls: string[]
     scheduledAt?: Date
   }): Promise<SocialPublishResult> {
-    const body: any = {
-      url: params.imageUrls.length > 0 ? params.imageUrls[0] : undefined,
-      caption: params.message
-    }
+    const hasImages = params.imageUrls.length > 0
+    const endpoint = hasImages ? 'photos' : 'feed'
+
+    const body: Record<string, unknown> = hasImages
+      ? { url: params.imageUrls[0], caption: params.message }
+      : { message: params.message }
 
     if (params.scheduledAt) {
       body.published = false
@@ -469,7 +469,7 @@ export class SocialV2Client {
     }
 
     const response = await fetch(
-      `${SOCIAL_V2_BASE_URL}/facebook/proxy/${FB_API_VERSION}/${params.pageId}/photos`,
+      `${SOCIAL_V2_BASE_URL}/facebook/proxy/${FB_API_VERSION}/${params.pageId}/${endpoint}`,
       {
         method: 'POST',
         credentials: 'include',
@@ -493,7 +493,8 @@ export class SocialV2Client {
       const permalink = await this.fetchPermalink({
         mediaId: data.id,
         tokenId: params.tokenId,
-        platform: 'facebook'
+        platform: 'facebook',
+        mediaType: hasImages ? FacebookMediaType.PHOTO : FacebookMediaType.POST
       })
 
       if (permalink) {

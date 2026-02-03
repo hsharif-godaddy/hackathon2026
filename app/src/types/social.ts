@@ -23,6 +23,11 @@ export enum SocialPlatformKey {
   WHATSAPP = 'WHATSAPP',
 }
 
+export enum FacebookMediaType {
+  PHOTO = 'photo',
+  POST = 'post',
+}
+
 /**
  * Base connection object returned by social-v2 API
  * IMPORTANT: This does NOT include metadata like pageName, locationName, etc.
