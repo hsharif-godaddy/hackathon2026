@@ -511,7 +511,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
             <Button
               onClick={() => setShowFileTree(true)}
               className="!px-2 !py-0.5 flex-shrink-0"
-              design="control"
+              design="stateless"
               title={t('builder_common_show_files')}
               icon={<HamburgerIcon className="!size-2.5" />}
               text={t('builder_common_files')}

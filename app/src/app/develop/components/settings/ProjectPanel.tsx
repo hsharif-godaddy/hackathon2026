@@ -55,27 +55,27 @@ export default function ProjectPanel() {
     <>
       <PaywallModal />
       <Box gap='lg' className='@container'>
-      <BigCard
-        title={t('builder_settings_project_download_title', void 0, 'Download Application')}
-        hideStatus
-        button={
-          <Button
-            onClick={handleDownload}
-            disabled={isDownloading || isPolling || isPaywallLoading || !appId}
-            design='primary'
-            size='md'
-            data-eid={generateClickEID('settings.project.app_download')}
-            icon={isDownloading || isPolling ? <Spinner size='sm' /> : <DownloadIcon />}
-            text={isDownloading || isPolling
-              ? t('builder_settings_project_download_downloading')
-              : t('builder_settings_project_download_button')
-            }
-          />
-        }
-        description={t('builder_settings_project_download_desc', void 0, 'Download all your application files as a ZIP archive')}
-      >
-      </BigCard>
-    </Box>
+        <BigCard
+          title={t('builder_settings_project_download_title', void 0, 'Download Application')}
+          hideStatus
+          button={
+            <Button
+              onClick={handleDownload}
+              disabled={isDownloading || isPolling || isPaywallLoading || !appId}
+              design='primary'
+              size='md'
+              data-eid={generateClickEID('settings.project.app_download')}
+              icon={isDownloading || isPolling ? <Spinner size='sm' /> : <DownloadIcon />}
+              text={isDownloading || isPolling
+                ? t('builder_settings_project_download_downloading')
+                : t('builder_settings_project_download_button')
+              }
+            />
+          }
+          description={t('builder_settings_project_download_desc', void 0, 'Download all your application files as a ZIP archive')}
+        >
+        </BigCard>
+      </Box>
     </>
   )
 }

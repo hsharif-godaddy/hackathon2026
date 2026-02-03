@@ -441,7 +441,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                     index !== newSecrets.length - 1 ? 'border-b border-intents-ux-box-borderColor ' : ''
                   }`}
                 >
-                  <div className="flex-1 grid grid-cols-2 gap-1.5 items-start">
+                  <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-1.5 items-start">
                     <div>
                       <TextInput
                         id={`newSecretName-${index}`}
@@ -489,7 +489,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                     } ${secret.markedForDeletion ? 'bg-intents-ux-feedbackCritical-feedbackColor' : ''}`}
                     style={{ opacity: secret.markedForDeletion ? 0.8 : 1 }}
                   >
-                    <div className="flex-1 grid grid-cols-2 gap-1.5 items-start">
+                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-1.5 items-start">
                       <div>
                         <TextInput
                           id={`secretName-${index}`}
@@ -545,7 +545,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-0.5">
+                    <div className="flex flex-col md:flex-row items-center gap-0.5">
                       <IconButton
                         icon={<EditIcon />}
                         label={secret.isEditing ? t('builder_common_cancel') : t('builder_common_edit')}
@@ -586,7 +586,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           {/* Not deployed secrets notice */}
           {formSecrets.some(s => s.syncStatus === 'added' || s.syncStatus === 'updated') && (
             <Alert title={t('builder_settings_secrets_alert_notdeployed_title')} emphasis='info'>
-              {t('builder_settings_secrets_alert_notdeployed_children', 
+              {t('builder_settings_secrets_alert_notdeployed_children',
                 {variant: variant === 'preview' ? t('builder_settings_secrets_env_preview') : t('builder_settings_secrets_env_publish')}
               )}
             </Alert>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Box from '@ux/box'
 import Skeleton from '@ux/skeleton'
 
@@ -184,18 +184,28 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     }
   }, [isStreaming])
 
+  // Initial scroll - use useLayoutEffect to prevent flicker
+  useLayoutEffect(() => {
+    if (isInitialLoad && allMessages.length > 0 && containerRef.current) {
+      // Set scroll position before browser paints to prevent visible scrolling
+      containerRef.current.scrollTop = containerRef.current.scrollHeight
+      setIsInitialLoad(false)
+      setUserHasScrolledUp(false)
+    }
+  }, [isInitialLoad, allMessages.length])
+
   // Auto-scroll on message changes
   useEffect(() => {
     const messagesChanged = allMessages.length !== prevMessagesLength.current
     const currentLastMessage = allMessages[allMessages.length - 1]
     const currentLastMessageId = currentLastMessage?.id || null
 
-    if (isInitialLoad && allMessages.length > 0) {
-      // Initial load - scroll immediately
-      scrollToBottom(false)
-      setIsInitialLoad(false)
-      setUserHasScrolledUp(false) // Reset scroll state on initial load
-    } else if (messagesChanged) {
+    // Skip initial load handling (now done in useLayoutEffect above)
+    if (isInitialLoad) {
+      return
+    }
+
+    if (messagesChanged) {
       // Check if the last message changed (new message at end) or just length changed (prepended messages)
       const lastMessageChanged = currentLastMessageId !== prevLastMessageId.current
 
@@ -347,7 +357,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     const showSpinner = isLoadingMessages || isPageLoading || isAppTransitioning
 
     return (
-      <div ref={containerRef} className="flex-1 overflow-y-auto p-2 space-y-2" onScroll={handleScroll}>
+      <div ref={containerRef} className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-2" onScroll={handleScroll}>
         {showSpinner ? (
           <Box orientation="vertical" gap="lg" className="pt-2">
             {/* User message skeleton */}
@@ -420,7 +430,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   }
 
   return (
-    <div ref={containerRef} className="flex flex-1 flex-col overflow-y-auto px-3 md:px-1 pt-1.5 md:pt-0 gap-1" onScroll={handleScroll}>
+    <div ref={containerRef} className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-3 md:px-1 pt-1.5 md:pt-0 gap-1" onScroll={handleScroll}>
       {allMessages.map((message, index) => {
         let startTime: Date | undefined
 

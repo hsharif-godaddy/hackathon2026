@@ -146,6 +146,15 @@ export default function PreviewPane({
 
     if (previous === current) return
 
+    // Skip animation on mobile for better performance and UX
+    if (isMobile) {
+      const targetRotation = current === ViewMode.CODE ? 180 : 0
+      rotateY.set(targetRotation)
+      scale.set(1)
+      previousViewModeRef.current = current
+      return
+    }
+
     const targetRotation = current === ViewMode.CODE ? 180 : 0
 
     // Animate rotation
@@ -162,7 +171,7 @@ export default function PreviewPane({
     })
 
     previousViewModeRef.current = current
-  }, [viewMode, rotateY, scale])
+  }, [viewMode, rotateY, scale, isMobile])
 
   // Sync ref with state to avoid stale closures
   useEffect(() => {

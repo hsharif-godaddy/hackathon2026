@@ -22,7 +22,7 @@ export default function BigCard({ children, title, description, status, button, 
       className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-3 @md:p-4 @lg:p-5"
     >
       <div
-        className="flex flex-col-reverse @md:flex-row justify-between items-center @md:items-start gap-1 @md:gap-3"
+        className="flex flex-col @md:flex-row justify-between items-center @md:items-start gap-1 @md:gap-3"
       >
         <Box gap="sm" className="flex-1">
           {title && (
@@ -50,7 +50,7 @@ function BigCardStatus({ status }: { status: StatusValue }) {
   const { type, label } = status;
   return (
     <Tag
-      design="inline"  
+      design="inline"
       emphasis={type}
       highcontrast
       icon={<CircleFilledIcon />}

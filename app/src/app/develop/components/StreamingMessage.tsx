@@ -217,7 +217,7 @@ export default function StreamingMessage({ message, isActiveStream = false, isLa
       'justify-start': message.role !== 'user'
     })}>
       <div className={clsx({
-        'order-2 max-w-sm max-w-full': message.role === 'user',
+        'order-2 max-w-full': message.role === 'user',
         'order-1 w-full': message.role !== 'user'
       })}>
         <div className={getMessageClasses(message)}>
