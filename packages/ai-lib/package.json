@@ -12,6 +12,16 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js"
     },
+    "./grants": {
+      "types": "./dist/grants/index.d.ts",
+      "import": "./dist/grants/index.js",
+      "require": "./dist/grants/index.js"
+    },
+    "./grants/client": {
+      "types": "./dist/grants/client.d.ts",
+      "import": "./dist/grants/client.js",
+      "require": "./dist/grants/client.js"
+    },
     "./react": {
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js"

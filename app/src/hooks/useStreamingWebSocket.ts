@@ -11,6 +11,7 @@ import { logger } from '@/lib/request-context'
 import { ChatMessageBuilder } from '@/services/websocket/ChatMessageBuilder'
 import { ConnectionManager } from '@/services/websocket/ConnectionManager'
 import { StreamingWebSocketController } from '@/services/websocket/StreamingWebSocketController'
+import { useSitesStore } from '@/stores/useSitesStore'
 import {
   useAddToolCallSegment,
   useAddToolResultSegment,
@@ -29,6 +30,7 @@ import {
   useWebSocketState,
 } from '@/stores/useStreamingConversationStore'
 import {
+  useGrantContext,
   useToolDeltaBuffer,
   useWebSocketHelpers,
 } from './websocket'
@@ -48,6 +50,12 @@ export function useStreamingWebSocket() {
 
   const webSocketState = useWebSocketState()
   const currentAppId = useCurrentAppId()
+
+  // Get subscription_id from site store for grant context
+  const subscriptionId = useSitesStore((state) => {
+    if (!currentAppId) return undefined
+    return state.getSite(currentAppId)?.subscription_id
+  })
 
   // Store actions
   const startNewStream = useStartNewStream()
@@ -182,6 +190,13 @@ export function useStreamingWebSocket() {
       controllerRef.current = null
     }
   }, [])
+
+  // Synchronize grant context with agent via controller interface
+  useGrantContext({
+    controller: controllerRef.current,
+    subscriptionId,
+    isConnected: webSocketState.connected,
+  })
 
 
 	  /**

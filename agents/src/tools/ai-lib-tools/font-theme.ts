@@ -1,4 +1,4 @@
-import { createTool, generateTextWithTracking, calculateCostEstimate, llmMetadataContext, type LitellmMetadata, type Tool, createPromptBuilder } from '@airo/ai-lib'
+import { createTool, generateTextWithTracking, calculateCostEstimate, llmMetadataContext, type LitellmMetadata, type Tool, createPromptBuilder, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib'
 import path from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
@@ -96,7 +96,12 @@ async function generateFontsWithLLM(
   description: string,
   count: number,
   appId?: string,
-  sessionId?: string
+  sessionId?: string,
+  agentId?: string,
+  socketId?: string,
+  customTags?: string[],
+  subscriptionId?: string,
+  customerId?: string
 ): Promise<Array<{
   id: string
   name: string
@@ -125,22 +130,54 @@ Return ONLY the JSON object with the fonts array. No markdown, no code blocks, n
   if (appId) contextData.appId = appId
   if (sessionId) contextData.conversationId = sessionId
 
-  // Check if metadata already exists in parent context
-  const existingMetadata = llmMetadataContext.getStore()
+  // Build execution context for grant-aware metadata
+  const executionContext: ExecutionContext | undefined = (appId || sessionId || socketId) ? {
+    socketId,
+    metadata: {
+      appId,
+      sessionId,
+      agentId,
+      subscriptionId,
+      customerId,
+    }
+  } : undefined
 
-  // Only look up app if user doesn't exist in parent context
-  let userIdentifier = existingMetadata?.user
-  if (!userIdentifier && appId) {
-    const app = appRepo.findById(appId)
-    userIdentifier = app?.subscriptionId || app?.customerId
+  // Additional tags to always include (tool-specific and custom)
+  const additionalTags = ['source:tool-llm', 'source:font-theme']
+  if (customTags?.length) additionalTags.push(...customTags)
+
+  // Build metadata using the grants-aware helper
+  let metadata: LitellmMetadata | null = null
+  if (executionContext) {
+    metadata = buildLitellmMetadataFromContext(executionContext, {
+      source: LlmCallSource.ToolFontTheme,
+      agentId,
+    })
   }
 
-  // Merge existing tags with source tag
-  const mergedTags = [...new Set([...(existingMetadata?.tags || []), 'source:tool-llm', 'source:font-theme'])]
+  // Merge additional tags into metadata from grants-aware helper
+  if (metadata) {
+    const mergedTags = [...new Set([...(metadata.tags || []), ...additionalTags])]
+    metadata = { ...metadata, tags: mergedTags }
+  }
 
-  const metadata: LitellmMetadata = {
-    ...(userIdentifier && { user: userIdentifier }),
-    tags: mergedTags
+  // Fallback to existing context if buildLitellmMetadataFromContext returned null
+  // (feature flag off or no socketId available)
+  if (!metadata) {
+    const existingMetadata = llmMetadataContext.getStore()
+    let userIdentifier = existingMetadata?.user
+    if (!userIdentifier && appId) {
+      const app = appRepo.findById(appId)
+      userIdentifier = app?.subscriptionId || app?.customerId
+    }
+    const baseTags = ['source:tool-llm', 'source:font-theme']
+    if (agentId) baseTags.push(`agent:${agentId}`)
+    if (customTags?.length) baseTags.push(...customTags)
+    const mergedTags = [...new Set([...(existingMetadata?.tags || []), ...baseTags])]
+    metadata = {
+      ...(userIdentifier && { user: userIdentifier }),
+      tags: mergedTags
+    }
   }
 
   const generateFontsFn = async () => generateTextWithTracking({
@@ -530,6 +567,9 @@ MODE SELECTION GUIDE:
       const appId = context?.metadata?.appId as string
       const sessionId = context?.metadata?.sessionId as string | undefined
       const stateManager = context?.metadata?.stateManager as any
+      const socketId = (context as any)?.socketId as string | undefined
+      const subscriptionId = context?.metadata?.subscriptionId as string | undefined
+      const customerId = context?.metadata?.customerId as string | undefined
 
       if (input.mode === 'set') {
         if (!appId) {
@@ -546,11 +586,18 @@ MODE SELECTION GUIDE:
         })
 
         // Generate ONE font recommendation
+        const agentId = context?.metadata?.agentId as string | undefined
+        const customTags = context?.metadata?.tags as string[] | undefined
         const llmFonts = await generateFontsWithLLM(
           input.description,
           1,
           appId,
-          sessionId
+          sessionId,
+          agentId,
+          socketId,
+          customTags,
+          subscriptionId,
+          customerId
         )
 
         if (llmFonts.length === 0) {
@@ -610,11 +657,18 @@ MODE SELECTION GUIDE:
           count: input.count
         })
 
+        const suggestAgentId = context?.metadata?.agentId as string | undefined
+        const suggestCustomTags = context?.metadata?.tags as string[] | undefined
         const llmFonts = await generateFontsWithLLM(
           input.description,
           input.count,
           appId,
-          sessionId
+          sessionId,
+          suggestAgentId,
+          socketId,
+          suggestCustomTags,
+          subscriptionId,
+          customerId
         )
 
         const themes = llmFonts.map(font => ({

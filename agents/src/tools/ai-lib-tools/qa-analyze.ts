@@ -1,4 +1,4 @@
-import { createTool, generateTextWithTracking, calculateCostEstimate, llmMetadataContext, type LitellmMetadata, type Tool, type AgentContext } from '@airo/ai-lib'
+import { createTool, generateTextWithTracking, calculateCostEstimate, llmMetadataContext, type LitellmMetadata, type Tool, type AgentContext, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib'
 import { z } from 'zod'
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
@@ -775,7 +775,12 @@ async function analyzeWithLLM(
     businessContext: any,
     fileContents: FileWithPriority[],
     appId?: string,
-    sessionId?: string
+    sessionId?: string,
+    agentId?: string,
+    socketId?: string,
+    customerId?: string,
+    customTags?: string[],
+    subscriptionId?: string
 ): Promise<QAIssue[]> {
     const { model, modelName } = await getAgentModelWithName('fast')
 
@@ -845,19 +850,54 @@ Return ONLY the JSON object with issues array. No markdown, no code blocks, no e
     if (appId) contextData.appId = appId
     if (sessionId) contextData.conversationId = sessionId
 
-    const existingMetadata = llmMetadataContext.getStore()
+    // Build execution context for grant-aware metadata
+    const executionContext: ExecutionContext | undefined = (appId || sessionId || socketId) ? {
+        socketId,
+        metadata: {
+            appId,
+            sessionId,
+            agentId,
+            customerId,
+            subscriptionId,
+        }
+    } : undefined
 
-    let userIdentifier = existingMetadata?.user
-    if (!userIdentifier && appId) {
-        const app = appRepo.findById(appId)
-        userIdentifier = app?.subscriptionId || app?.customerId
+    // Additional tags to always include (tool-specific and custom)
+    const additionalTags = ['source:tool-llm']
+    if (customTags?.length) additionalTags.push(...customTags)
+
+    // Build metadata using the grants-aware helper
+    let litellmMetadata: LitellmMetadata | null = null
+    if (executionContext) {
+        litellmMetadata = buildLitellmMetadataFromContext(executionContext, {
+            source: LlmCallSource.ToolQaAnalyze,
+            agentId,
+        })
     }
 
-    const mergedTags = [...new Set([...(existingMetadata?.tags || []), 'source:tool-llm', 'source:qa-analyze'])]
+    // Merge additional tags into metadata from grants-aware helper
+    if (litellmMetadata) {
+        const mergedTags = [...new Set([...(litellmMetadata.tags || []), ...additionalTags])]
+        litellmMetadata = { ...litellmMetadata, tags: mergedTags }
+    }
 
-    const litellmMetadata: LitellmMetadata = {
-        ...(userIdentifier && { user: userIdentifier }),
-        tags: mergedTags
+    // Fallback to existing context if buildLitellmMetadataFromContext returned null
+    // (feature flag off or no socketId available)
+    if (!litellmMetadata) {
+        const existingMetadata = llmMetadataContext.getStore()
+        let userIdentifier = existingMetadata?.user
+        if (!userIdentifier && appId) {
+            const app = appRepo.findById(appId)
+            userIdentifier = app?.subscriptionId || app?.customerId
+        }
+        const baseTags = ['source:tool-llm', 'source:qa-analyze']
+        if (agentId) baseTags.push(`agent:${agentId}`)
+        if (customTags?.length) baseTags.push(...customTags)
+        const mergedTags = [...new Set([...(existingMetadata?.tags || []), ...baseTags])]
+        litellmMetadata = {
+            ...(userIdentifier && { user: userIdentifier }),
+            tags: mergedTags
+        }
     }
 
     const result = await generateWithMetadata({
@@ -1001,6 +1041,10 @@ OUTPUT:
     async (input, context?: AgentContext) => {
         const appId = context?.metadata?.appId as string
         const sessionId = context?.metadata?.sessionId as string | undefined
+        // socketId is at top-level of context (added by websocket server), not in metadata
+        const socketId = (context as any)?.socketId as string | undefined
+        const customerId = context?.metadata?.customerId as string | undefined
+        const subscriptionId = context?.metadata?.subscriptionId as string | undefined
 
         if (!appId) {
             throw new Error('App ID is required for QA analysis')
@@ -1111,7 +1155,9 @@ OUTPUT:
                     fileCount: fileContents.length
                 })
 
-                const issues = await analyzeWithLLM(businessContext, fileContents, appId, sessionId)
+                const agentId = context?.metadata?.agentId as string | undefined
+                const customTags = context?.metadata?.tags as string[] | undefined
+                const issues = await analyzeWithLLM(businessContext, fileContents, appId, sessionId, agentId, socketId, customerId, customTags, subscriptionId)
 
                 logger.info('qa_analyze.analysis_complete', {
                     appId,

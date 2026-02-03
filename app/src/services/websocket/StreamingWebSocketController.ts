@@ -48,6 +48,7 @@ export interface StreamingWebSocketControllerEvents {
   'connection:established': { socket: Socket; recovered: boolean }
   'connection:failed': { error: Error }
   'connection:error': { error: Error }
+  'grant:refresh-requested': void
   'disconnect': { reason: Socket.DisconnectReason }
   'reconnect:attempt': void
   'reconnect:success': void
@@ -188,6 +189,11 @@ export class StreamingWebSocketController extends EventEmitter {
     })
     this.supervisor.on('transport:escalation-timeout', (data) => {
       this.emit('transport:escalation-timeout', data)
+    })
+
+    // Forward grant context events
+    this.supervisor.on('grant:refresh-requested', () => {
+      this.emit('grant:refresh-requested')
     })
   }
 
@@ -462,5 +468,22 @@ export class StreamingWebSocketController extends EventEmitter {
    */
   scheduleToolDeltaFlush(): void {
     this.deps.actions.scheduleToolDeltaFlush()
+  }
+
+  /**
+   * Emit grant context to the agent
+   * Returns true if sent successfully, false if not connected
+   */
+  emitGrantContext(payload: { grants: unknown[]; featureEnabled: boolean; timestamp: number }): boolean {
+    return this.supervisor.emitGrantContext(payload)
+  }
+
+  /**
+   * Register callback for grant refresh requests from agent
+   * Returns cleanup function to unregister the listener
+   */
+  onGrantRefreshRequested(callback: () => void): () => void {
+    this.on('grant:refresh-requested', callback)
+    return () => this.off('grant:refresh-requested', callback)
   }
 }

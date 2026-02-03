@@ -1,3 +1,5 @@
+import { GrantManager } from '@airo/ai-lib/grants/client'
+
 import type { AiroSubscription } from '@/lib/mgmt-airo';
 import type { CreditGrant } from '@/types/credits';
 import { GrantType, SubscriptionPlan } from '@/types/credits';
@@ -37,33 +39,21 @@ export function getCreditPackGrants(grants: CreditGrant[]): CreditGrant[] {
 }
 
 /**
+ * Check if a grant is currently usable for LLM requests
+ * Delegated to GrantManager for consistency with agent-side logic.
+*/
+export const isGrantUsable = GrantManager.isGrantUsable
+
+/**
  * Get the currently active grant (the one being used)
  * Returns the available grant with the soonest expiration date (useBefore)
  * Excludes expired, consumed, or unavailable grants
  * Returns undefined if no available grants (e.g., free plan with no credit packs)
+ *
+ * Delegated to GrantManager for consistency with agent-side logic.
  */
 export function getActiveGrant(grants: CreditGrant[]): CreditGrant | undefined {
-  const now = new Date();
-
-  const availableGrants = grants
-    .filter(function filterAvailable(grant) {
-      // Must be available and not in a final state
-      if (!grant.isAvailable || grant.finalState !== null) {
-        return false;
-      }
-      // Must not be expired (useBefore must be in the future)
-      return new Date(grant.useBefore) > now;
-    })
-    .sort(function sortByExpiration(a, b) {
-      return new Date(a.useBefore).getTime() - new Date(b.useBefore).getTime();
-    });
-
-  // Return undefined if no available grants found
-  if (availableGrants.length === 0) {
-    return undefined;
-  }
-
-  return availableGrants[0];
+  return GrantManager.selectBestGrant(grants) ?? undefined
 }
 
 /**

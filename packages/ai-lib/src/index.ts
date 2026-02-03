@@ -92,3 +92,18 @@ export type {
   InMemoryHandoffStateManager,
   InMemoryHandoffStateManagerConfig
 } from './tools/handoff-state-manager.js'
+
+// Grants exports (for agents/server-side)
+export {
+  buildLitellmMetadataFromContext,
+  isGrantsExhausted,
+  setAPM,
+  LlmCallSource,
+  GrantErrorCode,
+  SpecialSubscriptionId,
+} from './grants/build-metadata.js'
+export type { ExecutionContext, ExecutionContextMetadata } from './grants/build-metadata.js'
+export { GrantManager, GrantUnusableReason } from './grants/grant-manager.js'
+export { GrantSessionManager, grantSessionManager } from './grants/grant-session-manager.js'
+export type { CreditGrant, GrantContextPayload } from './grants/types.js'
+export { GrantType, GrantFinalState } from './grants/types.js'

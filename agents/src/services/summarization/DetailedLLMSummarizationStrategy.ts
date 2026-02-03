@@ -2,7 +2,7 @@ import { basename } from 'node:path';
 
 import { propagateAttributes } from '@langfuse/tracing';
 import { generateText } from 'ai';
-import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-lib';
+import { llmMetadataContext, type LitellmMetadata, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib';
 import type { LLMMessage } from '../ConversationHistoryLoader.js';
 import { isOpenAIMessage, isAIToolMessage, getMessageContent } from '../ConversationHistoryLoader.js';
 import { getAgentModelWithName } from '../../utils/model-selection.js';
@@ -339,37 +339,90 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
     const systemPrompt = this.buildSystemPrompt(existingSummary);
     const userPrompt = this.buildUserPrompt(messages, operationLog);
 
-    const existingMetadata = llmMetadataContext.getStore();
+    // Look up app info for grant-aware billing
+    // Background summarization may not have socketId, but can use subscriptionId for grant lookup
+    const app = DetailedLLMSummarizationStrategy.appRepo.findById(appId);
+    const subscriptionId = app?.subscriptionId;
+    const customerId = app?.customerId;
 
-    // Look up app for user identifier and tags if not in parent context
-    let userIdentifier = existingMetadata?.user;
-    let customerId: string | undefined;
+    logger.info('summarization.detailed_llm.app_lookup', {
+      appId,
+      hasApp: !!app,
+      subscriptionId,
+      customerId,
+    });
 
-    if (!userIdentifier) {
-      const app = DetailedLLMSummarizationStrategy.appRepo.findById(appId);
-      userIdentifier = app?.subscriptionId || app?.customerId;
-      customerId = app?.customerId;
+    // Build execution context for grant-aware metadata
+    // Include subscriptionId so buildLitellmMetadataFromContext can use subscription-based grant lookup
+    const executionContext: ExecutionContext | undefined = (appId || subscriptionId) ? {
+      metadata: {
+        appId,
+        sessionId,
+        subscriptionId,
+        customerId,
+      }
+    } : undefined;
+
+    // Additional tags to always include (service-specific)
+    const additionalTags = ['source:tool-llm', 'source:detailed-summarization'];
+
+    // Build metadata using the grants-aware helper
+    let litellmMetadata: LitellmMetadata | null = null;
+    if (executionContext) {
+      litellmMetadata = buildLitellmMetadataFromContext(executionContext, {
+        source: LlmCallSource.ServiceSummarization,
+      });
+    }
+
+    logger.info('summarization.detailed_llm.metadata_built', {
+      appId,
+      hasLitellmMetadata: !!litellmMetadata,
+      litellmMetadataUser: litellmMetadata?.user,
+      litellmMetadataTags: litellmMetadata?.tags,
+    });
+
+    // Merge additional tags into metadata from grants-aware helper
+    if (litellmMetadata) {
+      const mergedTags = [...new Set([...(litellmMetadata.tags || []), ...additionalTags])];
+      litellmMetadata = { ...litellmMetadata, tags: mergedTags };
+    }
+
+    // Fallback to existing context if buildLitellmMetadataFromContext returned null
+    // (feature flag off or no grants available)
+    if (!litellmMetadata) {
+      const existingMetadata = llmMetadataContext.getStore();
+      let userIdentifier = existingMetadata?.user;
+
+      if (!userIdentifier) {
+        userIdentifier = subscriptionId || customerId;
+      }
+
+      const mergedTags = [...new Set([
+        ...(existingMetadata?.tags || []),
+        ...(existingMetadata ? [] : [
+          customerId ? `cid:${customerId}` : undefined,
+          `appId:${appId}`
+        ].filter((t): t is string => !!t)),
+        'source:tool-llm',
+        'source:detailed-summarization'
+      ])];
+
+      litellmMetadata = {
+        ...(userIdentifier && { user: userIdentifier }),
+        tags: mergedTags
+      };
+
+      logger.info('summarization.detailed_llm.metadata_fallback', {
+        appId,
+        userIdentifier,
+        finalUser: litellmMetadata.user,
+        tags: litellmMetadata.tags,
+      });
     }
 
     const attributes: { userId: string; sessionId?: string; metadata?: Record<string, string> } = { userId: appId };
     if (sessionId) attributes.sessionId = sessionId;
     if (customerId) attributes.metadata = { customerId };
-
-    // Build tags: include customerId and appId when no parent context
-    const mergedTags = [...new Set([
-      ...(existingMetadata?.tags || []),
-      ...(existingMetadata ? [] : [
-        customerId ? `cid:${customerId}` : undefined,
-        `appId:${appId}`
-      ].filter((t): t is string => !!t)),
-      'source:detailed-summarization'
-    ])];
-
-    // Create LiteLLM metadata for cost tracking
-    const litellmMetadata: LitellmMetadata = {
-      ...(userIdentifier && { user: userIdentifier }),
-      tags: mergedTags
-    };
 
     // Extract generateText call to avoid duplication
     const generateTextWithAttributes = async () =>
@@ -385,6 +438,13 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
       );
 
     // Wrap with metadata context if available
+    logger.info('summarization.detailed_llm.llm_call', {
+      appId,
+      hasMetadata: !!litellmMetadata,
+      metadataUser: litellmMetadata?.user,
+      usingMetadataContext: !!litellmMetadata,
+    });
+
     const llmResult = litellmMetadata
       ? await llmMetadataContext.run(litellmMetadata, generateTextWithAttributes)
       : await generateTextWithAttributes();

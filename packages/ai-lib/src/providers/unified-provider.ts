@@ -303,7 +303,7 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
     // Inject litellm_metadata into request body if available from AsyncLocalStorage context
     const modifiedInit = { ...init, headers }
     const metadata = llmMetadataContext.getStore()
-
+    
     if (metadata && init?.body) {
       try {
         const body = JSON.parse(init.body as string)
@@ -353,6 +353,7 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
 /**
  * Create a fetch wrapper that selectively blocks specific anthropic-beta headers for proxy compatibility
  * Used for non-S2S Anthropic API calls through GoCode proxy
+ * Also injects litellm_metadata for cost tracking when available
  */
 function createSelectiveBetaHeaderFetch(blockedHeaders?: string[]): typeof fetch {
   return async (url: RequestInfo | URL, init?: RequestInit) => {
@@ -361,8 +362,30 @@ function createSelectiveBetaHeaderFetch(blockedHeaders?: string[]): typeof fetch
 
     filterAnthropicBetaHeaders(headers, blockedHeaders)
 
-    // Make request with modified headers
-    return await fetch(url, { ...init, headers })
+    // Inject litellm_metadata into request body if available from AsyncLocalStorage context
+    const modifiedInit: RequestInit = { ...init, headers }
+    const metadata = llmMetadataContext.getStore()
+
+    if (metadata && init?.body) {
+      try {
+        const body = JSON.parse(init.body as string)
+        body.litellm_metadata = metadata
+        modifiedInit.body = JSON.stringify(body)
+
+        logger.info('litellm_metadata injected into API request', {
+          user: metadata.user,
+          tags: metadata.tags,
+          url: typeof url === 'string' ? url : url.toString()
+        })
+      } catch (error) {
+        logger.warn('Failed to inject litellm_metadata', {
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+
+    // Make request with modified headers and body
+    return await fetch(url, modifiedInit)
   }
 }
 

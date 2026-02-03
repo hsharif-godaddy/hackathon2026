@@ -1,4 +1,4 @@
-import { createTool, generateTextWithTracking, calculateCostEstimate, llmMetadataContext, type LitellmMetadata, type Tool } from '@airo/ai-lib'
+import { createTool, generateTextWithTracking, calculateCostEstimate, llmMetadataContext, type LitellmMetadata, type Tool, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib'
 import { z } from 'zod'
 
 import { generatePalette, updateCssColorPalette, type ColorPalette } from '../css-color-tool.js'
@@ -119,7 +119,12 @@ async function generatePalettesWithLLM(
   count: number,
   theme: 'light' | 'dark' | 'both',
   appId?: string,
-  sessionId?: string
+  sessionId?: string,
+  agentId?: string,
+  customTags?: string[],
+  socketId?: string,
+  subscriptionId?: string,
+  customerId?: string
 ): Promise<Array<{ name: string; primary: string; background: string }>> {
   const { model, modelName } = await getAgentModelWithName('fast')
 
@@ -142,24 +147,54 @@ Return ONLY the JSON object with the palettes array. No markdown, no code blocks
   if (appId) contextData.appId = appId
   if (sessionId) contextData.conversationId = sessionId
 
-  // Check if metadata already exists in parent context
-  const existingMetadata = llmMetadataContext.getStore()
+  // Build execution context for grant-aware metadata
+  const executionContext: ExecutionContext | undefined = (appId || sessionId || socketId) ? {
+    socketId,
+    metadata: {
+      appId,
+      sessionId,
+      agentId,
+      subscriptionId,
+      customerId,
+    }
+  } : undefined
 
-  // Only look up app if user doesn't exist in parent context
-  let userIdentifier = existingMetadata?.user
+  // Additional tags to always include (tool-specific and custom)
+  const additionalTags = ['source:tool-llm', 'source:color-scheme']
+  if (customTags?.length) additionalTags.push(...customTags)
 
-  if (!userIdentifier && appId) {
-    const app = appRepo.findById(appId)
-    userIdentifier = app?.subscriptionId || app?.customerId
+  // Build metadata using the grants-aware helper
+  let litellmMetadata: LitellmMetadata | null = null
+  if (executionContext) {
+    litellmMetadata = buildLitellmMetadataFromContext(executionContext, {
+      source: LlmCallSource.ToolColorScheme,
+      agentId,
+    })
   }
 
-  // Merge existing tags with source tag
-  const mergedTags = [...new Set([...(existingMetadata?.tags || []), 'source:tool-llm', 'source:color-scheme'])]
+  // Merge additional tags into metadata from grants-aware helper
+  if (litellmMetadata) {
+    const mergedTags = [...new Set([...(litellmMetadata.tags || []), ...additionalTags])]
+    litellmMetadata = { ...litellmMetadata, tags: mergedTags }
+  }
 
-  // Create LiteLLM metadata for cost tracking
-  const litellmMetadata: LitellmMetadata = {
-    ...(userIdentifier && { user: userIdentifier }),
-    tags: mergedTags
+  // Fallback to existing context if buildLitellmMetadataFromContext returned null
+  // (feature flag off or no socketId available)
+  if (!litellmMetadata) {
+    const existingMetadata = llmMetadataContext.getStore()
+    let userIdentifier = existingMetadata?.user
+    if (!userIdentifier && appId) {
+      const app = appRepo.findById(appId)
+      userIdentifier = app?.subscriptionId || app?.customerId
+    }
+    const baseTags = ['source:tool-llm', 'source:color-scheme']
+    if (agentId) baseTags.push(`agent:${agentId}`)
+    if (customTags?.length) baseTags.push(...customTags)
+    const mergedTags = [...new Set([...(existingMetadata?.tags || []), ...baseTags])]
+    litellmMetadata = {
+      ...(userIdentifier && { user: userIdentifier }),
+      tags: mergedTags
+    }
   }
 
   const result = await (litellmMetadata
@@ -333,6 +368,8 @@ IMPORTANT:
     const appId = context?.metadata?.appId as string
     const sessionId = context?.metadata?.sessionId as string | undefined
     const stateManager = context?.metadata?.stateManager as any
+    const subscriptionId = context?.metadata?.subscriptionId as string | undefined
+    const customerId = context?.metadata?.customerId as string | undefined
 
     if (input.mode === 'suggest') {
       if (!input.description) {
@@ -345,12 +382,20 @@ IMPORTANT:
         theme: input.theme
       })
 
+      const agentId = context?.metadata?.agentId as string | undefined
+      const customTags = context?.metadata?.tags as string[] | undefined
+      const socketId = (context as any)?.socketId as string | undefined
       const llmPalettes = await generatePalettesWithLLM(
         input.description,
         input.count,
         input.theme,
         appId,
-        sessionId
+        sessionId,
+        agentId,
+        customTags,
+        socketId,
+        subscriptionId,
+        customerId
       )
 
       const generatedPalettes = llmPalettes.map((paletteInput) => {

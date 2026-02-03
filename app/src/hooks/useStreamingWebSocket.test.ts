@@ -153,12 +153,18 @@ vi.mock('uuid', () => ({
 vi.mock('@tanstack/react-query', () => ({
   useQueryClient: vi.fn(() => ({
     invalidateQueries: vi.fn()
-  }))
+  })),
+  useQuery: vi.fn(() => ({
+    data: false,
+    isLoading: false,
+    error: null,
+  })),
 }));
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useWebSocketState: vi.fn(() => ({ connected: false, status: 'idle' })),
   useCurrentAppId: vi.fn(() => null),
+  useIsActivelyStreaming: vi.fn(() => false),
   useStartNewStream: vi.fn(() => vi.fn()),
   useAppendTextSegment: vi.fn(() => vi.fn()),
   useAddToolStartSegment: vi.fn(() => vi.fn()),

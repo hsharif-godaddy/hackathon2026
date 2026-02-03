@@ -144,6 +144,12 @@ jobs:
           echo "🔧 Generating Prisma client..."
           npx prisma generate
 
+      - name: Build workspace dependencies (app only)
+        if: matrix.package == 'app'
+        run: |
+          echo "🔧 Building @airo/ai-lib package (required for app tests)..."
+          pnpm --filter @airo/ai-lib build
+
       - name: Run tests
         run: |
           if [ "${{ matrix.package }}" = "agents" ]; then

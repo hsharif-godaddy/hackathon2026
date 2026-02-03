@@ -1,4 +1,4 @@
-import { getModel, llmMetadataContext, type LitellmMetadata } from '@airo/ai-lib'
+import { getModel, llmMetadataContext, type LitellmMetadata, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib'
 import { generateText } from 'ai'
 
 import { Logger, log } from '../logging/index.js'
@@ -13,9 +13,10 @@ export class NameSuggestionService {
    * it will extract and use that name. Otherwise, it will generate a new appropriate name.
    *
    * @param prompt The user's initial prompt describing their app idea
+   * @param executionContext Optional execution context for grant-aware metadata
    * @returns A suggested app name or null if generation fails
    */
-  async suggestName(prompt: string): Promise<string | null> {
+  async suggestName(prompt: string, executionContext?: ExecutionContext | Record<string, unknown>): Promise<string | null> {
     try {
       if (!prompt || prompt.trim().length === 0) {
         logger.warn('name-suggestion.empty-prompt', {})
@@ -25,19 +26,42 @@ export class NameSuggestionService {
       // Get the model using ai-lib's unified provider
       const model = await getModel('haiku')
 
-      const existingMetadata = llmMetadataContext.getStore();
+      // Build metadata using the grants-aware helper if executionContext provided
+      // Otherwise fall back to existing AsyncLocalStorage context
+      let metadata: LitellmMetadata | null = null
 
-      // Only use default user identifier if user doesn't exist in parent context
-      const userIdentifier = existingMetadata?.user || 'airo-builder:name-suggestion';
+      // Extract agentId from execution context metadata
+      const typedContext = executionContext as ExecutionContext | undefined
+      const agentId = typedContext?.metadata?.agentId
 
-      const additionalTags = [
-        'source:name-suggestion'
-      ]
-      const mergedTags = [...new Set([...(existingMetadata?.tags || []), ...additionalTags])]
+      // Additional tags to always include (service-specific)
+      const additionalTags = ['source:tool-llm', 'source:name-suggestion']
 
-      const metadata: LitellmMetadata = {
-        ...(userIdentifier && { user: userIdentifier }),
-        tags: mergedTags
+      if (executionContext) {
+        metadata = buildLitellmMetadataFromContext(executionContext, {
+          source: LlmCallSource.ServiceNameSuggestion,
+          agentId,
+        })
+      }
+
+      // Merge additional tags into metadata from grants-aware helper
+      if (metadata) {
+        const mergedTags = [...new Set([...(metadata.tags || []), ...additionalTags])]
+        metadata = { ...metadata, tags: mergedTags }
+      }
+
+      // Fallback to existing context if no executionContext or buildLitellmMetadataFromContext returned null
+      // (feature flag off or no socketId available)
+      if (!metadata) {
+        const existingMetadata = llmMetadataContext.getStore();
+        const userIdentifier = existingMetadata?.user || 'airo-builder:name-suggestion';
+        const baseTags = ['source:tool-llm', 'source:name-suggestion']
+        if (agentId) baseTags.push(`agent:${agentId}`)
+        const mergedTags = [...new Set([...(existingMetadata?.tags || []), ...baseTags])]
+        metadata = {
+          ...(userIdentifier && { user: userIdentifier }),
+          tags: mergedTags
+        }
       }
 
       const generateNameFn = async () => {

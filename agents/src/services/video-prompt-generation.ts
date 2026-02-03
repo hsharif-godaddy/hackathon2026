@@ -1,4 +1,4 @@
-import { getModel, llmMetadataContext, type LitellmMetadata } from '@airo/ai-lib'
+import { getModel, llmMetadataContext, type LitellmMetadata, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib'
 import { generateText } from 'ai'
 
 import { AppRepository } from '../database/repositories/AppRepository.js'
@@ -22,9 +22,10 @@ export class VideoPromptGenerationService {
    * Generates a detailed video prompt based on the app's conversation summary
    *
    * @param appId The app ID to get the summary for
+   * @param socketId Optional socket ID for grant-aware billing (when called from websocket context)
    * @returns A structured video prompt or null if generation fails
    */
-  async generateVideoPrompt(appId: string): Promise<string | null> {
+  async generateVideoPrompt(appId: string, socketId?: string): Promise<string | null> {
     try {
       if (!appId || appId.trim().length === 0) {
         logger.warn('video-prompt-generation.empty-appid', {})
@@ -75,31 +76,65 @@ export class VideoPromptGenerationService {
       // Use 'sonnet' for high-quality video prompt generation
       const model = await getModel('sonnet')
 
-      const existingMetadata = llmMetadataContext.getStore();
+      // Look up app info for grant-aware billing
+      // Background tasks may not have socketId, but can use subscriptionId for grant lookup
+      const app = VideoPromptGenerationService.appRepo.findById(appId)
+      const subscriptionId = app?.subscriptionId
+      const customerId = app?.customerId
 
-      let userIdentifier = existingMetadata?.user;
-      let customerId: string | undefined;
+      // Build execution context for grant-aware metadata
+      // Include subscriptionId so buildLitellmMetadataFromContext can use subscription-based grant lookup
+      const executionContext: ExecutionContext | undefined = (appId || socketId || subscriptionId) ? {
+        socketId,
+        metadata: {
+          appId,
+          subscriptionId,
+          customerId,
+        }
+      } : undefined
 
-      if (!userIdentifier) {
-        const app = VideoPromptGenerationService.appRepo.findById(appId);
-        userIdentifier = app?.subscriptionId || app?.customerId;
-        customerId = app?.customerId;
+      // Additional tags to always include (service-specific)
+      const additionalTags = ['source:tool-llm', 'source:video-prompt-generation']
+
+      // Build metadata using the grants-aware helper
+      let metadata: LitellmMetadata | null = null
+      if (executionContext) {
+        metadata = buildLitellmMetadataFromContext(executionContext, {
+          source: LlmCallSource.ToolVideoPrompt,
+        })
       }
 
-      // Build tags: include customerId and appId when no parent context
-      const mergedTags = [...new Set([
-        ...(existingMetadata?.tags || []),
-        ...(existingMetadata ? [] : [
-          customerId ? `cid:${customerId}` : undefined,
-          `appId:${appId}`
-        ].filter((t): t is string => !!t)),
-        'source:video-prompt-generation'
-      ])];
+      // Merge additional tags into metadata from grants-aware helper
+      if (metadata) {
+        const mergedTags = [...new Set([...(metadata.tags || []), ...additionalTags])]
+        metadata = { ...metadata, tags: mergedTags }
+      }
 
-      const metadata: LitellmMetadata = {
-        ...(userIdentifier && { user: userIdentifier }),
-        tags: mergedTags
-      };
+      // Fallback to existing context if buildLitellmMetadataFromContext returned null
+      // (feature flag off or no grants available)
+      if (!metadata) {
+        const existingMetadata = llmMetadataContext.getStore();
+        let userIdentifier = existingMetadata?.user;
+
+        if (!userIdentifier) {
+          userIdentifier = subscriptionId || customerId;
+        }
+
+        const mergedTags = [...new Set([
+          ...(existingMetadata?.tags || []),
+          ...(existingMetadata ? [] : [
+            customerId ? `cid:${customerId}` : undefined,
+            `appId:${appId}`
+          ].filter((t): t is string => !!t)),
+          'source:tool-llm',
+          'source:video-prompt-generation'
+        ])];
+
+        metadata = {
+          ...(userIdentifier && { user: userIdentifier }),
+          tags: mergedTags
+        };
+      }
 
       const generateVideoPromptFn = async () => {
         return await generateText({

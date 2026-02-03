@@ -14,7 +14,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(__dirname, './src'),
     },
     conditions: ['import', 'module', 'browser', 'default']
   },
@@ -23,6 +23,10 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
     include: ['src/**/__tests__/**/*.test.ts', 'src/**/*.test.ts', 'src/**/*.test.tsx'],
+    // Inline workspace packages so Vitest resolves subpath exports correctly
+    deps: {
+      inline: ['@airo/ai-lib'],
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

@@ -69,6 +69,11 @@ vi.mock('@tanstack/react-query', () => ({
   useQueryClient: vi.fn(() => ({
     invalidateQueries: vi.fn(),
   })),
+  useQuery: vi.fn(() => ({
+    data: false,
+    isLoading: false,
+    error: null,
+  })),
 }))
 
 // Create getState mock separately so we can control its implementation
@@ -77,6 +82,7 @@ const mockGetState = vi.fn()
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useWebSocketState: vi.fn(() => ({ connected: false, status: 'idle' })),
   useCurrentAppId: vi.fn(() => storeState?.currentAppId ?? null),
+  useIsActivelyStreaming: vi.fn(() => false),
   useStartNewStream: vi.fn(() => mockStartNewStream),
   useAppendTextSegment: vi.fn(() => mockAppendTextSegment),
   useAddToolStartSegment: vi.fn(() => mockAddToolStartSegment),

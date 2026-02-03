@@ -11,7 +11,9 @@ import {
   type ContextProvider,
   type ConversationMessage,
   type HistoryProvider,
-  type PersistedMessage
+  type PersistedMessage,
+  grantSessionManager,
+  type GrantContextPayload,
 } from '@airo/ai-lib'
 import { auth, AuthType, BYPASS_SITE_IDS } from '../services/features.js'
 import apm from 'elastic-apm-node'
@@ -333,11 +335,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     const { conversationRepository } = await import('../database/repositories/index.js')
     const { initializeBackgroundSummarization } = await import('../services/summarization/index.js')
     
-    // Use default summarization settings from BackgroundSummarizer:
-    // - tokenThreshold: 35000 (triggers when unsummarized messages exceed 35k tokens)
-    // - debounceMs: 30000 (30s wait for conversation lulls)
-    // - keepRecentTurns: 4 (keeps last 4 user/assistant pairs unsummarized)
-    // - strategy: 'detailed-llm' (structured summaries with API/DB/Pages sections)
     await initializeBackgroundSummarization()
 
     // Create token-based conversation history provider using singleton repository
@@ -1346,6 +1343,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Cleanup ClientActionService
         cleanupClientActionService(socketId)
 
+        // Cleanup grant session
+        grantSessionManager.removeSession(socketId)
+
         // Git hook: Squash merge to main on disconnection
         // Try to find appId from active branches using socketId (conversationId not available here)
         const appId = gitHookService.findAppIdBySocketId(socketId);
@@ -1552,6 +1552,45 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
     // Store io instance for use in other services
     ioInstance = wsServer.getIO()
+
+    // Start periodic cleanup of stale grant sessions
+    grantSessionManager.startCleanupInterval()
+
+    // Graceful shutdown handler for grant session cleanup
+    process.on('SIGTERM', () => {
+      grantSessionManager.stopCleanupInterval()
+    })
+
+    // Add grant_context handler for each socket connection
+    ioInstance.on('connection', (socket: any) => {
+      // Handle grant context updates from frontend
+      socket.on('grant_context', (data: GrantContextPayload) => {
+        // Skip storing grants when feature is disabled to avoid unnecessary memory usage
+        // Frontend should not send grant_context when feature is OFF, but handle defensively
+        if (!data.featureEnabled) {
+          logger.debug('websocket.grant_context.skipped', {
+            socketId: socket.id,
+            reason: 'feature_disabled',
+          })
+          return
+        }
+
+        logger.info('websocket.grant_context.received', {
+          socketId: socket.id,
+          grantCount: data.grants.length,
+          featureEnabled: data.featureEnabled,
+        })
+
+        grantSessionManager.setGrants(socket.id, data.grants, data.featureEnabled)
+      })
+
+      // Handle request for grant refresh (e.g., when grants are stale)
+      socket.on('request_grant_refresh_ack', () => {
+        logger.debug('websocket.grant_context.refresh_acknowledged', {
+          socketId: socket.id,
+        })
+      })
+    })
 
     // Add Socket.IO authentication middleware
     wsServer.getIO().use(async (socket, next) => {

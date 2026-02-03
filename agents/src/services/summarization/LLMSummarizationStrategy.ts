@@ -2,7 +2,7 @@ import { basename } from 'node:path';
 
 import { propagateAttributes } from '@langfuse/tracing';
 import { generateText, type LanguageModel } from 'ai';
-import { logCachingStats, llmMetadataContext, type LitellmMetadata } from '@airo/ai-lib';
+import { logCachingStats, llmMetadataContext, type LitellmMetadata, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib';
 import { getAgentModelWithName } from '../../utils/model-selection.js';
 import { countTokens } from '../../utils/token-counter.js';
 import { logger } from '../../logging/index.js';
@@ -145,36 +145,69 @@ export class LLMSummarizationStrategy implements SummarizationStrategy {
       mode: 'incremental',
     });
 
-    const existingMetadata = llmMetadataContext.getStore();
+    // Look up app info for grant-aware billing
+    // Background summarization may not have socketId, but can use subscriptionId for grant lookup
+    const app = LLMSummarizationStrategy.appRepo.findById(appId);
+    const subscriptionId = app?.subscriptionId;
+    const customerId = app?.customerId;
 
-    let userIdentifier = existingMetadata?.user;
-    let customerId: string | undefined;
+    // Build execution context for grant-aware metadata
+    // Include subscriptionId so buildLitellmMetadataFromContext can use subscription-based grant lookup
+    const executionContext: ExecutionContext | undefined = (appId || subscriptionId) ? {
+      metadata: {
+        appId,
+        sessionId: context.sessionId,
+        subscriptionId,
+        customerId,
+      }
+    } : undefined;
 
-    if (!userIdentifier) {
-      const app = LLMSummarizationStrategy.appRepo.findById(appId);
-      userIdentifier = app?.subscriptionId || app?.customerId;
-      customerId = app?.customerId;
+    // Additional tags to always include (service-specific)
+    const additionalTags = ['source:tool-llm', 'source:summarization'];
+
+    // Build metadata using the grants-aware helper
+    let litellmMetadata: LitellmMetadata | null = null;
+    if (executionContext) {
+      litellmMetadata = buildLitellmMetadataFromContext(executionContext, {
+        source: LlmCallSource.ServiceSummarization,
+      });
+    }
+
+    // Merge additional tags into metadata from grants-aware helper
+    if (litellmMetadata) {
+      const mergedTags = [...new Set([...(litellmMetadata.tags || []), ...additionalTags])];
+      litellmMetadata = { ...litellmMetadata, tags: mergedTags };
+    }
+
+    // Fallback to existing context if buildLitellmMetadataFromContext returned null
+    // (feature flag off or no grants available)
+    if (!litellmMetadata) {
+      const existingMetadata = llmMetadataContext.getStore();
+      let userIdentifier = existingMetadata?.user;
+
+      if (!userIdentifier) {
+        userIdentifier = subscriptionId || customerId;
+      }
+
+      const mergedTags = [...new Set([
+        ...(existingMetadata?.tags || []),
+        ...(existingMetadata ? [] : [
+          customerId ? `cid:${customerId}` : undefined,
+          `appId:${appId}`
+        ].filter((t): t is string => !!t)),
+        'source:tool-llm',
+        'source:summarization'
+      ])];
+
+      litellmMetadata = {
+        ...(userIdentifier && { user: userIdentifier }),
+        tags: mergedTags
+      };
     }
 
     const attributes: { userId: string; sessionId?: string; metadata?: Record<string, string> } = { userId: appId };
     if (context.sessionId) attributes.sessionId = context.sessionId;
     if (customerId) attributes.metadata = { customerId };
-
-    // Build tags: include customerId and appId when no parent context
-    const mergedTags = [...new Set([
-      ...(existingMetadata?.tags || []),
-      ...(existingMetadata ? [] : [
-        customerId ? `cid:${customerId}` : undefined,
-        `appId:${appId}`
-      ].filter((t): t is string => !!t)),
-      'source:summarization'
-    ])];
-
-    // Create LiteLLM metadata for cost tracking
-    const litellmMetadata: LitellmMetadata = {
-      ...(userIdentifier && { user: userIdentifier }),
-      tags: mergedTags
-    };
 
     // Extract generateText call to avoid duplication
     const generateTextWithAttributes = async () =>

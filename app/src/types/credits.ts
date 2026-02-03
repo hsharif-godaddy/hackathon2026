@@ -1,49 +1,18 @@
 /**
- * Credit grant types from the control plane API
- * GET /airo/v1/subscriptions/:subscriptionId/credits/grants?syncSpend=true
+ * Credit grant types - re-exported from shared library
+ * This ensures frontend and agent use identical type definitions
  */
+import type { CreditGrant as CreditGrantType } from '@airo/ai-lib/grants/client'
 
-/**
- * Grant type enum from the control plane API
- */
-export enum GrantType {
-  PlanMonthly = 'plan-monthly',
-  CreditPack = 'credit-pack',
-}
-
-/**
- * Final state of a grant
- */
-export enum GrantFinalState {
-  Consumed = 'consumed',
-  Expired = 'expired',
-}
-
-/**
- * Credit grant from the control plane API
- */
-export interface CreditGrant {
-  id: string
-  subscriptionId: string
-  type: GrantType
-  llmBudgetUserId: string
-  llmBudgetId: string
-  creditsMax: number
-  creditsSpent: number
-  isAvailable: boolean
-  finalState: GrantFinalState | null
-  useBefore: string
-  consumedAt: string | null
-  createdAt: string
-  updatedAt: string
-}
+export type { CreditGrant, GrantContextPayload } from '@airo/ai-lib/grants/client'
+export { GrantFinalState,GrantType } from '@airo/ai-lib/grants/client'
 
 /**
  * API response for credit grants
  */
 export interface CreditGrantsResponse {
   success: boolean
-  data: CreditGrant[]
+  data: CreditGrantType[]
 }
 
 /**

@@ -67,6 +67,8 @@ export interface TransportSupervisorEvents {
   'transport:retry-started': { socketId: string }
   'transport:retry-cleared': void
   'transport:escalation-timeout': { socketId: string }
+  // Grant context events
+  'grant:refresh-requested': void
 }
 
 export interface TransportSupervisorDeps {
@@ -162,10 +164,20 @@ export class TransportSupervisor extends EventEmitter {
   }
 
   /**
-   * Get current socket
+   * Get current socket for direct access
    */
   getSocket(): Socket | null {
     return this.socket
+  }
+
+  /**
+   * Emit grant context to the agent
+   * Used by grant synchronization to send grants without exposing raw socket
+   */
+  emitGrantContext(payload: { grants: unknown[]; featureEnabled: boolean; timestamp: number }): boolean {
+    if (!this.socket?.connected) return false
+    this.socket.emit('grant_context', payload)
+    return true
   }
 
   /**
@@ -318,6 +330,14 @@ export class TransportSupervisor extends EventEmitter {
           appId: messageContext.currentAppId,
         });
       }
+    });
+
+    // Grant refresh requests from agent
+    socket.on('request_grant_refresh', () => {
+      logger.info('websocket.grant.refresh_requested', {
+        appId: messageContext.currentAppId,
+      });
+      this.emit('grant:refresh-requested');
     });
 
     socket.on('message', async (data: { type: string; content: string; data?: any }, ack?: () => void) => {

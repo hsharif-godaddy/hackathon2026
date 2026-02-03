@@ -85,7 +85,6 @@ export class ErrorHandler implements MessageHandler {
       content: data.content,
     })
 
-    // Send STREAM_ERROR event to machine (not retryable)
     context.machine.send({
       type: 'STREAM_ERROR',
       error: new Error(data.content),
@@ -100,11 +99,6 @@ export class ErrorHandler implements MessageHandler {
     })
     context.helpers.sendToolImpression('error')
 
-    // Machine handles UI state transitions via STREAM_ERROR event
-    // Adapter syncs: setWebSocketState, setStreamingState, setIsLoading
-
-    // Note: We intentionally preserve the stored socket ID for recovery attempts.
-    // The server handles stale recovery gracefully.
     context.refs.pendingRecoveryAck.current = null
   }
 

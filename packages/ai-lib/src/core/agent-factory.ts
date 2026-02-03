@@ -24,6 +24,14 @@ import { createLogger } from '../utils/logger.js'
 import { serializeError } from '../utils/errors.js'
 import { addCacheControlToMessages, addCacheControlToSystemPrompt, logCachingStats } from '../utils/prompt-caching.js'
 import { llmMetadataContext, type LitellmMetadata } from '../providers/unified-provider.js'
+import {
+  buildLitellmMetadataFromContext,
+  LlmCallSource,
+  grantSessionManager,
+  isGrantsExhausted,
+  GrantErrorCode,
+} from '../grants/index.js'
+import { BudgetExceededError } from '../utils/errors.js'
 
 const logger = createLogger('agent-factory')
 
@@ -38,57 +46,26 @@ const logger = createLogger('agent-factory')
 const DEFAULT_MAX_RETRY_ATTEMPTS = 5
 
 /**
+ * Maximum grant retry attempts to prevent infinite loops
+ */
+const MAX_GRANT_RETRIES = 3;
+
+/**
  * Extract LiteLLM metadata from execution context for per-request cost tracking
+ * Uses the new grant-aware buildLitellmMetadataFromContext helper.
+ *
  * @param executionContext - The execution context passed from the caller
  * @param agentId - The keyword identifier of the current agent (e.g., 'develop', 'initial')
- * @returns LiteLLM metadata object with subscriptionId, customerId, appId, and source tags
+ * @returns LiteLLM metadata object with grant user or fallback to customerId
  */
 function extractLitellmMetadata(
   executionContext?: Record<string, unknown>,
   agentId?: string
 ): LitellmMetadata | null {
-  if (!executionContext || !executionContext.metadata) {
-    return null
-  }
-
-  const metadata = executionContext.metadata as Record<string, unknown>
-  const appId = metadata.appId as string | undefined
-  const subscriptionId = metadata.subscriptionId as string | undefined
-  const customerId = metadata.customerId as string | undefined
-
-  // Must have at least appId to create metadata
-  if (!appId) {
-    return null
-  }
-
-  const tags: string[] = []
-
-  // Add customerId if available
-  if (customerId) {
-    tags.push(`cid:${customerId}`)
-  }
-
-  // Add appId
-  tags.push(`appId:${appId}`)
-
-  // Add source tag for distinguishing user-triggered vs background operations
-  tags.push('source:user-chat')
-
-  // Add agent ID keyword (low cardinality - only ~6 agents)
-  if (agentId) {
-    tags.push(`agent:${agentId}`)
-  }
-
-  const litellmMetadata: LitellmMetadata = {
-    tags
-  }
-
-  // Add subscriptionId for budget tracking
-  if (subscriptionId) {
-    litellmMetadata.user = subscriptionId
-  }
-
-  return litellmMetadata
+  return buildLitellmMetadataFromContext(executionContext, {
+    agentId,
+    source: LlmCallSource.UserChat,
+  })
 }
 
 /**
@@ -979,6 +956,7 @@ export class AgentWrapper {
   /**
    * Internal implementation of streamGenerate
    * Handles tool execution context propagation via ToolLoopAgent call options
+   * Includes grant fallback logic for budget exceeded errors
    */
   private async _executeStreamGenerate(prompt: string, options?: {
     messages?: ModelMessage[]
@@ -997,7 +975,46 @@ export class AgentWrapper {
       toolCalls: any
     }>
   }> {
+    // Get socketId for grant session management
+    const socketId = (options?.executionContext as any)?.socketId as string | undefined
 
+    // Check if grants are already exhausted before starting
+    if (isGrantsExhausted(options?.executionContext)) {
+      throw new BudgetExceededError(
+        'All credit grants have been exhausted. Please purchase more credits.',
+        400,
+        GrantErrorCode.AllGrantsExhausted
+      )
+    }
+
+    return this._executeStreamWithGrantFallback(prompt, options, socketId, 0)
+  }
+
+  /**
+   * Execute stream with grant fallback on budget exceeded errors
+   */
+  private async _executeStreamWithGrantFallback(
+    prompt: string,
+    options: {
+      messages?: ModelMessage[]
+      context?: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
+      files?: ProcessedFile[]
+      executionContext?: Record<string, unknown>
+    } | undefined,
+    socketId: string | undefined,
+    retryCount: number
+  ): Promise<{
+    textStream: AsyncIterable<string>
+    baseStream?: unknown
+    getFinalResult: () => Promise<{
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      usage: any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      finishReason: any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      toolCalls: any
+    }>
+  }> {
     let streamResult
     try {
       const callOptions: AgentCallOptions = {
@@ -1049,6 +1066,44 @@ export class AgentWrapper {
           ))
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
+      // Handle budget exceeded errors with grant fallback
+      if (BudgetExceededError.isInstance(error)) {
+        // Check if grants feature is active for this session
+        if (!socketId || !grantSessionManager.isFeatureEnabled(socketId)) {
+          throw error // No grant fallback available
+        }
+
+        // Prevent infinite retry loops
+        if (retryCount >= MAX_GRANT_RETRIES) {
+          logger.error('grants.fallback.max_retries', { socketId, retryCount })
+          throw new BudgetExceededError(
+            'All credit grants have been exhausted.',
+            400,
+            GrantErrorCode.AllGrantsExhausted
+          )
+        }
+
+        // Try to advance to next grant
+        const advanced = grantSessionManager.advanceToNextGrant(socketId)
+
+        if (!advanced) {
+          // No more grants - surface error to user
+          throw new BudgetExceededError(
+            'All credit grants have been exhausted. Please purchase more credits.',
+            400,
+            GrantErrorCode.AllGrantsExhausted
+          )
+        }
+
+        logger.info('grants.fallback.retry', {
+          socketId,
+          retryCount: retryCount + 1,
+        })
+
+        // Retry with next grant
+        return this._executeStreamWithGrantFallback(prompt, options, socketId, retryCount + 1)
+      }
+
       // Handle API call errors (like tool input validation failures)
       const isToolValidationError =
         (APICallError.isInstance(error) && error.message?.includes('toolUse.input is invalid')) ||
