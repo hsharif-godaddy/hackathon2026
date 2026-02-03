@@ -7,18 +7,29 @@
 
 /**
  * Validates if the message event origin is from a trusted source
- * 
+ *
  * @param origin - The origin to validate
  * @returns true if origin is allowed, false otherwise
  */
 function isValidOrigin(origin: string): boolean {
   // Allow localhost origins for development
-  return origin.startsWith('http://localhost:') || 
-         origin.startsWith('https://localhost:') ||
-         origin === 'http://127.0.0.1' ||
-         origin === 'https://127.0.0.1' ||
-         // Allow same origin
-         origin === window.location.origin
+  if (origin.startsWith('http://localhost:') ||
+      origin.startsWith('https://localhost:') ||
+      origin === 'http://127.0.0.1' ||
+      origin === 'https://127.0.0.1' ||
+      origin === window.location.origin) {
+    return true;
+  }
+
+  // Allow preview domains from hosting platform
+  // Pattern: https://{appId}.preview.c{cell}.{env}airoapp.ai
+  // Examples:
+  // - https://fw1tzd36ai.preview.c4.test-airoapp.ai (test environment)
+  // - https://abc123xyz.preview.c4.dev-airoapp.ai (dev environment)
+  // - https://myapp123.preview.c4.airoapp.ai (production environment)
+  const previewPattern = /^https:\/\/[a-z0-9-]+\.preview\.c\d+\.(test-|dev-)?airoapp\.ai$/;
+
+  return previewPattern.test(origin);
 }
 
 import { postMessageToIframe } from '../../../utils/postMessage'
