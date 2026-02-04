@@ -1,6 +1,6 @@
-import type { CreditGrant } from './types'
-import { GrantManager } from './grant-manager'
-import { logger } from '../utils/logger'
+import type { CreditGrant } from './types.js'
+import { GrantManager } from './grant-manager.js'
+import { logger } from '../utils/logger.js'
 
 /**
  * APM agent type (loose typing to avoid strict dependency)

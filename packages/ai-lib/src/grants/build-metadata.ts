@@ -1,7 +1,7 @@
-import { grantSessionManager } from './grant-session-manager'
+import { grantSessionManager } from './grant-session-manager.js'
 import type { LitellmMetadata } from '../providers/unified-provider.js'
-import { logger } from '../utils/logger'
-import { LlmCallSource } from './types'
+import { logger } from '../utils/logger.js'
+import { LlmCallSource } from './types.js'
 
 /**
  * Prefix for subscription-based billing identifiers
@@ -53,7 +53,7 @@ export enum SpecialSubscriptionId {
 }
 
 // Re-export enums from types for backward compatibility
-export { LlmCallSource, GrantErrorCode } from './types'
+export { LlmCallSource, GrantErrorCode } from './types.js'
 
 interface MetadataOptions {
   agentId?: string | undefined

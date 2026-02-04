@@ -1,5 +1,5 @@
-import type { CreditGrant } from './types'
-import { GrantFinalState } from './types'
+import type { CreditGrant } from './types.js'
+import { GrantFinalState } from './types.js'
 
 /**
  * Reasons why a grant cannot be used for LLM requests
