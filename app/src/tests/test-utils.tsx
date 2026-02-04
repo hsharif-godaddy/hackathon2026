@@ -1,7 +1,7 @@
 import React, { ReactElement } from 'react';
 import { IntlProvider } from 'react-intl';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, renderHook, RenderHookOptions,RenderOptions } from '@testing-library/react';
+import { render, renderHook, RenderHookOptions, RenderOptions } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 /**

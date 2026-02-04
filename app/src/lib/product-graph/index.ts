@@ -3,7 +3,7 @@
  */
 
 export { certTokenService } from './cert-token-service';
-export type { GraphQLRequest,GraphQLResponse } from './client';
+export type { GraphQLRequest, GraphQLResponse } from './client';
 export {
     createGraphQLClient,
     createGraphQLClientWithS2SAuth,

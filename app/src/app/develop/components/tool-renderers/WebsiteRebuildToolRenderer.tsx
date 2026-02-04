@@ -1,6 +1,6 @@
 'use client'
 
-import { CheckCircle, Expand, FileText, Globe, Image,XCircle } from 'lucide-react'
+import { CheckCircle, Expand, FileText, Globe, Image, XCircle } from 'lucide-react'
 import { useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'

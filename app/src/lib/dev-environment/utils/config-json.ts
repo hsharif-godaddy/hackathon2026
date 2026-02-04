@@ -1,4 +1,4 @@
-import { existsSync,readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 
 import { logger } from '../../request-context';
 import type { DatabaseConfig } from '../services/docker-compose-generator';

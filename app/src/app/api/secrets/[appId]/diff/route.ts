@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getControlPlaneAdapter } from '@/lib/control-plane';
-import { createCustomerAuthError, type CustomerAuthContext,customerHasAccount, withCustomerAuth } from '@/lib/customer-auth';
+import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 
 /**

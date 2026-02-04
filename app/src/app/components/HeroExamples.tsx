@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowRightIcon } from '@heroicons/react/24/outline'
 
-import { Example,HeroExamplesProps } from '@/app/components/types'
+import { Example, HeroExamplesProps } from '@/app/components/types'
 import { useTranslations } from '@/hooks/useTranslations'
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 

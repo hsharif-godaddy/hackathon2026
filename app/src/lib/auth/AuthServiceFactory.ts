@@ -6,7 +6,7 @@ import { JWTAuthService } from './implementations/JWTAuthService';
 import { MockAuthService } from './implementations/MockAuthService';
 import { NoAuthService } from './implementations/NoAuthService';
 import { IAuthService } from './types';
-import { auth,AuthType } from '../features';
+import { auth, AuthType } from '../features';
 
 /**
  * Factory class to create auth services

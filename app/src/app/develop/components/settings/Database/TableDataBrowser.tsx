@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback,useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import ArrowLeftIcon from '@ux/icon/arrow-left';

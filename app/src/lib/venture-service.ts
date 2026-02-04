@@ -5,7 +5,7 @@
  * Falls back to GraphQL API for creating new ventures when needed.
  */
 
-import { AiroHttpError,AiroMgmtClient } from '@/lib/mgmt-airo';
+import { AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 import { createGraphQLClientWithS2SAuth, GraphQLClient } from './product-graph/client';
 

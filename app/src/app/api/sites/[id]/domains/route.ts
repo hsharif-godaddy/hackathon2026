@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
-import { type CustomerAuthContext,withCustomerAuth } from '@/lib/customer-auth';
+import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 

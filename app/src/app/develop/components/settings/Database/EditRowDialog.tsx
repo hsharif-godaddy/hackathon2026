@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo,useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Button from '@ux/button';
 import Modal from '@ux/modal';
 import SelectInput from '@ux/select-input';

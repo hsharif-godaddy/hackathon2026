@@ -1,4 +1,4 @@
-import { useEffect, useMemo,useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Box from "@ux/box";
 import Button from "@ux/button";
 import Modal from "@ux/modal";
@@ -19,10 +19,10 @@ import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
 import { useModifyDomains } from '@/hooks/useModifyDomains';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
-import { CdnStatus,DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
+import { CdnStatus, DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { useSiteStore } from "@/stores/useSiteStore";
-import { isCustomerDomain,sanitizeDomainInput, validateDomain } from '@/utils/domain';
+import { isCustomerDomain, sanitizeDomainInput, validateDomain } from '@/utils/domain';
 import { getDomainErrorMessage } from '@/utils/domain-validation';
 import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID } from '@/utils/instrumentation';

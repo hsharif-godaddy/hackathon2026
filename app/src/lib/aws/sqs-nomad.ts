@@ -3,8 +3,8 @@
  * Replaces direct Nomad API calls with SQS queue messages
  */
 
-import { SendMessageCommand,SQSClient } from '@aws-sdk/client-sqs';
-import { AssumeRoleCommand,STSClient } from '@aws-sdk/client-sts';
+import { SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
+import { AssumeRoleCommand, STSClient } from '@aws-sdk/client-sts';
 
 import { logger } from '../request-context';
 

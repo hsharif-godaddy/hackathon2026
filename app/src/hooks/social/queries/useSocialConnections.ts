@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { useSocialConnections as useSocialConnectionsQuery } from '@/hooks/useSocial'
 import { PLATFORM_CONFIG, PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
-import { SocialPlatform,SocialPlatformKey } from '@/types/social'
+import { SocialPlatform, SocialPlatformKey } from '@/types/social'
 import { useConnectionMetadata } from './useConnectionMetadata'
 
 const EMPTY_CONNECTIONS: SocialConnection[] = []

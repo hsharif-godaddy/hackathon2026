@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { handleControlPlaneError } from '@/lib/control-plane/error-handler';
-import { createCustomerAuthError, type CustomerAuthContext,customerHasAccount, withCustomerAuth } from '@/lib/customer-auth';
+import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, withCustomerAuth } from '@/lib/customer-auth';
 
 /**
  * Bulk operations request body

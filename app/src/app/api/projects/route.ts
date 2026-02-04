@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { CustomerAuthContext,withCustomerAuth } from '@/lib/customer-auth';
+import { CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 import { VentureService } from '@/lib/venture-service';
 

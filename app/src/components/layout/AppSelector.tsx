@@ -2,7 +2,7 @@
 
 import clsx from 'clsx';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect,useState } from 'react';
+import { useEffect, useState } from 'react';
 import Box from '@ux/box';
 import AppsIcon from '@ux/icon/apps';
 import ChevronDownIcon from '@ux/icon/chevron-down';

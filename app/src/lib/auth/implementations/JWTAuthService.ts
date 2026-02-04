@@ -6,7 +6,7 @@
 import { NextRequest } from 'next/server';
 
 import { logger } from '@/lib/request-context';
-import { AuthConfig, AuthResult,IAuthService } from '../types';
+import { AuthConfig, AuthResult, IAuthService } from '../types';
 
 export class JWTAuthService implements IAuthService {
   /**

@@ -1,6 +1,6 @@
-import { describe, expect,it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { getContrastColor,getLuminance } from './color';
+import { getContrastColor, getLuminance } from './color';
 
 describe('color utilities', () => {
   describe('getLuminance', () => {

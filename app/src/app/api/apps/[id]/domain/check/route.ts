@@ -8,7 +8,7 @@ import {
   customerHasAccount,
   withCustomerAuth} from '@/lib/customer-auth';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { type AiroDomainCheckResponse,AiroMgmtClient, DomainMode, DomainValidationError } from '@/lib/mgmt-airo';
+import { type AiroDomainCheckResponse, AiroMgmtClient, DomainMode, DomainValidationError } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 
 export const dynamic = 'force-dynamic';

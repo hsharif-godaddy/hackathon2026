@@ -48,7 +48,7 @@ import {
   setConversationIdCookie,
 } from '@/hooks/websocket/useWebSocketHelpers'
 import { logger } from '@/lib/request-context'
-import type { ConnectionCallbacks,ConnectionManager } from './ConnectionManager'
+import type { ConnectionCallbacks, ConnectionManager } from './ConnectionManager'
 import type { WebSocketActor } from './stateMachineTypes'
 
 /**

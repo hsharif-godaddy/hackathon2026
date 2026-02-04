@@ -42,6 +42,6 @@ const ChatContext = createContext<ChatContextValue | null>(null)
   return context?.sendMessage ?? null
 }
 
-export { ChatContext, useChatContext,useSendUserMessage }
+export { ChatContext, useChatContext, useSendUserMessage }
 export type { ChatContextValue, SendMessageOptions }
 

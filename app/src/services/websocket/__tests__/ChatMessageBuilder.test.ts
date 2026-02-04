@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { type BuildMessageParams,ChatMessageBuilder } from '../ChatMessageBuilder'
+import { type BuildMessageParams, ChatMessageBuilder } from '../ChatMessageBuilder'
 
 describe('ChatMessageBuilder', () => {
   let builder: ChatMessageBuilder

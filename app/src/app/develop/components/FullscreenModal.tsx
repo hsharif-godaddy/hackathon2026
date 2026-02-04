@@ -1,8 +1,8 @@
 'use client'
 
 import { clsx } from 'clsx'
-import { AnimatePresence,motion } from 'framer-motion'
-import { useEffect,useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Button from '@ux/button'
 import WindowNewIcon from '@ux/icon/window-new'

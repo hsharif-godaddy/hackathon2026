@@ -1,7 +1,7 @@
 import { getErrorMessage } from '@/lib/errors'
 import { logger } from '@/lib/request-context'
 import { isFacebookConnection, isGoogleConnection, isInstagramConnection, isTikTokConnection, isYelpConnection } from '@/lib/utils/social-type-guards'
-import type { EnrichedSocialConnection,SocialConnection } from '@/types/social'
+import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
 import { SocialFlowAction } from '@/types/social'
 
 export function isRetryableError(error: Error): boolean {

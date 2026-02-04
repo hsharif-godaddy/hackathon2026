@@ -3,7 +3,7 @@ import '@testing-library/jest-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
-import { mockAuthContext, mockParams,mockSearchParams } from '@/tests/mocks';
+import { mockAuthContext, mockParams, mockSearchParams } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import Header from './Header';
 

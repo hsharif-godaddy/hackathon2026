@@ -1,7 +1,7 @@
 'use client'
 
 import { Palette } from 'lucide-react'
-import { useEffect,useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import ColorPaletteModal from '@/app/develop/components/tool-renderers/ColorPaletteModal'
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect,useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import Alert from '@ux/alert'
 import CheckboxFilledIcon from '@ux/icon/checkbox-filled'

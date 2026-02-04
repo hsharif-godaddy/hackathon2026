@@ -2,7 +2,7 @@
  * Base deployment adapter with common functionality
  */
 
-import { DeploymentAdapter, DeploymentConfig, DeploymentEnvironment,DeploymentResult } from './types';
+import { DeploymentAdapter, DeploymentConfig, DeploymentEnvironment, DeploymentResult } from './types';
 import { logger } from '../request-context';
 
 export abstract class BaseDeploymentAdapter implements DeploymentAdapter {

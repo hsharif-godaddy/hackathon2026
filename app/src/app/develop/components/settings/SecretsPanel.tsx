@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useRef,useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Alert from '@ux/alert';
 import Box from '@ux/box';
 import Button from '@ux/button';
@@ -17,7 +17,7 @@ import IconButton from '@/app/develop/components/IconButton';
 import BigCard from '@/components/layout/BigCard';
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { useSecretOperations } from '@/hooks/useSecretOperations';
-import { type Secret,useSecrets } from '@/hooks/useSecrets';
+import { type Secret, useSecrets } from '@/hooks/useSecrets';
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
 

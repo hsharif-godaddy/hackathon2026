@@ -1,4 +1,4 @@
-import { AnimatePresence,motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import Box from '@ux/box'
 import Button from '@ux/button'
 

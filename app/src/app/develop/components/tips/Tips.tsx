@@ -1,12 +1,12 @@
 'use client'
 
-import { AnimatePresence,motion } from 'framer-motion'
-import { useEffect, useMemo,useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader } from '@airo-ux/loader'
 import Alert from '@ux/alert'
 import Box from '@ux/box'
 
-import { shuffleArray,tips } from '@/app/develop/components/tips/tips-content'
+import { shuffleArray, tips } from '@/app/develop/components/tips/tips-content'
 import { useTranslations } from '@/hooks/useTranslations'
 
 /**

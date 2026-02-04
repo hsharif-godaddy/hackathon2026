@@ -9,7 +9,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 
-import { type DynamicApiConfig,dynamicApiConfigService } from '@/config/dynamic-api'
+import { type DynamicApiConfig, dynamicApiConfigService } from '@/config/dynamic-api'
 import { useSubscriptionCache } from '@/hooks/useSubscriptionCache'
 import { logger } from '@/lib/request-context'
 import { sitePollingService } from '@/services/SitePollingService'

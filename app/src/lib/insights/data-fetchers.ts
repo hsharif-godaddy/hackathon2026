@@ -6,7 +6,7 @@
 
 import { logger } from '@/lib/request-context'
 import { executeGraphQLQuery } from './client'
-import { buildInsightCountDailyQuery, buildInsightCountQuery, buildUniqueCountQuery, extractCountFromResponse, extractDailyBreakdownFromResponse,extractUniqueCountFromResponse } from './queries'
+import { buildInsightCountDailyQuery, buildInsightCountQuery, buildUniqueCountQuery, extractCountFromResponse, extractDailyBreakdownFromResponse, extractUniqueCountFromResponse } from './queries'
 
 /**
  * Fetch route-specific page views

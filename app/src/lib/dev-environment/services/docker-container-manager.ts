@@ -5,13 +5,13 @@ import * as path from "node:path";
 import { execa } from 'execa';
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 
-import { type ComposeServiceConfig,DockerComposeGenerator } from './docker-compose-generator';
+import { type ComposeServiceConfig, DockerComposeGenerator } from './docker-compose-generator';
 import { DockerComposeManager } from './docker-compose-manager';
 import { SharedMySQLService } from './shared-mysql-service';
-import { auth,devSupervisor } from '../../features';
+import { auth, devSupervisor } from '../../features';
 import { logger } from '../../request-context';
 import { DevDatabase } from '../database/DevDatabase';
-import { getAllocPath,getAppPath, getBasePath } from '../utils/app-paths';
+import { getAllocPath, getAppPath, getBasePath } from '../utils/app-paths';
 import { ConfigJsonManager } from '../utils/config-json';
 
 /**

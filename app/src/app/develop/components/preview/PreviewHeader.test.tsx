@@ -5,7 +5,7 @@ import { screen } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
 import PreviewHeader from './PreviewHeader';
-import { PreviewViewMode,ViewMode } from '../types';
+import { PreviewViewMode, ViewMode } from '../types';
 
 const mockDevelopStore = {
   viewMode: ViewMode.PREVIEW,

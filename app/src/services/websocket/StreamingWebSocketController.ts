@@ -42,7 +42,7 @@ import {
 import { ConnectionManager } from './ConnectionManager'
 import { StoreSyncAdapter } from './StoreSyncAdapter'
 import { TransportSupervisor } from './TransportSupervisor'
-import { type WebSocketMachine,webSocketMachine } from './webSocketMachine'
+import { type WebSocketMachine, webSocketMachine } from './webSocketMachine'
 
 export interface StreamingWebSocketControllerEvents {
   'connection:established': { socket: Socket; recovered: boolean }

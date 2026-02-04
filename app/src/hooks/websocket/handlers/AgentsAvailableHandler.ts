@@ -1,5 +1,5 @@
 import { logger } from '@/lib/request-context'
-import { type AgentSummary,useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+import { type AgentSummary, useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
 
 export class AgentsAvailableHandler implements MessageHandler {

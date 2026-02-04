@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useCallback, useEffect, useRef,useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import Box from '@ux/box'
 import Spinner from '@ux/spinner'
 

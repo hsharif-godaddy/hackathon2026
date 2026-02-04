@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect,useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Alert from '@ux/alert';
 import Modal from '@ux/modal';
 import Spinner from '@ux/spinner';

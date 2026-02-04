@@ -13,7 +13,7 @@ import { cpSync, existsSync, rmSync } from 'fs';
 import path from 'path';
 
 import { logger } from '../../request-context';
-import { createSafePathBuilder, isSafePath,safeJoinWithOptions, safeResolve } from '../utils/safe-path';
+import { createSafePathBuilder, isSafePath, safeJoinWithOptions, safeResolve } from '../utils/safe-path';
 
 /** Default template directory when none is specified in environment or parameters */
 const DEFAULT_TEMPLATE_DIR = 'app-templates/v8';

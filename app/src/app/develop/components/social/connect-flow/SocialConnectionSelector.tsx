@@ -3,8 +3,8 @@
 import { memo, useState } from 'react'
 
 import { useTranslations } from '@/hooks/useTranslations'
-import { getConnectionDetails,getConnectionDisplayName } from '@/lib/social-utils'
-import type { EnrichedSocialConnection,SocialConnection } from '@/types/social'
+import { getConnectionDetails, getConnectionDisplayName } from '@/lib/social-utils'
+import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
 import { SocialItemSelector } from '../shared/SocialItemSelector'
 
 interface SocialConnectionSelectorProps {

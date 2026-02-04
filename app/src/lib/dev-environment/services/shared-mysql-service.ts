@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { type Connection,createConnection } from 'mysql2/promise';
+import { type Connection, createConnection } from 'mysql2/promise';
 
 import type { DatabaseConfig } from './docker-compose-generator';
 import { logger } from '../../request-context';

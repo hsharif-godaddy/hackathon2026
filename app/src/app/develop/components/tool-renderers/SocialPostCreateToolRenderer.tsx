@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef,useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Chat from '@ux/icon/chat'
 
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'

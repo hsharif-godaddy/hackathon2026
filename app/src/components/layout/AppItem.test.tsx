@@ -5,7 +5,7 @@ import { screen, waitFor } from '@testing-library/react';
 
 import { Site } from '@/stores/useSitesStore';
 import { renderWithProviders } from '@/tests/test-utils';
-import AppItem, { AppItemNew, AppItemSeeAll,AppItemSkeleton } from './AppItem';
+import AppItem, { AppItemNew, AppItemSeeAll, AppItemSkeleton } from './AppItem';
 
 const mockPush = vi.fn();
 const mockUseRouter = vi.fn(() => ({ push: mockPush }));

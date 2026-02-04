@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect,it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore'
 import { V2ControlPlaneAdapter } from '../v2-control-plane-adapter'

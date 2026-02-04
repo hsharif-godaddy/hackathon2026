@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { type CustomerAuthContext,withCustomerAuth } from '@/lib/customer-auth';
-import { AIRO_OWNER_PRODUCTS,AiroMgmtClient } from '@/lib/mgmt-airo';
+import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
+import { AIRO_OWNER_PRODUCTS, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 
 // Force dynamic rendering

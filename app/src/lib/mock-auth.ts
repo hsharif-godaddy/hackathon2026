@@ -130,5 +130,5 @@ class MockAuthManager {
 export const mockAuthManager = new MockAuthManager()
 
 // Export mock user for UI
-export { MOCK_USER, type MockAuthState,type MockUser }
+export { MOCK_USER, type MockAuthState, type MockUser }
 

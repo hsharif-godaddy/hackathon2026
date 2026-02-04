@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { SOCIAL_CACHE_CONFIG,SocialV2Client } from '@/lib/social'
+import { SOCIAL_CACHE_CONFIG, SocialV2Client } from '@/lib/social'
 import { SocialPlatformKey } from '@/types/social'
 
 const socialV2Client = new SocialV2Client()

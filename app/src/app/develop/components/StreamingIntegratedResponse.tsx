@@ -9,7 +9,7 @@ import MessageContentRenderer, { type ContentBlock } from '@/app/develop/compone
 import MessageToolCallsRenderer from '@/app/develop/components/MessageToolCallsRenderer'
 import ResponseMetadata from '@/app/develop/components/ResponseMetadata'
 import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessage'
-import { hasValidSegments,isStreamingMessage } from '@/app/develop/components/utils'
+import { hasValidSegments, isStreamingMessage } from '@/app/develop/components/utils'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'

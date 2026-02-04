@@ -5,7 +5,7 @@
  * Handles exponential backoff retry logic for transient errors.
  */
 
-import { type MutableRefObject,useCallback, useRef } from 'react'
+import { type MutableRefObject, useCallback, useRef } from 'react'
 
 import type { AgentsAppChatMessage } from '@/types/websocket-context'
 

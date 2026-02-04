@@ -5,7 +5,7 @@
  * This file is marked as 'use client' to allow React hooks
  */
 
-import { useEffect,useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { mockAuthManager, type MockAuthState } from '@/lib/mock-auth'
 

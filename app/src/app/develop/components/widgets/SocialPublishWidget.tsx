@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
-import { type Emphasis,text } from '@ux/text'
+import { type Emphasis, text } from '@ux/text'
 
 import { usePublishFlow } from '@/hooks/social/usePublishFlow'
 import { useToolResultSync } from '@/hooks/useToolResultSync'

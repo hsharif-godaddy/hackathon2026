@@ -1,6 +1,6 @@
 import { logger } from '@/lib/request-context'
 import { buildDynamicApiUrl } from '../config/dynamic-api'
-import type { UploadError,UploadResult } from '../types/file-upload'
+import type { UploadError, UploadResult } from '../types/file-upload'
 
 const ALLOWED_IMAGE_TYPES = new Set([
   'image/jpeg',

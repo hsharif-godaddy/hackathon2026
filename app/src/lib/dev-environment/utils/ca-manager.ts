@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync,writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import forge from 'node-forge';
 import { join } from 'path';
 

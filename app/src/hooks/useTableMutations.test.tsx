@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
-import { useAddRow, useDeleteRow,useUpdateRow } from './useTableMutations';
+import { useAddRow, useDeleteRow, useUpdateRow } from './useTableMutations';
 
 vi.mock('@/lib/request-context', () => ({
   logger: { error: vi.fn() },

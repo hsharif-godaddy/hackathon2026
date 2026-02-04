@@ -58,10 +58,10 @@
  */
 
 import type { Socket } from 'socket.io-client'
-import { afterEach,beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { MessageHandlerActions } from '@/hooks/websocket/handlers/types'
-import type { ConnectionCallbacks,ConnectionManager } from '../ConnectionManager'
+import type { ConnectionCallbacks, ConnectionManager } from '../ConnectionManager'
 import type { WebSocketActor } from '../stateMachineTypes'
 import { TransportSupervisor, type TransportSupervisorDeps } from '../TransportSupervisor'
 

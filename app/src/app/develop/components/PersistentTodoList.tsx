@@ -1,13 +1,13 @@
 'use client'
 
-import { AnimatePresence,motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { todoListService } from '@/services/TodoListService'
 import { useCurrentAppId } from '@/stores/useStreamingConversationStore'
-import { useCurrentList, useTodoListStore,useUpdatedItemIds, useViewState } from '@/stores/useTodoListStore'
+import { useCurrentList, useTodoListStore, useUpdatedItemIds, useViewState } from '@/stores/useTodoListStore'
 
 /**
  * Persistent Todo List Component

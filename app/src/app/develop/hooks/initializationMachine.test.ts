@@ -4,10 +4,10 @@
  * Tests state transitions in isolation without React
  */
 
-import { describe, expect,it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { createActor } from 'xstate'
 
-import { getPhaseFromState, getSubPhaseFromState,initializationMachine } from './initializationMachine'
+import { getPhaseFromState, getSubPhaseFromState, initializationMachine } from './initializationMachine'
 
 describe('initializationMachine', () => {
   // -------------------------------------------------------------------------

@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useConnectionById, useSiteAssociations } from '@/hooks/useSocial'
 import { useTranslations } from '@/hooks/useTranslations'
 import type { SiteAssociation, SocialConnection } from '@/types/social'
-import { type PendingPublish, type PublishFlowCallbacks,PublishFlowState, SocialPostState } from '@/types/social-posts'
-import { type PublishErrorMessages,publishToPlatform, storePostResult } from './api'
+import { type PendingPublish, type PublishFlowCallbacks, PublishFlowState, SocialPostState } from '@/types/social-posts'
+import { type PublishErrorMessages, publishToPlatform, storePostResult } from './api'
 
 function findMatchingAssociation(
   associations: SiteAssociation[],

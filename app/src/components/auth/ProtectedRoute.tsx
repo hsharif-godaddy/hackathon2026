@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect,useState } from 'react';
-import { AuthIdpType,AuthRealmType, AuthRequired, AuthRiskType } from '@godaddy/gasket-auth';
+import { useEffect, useState } from 'react';
+import { AuthIdpType, AuthRealmType, AuthRequired, AuthRiskType } from '@godaddy/gasket-auth';
 
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useGasketConfig } from '@/hooks/useGasketConfig';

@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 
-import { describe, expect,it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { screen } from '@testing-library/react';
 
 import { StatusValue } from '@/app/develop/components/types';

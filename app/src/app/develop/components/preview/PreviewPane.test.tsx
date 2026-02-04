@@ -5,7 +5,7 @@ import { screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
 import PreviewPane from './PreviewPane';
-import { PreviewViewMode,ViewMode } from '../types';
+import { PreviewViewMode, ViewMode } from '../types';
 
 // Mock child components
 vi.mock('./PreviewHeader', () => ({

@@ -1,4 +1,4 @@
-import { useCallback,useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthIdpType, AuthRealmType, AuthRiskType, useAuthState } from '@godaddy/gasket-auth';
 
 import { useMockAuth } from '@/hooks/useMockAuth';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef,useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from '@tanstack/react-query';
 import Box from "@ux/box";
 import Button from "@ux/button";
@@ -13,7 +13,7 @@ import BigCard from "@/components/layout/BigCard";
 import { useAppNameUpdate } from '@/hooks/useAppName';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
 import { useTranslations } from '@/hooks/useTranslations';
-import { DomainStatus,DomainType } from "@/lib/control-plane/types";
+import { DomainStatus, DomainType } from "@/lib/control-plane/types";
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DomainMode } from "@/lib/mgmt-airo/types";
 import { logger } from "@/lib/request-context";

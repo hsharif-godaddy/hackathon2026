@@ -1,4 +1,4 @@
-import type { FacebookConnection, GoogleConnection, InstagramConnection, SocialConnection, TikTokConnection, WhatsAppConnection,YelpConnection } from '@/types/social'
+import type { FacebookConnection, GoogleConnection, InstagramConnection, SocialConnection, TikTokConnection, WhatsAppConnection, YelpConnection } from '@/types/social'
 import { SocialPlatformKey } from '@/types/social'
 
 /**

@@ -5,7 +5,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 
-import { AccountStatus,PrismaClient } from '@/generated/prisma';
+import { AccountStatus, PrismaClient } from '@/generated/prisma';
 import { getPrismaClient } from '@/lib/prisma';
 import { logger } from '../request-context';
 

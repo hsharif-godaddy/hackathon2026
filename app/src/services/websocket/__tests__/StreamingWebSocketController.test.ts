@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getConversationIdFromCookie } from '@/hooks/websocket/useWebSocketHelpers'
 import type { ChatMessageBuilder } from '../ChatMessageBuilder'
-import type { ConnectionCallbacks,ConnectionManager } from '../ConnectionManager'
+import type { ConnectionCallbacks, ConnectionManager } from '../ConnectionManager'
 import {
   StreamingWebSocketController,
   type StreamingWebSocketControllerDeps,

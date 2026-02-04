@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 
 import { Domain } from '@/hooks/useDomainsQuery';
-import { CdnStatus,DomainStatus } from '@/lib/mgmt-airo/types';
+import { CdnStatus, DomainStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { isCustomerDomain } from '@/utils/domain';
 import { AppDomain } from './useAppDetails';

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef,useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 import EditIcon from '@ux/icon/edit'
 import Tag from '@ux/tag'

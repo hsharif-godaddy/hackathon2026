@@ -1,10 +1,10 @@
-import { useEffect,useState } from "react";
+import { useEffect, useState } from "react";
 import Modal from "@ux/modal"
 import Spinner from "@ux/spinner"
 
 import { FeedbackForm } from '@/components/feedback/FeedbackForm';
 import { FeedbackProps } from '@/components/feedback/types';
-import { getBaseUrl, getMockFeedbackConfig,isLocalhost } from '@/components/feedback/utils';
+import { getBaseUrl, getMockFeedbackConfig, isLocalhost } from '@/components/feedback/utils';
 import { useTranslations } from "@/hooks/useTranslations";
 import { logger } from '@/lib/request-context';
 

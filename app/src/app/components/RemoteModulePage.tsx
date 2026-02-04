@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect,useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { RemoteComponent } from "react-dynamic-remote-component";
 import Button from "@ux/button";
 import RefreshIcon from "@ux/icon/refresh";

@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
 import { appFetch } from '@/lib/gasket-config';
-import { appNameKeys,useAppName, useAppNameUpdate, useAppNameValidation } from './useAppName';
+import { appNameKeys, useAppName, useAppNameUpdate, useAppNameValidation } from './useAppName';
 
 // Mock dependencies
 vi.mock('@/lib/gasket-config', () => ({

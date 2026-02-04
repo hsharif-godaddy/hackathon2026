@@ -5,7 +5,7 @@
 
 import { sqsNomadService } from '@/lib/aws/sqs-nomad';
 import { PrismaSiteService } from '@/lib/database/prisma-site-service';
-import { generateJobName,generateNomadJobSpec } from '@/lib/nomad/job-template';
+import { generateJobName, generateNomadJobSpec } from '@/lib/nomad/job-template';
 import { BaseDeploymentAdapter } from './base-adapter';
 import { DeploymentConfig, DeploymentResult } from './types';
 

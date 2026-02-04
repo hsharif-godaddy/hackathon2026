@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, it, vi } from 'vitest'
 
 import { StateMachineTestHarness } from './StateMachineTestUtils'
-import { MAX_RETRY_COUNT, MAX_RETRY_DELAY_MS,webSocketMachine } from '../webSocketMachine'
+import { MAX_RETRY_COUNT, MAX_RETRY_DELAY_MS, webSocketMachine } from '../webSocketMachine'
 
 describe('webSocketMachine', () => {
   beforeEach(() => {

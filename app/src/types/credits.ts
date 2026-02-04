@@ -5,7 +5,7 @@
 import type { CreditGrant as CreditGrantType } from '@airo/ai-lib/grants/client'
 
 export type { CreditGrant, GrantContextPayload } from '@airo/ai-lib/grants/client'
-export { GrantFinalState,GrantType } from '@airo/ai-lib/grants/client'
+export { GrantFinalState, GrantType } from '@airo/ai-lib/grants/client'
 
 /**
  * API response for credit grants

@@ -1,15 +1,15 @@
 import * as fs from 'node:fs';
 
 import { execa } from 'execa';
-import { appendFileSync,existsSync, promises as fsPromises, readdirSync, readFileSync, writeFileSync } from 'fs';
+import { appendFileSync, existsSync, promises as fsPromises, readdirSync, readFileSync, writeFileSync } from 'fs';
 import path from 'path';
 
 import { PrismaSiteService } from '@/lib/database/prisma-site-service';
 import { createAppAdapter, getAdapterType } from './adapters';
 import type { IAppAdapter, ServerStatus } from './adapters/interfaces/IAppAdapter';
-import { type DevAppInfo,DevDatabase } from './database/DevDatabase';
+import { type DevAppInfo, DevDatabase } from './database/DevDatabase';
 import { TemplateCopyService } from './services/TemplateCopyService';
-import { getAllocPath,getAppPath, getBasePath } from './utils/app-paths';
+import { getAllocPath, getAppPath, getBasePath } from './utils/app-paths';
 import { GitUtils } from './utils/git';
 import { PortManager } from './utils/port-manager';
 import { SSLCertificateGenerator } from './utils/ssl-cert-generator';

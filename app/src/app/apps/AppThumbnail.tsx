@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useEffect,useState } from 'react'
+import { useEffect, useState } from 'react'
 import Box from '@ux/box'
 import CodeIcon from '@ux/icon/code'
 import Skeleton from '@ux/skeleton'
@@ -114,7 +114,7 @@ export default function AppThumbnail({ siteId, siteName, size }: AppThumbnailPro
       data-testid="app-thumbnail"
       blockAlignChildren="center"
       inlineAlignChildren="center"
-      className={clsx(containerClasses,borderClasses, 'overflow-hidden')}
+      className={clsx(containerClasses, borderClasses, 'overflow-hidden')}
     >
       <img /* eslint-disable-line @next/next/no-img-element */
         src={thumbnailUrl}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { type CustomerAuthContext,withCustomerAuth } from '@/lib/customer-auth';
+import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { DomainsClient } from '@/lib/domains';
 import { logger } from '@/lib/request-context';
 
