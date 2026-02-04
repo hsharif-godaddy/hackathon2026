@@ -18,6 +18,7 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 	"github.com/airo-ai-builder/dev-supervisor/internal/health"
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
+	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
 	"github.com/airo-ai-builder/dev-supervisor/internal/ports"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
@@ -1116,3 +1117,7 @@ func (pm *ProcessManager) stopProcessForRestart(
 
 	return nil
 }
+
+// Compile-time interface verification
+// Ensures ProcessManager implements middleware.WebSocketTracker interface
+var _ middleware.WebSocketTracker = (*ProcessManager)(nil)

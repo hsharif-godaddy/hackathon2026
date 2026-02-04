@@ -1,6 +1,6 @@
 //go:build linux
 
-package main
+package middleware
 
 import (
 	"context"
@@ -92,8 +92,8 @@ func peerSecFromContext(ctx context.Context) *SELinuxContext {
 	return nil
 }
 
-// connContextWithPeerSec creates a ConnContext function that captures SELinux context
-func connContextWithPeerSec(ctx context.Context, conn net.Conn) context.Context {
+// ConnContextWithPeerSec creates a ConnContext function that captures SELinux context
+func ConnContextWithPeerSec(ctx context.Context, conn net.Conn) context.Context {
 	sec, err := getPeerSecContext(conn)
 	if err != nil {
 		slog.DebugContext(ctx, "peer_sec.extract_failed", "error", err)
@@ -109,9 +109,9 @@ func connContextWithPeerSec(ctx context.Context, conn net.Conn) context.Context 
 	return context.WithValue(ctx, peerSecContextKey{}, sec)
 }
 
-// peerSecMiddleware enforces SELinux type matching for API access
+// PeerSec enforces SELinux type matching for API access
 // Only processes with allowed SELinux types can access the API
-func peerSecMiddleware(allowedTypes []string) func(http.Handler) http.Handler {
+func PeerSec(allowedTypes []string) func(http.Handler) http.Handler {
 	// Build lookup set for O(1) matching
 	allowed := make(map[string]bool, len(allowedTypes))
 	for _, t := range allowedTypes {

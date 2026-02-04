@@ -1030,7 +1030,7 @@ func (p *HTTPProxy) Start() error {
 
 	// Connection tracking middleware (tracks WebSocket connections)
 	// Wraps response writer to intercept Hijack() calls
-	handler = connectionTrackingMiddleware(handler, p.procMgr)
+	handler = middleware.ConnectionTracking(handler, p.procMgr)
 
 	// JWT middleware (if enabled)
 	if p.config.JWTEnabled {
@@ -1072,7 +1072,7 @@ func (p *HTTPProxy) Start() error {
 
 	// HTTP method validation middleware
 	// Rejects unsupported methods (CONNECT, TRACE, etc.)
-	handler = methodValidationMiddleware(handler)
+	handler = middleware.MethodValidation(handler)
 
 	// CORS middleware using rs/cors library
 	// Handles CORS for all requests (preflight, actual requests, errors)

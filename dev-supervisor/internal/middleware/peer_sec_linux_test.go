@@ -1,6 +1,7 @@
 //go:build linux
 
-package main
+//nolint:testpackage // Test requires access to unexported functions
+package middleware
 
 import (
 	"context"
@@ -127,7 +128,7 @@ func TestPeerSecMiddleware(t *testing.T) {
 	})
 
 	allowedTypes := []string{"airo_agent_container.process", "airo_supervisor_t"}
-	middleware := peerSecMiddleware(allowedTypes)(nextHandler)
+	middleware := PeerSec(allowedTypes)(nextHandler)
 
 	t.Run("rejects request without security context", func(t *testing.T) {
 		t.Setenv("NOMAD_ALLOC_DIR", "/alloc")

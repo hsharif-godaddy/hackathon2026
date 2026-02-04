@@ -1,4 +1,4 @@
-package main
+package middleware
 
 import (
 	"log/slog"
@@ -18,14 +18,9 @@ var allowedHTTPMethods = map[string]bool{
 	http.MethodOptions: true,
 }
 
-/**
- * methodValidationMiddleware validates HTTP methods and rejects unsupported ones
- * Single responsibility: Enforce allowed HTTP methods at the edge
- *
- * @param next - Next handler in the chain
- * @returns Wrapped handler that validates HTTP methods
- */
-func methodValidationMiddleware(next http.Handler) http.Handler {
+// MethodValidation validates HTTP methods and rejects unsupported ones
+// Single responsibility: Enforce allowed HTTP methods at the edge
+func MethodValidation(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Validate HTTP method - reject unsupported methods
 		// Allowed: GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS

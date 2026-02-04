@@ -19,6 +19,7 @@ import (
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
+	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 	smtpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/smtp"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
@@ -340,11 +341,11 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 	// Only processes with allowed SELinux types can access the API via SO_PEERSEC
 	allowedSELinuxTypes := config.GetAllowedSELinuxTypes()
 	server := &http.Server{
-		Handler:      peerSecMiddleware(allowedSELinuxTypes)(s.router),
+		Handler:      middleware.PeerSec(allowedSELinuxTypes)(s.router),
 		ReadTimeout:  defaultTimeout,
 		WriteTimeout: defaultTimeout,
 		IdleTimeout:  2 * defaultTimeout,
-		ConnContext:  connContextWithPeerSec,
+		ConnContext:  middleware.ConnContextWithPeerSec,
 	}
 
 	// Start PID 1 manager with shutdown callback

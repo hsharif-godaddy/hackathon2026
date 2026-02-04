@@ -1,6 +1,6 @@
 //go:build !linux
 
-package main
+package middleware
 
 import (
 	"context"
@@ -17,13 +17,13 @@ type SELinuxContext struct {
 	Raw   string
 }
 
-// connContextWithPeerSec is a no-op on non-Linux platforms
-func connContextWithPeerSec(ctx context.Context, _ net.Conn) context.Context {
+// ConnContextWithPeerSec is a no-op on non-Linux platforms
+func ConnContextWithPeerSec(ctx context.Context, _ net.Conn) context.Context {
 	return ctx
 }
 
-// peerSecMiddleware is a pass-through on non-Linux platforms
-func peerSecMiddleware(_ []string) func(http.Handler) http.Handler {
+// PeerSec is a pass-through on non-Linux platforms
+func PeerSec(_ []string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return next
 	}

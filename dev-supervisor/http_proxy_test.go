@@ -2141,7 +2141,7 @@ func TestHTTPProxy_HealthCheck_IdledButWasHealthy(t *testing.T) {
 	procMgr := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a process
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command:    "sleep 30",
 		WorkingDir: "/tmp",
 	}
@@ -2208,7 +2208,7 @@ func TestHTTPProxy_HealthCheck_StoppedNotFromIdle(t *testing.T) {
 	procMgr := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a process
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command:    "sleep 30",
 		WorkingDir: "/tmp",
 	}
@@ -2273,7 +2273,7 @@ func TestHTTPProxy_HealthCheck_RunningProcess(t *testing.T) {
 	procMgr := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a process
-	startReq := ProcessStartRequest{
+	startReq := validation.ProcessStartRequest{
 		Command:    "sleep 30",
 		WorkingDir: "/tmp",
 	}

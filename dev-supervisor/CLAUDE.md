@@ -434,6 +434,7 @@ defer proxy.Stop()
 - Zero internal dependencies (stdlib only)
 
 **Health check types:**
+
 - **Command:** Execute shell command (exit 0 = healthy)
 - **HTTP:** GET request with 2xx response = healthy
 - **TCP:** Successful connection = healthy
@@ -470,6 +471,7 @@ defer monitor.Stop()
 ```
 
 **Status:**
+
 - `healthy` - All checks passing
 - `unhealthy` - Checks failing above threshold
 - `starting` - Within start period (grace time)
@@ -528,6 +530,7 @@ response, err := logMgr.GetLogs(logs.LogsGetRequest{
 ```
 
 **Benefits:**
+
 - Interface decoupling enables testing and future implementations
 - Circular buffer prevents unbounded memory growth
 - Efficient filtering with timestamp and source
@@ -541,11 +544,13 @@ response, err := logMgr.GetLogs(logs.LogsGetRequest{
 Platform-specific port discovery for process restart coordination.
 
 **Purpose:**
+
 - Discover which TCP ports a process is listening on
 - Wait for ports to be released before restarting processes
 - Avoid "address already in use" errors during restarts
 
 **Platform Support:**
+
 - **Linux:** Reads /proc/net/tcp and /proc/PID/fd/ for accurate port detection
 - **Other platforms:** Returns empty slice (graceful degradation)
 
@@ -584,11 +589,13 @@ for _, port := range ports {
 ```
 
 **Graceful Degradation:**
+
 - Linux: Full port discovery via /proc filesystem
 - Other platforms: Returns empty slice, restarts proceed immediately
 - Port conflicts detected at bind time if discovery unavailable
 
 **Build Tags:**
+
 - `//go:build linux` - Linux-specific implementation
 - `//go:build !linux` - Fallback for all other platforms
 
@@ -600,6 +607,7 @@ for _, port := range ports {
 Security-focused input validation for API requests.
 
 **Purpose:**
+
 - Validate commands for dangerous patterns (rm -rf /, fork bombs, etc.)
 - Validate file paths for traversal attempts and null bytes
 - Validate environment variables (name format, size limits, protected vars)
@@ -607,6 +615,7 @@ Security-focused input validation for API requests.
 - Enforce request limits (timeout, variable count, command length)
 
 **Security Features:**
+
 - **Command safety:** Detects dangerous patterns (rm -rf /, dd, mkfs, fork bombs)
 - **Path validation:** Requires absolute paths, blocks traversal (..), null bytes
 - **Protected variables:** Prevents modification of PATH, HOME, USER, SHELL, etc.
@@ -655,6 +664,7 @@ if err := validation.ValidateProcessStartRequest(req); err != nil {
 ```
 
 **Dangerous Command Patterns:**
+
 - File system destruction: `rm -rf /`, `mkfs.*`, `fdisk`
 - System shutdown: `init 0`, `init 6`, `kill -9 1`
 - Fork bombs: `:(){ :|:& };:`
@@ -662,17 +672,20 @@ if err := validation.ValidateProcessStartRequest(req); err != nil {
 - Low-level operations: `dd if=`
 
 **Protected Environment Variables:**
+
 - PATH, HOME, USER, SHELL, TERM
 - PWD, OLDPWD
 - UID, GID, EUID, EGID
 
 **Size Limits:**
+
 - Environment variable values: 32KB (MaxEnvVarValueSize)
 - Command length: 8KB (MaxCommandLength)
 - Environment variable count: 1000 variables
 - Command timeout: 3600 seconds (1 hour)
 
 **Dependencies:**
+
 - Zero internal dependencies (only stdlib: errors, fmt, slices, strings)
 - Used by: api.go for request validation
 
@@ -957,6 +970,13 @@ slog.Error("process.start.failed",
     "error", err.Error(),
     "command", command)
 ```
+
+**Logging field naming:**
+
+- **dev-supervisor uses snake_case** for field names (`remote_addr`, `working_dir`, `allowed_types`)
+- This differs from the main monorepo which uses camelCase (`remoteAddr`, `workingDir`, `allowedTypes`)
+- Consistency within dev-supervisor is more important than alignment with the monorepo
+- When adding new log fields, follow the snake_case convention used throughout this codebase
 
 **Logging behavior:**
 

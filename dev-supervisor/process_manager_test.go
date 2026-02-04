@@ -675,7 +675,7 @@ func TestProcessManager_WasHealthyBeforeIdle_SetOnIdleStop(t *testing.T) {
 	assert.False(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be false initially")
 
 	// Start a long-running process
-	req := ProcessStartRequest{
+	req := validation.ProcessStartRequest{
 		Command:    "sleep 30",
 		WorkingDir: "/tmp",
 	}
@@ -710,7 +710,7 @@ func TestProcessManager_WasHealthyBeforeIdle_ClearedOnExplicitStop(t *testing.T)
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a long-running process
-	req := ProcessStartRequest{
+	req := validation.ProcessStartRequest{
 		Command:    "sleep 30",
 		WorkingDir: "/tmp",
 	}
@@ -758,7 +758,7 @@ func TestProcessManager_WasHealthyBeforeIdle_ClearedOnStart(t *testing.T) {
 	assert.True(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be true")
 
 	// Start a process
-	req := ProcessStartRequest{
+	req := validation.ProcessStartRequest{
 		Command:    "sleep 5",
 		WorkingDir: "/tmp",
 	}
@@ -780,7 +780,7 @@ func TestProcessManager_WasHealthyBeforeIdle_ClearedOnRestart(t *testing.T) {
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
 	// Start a long-running process
-	req := ProcessStartRequest{
+	req := validation.ProcessStartRequest{
 		Command:    "sleep 30",
 		WorkingDir: "/tmp",
 	}
@@ -819,7 +819,7 @@ func TestProcessManager_WasHealthyBeforeIdle_NotSetOnStopFailure(t *testing.T) {
 	assert.False(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should remain false after failed stop")
 
 	// Start a process, then stop it explicitly, then try stopForIdle
-	req := ProcessStartRequest{
+	req := validation.ProcessStartRequest{
 		Command:    "sleep 30",
 		WorkingDir: "/tmp",
 	}
