@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
-import { buildLitellmMetadataFromContext, isGrantsExhausted, LlmCallSource, GrantErrorCode, SpecialSubscriptionId } from '../build-metadata'
-import { grantSessionManager } from '../grant-session-manager'
-import { GrantType, type CreditGrant } from '../types'
+import { buildLitellmMetadataFromContext, isGrantsExhausted, LlmCallSource, GrantErrorCode, SpecialSubscriptionId } from '../build-metadata.js'
+import { grantSessionManager } from '../grant-session-manager.js'
+import { GrantType, type CreditGrant } from '../types.js'
 
 describe('build-metadata', function tests() {
   function createGrant(overrides: Partial<CreditGrant> = {}): CreditGrant {

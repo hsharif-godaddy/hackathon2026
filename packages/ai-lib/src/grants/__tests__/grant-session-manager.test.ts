@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 
-import { GrantSessionManager } from '../grant-session-manager'
-import { GrantType, GrantFinalState, type CreditGrant } from '../types'
+import { GrantSessionManager } from '../grant-session-manager.js'
+import { GrantType, GrantFinalState, type CreditGrant } from '../types.js'
 
 describe('grant-session-manager', function tests() {
   let sessionManager: GrantSessionManager

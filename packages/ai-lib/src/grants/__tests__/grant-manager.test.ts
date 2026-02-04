@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
-import { GrantManager, GrantUnusableReason } from '../grant-manager'
-import { GrantType, GrantFinalState, type CreditGrant } from '../types'
+import { GrantManager, GrantUnusableReason } from '../grant-manager.js'
+import { GrantType, GrantFinalState, type CreditGrant } from '../types.js'
 
 describe('grant-manager', function grantManagerTests() {
   function createGrant(overrides: Partial<CreditGrant> = {}): CreditGrant {
