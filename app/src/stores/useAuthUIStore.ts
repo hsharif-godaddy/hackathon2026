@@ -26,6 +26,8 @@ interface AuthUIStore {
   loginUrl: string | null;
   /** Additional metadata from the 401 response */
   authMetadata: AuthResponseMetadata | null;
+  /** Sequence incremented every time needsReauth is set */
+  needsReauthSeq: number;
   /**
    * URL to redirect to after successful authentication
    * Captured when SSO modal opens to return user to their original page
@@ -47,7 +49,7 @@ interface AuthUIStore {
    */
   setNeedsReauth: (reason: AuthRequiredReason, loginUrl?: string, metadata?: AuthResponseMetadata) => void;
   /** Clear the auth required state (called after successful login or user dismisses) */
-  clearNeedsReauth: () => void;
+  clearNeedsReauth: (expectedSeq?: number) => void;
   /** Convenience: redirect to login URL if set */
   redirectToLogin: () => void;
   /** Set URL to redirect to after successful authentication */
@@ -90,6 +92,7 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
   reauthReason: null,
   loginUrl: null,
   authMetadata: null,
+  needsReauthSeq: 0,
   redirectUrl: null,
 
   // SSO Modal Actions
@@ -102,19 +105,25 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
   setSsoLoaded: () => set({ isSsoLoading: false }),
 
   // Auth Boundary Actions
-  setNeedsReauth: (reason, loginUrl, metadata) => set({
+  setNeedsReauth: (reason, loginUrl, metadata) => set((state) => ({
     needsReauth: true,
     reauthReason: reason,
     loginUrl: loginUrl ?? null,
-    authMetadata: metadata ?? null
-  }),
+    authMetadata: metadata ?? null,
+    needsReauthSeq: state.needsReauthSeq + 1
+  })),
 
-  clearNeedsReauth: () => set({
-    needsReauth: false,
-    reauthReason: null,
-    loginUrl: null,
-    authMetadata: null,
-    redirectUrl: null  // Clear redirect URL when clearing auth state
+  clearNeedsReauth: (expectedSeq) => set((state) => {
+    if (expectedSeq !== undefined && expectedSeq !== state.needsReauthSeq) {
+      return state;
+    }
+    return {
+      needsReauth: false,
+      reauthReason: null,
+      loginUrl: null,
+      authMetadata: null,
+      redirectUrl: null  // Clear redirect URL when clearing auth state
+    };
   }),
 
   redirectToLogin: () => {
@@ -126,4 +135,3 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
 
   setRedirectUrl: (url) => set({ redirectUrl: url })
 }));
-

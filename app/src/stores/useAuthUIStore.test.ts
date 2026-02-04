@@ -14,6 +14,7 @@ describe('useAuthUIStore', () => {
         reauthReason: null,
         loginUrl: null,
         authMetadata: null,
+        needsReauthSeq: 0,
       });
     });
   });
@@ -126,6 +127,78 @@ describe('useAuthUIStore', () => {
       });
 
       expect(useAuthUIStore.getState().reauthReason).toBe('not_authenticated');
+    });
+
+    it('should increment needsReauthSeq on each setNeedsReauth', () => {
+      expect(useAuthUIStore.getState().needsReauthSeq).toBe(0);
+
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('session_expired');
+      });
+      expect(useAuthUIStore.getState().needsReauthSeq).toBe(1);
+
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('session_stale');
+      });
+      expect(useAuthUIStore.getState().needsReauthSeq).toBe(2);
+
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
+      });
+      expect(useAuthUIStore.getState().needsReauthSeq).toBe(3);
+    });
+
+    it('should not clear when expectedSeq does not match', () => {
+      // Set needsReauth (increments seq to 1)
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('session_expired');
+      });
+      expect(useAuthUIStore.getState().needsReauthSeq).toBe(1);
+      expect(useAuthUIStore.getState().needsReauth).toBe(true);
+
+      // Try to clear with old seq (0) - should be no-op
+      act(() => {
+        useAuthUIStore.getState().clearNeedsReauth(0);
+      });
+
+      const state = useAuthUIStore.getState();
+      expect(state.needsReauth).toBe(true);
+      expect(state.reauthReason).toBe('session_expired');
+      expect(state.needsReauthSeq).toBe(1);
+    });
+
+    it('should clear when expectedSeq matches', () => {
+      // Set needsReauth (increments seq to 1)
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('session_expired');
+      });
+      expect(useAuthUIStore.getState().needsReauthSeq).toBe(1);
+
+      // Clear with correct seq (1) - should succeed
+      act(() => {
+        useAuthUIStore.getState().clearNeedsReauth(1);
+      });
+
+      const state = useAuthUIStore.getState();
+      expect(state.needsReauth).toBe(false);
+      expect(state.reauthReason).toBeNull();
+      // Note: seq is not reset on clear, it continues to increment
+      expect(state.needsReauthSeq).toBe(1);
+    });
+
+    it('should clear when expectedSeq is undefined (unconditional clear)', () => {
+      // Set needsReauth
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('session_expired');
+      });
+      expect(useAuthUIStore.getState().needsReauth).toBe(true);
+
+      // Clear without expectedSeq - should always succeed
+      act(() => {
+        useAuthUIStore.getState().clearNeedsReauth();
+      });
+
+      expect(useAuthUIStore.getState().needsReauth).toBe(false);
     });
   });
 });

@@ -4,6 +4,7 @@ import { AuthIdpType, AuthRealmType, AuthRiskType, useAuthState } from '@godaddy
 import { useMockAuth } from '@/hooks/useMockAuth';
 import { auth, authUtils } from '@/lib/features';
 import { logger } from '@/lib/request-context';
+import { useAuthUIStore } from '@/stores/useAuthUIStore';
 
 interface AppConfig {
   auth: {
@@ -143,6 +144,10 @@ export function useAuth(options: UseAuthOptions = {}) {
         return;
       }
 
+      // Capture sequence before validation starts to detect concurrent 401s
+      // If a 401 arrives during validation, the sequence will increment and
+      // clearNeedsReauth() will become a no-op to preserve the fresh 401 state
+      const needsReauthSeqAtStart = useAuthUIStore.getState().needsReauthSeq;
       // Generate unique request ID to track latest request
       const requestId = ++latestValidationRequestIdRef.current;
       isValidatingRef.current = true;
@@ -163,6 +168,15 @@ export function useAuth(options: UseAuthOptions = {}) {
         if (response.ok) {
           const data = await response.json();
           setJwtAuthValid(data.valid);
+
+          // If auth is valid, clear any needsReauth flag that may have been set by a previous 401
+          // This handles cases where:
+          // 1. Transient network issues caused a 401 but auth is actually still valid
+          // 2. Auth was refreshed in another tab and is now valid again
+          // 3. User manually refreshed their session outside of the SSO modal
+          if (data.valid) {
+            useAuthUIStore.getState().clearNeedsReauth(needsReauthSeqAtStart);
+          }
         } else {
           // Auth validation failed - user is not authenticated
           // On pages that allow unauthenticated access, this is fine - just show unauthed UI
