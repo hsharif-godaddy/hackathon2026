@@ -238,7 +238,7 @@ export default function CodeSearch({ appId, files, onResultClick }: CodeSearchPr
         <>
           <div className="px-1.5 py-0.5 text-xs opacity-75">
             {totalMatches} {totalMatches === 1 ? t('builder_code_search_result') : t('builder_code_search_results')}
-            {truncated && ` (${t('builder_code_search_showing_first')} 100)`}
+            {truncated && ` (${t('builder_code_search_showing_first', { count: 100 })})`}
           </div>
 
           <div className="max-h-64 overflow-y-auto">
