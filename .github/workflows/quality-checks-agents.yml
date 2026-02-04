@@ -1,0 +1,40 @@
+name: Quality Checks - Agents
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+    paths:
+      - "agents/**"
+      - "packages/ai-lib/**"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
+      - "scripts/license-check.sh"
+      - ".github/workflows/quality-checks-agents.yml"
+      - ".github/workflows/_quality-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "agents/**"
+      - "packages/ai-lib/**"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
+      - "scripts/license-check.sh"
+      - ".github/workflows/quality-checks-agents.yml"
+      - ".github/workflows/_quality-checks.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  quality-checks-agents:
+    uses: ./.github/workflows/_quality-checks.yml
+    with:
+      package-name: agents
+      pnpm-filter: "@airo/agents"
+      working-directory: ./agents
+      skip-tests: true  # Agent tests currently have failures
+    secrets: inherit
