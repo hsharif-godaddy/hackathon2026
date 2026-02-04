@@ -1,0 +1,34 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - revive
+    - gosec
+    - gocritic
+    - gocyclo
+    - goconst
+    - lll
+  exclusions:
+    rules:
+      # Allow higher cyclomatic complexity in test files
+      - path: _test\.go
+        linters:
+          - gocyclo
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  lll:
+    line-length: 120
+  govet:
+    disable:
+      - fieldalignment
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

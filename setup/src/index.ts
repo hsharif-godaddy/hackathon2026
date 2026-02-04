@@ -109,6 +109,7 @@ async function selectiveConfiguration(): Promise<void> {
       { name: '🔒 Setup Development CA (SSL Certificates)', value: 'ca-setup' },
       { name: '📱 Configure App Environment (.env)', value: 'app-env' },
       { name: '🤖 Configure Agents Environment (.env)', value: 'agents-env' },
+      { name: '🔎 Configure Image Search Service (.env)', value: 'image-search-env' },
       { name: '🔐 Generate JWT Keys', value: 'jwt-keys' },
       { name: '🖼️  Configure Getty Images Proxy', value: 'getty-config' },
       { name: '📚 Configure KnowB Knowledge Base', value: 'knowb-config' },
@@ -151,6 +152,9 @@ async function selectiveConfiguration(): Promise<void> {
           break;
         case 'agents-env':
           await envGenerator.generateAgentsEnv();
+          break;
+        case 'image-search-env':
+          await envGenerator.generateImageSearchEnv();
           break;
         case 'jwt-keys':
           await jwtGenerator.generateAndConfigureKeys();
@@ -264,6 +268,7 @@ async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyC
   // Check .env files
   const appEnvPath = path.join(projectRoot, 'app', '.env');
   const agentsEnvPath = path.join(projectRoot, 'agents', '.env');
+  const imageSearchEnvPath = path.join(projectRoot, 'image-search-service', '.env');
 
   console.log(chalk.blue('📄 Configuration Files:'));
   if (await fs.pathExists(appEnvPath)) {
@@ -276,6 +281,12 @@ async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyC
     console.log(chalk.green('  ✅ agents/.env exists'));
   } else {
     console.log(chalk.red('  ❌ agents/.env missing'));
+  }
+
+  if (await fs.pathExists(imageSearchEnvPath)) {
+    console.log(chalk.green('  ✅ image-search-service/.env exists'));
+  } else {
+    console.log(chalk.yellow('  ⚠️  image-search-service/.env missing (optional)'));
   }
 
   console.log('');

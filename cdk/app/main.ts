@@ -5,6 +5,7 @@ import { MySQLV2Stack } from "../lib/mysql-v2-stack";
 import { AiroJWTKeyStack } from "../lib/airo-jwt-key-stack";
 import { MonitoringStack } from '../lib/monitoring-stack';
 import { GocaasSpendLambdaStack } from "../lib/gocaas-spend-lambda-stack";
+import { ImageSearchStack } from "../lib/image-search-stack";
 
 /**
  * Main function to execute the CDK app
@@ -38,6 +39,9 @@ async function main() {
 
   // Create GoCode Spend ESSP Lambda stack
   new GocaasSpendLambdaStack(app, 'GocaasSpendLambdaStack', { env });
+
+  // Create Image Search Service infrastructure (S3 bucket for analysis cache)
+  new ImageSearchStack(app, 'ImageSearchStack', { env });
 
   app.synth();
 }

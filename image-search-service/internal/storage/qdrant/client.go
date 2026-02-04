@@ -1,0 +1,452 @@
+// Package qdrant provides a client for interacting with Qdrant vector database
+// for hybrid vector and metadata search of image analyses.
+package qdrant
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"strconv"
+	"time"
+
+	"github.com/qdrant/go-client/qdrant"
+
+	"github.com/airo-ai-builder/image-search-service/internal/config"
+	"github.com/airo-ai-builder/image-search-service/pkg/models"
+)
+
+// Client provides methods for storing and searching image analyses in Qdrant.
+type Client struct {
+	client     *qdrant.Client
+	collection string
+}
+
+// New creates a new Qdrant client with the provided configuration.
+func New(cfg *config.Config) (*Client, error) {
+	qdrantConfig := &qdrant.Config{
+		Host: cfg.QdrantHost,
+		Port: cfg.QdrantPort,
+	}
+
+	if cfg.QdrantAPIKey != "" {
+		qdrantConfig.APIKey = cfg.QdrantAPIKey
+		qdrantConfig.UseTLS = true
+	}
+
+	client, err := qdrant.NewClient(qdrantConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create qdrant client: %w", err)
+	}
+
+	return &Client{
+		client:     client,
+		collection: cfg.QdrantCollection,
+	}, nil
+}
+
+// Close closes the Qdrant client connection.
+func (c *Client) Close() error {
+	return c.client.Close()
+}
+
+// EnsureCollection creates the collection if it doesn't exist.
+// Uses 1536 dimensions for text-embedding-3-small and cosine distance.
+func (c *Client) EnsureCollection(ctx context.Context) error {
+	// Check if collection exists
+	exists, err := c.client.CollectionExists(ctx, c.collection)
+	if err != nil {
+		return fmt.Errorf("failed to check collection existence: %w", err)
+	}
+
+	if exists {
+		// Log collection info
+		info, err := c.client.GetCollectionInfo(ctx, c.collection)
+		if err != nil {
+			slog.Warn("qdrant.collection.info.failed", "error", err)
+		} else {
+			slog.Debug("qdrant.collection.exists", "collection", c.collection, "pointsCount", info.PointsCount, "status", info.Status.String())
+		}
+		return nil
+	}
+
+	// Create collection with vector config for text-embedding-3-small (1536 dimensions)
+	err = c.client.CreateCollection(ctx, &qdrant.CreateCollection{
+		CollectionName: c.collection,
+		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
+			Size:     1536,
+			Distance: qdrant.Distance_Cosine,
+		}),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create collection: %w", err)
+	}
+
+	// Create payload indexes for filterable fields
+	indexFields := []string{
+		"aspectRatioCategory",
+		"subjectCategory",
+		"peopleCount",
+		"peopleFocus",
+		"tone",
+		"copySpaceAmount",
+		"copySpaceLocation",
+		"colorMood",
+		"composition",
+		"usageContext",
+		"backgroundType",
+		"visualComplexity",
+	}
+
+	for _, field := range indexFields {
+		_, err = c.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+			CollectionName: c.collection,
+			FieldName:      field,
+			FieldType:      qdrant.PtrOf(qdrant.FieldType_FieldTypeKeyword),
+		})
+		if err != nil {
+			// Log but don't fail - indexes are optimization, not required
+			fmt.Printf("warning: failed to create index for %s: %v\n", field, err)
+		}
+	}
+
+	return nil
+}
+
+// Search performs a vector similarity search with optional metadata filters.
+func (c *Client) Search(
+	ctx context.Context,
+	embedding []float32,
+	filters models.SearchFilters,
+	limit int,
+) ([]*models.ImageAnalysis, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	// Ensure limit is non-negative before conversion to uint64
+	queryRequest := &qdrant.QueryPoints{
+		CollectionName: c.collection,
+		Query:          qdrant.NewQueryDense(embedding),
+		Limit:          qdrant.PtrOf(uint64(limit)), //nolint:gosec // limit is validated above
+		WithPayload:    qdrant.NewWithPayload(true),
+	}
+
+	filter := buildFilters(filters)
+	if filter != nil {
+		queryRequest.Filter = filter
+	}
+
+	results, err := c.client.Query(ctx, queryRequest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search qdrant: %w", err)
+	}
+
+	analyses := make([]*models.ImageAnalysis, 0, len(results))
+	for _, point := range results {
+		analysis := payloadToAnalysis(point.Payload, point.Score)
+		if analysis != nil {
+			analyses = append(analyses, analysis)
+		}
+	}
+
+	return analyses, nil
+}
+
+// GetByIDs retrieves image analyses by their Getty IDs.
+func (c *Client) GetByIDs(ctx context.Context, gettyIDs []string) (map[string]*models.ImageAnalysis, error) {
+	if len(gettyIDs) == 0 {
+		return make(map[string]*models.ImageAnalysis), nil
+	}
+
+	pointIDs := make([]*qdrant.PointId, 0, len(gettyIDs))
+	numericIDs := make([]uint64, 0, len(gettyIDs))
+	for _, id := range gettyIDs {
+		numID, err := gettyIDToPointID(id)
+		if err != nil {
+			slog.Debug("qdrant.getbyids.skip.invalid", "gettyId", id, "error", err)
+			continue
+		}
+		pointIDs = append(pointIDs, qdrant.NewIDNum(numID))
+		numericIDs = append(numericIDs, numID)
+	}
+
+	if len(pointIDs) == 0 {
+		return make(map[string]*models.ImageAnalysis), nil
+	}
+
+	sampleCount := 3
+	if len(numericIDs) < sampleCount {
+		sampleCount = len(numericIDs)
+	}
+	slog.Debug("qdrant.getbyids.request", "collection", c.collection, "count", len(pointIDs), "sampleIds", numericIDs[:sampleCount])
+
+	points, err := c.client.Get(ctx, &qdrant.GetPoints{
+		CollectionName: c.collection,
+		Ids:            pointIDs,
+		WithPayload:    qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get points from qdrant: %w", err)
+	}
+
+	slog.Debug("qdrant.getbyids.response", "requested", len(pointIDs), "found", len(points))
+
+	result := make(map[string]*models.ImageAnalysis, len(points))
+	for _, point := range points {
+		analysis := payloadToAnalysis(point.Payload, 0)
+		if analysis != nil {
+			result[analysis.GettyID] = analysis
+		}
+	}
+
+	return result, nil
+}
+
+// ExpectedEmbeddingDimension is the expected dimension for embeddings (text-embedding-3-small).
+const ExpectedEmbeddingDimension = 1536
+
+// Upsert inserts or updates an image analysis in Qdrant.
+func (c *Client) Upsert(ctx context.Context, analysis *models.ImageAnalysis) error {
+	if analysis == nil {
+		return fmt.Errorf("analysis cannot be nil")
+	}
+
+	if len(analysis.Embedding) == 0 {
+		return fmt.Errorf("analysis must have an embedding")
+	}
+
+	if len(analysis.Embedding) != ExpectedEmbeddingDimension {
+		return fmt.Errorf("embedding dimension mismatch: got %d, expected %d", len(analysis.Embedding), ExpectedEmbeddingDimension)
+	}
+
+	pointID, err := gettyIDToPointID(analysis.GettyID)
+	if err != nil {
+		return fmt.Errorf("invalid Getty ID %q: %w", analysis.GettyID, err)
+	}
+
+	payload := analysisToPayload(analysis)
+
+	slog.Debug("qdrant.upsert.request", "collection", c.collection, "gettyId", analysis.GettyID, "pointId", pointID, "embeddingLen", len(analysis.Embedding))
+
+	_, err = c.client.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: c.collection,
+		Points: []*qdrant.PointStruct{
+			{
+				Id:      qdrant.NewIDNum(pointID),
+				Vectors: qdrant.NewVectorsDense(analysis.Embedding),
+				Payload: payload,
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to upsert point to qdrant: %w", err)
+	}
+
+	slog.Debug("qdrant.upsert.success", "gettyId", analysis.GettyID, "pointId", pointID)
+
+	return nil
+}
+
+// gettyIDToPointID converts a Getty ID string to a numeric point ID.
+// Getty IDs are numeric strings, so we parse them directly as uint64.
+func gettyIDToPointID(gettyID string) (uint64, error) {
+	return strconv.ParseUint(gettyID, 10, 64)
+}
+
+// buildFilters converts SearchFilters to a Qdrant filter.
+func buildFilters(filters models.SearchFilters) *qdrant.Filter {
+	var conditions []*qdrant.Condition
+
+	if len(filters.Orientations) > 0 {
+		conditions = append(conditions, qdrant.NewMatchKeywords("aspectRatioCategory", filters.Orientations...))
+	}
+	if len(filters.SubjectCategory) > 0 {
+		conditions = append(conditions, qdrant.NewMatchKeywords("subjectCategory", filters.SubjectCategory...))
+	}
+	if len(filters.PeopleCount) > 0 {
+		conditions = append(conditions, qdrant.NewMatchKeywords("peopleCount", filters.PeopleCount...))
+	}
+	if len(filters.PeopleFocus) > 0 {
+		conditions = append(conditions, qdrant.NewMatchKeywords("peopleFocus", filters.PeopleFocus...))
+	}
+	if len(filters.Tone) > 0 {
+		conditions = append(conditions, qdrant.NewMatchKeywords("tone", filters.Tone...))
+	}
+	if len(filters.CopySpaceAmount) > 0 {
+		conditions = append(conditions, qdrant.NewMatchKeywords("copySpaceAmount", filters.CopySpaceAmount...))
+	}
+	if len(filters.CopySpaceLocation) > 0 {
+		conditions = append(conditions, qdrant.NewMatchKeywords("copySpaceLocation", filters.CopySpaceLocation...))
+	}
+	if len(filters.ColorMood) > 0 {
+		conditions = append(conditions, qdrant.NewMatchKeywords("colorMood", filters.ColorMood...))
+	}
+	if len(filters.Composition) > 0 {
+		conditions = append(conditions, qdrant.NewMatchKeywords("composition", filters.Composition...))
+	}
+	if len(filters.UsageContext) > 0 {
+		conditions = append(conditions, qdrant.NewMatchKeywords("usageContext", filters.UsageContext...))
+	}
+	if len(filters.BackgroundType) > 0 {
+		conditions = append(conditions, qdrant.NewMatchKeywords("backgroundType", filters.BackgroundType...))
+	}
+	if len(filters.VisualComplexity) > 0 {
+		conditions = append(conditions, qdrant.NewMatchKeywords("visualComplexity", filters.VisualComplexity...))
+	}
+
+	if len(conditions) == 0 {
+		return nil
+	}
+
+	return &qdrant.Filter{
+		Must: conditions,
+	}
+}
+
+// analysisToPayload converts an ImageAnalysis to a Qdrant payload map.
+func analysisToPayload(a *models.ImageAnalysis) map[string]*qdrant.Value {
+	payload := map[string]any{
+		"gettyId":             a.GettyID,
+		"title":               a.Title,
+		"caption":             a.Caption,
+		"width":               a.Dimensions.Width,
+		"height":              a.Dimensions.Height,
+		"thumbnailUrl":        a.URLs.Thumbnail,
+		"previewUrl":          a.URLs.Preview,
+		"highResUrl":          a.URLs.HighRes,
+		"primarySubject":      a.PrimarySubject,
+		"subjectCategory":     string(a.SubjectCategory),
+		"activity":            string(a.Activity),
+		"settingType":         string(a.SettingType),
+		"dominantColors":      toInterfaceSlice(a.DominantColors),
+		"colorMood":           string(a.ColorMood),
+		"textSafeColors":      string(a.TextSafeColors),
+		"backgroundType":      string(a.BackgroundType),
+		"composition":         string(a.Composition),
+		"copySpaceLocation":   string(a.CopySpaceLocation),
+		"copySpaceAmount":     string(a.CopySpaceAmount),
+		"visualComplexity":    string(a.VisualComplexity),
+		"peopleCount":         string(a.PeopleCount),
+		"peopleFocus":         string(a.PeopleFocus),
+		"tone":                toInterfaceSlice(a.Tone),
+		"usageContext":        toInterfaceSlice(a.UsageContext),
+		"authenticityStyle":   string(a.AuthenticityStyle),
+		"aspectRatioCategory": string(a.AspectRatioCategory),
+		"description":         a.Description,
+		"searchTerms":         toInterfaceSlice(a.SearchTerms),
+		"analyzedAt":          a.AnalyzedAt.Format(time.RFC3339),
+		"analysisVersion":     a.AnalysisVersion,
+	}
+
+	return qdrant.NewValueMap(payload)
+}
+
+// payloadToAnalysis converts a Qdrant payload to an ImageAnalysis.
+func payloadToAnalysis(payload map[string]*qdrant.Value, _ float32) *models.ImageAnalysis {
+	if payload == nil {
+		return nil
+	}
+
+	analysis := &models.ImageAnalysis{}
+
+	// Core identification
+	analysis.GettyID = getStringValue(payload, "gettyId")
+	analysis.Title = getStringValue(payload, "title")
+	analysis.Caption = getStringValue(payload, "caption")
+	analysis.Dimensions = models.ImageDimensions{
+		Width:  getIntValue(payload, "width"),
+		Height: getIntValue(payload, "height"),
+	}
+	analysis.URLs = models.ImageURLs{
+		Thumbnail: getStringValue(payload, "thumbnailUrl"),
+		Preview:   getStringValue(payload, "previewUrl"),
+		HighRes:   getStringValue(payload, "highResUrl"),
+	}
+
+	// Subject Focus
+	analysis.PrimarySubject = getStringValue(payload, "primarySubject")
+	analysis.SubjectCategory = models.SubjectCategory(getStringValue(payload, "subjectCategory"))
+	analysis.Activity = models.Activity(getStringValue(payload, "activity"))
+	analysis.SettingType = models.SettingType(getStringValue(payload, "settingType"))
+
+	// Color
+	analysis.DominantColors = getStringSlice(payload, "dominantColors")
+	analysis.ColorMood = models.ColorMood(getStringValue(payload, "colorMood"))
+	analysis.TextSafeColors = models.TextSafeColors(getStringValue(payload, "textSafeColors"))
+	analysis.BackgroundType = models.BackgroundType(getStringValue(payload, "backgroundType"))
+
+	// Composition
+	analysis.Composition = models.Composition(getStringValue(payload, "composition"))
+	analysis.CopySpaceLocation = models.CopySpaceLocation(getStringValue(payload, "copySpaceLocation"))
+	analysis.CopySpaceAmount = models.CopySpaceAmount(getStringValue(payload, "copySpaceAmount"))
+	analysis.VisualComplexity = models.VisualComplexity(getStringValue(payload, "visualComplexity"))
+
+	// People
+	analysis.PeopleCount = models.PeopleCount(getStringValue(payload, "peopleCount"))
+	analysis.PeopleFocus = models.PeopleFocus(getStringValue(payload, "peopleFocus"))
+
+	// Mood & Style
+	analysis.Tone = getStringSlice(payload, "tone")
+	analysis.UsageContext = getStringSlice(payload, "usageContext")
+	analysis.AuthenticityStyle = models.AuthenticityStyle(getStringValue(payload, "authenticityStyle"))
+
+	// Programmatic
+	analysis.AspectRatioCategory = models.AspectRatioCategory(getStringValue(payload, "aspectRatioCategory"))
+
+	// Content
+	analysis.Description = getStringValue(payload, "description")
+	analysis.SearchTerms = getStringSlice(payload, "searchTerms")
+
+	// Metadata
+	if analyzedAtStr := getStringValue(payload, "analyzedAt"); analyzedAtStr != "" {
+		if t, err := time.Parse(time.RFC3339, analyzedAtStr); err == nil {
+			analysis.AnalyzedAt = t
+		}
+	}
+	analysis.AnalysisVersion = getStringValue(payload, "analysisVersion")
+
+	return analysis
+}
+
+// Helper functions for extracting values from Qdrant payload
+
+func getStringValue(payload map[string]*qdrant.Value, key string) string {
+	if v, ok := payload[key]; ok {
+		if sv, ok := v.Kind.(*qdrant.Value_StringValue); ok {
+			return sv.StringValue
+		}
+	}
+	return ""
+}
+
+func getIntValue(payload map[string]*qdrant.Value, key string) int {
+	if v, ok := payload[key]; ok {
+		if iv, ok := v.Kind.(*qdrant.Value_IntegerValue); ok {
+			return int(iv.IntegerValue)
+		}
+	}
+	return 0
+}
+
+func getStringSlice(payload map[string]*qdrant.Value, key string) []string {
+	if v, ok := payload[key]; ok {
+		if lv, ok := v.Kind.(*qdrant.Value_ListValue); ok {
+			result := make([]string, 0, len(lv.ListValue.Values))
+			for _, item := range lv.ListValue.Values {
+				if sv, ok := item.Kind.(*qdrant.Value_StringValue); ok {
+					result = append(result, sv.StringValue)
+				}
+			}
+			return result
+		}
+	}
+	return nil
+}
+
+func toInterfaceSlice(s []string) []interface{} {
+	result := make([]interface{}, len(s))
+	for i, v := range s {
+		result[i] = v
+	}
+	return result
+}

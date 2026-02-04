@@ -36,7 +36,17 @@
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write src",
     "format:check": "prettier --check src",
-    "devtools": "npx @ai-sdk/devtools"
+    "devtools": "npx @ai-sdk/devtools",
+    "eval:fetch": "tsx scripts/image-analysis-eval/fetch-test-images.ts",
+    "eval:analyze": "tsx scripts/image-analysis-eval/run-analysis.ts",
+    "eval:report": "tsx scripts/image-analysis-eval/generate-report.ts",
+    "eval:viewer": "npx serve scripts/image-analysis-eval -p 3333",
+    "eval:load": "tsx scripts/image-analysis-eval/load-to-qdrant.ts",
+    "eval:search": "tsx scripts/image-analysis-eval/test-search.ts",
+    "eval:quick": "tsx scripts/image-analysis-eval/quick-import.ts --",
+    "eval:all": "pnpm eval:fetch && pnpm eval:analyze && pnpm eval:report",
+    "eval:fetch:websites": "tsx scripts/image-analysis-eval/fetch-test-images.ts -- --input=test-images-websites.json --output=fetched-images-websites.json",
+    "eval:analyze:websites": "tsx scripts/image-analysis-eval/run-analysis.ts -- --input=fetched-images-websites.json --output=analysis-results-websites.json"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.12",

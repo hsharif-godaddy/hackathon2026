@@ -10,12 +10,9 @@ dist/
 build/
 
 # Environment files
- .env
- .env.local
--.env.development.local
--.env.test.local
--.env.production.local
-+# Note: .env.local.{dev|test|prod} are NOT ignored - they're environment configs (no secrets)
+.env
+.env.local
+# Note: .env.local.{dev|test|prod} are NOT ignored - they're environment configs (no secrets)
 
 # IDE
 .vscode/
@@ -41,3 +38,7 @@ coverage/
 # Local dbs
 data/
 .devtools/
+
+# Generated eval data (fetched images and analysis results)
+scripts/image-analysis-eval/fetched-images*.json
+scripts/image-analysis-eval/analysis-results*.json
