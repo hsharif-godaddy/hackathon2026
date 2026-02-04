@@ -21,7 +21,7 @@ describe('Develop Page - Chat', () => {
   let appId: string;
 
   before(function createIsolatedApp() {
-    cy.setupIsolatedApp(SPEC_PREFIX, 'Hello world app').then((id) => {
+    cy.setupIsolatedApp(SPEC_PREFIX, 'Single page app that displays hello world do not ask follow up questions and make it quickly').then((id) => {
       appId = id;
     });
   });

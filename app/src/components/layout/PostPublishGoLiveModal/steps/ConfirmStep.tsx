@@ -77,8 +77,8 @@ export function ConfirmStep({ onConfirm, onCancel }: ConfirmStepProps) {
       </div>
 
       <div className="flex justify-end gap-2 pt-2">
-        <Button design="secondary" text={t('golive_confirm_button_cancel')} size="md" onClick={onCancel} />
-        <Button design="primary" text={t('golive_confirm_button_confirm')} size="md" onClick={onConfirm} />
+        <Button design="secondary" text={t('golive_confirm_button_cancel')} size="md" onClick={onCancel} data-testid="go-live-modal-skip" />
+        <Button design="primary" text={t('golive_confirm_button_confirm')} size="md" onClick={onConfirm} data-testid="go-live-modal-confirm" />
       </div>
     </div>
   );

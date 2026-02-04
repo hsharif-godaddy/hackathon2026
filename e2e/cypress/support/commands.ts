@@ -554,6 +554,38 @@ Cypress.Commands.add('pollDeploymentStatus', (
   return cy.get<DeploymentPollResult>('@deploymentPollResult');
 });
 
+/**
+ * Dismiss the "Ready to Go Live?" modal if it appears after first publish.
+ * Waits briefly for modal to appear, then dismisses if found.
+ * Returns true if modal was dismissed, false if it didn't appear.
+ *
+ * @param waitTime - Time to wait for modal to appear (default: 20000ms)
+ * @example cy.dismissGoLiveModalIfPresent()
+ * @example cy.dismissGoLiveModalIfPresent(30000)
+ */
+Cypress.Commands.add('dismissGoLiveModalIfPresent', (waitTime = 20000) => {
+  // Wait for modal to potentially appear
+  cy.wait(waitTime);
+
+  // Check if modal exists and dismiss if found
+  return cy.get('body').then(($body) => {
+    if ($body.find('[data-testid="go-live-modal-skip"]').length > 0) {
+      cy.get('[data-testid="go-live-modal-skip"]')
+        .should('be.visible')
+        .click();
+
+      // Verify modal is dismissed
+      cy.get('[data-testid="go-live-modal-skip"]', { timeout: 5000 })
+        .should('not.exist');
+
+      cy.log('✓ Dismissed Go Live modal (first publish)');
+      return cy.wrap(true);
+    }
+    cy.log('ℹ No Go Live modal appeared (republish or already gone live)');
+    return cy.wrap(false);
+  });
+});
+
 // Extend Cypress namespace for TypeScript support
 declare global {
   namespace Cypress {
@@ -716,6 +748,16 @@ declare global {
         pollInterval: number,
         maxWaitTime: number
       ): Chainable<{ success: boolean; deploymentId: string; status: string }>;
+
+      /**
+       * Dismiss the "Ready to Go Live?" modal if it appears after first publish
+       * Waits briefly for modal to appear, then dismisses if found
+       * @param waitTime - Time to wait for modal to appear (default: 20000ms)
+       * @returns true if modal was dismissed, false if it didn't appear
+       * @example cy.dismissGoLiveModalIfPresent()
+       * @example cy.dismissGoLiveModalIfPresent(30000)
+       */
+      dismissGoLiveModalIfPresent(waitTime?: number): Chainable<boolean>;
     }
   }
 }

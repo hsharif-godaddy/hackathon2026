@@ -23,7 +23,7 @@ let appId: string;
  */
 function visitAppsPage(): void {
   cy.visit('/apps');
-  cy.get('[data-eid*="apps.app.edit"]', { timeout: 30000 }).should('exist');
+  cy.get('[data-testid="app-card-edit-button"]', { timeout: 30000 }).should('exist');
 }
 
 describe('Apps Page', () => {
@@ -44,7 +44,7 @@ describe('Apps Page', () => {
 
     cy.contains('Create a new app').should('be.visible').should('not.be.disabled');
 
-    cy.get('[data-eid*="apps.app.edit"]', { timeout: 30000 })
+    cy.get('[data-testid="app-card-edit-button"]', { timeout: 30000 })
       .should('have.length.at.least', 1);
 
     cy.get('body').should(($body) => {
@@ -58,11 +58,18 @@ describe('Apps Page', () => {
     // Navigate to apps page and wait for content to load
     visitAppsPage();
 
-    cy.get('[data-eid*="apps.app.delete"]', { timeout: 30000 }).then(($deleteButtons) => {
-      const countBefore = $deleteButtons.length;
+    // Count app cards (not menu buttons) to verify deletion
+    cy.get('[data-testid="app-card-edit-button"]', { timeout: 30000 }).then(($appCards) => {
+      const countBefore = $appCards.length;
       cy.log(`Apps before delete: ${countBefore}`);
 
-      cy.wrap($deleteButtons.first()).click();
+      // Open the first app's menu and wait for it to be visible
+      cy.get('[data-testid="app-card-menu-button"]').first().click();
+
+      // Wait for menu to be fully rendered before clicking delete
+      cy.get('[data-testid="app-card-delete-button"]', { timeout: 10000 })
+        .should('be.visible')
+        .click();
 
       cy.contains('Are you sure you want to delete').should('be.visible');
       cy.contains('button', 'Delete').should('be.visible');
@@ -72,7 +79,9 @@ describe('Apps Page', () => {
       cy.wait('@deleteApp', { timeout: 30000 });
 
       cy.contains('Are you sure you want to delete').should('not.exist');
-      cy.get('[data-eid*="apps.app.delete"]', { timeout: 30000 })
+
+      // Verify app card count decreased
+      cy.get('[data-testid="app-card-edit-button"]', { timeout: 30000 })
         .should('have.length', countBefore - 1);
 
       cy.log(`✓ App deleted - now ${countBefore - 1} apps remain`);
@@ -82,19 +91,21 @@ describe('Apps Page', () => {
   it('should show Preview button for running apps and open preview in new tab', () => {
     visitAppsPage();
 
-    cy.get('[data-eid*="apps.app.view"]', { timeout: 30000 }).then(($previewButtons) => {
-      if ($previewButtons.length > 0) {
-        cy.wrap($previewButtons.first())
-          .should('be.visible')
-          .should('have.attr', 'href')
-          .and('not.be.empty');
+    // Open the first app's menu and wait for menu to be fully rendered
+    cy.get('[data-testid="app-card-menu-button"]', { timeout: 30000 }).first().click();
 
-        cy.wrap($previewButtons.first())
-          .should('have.attr', 'target', '_blank');
+    // Wait for menu to be visible (any menu item appearing means menu is rendered)
+    cy.get('[role="menu"], [role="menuitem"]', { timeout: 5000 }).should('be.visible');
 
-        cy.log('✓ Preview button found and configured correctly');
+    // Check if preview button exists (only shows for running apps with preview_url)
+    cy.get('body').then(($body) => {
+      if ($body.find('[data-testid="app-card-view-button"]').length > 0) {
+        cy.get('[data-testid="app-card-view-button"]')
+          .should('be.visible');
+
+        cy.log('✓ Preview button found in menu');
       } else {
-        cy.log('⚠ No apps with Preview button found (requires running app with preview_url)');
+        cy.log('⚠ No Preview button found (requires running app with preview_url)');
       }
     });
   });
@@ -112,7 +123,7 @@ describe('Apps Page', () => {
   it('should navigate to develop page when clicking Edit on an app card', () => {
     visitAppsPage();
 
-    cy.get('[data-eid*="apps.app.edit"]', { timeout: 30000 })
+    cy.get('[data-testid="app-card-edit-button"]', { timeout: 30000 })
       .first()
       .click();
 

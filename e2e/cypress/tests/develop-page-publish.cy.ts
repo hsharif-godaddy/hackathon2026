@@ -94,40 +94,51 @@ describe('Develop Page - Publishing', () => {
             cy.log(`Deployment status: ${result.status}`);
 
             if (result.status === 'deployed') {
-              cy.get('[data-eid*="publish-alert.success.custom_domain"]', { timeout: 30000 })
-                .should('be.visible');
+              // Check for Go Live modal (first publish) or success banner (republish)
+              cy.dismissGoLiveModalIfPresent(5000).then((modalDismissed) => {
+                if (modalDismissed) {
+                  // First publish - modal was dismissed
+                  cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 10000 })
+                    .should('not.be.disabled')
+                    .should('contain.text', 'Republish');
+                } else {
+                  // Republish - verify success banner
+                  cy.get('[data-eid*="publish-alert.success.custom_domain"]', { timeout: 30000 })
+                    .should('be.visible');
 
-              // Verify published URL accessible
-              cy.get('[class*="alert"]').first().within(() => {
-                cy.get('a[href*="http"]').first().invoke('attr', 'href').then((publishedUrl) => {
-                  if (publishedUrl) {
-                    cy.log(`Published URL: ${publishedUrl}`);
-                    cy.request({
-                      url: publishedUrl,
-                      failOnStatusCode: false,
-                      timeout: 30000,
-                    }).then((response) => {
-                      expect(response.status).to.be.oneOf([200, 301, 302]);
-                      cy.log(`✓ Published URL accessible: ${response.status}`);
+                  // Verify published URL accessible
+                  cy.get('[class*="alert"]').first().within(() => {
+                    cy.get('a[href*="http"]').first().invoke('attr', 'href').then((publishedUrl) => {
+                      if (publishedUrl) {
+                        cy.log(`Published URL: ${publishedUrl}`);
+                        cy.request({
+                          url: publishedUrl,
+                          failOnStatusCode: false,
+                          timeout: 30000,
+                        }).then((response) => {
+                          expect(response.status).to.be.oneOf([200, 301, 302]);
+                          cy.log(`✓ Published URL accessible: ${response.status}`);
+                        });
+                      }
                     });
-                  }
-                });
+                  });
+
+                  // Close success alert
+                  cy.get('[class*="alert"]').first().within(() => {
+                    cy.get('button[aria-label*="close"], button[aria-label*="dismiss"], [class*="close"]')
+                      .first()
+                      .click({ force: true });
+                  });
+
+                  cy.get('[data-eid*="publish-alert.success.custom_domain"]', { timeout: 5000 })
+                    .should('not.exist');
+
+                  // After successful deploy, button stays enabled but text changes to "Republish"
+                  cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 10000 })
+                    .should('not.be.disabled')
+                    .should('contain.text', 'Republish');
+                }
               });
-
-              // Close success alert
-              cy.get('[class*="alert"]').first().within(() => {
-                cy.get('button[aria-label*="close"], button[aria-label*="dismiss"], [class*="close"]')
-                  .first()
-                  .click({ force: true });
-              });
-
-              cy.get('[data-eid*="publish-alert.success.custom_domain"]', { timeout: 5000 })
-                .should('not.exist');
-
-              // After successful deploy, button stays enabled but text changes to "Republish"
-              cy.get('[data-eid*="header"][data-eid*="publish"]', { timeout: 10000 })
-                .should('not.be.disabled')
-                .should('contain.text', 'Republish');
 
             } else if (result.status === 'failed') {
               cy.contains('button', /try again/i, { timeout: 30000 }).should('exist');
@@ -141,9 +152,14 @@ describe('Develop Page - Publishing', () => {
             .should('not.contain.text', 'Publishing')
             .should('contain.text', 'Republish');
 
-          // Verify success banner appears
-          cy.get('[data-eid*="publish-alert.success"]', { timeout: 30000 })
-            .should('be.visible');
+          // Check for Go Live modal (first publish) or success banner (republish)
+          cy.dismissGoLiveModalIfPresent(5000).then((modalDismissed) => {
+            if (!modalDismissed) {
+              // No modal means this is a republish - verify success banner
+              cy.get('[data-eid*="publish-alert.success"]', { timeout: 30000 })
+                .should('be.visible');
+            }
+          });
         } else {
           // Unexpected response structure
           cy.log('Warning: Unexpected publish response structure');

@@ -209,6 +209,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
       >
         <MenuButton
           aria-label={t('builder_apps_menu_actions')}
+          data-testid="app-card-menu-button"
           design="control"
           size="sm"
           icon={<MenuIcon />}
@@ -232,6 +233,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
             <MenuItem
               {...menuItemProps()}
               data-eid={generateClickEID('apps.app.view')}
+              data-testid="app-card-view-button"
               onClick={(e) => {
                 window.open(site.preview_url, '_blank', 'noopener,noreferrer');
               }}
@@ -267,6 +269,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
           <MenuItem
             {...menuItemProps()}
             data-eid={generateClickEID('apps.app.delete')}
+            data-testid="app-card-delete-button"
             onClick={(e) => {
               showDeleteAlert(site.id, site.name || t('builder_apps_alert_delete_untitled'));
             }}
@@ -329,6 +332,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
           router.push(`/develop/${site.id}?siteId=${site.id}`);
         }}
         data-eid={generateClickEID('apps.app.edit')}
+        data-testid="app-card-edit-button"
         aria-label={t('builder_common_edit') + ' ' + site.name || t('builder_apps_alert_delete_untitled')}
         className="sm:!flex-row"
         cornerActions={cornerActions}
