@@ -9,6 +9,7 @@ import TextInput from "@ux/text-input";
 import { useTranslations } from "@/hooks/useTranslations";
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { useSitesStore } from '@/stores/useSitesStore';
 import type { FeedbackFormProps } from "./types";
 import { formatSlackFeedbackMessage, getBaseUrl, isLocalhost } from "./utils";
 
@@ -22,11 +23,30 @@ export function FeedbackForm({
   const t = useTranslations();
   const { control, handleSubmit, formState } = useForm();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
+  const getSite = useSitesStore((state) => state.getSite);
 
   async function sendToSlack(data: any) {
     try {
+      // Get site info for URLs
+      const site = currentAppId ? getSite(currentAppId) : null;
+      const previewUrl = site?.preview_url;
+      const publishedUrl = site?.published_url;
+      const isPublished = !!publishedUrl;
+
       const title = `New Feedback Submitted${currentAppId ? ` for App ID: ${currentAppId}` : ''}`;
       const message = formatSlackFeedbackMessage(data);
+
+      // Build URL information
+      const urlLines: string[] = [];
+      if (previewUrl) {
+        urlLines.push(`*Preview URL*: ${previewUrl}`);
+      }
+      if (isPublished && publishedUrl) {
+        urlLines.push(`*Published URL*: ${publishedUrl}`);
+      }
+
+      // Combine form data with URL info
+      const fullMessage = [message, '', ...urlLines].join('\n');
 
       await fetch('/api/slack-webhook/feedback', {
         method: 'POST',
@@ -35,12 +55,14 @@ export function FeedbackForm({
         },
         body: JSON.stringify({
           title,
-          message,
+          message: fullMessage,
         }),
       });
       logger.info('feedback.slack.sent', {
         feedbackId: config.pk,
         appId: currentAppId,
+        previewUrl,
+        publishedUrl,
       });
     } catch (err) {
       logger.warn('feedback.slack.send_failed', {
