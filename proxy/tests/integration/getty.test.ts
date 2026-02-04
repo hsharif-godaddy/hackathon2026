@@ -1,3 +1,6 @@
+jest.mock('fs');
+jest.mock('https');
+
 import request from 'supertest';
 import { app } from '../../src/server';
 
@@ -32,13 +35,14 @@ describe('Getty Images API Integration', () => {
       expect(response.body.error.type).toBe('invalid_request_error');
     });
 
-    it('should validate page and pageSize parameters', async () => {
+    it('should not crash when given invalid page and pageSize parameters', async () => {
       const response = await request(app)
         .get('/img/search?phrase=test&page=0&pageSize=1000')
         .set('Authorization', validToken);
 
-      // Should normalize page to 1 and pageSize to 100 (max)
-      expect(response.status).toBe(503); // Will fail at Getty API level but params should be normalized
+      // Request gets past auth/validation, fails at Getty API (no certs in test env)
+      // Note: Parameter normalization logic is tested in tests/unit/params.test.ts
+      expect(response.status).toBe(503);
     });
 
     // Note: These tests will fail without proper SSO setup

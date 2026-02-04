@@ -8,6 +8,7 @@ import webScraperClient from '../clients/web-scraper-client';
 import { config } from '../config';
 import ssoValidationRoutes from './sso-validation';
 import logger from '../utils/logger';
+import { normalizePage, normalizePageSize } from '../utils/paramNormalization';
 import {
   AuthenticatedRequest,
   HealthStatus,
@@ -65,8 +66,8 @@ router.get('/img/search',
       // Sanitize and validate query parameters
       const params: GettySearchParams = {
         phrase: req.query.phrase as string || req.query.q as string,
-        page: Math.max(1, parseInt(req.query.page as string) || 1),
-        pageSize: Math.min(100, Math.max(1, parseInt(req.query.pageSize as string) || 25)),
+        page: normalizePage(req.query.page as string),
+        pageSize: normalizePageSize(req.query.pageSize as string),
         ...req.query
       };
 
@@ -147,8 +148,8 @@ router.get('/v1/search',
       // Sanitize and validate query parameters
       const params: GettySearchParams = {
         phrase: req.query.phrase as string || req.query.q as string,
-        page: Math.max(1, parseInt(req.query.page as string) || 1),
-        pageSize: Math.min(100, Math.max(1, parseInt(req.query.pageSize as string) || 25)),
+        page: normalizePage(req.query.page as string),
+        pageSize: normalizePageSize(req.query.pageSize as string),
         ...req.query
       };
 
@@ -250,8 +251,8 @@ router.get('/v1/videos/search',
       // Sanitize and validate query parameters
       const params: GettySearchParams = {
         phrase: req.query.phrase as string || req.query.q as string,
-        page: Math.max(1, parseInt(req.query.page as string) || 1),
-        pageSize: Math.min(100, Math.max(1, parseInt(req.query.pageSize as string) || 1)),
+        page: normalizePage(req.query.page as string),
+        pageSize: normalizePageSize(req.query.pageSize as string),
         ...req.query
       };
 

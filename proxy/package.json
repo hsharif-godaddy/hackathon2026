@@ -46,10 +46,15 @@
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
+    "coverageProvider": "v8",
+    "setupFiles": [
+      "<rootDir>/tests/setup.ts"
+    ],
     "collectCoverageFrom": [
       "src/**/*.ts",
       "!src/server.ts",
-      "!src/**/*.d.ts"
+      "!src/**/*.d.ts",
+      "!**/__mocks__/**"
     ],
     "coverageDirectory": "coverage",
     "coverageReporters": [

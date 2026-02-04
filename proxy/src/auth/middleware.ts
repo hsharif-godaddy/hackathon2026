@@ -23,7 +23,7 @@ function validateGdToken(req: AuthenticatedRequest, res: Response, next: NextFun
 
   // Extract token from Bearer header
   const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/);
-  const token = bearerMatch?.[1];
+  const token = bearerMatch?.[1]?.trim();
 
   if (!token) {
     logger.warn('Invalid authorization header format', { 

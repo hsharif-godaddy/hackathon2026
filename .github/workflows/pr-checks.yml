@@ -21,13 +21,16 @@ jobs:
     strategy:
       fail-fast: false # Continue other jobs even if one fails
       matrix:
-        package: [agents, app]
+        package: [agents, app, proxy]
         include:
           - package: agents
             working-directory: ./agents
             node-version: "22.12"
           - package: app
             working-directory: ./app
+            node-version: "22.12"
+          - package: proxy
+            working-directory: ./proxy
             node-version: "22.12"
 
     steps:
@@ -133,6 +136,8 @@ jobs:
         run: |
           if [ "${{ matrix.package }}" = "agents" ]; then
             pnpm --filter @airo/agents lint
+          elif [ "${{ matrix.package }}" = "proxy" ]; then
+            pnpm --filter airo-proxy lint
           else
             pnpm --filter website lint
           fi
@@ -156,6 +161,9 @@ jobs:
             echo "⚠️  Agent tests currently have failures - skipping for now"
             echo "✅ Skipping agent tests to unblock CI - tests need fixes"
             exit 0
+          elif [ "${{ matrix.package }}" = "proxy" ]; then
+            echo "🧪 Running proxy tests..."
+            pnpm --filter airo-proxy test
           else
             echo "🧪 Running app tests..."
             pnpm --filter website test
@@ -166,6 +174,8 @@ jobs:
         run: |
           if [ "${{ matrix.package }}" = "agents" ]; then
             pnpm --filter @airo/agents build
+          elif [ "${{ matrix.package }}" = "proxy" ]; then
+            pnpm --filter airo-proxy build
           else
             pnpm --filter website build
           fi
