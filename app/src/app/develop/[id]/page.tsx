@@ -852,7 +852,7 @@ function DevelopPageContent() {
 
             {/* Content (Preview, Settings, Code) */}
             <motion.div
-              className="absolute top-2 right-2 bottom-2"
+              className="absolute top-2 right-2 bottom-2 flex flex-col"
               animate={{
                 left: isChatPaneCollapsed ? 8 : chatPaneWidth + 16
               }}
@@ -864,34 +864,37 @@ function DevelopPageContent() {
               <PublishStatusAlert />
               <PostPublishGoLiveModal appId={appId} />
 
-              {/* Preview/Code View */}
-              <div
-                className="absolute inset-0 flex flex-col transition-opacity duration-150"
-                style={{
-                  opacity: activeChatTab !== ChatTab.SETTINGS ? 1 : 0,
-                  pointerEvents: activeChatTab !== ChatTab.SETTINGS ? 'auto' : 'none',
-                }}
-              >
-                <PreviewPane
-                  onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
-                  showBuildingOverlay={init.ui.showPreviewLoader}
-                  isHibernated={hibernation.isHibernated}
-                  isResuming={hibernation.isResuming}
-                  resumeFailed={hibernation.resumeFailed}
-                  onRetryResume={() => hibernation.resume()}
-                  isMobile={false}
-                />
-              </div>
+              {/* Content area - takes remaining space after banner */}
+              <div className="flex-1 relative min-h-0">
+                {/* Preview/Code View */}
+                <div
+                  className="absolute inset-0 flex flex-col transition-opacity duration-150"
+                  style={{
+                    opacity: activeChatTab !== ChatTab.SETTINGS ? 1 : 0,
+                    pointerEvents: activeChatTab !== ChatTab.SETTINGS ? 'auto' : 'none',
+                  }}
+                >
+                  <PreviewPane
+                    onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                    showBuildingOverlay={init.ui.showPreviewLoader}
+                    isHibernated={hibernation.isHibernated}
+                    isResuming={hibernation.isResuming}
+                    resumeFailed={hibernation.resumeFailed}
+                    onRetryResume={() => hibernation.resume()}
+                    isMobile={false}
+                  />
+                </div>
 
-              {/* Settings View */}
-              <div
-                className="absolute inset-0 flex flex-col transition-opacity duration-150"
-                style={{
-                  opacity: activeChatTab === ChatTab.SETTINGS ? 1 : 0,
-                  pointerEvents: activeChatTab === ChatTab.SETTINGS ? 'auto' : 'none',
-                }}
-              >
-                <SettingsView />
+                {/* Settings View */}
+                <div
+                  className="absolute inset-0 flex flex-col transition-opacity duration-150"
+                  style={{
+                    opacity: activeChatTab === ChatTab.SETTINGS ? 1 : 0,
+                    pointerEvents: activeChatTab === ChatTab.SETTINGS ? 'auto' : 'none',
+                  }}
+                >
+                  <SettingsView />
+                </div>
               </div>
             </motion.div>
           </div>
@@ -900,7 +903,7 @@ function DevelopPageContent() {
         {/* Mobile Layout */}
         {isMobile && (
           <div className="relative h-full w-full overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 bottom-8">
+            <div className="absolute top-0 left-0 right-0 bottom-8 flex flex-col">
               {init.ui.showChatLoader ? (
                 <ChatPaneLoader
                   phase={init.ui.chatLoaderPhase}
@@ -921,66 +924,69 @@ function DevelopPageContent() {
                 />
               ) : (
                 <>
-                  {/* Preview Tab */}
-                  <div
-                    className="absolute inset-0 flex flex-col transition-opacity duration-150"
-                    style={{
-                      opacity: optimisticMobileTab === ChatTab.PREVIEW ? 1 : 0,
-                      pointerEvents: optimisticMobileTab === ChatTab.PREVIEW ? 'auto' : 'none',
-                      willChange: 'opacity'
-                    }}
-                  >
-                    <PublishStatusAlert />
-                    <PostPublishGoLiveModal appId={appId} />
+                  <PublishStatusAlert />
+                  <PostPublishGoLiveModal appId={appId} />
 
-                    <PreviewPane
-                      onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
-                      showBuildingOverlay={init.ui.showPreviewLoader}
-                      isHibernated={hibernation.isHibernated}
-                      isResuming={hibernation.isResuming}
-                      resumeFailed={hibernation.resumeFailed}
-                      onRetryResume={() => hibernation.resume()}
-                      isMobile={true}
-                    />
-                  </div>
+                  {/* Content area - takes remaining space after banner */}
+                  <div className="flex-1 relative min-h-0">
+                    {/* Preview Tab */}
+                    <div
+                      className="absolute inset-0 flex flex-col transition-opacity duration-150"
+                      style={{
+                        opacity: optimisticMobileTab === ChatTab.PREVIEW ? 1 : 0,
+                        pointerEvents: optimisticMobileTab === ChatTab.PREVIEW ? 'auto' : 'none',
+                        willChange: 'opacity'
+                      }}
+                    >
+                      <PreviewPane
+                        onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                        showBuildingOverlay={init.ui.showPreviewLoader}
+                        isHibernated={hibernation.isHibernated}
+                        isResuming={hibernation.isResuming}
+                        resumeFailed={hibernation.resumeFailed}
+                        onRetryResume={() => hibernation.resume()}
+                        isMobile={true}
+                      />
+                    </div>
 
-                  {/* Chat Tab */}
-                  <div
-                    className="absolute inset-0 flex flex-col overflow-hidden transition-opacity duration-150"
-                    style={{
-                      opacity: optimisticMobileTab === ChatTab.CHAT ? 1 : 0,
-                      pointerEvents: optimisticMobileTab === ChatTab.CHAT ? 'auto' : 'none',
-                      willChange: 'opacity'
-                    }}
-                  >
-                    <ChatPane
-                      sendMessage={sendMessage}
-                      isCreateFlowSession={isCreateFlowSession}
-                    />
-                  </div>
+                    {/* Chat Tab */}
+                    <div
+                      className="absolute inset-0 flex flex-col overflow-hidden transition-opacity duration-150"
+                      style={{
+                        opacity: optimisticMobileTab === ChatTab.CHAT ? 1 : 0,
+                        pointerEvents: optimisticMobileTab === ChatTab.CHAT ? 'auto' : 'none',
+                        willChange: 'opacity'
+                      }}
+                    >
+                      <ChatPane
+                        sendMessage={sendMessage}
+                        isCreateFlowSession={isCreateFlowSession}
+                      />
+                    </div>
 
-                  {/* History Tab */}
-                  <div
-                    className="absolute inset-0 flex flex-col overflow-y-auto transition-opacity duration-150"
-                    style={{
-                      opacity: optimisticMobileTab === ChatTab.HISTORY ? 1 : 0,
-                      pointerEvents: optimisticMobileTab === ChatTab.HISTORY ? 'auto' : 'none',
-                      willChange: 'opacity'
-                    }}
-                  >
-                    <VersionHistory />
-                  </div>
+                    {/* History Tab */}
+                    <div
+                      className="absolute inset-0 flex flex-col overflow-y-auto transition-opacity duration-150"
+                      style={{
+                        opacity: optimisticMobileTab === ChatTab.HISTORY ? 1 : 0,
+                        pointerEvents: optimisticMobileTab === ChatTab.HISTORY ? 'auto' : 'none',
+                        willChange: 'opacity'
+                      }}
+                    >
+                      <VersionHistory />
+                    </div>
 
-                  {/* Settings Tab */}
-                  <div
-                    className="absolute inset-0 flex flex-col transition-opacity duration-150"
-                    style={{
-                      opacity: optimisticMobileTab === ChatTab.SETTINGS ? 1 : 0,
-                      pointerEvents: optimisticMobileTab === ChatTab.SETTINGS ? 'auto' : 'none',
-                      willChange: 'opacity'
-                    }}
-                  >
-                    <SettingsView />
+                    {/* Settings Tab */}
+                    <div
+                      className="absolute inset-0 flex flex-col transition-opacity duration-150"
+                      style={{
+                        opacity: optimisticMobileTab === ChatTab.SETTINGS ? 1 : 0,
+                        pointerEvents: optimisticMobileTab === ChatTab.SETTINGS ? 'auto' : 'none',
+                        willChange: 'opacity'
+                      }}
+                    >
+                      <SettingsView />
+                    </div>
                   </div>
                 </>
               )}

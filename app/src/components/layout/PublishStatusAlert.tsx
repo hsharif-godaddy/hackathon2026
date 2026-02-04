@@ -190,7 +190,7 @@ export default function PublishStatusAlert() {
           : `https://${rawFqdn}`);
 
     return (
-      <div className='px-2 py-2'>
+      <div className='px-2 py-1'>
         <Alert
           emphasis='success'
           onClose={() => currentAppId && dismissPublishSuccess(currentAppId)}
@@ -227,7 +227,7 @@ export default function PublishStatusAlert() {
 
   if (isPublishing) {
     return (
-      <div className='px-2 py-2'>
+      <div className='px-2 py-1'>
         <Alert
           emphasis='info'
         >
@@ -243,7 +243,7 @@ export default function PublishStatusAlert() {
   // Show build error state with detailed error and fix button
   if (publishError && buildErrorDetails) {
     return (
-      <div className='px-2 py-2'>
+      <div className='px-2 py-1'>
         <Alert
           emphasis='critical'
           onClose={handleDismiss}
