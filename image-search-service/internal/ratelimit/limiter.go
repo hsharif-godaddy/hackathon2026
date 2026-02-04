@@ -95,8 +95,8 @@ func (l *Limiter) waitForRateLimit(ctx context.Context) error {
 // Stats returns current limiter stats.
 // Note: The returned values are point-in-time snapshots and may change immediately
 // after this call returns. Do not use for synchronization.
-func (l *Limiter) Stats() (busy int, available int) {
-	busy = len(l.semaphore)
-	available = cap(l.semaphore) - busy
-	return
+func (l *Limiter) Stats() (int, int) {
+	busy := len(l.semaphore)
+	available := cap(l.semaphore) - busy
+	return busy, available
 }

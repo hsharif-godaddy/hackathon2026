@@ -9,9 +9,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	"github.com/airo-ai-builder/image-search-service/internal/api"
 	"github.com/airo-ai-builder/image-search-service/internal/config"
-	"github.com/joho/godotenv"
 )
 
 const version = "0.1.0"

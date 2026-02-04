@@ -3,11 +3,13 @@ package embeddings
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 
-	"github.com/airo-ai-builder/image-search-service/internal/config"
 	openai "github.com/sashabaranov/go-openai"
+
+	"github.com/airo-ai-builder/image-search-service/internal/config"
 )
 
 // EmbeddingModel is the OpenAI model used for generating embeddings.
@@ -50,7 +52,7 @@ func (c *Client) Generate(ctx context.Context, text string) ([]float32, error) {
 	}
 
 	if len(resp.Data) == 0 {
-		return nil, fmt.Errorf("empty embedding response")
+		return nil, errors.New("empty embedding response")
 	}
 
 	return normalizeEmbedding(resp.Data[0].Embedding), nil

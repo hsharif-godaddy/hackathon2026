@@ -1,0 +1,128 @@
+name: image-search-service CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "image-search-service/**"
+      - ".github/workflows/image-search-service.yml"
+  pull_request:
+    paths:
+      - "image-search-service/**"
+      - ".github/workflows/image-search-service.yml"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: image-search-service/go.sum
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.8.0
+          working-directory: image-search-service
+          args: --timeout=5m
+
+      - name: Run go vet
+        working-directory: image-search-service
+        run: go vet ./...
+
+      - name: Run go fmt check
+        working-directory: image-search-service
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "The following files are not properly formatted:"
+            gofmt -s -l .
+            exit 1
+          fi
+
+  test:
+    name: Test
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: image-search-service/go.sum
+
+      - name: Cache Go modules
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('image-search-service/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        working-directory: image-search-service
+        run: go mod download
+
+      - name: Run tests
+        working-directory: image-search-service
+        run: go test -v -race ./...
+
+  build:
+    name: Build
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    needs: [lint, test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache-dependency-path: image-search-service/go.sum
+
+      - name: Cache Go modules
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('image-search-service/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        working-directory: image-search-service
+        run: go mod download
+
+      - name: Build binary
+        working-directory: image-search-service
+        env:
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-w -s" -o dist/image-search-service ./cmd/server
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: image-search-service-linux-amd64
+          path: image-search-service/dist/

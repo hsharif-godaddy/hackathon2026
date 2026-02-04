@@ -196,8 +196,8 @@ func TestClient_Search(t *testing.T) {
 			t.Errorf("expected Authorization header 'Bearer test-token', got '%s'", authHeader)
 		}
 
-		if r.Header.Get("x-app-key") != "test-app-key" {
-			t.Errorf("expected x-app-key header 'test-app-key', got '%s'", r.Header.Get("x-app-key"))
+		if r.Header.Get("X-App-Key") != "test-app-key" {
+			t.Errorf("expected X-App-Key header 'test-app-key', got '%s'", r.Header.Get("X-App-Key"))
 		}
 
 		if !strings.Contains(r.URL.Path, "/v1/search") {

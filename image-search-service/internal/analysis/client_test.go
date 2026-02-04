@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/airo-ai-builder/image-search-service/internal/ratelimit"
@@ -217,7 +218,7 @@ func TestClient_ContextCancellation(t *testing.T) {
 	cancel() // Cancel immediately
 
 	err := client.limiter.Acquire(ctx2)
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Expected context.Canceled, got %v", err)
 	}
 

@@ -239,10 +239,3 @@ func TestIntegration_FullSearchFlow(t *testing.T) {
 
 	t.Log("Integration test completed successfully")
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

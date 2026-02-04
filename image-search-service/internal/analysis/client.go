@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -20,6 +21,14 @@ import (
 
 // Model is the Claude model used for image analysis.
 const Model = "claude-3-haiku-20240307"
+
+// Image media type constants.
+const (
+	MediaTypeJPEG = "image/jpeg"
+	MediaTypePNG  = "image/png"
+	MediaTypeGIF  = "image/gif"
+	MediaTypeWebP = "image/webp"
+)
 
 // Result represents the structured response from Claude Haiku analysis.
 type Result struct {
@@ -87,8 +96,8 @@ func (c *Client) Analyze(ctx context.Context, imageURL string) (*Result, error) 
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", c.apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("X-Api-Key", c.apiKey)
+	req.Header.Set("Anthropic-Version", "2023-06-01")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -143,20 +152,22 @@ func (c *Client) fetchAndEncodeImage(ctx context.Context, imageURL string) (stri
 }
 
 // detectMediaType determines the image media type from Content-Type header or magic bytes.
+//
+//nolint:gocyclo // complexity is inherent to media type detection with multiple format checks
 func detectMediaType(contentType string, data []byte) string {
 	// Try Content-Type header first
 	if contentType != "" {
 		// Normalize common content types
 		contentType = strings.ToLower(strings.Split(contentType, ";")[0])
 		switch contentType {
-		case "image/jpeg", "image/jpg":
-			return "image/jpeg"
-		case "image/png":
-			return "image/png"
-		case "image/gif":
-			return "image/gif"
-		case "image/webp":
-			return "image/webp"
+		case MediaTypeJPEG, "image/jpg":
+			return MediaTypeJPEG
+		case MediaTypePNG:
+			return MediaTypePNG
+		case MediaTypeGIF:
+			return MediaTypeGIF
+		case MediaTypeWebP:
+			return MediaTypeWebP
 		}
 	}
 
@@ -164,24 +175,24 @@ func detectMediaType(contentType string, data []byte) string {
 	if len(data) >= 3 {
 		// JPEG: starts with FF D8 FF
 		if data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
-			return "image/jpeg"
+			return MediaTypeJPEG
 		}
 		// PNG: starts with 89 50 4E 47
 		if len(data) >= 4 && data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47 {
-			return "image/png"
+			return MediaTypePNG
 		}
 		// GIF: starts with GIF
 		if data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46 {
-			return "image/gif"
+			return MediaTypeGIF
 		}
 		// WebP: starts with RIFF....WEBP
 		if len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WEBP" {
-			return "image/webp"
+			return MediaTypeWebP
 		}
 	}
 
 	// Default to JPEG as it's most common for stock photos
-	return "image/jpeg"
+	return MediaTypeJPEG
 }
 
 // Stats returns the current rate limiter statistics.
@@ -298,7 +309,7 @@ func parseAPIResponse(data []byte) (*Result, error) {
 	}
 
 	if len(resp.Content) == 0 {
-		return nil, fmt.Errorf("empty response content from API")
+		return nil, errors.New("empty response content from API")
 	}
 
 	// Find the text content block
@@ -308,7 +319,7 @@ func parseAPIResponse(data []byte) (*Result, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("no text content in API response")
+	return nil, errors.New("no text content in API response")
 }
 
 // parseAnalysisResponse parses the JSON analysis result, handling markdown code blocks.

@@ -86,7 +86,8 @@ func (c *Client) Search(ctx context.Context, query string, count int) ([]SearchR
 	}
 
 	// Apply authentication
-	if err := c.auth.ApplyAuth(ctx, req); err != nil {
+	err = c.auth.ApplyAuth(ctx, req)
+	if err != nil {
 		return nil, fmt.Errorf("failed to apply auth: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
@@ -128,7 +129,8 @@ func (c *Client) GetByID(ctx context.Context, gettyID string) (*SearchResult, er
 	}
 
 	// Apply authentication
-	if err := c.auth.ApplyAuth(ctx, req); err != nil {
+	err = c.auth.ApplyAuth(ctx, req)
+	if err != nil {
 		return nil, fmt.Errorf("failed to apply auth: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")

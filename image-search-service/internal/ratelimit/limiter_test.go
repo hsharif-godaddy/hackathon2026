@@ -19,7 +19,7 @@ func TestLimiter_RespectsConcurrency(t *testing.T) {
 	ctx := context.Background()
 
 	// Start 5 operations - only 2 should run at once
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

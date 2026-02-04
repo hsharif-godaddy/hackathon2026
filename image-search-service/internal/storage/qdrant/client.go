@@ -4,6 +4,7 @@ package qdrant
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -60,11 +61,14 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 
 	if exists {
 		// Log collection info
-		info, err := c.client.GetCollectionInfo(ctx, c.collection)
-		if err != nil {
-			slog.Warn("qdrant.collection.info.failed", "error", err)
+		info, infoErr := c.client.GetCollectionInfo(ctx, c.collection)
+		if infoErr != nil {
+			slog.Warn("qdrant.collection.info.failed", "error", infoErr)
 		} else {
-			slog.Debug("qdrant.collection.exists", "collection", c.collection, "pointsCount", info.PointsCount, "status", info.Status.String())
+			slog.Debug("qdrant.collection.exists",
+				"collection", c.collection,
+				"pointsCount", info.PointsCount,
+				"status", info.Status.String())
 		}
 		return nil
 	}
@@ -105,7 +109,7 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 		})
 		if err != nil {
 			// Log but don't fail - indexes are optimization, not required
-			fmt.Printf("warning: failed to create index for %s: %v\n", field, err)
+			slog.Warn("qdrant.index.create.failed", "field", field, "error", err)
 		}
 	}
 
@@ -208,11 +212,11 @@ const ExpectedEmbeddingDimension = 1536
 // Upsert inserts or updates an image analysis in Qdrant.
 func (c *Client) Upsert(ctx context.Context, analysis *models.ImageAnalysis) error {
 	if analysis == nil {
-		return fmt.Errorf("analysis cannot be nil")
+		return errors.New("analysis cannot be nil")
 	}
 
 	if len(analysis.Embedding) == 0 {
-		return fmt.Errorf("analysis must have an embedding")
+		return errors.New("analysis must have an embedding")
 	}
 
 	if len(analysis.Embedding) != ExpectedEmbeddingDimension {

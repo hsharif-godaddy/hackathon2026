@@ -46,7 +46,7 @@ func NewBearerTokenAuth(token, appKey string) (*BearerTokenAuth, error) {
 func (a *BearerTokenAuth) ApplyAuth(_ context.Context, req *http.Request) error {
 	req.Header.Set("Authorization", "Bearer "+a.token)
 	if a.appKey != "" {
-		req.Header.Set("x-app-key", a.appKey)
+		req.Header.Set("X-App-Key", a.appKey)
 	}
 	return nil
 }
@@ -89,7 +89,7 @@ func (a *SSOJWTAuth) ApplyAuth(_ context.Context, req *http.Request) error {
 
 	// For now, just set the app key header
 	if a.appKey != "" {
-		req.Header.Set("x-app-key", a.appKey)
+		req.Header.Set("X-App-Key", a.appKey)
 	}
 
 	return nil

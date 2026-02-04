@@ -85,10 +85,10 @@ func TestGettyIDToPointID(t *testing.T) {
 		{"2223853446", 2223853446, false},
 		{"0", 0, false},
 		{"18446744073709551615", 18446744073709551615, false}, // max uint64
-		{"abc-def", 0, true},  // non-numeric should fail
-		{"", 0, true},         // empty should fail
-		{"-123", 0, true},     // negative should fail
-		{"12.34", 0, true},    // float should fail
+		{"abc-def", 0, true},                                  // non-numeric should fail
+		{"", 0, true},                                         // empty should fail
+		{"-123", 0, true},                                     // negative should fail
+		{"12.34", 0, true},                                    // float should fail
 	}
 
 	for _, tt := range tests {
