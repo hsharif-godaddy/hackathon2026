@@ -1,0 +1,145 @@
+package httpproxy
+
+import (
+	"errors"
+	"log/slog"
+	"net"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
+	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
+)
+
+const (
+	protoHTTP  = "http"
+	protoHTTPS = "https"
+)
+
+func determineForwardedProto(req *http.Request) string {
+	if raw := strings.TrimSpace(req.Header.Get("X-Forwarded-Proto")); raw != "" {
+		normalized := strings.ToLower(raw)
+		if normalized == protoHTTP || normalized == protoHTTPS {
+			return normalized
+		}
+
+		slog.Warn("http.proxy.invalid_forwarded_proto",
+			"value", raw,
+			"remote_addr", req.RemoteAddr,
+		)
+	}
+
+	if req.TLS != nil {
+		return protoHTTPS
+	}
+
+	return protoHTTP
+}
+
+// getClientIP extracts the real client IP from CF-Connecting-IP header.
+// Returns empty string if header is not present (direct connection, no Cloudflare).
+func getClientIP(req *http.Request) string {
+	return strings.TrimSpace(req.Header.Get("Cf-Connecting-Ip"))
+}
+
+// getSrcIPAndPort splits RemoteAddr into IP and port components.
+// RemoteAddr format is typically "ip:port" or "[ipv6]:port".
+func getSrcIPAndPort(remoteAddr string) (string, string) {
+	host, port, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		// If split fails, return the whole address as IP with empty port.
+		return remoteAddr, ""
+	}
+	return host, port
+}
+
+// getRayID extracts the CF-Ray header for request tracing.
+// Returns empty string if header is not present.
+func getRayID(req *http.Request) string {
+	return strings.TrimSpace(req.Header.Get("Cf-Ray"))
+}
+
+// Config defines configuration for the HTTP proxy server.
+type Config struct {
+	Enabled        bool          // Enable HTTP proxy mode
+	ListenPort     int           // External HTTPS port for proxy
+	TargetHost     string        // Backend host (typically localhost)
+	TargetPort     int           // Backend port (app internal port, typically 8080)
+	TLSCertPath    string        // Path to TLS certificate
+	TLSKeyPath     string        // Path to TLS private key
+	MaxRetries     int           // Maximum number of retries for connection errors (default: 5)
+	InitialBackoff time.Duration // Initial backoff duration (default: 100ms)
+	MaxBackoff     time.Duration // Maximum backoff duration (default: 2s)
+
+	// Static serving configuration
+	StaticRoot          string   // Root directory for static files (required if EnableStaticServing=true)
+	EnableStaticServing bool     // Enable static file serving (explicit, default: false)
+	SPAMode             bool     // Enable SPA fallback (default: true when static serving enabled)
+	APIPrefix           string   // API route prefix (default: "/api")
+	ConfigPath          string   // Optional path to routing config file
+	AllowedOrigins      []string // CORS allowed origins (whitelist)
+
+	// JWT authentication configuration
+	// Auth failure handling uses hybrid mode: redirects browsers, returns 401 for APIs
+	JWTEnabled        bool     // Enable JWT authentication (default: false)
+	JWKSUrl           string   // JWKS endpoint URL
+	JWKSSkipTLSVerify bool     // Skip TLS certificate verification (local dev only)
+	JWTRedirectURL    string   // Redirect URL on auth failure (supports {url} placeholder)
+	JWTBuilderBaseURL string   // Builder app base URL for smart redirects
+	SiteID            string   // Site ID for smart redirects (from SITE_ID env var)
+	JWTExcludedPaths  []string // Paths to exclude from JWT validation
+}
+
+// Status represents the current status of the HTTP proxy.
+type Status struct {
+	Enabled    bool   `json:"enabled"`
+	Running    bool   `json:"running"`
+	ListenAddr string `json:"listen_addr,omitempty"`
+	TargetURL  string `json:"target_url,omitempty"`
+	Uptime     string `json:"uptime,omitempty"`
+}
+
+// ProxyHealthResponse represents the health check response.
+type ProxyHealthResponse struct {
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// ProcessState is a minimal state representation for start-on-request tracking.
+type ProcessState string
+
+const (
+	ProcessStateStopped  ProcessState = "stopped"
+	ProcessStateStarting ProcessState = "starting"
+	ProcessStateRunning  ProcessState = "running"
+	ProcessStateStopping ProcessState = "stopping"
+	ProcessStateError    ProcessState = "error"
+)
+
+// ProcessStatus is a minimal status payload needed by the proxy.
+type ProcessStatus struct {
+	PID   int
+	State ProcessState
+	Error string
+}
+
+// ProcessController is the minimal surface the proxy needs for start-on-request handling.
+type ProcessController interface {
+	middleware.WebSocketTracker
+	GetStartRequest() *validation.ProcessStartRequest
+	Start(validation.ProcessStartRequest) error
+	GetStatus() ProcessStatus
+	UpdateActivity()
+	IsStartOnRequestEnabled() bool
+	TrackRequest()
+	UntrackRequest()
+	EnableStartOnRequest(idleTimeout, checkInterval time.Duration)
+	WasHealthyBeforeIdle() bool
+}
+
+// Sentinel errors for start-on-request handling.
+var (
+	ErrAlreadyStarting = errors.New("process is already starting")
+	ErrAlreadyRunning  = errors.New("process is already running")
+)

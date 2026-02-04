@@ -1,4 +1,5 @@
-package main
+//nolint:testpackage // Tests use unexported helpers.
+package httpproxy
 
 import (
 	"context"
@@ -19,11 +20,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
-
-	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
-	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 	"github.com/airo-ai-builder/dev-supervisor/internal/proxy/routing"
+	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
 const testProxyResponse = "proxy"
@@ -227,7 +225,7 @@ func TestValidateConfig_StaticServingDisabled(t *testing.T) {
 	keyFile := createTempKey(t)
 
 	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
+		config: Config{
 			Enabled:             true,
 			ListenPort:          5000,
 			TargetHost:          "localhost",
@@ -247,7 +245,7 @@ func TestValidateConfig_StaticServingDisabled(t *testing.T) {
 // Unit tests for HTTP mode (without TLS)
 func TestValidateConfig_HTTPMode_NoCertificates(t *testing.T) {
 	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
+		config: Config{
 			Enabled:             true,
 			ListenPort:          5000,
 			TargetHost:          "localhost",
@@ -285,7 +283,7 @@ func TestValidateConfig_HTTPMode_MismatchedCertificates(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			proxy := &HTTPProxy{
-				config: HTTPProxyConfig{
+				config: Config{
 					Enabled:     true,
 					ListenPort:  5000,
 					TargetHost:  "localhost",
@@ -308,7 +306,7 @@ func TestValidateConfig_HTTPMode_MismatchedCertificates(t *testing.T) {
 
 func TestValidateConfig_HTTPMode_NonExistentCertificate(t *testing.T) {
 	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
+		config: Config{
 			Enabled:     true,
 			ListenPort:  5000,
 			TargetHost:  "localhost",
@@ -331,7 +329,7 @@ func TestValidateConfig_HTTPMode_NonExistentKey(t *testing.T) {
 	certFile := createTempCert(t)
 
 	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
+		config: Config{
 			Enabled:     true,
 			ListenPort:  5000,
 			TargetHost:  "localhost",
@@ -388,7 +386,7 @@ func createTempKey(t *testing.T) string {
 
 func TestValidateStaticServingConfig_MissingRoot(t *testing.T) {
 	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
+		config: Config{
 			EnableStaticServing: true,
 			StaticRoot:          "",
 		},
@@ -410,7 +408,7 @@ func TestValidateStaticServingConfig_MissingRoot(t *testing.T) {
 
 func TestValidateStaticServingConfig_NonExistentRoot(t *testing.T) {
 	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
+		config: Config{
 			EnableStaticServing: true,
 		},
 	}
@@ -432,7 +430,7 @@ func TestValidateStaticServingConfig_ValidRoot(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
+		config: Config{
 			EnableStaticServing: true,
 		},
 	}
@@ -453,7 +451,7 @@ func TestValidateStaticServingConfig_SPAMode_MissingIndexHTML(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
+		config: Config{
 			EnableStaticServing: true,
 		},
 	}
@@ -475,7 +473,7 @@ func TestValidateStaticServingConfig_JSONStaticRoot(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
+		config: Config{
 			EnableStaticServing: true,
 			StaticRoot:          "", // Empty in env
 		},
@@ -494,7 +492,7 @@ func TestValidateStaticServingConfig_JSONStaticRoot(t *testing.T) {
 
 func TestValidateStaticServingConfig_Disabled(t *testing.T) {
 	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
+		config: Config{
 			EnableStaticServing: false,
 		},
 	}
@@ -545,7 +543,7 @@ func TestJSONOnlyConfiguration(t *testing.T) {
 
 	// Create proxy with minimal env vars (only enable static serving)
 	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
+		config: Config{
 			EnableStaticServing: true,  // Enable via env var
 			StaticRoot:          "",    // Empty - will come from JSON
 			SPAMode:             false, // Default - will be overridden by JSON
@@ -1339,7 +1337,7 @@ func TestReverseProxy_PreservesUpstreamXForwardedProto(t *testing.T) {
 		port = "80"
 	}
 
-	proxy := NewHTTPProxy(HTTPProxyConfig{
+	proxy := NewHTTPProxy(Config{
 		Enabled:    true,
 		ListenPort: 0,
 		TargetHost: host,
@@ -1400,7 +1398,7 @@ func TestReverseProxy_DefaultsXForwardedProtoToRequestScheme(t *testing.T) {
 		port = "80"
 	}
 
-	proxy := NewHTTPProxy(HTTPProxyConfig{
+	proxy := NewHTTPProxy(Config{
 		Enabled:    true,
 		ListenPort: 0,
 		TargetHost: host,
@@ -1461,7 +1459,7 @@ func TestReverseProxy_DefaultsXForwardedProtoToHTTPSWhenTLS(t *testing.T) {
 		port = "80"
 	}
 
-	proxy := NewHTTPProxy(HTTPProxyConfig{
+	proxy := NewHTTPProxy(Config{
 		Enabled:    true,
 		ListenPort: 0,
 		TargetHost: host,
@@ -1516,7 +1514,7 @@ func TestReverseProxy_IgnoresInvalidForwardedProto(t *testing.T) {
 		port = "80"
 	}
 
-	proxy := NewHTTPProxy(HTTPProxyConfig{
+	proxy := NewHTTPProxy(Config{
 		Enabled:    true,
 		ListenPort: 0,
 		TargetHost: host,
@@ -1573,7 +1571,7 @@ func TestReverseProxy_PassesThroughXForwardedFor(t *testing.T) {
 		port = "80"
 	}
 
-	proxy := NewHTTPProxy(HTTPProxyConfig{
+	proxy := NewHTTPProxy(Config{
 		Enabled:    true,
 		ListenPort: 0,
 		TargetHost: host,
@@ -1806,11 +1804,6 @@ func TestAiroPath_ExactAiroPath_Returns404(t *testing.T) {
 
 // Test RequestRouter auto-start when process is stopped
 func TestRequestRouter_AutoStartWhenStopped(t *testing.T) {
-	// Create process manager with a simple echo process
-	logMgr := logs.NewManager(100)
-	pid1Mgr := process.NewPID1Manager()
-	procMgr := NewProcessManager(logMgr, pid1Mgr)
-
 	// Start a simple HTTP server process
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -1821,23 +1814,22 @@ func TestRequestRouter_AutoStartWhenStopped(t *testing.T) {
 	backendURL, err := url.Parse(backend.URL)
 	require.NoError(t, err)
 
+	procMgr := &fakeProcessController{
+		status: ProcessStatus{
+			State: ProcessStateStopped,
+		},
+		startRequest: &validation.ProcessStartRequest{
+			Command: "sleep 5",
+		},
+		startOnRequestEnabled: true,
+	}
+
 	// Create a RequestRouter with start-on-request enabled
 	router := &RequestRouter{
 		proxyHandler:          httputil.NewSingleHostReverseProxy(backendURL),
 		procMgr:               procMgr,
 		startOnRequestEnabled: true,
 	}
-
-	// Configure and start the process
-	startReq := validation.ProcessStartRequest{
-		Command: "sleep 5",
-	}
-	require.NoError(t, procMgr.Start(startReq))
-	time.Sleep(100 * time.Millisecond)
-
-	// Stop the process to simulate stopped state
-	require.NoError(t, procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1}))
-	time.Sleep(200 * time.Millisecond)
 
 	// Verify process is stopped
 	status := procMgr.GetStatus()
@@ -1859,21 +1851,14 @@ func TestRequestRouter_AutoStartWhenStopped(t *testing.T) {
 
 	// Process should now be starting or running
 	status = procMgr.GetStatus()
-	assert.Contains(t, []ProcessState{ProcessStateStarting, ProcessStateRunning}, status.State,
-		"process should be starting or running after auto-start")
+	assert.Equal(t, ProcessStateRunning, status.State,
+		"process should be running after auto-start")
 
-	// Clean up
 	<-done
-	procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
 }
 
 // Test RequestRouter doesn't auto-start when process is already running
 func TestRequestRouter_NoAutoStartWhenRunning(t *testing.T) {
-	// Create process manager
-	logMgr := logs.NewManager(100)
-	pid1Mgr := process.NewPID1Manager()
-	procMgr := NewProcessManager(logMgr, pid1Mgr)
-
 	// Create backend server
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -1884,19 +1869,23 @@ func TestRequestRouter_NoAutoStartWhenRunning(t *testing.T) {
 	backendURL, err := url.Parse(backend.URL)
 	require.NoError(t, err)
 
+	procMgr := &fakeProcessController{
+		status: ProcessStatus{
+			State: ProcessStateRunning,
+			PID:   999,
+		},
+		startRequest: &validation.ProcessStartRequest{
+			Command: "sleep 10",
+		},
+		startOnRequestEnabled: true,
+	}
+
 	// Create RequestRouter
 	router := &RequestRouter{
 		proxyHandler:          httputil.NewSingleHostReverseProxy(backendURL),
 		procMgr:               procMgr,
 		startOnRequestEnabled: true,
 	}
-
-	// Start the process
-	startReq := validation.ProcessStartRequest{
-		Command: "sleep 10",
-	}
-	require.NoError(t, procMgr.Start(startReq))
-	time.Sleep(100 * time.Millisecond)
 
 	// Verify process is running
 	status := procMgr.GetStatus()
@@ -1913,17 +1902,11 @@ func TestRequestRouter_NoAutoStartWhenRunning(t *testing.T) {
 	assert.Equal(t, ProcessStateRunning, newStatus.State)
 	assert.Equal(t, status.PID, newStatus.PID, "PID should remain the same")
 
-	// Clean up
-	procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
+	assert.Equal(t, 0, procMgr.startCalls, "should not attempt to start when already running")
 }
 
 // Test RequestRouter doesn't auto-start when startOnRequestEnabled is false
 func TestRequestRouter_NoAutoStartWhenDisabled(t *testing.T) {
-	// Create process manager
-	logMgr := logs.NewManager(100)
-	pid1Mgr := process.NewPID1Manager()
-	procMgr := NewProcessManager(logMgr, pid1Mgr)
-
 	// Create backend server
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -1933,6 +1916,15 @@ func TestRequestRouter_NoAutoStartWhenDisabled(t *testing.T) {
 
 	backendURL, err := url.Parse(backend.URL)
 	require.NoError(t, err)
+
+	procMgr := &fakeProcessController{
+		status: ProcessStatus{
+			State: ProcessStateStopped,
+		},
+		startRequest: &validation.ProcessStartRequest{
+			Command: "sleep 10",
+		},
+	}
 
 	// Create RequestRouter with start-on-request DISABLED
 	router := &RequestRouter{
@@ -1954,28 +1946,19 @@ func TestRequestRouter_NoAutoStartWhenDisabled(t *testing.T) {
 	// Process should still be stopped
 	status = procMgr.GetStatus()
 	assert.Equal(t, ProcessStateStopped, status.State, "process should remain stopped when auto-start is disabled")
+	assert.Equal(t, 0, procMgr.startCalls, "should not attempt to start when auto-start is disabled")
 }
 
 // Test activity tracking is called on proxied requests
 func TestRequestRouter_ActivityTracking(t *testing.T) {
-	// Create process manager
-	logMgr := logs.NewManager(100)
-	pid1Mgr := process.NewPID1Manager()
-	procMgr := NewProcessManager(logMgr, pid1Mgr)
-
-	// Enable start-on-request to enable activity tracking
-	procMgr.EnableStartOnRequest(5*time.Second, 1*time.Second)
-
-	// Start the process
-	startReq := validation.ProcessStartRequest{
-		Command: "sleep 10",
+	procMgr := &fakeProcessController{
+		status: ProcessStatus{
+			State: ProcessStateRunning,
+		},
+		startOnRequestEnabled: true,
 	}
-	require.NoError(t, procMgr.Start(startReq))
-	time.Sleep(100 * time.Millisecond)
-
-	// Get initial activity time
-	initialActivity, ok := procMgr.lastActivityTime.Load().(time.Time)
-	require.True(t, ok, "should be able to load activity time")
+	procMgr.lastActivity = time.Now().Add(-50 * time.Millisecond)
+	initialActivity := procMgr.lastActivity
 
 	// Wait a bit to ensure time difference
 	time.Sleep(50 * time.Millisecond)
@@ -2004,13 +1987,8 @@ func TestRequestRouter_ActivityTracking(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	// Activity time should be updated
-	newActivity, ok := procMgr.lastActivityTime.Load().(time.Time)
-	require.True(t, ok, "should be able to load updated activity time")
+	newActivity := procMgr.lastActivity
 	assert.True(t, newActivity.After(initialActivity), "activity time should be updated after proxied request")
-
-	// Clean up
-	procMgr.StopIdleMonitor()
-	procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
 }
 
 // TestModifyResponse_StripsDuplicateCORSHeaders verifies that backend CORS headers
@@ -2135,33 +2113,17 @@ func TestModifyResponse_PreservesNonCORSHeaders(t *testing.T) {
 // TestHTTPProxy_HealthCheck_IdledButWasHealthy tests that health check returns 200
 // for a process that was healthy before being idled (not probing backend)
 func TestHTTPProxy_HealthCheck_IdledButWasHealthy(t *testing.T) {
-	// Create process manager
-	logMgr := logs.NewManager(100)
-	pid1Mgr := process.NewPID1Manager()
-	procMgr := NewProcessManager(logMgr, pid1Mgr)
-
-	// Start a process
-	startReq := validation.ProcessStartRequest{
-		Command:    "sleep 30",
-		WorkingDir: "/tmp",
+	procMgr := &fakeProcessController{
+		status: ProcessStatus{
+			State: ProcessStateStopped,
+		},
+		wasHealthyBeforeIdle:  true,
+		startOnRequestEnabled: true,
 	}
-	require.NoError(t, procMgr.Start(startReq))
-	time.Sleep(100 * time.Millisecond)
-
-	// Enable start-on-request with short timeout
-	procMgr.EnableStartOnRequest(300*time.Millisecond, 100*time.Millisecond)
-
-	// Wait for idle timeout to stop the process
-	time.Sleep(600 * time.Millisecond)
-
-	// Verify process is stopped and was healthy before idle
-	status := procMgr.GetStatus()
-	require.Equal(t, ProcessStateStopped, status.State, "process should be stopped")
-	require.True(t, procMgr.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be true")
 
 	// Create HTTP proxy with start-on-request enabled
 	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
+		config: Config{
 			Enabled:    true,
 			ListenPort: 8080,
 			TargetHost: "localhost",
@@ -2194,39 +2156,22 @@ func TestHTTPProxy_HealthCheck_IdledButWasHealthy(t *testing.T) {
 		"should have no-store in Cache-Control")
 	assert.Equal(t, "no-cache", rec.Header().Get("Pragma"), "should have Pragma: no-cache")
 	assert.Equal(t, "0", rec.Header().Get("Expires"), "should have Expires: 0")
-
-	// Clean up
-	procMgr.StopIdleMonitor()
 }
 
 // TestHTTPProxy_HealthCheck_StoppedNotFromIdle tests that health check returns 503
 // for a process that was stopped explicitly (not from idle)
 func TestHTTPProxy_HealthCheck_StoppedNotFromIdle(t *testing.T) {
-	// Create process manager
-	logMgr := logs.NewManager(100)
-	pid1Mgr := process.NewPID1Manager()
-	procMgr := NewProcessManager(logMgr, pid1Mgr)
-
-	// Start a process
-	startReq := validation.ProcessStartRequest{
-		Command:    "sleep 30",
-		WorkingDir: "/tmp",
+	procMgr := &fakeProcessController{
+		status: ProcessStatus{
+			State: ProcessStateStopped,
+		},
+		wasHealthyBeforeIdle:  false,
+		startOnRequestEnabled: true,
 	}
-	require.NoError(t, procMgr.Start(startReq))
-	time.Sleep(100 * time.Millisecond)
-
-	// Explicitly stop the process (not from idle)
-	require.NoError(t, procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1}))
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify process is stopped and wasHealthyBeforeIdle is false
-	status := procMgr.GetStatus()
-	require.Equal(t, ProcessStateStopped, status.State, "process should be stopped")
-	require.False(t, procMgr.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should be false")
 
 	// Create HTTP proxy with start-on-request enabled
 	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
+		config: Config{
 			Enabled:    true,
 			ListenPort: 8080,
 			TargetHost: "localhost",
@@ -2267,22 +2212,17 @@ func TestHTTPProxy_HealthCheck_RunningProcess(t *testing.T) {
 	backendURL, err := url.Parse(backend.URL)
 	require.NoError(t, err)
 
-	// Create process manager
-	logMgr := logs.NewManager(100)
-	pid1Mgr := process.NewPID1Manager()
-	procMgr := NewProcessManager(logMgr, pid1Mgr)
-
-	// Start a process
-	startReq := validation.ProcessStartRequest{
-		Command:    "sleep 30",
-		WorkingDir: "/tmp",
+	procMgr := &fakeProcessController{
+		status: ProcessStatus{
+			State: ProcessStateRunning,
+			PID:   1234,
+		},
+		startOnRequestEnabled: true,
 	}
-	require.NoError(t, procMgr.Start(startReq))
-	time.Sleep(100 * time.Millisecond)
 
 	// Create HTTP proxy pointing to the test backend
 	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
+		config: Config{
 			Enabled:    true,
 			ListenPort: 8080,
 			TargetHost: backendURL.Hostname(),
@@ -2307,9 +2247,6 @@ func TestHTTPProxy_HealthCheck_RunningProcess(t *testing.T) {
 
 	assert.Equal(t, "healthy", resp.Status, "status should be 'healthy'")
 	assert.Empty(t, resp.Reason, "reason should be empty for normal healthy state")
-
-	// Clean up
-	procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1})
 }
 
 // TestHTTPProxy_HealthCheck_NoStartOnRequest tests that health check behavior
@@ -2317,7 +2254,7 @@ func TestHTTPProxy_HealthCheck_RunningProcess(t *testing.T) {
 func TestHTTPProxy_HealthCheck_NoStartOnRequest(t *testing.T) {
 	// Create HTTP proxy with start-on-request DISABLED
 	proxy := &HTTPProxy{
-		config: HTTPProxyConfig{
+		config: Config{
 			Enabled:    true,
 			ListenPort: 8080,
 			TargetHost: "localhost",

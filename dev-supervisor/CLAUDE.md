@@ -30,7 +30,7 @@ dev-supervisor/
 ├── api.go                          # HTTP API server (Unix socket/TCP)
 ├── process_manager.go              # Process lifecycle management
 ├── pid1_manager_unix.go            # PID 1 behavior (signal forwarding, reaping)
-├── http_proxy.go                   # Reverse proxy with TLS/WebSocket/static serving
+├── internal/proxy/http/            # Reverse proxy with TLS/WebSocket/static serving
 ├── command_executor.go             # Command execution with output capture
 ├── environment_manager.go          # Environment variable management
 ├── peer_sec_linux.go              # SELinux peer security validation
@@ -351,7 +351,7 @@ GetEnvDurationWithDefault(key string, defaultValue time.Duration) time.Duration
 <http_proxy_architecture>
 **TLS reverse proxy with multiple modes:**
 
-1. **Proxy mode** (`http_proxy.go`):
+1. **Proxy mode** (`internal/proxy/http/`):
    - TLS termination with configurable cert/key
    - Reverse proxy to backend (typically localhost:port)
    - WebSocket support with automatic upgrade detection
@@ -917,7 +917,7 @@ ENTRYPOINT ["/usr/local/bin/dev-supervisor"]
 - Localhost-only listening (127.0.0.1:2525)
 - No authentication passthrough (adds tracking only)
 
-**HTTP proxy:**
+**HTTP proxy (`internal/proxy/http/`):**
 
 - TLS certificate/key validation
 - CORS origin whitelisting

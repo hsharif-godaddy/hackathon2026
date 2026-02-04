@@ -1,7 +1,6 @@
-package main
+package httpproxy
 
 import (
-	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -9,14 +8,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"maps"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -31,518 +27,25 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/proxy/routing"
 )
 
-const (
-	protoHTTP  = "http"
-	protoHTTPS = "https"
-)
-
-func determineForwardedProto(req *http.Request) string {
-	if raw := strings.TrimSpace(req.Header.Get("X-Forwarded-Proto")); raw != "" {
-		normalized := strings.ToLower(raw)
-		if normalized == protoHTTP || normalized == protoHTTPS {
-			return normalized
-		}
-
-		slog.Warn("http.proxy.invalid_forwarded_proto",
-			"value", raw,
-			"remote_addr", req.RemoteAddr,
-		)
-	}
-
-	if req.TLS != nil {
-		return protoHTTPS
-	}
-
-	return protoHTTP
-}
-
-/**
- * getClientIP extracts the real client IP from CF-Connecting-IP header
- * Returns empty string if header is not present (direct connection, no Cloudflare)
- *
- * @param req - HTTP request
- * @returns client IP address string or empty string
- */
-func getClientIP(req *http.Request) string {
-	return strings.TrimSpace(req.Header.Get("Cf-Connecting-Ip"))
-}
-
-/**
- * getSrcIPAndPort splits RemoteAddr into IP and port components
- * RemoteAddr format is typically "ip:port" or "[ipv6]:port"
- *
- * @param remoteAddr - The RemoteAddr string from request
- * @returns IP address and port as separate strings
- */
-func getSrcIPAndPort(remoteAddr string) (string, string) {
-	// RemoteAddr is in format "ip:port" or "[ipv6]:port"
-	host, port, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		// If split fails, return the whole address as IP with empty port
-		return remoteAddr, ""
-	}
-	return host, port
-}
-
-/**
- * getRayID extracts the CF-Ray header for request tracing
- * Returns empty string if header is not present
- *
- * @param req - HTTP request
- * @returns CF-Ray value or empty string
- */
-func getRayID(req *http.Request) string {
-	return strings.TrimSpace(req.Header.Get("Cf-Ray"))
-}
-
-/**
- * HTTPProxyConfig defines configuration for the HTTP proxy server
- */
-type HTTPProxyConfig struct {
-	Enabled        bool          // Enable HTTP proxy mode
-	ListenPort     int           // External HTTPS port for proxy
-	TargetHost     string        // Backend host (typically localhost)
-	TargetPort     int           // Backend port (app internal port, typically 8080)
-	TLSCertPath    string        // Path to TLS certificate
-	TLSKeyPath     string        // Path to TLS private key
-	MaxRetries     int           // Maximum number of retries for connection errors (default: 5)
-	InitialBackoff time.Duration // Initial backoff duration (default: 100ms)
-	MaxBackoff     time.Duration // Maximum backoff duration (default: 2s)
-
-	// Static serving configuration
-	StaticRoot          string   // Root directory for static files (required if EnableStaticServing=true)
-	EnableStaticServing bool     // Enable static file serving (explicit, default: false)
-	SPAMode             bool     // Enable SPA fallback (default: true when static serving enabled)
-	APIPrefix           string   // API route prefix (default: "/api")
-	ConfigPath          string   // Optional path to routing config file
-	AllowedOrigins      []string // CORS allowed origins (whitelist)
-
-	// JWT authentication configuration
-	// Auth failure handling uses hybrid mode: redirects browsers, returns 401 for APIs
-	JWTEnabled        bool     // Enable JWT authentication (default: false)
-	JWKSUrl           string   // JWKS endpoint URL
-	JWKSSkipTLSVerify bool     // Skip TLS certificate verification (local dev only)
-	JWTRedirectURL    string   // Redirect URL on auth failure (supports {url} placeholder)
-	JWTBuilderBaseURL string   // Builder app base URL for smart redirects
-	SiteID            string   // Site ID for smart redirects (from SITE_ID env var)
-	JWTExcludedPaths  []string // Paths to exclude from JWT validation
-}
-
-/**
- * HTTPProxy provides HTTP reverse proxy with optional TLS termination
- *
- * Responsibilities:
- * - HTTPS termination using provided TLS certificates (optional)
- * - Plain HTTP mode when certificates are not provided
- * - Reverse proxy to backend application
- * - WebSocket upgrade support
- * - Request header forwarding
- * - Graceful lifecycle management
- */
+// HTTPProxy provides HTTP reverse proxy with optional TLS termination.
+//
+// Responsibilities:
+// - HTTPS termination using provided TLS certificates (optional)
+// - Plain HTTP mode when certificates are not provided
+// - Reverse proxy to backend application
+// - WebSocket upgrade support
+// - Request header forwarding
+// - Graceful lifecycle management
 type HTTPProxy struct {
 	mu                    sync.RWMutex
-	config                HTTPProxyConfig
+	config                Config
 	server                *http.Server
 	listener              net.Listener
 	running               bool
 	reverseProxy          *httputil.ReverseProxy
 	startTime             time.Time
-	procMgr               *ProcessManager
+	procMgr               ProcessController
 	startOnRequestEnabled bool
-}
-
-/**
- * HTTPProxyStatus represents the current status of the HTTP proxy
- */
-type HTTPProxyStatus struct {
-	Enabled    bool   `json:"enabled"`
-	Running    bool   `json:"running"`
-	ListenAddr string `json:"listen_addr,omitempty"`
-	TargetURL  string `json:"target_url,omitempty"`
-	Uptime     string `json:"uptime,omitempty"`
-}
-
-/**
- * ProxyHealthResponse represents the health check response
- */
-type ProxyHealthResponse struct {
-	Status string `json:"status"`
-	Reason string `json:"reason,omitempty"`
-}
-
-/**
- * responseWriter wraps http.ResponseWriter to capture status code and response size
- * Used by loggingMiddleware for request logging
- * Implements http.Hijacker and http.Flusher interfaces for WebSocket and SSE support
- */
-type responseWriter struct {
-	http.ResponseWriter
-
-	statusCode int
-	size       int
-}
-
-func (rw *responseWriter) WriteHeader(code int) {
-	rw.statusCode = code
-	rw.ResponseWriter.WriteHeader(code)
-}
-
-func (rw *responseWriter) Write(b []byte) (int, error) {
-	n, err := rw.ResponseWriter.Write(b)
-	rw.size += n
-	return n, err
-}
-
-// Hijack implements http.Hijacker interface to support WebSocket upgrades
-// Delegates to the underlying ResponseWriter if it implements Hijacker
-func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	hijacker, ok := rw.ResponseWriter.(http.Hijacker)
-	if !ok {
-		return nil, nil, errors.New("underlying ResponseWriter does not implement http.Hijacker")
-	}
-	return hijacker.Hijack()
-}
-
-// Flush implements http.Flusher interface to support Server-Sent Events (SSE)
-// and chunked transfer encoding. Delegates to underlying ResponseWriter if it implements Flusher.
-func (rw *responseWriter) Flush() {
-	if flusher, ok := rw.ResponseWriter.(http.Flusher); ok {
-		flusher.Flush()
-	}
-}
-
-/**
- * RequestRouter handles HTTP request routing based on configuration
- * Routes requests to static file handler, SPA fallback, or backend proxy
- */
-type RequestRouter struct {
-	staticHandler         http.Handler
-	proxyHandler          http.Handler
-	spaFallback           string
-	apiPrefix             string
-	isProductionMode      bool
-	allowedOrigins        []string
-	procMgr               *ProcessManager
-	startOnRequestEnabled bool
-}
-
-/**
- * handleAutoStart handles requests when the app is stopped
- * Holds the request open, starts the process, and forwards when ready
- */
-func (rr *RequestRouter) handleAutoStart(w http.ResponseWriter, r *http.Request) {
-	slog.Info("autostart.triggered",
-		"path", r.URL.Path,
-		"method", r.Method,
-		"remote_addr", r.RemoteAddr)
-
-	// Get current process start request
-	startReq := rr.procMgr.GetStartRequest()
-	if startReq == nil {
-		slog.Error("autostart.no_config")
-		http.Error(w, "Service configuration error", http.StatusInternalServerError)
-		return
-	}
-
-	// Start the process
-	startTime := time.Now()
-	err := rr.procMgr.Start(*startReq)
-	// Accept benign race conditions (already starting, already running)
-	// These are success signals - another concurrent request beat us to it
-	if err != nil {
-		// Use typed error checking instead of string matching for robustness
-		if !errors.Is(err, ErrAlreadyStarting) && !errors.Is(err, ErrAlreadyRunning) {
-			slog.Error("autostart.failed", "error", err)
-			http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		// Log the benign race for observability
-		slog.Info("autostart.concurrent_race", "error", err.Error())
-	}
-
-	// Wait for process to be ready (hold the request)
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
-	timeout := time.After(60 * time.Second)
-
-	for {
-		select {
-		case <-r.Context().Done():
-			// Client disconnected or canceled the request
-			slog.Info("autostart.client_canceled",
-				"path", r.URL.Path,
-				"method", r.Method,
-				"reason", r.Context().Err())
-			return
-
-		case <-timeout:
-			slog.Error("autostart.timeout",
-				"path", r.URL.Path,
-				"method", r.Method)
-			http.Error(w, "Service startup timeout", http.StatusGatewayTimeout)
-			return
-
-		case <-ticker.C:
-			status := rr.procMgr.GetStatus()
-
-			switch status.State {
-			case ProcessStateStopped, ProcessStateStopping:
-				// Keep waiting - these states shouldn't happen during startup
-				// but handle them gracefully
-				slog.Debug("autostart.unexpected_state",
-					"state", status.State,
-					"path", r.URL.Path)
-
-			case ProcessStateRunning:
-				duration := time.Since(startTime)
-				slog.Info("autostart.process_ready",
-					"pid", status.PID,
-					"startup_duration_ms", duration.Milliseconds(),
-					"path", r.URL.Path,
-					"method", r.Method)
-
-				// Update activity before forwarding
-				rr.procMgr.UpdateActivity()
-
-				// Forward the original request to backend
-				rr.proxyHandler.ServeHTTP(w, r)
-				return
-
-			case ProcessStateError:
-				slog.Error("autostart.process_failed",
-					"error", status.Error,
-					"state", status.State,
-					"path", r.URL.Path)
-				http.Error(w, "Service startup failed", http.StatusBadGateway)
-				return
-
-			case ProcessStateStarting:
-				// Keep waiting
-				slog.Debug("autostart.waiting",
-					"pid", status.PID,
-					"state", status.State)
-			}
-		}
-	}
-}
-
-// handleStaticRequest handles static file serving and SPA fallback
-// Returns true if the request was handled, false if it should fall through to proxy
-func (rr *RequestRouter) handleStaticRequest(w http.ResponseWriter, r *http.Request) bool {
-	// Has file extension? Serve as static file directly
-	if path.Ext(r.URL.Path) != "" {
-		slog.Debug("serving static file", "path", r.URL.Path, "method", r.Method)
-		rr.staticHandler.ServeHTTP(w, r)
-		return true
-	}
-
-	// No extension - first try to serve as a real file (e.g., /.well-known/apple-app-site-association)
-	// If the file doesn't exist (404), fall back to SPA for GET requests or proxy for HEAD/OPTIONS
-	if rr.staticHandler != nil {
-		if handled := rr.tryServeStaticFile(w, r); handled {
-			return true
-		}
-	}
-
-	// SPA fallback for GET requests (serve index.html with no-cache)
-	if rr.spaFallback != "" && r.Method == http.MethodGet {
-		slog.Debug("SPA fallback", "path", r.URL.Path)
-		// Set no-cache headers for SPA shell (index.html should never be cached)
-		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		w.Header().Set("Pragma", "no-cache")
-		w.Header().Set("Expires", "0")
-		http.ServeFile(w, r, rr.spaFallback)
-		return true
-	}
-
-	return false
-}
-
-// tryServeStaticFile attempts to serve a file from the static handler
-// Returns true if the request was handled (file found or 404 returned), false if it should fall through
-func (rr *RequestRouter) tryServeStaticFile(w http.ResponseWriter, r *http.Request) bool {
-	// Use an isolated recorder to probe if the file exists without contaminating
-	// the real response writer's headers (avoids Content-Type: text/plain leak)
-	recorder := httptest.NewRecorder()
-	rr.staticHandler.ServeHTTP(recorder, r)
-
-	// If file was found (not 404), copy the response to the real writer
-	if recorder.Code != http.StatusNotFound {
-		// Copy headers from recorder to real response
-		maps.Copy(w.Header(), recorder.Header())
-
-		// If serving HTML (e.g., index.html from a directory request like /),
-		// override with strict no-cache headers to prevent stale app shell.
-		// This is critical for SPA deployments where the HTML shell must always
-		// be fresh to load the correct versioned JS/CSS bundles.
-		contentType := recorder.Header().Get("Content-Type")
-		if strings.Contains(contentType, "text/html") {
-			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-			w.Header().Set("Pragma", "no-cache")
-			w.Header().Set("Expires", "0")
-		}
-
-		w.WriteHeader(recorder.Code)
-		// Safe: Static file proxy serving disk content (images, CSS, JS), not user input.
-		// Semgrep G203 false positive - HTML escaping would corrupt binary/structured files.
-		if _, err := w.Write(recorder.Body.Bytes()); err != nil {
-			slog.Error("failed to write response body", "error", err)
-		}
-		return true
-	}
-
-	// File not found - behavior depends on method and SPA mode:
-	// - GET with SPA enabled: fall through to SPA fallback below
-	// - GET without SPA: fall through to proxy backend
-	// - HEAD/OPTIONS with SPA enabled: return 404 (client-side routes don't exist as files)
-	// - HEAD/OPTIONS without SPA: fall through to proxy backend (for health checks, CORS preflight)
-	if r.Method != http.MethodGet && rr.spaFallback != "" {
-		http.NotFound(w, r)
-		return true
-	}
-
-	return false
-}
-
-/**
- * activityTrackingMiddleware wraps an http.Handler to track in-flight requests
- * for idle monitoring. Only active when start-on-request is enabled.
- * Excludes health checks, monitoring paths, and CORS preflight from updating activity at request start.
- * Always updates activity on request completion (via UntrackRequest) to prevent shutdown during long requests.
- */
-func activityTrackingMiddleware(next http.Handler, procMgr *ProcessManager, excludedPaths []string) http.Handler {
-	// Return no-op if ProcessManager is nil or start-on-request is disabled
-	if procMgr == nil || !procMgr.IsStartOnRequestEnabled() {
-		return next
-	}
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Track request start (always count in-flight requests)
-		procMgr.TrackRequest()
-
-		// Update activity at request start for non-excluded paths
-		// Skip health checks and monitoring to prevent automated probes from keeping apps alive
-		// Note: CORS preflight is handled by CORS middleware and never reaches here
-		if !middleware.IsPathExcluded(r.URL.Path, excludedPaths) {
-			procMgr.UpdateActivity()
-		}
-
-		// Ensure cleanup always happens, even on panic
-		// UntrackRequest always calls UpdateActivity() to prevent shutdown during long requests
-		defer procMgr.UntrackRequest()
-
-		// Call next handler
-		next.ServeHTTP(w, r)
-	})
-}
-
-/**
- * loggingMiddleware wraps an http.Handler to log requests with response details
- * Single responsibility: Observe and record HTTP request/response details
- */
-func loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-
-		// Wrap response writer to capture status and size
-		rw := &responseWriter{
-			ResponseWriter: w,
-			statusCode:     http.StatusOK, // Default to 200 if WriteHeader not called
-			size:           0,
-		}
-
-		// Call next handler
-		next.ServeHTTP(rw, r)
-
-		// Log request with response details
-		duration := time.Since(start)
-		clientIP := getClientIP(r)
-		srcIP, srcPort := getSrcIPAndPort(r.RemoteAddr)
-		rayID := getRayID(r)
-
-		logAttrs := []any{
-			"type", "http_request",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"status", rw.statusCode,
-			"size", rw.size,
-			"duration_ms", duration.Milliseconds(),
-			"src_ip", srcIP,
-			"src_port", srcPort,
-		}
-
-		// Add client_ip if present (Cloudflare CF-Connecting-IP)
-		if clientIP != "" {
-			logAttrs = append(logAttrs, "client_ip", clientIP)
-		}
-
-		// Add ray_id if present (Cloudflare CF-Ray for tracing)
-		if rayID != "" {
-			logAttrs = append(logAttrs, "ray_id", rayID)
-		}
-
-		slog.Info("http.request", logAttrs...)
-	})
-}
-
-/**
- * ServeHTTP implements http.Handler interface for RequestRouter
- * Routes requests based on path, method, and configuration
- *
- * Note: CORS and HTTP method validation are handled by middleware layers
- */
-func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Check if we need to auto-start (any request can trigger it)
-	if rr.procMgr != nil && rr.startOnRequestEnabled {
-		status := rr.procMgr.GetStatus()
-		// Auto-start if process is stopped or errored
-		// This allows crashed apps to auto-restart on next request
-		// Note: We don't auto-start ProcessStateStopping to avoid race conditions
-		// where the process is intentionally shutting down
-		if status.State == ProcessStateStopped || status.State == ProcessStateError {
-			// Auto-start for any request (hold and forward)
-			rr.handleAutoStart(w, r)
-			return
-		}
-	}
-
-	// 1. API routes - always proxy to backend
-	if strings.HasPrefix(r.URL.Path, rr.apiPrefix) {
-		slog.Debug("routing to API backend", "path", r.URL.Path)
-		// Update activity before proxying
-		if rr.procMgr != nil && rr.startOnRequestEnabled {
-			rr.procMgr.UpdateActivity()
-		}
-		rr.proxyHandler.ServeHTTP(w, r)
-		return
-	}
-
-	// 2. Static serving disabled - proxy everything else to backend
-	if !rr.isProductionMode {
-		slog.Debug("proxying to backend (static serving disabled)", "path", r.URL.Path)
-		// Update activity before proxying
-		if rr.procMgr != nil && rr.startOnRequestEnabled {
-			rr.procMgr.UpdateActivity()
-		}
-		rr.proxyHandler.ServeHTTP(w, r)
-		return
-	}
-
-	// 3. Static serving enabled - handle safe HTTP methods for static content
-	// Handle GET, HEAD, OPTIONS for static assets (browsers use HEAD for cache validation)
-	// Note: CORS preflight is handled by CORS middleware before reaching here
-	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
-		if handled := rr.handleStaticRequest(w, r); handled {
-			return
-		}
-	}
-
-	// 4. Default - proxy to backend
-	// Update activity before proxying
-	if rr.procMgr != nil && rr.startOnRequestEnabled {
-		rr.procMgr.UpdateActivity()
-	}
-	rr.proxyHandler.ServeHTTP(w, r)
 }
 
 /**
@@ -634,13 +137,8 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return nil, lastErr
 }
 
-/**
- * NewHTTPProxy creates a new HTTP proxy instance
- *
- * @param config - HTTP proxy configuration
- * @returns Initialized HTTPProxy instance
- */
-func NewHTTPProxy(cfg HTTPProxyConfig) *HTTPProxy {
+// NewHTTPProxy creates a new HTTP proxy instance.
+func NewHTTPProxy(cfg Config) *HTTPProxy {
 	// Set defaults for retry configuration from environment variables or use hardcoded defaults
 	if cfg.MaxRetries == 0 {
 		envMaxRetries := config.GetEnvIntWithDefault("DEV_SUPERVISOR_PROXY_MAX_RETRIES", 5)
@@ -749,18 +247,7 @@ func isRetryableError(err error) bool {
 	return errors.As(err, &opErr)
 }
 
-/**
- * Start initializes and starts the HTTP proxy server
- *
- * Performs the following operations:
- * 1. Validates configuration
- * 2. Loads TLS certificates (if provided)
- * 3. Creates reverse proxy to backend
- * 4. Starts HTTPS listener (or HTTP if no certificates)
- * 5. Begins serving requests
- *
- * @returns error if startup fails, nil on success
- */
+// Start initializes and starts the HTTP proxy server.
 func (p *HTTPProxy) Start() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -1148,31 +635,19 @@ func (p *HTTPProxy) Start() error {
 	return nil
 }
 
-/**
- * EnableStartOnRequest enables start-on-request functionality
- * Must be called before Start()
- *
- * @param procMgr - Process manager instance
- * @param idleTimeout - Duration of inactivity before auto-stopping
- * @param checkInterval - How often to check for idle timeout
- */
-func (p *HTTPProxy) EnableStartOnRequest(procMgr *ProcessManager, idleTimeout, checkInterval time.Duration) {
+// EnableStartOnRequest enables start-on-request behavior with idle monitoring.
+func (p *HTTPProxy) EnableStartOnRequest(procMgr ProcessController, idleTimeout, checkInterval time.Duration) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	p.procMgr = procMgr
 	p.startOnRequestEnabled = true
 
-	// Enable idle monitoring in ProcessManager
-	// (ProcessManager will log the configuration)
+	// Enable idle monitoring in ProcessController (logs configuration).
 	procMgr.EnableStartOnRequest(idleTimeout, checkInterval)
 }
 
-/**
- * Stop gracefully shuts down the HTTP proxy server
- *
- * @returns error if shutdown fails, nil on success
- */
+// Stop gracefully shuts down the HTTP proxy server.
 func (p *HTTPProxy) Stop() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -1202,16 +677,12 @@ func (p *HTTPProxy) Stop() error {
 	return nil
 }
 
-/**
- * GetStatus returns the current status of the HTTP proxy
- *
- * @returns HTTPProxyStatus containing current state information
- */
-func (p *HTTPProxy) GetStatus() HTTPProxyStatus {
+// GetStatus returns the current status of the HTTP proxy.
+func (p *HTTPProxy) GetStatus() Status {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	status := HTTPProxyStatus{
+	status := Status{
 		Enabled: p.config.Enabled,
 		Running: p.running,
 	}
@@ -1229,11 +700,7 @@ func (p *HTTPProxy) GetStatus() HTTPProxyStatus {
 	return status
 }
 
-/**
- * Addr returns the listener address if running
- *
- * @returns listener address string or empty string if not running
- */
+// Addr returns the listener address if running.
 func (p *HTTPProxy) Addr() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()

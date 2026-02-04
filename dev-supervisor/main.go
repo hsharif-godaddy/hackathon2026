@@ -21,6 +21,7 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
+	httpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/http"
 	smtpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/smtp"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
@@ -96,7 +97,7 @@ type Server struct {
 	logMgr                 *logs.Manager
 	pid1Mgr                *process.PID1Manager
 	smtpProxy              *smtpproxy.Proxy
-	httpProxy              *HTTPProxy
+	httpProxy              *httpproxy.HTTPProxy
 	startTime              time.Time
 	config                 *Config
 	processLogging         bool // Current process logging configuration
@@ -253,7 +254,7 @@ func (s *Server) startHTTPProxyIfEnabled() error {
 		return nil
 	}
 
-	proxyConfig := HTTPProxyConfig{
+	proxyConfig := httpproxy.Config{
 		Enabled:     true,
 		ListenPort:  s.config.ProxyPort,
 		TargetHost:  s.config.ProxyTargetHost,
@@ -278,12 +279,12 @@ func (s *Server) startHTTPProxyIfEnabled() error {
 		SiteID:            s.config.SiteID,
 		JWTExcludedPaths:  s.config.JWTExcludedPaths,
 	}
-	s.httpProxy = NewHTTPProxy(proxyConfig)
+	s.httpProxy = httpproxy.NewHTTPProxy(proxyConfig)
 
 	// Enable start-on-request if configured
 	if s.config.StartOnRequestEnabled {
 		s.httpProxy.EnableStartOnRequest(
-			s.procMgr,
+			newProcessController(s.procMgr),
 			s.config.IdleTimeout,
 			s.config.IdleCheckInterval,
 		)
