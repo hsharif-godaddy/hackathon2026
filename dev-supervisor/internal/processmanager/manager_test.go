@@ -1,4 +1,5 @@
-package main
+//nolint:testpackage // Tests access unexported fields for idle tracking coverage.
+package processmanager
 
 import (
 	"net"

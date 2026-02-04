@@ -271,7 +271,7 @@ make test-docker    # Full integration tests
 dev-supervisor/
 ├── main.go                        # Main application entry point
 ├── api.go                         # HTTP API endpoint handlers
-├── process_manager.go             # Process lifecycle management
+├── internal/processmanager/        # Process lifecycle management
 ├── command_executor.go            # Command execution functionality
 ├── environment_manager.go         # Environment variable management
 ├── logging.go                     # Logging configuration and management

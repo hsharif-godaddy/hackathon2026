@@ -28,7 +28,7 @@ This is a **standalone Go project** within the monorepo:
 dev-supervisor/
 ├── main.go                         # Entry point, CLI, supervisor initialization
 ├── api.go                          # HTTP API server (Unix socket/TCP)
-├── process_manager.go              # Process lifecycle management
+├── internal/processmanager/         # Process lifecycle management
 ├── pid1_manager_unix.go            # PID 1 behavior (signal forwarding, reaping)
 ├── internal/proxy/http/            # Reverse proxy with TLS/WebSocket/static serving
 ├── command_executor.go             # Command execution with output capture
@@ -117,7 +117,7 @@ make check                       # Run all checks (fmt, vet, lint, test)
 **Testing individual components:**
 
 ```bash
-go test -v -run TestProcessManager    # Run specific test
+go test -v ./internal/processmanager -run TestProcessManager    # Run specific test
 go test -v ./internal/config          # Test specific package
 go test -race -v ./...                # Run all tests with race detector
 go test -v -tags=docker_integration   # Run Docker integration tests

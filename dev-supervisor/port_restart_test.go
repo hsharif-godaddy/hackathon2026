@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/airo-ai-builder/dev-supervisor/internal/processmanager"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
@@ -283,7 +284,7 @@ func TestExplicitPortConfiguration(t *testing.T) {
 func findAvailablePort(t *testing.T) int {
 	// Start from a high port to avoid conflicts
 	for port := 8000; port <= 9000; port++ {
-		if isPortAvailable(port) {
+		if processmanager.IsPortAvailable(port) {
 			return port
 		}
 	}

@@ -1,6 +1,7 @@
 //go:build linux
 
-package main
+//nolint:testpackage // Tests require access to unexported process state.
+package processmanager
 
 import (
 	"fmt"

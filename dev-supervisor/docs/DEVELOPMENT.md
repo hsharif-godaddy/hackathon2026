@@ -96,7 +96,7 @@ choco install golang
 
 ### Core Components
 
-1. **Process Manager** (`process_manager.go`)
+1. **Process Manager** (`internal/processmanager/`)
    - Manages lifecycle of the supervised process
    - Handles start, stop, restart operations
    - Integrates with PID1 manager and port discovery
@@ -461,8 +461,8 @@ func (d *FallbackPortDiscovery) GetProcessPorts(pid int) ([]int, error) {
 #### Step 4: Use in Cross-Platform Code
 
 ```go
-// process_manager.go
-package main
+// internal/processmanager/manager.go
+package processmanager
 
 type ProcessManager struct {
     portDiscovery PortDiscovery
