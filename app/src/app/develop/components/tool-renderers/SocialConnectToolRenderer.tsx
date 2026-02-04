@@ -9,6 +9,7 @@ import DefaultToolRenderer from '@/app/develop/components/tool-renderers/Default
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
 import { useWebSocketContext } from '@/contexts/WebSocketContext'
 import { useTranslations } from '@/hooks/useTranslations'
+import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import type { SocialPostData } from '@/types/social-posts'
 import { formatHashtags, formatPlatformName } from '@/utils/social'
 
@@ -35,7 +36,7 @@ function SocialConnectToolRenderer({
 
       // Re-transform post data in case it was edited, or use the existing pendingPublish
       const publishData = pendingPublish || {
-        platform: postData.platform,
+        platform: PLATFORM_TRANSFORMS.toDisplay(postData.platform),
         message: [postData.content, postData.callToAction, formatHashtags(postData.hashtags)].filter(Boolean).join('\n\n'),
         imageUrls: postData.images?.map(img => img.url) || [],
       }

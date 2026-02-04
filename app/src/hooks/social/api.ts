@@ -1,9 +1,10 @@
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { agentFetch } from '@/lib/agent-fetch'
 import { SocialV2Client } from '@/lib/social'
+import { type PublishablePlatform, SocialPlatform } from '@/lib/social-platforms'
 import { isFacebookConnection, isInstagramConnection } from '@/lib/utils/social-type-guards'
 import type { SocialConnection, SocialPublishResult } from '@/types/social'
-import { type PendingPublish, PublishablePlatform, SocialPostState } from '@/types/social-posts'
+import { type PendingPublish, SocialPostState } from '@/types/social-posts'
 
 const socialV2Client = new SocialV2Client()
 
@@ -96,8 +97,8 @@ async function publishToInstagram(
 }
 
 const platformPublishers: Record<PublishablePlatform, (publish: PendingPublish, connection: SocialConnection, errorMessages?: PublishErrorMessages) => Promise<SocialPublishResult>> = {
-  [PublishablePlatform.FACEBOOK]: publishToFacebook,
-  [PublishablePlatform.INSTAGRAM]: publishToInstagram
+  [SocialPlatform.FACEBOOK]: publishToFacebook,
+  [SocialPlatform.INSTAGRAM]: publishToInstagram
 }
 
 export async function publishToPlatform(
@@ -109,5 +110,6 @@ export async function publishToPlatform(
   if (!publisher) {
     throw new Error(errorMessages?.platformNotSupported)
   }
+
   return publisher(publish, connection, errorMessages)
 }

@@ -19,6 +19,12 @@ export const PLATFORM_CONFIG: Record<string, PlatformConfig> = {
   [SocialPlatform.INSTAGRAM]: { name: 'Instagram', Icon: InstagramIcon },
 }
 
+/**
+ * Platforms that support publishing posts.
+ * Derived from PLATFORM_CONFIG - single source of truth.
+ */
+export type PublishablePlatform = keyof typeof PLATFORM_CONFIG
+
 
 export const ALL_PLATFORM_CONFIG: Record<SocialPlatform, PlatformConfig> = {
   [SocialPlatform.FACEBOOK]: { name: 'Facebook', Icon: FacebookIcon },
@@ -160,8 +166,17 @@ export function getDetailedPlatformStatuses<T extends SocialConnection = SocialC
     const platform = platformKey as SocialPlatform
     const platformConnections = grouped[platform] || []
 
+    // Sort connections: linked first, then unlinked
+    const sortedConnections = [...platformConnections].sort((a, b) => {
+      const aLinked = linkedConnectionIds.has(a.socialId)
+      const bLinked = linkedConnectionIds.has(b.socialId)
+      if (aLinked && !bLinked) return -1
+      if (!aLinked && bLinked) return 1
+      return 0
+    })
+
     // Add link status to connections (up to displayLimit)
-    const displayConnections = platformConnections
+    const displayConnections = sortedConnections
       .slice(0, displayLimit)
       .map(conn => ({
         ...conn,
@@ -170,8 +185,8 @@ export function getDetailedPlatformStatuses<T extends SocialConnection = SocialC
 
     const hiddenCount = Math.max(0, platformConnections.length - displayLimit)
 
-    // Determine overall status
-    const hasLinkedConnection = displayConnections.some(conn => conn.isLinked)
+    // Determine overall status - check ALL connections, not just displayed ones
+    const hasLinkedConnection = platformConnections.some(conn => linkedConnectionIds.has(conn.socialId))
     const overallStatus: Status =
       platformConnections.length === 0
         ? Status.NotConnected

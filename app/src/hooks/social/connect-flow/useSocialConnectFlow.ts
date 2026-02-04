@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { useConnectionById, useSiteAssociations } from '@/hooks/useSocial'
 import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
-import { useSocialConnectionsWithMetadata } from '../queries/useSocialConnections'
+import { useSocialConnections } from '../queries/useSocialConnections'
 
 interface UseSocialConnectFlowParams {
   platform: string
@@ -39,7 +39,7 @@ export function useSocialConnectFlow({
     isLoading: isLoadingConnections,
     isLoadingMetadata: isLoadingPlatformMetadata,
     connectionsLoadingMetadata
-  } = useSocialConnectionsWithMetadata({ platform, enabled })
+  } = useSocialConnections({ platform, enabled })
 
   // Fetch site links
   const siteLinksQuery = useSiteAssociations(appId, enabled)
@@ -58,26 +58,17 @@ export function useSocialConnectFlow({
     !!currentSiteLink?.socialId
   )
 
-  // Enrich the currently linked connection with metadata (if not already in enrichedConnections)
-  const {
-    connections: enrichedCurrentArray,
-    isLoadingMetadata: isLoadingCurrentMetadata
-  } = useSocialConnectionsWithMetadata({
-    platform,
-    enabled: enabled && !!currentConnectionDetails
-  })
-
   const linkedConnection = useMemo(() => {
     if (!currentConnectionDetails) return undefined
     // Try to find in enriched array first
-    const enriched = enrichedCurrentArray.find(c => c.socialId === currentConnectionDetails.socialId)
+    const enriched = enrichedConnections.find(c => c.socialId === currentConnectionDetails.socialId)
     return enriched || currentConnectionDetails
-  }, [currentConnectionDetails, enrichedCurrentArray])
+  }, [currentConnectionDetails, enrichedConnections])
 
   // Plain connections (without metadata enrichment)
   const availableConnections = enrichedConnections as SocialConnection[]
 
-  const isLoadingMetadata = isLoadingPlatformMetadata || isLoadingCurrentMetadata
+  const isLoadingMetadata = isLoadingPlatformMetadata
   const isLoading =
     isLoadingSiteLinks ||
     isLoadingConnections ||

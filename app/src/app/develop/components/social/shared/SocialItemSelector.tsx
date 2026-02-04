@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Box from '@ux/box'
 import Button from '@ux/button'
 import text from '@ux/text'
 
@@ -58,7 +59,7 @@ export function SocialItemSelector({
 
   return (
     <div className="space-y-1.5">
-      <SocialSectionHeader Icon={Icon} title={title} />
+      {title && <SocialSectionHeader Icon={Icon} title={title} />}
 
       {description && (
         <text.p size={-2} className="text-muted-foreground" text={description} />
@@ -69,7 +70,7 @@ export function SocialItemSelector({
           <text.p size={-2} text={emptyMessage} />
         </div>
       ) : (
-        <div className="space-y-0.5 max-h-64 overflow-y-auto border border-border rounded-md p-1">
+        <div className="min-h-24 max-h-32 overflow-y-auto border border-border rounded-md p-1 space-y-0.5">
           {items.map((item) => {
             const isSelected = selectedId === item.id
 
@@ -90,21 +91,13 @@ export function SocialItemSelector({
                   disabled={item.isLoading}
                 />
                 <div className="flex-1 min-w-0">
-                  {item.isLoading ? (
-                    <div className="space-y-1">
-                      <div className="h-4 bg-muted/50 rounded animate-pulse w-3/4" />
-                      {item.subtitle && (
-                        <div className="h-3 bg-muted/50 rounded animate-pulse w-1/2" />
-                      )}
-                    </div>
-                  ) : (
-                    <SocialConnectionInfo
-                      name={item.name}
-                      pictureUrl={item.pictureUrl}
-                      details={item.subtitle}
-                      size="sm"
-                    />
-                  )}
+                  <SocialConnectionInfo
+                    name={item.name}
+                    pictureUrl={item.pictureUrl}
+                    details={item.subtitle}
+                    isLoading={item.isLoading}
+                    size="sm"
+                  />
                 </div>
               </label>
             )
@@ -113,7 +106,7 @@ export function SocialItemSelector({
       )}
 
       {buttons.length > 0 && (
-        <div className="flex gap-1 pt-1">
+        <Box orientation="horizontal" gap="sm" inlineAlignChildren="end" className="pt-1">
           {buttons.map((button, index) => {
             const isDisabled =
               (button.requiresSelection && !selectedId) ||
@@ -132,7 +125,7 @@ export function SocialItemSelector({
               />
             )
           })}
-        </div>
+        </Box>
       )}
     </div>
   )

@@ -58,51 +58,33 @@ export function findPageToken(pageTokens: string[], pageId: string): string | un
 }
 
 export function getConnectionDisplayName(
-  connection: SocialConnection | EnrichedSocialConnection | null | undefined,
-  options: { withFallback?: boolean } = { withFallback: true }
+  connection: SocialConnection | EnrichedSocialConnection | null | undefined
 ): string | null {
   if (!connection) return null
 
-  const withFallback = options.withFallback ?? true
-
   if (isFacebookConnection(connection)) {
     const enriched = connection as typeof connection & { pageName?: string }
-    const name = enriched.pageName
-    if (name) return name
-    if (withFallback) return `Page: ${connection.pageId}`
-    return null
+    return enriched.pageName || null
   }
 
   if (isInstagramConnection(connection)) {
     const enriched = connection as typeof connection & { pageName?: string }
-    const name = enriched.pageName
-    if (name) return name
-    if (withFallback) return `Page: ${connection.facebookPageId}`
-    return null
+    return enriched.pageName || null
   }
 
   if (isGoogleConnection(connection)) {
     const enriched = connection as typeof connection & { locationName?: string }
-    const name = enriched.locationName
-    if (name) return name
-    if (withFallback) return `Location: ${connection.locationId}`
-    return null
+    return enriched.locationName || null
   }
 
   if (isTikTokConnection(connection)) {
     const enriched = connection as typeof connection & { shopName?: string }
-    const name = enriched.shopName
-    if (name) return name
-    if (withFallback) return `Shop: ${connection.shopId}`
-    return null
+    return enriched.shopName || null
   }
 
   if (isYelpConnection(connection)) {
     const enriched = connection as typeof connection & { businessName?: string }
-    const name = enriched.businessName
-    if (name) return name
-    if (withFallback) return `Business: ${connection.businessId}`
-    return null
+    return enriched.businessName || null
   }
 
   return null

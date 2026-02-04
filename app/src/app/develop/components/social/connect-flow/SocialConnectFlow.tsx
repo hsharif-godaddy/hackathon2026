@@ -78,6 +78,7 @@ const SocialConnectFlow = memo(function SocialConnectFlow(props: SocialConnectFl
     openPopup: handlers.openPopup,
     isRetryable: flowState.isRetryable,
     authUrlError,
+    isLoadingAuthUrl,
     t,
   })
 

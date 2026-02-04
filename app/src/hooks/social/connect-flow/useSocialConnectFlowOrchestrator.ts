@@ -92,10 +92,10 @@ export function useSocialConnectFlowOrchestrator({
 
   const normalizedPlatform = PLATFORM_TRANSFORMS.toDisplay(platform)
   const strategy = getPlatformStrategy(platform)
-  const config = PLATFORM_CONFIG[platform] || { name: platform, Icon: null }
+  const config = PLATFORM_CONFIG[normalizedPlatform] || { name: platform, Icon: null }
   const isFullscreen = useIsFullscreen()
 
-  // Data fetching
+  // Data fetching (enrichedPlatformConnections are pre-filtered to valid connections)
   const {
     isLoading: isSelectExistingLoading,
     availableConnections: platformConnections,

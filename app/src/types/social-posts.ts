@@ -1,13 +1,5 @@
+import { PublishablePlatform } from '@/lib/social-platforms'
 import type { SocialPublishResult } from './social'
-
-/**
- * Platforms that support direct publishing
- * Subset of SocialPlatform that has publish functionality implemented
- */
-export enum PublishablePlatform {
-  FACEBOOK = 'facebook',
-  INSTAGRAM = 'instagram'
-}
 
 /**
  * State of a social post in the database

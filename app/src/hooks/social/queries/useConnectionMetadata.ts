@@ -23,6 +23,7 @@ interface UseConnectionMetadataResult {
   enrichedConnections: Array<SocialConnection | EnrichedSocialConnection>
   isLoadingAnyMetadata: boolean
   connectionsLoadingMetadata: Set<string>
+  connectionsWithErrors: Set<string>
 }
 
 interface PlatformRequirements {
@@ -176,9 +177,20 @@ export function useConnectionMetadata(
     return loading
   }, [connections, queryStates])
 
+  const connectionsWithErrors = useMemo(() => {
+    const errors = new Set<string>()
+    connections.forEach((conn, index) => {
+      if (queryStates[index]?.error) {
+        errors.add(conn.socialId)
+      }
+    })
+    return errors
+  }, [connections, queryStates])
+
   return {
     enrichedConnections,
     isLoadingAnyMetadata: metadataQueries.some(q => q.isLoading),
-    connectionsLoadingMetadata
+    connectionsLoadingMetadata,
+    connectionsWithErrors
   }
 }

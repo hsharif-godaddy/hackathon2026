@@ -1,12 +1,7 @@
+import { type PublishablePlatform } from '@/lib/social-platforms'
 import { SocialPlatform } from '@/types/social'
 import { SocialPostData, ValidationDetails } from '@/types/social-posts'
 import { formatHashtags, formatPlatformName } from './format'
-
-/**
- * Platforms that support social post publishing
- * Currently only Facebook and Instagram are supported
- */
-type PublishablePlatform = SocialPlatform.FACEBOOK | SocialPlatform.INSTAGRAM
 
 /**
  * Platform-specific limits for social media posts

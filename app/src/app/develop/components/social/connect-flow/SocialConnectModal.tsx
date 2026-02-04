@@ -1,10 +1,9 @@
 'use client'
 
-import { useEffect,useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Modal from '@ux/modal'
 
 import { FlowStep } from '@/hooks/social/connect-flow/useSocialConnectFlowStateMachine'
-import { useSocialConnections } from '@/hooks/useSocial'
 import { useTranslations } from '@/hooks/useTranslations'
 import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import SocialConnectFlow from './SocialConnectFlow'
@@ -29,8 +28,6 @@ export function SocialConnectModal({
   oauthState
 }: SocialConnectModalProps) {
   const t = useTranslations()
-  const connectionsQuery = useSocialConnections()
-  const connections = useMemo(() => connectionsQuery.data ?? [], [connectionsQuery.data])
 
   const [mountKey, setMountKey] = useState(() => Date.now())
 
@@ -40,23 +37,9 @@ export function SocialConnectModal({
     }
   }, [isOpen, platform])
 
-  const platformEnumKey = useMemo(() => {
-    return PLATFORM_TRANSFORMS.toApiEnum(platform)
-  }, [platform])
-
-  const selectedConnection = useMemo(() => {
-    if (!selectedConnectionId) return undefined
-    return connections.find(c => c.socialId === selectedConnectionId)
-  }, [selectedConnectionId, connections])
-
-  const platformConnections = useMemo(() => {
-    return connections.filter(c => c.platform === platformEnumKey)
-  }, [connections, platformEnumKey])
-
-  const initialUserTokenId = selectedConnection?.userTokenId
-  const initialStep = selectedConnectionId
-    ? FlowStep.ValidatingPermissions
-    : (platformConnections.length > 0 ? FlowStep.SelectExisting : FlowStep.Auth)
+  // Let the flow determine whether to show SelectExisting or Auth based on available connections
+  const initialStep = selectedConnectionId ? FlowStep.ValidatingPermissions : undefined
+  const initialUserTokenId = selectedConnectionId
 
   const platformName = PLATFORM_TRANSFORMS.toDisplayName(platform)
   const title = t('builder_social_connecting_platform', { platformName })

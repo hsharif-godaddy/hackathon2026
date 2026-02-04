@@ -15,7 +15,6 @@ export enum RenderState {
   CheckingExistingConnections = 'CHECKING_EXISTING_CONNECTIONS',
   AlreadyConnected = 'ALREADY_CONNECTED',
   SelectingExistingConnection = 'SELECTING_EXISTING_CONNECTION',
-  LoadingAuthUrl = 'LOADING_AUTH_URL',
   AuthUrlError = 'AUTH_URL_ERROR',
   ValidatingPermissions = 'VALIDATING_PERMISSIONS',
   FetchingPages = 'FETCHING_PAGES',
@@ -80,10 +79,8 @@ export function getCurrentRenderState({
     if (shouldShowConnectionSelector) return RenderState.SelectingExistingConnection
   }
 
-  // Auth-related states (only check authUrlError if we're not still loading)
-  if (isLoadingAuthUrl) return RenderState.LoadingAuthUrl
+  // Auth-related states
   if (authUrlError) return RenderState.AuthUrlError
-  if (!authUrl && flowStep === FlowStep.Auth) return RenderState.LoadingAuthUrl
 
   return RenderState.OAuthPrompt
 }
@@ -109,6 +106,7 @@ interface GetRenderConfigParams {
   openPopup: () => void
   isRetryable: boolean
   authUrlError: Error | null
+  isLoadingAuthUrl: boolean
   t: ReturnType<typeof useTranslations>
 }
 
@@ -141,6 +139,7 @@ export function getRenderConfig({
   openPopup,
   isRetryable,
   authUrlError,
+  isLoadingAuthUrl,
   t
 }: GetRenderConfigParams): RenderConfig {
   switch (renderState) {
@@ -189,13 +188,6 @@ export function getRenderConfig({
             onConnectNew={handleConnectNew}
           />
         )
-      }
-
-    case RenderState.LoadingAuthUrl:
-      return {
-        icon: config.Icon,
-        platformName: config.name,
-        content: <SocialConnectFlowState type={FlowStateType.Loading} message={t('builder_common_loading_authorization')} />
       }
 
     case RenderState.AuthUrlError:
@@ -265,7 +257,7 @@ export function getRenderConfig({
           <>
             {authStatus === AuthStatus.Success && <SocialConnectFlowState type={FlowStateType.Success} />}
             {authStatus === AuthStatus.Error && <SocialConnectFlowState type={FlowStateType.Error} errorMessage={authPopupErrorMessage} onRetry={openPopup} />}
-            {authStatus === AuthStatus.Pending && <SocialAuthPrompt platformName={config.name} onConnect={openPopup} />}
+            {authStatus === AuthStatus.Pending && <SocialAuthPrompt platformName={config.name} onConnect={openPopup} isLoading={isLoadingAuthUrl} />}
           </>
         )
       }

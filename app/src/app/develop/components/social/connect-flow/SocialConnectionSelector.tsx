@@ -61,6 +61,14 @@ export const SocialConnectionSelector = memo(function SocialConnectionSelector({
       defaultSelectedId={isSingleConnection ? connections[0].socialId : null}
       buttons={[
         {
+          text: t('builder_social_new_connection'),
+          design: 'secondary',
+          onClick: onConnectNew,
+          disabled: () => connectionsLoadingMetadata.size > 0,
+          size: 'small',
+          eid: 'social.connect.connect_new'
+        },
+        {
           text: isLoading ? t('builder_social_linking') : t('builder_social_link'),
           design: 'primary',
           onClick: handleUseExisting,
@@ -68,14 +76,6 @@ export const SocialConnectionSelector = memo(function SocialConnectionSelector({
           disabled: () => isLoading || connectionsLoadingMetadata.size > 0,
           size: 'small',
           eid: 'social.connect.link_existing'
-        },
-        {
-          text: t('builder_social_new_connection'),
-          design: 'secondary',
-          onClick: onConnectNew,
-          disabled: () => connectionsLoadingMetadata.size > 0,
-          size: 'small',
-          eid: 'social.connect.connect_new'
         }
       ]}
     />
