@@ -1,10 +1,10 @@
 import clsx from 'clsx'
-import { useRef, useState } from 'react'
+import { forwardRef, useCallback, useRef, useState } from 'react'
 import Tooltip from '@ux/tooltip'
 
-interface IconButtonProps {
+interface IconButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onClick'> {
   icon: React.ReactNode
-  onClick?: () => void
+  onClick?: (e?: React.MouseEvent<HTMLButtonElement>) => void
   onMouseDown?: (e: React.MouseEvent) => void
   active?: boolean
   separator?: boolean
@@ -18,7 +18,7 @@ interface IconButtonProps {
   showLabelAlways?: boolean
 }
 
-export default function IconButton({
+const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton({
   icon,
   onClick,
   onMouseDown,
@@ -31,12 +31,24 @@ export default function IconButton({
   tooltipDescription = null,
   id,
   showLabelWhenActive = true,
-  showLabelAlways = false
-}: IconButtonProps) {
+  showLabelAlways = false,
+  ...props
+}, forwardedRef) {
   const [showTooltip, setShowTooltip] = useState(false)
-  const anchorRef = useRef(null)
+  const internalRef = useRef<HTMLButtonElement>(null)
+
+  // Merge refs: always use internalRef for Tooltip, but also forward to parent
+  const mergedRef = useCallback((node: HTMLButtonElement | null) => {
+    internalRef.current = node
+    if (typeof forwardedRef === 'function') {
+      forwardedRef(node)
+    } else if (forwardedRef) {
+      forwardedRef.current = node
+    }
+  }, [forwardedRef])
+
   const tooltipComponent = (
-    <Tooltip className="z-50" anchorRef={anchorRef}>
+    <Tooltip className="z-50" anchorRef={internalRef}>
       <div className="flex flex-col gap-0 p-1">
         <div className="text-sm font-bold leading-none">{label}</div>
         {tooltipDescription && <div className="text-sm font-thin">{tooltipDescription}</div>}
@@ -44,10 +56,8 @@ export default function IconButton({
     </Tooltip>
   )
 
-  const clickEvent = () => {
-    if (onClick) {
-      onClick()
-    }
+  const clickEvent = (e: React.MouseEvent<HTMLButtonElement>) => {
+    onClick?.(e)
     setShowTooltip(false)
   }
 
@@ -58,7 +68,7 @@ export default function IconButton({
         "flex gap-0 items-center relative border rounded-xl px-1 py-0.5 leading-none transition-opacity duration-700", {
           "mr-2 after:absolute after:-right-1.5 after:top-0 after:bottom-0 after:block after:content after:w-px after:bg-intents-ux-box-borderColor": separator,
           "bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor shadow-md border-intents-ux-boxHighContrast-borderColor": active,
-          "opacity-25": disabled,
+          "opacity-25 pointer-events-none": disabled,
           "hover:cursor-pointer": !disabled && onClick,
         },
         className
@@ -68,10 +78,11 @@ export default function IconButton({
       disabled={disabled}
       data-eid={dataEid}
       aria-label={label}
-      ref={anchorRef}
+      ref={mergedRef}
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
       aria-haspopup={showTooltip}
+      {...props}
     >
       {icon}
       {label && (showLabelWhenActive || showLabelAlways) && (
@@ -85,4 +96,6 @@ export default function IconButton({
       {!active && showTooltip && tooltipComponent}
     </button>
   )
-}
+})
+
+export default IconButton

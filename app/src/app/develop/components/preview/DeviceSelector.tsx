@@ -7,6 +7,7 @@ import DesktopIcon from '@ux/icon/desktop'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
 import TabletIcon from '@ux/icon/tablet'
 
+import IconButton from '@/app/develop/components/IconButton'
 import { type DevicePreset, getDevicesByCategory } from '@/app/develop/components/preview/devicePresets'
 import { PreviewViewMode } from '@/app/develop/components/types'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -67,16 +68,15 @@ export default function DeviceSelector({ disabled = false, separator = false }: 
 
   return (
     <Popover open={disabled ? false : open} onOpenChange={disabled ? undefined : setOpen}>
-      <PopoverTrigger
-        className={clsx(
-          'flex items-center gap-0.5 px-1 py-0.5 text-sm font-normal rounded-xl border leading-none relative',
-          'hover:cursor-pointer',
-          separator && 'mr-2 after:absolute after:-right-1.5 after:top-0 after:bottom-0 after:block after:w-px after:bg-intents-ux-box-borderColor',
-          disabled && 'opacity-50 cursor-not-allowed pointer-events-none'
-        )}
-        data-eid={generateClickEID('develop.preview.device_selector')}
-      >
-        {getIcon()}
+      <PopoverTrigger asChild>
+        <IconButton
+          icon={getIcon()}
+          label={t('builder_preview_button_device')}
+          showLabelWhenActive={false}
+          separator={separator}
+          disabled={disabled}
+          dataEid={generateClickEID('develop.preview.device_selector')}
+        />
       </PopoverTrigger>
       <PopoverContent
         align="center"

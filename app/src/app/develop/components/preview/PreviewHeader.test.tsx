@@ -168,11 +168,10 @@ describe('PreviewHeader', () => {
 
     const { container } = renderWithProviders(<PreviewHeader {...defaultProps} />);
 
-    // DeviceSelector button should have disabled styling (pointer-events-none class)
+    // DeviceSelector button should be disabled
     const deviceSelectorButton = container.querySelector('[data-eid="develop.preview.device_selector"]');
     expect(deviceSelectorButton).toBeInTheDocument();
-    expect(deviceSelectorButton).toHaveClass('pointer-events-none');
-    expect(deviceSelectorButton).toHaveClass('opacity-50');
+    expect(deviceSelectorButton).toBeDisabled();
   });
 
   it('should disable open in new tab when app is starting', () => {
