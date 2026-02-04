@@ -8,6 +8,7 @@ import Button from '@ux/button';
 import Tag from '@ux/tag';
 import text from '@ux/text';
 
+import CreditsUpgradeContainer from '@/app/develop/components/CreditsUpgradeContainer';
 import SinglePlanUpgradeContainer from '@/app/develop/components/SinglePlanUpgradeContainer';
 import {
   CreditPacksCard,
@@ -21,7 +22,7 @@ import { useGasketData } from '@/hooks/useGasketData';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
-import { shipAnalyticsLog } from '@/lib/logging';
+import { ClientLogBuffer, shipAnalyticsLog } from '@/lib/logging';
 import type { CreditGrant } from '@/types/credits';
 import { SubscriptionPlan } from '@/types/credits';
 import {
@@ -35,17 +36,63 @@ import {
 import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation';
 
+type PaywallType = 'upgrade' | 'credits';
+
+/**
+ * Wrapper component for the credits paywall fallback that logs a warning
+ * when triggered due to missing entitlementId.
+ */
+function CreditsPaywallFallback({
+  source,
+  subscriptionId,
+  onSuccessClick,
+  onClose,
+  onErrorClick,
+}: {
+  source: string;
+  subscriptionId?: string;
+  onSuccessClick: () => void;
+  onClose: () => void;
+  onErrorClick: () => void;
+}) {
+  useEffect(function logFallbackWarning() {
+    // Log warning when fallback is triggered - helps identify edge cases
+    // where entitlementId is unexpectedly missing
+    ClientLogBuffer.add({
+      level: 'warn',
+      event: 'credits.paywall.fallback',
+      data: {
+        reason: 'missing_entitlement_id',
+        source,
+        subscriptionId,
+      },
+    });
+  }, [source, subscriptionId]);
+
+  return (
+    <SinglePlanUpgradeContainer
+      source={source}
+      onSuccessClick={onSuccessClick}
+      onClose={onClose}
+      onErrorClick={onErrorClick}
+    />
+  );
+}
+
 function ManagePlanContent() {
   const t = useTranslations();
   const gasketData = useGasketData();
   const locale = gasketData?.intl?.locale;
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [paywallSource, setPaywallSource] = useState<string | null>(null);
+  const [paywallType, setPaywallType] = useState<PaywallType>('upgrade');
+  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants');
 
-  const openPaywall = (source: string) => {
+  const openPaywall = (source: string, type: PaywallType = 'upgrade') => {
     setPaywallSource(source);
+    setPaywallType(type);
     setShowPaywallModal(true);
-    shipAnalyticsLog(`${source}.shown`, {});
+    shipAnalyticsLog(`${source}.shown`, { paywallType: type });
   };
 
   const closePaywall = () => {
@@ -117,11 +164,53 @@ function ManagePlanContent() {
       })
     : null;
 
+  // Get builder entitlement ID for credits purchase
+  const builderEntitlementId = subscription?.builderEntitlementId;
+
   return (
     <>
-      {showPaywallModal && (
+      {/* Upgrade Modal (for plan upgrades) */}
+      {showPaywallModal && paywallType === 'upgrade' && (
         <SinglePlanUpgradeContainer
           source={paywallSourceId}
+          onSuccessClick={() => {
+            closePaywall();
+          }}
+          onClose={() => {
+            closePaywall();
+            shipAnalyticsLog(`${paywallSourceId}.dismissed`, {});
+          }}
+          onErrorClick={() => {
+            closePaywall();
+            shipAnalyticsLog(`${paywallSourceId}.error`, {});
+          }}
+        />
+      )}
+
+      {/* Credits Modal (for credits purchase) */}
+      {showPaywallModal && paywallType === 'credits' && builderEntitlementId && (
+        <CreditsUpgradeContainer
+          source={paywallSourceId}
+          entitlementId={builderEntitlementId}
+          onSuccess={() => {
+            closePaywall();
+          }}
+          onClose={() => {
+            closePaywall();
+            shipAnalyticsLog(`${paywallSourceId}.dismissed`, {});
+          }}
+          onErrorClick={() => {
+            closePaywall();
+            shipAnalyticsLog(`${paywallSourceId}.error`, {});
+          }}
+        />
+      )}
+
+      {/* Fallback: Show upgrade modal for credits when entitlementId is missing */}
+      {showPaywallModal && paywallType === 'credits' && !builderEntitlementId && (
+        <CreditsPaywallFallback
+          source={paywallSourceId}
+          subscriptionId={subscription?.id}
           onSuccessClick={() => {
             closePaywall();
           }}
@@ -173,7 +262,7 @@ function ManagePlanContent() {
                         data-eid={generateClickEID('manage_plan.upgrade')}
                         size="sm"
                         text={t('builder_manageplan_upgrade')}
-                        onClick={() => openPaywall('manage_plan.upgrade')}
+                        onClick={() => openPaywall('manage_plan.upgrade', 'upgrade')}
                     />
                 )}
                 { creditPacks.length > 0 && (
@@ -183,7 +272,7 @@ function ManagePlanContent() {
                         data-eid={generateClickEID('manage_plan.buy_credits')}
                         size="sm"
                         text={t('builder_manageplan_buy_credits')}
-                        onClick={() => openPaywall('manage_plan.buy_credits')}
+                        onClick={() => openPaywall('manage_plan.buy_credits', 'credits')}
                     />
                 )}
                 { !isFreePlan && (
@@ -213,6 +302,7 @@ function ManagePlanContent() {
                 activeGrantId={activeGrant?.id}
                 locale={locale}
                 onOpenPaywall={openPaywall}
+                isGrantsEnabled={isGrantsEnabled}
               />
         </div>
       </div>

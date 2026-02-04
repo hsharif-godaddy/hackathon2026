@@ -21,6 +21,8 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
   const t = useTranslations()
   const [open, setOpen] = useState(false)
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
+  const openCreditsModal = useDevelopPageStore((state) => state.openCreditsModal)
+  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
 
   const { data, isLoading, formattedResetTime: resetTimeData } = useDailyUsage({
     appId,
@@ -43,7 +45,12 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
   }
 
   const handleBuyTokensClick = () => {
-    openUpgradeModal('usage_gauge.buy_tokens')
+    // When grants feature is on, open credits modal; otherwise fall back to upgrade modal
+    if (isGrantsEnabled) {
+      openCreditsModal('usage_gauge.buy_tokens')
+    } else {
+      openUpgradeModal('usage_gauge.buy_tokens')
+    }
     setOpen(false)
     shipAnalyticsLog('usage_gauge.buy_tokens.clicked', { appId, percentage })
   }

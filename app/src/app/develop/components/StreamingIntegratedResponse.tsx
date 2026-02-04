@@ -47,7 +47,9 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
   const t = useTranslations();
   const intl = useIntl();
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
+  const openCreditsModal = useDevelopPageStore((state) => state.openCreditsModal)
   const { data: purchaseEnabled } = useSwitchboard('appbuilder-usage-purchase')
+  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
   const hasSegments = hasValidSegments(message)
   const isComplete = isStreamingMessage(message) ? message.isComplete : true
 
@@ -271,7 +273,10 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                 <Button
                   design="secondary"
                   size="sm"
-                  onClick={() => openUpgradeModal('budget_exceeded.buy_credits')}
+                  onClick={() => isGrantsEnabled
+                    ? openCreditsModal('budget_exceeded.buy_credits')
+                    : openUpgradeModal('budget_exceeded.buy_credits')
+                  }
                   text={t('builder_usage_gauge_buy_tokens')}
                 />
               </div>

@@ -71,6 +71,9 @@ vi.mock('@/utils/instrumentation', () => ({
 
 vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
+  ClientLogBuffer: {
+    add: vi.fn(),
+  },
 }));
 
 vi.mock('@/utils/getRootDomain', () => ({
@@ -78,7 +81,16 @@ vi.mock('@/utils/getRootDomain', () => ({
 }));
 
 vi.mock('@/app/develop/components/SinglePlanUpgradeContainer', () => ({
-  default: () => <div data-testid="paywall-modal">Paywall Modal</div>,
+  default: () => <div data-testid="upgrade-modal">Upgrade Modal</div>,
+}));
+
+vi.mock('@/app/develop/components/CreditsUpgradeContainer', () => ({
+  default: ({ entitlementId }: { entitlementId: string }) => (
+    <div data-testid="credits-modal">
+      <span data-testid="entitlement-id">{entitlementId}</span>
+      Credits Modal
+    </div>
+  ),
 }));
 
 function createMockGrant(overrides: Partial<CreditGrant> = {}): CreditGrant {
@@ -468,7 +480,7 @@ describe('ManagePlan', function managePlanTests() {
       mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
     });
 
-    it('should open paywall modal when upgrade button is clicked', async function openPaywallOnUpgrade() {
+    it('should open upgrade modal when upgrade button is clicked', async function openUpgradeOnUpgrade() {
       mockUseActiveSubscription.mockReturnValue({
         data: { id: 'sub-1', plan: SubscriptionPlan.Free },
         isLoading: false,
@@ -485,11 +497,33 @@ describe('ManagePlan', function managePlanTests() {
       await user.click(screen.getByText('builder_manageplan_upgrade'));
 
       await waitFor(function checkModal() {
-        expect(screen.getByTestId('paywall-modal')).toBeInTheDocument();
+        expect(screen.getByTestId('upgrade-modal')).toBeInTheDocument();
       });
     });
 
-    it('should open paywall modal when buy credits button is clicked', async function openPaywallOnBuyCredits() {
+    it('should open credits modal when buy credits button is clicked with entitlementId', async function openCreditsOnBuyCredits() {
+      mockUseActiveSubscription.mockReturnValue({
+        data: { id: 'sub-1', plan: SubscriptionPlan.Free, builderEntitlementId: 'entitlement-123' },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: [createMockGrant()],
+        isLoading: false,
+        isError: false,
+      });
+
+      const { user } = renderWithProviders(<ManagePlan />);
+
+      await user.click(screen.getByText('builder_manageplan_buy_credits'));
+
+      await waitFor(function checkModal() {
+        expect(screen.getByTestId('credits-modal')).toBeInTheDocument();
+        expect(screen.getByTestId('entitlement-id').textContent).toBe('entitlement-123');
+      });
+    });
+
+    it('should open upgrade modal when buy credits button is clicked without entitlementId', async function openUpgradeOnBuyCreditsNoEntitlement() {
       mockUseActiveSubscription.mockReturnValue({
         data: { id: 'sub-1', plan: SubscriptionPlan.Free },
         isLoading: false,
@@ -506,7 +540,56 @@ describe('ManagePlan', function managePlanTests() {
       await user.click(screen.getByText('builder_manageplan_buy_credits'));
 
       await waitFor(function checkModal() {
-        expect(screen.getByTestId('paywall-modal')).toBeInTheDocument();
+        expect(screen.getByTestId('upgrade-modal')).toBeInTheDocument();
+        expect(screen.queryByTestId('credits-modal')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should log analytics when opening upgrade modal', async function logUpgradeAnalytics() {
+      const { shipAnalyticsLog } = await import('@/lib/logging');
+      mockUseActiveSubscription.mockReturnValue({
+        data: { id: 'sub-1', plan: SubscriptionPlan.Free },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: [createMockGrant()],
+        isLoading: false,
+        isError: false,
+      });
+
+      const { user } = renderWithProviders(<ManagePlan />);
+
+      await user.click(screen.getByText('builder_manageplan_upgrade'));
+
+      await waitFor(function checkAnalytics() {
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('manage_plan.upgrade.shown', {
+          paywallType: 'upgrade',
+        });
+      });
+    });
+
+    it('should log analytics when opening credits modal', async function logCreditsAnalytics() {
+      const { shipAnalyticsLog } = await import('@/lib/logging');
+      mockUseActiveSubscription.mockReturnValue({
+        data: { id: 'sub-1', plan: SubscriptionPlan.Free, builderEntitlementId: 'entitlement-123' },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: [createMockGrant()],
+        isLoading: false,
+        isError: false,
+      });
+
+      const { user } = renderWithProviders(<ManagePlan />);
+
+      await user.click(screen.getByText('builder_manageplan_buy_credits'));
+
+      await waitFor(function checkAnalytics() {
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('manage_plan.buy_credits.shown', {
+          paywallType: 'credits',
+        });
       });
     });
   });

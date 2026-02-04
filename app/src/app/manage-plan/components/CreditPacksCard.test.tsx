@@ -152,21 +152,37 @@ describe('CreditPacksCard', function creditPacksCardTests() {
 
       await user.click(screen.getByText('builder_manageplan_upgrade'));
 
-      expect(mockOnOpenPaywall).toHaveBeenCalledWith('manage_plan.upgrade');
+      expect(mockOnOpenPaywall).toHaveBeenCalledWith('manage_plan.upgrade', 'upgrade');
     });
 
-    it('should call onOpenPaywall with buy_credits source when Buy Credits clicked', async function clickBuyCredits() {
+    it('should call onOpenPaywall with credits type when Buy Credits clicked and grants enabled', async function clickBuyCreditsGrantsEnabled() {
       const { user } = renderWithProviders(
         <CreditPacksCard
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
       await user.click(screen.getByText('builder_manageplan_buy_credits'));
 
-      expect(mockOnOpenPaywall).toHaveBeenCalledWith('manage_plan.buy_credits');
+      expect(mockOnOpenPaywall).toHaveBeenCalledWith('manage_plan.buy_credits', 'credits');
+    });
+
+    it('should call onOpenPaywall with upgrade type when Buy Credits clicked and grants disabled', async function clickBuyCreditsGrantsDisabled() {
+      const { user } = renderWithProviders(
+        <CreditPacksCard
+          creditPacks={[]}
+          subscriptionPlan={SubscriptionPlan.Free}
+          onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={false}
+        />
+      );
+
+      await user.click(screen.getByText('builder_manageplan_buy_credits'));
+
+      expect(mockOnOpenPaywall).toHaveBeenCalledWith('manage_plan.buy_credits', 'upgrade');
     });
   });
 

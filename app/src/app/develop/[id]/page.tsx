@@ -8,6 +8,7 @@ import AppNotFound from '@/app/develop/components/AppNotFound'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
 import ChatPaneLoader, { ResumeLoaderPhase } from '@/app/develop/components/chat/ChatPaneLoader'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
+import CreditsUpgradeContainer from '@/app/develop/components/CreditsUpgradeContainer'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
@@ -35,6 +36,8 @@ import { usePageTiming } from '@/hooks/usePageTiming'
 import { usePaywallPrefetch } from '@/hooks/usePaywallPrefetch'
 import { useRumAppContext } from '@/hooks/useRumAppContext'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
+import { useSubscription } from '@/hooks/useSubscription'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useSyncResponsiveState } from '@/hooks/useSyncResponsiveState'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
@@ -126,6 +129,14 @@ function DevelopPageContent() {
   const showUpgradeModal = useDevelopPageStore((state) => state.showUpgradeModal);
   const upgradeModalSource = useDevelopPageStore((state) => state.upgradeModalSource);
   const closeUpgradeModal = useDevelopPageStore((state) => state.closeUpgradeModal);
+  const showCreditsModal = useDevelopPageStore((state) => state.showCreditsModal);
+  const creditsModalSource = useDevelopPageStore((state) => state.creditsModalSource);
+  const closeCreditsModal = useDevelopPageStore((state) => state.closeCreditsModal);
+
+  // Feature flag and subscription for credits modal
+  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants');
+  const { data: subscription } = useSubscription();
+  const builderEntitlementId = subscription?.builderEntitlementId;
 
   useGitHistoryQuery({
     appId: appId || '',
@@ -1011,6 +1022,26 @@ function DevelopPageContent() {
             onErrorClick={() => {
               const source = upgradeModalSource ?? 'unknown'
               closeUpgradeModal()
+              shipAnalyticsLog(`${source}.error`, { appId })
+            }}
+          />
+        )}
+
+        {showCreditsModal && isGrantsEnabled && builderEntitlementId && (
+          <CreditsUpgradeContainer
+            entitlementId={builderEntitlementId}
+            source={creditsModalSource ?? 'unknown'}
+            onSuccess={() => {
+              closeCreditsModal()
+            }}
+            onClose={() => {
+              const source = creditsModalSource ?? 'unknown'
+              closeCreditsModal()
+              shipAnalyticsLog(`${source}.dismissed`, { appId })
+            }}
+            onErrorClick={() => {
+              const source = creditsModalSource ?? 'unknown'
+              closeCreditsModal()
               shipAnalyticsLog(`${source}.error`, { appId })
             }}
           />

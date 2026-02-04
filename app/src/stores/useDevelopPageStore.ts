@@ -149,6 +149,10 @@ interface DevelopPageStore {
   showUpgradeModal: boolean
   upgradeModalSource: string | null
 
+  // Credits Modal UI
+  showCreditsModal: boolean
+  creditsModalSource: string | null
+
   // Publish status UI (per-app state keyed by appId)
   publishStates: Record<string, {
     isPublishing: boolean
@@ -204,6 +208,10 @@ interface DevelopPageStore {
   // Upgrade Modal actions
   openUpgradeModal: (source: string) => void
   closeUpgradeModal: () => void
+
+  // Credits Modal actions
+  openCreditsModal: (source: string) => void
+  closeCreditsModal: () => void
 
   // Publish status actions (per-app)
   setIsPublishing: (appId: string, isPublishing: boolean) => void
@@ -290,6 +298,10 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // Upgrade Modal state
     showUpgradeModal: false,
     upgradeModalSource: null,
+
+    // Credits Modal state
+    showCreditsModal: false,
+    creditsModalSource: null,
 
     // Publish status state (per-app, keyed by appId)
     publishStates: {},
@@ -416,6 +428,16 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     closeUpgradeModal: () => set((state) => {
       state.showUpgradeModal = false
       state.upgradeModalSource = null
+    }),
+
+    // Credits Modal actions
+    openCreditsModal: (source: string) => set((state) => {
+      state.showCreditsModal = true
+      state.creditsModalSource = source
+    }),
+    closeCreditsModal: () => set((state) => {
+      state.showCreditsModal = false
+      state.creditsModalSource = null
     }),
 
     // Publish status actions (per-app)
