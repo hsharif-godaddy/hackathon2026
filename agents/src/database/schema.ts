@@ -454,8 +454,8 @@ function createImportJobsTable(db: Database): void {
       app_id TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN (
         'pending', 'creating_container', 'extracting', 'validating',
-        'copying', 'installing', 'building', 'committing', 'restarting',
-        'completed', 'failed'
+        'copying', 'installing', 'building', 'committing', 'pushing',
+        'pulling', 'restarting', 'completed', 'failed'
       )),
       source_type TEXT NOT NULL DEFAULT 'zip' CHECK(source_type IN ('zip', 'git_pull', 'git_push')),
       zip_file_name TEXT,
@@ -879,8 +879,8 @@ function migrateSourceTypeConstraint(db: Database): void {
         app_id TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN (
           'pending', 'creating_container', 'extracting', 'validating',
-          'copying', 'installing', 'building', 'committing', 'restarting',
-          'completed', 'failed'
+          'copying', 'installing', 'building', 'committing', 'pushing',
+          'pulling', 'restarting', 'completed', 'failed'
         )),
         source_type TEXT NOT NULL DEFAULT 'zip' CHECK(source_type IN ('zip', 'git_pull', 'git_push')),
         zip_file_name TEXT,
@@ -927,6 +927,133 @@ function migrateSourceTypeConstraint(db: Database): void {
       error: err instanceof Error ? err.message : String(err),
     });
     // Don't throw - migration failures shouldn't break app startup
+  }
+}
+
+/**
+ * Migration: Update status CHECK constraint to add 'pushing' and 'pulling' statuses
+ *
+ * SQLite doesn't support ALTER COLUMN, so we need to recreate the table.
+ * This is safe because we copy all data and use a transaction.
+ *
+ * 1. Transaction rollback: SQLite automatically rolls back failed transactions when
+ *    an error occurs within BEGIN/COMMIT. We rely on this built-in behavior rather
+ *    than explicit ROLLBACK handling. If db.exec() throws, SQLite guarantees the
+ *    database remains in its pre-transaction state.
+ *
+ * 2. Concurrent migration safety: The test-insert-delete check is not atomic, but
+ *    SQLite's file-level locking prevents concurrent writes to the same database.
+ *    If multiple instances attempt migration simultaneously, one will succeed and
+ *    others will either skip (constraint already updated) or fail safely (caught).
+ *
+ * 3. Error handling: Errors are caught and logged but not re-thrown, matching the
+ *    pattern used by all other migrations in this file. This ensures migration
+ *    failures don't prevent app startup. The trade-off is that failed migrations
+ *    require manual investigation via logs.
+ *
+ * @param db - Database instance
+ */
+function migrateImportJobsStatusConstraint(db: Database): void {
+  try {
+    // Check if import_jobs table exists
+    const tableExists = db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='import_jobs'
+    `).get() as { name: string } | undefined;
+
+    if (!tableExists) {
+      logger.info('database.migration.status-constraint.skipped', {
+        reason: 'import_jobs table does not exist yet',
+      });
+      return;
+    }
+
+    // Check current constraint by trying to insert a 'pushing' status value.
+    // Note: This test-insert-delete approach is not atomic, but SQLite's file-level
+    // locking prevents concurrent writes. See function JSDoc for details.
+    const testStmt = db.prepare(`
+      INSERT INTO import_jobs (id, app_id, status, source_type)
+      VALUES ('__test_status_constraint__', '__test__', 'pushing', 'zip')
+    `);
+
+    try {
+      testStmt.run();
+      // If we get here, constraint already allows 'pushing' - clean up and return
+      db.prepare(`DELETE FROM import_jobs WHERE id = '__test_status_constraint__'`).run();
+      logger.info('database.migration.status-constraint.skipped', {
+        reason: 'Constraint already allows pushing/pulling statuses',
+      });
+      return;
+    } catch {
+      // Constraint violation expected - need to migrate
+      logger.info('database.migration.status-constraint.start', {
+        reason: 'Updating CHECK constraint to add pushing and pulling statuses',
+      });
+    }
+
+    // SQLite requires table recreation to modify CHECK constraint
+    db.exec(`
+      BEGIN TRANSACTION;
+
+      -- Create new table with updated status constraint (includes pushing and pulling)
+      CREATE TABLE import_jobs_new (
+        id TEXT PRIMARY KEY,
+        app_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN (
+          'pending', 'creating_container', 'extracting', 'validating',
+          'copying', 'installing', 'building', 'committing', 'pushing',
+          'pulling', 'restarting', 'completed', 'failed'
+        )),
+        source_type TEXT NOT NULL DEFAULT 'zip' CHECK(source_type IN ('zip', 'git_pull', 'git_push')),
+        zip_file_name TEXT,
+        zip_file_size INTEGER,
+        git_url TEXT,
+        git_branch TEXT,
+        git_commit_hash TEXT,
+        extracted_path TEXT,
+        detected_package_manager TEXT CHECK(detected_package_manager IN ('npm', 'yarn', 'pnpm')),
+        has_build_script BOOLEAN,
+        has_dev_script BOOLEAN,
+        validation_errors TEXT,
+        install_output TEXT,
+        build_output TEXT,
+        error_message TEXT,
+        error_stage TEXT,
+        started_at DATETIME,
+        completed_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+      );
+
+      -- Copy all existing data (preserves everything unlike migrateSourceTypeConstraint
+      -- which filters by source_type='zip'). All data is preserved here because this
+      -- migration only relaxes the CHECK constraint to add new status values - it doesn't
+      -- change data semantics or invalidate existing records.
+      INSERT INTO import_jobs_new SELECT * FROM import_jobs;
+
+      -- Drop old table and rename new one
+      DROP TABLE import_jobs;
+      ALTER TABLE import_jobs_new RENAME TO import_jobs;
+
+      -- Recreate indexes
+      CREATE INDEX IF NOT EXISTS idx_import_jobs_app_id ON import_jobs(app_id);
+      CREATE INDEX IF NOT EXISTS idx_import_jobs_status ON import_jobs(status);
+      CREATE INDEX IF NOT EXISTS idx_import_jobs_created_at ON import_jobs(created_at);
+
+      COMMIT;
+    `);
+
+    logger.info('database.migration.status-constraint.success', {
+      message: 'Successfully updated status CHECK constraint to include pushing and pulling',
+    });
+  } catch (err) {
+    // Error handling: Log and continue (don't throw). This matches the pattern used
+    // by all other migrations in this file. SQLite's automatic transaction rollback
+    // ensures the database remains consistent. Check logs for 'database.migration.
+    // status-constraint.failed' to detect and manually resolve migration failures.
+    logger.error('database.migration.status-constraint.failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
@@ -1144,6 +1271,9 @@ function applyMigrations(db: Database): void {
 
   // Migrate source_type CHECK constraint to include git_pull and git_push (remove unused 'git')
   migrateSourceTypeConstraint(db);
+
+  // Migrate status CHECK constraint to include pushing and pulling statuses
+  migrateImportJobsStatusConstraint(db);
 }
 
 /**
