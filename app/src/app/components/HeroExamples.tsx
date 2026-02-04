@@ -101,11 +101,6 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
       slug: "product_launch"
     },
     {
-      title: t('builder_homepage_examples_resume_title'),
-      prompt: t('builder_homepage_examples_resume_prompt'),
-      slug: "interactive_resume"
-    },
-    {
       title: t('builder_homepage_examples_countdown_title'),
       prompt: t('builder_homepage_examples_countdown_prompt'),
       slug: "event_countdown"
