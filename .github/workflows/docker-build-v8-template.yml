@@ -1,0 +1,88 @@
+name: Docker Build - V8 Template
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+    paths:
+      - "app-templates/v8/**"
+      - "dev-supervisor/**"
+      - "publish/**"
+      - ".github/workflows/docker-build-v8-template.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app-templates/v8/**"
+      - "dev-supervisor/**"
+      - "publish/**"
+      - ".github/workflows/docker-build-v8-template.yml"
+
+permissions:
+  id-token: write # required for AWS assume role
+  contents: read
+
+jobs:
+  docker-build-v8-template:
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup npm registry
+        run: |
+          rm -rf app-templates/v8/.npmrc
+          echo "registry=https://registry.npmjs.org/" > app-templates/v8/.npmrc
+          echo "progress=false" >> app-templates/v8/.npmrc
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install mkcert
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mkcert
+
+      - name: Generate local dev certificates
+        run: |
+          mkdir -p .dev-ca
+          cd .dev-ca
+          mkcert -cert-file cert.pem -key-file key.pem localhost 127.0.0.1 ::1
+          mkcert -CAROOT | xargs -I {} cp {}/rootCA.pem ./ca-cert.pem
+
+      - name: Assume Role and Login to ECR
+        run: |
+          set -e
+          assume_role_and_login() {
+            local role_arn=arn:aws:iam::$1:role/GD-AWS-SSG-Deploy-Role
+            local account_id=$1
+            echo "Assuming role for account: $account_id"
+            unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+            export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+            $(aws sts assume-role --role-arn $role_arn --role-session-name GHASession --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
+            echo "Logging in to ECR for account: $account_id"
+            aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $account_id.dkr.ecr.us-west-2.amazonaws.com
+          }
+          assume_role_and_login 764525110978
+
+      - name: Build Docker Image (V8 Template)
+        env:
+          NODE_ENV: production
+        run: |
+          echo "Building Docker image for v8 template (includes dev-supervisor)..."
+          docker build --platform linux/amd64 \
+            --build-context dev-ca=.dev-ca \
+            --build-context dev-supervisor=dev-supervisor \
+            --build-context publish=publish \
+            -t airo-v8-template:latest \
+            -f app-templates/v8/Dockerfile.dev \
+            app-templates/v8/
+          echo "V8 Template Docker image built successfully"
+
+      - name: Clean up Docker images
+        if: always()
+        run: |
+          docker rmi airo-v8-template:latest || true
