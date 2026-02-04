@@ -136,9 +136,9 @@ export class AgentService {
   }
 
   /**
-   * Generate launch video for an app
+   * Start or poll video generation for an app (non-blocking, idempotent)
    */
-  async generateLaunchVideo(appId: string): Promise<{ success: boolean; video?: { url: string; publicPath: string; filepath: string; jobId: string }; error?: string }> {
+  async generateLaunchVideo(appId: string): Promise<VideoGenerationResponse> {
     const apiUrl = await buildDynamicApiUrl(`/generate-video`, appId);
 
     const response = await agentFetch(apiUrl, {
@@ -150,9 +150,23 @@ export class AgentService {
       throw new Error(`Failed to generate video: ${response.status}`)
     }
 
-
     return response.json()
   }
+}
+
+/**
+ * Video generation status
+ */
+export type VideoStatus = 'pending' | 'queued' | 'in_progress' | 'completed' | 'failed';
+
+/**
+ * Video generation response from API
+ */
+export interface VideoGenerationResponse {
+  success: boolean;
+  status: VideoStatus;
+  url?: string;
+  error?: string;
 }
 
 // Export a singleton instance for convenience
