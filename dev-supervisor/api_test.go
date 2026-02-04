@@ -11,6 +11,7 @@ import (
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/health"
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
+	"github.com/airo-ai-builder/dev-supervisor/internal/processmanager"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
@@ -151,7 +152,7 @@ func TestHandleProcessStart(t *testing.T) {
 	}
 
 	// Clean up - stop the process
-	stopReq := ProcessStopRequest{
+	stopReq := processmanager.ProcessStopRequest{
 		Signal:  "SIGKILL",
 		Timeout: 1,
 	}
@@ -222,14 +223,14 @@ func TestHandleProcessStatus(t *testing.T) {
 		t.Errorf("Expected status code 200, got %d", w.Code)
 	}
 
-	var response ProcessInfo
+	var response processmanager.ProcessInfo
 	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
 
 	// Should be stopped initially
-	if response.State != ProcessStateStopped {
-		t.Errorf("Expected state '%s', got '%s'", ProcessStateStopped, response.State)
+	if response.State != processmanager.ProcessStateStopped {
+		t.Errorf("Expected state '%s', got '%s'", processmanager.ProcessStateStopped, response.State)
 	}
 }
 
@@ -251,7 +252,7 @@ func TestHandleProcessStop(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Now test stopping it
-	stopReq := ProcessStopRequest{
+	stopReq := processmanager.ProcessStopRequest{
 		Signal:  "SIGTERM",
 		Timeout: 5,
 	}
@@ -295,7 +296,7 @@ func TestHandleProcessRestart(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Test restart
-	restartReq := ProcessRestartRequest{
+	restartReq := processmanager.ProcessRestartRequest{
 		Graceful: true,
 	}
 
@@ -320,7 +321,7 @@ func TestHandleProcessRestart(t *testing.T) {
 	}
 
 	// Clean up
-	stopReq := ProcessStopRequest{Signal: "SIGKILL", Timeout: 1}
+	stopReq := processmanager.ProcessStopRequest{Signal: "SIGKILL", Timeout: 1}
 	if err := server.procMgr.Stop(stopReq); err != nil {
 		t.Logf("Failed to stop test process: %v", err)
 	}
@@ -1050,7 +1051,7 @@ func TestHandleEnvironmentSetWithRestart(t *testing.T) {
 
 	// Clean up
 	defer func() {
-		stopReq := ProcessStopRequest{Signal: "SIGKILL", Timeout: 1}
+		stopReq := processmanager.ProcessStopRequest{Signal: "SIGKILL", Timeout: 1}
 		if err := server.procMgr.Stop(stopReq); err != nil {
 			t.Logf("Failed to stop test process: %v", err)
 		}

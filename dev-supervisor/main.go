@@ -21,6 +21,7 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
+	"github.com/airo-ai-builder/dev-supervisor/internal/processmanager"
 	httpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/http"
 	smtpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/smtp"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
@@ -91,7 +92,7 @@ func parseGodebugSettings() map[string]string {
 
 type Server struct {
 	router                 *mux.Router
-	procMgr                *ProcessManager
+	procMgr                *processmanager.ProcessManager
 	cmdExec                *CommandExecutor
 	envMgr                 *EnvironmentManager
 	logMgr                 *logs.Manager
@@ -118,7 +119,7 @@ type ErrorResponse struct {
 func NewServer() *Server {
 	logMgr := logs.NewManager(10000)
 	pid1Mgr := process.NewPID1Manager()
-	procMgr := NewProcessManager(logMgr, pid1Mgr)
+	procMgr := processmanager.NewProcessManager(logMgr, pid1Mgr)
 
 	// Set default configuration
 	procMgr.SetProcessLogging(true) // Default: enable child process logging

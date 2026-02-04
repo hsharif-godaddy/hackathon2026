@@ -93,7 +93,7 @@ func TestPortReuseAfterRestart(t *testing.T) {
 		restartStart := time.Now()
 
 		// Restart with graceful shutdown
-		if err := server.procMgr.Restart(ProcessRestartRequest{Graceful: true}); err != nil {
+		if err := server.procMgr.Restart(processmanager.ProcessRestartRequest{Graceful: true}); err != nil {
 			t.Fatalf("Restart %d failed: %v", i+1, err)
 		}
 
@@ -112,7 +112,7 @@ func TestPortReuseAfterRestart(t *testing.T) {
 	t.Logf("All %d restarts completed successfully", numRestarts)
 
 	// Clean up - stop the process
-	if err := server.procMgr.Stop(ProcessStopRequest{Signal: "SIGTERM", Timeout: 10}); err != nil {
+	if err := server.procMgr.Stop(processmanager.ProcessStopRequest{Signal: "SIGTERM", Timeout: 10}); err != nil {
 		t.Errorf("Failed to stop process: %v", err)
 	}
 }
@@ -178,7 +178,7 @@ func TestConcurrentRestarts(t *testing.T) {
 			defer wg.Done()
 
 			for j := range numRestartsPerGoroutine {
-				err := server.procMgr.Restart(ProcessRestartRequest{Graceful: true})
+				err := server.procMgr.Restart(processmanager.ProcessRestartRequest{Graceful: true})
 
 				mu.Lock()
 				results = append(results, err)
@@ -216,7 +216,7 @@ func TestConcurrentRestarts(t *testing.T) {
 
 	// Verify final process is still running
 	status := server.procMgr.GetStatus()
-	if status.State != ProcessStateRunning {
+	if status.State != processmanager.ProcessStateRunning {
 		t.Fatalf(
 			"Process should be running after concurrent restarts, got: %s (Error: %q, PID: %d)",
 			status.State,
@@ -226,7 +226,7 @@ func TestConcurrentRestarts(t *testing.T) {
 	}
 
 	// Clean up
-	if err := server.procMgr.Stop(ProcessStopRequest{Signal: "SIGTERM", Timeout: 10}); err != nil {
+	if err := server.procMgr.Stop(processmanager.ProcessStopRequest{Signal: "SIGTERM", Timeout: 10}); err != nil {
 		t.Errorf("Failed to stop process: %v", err)
 	}
 }
@@ -354,7 +354,7 @@ func BenchmarkRestartWithPortWait(b *testing.B) {
 	// Reset timer and run benchmark
 
 	for b.Loop() {
-		if err := server.procMgr.Restart(ProcessRestartRequest{Graceful: true}); err != nil {
+		if err := server.procMgr.Restart(processmanager.ProcessRestartRequest{Graceful: true}); err != nil {
 			b.Fatalf("Restart failed: %v", err)
 		}
 	}
@@ -362,7 +362,7 @@ func BenchmarkRestartWithPortWait(b *testing.B) {
 	b.StopTimer()
 
 	// Cleanup
-	if err := server.procMgr.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 5}); err != nil {
+	if err := server.procMgr.Stop(processmanager.ProcessStopRequest{Signal: "SIGKILL", Timeout: 5}); err != nil {
 		b.Errorf("Failed to stop process: %v", err)
 	}
 }

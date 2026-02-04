@@ -5,15 +5,16 @@ import (
 	"net"
 	"time"
 
+	"github.com/airo-ai-builder/dev-supervisor/internal/processmanager"
 	httpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/http"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
 type processController struct {
-	pm *ProcessManager
+	pm *processmanager.ProcessManager
 }
 
-func newProcessController(pm *ProcessManager) httpproxy.ProcessController {
+func newProcessController(pm *processmanager.ProcessManager) httpproxy.ProcessController {
 	return &processController{pm: pm}
 }
 
@@ -26,10 +27,10 @@ func (p *processController) Start(req validation.ProcessStartRequest) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, ErrAlreadyStarting) {
+	if errors.Is(err, processmanager.ErrAlreadyStarting) {
 		return httpproxy.ErrAlreadyStarting
 	}
-	if errors.Is(err, ErrAlreadyRunning) {
+	if errors.Is(err, processmanager.ErrAlreadyRunning) {
 		return httpproxy.ErrAlreadyRunning
 	}
 	return err

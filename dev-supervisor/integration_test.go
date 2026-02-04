@@ -13,6 +13,7 @@ import (
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/health"
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
+	"github.com/airo-ai-builder/dev-supervisor/internal/processmanager"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
@@ -384,13 +385,13 @@ func TestProcessLifecycle(t *testing.T) {
 		t.Fatalf("Process status failed: %v", err)
 	}
 
-	var status ProcessInfo
+	var status processmanager.ProcessInfo
 	if err = suite.client.parseJSONResponse(resp, &status); err != nil {
 		t.Fatalf("Failed to parse process status: %v", err)
 	}
 
-	if status.State != ProcessStateRunning {
-		t.Errorf("Expected state '%s', got '%s'", ProcessStateRunning, status.State)
+	if status.State != processmanager.ProcessStateRunning {
+		t.Errorf("Expected state '%s', got '%s'", processmanager.ProcessStateRunning, status.State)
 	}
 
 	if status.PID <= 0 {
@@ -402,7 +403,7 @@ func TestProcessLifecycle(t *testing.T) {
 	}
 
 	// Test process stop
-	stopReq := ProcessStopRequest{
+	stopReq := processmanager.ProcessStopRequest{
 		Signal:  "SIGTERM",
 		Timeout: 5,
 	}
@@ -428,8 +429,13 @@ func TestProcessLifecycle(t *testing.T) {
 	}
 
 	// Process should be stopped or in error state (both are acceptable after force kill)
-	if status.State != ProcessStateStopped && status.State != ProcessStateError {
-		t.Errorf("Expected state '%s' or '%s', got '%s'", ProcessStateStopped, ProcessStateError, status.State)
+	if status.State != processmanager.ProcessStateStopped && status.State != processmanager.ProcessStateError {
+		t.Errorf(
+			"Expected state '%s' or '%s', got '%s'",
+			processmanager.ProcessStateStopped,
+			processmanager.ProcessStateError,
+			status.State,
+		)
 	}
 }
 

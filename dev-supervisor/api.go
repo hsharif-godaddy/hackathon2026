@@ -18,6 +18,7 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 	"github.com/airo-ai-builder/dev-supervisor/internal/health"
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
+	"github.com/airo-ai-builder/dev-supervisor/internal/processmanager"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
@@ -103,7 +104,7 @@ func (s *Server) handleProcessStart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleProcessStop(w http.ResponseWriter, r *http.Request) {
-	var req ProcessStopRequest
+	var req processmanager.ProcessStopRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
 		return
@@ -122,7 +123,7 @@ func (s *Server) handleProcessStop(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleProcessRestart(w http.ResponseWriter, r *http.Request) {
-	var req ProcessRestartRequest
+	var req processmanager.ProcessRestartRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		slog.Error("restart request decode failed", "error", err)
 		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
@@ -242,7 +243,7 @@ func (s *Server) handleEnvironmentSet(w http.ResponseWriter, r *http.Request) {
 
 	// Restart process if requested
 	if req.RestartProcess {
-		restartReq := ProcessRestartRequest{Graceful: true}
+		restartReq := processmanager.ProcessRestartRequest{Graceful: true}
 		if err := s.procMgr.Restart(restartReq); err != nil {
 			s.sendError(w, http.StatusInternalServerError, "restart_failed", err.Error())
 			return
@@ -569,7 +570,7 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 
 	// Restart the Node.js application to load the new version
 	slog.Info("publish.restart.begin", "commit_hash", req.CommitHash)
-	restartReq := ProcessRestartRequest{Graceful: true}
+	restartReq := processmanager.ProcessRestartRequest{Graceful: true}
 
 	restartStartTime := time.Now()
 	if err := s.procMgr.Restart(restartReq); err != nil {
@@ -658,7 +659,7 @@ func (s *Server) handlePublishStatus(w http.ResponseWriter, r *http.Request) {
 		"message": healthMessage,
 	}
 	uptime := ""
-	if processInfo.State == ProcessStateRunning && !processInfo.StartTime.IsZero() {
+	if processInfo.State == processmanager.ProcessStateRunning && !processInfo.StartTime.IsZero() {
 		uptime = time.Since(processInfo.StartTime).Round(time.Second).String()
 	}
 	response["process"] = map[string]any{
@@ -701,8 +702,8 @@ func (s *Server) handlePublishStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // checkProcessHealth checks the health status of the running process
-func (s *Server) checkProcessHealth(processInfo ProcessInfo) (string, string) {
-	if processInfo.State != ProcessStateRunning {
+func (s *Server) checkProcessHealth(processInfo processmanager.ProcessInfo) (string, string) {
+	if processInfo.State != processmanager.ProcessStateRunning {
 		return "stopped", fmt.Sprintf("Process is %s", processInfo.State)
 	}
 

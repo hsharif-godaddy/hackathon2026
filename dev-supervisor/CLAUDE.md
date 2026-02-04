@@ -359,7 +359,7 @@ GetEnvDurationWithDefault(key string, defaultValue time.Duration) time.Duration
    - SPA fallback mode for client-side routing
    - Request/response logging with CF-Ray tracing
    - Retry logic with configurable backoff
-   - Key files: `server.go`, `router.go`, `middleware.go`, `reverse_proxy.go`, `transport.go`, `config.go`, `validation.go`, `health.go`, `tls.go`
+   - Key files: `server.go`, `router.go`, `autostart.go`, `static.go`, `activity.go`, `logging.go`, `reverse_proxy.go`, `transport.go`, `config.go`, `validation.go`, `health.go`, `tls.go`
 
 2. **JWT authentication** (`internal/auth/`):
    - JWKS-based public key validation (RFC 7517)
