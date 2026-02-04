@@ -119,7 +119,7 @@ describe('CreditsUpgradeContainer', function creditsUpgradeContainerTests() {
       });
     });
 
-    it('should use AddOnPurchase subType', async function correctSubType() {
+    it('should use StandaloneAddon subType', async function correctSubType() {
       renderWithProviders(
         <CreditsUpgradeContainer
           onClose={mockOnClose}
@@ -128,7 +128,7 @@ describe('CreditsUpgradeContainer', function creditsUpgradeContainerTests() {
       );
 
       await waitFor(function checkSubType() {
-        expect(screen.getByTestId('sub-type').textContent).toBe('AddOnPurchase');
+        expect(screen.getByTestId('sub-type').textContent).toBe('StandaloneAddon');
       });
     });
 

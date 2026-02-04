@@ -33,7 +33,7 @@ interface CreditsUpgradeContainerProps {
 /**
  * Container component for purchasing Airo Builder credits
  *
- * Uses the unified plans and pricing library with the AddOnPurchase subtype
+ * Uses the unified plans and pricing library with the StandaloneAddon subtype
  * to allow users to purchase credit packs for their existing subscription.
  */
 const CreditsUpgradeContainer = ({
@@ -81,8 +81,9 @@ const CreditsUpgradeContainer = ({
     <ErrorBoundary>
       <ComponentLoader
         type='godaddyUnifiedPlansAndPricingLibrary'
+        locale={gasketData?.intl?.locale || 'en-US'}
         cds={gasketData?.cds}
-        subType='AddOnPurchase'
+        subType='StandaloneAddon'
         deps={UPGRADE_DEPS}
         shopperId={shopperId}
         productId={UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS}
