@@ -8,6 +8,7 @@
 import { logger } from '@/lib/request-context'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
+import { fileOperationHandler } from './FileOperationHandler'
 import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
 
 export class ToolResultHandler implements MessageHandler {
@@ -34,6 +35,9 @@ export class ToolResultHandler implements MessageHandler {
 
       context.helpers.sendToolImpression(tool.name)
       context.actions.addToolResultSegment(toolCall)
+
+      // Track file operations for Code view synchronization
+      await fileOperationHandler.handle(data, context)
 
       // Update persistent todo list if this is a todoList tool
       if (tool.name === 'todoList' && !hasError) {

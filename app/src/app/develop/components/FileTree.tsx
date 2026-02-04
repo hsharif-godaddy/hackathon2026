@@ -15,13 +15,16 @@ export interface FileItem {
   extension?: string
 }
 
+export type FileStatus = 'streaming' | 'modified' | 'deleted' | 'normal'
+
 interface FileTreeProps {
   files: FileItem[]
   selectedFile?: string | null
   onFileSelect: (path: string) => void
+  getFileStatus?: (path: string) => FileStatus
 }
 
-export default function FileTree({ files, selectedFile, onFileSelect }: FileTreeProps) {
+export default function FileTree({ files, selectedFile, onFileSelect, getFileStatus }: FileTreeProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['/']))
 
   const toggleFolder = (path: string) => {
@@ -52,20 +55,36 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
     })
   }
 
+  const getStatusClasses = (status: FileStatus): string => {
+    switch (status) {
+      case 'streaming':
+        return 'bg-intents-ux-feedbackInfo-feedbackColor/20 border-l-2 border-intents-ux-feedbackInfo-feedbackColor animate-pulse'
+      case 'modified':
+        return 'bg-intents-ux-feedbackSuccess-feedbackColor/20 border-l-2 border-intents-ux-feedbackSuccess-feedbackColor'
+      case 'deleted':
+        return 'bg-intents-ux-feedbackCritical-feedbackColor/20 border-l-2 border-intents-ux-feedbackCritical-feedbackColor line-through opacity-50'
+      default:
+        return ''
+    }
+  }
+
   const renderFileItem = (item: FileItem, depth: number = 0): React.ReactNode => {
     const Icon = getFileIcon(item)
     const isExpanded = expandedFolders.has(item.path)
     const isSelected = selectedFile === item.path
+    const status = getFileStatus ? getFileStatus(item.path) : 'normal'
+    const statusClasses = getStatusClasses(status)
 
     return (
       <div key={item.path}>
         <div
           className={clsx(
-            "flex items-center pr-1 py-0.5 hover:bg-intents-ux-box-backgroundColor cursor-pointer text-sm",
+            "flex items-center pr-1 py-0.5 hover:bg-intents-ux-box-backgroundColor cursor-pointer text-sm relative",
             {
               "bg-intents-ux-box-backgroundColor text-intents-ux-box-foregroundColor": isSelected,
-              "opacity-75": !isSelected
-            }
+              "opacity-75": !isSelected && status === 'normal'
+            },
+            statusClasses
           )}
           style={{ paddingLeft: getDepthPadding(depth) }}
           onClick={() => {
@@ -86,6 +105,18 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
           {item.type === 'file' && <div className="w-2 h-2 mr-0.5" />}
           <Icon className="w-2 h-2 mr-1" />
           <span className="truncate flex-1">{item.name}</span>
+
+          {/* Status indicator badge */}
+          {status !== 'normal' && (
+            <div className={clsx(
+              "ml-1 w-1.5 h-1.5 rounded-full flex-shrink-0",
+              {
+                "bg-intents-ux-feedbackInfo-feedbackColor animate-pulse": status === 'streaming',
+                "bg-intents-ux-feedbackSuccess-feedbackColor": status === 'modified',
+                "bg-intents-ux-feedbackCritical-feedbackColor": status === 'deleted'
+              }
+            )} />
+          )}
         </div>
 
         {/* Render children if folder is expanded */}

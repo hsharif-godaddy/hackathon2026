@@ -6,6 +6,7 @@
  */
 
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
+import { fileOperationHandler } from './FileOperationHandler'
 import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
 
 export class ToolCallHandler implements MessageHandler {
@@ -25,6 +26,9 @@ export class ToolCallHandler implements MessageHandler {
         status: 'running',
       }
       context.actions.addToolCallSegment(toolCall)
+
+      // Track file operations for Code view synchronization
+      await fileOperationHandler.handle(data, context)
     }
   }
 }

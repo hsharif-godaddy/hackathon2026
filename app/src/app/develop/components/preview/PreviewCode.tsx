@@ -14,12 +14,13 @@ import Spinner from '@ux/spinner'
 import Text from '@ux/text'
 
 import CodeSearch from '@/app/develop/components/CodeSearch'
-import FileTree, { FileItem } from '@/app/develop/components/FileTree'
+import FileTree, { FileItem, FileStatus } from '@/app/develop/components/FileTree'
 import { markdownComponents } from '@/app/develop/components/preview/markdownComponents'
 import { useResponsive } from '@/hooks/useResponsive'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
+import { useCodeSyncStore } from '@/stores/useCodeSyncStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 
 // Dynamically import Monaco Editor to avoid SSR issues
@@ -114,12 +115,23 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const [showFileTree, setShowFileTree] = useState(isMobile)
   const setHasUnsavedChanges = useDevelopPageStore((state) => state.setHasUnsavedChanges)
 
+  // Subscribe to file changes from CodeSyncStore
+  // Use changeVersion to trigger updates without recreating arrays
+  const changeVersion = useCodeSyncStore((state) => state.changeVersion)
+  const clearFileChange = useCodeSyncStore((state) => state.clearFileChange)
+  const addConflict = useCodeSyncStore((state) => state.addConflict)
+  const resolveConflict = useCodeSyncStore((state) => state.resolveConflict)
+  const hasConflict = useCodeSyncStore((state) => state.hasConflict)
+  const getFileChange = useCodeSyncStore((state) => state.getFileChange)
+
   // Refs to prevent duplicate loads and manage retry
   const isLoadingRef = useRef(false)
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const editorRef = useRef<any>(null)
   const pendingLineNumberRef = useRef<number | null>(null)
   const loadingFilesRef = useRef<Set<string>>(new Set())
+  const processedChangesRef = useRef<Set<string>>(new Set())
+  const changeTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
 
   // Load real files from backend
   const loadFiles = useCallback(async () => {
@@ -212,6 +224,73 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     return tree
   }
 
+  // Add a file to the tree incrementally
+  const addFileToTree = useCallback((tree: FileItem[], filePath: string): FileItem[] => {
+    const pathParts = filePath.split('/').filter(Boolean)
+    let currentLevel = tree
+    let currentPath = ''
+
+    for (let i = 0; i < pathParts.length; i++) {
+      const part = pathParts[i]
+      currentPath = currentPath ? `${currentPath}/${part}` : part
+      const isLastPart = i === pathParts.length - 1
+
+      const existingItem = currentLevel.find(item => item.name === part)
+
+      if (existingItem) {
+        if (!isLastPart && existingItem.children) {
+          currentLevel = existingItem.children
+        }
+      } else {
+        const newItem: FileItem = {
+          name: part,
+          type: isLastPart ? 'file' : 'folder',
+          path: currentPath,
+          extension: isLastPart ? part.split('.').pop() : undefined,
+          children: isLastPart ? undefined : []
+        }
+
+        currentLevel.push(newItem)
+
+        if (!isLastPart && newItem.children) {
+          currentLevel = newItem.children
+        }
+      }
+    }
+
+    return [...tree]
+  }, [])
+
+  // Remove a file from the tree incrementally
+  const removeFileFromTree = useCallback((tree: FileItem[], filePath: string): FileItem[] => {
+    const pathParts = filePath.split('/').filter(Boolean)
+
+    const removeRecursive = (items: FileItem[], parts: string[], depth: number): FileItem[] => {
+      if (depth >= parts.length) return items
+
+      const part = parts[depth]
+      const isLastPart = depth === parts.length - 1
+
+      if (isLastPart) {
+        return items.filter(item => item.name !== part)
+      }
+
+      return items.map(item => {
+        if (item.name === part && item.children) {
+          const updatedChildren = removeRecursive(item.children, parts, depth + 1)
+          // Remove empty folders
+          if (updatedChildren.length === 0) {
+            return null
+          }
+          return { ...item, children: updatedChildren }
+        }
+        return item
+      }).filter((item): item is FileItem => item !== null)
+    }
+
+    return removeRecursive(tree, pathParts, 0)
+  }, [])
+
   // Load file content from backend - throws on error to allow caller to handle
   const loadFileContent = useCallback(async (filePath: string): Promise<string> => {
     const result = await appService.readFile(appId, filePath)
@@ -230,6 +309,9 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   }, [appId])
 
   useEffect(() => {
+    // Clear processed changes when appId changes (prevents stale state across different apps)
+    processedChangesRef.current.clear()
+
     // Load real files from backend - only when appId changes
     loadFiles()
 
@@ -244,11 +326,151 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFiles identity changes due to t(), but we only want to reload when appId changes
   }, [appId])
 
+  // Handle file changes from agent operations
+  useEffect(() => {
+    // Get current file changes from store
+    const fileChanges = useCodeSyncStore.getState().fileChanges
+    if (fileChanges.size === 0) return
+
+    logger.info('code-editor.file-changes.detected', {
+      changeCount: fileChanges.size,
+      changeVersion,
+      changes: Array.from(fileChanges.entries()).map(([path, change]) => ({
+        path,
+        operation: change.operation,
+        streaming: change.streaming
+      }))
+    })
+
+    const processFileChanges = async () => {
+      for (const [filePath, change] of fileChanges.entries()) {
+        // Skip if already processed or still streaming
+        if (change.streaming || processedChangesRef.current.has(`${filePath}-${change.timestamp}`)) {
+          continue
+        }
+
+        const changeKey = `${filePath}-${change.timestamp}`
+        processedChangesRef.current.add(changeKey)
+
+        logger.info('code-editor.file-change.processing', {
+          filePath,
+          operation: change.operation
+        })
+
+        // Update file tree incrementally
+        if (change.operation === 'create' || change.operation === 'modify') {
+          setFiles(prevFiles => addFileToTree(prevFiles, filePath))
+        } else if (change.operation === 'delete') {
+          setFiles(prevFiles => removeFileFromTree(prevFiles, filePath))
+          // Calculate remaining files before state updates (prevents stale closure)
+          const remainingFiles = openFiles.filter(f => f.path !== filePath)
+          // Close the file if it's open
+          setOpenFiles(remainingFiles)
+          // Switch active file if needed
+          if (activeFile === filePath) {
+            setActiveFile(remainingFiles.length > 0 ? remainingFiles[remainingFiles.length - 1].path : null)
+          }
+        }
+
+        // Handle open file reload with conflict detection
+        const openFile = openFiles.find(f => f.path === filePath)
+        if (openFile && change.operation !== 'delete') {
+          if (openFile.isDirty) {
+            // File has unsaved changes - mark as conflict
+            addConflict(filePath)
+            logger.info('code-editor.file-change.conflict', {
+              filePath,
+              message: 'File has unsaved changes, showing reload prompt'
+            })
+          } else {
+            // File is clean - auto-reload
+            try {
+              const newContent = await loadFileContent(filePath)
+              setOpenFiles(prev =>
+                prev.map(f =>
+                  f.path === filePath ? { ...f, content: newContent, isDirty: false } : f
+                )
+              )
+              logger.info('code-editor.file-change.reloaded', {
+                filePath,
+                message: 'File auto-reloaded successfully'
+              })
+            } catch (error) {
+              logger.error('code-editor.file-change.reload-error', {
+                filePath,
+                error: error instanceof Error ? error.message : String(error)
+              })
+            }
+          }
+        }
+
+        // Clear the change after a delay to allow visual indicators to show
+        const timeoutId = setTimeout(() => {
+          clearFileChange(filePath)
+          changeTimeoutsRef.current.delete(filePath)
+        }, 3000)
+        changeTimeoutsRef.current.set(filePath, timeoutId)
+      }
+    }
+
+    processFileChanges()
+
+    // Cleanup: clear all pending change timeouts
+    return () => {
+      changeTimeoutsRef.current.forEach(timeout => clearTimeout(timeout))
+      changeTimeoutsRef.current.clear()
+    }
+  }, [changeVersion, openFiles, activeFile, addFileToTree, removeFileFromTree, loadFileContent, addConflict, clearFileChange])
+
   // Notify parent about unsaved changes
   useEffect(() => {
     const hasUnsavedChanges = openFiles.some(file => file.isDirty)
     setHasUnsavedChanges(hasUnsavedChanges)
   }, [openFiles, setHasUnsavedChanges])
+
+  // Get file status for visual indicators
+  const getFileStatus = useCallback((path: string): FileStatus => {
+    const change = getFileChange(path)
+    if (!change) return 'normal'
+    if (change.streaming) return 'streaming'
+    if (change.operation === 'delete') return 'deleted'
+    if (change.operation === 'create' || change.operation === 'modify') return 'modified'
+    return 'normal'
+  }, [getFileChange])
+
+  // Handle conflict resolution - reload file with latest content
+  const handleReloadFile = useCallback(async (filePath: string) => {
+    try {
+      const newContent = await loadFileContent(filePath)
+      setOpenFiles(prev =>
+        prev.map(f =>
+          f.path === filePath ? { ...f, content: newContent, isDirty: false } : f
+        )
+      )
+      resolveConflict(filePath)
+      clearFileChange(filePath)
+      logger.info('code-editor.conflict.resolved', {
+        filePath,
+        message: 'File reloaded with latest content'
+      })
+    } catch (error) {
+      logger.error('code-editor.conflict.reload-error', {
+        filePath,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      alert(t('builder_code_alert_failed_reload'))
+    }
+  }, [loadFileContent, resolveConflict, clearFileChange, t])
+
+  // Handle keeping user's changes - dismiss conflict and clear change indicator
+  const handleKeepMyChanges = useCallback((filePath: string) => {
+    resolveConflict(filePath)
+    clearFileChange(filePath)
+    logger.info('code-editor.conflict.kept-changes', {
+      filePath,
+      message: 'User chose to keep their changes'
+    })
+  }, [resolveConflict, clearFileChange])
 
   const getLanguageFromPath = (path: string): string => {
     const ext = path.split('.').pop()?.toLowerCase()
@@ -484,6 +706,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                 files={files}
                 selectedFile={activeFile}
                 onFileSelect={handleFileSelect}
+                getFileStatus={getFileStatus}
               />
             </div>
           </div>
@@ -497,6 +720,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
               files={files}
               selectedFile={activeFile}
               onFileSelect={handleFileSelect}
+              getFileStatus={getFileStatus}
             />
           </div>
         </div>
@@ -524,7 +748,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                 <div
                   key={file.path}
                   className={clsx(
-                    "relative flex items-center gap-0.5 pl-1 pr-0.5 py-0.5 border-b-4 border-r cursor-pointer text-sm whitespace-nowrap transition-opacity duration-200 flex-shrink-0", {
+                    "relative flex items-center gap-0.5 pl-1 pr-0.5 py-1 border-b-4 border-r cursor-pointer text-sm whitespace-nowrap transition-opacity duration-200 flex-shrink-0", {
                       "opacity-50 border-b-transparent": activeFile !== file.path
                     }
                   )}
@@ -567,7 +791,9 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                   }}
                   icon={<DownloadIcon />}
                   text={t('builder_code_save_all')}
-                  design="control"
+                  design="stateless"
+                  size="sm"
+                  className="!ml-0.5"
                 />
               )}
 
@@ -593,6 +819,31 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
         <div className="flex-1 overflow-auto">
           {currentFile ? (
             <>
+              {/* Conflict banner - show when file has unsaved changes and was modified by agent */}
+              {currentFile && hasConflict(currentFile.path) && (
+                <div className="bg-intents-ux-feedbackInfo-feedbackColor border-b border-intents-ux-feedbackInfo-feedbackColor px-2 py-1.5 flex items-center justify-between">
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm font-medium">
+                      {t('builder_code_updated_agent')}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      onClick={() => handleReloadFile(currentFile.path)}
+                      size="sm"
+                      design="primary"
+                      text={t('builder_common_reload')}
+                    />
+                    <Button
+                      onClick={() => handleKeepMyChanges(currentFile.path)}
+                      size="sm"
+                      design="secondary"
+                      text={t('builder_code_keep_changes')}
+                    />
+                  </div>
+                </div>
+              )}
+
               {showMarkdownPreview && currentFile.language === 'markdown' ? (
                 <div className="h-full p-6 overflow-auto bg-white">
                   <div className="max-w-4xl mx-auto markdown-preview">

@@ -35,7 +35,7 @@
       "pnpm --filter @airo/agents lint:fix"
     ],
     "app/**/*.{ts,tsx,js,jsx}": [
-      "bash -c 'cd app && pnpm lint'",
+      "bash -c 'cd app && pnpm lint --fix'",
       "bash -c 'cd app && case \"${SKIP_PRECOMMIT_TESTS,,}\" in 1|true|yes) ;; *) pnpm test ;; esac'"
     ],
     "proxy/**/*.{ts,tsx,js,jsx}": [
@@ -45,7 +45,7 @@
       "pnpm --filter ai-lib lint:fix"
     ],
     "website/**/*.{ts,tsx,js,jsx}": [
-      "pnpm --filter website lint"
+      "pnpm --filter website lint --fix"
     ],
     "*.{md,yml,yaml}": [
       "bash -c 'if [[ \"$0\" != *\"pnpm-lock.yaml\" ]]; then prettier --write \"$0\"; fi'"

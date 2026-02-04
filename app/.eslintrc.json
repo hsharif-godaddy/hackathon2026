@@ -10,6 +10,10 @@
     "@typescript-eslint/no-explicit-any": "off",
     "@typescript-eslint/no-require-imports": "warn",
     "@typescript-eslint/no-unnecessary-type-constraint": "warn",
+    "@typescript-eslint/comma-spacing": [
+      "warn",
+      { "before": false, "after": true }
+    ],
     "react/display-name": "off",
     "simple-import-sort/imports": [
       "warn",
