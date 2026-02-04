@@ -51,7 +51,7 @@ vi.mock('@/utils/propTypes', () => ({
   ensurePropTypes: vi.fn().mockResolvedValue(undefined),
 }));
 
-let capturedProps: any = {};
+let capturedProps: any = {}; // eslint-disable-line @typescript-eslint/no-unused-vars
 vi.mock('next/dynamic', () => ({
   default: () => {
     const MockComponent = (props: any) => {

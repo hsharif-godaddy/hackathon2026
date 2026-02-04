@@ -1,4 +1,4 @@
-import { beforeEach,describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 
 import { useAuth } from './useAuth';
@@ -301,7 +301,6 @@ describe('useAuth', () => {
     // Track validation promises - we need to control ALL validation calls
     // because the useEffect runs again when configLoading changes
     let firstValidationResolve: (value: any) => void;
-    let secondValidationResolve: (value: any) => void;
     let validationCallCount = 0;
 
     global.fetch = vi.fn((url) => {

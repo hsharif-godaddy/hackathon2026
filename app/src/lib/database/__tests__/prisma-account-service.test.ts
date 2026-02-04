@@ -3,7 +3,8 @@
  * Focus on idempotent account creation via getOrCreateAccount
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import type { PrismaClient } from '@/generated/prisma';
 import { AccountStatus } from '@/generated/prisma';
 
@@ -50,7 +51,7 @@ describe('PrismaAccountService', () => {
     mockGetPrismaClient.mockReturnValue(mockPrismaClient);
 
     // Dynamically import the service after mocks are set up
-    const module = await import('../prisma-account-service');
+    const module = await import('../prisma-account-service'); // eslint-disable-line @next/next/no-assign-module-variable
     PrismaAccountService = module.PrismaAccountService;
 
     // Create service instance

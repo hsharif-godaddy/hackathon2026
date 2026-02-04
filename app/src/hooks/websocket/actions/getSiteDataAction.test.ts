@@ -2,7 +2,7 @@
  * Get Site Data Action Tests
  */
 
-import { beforeEach,describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useSiteStore } from '@/stores/useSiteStore'
 import { getSiteDataAction } from './getSiteDataAction'

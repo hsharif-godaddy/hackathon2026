@@ -128,7 +128,7 @@ export function useAuthContext() {
   if (!context) {
     // During logout/unmounting, create a minimal auth hook to avoid errors
     // Import auth directly to get the actual auth configuration
-    const { auth } = require('@/lib/features'); /* eslint-disable-line @typescript-eslint/no-require-imports */
+    const { auth } = require('@/lib/features'); // eslint-disable-line
     const actualIsMock = auth.isMock();
     const actualIsDisabled = auth.isDisabled();
     const actualAuthType = auth.getType();

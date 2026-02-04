@@ -34,12 +34,10 @@ export default function FontThemeToolRenderer({
   const themes = resultObj.themes || widget?.widgetData?.themes || []
   const hasThemes = Array.isArray(themes) && themes.length > 0
 
-  const _themeName = String((resultObj.themeName as string | undefined) || input?.themeName || 'Font Theme')
-
   // Extract font information for preview
   const appliedFont = resultObj.appliedFont as { name?: string; fontName?: string; weights?: string[] } | undefined
   const fontName = appliedFont?.fontName || resultObj.fontName as string | undefined
-  const fontWeights = appliedFont?.weights || ['400', '700'] // Default weights if not provided
+  const fontWeights = appliedFont?.weights || ['400', '700'] // eslint-disable-line react-hooks/exhaustive-deps
 
   // Computed styles to reduce duplication
   const fontFamily = fontName ? `"${fontName}", -apple-system, BlinkMacSystemFont, sans-serif` : undefined

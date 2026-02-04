@@ -30,9 +30,7 @@ interface GetCurrentRenderStateParams {
   shouldShowExistingConnectionsLoader: boolean
   hasCurrentConnection: boolean
   shouldShowConnectionSelector: boolean
-  isLoadingAuthUrl: boolean
   authUrlError: Error | null
-  authUrl: string | undefined
   platformPages: any[]
   isPagesLoading: boolean
   isValidatingPermissions: boolean
@@ -43,9 +41,7 @@ export function getCurrentRenderState({
   shouldShowExistingConnectionsLoader,
   hasCurrentConnection,
   shouldShowConnectionSelector,
-  isLoadingAuthUrl,
   authUrlError,
-  authUrl,
   platformPages,
   isPagesLoading,
   isValidatingPermissions,

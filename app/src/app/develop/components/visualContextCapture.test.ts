@@ -1,9 +1,8 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // We need to test the internal isValidOrigin function
 // Since it's not exported, we'll test it indirectly through captureVisualContext
 // by mocking the MessageEvent
-
 // Import the module - this will allow us to spy on internal functions
 import * as visualContextModule from './visualContextCapture';
 

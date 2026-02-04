@@ -277,7 +277,6 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
         return (
           <ModalErrorBoundary stepName="security-results" appId={appId} onReset={runScan}>
             <SecurityResultsStep
-              videoStatus={videoStatus}
               securityStatus={securityStatus}
               securityScanResults={securityScanResults}
               securityError={scanError}
@@ -295,8 +294,6 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
               isGeneratingVideo={isGeneratingVideo}
               videoError={videoError}
               launchVideoUrl={launchVideoUrl}
-              videoStatus={videoStatus}
-              securityStatus={securityStatus}
               onContinue={handleContinueToMarketing}
               onSkip={handleContinueToMarketing}
             />
@@ -307,8 +304,6 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
         return (
           <ModalErrorBoundary stepName="marketing" appId={appId}>
             <MarketingStep
-              videoStatus={videoStatus}
-              securityStatus={securityStatus}
               onSkip={handleClose}
               onGenerate={handleStartMarketing}
             />

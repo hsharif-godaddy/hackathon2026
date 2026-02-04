@@ -47,7 +47,7 @@ vi.mock('@/utils/propTypes', () => ({
 }));
 
 // Mock the ComponentLoader to capture props and simulate behavior
-let capturedProps: any = {};
+let capturedProps: any = {}; // eslint-disable-line @typescript-eslint/no-unused-vars
 vi.mock('next/dynamic', () => ({
   default: () => {
     const MockComponent = (props: any) => {

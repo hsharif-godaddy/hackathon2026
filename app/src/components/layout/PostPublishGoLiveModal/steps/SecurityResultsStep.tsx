@@ -16,7 +16,6 @@ import type { TaskStatus } from '../types';
 import type { SecurityScanResult } from '../types';
 
 interface SecurityResultsStepProps {
-  videoStatus: TaskStatus;
   securityStatus: TaskStatus;
   securityScanResults: SecurityScanResult | null;
   securityError?: string | null;
@@ -25,7 +24,6 @@ interface SecurityResultsStepProps {
 }
 
 export function SecurityResultsStep({
-  videoStatus,
   securityStatus,
   securityScanResults,
   securityError,

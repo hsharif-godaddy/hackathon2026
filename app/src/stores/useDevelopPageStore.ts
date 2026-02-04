@@ -14,7 +14,7 @@ import { postMessageToIframe } from '@/utils/postMessage'
 type LoadingPhase = 'idle' | 'loading-app' | 'loading-site' | 'loading-conversations' | 'ready'
 
 // Helper to load go-live status from .airo/live.json (defaults to false for sync init)
-const loadGoLiveStatus = (appId: string): { hasGoneLive: boolean; wentLiveAt: string | null } => {
+const loadGoLiveStatus = (): { hasGoneLive: boolean; wentLiveAt: string | null } => {
   // Return default for initialization - actual status will be loaded async
   return { hasGoneLive: false, wentLiveAt: null }
 }
@@ -94,8 +94,8 @@ const saveGoLiveStatus = async (appId: string) => {
 }
 
 // Helper to create default publish state
-const createDefaultPublishState = (appId: string) => {
-  const goLiveStatus = loadGoLiveStatus(appId);
+const createDefaultPublishState = () => {
+  const goLiveStatus = loadGoLiveStatus();
   return {
     isPublishing: false,
     publishError: false,
@@ -443,29 +443,29 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // Publish status actions (per-app)
     getPublishState: (appId: string) => {
       const state = get().publishStates[appId];
-      return state || createDefaultPublishState(appId);
+      return state || createDefaultPublishState();
     },
     setIsPublishing: (appId: string, isPublishing: boolean) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = createDefaultPublishState(appId);
+        state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].isPublishing = isPublishing;
     }),
     setPublishError: (appId: string, hasError: boolean) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = createDefaultPublishState(appId);
+        state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].publishError = hasError;
     }),
     setBuildErrorDetails: (appId: string, errorDetails: { error: string; details: string; exitCode?: number } | null) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = createDefaultPublishState(appId);
+        state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].buildErrorDetails = errorDetails;
     }),
     setLastPublishedCommitHash: (appId: string, commitHash: string | null) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = createDefaultPublishState(appId);
+        state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].lastPublishedCommitHash = commitHash;
 
@@ -481,19 +481,19 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     }),
     setDeploymentsRefetch: (appId: string, refetch: (() => Promise<any>) | null) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = createDefaultPublishState(appId);
+        state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].deploymentsRefetch = refetch;
     }),
     setDeploymentInProgressId: (appId: string, deploymentId: string | null) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = createDefaultPublishState(appId);
+        state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].deploymentInProgressId = deploymentId;
     }),
     setPublishSuccess: (appId: string, showSuccess: boolean) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = createDefaultPublishState(appId);
+        state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].showSuccessAlert = showSuccess;
       state.publishStates[appId].isPublishing = false;
@@ -516,7 +516,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     }),
     setShowPaywallModal: (appId: string, show: boolean) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = createDefaultPublishState(appId);
+        state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].showPaywallModal = show;
     }),
@@ -583,7 +583,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         const goLiveStatus = await loadGoLiveStatusAsync(appId);
         set((state) => {
           if (!state.publishStates[appId]) {
-            state.publishStates[appId] = createDefaultPublishState(appId);
+            state.publishStates[appId] = createDefaultPublishState();
           }
           state.publishStates[appId].hasGoneLive = goLiveStatus.hasGoneLive;
           state.publishStates[appId].wentLiveAt = goLiveStatus.wentLiveAt;
@@ -722,7 +722,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // Go Live modal actions
     setShowGoLiveModal: (appId: string, show: boolean) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = createDefaultPublishState(appId);
+        state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].showGoLiveModal = show;
       if (!show) {
@@ -735,21 +735,21 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     setGoLiveModalStep: (appId: string, step: 'confirm' | 'qa' | 'security-results' | 'republish' | 'video' | 'marketing' | null) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = createDefaultPublishState(appId);
+        state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].goLiveModalStep = step;
     }),
 
     setSecurityScanResults: (appId: string, results: any | null) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = createDefaultPublishState(appId);
+        state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].securityScanResults = results;
     }),
 
     setLaunchVideoUrl: (appId: string, url: string | null) => set((state) => {
       if (!state.publishStates[appId]) {
-        state.publishStates[appId] = createDefaultPublishState(appId);
+        state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].launchVideoUrl = url;
     }),
@@ -760,7 +760,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       // Update state optimistically
       set((state) => {
         if (!state.publishStates[appId]) {
-          state.publishStates[appId] = createDefaultPublishState(appId);
+          state.publishStates[appId] = createDefaultPublishState();
         }
         state.publishStates[appId].hasGoneLive = true;
         state.publishStates[appId].wentLiveAt = timestamp;
@@ -781,7 +781,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         return state.hasGoneLive;
       }
       // Check localStorage if not in state
-      const goLiveStatus = loadGoLiveStatus(appId);
+      const goLiveStatus = loadGoLiveStatus();
       return goLiveStatus.hasGoneLive;
     }
   })),

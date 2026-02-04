@@ -64,7 +64,7 @@ export function useSpeechRecognition(
     } else {
       start()
     }
-  }, [listening, start, stop, resetTranscript])
+  }, [listening, start, stop])
 
   return {
     isListening: listening,

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AiroGrantFinalState, AiroGrantType, type AiroCreditGrant } from '@/lib/mgmt-airo';
+import { type AiroCreditGrant, AiroGrantFinalState, AiroGrantType } from '@/lib/mgmt-airo';
 
 // Mock dependencies before importing the route
 vi.mock('@/lib/mgmt-airo');

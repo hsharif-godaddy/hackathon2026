@@ -6,7 +6,7 @@ import { ClientLogBuffer } from './logging/client-log-buffer';
 let AsyncLocalStorage: any;
 if (typeof window === 'undefined') {
   // Server-side: import AsyncLocalStorage
-  AsyncLocalStorage = require('async_hooks').AsyncLocalStorage; // eslint-disable-line @typescript-eslint/no-require-imports
+  AsyncLocalStorage = require('async_hooks').AsyncLocalStorage; // eslint-disable-line
 } else {
   // Client-side: provide a no-op implementation
   AsyncLocalStorage = class {

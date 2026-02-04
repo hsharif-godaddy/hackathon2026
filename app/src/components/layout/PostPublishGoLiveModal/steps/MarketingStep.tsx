@@ -8,16 +8,13 @@ import Button from '@ux/button';
 import text from '@ux/text';
 
 import { useTranslations } from '@/hooks/useTranslations';
-import type { TaskStatus } from '../types';
 
 interface MarketingStepProps {
-  videoStatus: TaskStatus;
-  securityStatus: TaskStatus;
   onSkip: () => void;
   onGenerate: () => void;
 }
 
-export function MarketingStep({ videoStatus, securityStatus, onSkip, onGenerate }: MarketingStepProps) {
+export function MarketingStep({ onSkip, onGenerate }: MarketingStepProps) {
   const t = useTranslations();
 
   return (

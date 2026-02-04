@@ -39,7 +39,7 @@ export class GdAuthService {
   }
 
   private initializeGdAuth() {
-    const { GdAuth } = require('gd-auth'); // eslint-disable-line @typescript-eslint/no-require-imports
+    const { GdAuth } = require('gd-auth'); // eslint-disable-line
 
     // Initialize gd-auth with support for multiple auth types including impersonation
     this.gdAuth = new GdAuth({

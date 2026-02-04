@@ -102,7 +102,7 @@ describe('useProjects', function hooks() {
         json: () => Promise.resolve({ data: { projects: { edges: [] } } }),
       } as Response);
 
-      const { result } = renderHookWithProviders(() => useProjects({ enabled: true }));
+      renderHookWithProviders(() => useProjects({ enabled: true }));
 
       await waitFor(() => {
         expect(appFetch).toHaveBeenCalledWith('/api/projects', { credentials: 'include' });

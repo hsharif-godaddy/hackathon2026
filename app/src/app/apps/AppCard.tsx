@@ -6,16 +6,16 @@ import Button from '@ux/button'
 import Card, { MediaCard } from '@ux/card'
 import EditIcon from '@ux/icon/edit'
 import MenuIcon from '@ux/icon/menu'
-import Modal from '@ux/modal'
 import PlusIcon from '@ux/icon/plus'
 import SettingsIcon from '@ux/icon/settings'
 import ShowIcon from '@ux/icon/show'
-import TextInput from '@ux/text-input'
 import TrashIcon from '@ux/icon/trash'
 import WebsiteIcon from '@ux/icon/website'
 import { Menu, MenuButton, MenuItem, MenuList, MenuSeparator } from '@ux/menu'
+import Modal from '@ux/modal'
 import Tag from '@ux/tag'
 import text from '@ux/text'
+import TextInput from '@ux/text-input'
 
 import AppThumbnail from '@/app/apps/AppThumbnail'
 import { useAppRename } from '@/hooks/useAppRename'
@@ -219,7 +219,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
             <MenuItem
               {...menuItemProps()}
               data-eid={generateClickEID('apps.app.visit_published')}
-              onClick={(e) => {
+              onClick={() => {
                 window.open(publishedUrl, '_blank', 'noopener,noreferrer');
               }}
             >
@@ -234,7 +234,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
               {...menuItemProps()}
               data-eid={generateClickEID('apps.app.view')}
               data-testid="app-card-view-button"
-              onClick={(e) => {
+              onClick={() => {
                 window.open(site.preview_url, '_blank', 'noopener,noreferrer');
               }}
             >
@@ -270,7 +270,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
             {...menuItemProps()}
             data-eid={generateClickEID('apps.app.delete')}
             data-testid="app-card-delete-button"
-            onClick={(e) => {
+            onClick={() => {
               showDeleteAlert(site.id, site.name || t('builder_apps_alert_delete_untitled'));
             }}
             aria-label={t('builder_apps_menu_delete', { siteName: site.name || t('builder_apps_alert_delete_untitled') })}
@@ -293,7 +293,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
       />
     </text.span>
   )
-  
+
   const title = (
     <div className="flex flex-col gap-1 w-full">
       <div>
@@ -365,7 +365,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
             <text.p size={0} emphasis="passive">
               {t('builder_apps_rename_description')}
             </text.p>
-            
+
             <Box orientation="vertical" gap="sm">
               <TextInput
                 id="app-name"
@@ -388,7 +388,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
                 data-eid={generateClickEID('apps.app.rename_dialog_input')}
               />
             </Box>
-            
+
             <Box orientation="horizontal" gap="sm" className="pt-4 justify-end">
               <Button
                 onClick={closeRenameDialog}

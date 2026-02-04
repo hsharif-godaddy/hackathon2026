@@ -350,4 +350,8 @@ function getDatacenterFromMarketId(marketId?: string): string {
   return continentInfo.dc;
 }
 
-export { continentsByCountryCodes, continentCode, getDatacenterFromMarketId };
+export {
+  continentCode,
+  continentsByCountryCodes,
+  getDatacenterFromMarketId,
+};

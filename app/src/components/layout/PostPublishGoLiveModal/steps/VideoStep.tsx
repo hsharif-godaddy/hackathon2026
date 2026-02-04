@@ -12,15 +12,12 @@ import text from '@ux/text';
 
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
-import type { TaskStatus } from '../types';
 
 interface VideoStepProps {
   appId: string;
   isGeneratingVideo: boolean;
   videoError: string | null;
   launchVideoUrl: string | null;
-  videoStatus: TaskStatus;
-  securityStatus: TaskStatus;
   onContinue: () => void;
   onSkip: () => void;
 }
@@ -30,8 +27,6 @@ export function VideoStep({
   isGeneratingVideo,
   videoError,
   launchVideoUrl,
-  videoStatus,
-  securityStatus,
   onContinue,
   onSkip
 }: VideoStepProps) {

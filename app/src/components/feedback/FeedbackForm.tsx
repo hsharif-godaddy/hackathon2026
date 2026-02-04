@@ -114,7 +114,7 @@ export function FeedbackForm({
       }),
     })
       .then((res) => res.json())
-      .then(async (res) => {
+      .then(async () => {
         // Send to Slack after successful database save
         await sendToSlack(data);
         logger.info('feedback.submit.success', {

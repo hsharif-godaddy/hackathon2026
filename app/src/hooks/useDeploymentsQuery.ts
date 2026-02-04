@@ -261,7 +261,7 @@ export function useDeploymentsQuery({
 
         // Refetch site data to get updated domains/URLs/variants, then show success or go-live modal
         fetchSite(appId, true)
-          .then(function handleRefetchSuccess(updatedSite) {
+          .then(function handleRefetchSuccess() {
             // Check if this is first publish and user hasn't gone live yet
             const isFirstPublish = !wasAlreadyPublished;
             const userHasGoneLive = hasGoneLive(appId);

@@ -39,7 +39,6 @@ const SocialConnectFlow = memo(function SocialConnectFlow(props: SocialConnectFl
     connectionsLoadingMetadata,
     isLoadingAuthUrl,
     authUrlError,
-    authUrl,
     isValidatingPermissions,
     platform,
   } = useSocialConnectFlowOrchestrator(props)
@@ -49,9 +48,7 @@ const SocialConnectFlow = memo(function SocialConnectFlow(props: SocialConnectFl
     shouldShowExistingConnectionsLoader: derivedState.shouldShowExistingConnectionsLoader,
     hasCurrentConnection: derivedState.hasCurrentConnection,
     shouldShowConnectionSelector: derivedState.shouldShowConnectionSelector,
-    isLoadingAuthUrl,
     authUrlError,
-    authUrl,
     platformPages: derivedState.platformPages,
     isPagesLoading: derivedState.isPagesLoading,
     isValidatingPermissions,

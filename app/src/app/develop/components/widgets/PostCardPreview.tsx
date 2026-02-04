@@ -14,9 +14,9 @@ import { text } from '@ux/text'
 
 import { useAppImageUrl } from '@/app/develop/hooks/useAppImageUrl'
 import { useTranslations } from '@/hooks/useTranslations'
+import { SocialPlatform } from '@/types/social'
 import { SocialPostData } from '@/types/social-posts'
 import { formatHashtags } from '@/utils/social'
-import { SocialPlatform } from '@/types/social'
 
 /**
  * Platform icon mapping
