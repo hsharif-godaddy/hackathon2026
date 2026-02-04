@@ -36,7 +36,7 @@ export function useAuthPopup(
   platform: string,
   expectedState?: string,
   onAuthSuccess?: (data: any) => void,
-  disableAutoOpen?: boolean
+  shouldPreventAutoOpen?: boolean
 ): AuthPopupResult {
   const t = useTranslations()
   const [authStatus, setAuthStatus] = useState<AuthStatus>(AuthStatus.Pending)
@@ -137,7 +137,7 @@ export function useAuthPopup(
   }, [])
 
   useEffect(() => {
-    if (!authUrl || disableAutoOpen) return
+    if (!authUrl || shouldPreventAutoOpen) return
 
     const refKey = expectedState || authUrl
     if (!hasAutoOpenedRef.current[refKey]) {
@@ -147,7 +147,7 @@ export function useAuthPopup(
       }, 300)
       return () => clearTimeout(timer)
     }
-  }, [expectedState, authUrl, openPopup, disableAutoOpen])
+  }, [expectedState, authUrl, openPopup, shouldPreventAutoOpen])
 
   return { authStatus, errorMessage, openPopup }
 }

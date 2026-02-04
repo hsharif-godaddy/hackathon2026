@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef,useState } from 'react'
 import Chat from '@ux/icon/chat'
 
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import DefaultToolRenderer from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
 import { SocialPostList } from '@/app/develop/components/widgets/SocialPostList'
 import { useToolResultSync } from '@/hooks/useToolResultSync'
@@ -23,7 +24,8 @@ export default function SocialPostCreateToolRenderer({
   toolStatus,
   result,
   toolId,
-  conversationId
+  conversationId,
+  ...rest
 }: DefaultToolRendererProps) {
   const t = useTranslations()
   const currentAppId = useStreamingConversationStore(state => state.currentAppId)
@@ -96,6 +98,11 @@ export default function SocialPostCreateToolRenderer({
 
   const hasPosts = posts.length > 0
 
+  // On error or no posts generated, fall back to DefaultToolRenderer to show error details
+  if (toolStatus === 'error' || (toolStatus === 'completed' && !hasPosts)) {
+    return <DefaultToolRenderer toolName={_toolName} toolStatus={toolStatus} result={result} toolId={toolId} conversationId={conversationId} {...rest} />
+  }
+
   const displayName = (toolStatus === 'completed' && hasPosts)
     ? `${t('builder_tools_social_create_title')} (${posts.length} ${t('builder_common_options')})`
     : t('builder_tools_social_create_title')
@@ -107,6 +114,7 @@ export default function SocialPostCreateToolRenderer({
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasPosts}
+        onOpenModal={undefined}
       />
 
       {toolStatus === 'completed' && hasPosts && (

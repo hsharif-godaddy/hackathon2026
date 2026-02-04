@@ -317,7 +317,7 @@ export class SocialV2Client {
     locationId?: string
     userId: string
   }): Promise<{ socialId: string }> {
-    const body = params.platform === SocialPlatformKey.FACEBOOK
+    const body = params.pageId
       ? {
           platform: params.platform,
           pageId: params.pageId,

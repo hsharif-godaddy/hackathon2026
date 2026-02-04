@@ -15,6 +15,7 @@ import { formatHashtags, formatPlatformName } from '@/utils/social'
 function SocialConnectToolRenderer({
   toolStatus,
   result,
+  isLastAssistantMessage = false,
   ...rest
 }: DefaultToolRendererProps) {
   const t = useTranslations()
@@ -73,7 +74,7 @@ function SocialConnectToolRenderer({
           platform={r.platform as string}
           appId={r.appId as string}
           state={r.state as string}
-          disableAutoOpen={false}
+          autoOpen={isLastAssistantMessage}
           onSuccess={handleConnectSuccess}
         />
       </>

@@ -25,7 +25,7 @@ export interface SocialConnectFlowOrchestratorProps {
   state: string
   initialStep?: FlowStep
   initialUserTokenId?: string
-  disableAutoOpen?: boolean
+  autoOpen?: boolean
   onSuccess?: () => void
 }
 
@@ -71,7 +71,7 @@ export function useSocialConnectFlowOrchestrator({
   state,
   initialStep,
   initialUserTokenId,
-  disableAutoOpen = false,
+  autoOpen = true,
   onSuccess,
 }: SocialConnectFlowOrchestratorProps): SocialConnectFlowOrchestratorResult {
   const t = useTranslations()
@@ -164,7 +164,7 @@ export function useSocialConnectFlowOrchestrator({
     platform,
     state,
     handleOAuthSuccess,
-    disableAutoOpen || flowState.forceNewConnection || flowState.showSelectExisting || isSelectExistingLoading
+    !autoOpen || flowState.forceNewConnection || flowState.showSelectExisting || isSelectExistingLoading
   )
 
   const handleSelectExisting = useCallback(async (socialId: string) => {

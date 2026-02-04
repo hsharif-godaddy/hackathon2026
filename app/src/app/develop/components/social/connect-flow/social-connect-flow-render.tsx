@@ -217,7 +217,7 @@ export function getRenderConfig({
       return {
         icon: config.Icon,
         platformName: config.name,
-        content: <SocialConnectFlowState type={FlowStateType.Loading} message={t('builder_common_loading_pages', { platform: config.name })} />
+        content: <SocialConnectFlowState type={FlowStateType.Loading} message={t('builder_social_loading_pages', { platform: config.name })} />
       }
 
     case RenderState.SelectingPage:

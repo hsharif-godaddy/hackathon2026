@@ -131,7 +131,7 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
       case PublishFlowState.ReadyToPublish:
         return renderStatusText(t('builder_widgets_socialpublish_preparing'))
       case PublishFlowState.Publishing:
-        return renderStatusText(`${t('builder_widgets_socialpublish_publishing_to')} ${platformConfig?.name || formatPlatformName(pendingPublish.platform)}...`)
+        return renderStatusText(t('builder_widgets_socialpublish_publishing_to', { platformName: formatPlatformName(pendingPublish.platform) }))
       case PublishFlowState.Success:
         return renderStatusText(t('builder_widgets_socialpublish_success'), 'success')
       case PublishFlowState.Error:

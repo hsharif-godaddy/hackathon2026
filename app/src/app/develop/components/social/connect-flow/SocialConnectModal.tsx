@@ -73,7 +73,7 @@ export function SocialConnectModal({
           state={oauthState}
           initialStep={initialStep}
           initialUserTokenId={initialUserTokenId}
-          disableAutoOpen
+          autoOpen={false}
           onSuccess={onSuccess}
         />
       </div>
