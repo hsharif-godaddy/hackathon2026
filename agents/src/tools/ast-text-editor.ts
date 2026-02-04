@@ -4,7 +4,7 @@ import { Logger } from '../logging/index.js';
 
 const logger = Logger.create({ service: 'ast-text-editor' });
 
-export interface TextEditContext extends BaseEditContext {}
+export type TextEditContext = BaseEditContext;
 
 export interface TextEditRequest {
   selector: string;
@@ -45,9 +45,9 @@ export class ASTTextEditor extends ASTEditorBase {
 
     const lastMatch = matches[matches.length - 1];
     if (!lastMatch) return null;
-    
+
     const index = parseInt(lastMatch.match(/\d+/)?.[0] || '0', 10);
-    
+
     return index > 0 ? index - 1 : null; // Convert to 0-based
   }
 
@@ -76,7 +76,7 @@ export class ASTTextEditor extends ASTEditorBase {
     const normalizedTargetText = targetInfo.textContent.replace(/\s+/g, ' ').trim();
 
     // Match if target text is a prefix of element text (handles truncated oldText)
-    return normalizedElementText.startsWith(normalizedTargetText) || 
+    return normalizedElementText.startsWith(normalizedTargetText) ||
            normalizedElementText === normalizedTargetText;
   }
 
@@ -186,7 +186,7 @@ export class ASTTextEditor extends ASTEditorBase {
       if (normalizedCandidateText === normalizedOldText) {
         score += 10000; // Exact text match dominates
         matchType = 'exact-text';
-        
+
         // Track exact matches for occurrence-based selection
         exactMatches.push({ element: candidate.element, line: candidate.line, score });
       } else if (normalizedCandidateText.includes(normalizedOldText)) {
@@ -213,7 +213,7 @@ export class ASTTextEditor extends ASTEditorBase {
 
     // Handle multiple exact matches using occurrence index
     let targetElement: t.JSXElement | null = null;
-    
+
     if (exactMatches.length > 1 && targetOccurrenceIndex !== null) {
       // Multiple exact matches - use occurrence index to select the right one
       logger.debug('ast.text-editor.multiple-matches', {
@@ -221,7 +221,7 @@ export class ASTTextEditor extends ASTEditorBase {
         targetOccurrenceIndex,
         selecting: `match ${targetOccurrenceIndex + 1} of ${exactMatches.length}`
       });
-      
+
       if (targetOccurrenceIndex < exactMatches.length) {
         const matchedElement = exactMatches[targetOccurrenceIndex];
         if (matchedElement) {

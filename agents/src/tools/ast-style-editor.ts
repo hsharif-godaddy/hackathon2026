@@ -2,7 +2,7 @@ import * as t from '@babel/types';
 import { ASTEditorBase, BaseEditContext, BaseEditResult } from './ast-editor-base.js';
 import { logger } from '../logging/index.js';
 
-export interface StyleEditContext extends BaseEditContext {}
+export type StyleEditContext = BaseEditContext;
 
 export interface ElementInfo {
   tagName: string;
@@ -41,11 +41,11 @@ export interface StyleEditResult extends BaseEditResult {
 }
 
 export class ASTStyleEditor extends ASTEditorBase {
-  private lastProcessResult: { 
-    oldClassName: string; 
-    newClassName: string; 
-    property: string; 
-    value: string; 
+  private lastProcessResult: {
+    oldClassName: string;
+    newClassName: string;
+    property: string;
+    value: string;
   } | null = null;
 
   /**
@@ -87,64 +87,64 @@ export class ASTStyleEditor extends ASTEditorBase {
     if (!tagName || tagName.toLowerCase() !== elementInfo.tagName.toLowerCase()) {
       return false;
     }
-    
+
     // Check line number (using base class helper with tolerance of 3 lines)
     if (!this.isOnTargetLine(element, elementInfo.devContext.lineNumber, 3)) {
       return false;
     }
-    
+
     logger.debug('Target element found for AST style edit', {
       component: 'ASTStyleEditor',
       tagName,
       line: element.loc?.start.line
     });
-    
+
     // Check className if present (using base class helper)
     if (elementInfo.className.trim()) {
       const currentClassName = this.getClassName(element);
-      
+
       // Check for dynamic className (can't edit these)
       const openingElement = element.openingElement;
           const classNameAttr = openingElement.attributes.find(
         (attr: any) => this.t.isJSXAttribute(attr) && attr.name.name === 'className'
       ) as t.JSXAttribute | undefined;
-      
-      if (classNameAttr && this.t.isJSXExpressionContainer(classNameAttr.value) && 
+
+      if (classNameAttr && this.t.isJSXExpressionContainer(classNameAttr.value) &&
           !this.t.isStringLiteral(classNameAttr.value.expression)) {
         // This is a dynamic className (template literal, expression, etc.)
         return false;
       }
-      
+
       // Check if class names have significant overlap
       const currentClasses = new Set(currentClassName.split(/\s+/).filter(Boolean));
       const targetClasses = new Set(elementInfo.className.split(/\s+/).filter(Boolean));
-      
+
       // Calculate intersection
       const intersection = new Set([...currentClasses].filter(x => targetClasses.has(x)));
-      
+
       // Require at least some overlap
       if (intersection.size === 0 && currentClasses.size > 0 && targetClasses.size > 0) {
         return false;
       }
     }
-    
+
     // Check data-id if present
     const openingElement = element.openingElement;
     const dataIdAttr = openingElement.attributes.find(
       (attr: any) => this.t.isJSXAttribute(attr) && attr.name.name === 'data-id'
     ) as t.JSXAttribute | undefined;
-    
+
     if (dataIdAttr && elementInfo.dataId) {
       let currentDataId = '';
       if (this.t.isStringLiteral(dataIdAttr.value)) {
         currentDataId = dataIdAttr.value.value;
       }
-      
+
       if (currentDataId === elementInfo.dataId) {
         return true; // Exact match on data-id
       }
     }
-    
+
     return true; // If we've passed all checks, consider it a match
   }
 
@@ -161,21 +161,21 @@ export class ASTStyleEditor extends ASTEditorBase {
     if (!newStyle && !['color', 'backgroundColor', 'fontWeight', 'fontStyle'].includes(property)) {
       return;
     }
-    
+
     // Find existing style attribute
     const styleAttr = openingElement.attributes.find(
       (attr: any) => this.t.isJSXAttribute(attr) && attr.name.name === 'style'
     ) as t.JSXAttribute | undefined;
-    
+
     // Parse existing styles or create new object
     const styleProperties: Record<string, string> = {};
-    
+
     if (styleAttr && this.t.isJSXExpressionContainer(styleAttr.value)) {
       const expr = styleAttr.value.expression;
       if (this.t.isObjectExpression(expr)) {
         // Parse existing style object
         expr.properties.forEach((prop: any) => {
-          if (this.t.isObjectProperty(prop) && 
+          if (this.t.isObjectProperty(prop) &&
               (this.t.isStringLiteral(prop.key) || this.t.isIdentifier(prop.key)) &&
               this.t.isStringLiteral(prop.value)) {
             const key = this.t.isStringLiteral(prop.key) ? prop.key.value : prop.key.name;
@@ -184,7 +184,7 @@ export class ASTStyleEditor extends ASTEditorBase {
         });
       }
     }
-    
+
     // Parse the full newStyle string if provided
     if (newStyle) {
       const parsedStyles = this.parseInlineStyles(newStyle);
@@ -198,11 +198,11 @@ export class ASTStyleEditor extends ASTEditorBase {
       // Fallback: apply single property
       const cssPropertyMap: Record<string, string> = {
         'color': 'color',
-        'backgroundColor': 'backgroundColor', 
+        'backgroundColor': 'backgroundColor',
         'fontWeight': 'fontWeight',
         'fontStyle': 'fontStyle'
       };
-      
+
       const reactProperty = cssPropertyMap[property];
       if (reactProperty) {
         styleProperties[reactProperty] = value;
@@ -213,14 +213,14 @@ export class ASTStyleEditor extends ASTEditorBase {
         });
       }
     }
-    
+
     // Create new style object expression
     const styleObjectProperties = Object.entries(styleProperties).map(([key, val]) =>
       this.t.objectProperty(this.t.identifier(key), this.t.stringLiteral(val))
     );
-    
+
     const newStyleExpr = this.t.objectExpression(styleObjectProperties);
-    
+
     if (styleAttr) {
       // Update existing style attribute
       styleAttr.value = this.t.jsxExpressionContainer(newStyleExpr);
@@ -239,10 +239,10 @@ export class ASTStyleEditor extends ASTEditorBase {
    */
   private parseInlineStyles(styleString: string): Record<string, string> {
     const styles: Record<string, string> = {};
-    
+
     // Split by semicolons and process each declaration
     const declarations = styleString.split(';').filter(decl => decl.trim());
-    
+
     for (const declaration of declarations) {
       const [property, value] = declaration.split(':').map(s => s.trim());
       if (property && value) {
@@ -251,7 +251,7 @@ export class ASTStyleEditor extends ASTEditorBase {
         styles[reactProperty] = value;
       }
     }
-    
+
     return styles;
   }
 
@@ -279,7 +279,7 @@ export class ASTStyleEditor extends ASTEditorBase {
       'text-align': 'textAlign',
       'line-height': 'lineHeight'
     };
-    
+
     return propertyMap[cssProperty] || cssProperty;
   }
 
@@ -293,7 +293,7 @@ export class ASTStyleEditor extends ASTEditorBase {
     _newStyle?: string
   ): string {
     const classes = currentClassName.split(/\s+/).filter(Boolean);
-    
+
     switch (property) {
       case 'fontSize': {
         // Replace existing font size classes while maintaining order
@@ -306,37 +306,37 @@ export class ASTStyleEditor extends ASTEditorBase {
           }
           return c;
         }).filter(Boolean);
-        
+
         // If no existing font size class was found, add the new one at the beginning
         if (!replacedFontSize && value && value.startsWith('text-')) {
           updatedClasses.unshift(value);
         }
         return updatedClasses.join(' ');
       }
-        
+
       case 'fontWeight': {
         // For font weight, we rely on inline styles now, so no className changes needed
         return currentClassName;
       }
-        
+
       case 'fontStyle':
         // For font style (italic), we rely on inline styles now, so no className changes needed
         return currentClassName;
-        
+
       case 'color': {
         // Remove existing text color classes (including responsive and state variants)
         const filteredColor = classes.filter(c => !c.match(/^(\w+:)*text-\w+-\d+$/));
         // We now use inline styles for colors, so don't add Tailwind classes
         return filteredColor.join(' ');
       }
-        
+
       case 'backgroundColor': {
         // Remove existing background color classes
         const filteredBg = classes.filter(c => !c.match(/^bg-\w+-\d+$/) && c !== 'bg-transparent');
         // We now use inline styles for background colors, so don't add Tailwind classes
         return filteredBg.join(' ');
       }
-        
+
       case 'marginBottom': {
         // Remove existing margin bottom classes
         const filteredMb = classes.filter(c => !c.startsWith('mb-'));
@@ -345,7 +345,7 @@ export class ASTStyleEditor extends ASTEditorBase {
         }
         return filteredMb.join(' ');
       }
-        
+
       case 'padding': {
         // Remove existing padding classes
         const filteredP = classes.filter(c => !c.startsWith('p-'));
@@ -354,7 +354,7 @@ export class ASTStyleEditor extends ASTEditorBase {
         }
         return filteredP.join(' ');
       }
-        
+
       default:
         return currentClassName;
     }
@@ -373,36 +373,36 @@ export class ASTStyleEditor extends ASTEditorBase {
     error?: string;
   } {
     const { elementInfo, selector } = request;
-    
+
     // Parse the CSS selector to get tagName and className if not provided
     const parsedSelector = this.parseCSSSelector(selector);
-    
+
     // Enhance elementInfo with parsed selector data if missing
     const enhancedElementInfo = {
       ...elementInfo,
       tagName: elementInfo.tagName || parsedSelector.tagName,
       className: elementInfo.className || parsedSelector.className
     };
-    
+
     // Find and update the element
     let elementFound = false;
     let oldClassName = '';
     let newClassName = '';
     let dynamicClassNameError: string | null = null;
-    
+
     logger.debug('Starting AST traversal for style edit', {
       component: 'ASTStyleEditor',
       targetTagName: enhancedElementInfo.tagName,
       targetLine: enhancedElementInfo.devContext.lineNumber,
       selector
     });
-    
+
     this.traverse(ast, {
       JSXElement: (path: any): void => {
         const element = path.node;
         const elementLine = element.loc?.start.line;
         const tagName = this.getTagName(element);
-        
+
         // Log every JSX element we encounter (debug level)
         if (tagName) {
           logger.debug('Found JSX element during traversal', {
@@ -411,19 +411,19 @@ export class ASTStyleEditor extends ASTEditorBase {
             line: elementLine
           });
         }
-        
+
         // Check if this is the target element
         if (this.isTargetElement(element, enhancedElementInfo)) {
           elementFound = true;
-          
+
           // Get the opening element
           const openingElement = element.openingElement;
-          
+
           // Find or create className attribute
           let classNameAttr = openingElement.attributes.find(
             (attr: any) => this.t.isJSXAttribute(attr) && attr.name.name === 'className'
           ) as t.JSXAttribute | undefined;
-          
+
           if (!classNameAttr) {
             // Create new className attribute
             classNameAttr = this.t.jsxAttribute(
@@ -432,11 +432,11 @@ export class ASTStyleEditor extends ASTEditorBase {
             );
             openingElement.attributes.push(classNameAttr);
           }
-          
+
           // Get current className value and ensure it's editable
           if (this.t.isStringLiteral(classNameAttr.value)) {
             oldClassName = classNameAttr.value.value;
-          } else if (this.t.isJSXExpressionContainer(classNameAttr.value) && 
+          } else if (this.t.isJSXExpressionContainer(classNameAttr.value) &&
                     this.t.isStringLiteral(classNameAttr.value.expression)) {
             oldClassName = classNameAttr.value.expression.value;
           } else if (this.t.isJSXExpressionContainer(classNameAttr.value)) {
@@ -445,7 +445,7 @@ export class ASTStyleEditor extends ASTEditorBase {
             path.stop();
             return;
           }
-          
+
           // Apply the style change
           newClassName = this.applyStyleChange(
             oldClassName,
@@ -453,13 +453,13 @@ export class ASTStyleEditor extends ASTEditorBase {
             request.value,
             request.newStyle
           );
-          
+
           // Update the className attribute (always as string literal)
           classNameAttr.value = this.t.stringLiteral(newClassName);
-          
+
           // Apply inline styles for properties that use them
           this.applyInlineStyle(openingElement, request.property, request.value, request.newStyle);
-          
+
           // Stop traversing once we find the element
           path.stop();
         }

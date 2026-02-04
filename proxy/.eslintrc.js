@@ -5,7 +5,9 @@ module.exports = {
     jest: true
   },
   extends: [
-    'eslint:recommended'
+    'eslint:recommended',
+    'plugin:@typescript-eslint/recommended',
+    'prettier'
   ],
   parser: '@typescript-eslint/parser',
   plugins: ['@typescript-eslint'],
@@ -21,7 +23,7 @@ module.exports = {
     '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     'no-undef': 'off', // TypeScript handles this
     'no-unreachable': 'error',
-    
+
     // TypeScript specific
     '@typescript-eslint/explicit-function-return-type': 'off',
     '@typescript-eslint/explicit-module-boundary-types': 'off',
@@ -29,16 +31,7 @@ module.exports = {
     '@typescript-eslint/no-non-null-assertion': 'warn',
     '@typescript-eslint/prefer-nullish-coalescing': 'error',
     '@typescript-eslint/prefer-optional-chain': 'error',
-    
-    // Code style
-    'indent': 'off', // Use TypeScript version
-    '@typescript-eslint/indent': ['error', 2],
-    'quotes': ['error', 'single'],
-    'semi': 'off', // Use TypeScript version
-    '@typescript-eslint/semi': ['error', 'always'],
-    'comma-dangle': ['error', 'never'],
-    'eol-last': ['error', 'always'],
-    
+
     // Best practices
     'eqeqeq': ['error', 'always'],
     'curly': ['error', 'all'],
@@ -46,10 +39,10 @@ module.exports = {
     'no-implied-eval': 'error',
     'no-new-func': 'error',
     'no-script-url': 'error',
-    
+
     // Security
     'no-buffer-constructor': 'error',
-    
+
     // Node.js specific
     'no-process-exit': 'off', // We need this for graceful shutdown
     'no-sync': 'warn'

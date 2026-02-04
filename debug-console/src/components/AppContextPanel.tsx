@@ -155,14 +155,14 @@ export default function AppContextPanel({
     const [loadingMore, setLoadingMore] = useState(false);
 
     // Activity logs pagination state
-    const [activityLogs, setActivityLogs] = useState<RecentActivity[]>([]);
-    const [activityPage, setActivityPage] = useState(0);
-    const [activityHasMore, setActivityHasMore] = useState(false);
-    const [activityLoadingMore, setActivityLoadingMore] = useState(false);
-    const ACTIVITY_PAGE_SIZE = 50;
+    const [_activityLogs, _setActivityLogs] = useState<RecentActivity[]>([]);
+    const [_activityPage, _setActivityPage] = useState(0);
+    const [_activityHasMore, _setActivityHasMore] = useState(false);
+    const [_activityLoadingMore, _setActivityLoadingMore] = useState(false);
+    const _ACTIVITY_PAGE_SIZE = 50;
 
     // Activity detail panel state
-    const [selectedActivityIndex, setSelectedActivityIndex] = useState<number | null>(null);
+    const [_selectedActivityIndex, _setSelectedActivityIndex] = useState<number | null>(null);
 
     // Conversation log detail panel state
     const [selectedConversationIndex, setSelectedConversationIndex] = useState<number | null>(null);

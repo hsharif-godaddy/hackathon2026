@@ -161,7 +161,7 @@ class SSOClient {
       const tokenDurationMs = Date.now() - tokenStartTime;
 
       logger.info('[SSO] getTokenFromCertificate returned successfully', {
-        tokenLength: token?.length || 0,
+        tokenLength: token?.length ?? 0,
         tokenPreview: token ? token.substring(0, 30) + '...' : 'null',
         durationMs: tokenDurationMs
       });

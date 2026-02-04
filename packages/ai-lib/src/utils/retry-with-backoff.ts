@@ -286,7 +286,7 @@ export async function retryWithBackoff<T>(fn: () => Promise<T> | T, options: Ret
  * Check if an error has retry metadata attached
  */
 export type RetryConfig = RetryOptions
-export interface RetryMetadata extends RetryFailureMeta {}
+export type RetryMetadata = RetryFailureMeta
 export function hasRetryMetadata(error: unknown): error is Error & { retryFailureMeta: RetryFailureMeta } {
   return error instanceof Error && 'retryFailureMeta' in error
 }

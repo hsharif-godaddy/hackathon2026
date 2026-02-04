@@ -1,12 +1,13 @@
 /**
  * Agent delegation tool for AgentFactory
- * 
+ *
  * This tool allows agents to delegate tasks to other agents with specific context.
  * The agent calls another agent, gets a response, and returns control to the caller.
  * This is NOT for switching the active agent - use handoff helpers for that.
  */
 
 import { createLogger } from '../utils/logger.js'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 import { createTool } from './index.js'
 import type { AgentFactory, HandoffContext } from '../core/agent-factory.js'
@@ -15,14 +16,14 @@ const logger = createLogger('delegate-tool')
 
 /**
  * Create a delegate tool for an agent factory
- * 
+ *
  * Allows an agent to delegate a task to another agent and receive the result.
  * The calling agent remains in control after receiving the response.
  */
 export function createDelegateTool(
   factory: AgentFactory,
   sourceAgentId: string
-) {
+): Tool {
   return createTool(
     'Delegate a task to another specialized agent and receive the result',
     z.object({
@@ -35,7 +36,7 @@ export function createDelegateTool(
     async ({ targetAgent, task, context, parameters, reason }) => {
       logger.info(`${sourceAgentId} delegating task to ${targetAgent}`)
       logger.info(`Task: ${task}`)
-      
+
       const handoffContext: HandoffContext = {
         task,
         context,
@@ -75,7 +76,7 @@ export function createDelegateTool(
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
         logger.error(`Delegation error: ${errorMessage}`)
-        
+
         return {
           success: false,
           error: errorMessage,
@@ -90,13 +91,13 @@ export function createDelegateTool(
 
 /**
  * Create a tool to view delegation history
- * 
+ *
  * Shows history of task delegations between agents.
  */
 export function createDelegationHistoryTool(
   factory: AgentFactory,
   agentId?: string
-) {
+): Tool {
   return createTool(
     'View delegation history for this agent or all agents',
     z.object({
@@ -105,7 +106,7 @@ export function createDelegationHistoryTool(
       status: z.enum(['pending', 'completed', 'failed']).optional().describe('Filter by delegation status')
     }),
     async ({ agentFilter, limit = 10, status }) => {
-      let history = agentId 
+      let history = agentId
         ? factory.getHandoffHistoryForAgent(agentId)
         : factory.getHandoffHistory()
 
@@ -137,7 +138,7 @@ export function createDelegationHistoryTool(
 
 /**
  * Helper to add delegation tools to an agent configuration
- * 
+ *
  * Adds the delegate tool and optionally the delegation history tool.
  */
 export function addDelegationTools(

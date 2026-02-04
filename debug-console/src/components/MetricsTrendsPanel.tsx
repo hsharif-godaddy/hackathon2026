@@ -38,8 +38,8 @@ interface MetricsTrendsPanelProps {
 }
 
 export default function MetricsTrendsPanel({
-    compact = false,
-    onExpand,
+    compact: _compact = false,
+    onExpand: _onExpand,
     initialData,
     initialMetricNames,
     initialFromTimestamp,
@@ -118,11 +118,11 @@ export default function MetricsTrendsPanel({
                 try {
                     const errorData = await response.json();
                     errorMessage = errorData.error || errorData.message || errorData.details || errorMessage;
-                } catch (parseError) {
+                } catch (_parseError) {
                     try {
                         const errorText = await response.text();
                         errorMessage = errorText || errorMessage;
-                    } catch (textError) {
+                    } catch (_textError) {
                     }
                 }
                 throw new Error(errorMessage);

@@ -1,12 +1,13 @@
 /**
  * Background Delegate Tool - Generic tool for delegating tasks to other agents
- * 
+ *
  * This tool handles asynchronous background processing for all tasks. All tasks are
  * queued for background execution and processed sequentially, allowing later tasks
  * to reference results from earlier ones.
  */
 
 import { createLogger } from '../utils/logger.js'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 import { createTool } from './index.js'
 import type { AgentFactory } from '../core/agent-factory.js'
@@ -16,10 +17,10 @@ const logger = createLogger('background-delegate-tool')
 
 /**
  * Create a background delegate tool for an agent factory
- * 
+ *
  * Allows an agent to delegate tasks to another agent. All tasks are processed
  * asynchronously in the background and can reference previous results.
- * 
+ *
  * @param factory - Agent factory for executing handoffs
  * @param sourceAgentId - ID of the agent using this tool
  * @param defaultTargetAgentId - Default target agent ID if not specified in tool call
@@ -28,7 +29,7 @@ export function createBackgroundDelegateTool(
   factory: AgentFactory,
   sourceAgentId: string,
   defaultTargetAgentId?: string
-) {
+): Tool {
   return createTool(
     'Delegate tasks to another agent. All tasks will be executed in the background and can reference previous results.',
     z.object({
@@ -38,7 +39,7 @@ export function createBackgroundDelegateTool(
     }),
     async ({ targetAgent, tasks, context }, executionContext) => {
       const targetAgentId = targetAgent || defaultTargetAgentId
-      
+
       if (!targetAgentId) {
         return {
           success: false,
@@ -70,9 +71,9 @@ export function createBackgroundDelegateTool(
 
         // Create background queue and enqueue all tasks
         const backgroundQueue = new BackgroundQueue(factory, sourceAgentId, targetAgentId)
-        
+
         logger.info('Queueing tasks for background processing', { taskCount: totalTasks })
-        
+
         for (const taskToQueue of tasks) {
           backgroundQueue.enqueue(taskToQueue, agentContext, context)
             .catch(error => {
@@ -92,7 +93,7 @@ export function createBackgroundDelegateTool(
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
         logger.error('Background delegation error', { error: errorMessage })
-        
+
         return {
           success: false,
           error: errorMessage,

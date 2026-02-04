@@ -10,8 +10,7 @@
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "extract": "tsx src/extract.ts",
-    "generate-styles": "tsx src/generate-style.ts",
-    "lint": "eslint src --ext .ts"
+    "generate-styles": "tsx src/generate-style.ts"
   },
   "dependencies": {
     "@airo/ai-lib": "workspace:*",

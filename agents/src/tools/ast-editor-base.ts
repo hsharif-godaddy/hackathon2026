@@ -10,9 +10,7 @@ import { logger } from '../logging/index.js';
 import { toolAstEditEvents } from '../logging/events/index.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 
-// @ts-expect-error - Handle ES module default exports
 const traverse = _traverse.default || _traverse;
-// @ts-expect-error - Handle ES module default exports  
 const generate = _generate.default || _generate;
 
 export interface BaseEditContext {
@@ -51,11 +49,11 @@ export abstract class ASTEditorBase {
     if (!match) {
       return { tagName: 'div', className: '' };
     }
-    
+
     const [, tagPart, classPart] = match;
     const tagName = tagPart || 'div';
     const className = classPart ? classPart.replace(/\./g, ' ').trim() : '';
-    
+
     return { tagName, className };
   }
 
@@ -66,7 +64,7 @@ export abstract class ASTEditorBase {
     // Handle Docker paths
     const translatedPath = translateDockerPath(fileName);
     const fullPath = resolve(appPath, translatedPath);
-    
+
     logger.debug('Resolving AST edit file path', {
       component: 'ASTEditorBase',
       appPath,
@@ -74,12 +72,12 @@ export abstract class ASTEditorBase {
       translatedPath,
       fullPath
     });
-    
+
     // Ensure the file is within the app directory (security check)
     if (!fullPath.startsWith(appPath)) {
       throw new Error(`File path must be within the app directory. Resolved: ${fullPath}, App path: ${appPath}`);
     }
-    
+
     return fullPath;
   }
 
@@ -144,14 +142,14 @@ export abstract class ASTEditorBase {
   protected generateDiff(oldContent: string, newContent: string): string {
     const oldLines = oldContent.split('\n');
     const newLines = newContent.split('\n');
-    
+
     const diff: string[] = [];
     const maxLines = Math.max(oldLines.length, newLines.length);
-    
+
     for (let i = 0; i < maxLines; i++) {
       const oldLine = oldLines[i] || '';
       const newLine = newLines[i] || '';
-      
+
       if (oldLine !== newLine) {
         if (oldLine) {
           diff.push(`- ${oldLine}`);
@@ -161,7 +159,7 @@ export abstract class ASTEditorBase {
         }
       }
     }
-    
+
     return diff.join('\n');
   }
 
@@ -192,16 +190,16 @@ export abstract class ASTEditorBase {
     const classNameAttr = openingElement.attributes.find(
       (attr: any) => this.t.isJSXAttribute(attr) && attr.name.name === 'className'
     ) as t.JSXAttribute | undefined;
-    
+
     if (classNameAttr) {
       if (this.t.isStringLiteral(classNameAttr.value)) {
         return classNameAttr.value.value;
-      } else if (this.t.isJSXExpressionContainer(classNameAttr.value) && 
+      } else if (this.t.isJSXExpressionContainer(classNameAttr.value) &&
                 this.t.isStringLiteral(classNameAttr.value.expression)) {
         return classNameAttr.value.expression.value;
       }
     }
-    
+
     return '';
   }
 
@@ -218,7 +216,7 @@ export abstract class ASTEditorBase {
   ): Promise<TResult> {
     const startTime = Date.now();
     const filePath = this.resolveFilePath(appPath, getFilePath(request));
-    
+
     // Build logging data
     const logData = {
       toolName: 'ast-editor',
@@ -226,24 +224,24 @@ export abstract class ASTEditorBase {
       filePath,
       editType
     };
-    
+
     // Log operation begin
     toolAstEditEvents.begin(logger, logData);
-    
+
     try {
       // Read the source file
       const sourceCode = await this.readSourceFile(filePath);
-      
+
       // Parse the AST
       const ast = this.parseAST(sourceCode);
 
       // Process the AST (implemented by subclasses)
       const processResult = this.processAST(ast, request);
-      
+
       if (!processResult.success) {
         // Log failure
         toolAstEditEvents.failure(logger, new Error(processResult.error || 'AST processing failed'), logData);
-        
+
         return {
           success: false,
           filePath,
@@ -256,14 +254,14 @@ export abstract class ASTEditorBase {
 
       // Check if the file content actually changed
       const hasChanges = sourceCode !== updatedCode;
-      
+
       if (!hasChanges) {
         logger.debug('No changes detected in AST edit', {
           component: 'ASTEditorBase',
           filePath,
           editType
         });
-        
+
         return {
           success: true,
           filePath,
@@ -273,7 +271,7 @@ export abstract class ASTEditorBase {
 
       // Write the updated file
       await this.writeSourceFile(filePath, updatedCode);
-      
+
       // Optionally commit changes
       let commitHash: string | undefined;
       if (shouldCommit && appId) {
@@ -312,7 +310,7 @@ export abstract class ASTEditorBase {
     } catch (error) {
       // Log failure
       toolAstEditEvents.failure(logger, error as Error, logData);
-      
+
       return {
         success: false,
         filePath: '',
@@ -332,24 +330,24 @@ export abstract class ASTEditorBase {
   ): Promise<string | undefined> {
     const { relative } = await import('path');
     const relativePath = relative(appPath, filePath);
-    
+
     try {
-      
+
       logger.debug('Committing AST changes to git', {
         component: 'ASTEditorBase',
         relativePath,
         commitMessage
       });
-      
+
       // Create git tool with dev-supervisor for this specific app
       const gitTool = this.createGitTool(appId)
-      
+
       // Add the file to git
       const addResult = await gitTool.executeGitOperation(appPath, {
         operation: 'add',
         files: [relativePath]
       });
-      
+
       if (!addResult.success) {
         logger.warn('Failed to add AST edited file to git', {
           component: 'ASTEditorBase',
@@ -358,13 +356,13 @@ export abstract class ASTEditorBase {
         });
         return undefined;
       }
-      
+
       // Commit the changes
       const commitResult = await gitTool.executeGitOperation(appPath, {
         operation: 'commit',
         message: commitMessage
       });
-      
+
       if (!commitResult.success) {
         logger.warn('Failed to commit AST changes', {
           component: 'ASTEditorBase',
@@ -374,13 +372,13 @@ export abstract class ASTEditorBase {
         });
         return undefined;
       }
-      
+
       // Get the last commit to retrieve the hash
       const logResult = await gitTool.executeGitOperation(appPath, {
         operation: 'log',
         options: { count: 1 }
       });
-      
+
       if (logResult.success && logResult.commits && logResult.commits.length > 0) {
         const hash = logResult.commits[0]?.hash;
         logger.debug('AST changes committed successfully', {
@@ -390,7 +388,7 @@ export abstract class ASTEditorBase {
         });
         return hash;
       }
-      
+
       logger.debug('AST commit succeeded but could not retrieve commit hash', {
         component: 'ASTEditorBase',
         relativePath

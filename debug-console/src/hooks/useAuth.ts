@@ -62,7 +62,7 @@ export function useAuth(): AuthState {
             isLoading: false
           });
         }
-      } catch (error) {
+      } catch (_error) {
         setAuthState({
           isAuthenticated: false,
           isLoading: false

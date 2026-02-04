@@ -67,8 +67,8 @@ export class GdAuthService {
         }
 
         // Lazy import to avoid issues with ES modules
-        const { GdAuth } = require('gd-auth'); // eslint-disable-line @typescript-eslint/no-var-requires
-        const fetchKey = require('gd-auth/src/fetch-key'); // eslint-disable-line @typescript-eslint/no-var-requires
+        const { GdAuth } = require('gd-auth'); // eslint-disable-line @typescript-eslint/no-require-imports
+        const fetchKey = require('gd-auth/src/fetch-key'); // eslint-disable-line @typescript-eslint/no-require-imports
 
         this.gdAuth = new GdAuth({
             app: 'console.airo-builder',

@@ -9,18 +9,15 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.js"
+      "import": "./dist/index.js"
     },
     "./grants": {
       "types": "./dist/grants/index.d.ts",
-      "import": "./dist/grants/index.js",
-      "require": "./dist/grants/index.js"
+      "import": "./dist/grants/index.js"
     },
     "./grants/client": {
       "types": "./dist/grants/client.d.ts",
-      "import": "./dist/grants/client.js",
-      "require": "./dist/grants/client.js"
+      "import": "./dist/grants/client.js"
     },
     "./react": {
       "types": "./dist/react/index.d.ts",
@@ -32,6 +29,19 @@
     "README.md",
     "CHANGELOG.md"
   ],
+  "typesVersions": {
+    "*": {
+      "grants": [
+        "dist/grants/index.d.ts"
+      ],
+      "grants/client": [
+        "dist/grants/client.d.ts"
+      ],
+      "grants/*": [
+        "dist/grants/*"
+      ]
+    }
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",

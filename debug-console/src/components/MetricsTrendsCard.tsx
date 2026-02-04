@@ -4,7 +4,7 @@ import React, { Component, ErrorInfo, ReactNode, useCallback, useEffect, useRef,
 
 import {
     CartesianGrid,
-    Legend,
+    Legend as _Legend,
     Line,
     LineChart,
     ResponsiveContainer,
@@ -45,7 +45,7 @@ class MetricsTrendsErrorBoundary extends Component<{ children: ReactNode }, Erro
         return { hasError: true, error };
     }
 
-    componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    componentDidCatch(_error: Error, _errorInfo: ErrorInfo) {
     }
 
     render() {
@@ -134,7 +134,7 @@ export default function MetricsTrendsCard() {
                 response = await fetch(url, {
                     signal: abortController.signal,
                 });
-            } catch (fetchError) {
+            } catch (_fetchError) {
                 if (abortController.signal.aborted) {
                     return;
                 }
@@ -156,11 +156,11 @@ export default function MetricsTrendsCard() {
                 try {
                     const errorData = await response.json();
                     errorMessage = errorData.error || errorData.message || errorData.details || errorMessage;
-                } catch (parseError) {
+                } catch (_parseError) {
                     try {
                         const errorText = await response.text();
                         errorMessage = errorText || errorMessage;
-                    } catch (textError) {
+                    } catch (_textError) {
                     }
                 }
                 throw new Error(errorMessage);
@@ -169,7 +169,7 @@ export default function MetricsTrendsCard() {
             let result: MetricsResponse;
             try {
                 result = await response.json();
-            } catch (parseError) {
+            } catch (_parseError) {
                 throw new Error('Invalid response format: Expected JSON but received invalid data.');
             }
 

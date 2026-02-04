@@ -109,7 +109,7 @@ export default function MetricsPanel() {
           timeTimestamp: timestamp,
         }))
         .sort((a, b) => new Date(a.timeTimestamp as string).getTime() - new Date(b.timeTimestamp as string).getTime())
-        .map(({ timeTimestamp, ...rest }) => rest);
+        .map(({ timeTimestamp: _timeTimestamp, ...rest }) => rest);
 
       setData(chartData);
     } catch (err) {

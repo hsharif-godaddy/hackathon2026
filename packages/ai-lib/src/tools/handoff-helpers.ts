@@ -1,14 +1,15 @@
 /**
  * Handoff tool for agent switching
- * 
+ *
  * Creates a tool that allows agents to hand off control to other agents.
  * Unlike the delegate tool (which calls another agent and returns control),
  * the handoff tool actually switches the active agent handling the conversation.
- * 
+ *
  * This integrates with WebSocket server to switch which agent processes subsequent messages.
  */
 
 import { createLogger } from '../utils/logger.js'
+import type { Tool } from 'ai'
 import { z } from 'zod'
 import { createTool } from './index.js'
 import type { AgentsCollection } from '../core/types.js'
@@ -17,7 +18,7 @@ const logger = createLogger('handoff-helpers')
 
 /**
  * Handoff state manager interface
- * 
+ *
  * Applications (like WebSocket server) implement this to handle agent switching.
  */
 export interface HandoffStateManager {
@@ -55,13 +56,13 @@ export interface HandoffToolConfig {
 
 /**
  * Create a handoff tool for agent switching
- * 
+ *
  * Creates a tool that agents can use to hand off control to other agents.
  * This switches the active agent handling the conversation.
- * 
+ *
  * @param config - Handoff tool configuration
  * @returns Tool that can be used by agents to perform handoffs
- * 
+ *
  * @example
  * ```typescript
  * const factory = createAgentFactory()
@@ -84,7 +85,7 @@ export interface HandoffToolConfig {
  * })
  * ```
  */
-export function createHandoffTool(config: HandoffToolConfig) {
+export function createHandoffTool(config: HandoffToolConfig): Tool {
   const {
     sourceAgentId,
     validTargets,
@@ -107,7 +108,7 @@ export function createHandoffTool(config: HandoffToolConfig) {
       logger.debug(`Context keys: ${context ? Object.keys(context).join(', ') : 'no context'}`)
       logger.debug(`Context.socketId: ${(context as any)?.socketId}`)
       logger.debug(`Context.sessionId: ${(context as any)?.sessionId}`)
-      
+
       // Filter out non-serializable properties from metadata for logging
       const metadata = (context as any)?.metadata
       if (metadata) {
@@ -169,7 +170,7 @@ export function createHandoffTool(config: HandoffToolConfig) {
         try {
           const switched = await stateManager.switchAgent(resolvedSessionId, targetAgent, prompt)
           logger.info(`stateManager.switchAgent returned: ${switched}`)
-          
+
           if (switched) {
             return {
               success: true,
@@ -189,7 +190,7 @@ export function createHandoffTool(config: HandoffToolConfig) {
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error)
           logger.error(`Handoff error: ${errorMessage}`)
-          
+
           return {
             success: false,
             error: errorMessage,
@@ -214,18 +215,18 @@ export function createHandoffTool(config: HandoffToolConfig) {
 
 /**
  * Helper function to add handoff tool to multiple agents
- * 
+ *
  * @param agents - Agents collection (used to extract handoff configurations)
  * @param agentIds - Array of agent IDs to add handoff tool to
  * @param stateManager - Optional state manager for WebSocket integration
  * @param getSessionId - Function to get session ID for each agent
  * @returns Object with handoff tools for each agent
- * 
+ *
  * @example
  * ```typescript
  * const factory = createAgentFactory()
  * const agents = factory.defineAgents({ ... })
- * 
+ *
  * // Add handoff tools to multiple agents
  * const handoffTools = addHandoffToolToAgents(
  *   agents,
@@ -233,7 +234,7 @@ export function createHandoffTool(config: HandoffToolConfig) {
  *   stateManager,
  *   (agentId) => currentSessionId
  * )
- * 
+ *
  * // Use in agent configuration
  * agents.get('coordinator').tools = {
  *   ...agents.get('coordinator').tools,
@@ -248,13 +249,13 @@ export function addHandoffToolToAgents(
   getSessionId?: (agentId: string) => string | undefined
 ): Record<string, ReturnType<typeof createHandoffTool>> {
   const tools: Record<string, ReturnType<typeof createHandoffTool>> = {}
-  
+
   for (const agentId of agentIds) {
     const sessionId = getSessionId?.(agentId)
     const agent = agents.get(agentId as any)
     const handoffs = agent.getConfig().handoffs || []
     const validTargets = handoffs.map((h: { agentName: string }) => h.agentName)
-    
+
     tools[agentId] = createHandoffTool({
       sourceAgentId: agentId,
       validTargets,
@@ -262,7 +263,7 @@ export function addHandoffToolToAgents(
       ...(sessionId && { sessionId })
     })
   }
-  
+
   return tools
 }
 
@@ -280,17 +281,17 @@ export interface EndConversationToolConfig {
 
 /**
  * Create an end_conversation tool for completing conversations
- * 
+ *
  * This tool allows agents to signal that the conversation is complete
  * and optionally reset to the default agent. Use this when:
  * - A task is fully completed with no further action needed
  * - The agent is in "edit mode" (no active todo list) and has finished
  * - The user's request has been satisfied and no handoff is needed
- * 
+ *
  * @param config - Tool configuration
  * @returns Tool that ends the conversation
  */
-export function createEndConversationTool(config: EndConversationToolConfig = {}) {
+export function createEndConversationTool(config: EndConversationToolConfig = {}): Tool {
   const {
     stateManager,
     sessionId,

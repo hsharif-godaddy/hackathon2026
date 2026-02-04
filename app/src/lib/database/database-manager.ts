@@ -93,7 +93,7 @@ class DatabaseManager {
     }
 
     // Load MySQL adapter
-    const { MySQLAdapter } = require('./mysql-adapter'); // eslint-disable-line @typescript-eslint/no-var-requires
+    const { MySQLAdapter } = require('./mysql-adapter'); // eslint-disable-line @typescript-eslint/no-require-imports
     return new MySQLAdapter(config);
   }
 

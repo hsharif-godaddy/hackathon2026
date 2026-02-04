@@ -14,9 +14,7 @@ import type { DevSupervisorClient } from './DevSupervisorClient.js';
 import { VITE_BUILD_TOOL } from '../server/middleware/git-import-validation.js';
 
 // Handle ES module default exports
-// @ts-expect-error - Handle ES module default exports
 const traverse = _traverse.default || _traverse;
-// @ts-expect-error - Handle ES module default exports
 const generate = _generate.default || _generate;
 
 const logger = Logger.create({ service: 'vite-config-modifier' });

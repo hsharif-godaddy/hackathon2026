@@ -36,10 +36,10 @@ export const GET = withAuth(async (request) => {
             );
         }
 
-        let query: MetricsQuery;
+        let _query: MetricsQuery;
         try {
-            query = JSON.parse(queryParam);
-        } catch (error) {
+            _query = JSON.parse(queryParam);
+        } catch (_error) {
             return NextResponse.json(
                 { error: 'Invalid JSON in query parameter' },
                 { status: 400 }

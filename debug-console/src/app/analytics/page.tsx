@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import _Link from 'next/link';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import MetricsTrendsCard from '@/components/MetricsTrendsCard';
@@ -152,11 +152,11 @@ const chartEmptyStyle: React.CSSProperties = {
   fontSize: '0.75rem'
 };
 
-function ChartLoadingState() {
+function _ChartLoadingState() {
   return <div style={chartLoadingStyle}>Loading...</div>;
 }
 
-function ChartEmptyState({ message }: { message: string }) {
+function _ChartEmptyState({ message }: { message: string }) {
   return <div style={chartEmptyStyle}>{message}</div>;
 }
 
@@ -172,7 +172,7 @@ interface MiniChartProps {
   showBack?: boolean;
 }
 
-function MiniChart({ title, value, valueColor, data, barColor, barColorLight, onClick, backAction, showBack }: MiniChartProps) {
+function _MiniChart({ title, value, valueColor, data, barColor, barColorLight, onClick, backAction, showBack }: MiniChartProps) {
   const maxValue = Math.max(...data.map(d => d.value), 1);
   const barHeight = 70;
 
@@ -266,7 +266,7 @@ function MiniChart({ title, value, valueColor, data, barColor, barColorLight, on
 }
 
 // Helper to build chart data for rolling 24h hourly view
-function buildRolling24hChartData<T>(
+function _buildRolling24hChartData<T>(
   hourlyStats: Array<T & { hoursAgo: number }>,
   getValue: (stat: T) => number,
   getTooltip: (hoursAgo: number, stat: T) => string
@@ -284,7 +284,7 @@ function buildRolling24hChartData<T>(
 }
 
 // Helper to build chart data for hourly drilldown (specific day)
-function buildHourlyChartData<T>(
+function _buildHourlyChartData<T>(
   hourlyStats: Array<T & { hour: number }>,
   getValue: (stat: T) => number,
   getTooltip: (hour: number, stat: T) => string
@@ -301,7 +301,7 @@ function buildHourlyChartData<T>(
 }
 
 // Helper to build chart data for daily view
-function buildDailyChartData<T>(
+function _buildDailyChartData<T>(
   dailyStats: Array<T & { date: string }>,
   getValue: (stat: T) => number,
   getTooltip: (date: string, stat: T) => string,
@@ -345,13 +345,13 @@ function getDateRange(preset: DatePreset): { start: Date; end: Date } {
   return { start, end };
 }
 
-function formatDateInput(date: Date): string {
+function _formatDateInput(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
 const MAX_DATE_RANGE_DAYS = 31;
 
-function isDateRangeValid(start: string, end: string): boolean {
+function _isDateRangeValid(start: string, end: string): boolean {
   if (!start || !end) return false;
   const startDate = new Date(start);
   const endDate = new Date(end);
@@ -360,7 +360,7 @@ function isDateRangeValid(start: string, end: string): boolean {
   return diffDays >= 0 && diffDays <= MAX_DATE_RANGE_DAYS;
 }
 
-function getDateRangeError(start: string, end: string): string | null {
+function _getDateRangeError(start: string, end: string): string | null {
   if (!start || !end) return null;
   const startDate = new Date(start);
   const endDate = new Date(end);
@@ -373,56 +373,56 @@ function getDateRangeError(start: string, end: string): string | null {
 
 function AnalyticsContent() {
   const [apps, setApps] = useState<AppData[]>([]);
-  const [summary, setSummary] = useState<Summary | null>(null);
-  const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
+  const [_summary, setSummary] = useState<Summary | null>(null);
+  const [_schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<keyof AppData | 'steps_per_run'>('last_event');
   const [sortAsc, setSortAsc] = useState(false);
-  const [filter, setFilter] = useState('');
+  const [filter, _setFilter] = useState('');
 
   // Date range state
   const [datePreset, setDatePreset] = useState<DatePreset>('1d');
-  const [customStart, setCustomStart] = useState<string>('');
-  const [customEnd, setCustomEnd] = useState<string>('');
+  const [customStart, _setCustomStart] = useState<string>('');
+  const [customEnd, _setCustomEnd] = useState<string>('');
 
   // Hourly drilldown state
-  const [hourlyData, setHourlyData] = useState<{ date: string; hourly_stats: Array<{ hour: number; apps: number; runs: number; cost: number; steps: number; avg_steps_per_run: number }> } | null>(null);
-  const [hourlyLoading, setHourlyLoading] = useState(false);
+  const [_hourlyData, setHourlyData] = useState<{ date: string; hourly_stats: Array<{ hour: number; apps: number; runs: number; cost: number; steps: number; avg_steps_per_run: number }> } | null>(null);
+  const [_hourlyLoading, setHourlyLoading] = useState(false);
 
   // Error stats state
-  const [errorStats, setErrorStats] = useState<ErrorStats | null>(null);
-  const [hourlyWsErrorData, setHourlyWsErrorData] = useState<HourlyErrorStats | null>(null);
-  const [hourlyBudgetErrorData, setHourlyBudgetErrorData] = useState<HourlyErrorStats | null>(null);
-  const [hourlyWsErrorLoading, setHourlyWsErrorLoading] = useState(false);
-  const [hourlyBudgetErrorLoading, setHourlyBudgetErrorLoading] = useState(false);
+  const [_errorStats, setErrorStats] = useState<ErrorStats | null>(null);
+  const [_hourlyWsErrorData, setHourlyWsErrorData] = useState<HourlyErrorStats | null>(null);
+  const [_hourlyBudgetErrorData, setHourlyBudgetErrorData] = useState<HourlyErrorStats | null>(null);
+  const [_hourlyWsErrorLoading, setHourlyWsErrorLoading] = useState(false);
+  const [_hourlyBudgetErrorLoading, setHourlyBudgetErrorLoading] = useState(false);
 
   // Last 24 hours rolling window stats
-  const [last24hStats, setLast24hStats] = useState<Last24HoursStats | null>(null);
-  const [last24hWsErrors, setLast24hWsErrors] = useState<Last24HoursErrorStats | null>(null);
-  const [last24hBudgetErrors, setLast24hBudgetErrors] = useState<Last24HoursErrorStats | null>(null);
+  const [_last24hStats, setLast24hStats] = useState<Last24HoursStats | null>(null);
+  const [_last24hWsErrors, setLast24hWsErrors] = useState<Last24HoursErrorStats | null>(null);
+  const [_last24hBudgetErrors, setLast24hBudgetErrors] = useState<Last24HoursErrorStats | null>(null);
 
   // Summarization stats
-  const [summarizationStats, setSummarizationStats] = useState<SummarizationStats | null>(null);
-  const [hourlySummarizationData, setHourlySummarizationData] = useState<HourlySummarizationStats | null>(null);
-  const [hourlySummarizationLoading, setHourlySummarizationLoading] = useState(false);
-  const [last24hSummarizations, setLast24hSummarizations] = useState<Last24HoursSummarizationStats | null>(null);
+  const [_summarizationStats, setSummarizationStats] = useState<SummarizationStats | null>(null);
+  const [_hourlySummarizationData, setHourlySummarizationData] = useState<HourlySummarizationStats | null>(null);
+  const [_hourlySummarizationLoading, setHourlySummarizationLoading] = useState(false);
+  const [_last24hSummarizations, setLast24hSummarizations] = useState<Last24HoursSummarizationStats | null>(null);
 
   // Publish stats
-  const [publishStats, setPublishStats] = useState<PublishStats | null>(null);
-  const [hourlyPublishData, setHourlyPublishData] = useState<HourlyPublishStats | null>(null);
-  const [hourlyPublishLoading, setHourlyPublishLoading] = useState(false);
-  const [last24hPublish, setLast24hPublish] = useState<Last24HoursPublishStats | null>(null);
+  const [_publishStats, setPublishStats] = useState<PublishStats | null>(null);
+  const [_hourlyPublishData, setHourlyPublishData] = useState<HourlyPublishStats | null>(null);
+  const [_hourlyPublishLoading, setHourlyPublishLoading] = useState(false);
+  const [_last24hPublish, setLast24hPublish] = useState<Last24HoursPublishStats | null>(null);
 
   // Client error stats
-  const [clientErrorStats, setClientErrorStats] = useState<{ total: number; daily_stats: Array<{ date: string; errors: number; apps: number }> } | null>(null);
-  const [hourlyClientErrorData, setHourlyClientErrorData] = useState<{ hourly_stats: Array<{ hour: number; errors: number; apps: number }> } | null>(null);
-  const [hourlyClientErrorLoading, setHourlyClientErrorLoading] = useState(false);
-  const [last24hClientErrors, setLast24hClientErrors] = useState<{ hourly_stats: Array<{ hoursAgo: number; timestamp: string; errors: number; apps: number }> } | null>(null);
+  const [_clientErrorStats, setClientErrorStats] = useState<{ total: number; daily_stats: Array<{ date: string; errors: number; apps: number }> } | null>(null);
+  const [_hourlyClientErrorData, setHourlyClientErrorData] = useState<{ hourly_stats: Array<{ hour: number; errors: number; apps: number }> } | null>(null);
+  const [_hourlyClientErrorLoading, setHourlyClientErrorLoading] = useState(false);
+  const [_last24hClientErrors, setLast24hClientErrors] = useState<{ hourly_stats: Array<{ hoursAgo: number; timestamp: string; errors: number; apps: number }> } | null>(null);
 
   // Pagination state
   const [displayCount, setDisplayCount] = useState(100);
-  const tableContainerRef = React.useRef<HTMLDivElement>(null);
+  const _tableContainerRef = React.useRef<HTMLDivElement>(null);
 
   const fetchData = useCallback(async function fetchData() {
     try {
@@ -548,7 +548,7 @@ function AnalyticsContent() {
   }, [fetchData]);
 
 
-  async function fetchHourlyData(date: string) {
+  async function _fetchHourlyData(date: string) {
     setHourlyLoading(true);
     try {
       const res = await fetch(`/api/analytics?action=hourly&date=${encodeURIComponent(date)}`);
@@ -562,7 +562,7 @@ function AnalyticsContent() {
     }
   }
 
-  async function fetchHourlyWsErrorData(date: string) {
+  async function _fetchHourlyWsErrorData(date: string) {
     setHourlyWsErrorLoading(true);
     try {
       const res = await fetch(`/api/analytics?action=hourly-errors&date=${encodeURIComponent(date)}&errorType=websocket`);
@@ -576,7 +576,7 @@ function AnalyticsContent() {
     }
   }
 
-  async function fetchHourlyBudgetErrorData(date: string) {
+  async function _fetchHourlyBudgetErrorData(date: string) {
     setHourlyBudgetErrorLoading(true);
     try {
       const res = await fetch(`/api/analytics?action=hourly-errors&date=${encodeURIComponent(date)}&errorType=budget`);
@@ -590,7 +590,7 @@ function AnalyticsContent() {
     }
   }
 
-  async function fetchHourlySummarizationData(date: string) {
+  async function _fetchHourlySummarizationData(date: string) {
     setHourlySummarizationLoading(true);
     try {
       const res = await fetch(`/api/analytics?action=hourly-summarizations&date=${encodeURIComponent(date)}`);
@@ -604,7 +604,7 @@ function AnalyticsContent() {
     }
   }
 
-  async function fetchHourlyPublishData(date: string) {
+  async function _fetchHourlyPublishData(date: string) {
     setHourlyPublishLoading(true);
     try {
       const res = await fetch(`/api/analytics?action=hourly-publish&date=${encodeURIComponent(date)}`);
@@ -618,7 +618,7 @@ function AnalyticsContent() {
     }
   }
 
-  async function fetchHourlyClientErrorData(date: string) {
+  async function _fetchHourlyClientErrorData(date: string) {
     setHourlyClientErrorLoading(true);
     try {
       const res = await fetch(`/api/analytics?action=hourly-client-errors&date=${encodeURIComponent(date)}`);
@@ -632,7 +632,7 @@ function AnalyticsContent() {
     }
   }
 
-  function handleSort(col: keyof AppData | 'steps_per_run') {
+  function _handleSort(col: keyof AppData | 'steps_per_run') {
     if (sortCol === col) {
       setSortAsc(!sortAsc);
     } else {
@@ -641,11 +641,11 @@ function AnalyticsContent() {
     }
   }
 
-  function formatCost(cost: number) {
+  function _formatCost(cost: number) {
     return `$${cost.toFixed(2)}`;
   }
 
-  function formatTimestamp(dateStr: string) {
+  function _formatTimestamp(dateStr: string) {
     if (!dateStr) return '-';
     const d = new Date(dateStr);
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -656,13 +656,13 @@ function AnalyticsContent() {
   }
 
 
-  function formatShortDay(dateStr: string) {
+  function _formatShortDay(dateStr: string) {
     if (!dateStr) return '';
     const d = new Date(dateStr);
     return `${d.getMonth() + 1}/${d.getDate()}`;
   }
 
-  function formatNumber(n: number) {
+  function _formatNumber(n: number) {
     return n.toLocaleString();
   }
 
@@ -686,11 +686,11 @@ function AnalyticsContent() {
   });
 
   // Paginated display
-  const displayed = sorted.slice(0, displayCount);
+  const _displayed = sorted.slice(0, displayCount);
   const hasMore = displayCount < sorted.length;
 
   // Handle scroll to load more
-  const handleTableScroll = useCallback(function handleScroll(e: React.UIEvent<HTMLDivElement>) {
+  const _handleTableScroll = useCallback(function handleScroll(e: React.UIEvent<HTMLDivElement>) {
     const el = e.currentTarget;
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 100 && hasMore) {
       setDisplayCount(prev => Math.min(prev + 100, sorted.length));
@@ -703,7 +703,7 @@ function AnalyticsContent() {
   }, [filter, sortCol, sortAsc, datePreset, customStart, customEnd]);
 
   // Preset button style
-  const presetBtn = (preset: DatePreset, label: string) => (
+  const _presetBtn = (preset: DatePreset, label: string) => (
     <button
       onClick={() => setDatePreset(preset)}
       style={{
@@ -722,7 +722,7 @@ function AnalyticsContent() {
     </button>
   );
 
-  const thStyle: React.CSSProperties = {
+  const _thStyle: React.CSSProperties = {
     padding: '0.6rem 0.75rem',
     textAlign: 'left',
     borderBottom: '2px solid #e5e7eb',
@@ -735,7 +735,7 @@ function AnalyticsContent() {
     whiteSpace: 'nowrap'
   };
 
-  const tdStyle: React.CSSProperties = {
+  const _tdStyle: React.CSSProperties = {
     padding: '0.6rem 0.75rem',
     borderBottom: '1px solid #f3f4f6',
     fontSize: '0.8rem'

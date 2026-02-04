@@ -25,7 +25,7 @@ export function getStripe(): Stripe {
 }
 
 // Browser-safe formatPrice moved to format.ts - import from there in frontend code
-export { formatPrice } from './format';
+export { formatPrice } from './format.js';
 
 /**
  * Create a new product with price in Stripe

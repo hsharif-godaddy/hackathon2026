@@ -2,7 +2,7 @@ import fs from "fs-extra";
 import path from "path";
 import chalk from "chalk";
 import inquirer from "inquirer";
-import { CertConfigSetup } from "./cert-config";
+import { CertConfigSetup } from "./cert-config.js";
 import { GettyConfigSetup } from "./getty-config.js";
 import { CommerceConfigSetup } from "./commerce-config.js";
 import { AWSSSoSetup } from "./aws-sso.js";

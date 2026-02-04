@@ -39,7 +39,7 @@ export class GdAuthService {
   }
 
   private initializeGdAuth() {
-    const { GdAuth } = require('gd-auth'); // eslint-disable-line @typescript-eslint/no-var-requires
+    const { GdAuth } = require('gd-auth'); // eslint-disable-line @typescript-eslint/no-require-imports
 
     // Initialize gd-auth with support for multiple auth types including impersonation
     this.gdAuth = new GdAuth({
@@ -47,7 +47,7 @@ export class GdAuthService {
       type: 'idp',                   // IDP token type
       auths: authUtils.getSupportedAuthTypes(), // Support both basic and e2s (impersonation)
       allowHeartbeat: true,          // Enable automatic heartbeat
-      fetchKey: require('gd-auth/src/fetch-key')
+      fetchKey: require('gd-auth/src/fetch-key') // eslint-disable-line @typescript-eslint/no-require-imports
     });
   }
 
