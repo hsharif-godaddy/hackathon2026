@@ -296,3 +296,17 @@ func TestGetStringSlice(t *testing.T) {
 		t.Errorf("expected nil for missing key, got %v", v)
 	}
 }
+
+func TestPayloadToAnalysis_PopulatesRelevanceScore(t *testing.T) {
+	payload := map[string]*qdrant.Value{
+		"gettyId": {Kind: &qdrant.Value_StringValue{StringValue: "12345"}},
+		"title":   {Kind: &qdrant.Value_StringValue{StringValue: "Test Image"}},
+	}
+
+	score := float32(0.95)
+	analysis := payloadToAnalysis(payload, score)
+
+	if analysis.RelevanceScore != score {
+		t.Errorf("RelevanceScore = %v, want %v", analysis.RelevanceScore, score)
+	}
+}

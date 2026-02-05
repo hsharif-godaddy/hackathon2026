@@ -117,11 +117,13 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 }
 
 // Search performs a vector similarity search with optional metadata filters.
+// minScore filters out results below the given relevance threshold (0-1).
 func (c *Client) Search(
 	ctx context.Context,
 	embedding []float32,
 	filters models.SearchFilters,
 	limit int,
+	minScore float32,
 ) ([]*models.ImageAnalysis, error) {
 	if limit <= 0 {
 		limit = 10
@@ -133,6 +135,10 @@ func (c *Client) Search(
 		Query:          qdrant.NewQueryDense(embedding),
 		Limit:          qdrant.PtrOf(uint64(limit)), //nolint:gosec // limit is validated above
 		WithPayload:    qdrant.NewWithPayload(true),
+	}
+
+	if minScore > 0 {
+		queryRequest.ScoreThreshold = qdrant.PtrOf(minScore)
 	}
 
 	filter := buildFilters(filters)
@@ -346,7 +352,7 @@ func analysisToPayload(a *models.ImageAnalysis) map[string]*qdrant.Value {
 }
 
 // payloadToAnalysis converts a Qdrant payload to an ImageAnalysis.
-func payloadToAnalysis(payload map[string]*qdrant.Value, _ float32) *models.ImageAnalysis {
+func payloadToAnalysis(payload map[string]*qdrant.Value, score float32) *models.ImageAnalysis {
 	if payload == nil {
 		return nil
 	}
@@ -408,6 +414,9 @@ func payloadToAnalysis(payload map[string]*qdrant.Value, _ float32) *models.Imag
 		}
 	}
 	analysis.AnalysisVersion = getStringValue(payload, "analysisVersion")
+
+	// Relevance score from Qdrant similarity search
+	analysis.RelevanceScore = score
 
 	return analysis
 }

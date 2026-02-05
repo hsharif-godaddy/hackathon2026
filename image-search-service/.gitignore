@@ -8,6 +8,7 @@ dist/
 *.so
 *.dylib
 image-search-service
+image-search
 
 # Test binary, built with `go test -c`
 *.test

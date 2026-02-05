@@ -3,7 +3,10 @@ package search
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -17,11 +20,12 @@ import (
 
 // Orchestrator coordinates the hybrid search flow.
 type Orchestrator struct {
-	getty      *getty.Client
-	analysis   *analysis.Client
-	embeddings *embeddings.Client
-	qdrant     *qdrant.Client
-	s3         *s3.Client
+	getty             *getty.Client
+	analysis          *analysis.Client
+	embeddings        *embeddings.Client
+	qdrant            *qdrant.Client
+	s3                *s3.Client
+	minRelevanceScore float32
 }
 
 // New creates a new search orchestrator.
@@ -31,13 +35,15 @@ func New(
 	embeddings *embeddings.Client,
 	qdrant *qdrant.Client,
 	s3 *s3.Client,
+	minRelevanceScore float32,
 ) *Orchestrator {
 	return &Orchestrator{
-		getty:      getty,
-		analysis:   analysis,
-		embeddings: embeddings,
-		qdrant:     qdrant,
-		s3:         s3,
+		getty:             getty,
+		analysis:          analysis,
+		embeddings:        embeddings,
+		qdrant:            qdrant,
+		s3:                s3,
+		minRelevanceScore: minRelevanceScore,
 	}
 }
 
@@ -60,126 +66,190 @@ type SearchResult struct {
 }
 
 // Search performs the hybrid search flow:
-// 1. Query Getty API for candidate images
-// 2. Check Qdrant cache for existing analyses
-// 3. If cached >= minCached, return immediately (queue uncached for background)
-// 4. If cached < minCached, analyze uncached and wait up to maxWaitSeconds
-// 5. Return whatever is ready
+// 1. Generate embedding from query
+// 2. Search Qdrant with embedding + filters
+// 3. If results >= minCached, return (queue Getty candidates for background analysis)
+// 4. If results < minCached, query Getty, analyze uncached, re-query Qdrant
+// 5. Return results sorted by relevance
 func (o *Orchestrator) Search(ctx context.Context, params SearchParams) (*SearchResult, error) {
 	start := time.Now()
 	slog.Info("search.start", "query", params.Query, "count", params.Count, "minCached", params.MinCached)
 
-	// Step 1: Query Getty API for candidate images (get 2x requested to have options after filtering)
+	// Step 1: Generate embedding from query
+	embeddingStart := time.Now()
+	queryEmbedding, err := o.embeddings.Generate(ctx, params.Query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate query embedding: %w", err)
+	}
+	slog.Info("search.embedding.complete", "durationMs", time.Since(embeddingStart).Milliseconds())
+
+	// Validate embedding is not empty
+	if len(queryEmbedding) == 0 {
+		return nil, errors.New("empty embedding generated for query")
+	}
+
+	// Step 2: Search Qdrant with embedding + filters
+	qdrantStart := time.Now()
+	cachedResults, err := o.qdrant.Search(ctx, queryEmbedding, params.Filters, params.Count, o.minRelevanceScore)
+	if err != nil {
+		slog.Warn("search.qdrant.error", "error", err)
+		cachedResults = nil
+	}
+	slog.Info("search.qdrant.complete", "cached", len(cachedResults), "durationMs", time.Since(qdrantStart).Milliseconds())
+
+	// Step 3: Check if we have enough cached results
+	if len(cachedResults) >= params.MinCached {
+		slog.Info("search.sufficient.cached", "cached", len(cachedResults), "minCached", params.MinCached)
+
+		// Queue Getty search + analysis in background for cache warming
+		// Use detached context with timeout to prevent goroutine leaks
+		bgCtx, bgCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		go func() {
+			defer bgCancel()
+			o.warmCacheInBackground(bgCtx, params.Query, params.Count*2, cachedResults)
+		}()
+
+		results := collectResults(cachedResults, params.Count)
+		return &SearchResult{
+			Results:         results,
+			CachedCount:     len(results),
+			AnalyzedCount:   0,
+			PendingAnalysis: 0,
+			Complete:        true,
+		}, nil
+	}
+
+	// Step 4: Not enough cached - fetch from Getty, analyze, re-query Qdrant
+	slog.Info("search.fetching.getty", "cached", len(cachedResults), "minCached", params.MinCached)
+
+	// Query Getty for candidates
 	gettyStart := time.Now()
 	gettyResults, err := o.getty.Search(ctx, params.Query, params.Count*2)
 	if err != nil {
-		return nil, err
+		// If Getty fails but we have some cached results, return those
+		if len(cachedResults) > 0 {
+			slog.Warn("search.getty.failed.returning.cached", "error", err, "cachedCount", len(cachedResults))
+			results := collectResults(cachedResults, params.Count)
+			return &SearchResult{
+				Results:         results,
+				CachedCount:     len(results),
+				AnalyzedCount:   0,
+				PendingAnalysis: 0,
+				Complete:        false,
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to search Getty: %w", err)
 	}
 	slog.Info("search.getty.complete", "count", len(gettyResults), "durationMs", time.Since(gettyStart).Milliseconds())
 
 	if len(gettyResults) == 0 {
+		// No Getty results, return whatever we have from cache
+		results := collectResults(cachedResults, params.Count)
 		return &SearchResult{
-			Results:  []*models.ImageAnalysis{},
-			Complete: true,
+			Results:         results,
+			CachedCount:     len(results),
+			AnalyzedCount:   0,
+			PendingAnalysis: 0,
+			Complete:        true,
 		}, nil
 	}
 
-	// Extract Getty IDs and build a map for quick lookup
+	// Build Getty result map and check which are already cached
 	gettyIDs := make([]string, len(gettyResults))
 	gettyResultMap := make(map[string]getty.SearchResult, len(gettyResults))
 	for i, result := range gettyResults {
 		gettyIDs[i] = result.GettyID
 		gettyResultMap[result.GettyID] = result
 	}
-	slog.Debug("search.getty.ids", "ids", gettyIDs)
 
-	// Step 2: Check Qdrant cache for existing analyses
-	cacheStart := time.Now()
-	cachedAnalyses, err := o.qdrant.GetByIDs(ctx, gettyIDs)
+	// Check which Getty results are already in Qdrant
+	existingAnalyses, err := o.qdrant.GetByIDs(ctx, gettyIDs)
 	if err != nil {
-		slog.Warn("search.cache.error", "error", err)
-		cachedAnalyses = make(map[string]*models.ImageAnalysis)
+		slog.Warn("search.cache.check.error", "error", err)
+		existingAnalyses = make(map[string]*models.ImageAnalysis)
 	}
-	slog.Info("search.cache.complete", "cached", len(cachedAnalyses), "durationMs", time.Since(cacheStart).Milliseconds())
 
 	// Identify uncached images
 	var uncachedIDs []string
 	for _, id := range gettyIDs {
-		if _, found := cachedAnalyses[id]; !found {
+		if _, found := existingAnalyses[id]; !found {
 			uncachedIDs = append(uncachedIDs, id)
 		}
 	}
+	slog.Info("search.uncached.count", "uncached", len(uncachedIDs), "alreadyCached", len(existingAnalyses))
 
-	// Step 3: Check if we have enough cached results
-	if len(cachedAnalyses) >= params.MinCached {
-		slog.Info("search.sufficient.cached", "cached", len(cachedAnalyses), "minCached", params.MinCached)
+	// Analyze uncached with timeout
+	var analyzedCount int
+	if len(uncachedIDs) > 0 {
+		waitCtx, cancel := context.WithTimeout(ctx, time.Duration(params.MaxWaitSeconds)*time.Second)
+		defer cancel()
 
-		// Queue uncached for background analysis (fire and forget)
-		if len(uncachedIDs) > 0 {
-			go o.analyzeInBackground(context.Background(), uncachedIDs, gettyResultMap)
-		}
-
-		// Return cached results
-		results := o.collectResults(cachedAnalyses, params.Count)
-		return &SearchResult{
-			Results:         results,
-			CachedCount:     len(results),
-			AnalyzedCount:   0,
-			PendingAnalysis: len(uncachedIDs),
-			Complete:        true,
-		}, nil
+		newlyAnalyzed := o.analyzeWithTimeout(waitCtx, uncachedIDs, gettyResultMap)
+		analyzedCount = len(newlyAnalyzed)
+		slog.Info("search.analyzed.complete", "analyzed", analyzedCount)
 	}
 
-	// Step 4: Not enough cached - analyze uncached with timeout
-	slog.Info("search.analyzing", "uncached", len(uncachedIDs), "maxWaitSeconds", params.MaxWaitSeconds)
-
-	waitCtx, cancel := context.WithTimeout(ctx, time.Duration(params.MaxWaitSeconds)*time.Second)
-	defer cancel()
-
-	newlyAnalyzed := o.analyzeWithTimeout(waitCtx, uncachedIDs, gettyResultMap)
-	slog.Info("search.analyzed.complete", "analyzed", len(newlyAnalyzed), "totalDurationMs", time.Since(start).Milliseconds())
-
-	// Merge cached and newly analyzed
-	allAnalyses := make(map[string]*models.ImageAnalysis)
-	for id, a := range cachedAnalyses {
-		allAnalyses[id] = a
-	}
-	for id, a := range newlyAnalyzed {
-		allAnalyses[id] = a
+	// Re-query Qdrant with filters to get fresh, sorted results
+	finalResults, err := o.qdrant.Search(ctx, queryEmbedding, params.Filters, params.Count, o.minRelevanceScore)
+	if err != nil {
+		slog.Warn("search.final.qdrant.error", "error", err)
+		// Fall back to initial cached results if re-query fails
+		finalResults = cachedResults
 	}
 
-	// Return results
-	results := o.collectResults(allAnalyses, params.Count)
+	results := collectResults(finalResults, params.Count)
 
 	// Calculate pending (uncached that weren't analyzed in time)
-	pendingCount := len(uncachedIDs) - len(newlyAnalyzed)
+	pendingCount := len(uncachedIDs) - analyzedCount
 	if pendingCount < 0 {
 		pendingCount = 0
 	}
 
+	slog.Info("search.complete", "results", len(results), "totalDurationMs", time.Since(start).Milliseconds())
+
+	// CachedCount reflects items that were already in cache before this request
+	// (not filtered by current query filters, just raw cache hits from Getty IDs)
 	return &SearchResult{
 		Results:         results,
-		CachedCount:     len(cachedAnalyses),
-		AnalyzedCount:   len(newlyAnalyzed),
+		CachedCount:     len(existingAnalyses),
+		AnalyzedCount:   analyzedCount,
 		PendingAnalysis: pendingCount,
 		Complete:        pendingCount == 0,
 	}, nil
 }
 
-// analyzeInBackground analyzes images without blocking.
-func (o *Orchestrator) analyzeInBackground(ctx context.Context, ids []string, gettyResults map[string]getty.SearchResult) {
-	for _, id := range ids {
-		result, ok := gettyResults[id]
-		if !ok {
+// warmCacheInBackground fetches Getty candidates and analyzes uncached ones to grow the cache.
+func (o *Orchestrator) warmCacheInBackground(ctx context.Context, query string, count int, alreadyCached []*models.ImageAnalysis) {
+	slog.Info("search.background.start", "query", query, "count", count, "alreadyCachedCount", len(alreadyCached))
+
+	// Build set of already cached IDs
+	cachedIDs := make(map[string]bool, len(alreadyCached))
+	for _, a := range alreadyCached {
+		if a == nil {
+			continue
+		}
+		cachedIDs[a.GettyID] = true
+	}
+
+	// Fetch Getty candidates
+	gettyResults, err := o.getty.Search(ctx, query, count)
+	if err != nil {
+		slog.Warn("search.background.getty.failed", "error", err)
+		return
+	}
+
+	// Analyze uncached
+	for _, result := range gettyResults {
+		if cachedIDs[result.GettyID] {
 			continue
 		}
 
 		_, err := o.analyzeAndStore(ctx, result)
 		if err != nil {
-			slog.Warn("search.background.analysis.failed", "gettyId", id, "error", err)
+			slog.Warn("search.background.analysis.failed", "gettyId", result.GettyID, "error", err)
 			continue
 		}
-		slog.Info("search.background.analysis.complete", "gettyId", id)
+		slog.Info("search.background.analysis.complete", "gettyId", result.GettyID)
 	}
 }
 
@@ -289,16 +359,13 @@ func (o *Orchestrator) analyzeAndStore(ctx context.Context, gettyResult getty.Se
 	return imgAnalysis, nil
 }
 
-// collectResults collects analyses into a slice, up to limit.
-func (o *Orchestrator) collectResults(analyses map[string]*models.ImageAnalysis, limit int) []*models.ImageAnalysis {
-	results := make([]*models.ImageAnalysis, 0, len(analyses))
-	for _, a := range analyses {
-		results = append(results, a)
-		if len(results) >= limit {
-			break
-		}
+// collectResults sorts analyses by relevance score (descending) and returns up to limit results.
+func collectResults(analyses []*models.ImageAnalysis, limit int) []*models.ImageAnalysis {
+	sorted := sortByRelevance(analyses)
+	if len(sorted) <= limit {
+		return sorted
 	}
-	return results
+	return sorted[:limit]
 }
 
 // calculateAspectRatio determines the aspect ratio category from dimensions.
@@ -321,4 +388,27 @@ func calculateAspectRatio(width, height int) models.AspectRatioCategory {
 	default:
 		return models.AspectRatioCategorySquare
 	}
+}
+
+// sortByRelevance sorts analyses by RelevanceScore in descending order.
+func sortByRelevance(analyses []*models.ImageAnalysis) []*models.ImageAnalysis {
+	if len(analyses) <= 1 {
+		return analyses
+	}
+
+	// Make a copy to avoid mutating the input
+	result := make([]*models.ImageAnalysis, len(analyses))
+	copy(result, analyses)
+
+	slices.SortFunc(result, func(a, b *models.ImageAnalysis) int {
+		if a.RelevanceScore > b.RelevanceScore {
+			return -1
+		}
+		if a.RelevanceScore < b.RelevanceScore {
+			return 1
+		}
+		return 0
+	})
+
+	return result
 }

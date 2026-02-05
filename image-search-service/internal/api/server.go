@@ -105,7 +105,7 @@ func (s *Server) Initialize(ctx context.Context) error {
 
 	// Create search orchestrator
 	stepStart = time.Now()
-	s.orchestrator = search.New(s.getty, s.analysis, s.embeddings, s.qdrant, s.s3)
+	s.orchestrator = search.New(s.getty, s.analysis, s.embeddings, s.qdrant, s.s3, s.config.MinRelevanceScore)
 	slog.Info("server.init.orchestrator", "durationMs", time.Since(stepStart).Milliseconds())
 
 	slog.Info("server.init.complete", "totalDurationMs", time.Since(start).Milliseconds())

@@ -303,6 +303,10 @@ type ImageAnalysis struct {
 
 	// Vector embedding (for Qdrant, not JSON serialized)
 	Embedding []float32 `json:"-"`
+
+	// RelevanceScore is the semantic similarity score from Qdrant (0-1, higher = more relevant).
+	// Only populated when retrieved via vector search, not by ID lookup.
+	RelevanceScore float32 `json:"relevanceScore,omitempty"`
 }
 
 // EmbeddingText returns the concatenated text used for generating embeddings.

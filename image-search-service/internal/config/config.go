@@ -45,6 +45,7 @@ type Config struct {
 	// Response behavior
 	DefaultMinCached   int
 	DefaultMaxWaitSecs int
+	MinRelevanceScore  float32
 
 	// SSO
 	SSOHost string
@@ -94,6 +95,7 @@ func LoadConfig() *Config {
 		// Response behavior
 		DefaultMinCached:   getEnvInt("DEFAULT_MIN_CACHED", 5),
 		DefaultMaxWaitSecs: getEnvInt("DEFAULT_MAX_WAIT_SECONDS", 30),
+		MinRelevanceScore:  getEnvFloat32("MIN_RELEVANCE_SCORE", 0.5),
 
 		// SSO
 		SSOHost: getEnvString("SSO_HOST", "sso.godaddy.com"),
@@ -119,6 +121,17 @@ func getEnvInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if intVal, err := strconv.Atoi(value); err == nil {
 			return intVal
+		}
+	}
+	return defaultValue
+}
+
+// getEnvFloat32 returns the float32 value of the environment variable key, or defaultValue if not set,
+// empty, or not a valid float.
+func getEnvFloat32(key string, defaultValue float32) float32 {
+	if value := os.Getenv(key); value != "" {
+		if floatVal, err := strconv.ParseFloat(value, 32); err == nil {
+			return float32(floatVal)
 		}
 	}
 	return defaultValue

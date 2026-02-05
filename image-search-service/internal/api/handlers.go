@@ -98,7 +98,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		searchResult := models.SearchResult{
 			GettyID:        analysis.GettyID,
 			URLs:           analysis.URLs,
-			RelevanceScore: 0, // TODO: Get from Qdrant score
+			RelevanceScore: analysis.RelevanceScore,
 			FromCache:      true,
 			Analysis: &models.ImageAnalysisResponse{
 				PrimarySubject:    analysis.PrimarySubject,
