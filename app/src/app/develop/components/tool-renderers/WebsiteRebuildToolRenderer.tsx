@@ -77,17 +77,21 @@ export default function WebsiteRebuildToolRenderer({
 
       {/* Summary info when complete */}
       {isComplete && (
-        <Box orientation="horizontal" gap="md" className="mt-1 pl-4">
+        <Box
+          orientation="vertical"
+          gap="sm"
+          className="ml-1 mt-1 pl-2 border-l-1 border-intents-ux-box-borderColor"
+        >
           <Box orientation="horizontal" gap="sm">
-            <CheckCircle className="w-3 h-3" />
-            <text.p size={-1} emphasis="passive">
+            <CheckCircle className="w-2 h-2" />
+            <text.p size={-1}>
               {pagesScraped} page{pagesScraped !== 1 ? 's' : ''} captured
             </text.p>
           </Box>
           {assetsFound > 0 && (
             <Box orientation="horizontal" gap="sm">
-              <Image className="w-3 h-3" /> {/* eslint-disable-line jsx-a11y/alt-text */}
-              <text.p size={-1} emphasis="passive">
+              <Image className="w-2 h-2" /> {/* eslint-disable-line jsx-a11y/alt-text */}
+              <text.p size={-1}>
                 {assetsFound} asset{assetsFound !== 1 ? 's' : ''} found
               </text.p>
             </Box>
@@ -95,10 +99,10 @@ export default function WebsiteRebuildToolRenderer({
           {homepagePrompt && (
             <Button
               text="View prompt"
-              design="tertiary"
+              design="inline"
               size="sm"
               onClick={() => setIsPromptModalOpen(true)}
-              icon={<FileText className="w-3 h-3" />}
+              icon={<FileText className="!w-2 !h-2" />}
             />
           )}
         </Box>

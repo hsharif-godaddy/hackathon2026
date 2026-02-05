@@ -145,7 +145,7 @@ function UserMessage({ content }: { content: string }) {
   return (
     <>
       <div className="flex">
-        <div className="relative group">
+        <div className="relative group max-w-full">
           <div
             ref={contentRef}
             className="relative text-sm leading-relaxed break-words whitespace-pre-wrap font-sans overflow-hidden"
