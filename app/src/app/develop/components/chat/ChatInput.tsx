@@ -1,6 +1,5 @@
 'use client'
 
-import clsx from 'clsx'
 import { useEffect, useRef } from 'react'
 import { useIntl } from 'react-intl'
 import Button from '@ux/button'
@@ -176,13 +175,11 @@ export default function ChatInput({
                   onMouseDown={(e) => e.preventDefault()}
                   data-eid={generateClickEID('develop.prompt.speech')}
                   disabled={isDisabled}
-                  design="control"
-                  className={clsx(
-                    'cursor-pointer !rounded-full aspect-square !border-none !outline-none !ring-0',
-                    isListening
-                      ? '!bg-intents-ux-boxLowContrast-backgroundColor [&_svg]:!text-intents-ux-box-foregroundColor'
-                      : '!bg-transparent'
-                  )}
+                  design={isListening ? 'primary' : 'control'}
+                  className={isListening
+                    ? '!bg-intents-ux-feedbackHighContrastCritical-feedbackColor !border-none'
+                    : '!bg-transparent'
+                  }
                   icon={<MicIcon />}
                   size="sm"
                 />

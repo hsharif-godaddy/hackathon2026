@@ -349,13 +349,11 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                     onMouseDown={(e) => e.preventDefault()}
                     data-eid={generateClickEID('homepage.prompt.speech')}
                     disabled={isLoading || isTyping}
-                    design="control"
-                    className={clsx(
-                      'cursor-pointer !rounded-full aspect-square !border-none !outline-none !ring-0',
-                      isListening
-                        ? '!bg-intents-ux-boxLowContrast-backgroundColor [&_svg]:!text-intents-ux-box-foregroundColor'
-                        : '!bg-transparent'
-                    )}
+                    design={isListening ? 'primary' : 'control'}
+                    className={clsx('cursor-pointer !rounded-full aspect-square !border-none', {
+                      '!bg-intents-ux-feedbackHighContrastCritical-feedbackColor': isListening,
+                      '!bg-transparent': !isListening,
+                    })}
                     icon={<MicIcon />}
                     size={isMobile ? 'sm' : 'md'}
                   />
