@@ -126,6 +126,9 @@ func (p *HTTPProxy) Start() error {
 	// Add health check endpoint (unauthenticated, always available)
 	mux.HandleFunc("/airo/health", p.handleHealthCheck)
 
+	// Add canary checks endpoint for infrastructure verification
+	mux.HandleFunc("/airo/canary_checks", handleCanaryChecks)
+
 	// Add catch-all for /airo/* that returns 404 for unmatched paths
 	// This MUST come after specific /airo/* handlers but before the / catch-all
 	mux.HandleFunc("/airo/", func(w http.ResponseWriter, r *http.Request) {

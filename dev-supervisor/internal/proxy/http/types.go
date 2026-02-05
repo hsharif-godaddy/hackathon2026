@@ -106,6 +106,19 @@ type ProxyHealthResponse struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// CanaryCheckResponse represents the response from the canary checks endpoint.
+type CanaryCheckResponse struct {
+	Status string                  `json:"status"`
+	Checks map[string]*CheckResult `json:"checks,omitempty"`
+}
+
+// CheckResult represents the result of an individual health check.
+type CheckResult struct {
+	Status  string `json:"status"`            // "healthy" or "unhealthy"
+	Latency string `json:"latency,omitempty"` // e.g., "15ms"
+	Error   string `json:"error,omitempty"`
+}
+
 // ProcessState is a minimal state representation for start-on-request tracking.
 type ProcessState string
 
