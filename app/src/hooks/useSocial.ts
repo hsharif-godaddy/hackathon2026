@@ -225,7 +225,7 @@ export function useSocialAuthUrl(
       const rootDomain = getRootDomain() || 'godaddy.com'
       const socialAuthBaseUrl = `https://social-auth.api.${rootDomain}`
       const requestedScopes = scopes || SOCIAL_SCOPES[platform] || []
-      const authUrlEndpoint = `${socialAuthBaseUrl}/platforms/${strategy.authEndpoint}/authorization_url`
+      const authUrlEndpoint = `${socialAuthBaseUrl}/platforms/${strategy.provider}/authorization_url`
 
       const authUrlParams = new URLSearchParams({
         app: 'airo-builder',

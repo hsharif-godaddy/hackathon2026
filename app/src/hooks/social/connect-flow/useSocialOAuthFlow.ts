@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 
 import { useTranslations } from '@/hooks/useTranslations'
-import { EMPTY_SOCIAL_ARRAYS } from '@/lib/social'
+import { EMPTY_SOCIAL_ARRAYS, FacebookPage, GoogleLocation } from '@/lib/social'
 import { getPlatformStrategy } from '@/lib/social-platforms'
 import { isRetryableError } from '@/lib/social-utils'
 import { SocialFlowAction } from '@/types/social'
@@ -9,6 +9,20 @@ import { SocialPlatform } from '@/types/social'
 import { FlowAction, FlowStep } from './useSocialConnectFlowStateMachine'
 import { useSocialAuthUrl } from '../queries/useSocialAuthUrl'
 import { useFacebookPages, useGoogleLocations, useValidatePermissions } from '../queries/useSocialV2'
+
+export function getPlatformPages(
+  platform: SocialPlatform,
+  provider: SocialPlatform | 'unknown',
+  facebookPages: FacebookPage[],
+  googleLocations: GoogleLocation[]
+): FacebookPage[] | GoogleLocation[] {
+  if (provider === SocialPlatform.GOOGLE) return googleLocations
+  if (provider !== SocialPlatform.FACEBOOK) return []
+
+  return platform === SocialPlatform.INSTAGRAM
+    ? facebookPages.filter(p => Boolean(p.instagram_business_account?.id?.trim()))
+    : facebookPages
+}
 
 interface UseSocialOAuthFlowParams {
   platform: SocialPlatform,
@@ -77,7 +91,7 @@ export function useSocialOAuthFlow({
     isLoading: isValidatingPermissions,
     error: permissionError
   } = useValidatePermissions(
-    strategy.validationPlatform,
+    strategy.provider,
     userTokenId,
     requiredScopes,
     flowStep === FlowStep.ValidatingPermissions && !!userTokenId && requiredScopes.length > 0,
@@ -113,7 +127,7 @@ export function useSocialOAuthFlow({
     error: facebookPagesError
   } = useFacebookPages(
     userTokenId,
-    shouldFetchPages && strategy.pagesType === SocialPlatform.FACEBOOK,
+    shouldFetchPages && strategy.requiresPageSelection && strategy.provider === SocialPlatform.FACEBOOK,
     state,
     { onSuccess: onPagesSuccess, onError: onPagesError }
   )
@@ -124,26 +138,22 @@ export function useSocialOAuthFlow({
     error: googleLocationsError
   } = useGoogleLocations(
     userTokenId,
-    shouldFetchPages && strategy.pagesType === SocialPlatform.GOOGLE,
+    shouldFetchPages && strategy.requiresPageSelection && strategy.provider === SocialPlatform.GOOGLE,
     state,
     { onSuccess: onPagesSuccess, onError: onPagesError }
   )
 
-  const platformPages = strategy.pagesType === SocialPlatform.FACEBOOK
-    ? facebookPages
-    : strategy.pagesType === SocialPlatform.GOOGLE
-      ? googleLocations
-      : []
+  const platformPages = getPlatformPages(platform, strategy.provider, facebookPages, googleLocations)
 
-  const isPagesLoading = strategy.pagesType === SocialPlatform.FACEBOOK
+  const isPagesLoading = strategy.provider === SocialPlatform.FACEBOOK
     ? isLoadingFacebookPages
-    : strategy.pagesType === SocialPlatform.GOOGLE
+    : strategy.provider === SocialPlatform.GOOGLE
       ? isLoadingGoogleLocations
       : false
 
-  const pagesError = strategy.pagesType === SocialPlatform.FACEBOOK
+  const pagesError = strategy.provider === SocialPlatform.FACEBOOK
     ? facebookPagesError
-    : strategy.pagesType === SocialPlatform.GOOGLE
+    : strategy.provider === SocialPlatform.GOOGLE
       ? googleLocationsError
       : null
 

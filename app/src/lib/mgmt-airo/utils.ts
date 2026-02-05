@@ -2,8 +2,8 @@
  * Utility functions for mgmt-airo
  */
 
-import { AIRO_PRODUCT_IDS, AIRO_OWNER_PRODUCTS } from './types';
 import type { AiroOwnerProduct } from './types';
+import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS } from './types';
 
 /**
  * Mapping from Product IDs to Owner Products

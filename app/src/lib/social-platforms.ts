@@ -212,61 +212,43 @@ export function getDetailedPlatformStatuses<T extends SocialConnection = SocialC
  * Platform strategy for OAuth connect flow
  * Encapsulates platform-specific behavior to avoid scattered conditionals
  */
-export type PagesType = SocialPlatform.FACEBOOK | SocialPlatform.GOOGLE | 'none'
-
 export interface PlatformStrategy {
-  validationPlatform: SocialPlatform | 'unknown'
-  pagesType: PagesType
+  provider: SocialPlatform | 'unknown'
   requiresPageSelection: boolean
-  authEndpoint: string
   oauthParams?: Record<string, string>
 }
 
 export const PLATFORM_STRATEGIES: Record<SocialPlatform, PlatformStrategy> = {
   [SocialPlatform.FACEBOOK]: {
-    validationPlatform: SocialPlatform.FACEBOOK,
-    pagesType: SocialPlatform.FACEBOOK,
+    provider: SocialPlatform.FACEBOOK,
     requiresPageSelection: true,
-    authEndpoint: SocialPlatform.FACEBOOK,
   },
   [SocialPlatform.INSTAGRAM]: {
-    validationPlatform: SocialPlatform.FACEBOOK,
-    pagesType: SocialPlatform.FACEBOOK,
+    provider: SocialPlatform.FACEBOOK,
     requiresPageSelection: true,
-    authEndpoint: SocialPlatform.FACEBOOK,
   },
   [SocialPlatform.GOOGLE]: {
-    validationPlatform: SocialPlatform.GOOGLE,
-    pagesType: SocialPlatform.GOOGLE,
+    provider: SocialPlatform.GOOGLE,
     requiresPageSelection: true,
-    authEndpoint: SocialPlatform.GOOGLE,
   },
   [SocialPlatform.TIKTOK]: {
-    validationPlatform: SocialPlatform.TIKTOK,
-    pagesType: 'none',
+    provider: SocialPlatform.TIKTOK,
     requiresPageSelection: false,
-    authEndpoint: SocialPlatform.TIKTOK,
     oauthParams: { integration_type: 'SHOP' },
   },
   [SocialPlatform.YELP]: {
-    validationPlatform: SocialPlatform.YELP,
-    pagesType: 'none',
+    provider: SocialPlatform.YELP,
     requiresPageSelection: false,
-    authEndpoint: SocialPlatform.YELP,
   },
   [SocialPlatform.WHATSAPP]: {
-    validationPlatform: SocialPlatform.WHATSAPP,
-    pagesType: 'none',
+    provider: SocialPlatform.WHATSAPP,
     requiresPageSelection: false,
-    authEndpoint: SocialPlatform.WHATSAPP,
   },
 }
 
 const DEFAULT_STRATEGY: PlatformStrategy = {
-  validationPlatform: 'unknown',
-  pagesType: 'none',
+  provider: 'unknown',
   requiresPageSelection: false,
-  authEndpoint: 'unknown',
 }
 
 export function getPlatformStrategy(platform: string): PlatformStrategy {

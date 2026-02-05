@@ -3,6 +3,7 @@
 import { useTranslations } from '@/hooks/useTranslations'
 import type { FacebookPage, GoogleLocation } from '@/lib/social'
 import { PLATFORM_CONFIG } from '@/lib/social-platforms'
+import { getSocialConnectionDisplayInfo } from '@/lib/social-utils'
 import { SocialItemSelector } from '../shared/SocialItemSelector'
 
 interface SocialPageSelectorProps {
@@ -10,38 +11,6 @@ interface SocialPageSelectorProps {
   pages: FacebookPage[] | GoogleLocation[]
   onSelect: (pageId: string) => void
   onCancel: () => void
-}
-
-function isFacebookPage(page: FacebookPage | GoogleLocation): page is FacebookPage {
-  return 'category' in page
-}
-
-function isGoogleLocation(page: FacebookPage | GoogleLocation): page is GoogleLocation {
-  return 'storefrontAddress' in page
-}
-
-function formatAddress(address?: GoogleLocation['storefrontAddress']): string {
-  if (!address) return ''
-
-  const parts: string[] = []
-
-  if (address.addressLines && address.addressLines.length > 0) {
-    parts.push(address.addressLines[0])
-  }
-
-  if (address.locality) {
-    parts.push(address.locality)
-  }
-
-  if (address.administrativeArea) {
-    parts.push(address.administrativeArea)
-  }
-
-  if (address.postalCode) {
-    parts.push(address.postalCode)
-  }
-
-  return parts.join(', ')
 }
 
 export function SocialPageSelector({
@@ -52,17 +21,13 @@ export function SocialPageSelector({
 }: SocialPageSelectorProps) {
   const t = useTranslations()
   const platformDisplayName = PLATFORM_CONFIG[platform]?.name ?? platform
+  const isInstagramFlow = platform === 'instagram'
 
   const items = pages.map(page => {
-    const isFacebook = isFacebookPage(page)
-    const isGoogle = isGoogleLocation(page)
-    const pageName = isFacebook ? page.name : isGoogle ? page.title : ''
-    const subtitle = isFacebook ? page.category : isGoogle ? formatAddress(page.storefrontAddress) : ''
-
+    const displayInfo = getSocialConnectionDisplayInfo(page, { isInstagramFlow })
     return {
       id: page.id,
-      name: pageName,
-      subtitle: subtitle || undefined
+      ...displayInfo
     }
   })
 

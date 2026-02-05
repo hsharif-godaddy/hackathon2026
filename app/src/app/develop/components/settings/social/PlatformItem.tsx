@@ -7,7 +7,7 @@ import text from '@ux/text'
 import { IconWithName } from '@/app/develop/components/social/shared/IconWithName'
 import { SocialConnectionInfo } from '@/app/develop/components/social/shared/SocialConnectionInfo'
 import { useTranslations } from '@/hooks/useTranslations'
-import { getConnectionDetails, getConnectionDisplayName } from '@/lib/social-utils'
+import { getSocialConnectionDisplayInfo } from '@/lib/social-utils'
 import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
 import { generateClickEID } from '@/utils/instrumentation'
 import { Status, StatusBadge } from './StatusBadge'
@@ -58,9 +58,7 @@ export const PlatformItem = memo(function PlatformItem({
         {hasConnections && (
           <>
             {connections.map((connection) => {
-              const connectionName = getConnectionDisplayName(connection)
-              const enriched = connection as any
-              const details = getConnectionDetails(connection)
+              const displayInfo = getSocialConnectionDisplayInfo(connection)
               const isUnlinking = unlinkingConnectionId === connection.socialId
 
               return (
@@ -73,9 +71,9 @@ export const PlatformItem = memo(function PlatformItem({
                   blockAlignChildren="spaceBetween"
                 >
                   <SocialConnectionInfo
-                    name={connectionName}
-                    pictureUrl={enriched.pictureUrl}
-                    details={details}
+                    name={displayInfo.name}
+                    pictureUrl={displayInfo.pictureUrl}
+                    details={displayInfo.subtitle}
                     className="flex-1 min-w-0"
                   />
                   {connection.isLinked && (

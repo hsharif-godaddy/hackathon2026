@@ -1,5 +1,6 @@
 import { getErrorMessage } from '@/lib/errors'
 import { logger } from '@/lib/request-context'
+import type { FacebookPage, GoogleLocation } from '@/lib/social'
 import { isFacebookConnection, isGoogleConnection, isInstagramConnection, isTikTokConnection, isYelpConnection } from '@/lib/utils/social-type-guards'
 import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
 import { SocialFlowAction } from '@/types/social'
@@ -90,10 +91,16 @@ export function getConnectionDisplayName(
   return null
 }
 
+type EnrichedDetailsFieldsUnion = EnrichedFieldsUnion & {
+  storefrontAddress?: GoogleLocation['storefrontAddress']
+  city?: string
+  state?: string
+}
+
 export function getConnectionDetails(
   connection: SocialConnection | EnrichedSocialConnection
 ): string | undefined {
-  const enriched = connection as any
+  const enriched = connection as SocialConnection & EnrichedDetailsFieldsUnion
 
   if ('username' in enriched && enriched.username) {
     return `@${enriched.username}`
@@ -109,4 +116,100 @@ export function getConnectionDetails(
   }
 
   return undefined
+}
+
+function formatAddress(address?: GoogleLocation['storefrontAddress']): string {
+  if (!address) return ''
+
+  const parts: string[] = []
+
+  if (address.addressLines && address.addressLines.length > 0) {
+    parts.push(address.addressLines[0])
+  }
+
+  if (address.locality) {
+    parts.push(address.locality)
+  }
+
+  if (address.administrativeArea) {
+    parts.push(address.administrativeArea)
+  }
+
+  if (address.postalCode) {
+    parts.push(address.postalCode)
+  }
+
+  return parts.join(', ')
+}
+
+export interface SocialDisplayInfo {
+  name: string
+  subtitle?: string
+  pictureUrl?: string
+}
+
+function isConnection(data: unknown): data is SocialConnection | EnrichedSocialConnection {
+  return typeof data === 'object' && data !== null && 'socialId' in data
+}
+
+function isFacebookPage(data: unknown): data is FacebookPage {
+  return typeof data === 'object' && data !== null && 'category' in data && !('socialId' in data)
+}
+
+function isGoogleLocation(data: unknown): data is GoogleLocation {
+  return typeof data === 'object' && data !== null && 'storefrontAddress' in data
+}
+
+type EnrichedFieldsUnion = {
+  pageName?: string
+  locationName?: string
+  shopName?: string
+  businessName?: string
+  username?: string
+  category?: string
+  address?: string
+  pictureUrl?: string
+}
+
+function getConnectionDisplayInfo(data: SocialConnection | EnrichedSocialConnection): SocialDisplayInfo {
+  const enriched = data as SocialConnection & EnrichedFieldsUnion
+  return {
+    name: enriched.pageName || enriched.locationName || enriched.shopName || enriched.businessName || '',
+    subtitle: enriched.username ? `@${enriched.username}` : enriched.category || enriched.address,
+    pictureUrl: enriched.pictureUrl
+  }
+}
+
+function getFacebookPageDisplayInfo(page: FacebookPage, isInstagramFlow: boolean): SocialDisplayInfo {
+  if (isInstagramFlow && page.instagram_business_account) {
+    const ig = page.instagram_business_account
+    return {
+      name: ig.name || ig.username || page.name,
+      subtitle: ig.username ? `@${ig.username}` : undefined,
+      pictureUrl: ig.profile_picture_url
+    }
+  }
+  return {
+    name: page.name,
+    subtitle: page.category || undefined,
+    pictureUrl: page.picture?.data?.url
+  }
+}
+
+function getGoogleLocationDisplayInfo(location: GoogleLocation): SocialDisplayInfo {
+  return {
+    name: location.title,
+    subtitle: formatAddress(location.storefrontAddress) || undefined,
+    pictureUrl: undefined
+  }
+}
+
+export function getSocialConnectionDisplayInfo(
+  data: FacebookPage | GoogleLocation | SocialConnection | EnrichedSocialConnection,
+  options?: { isInstagramFlow?: boolean }
+): SocialDisplayInfo {
+  if (isConnection(data)) return getConnectionDisplayInfo(data)
+  if (isFacebookPage(data)) return getFacebookPageDisplayInfo(data, options?.isInstagramFlow ?? false)
+  if (isGoogleLocation(data)) return getGoogleLocationDisplayInfo(data)
+  return { name: '', subtitle: undefined, pictureUrl: undefined }
 }

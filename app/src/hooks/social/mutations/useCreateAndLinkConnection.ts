@@ -35,9 +35,9 @@ export function useCreateAndLinkConnection() {
       const { socialId } = await socialV2Client.createConnection({
         platform: platformUpper,
         userTokenId,
-        pageId: strategy.pagesType === SocialPlatform.FACEBOOK ? pageId : undefined,
-        pageTokenId: strategy.pagesType === SocialPlatform.FACEBOOK ? matchingPageTokenId : undefined,
-        locationId: strategy.pagesType === SocialPlatform.GOOGLE ? pageId : undefined,
+        pageId: strategy.requiresPageSelection && strategy.provider === SocialPlatform.FACEBOOK ? pageId : undefined,
+        pageTokenId: strategy.requiresPageSelection && strategy.provider === SocialPlatform.FACEBOOK ? matchingPageTokenId : undefined,
+        locationId: strategy.requiresPageSelection && strategy.provider === SocialPlatform.GOOGLE ? pageId : undefined,
         userId
       })
 

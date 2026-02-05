@@ -5,7 +5,6 @@
  */
 
 export { AiroMgmtClient } from './client';
-export { PRODUCT_ID_TO_OWNER_PRODUCT, getOwnerProductFromProductId } from './utils';
 export type {
   AiroApiError,
   AiroApp,
@@ -51,3 +50,4 @@ export {
   DEFAULT_OWNER_PRODUCT,
   DomainMode,
   DomainValidationError} from './types';
+export { getOwnerProductFromProductId, PRODUCT_ID_TO_OWNER_PRODUCT } from './utils';

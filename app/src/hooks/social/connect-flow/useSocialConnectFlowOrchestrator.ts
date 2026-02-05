@@ -176,9 +176,9 @@ export function useSocialConnectFlowOrchestrator({
     }
 
     try {
-      const requiredScopes = SOCIAL_SCOPES[strategy.validationPlatform] || []
+      const requiredScopes = SOCIAL_SCOPES[strategy.provider] || []
       const validation = await socialV2Client.validatePermissions(
-        strategy.validationPlatform,
+        strategy.provider,
         selectedConnection.userTokenId,
         requiredScopes
       )
@@ -201,7 +201,7 @@ export function useSocialConnectFlowOrchestrator({
     } catch (error) {
       dispatch({ type: SocialFlowAction.Error, error: getErrorMessage(error) })
     }
-  }, [strategy.validationPlatform, enrichedPlatformConnections, dispatch, appId, linkMutation, platform, t])
+  }, [strategy.provider, enrichedPlatformConnections, dispatch, appId, linkMutation, platform, t])
 
   const handleConnectNew = useCallback(() => {
     dispatch({ type: SocialFlowAction.StartOAuth })
