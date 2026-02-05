@@ -18,7 +18,7 @@ jobs:
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && !contains(github.event.comment.body, '@claude review')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude') && !contains(github.event.comment.body, '@claude review')) ||
       (github.event_name == 'issues' && contains(github.event.issue.body, '@claude') && !contains(github.event.issue.body, '@claude review'))
-    uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@v2.1.2
+    uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@v2
     with:
       runner_group: ${{ vars.CLAUDE_RUNNER_GROUP }}
       runner_labels_json: '["self-hosted"]'
