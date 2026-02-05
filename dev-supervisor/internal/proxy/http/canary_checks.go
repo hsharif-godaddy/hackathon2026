@@ -143,8 +143,9 @@ func checkMySQL() *CheckResult {
 		}
 	}
 
-	// Build DSN: username:password@tcp(host:port)/dbname?timeout=5s
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?timeout=%s",
+	// Build DSN: username:password@tcp(host:port)/dbname?timeout=5s&tls=skip-verify
+	// tls=skip-verify required for MySQL 8.0 with require_secure_transport=ON
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?timeout=%s&tls=skip-verify",
 		dbVal.Username,
 		dbVal.Password,
 		dbVal.IP,
