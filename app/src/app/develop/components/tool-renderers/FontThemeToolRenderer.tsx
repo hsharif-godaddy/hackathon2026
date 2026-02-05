@@ -34,17 +34,45 @@ export default function FontThemeToolRenderer({
   const themes = resultObj.themes || widget?.widgetData?.themes || []
   const hasThemes = Array.isArray(themes) && themes.length > 0
 
-  // Extract font information for preview
-  const appliedFont = resultObj.appliedFont as { name?: string; fontName?: string; weights?: string[] } | undefined
-  const fontName = appliedFont?.fontName || resultObj.fontName as string | undefined
-  const fontWeights = appliedFont?.weights || ['400', '700'] // eslint-disable-line react-hooks/exhaustive-deps
+  // Extract font information for preview - supports new headerFont/bodyFont and legacy fontName
+  const appliedFont = resultObj.appliedFont as {
+    name?: string
+    fontName?: string
+    weights?: string[]
+    headerFont?: { name: string; weights: string[]; category: string }
+    bodyFont?: { name: string; weights: string[]; category: string }
+  } | undefined
 
-  // Computed styles to reduce duplication
-  const fontFamily = fontName ? `"${fontName}", -apple-system, BlinkMacSystemFont, sans-serif` : undefined
+  // Support new headerFont/bodyFont structure or fall back to legacy fontName
+  const headerFont = appliedFont?.headerFont || (appliedFont?.fontName ? {
+    name: appliedFont.fontName,
+    weights: appliedFont.weights || ['400', '700'],
+    category: 'sans-serif'
+  } : undefined) || (resultObj.headerFont as { name: string; weights: string[] } | undefined)
 
-  // Load Google Font when font is applied (named function for React DevTools profiling)
-  useEffect(function loadGoogleFont() {
-    if (!fontName || !toolStatus || toolStatus !== 'completed') return
+  const bodyFont = appliedFont?.bodyFont || (appliedFont?.fontName ? {
+    name: appliedFont.fontName,
+    weights: appliedFont.weights || ['400', '700'],
+    category: 'sans-serif'
+  } : undefined) || (resultObj.bodyFont as { name: string; weights: string[] } | undefined)
+
+  // Legacy fallback for fontName
+  const legacyFontName = resultObj.fontName as string | undefined
+  const headerFontName = headerFont?.name || legacyFontName
+  const bodyFontName = bodyFont?.name || legacyFontName
+
+  // Display label for the font pairing
+  const fontDisplayLabel = headerFontName && bodyFontName
+    ? (headerFontName === bodyFontName ? headerFontName : `${headerFontName} + ${bodyFontName}`)
+    : headerFontName || bodyFontName
+
+  // Computed styles
+  const headerFontFamily = headerFontName ? `"${headerFontName}", -apple-system, BlinkMacSystemFont, sans-serif` : undefined
+  const bodyFontFamily = bodyFontName ? `"${bodyFontName}", -apple-system, BlinkMacSystemFont, sans-serif` : undefined
+
+  // Load Google Fonts when fonts are applied (named function for React DevTools profiling)
+  useEffect(function loadGoogleFonts() {
+    if ((!headerFontName && !bodyFontName) || !toolStatus || toolStatus !== 'completed') return
 
     const linkId = 'font-theme-renderer-font'
     let link = document.getElementById(linkId) as HTMLLinkElement
@@ -56,15 +84,36 @@ export default function FontThemeToolRenderer({
       document.head.appendChild(link)
     }
 
-    // Google Fonts API expects spaces as '+' and other special chars URL-encoded
-    const encodedFontFamily = encodeURIComponent(fontName).replace(/%20/g, '+')
-    const weights = Array.isArray(fontWeights) ? fontWeights.join(';') : '400;700'
-    const fontUrl = `https://fonts.googleapis.com/css2?family=${encodedFontFamily}:wght@${weights}&display=swap`
+    // Build font families - deduplicate if same font
+    const fontMap = new Map<string, Set<string>>()
+
+    if (headerFont?.name) {
+      const existing = fontMap.get(headerFont.name) || new Set<string>()
+      headerFont.weights.forEach((w: string) => existing.add(w))
+      fontMap.set(headerFont.name, existing)
+    }
+
+    if (bodyFont?.name) {
+      const existing = fontMap.get(bodyFont.name) || new Set<string>()
+      bodyFont.weights.forEach((w: string) => existing.add(w))
+      fontMap.set(bodyFont.name, existing)
+    }
+
+    const fontFamilies: string[] = []
+    fontMap.forEach((weights, name) => {
+      const encodedName = encodeURIComponent(name).replace(/%20/g, '+')
+      const weightsStr = Array.from(weights).sort().join(';')
+      fontFamilies.push(`${encodedName}:wght@${weightsStr}`)
+    })
+
+    if (fontFamilies.length === 0) return
+
+    const fontUrl = `https://fonts.googleapis.com/css2?family=${fontFamilies.join('&family=')}&display=swap`
 
     if (link.href !== fontUrl) {
       link.href = fontUrl
     }
-  }, [fontName, fontWeights, toolStatus])
+  }, [headerFont, bodyFont, headerFontName, bodyFontName, toolStatus])
 
   // For suggest mode, show header with options label
   const displayName = isSuggestMode
@@ -98,7 +147,7 @@ export default function FontThemeToolRenderer({
       )}
 
       {/* APPLY MODE: Show card with font preview matching ColorPaletteWidget style */}
-      {toolStatus === 'completed' && isApplyMode && fontName && (
+      {toolStatus === 'completed' && isApplyMode && (headerFontName || bodyFontName) && (
         <div className="mt-2 mb-2">
           <button
             type="button"
@@ -109,13 +158,13 @@ export default function FontThemeToolRenderer({
               <div className="flex flex-col items-start">
                 <span
                   className="text-base font-semibold leading-none text-intents-ux-success-textColor"
-                  style={{ fontFamily }}
+                  style={{ fontFamily: headerFontFamily }}
                 >
-                  {fontName}
+                  {fontDisplayLabel}
                 </span>
                 <span
                   className="text-xs font-thin leading-none text-intents-ux-textSubtle-textColor mt-1"
-                  style={{ fontFamily }}
+                  style={{ fontFamily: bodyFontFamily }}
                 >
                   The quick brown fox jumps over the lazy dog
                 </span>
@@ -127,7 +176,7 @@ export default function FontThemeToolRenderer({
               >
                 <span
                   className="text-sm font-bold"
-                  style={{ fontFamily, color: '#ffffff' }}
+                  style={{ fontFamily: headerFontFamily, color: '#ffffff' }}
                 >
                   Aa
                 </span>
@@ -138,7 +187,7 @@ export default function FontThemeToolRenderer({
       )}
 
       {/* DIRECT SET MODE: Show card with font preview matching ColorPaletteWidget style */}
-      {toolStatus === 'completed' && !isSuggestMode && !isApplyMode && fontName && (
+      {toolStatus === 'completed' && !isSuggestMode && !isApplyMode && (headerFontName || bodyFontName) && (
         <div className="mt-2 mb-2">
           <button
             type="button"
@@ -149,13 +198,13 @@ export default function FontThemeToolRenderer({
               <div className="flex flex-col items-start">
                 <span
                   className="text-base font-semibold leading-none text-intents-ux-text-textColor"
-                  style={{ fontFamily }}
+                  style={{ fontFamily: headerFontFamily }}
                 >
-                  {fontName}
+                  {fontDisplayLabel}
                 </span>
                 <span
                   className="text-xs font-thin leading-none text-intents-ux-textSubtle-textColor mt-1"
-                  style={{ fontFamily }}
+                  style={{ fontFamily: bodyFontFamily }}
                 >
                   The quick brown fox jumps over the lazy dog
                 </span>
@@ -167,7 +216,7 @@ export default function FontThemeToolRenderer({
               >
                 <span
                   className="text-sm font-bold"
-                  style={{ fontFamily, color: '#ffffff' }}
+                  style={{ fontFamily: headerFontFamily, color: '#ffffff' }}
                 >
                   Aa
                 </span>
@@ -178,11 +227,12 @@ export default function FontThemeToolRenderer({
       )}
 
       {/* Modal for detailed font view */}
-      {fontName && (
+      {(headerFontName || bodyFontName) && (
         <FontThemeModal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
-          fontName={fontName}
+          headerFontName={headerFontName}
+          bodyFontName={bodyFontName}
         />
       )}
     </div>

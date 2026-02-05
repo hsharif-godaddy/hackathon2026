@@ -35,10 +35,30 @@ function getFallback(category: FontCategory): string {
 }
 
 /**
- * Build Google Fonts URL for a font and weights
+ * Build Google Fonts URL for one or more fonts with their weights.
+ * Deduplicates fonts by name and merges weights.
  */
-function buildGoogleFontsUrl(fontName: string, weights: string[]): string {
-  return `https://fonts.googleapis.com/css2?family=${fontName.replace(/\s+/g, '+')}:wght@${weights.join(';')}&display=swap`
+export function buildGoogleFontsUrl(fonts: Array<{ name: string; weights: string[] }>): string {
+  // Deduplicate and merge weights by font name
+  const fontMap = new Map<string, Set<string>>()
+
+  for (const font of fonts) {
+    const existing = fontMap.get(font.name)
+    if (existing) {
+      // Merge weights
+      font.weights.forEach(w => existing.add(w))
+    } else {
+      fontMap.set(font.name, new Set(font.weights))
+    }
+  }
+
+  // Build URL with all fonts
+  const familyParams = Array.from(fontMap.entries()).map(([name, weights]) => {
+    const sortedWeights = Array.from(weights).sort()
+    return `${name.replace(/\s+/g, '+')}:wght@${sortedWeights.join(';')}`
+  })
+
+  return `https://fonts.googleapis.com/css2?family=${familyParams.join('&family=')}&display=swap`
 }
 
 /**
@@ -92,6 +112,22 @@ async function loadFontGenerationPrompt(): Promise<string> {
   return await promptBuilder.build()
 }
 
+interface LLMFontPairing {
+  id: string
+  name: string
+  description: string
+  headerFont: {
+    name: string
+    weights: string[]
+    category: FontCategory
+  }
+  bodyFont: {
+    name: string
+    weights: string[]
+    category: FontCategory
+  }
+}
+
 async function generateFontsWithLLM(
   description: string,
   count: number,
@@ -102,20 +138,13 @@ async function generateFontsWithLLM(
   customTags?: string[],
   subscriptionId?: string,
   customerId?: string
-): Promise<Array<{
-  id: string
-  name: string
-  description: string
-  fontName: string
-  weights: string[]
-  category?: FontCategory
-}>> {
+): Promise<LLMFontPairing[]> {
   const { model, modelName } = await getAgentModelWithName('fast')
   const systemPrompt = await loadFontGenerationPrompt()
 
-  const userPrompt = `Generate ${count} Google Font recommendation${count > 1 ? 's' : ''} for: ${description}
+  const userPrompt = `Generate ${count} font pairing${count > 1 ? 's' : ''} for: ${description}
 
-Return ONLY the JSON object with the fonts array. No markdown, no code blocks, no explanatory text.`
+Return ONLY the JSON object with the fonts array containing headerFont and bodyFont for each pairing. No markdown, no code blocks, no explanatory text.`
 
   const contextData: {
     appId?: string
@@ -233,22 +262,59 @@ Return ONLY the JSON object with the fonts array. No markdown, no code blocks, n
       throw new Error('Invalid response format: missing fonts array')
     }
 
-    const validFonts = parsed.fonts.filter((font: any) =>
-      font.id &&
-      font.name &&
-      font.fontName &&
-      font.weights &&
-      Array.isArray(font.weights)
-    )
+    // Validate and normalize font pairings
+    const validFonts: LLMFontPairing[] = []
+
+    for (const font of parsed.fonts) {
+      if (!font.id || !font.name) continue
+
+      // Check for new headerFont/bodyFont format
+      if (font.headerFont?.name && font.bodyFont?.name) {
+        validFonts.push({
+          id: font.id,
+          name: font.name,
+          description: font.description || '',
+          headerFont: {
+            name: font.headerFont.name,
+            weights: font.headerFont.weights || ['400', '700'],
+            category: font.headerFont.category || detectFontCategory(font.headerFont.name)
+          },
+          bodyFont: {
+            name: font.bodyFont.name,
+            weights: font.bodyFont.weights || ['400', '500'],
+            category: font.bodyFont.category || detectFontCategory(font.bodyFont.name)
+          }
+        })
+      }
+      // Legacy format: single fontName used for both header and body
+      else if (font.fontName && Array.isArray(font.weights)) {
+        const category = font.category || detectFontCategory(font.fontName)
+        const fontInfo = {
+          name: font.fontName,
+          weights: font.weights,
+          category
+        }
+        validFonts.push({
+          id: font.id,
+          name: font.name,
+          description: font.description || '',
+          headerFont: fontInfo,
+          bodyFont: fontInfo
+        })
+      }
+    }
 
     if (validFonts.length === 0) {
-      throw new Error('No valid fonts in LLM response')
+      throw new Error('No valid font pairings in LLM response')
     }
 
     logger.info('fontTheme.llm.success', {
       requestedCount: count,
       receivedCount: validFonts.length,
-      fonts: validFonts.map((f: any) => f.fontName)
+      pairings: validFonts.map((f) => ({
+        header: f.headerFont.name,
+        body: f.bodyFont.name
+      }))
     })
 
     return validFonts
@@ -261,29 +327,61 @@ Return ONLY the JSON object with the fonts array. No markdown, no code blocks, n
   }
 }
 
+interface FontInfo {
+  name: string
+  weights: string[]
+  category: FontCategory
+}
+
+interface FontTheme {
+  id: string
+  name: string
+  description: string
+  headerFont?: FontInfo
+  bodyFont?: FontInfo
+  font?: FontInfo  // Legacy field for backwards compatibility
+}
+
 interface FontThemeGridWidget {
   widgetType: 'font-theme-grid'
   widgetData: {
-    themes: Array<{
-      id: string
-      name: string
-      description: string
-      font: {
-        name: string
-        weights: string[]
-        category: FontCategory
-      }
-    }>
+    themes: FontTheme[]
   }
 }
 
 /**
- * Professional font theme presets for websites
+ * Normalize a FontTheme to always have headerFont and bodyFont.
+ * Handles backwards compatibility with legacy single-font themes.
+ */
+export function normalizeFontTheme(theme: FontTheme): { headerFont: FontInfo; bodyFont: FontInfo } {
+  if (theme.headerFont && theme.bodyFont) {
+    return { headerFont: theme.headerFont, bodyFont: theme.bodyFont }
+  }
+  // Legacy fallback: use single font for both
+  if (!theme.font) {
+    throw new Error('FontTheme must have either headerFont/bodyFont or font field')
+  }
+  return { headerFont: theme.font, bodyFont: theme.font }
+}
+
+/**
+ * Professional font theme presets for websites with header/body pairings
  */
 export const FONT_THEMES: Record<string, {
   name: string
   description: string
-  font: {
+  headerFont: {
+    name: string
+    weights: string[]
+    category: FontCategory
+  }
+  bodyFont: {
+    name: string
+    weights: string[]
+    category: FontCategory
+  }
+  // Legacy field for backwards compatibility
+  font?: {
     name: string
     weights: string[]
     category: FontCategory
@@ -293,51 +391,67 @@ export const FONT_THEMES: Record<string, {
 }> = {
   'modern-professional': {
     name: 'Modern Professional',
-    description: 'Clean, highly readable sans-serif. Perfect for tech, SaaS, and corporate sites.',
-    font: {
+    description: 'Clean sans-serif pairing. Perfect for tech, SaaS, and corporate sites.',
+    headerFont: {
+      name: 'Montserrat',
+      weights: ['600', '700'],
+      category: 'sans-serif'
+    },
+    bodyFont: {
       name: 'Inter',
-      weights: ['400', '600', '700'],
-      category: 'sans-serif',
-      fallback: '-apple-system, BlinkMacSystemFont, sans-serif',
-      googleFontsUrl: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap'
+      weights: ['400', '500', '600'],
+      category: 'sans-serif'
     }
   },
   'elegant-serif': {
     name: 'Elegant Serif',
-    description: 'Sophisticated serif font. Ideal for publishing, blogs, and content-heavy sites.',
-    font: {
+    description: 'Sophisticated serif pairing. Ideal for publishing, blogs, and editorial.',
+    headerFont: {
+      name: 'Playfair Display',
+      weights: ['600', '700'],
+      category: 'serif'
+    },
+    bodyFont: {
       name: 'Lora',
-      weights: ['400', '600', '700'],
-      category: 'serif',
-      fallback: 'Georgia, serif',
-      googleFontsUrl: 'https://fonts.googleapis.com/css2?family=Lora:wght@400;600;700&display=swap'
+      weights: ['400', '500', '600'],
+      category: 'serif'
     }
   },
   'bold-modern': {
     name: 'Bold Modern',
-    description: 'Strong geometric sans-serif. Perfect for creative agencies, portfolios, and design-focused sites.',
-    font: {
-      name: 'Montserrat',
-      weights: ['400', '600', '700'],
-      category: 'sans-serif',
-      fallback: '-apple-system, BlinkMacSystemFont, sans-serif',
-      googleFontsUrl: 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap'
+    description: 'Strong geometric headers with readable body. Great for agencies and portfolios.',
+    headerFont: {
+      name: 'Bebas Neue',
+      weights: ['400'],
+      category: 'sans-serif'
+    },
+    bodyFont: {
+      name: 'Work Sans',
+      weights: ['400', '500', '600'],
+      category: 'sans-serif'
     }
   },
   'classic-formal': {
     name: 'Classic Formal',
-    description: 'Traditional serif font. Excellent for law firms, financial services, luxury brands.',
-    font: {
+    description: 'Traditional serif headers with clean body. Excellent for law, finance, luxury.',
+    headerFont: {
       name: 'Merriweather',
-      weights: ['400', '600', '700'],
-      category: 'serif',
-      fallback: 'Georgia, serif',
-      googleFontsUrl: 'https://fonts.googleapis.com/css2?family=Merriweather:wght@400;600;700&display=swap'
+      weights: ['700', '900'],
+      category: 'serif'
+    },
+    bodyFont: {
+      name: 'Source Sans 3',
+      weights: ['400', '500', '600'],
+      category: 'sans-serif'
     }
   }
 }
 
-export async function updateCssFontVariables(appPath: string, theme: typeof FONT_THEMES[keyof typeof FONT_THEMES]): Promise<{ success: boolean; message: string }> {
+export async function updateCssFontVariables(
+  appPath: string,
+  headerFont: { name: string; weights: string[]; category: FontCategory },
+  bodyFont: { name: string; weights: string[]; category: FontCategory }
+): Promise<{ success: boolean; message: string }> {
   const cssPath = `${appPath}/src/styles/globals.css`
 
   try {
@@ -346,25 +460,33 @@ export async function updateCssFontVariables(appPath: string, theme: typeof FONT
     // Remove ALL existing Google Fonts imports to avoid stacking
     cssContent = cssContent.replace(/@import url\('https:\/\/fonts\.googleapis\.com\/css2\?[^']+'\);\s*/g, '')
 
-    // Add the new Google Fonts import at the top (before @tailwind directives)
-    const googleFontsImport = `@import url('${theme.font.googleFontsUrl}');\n\n`
+    // Build Google Fonts URL for both fonts (deduplicates if same)
+    const googleFontsUrl = buildGoogleFontsUrl([
+      { name: headerFont.name, weights: headerFont.weights },
+      { name: bodyFont.name, weights: bodyFont.weights }
+    ])
+
+    // Add the new Google Fonts import at the top
+    const googleFontsImport = `@import url('${googleFontsUrl}');\n\n`
     cssContent = googleFontsImport + cssContent
 
-    // Update or add --font-sans variable
+    // Get fallbacks for each font
+    const headerFallback = getFallback(headerFont.category)
+    const bodyFallback = getFallback(bodyFont.category)
+
+    // Update or add --font-sans variable (body font)
     const fontSansRegex = /--font-sans:\s*[^;]+;/
-    const newFontSans = `--font-sans: "${theme.font.name}", ${theme.font.fallback};`
-    
+    const newFontSans = `--font-sans: "${bodyFont.name}", ${bodyFallback};`
+
     if (fontSansRegex.test(cssContent)) {
       cssContent = cssContent.replace(fontSansRegex, newFontSans)
     } else {
-      // Add --font-sans to :root in @layer base (for old apps that don't have it)
+      // Add --font-sans to :root in @layer base
       const rootBlockRegex = /(:root\s*\{)/
       if (rootBlockRegex.test(cssContent)) {
-        // Find the first CSS variable or closing brace to insert after
         const insertAfterRootRegex = /(:root\s*\{)(\s*(?:\/\*.*?\*\/)?\s*(?:--[^;]+;)?)/
         cssContent = cssContent.replace(insertAfterRootRegex, `$1$2\n    ${newFontSans}`)
       } else {
-        // No :root block exists, create one in @layer base
         const baseLayerRegex = /(@layer base\s*\{)/
         if (baseLayerRegex.test(cssContent)) {
           cssContent = cssContent.replace(baseLayerRegex, `$1\n  :root {\n    ${newFontSans}\n  }\n`)
@@ -374,10 +496,10 @@ export async function updateCssFontVariables(appPath: string, theme: typeof FONT
       }
     }
 
-    // Update or add --font-heading variable
+    // Update or add --font-heading variable (header font)
     const fontHeadingRegex = /--font-heading:\s*[^;]+;/
-    const newFontHeading = `--font-heading: "${theme.font.name}", ${theme.font.fallback};`
-    
+    const newFontHeading = `--font-heading: "${headerFont.name}", ${headerFallback};`
+
     if (fontHeadingRegex.test(cssContent)) {
       cssContent = cssContent.replace(fontHeadingRegex, newFontHeading)
     } else {
@@ -386,7 +508,6 @@ export async function updateCssFontVariables(appPath: string, theme: typeof FONT
       if (fontSansLocationRegex.test(cssContent)) {
         cssContent = cssContent.replace(fontSansLocationRegex, `$1\n    ${newFontHeading}`)
       } else {
-        // Fallback: add to :root
         const rootBlockRegex = /(:root\s*\{)/
         if (rootBlockRegex.test(cssContent)) {
           const insertAfterRootRegex = /(:root\s*\{)(\s*(?:\/\*.*?\*\/)?\s*(?:--[^;]+;)?)/
@@ -395,22 +516,19 @@ export async function updateCssFontVariables(appPath: string, theme: typeof FONT
       }
     }
 
-    // Ensure body uses --font-sans variable directly (robust for all apps)
+    // Ensure body uses --font-sans variable
     const bodyRuleRegex = /body \{([^}]*)\}/
     const bodyMatch = cssContent.match(bodyRuleRegex)
-    
+
     if (bodyMatch && bodyMatch[1] !== undefined) {
       const bodyContent = bodyMatch[1]
-      
-      // Check if body already has font-family rule
+
       if (/font-family:/.test(bodyContent)) {
-        // Replace existing font-family with variable
         cssContent = cssContent.replace(
           /body \{([^}]*?)font-family:[^;]+;([^}]*)\}/,
           'body {$1font-family: var(--font-sans);$2}'
         )
       } else {
-        // Add font-family to existing body rule
         cssContent = cssContent.replace(
           bodyRuleRegex,
           `body {$1\n    font-family: var(--font-sans);
@@ -418,7 +536,6 @@ export async function updateCssFontVariables(appPath: string, theme: typeof FONT
         )
       }
     } else {
-      // If no body rule exists at all, create one with font-family
       const bodyRule = `\n  body {
     @apply bg-background text-foreground;
     font-family: var(--font-sans);
@@ -429,42 +546,42 @@ export async function updateCssFontVariables(appPath: string, theme: typeof FONT
       }
     }
 
-    // Ensure heading elements use --font-heading with !important (to override Tailwind utility classes)
+    // Ensure heading elements use --font-heading with !important
     const headingRule = `h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-heading) !important;
   }`
-    
-    // Check if heading rule already exists
+
     const existingHeadingRuleRegex = /h1,\s*h2,\s*h3,\s*h4,\s*h5,\s*h6\s*\{[^}]*font-family[^}]*\}/
-    
+
     if (existingHeadingRuleRegex.test(cssContent)) {
-      // Update existing heading rule to use variable
       cssContent = cssContent.replace(
         /h1,\s*h2,\s*h3,\s*h4,\s*h5,\s*h6\s*\{[^}]*font-family:[^;]+;[^}]*\}/,
         headingRule
       )
     } else {
-      // Add heading rule after body in @layer base
-      const bodyRuleRegex = /(body \{[^}]*\})/
-      if (bodyRuleRegex.test(cssContent)) {
-        cssContent = cssContent.replace(bodyRuleRegex, `$1\n\n  ${headingRule}`)
+      const bodyRuleRegex2 = /(body \{[^}]*\})/
+      if (bodyRuleRegex2.test(cssContent)) {
+        cssContent = cssContent.replace(bodyRuleRegex2, `$1\n\n  ${headingRule}`)
       } else if (cssContent.includes('@layer base')) {
-        // Fallback: add after @layer base opening
-        const baseLayerRegex = /(@layer base\s*\{)/
-        cssContent = cssContent.replace(baseLayerRegex, `$1\n\n  ${headingRule}\n`)
+        const baseLayerRegex2 = /(@layer base\s*\{)/
+        cssContent = cssContent.replace(baseLayerRegex2, `$1\n\n  ${headingRule}\n`)
       }
     }
 
     await writeFile(cssPath, cssContent, 'utf8')
 
+    const fontDescription = headerFont.name === bodyFont.name
+      ? headerFont.name
+      : `${headerFont.name} (headers) + ${bodyFont.name} (body)`
+
     logger.info('fontTheme.apply.success', {
-      themeName: theme.name,
-      font: theme.font.name
+      headerFont: headerFont.name,
+      bodyFont: bodyFont.name
     })
 
     return {
       success: true,
-      message: `Font theme "${theme.name}" (${theme.font.name}) applied successfully.`
+      message: `Font theme applied: ${fontDescription}`
     }
   } catch (error) {
     logger.error('fontTheme.apply.error', {
@@ -606,34 +723,26 @@ MODE SELECTION GUIDE:
 
         const selectedFont = llmFonts[0]!
 
-        // Apply the font immediately
-        const category = selectedFont.category || detectFontCategory(selectedFont.fontName)
-        const theme = {
-          name: selectedFont.name,
-          description: selectedFont.description,
-          font: {
-            name: selectedFont.fontName,
-            weights: selectedFont.weights,
-            category,
-            fallback: getFallback(category),
-            googleFontsUrl: buildGoogleFontsUrl(selectedFont.fontName, selectedFont.weights)
-          }
-        }
-
         const app = await appRepo.findById(appId)
         if (!app) {
           throw new Error(`App not found: ${appId}`)
         }
 
-        const result = await updateCssFontVariables(app.path, theme)
+        // Apply the font pairing
+        const result = await updateCssFontVariables(app.path, selectedFont.headerFont, selectedFont.bodyFont)
 
         if (!result.success) {
           throw new Error(result.message)
         }
 
+        const fontDescription = selectedFont.headerFont.name === selectedFont.bodyFont.name
+          ? selectedFont.headerFont.name
+          : `${selectedFont.headerFont.name} (headers) + ${selectedFont.bodyFont.name} (body)`
+
         logger.info('fontTheme.set.complete', {
           appId,
-          fontName: selectedFont.fontName,
+          headerFont: selectedFont.headerFont.name,
+          bodyFont: selectedFont.bodyFont.name,
           themeName: selectedFont.name
         })
 
@@ -642,11 +751,10 @@ MODE SELECTION GUIDE:
           message: `Applied font theme: ${selectedFont.name}`,
           appliedFont: {
             name: selectedFont.name,
-            fontName: selectedFont.fontName,
-            weights: selectedFont.weights,
-            category
+            headerFont: selectedFont.headerFont,
+            bodyFont: selectedFont.bodyFont
           },
-          suggestedResponse: `Font theme "${selectedFont.name}" (${selectedFont.fontName}) has been applied.`
+          suggestedResponse: `Font theme "${selectedFont.name}" (${fontDescription}) has been applied.`
         }
       }
 
@@ -675,19 +783,15 @@ MODE SELECTION GUIDE:
           id: font.id,
           name: font.name,
           description: font.description,
-          font: {
-            name: font.fontName,
-            weights: font.weights,
-            category: font.category || detectFontCategory(font.fontName)
-          }
+          headerFont: font.headerFont,
+          bodyFont: font.bodyFont
         }))
 
         if (sessionId && stateManager?.storeSuggestedFonts) {
           const fontsToStore = themes.map(theme => ({
             name: theme.name,
-            fontName: theme.font.name,
-            weights: theme.font.weights,
-            category: theme.font.category
+            headerFont: theme.headerFont,
+            bodyFont: theme.bodyFont
           }))
           stateManager.storeSuggestedFonts(sessionId, fontsToStore)
         }
@@ -717,11 +821,8 @@ MODE SELECTION GUIDE:
         id: key,
         name: theme.name,
         description: theme.description,
-        font: {
-          name: theme.font.name,
-          weights: theme.font.weights,
-          category: theme.font.category
-        }
+        headerFont: theme.headerFont,
+        bodyFont: theme.bodyFont
       }))
 
       const widget: FontThemeGridWidget = {
@@ -749,7 +850,8 @@ MODE SELECTION GUIDE:
         throw new Error(`App '${appId}' not found`)
       }
 
-      let themeToApply: typeof FONT_THEMES[keyof typeof FONT_THEMES]
+      let headerFont: FontInfo
+      let bodyFont: FontInfo
       let themeName: string
 
       let extractedThemeName = input.themeName
@@ -795,7 +897,8 @@ MODE SELECTION GUIDE:
 
       if (input.themeId && FONT_THEMES[input.themeId]) {
         const curatedTheme = FONT_THEMES[input.themeId]!
-        themeToApply = curatedTheme
+        headerFont = curatedTheme.headerFont
+        bodyFont = curatedTheme.bodyFont
         themeName = curatedTheme.name
 
         logger.info('fontTheme.apply.curated', {
@@ -811,19 +914,14 @@ MODE SELECTION GUIDE:
             fontName: suggestedFont.fontName
           })
 
-          const googleFontsUrl = `https://fonts.googleapis.com/css2?family=${suggestedFont.fontName.replace(/\s+/g, '+')}:wght@${suggestedFont.weights.join(';')}&display=swap`
-
-          themeToApply = {
-            name: extractedThemeName,
-            description: `Custom font: ${suggestedFont.fontName}`,
-            font: {
-              name: suggestedFont.fontName,
-              weights: suggestedFont.weights,
-              category: suggestedFont.category,
-              fallback: getFallback(suggestedFont.category),
-              googleFontsUrl
-            }
+          // Use same font for both header and body when from session
+          const fontInfo: FontInfo = {
+            name: suggestedFont.fontName,
+            weights: suggestedFont.weights,
+            category: suggestedFont.category
           }
+          headerFont = fontInfo
+          bodyFont = fontInfo
           themeName = extractedThemeName
         } else if (input.fontName && input.weights) {
           logger.info('fontTheme.apply.fallback_to_explicit', {
@@ -832,54 +930,39 @@ MODE SELECTION GUIDE:
             reason: 'Not found in session, using explicit fontName/weights from agent'
           })
 
-          const weights = input.weights
-          const googleFontsUrl = `https://fonts.googleapis.com/css2?family=${input.fontName.replace(/\s+/g, '+')}:wght@${weights.join(';')}&display=swap`
           const category = detectFontCategory(input.fontName)
-
-          themeToApply = {
-            name: extractedThemeName,
-            description: `Custom font: ${input.fontName}`,
-            font: {
-              name: input.fontName,
-              weights,
-              category,
-              fallback: getFallback(category),
-              googleFontsUrl
-            }
+          const fontInfo: FontInfo = {
+            name: input.fontName,
+            weights: input.weights,
+            category
           }
+          headerFont = fontInfo
+          bodyFont = fontInfo
           themeName = extractedThemeName
         } else {
           throw new Error(`Font theme '${extractedThemeName}' not found in session. Please use suggest mode first or provide fontName and weights.`)
         }
       } else if (input.fontName && input.weights) {
-        const weights = input.weights
-        const googleFontsUrl = `https://fonts.googleapis.com/css2?family=${input.fontName.replace(/\s+/g, '+')}:wght@${weights.join(';')}&display=swap`
-
         const category = detectFontCategory(input.fontName)
-        
-        themeToApply = {
+        const fontInfo: FontInfo = {
           name: input.fontName,
-          description: `Custom font: ${input.fontName}`,
-          font: {
-            name: input.fontName,
-            weights,
-            category,
-            fallback: getFallback(category),
-            googleFontsUrl
-          }
+          weights: input.weights,
+          category
         }
+        headerFont = fontInfo
+        bodyFont = fontInfo
         themeName = input.fontName
 
         logger.info('fontTheme.apply.custom', {
           appId,
           fontName: input.fontName,
-          weights
+          weights: input.weights
         })
       } else {
         throw new Error(`Either themeId (for curated themes), themeName (from previous suggestion), or fontName + weights are required for apply mode.`)
       }
 
-      const result = await updateCssFontVariables(app.path, themeToApply)
+      const result = await updateCssFontVariables(app.path, headerFont, bodyFont)
 
       if (!result.success) {
         throw new Error(result.message)
@@ -890,7 +973,8 @@ MODE SELECTION GUIDE:
         message: `Applied "${themeName}" font theme successfully.`,
         themeId: input.themeId,
         themeName,
-        fontName: themeToApply.font.name
+        headerFont: headerFont.name,
+        bodyFont: bodyFont.name
       }
     }
 

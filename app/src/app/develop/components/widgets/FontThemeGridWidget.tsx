@@ -17,7 +17,24 @@ interface FontTheme {
   id: string
   name: string
   description: string
-  font: FontInfo
+  headerFont?: FontInfo
+  bodyFont?: FontInfo
+  font?: FontInfo  // Legacy field for backwards compatibility
+}
+
+/**
+ * Normalize a FontTheme to always have headerFont and bodyFont.
+ * Handles backwards compatibility with legacy single-font themes.
+ */
+function normalizeFontTheme(theme: FontTheme): { headerFont: FontInfo; bodyFont: FontInfo } {
+  if (theme.headerFont && theme.bodyFont) {
+    return { headerFont: theme.headerFont, bodyFont: theme.bodyFont }
+  }
+  // Legacy fallback: use single font for both
+  if (!theme.font) {
+    throw new Error('FontTheme must have either headerFont/bodyFont or font field')
+  }
+  return { headerFont: theme.font, bodyFont: theme.font }
 }
 
 export interface FontThemeGridWidgetProps {
@@ -41,13 +58,31 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
   useEffect(function loadGoogleFonts() {
     if (!hasThemes) return
 
-    const newFontFamilies: string[] = []
+    const fontMap = new Map<string, Set<string>>()
+
     safeThemes.forEach(theme => {
-      if (theme.font?.name) {
-        const fontName = theme.font.name.replace(/\s+/g, '+')
-        const weights = theme.font.weights.join(';')
-        newFontFamilies.push(`${fontName}:wght@${weights}`)
+      const { headerFont, bodyFont } = normalizeFontTheme(theme)
+
+      // Add header font
+      if (headerFont?.name) {
+        const existing = fontMap.get(headerFont.name) || new Set<string>()
+        headerFont.weights.forEach(w => existing.add(w))
+        fontMap.set(headerFont.name, existing)
       }
+
+      // Add body font
+      if (bodyFont?.name) {
+        const existing = fontMap.get(bodyFont.name) || new Set<string>()
+        bodyFont.weights.forEach(w => existing.add(w))
+        fontMap.set(bodyFont.name, existing)
+      }
+    })
+
+    const newFontFamilies: string[] = []
+    fontMap.forEach((weights, name) => {
+      const fontName = name.replace(/\s+/g, '+')
+      const weightsStr = Array.from(weights).sort().join(';')
+      newFontFamilies.push(`${fontName}:wght@${weightsStr}`)
     })
 
     if (newFontFamilies.length === 0) return
@@ -141,13 +176,18 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
     <div className={className}>
       <div className="flex flex-col gap-2">
         {safeThemes.map((theme) => {
-          const font = theme.font
+          const { headerFont, bodyFont } = normalizeFontTheme(theme)
           const isSelected = selectedTheme?.id === theme.id
 
-          if (!font || !Array.isArray(font.weights) || font.weights.length === 0) return null
+          if (!headerFont || !bodyFont) return null
 
-          const boldWeight = font.weights[font.weights.length - 1] || '700'
-          const regularWeight = font.weights[0] || '400'
+          const headerWeight = headerFont.weights[headerFont.weights.length - 1] || '700'
+          const bodyWeight = bodyFont.weights[0] || '400'
+
+          // Show font names - combine if different
+          const fontLabel = headerFont.name === bodyFont.name
+            ? headerFont.name
+            : `${headerFont.name} + ${bodyFont.name}`
 
           return (
             <button
@@ -164,7 +204,7 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
               {/* Left: Theme info (fixed width) */}
               <div className="flex flex-col min-w-[110px] text-left">
                 <div className="text-xs font-semibold text-gray-900 leading-tight">{theme.name}</div>
-                <div className="text-[11px] text-gray-500 leading-tight">{font.name}</div>
+                <div className="text-[11px] text-gray-500 leading-tight truncate" title={fontLabel}>{fontLabel}</div>
               </div>
 
               {/* Right: Font previews (flex-grow) */}
@@ -172,8 +212,8 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
                 <div
                   className="text-[15px] font-bold text-gray-900 leading-tight"
                   style={{
-                    fontFamily: `"${font.name}", -apple-system, BlinkMacSystemFont, sans-serif`,
-                    fontWeight: boldWeight
+                    fontFamily: `"${headerFont.name}", -apple-system, BlinkMacSystemFont, sans-serif`,
+                    fontWeight: headerWeight
                   }}
                 >
                   {t('builder_font_theme_preview_heading', undefined, 'Heading')}
@@ -182,8 +222,8 @@ export default function FontThemeGridWidget({ themes, className = '' }: FontThem
                 <div
                   className="text-xs text-gray-600 leading-tight"
                   style={{
-                    fontFamily: `"${font.name}", -apple-system, BlinkMacSystemFont, sans-serif`,
-                    fontWeight: regularWeight
+                    fontFamily: `"${bodyFont.name}", -apple-system, BlinkMacSystemFont, sans-serif`,
+                    fontWeight: bodyWeight
                   }}
                 >
                   {t('builder_font_theme_preview_sample', undefined, 'The quick brown fox jumps over the lazy dog')}
