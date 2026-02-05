@@ -286,8 +286,8 @@ export class AiroMgmtClient {
   /**
    * Get the first active subscription
    */
-  async getActiveSubscription(): Promise<AiroSubscription | null> {
-    const subscriptions = await this.getSubscriptions();
+  async getActiveSubscription(ownerProduct: string = DEFAULT_OWNER_PRODUCT): Promise<AiroSubscription | null> {
+    const subscriptions = await this.getSubscriptions(ownerProduct);
     return subscriptions.length > 0 ? subscriptions[0] : null;
   }
 

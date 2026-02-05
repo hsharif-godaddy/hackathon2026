@@ -1,4 +1,4 @@
-import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroMgmtClient } from '@/lib/mgmt-airo';
+import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroMgmtClient, getOwnerProductFromProductId } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 import { getDatacenterFromMarketId } from '@/lib/utils/dc-mapping';
 import { extractCustomerId } from '@/lib/utils/jwt-utils';
@@ -99,7 +99,12 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
 
       if (!alwaysNewSubscription) {
         try {
-          if (targetSubscriptionId) {
+          // Priority: productId parameter takes precedence over AIRO_SUBSCRIPTION_ID env var
+          // This allows API callers to override the default subscription selection by product
+          if (params.productId) {
+            const ownerProduct = getOwnerProductFromProductId(params.productId);
+            selectedSubscription = await client.getActiveSubscription(ownerProduct);
+          } else if (targetSubscriptionId) {
             // Find specific subscription by ID
             const allSubscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
             selectedSubscription = allSubscriptions.find(sub => sub.id === targetSubscriptionId);
