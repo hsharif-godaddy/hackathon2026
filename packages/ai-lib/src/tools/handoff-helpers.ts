@@ -129,6 +129,17 @@ export function createHandoffTool(config: HandoffToolConfig): Tool {
         logger.debug('Context.metadata: none')
       }
 
+      // Prevent self-handoff - agents cannot hand off to themselves
+      if (targetAgent === sourceAgentId) {
+        logger.warn(`${sourceAgentId} attempted to hand off to itself`)
+        return {
+          success: false,
+          error: 'Self-handoff not allowed',
+          message: `You are the ${sourceAgentId} agent. You cannot hand off to yourself. Continue handling this request directly.`,
+          instruction: 'Process this request yourself instead of handing off.'
+        }
+      }
+
       // Validate handoff is allowed
       if (validateHandoff && !validTargets.includes(targetAgent)) {
         return {
