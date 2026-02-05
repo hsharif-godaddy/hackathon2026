@@ -1,23 +1,15 @@
 name: AWS Deploy Debug Console
 on:
-  # Automatic build on push to debug_console_auth branch for testing
   push:
     branches:
-      - debug_console_auth
-  # Manual deployment with environment choice
-  workflow_dispatch:
-    inputs:
-      DEPLOY_TO_ENV:
-        description: "Environment to deploy the artifact"
-        required: true
-        default: "test"
-        type: choice
-        options:
-          - "dev-private"
-          - "test"
-          - "NA"
+      - main
+    paths:
+      - "debug-console/**"
 
-run-name: "[Env: ${{ inputs.DEPLOY_TO_ENV || 'dev-private' }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
+  # Manual deployment
+  workflow_dispatch:
+
+run-name: "[Env: dev-private] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
 
 permissions:
   id-token: write # required for artifactory token login
@@ -25,14 +17,14 @@ permissions:
 
 jobs:
   continuous-integration:
-    name: "[Env: ${{ inputs.DEPLOY_TO_ENV || 'dev-private' }}] branch: ${{ github.ref_name }} "
+    name: "[Env: dev-private] branch: ${{ github.ref_name }}"
     runs-on:
       labels:
         - airo-cicd-runners
         - self-hosted
 
     env:
-      DEPLOY_TO_ENV: ${{ inputs.DEPLOY_TO_ENV || 'dev-private' }}
+      DEPLOY_TO_ENV: dev-private
 
     steps:
       - name: Checkout Codebase
@@ -82,7 +74,7 @@ jobs:
         uses: gdcorp-actions/katana-publish-artifact@v1
         with:
           namespace: ${{ steps.katana-app.outputs.namespace }}
-          app: ${{ steps.katana-app.outputs.app }}
+          app: console
           image_name: ${{ steps.katana-app.outputs.app }}:${{ github.sha }}
           artifact_kind: ecs
           artifact_options_json: |
@@ -93,13 +85,12 @@ jobs:
               "healthcheckGracePeriod": 30
             }
 
-      # Promote the published artifact to the selected environment with the katana-promote-artifact GitHub Action
-      - name: Promote to ${{ env.DEPLOY_TO_ENV }} Environment
-        if: ${{ env.DEPLOY_TO_ENV != 'NA' }}
+      # Promote the published artifact to dev-private environment with the katana-promote-artifact GitHub Action
+      - name: Promote to dev-private Environment
         uses: gdcorp-actions/katana-promote-artifact@v1
         with:
           namespace: ${{ steps.katana-app.outputs.namespace }}
-          app: ${{ steps.katana-app.outputs.app }}
+          app: console
           environment: ${{ env.DEPLOY_TO_ENV }}
           artifact_id: ${{ steps.katana-publish.outputs.artifact_id }}
 

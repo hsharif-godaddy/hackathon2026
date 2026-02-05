@@ -12,7 +12,7 @@ interface LogDetailPanelProps {
     idField: string;
     idLabel: string;
     getIdValue: (log: LogEntry) => string | undefined;
-    supportsAppIdFilter: boolean;
+    appIdFilterMode: 'field' | 'query' | 'none';
   };
   onClose: () => void;
   onPrevious?: () => void;

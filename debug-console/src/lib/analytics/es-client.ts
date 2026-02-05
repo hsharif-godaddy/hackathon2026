@@ -29,16 +29,12 @@ const INDEX_PREFIX = process.env.ES_INDEX_PREFIX || 'airo_analytics_';
 // Index names for processed data
 export const INDICES = {
   AGENT_RUNS: `${INDEX_PREFIX}agent_runs`,
-  TOOL_EXECUTIONS: `${INDEX_PREFIX}tool_executions`,
-  LLM_CALLS: `${INDEX_PREFIX}llm_calls`,
   COMPRESSIONS: `${INDEX_PREFIX}compressions`,
   ERRORS: `${INDEX_PREFIX}errors`,
   CONVERSATIONS: `${INDEX_PREFIX}conversations`,
   SUMMARIZATIONS: `${INDEX_PREFIX}summarizations`,
   TOOL_FAILURES: `${INDEX_PREFIX}tool_failures`,
   PUBLISH_EVENTS: `${INDEX_PREFIX}publish_events`,
-  MODEL_SELECTIONS: `${INDEX_PREFIX}model_selections`,
-  COMMAND_EXECUTIONS: `${INDEX_PREFIX}command_executions`,
   CLIENT_ERRORS: `${INDEX_PREFIX}client_errors`
 } as const;
 
@@ -58,30 +54,6 @@ const MAPPINGS = {
       cached_input_tokens: { type: 'long' },
       total_tokens: { type: 'long' },
       cost: { type: 'float' }
-    }
-  },
-  [INDICES.TOOL_EXECUTIONS]: {
-    properties: {
-      es_id: { type: 'keyword' },
-      timestamp: { type: 'date' },
-      app_id: { type: 'keyword' },
-      agent_id: { type: 'keyword' },
-      tool_name: { type: 'keyword' }
-    }
-  },
-  [INDICES.LLM_CALLS]: {
-    properties: {
-      es_id: { type: 'keyword' },
-      timestamp: { type: 'date' },
-      app_id: { type: 'keyword' },
-      agent_id: { type: 'keyword' },
-      model: { type: 'keyword' },
-      provider: { type: 'keyword' },
-      duration_ms: { type: 'integer' },
-      input_tokens: { type: 'long' },
-      output_tokens: { type: 'long' },
-      finish_reason: { type: 'keyword' },
-      tool_call_count: { type: 'integer' }
     }
   },
   [INDICES.COMPRESSIONS]: {
@@ -153,26 +125,6 @@ const MAPPINGS = {
       success: { type: 'boolean' },
       error_message: { type: 'text' },
       commit_hash: { type: 'keyword' }
-    }
-  },
-  [INDICES.MODEL_SELECTIONS]: {
-    properties: {
-      es_id: { type: 'keyword' },
-      timestamp: { type: 'date' },
-      app_id: { type: 'keyword' },
-      model: { type: 'keyword' },
-      provider: { type: 'keyword' }
-    }
-  },
-  [INDICES.COMMAND_EXECUTIONS]: {
-    properties: {
-      es_id: { type: 'keyword' },
-      timestamp: { type: 'date' },
-      app_id: { type: 'keyword' },
-      command: { type: 'text', fields: { keyword: { type: 'keyword' } } },
-      success: { type: 'boolean' },
-      duration_ms: { type: 'integer' },
-      exit_code: { type: 'integer' }
     }
   },
   [INDICES.CLIENT_ERRORS]: {

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
-import { getSummary, getAllApps, getToolStats, getHealthMetrics, getHourlyStats, getErrorStats, getHourlyErrorStats, getLast24HoursStats, getLast24HoursErrorStats, getSummarizationStats, getHourlySummarizationStats, getRollingHourlySummarizations, getPublishStats, getHourlyPublishStats, getRollingHourlyPublish, getClientErrorStats, getHourlyClientErrorStats, getRollingHourlyClientErrors, init } from '@/lib/analytics/es-db';
-import { getSchedulerStatus, startScheduler } from '@/lib/analytics/scheduler';
+import { getSummary, getAllApps, getToolStats, getHealthMetrics, getHourlyStats, getErrorStats, getHourlyErrorStats, getLast24HoursStats, getLast24HoursErrorStats, getSummarizationStats, getHourlySummarizationStats, getRollingHourlySummarizations, getPublishStats, getHourlyPublishStats, getRollingHourlyPublish, getClientErrorStats, getHourlyClientErrorStats, getRollingHourlyClientErrors, getDiagnostics, init } from '@/lib/analytics/es-db';
+import { getSchedulerStatus, runBackfill, startScheduler } from '@/lib/analytics/scheduler';
 import { withAuth } from '@/lib/api-auth';
 
 export const dynamic = 'force-dynamic';
@@ -26,9 +26,16 @@ let initialized = false;
 
 async function ensureInitialized() {
   if (!initialized) {
-    await init();
-    startScheduler(30);
-    initialized = true;
+    console.log('[analytics] Initializing ES indices and scheduler...');
+    try {
+      await init();
+      startScheduler(30);
+      initialized = true;
+      console.log('[analytics] Initialization complete');
+    } catch (error) {
+      console.error('[analytics] Initialization failed:', error instanceof Error ? error.message : error);
+      throw error;
+    }
   }
 }
 
@@ -61,6 +68,14 @@ export const GET = withAuth(async (request) => {
 
       case 'scheduler-status':
         return NextResponse.json(getSchedulerStatus());
+
+      case 'backfill': {
+        const days = parseInt(searchParams.get('days') || '7', 10);
+        if (days < 1 || days > 30) {
+          return NextResponse.json({ error: 'days must be 1-30' }, { status: 400 });
+        }
+        return NextResponse.json(await runBackfill(days));
+      }
 
       case 'hourly': {
         const date = searchParams.get('date');
@@ -138,11 +153,18 @@ export const GET = withAuth(async (request) => {
       case 'last-24h-client-errors':
         return NextResponse.json(await getRollingHourlyClientErrors());
 
+      case 'diagnostics':
+        return NextResponse.json(await getDiagnostics());
+
       default:
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
     }
   } catch (error) {
-    console.error('Analytics API error:', error);
+    console.error('[analytics] API error:', {
+      action,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
     return NextResponse.json(
       { error: 'Failed to fetch analytics data', details: String(error) },
       { status: 500 }

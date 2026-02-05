@@ -1,31 +1,9 @@
 'use client';
 
-import _Link from 'next/link';
 import React, { useCallback, useEffect, useState } from 'react';
 
-import MetricsTrendsCard from '@/components/MetricsTrendsCard';
+import LangfuseMetricCards from '@/components/LangfuseMetricCards';
 import ProtectedRoute from '@/components/ProtectedRoute';
-
-interface AppData {
-  app_id: string;
-  run_count: number;
-  total_steps: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_cost: number;
-  first_event: string;
-  last_event: string;
-  summarizations: number;
-  compressions: number;
-  errors: number;
-  token_limits: number;
-  budget_errors: number;
-  ws_errors: number;
-  publish_total: number;
-  publish_success: number;
-  publish_failed: number;
-  client_errors: number;
-}
 
 interface DailyStat {
   date: string;
@@ -383,8 +361,12 @@ function AnalyticsContent() {
 
   // Date range state
   const [datePreset, setDatePreset] = useState<DatePreset>('1d');
-  const [customStart, _setCustomStart] = useState<string>('');
-  const [customEnd, _setCustomEnd] = useState<string>('');
+  const [customStart, setCustomStart] = useState<string>('');
+  const [customEnd, setCustomEnd] = useState<string>('');
+  const [effectiveDateRange, setEffectiveDateRange] = useState<{ start: string; end: string }>(() => {
+    const range = getDateRange('1d');
+    return { start: range.start.toISOString(), end: range.end.toISOString() };
+  });
 
   // Hourly drilldown state
   const [_hourlyData, setHourlyData] = useState<{ date: string; hourly_stats: Array<{ hour: number; apps: number; runs: number; cost: number; steps: number; avg_steps_per_run: number }> } | null>(null);
@@ -440,10 +422,10 @@ function AnalyticsContent() {
         end = range.end.toISOString();
       }
 
+      setEffectiveDateRange({ start, end });
       const params = new URLSearchParams({ start, end });
 
-      const [appsRes, summaryRes, statusRes, errorsRes, sumRes, pubRes, clientErrRes] = await Promise.all([
-        fetch(`/api/analytics?action=apps&${params}`),
+      const [summaryRes, statusRes, errorsRes, sumRes, pubRes, clientErrRes] = await Promise.all([
         fetch(`/api/analytics?action=summary&${params}`),
         fetch('/api/analytics?action=scheduler-status'),
         fetch(`/api/analytics?action=errors&${params}`),
@@ -452,11 +434,10 @@ function AnalyticsContent() {
         fetch(`/api/analytics?action=client-errors&${params}`)
       ]);
 
-      if (!appsRes.ok || !summaryRes.ok) {
+      if (!summaryRes.ok) {
         throw new Error('Failed to fetch analytics data');
       }
 
-      setApps(await appsRes.json());
       setSummary(await summaryRes.json());
       setSchedulerStatus(await statusRes.json());
       if (errorsRes.ok) {
@@ -741,35 +722,30 @@ function AnalyticsContent() {
     fontSize: '0.8rem'
   };
 
-  return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '1rem 2vw' }}>
-      <div style={{ width: '100%', maxWidth: '98vw', margin: '0 auto' }}>
-        {/* Metrics Trends Card - Always visible, independent of other API calls */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '0.75rem',
-          marginBottom: '1.25rem',
-        }}>
-          <MetricsTrendsCard />
-        </div>
-
-        {/* Loading State */}
-        {loading && (
-          <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '12px', padding: '3rem', textAlign: 'center', marginBottom: '1.25rem' }}>
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '1rem 2vw' }}>
+        <div style={{ width: '100%', maxWidth: '98vw', margin: '0 auto' }}>
+          <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '12px', padding: '3rem', textAlign: 'center' }}>
             <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>⏳</div>
             <p style={{ color: '#64748b', margin: 0 }}>Loading analytics data...</p>
           </div>
-        )}
+        </div>
+      </div>
+    );
+  }
 
-        {/* Error State */}
-        {error && !loading && (
-          <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '12px', padding: '2rem', borderLeft: '4px solid #ef4444', marginBottom: '1.25rem' }}>
-            <h2 style={{ margin: '0 0 0.5rem 0', color: '#dc2626' }}>Error Loading Analytics</h2>
-            <p style={{ margin: '0 0 1rem 0', color: '#666' }}>{error}</p>
+  if (error) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '1rem 2vw' }}>
+        <div style={{ width: '100%', maxWidth: '98vw', margin: '0 auto' }}>
+          <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '12px', padding: '2rem', borderLeft: '4px solid #ef4444' }}>
+            <h2 style={{ margin: '0 0 0.5rem 0', color: '#dc2626' }}>Error</h2>
+            <p style={{ margin: 0, color: '#666' }}>{error}</p>
             <button
               onClick={fetchData}
               style={{
+                marginTop: '1rem',
                 padding: '0.5rem 1rem',
                 backgroundColor: '#3b82f6',
                 color: 'white',
@@ -781,14 +757,511 @@ function AnalyticsContent() {
               Retry
             </button>
           </div>
-        )}
+        </div>
+      </div>
+    );
+  }
 
-        {/* Analytics Content - Only shown when not loading and no error */}
-        {!loading && !error && (
-          <div style={{ color: '#64748b', textAlign: 'center', padding: '2rem' }}>
-            <p>Analytics dashboard content will be displayed here</p>
+  return (
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '1rem 2vw' }}>
+      <div style={{ width: '100%', maxWidth: '98vw', margin: '0 auto' }}>
+        {/* Header */}
+        <header style={{
+          backgroundColor: 'rgba(255,255,255,0.97)',
+          padding: '1.25rem 1.5rem',
+          borderRadius: '12px',
+          marginBottom: '1.25rem',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem'
+        }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#0f172a' }}>
+              📊 Apps Analytics
+            </h1>
+            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+              AI Agent usage and cost analytics
+            </p>
+          </div>
+
+          {/* Date Range Selector */}
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            {presetBtn('1d', '24h')}
+            {presetBtn('7d', '7 days')}
+            {presetBtn('14d', '14 days')}
+            {presetBtn('30d', '30 days')}
+            {presetBtn('custom', 'Custom')}
+          </div>
+
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <a
+              href="/"
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#f1f5f9',
+                color: '#334155',
+                borderRadius: '6px',
+                textDecoration: 'none',
+                fontSize: '0.8rem',
+                fontWeight: 500
+              }}
+            >
+              ← Dashboard
+            </a>
+            {schedulerStatus && (
+              <div style={{ fontSize: '0.7rem', color: '#64748b', textAlign: 'right' }}>
+                <div>
+                  {schedulerStatus.running ? '🟢' : '🔴'} Scheduler
+                  {schedulerStatus.isCurrentlyFetching && ' (syncing...)'}
+                </div>
+                {schedulerStatus.lastRun && (
+                  <div style={{ marginTop: '0.15rem' }}>
+                    Last: {formatTimestamp(schedulerStatus.lastRun.endTime)}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </header>
+
+        {/* Custom Date Range */}
+        {datePreset === 'custom' && (
+          <div style={{
+            backgroundColor: 'rgba(255,255,255,0.97)',
+            padding: '1rem 1.5rem',
+            borderRadius: '12px',
+            marginBottom: '1.25rem',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+            display: 'flex',
+            gap: '1rem',
+            alignItems: 'center',
+            flexWrap: 'wrap'
+          }}>
+            <label style={{ fontSize: '0.8rem', color: '#374151', fontWeight: 500 }}>From:</label>
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              max={customEnd || formatDateInput(new Date())}
+              style={{
+                padding: '0.4rem 0.75rem',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontSize: '0.8rem'
+              }}
+            />
+            <label style={{ fontSize: '0.8rem', color: '#374151', fontWeight: 500 }}>To:</label>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              min={customStart}
+              max={formatDateInput(new Date())}
+              style={{
+                padding: '0.4rem 0.75rem',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontSize: '0.8rem'
+              }}
+            />
+            <button
+              onClick={fetchData}
+              disabled={!customStart || !customEnd || !isDateRangeValid(customStart, customEnd)}
+              style={{
+                padding: '0.4rem 1rem',
+                backgroundColor: customStart && customEnd && isDateRangeValid(customStart, customEnd) ? '#1d4ed8' : '#94a3b8',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: customStart && customEnd && isDateRangeValid(customStart, customEnd) ? 'pointer' : 'not-allowed',
+                fontSize: '0.8rem',
+                fontWeight: 500
+              }}
+            >
+              Apply
+            </button>
+            {getDateRangeError(customStart, customEnd) && (
+              <span style={{ color: '#dc2626', fontSize: '0.75rem', fontWeight: 500 }}>
+                {getDateRangeError(customStart, customEnd)}
+              </span>
+            )}
           </div>
         )}
+
+        {/* Daily Stats Charts */}
+        {summary && summary.daily_stats.length > 0 && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '1rem',
+            marginBottom: '1.25rem'
+          }}>
+            {/* Apps/Day Chart */}
+            {(() => {
+              if (hourlyLoading) {
+                return <ChartLoadingState />;
+              }
+              if (datePreset === '1d' && last24hStats) {
+                return (
+                  <MiniChart
+                    title="Apps (Last 24h)"
+                    value={`Total: ${last24hStats.hourly_stats.reduce((sum, h) => sum + h.apps, 0)}`}
+                    valueColor="#3b82f6"
+                    data={buildRolling24hChartData(last24hStats.hourly_stats, s => s.apps, (h, s) => `${h}h ago: ${s.apps} apps`)}
+                    barColor="#60a5fa"
+                  />
+                );
+              }
+              if (hourlyData) {
+                return (
+                  <MiniChart
+                    title="Apps/Hour"
+                    value={`Total: ${hourlyData.hourly_stats.reduce((sum, h) => sum + h.apps, 0)}`}
+                    valueColor="#3b82f6"
+                    data={buildHourlyChartData(hourlyData.hourly_stats, s => s.apps, (h, s) => `${h}:00 - ${s.apps} apps`)}
+                    barColor="#60a5fa"
+                    showBack={true}
+                    backAction={() => setHourlyData(null)}
+                  />
+                );
+              }
+              return (
+                <MiniChart
+                  title="Apps/Day"
+                  value={`Avg: ${summary.apps_per_day.toFixed(1)}`}
+                  valueColor="#3b82f6"
+                  data={buildDailyChartData(summary.daily_stats, s => s.apps, (d, s) => `${formatShortDay(d)}: ${s.apps} apps`, formatShortDay)}
+                  barColor="#3b82f6"
+                  barColorLight="#60a5fa"
+                  onClick={(i) => fetchHourlyData(summary.daily_stats[i].date)}
+                />
+              );
+            })()}
+
+            {/* Avg Cost/App Chart */}
+            {(() => {
+              if (datePreset === '1d' && last24hStats) {
+                const totalCost = last24hStats.hourly_stats.reduce((sum, h) => sum + h.cost, 0);
+                const totalApps = last24hStats.hourly_stats.reduce((sum, h) => sum + h.apps, 0);
+                const avgCost = totalApps > 0 ? totalCost / totalApps : 0;
+                return (
+                  <MiniChart
+                    title="Avg Cost/App (Last 24h)"
+                    value={`Avg: ${formatCost(avgCost)}`}
+                    valueColor="#059669"
+                    data={buildRolling24hChartData(last24hStats.hourly_stats, s => s.apps > 0 ? s.cost / s.apps : 0, (h, s) => `${h}h ago: ${formatCost(s.apps > 0 ? s.cost / s.apps : 0)} (${s.apps} apps)`)}
+                    barColor="#10b981"
+                  />
+                );
+              }
+              return (
+                <MiniChart
+                  title="Avg Cost/App"
+                  value={`Avg: ${formatCost(summary.avg_cost_per_app)}`}
+                  valueColor="#059669"
+                  data={buildDailyChartData(summary.daily_stats, s => s.avg_cost_per_app, (d, s) => `${formatShortDay(d)}: ${formatCost(s.avg_cost_per_app)}`, formatShortDay)}
+                  barColor="#059669"
+                  barColorLight="#10b981"
+                />
+              );
+            })()}
+
+            {/* Avg Steps/Run Chart */}
+            {(() => {
+              if (datePreset === '1d' && last24hStats) {
+                const totalSteps = last24hStats.hourly_stats.reduce((sum, h) => sum + h.steps, 0);
+                const totalRuns = last24hStats.hourly_stats.reduce((sum, h) => sum + h.runs, 0);
+                const avgSteps = totalRuns > 0 ? totalSteps / totalRuns : 0;
+                return (
+                  <MiniChart
+                    title="Avg Steps/Run (Last 24h)"
+                    value={`Avg: ${avgSteps.toFixed(1)}`}
+                    valueColor="#8b5cf6"
+                    data={buildRolling24hChartData(last24hStats.hourly_stats, s => s.runs > 0 ? s.steps / s.runs : 0, (h, s) => `${h}h ago: ${(s.runs > 0 ? s.steps / s.runs : 0).toFixed(1)} steps/run (${s.runs} runs)`)}
+                    barColor="#a78bfa"
+                  />
+                );
+              }
+              return (
+                <MiniChart
+                  title="Avg Steps/Run"
+                  value={`Avg: ${(summary.daily_stats.reduce((sum, d) => sum + d.avg_steps_per_run, 0) / summary.daily_stats.length).toFixed(1)}`}
+                  valueColor="#8b5cf6"
+                  data={buildDailyChartData(summary.daily_stats, s => s.avg_steps_per_run, (d, s) => `${formatShortDay(d)}: ${s.avg_steps_per_run.toFixed(1)} steps/run`, formatShortDay)}
+                  barColor="#8b5cf6"
+                  barColorLight="#a78bfa"
+                />
+              );
+            })()}
+
+            {/* WebSocket Errors/Day Chart */}
+            {(() => {
+              if (hourlyWsErrorLoading) {
+                return <ChartLoadingState />;
+              }
+              if (datePreset === '1d' && last24hWsErrors) {
+                return (
+                  <MiniChart
+                    title="WS Errors (Last 24h)"
+                    value={`Total: ${last24hWsErrors.hourly_stats.reduce((sum, h) => sum + h.errors, 0)}`}
+                    valueColor="#dc2626"
+                    data={buildRolling24hChartData(last24hWsErrors.hourly_stats, s => s.errors, (h, s) => `${h}h ago: ${s.errors} WS errors`)}
+                    barColor="#f87171"
+                  />
+                );
+              }
+              if (hourlyWsErrorData) {
+                return (
+                  <MiniChart
+                    title="WS Errors/Hour"
+                    value={`Total: ${hourlyWsErrorData.hourly_stats.reduce((sum, h) => sum + h.errors, 0)}`}
+                    valueColor="#dc2626"
+                    data={buildHourlyChartData(hourlyWsErrorData.hourly_stats, s => s.errors, (h, s) => `${h}:00 - ${s.errors} WS errors`)}
+                    barColor="#f87171"
+                    showBack={true}
+                    backAction={() => setHourlyWsErrorData(null)}
+                  />
+                );
+              }
+              if (errorStats?.websocket?.daily_stats && errorStats.websocket.daily_stats.length > 0) {
+                return (
+                  <MiniChart
+                    title="WS Errors/Day"
+                    value={`Total: ${errorStats.websocket.total}`}
+                    valueColor="#dc2626"
+                    data={buildDailyChartData(errorStats.websocket.daily_stats, s => s.errors, (d, s) => `${formatShortDay(d)}: ${s.errors} WS errors`, formatShortDay)}
+                    barColor="#dc2626"
+                    barColorLight="#f87171"
+                    onClick={(i) => fetchHourlyWsErrorData(errorStats.websocket.daily_stats[i].date)}
+                  />
+                );
+              }
+              return <ChartEmptyState message="No WS error data" />;
+            })()}
+
+            {/* Budget Errors/Day Chart */}
+            {(() => {
+              if (hourlyBudgetErrorLoading) {
+                return <ChartLoadingState />;
+              }
+              if (datePreset === '1d' && last24hBudgetErrors) {
+                return (
+                  <MiniChart
+                    title="Budget Errors (Last 24h)"
+                    value={`Total: ${last24hBudgetErrors.hourly_stats.reduce((sum, h) => sum + h.errors, 0)}`}
+                    valueColor="#f59e0b"
+                    data={buildRolling24hChartData(last24hBudgetErrors.hourly_stats, s => s.errors, (h, s) => `${h}h ago: ${s.errors} budget errors`)}
+                    barColor="#fbbf24"
+                  />
+                );
+              }
+              if (hourlyBudgetErrorData) {
+                return (
+                  <MiniChart
+                    title="Budget Errors/Hour"
+                    value={`Total: ${hourlyBudgetErrorData.hourly_stats.reduce((sum, h) => sum + h.errors, 0)}`}
+                    valueColor="#f59e0b"
+                    data={buildHourlyChartData(hourlyBudgetErrorData.hourly_stats, s => s.errors, (h, s) => `${h}:00 - ${s.errors} budget errors`)}
+                    barColor="#fbbf24"
+                    showBack={true}
+                    backAction={() => setHourlyBudgetErrorData(null)}
+                  />
+                );
+              }
+              if (errorStats?.budget?.daily_stats && errorStats.budget.daily_stats.length > 0) {
+                return (
+                  <MiniChart
+                    title="Budget Errors/Day"
+                    value={`Total: ${errorStats.budget.total}`}
+                    valueColor="#f59e0b"
+                    data={buildDailyChartData(errorStats.budget.daily_stats, s => s.errors, (d, s) => `${formatShortDay(d)}: ${s.errors} budget errors`, formatShortDay)}
+                    barColor="#f59e0b"
+                    barColorLight="#fbbf24"
+                    onClick={(i) => fetchHourlyBudgetErrorData(errorStats.budget.daily_stats[i].date)}
+                  />
+                );
+              }
+              return <ChartEmptyState message="No budget error data" />;
+            })()}
+
+            {/* Summarizations Chart */}
+            {(() => {
+              if (hourlySummarizationLoading) {
+                return <ChartLoadingState />;
+              }
+              if (datePreset === '1d' && last24hSummarizations) {
+                return (
+                  <MiniChart
+                    title="Summarizations (Last 24h)"
+                    value={`Total: ${last24hSummarizations.hourly_stats.reduce((sum, h) => sum + h.total, 0)}`}
+                    valueColor="#0ea5e9"
+                    data={buildRolling24hChartData(last24hSummarizations.hourly_stats, s => s.total, (h, s) => `${h}h ago: ${s.total} (${s.failed} failed)`)}
+                    barColor="#38bdf8"
+                  />
+                );
+              }
+              if (hourlySummarizationData) {
+                return (
+                  <MiniChart
+                    title="Summarizations/Hour"
+                    value={`Total: ${hourlySummarizationData.hourly_stats.reduce((sum, h) => sum + h.total, 0)}`}
+                    valueColor="#0ea5e9"
+                    data={buildHourlyChartData(hourlySummarizationData.hourly_stats, s => s.total, (h, s) => `${h}:00 - ${s.total} (${s.failed} failed)`)}
+                    barColor="#38bdf8"
+                    showBack={true}
+                    backAction={() => setHourlySummarizationData(null)}
+                  />
+                );
+              }
+              if (summarizationStats?.daily_stats && summarizationStats.daily_stats.length > 0) {
+                return (
+                  <MiniChart
+                    title="Summarizations/Day"
+                    value={`Total: ${summarizationStats.total}`}
+                    valueColor="#0ea5e9"
+                    data={buildDailyChartData(summarizationStats.daily_stats, s => s.total, (d, s) => `${formatShortDay(d)}: ${s.total} (${s.failed} failed)`, formatShortDay)}
+                    barColor="#0ea5e9"
+                    barColorLight="#38bdf8"
+                    onClick={(i) => fetchHourlySummarizationData(summarizationStats.daily_stats[i].date)}
+                  />
+                );
+              }
+              return <ChartEmptyState message="No summarization data" />;
+            })()}
+
+            {/* Publish Success Rate Chart */}
+            {(() => {
+              const calcRate = (successes: number, begins: number) => begins > 0 ? Math.round((successes / begins) * 100) : 0;
+
+              if (hourlyPublishLoading) {
+                return <ChartLoadingState />;
+              }
+              if (hourlyPublishData?.hourly_stats) {
+                const hourlyStats = hourlyPublishData.hourly_stats.map(h => ({
+                  hour: new Date(h.hour).getHours(),
+                  begins: h.begins,
+                  successes: h.successes,
+                  failures: h.failures,
+                  rate: calcRate(h.successes, h.begins)
+                }));
+                const totalBegins = hourlyStats.reduce((a, h) => a + h.begins, 0);
+                const totalSuccesses = hourlyStats.reduce((a, h) => a + h.successes, 0);
+                return (
+                  <MiniChart
+                    title={`Publish Rate/Hour (${hourlyPublishData.date.split('T')[0]})`}
+                    value={`${calcRate(totalSuccesses, totalBegins)}% (${totalSuccesses}/${totalBegins})`}
+                    valueColor="#22c55e"
+                    data={buildHourlyChartData(hourlyStats, h => h.rate, (hr, h) => `${hr}:00 - ${h.rate}% (${h.successes}/${h.begins})`)}
+                    barColor="#22c55e"
+                    barColorLight="#4ade80"
+                    showBack
+                    backAction={() => setHourlyPublishData(null)}
+                  />
+                );
+              }
+              if (datePreset === '1d' && last24hPublish?.hourly_stats) {
+                const totalBegins = last24hPublish.hourly_stats.reduce((a, h) => a + h.begins, 0);
+                const totalSuccesses = last24hPublish.hourly_stats.reduce((a, h) => a + h.successes, 0);
+                const overallRate = calcRate(totalSuccesses, totalBegins);
+                return (
+                  <MiniChart
+                    title="Publish Rate/24h"
+                    value={`${overallRate}% (${totalSuccesses}/${totalBegins})`}
+                    valueColor="#22c55e"
+                    data={buildRolling24hChartData(last24hPublish.hourly_stats, h => calcRate(h.successes, h.begins), (hr, s) => `${hr}h ago: ${calcRate(s.successes, s.begins)}% (${s.successes}/${s.begins})`)}
+                    barColor="#22c55e"
+                    barColorLight="#4ade80"
+                  />
+                );
+              }
+              if (publishStats?.daily_stats && publishStats.daily_stats.length > 0) {
+                const totalBegins = publishStats.daily_stats.reduce((a, s) => a + s.begins, 0);
+                const totalSuccesses = publishStats.successes;
+                const overallRate = calcRate(totalSuccesses, totalBegins);
+                return (
+                  <MiniChart
+                    title="Publish Rate/Day"
+                    value={`${overallRate}% (${totalSuccesses}/${totalBegins})`}
+                    valueColor="#22c55e"
+                    data={buildDailyChartData(publishStats.daily_stats, s => calcRate(s.successes, s.begins), (d, s) => `${formatShortDay(d)}: ${calcRate(s.successes, s.begins)}% (${s.successes}/${s.begins})`, formatShortDay)}
+                    barColor="#22c55e"
+                    barColorLight="#4ade80"
+                    onClick={(i) => fetchHourlyPublishData(publishStats.daily_stats[i].date)}
+                  />
+                );
+              }
+              return <ChartEmptyState message="No publish data" />;
+            })()}
+
+            {/* Client Errors Chart */}
+            {(() => {
+              if (hourlyClientErrorLoading) {
+                return <ChartLoadingState />;
+              }
+              if (hourlyClientErrorData?.hourly_stats) {
+                const total = hourlyClientErrorData.hourly_stats.reduce((a, h) => a + h.errors, 0);
+                return (
+                  <MiniChart
+                    title={`CS Errors/Hour`}
+                    value={`${total.toLocaleString()}`}
+                    valueColor="#f97316"
+                    data={buildHourlyChartData(hourlyClientErrorData.hourly_stats, h => h.errors, (hr, h) => `${hr}:00 - ${h.errors} errors`)}
+                    barColor="#f97316"
+                    barColorLight="#fb923c"
+                    showBack
+                    backAction={() => setHourlyClientErrorData(null)}
+                  />
+                );
+              }
+              if (datePreset === '1d' && last24hClientErrors?.hourly_stats) {
+                const total = last24hClientErrors.hourly_stats.reduce((a, h) => a + h.errors, 0);
+                return (
+                  <MiniChart
+                    title="CS Errors/24h"
+                    value={`${total.toLocaleString()}`}
+                    valueColor="#f97316"
+                    data={buildRolling24hChartData(last24hClientErrors.hourly_stats, h => h.errors, (hr, s) => `${hr}h ago: ${s.errors} errors`)}
+                    barColor="#f97316"
+                    barColorLight="#fb923c"
+                  />
+                );
+              }
+              if (clientErrorStats?.daily_stats && clientErrorStats.daily_stats.length > 0) {
+                return (
+                  <MiniChart
+                    title="CS Errors/Day"
+                    value={`${clientErrorStats.total.toLocaleString()}`}
+                    valueColor="#f97316"
+                    data={buildDailyChartData(clientErrorStats.daily_stats, s => s.errors, (d, s) => `${formatShortDay(d)}: ${s.errors} errors`, formatShortDay)}
+                    barColor="#f97316"
+                    barColorLight="#fb923c"
+                    onClick={(i) => fetchHourlyClientErrorData(clientErrorStats.daily_stats[i].date)}
+                  />
+                );
+              }
+              return <ChartEmptyState message="No client error data" />;
+            })()}
+
+            {/* Langfuse Metrics - 3 separate bar charts */}
+            <LangfuseMetricCards fromTimestamp={effectiveDateRange.start} toTimestamp={effectiveDateRange.end} />
+          </div>
+        )}
+
+        {/* Note about apps table */}
+        <div style={{
+          backgroundColor: 'rgba(255,255,255,0.97)',
+          padding: '1.5rem',
+          borderRadius: '12px',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+          textAlign: 'center'
+        }}>
+          <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
+            Per-app details view has been integrated into the <a href="/" style={{ color: '#3b82f6' }}>Dashboard</a> home view
+          </p>
+        </div>
       </div>
     </div>
   );

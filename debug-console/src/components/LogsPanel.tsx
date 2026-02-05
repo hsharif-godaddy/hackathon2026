@@ -4,12 +4,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import LogDetailPanel from './LogDetailPanel';
 
-const ERROR_WARN_LEVELS = ['ERROR', 'WARN'];
-
 export interface LogSource {
   id: string;
   name: string;
   description: string;
+  kibanaUrl?: string;
 }
 
 export interface LogEntry {
@@ -123,19 +122,19 @@ function safeRender(value: unknown): string {
 interface LogsPanelProps {
   sources: LogSource[];
   defaultSource?: string;
-  isWidget?: boolean;
   globalAppId?: string;
-  onAppIdClick?: (appId: string) => void;
   // Central filter controls
   timeRange?: string;
   query?: string;
-  showAllLogs?: boolean;
+  // Refresh control
+  refreshKey?: number;
+  onRefresh?: () => void;
 }
 
 const INITIAL_COLUMN_WIDTHS = {
   timestamp: 160,
   level: 80,
-  appId: 120,
+  customerId: 140,
   event: 200
 };
 
@@ -144,25 +143,25 @@ const SOURCE_FIELD_MAPPINGS: Record<string, {
   idField: string;
   idLabel: string;
   getIdValue: (log: LogEntry) => string | undefined;
-  supportsAppIdFilter: boolean;
+  appIdFilterMode: 'field' | 'query' | 'none'; // 'field' = filter by specific field, 'query' = free-text search, 'none' = no filter
 }> = {
   'airo-agents': {
     idField: 'appId',
     idLabel: 'App ID',
     getIdValue: (log) => log.appId,
-    supportsAppIdFilter: true
+    appIdFilterMode: 'field'
   },
   'airo-app': {
     idField: 'customerId',
     idLabel: 'Customer ID',
-    getIdValue: (log) => (log.raw?.customerId as string) || (log.raw?.['customer.id'] as string) || (log.raw?.['user.id'] as string),
-    supportsAppIdFilter: false
+    getIdValue: (log) => (log.raw?.customerId as string) || (log.raw?.['customer.id'] as string) || (log.raw?.['user.id'] as string) || ((log.raw?.data as Record<string, unknown>)?.customerId as string) || undefined,
+    appIdFilterMode: 'field'
   },
   'control_plane': {
     idField: 'appId',
     idLabel: 'App ID',
     getIdValue: (log) => log.appId,
-    supportsAppIdFilter: true
+    appIdFilterMode: 'field'
   }
 };
 
@@ -170,18 +169,17 @@ const DEFAULT_FIELD_MAPPING = {
   idField: 'appId',
   idLabel: 'App ID',
   getIdValue: (log: LogEntry) => log.appId,
-  supportsAppIdFilter: true
+  appIdFilterMode: 'field' as const
 };
 
 export default function LogsPanel({
   sources,
   defaultSource,
-  isWidget,
   globalAppId,
-  onAppIdClick: _onAppIdClick,
   timeRange = '1h',
   query = '',
-  showAllLogs = false
+  refreshKey = 0,
+  onRefresh
 }: LogsPanelProps) {
   const [selectedSource, setSelectedSource] = useState<string>(defaultSource || sources[0]?.id || '');
   const [selectedLogIndex, setSelectedLogIndex] = useState<number | null>(null);
@@ -190,11 +188,10 @@ export default function LogsPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
+  const [includeWarn, setIncludeWarn] = useState(false);
+  const [includeInfo, setIncludeInfo] = useState(false);
   const PAGE_SIZE = 50;
-  const [panelHeight, setPanelHeight] = useState<number | null>(null);
-  const [isResizing, setIsResizing] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
-  const resizeHandleRef = useRef<HTMLDivElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const selectedRowRef = useRef<HTMLTableRowElement>(null);
 
@@ -263,14 +260,12 @@ export default function LogsPanel({
     };
   }, [handleColumnMouseMove, handleColumnMouseUp]);
 
-  const initializedRef = useRef(false);
-
+  // Update selectedSource when defaultSource changes (e.g., switching tabs)
   useEffect(() => {
-    if (defaultSource && !initializedRef.current) {
+    if (defaultSource && defaultSource !== selectedSource) {
       setSelectedSource(defaultSource);
-      initializedRef.current = true;
     }
-  }, [defaultSource]);
+  }, [defaultSource, selectedSource]);
 
   const fetchLogs = useCallback(async function fetchLogsInternal() {
     if (!selectedSource) return;
@@ -284,16 +279,27 @@ export default function LogsPanel({
       urlParams.set('size', PAGE_SIZE.toString());
       urlParams.set('from', (page * PAGE_SIZE).toString());
 
-      if (!showAllLogs) {
-        urlParams.set('levels', ERROR_WARN_LEVELS.join(','));
+      // Build levels filter: always include ERROR, optionally WARN and INFO
+      const levels = ['ERROR'];
+      if (includeWarn) levels.push('WARN');
+      if (includeInfo) levels.push('INFO');
+      urlParams.set('levels', levels.join(','));
+
+      // Handle appId filtering based on mode
+      if (globalAppId && fieldMapping.appIdFilterMode !== 'none') {
+        if (fieldMapping.appIdFilterMode === 'field') {
+          // Filter by specific field
+          urlParams.set('appId', globalAppId);
+        } else if (fieldMapping.appIdFilterMode === 'query') {
+          // Add to free-text query search
+          const searchQuery = query ? `${query} ${globalAppId}` : globalAppId;
+          urlParams.set('query', searchQuery);
+        }
       }
 
-      if (query) {
+      // Add any additional query terms (if not already added above)
+      if (query && fieldMapping.appIdFilterMode !== 'query') {
         urlParams.set('query', query);
-      }
-
-      if (globalAppId && fieldMapping.supportsAppIdFilter) {
-        urlParams.set('appId', globalAppId);
       }
 
       if (timeRange !== 'all') {
@@ -351,7 +357,7 @@ export default function LogsPanel({
     } finally {
       setLoading(false);
     }
-  }, [selectedSource, showAllLogs, timeRange, query, globalAppId, page, fieldMapping]);
+  }, [selectedSource, includeWarn, includeInfo, timeRange, query, globalAppId, page, fieldMapping, refreshKey]);
 
   useEffect(() => {
     fetchLogs();
@@ -359,7 +365,8 @@ export default function LogsPanel({
 
   useEffect(() => {
     setPage(0);
-  }, [selectedSource, showAllLogs, query, timeRange, globalAppId]);
+    setAccumulatedLogs([]);
+  }, [selectedSource, includeWarn, includeInfo, query, timeRange, globalAppId, refreshKey]);
 
   const loadMore = () => {
     if (!loading && accumulatedLogs.length < total) {
@@ -420,44 +427,6 @@ export default function LogsPanel({
 
   const selectedLog = selectedLogIndex !== null ? accumulatedLogs[selectedLogIndex] : null;
 
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing || !panelRef.current) return;
-
-      const rect = panelRef.current.getBoundingClientRect();
-      const newHeight = e.clientY - rect.top;
-      const minHeight = 300;
-      const maxHeight = window.innerHeight - rect.top - 100;
-
-      if (newHeight >= minHeight && newHeight <= maxHeight) {
-        setPanelHeight(newHeight);
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = 'row-resize';
-      document.body.style.userSelect = 'none';
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, [isResizing]);
-
-  const handleResizeStart = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-  };
-
   if (sources.length === 0) {
     return (
       <div style={{
@@ -476,61 +445,97 @@ export default function LogsPanel({
       ref={panelRef}
       style={{
         backgroundColor: 'white',
-        padding: isWidget ? '1rem' : '1.5rem',
+        padding: '1rem',
         borderRadius: '8px',
-        boxShadow: isWidget ? 'none' : '0 2px 8px rgba(0,0,0,0.1)',
-        marginBottom: isWidget ? '0' : '2rem',
-        border: '2px solid #9ca3af',
-        height: panelHeight ? `${panelHeight}px` : 'auto',
-        maxHeight: panelHeight ? `${panelHeight}px` : 'none',
+        border: '1px solid #e5e7eb',
         display: 'flex',
         flexDirection: 'column',
-        position: 'relative',
-        overflow: panelHeight ? 'hidden' : 'visible'
+        position: 'relative'
       }}
     >
+      {/* Header with level filters and refresh button */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: '1.5rem',
-        paddingLeft: isWidget ? '36px' : '0'
+        marginBottom: '0.75rem',
+        flexWrap: 'wrap',
+        gap: '0.5rem'
       }}>
-        <div>
-          <h2 style={{
-            margin: '0 0 0.25rem 0',
-            fontSize: isWidget ? '1rem' : '1.125rem',
-            fontWeight: 600,
-            color: '#1a1a1a'
-          }}>
-            {isWidget ? sources.find(s => s.id === selectedSource)?.name || 'Logs' : 'Application Logs'}
-          </h2>
-          {!isWidget && (
-            <p style={{
-              margin: 0,
-              fontSize: '0.875rem',
-              color: '#666'
-            }}>
-              View logs from multiple Elasticsearch sources
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Stats bar */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        fontSize: '0.875rem',
-        marginBottom: '1rem',
-        color: '#6b7280'
-      }}>
-        <span>
+        <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
           Showing {accumulatedLogs.length} of {total.toLocaleString()} logs
           {selectedSource && ` from ${sources.find(s => s.id === selectedSource)?.name}`}
-          {globalAppId && fieldMapping.supportsAppIdFilter && ` for App: ${globalAppId}`}
+          {globalAppId && ` for App: ${globalAppId}`}
         </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          {(() => {
+            const currentSource = sources.find(s => s.id === selectedSource);
+            if (currentSource?.kibanaUrl) {
+              let query: string;
+              let dataViewId: string;
+
+              if (selectedSource === 'airo-agents') {
+                query = globalAppId ? `app_id:${globalAppId}` : '*';
+                dataViewId = '6b6e4be0-1f3d-4b22-b8f3-5270cd9cc2df';
+              } else {
+                query = globalAppId
+                  ? `KATANA_NAMESPACE:airobuilde AND data.appId:${globalAppId}`
+                  : 'KATANA_NAMESPACE:airobuilde';
+                dataViewId = 'logs-*';
+              }
+
+              const kibanaParams = `_g=(time:(from:now-24h,to:now))&_a=(dataSource:(dataViewId%3A%27${dataViewId}%27,type:dataView),query:(language:kuery,query:'${encodeURIComponent(query)}'))`;
+              return (
+                <a
+                  href={`${currentSource.kibanaUrl}/app/discover#/?${kibanaParams}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: '0.813rem', color: '#3b82f6', textDecoration: 'none' }}
+                >
+                  Kibana ↗
+                </a>
+              );
+            }
+            return null;
+          })()}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.813rem', color: '#6b7280', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={includeWarn}
+              onChange={(e) => setIncludeWarn(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            Warnings
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.813rem', color: '#6b7280', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={includeInfo}
+              onChange={(e) => setIncludeInfo(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            Info
+          </label>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              disabled={loading}
+              style={{
+                padding: '0.625rem 1.25rem',
+                backgroundColor: loading ? '#9ca3af' : '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              Refresh
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Error state */}
@@ -594,12 +599,11 @@ export default function LogsPanel({
       {accumulatedLogs.length > 0 && (
         <div style={{
           display: 'flex',
-          border: '1px solid #9ca3af',
+          border: '1px solid #e5e7eb',
           borderRadius: '8px',
           overflow: 'hidden',
-          flex: panelHeight ? '1 1 auto' : '0 0 auto',
-          minHeight: panelHeight ? '200px' : '400px',
-          maxHeight: panelHeight ? `${Math.max(200, panelHeight - 300)}px` : (isWidget ? '400px' : '600px')
+          minHeight: '300px',
+          maxHeight: '600px'
         }}>
           <div
             ref={tableContainerRef}
@@ -611,7 +615,7 @@ export default function LogsPanel({
           >
             <table style={{
               width: '100%',
-              fontSize: isWidget ? '0.75rem' : '0.875rem',
+              fontSize: '0.875rem',
               borderCollapse: 'collapse',
               tableLayout: 'fixed'
             }}>
@@ -625,7 +629,7 @@ export default function LogsPanel({
                 <tr>
                   <th style={{
                     textAlign: 'left',
-                    padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
+                    padding: '0.75rem 1rem',
                     fontWeight: 600,
                     width: `${columnWidths.timestamp}px`,
                     color: '#374151',
@@ -660,7 +664,7 @@ export default function LogsPanel({
                   </th>
                   <th style={{
                     textAlign: 'left',
-                    padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
+                    padding: '0.75rem 1rem',
                     fontWeight: 600,
                     width: `${columnWidths.level}px`,
                     color: '#374151',
@@ -693,44 +697,46 @@ export default function LogsPanel({
                       aria-orientation="vertical"
                     />
                   </th>
+                  {selectedSource === 'airo-app' && (
+                    <th style={{
+                      textAlign: 'left',
+                      padding: '0.75rem 1rem',
+                      fontWeight: 600,
+                      width: `${columnWidths.customerId}px`,
+                      color: '#374151',
+                      position: 'relative',
+                      borderRight: '1px solid #e5e7eb'
+                    }}>
+                      Customer ID
+                      <button
+                        type="button"
+                        onMouseDown={(e) => handleColumnMouseDown('customerId', e)}
+                        onKeyDown={(e) => handleColumnKeyDown('customerId', e)}
+                        style={{
+                          position: 'absolute',
+                          right: -3,
+                          top: 0,
+                          bottom: 0,
+                          width: '6px',
+                          cursor: 'col-resize',
+                          backgroundColor: 'transparent',
+                          zIndex: 10,
+                          border: 'none',
+                          padding: 0
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                        onFocus={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
+                        onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                        aria-label="Resize customer ID column"
+                        role="separator"
+                        aria-orientation="vertical"
+                      />
+                    </th>
+                  )}
                   <th style={{
                     textAlign: 'left',
-                    padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
-                    fontWeight: 600,
-                    width: `${columnWidths.appId}px`,
-                    color: '#374151',
-                    position: 'relative',
-                    borderRight: '1px solid #e5e7eb'
-                  }}>
-                    {fieldMapping.idLabel}
-                    <button
-                      type="button"
-                      onMouseDown={(e) => handleColumnMouseDown('appId', e)}
-                      onKeyDown={(e) => handleColumnKeyDown('appId', e)}
-                      style={{
-                        position: 'absolute',
-                        right: -3,
-                        top: 0,
-                        bottom: 0,
-                        width: '6px',
-                        cursor: 'col-resize',
-                        backgroundColor: 'transparent',
-                        zIndex: 10,
-                        border: 'none',
-                        padding: 0
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                      onFocus={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
-                      onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                      aria-label="Resize ID column"
-                      role="separator"
-                      aria-orientation="vertical"
-                    />
-                  </th>
-                  <th style={{
-                    textAlign: 'left',
-                    padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
+                    padding: '0.75rem 1rem',
                     fontWeight: 600,
                     width: `${columnWidths.event}px`,
                     color: '#374151',
@@ -765,7 +771,7 @@ export default function LogsPanel({
                   </th>
                   <th style={{
                     textAlign: 'left',
-                    padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
+                    padding: '0.75rem 1rem',
                     fontWeight: 600,
                     color: '#374151'
                   }}>
@@ -800,33 +806,51 @@ export default function LogsPanel({
                       }}
                     >
                       <td style={{
-                        padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
+                        padding: '0.75rem 1rem',
                         fontFamily: 'monospace',
                         whiteSpace: 'nowrap',
-                        fontSize: isWidget ? '0.7rem' : '0.75rem',
+                        fontSize: '0.75rem',
                         color: isSelected ? '#1e40af' : '#6b7280'
                       }}>
                         {formatTimestamp(log.timestamp)}
                       </td>
-                      <td style={{ padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem' }}>
+                      <td style={{ padding: '0.75rem 1rem' }}>
                         <span style={getLogLevelBadgeStyle(log.level || '')}>
                           {(log.level || '').toString().toLowerCase()}
                         </span>
                       </td>
+                      {selectedSource === 'airo-app' && (() => {
+                        const customerId = fieldMapping.getIdValue(log);
+                        return (
+                          <td style={{
+                            padding: '0.75rem 1rem',
+                            fontFamily: 'monospace',
+                            fontSize: '0.75rem',
+                            maxWidth: '140px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }} title={safeRender(customerId)}>
+                            {customerId ? (
+                              <a
+                                href={`https://crm.int.godaddy.com/app/_/customer/search/results?shopperId=${encodeURIComponent(customerId)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                style={{ color: '#3b82f6', textDecoration: 'none' }}
+                              >
+                                {customerId}
+                              </a>
+                            ) : '-'}
+                          </td>
+                        );
+                      })()}
                       <td style={{
-                        padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
-                        fontFamily: 'monospace',
-                        fontSize: isWidget ? '0.7rem' : '0.75rem',
-                        color: '#6b7280'
-                      }}>
-                        {safeRender(fieldMapping.getIdValue(log)) || '-'}
-                      </td>
-                      <td style={{
-                        padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
+                        padding: '0.75rem 1rem',
                         fontFamily: 'monospace',
                         fontSize: '0.75rem',
                         color: '#6b7280',
-                        maxWidth: isWidget ? '100px' : '200px',
+                        maxWidth: '200px',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap'
@@ -834,15 +858,17 @@ export default function LogsPanel({
                         {safeRender(log.event)}
                       </td>
                       <td style={{
-                        padding: isWidget ? '0.5rem 0.75rem' : '0.75rem 1rem',
-                        fontSize: isWidget ? '0.75rem' : '0.875rem',
-                        maxWidth: isWidget ? '200px' : '400px',
+                        padding: '0.75rem 1rem',
+                        fontSize: '0.875rem',
+                        maxWidth: '400px',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
                         color: isSelected ? '#1e40af' : 'inherit'
                       }}>
-                        {safeRender(log?.data?.message || log.message)}
+                        {log.event === 'http.request.error' && log.data?.url
+                          ? `${safeRender(log.data.url)} - ${safeRender(log?.data?.message || log.message)}`
+                          : safeRender(log?.data?.message || log.message)}
                       </td>
                     </tr>
                   );
@@ -917,51 +943,6 @@ export default function LogsPanel({
             }
           `}</style>
         </>
-      )}
-
-      {/* Resize handle - only show when not in widget mode */}
-      {!isWidget && (
-        <div
-          ref={resizeHandleRef}
-          onMouseDown={handleResizeStart}
-          style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: '12px',
-            cursor: 'row-resize',
-            backgroundColor: 'transparent',
-            borderTop: '2px solid #9ca3af',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10,
-            transition: 'background-color 0.2s, border-color 0.2s'
-          }}
-          onMouseEnter={(e) => {
-            if (!isResizing) {
-              e.currentTarget.style.backgroundColor = '#f3f4f6';
-              e.currentTarget.style.borderTopColor = '#3b82f6';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isResizing) {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.borderTopColor = '#9ca3af';
-            }
-          }}
-        >
-          <div
-            style={{
-              width: '50px',
-              height: '4px',
-              backgroundColor: isResizing ? '#3b82f6' : '#9ca3af',
-              borderRadius: '2px',
-              transition: isResizing ? 'none' : 'background-color 0.2s'
-            }}
-          />
-        </div>
       )}
     </div>
   );

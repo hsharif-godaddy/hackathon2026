@@ -21,57 +21,71 @@ function isLocalEnv(): boolean {
          process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
 }
 
+// Module-level cache to prevent duplicate auth checks
+let cachedAuthState: AuthState | null = null;
+let authCheckPromise: Promise<AuthState> | null = null;
+
+async function checkAuthOnce(): Promise<AuthState> {
+  if (cachedAuthState) return cachedAuthState;
+  if (authCheckPromise) return authCheckPromise;
+
+  // Bypass auth in local development
+  if (isLocalEnv()) {
+    cachedAuthState = {
+      isAuthenticated: true,
+      isLoading: false,
+      user: { shopperId: 'local-dev', cid: 'local-dev', email: 'local-dev@localhost' }
+    };
+    return cachedAuthState;
+  }
+
+  authCheckPromise = fetch('/api/auth/validate')
+    .then(async response => {
+      if (response.ok) {
+        const data = await response.json();
+        cachedAuthState = {
+          isAuthenticated: data.valid,
+          isLoading: false,
+          user: data.payload ? {
+            shopperId: data.payload.shopperId,
+            cid: data.payload.cid,
+            email: data.payload.email
+          } : undefined
+        };
+      } else {
+        cachedAuthState = { isAuthenticated: false, isLoading: false };
+      }
+      return cachedAuthState;
+    })
+    .catch(() => {
+      cachedAuthState = { isAuthenticated: false, isLoading: false };
+      return cachedAuthState;
+    });
+
+  return authCheckPromise;
+}
+
+// Get initial state synchronously for local env
+function getInitialState(): AuthState {
+  if (typeof window !== 'undefined' && isLocalEnv()) {
+    return {
+      isAuthenticated: true,
+      isLoading: false,
+      user: { shopperId: 'local-dev', cid: 'local-dev', email: 'local-dev@localhost' }
+    };
+  }
+  return { isAuthenticated: false, isLoading: true };
+}
+
 export function useAuth(): AuthState {
-  const [authState, setAuthState] = useState<AuthState>({
-    isAuthenticated: false,
-    isLoading: true
-  });
+  const [authState, setAuthState] = useState<AuthState>(getInitialState);
 
   useEffect(() => {
-    async function checkAuth() {
-      // Bypass auth in local development
-      if (isLocalEnv()) {
-        setAuthState({
-          isAuthenticated: true,
-          isLoading: false,
-          user: {
-            shopperId: 'local-dev',
-            cid: 'local-dev',
-            email: 'local-dev@localhost'
-          }
-        });
-        return;
-      }
+    // Skip if already authenticated (local env)
+    if (authState.isAuthenticated && !authState.isLoading) return;
 
-      try {
-        const response = await fetch('/api/auth/validate');
-        if (response.ok) {
-          const data = await response.json();
-          setAuthState({
-            isAuthenticated: data.valid,
-            isLoading: false,
-            user: data.payload ? {
-              shopperId: data.payload.shopperId,
-              cid: data.payload.cid,
-              email: data.payload.email
-            } : undefined
-          });
-        } else {
-          setAuthState({
-            isAuthenticated: false,
-            isLoading: false
-          });
-        }
-      } catch (_error) {
-        setAuthState({
-          isAuthenticated: false,
-          isLoading: false
-        });
-      }
-    }
-
-    checkAuth();
-  }, []);
+    checkAuthOnce().then(setAuthState);
+  }, [authState.isAuthenticated, authState.isLoading]);
 
   return authState;
 }

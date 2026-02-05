@@ -11,11 +11,20 @@ export const GET = withAuth(async () => {
     const sources = getAllLogSources();
 
     return NextResponse.json({
-      sources: sources.map(source => ({
-        id: source.id,
-        name: source.name,
-        description: source.description
-      }))
+      sources: sources.map(source => {
+        // Derive Kibana URL from ES endpoint by replacing .es. with .kb.
+        let kibanaUrl: string | undefined;
+        if ((source.id === 'airo-app' || source.id === 'airo-agents') && source.endpoint) {
+          kibanaUrl = source.endpoint.replace('.es.', '.kb.');
+        }
+
+        return {
+          id: source.id,
+          name: source.name,
+          description: source.description,
+          kibanaUrl
+        };
+      })
     });
   } catch (error) {
     return NextResponse.json(

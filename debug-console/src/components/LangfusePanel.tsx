@@ -1,1373 +1,980 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 
-const TIME_RANGES = [
-  { label: 'Last 15 minutes', value: '15m' },
-  { label: 'Last 1 hour', value: '1h' },
-  { label: 'Last 6 hours', value: '6h' },
-  { label: 'Last 24 hours', value: '24h' },
-  { label: 'Last 7 days', value: '7d' },
-  { label: 'All time', value: 'all' }
-] as const;
+// Module-level cache for Langfuse config
+interface LangfuseConfig {
+  baseUrl: string | null;
+  projectId: string | null;
+}
+let cachedLangfuseConfig: LangfuseConfig | null = null;
+let configFetchPromise: Promise<LangfuseConfig | null> | null = null;
 
-function getTimeRangeStart(range: string): Date | null {
-  const now = new Date();
-  switch (range) {
-    case '15m':
-      return new Date(now.getTime() - 15 * 60 * 1000);
-    case '1h':
-      return new Date(now.getTime() - 60 * 60 * 1000);
-    case '6h':
-      return new Date(now.getTime() - 6 * 60 * 60 * 1000);
-    case '24h':
-      return new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    case '7d':
-      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    case 'all':
-    default:
-      return null;
-  }
+async function getLangfuseConfig(): Promise<LangfuseConfig | null> {
+  if (cachedLangfuseConfig) return cachedLangfuseConfig;
+  if (configFetchPromise) return configFetchPromise;
+
+  configFetchPromise = fetch('/api/langfuse/config')
+    .then(res => res.ok ? res.json() : null)
+    .then(data => {
+      cachedLangfuseConfig = {
+        baseUrl: data?.baseUrl || null,
+        projectId: data?.projectId || null
+      };
+      return cachedLangfuseConfig;
+    })
+    .catch(() => null);
+
+  return configFetchPromise;
 }
 
-interface LangfuseObservation {
+interface Message {
+  role: 'user' | 'assistant' | 'tool' | 'system';
+  content: string | null | Array<{ type: string; text?: string; toolCallId?: string; toolName?: string; result?: unknown; args?: unknown }>;
+}
+
+interface TraceInput {
+  system?: string;
+  prompt?: string;
+  messages?: Message[];
+  [key: string]: unknown;
+}
+
+interface TraceAttributes {
+  'ai.model.id'?: string;
+  'ai.model.provider'?: string;
+  'ai.usage.inputTokens'?: string;
+  'ai.usage.outputTokens'?: string;
+  'ai.usage.totalTokens'?: string;
+  'ai.usage.cachedInputTokens'?: string;
+  'ai.settings.temperature'?: string;
+  'ai.response.finishReason'?: string;
+  'ai.response.text'?: string;
+  'ai.response.toolCalls'?: string;
+  'session.id'?: string;
+  [key: string]: unknown;
+}
+
+interface TraceMetadata {
+  attributes?: TraceAttributes;
+  tools?: unknown[];
+  [key: string]: unknown;
+}
+
+interface Observation {
   id: string;
-  type: string;
   name: string;
-  startTime?: string;
-  endTime?: string | null;
+  type: string;
+  model?: string;
   input?: unknown;
   output?: unknown;
-  latency?: number | null;
-  model?: string | null;
+  startTime?: string;
+  endTime?: string;
+  promptTokens?: number;
+  completionTokens?: number;
   totalTokens?: number;
-  totalPrice?: number;
-  parentObservationId?: string | null;
+  calculatedInputCost?: number;
+  calculatedOutputCost?: number;
+  calculatedTotalCost?: number;
+  metadata?: {
+    attributes?: TraceAttributes;
+    [key: string]: unknown;
+  };
 }
 
-interface LangfuseTrace {
+interface Trace {
   id: string;
   name: string;
   timestamp: string;
-  sessionId: string | null;
-  userId: string | null;
-  latency: number | null;
-  totalCost: number;
-  metadata: Record<string, unknown>;
-  observations: string[] | LangfuseObservation[];
-  scores: Array<{
-    id: string;
-    name: string;
-    value: number;
-    source: string;
-    comment?: string;
-  }>;
+  input: TraceInput | string | null;
+  output: unknown;
+  metadata: TraceMetadata | null;
+  tags: string[];
+  observations?: Observation[];
 }
 
-interface LangfuseTracesResponse {
-  data: LangfuseTrace[];
-  meta: {
+interface Session {
+  sessionId: string;
+  traces: Trace[];
+  firstTrace: string;
+  lastTrace: string;
+  traceCount: number;
+}
+
+interface SessionsResponse {
+  userId: string;
+  sessions: Session[];
+  totalTraces: number;
+  pagination?: {
     page: number;
-    limit: number;
-    totalItems: number;
     totalPages: number;
+    hasMore: boolean;
   };
+}
+
+interface ESError {
+  timestamp: string;
+  type: 'error' | 'client_error';
+  message: string;
+  eventType?: string;
+  count: number;
+  firstSeen: string;
+  lastSeen: string;
+}
+
+interface ESErrorsResponse {
+  errors: ESError[];
+  totalErrors: number;
+  totalClientErrors: number;
+  uniqueErrors: number;
+}
+
+interface ToolCallInfo {
+  name: string;
+  args?: string;
+}
+
+interface ConversationItem {
+  id: string;
+  type: 'user' | 'assistant';
+  timestamp: string;
+  content: string;
+  agentName?: string;
+  traceId?: string;
+  sessionId?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  cachedTokens?: number;
+  cost?: number;
+  model?: string;
+  provider?: string;
+  temperature?: number;
+  finishReason?: string;
+  tools?: ToolCallInfo[];
+  systemPrompt?: string;
+  rawInput?: unknown;
+  rawOutput?: unknown;
+  isAgentHandoff?: boolean;
+  sourceAgent?: string;
 }
 
 interface LangfusePanelProps {
   globalAppId?: string;
-  onSessionClick?: (sessionId: string) => void;
-  langfuseBaseUrl?: string;
-  langfuseProjectId?: string;
+  refreshKey?: number;
+  onRefresh?: () => void;
 }
 
-function formatTimestamp(timestamp: string): string {
-  const date = new Date(timestamp);
-  return date.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  });
+function formatTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
-function formatLatency(ms: number | null): string {
-  if (ms === null || ms === 0) return '-';
-  if (ms < 1000) return `${ms.toFixed(0)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function extractConversationId(sessionId: string | null): string {
-  if (!sessionId) return '-';
-  // Extract conversation ID from "Conversation ID: xxx" format
-  const match = sessionId.match(/Conversation ID:\s*(.+)/);
-  return match ? match[1] : sessionId;
+function formatNumber(n: number): string {
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  return n.toString();
 }
 
-export default function LangfusePanel({ globalAppId, onSessionClick, langfuseBaseUrl, langfuseProjectId }: LangfusePanelProps) {
-  const [traces, setTraces] = useState<LangfuseTrace[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalItems, setTotalItems] = useState(0);
-  const [traceDetails, setTraceDetails] = useState<Record<string, LangfuseTrace>>({});
-  const [timeRange, setTimeRange] = useState<string>('6h');
-  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
-  const PAGE_SIZE = 10;
-
-  // Check if Langfuse links are available
-  const hasLangfuseLinks = !!(langfuseBaseUrl && langfuseProjectId);
-
-  // Generate Langfuse user (App ID) URL - links to user's traces page
-  const getLangfuseUserUrl = (userId: string): string | null => {
-    if (!hasLangfuseLinks) return null;
-    return `${langfuseBaseUrl}/project/${langfuseProjectId}/users/${userId}`;
-  };
-
-  // Generate Langfuse trace URL
-  const getLangfuseTraceUrl = (traceId: string): string | null => {
-    if (!hasLangfuseLinks) return null;
-    return `${langfuseBaseUrl}/project/${langfuseProjectId}/traces/${traceId}`;
-  };
-
-  const fetchTraces = useCallback(async () => {
-    // Only fetch when appId is present
-    if (!globalAppId) {
-      setTraces([]);
-      setTotalItems(0);
-      setTotalPages(1);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Build query params
-      const params = new URLSearchParams({
-        page: String(page),
-        limit: String(PAGE_SIZE)
-      });
-
-      // Add appId filter - API uses userId parameter for this
-      // See: https://api.reference.langfuse.com/#tag/trace/GET/api/public/traces
-      params.append('appId', globalAppId);
-
-      // Add time range filter
-      const startTime = getTimeRangeStart(timeRange);
-      if (startTime) {
-        params.append('fromTimestamp', startTime.toISOString());
-      }
-
-      const response = await fetch(`/api/langfuse/traces?${params}`);
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch traces: ${response.status}`);
-      }
-
-      const data: LangfuseTracesResponse = await response.json();
-      const traces = data.data || [];
-
-      setTraces(traces);
-      setTotalPages(data.meta?.totalPages || 1);
-      setTotalItems(data.meta?.totalItems || traces.length);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch traces');
-    } finally {
-      setLoading(false);
-    }
-  }, [page, globalAppId, timeRange]);
-
-  // Track which traces we've already attempted to prefetch
-  const prefetchedTraceIds = useRef<Set<string>>(new Set());
-  const prefetchAbortController = useRef<AbortController | null>(null);
-
-  const fetchTraceDetails = useCallback(async (traceId: string): Promise<boolean> => {
-    if (traceDetails[traceId]) return true;
-
-    try {
-      const response = await fetch(`/api/langfuse/traces/${traceId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setTraceDetails(prev => ({ ...prev, [traceId]: data }));
-        return true;
-      }
-    } catch (err) {
-      console.error('Failed to fetch trace details:', err);
-    }
-    return false;
-  }, [traceDetails]);
-
-  // Prefetch trace details for all visible traces in background
-  const prefetchTraceDetails = useCallback(async (traceIds: string[]) => {
-    // Cancel any ongoing prefetch
-    if (prefetchAbortController.current) {
-      prefetchAbortController.current.abort();
-    }
-    prefetchAbortController.current = new AbortController();
-
-    // Filter out already fetched or attempted traces
-    const idsToFetch = traceIds.filter(id =>
-      !traceDetails[id] && !prefetchedTraceIds.current.has(id)
-    );
-    if (idsToFetch.length === 0) return;
-
-    // Mark as attempted
-    idsToFetch.forEach(id => prefetchedTraceIds.current.add(id));
-
-    // Fetch in parallel with a small batch size to avoid overwhelming the server
-    const BATCH_SIZE = 3;
-    for (let i = 0; i < idsToFetch.length; i += BATCH_SIZE) {
-      // Check if aborted
-      if (prefetchAbortController.current?.signal.aborted) return;
-
-      const batch = idsToFetch.slice(i, i + BATCH_SIZE);
-      await Promise.all(batch.map(id => fetchTraceDetails(id)));
-
-      // Small delay between batches to be nice to the server
-      if (i + BATCH_SIZE < idsToFetch.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
-  }, [traceDetails, fetchTraceDetails]);
-
-  useEffect(() => {
-    // Clear prefetch tracking when fetching new traces
-    prefetchedTraceIds.current.clear();
-    fetchTraces();
-  }, [fetchTraces]);
-
-  // Prefetch details for all traces after they're loaded
-  useEffect(() => {
-    if (traces.length > 0 && !loading) {
-      const traceIds = traces.map(t => t.id);
-      prefetchTraceDetails(traceIds);
-    }
-
-    // Cleanup on unmount or when traces change
-    return () => {
-      if (prefetchAbortController.current) {
-        prefetchAbortController.current.abort();
-      }
-    };
-  }, [traces, loading, prefetchTraceDetails]);
-
-  // Fetch details immediately when drawer is opened (in case prefetch hasn't completed)
-  useEffect(() => {
-    if (selectedTraceId && !traceDetails[selectedTraceId]) {
-      fetchTraceDetails(selectedTraceId);
-    }
-  }, [selectedTraceId, traceDetails, fetchTraceDetails]);
-
-  // Memoized selected trace details
-  const selectedTraceDetails = useMemo(() => {
-    if (!selectedTraceId) return null;
-    return traceDetails[selectedTraceId] || traces.find(t => t.id === selectedTraceId) || null;
-  }, [selectedTraceId, traceDetails, traces]);
-
-  // Parse observations into categorized groups for the drawer
-  const parsedObservations = useMemo(() => {
-    if (!selectedTraceDetails?.observations || !Array.isArray(selectedTraceDetails.observations)) {
-      return { generations: [], toolCalls: [], spans: [] };
-    }
-
-    const generations: LangfuseObservation[] = [];
-    const toolCalls: LangfuseObservation[] = [];
-    const spans: LangfuseObservation[] = [];
-
-    for (const obs of selectedTraceDetails.observations) {
-      if (typeof obs === 'string') continue;
-      const observation = obs as LangfuseObservation;
-
-      if (observation.type === 'GENERATION') {
-        generations.push(observation);
-      } else if (observation.name?.toLowerCase().includes('tool') ||
-        observation.type === 'EVENT' ||
-        (observation.input && typeof observation.input === 'object' && 'tool' in (observation.input as Record<string, unknown>))) {
-        toolCalls.push(observation);
-      } else {
-        spans.push(observation);
-      }
-    }
-
-    return { generations, toolCalls, spans };
-  }, [selectedTraceDetails]);
-
-  // Extract full conversation messages from trace (all user and agent messages)
-  interface ConversationMessage {
-    role: 'user' | 'assistant' | 'system';
-    content: string;
+function getMessageContent(content: Message['content']): string | null {
+  if (!content) return null;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    const textPart = content.find(p => p.type === 'text' && p.text);
+    if (textPart && textPart.text) return textPart.text;
   }
+  return null;
+}
 
-  const conversationMessages = useMemo((): ConversationMessage[] => {
-    if (!parsedObservations.generations.length) {
-      return [];
-    }
+function extractConversationItems(sessions: Session[]): ConversationItem[] {
+  const items: ConversationItem[] = [];
+  let itemId = 0;
 
-    const messages: ConversationMessage[] = [];
-    const seenMessages = new Set<string>(); // Dedupe messages
+  const sortedSessions = [...sessions].sort((a, b) => new Date(a.firstTrace).getTime() - new Date(b.firstTrace).getTime());
 
-    // Helper to extract text from JSON array with type: "text" format
-    // e.g., [{"type": "text", "text": "actual content"}] -> "actual content"
-    const extractTextFromJsonArray = (content: unknown): string | null => {
-      if (!Array.isArray(content)) return null;
+  for (const session of sortedSessions) {
+    const sortedTraces = [...session.traces].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-      const textParts: string[] = [];
-      for (const item of content) {
-        if (typeof item === 'object' && item !== null) {
-          const obj = item as Record<string, unknown>;
-          if (obj.type === 'text' && typeof obj.text === 'string') {
-            textParts.push(obj.text);
+    for (const trace of sortedTraces) {
+      const generationObservations = trace.observations?.filter(obs => obs.type === 'GENERATION') || [];
+      const generationObs = generationObservations[0];
+      const obsAttrs = generationObs?.metadata?.attributes;
+
+      const traceInput = trace.input;
+      const obsInput = generationObs?.input;
+      const input = (traceInput && typeof traceInput === 'object') ? traceInput : obsInput;
+
+      let messagesArray: Message[] | undefined;
+      if (input && typeof input === 'object' && 'messages' in input && Array.isArray((input as TraceInput).messages)) {
+        messagesArray = (input as TraceInput).messages;
+      } else if (Array.isArray(input)) {
+        messagesArray = input as Message[];
+      }
+
+      let agentName: string | undefined;
+      if (trace.name.includes('agent-')) {
+        agentName = trace.name.split(':')[0].replace('agent-', '');
+      }
+
+      let systemPrompt: string | undefined;
+      if (input && typeof input === 'object' && 'system' in input && typeof (input as TraceInput).system === 'string') {
+        systemPrompt = (input as TraceInput).system;
+      }
+
+      const inputTokens = generationObs?.promptTokens;
+      const outputTokens = generationObs?.completionTokens;
+      const totalTokens = generationObs?.totalTokens;
+      const cachedTokens = obsAttrs?.['ai.usage.cachedInputTokens'] ? parseInt(String(obsAttrs['ai.usage.cachedInputTokens'])) : undefined;
+      const cost = generationObs?.calculatedTotalCost;
+      const model = obsAttrs?.['ai.model.id'] || generationObs?.model;
+      const provider = obsAttrs?.['ai.model.provider'];
+      const temperature = obsAttrs?.['ai.settings.temperature'] ? parseFloat(obsAttrs['ai.settings.temperature']) : undefined;
+      const finishReason = obsAttrs?.['ai.response.finishReason'];
+
+      const toolCalls: ToolCallInfo[] = [];
+
+      // Source 1: SPAN observations with tool-related names (sorted by startTime ascending - execution order)
+      const toolObservations = (trace.observations?.filter(obs =>
+        obs.type === 'SPAN' && (obs.name?.includes('ai.toolCall.') || obs.name?.startsWith('tool-'))
+      ) || []).sort((a, b) => new Date(a.startTime || 0).getTime() - new Date(b.startTime || 0).getTime());
+      for (const toolObs of toolObservations) {
+        const toolInput = toolObs.input as { toolName?: string; args?: unknown } | undefined;
+        let toolName = toolInput?.toolName;
+        if (!toolName && toolObs.name) {
+          // Extract actual tool name from observation name
+          if (toolObs.name.startsWith('ai.toolCall.')) {
+            toolName = toolObs.name.substring('ai.toolCall.'.length);
+          } else if (toolObs.name.startsWith('tool-')) {
+            toolName = toolObs.name.substring('tool-'.length);
+          }
+        }
+        // Skip if no valid tool name or if it's just the prefix
+        if (toolName && toolName !== 'ai.toolCall' && toolName.length > 0) {
+          const argsStr = toolInput?.args ? JSON.stringify(toolInput.args, null, 2) : undefined;
+          const isDuplicate = toolCalls.some(t => t.name === toolName && t.args === argsStr);
+          if (!isDuplicate) {
+            toolCalls.push({ name: toolName, args: argsStr });
           }
         }
       }
 
-      return textParts.length > 0 ? textParts.join('\n\n') : null;
-    };
+      // Source 2 & 3: Check ALL generation observations for tool calls
+      for (const genObs of generationObservations) {
+        const genAttrs = genObs?.metadata?.attributes;
 
-    // Helper to extract content from various formats
-    const extractContent = (content: unknown): string => {
-      if (typeof content === 'string') {
-        // Try parsing as JSON to check for type: text format
-        try {
-          const parsed = JSON.parse(content);
-          const extracted = extractTextFromJsonArray(parsed);
-          if (extracted) return extracted;
-        } catch {
-          // Not JSON, return as-is
-        }
-        return content;
-      }
-      if (content === null || content === undefined) return '';
-
-      // Check if it's an array with type: text format
-      const extracted = extractTextFromJsonArray(content);
-      if (extracted) return extracted;
-
-      return JSON.stringify(content, null, 2);
-    };
-
-    // Helper to add message if not duplicate
-    const addMessage = (role: 'user' | 'assistant' | 'system', content: string) => {
-      const key = `${role}:${content}`;
-      if (!seenMessages.has(key) && content.trim()) {
-        seenMessages.add(key);
-        messages.push({ role, content });
-      }
-    };
-
-    // Process all generations to extract conversation messages
-    for (const gen of parsedObservations.generations) {
-      // Extract messages from input (conversation history)
-      if (gen.input) {
-        const input = gen.input as unknown;
-        let inputMessages: unknown[] = [];
-
-        if (Array.isArray(input)) {
-          inputMessages = input;
-        } else if (typeof input === 'object' && input !== null) {
-          const inputObj = input as Record<string, unknown>;
-          if ('messages' in inputObj && Array.isArray(inputObj.messages)) {
-            inputMessages = inputObj.messages;
-          }
-        }
-
-        // Process input messages
-        for (const msg of inputMessages) {
-          if (typeof msg === 'object' && msg !== null) {
-            const msgObj = msg as Record<string, unknown>;
-            const role = msgObj.role as string;
-            if ((role === 'user' || role === 'assistant' || role === 'system') && msgObj.content) {
-              addMessage(role, extractContent(msgObj.content));
+        // Source 2: ai.response.toolCalls in metadata attributes
+        if (genAttrs?.['ai.response.toolCalls']) {
+          try {
+            const parsedToolCalls = JSON.parse(genAttrs['ai.response.toolCalls']);
+            if (Array.isArray(parsedToolCalls)) {
+              for (const tc of parsedToolCalls) {
+                if (tc.toolName) {
+                  const argsStr = tc.input ? JSON.stringify(tc.input, null, 2) : undefined;
+                  const isDuplicate = toolCalls.some(t => t.name === tc.toolName && t.args === argsStr);
+                  if (!isDuplicate) {
+                    toolCalls.push({ name: tc.toolName, args: argsStr });
+                  }
+                }
+              }
             }
-          }
+          } catch { /* ignore parse errors */ }
         }
-      }
 
-      // Extract agent response from output
-      if (gen.output) {
-        const output = gen.output as unknown;
-        let responseContent: string | null = null;
-
-        if (typeof output === 'string') {
-          responseContent = extractContent(output);
-        } else if (typeof output === 'object' && output !== null) {
-          const outputObj = output as Record<string, unknown>;
-          if ('content' in outputObj && outputObj.content) {
-            responseContent = extractContent(outputObj.content);
-          } else if ('message' in outputObj) {
-            const message = outputObj.message as Record<string, unknown>;
-            if (message && 'content' in message) {
-              responseContent = extractContent(message.content);
-            }
-          } else if ('choices' in outputObj && Array.isArray(outputObj.choices)) {
-            const choice = outputObj.choices[0] as Record<string, unknown>;
-            if (choice && 'message' in choice) {
-              const msg = choice.message as Record<string, unknown>;
-              if (msg && 'content' in msg) {
-                responseContent = extractContent(msg.content);
+        // Source 3: toolCalls in generation output (Vercel AI SDK format)
+        const genOutput = genObs?.output;
+        if (genOutput && typeof genOutput === 'object') {
+          const outputToolCalls = (genOutput as { toolCalls?: Array<{ toolName?: string; name?: string; args?: unknown; input?: unknown }> }).toolCalls;
+          if (Array.isArray(outputToolCalls)) {
+            for (const tc of outputToolCalls) {
+              const toolName = tc.toolName || tc.name;
+              if (toolName) {
+                const argsStr = (tc.args || tc.input) ? JSON.stringify(tc.args || tc.input, null, 2) : undefined;
+                const isDuplicate = toolCalls.some(t => t.name === toolName && t.args === argsStr);
+                if (!isDuplicate) {
+                  toolCalls.push({ name: toolName, args: argsStr });
+                }
               }
             }
           }
         }
+      }
 
-        if (responseContent) {
-          addMessage('assistant', responseContent);
+      const messageTimestamp = generationObs?.startTime || trace.timestamp;
+      const responseTimestamp = generationObs?.endTime || trace.timestamp;
+
+      let userContent: string | undefined;
+
+      if (messagesArray && messagesArray.length > 0) {
+        const userMessages = messagesArray.filter((msg: Message) => msg.role === 'user');
+        const lastUserMsg = userMessages[userMessages.length - 1];
+        if (lastUserMsg) {
+          userContent = getMessageContent(lastUserMsg.content) || undefined;
         }
       }
-    }
 
-    return messages;
-  }, [parsedObservations.generations]);
-
-  // Track expanded conversation messages
-  const [expandedMessages, setExpandedMessages] = useState<Set<number>>(new Set());
-
-  // Reset expanded messages when trace changes
-  useEffect(() => {
-    setExpandedMessages(new Set());
-  }, [selectedTraceId]);
-
-  // State to control showing detailed trace information
-  const [showDetailedInfo, setShowDetailedInfo] = useState(false);
-
-  // Reset showDetailedInfo when trace changes
-  useEffect(() => {
-    setShowDetailedInfo(false);
-  }, [selectedTraceId]);
-
-  const handleCloseDrawer = () => {
-    setSelectedTraceId(null);
-    setExpandedSections(new Set());
-  };
-
-  const renderTraceRow = (trace: LangfuseTrace) => {
-    const isSelected = selectedTraceId === trace.id;
-    const conversationId = extractConversationId(trace.sessionId);
-    const agentName = (trace.metadata?.global_agent_agentName as string) || 'Unknown Agent';
-
-    return (
-      <React.Fragment key={trace.id}>
-        <tr
-          onClick={() => {
-            if (selectedTraceId !== trace.id) {
-              setExpandedSections(new Set());
-            }
-            setSelectedTraceId(trace.id);
-            if (!traceDetails[trace.id]) {
-              fetchTraceDetails(trace.id);
-            }
-          }}
-          style={{
-            cursor: 'pointer',
-            backgroundColor: isSelected ? '#f0f9ff' : 'transparent',
-            transition: 'background-color 0.15s'
-          }}
-          onMouseEnter={(e) => {
-            if (!isSelected) e.currentTarget.style.backgroundColor = '#f9fafb';
-          }}
-          onMouseLeave={(e) => {
-            if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
-          }}
-        >
-          <td style={{ padding: '0.75rem', fontSize: '0.75rem', fontFamily: 'monospace', color: '#6b7280' }}>
-            {trace.id.substring(0, 8)}...
-          </td>
-          <td style={{ padding: '0.75rem', fontSize: '0.813rem' }}>
-            {formatTimestamp(trace.timestamp)}
-          </td>
-          <td style={{ padding: '0.75rem', fontSize: '0.813rem' }}>
-            <span style={{
-              backgroundColor: '#dbeafe',
-              color: '#1e40af',
-              padding: '0.125rem 0.5rem',
-              borderRadius: '4px',
-              fontSize: '0.75rem'
-            }}>
-              {agentName}
-            </span>
-          </td>
-          <td style={{ padding: '0.75rem', fontSize: '0.75rem', fontFamily: 'monospace' }}>
-            {trace.userId ? (
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span
-                  style={{
-                    backgroundColor: '#fef3c7',
-                    color: '#92400e',
-                    padding: '0.125rem 0.5rem',
-                    borderRadius: '4px',
-                    fontSize: '0.7rem'
-                  }}
-                >
-                  {trace.userId}
-                </span>
-                {hasLangfuseLinks && (
-                  <a
-                    href={getLangfuseUserUrl(trace.userId) || '#'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      color: '#8b5cf6',
-                      textDecoration: 'none',
-                      fontSize: '0.875rem'
-                    }}
-                    title="View user in Langfuse"
-                  >
-                    🔗
-                  </a>
-                )}
-              </span>
-            ) : (
-              <span style={{ color: '#9ca3af' }}>-</span>
-            )}
-          </td>
-          <td style={{ padding: '0.75rem', fontSize: '0.75rem', fontFamily: 'monospace' }}>
-            <span
-              style={{ cursor: onSessionClick ? 'pointer' : 'default', color: '#3b82f6' }}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (onSessionClick && trace.sessionId) {
-                  onSessionClick(conversationId);
-                }
-              }}
-            >
-              {conversationId.substring(0, 8)}...
-            </span>
-          </td>
-          <td style={{ padding: '0.75rem', fontSize: '0.813rem', textAlign: 'right' }}>
-            {formatLatency(trace.latency)}
-          </td>
-          <td style={{ padding: '0.75rem', fontSize: '0.813rem', textAlign: 'center' }}>
-            {Array.isArray(trace.observations) ? trace.observations.length : 0}
-          </td>
-          <td style={{ padding: '0.75rem', fontSize: '0.813rem', textAlign: 'center' }}>
-            {trace.scores?.length || 0}
-          </td>
-          {hasLangfuseLinks && (
-            <td style={{ padding: '0.75rem', fontSize: '0.813rem', textAlign: 'center' }}>
-              <a
-                href={getLangfuseTraceUrl(trace.id) || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  color: '#8b5cf6',
-                  textDecoration: 'none',
-                  fontSize: '1rem'
-                }}
-                title="Open trace in Langfuse"
-              >
-                📊
-              </a>
-            </td>
-          )}
-        </tr>
-      </React.Fragment>
-    );
-  };
-
-  const toggleSection = (sectionId: string) => {
-    setExpandedSections(prev => {
-      const next = new Set(prev);
-      if (next.has(sectionId)) {
-        next.delete(sectionId);
-      } else {
-        next.add(sectionId);
+      if (!userContent && input && typeof input === 'object' && 'prompt' in input) {
+        const promptVal = (input as { prompt?: unknown }).prompt;
+        if (typeof promptVal === 'string' && promptVal.length > 0) {
+          userContent = promptVal;
+        }
       }
+
+      if (userContent &&
+          !userContent.startsWith('[Current Project Context]') &&
+          !userContent.startsWith('## Dynamic Context') &&
+          !userContent.startsWith('# Relevant Documentation') &&
+          userContent.length > 20) {
+        const exists = items.some(i => i.type === 'user' && i.content === userContent);
+        if (!exists) {
+          const isLargeContext = (inputTokens || 0) > 50000;
+          const previousItem = items[items.length - 1];
+          const previousAgentName = previousItem?.type === 'assistant' ? previousItem.agentName : undefined;
+          const isAgentHandoff = isLargeContext && !!previousAgentName && previousAgentName !== agentName;
+          const sourceAgent = isAgentHandoff ? previousAgentName : undefined;
+
+          items.push({
+            id: `item-${itemId++}`,
+            type: 'user',
+            timestamp: messageTimestamp,
+            content: userContent,
+            traceId: trace.id,
+            sessionId: session.sessionId,
+            inputTokens,
+            systemPrompt,
+            rawInput: input,
+            isAgentHandoff,
+            sourceAgent,
+          });
+        }
+      }
+
+      let responseText: string | undefined;
+
+      if (obsAttrs?.['ai.response.text'] && typeof obsAttrs['ai.response.text'] === 'string' && obsAttrs['ai.response.text'].length > 0) {
+        responseText = obsAttrs['ai.response.text'];
+      }
+
+      if (!responseText) {
+        const output = trace.output;
+        if (typeof output === 'string' && output.length > 0) {
+          responseText = output;
+        } else if (output && typeof output === 'object') {
+          const outputObj = output as { text?: string; 'ai.response.text'?: string };
+          responseText = outputObj.text || outputObj['ai.response.text'];
+        }
+      }
+
+      if (!responseText && generationObs?.output) {
+        if (typeof generationObs.output === 'string' && generationObs.output.length > 0) {
+          responseText = generationObs.output;
+        }
+      }
+
+      if ((responseText && responseText.length > 0) || toolCalls.length > 0) {
+        items.push({
+          id: `item-${itemId++}`,
+          type: 'assistant',
+          timestamp: responseTimestamp,
+          content: responseText || '',
+          agentName,
+          traceId: trace.id,
+          sessionId: session.sessionId,
+          inputTokens,
+          outputTokens,
+          totalTokens,
+          cachedTokens,
+          cost,
+          model,
+          provider,
+          temperature,
+          finishReason,
+          tools: toolCalls.length > 0 ? toolCalls : undefined,
+          rawOutput: trace.output,
+        });
+      }
+    }
+  }
+
+  items.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+  const deduped: ConversationItem[] = [];
+  for (const item of items) {
+    const last = deduped[deduped.length - 1];
+    if (last && last.type === item.type && last.content === item.content && !item.tools?.length) continue;
+    deduped.push(item);
+  }
+
+  return deduped;
+}
+
+function TokenBadge({ label, value, color }: { label: string; value?: number; color: string }) {
+  if (!value) return null;
+  return (
+    <span style={{ fontSize: '0.7rem', fontWeight: 600, color, backgroundColor: `${color}18`, padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
+      {label}: {formatNumber(value)}
+    </span>
+  );
+}
+
+function CostBadge({ value }: { value?: number }) {
+  if (!value) return null;
+  return (
+    <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#059669', backgroundColor: '#d1fae518', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
+      ${value.toFixed(4)}
+    </span>
+  );
+}
+
+function ToolsSection({ tools, expanded: initialExpanded = false }: { tools: ToolCallInfo[]; expanded?: boolean }) {
+  const [expanded, setExpanded] = useState(initialExpanded);
+
+  if (!tools || tools.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: '0.5rem', borderTop: '1px dashed #d1fae5', paddingTop: '0.5rem' }}>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer', fontSize: '0.65rem', color: '#047857' }}
+      >
+        <span>🔧</span>
+        <span style={{ fontWeight: 600 }}>{tools.length} tool{tools.length > 1 ? 's' : ''} called</span>
+        <span style={{ color: '#94a3b8' }}>{expanded ? '▼' : '▶'}</span>
+      </div>
+      {expanded && (
+        <div style={{ marginTop: '0.35rem', paddingLeft: '0.5rem', borderLeft: '2px solid #d1fae5' }}>
+          {tools.map((tool, idx) => (
+            <details key={idx} style={{ marginBottom: '0.2rem' }}>
+              <summary style={{ cursor: 'pointer', fontSize: '0.6rem', color: '#065f46', fontFamily: 'monospace' }}>{tool.name}</summary>
+              {tool.args && (
+                <pre style={{ fontSize: '0.55rem', backgroundColor: '#ecfdf5', padding: '0.3rem', borderRadius: '3px', overflow: 'auto', maxHeight: '80px', margin: '0.15rem 0 0 0', border: '1px solid #d1fae5' }}>{tool.args}</pre>
+              )}
+            </details>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ContentSection {
+  type: 'text' | 'user' | 'action' | 'result';
+  content: string;
+  actionType?: string;
+}
+
+function parseAssistantContent(content: string): ContentSection[] {
+  const sections: ContentSection[] = [];
+  const lines = content.split('\n');
+  let currentSection: ContentSection | null = null;
+  let buffer: string[] = [];
+
+  const flushBuffer = () => {
+    if (currentSection && buffer.length > 0) {
+      currentSection.content = buffer.join('\n').trim();
+      if (currentSection.content) {
+        sections.push(currentSection);
+      }
+    }
+    buffer = [];
+  };
+
+  for (const line of lines) {
+    if (line.startsWith('User:')) {
+      flushBuffer();
+      currentSection = { type: 'user', content: '' };
+      buffer.push(line.replace('User:', '').trim());
+    } else if (line.startsWith('Assistant actions:') || line.startsWith('Assistant action:')) {
+      flushBuffer();
+      currentSection = { type: 'action', content: '' };
+    } else if (line.match(/^(Read|Write|Edit|Delete|Search|Terminal|Grep|List|Create|Execute|Run|File operations):/i)) {
+      flushBuffer();
+      const match = line.match(/^([\w\s]+):\s*(.*)$/i);
+      currentSection = { type: 'action', content: '', actionType: match?.[1]?.trim() };
+      buffer.push(match?.[2] || line);
+    } else if (line.startsWith('Tool result:')) {
+      flushBuffer();
+      currentSection = { type: 'result', content: '' };
+      buffer.push(line.replace('Tool result:', '').trim());
+    } else if (line.match(/^(File|Total lines|File size|Exit code|Output|Error|Lines \d):/i) || line.match(/^\s*\d+\|/)) {
+      if (currentSection?.type !== 'result') {
+        flushBuffer();
+        currentSection = { type: 'result', content: '' };
+      }
+      buffer.push(line);
+    } else {
+      if (!currentSection || currentSection.type === 'text') {
+        if (!currentSection) {
+          currentSection = { type: 'text', content: '' };
+        }
+        buffer.push(line);
+      } else {
+        buffer.push(line);
+      }
+    }
+  }
+  flushBuffer();
+
+  return sections;
+}
+
+function FormattedContent({ content }: { content: string }) {
+  const sections = parseAssistantContent(content);
+  const [expandedResults, setExpandedResults] = useState<Set<number>>(new Set());
+
+  if (sections.length === 0) {
+    return <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{content}</span>;
+  }
+
+  const toggleResult = (idx: number) => {
+    setExpandedResults(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
       return next;
     });
   };
 
-  // Render readable content from observation input/output
-  const renderReadableContent = (data: unknown, label: string, sectionId: string, bgColor: string = '#f8fafc'): React.ReactNode => {
-    if (data === null || data === undefined) return null;
-
-    const MAX_COLLAPSED_LINES = 12;
-    const isExpanded = expandedSections.has(sectionId);
-
-    // Convert data to displayable text
-    const getTextContent = (item: unknown): string => {
-      if (typeof item === 'string') return item;
-      if (item === null || item === undefined) return '';
-      return JSON.stringify(item, null, 2);
-    };
-
-    // Build content elements and track if we need "See more"
-    let textForLineCount = '';
-    let content: React.ReactNode;
-
-    if (typeof data === 'string') {
-      textForLineCount = data;
-      content = data;
-    } else if (Array.isArray(data)) {
-      // Handle array of messages (common in LLM calls)
-      const elements: React.ReactNode[] = [];
-      for (let idx = 0; idx < data.length; idx++) {
-        const item = data[idx];
-        if (typeof item === 'object' && item !== null) {
-          const obj = item as Record<string, unknown>;
-          // Check for message format
-          if ('role' in obj && 'content' in obj) {
-            const contentText = getTextContent(obj.content);
-            textForLineCount += `${obj.role}\n${contentText}\n\n`;
-            elements.push(
-              <div key={idx} style={{ marginBottom: idx < data.length - 1 ? '0.75rem' : 0 }}>
-                <span style={{
-                  display: 'inline-block',
-                  backgroundColor: obj.role === 'user' ? '#dbeafe' : obj.role === 'assistant' ? '#dcfce7' : '#fef3c7',
-                  color: obj.role === 'user' ? '#1e40af' : obj.role === 'assistant' ? '#166534' : '#92400e',
-                  padding: '0.125rem 0.5rem',
-                  borderRadius: '4px',
-                  fontSize: '0.625rem',
-                  fontWeight: 600,
-                  marginBottom: '0.25rem',
-                  textTransform: 'uppercase'
-                }}>
-                  {String(obj.role)}
-                </span>
-                <div style={{ marginTop: '0.25rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                  {contentText}
-                </div>
-              </div>
-            );
-          } else {
-            const jsonText = JSON.stringify(item, null, 2);
-            textForLineCount += jsonText + '\n';
-            elements.push(<pre key={idx} style={{ margin: 0 }}>{jsonText}</pre>);
-          }
-        } else {
-          textForLineCount += String(item) + '\n';
-          elements.push(<div key={idx}>{String(item)}</div>);
+  return (
+    <div>
+      {sections.map((section, idx) => {
+        if (section.type === 'text') {
+          return (
+            <div key={idx} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginBottom: '0.5rem' }}>
+              {section.content}
+            </div>
+          );
         }
-      }
-      content = elements;
-    } else if (typeof data === 'object') {
-      const obj = data as Record<string, unknown>;
-      // Check for common patterns
-      if ('messages' in obj && Array.isArray(obj.messages)) {
-        return renderReadableContent(obj.messages, label, sectionId, bgColor);
-      }
-      if ('content' in obj) {
-        textForLineCount = getTextContent(obj.content);
-        content = textForLineCount;
-      } else {
-        textForLineCount = JSON.stringify(data, null, 2);
-        content = <pre style={{ margin: 0 }}>{textForLineCount}</pre>;
-      }
-    } else {
-      textForLineCount = String(data);
-      content = textForLineCount;
-    }
-
-    // Count lines to determine if we need "See more"
-    const lineCount = textForLineCount.split('\n').length;
-    const needsExpansion = lineCount > MAX_COLLAPSED_LINES;
-
-    return (
-      <div style={{ marginBottom: '1rem' }}>
-        <div style={{
-          fontSize: '0.75rem',
-          fontWeight: 600,
-          color: '#374151',
-          marginBottom: '0.5rem',
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em'
-        }}>
-          {label}
-        </div>
-        <div style={{
-          backgroundColor: bgColor,
-          padding: '0.75rem',
-          borderRadius: '6px',
-          fontSize: '0.813rem',
-          fontFamily: typeof content === 'string' ? 'inherit' : 'monospace',
-          lineHeight: 1.6,
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-          position: 'relative',
-          maxHeight: (!needsExpansion || isExpanded) ? 'none' : '240px',
-          overflow: 'hidden'
-        }}>
-          {content}
-          {needsExpansion && !isExpanded && (
-            <div style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: '60px',
-              background: `linear-gradient(transparent, ${bgColor})`,
-              display: 'flex',
-              alignItems: 'flex-end',
-              justifyContent: 'center',
-              paddingBottom: '0.5rem'
-            }}>
-              <button
-                onClick={() => toggleSection(sectionId)}
-                style={{
-                  background: 'white',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '4px',
-                  padding: '0.25rem 0.75rem',
-                  fontSize: '0.75rem',
-                  color: '#6b7280',
-                  cursor: 'pointer',
-                  fontWeight: 500
-                }}
-              >
-                See more ({lineCount} lines)
-              </button>
+        if (section.type === 'user') {
+          return (
+            <div key={idx} style={{ backgroundColor: '#dbeafe', borderRadius: '6px', padding: '0.4rem 0.6rem', marginBottom: '0.5rem', borderLeft: '3px solid #3b82f6' }}>
+              <span style={{ fontWeight: 600, color: '#1e40af', fontSize: '0.7rem' }}>User: </span>
+              <span style={{ color: '#1e3a8a', fontSize: '0.75rem' }}>{section.content}</span>
             </div>
-          )}
-        </div>
-        {needsExpansion && isExpanded && (
-          <button
-            onClick={() => toggleSection(sectionId)}
-            style={{
-              background: 'none',
-              border: 'none',
-              padding: '0.25rem 0',
-              fontSize: '0.75rem',
-              color: '#6b7280',
-              cursor: 'pointer',
-              fontWeight: 500,
-              marginTop: '0.25rem'
-            }}
-          >
-            See less
-          </button>
-        )}
-      </div>
-    );
-  };
-
-  // Render the trace details drawer using Portal to ensure it's above all other elements
-  const renderTraceDrawer = () => {
-    if (!selectedTraceId) return null;
-    if (typeof document === 'undefined') return null;
-
-    const details = traceDetails[selectedTraceId];
-    const trace = traces.find(t => t.id === selectedTraceId);
-    const isLoading = !details;
-
-    return createPortal(
-      <>
-        {/* Backdrop */}
-        <div
-          onClick={handleCloseDrawer}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.3)',
-            zIndex: 9999
-          }}
-        />
-
-        {/* Drawer */}
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: '600px',
-          maxWidth: '90vw',
-          backgroundColor: 'white',
-          boxShadow: '-4px 0 20px rgba(0, 0, 0, 0.15)',
-          zIndex: 10000,
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden'
-        }}>
-          {/* Drawer Header */}
-          <div style={{
-            padding: '1rem 1.25rem',
-            borderBottom: '1px solid #e5e7eb',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            backgroundColor: '#f8fafc'
-          }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#1f2937' }}>
-                Trace Details
-              </h3>
-              <span style={{ fontSize: '0.75rem', color: '#6b7280', fontFamily: 'monospace' }}>
-                {selectedTraceId}
-              </span>
+          );
+        }
+        if (section.type === 'action') {
+          return (
+            <div key={idx} style={{ backgroundColor: '#fef3c7', borderRadius: '6px', padding: '0.4rem 0.6rem', marginBottom: '0.25rem', borderLeft: '3px solid #f59e0b', fontFamily: 'monospace', fontSize: '0.7rem' }}>
+              <span style={{ fontWeight: 600, color: '#92400e' }}>{section.actionType ? `${section.actionType}: ` : 'Action: '}</span>
+              <span style={{ color: '#78350f' }}>{section.content}</span>
             </div>
-            <button
-              onClick={handleCloseDrawer}
-              style={{
-                background: 'none',
-                border: 'none',
-                fontSize: '1.5rem',
-                cursor: 'pointer',
-                color: '#6b7280',
-                padding: '0.25rem',
-                lineHeight: 1
-              }}
-            >
-              ×
-            </button>
-          </div>
-
-          {/* Drawer Content */}
-          <div style={{
-            flex: 1,
-            overflow: 'auto',
-            padding: '1.25rem'
-          }}>
-            {isLoading ? (
-              <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
-                Loading trace details...
+          );
+        }
+        if (section.type === 'result') {
+          const isExpanded = expandedResults.has(idx);
+          const preview = section.content.split('\n').slice(0, 3).join('\n');
+          const hasMore = section.content.split('\n').length > 3;
+          return (
+            <div key={idx} style={{ backgroundColor: '#f1f5f9', borderRadius: '6px', padding: '0.4rem 0.6rem', marginBottom: '0.5rem', borderLeft: '3px solid #64748b', fontSize: '0.65rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <span style={{ fontWeight: 600, color: '#475569', fontSize: '0.6rem' }}>Tool Result:</span>
+                {hasMore && (
+                  <button onClick={() => toggleResult(idx)} style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '0.55rem', cursor: 'pointer', padding: 0 }}>
+                    {isExpanded ? '▲ collapse' : '▼ expand'}
+                  </button>
+                )}
               </div>
-            ) : (
-              <>
-                {/* Conversation Messages - Full conversation flow */}
-                {conversationMessages.length > 0 && (
-                  <div style={{ marginBottom: '1.5rem' }}>
-                    <h4 style={{
-                      margin: '0 0 0.75rem 0',
-                      fontSize: '0.875rem',
-                      fontWeight: 600,
-                      color: '#1f2937',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem'
-                    }}>
-                      <span style={{ fontSize: '1rem' }}>💬</span>
-                      Conversation ({conversationMessages.length} messages)
-                    </h4>
+              <pre style={{ margin: '0.25rem 0 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#334155', fontFamily: 'monospace', fontSize: '0.6rem', maxHeight: isExpanded ? 'none' : '80px', overflow: 'hidden' }}>
+                {isExpanded ? section.content : preview}{!isExpanded && hasMore && '...'}
+              </pre>
+            </div>
+          );
+        }
+        return null;
+      })}
+    </div>
+  );
+}
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                      {conversationMessages.map((msg, idx) => {
-                        const isUser = msg.role === 'user';
-                        const isAssistant = msg.role === 'assistant';
-                        const isSystem = msg.role === 'system';
-                        const bgColor = isUser ? '#f0f9ff' : isAssistant ? '#f0fdf4' : '#fffbeb';
-                        const borderColor = isUser ? '#3b82f6' : isAssistant ? '#22c55e' : '#f59e0b';
+function UserMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfuseBaseUrl?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
-                        // Calculate if content needs expansion
-                        const lineCount = msg.content.split('\n').length;
-                        const charCount = msg.content.length;
-                        const maxLines = isSystem ? 6 : 12;
-                        const maxChars = isSystem ? 400 : 800;
-                        const needsExpansion = lineCount > maxLines || charCount > maxChars;
-                        const isExpanded = expandedMessages.has(idx);
+  const hasStructuredContent = /^(User:|Assistant actions?:|Tool result:|Read:|Write:|Edit:|Terminal:)/m.test(item.content);
 
-                        return (
-                          <div key={idx}>
-                            <div style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.5rem',
-                              marginBottom: '0.375rem'
-                            }}>
-                              <span style={{
-                                backgroundColor: isUser ? '#dbeafe' : isAssistant ? '#dcfce7' : '#fef3c7',
-                                color: isUser ? '#1e40af' : isAssistant ? '#166534' : '#92400e',
-                                padding: '0.2rem 0.5rem',
-                                borderRadius: '4px',
-                                fontSize: '0.65rem',
-                                fontWeight: 600,
-                                textTransform: 'uppercase'
-                              }}>
-                                {isUser ? '👤 User' : isAssistant ? '🤖 Agent' : '⚙️ System'}
-                              </span>
-                              <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>
-                                #{idx + 1}
-                              </span>
-                            </div>
-                            <div style={{
-                              backgroundColor: bgColor,
-                              padding: '0.875rem',
-                              borderRadius: '8px',
-                              borderLeft: `4px solid ${borderColor}`,
-                              fontSize: '0.813rem',
-                              lineHeight: 1.6,
-                              whiteSpace: 'pre-wrap',
-                              wordBreak: 'break-word',
-                              position: 'relative',
-                              maxHeight: (!needsExpansion || isExpanded) ? 'none' : (isSystem ? '120px' : '200px'),
-                              overflow: 'hidden'
-                            }}>
-                              {msg.content}
-                              {needsExpansion && !isExpanded && (
-                                <div style={{
-                                  position: 'absolute',
-                                  bottom: 0,
-                                  left: 0,
-                                  right: 0,
-                                  height: '50px',
-                                  background: `linear-gradient(transparent, ${bgColor})`,
-                                  display: 'flex',
-                                  alignItems: 'flex-end',
-                                  justifyContent: 'center',
-                                  paddingBottom: '0.5rem'
-                                }}>
-                                  <button
-                                    onClick={() => setExpandedMessages(prev => {
-                                      const next = new Set(prev);
-                                      next.add(idx);
-                                      return next;
-                                    })}
-                                    style={{
-                                      background: 'white',
-                                      border: '1px solid #d1d5db',
-                                      borderRadius: '4px',
-                                      padding: '0.25rem 0.75rem',
-                                      fontSize: '0.75rem',
-                                      color: '#6b7280',
-                                      cursor: 'pointer',
-                                      fontWeight: 500
-                                    }}
-                                  >
-                                    See more ({lineCount} lines)
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                            {needsExpansion && isExpanded && (
-                              <button
-                                onClick={() => setExpandedMessages(prev => {
-                                  const next = new Set(prev);
-                                  next.delete(idx);
-                                  return next;
-                                })}
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  padding: '0.25rem 0',
-                                  fontSize: '0.75rem',
-                                  color: '#6b7280',
-                                  cursor: 'pointer',
-                                  fontWeight: 500,
-                                  marginTop: '0.25rem'
-                                }}
-                              >
-                                See less
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+  let userPrompt = item.content;
+  if (hasStructuredContent && item.content.startsWith('User:')) {
+    const match = item.content.match(/^User:\s*(.+?)(?:\n\n|\nAssistant|$)/s);
+    if (match) {
+      userPrompt = match[1].trim();
+    }
+  }
 
-                {/* Quick Stats */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-                  gap: '0.75rem',
-                  marginBottom: '1.5rem'
-                }}>
-                  <div style={{ backgroundColor: '#f3e8ff', padding: '0.75rem', borderRadius: '6px' }}>
-                    <div style={{ fontSize: '0.625rem', color: '#7c3aed', fontWeight: 600, textTransform: 'uppercase' }}>Latency</div>
-                    <div style={{ fontSize: '1rem', fontWeight: 600, color: '#5b21b6' }}>
-                      {formatLatency(details?.latency ?? trace?.latency ?? null)}
-                    </div>
-                  </div>
-                  <div style={{ backgroundColor: '#dbeafe', padding: '0.75rem', borderRadius: '6px' }}>
-                    <div style={{ fontSize: '0.625rem', color: '#1e40af', fontWeight: 600, textTransform: 'uppercase' }}>Observations</div>
-                    <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1e3a8a' }}>
-                      {Array.isArray(details?.observations) ? details.observations.length : 0}
-                    </div>
-                  </div>
-                  <div style={{ backgroundColor: '#dcfce7', padding: '0.75rem', borderRadius: '6px' }}>
-                    <div style={{ fontSize: '0.625rem', color: '#166534', fontWeight: 600, textTransform: 'uppercase' }}>Cost</div>
-                    <div style={{ fontSize: '1rem', fontWeight: 600, color: '#14532d' }}>
-                      ${(details?.totalCost ?? trace?.totalCost ?? 0).toFixed(4)}
-                    </div>
-                  </div>
-                  <div style={{ backgroundColor: '#fef3c7', padding: '0.75rem', borderRadius: '6px' }}>
-                    <div style={{ fontSize: '0.625rem', color: '#92400e', fontWeight: 600, textTransform: 'uppercase' }}>Agent</div>
-                    <div style={{ fontSize: '0.813rem', fontWeight: 600, color: '#78350f', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {(details?.metadata?.global_agent_agentName as string) || 'Unknown'}
-                    </div>
-                  </div>
-                </div>
+  const isLong = userPrompt.length > 250;
+  const displayContent = isLong && !expanded ? userPrompt.substring(0, 250) + '...' : userPrompt;
+  const hasFullContent = hasStructuredContent && item.content !== userPrompt;
 
-                {/* Toggle for Detailed Information */}
-                <button
-                  onClick={() => setShowDetailedInfo(!showDetailedInfo)}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    backgroundColor: showDetailedInfo ? '#f3f4f6' : '#fafafa',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontSize: '0.875rem',
-                    fontWeight: 500,
-                    color: '#374151',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.5rem',
-                    marginBottom: '1rem',
-                    transition: 'background-color 0.15s'
-                  }}
-                >
-                  <span>{showDetailedInfo ? '▼' : '▶'}</span>
-                  {showDetailedInfo ? 'Hide' : 'Show'} Detailed Trace Information
-                  <span style={{
-                    backgroundColor: '#e5e7eb',
-                    padding: '0.125rem 0.5rem',
-                    borderRadius: '4px',
-                    fontSize: '0.75rem',
-                    color: '#6b7280'
-                  }}>
-                    {parsedObservations.generations.length + parsedObservations.toolCalls.length + parsedObservations.spans.length} items
-                  </span>
-                </button>
+  const isHandoff = item.isAgentHandoff;
+  const avatarBg = isHandoff ? '#f59e0b' : '#3b82f6';
+  const avatarIcon = isHandoff ? '🔄' : '👤';
+  const labelColor = isHandoff ? '#92400e' : '#1e40af';
+  const bubbleBg = isHandoff ? '#fef3c7' : '#eff6ff';
+  const textColor = isHandoff ? '#78350f' : '#1e3a8a';
+  const label = isHandoff ? `Handoff from ${item.sourceAgent || 'Agent'}` : 'User';
 
-                {/* Detailed Information (Collapsible) */}
-                {showDetailedInfo && (
-                  <>
-                    {/* LLM Generations - Input/Output */}
-                    {parsedObservations.generations.length > 0 && (
-                      <div style={{ marginBottom: '1.5rem' }}>
-                        <h4 style={{
-                          margin: '0 0 0.75rem 0',
-                          fontSize: '0.875rem',
-                          fontWeight: 600,
-                          color: '#1f2937',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem'
-                        }}>
-                          <span style={{ fontSize: '1rem' }}>🤖</span>
-                          LLM Generations ({parsedObservations.generations.length})
-                        </h4>
-                        {parsedObservations.generations.map((gen, idx) => (
-                          <div
-                            key={gen.id || idx}
-                            style={{
-                              backgroundColor: '#fafafa',
-                              borderRadius: '8px',
-                              border: '1px solid #e5e7eb',
-                              marginBottom: '1rem',
-                              overflow: 'hidden'
-                            }}
-                          >
-                            <div style={{
-                              padding: '0.75rem',
-                              backgroundColor: '#f3f4f6',
-                              borderBottom: '1px solid #e5e7eb',
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center'
-                            }}>
-                              <span style={{ fontWeight: 500, fontSize: '0.875rem' }}>{gen.name}</span>
-                              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                {gen.model && (
-                                  <span style={{
-                                    backgroundColor: '#e0e7ff',
-                                    color: '#3730a3',
-                                    padding: '0.125rem 0.5rem',
-                                    borderRadius: '4px',
-                                    fontSize: '0.625rem',
-                                    fontWeight: 600
-                                  }}>
-                                    {gen.model}
-                                  </span>
-                                )}
-                                {gen.latency && (
-                                  <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                                    {formatLatency(gen.latency)}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div style={{ padding: '0.75rem' }}>
-                              {renderReadableContent(gen.input, 'Input', `gen-${gen.id || idx}-input`, '#f0f9ff')}
-                              {renderReadableContent(gen.output, 'Output', `gen-${gen.id || idx}-output`, '#f0fdf4')}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Tool Calls */}
-                    {parsedObservations.toolCalls.length > 0 && (
-                      <div style={{ marginBottom: '1.5rem' }}>
-                        <h4 style={{
-                          margin: '0 0 0.75rem 0',
-                          fontSize: '0.875rem',
-                          fontWeight: 600,
-                          color: '#1f2937',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem'
-                        }}>
-                          <span style={{ fontSize: '1rem' }}>🔧</span>
-                          Tool Calls ({parsedObservations.toolCalls.length})
-                        </h4>
-                        {parsedObservations.toolCalls.map((tool, idx) => (
-                          <div
-                            key={tool.id || idx}
-                            style={{
-                              backgroundColor: '#fffbeb',
-                              borderRadius: '8px',
-                              border: '1px solid #fbbf24',
-                              marginBottom: '0.75rem',
-                              overflow: 'hidden'
-                            }}
-                          >
-                            <div style={{
-                              padding: '0.5rem 0.75rem',
-                              backgroundColor: '#fef3c7',
-                              borderBottom: '1px solid #fbbf24',
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center'
-                            }}>
-                              <span style={{
-                                fontWeight: 600,
-                                fontSize: '0.813rem',
-                                color: '#92400e'
-                              }}>
-                                {tool.name}
-                              </span>
-                              {tool.latency && (
-                                <span style={{ fontSize: '0.75rem', color: '#b45309' }}>
-                                  {formatLatency(tool.latency)}
-                                </span>
-                              )}
-                            </div>
-                            <div style={{ padding: '0.75rem' }}>
-                              {tool.input !== null && tool.input !== undefined && renderReadableContent(tool.input, 'Arguments', `tool-${tool.id || idx}-input`, '#fffbeb')}
-                              {tool.output !== null && tool.output !== undefined && renderReadableContent(tool.output, 'Result', `tool-${tool.id || idx}-output`, '#fef9c3')}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Other Spans */}
-                    {parsedObservations.spans.length > 0 && (
-                      <div style={{ marginBottom: '1.5rem' }}>
-                        <h4 style={{
-                          margin: '0 0 0.75rem 0',
-                          fontSize: '0.875rem',
-                          fontWeight: 600,
-                          color: '#1f2937',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem'
-                        }}>
-                          <span style={{ fontSize: '1rem' }}>📊</span>
-                          Spans ({parsedObservations.spans.length})
-                        </h4>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          {parsedObservations.spans.map((span, idx) => (
-                            <div
-                              key={span.id || idx}
-                              style={{
-                                backgroundColor: '#f8fafc',
-                                padding: '0.75rem',
-                                borderRadius: '6px',
-                                border: '1px solid #e2e8f0'
-                              }}
-                            >
-                              <div style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                marginBottom: span.input || span.output ? '0.5rem' : 0
-                              }}>
-                                <span style={{ fontWeight: 500, fontSize: '0.813rem' }}>{span.name}</span>
-                                {span.latency && (
-                                  <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                                    {formatLatency(span.latency)}
-                                  </span>
-                                )}
-                              </div>
-                              {span.input !== null && span.input !== undefined && renderReadableContent(span.input, 'Input', `span-${span.id || idx}-input`, '#f1f5f9')}
-                              {span.output !== null && span.output !== undefined && renderReadableContent(span.output, 'Output', `span-${span.id || idx}-output`, '#ecfdf5')}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Metadata Section */}
-                    {details?.metadata && Object.keys(details.metadata).length > 0 && (() => {
-                      const metadataJson = JSON.stringify(details.metadata, null, 2);
-                      const lineCount = metadataJson.split('\n').length;
-                      const needsExpansion = lineCount > 12;
-                      const isMetadataExpanded = expandedSections.has('metadata');
-
-                      return (
-                        <div>
-                          <h4 style={{
-                            margin: '0 0 0.75rem 0',
-                            fontSize: '0.875rem',
-                            fontWeight: 600,
-                            color: '#1f2937',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem'
-                          }}>
-                            <span style={{ fontSize: '1rem' }}>ℹ️</span>
-                            Metadata
-                          </h4>
-                          <div style={{
-                            backgroundColor: '#1e293b',
-                            padding: '0.75rem',
-                            borderRadius: '6px',
-                            fontSize: '0.75rem',
-                            fontFamily: 'monospace',
-                            color: '#e2e8f0',
-                            position: 'relative',
-                            maxHeight: (!needsExpansion || isMetadataExpanded) ? 'none' : '200px',
-                            overflow: 'hidden'
-                          }}>
-                            <pre style={{ margin: 0 }}>
-                              {metadataJson}
-                            </pre>
-                            {needsExpansion && !isMetadataExpanded && (
-                              <div style={{
-                                position: 'absolute',
-                                bottom: 0,
-                                left: 0,
-                                right: 0,
-                                height: '60px',
-                                background: 'linear-gradient(transparent, #1e293b)',
-                                display: 'flex',
-                                alignItems: 'flex-end',
-                                justifyContent: 'center',
-                                paddingBottom: '0.5rem'
-                              }}>
-                                <button
-                                  onClick={() => toggleSection('metadata')}
-                                  style={{
-                                    background: '#334155',
-                                    border: '1px solid #475569',
-                                    borderRadius: '4px',
-                                    padding: '0.25rem 0.75rem',
-                                    fontSize: '0.75rem',
-                                    color: '#e2e8f0',
-                                    cursor: 'pointer',
-                                    fontWeight: 500
-                                  }}
-                                >
-                                  See more ({lineCount} lines)
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                          {needsExpansion && isMetadataExpanded && (
-                            <button
-                              onClick={() => toggleSection('metadata')}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                padding: '0.25rem 0',
-                                fontSize: '0.75rem',
-                                color: '#6b7280',
-                                cursor: 'pointer',
-                                fontWeight: 500,
-                                marginTop: '0.25rem'
-                              }}
-                            >
-                              See less
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })()}
-
-                    {/* Scores Section */}
-                    {details?.scores && details.scores.length > 0 && (
-                      <div style={{ marginTop: '1.5rem' }}>
-                        <h4 style={{
-                          margin: '0 0 0.75rem 0',
-                          fontSize: '0.875rem',
-                          fontWeight: 600,
-                          color: '#1f2937',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem'
-                        }}>
-                          <span style={{ fontSize: '1rem' }}>⭐</span>
-                          Scores ({details.scores.length})
-                        </h4>
-                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          {details.scores.map((score) => (
-                            <div
-                              key={score.id}
-                              style={{
-                                backgroundColor: score.value > 0.5 ? '#dcfce7' : '#fee2e2',
-                                padding: '0.5rem 0.75rem',
-                                borderRadius: '6px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.5rem'
-                              }}
-                            >
-                              <span style={{ fontSize: '0.813rem', fontWeight: 500 }}>{score.name}</span>
-                              <span style={{
-                                backgroundColor: 'rgba(255,255,255,0.5)',
-                                padding: '0.125rem 0.375rem',
-                                borderRadius: '4px',
-                                fontSize: '0.75rem',
-                                fontWeight: 600
-                              }}>
-                                {score.value}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
+  return (
+    <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.6rem' }}>
+      <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: avatarBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.9rem', flexShrink: 0 }}>{avatarIcon}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.3rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: labelColor }}>{label}</span>
+            <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{formatTime(item.timestamp)}</span>
+            <button onClick={() => setShowDetails(!showDetails)} style={{ background: 'none', border: 'none', fontSize: '0.65rem', color: '#94a3b8', cursor: 'pointer', padding: '0 0.25rem' }}>
+              {showDetails ? '▼' : '▶'} details
+            </button>
+            {hasFullContent && (
+              <button onClick={() => setExpanded(!expanded)} style={{ background: 'none', border: 'none', fontSize: '0.65rem', color: isHandoff ? '#f59e0b' : '#3b82f6', cursor: 'pointer', padding: '0 0.25rem' }}>
+                {expanded ? '↑ collapse' : '↓ full context'}
+              </button>
             )}
           </div>
-
-          {/* Drawer Footer */}
-          {hasLangfuseLinks && (
-            <div style={{
-              padding: '0.75rem 1.25rem',
-              borderTop: '1px solid #e5e7eb',
-              backgroundColor: '#f8fafc',
-              textAlign: 'center'
-            }}>
-              <a
-                href={getLangfuseTraceUrl(selectedTraceId) || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  color: '#8b5cf6',
-                  textDecoration: 'none',
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.375rem'
-                }}
-              >
-                📊 Open in Langfuse
-              </a>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <TokenBadge label="in" value={item.inputTokens} color={isHandoff ? '#f59e0b' : '#3b82f6'} />
+          </div>
+        </div>
+        <div style={{ backgroundColor: bubbleBg, borderRadius: '12px', borderTopLeftRadius: '2px', padding: '0.75rem 1rem', fontSize: '0.9rem', color: textColor, lineHeight: 1.6, borderLeft: isHandoff ? '3px solid #f59e0b' : undefined }}>
+          {expanded && hasFullContent ? (
+            <FormattedContent content={item.content} />
+          ) : (
+            <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {displayContent}
+              {isLong && !hasFullContent && <button onClick={() => setExpanded(!expanded)} style={{ display: 'block', background: 'none', border: 'none', color: '#3b82f6', fontSize: '0.65rem', cursor: 'pointer', marginTop: '0.25rem', padding: 0 }}>{expanded ? '↑ less' : '↓ more'}</button>}
             </div>
           )}
         </div>
-      </>,
-      document.body
+        {showDetails && (
+          <div style={{ marginTop: '0.35rem', padding: '0.5rem', backgroundColor: '#f8fafc', borderRadius: '6px', fontSize: '0.6rem', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.15rem 0.5rem' }}>
+            <span style={{ color: '#64748b' }}>Trace:</span><span style={{ fontFamily: 'monospace', color: '#1f2937' }}>{item.traceId?.substring(0, 16)}...</span>
+            <span style={{ color: '#64748b' }}>Session:</span><span style={{ fontFamily: 'monospace', color: '#1f2937' }}>{item.sessionId?.substring(0, 16)}...</span>
+            {item.systemPrompt && (
+              <>
+                <span style={{ color: '#64748b' }}>System:</span>
+                <details style={{ color: '#1f2937' }}>
+                  <summary style={{ cursor: 'pointer' }}>View prompt ({item.systemPrompt.length} chars)</summary>
+                  <pre style={{ fontSize: '0.55rem', backgroundColor: '#fff', padding: '0.35rem', borderRadius: '3px', overflow: 'auto', maxHeight: '120px', whiteSpace: 'pre-wrap', margin: '0.25rem 0 0 0', border: '1px solid #e5e7eb' }}>{item.systemPrompt}</pre>
+                </details>
+              </>
+            )}
+            {langfuseBaseUrl && <><span style={{ color: '#64748b' }}>Link:</span><a href={`${langfuseBaseUrl}/trace/${item.traceId}`} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>Open in Langfuse ↗</a></>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AssistantMessage({ item, langfuseBaseUrl }: { item: ConversationItem; langfuseBaseUrl?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+
+  const hasStructuredContent = /^(User:|Assistant actions?:|Tool result:|Read:|Write:|Edit:|Terminal:)/m.test(item.content);
+  const hasContent = item.content.length > 0;
+
+  const firstLine = item.content.split('\n')[0] || '';
+  const hasMoreLines = item.content.includes('\n') || item.content.length > 150;
+
+  return (
+    <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.6rem' }}>
+      <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.9rem', flexShrink: 0 }}>🤖</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.3rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#047857' }}>{item.agentName || 'Assistant'}</span>
+            <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{formatTime(item.timestamp)}</span>
+            <button onClick={() => setShowDetails(!showDetails)} style={{ background: 'none', border: 'none', fontSize: '0.65rem', color: '#94a3b8', cursor: 'pointer', padding: '0 0.25rem' }}>
+              {showDetails ? '▼' : '▶'} details
+            </button>
+            {!hasStructuredContent && hasMoreLines && (
+              <button onClick={() => setExpanded(!expanded)} style={{ background: 'none', border: 'none', fontSize: '0.65rem', color: '#10b981', cursor: 'pointer', padding: '0 0.25rem' }}>
+                {expanded ? '↑ collapse' : '↓ expand'}
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <TokenBadge label="in" value={item.inputTokens} color="#64748b" />
+            <TokenBadge label="out" value={item.outputTokens} color="#10b981" />
+            {item.cachedTokens && <TokenBadge label="cached" value={item.cachedTokens} color="#8b5cf6" />}
+            <CostBadge value={item.cost} />
+            {item.finishReason && !['stop', 'tool-calls', 'tool_calls'].includes(item.finishReason) && (
+              <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#f59e0b', backgroundColor: '#fef3c7', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>{item.finishReason}</span>
+            )}
+          </div>
+        </div>
+        <div style={{ backgroundColor: '#f0fdf4', borderRadius: '12px', borderTopLeftRadius: '2px', padding: '0.75rem 1rem', fontSize: '0.9rem', color: '#14532d', lineHeight: 1.6 }}>
+          {hasContent ? (
+            hasStructuredContent ? (
+              <FormattedContent content={item.content} />
+            ) : (
+              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {expanded ? item.content : (firstLine.length > 150 ? firstLine.substring(0, 150) + '...' : firstLine)}
+              </div>
+            )
+          ) : (
+            <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.7rem' }}>Processing...</span>
+          )}
+          <ToolsSection tools={item.tools || []} />
+        </div>
+        {showDetails && (
+          <div style={{ marginTop: '0.35rem', padding: '0.5rem', backgroundColor: '#f8fafc', borderRadius: '6px', fontSize: '0.6rem', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.15rem 0.5rem' }}>
+            {item.model && <><span style={{ color: '#64748b' }}>Model:</span><span style={{ fontFamily: 'monospace', color: '#1f2937' }}>{item.model}</span></>}
+            {item.provider && <><span style={{ color: '#64748b' }}>Provider:</span><span style={{ color: '#1f2937' }}>{item.provider}</span></>}
+            {item.temperature !== undefined && <><span style={{ color: '#64748b' }}>Temp:</span><span style={{ color: '#1f2937' }}>{item.temperature}</span></>}
+            {item.totalTokens && <><span style={{ color: '#64748b' }}>Total:</span><span style={{ color: '#1f2937' }}>{formatNumber(item.totalTokens)} tokens</span></>}
+            {item.cost && <><span style={{ color: '#64748b' }}>Cost:</span><span style={{ color: '#059669', fontWeight: 600 }}>${item.cost.toFixed(4)}</span></>}
+            <span style={{ color: '#64748b' }}>Trace:</span><span style={{ fontFamily: 'monospace', color: '#1f2937' }}>{item.traceId?.substring(0, 16)}...</span>
+            {langfuseBaseUrl && <><span style={{ color: '#64748b' }}>Link:</span><a href={`${langfuseBaseUrl}/trace/${item.traceId}`} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>Open in Langfuse ↗</a></>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DateSeparator({ date }: { date: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '1rem 0' }}>
+      <div style={{ flex: 1, height: '1px', backgroundColor: '#e5e7eb' }} />
+      <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>{date}</span>
+      <div style={{ flex: 1, height: '1px', backgroundColor: '#e5e7eb' }} />
+    </div>
+  );
+}
+
+function ErrorMessage({ error }: { error: ESError }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.6rem' }}>
+      <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.9rem', flexShrink: 0 }}>⚠️</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#dc2626' }}>{error.type === 'client_error' ? 'Client Error' : 'Error'}</span>
+          <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{formatTime(error.lastSeen)}</span>
+          {error.count > 1 && (
+            <span style={{ fontSize: '0.7rem', fontWeight: 600, backgroundColor: '#fee2e2', color: '#dc2626', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>×{error.count}</span>
+          )}
+          {error.eventType && (
+            <span style={{ fontSize: '0.7rem', backgroundColor: '#fef3c7', color: '#92400e', padding: '0.15rem 0.4rem', borderRadius: '4px', fontFamily: 'monospace' }}>{error.eventType}</span>
+          )}
+        </div>
+        <div
+          onClick={() => setExpanded(!expanded)}
+          style={{ backgroundColor: '#fef2f2', borderRadius: '10px', padding: '0.6rem 0.8rem', fontSize: '0.85rem', color: '#991b1b', cursor: 'pointer', borderLeft: '3px solid #dc2626', lineHeight: 1.5 }}
+        >
+          {expanded ? error.message : (error.message.length > 100 ? error.message.substring(0, 100) + '...' : error.message)}
+          {error.message.length > 100 && (
+            <span style={{ color: '#dc2626', fontSize: '0.6rem', marginLeft: '0.3rem' }}>{expanded ? '↑' : '↓'}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface TimelineItem {
+  type: 'conversation' | 'error';
+  timestamp: string;
+  data: ConversationItem | ESError;
+}
+
+function ConversationView({ items, errors, langfuseBaseUrl }: { items: ConversationItem[]; errors?: ESError[]; langfuseBaseUrl?: string }) {
+  const timeline: TimelineItem[] = [
+    ...items.map(item => ({ type: 'conversation' as const, timestamp: item.timestamp, data: item })),
+    ...(errors || []).map(err => ({ type: 'error' as const, timestamp: err.lastSeen, data: err }))
+  ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+  let lastDate = '';
+  return (
+    <div>
+      {timeline.map((item, idx) => {
+        const itemDate = formatDate(item.timestamp);
+        const showDateSeparator = itemDate !== lastDate;
+        lastDate = itemDate;
+        return (
+          <React.Fragment key={`${item.type}-${idx}`}>
+            {showDateSeparator && <DateSeparator date={itemDate} />}
+            {item.type === 'error' && <ErrorMessage error={item.data as ESError} />}
+            {item.type === 'conversation' && (item.data as ConversationItem).type === 'user' && <UserMessage item={item.data as ConversationItem} langfuseBaseUrl={langfuseBaseUrl} />}
+            {item.type === 'conversation' && (item.data as ConversationItem).type === 'assistant' && <AssistantMessage item={item.data as ConversationItem} langfuseBaseUrl={langfuseBaseUrl} />}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+export default function LangfusePanel({ globalAppId, refreshKey = 0, onRefresh }: LangfusePanelProps) {
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [esErrors, setEsErrors] = useState<ESErrorsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [langfuseBaseUrl, setLangfuseBaseUrl] = useState<string | undefined>(undefined);
+  const [langfuseProjectId, setLangfuseProjectId] = useState<string | undefined>(undefined);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+
+  const mergeSessions = useCallback((existing: Session[], newSessions: Session[]): Session[] => {
+    const sessionMap = new Map<string, Session>();
+    for (const s of existing) {
+      sessionMap.set(s.sessionId, s);
+    }
+    for (const s of newSessions) {
+      const existingSession = sessionMap.get(s.sessionId);
+      if (existingSession) {
+        const traceIds = new Set(existingSession.traces.map(t => t.id));
+        const newTraces = s.traces.filter(t => !traceIds.has(t.id));
+        existingSession.traces = [...existingSession.traces, ...newTraces].sort((a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+        existingSession.traceCount = existingSession.traces.length;
+        if (new Date(s.firstTrace) < new Date(existingSession.firstTrace)) existingSession.firstTrace = s.firstTrace;
+        if (new Date(s.lastTrace) > new Date(existingSession.lastTrace)) existingSession.lastTrace = s.lastTrace;
+      } else {
+        sessionMap.set(s.sessionId, s);
+      }
+    }
+    return Array.from(sessionMap.values()).sort((a, b) =>
+      new Date(b.lastTrace).getTime() - new Date(a.lastTrace).getTime()
     );
-  };
+  }, []);
+
+  const loadingMoreRef = useRef(false);
+
+  const fetchPage = useCallback(async function fetchPageData(pageToFetch: number, knownTotalPages?: number, forceRefresh = false) {
+    if (!globalAppId) return;
+    if (loadingMoreRef.current && !forceRefresh) return;
+
+    const isInitial = knownTotalPages === undefined;
+    if (isInitial) {
+      setLoading(true);
+      setSessions([]);
+    } else {
+      setLoadingMore(true);
+      loadingMoreRef.current = true;
+    }
+    setError(null);
+
+    try {
+      let actualPage = pageToFetch;
+      let totalPagesValue = knownTotalPages;
+
+      if (isInitial) {
+        const metaResponse = await fetch(`/api/langfuse/sessions/${encodeURIComponent(globalAppId)}?page=1`);
+        if (!metaResponse?.ok) throw new Error(`Failed to fetch: ${metaResponse?.status}`);
+        const metaData: SessionsResponse = await metaResponse.json();
+        totalPagesValue = metaData.pagination?.totalPages || 1;
+        setTotalPages(totalPagesValue);
+
+        if (totalPagesValue === 1) {
+          setSessions(metaData.sessions);
+          setCurrentPage(1);
+          setHasMore(false);
+          setLoading(false);
+          return;
+        }
+
+        actualPage = totalPagesValue;
+      }
+
+      const lfResponse = await fetch(`/api/langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${actualPage}`);
+      if (!lfResponse?.ok) throw new Error(`Failed to fetch: ${lfResponse?.status}`);
+      const data: SessionsResponse = await lfResponse.json();
+
+      setSessions(prev => isInitial ? data.sessions : mergeSessions(prev, data.sessions));
+      setCurrentPage(actualPage);
+      const morePages = actualPage > 1;
+      setHasMore(morePages);
+
+      if (morePages) {
+        loadingMoreRef.current = false;
+        setTimeout(() => fetchPage(actualPage - 1, totalPagesValue), 100);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch sessions');
+    } finally {
+      if (isInitial) setLoading(false);
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [globalAppId, mergeSessions]);
+
+  useEffect(() => {
+    if (globalAppId) {
+      fetchPage(1);
+    } else {
+      setSessions([]);
+      setEsErrors(null);
+    }
+  }, [globalAppId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Trigger refetch when refreshKey changes
+  useEffect(() => {
+    if (refreshKey > 0 && globalAppId) {
+      loadingMoreRef.current = false; // Reset loading state
+      setSessions([]);
+      setEsErrors(null);
+      setCurrentPage(0);
+      setHasMore(true);
+      fetchPage(1, undefined, true); // forceRefresh = true
+    }
+  }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (hasMore || loading || sessions.length === 0 || !globalAppId) return;
+
+    let earliestTimestamp: string | undefined;
+    for (const session of sessions) {
+      if (session.firstTrace && (!earliestTimestamp || session.firstTrace < earliestTimestamp)) {
+        earliestTimestamp = session.firstTrace;
+      }
+    }
+
+    if (!earliestTimestamp) return;
+
+    fetch(`/api/analytics/${encodeURIComponent(globalAppId)}/errors?fromTimestamp=${encodeURIComponent(earliestTimestamp)}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => { if (data) setEsErrors(data); })
+      .catch(() => {});
+  }, [globalAppId, hasMore, loading, sessions]);
+
+  useEffect(() => {
+    getLangfuseConfig().then(config => {
+      if (config?.baseUrl) setLangfuseBaseUrl(config.baseUrl);
+      if (config?.projectId) setLangfuseProjectId(config.projectId);
+    });
+  }, []);
+
+  const conversationItems = extractConversationItems(sessions);
+  const userMessages = conversationItems.filter(i => i.type === 'user').length;
+  const assistantMessages = conversationItems.filter(i => i.type === 'assistant').length;
+  const totalTools = conversationItems.reduce((sum, i) => sum + (i.tools?.length || 0), 0);
+
+  const lfTotals = useMemo(() => {
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let totalTokens = 0;
+    let cost = 0;
+    let observationCount = 0;
+    let traceCount = 0;
+
+    for (const session of sessions) {
+      for (const trace of session.traces) {
+        traceCount++;
+        for (const obs of (trace.observations || [])) {
+          observationCount++;
+          inputTokens += obs.promptTokens || 0;
+          outputTokens += obs.completionTokens || 0;
+          totalTokens += obs.totalTokens || 0;
+          cost += obs.calculatedTotalCost || 0;
+        }
+      }
+    }
+    return { inputTokens, outputTokens, totalTokens, cost, observationCount, traceCount };
+  }, [sessions]);
 
   return (
     <div style={{
@@ -1399,19 +1006,9 @@ export default function LangfusePanel({ globalAppId, onSessionClick, langfuseBas
             alignItems: 'center',
             gap: '0.5rem'
           }}>
-            <span style={{ fontSize: '1.25rem' }}>🔍</span>
-            Conversation Traces
+            <span style={{ fontSize: '1.25rem' }}>💬</span>
+            Conversation
           </h2>
-          <span style={{
-            backgroundColor: '#f3e8ff',
-            color: '#7c3aed',
-            padding: '0.125rem 0.5rem',
-            borderRadius: '4px',
-            fontSize: '0.75rem',
-            fontWeight: 500
-          }}>
-            {totalItems.toLocaleString()} traces
-          </span>
           {globalAppId && (
             <span style={{
               backgroundColor: '#dbeafe',
@@ -1421,51 +1018,65 @@ export default function LangfusePanel({ globalAppId, onSessionClick, langfuseBas
               fontSize: '0.75rem',
               fontWeight: 500
             }}>
-              Filtered: {globalAppId.substring(0, 12)}...
+              {globalAppId.substring(0, 12)}...
+            </span>
+          )}
+          {/* Loading Progress */}
+          {globalAppId && (hasMore || loadingMore || loading) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.7rem', color: '#f59e0b' }}>⏳</span>
+              <div style={{
+                width: '60px',
+                height: '6px',
+                backgroundColor: '#e5e7eb',
+                borderRadius: '3px',
+                overflow: 'hidden'
+              }}>
+                <div style={{
+                  width: `${totalPages > 0 ? Math.round(((totalPages - currentPage + 1) / totalPages) * 100) : 0}%`,
+                  height: '100%',
+                  backgroundColor: '#f59e0b',
+                  borderRadius: '3px',
+                  transition: 'width 0.3s ease'
+                }} />
+              </div>
+              <span style={{ fontSize: '0.65rem', color: '#6b7280' }}>
+                ({currentPage > 0 ? currentPage - 1 : 0} remaining of {totalPages})
+              </span>
+            </div>
+          )}
+          {globalAppId && !hasMore && !loadingMore && !loading && conversationItems.length > 0 && (
+            <span style={{
+              fontSize: '0.7rem',
+              color: '#16a34a',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem'
+            }}>
+              ✓ Loaded
             </span>
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Time Range Filter */}
-          <select
-            value={timeRange}
-            onChange={(e) => {
-              setTimeRange(e.target.value);
-              setPage(1);
-            }}
-            style={{
-              padding: '0.375rem 0.5rem',
-              borderRadius: '6px',
-              border: '1px solid #d1d5db',
-              fontSize: '0.75rem',
-              backgroundColor: 'white',
-              cursor: 'pointer'
-            }}
-          >
-            {TIME_RANGES.map((range) => (
-              <option key={range.value} value={range.value}>
-                {range.label}
-              </option>
-            ))}
-          </select>
-
+        {onRefresh && (
           <button
-            onClick={() => fetchTraces()}
+            onClick={onRefresh}
             disabled={loading || !globalAppId}
             style={{
-              padding: '0.375rem 0.75rem',
-              backgroundColor: 'white',
-              border: '1px solid #d1d5db',
+              padding: '0.625rem 1.25rem',
+              backgroundColor: (loading || !globalAppId) ? '#9ca3af' : '#3b82f6',
+              color: 'white',
+              border: 'none',
               borderRadius: '6px',
               cursor: (loading || !globalAppId) ? 'not-allowed' : 'pointer',
-              fontSize: '0.813rem',
-              opacity: !globalAppId ? 0.6 : 1
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              opacity: (loading || !globalAppId) ? 0.6 : 1
             }}
           >
             Refresh
           </button>
-        </div>
+        )}
       </div>
 
       {/* Error State */}
@@ -1490,115 +1101,68 @@ export default function LangfusePanel({ globalAppId, onSessionClick, langfuseBas
           backgroundColor: '#f9fafb',
           borderRadius: '6px'
         }}>
-          <p style={{ margin: 0, fontWeight: 500 }}>Enter an App ID to view traces</p>
+          <p style={{ margin: 0, fontWeight: 500 }}>Enter an App ID to view conversation</p>
           <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.875rem', color: '#6b7280' }}>
-            Use the App Context filter in the header or enter an App ID above
+            Use the App Context filter in the header
           </p>
         </div>
-      ) : loading && traces.length === 0 ? (
+      ) : loading ? (
         <div style={{
           textAlign: 'center',
           padding: '2rem',
           color: '#6b7280'
         }}>
-          Loading Langfuse traces...
+          ⏳ Loading page {currentPage}{totalPages > 1 ? ` of ${totalPages}` : ''}...
         </div>
-      ) : traces.length === 0 ? (
+      ) : conversationItems.length === 0 ? (
         <div style={{
           textAlign: 'center',
           padding: '2rem',
           backgroundColor: '#f9fafb',
           borderRadius: '6px'
         }}>
-          <p style={{ margin: 0, fontWeight: 500 }}>No traces found</p>
+          <p style={{ margin: 0, fontWeight: 500 }}>💬 No conversation found</p>
           <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.875rem', color: '#6b7280' }}>
-            Try adjusting your filters or time range
+            No traces found for this App ID
           </p>
         </div>
       ) : (
         <>
           {/* Stats Row */}
           <div style={{
+            padding: '0.6rem 1rem',
+            borderRadius: '6px',
+            backgroundColor: '#f0f9ff',
             display: 'flex',
             gap: '1rem',
             marginBottom: '1rem',
-            fontSize: '0.813rem',
-            color: '#6b7280'
+            fontSize: '0.8rem',
+            flexWrap: 'wrap'
           }}>
-            Showing {traces.length} of {totalItems.toLocaleString()} traces
-            {loading && <span style={{ color: '#3b82f6' }}>• Refreshing...</span>}
+            <span>👤 {userMessages}</span>
+            <span>🤖 {assistantMessages}</span>
+            <span>🔧 {totalTools}</span>
+            <span style={{ color: '#64748b' }}>|</span>
+            <span style={{ color: '#64748b' }}>{lfTotals.traceCount} traces</span>
+            <span style={{ color: '#334155', fontWeight: 600 }}>📥 {formatNumber(lfTotals.inputTokens)}</span>
+            <span style={{ color: '#334155', fontWeight: 600 }}>📤 {formatNumber(lfTotals.outputTokens)}</span>
+            {lfTotals.cost > 0 && <span style={{ color: '#059669', fontWeight: 600 }}>💰 ${lfTotals.cost.toFixed(2)}</span>}
+            {esErrors && esErrors.uniqueErrors > 0 && (
+              <span style={{ color: '#dc2626', fontWeight: 600 }}>⚠️ {esErrors.totalErrors + esErrors.totalClientErrors} errors</span>
+            )}
+            {langfuseBaseUrl && langfuseProjectId && (
+              <a href={`${langfuseBaseUrl}/project/${langfuseProjectId}/users/${globalAppId}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.7rem', color: '#3b82f6', textDecoration: 'none', marginLeft: 'auto' }}>
+                Langfuse ↗
+              </a>
+            )}
           </div>
 
-          {/* Table */}
-          <div style={{ overflowX: 'auto', flex: 1 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                  <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>ID</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Timestamp</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Agent</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>App ID</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Conversation</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Latency</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 600, color: '#374151' }}>Obs.</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 600, color: '#374151' }}>Scores</th>
-                  {hasLangfuseLinks && <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 600, color: '#374151' }}>Trace</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {traces.map(renderTraceRow)}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginTop: '1rem',
-            paddingTop: '1rem',
-            borderTop: '1px solid #e5e7eb'
-          }}>
-            <span style={{ fontSize: '0.813rem', color: '#6b7280' }}>
-              Page {page} of {totalPages}
-            </span>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1 || loading}
-                style={{
-                  padding: '0.375rem 0.75rem',
-                  backgroundColor: page === 1 ? '#f3f4f6' : 'white',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                  cursor: page === 1 ? 'not-allowed' : 'pointer',
-                  fontSize: '0.813rem'
-                }}
-              >
-                Previous
-              </button>
-              <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages || loading}
-                style={{
-                  padding: '0.375rem 0.75rem',
-                  backgroundColor: page === totalPages ? '#f3f4f6' : 'white',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                  cursor: page === totalPages ? 'not-allowed' : 'pointer',
-                  fontSize: '0.813rem'
-                }}
-              >
-                Next
-              </button>
-            </div>
+          {/* Conversation View */}
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, maxHeight: '600px' }}>
+            <ConversationView items={conversationItems} errors={esErrors?.errors} langfuseBaseUrl={langfuseBaseUrl} />
           </div>
         </>
       )}
-
-      {/* Trace Details Drawer */}
-      {renderTraceDrawer()}
     </div>
   );
 }

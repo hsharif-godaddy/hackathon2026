@@ -43,7 +43,6 @@ export const GET = withAuth(async (request) => {
       },
     });
 
-
     if (!response.ok) {
       const errorText = await response.text();
       return NextResponse.json(
@@ -51,7 +50,6 @@ export const GET = withAuth(async (request) => {
         { status: response.status }
       );
     }
-
 
     const data = await response.json();
     return NextResponse.json(data);

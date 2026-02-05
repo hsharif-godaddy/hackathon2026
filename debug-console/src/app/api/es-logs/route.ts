@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
-import { buildAppIdQuery, getLogSourceConfig } from '@/lib/log-sources';
+import { buildAppIdQuery, getLogSourceConfig, getNestedValue } from '@/lib/log-sources';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -69,15 +69,16 @@ export const GET = withAuth(async (request) => {
     }
 
     const mustClauses: Array<Record<string, unknown>> = [];
+    const levelField = sourceConfig.fieldMapping.levelField;
 
     if (levels) {
       const levelList = levels.split(',').map(l => l.toLowerCase());
       mustClauses.push({
-        terms: { level: levelList }
+        terms: { [levelField]: levelList }
       });
     } else if (level && level !== 'all') {
       mustClauses.push({
-        match: { level: level.toLowerCase() }
+        match: { [levelField]: level.toLowerCase() }
       });
     }
 
@@ -140,6 +141,10 @@ export const GET = withAuth(async (request) => {
       const errorText = await response.text();
 
       if (response.status === 404) {
+        console.warn(`[es-logs] Index not found for source: ${sourceId}`, {
+          endpoint: sourceConfig.endpoint,
+          index: sourceConfig.index
+        });
         return NextResponse.json({
           logs: [],
           total: 0,
@@ -157,6 +162,13 @@ export const GET = withAuth(async (request) => {
         });
       }
 
+      console.error(`[es-logs] Elasticsearch error for source: ${sourceId}`, {
+        status: response.status,
+        endpoint: sourceConfig.endpoint,
+        index: sourceConfig.index,
+        error: errorText.slice(0, 500)
+      });
+
       return NextResponse.json(
         { error: 'Failed to fetch logs from Elasticsearch', details: errorText },
         {
@@ -170,22 +182,26 @@ export const GET = withAuth(async (request) => {
 
     const data: ESSearchResponse = await response.json();
 
-    const logs = data.hits.hits.map((hit) => ({
-      id: hit._id,
-      timestamp: hit._source['@timestamp'],
-      level: hit._source.level || 'INFO',
-      message: hit._source.message || '',
-      event: hit._source.event,
-      appId: hit._source.app_id,
-      logger: hit._source.logger,
-      service: hit._source.service,
-      hostname: hit._source.hostname,
-      environment: hit._source.environment,
-      region: hit._source.region,
-      version: hit._source.version,
-      data: hit._source.data,
-      raw: hit._source
-    }));
+    const { fieldMapping } = sourceConfig;
+    const logs = data.hits.hits.map((hit) => {
+      const src = hit._source as Record<string, unknown>;
+      return {
+        id: hit._id,
+        timestamp: getNestedValue(src, fieldMapping.timestampField) as string,
+        level: (getNestedValue(src, fieldMapping.levelField) as string) || 'INFO',
+        message: (getNestedValue(src, fieldMapping.messageField) as string) || '',
+        event: getNestedValue(src, fieldMapping.eventField) as string | undefined,
+        appId: fieldMapping.appIdField ? getNestedValue(src, fieldMapping.appIdField) as string : undefined,
+        logger: src.logger as string | undefined,
+        service: getNestedValue(src, fieldMapping.serviceField) as string | undefined,
+        hostname: src.hostname as string | undefined,
+        environment: src.environment as string | undefined,
+        region: src.region as string | undefined,
+        version: src.version as string | undefined,
+        data: src.data as Record<string, unknown> | undefined,
+        raw: src
+      };
+    });
 
     return NextResponse.json({
       logs,
@@ -199,6 +215,7 @@ export const GET = withAuth(async (request) => {
       }
     });
   } catch (error) {
+    console.error('[es-logs] Unexpected error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       {
         error: 'Failed to fetch logs',

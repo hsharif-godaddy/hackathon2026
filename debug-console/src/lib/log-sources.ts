@@ -60,22 +60,22 @@ const airoAgentsFieldMapping: FieldMapping = {
   ]
 };
 
-// Field mapping for Airo App Builder (no app ID filtering - shows all logs)
+// Field mapping for Airo App Builder
 const airoAppFieldMapping: FieldMapping = {
-  appIdField: null, // Don't filter by app ID for this source
+  appIdField: 'data.appId',
   appIdQueryType: 'match',
   timestampField: '@timestamp',
-  levelField: 'log.level',
-  levelKeywordField: 'log.level',
+  levelField: 'level',
+  levelKeywordField: 'level',
   messageField: 'message',
-  eventField: 'event.action',
-  eventKeywordField: 'event.action',
-  serviceField: 'service.name',
-  serviceKeywordField: 'service.name',
+  eventField: 'event',
+  eventKeywordField: 'event',
+  serviceField: 'KATANA_APP',
+  serviceKeywordField: 'KATANA_APP',
   displayFields: [
     { key: 'traceId', label: 'Trace ID', path: 'trace.id' },
-    { key: 'spanId', label: 'Span ID', path: 'span.id' },
-    { key: 'userId', label: 'User ID', path: 'user.id' }
+    { key: 'customerId', label: 'Customer ID', path: 'data.customerId' },
+    { key: 'appId', label: 'App ID', path: 'data.appId' }
   ]
 };
 

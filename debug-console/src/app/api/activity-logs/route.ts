@@ -157,9 +157,17 @@ async function fetchActivityLogs(
           _fieldMapping: fieldMapping
         }));
         allLogs.push(...logsWithSource);
+      } else {
+        const errorText = await response.text();
+        console.error(`[activity-logs] ES error for source: ${sourceId}`, {
+          status: response.status,
+          endpoint: sourceConfig.endpoint,
+          index: sourceConfig.index,
+          error: errorText.slice(0, 500)
+        });
       }
     } catch (error) {
-      console.error('Error fetching activity logs from source:', sourceId, error);
+      console.error(`[activity-logs] Error fetching from source: ${sourceId}`, error);
     }
   }
 
@@ -269,6 +277,7 @@ export const GET = withAuth(async (request) => {
       }
     });
   } catch (error) {
+    console.error('[activity-logs] Unexpected error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       {
         error: 'Failed to fetch activity logs',

@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
-import ConversationLogDetailPanel from './ConversationLogDetailPanel';
+import React, { useCallback, useEffect, useState } from 'react';
+
+import LangfusePanel from './LangfusePanel';
 
 interface AppMetadata {
     name?: string;
@@ -112,32 +113,6 @@ function formatTimestamp(timestamp: string): string {
     }
 }
 
-function mapOperationName(operationName: string | undefined | null): string {
-    if (!operationName || typeof operationName !== 'string') {
-        return '-';
-    }
-
-    const normalized = operationName.trim().toLowerCase();
-
-    const operationMap: Record<string, string> = {
-        'ai.toolCall agent-AI Developer': 'Develop Agent',
-    };
-
-    if (operationMap[normalized]) {
-        return operationMap[normalized];
-    }
-
-    if (normalized.startsWith('ai.')) {
-        const operation = normalized.substring(3).replace(/_/g, ' ');
-        return operation
-            .split(' ')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
-    }
-
-    return operationName;
-}
-
 export default function AppContextPanel({
     appId,
     onClose: _onClose,
@@ -151,22 +126,6 @@ export default function AppContextPanel({
     const [activeTab, setActiveTab] = useState<
         'summary' | 'conversation-logs'
     >('summary');
-    const [apmPage, setApmPage] = useState(0);
-    const [loadingMore, setLoadingMore] = useState(false);
-
-    // Activity logs pagination state
-    const [_activityLogs, _setActivityLogs] = useState<RecentActivity[]>([]);
-    const [_activityPage, _setActivityPage] = useState(0);
-    const [_activityHasMore, _setActivityHasMore] = useState(false);
-    const [_activityLoadingMore, _setActivityLoadingMore] = useState(false);
-    const _ACTIVITY_PAGE_SIZE = 50;
-
-    // Activity detail panel state
-    const [_selectedActivityIndex, _setSelectedActivityIndex] = useState<number | null>(null);
-
-    // Conversation log detail panel state
-    const [selectedConversationIndex, setSelectedConversationIndex] = useState<number | null>(null);
-    const conversationPanelRef = useRef<HTMLDivElement>(null);
 
     // Error detail drawer state
     const [selectedErrorGroup, setSelectedErrorGroup] = useState<{ message: string; count: number } | null>(null);
@@ -177,7 +136,6 @@ export default function AppContextPanel({
         async function fetchContext() {
             setLoading(true);
             setError(null);
-            setApmPage(0);
 
             try {
                 const url = `/api/app-context?appId=${encodeURIComponent(appId)}&timeRange=${timeRange}`;
@@ -204,16 +162,9 @@ export default function AppContextPanel({
         }
     }, [appId, timeRange]);
 
-    useEffect(() => {
-        if (appId && activeTab === 'conversation-logs') {
-            setApmPage(0);
-        }
-    }, [appId, activeTab]);
-
     const handleRefresh = () => {
         if (appId) {
             setLoading(true);
-            setApmPage(0);
             fetch(`/api/app-context?appId=${encodeURIComponent(appId)}&timeRange=${timeRange}`)
                 .then((res) => res.json())
                 .then((data) => {
@@ -226,27 +177,6 @@ export default function AppContextPanel({
                 });
         }
     };
-
-    // Conversation log detail panel handlers
-    const handleConversationSelect = useCallback((index: number) => {
-        setSelectedConversationIndex(index);
-    }, []);
-
-    const closeConversationDetailPanel = useCallback(() => {
-        setSelectedConversationIndex(null);
-    }, []);
-
-    const selectPreviousConversation = useCallback(() => {
-        if (selectedConversationIndex !== null && selectedConversationIndex > 0) {
-            setSelectedConversationIndex(selectedConversationIndex - 1);
-        }
-    }, [selectedConversationIndex]);
-
-    const selectNextConversation = useCallback(() => {
-        if (selectedConversationIndex !== null && context && selectedConversationIndex < context.apmTraces.traces.length - 1) {
-            setSelectedConversationIndex(selectedConversationIndex + 1);
-        }
-    }, [selectedConversationIndex, context]);
 
     // Error detail drawer handlers
     const handleErrorGroupClick = useCallback(async (group: { message: string; count: number }) => {
@@ -272,60 +202,6 @@ export default function AppContextPanel({
         setSelectedErrorGroup(null);
         setErrorDetails([]);
     }, []);
-
-    // Keyboard navigation for conversation panel
-    useEffect(() => {
-        if (activeTab !== 'conversation-logs' || selectedConversationIndex === null) return;
-
-        function handleKeyDown(e: KeyboardEvent) {
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                closeConversationDetailPanel();
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                selectPreviousConversation();
-            } else if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                selectNextConversation();
-            }
-        }
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [activeTab, selectedConversationIndex, closeConversationDetailPanel, selectPreviousConversation, selectNextConversation]);
-
-    const handleLoadMoreApm = async () => {
-        if (!appId || loadingMore || !context) return;
-
-        setLoadingMore(true);
-        const nextPage = apmPage + 1;
-
-        try {
-            const url = `/api/app-context?appId=${encodeURIComponent(appId)}&spansPage=${nextPage}&timeRange=${timeRange}`;
-            const response = await fetch(url);
-
-            if (!response.ok) {
-                throw new Error('Failed to load more APM traces');
-            }
-
-            const data = await response.json();
-
-            if (data.apmTraces && data.apmTraces.traces) {
-                setContext({
-                    ...context,
-                    apmTraces: {
-                        ...data.apmTraces,
-                        traces: [...context.apmTraces.traces, ...data.apmTraces.traces]
-                    }
-                });
-                setApmPage(nextPage);
-            }
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to load more APM traces');
-        } finally {
-            setLoadingMore(false);
-        }
-    };
 
     if (loading && !context) {
         return (
@@ -520,7 +396,7 @@ export default function AppContextPanel({
                                 textTransform: 'capitalize'
                             }}
                         >
-                            {tab === 'conversation-logs' ? 'Conversation Logs' : tab}
+                            {tab === 'conversation-logs' ? 'Conversation' : tab}
                         </button>
                     )
                 )}
@@ -678,195 +554,7 @@ export default function AppContextPanel({
                 )}
 
                 {activeTab === 'conversation-logs' && (
-                    <div ref={conversationPanelRef} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', height: '100%' }}>
-                        {/* Conversation Logs Header */}
-                        <div
-                            style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                padding: '0.5rem 1rem',
-                                backgroundColor: '#f0fdf4',
-                                borderRadius: '6px',
-                                border: '1px solid #86efac'
-                            }}
-                        >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                <span style={{ fontSize: '0.875rem', color: '#166534', fontWeight: 600 }}>
-                                    🤖 Conversation Logs
-                                </span>
-                                <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                                    {context.apmTraces.total} trace{context.apmTraces.total !== 1 ? 's' : ''} found
-                                </span>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    const allTracesJson = JSON.stringify(
-                                        context.apmTraces.traces.map((trace) => trace.raw),
-                                        null,
-                                        2
-                                    );
-                                    navigator.clipboard.writeText(allTracesJson);
-                                }}
-                                style={{
-                                    fontSize: '0.7rem',
-                                    padding: '0.35rem 0.75rem',
-                                    backgroundColor: '#3b82f6',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    fontWeight: 500
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.backgroundColor = '#2563eb';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor = '#3b82f6';
-                                }}
-                            >
-                                Copy All JSON
-                            </button>
-                        </div>
-
-                        {/* Conversation Logs Table */}
-                        <div style={{
-                            maxHeight: '550px',
-                            overflowY: 'auto',
-                            border: '1px solid #6b7280',
-                            borderRadius: '6px'
-                        }}>
-                            {context.apmTraces.total > 0 ? (
-                                <table style={{ width: '100%', fontSize: '0.875rem', borderCollapse: 'collapse' }}>
-                                    <thead style={{
-                                        backgroundColor: '#f9fafb',
-                                        borderBottom: '1px solid #6b7280',
-                                        position: 'sticky',
-                                        top: 0,
-                                        zIndex: 5
-                                    }}>
-                                        <tr>
-                                            <th style={{ textAlign: 'left', padding: '0.75rem 1rem', fontWeight: 600, width: '160px', color: '#374151' }}>Timestamp</th>
-                                            <th style={{ textAlign: 'left', padding: '0.75rem 1rem', fontWeight: 600, width: '200px', color: '#374151' }}>Operation</th>
-                                            <th style={{ textAlign: 'left', padding: '0.75rem 1rem', fontWeight: 600, width: '120px', color: '#374151' }}>Duration</th>
-                                            <th style={{ textAlign: 'left', padding: '0.75rem 1rem', fontWeight: 600, width: '300px', color: '#374151' }}>AI Prompt</th>
-                                            <th style={{ textAlign: 'left', padding: '0.75rem 1rem', fontWeight: 600, width: '300px', color: '#374151' }}>AI Response</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {context.apmTraces.traces.map((trace, index) => (
-                                            <tr
-                                                key={index}
-                                                onClick={() => handleConversationSelect(index)}
-                                                style={{
-                                                    borderBottom: '1px solid #9ca3af',
-                                                    cursor: 'pointer',
-                                                    transition: 'background-color 0.2s',
-                                                    backgroundColor: selectedConversationIndex === index ? '#dbeafe' : 'transparent'
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                    if (selectedConversationIndex !== index) {
-                                                        e.currentTarget.style.backgroundColor = '#f9fafb';
-                                                    }
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                    if (selectedConversationIndex !== index) {
-                                                        e.currentTarget.style.backgroundColor = 'transparent';
-                                                    }
-                                                }}
-                                            >
-                                                <td style={{ padding: '0.75rem 1rem', fontFamily: 'monospace', whiteSpace: 'nowrap', fontSize: '0.75rem', color: '#6b7280' }}>
-                                                    {formatTimestamp(trace.timestamp)}
-                                                </td>
-                                                <td style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', color: '#374151' }}>
-                                                    {mapOperationName((trace.raw?.labels as Record<string, unknown>)?.operation_name as string || trace.spanName)}
-                                                </td>
-                                                <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#6b7280' }}>
-                                                    {trace.duration ? `${trace.duration.toFixed(2)} ms` : '-'}
-                                                </td>
-                                                <td style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', color: '#374151', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={((trace.raw?.labels as Record<string, unknown>)?.ai_prompt as string) || '-'}>
-                                                    {((trace.raw?.labels as Record<string, unknown>)?.ai_prompt as string) || '-'}
-                                                </td>
-                                                <td style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', color: '#374151', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={((trace.raw?.labels as Record<string, unknown>)?.ai_response_text as string) || '-'}>
-                                                    {((trace.raw?.labels as Record<string, unknown>)?.ai_response_text as string) || '-'}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            ) : (
-                                <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
-                                    No conversation logs found for the app
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Drawer Detail Panel */}
-                        {selectedConversationIndex !== null && context.apmTraces.total > 0 && (
-                            <div style={{
-                                position: 'fixed',
-                                top: '60px',
-                                right: 0,
-                                bottom: 0,
-                                width: '650px',
-                                maxWidth: '90vw',
-                                backgroundColor: 'white',
-                                boxShadow: '-4px 0 20px rgba(0,0,0,0.15)',
-                                zIndex: 1000,
-                                borderTopLeftRadius: '8px'
-                            }}>
-                                <ConversationLogDetailPanel
-                                    trace={context.apmTraces.traces[selectedConversationIndex]}
-                                    onClose={closeConversationDetailPanel}
-                                    onPrevious={selectPreviousConversation}
-                                    onNext={selectNextConversation}
-                                    hasPrevious={selectedConversationIndex > 0}
-                                    hasNext={selectedConversationIndex < context.apmTraces.traces.length - 1}
-                                />
-                            </div>
-                        )}
-
-                        {/* Load More Button */}
-                        {context.apmTraces.pagination.hasMore && (
-                            <div
-                                style={{
-                                    padding: '1rem',
-                                    textAlign: 'center',
-                                    borderTop: '1px solid #6b7280',
-                                    borderRadius: '0 0 6px 6px',
-                                    backgroundColor: '#fafafa'
-                                }}
-                            >
-                                <button
-                                    onClick={handleLoadMoreApm}
-                                    disabled={loadingMore}
-                                    style={{
-                                        padding: '0.5rem 1.5rem',
-                                        fontSize: '0.875rem',
-                                        backgroundColor: loadingMore ? '#d1d5db' : '#3b82f6',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        cursor: loadingMore ? 'not-allowed' : 'pointer',
-                                        fontWeight: 500
-                                    }}
-                                >
-                                    {loadingMore ? 'Loading...' : 'Load More'}
-                                </button>
-                                {context.apmTraces.pagination.total > 0 && (
-                                    <div
-                                        style={{
-                                            marginTop: '0.5rem',
-                                            fontSize: '0.75rem',
-                                            color: '#6b7280'
-                                        }}
-                                    >
-                                        Showing {context.apmTraces.traces.length} of {context.apmTraces.pagination.total} traces
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
+                    <LangfusePanel globalAppId={appId} />
                 )}
             </div>
 

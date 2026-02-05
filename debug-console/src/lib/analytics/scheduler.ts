@@ -2,15 +2,11 @@ import { sourceClient, SOURCE_INDEX_NAME, INDICES, writeClient } from './es-clie
 import {
   init,
   insertRun,
-  insertToolExecution,
-  insertLlmCall,
   insertCompression,
   insertError,
   insertConversation,
   insertSummarization,
   insertToolFailure,
-  insertModelSelection,
-  insertCommandExecution,
   insertPublishEvent,
   insertClientError,
   flushPendingDocs
@@ -19,9 +15,6 @@ import {
 // Pioneer events to fetch
 const PIONEER_EVENTS = [
   'agent.run.finish',
-  'agent.step.finish',
-  'develop_agent.tool.execution.complete',
-  'observability.llm.ended',
   'compression.batch.complete',
   'conversation.history.loader.token_limit_reached',
   'summarization.background.complete',
@@ -36,9 +29,6 @@ const PIONEER_EVENTS = [
   'tool.ast.edit.failure',
   'conversation.start',
   'conversation.continue',
-  'model.provider.selected',
-  'dev_supervisor.exec.success',
-  'dev_supervisor.exec.failure',
   'route.publish.begin',
   'route.publish.success',
   'route.publish.build.failed',
@@ -130,63 +120,6 @@ function processPioneerLog(log: LogEntry): boolean {
           output_tokens: output,
           cached_input_tokens: safeNum(d.totalUsage.cachedInputTokens)
         });
-      return true;
-      }
-
-      case 'agent.step.finish': {
-        const d = log.data as {
-          model?: string;
-          provider?: string;
-          inputTokens?: number;
-          outputTokens?: number;
-          finishReason?: string;
-          toolCallCount?: number;
-        };
-        insertLlmCall({
-          es_id: log._id,
-          timestamp: log.timestamp,
-          app_id: log.app_id,
-          agent_id: log.agentId,
-          model: d.model,
-          provider: d.provider,
-          input_tokens: d.inputTokens || 0,
-          output_tokens: d.outputTokens || 0,
-          finish_reason: d.finishReason,
-          tool_call_count: d.toolCallCount || 0
-        });
-      return true;
-      }
-
-      case 'observability.llm.ended': {
-        const d = log.data as {
-          model?: string;
-          provider?: string;
-          durationMs?: number;
-          finishReason?: string;
-        };
-        insertLlmCall({
-          es_id: log._id,
-          timestamp: log.timestamp,
-          app_id: log.app_id,
-          agent_id: log.agentId,
-          model: d.model,
-          provider: d.provider,
-          duration_ms: d.durationMs || 0,
-          finish_reason: d.finishReason
-        });
-      return true;
-      }
-
-      case 'develop_agent.tool.execution.complete': {
-        const d = log.data as { toolName?: string };
-      if (!d.toolName) return false;
-          insertToolExecution({
-            es_id: log._id,
-            timestamp: log.timestamp,
-            app_id: log.app_id,
-            agent_id: log.agentId,
-            tool_name: d.toolName
-          });
       return true;
       }
 
@@ -373,47 +306,6 @@ function processPioneerLog(log: LogEntry): boolean {
         });
       return true;
       }
-
-      case 'model.provider.selected': {
-        const d = log.data as { model?: string; provider?: string };
-      if (!d.model) return false;
-          insertModelSelection({
-            es_id: log._id,
-            timestamp: log.timestamp,
-            app_id: log.app_id,
-            model: d.model,
-            provider: d.provider
-          });
-      return true;
-      }
-
-      case 'dev_supervisor.exec.success': {
-        const d = log.data as { command?: string; durationMs?: number; exitCode?: number };
-        insertCommandExecution({
-          es_id: log._id,
-          timestamp: log.timestamp,
-          app_id: log.app_id,
-          command: d.command,
-          success: true,
-          duration_ms: d.durationMs,
-          exit_code: d.exitCode
-        });
-      return true;
-      }
-
-      case 'dev_supervisor.exec.failure': {
-        const d = log.data as { command?: string; durationMs?: number; exitCode?: number };
-        insertCommandExecution({
-          es_id: log._id,
-          timestamp: log.timestamp,
-          app_id: log.app_id,
-          command: d.command,
-          success: false,
-          duration_ms: d.durationMs,
-          exit_code: d.exitCode
-        });
-      return true;
-    }
 
     case 'route.publish.begin': {
       insertPublishEvent({
@@ -754,6 +646,53 @@ export async function runFetch(): Promise<FetchResult> {
   if (pendingCount.value > 0) {
     await flushPendingDocs();
   }
+
+  return { startTime, endTime, pioneerCounts, katanaCount };
+}
+
+export async function runBackfill(days: number): Promise<FetchResult> {
+  await init();
+
+  const endTime = new Date();
+  const startTime = new Date(endTime.getTime() - days * 24 * 60 * 60 * 1000);
+
+  console.log(`[Scheduler] Running backfill for ${days} days: ${startTime.toISOString()} to ${endTime.toISOString()}`);
+
+  const pioneerCounts: Record<string, number> = {};
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  const pendingCount = { value: 0 };
+
+  // Process in daily chunks
+  let chunkStart = new Date(startTime);
+  while (chunkStart < endTime) {
+    const chunkEnd = new Date(Math.min(chunkStart.getTime() + ONE_DAY_MS, endTime.getTime()));
+
+    for (const event of PIONEER_EVENTS) {
+      const count = await fetchAndProcessPioneerEvents(chunkStart, chunkEnd, event, pendingCount);
+      if (count > 0) {
+        pioneerCounts[event] = (pioneerCounts[event] || 0) + count;
+      }
+    }
+
+    chunkStart = chunkEnd;
+  }
+
+  // Process Katana logs
+  let katanaCount = 0;
+  chunkStart = new Date(startTime);
+  while (chunkStart < endTime) {
+    const chunkEnd = new Date(Math.min(chunkStart.getTime() + ONE_DAY_MS, endTime.getTime()));
+    katanaCount += await fetchAndProcessKatanaErrors(chunkStart, chunkEnd, pendingCount);
+    chunkStart = chunkEnd;
+  }
+
+  // Final flush
+  if (pendingCount.value > 0) {
+    await flushPendingDocs();
+  }
+
+  const totalPioneer = Object.values(pioneerCounts).reduce((a, b) => a + b, 0);
+  console.log(`[Scheduler] Backfill complete: ${totalPioneer} pioneer events, ${katanaCount} client errors`);
 
   return { startTime, endTime, pioneerCounts, katanaCount };
 }

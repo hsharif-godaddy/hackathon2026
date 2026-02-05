@@ -92,7 +92,7 @@ export default function MetricsPanel() {
       result.data.forEach((point) => {
         const timeKey = point.time_dimension;
         if (!timeMap.has(timeKey)) {
-          timeMap.set(timeKey, { timeTimestamp: timeKey });
+          timeMap.set(timeKey, {});
         }
         timeMap.get(timeKey)![point.name] = point.avg_value;
       });

@@ -49,58 +49,6 @@ export function insertRun(run: {
   });
 }
 
-export function insertToolExecution(tool: {
-  es_id: string;
-  timestamp: string;
-  app_id: string;
-  agent_id?: string;
-  tool_name: string;
-}) {
-  pendingDocs.push({
-    index: INDICES.TOOL_EXECUTIONS,
-    id: tool.es_id,
-    doc: {
-      es_id: tool.es_id,
-      timestamp: tool.timestamp,
-      app_id: tool.app_id,
-      agent_id: tool.agent_id || null,
-      tool_name: tool.tool_name
-    }
-  });
-}
-
-export function insertLlmCall(call: {
-  es_id: string;
-  timestamp: string;
-  app_id: string;
-  agent_id?: string;
-  model?: string;
-  provider?: string;
-  duration_ms?: number;
-  input_tokens?: number;
-  output_tokens?: number;
-  finish_reason?: string;
-  tool_call_count?: number;
-}) {
-  pendingDocs.push({
-    index: INDICES.LLM_CALLS,
-    id: call.es_id,
-    doc: {
-      es_id: call.es_id,
-      timestamp: call.timestamp,
-      app_id: call.app_id,
-      agent_id: call.agent_id || null,
-      model: call.model || null,
-      provider: call.provider || null,
-      duration_ms: call.duration_ms || 0,
-      input_tokens: call.input_tokens || 0,
-      output_tokens: call.output_tokens || 0,
-      finish_reason: call.finish_reason || null,
-      tool_call_count: call.tool_call_count || 0
-    }
-  });
-}
-
 export function insertCompression(comp: {
   es_id: string;
   timestamp: string;
@@ -227,50 +175,6 @@ export function insertToolFailure(failure: {
       tool_name: failure.tool_name,
       error_message: failure.error_message || null,
       file_path: failure.file_path || null
-    }
-  });
-}
-
-export function insertModelSelection(selection: {
-  es_id: string;
-  timestamp: string;
-  app_id: string;
-  model: string;
-  provider?: string;
-}) {
-  pendingDocs.push({
-    index: INDICES.MODEL_SELECTIONS,
-    id: selection.es_id,
-    doc: {
-      es_id: selection.es_id,
-      timestamp: selection.timestamp,
-      app_id: selection.app_id,
-      model: selection.model,
-      provider: selection.provider || null
-    }
-  });
-}
-
-export function insertCommandExecution(cmd: {
-  es_id: string;
-  timestamp: string;
-  app_id: string;
-  command?: string;
-  success: boolean;
-  duration_ms?: number;
-  exit_code?: number;
-}) {
-  pendingDocs.push({
-    index: INDICES.COMMAND_EXECUTIONS,
-    id: cmd.es_id,
-    doc: {
-      es_id: cmd.es_id,
-      timestamp: cmd.timestamp,
-      app_id: cmd.app_id,
-      command: cmd.command || null,
-      success: cmd.success,
-      duration_ms: cmd.duration_ms || 0,
-      exit_code: cmd.exit_code || null
     }
   });
 }
@@ -1233,17 +1137,6 @@ export async function getAppDetails(appId: string) {
   const runsAggs = runsAggResult.aggregations as Record<string, unknown>;
   const runCount = (runsAggResult.hits.total as { value: number }).value;
 
-  const toolResult = await writeClient.search({
-    index: INDICES.TOOL_EXECUTIONS,
-    size: 0,
-    body: {
-      query: appFilter,
-      aggs: {
-        by_tool: { terms: { field: 'tool_name', size: 100 } }
-      }
-    }
-  });
-
   const compResult = await writeClient.search({
     index: INDICES.COMPRESSIONS,
     size: 0,
@@ -1270,19 +1163,17 @@ export async function getAppDetails(appId: string) {
   });
 
   // Scroll through all documents for timeline (parallel fetches)
-  const [runsDocs, errorsDocs, sumDocs, compDocs, toolDocs, convDocs, publishDocs, clientErrorDocs] = await Promise.all([
+  const [runsDocs, errorsDocs, sumDocs, compDocs, convDocs, publishDocs, clientErrorDocs] = await Promise.all([
     scrollAllDocs(INDICES.AGENT_RUNS, appFilter),
     scrollAllDocs(INDICES.ERRORS, appFilter),
     scrollAllDocs(INDICES.SUMMARIZATIONS, appFilter),
     scrollAllDocs(INDICES.COMPRESSIONS, appFilter),
-    scrollAllDocs(INDICES.TOOL_EXECUTIONS, appFilter),
     scrollAllDocs(INDICES.CONVERSATIONS, appFilter),
     scrollAllDocs(INDICES.PUBLISH_EVENTS, appFilter),
     scrollAllDocs(INDICES.CLIENT_ERRORS, appFilter)
   ]);
 
   const agentBuckets = (runsAggs.agent_breakdown as { buckets: Array<{ key: string; doc_count: number; input_tokens: { value: number }; output_tokens: { value: number }; steps: { value: number }; cost: { value: number } }> }).buckets;
-  const toolBuckets = (toolResult.aggregations?.by_tool as { buckets: Array<{ key: string; doc_count: number }> })?.buckets || [];
   const compAggs = compResult.aggregations as Record<string, { value: number }>;
   const sumAggs = sumAggResult.aggregations as Record<string, { doc_count?: number; value?: number }>;
 
@@ -1334,16 +1225,6 @@ export async function getAppDetails(appId: string) {
       input_tokens: s.original_bytes as number,
       output_tokens: s.compressed_bytes as number,
       cost: s.compression_ratio as number
-    });
-  }
-
-  // Add tool executions
-  for (const s of toolDocs) {
-    timeline.push({
-      timestamp: s.timestamp as string,
-      type: 'tool',
-      detail: s.tool_name as string,
-      extra_info: s.agent_id as string
     });
   }
 
@@ -1399,7 +1280,7 @@ export async function getAppDetails(appId: string) {
     })),
     runs: runsDocs,
     timeline,
-    tool_usage: toolBuckets.map(b => ({ tool_name: b.key, count: b.doc_count })),
+    tool_usage: [],
     compression_stats: {
       events: (compResult.hits.total as { value: number }).value,
       total_saved_bytes: compAggs.total_saved?.value || 0,
@@ -1545,26 +1426,9 @@ export async function getAllApps(startDate?: string, endDate?: string) {
   return apps;
 }
 
-export async function getToolStats(startDate?: string, endDate?: string) {
-  const filter = buildDateFilter(startDate, endDate);
-  const query = filter ? { bool: { filter: [filter] } } : { match_all: {} };
-
-  const result = await writeClient.search({
-    index: INDICES.TOOL_EXECUTIONS,
-    size: 0,
-    body: {
-      query,
-      aggs: {
-        by_tool: {
-          terms: { field: 'tool_name', size: 100 },
-          aggs: { apps: { cardinality: { field: 'app_id' } } }
-        }
-      }
-    }
-  });
-
-  const buckets = (result.aggregations?.by_tool as { buckets: Array<{ key: string; doc_count: number; apps: { value: number } }> })?.buckets || [];
-  return buckets.map(b => ({ tool_name: b.key, count: b.doc_count, apps: b.apps.value }));
+export async function getToolStats(_startDate?: string, _endDate?: string) {
+  // TOOL_EXECUTIONS index removed - returning empty array
+  return [] as Array<{ tool_name: string; count: number; apps: number }>;
 }
 
 export async function getHealthMetrics() {
@@ -1637,6 +1501,161 @@ export async function getMaxTimestamp(): Promise<Date | null> {
 
 export async function init() {
   await initIndices();
+}
+
+// Diagnostic function to check index health and data coverage
+export async function getDiagnostics() {
+  const results: Record<string, {
+    exists: boolean;
+    docCount: number;
+    oldestDoc: string | null;
+    newestDoc: string | null;
+    error?: string;
+  }> = {};
+
+  for (const [name, indexName] of Object.entries(INDICES)) {
+    try {
+      const exists = await writeClient.indices.exists({ index: indexName });
+      if (!exists) {
+        results[name] = { exists: false, docCount: 0, oldestDoc: null, newestDoc: null };
+        continue;
+      }
+
+      const countResult = await writeClient.count({ index: indexName });
+      const docCount = countResult.count;
+
+      let oldestDoc: string | null = null;
+      let newestDoc: string | null = null;
+
+      if (docCount > 0) {
+        const [oldestResult, newestResult] = await Promise.all([
+          writeClient.search({
+            index: indexName,
+            size: 1,
+            body: { sort: [{ timestamp: 'asc' }], _source: ['timestamp'] }
+          }),
+          writeClient.search({
+            index: indexName,
+            size: 1,
+            body: { sort: [{ timestamp: 'desc' }], _source: ['timestamp'] }
+          })
+        ]);
+
+        if (oldestResult.hits.hits[0]) {
+          oldestDoc = (oldestResult.hits.hits[0]._source as { timestamp: string }).timestamp;
+        }
+        if (newestResult.hits.hits[0]) {
+          newestDoc = (newestResult.hits.hits[0]._source as { timestamp: string }).timestamp;
+        }
+      }
+
+      results[name] = { exists: true, docCount, oldestDoc, newestDoc };
+    } catch (error) {
+      results[name] = {
+        exists: false,
+        docCount: 0,
+        oldestDoc: null,
+        newestDoc: null,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
+  return {
+    indices: results,
+    writeEndpoint: process.env.AIRO_BUILDER_ES_ENDPOINT ? 'configured' : 'missing',
+    sourceEndpoint: process.env.PIONEER_ES_ENDPOINT ? 'configured' : 'missing'
+  };
+}
+
+/**
+ * Fast errors-only fetch for an app
+ * Groups duplicate errors and returns with counts
+ * @param fromTimestamp - Only include errors from this timestamp onwards
+ */
+export async function getAppErrors(appId: string, fromTimestamp?: string) {
+  // Build filter with optional timestamp range
+  const filters: Record<string, unknown>[] = [{ term: { app_id: appId } }];
+  if (fromTimestamp) {
+    filters.push({ range: { timestamp: { gte: fromTimestamp } } });
+  }
+  const appFilter: Record<string, unknown> = filters.length === 1 ? filters[0] : { bool: { must: filters } };
+
+  // Fetch errors and client errors in parallel
+  const [errorsDocs, clientErrorsDocs] = await Promise.all([
+    scrollAllDocs(INDICES.ERRORS, appFilter),
+    scrollAllDocs(INDICES.CLIENT_ERRORS, appFilter)
+  ]);
+
+  interface ErrorEntry {
+    timestamp: string;
+    type: 'error' | 'client_error';
+    message: string;
+    eventType?: string;
+    count: number;
+    firstSeen: string;
+    lastSeen: string;
+  }
+
+  // Group errors by message to dedupe
+  const errorMap = new Map<string, ErrorEntry>();
+
+  for (const doc of errorsDocs) {
+    const message = (doc.error_message as string) || 'Unknown error';
+    const timestamp = doc.timestamp as string;
+    const key = `error:${message}`;
+
+    if (errorMap.has(key)) {
+      const existing = errorMap.get(key)!;
+      existing.count++;
+      if (timestamp < existing.firstSeen) existing.firstSeen = timestamp;
+      if (timestamp > existing.lastSeen) existing.lastSeen = timestamp;
+    } else {
+      errorMap.set(key, {
+        timestamp,
+        type: 'error',
+        message,
+        eventType: doc.event_type as string,
+        count: 1,
+        firstSeen: timestamp,
+        lastSeen: timestamp
+      });
+    }
+  }
+
+  for (const doc of clientErrorsDocs) {
+    const message = (doc.error_message as string) || (doc.error_type as string) || 'Unknown client error';
+    const timestamp = doc.timestamp as string;
+    const key = `client:${message}`;
+
+    if (errorMap.has(key)) {
+      const existing = errorMap.get(key)!;
+      existing.count++;
+      if (timestamp < existing.firstSeen) existing.firstSeen = timestamp;
+      if (timestamp > existing.lastSeen) existing.lastSeen = timestamp;
+    } else {
+      errorMap.set(key, {
+        timestamp,
+        type: 'client_error',
+        message,
+        eventType: doc.error_type as string,
+        count: 1,
+        firstSeen: timestamp,
+        lastSeen: timestamp
+      });
+    }
+  }
+
+  // Convert to array and sort by lastSeen (most recent first)
+  const errors = Array.from(errorMap.values())
+    .sort((a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime());
+
+  return {
+    errors,
+    totalErrors: errorsDocs.length,
+    totalClientErrors: clientErrorsDocs.length,
+    uniqueErrors: errors.length
+  };
 }
 
 export { INDICES };

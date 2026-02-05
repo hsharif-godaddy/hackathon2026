@@ -1,233 +1,288 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import React, { useCallback, useEffect, useState } from 'react';
 
-import AppContextPanel from '@/components/AppContextPanel';
 import LangfusePanel from '@/components/LangfusePanel';
 import LogsPanel, { type LogSource } from '@/components/LogsPanel';
+import PublishEventsPanel from '@/components/PublishEventsPanel';
 
-interface Widget {
-  id: string;
-  type: 'logs' | 'langfuse';
-  sourceId?: string;
+const TIME_RANGES = [
+  { label: 'Last 15 minutes', value: '15m' },
+  { label: 'Last 1 hour', value: '1h' },
+  { label: 'Last 6 hours', value: '6h' },
+  { label: 'Last 24 hours', value: '24h' },
+  { label: 'Last 7 days', value: '7d' },
+] as const;
+
+interface ErrorSummary {
+  total: number;
+  last24Hours: number;
+  errorGroups: Array<{
+    message: string;
+    count: number;
+    lastSeen?: string;
+  }>;
 }
 
-// Height of the fixed navigation bar for scroll margin calculations
-const FIXED_NAV_HEIGHT = '80px';
+interface AppContext {
+  appId: string;
+  metadata: {
+    lastActivity?: string;
+  };
+  errorSummary: ErrorSummary;
+}
+
+type TabId = 'summary' | 'conversation' | 'agent-logs' | 'ui-logs' | 'hosting-logs' | 'publish';
+
+function formatTimestamp(timestamp: string): string {
+  try {
+    return new Date(timestamp).toLocaleString('en-US', {
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+  } catch {
+    return timestamp;
+  }
+}
 
 export default function Dashboard() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const [appId, setAppId] = useState('');
+  const [submittedAppId, setSubmittedAppId] = useState('');
+  const [timeRange, setTimeRange] = useState('24h');
+  const [activeTab, setActiveTab] = useState<TabId>('summary');
   const [sources, setSources] = useState<LogSource[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [widgets, setWidgets] = useState<Widget[]>([]);
-  const [draggedIndex, setDragIndex] = useState<number | null>(null);
-  const [contextAppId, setContextAppId] = useState('');
-  const [showContextPanel, setShowContextPanel] = useState(false);
-  const [initialized, setInitialized] = useState(false);
-  const [langfuseBaseUrl, setLangfuseBaseUrl] = useState<string | undefined>(undefined);
-  const [langfuseProjectId, setLangfuseProjectId] = useState<string | undefined>(undefined);
-  const [activeTab, setActiveTab] = useState<string | null>(null);
-  const [showAllLogs, setShowAllLogs] = useState(false);
+  const [context, setContext] = useState<AppContext | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedError, setExpandedError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<Record<string, Array<{ timestamp: string; message: string; event?: string; service?: string; raw: Record<string, unknown> }>>>({});
 
-  // Refs for scrolling to widgets
-  const widgetRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const appContextRef = useRef<HTMLDivElement | null>(null);
+  // Refresh keys to trigger re-fetches for each tab
+  const [refreshKeys, setRefreshKeys] = useState({
+    summary: 0,
+    conversation: 0,
+    'agent-logs': 0,
+    'ui-logs': 0,
+    'hosting-logs': 0,
+    'publish': 0,
+  });
 
-  const scrollToWidget = useCallback((widgetId: string) => {
-    if (widgetId === 'app-context') {
-      appContextRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      setActiveTab('app-context');
+  const handleRefreshTab = useCallback((tabId: TabId) => {
+    setRefreshKeys(prev => ({ ...prev, [tabId]: prev[tabId] + 1 }));
+  }, []);
+
+  // Initialize from URL params on mount
+  useEffect(() => {
+    const urlAppId = searchParams.get('appId');
+    if (urlAppId) {
+      setAppId(urlAppId);
+      setSubmittedAppId(urlAppId);
+    }
+  }, [searchParams]);
+
+  // Fetch log sources on mount
+  useEffect(() => {
+    fetch('/api/log-sources')
+      .then(res => res.ok ? res.json() : { sources: [] })
+      .then(data => setSources(data.sources || []))
+      .catch(() => setSources([]));
+  }, []);
+
+  // Fetch app context when appId is submitted
+  const fetchContext = useCallback(async () => {
+    if (!submittedAppId) {
+      setContext(null);
       return;
     }
-    const element = widgetRefs.current[widgetId];
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      setActiveTab(widgetId);
-    }
-  }, []);
 
-  // Get widget display name
-  const getWidgetName = useCallback((widget: Widget) => {
-    if (widget.type === 'langfuse') {
-      return '🔍 Conversation Traces';
-    }
-    const source = sources.find(s => s.id === widget.sourceId);
-    return source?.name || widget.sourceId || 'Logs';
-  }, [sources]);
+    setLoading(true);
+    setError(null);
 
-  // Stable ref callback for widget refs
-  const setWidgetRef = useCallback((widgetId: string) => {
-    return (el: HTMLDivElement | null) => {
-      widgetRefs.current[widgetId] = el;
-    };
-  }, []);
+    try {
+      const url = `/api/app-context?appId=${encodeURIComponent(submittedAppId)}&timeRange=${timeRange}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch app details');
+      }
+
+      const data = await response.json();
+      setContext(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch app details');
+    } finally {
+      setLoading(false);
+    }
+  }, [submittedAppId, timeRange]);
 
   useEffect(() => {
-    async function fetchSources() {
-      try {
-        const response = await fetch('/api/log-sources');
-        if (response.ok) {
-          const data = await response.json();
-          const fetchedSources: LogSource[] = data.sources || [];
-          setSources(fetchedSources);
+    fetchContext();
+  }, [fetchContext]);
 
-          // Initialize with ALL log sources first, then Langfuse panel at the bottom
-          if (fetchedSources.length > 0 && widgets.length === 0 && !initialized) {
-            const logWidgets = fetchedSources.map(source => ({
-              id: `logs-${source.id}`,
-              type: 'logs' as const,
-              sourceId: source.id
-            }));
-            const langfuseWidget: Widget = {
-              id: 'langfuse-default',
-              type: 'langfuse'
-            };
-            setWidgets([...logWidgets, langfuseWidget]);
-            setInitialized(true);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch log sources:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchSources();
-  }, [widgets.length, initialized]);
-
-  // Fetch Langfuse config
+  // Re-fetch summary when refresh key changes
   useEffect(() => {
-    async function fetchLangfuseConfig() {
-      try {
-        const response = await fetch('/api/langfuse/config');
-        if (response.ok) {
-          const data = await response.json();
-          if (data.baseUrl) {
-            setLangfuseBaseUrl(data.baseUrl);
-          }
-          if (data.projectId) {
-            setLangfuseProjectId(data.projectId);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch Langfuse config:', error);
-      }
+    if (refreshKeys.summary > 0) {
+      fetchContext();
+    }
+  }, [refreshKeys.summary]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSearch = () => {
+    const trimmed = appId.trim();
+    if (trimmed) {
+      setSubmittedAppId(trimmed);
+      router.push(`/?appId=${encodeURIComponent(trimmed)}`, { scroll: false });
+    }
+  };
+
+  const handleClear = () => {
+    setAppId('');
+    setSubmittedAppId('');
+    setContext(null);
+    setActiveTab('summary');
+    router.push('/', { scroll: false });
+  };
+
+  const handleExpandError = async (errorMessage: string) => {
+    if (expandedError === errorMessage) {
+      setExpandedError(null);
+      return;
     }
 
-    fetchLangfuseConfig();
-  }, []);
+    setExpandedError(errorMessage);
 
-  const onDragStart = (index: number) => {
-    setDragIndex(index);
+    if (!errorDetails[errorMessage] && submittedAppId) {
+      try {
+        const response = await fetch(
+          `/api/error-details?appId=${encodeURIComponent(submittedAppId)}&message=${encodeURIComponent(errorMessage)}&timeRange=${timeRange}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setErrorDetails(prev => ({ ...prev, [errorMessage]: data.errors || [] }));
+        }
+      } catch (err) {
+        console.error('Failed to fetch error details:', err);
+      }
+    }
   };
 
-  const onDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (draggedIndex === null || draggedIndex === index) return;
-
-    const newWidgets = [...widgets];
-    const draggedItem = newWidgets[draggedIndex];
-    newWidgets.splice(draggedIndex, 1);
-    newWidgets.splice(index, 0, draggedItem);
-
-    setDragIndex(index);
-    setWidgets(newWidgets);
-  };
-
-  const onDragEnd = () => {
-    setDragIndex(null);
-  };
+  const tabs: { id: TabId; label: string; icon: string }[] = [
+    { id: 'summary', label: 'Summary', icon: '📊' },
+    { id: 'conversation', label: 'Conversation', icon: '💬' },
+    { id: 'agent-logs', label: 'Agent Logs', icon: '🤖' },
+    { id: 'ui-logs', label: 'UI Logs', icon: '🖥️' },
+    { id: 'hosting-logs', label: 'Hosting Logs', icon: '☁️' },
+    { id: 'publish', label: 'Publish Events', icon: '🚀' },
+  ];
 
   return (
     <div style={{
       minHeight: '100vh',
       backgroundColor: '#f5f5f5',
-      padding: '2rem',
-      paddingTop: FIXED_NAV_HEIGHT
+      padding: '2rem'
     }}>
       <div style={{
         maxWidth: '1400px',
         margin: '0 auto'
       }}>
+        {/* Header */}
         <header style={{
           backgroundColor: 'white',
           padding: '1.5rem 2rem',
           borderRadius: '8px',
-          marginBottom: '2rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
+          marginBottom: '1.5rem',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
         }}>
-          <div>
-            <h1 style={{
-              margin: 0,
-              fontSize: '1.75rem',
-              fontWeight: 600,
-              color: '#1a1a1a'
-            }}>
-              Admin Debug Console
-            </h1>
-            <p style={{
-              margin: '0.5rem 0 0 0',
-              fontSize: '0.875rem',
-              color: '#666'
-            }}>
-              Customize your observability view
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '1.5rem'
+          }}>
+            <div>
+              <h1 style={{
+                margin: 0,
+                fontSize: '1.75rem',
+                fontWeight: 600,
+                color: '#1a1a1a'
+              }}>
+                Debug Console : Airo AI Builder
+              </h1>
+              <p style={{
+                margin: '0.5rem 0 0 0',
+                fontSize: '0.875rem',
+                color: '#666'
+              }}>
+                Enter an App ID to view logs and conversation history
+              </p>
+            </div>
             <a
               href="/analytics"
+              target="_blank"
+              rel="noopener noreferrer"
               style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: '#3b82f6',
-                color: 'white',
-                borderRadius: '6px',
+                color: '#3b82f6',
                 textDecoration: 'none',
                 fontSize: '0.875rem',
                 fontWeight: 500,
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.5rem'
+                gap: '0.25rem'
               }}
             >
-              📊 Apps Analytics
+              📊 Analytics
             </a>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>
-                App Context
+          </div>
+
+          {/* App ID and Time Range inputs */}
+          <div style={{
+            display: 'flex',
+            gap: '1rem',
+            alignItems: 'flex-end',
+            flexWrap: 'wrap'
+          }}>
+            <div style={{ flex: 1, minWidth: '250px', maxWidth: '400px' }}>
+              <label style={{
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                color: '#374151',
+                display: 'block',
+                marginBottom: '0.5rem'
+              }}>
+                App ID
               </label>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <div style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
                   <input
                     type="text"
-                    value={contextAppId}
-                    onChange={(e) => setContextAppId(e.target.value)}
+                    value={appId}
+                    onChange={(e) => setAppId(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && contextAppId.trim()) {
-                        setShowContextPanel(true);
-                      }
+                      if (e.key === 'Enter') handleSearch();
                     }}
                     placeholder="Enter app ID..."
                     style={{
-                      padding: '0.5rem 2rem 0.5rem 1rem',
+                      width: '100%',
+                      padding: '0.625rem 2rem 0.625rem 1rem',
                       borderRadius: '6px',
                       border: '1px solid #d1d5db',
-                      fontSize: '0.875rem',
-                      width: '200px'
+                      fontSize: '0.875rem'
                     }}
                   />
-                  {contextAppId && (
+                  {appId && (
                     <button
-                      onClick={() => {
-                        setContextAppId('');
-                        setShowContextPanel(false);
-                      }}
+                      onClick={handleClear}
                       style={{
                         position: 'absolute',
-                        right: '6px',
+                        right: '8px',
                         top: '50%',
                         transform: 'translateY(-50%)',
                         background: '#e5e7eb',
@@ -241,255 +296,487 @@ export default function Dashboard() {
                         justifyContent: 'center',
                         fontSize: '12px',
                         color: '#6b7280',
-                        fontWeight: 'bold',
-                        lineHeight: 1
+                        fontWeight: 'bold'
                       }}
-                      title="Clear filter"
+                      title="Clear"
                     >
                       ×
                     </button>
                   )}
                 </div>
                 <button
-                  onClick={() => setShowContextPanel(true)}
-                  disabled={!contextAppId.trim()}
+                  onClick={handleSearch}
+                  disabled={!appId.trim()}
                   style={{
-                    padding: '0.5rem 1rem',
-                    backgroundColor: contextAppId.trim() ? '#3b82f6' : '#9ca3af',
+                    padding: '0.625rem 1.25rem',
+                    backgroundColor: appId.trim() ? '#3b82f6' : '#9ca3af',
                     color: 'white',
                     border: 'none',
                     borderRadius: '6px',
-                    cursor: contextAppId.trim() ? 'pointer' : 'not-allowed',
+                    cursor: appId.trim() ? 'pointer' : 'not-allowed',
                     fontSize: '0.875rem',
                     fontWeight: 500,
-                    opacity: contextAppId.trim() ? 1 : 0.6
+                    opacity: appId.trim() ? 1 : 0.6
                   }}
                 >
                   Search
                 </button>
               </div>
             </div>
+
+            <div style={{ minWidth: '180px' }}>
+              <label style={{
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                color: '#374151',
+                display: 'block',
+                marginBottom: '0.5rem'
+              }}>
+                Time Range
+              </label>
+              <select
+                value={timeRange}
+                onChange={(e) => setTimeRange(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.625rem 0.75rem',
+                  borderRadius: '6px',
+                  border: '1px solid #d1d5db',
+                  fontSize: '0.875rem',
+                  backgroundColor: 'white',
+                  cursor: 'pointer'
+                }}
+              >
+                {TIME_RANGES.map((range) => (
+                  <option key={range.value} value={range.value}>
+                    {range.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </header>
 
-        {/* Fixed Navigation Tabs */}
-        {(widgets.length > 0 || (showContextPanel && contextAppId.trim())) && (
-          <>
-            <div style={{
-              position: 'fixed',
-              top: '0',
-              left: '0',
-              right: '0',
-              zIndex: 200,
-              backgroundColor: '#f5f5f5',
-              padding: '0.5rem 2rem',
-              borderBottom: '1px solid #e5e7eb',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-            }}>
-              <div style={{
-                maxWidth: '1400px',
-                margin: '0 auto',
-                display: 'flex',
-                gap: '0.5rem',
-                flexWrap: 'wrap',
-                padding: '0.5rem 0.75rem',
-                backgroundColor: 'white',
-                borderRadius: '8px',
-                alignItems: 'center'
-              }}>
-                <span style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  color: '#6b7280',
-                  marginRight: '0.5rem'
-                }}>
-                  Jump to:
-                </span>
-                {/* App Context Tab - shown when context panel is visible */}
-                {showContextPanel && contextAppId.trim() && (
-                  <button
-                    onClick={() => scrollToWidget('app-context')}
-                    style={{
-                      padding: '0.375rem 0.75rem',
-                      fontSize: '0.75rem',
-                      fontWeight: 500,
-                      borderRadius: '6px',
-                      border: activeTab === 'app-context' ? '2px solid #10b981' : '1px solid #d1d5db',
-                      backgroundColor: activeTab === 'app-context' ? '#ecfdf5' : '#f9fafb',
-                      color: activeTab === 'app-context' ? '#059669' : '#374151',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      whiteSpace: 'nowrap'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (activeTab !== 'app-context') {
-                        e.currentTarget.style.backgroundColor = '#e5e7eb';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (activeTab !== 'app-context') {
-                        e.currentTarget.style.backgroundColor = '#f9fafb';
-                      }
-                    }}
-                  >
-                    🎯 App Context
-                  </button>
-                )}
-                {widgets.map((widget) => (
-                  <button
-                    key={widget.id}
-                    onClick={() => scrollToWidget(widget.id)}
-                    style={{
-                      padding: '0.375rem 0.75rem',
-                      fontSize: '0.75rem',
-                      fontWeight: 500,
-                      borderRadius: '6px',
-                      border: activeTab === widget.id ? '2px solid #3b82f6' : '1px solid #d1d5db',
-                      backgroundColor: activeTab === widget.id ? '#eff6ff' : '#f9fafb',
-                      color: activeTab === widget.id ? '#2563eb' : '#374151',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      whiteSpace: 'nowrap'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (activeTab !== widget.id) {
-                        e.currentTarget.style.backgroundColor = '#e5e7eb';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (activeTab !== widget.id) {
-                        e.currentTarget.style.backgroundColor = '#f9fafb';
-                      }
-                    }}
-                  >
-                    {widget.type === 'langfuse' ? '🔍 ' : '📋 '}
-                    {getWidgetName(widget)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-
-        {loading ? (
+        {/* Main Content */}
+        {!submittedAppId ? (
           <div style={{
             backgroundColor: 'white',
-            padding: '2rem',
+            padding: '4rem 2rem',
             borderRadius: '8px',
             textAlign: 'center',
-            marginBottom: '2rem'
+            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
           }}>
-            <p>Loading log sources...</p>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔍</div>
+            <h2 style={{
+              margin: '0 0 0.5rem 0',
+              fontSize: '1.25rem',
+              fontWeight: 600,
+              color: '#1a1a1a'
+            }}>
+              Enter an App ID to get started
+            </h2>
+            <p style={{
+              margin: 0,
+              fontSize: '0.875rem',
+              color: '#6b7280'
+            }}>
+              View logs, conversation history, and error summaries for your app
+            </p>
           </div>
         ) : (
-          <>
-            {showContextPanel && contextAppId.trim() && (
-              <div
-                ref={appContextRef}
-                style={{ marginBottom: '2rem', scrollMarginTop: FIXED_NAV_HEIGHT }}
-              >
-                <AppContextPanel
-                  appId={contextAppId.trim()}
-                  onClose={() => {
-                    setShowContextPanel(false);
-                    setContextAppId('');
-                  }}
-                  showAllLogs={showAllLogs}
-                  onShowAllLogsChange={setShowAllLogs}
-                />
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            overflow: 'hidden'
+          }}>
+            {/* App Info Header */}
+            <div style={{
+              padding: '1rem 1.5rem',
+              borderBottom: '1px solid #e5e7eb',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              backgroundColor: '#f9fafb'
+            }}>
+              <div>
+                <h2 style={{
+                  margin: 0,
+                  fontSize: '1.125rem',
+                  fontWeight: 600,
+                  color: '#1a1a1a'
+                }}>
+                  App: {submittedAppId}
+                </h2>
+                {context?.metadata?.lastActivity && (
+                  <p style={{
+                    margin: '0.25rem 0 0 0',
+                    fontSize: '0.75rem',
+                    color: '#6b7280'
+                  }}>
+                    Last activity: {formatTimestamp(context.metadata.lastActivity)}
+                  </p>
+                )}
               </div>
-            )}
+              {loading && (
+                <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                  Loading...
+                </span>
+              )}
+            </div>
 
-            {widgets.length === 0 && !loading && (
-              <div style={{
-                backgroundColor: 'white',
-                padding: '2rem',
-                borderRadius: '8px',
-                textAlign: 'center',
-                marginBottom: '2rem'
-              }}>
-                <p style={{ color: '#6b7280' }}>No log sources available</p>
-              </div>
-            )}
-
+            {/* Tabs */}
             <div style={{
               display: 'flex',
-              flexDirection: 'column',
-              gap: '2rem',
-              marginBottom: '2rem'
+              borderBottom: '1px solid #e5e7eb',
+              backgroundColor: '#fafafa',
+              overflowX: 'auto'
             }}>
-              {widgets.map((widget, index) => (
-                <div
-                  key={widget.id}
-                  ref={setWidgetRef(widget.id)}
-                  onDragOver={(e) => onDragOver(e, index)}
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
                   style={{
-                    opacity: draggedIndex === index ? 0.5 : 1,
-                    transition: 'all 0.2s ease',
-                    position: 'relative',
-                    minWidth: 0,
-                    width: '100%',
-                    scrollMarginTop: FIXED_NAV_HEIGHT
+                    padding: '0.875rem 1.5rem',
+                    backgroundColor: activeTab === tab.id ? 'white' : 'transparent',
+                    border: 'none',
+                    borderBottom: activeTab === tab.id ? '2px solid #3b82f6' : '2px solid transparent',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                    fontWeight: activeTab === tab.id ? 600 : 500,
+                    color: activeTab === tab.id ? '#3b82f6' : '#6b7280',
+                    whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    transition: 'all 0.15s ease'
                   }}
                 >
-                  {/* Drag handle - only this element is draggable */}
-                  <button
-                    type="button"
-                    draggable
-                    onDragStart={() => onDragStart(index)}
-                    onDragEnd={onDragEnd}
-                    style={{
-                      position: 'absolute',
-                      top: '12px',
-                      left: '12px',
-                      width: '28px',
-                      height: '28px',
-                      cursor: draggedIndex === index ? 'grabbing' : 'grab',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: '#6b7280',
-                      zIndex: 20,
-                      borderRadius: '4px',
-                      backgroundColor: '#f3f4f6',
-                      border: '1px solid #e5e7eb',
-                      padding: 0
-                    }}
-                    aria-label={`Drag to reorder ${getWidgetName(widget)} panel`}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <circle cx="9" cy="5" r="1" /><circle cx="9" cy="12" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="19" r="1" />
-                    </svg>
-                  </button>
-                  {widget.type === 'langfuse' ? (
-                    <LangfusePanel
-                      globalAppId={contextAppId.trim() || undefined}
-                      onSessionClick={(sessionId) => {
-                        setContextAppId(sessionId);
-                        setShowContextPanel(true);
-                      }}
-                      langfuseBaseUrl={langfuseBaseUrl}
-                      langfuseProjectId={langfuseProjectId}
-                    />
-                  ) : (
-                    <LogsPanel
-                      sources={sources}
-                      defaultSource={widget.sourceId}
-                      isWidget={true}
-                      globalAppId={contextAppId.trim() || undefined}
-                      onAppIdClick={(appId) => {
-                        setContextAppId(appId);
-                        setShowContextPanel(true);
-                      }}
-                      showAllLogs={showAllLogs}
-                    />
-                  )}
-                </div>
+                  <span>{tab.icon}</span>
+                  {tab.label}
+                </button>
               ))}
             </div>
-          </>
-        )}
 
+            {/* Tab Content */}
+            <div style={{ padding: '1.5rem' }}>
+              {error && (
+                <div style={{
+                  backgroundColor: '#fef2f2',
+                  color: '#991b1b',
+                  padding: '1rem',
+                  borderRadius: '6px',
+                  marginBottom: '1rem',
+                  fontSize: '0.875rem'
+                }}>
+                  {error}
+                </div>
+              )}
+
+              {/* Summary Tab */}
+              <div style={{ display: activeTab === 'summary' ? 'flex' : 'none', flexDirection: 'column', gap: '1rem' }}>
+                {/* Refresh Button */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => handleRefreshTab('summary')}
+                    disabled={loading}
+                    style={{
+                      padding: '0.625rem 1.25rem',
+                      backgroundColor: loading ? '#9ca3af' : '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      fontSize: '0.875rem',
+                      fontWeight: 500,
+                      opacity: loading ? 0.6 : 1
+                    }}
+                  >
+                    Refresh
+                  </button>
+                </div>
+
+                {/* Loading State */}
+                {(loading || !context) ? (
+                  <div style={{
+                    padding: '3rem 2rem',
+                    textAlign: 'center',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '6px',
+                    border: '1px solid #e5e7eb'
+                  }}>
+                    <div style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>⏳</div>
+                    <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>
+                      Loading error summary...
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Error Summary Header */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '1rem',
+                      backgroundColor: context.errorSummary?.total ? '#fef2f2' : '#f0fdf4',
+                      borderRadius: '6px',
+                      border: context.errorSummary?.total ? '1px solid #fecaca' : '1px solid #bbf7d0'
+                    }}>
+                      <h3 style={{
+                        margin: 0,
+                        fontSize: '1rem',
+                        fontWeight: 600,
+                        color: context.errorSummary?.total ? '#991b1b' : '#166534'
+                      }}>
+                        Error Summary
+                      </h3>
+                      <div style={{
+                        display: 'flex',
+                        gap: '1.5rem',
+                        fontSize: '0.875rem',
+                        fontWeight: 500
+                      }}>
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{
+                            fontSize: '1.5rem',
+                            fontWeight: 700,
+                            color: context.errorSummary?.total ? '#dc2626' : '#16a34a'
+                          }}>
+                            {context.errorSummary?.total ?? 0}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Total Errors</div>
+                        </div>
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{
+                            fontSize: '1.5rem',
+                            fontWeight: 700,
+                            color: context.errorSummary?.last24Hours ? '#dc2626' : '#16a34a'
+                          }}>
+                            {context.errorSummary?.last24Hours ?? 0}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Last 24h</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Error Groups */}
+                    {context.errorSummary?.errorGroups && context.errorSummary.errorGroups.length > 0 ? (
+                      <div style={{
+                        padding: '1rem',
+                        backgroundColor: '#f9fafb',
+                        borderRadius: '6px',
+                        border: '1px solid #e5e7eb'
+                      }}>
+                        <h4 style={{
+                          margin: '0 0 0.75rem 0',
+                          fontSize: '0.875rem',
+                          fontWeight: 600,
+                          color: '#374151'
+                        }}>
+                          Errors by Message
+                        </h4>
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.5rem',
+                          maxHeight: '500px',
+                          overflowY: 'auto'
+                        }}>
+                          {context.errorSummary.errorGroups.map((group, index) => (
+                            <div key={index}>
+                              <div
+                                onClick={() => handleExpandError(group.message)}
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  padding: '0.75rem 1rem',
+                                  backgroundColor: expandedError === group.message ? '#fef2f2' : 'white',
+                                  borderRadius: expandedError === group.message ? '4px 4px 0 0' : '4px',
+                                  border: '1px solid #e5e7eb',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <div style={{
+                                  flex: 1,
+                                  fontSize: '0.875rem',
+                                  color: '#374151',
+                                  wordBreak: 'break-word',
+                                  marginRight: '1rem'
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                                      {expandedError === group.message ? '▼' : '▶'}
+                                    </span>
+                                    {group.message}
+                                  </div>
+                                  {group.lastSeen && (
+                                    <div style={{
+                                      fontSize: '0.7rem',
+                                      color: '#6b7280',
+                                      marginTop: '0.25rem',
+                                      fontFamily: 'monospace',
+                                      marginLeft: '1.25rem'
+                                    }}>
+                                      Last seen: {formatTimestamp(group.lastSeen)}
+                                    </div>
+                                  )}
+                                </div>
+                                <div style={{
+                                  fontSize: '0.875rem',
+                                  fontWeight: 600,
+                                  color: '#dc2626',
+                                  backgroundColor: '#fef2f2',
+                                  padding: '0.25rem 0.75rem',
+                                  borderRadius: '9999px',
+                                  whiteSpace: 'nowrap'
+                                }}>
+                                  {group.count}×
+                                </div>
+                              </div>
+                              {expandedError === group.message && (
+                                <div style={{
+                                  padding: '0.75rem 1rem',
+                                  backgroundColor: '#f9fafb',
+                                  borderRadius: '0 0 4px 4px',
+                                  border: '1px solid #e5e7eb',
+                                  borderTop: 'none'
+                                }}>
+                                  {!errorDetails[group.message] ? (
+                                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Loading details...</div>
+                                  ) : errorDetails[group.message].length === 0 ? (
+                                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>No detailed instances found</div>
+                                  ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                      {errorDetails[group.message].slice(0, 5).map((detail, idx) => (
+                                        <div key={idx} style={{
+                                          padding: '0.5rem',
+                                          backgroundColor: 'white',
+                                          borderRadius: '4px',
+                                          border: '1px solid #e5e7eb',
+                                          fontSize: '0.75rem'
+                                        }}>
+                                          <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.25rem' }}>
+                                            <span style={{ color: '#6b7280', fontFamily: 'monospace' }}>
+                                              {formatTimestamp(detail.timestamp)}
+                                            </span>
+                                            {detail.event && (
+                                              <span style={{ color: '#3b82f6' }}>{detail.event}</span>
+                                            )}
+                                            {detail.service && (
+                                              <span style={{ color: '#059669' }}>{detail.service}</span>
+                                            )}
+                                          </div>
+                                          <div style={{ color: '#374151', wordBreak: 'break-word' }}>
+                                            {detail.message}
+                                          </div>
+                                          {detail.raw?.data && (
+                                            <details style={{ marginTop: '0.25rem' }}>
+                                              <summary style={{ cursor: 'pointer', color: '#6b7280', fontSize: '0.7rem' }}>
+                                                View raw data
+                                              </summary>
+                                              <pre style={{
+                                                marginTop: '0.25rem',
+                                                padding: '0.5rem',
+                                                backgroundColor: '#1f2937',
+                                                color: '#f3f4f6',
+                                                borderRadius: '4px',
+                                                fontSize: '0.65rem',
+                                                overflow: 'auto',
+                                                maxHeight: '200px'
+                                              }}>
+                                                {JSON.stringify(detail.raw.data, null, 2)}
+                                              </pre>
+                                            </details>
+                                          )}
+                                        </div>
+                                      ))}
+                                      {errorDetails[group.message].length > 5 && (
+                                        <div style={{ fontSize: '0.7rem', color: '#6b7280', textAlign: 'center' }}>
+                                          Showing 5 of {errorDetails[group.message].length} instances
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : context.errorSummary?.total === 0 ? (
+                      <div style={{
+                        padding: '2rem',
+                        textAlign: 'center',
+                        color: '#166534',
+                        backgroundColor: '#f0fdf4',
+                        borderRadius: '6px',
+                        border: '1px solid #bbf7d0'
+                      }}>
+                        ✓ No errors found in the selected time range
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </div>
+
+              {/* Conversation Tab - always rendered for eager loading */}
+              <div style={{ display: activeTab === 'conversation' ? 'block' : 'none' }}>
+                <LangfusePanel
+                  globalAppId={submittedAppId}
+                  refreshKey={refreshKeys.conversation}
+                  onRefresh={() => handleRefreshTab('conversation')}
+                />
+              </div>
+
+              {/* Agent Logs Tab - always rendered for eager loading */}
+              <div style={{ display: activeTab === 'agent-logs' ? 'block' : 'none' }}>
+                <LogsPanel
+                  sources={sources}
+                  defaultSource="airo-agents"
+                  globalAppId={submittedAppId}
+                  timeRange={timeRange}
+                  refreshKey={refreshKeys['agent-logs']}
+                  onRefresh={() => handleRefreshTab('agent-logs')}
+                />
+              </div>
+
+              {/* UI Logs Tab - always rendered for eager loading */}
+              <div style={{ display: activeTab === 'ui-logs' ? 'block' : 'none' }}>
+                <LogsPanel
+                  sources={sources}
+                  defaultSource="airo-app"
+                  globalAppId={submittedAppId}
+                  timeRange={timeRange}
+                  refreshKey={refreshKeys['ui-logs']}
+                  onRefresh={() => handleRefreshTab('ui-logs')}
+                />
+              </div>
+
+              {/* Hosting Logs Tab - always rendered for eager loading */}
+              <div style={{ display: activeTab === 'hosting-logs' ? 'block' : 'none' }}>
+                <LogsPanel
+                  sources={sources}
+                  defaultSource="control_plane"
+                  globalAppId={submittedAppId}
+                  timeRange={timeRange}
+                  refreshKey={refreshKeys['hosting-logs']}
+                  onRefresh={() => handleRefreshTab('hosting-logs')}
+                />
+              </div>
+
+              {/* Publish Events Tab */}
+              <div style={{ display: activeTab === 'publish' ? 'block' : 'none' }}>
+                <PublishEventsPanel
+                  appId={submittedAppId}
+                  timeRange={timeRange}
+                  refreshKey={refreshKeys['publish']}
+                  onRefresh={() => handleRefreshTab('publish')}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

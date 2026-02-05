@@ -39,7 +39,7 @@ export const GET = withAuth(async (request) => {
         let _query: MetricsQuery;
         try {
             _query = JSON.parse(queryParam);
-        } catch (_error) {
+        } catch {
             return NextResponse.json(
                 { error: 'Invalid JSON in query parameter' },
                 { status: 400 }
