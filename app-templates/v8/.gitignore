@@ -73,3 +73,6 @@ public/assets
 
 # AI Assistant Files
 .claude/
+
+# Import temporary files
+.import-*

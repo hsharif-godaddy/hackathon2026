@@ -431,6 +431,9 @@ export class GitOpsService {
           error: restartResult.error,
           phases: restartResult.phases,
         });
+      } else {
+        // Commit pulled changes only after successful restart
+        void this.commitPostPulledChanges(gitTool, appPath, appId, jobId);
       }
 
       logger.info('git-ops.pull.success', { appId, jobId, restartSuccess: restartResult.success });
@@ -447,6 +450,69 @@ export class GitOpsService {
         getErrorMessage(error),
         'pulling'
       );
+    }
+  }
+
+  /**
+   * Commit pulled changes to local repository
+   *
+   * Stages all changes and commits them to ensure the local git state is clean.
+   * This is called after a successful restart to persist the pulled changes.
+   *
+   * @param gitTool - GitTool instance
+   * @param appPath - Path to the app
+   * @param appId - App ID for logging
+   * @param jobId - Job ID for logging
+   */
+  private async commitPostPulledChanges(
+    gitTool: GitTool,
+    appPath: string,
+    appId: string,
+    jobId: string
+  ): Promise<void> {
+    // This is a non-blocking step - failures should not affect the pull operation
+    try {
+      logger.info('git-ops.pull.committing', { appId, jobId });
+
+      // Stage all changes
+      const addResult = await gitTool.executeGitOperation(appPath, {
+        operation: 'add',
+        files: ['.'],
+      });
+
+      if (!addResult.success) {
+        logger.warn('git-ops.pull.add-failed', {
+          appId,
+          jobId,
+          error: addResult.error,
+        });
+        return;
+      }
+
+      // Commit the changes
+      const commitResult = await gitTool.executeGitOperation(appPath, {
+        operation: 'commit',
+        message: 'Post-pull state commit',
+      });
+
+      if (!commitResult.success) {
+        // Commit may fail if there are no changes to commit (already clean)
+        // This is not an error condition
+        logger.info('git-ops.pull.commit-skipped', {
+          appId,
+          jobId,
+          reason: commitResult.error,
+        });
+      } else {
+        logger.info('git-ops.pull.commit-success', { appId, jobId });
+      }
+    } catch (error) {
+      // Log and swallow any unexpected errors - commit is non-blocking
+      logger.warn('git-ops.pull.commit-error', {
+        appId,
+        jobId,
+        error: getErrorMessage(error),
+      });
     }
   }
 

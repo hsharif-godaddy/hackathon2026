@@ -344,6 +344,22 @@ export class ProjectImportService {
       await appRestartService.createPaasConfig(app.path);
       this.logger.info('project-import.config.created', { jobId, appId });
 
+      // Phase 10.5: Cleanup temp files BEFORE git commit to prevent them from being committed
+      // The .import-{jobId}-extract/ directory must be removed before `git add .` runs
+      this.logger.info('project-import.pre-commit-cleanup.start', {
+        jobId,
+        appId,
+        containerZipPath,
+        containerExtractPath
+      });
+      await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
+      this.logger.info('project-import.pre-commit-cleanup.complete', { jobId, appId });
+      // Clear paths so we don't try to clean up again in error handler (idempotent)
+      containerZipPath = null;
+      containerExtractPath = null;
+      // containerProjectPath points to containerExtractPath (or a subdirectory), already cleaned
+      containerProjectPath = null;
+
       // Phase 11: Git commit
       await this.updateStatus(jobId, ImportJobStatus.COMMITTING);
       const commitResult = await this.gitCommit(appId, app.path);
@@ -381,8 +397,7 @@ export class ProjectImportService {
 
       this.logger.info('project-import.complete', { jobId, appId });
 
-      // Cleanup all temp files
-      await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+      // Cleanup agent-side zip file (container files already cleaned before commit)
       if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
 
     } catch (error) {
