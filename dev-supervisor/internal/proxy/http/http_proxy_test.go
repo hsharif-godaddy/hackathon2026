@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -2247,6 +2248,65 @@ func TestHTTPProxy_HealthCheck_RunningProcess(t *testing.T) {
 
 	assert.Equal(t, "healthy", resp.Status, "status should be 'healthy'")
 	assert.Empty(t, resp.Reason, "reason should be empty for normal healthy state")
+}
+
+func TestHTTPProxy_ImageSlotRoute(t *testing.T) {
+	// Create temporary static directory with manifest
+	tmpDir := t.TempDir()
+	manifestPath := filepath.Join(tmpDir, "image-slots.json")
+
+	manifest := ImageManifest{
+		"pages/home/hero": {CurrentURL: "https://media.gettyimages.com/id/abc123/photo.jpg"},
+	}
+	data, _ := json.Marshal(manifest)
+	os.WriteFile(manifestPath, data, 0600)
+
+	// Create test mux mimicking proxy setup
+	mux := http.NewServeMux()
+
+	// Add image slot handler
+	cache := NewManifestCache(manifestPath)
+	mux.Handle("/airo-assets/images/", NewImageSlotHandler(cache))
+
+	// Add health check
+	mux.HandleFunc("/airo/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Test image slot request
+	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/home/hero", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Errorf("expected status 302, got: %d", rec.Code)
+	}
+
+	location := rec.Header().Get("Location")
+	if location != "https://media.gettyimages.com/id/abc123/photo.jpg" {
+		t.Errorf("expected Getty redirect, got: %s", location)
+	}
+}
+
+func TestHTTPProxy_ImageSlotRoute_NoManifest(t *testing.T) {
+	// When static root doesn't have image-slots.json, handler should return 500
+	tmpDir := t.TempDir()
+	// Don't create the manifest file
+
+	mux := http.NewServeMux()
+
+	cache := NewManifestCache(filepath.Join(tmpDir, "image-slots.json"))
+	mux.Handle("/airo-assets/images/", NewImageSlotHandler(cache))
+
+	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/home/hero", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500 when manifest missing, got: %d", rec.Code)
+	}
 }
 
 // TestHTTPProxy_HealthCheck_NoStartOnRequest tests that health check behavior

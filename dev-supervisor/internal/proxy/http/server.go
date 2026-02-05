@@ -129,6 +129,13 @@ func (p *HTTPProxy) Start() error {
 	// Add canary checks endpoint for infrastructure verification
 	mux.HandleFunc("/airo/canary_checks", handleCanaryChecks)
 
+	// Add image slot handler if static root is configured
+	if p.config.StaticRoot != "" {
+		manifestPath := filepath.Join(p.config.StaticRoot, "image-slots.json")
+		imageSlotCache := NewManifestCache(manifestPath)
+		mux.Handle("/airo-assets/images/", NewImageSlotHandler(imageSlotCache))
+	}
+
 	// Add catch-all for /airo/* that returns 404 for unmatched paths
 	// This MUST come after specific /airo/* handlers but before the / catch-all
 	mux.HandleFunc("/airo/", func(w http.ResponseWriter, r *http.Request) {

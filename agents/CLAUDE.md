@@ -28,6 +28,7 @@ Location: `src/server/middleware/app-ownership.ts`
 **Four validation functions:**
 
 #### 1. validateAppOwnership (Route Parameters)
+
 Use for routes with `:id` parameter containing appId:
 
 ```typescript
@@ -43,6 +44,7 @@ router.use('/:id', validateAppOwnership);
 ```
 
 **Regex Pattern for /apps Routes:**
+
 ```typescript
 // apps.ts uses strict format enforcement to prevent route confusion
 router.use(
@@ -54,49 +56,44 @@ router.use(
 ```
 
 #### 2. validateAppOwnershipFromBody (Request Body)
+
 Use for POST/PUT routes where appId is in the body:
 
 ```typescript
 import { validateAppOwnershipFromBody } from '../middleware/app-ownership.js';
 
-router.post('/files/upload',
-  validateAppOwnershipFromBody('appId'),
-  async (req, res) => {
-    // Handler only executes if req.body.appId matches authenticated siteId
-  }
-);
+router.post('/files/upload', validateAppOwnershipFromBody('appId'), async (req, res) => {
+  // Handler only executes if req.body.appId matches authenticated siteId
+});
 ```
 
 #### 3. validateAppOwnershipFromQuery (Query Parameters)
+
 Use for GET routes where appId is a query parameter:
 
 ```typescript
 import { validateAppOwnershipFromQuery } from '../middleware/app-ownership.js';
 
-router.get('/conversations',
-  validateAppOwnershipFromQuery('appId'),
-  async (req, res) => {
-    // Handler only executes if req.query.appId matches authenticated siteId
-  }
-);
+router.get('/conversations', validateAppOwnershipFromQuery('appId'), async (req, res) => {
+  // Handler only executes if req.query.appId matches authenticated siteId
+});
 ```
 
 #### 4. validateConversationOwnership (Conversation Access)
+
 Use for conversation-specific routes to validate conversation ownership:
 
 ```typescript
 import { validateConversationOwnership } from '../middleware/app-ownership.js';
 
 // Default: reads from req.params.id
-router.get('/conversations/:id/messages',
-  validateConversationOwnership(),
-  async (req, res) => {
-    // req.conversation is populated with validated conversation data
-  }
-);
+router.get('/conversations/:id/messages', validateConversationOwnership(), async (req, res) => {
+  // req.conversation is populated with validated conversation data
+});
 
 // Custom parameter name
-router.get('/conversations/:conversationId/messages',
+router.get(
+  '/conversations/:conversationId/messages',
   validateConversationOwnership('conversationId'),
   async (req, res) => {
     // Handler only executes if conversation belongs to authenticated site
@@ -117,11 +114,12 @@ export const BYPASS_SITE_IDS = [
   'default-site',
   'local-dev-site',
   'mock-site-id',
-  'unknown-site'
+  'unknown-site',
 ];
 ```
 
 Sites in `BYPASS_SITE_IDS` can access ANY app (no isolation). Used for:
+
 - Local development
 - E2E testing
 - Internal tooling
@@ -135,19 +133,21 @@ Middleware MUST be placed BEFORE the routes it protects.
 </critical_middleware_ordering>
 
 **✅ Correct:**
-```typescript
-router.use('/:id', validateAppOwnership);  // Line 87
 
-router.get('/:id/status', handler);         // Line 120 - PROTECTED
-router.post('/:id/restart', handler);       // Line 150 - PROTECTED
+```typescript
+router.use('/:id', validateAppOwnership); // Line 87
+
+router.get('/:id/status', handler); // Line 120 - PROTECTED
+router.post('/:id/restart', handler); // Line 150 - PROTECTED
 ```
 
 **❌ WRONG:**
-```typescript
-router.get('/:id/status', handler);         // Line 120 - UNPROTECTED ❌
-router.post('/:id/restart', handler);       // Line 150 - UNPROTECTED ❌
 
-router.use('/:id', validateAppOwnership);  // Line 1045 - TOO LATE!
+```typescript
+router.get('/:id/status', handler); // Line 120 - UNPROTECTED ❌
+router.post('/:id/restart', handler); // Line 150 - UNPROTECTED ❌
+
+router.use('/:id', validateAppOwnership); // Line 1045 - TOO LATE!
 ```
 
 ### Route Protection Checklist
@@ -166,19 +166,27 @@ All validation middleware logs security events with structured tags:
 
 ```typescript
 // Successful validation
-logger.debug('route.middleware.ownership.granted', {
-  authenticatedSiteId,
-  requestedAppId,
-  path: req.path,
-}, { tags: ['security', 'authorization-success'] });
+logger.debug(
+  'route.middleware.ownership.granted',
+  {
+    authenticatedSiteId,
+    requestedAppId,
+    path: req.path,
+  },
+  { tags: ['security', 'authorization-success'] }
+);
 
 // Cross-tenant attempt (SECURITY VIOLATION)
-logger.error('route.middleware.ownership.denied', {
-  message: 'SECURITY VIOLATION: Cross-tenant access attempt',
-  authenticatedSiteId,
-  requestedAppId,
-  severity: 'HIGH'
-}, { tags: ['security', 'authorization-failure', 'cross-tenant-attempt'] });
+logger.error(
+  'route.middleware.ownership.denied',
+  {
+    message: 'SECURITY VIOLATION: Cross-tenant access attempt',
+    authenticatedSiteId,
+    requestedAppId,
+    severity: 'HIGH',
+  },
+  { tags: ['security', 'authorization-failure', 'cross-tenant-attempt'] }
+);
 ```
 
 Monitor production logs for `cross-tenant-attempt` tags to detect attacks.
@@ -239,6 +247,7 @@ pnpm --filter @airo/agents test:unit
 Authorization integration tests: `src/server/routes/__tests__/authorization-security.integration.test.ts`
 
 Tests verify:
+
 - Cross-tenant access rejected (403)
 - Same-tenant access allowed (200)
 - BYPASS_SITE_IDS behavior
@@ -247,6 +256,7 @@ Tests verify:
 ## Common Mistakes
 
 ### ❌ Mistake 1: Inline validation instead of middleware
+
 ```typescript
 // DON'T DO THIS
 router.get('/:id/status', async (req, res) => {
@@ -261,6 +271,7 @@ router.get('/:id/status', async (req, res) => {
 **Why wrong:** Inconsistent validation, no BYPASS_SITE_IDS support, no security logging, error-prone.
 
 **✅ Correct:** Use middleware
+
 ```typescript
 router.get('/:id/status', validateAppOwnership, async (req, res) => {
   // Validation handled by middleware
@@ -268,6 +279,7 @@ router.get('/:id/status', validateAppOwnership, async (req, res) => {
 ```
 
 ### ❌ Mistake 2: Forgetting to validate batch operations
+
 ```typescript
 // DON'T DO THIS
 router.post('/conversations/messages', async (req, res) => {
@@ -280,6 +292,7 @@ router.post('/conversations/messages', async (req, res) => {
 **Why wrong:** Attacker can request another tenant's conversation IDs.
 
 **✅ Correct:** Validate each conversation
+
 ```typescript
 router.post('/conversations/messages', async (req, res) => {
   const conversationIds = req.body.conversationIds;
@@ -287,7 +300,7 @@ router.post('/conversations/messages', async (req, res) => {
 
   // Fetch and verify ownership
   const conversations = await conversationRepo.findByIds(conversationIds);
-  const unauthorizedConv = conversations.find(c => c.appId !== appId);
+  const unauthorizedConv = conversations.find((c) => c.appId !== appId);
 
   if (unauthorizedConv) {
     return res.status(403).json({ error: 'Access denied' });
@@ -298,6 +311,7 @@ router.post('/conversations/messages', async (req, res) => {
 ```
 
 ### ❌ Mistake 3: Wrong middleware order
+
 ```typescript
 // DON'T DO THIS
 router.get('/:id/status', handler); // Defined at line 100
@@ -307,9 +321,10 @@ router.use('/:id', validateAppOwnership); // Applied at line 200 ❌
 **Why wrong:** Middleware only affects routes defined AFTER it.
 
 **✅ Correct:** Middleware before routes
+
 ```typescript
 router.use('/:id', validateAppOwnership); // Line 87
-router.get('/:id/status', handler);       // Line 100 ✅
+router.get('/:id/status', handler); // Line 100 ✅
 ```
 
 ## Architecture
@@ -320,6 +335,7 @@ router.get('/:id/status', handler);       // Line 100 ✅
 **Package:** `@airo/agents`
 
 The agents service is the backend API that handles:
+
 - **App Lifecycle:** Create, start, stop, delete apps
 - **AI Agents:** Agent registry, execution, tool calling
 - **WebSocket API:** Real-time AI streaming via Socket.IO
@@ -346,12 +362,13 @@ agents/
 
 The agents service serves TWO products:
 
-| Product | Authentication | App Storage | Usage Pattern |
-|---------|---------------|-------------|---------------|
-| **AiroAppBuilder** | GoDaddy SSO via app/ BFF | SQLite `apps` table | Full CRUD on apps |
-| **PaaS** | Direct API auth | May not exist in DB | Stateless operations |
+| Product            | Authentication           | App Storage         | Usage Pattern        |
+| ------------------ | ------------------------ | ------------------- | -------------------- |
+| **AiroAppBuilder** | GoDaddy SSO via app/ BFF | SQLite `apps` table | Full CRUD on apps    |
+| **PaaS**           | Direct API auth          | May not exist in DB | Stateless operations |
 
 **Pattern:**
+
 ```typescript
 // Check if app exists in database (AAB) or use params (PaaS)
 const app = appRepo.findById(appId);
@@ -390,12 +407,13 @@ if (app) {
 import { getFeatures } from '../services/features.js';
 
 const features = getFeatures();
-if (features.isEnabled("commerce")) {
+if (features.isEnabled('commerce')) {
   // Commerce agent available
 }
 ```
 
 **Key Flags:**
+
 - `ENABLE_COMMERCE_AGENT` - Enable commerce integration
 - `ENABLE_SOCIAL` - Enable social media features
 
@@ -408,35 +426,42 @@ AI agents use tools to interact with the filesystem, git, databases, and externa
 ### Tool Categories
 
 **File Operations:**
+
 - `file-edit` - Edit file contents with AST manipulation
 - `read-file` - Read file contents
 - `directory-listing` - List directory contents
 
 **Development:**
+
 - `git-tool` - Git operations (commit, push, branch)
 - `terminal` - Execute shell commands
 - `grep-tool` - Search code
 
 **Code Manipulation:**
+
 - `ast-style-editor` - CSS/style editing
 - `ast-text-editor` - Text content editing
 - `ast-editor-base` - Base AST manipulation
 
 **Infrastructure:**
+
 - `server-management-tool` - Start/stop dev servers
 - `mysql-tool` - Database operations
 - `secrets-management-tool` - Manage app secrets
 - `view-logs-tool` - View application logs
 
 **AI:**
+
 - `memory-tool` - Persistent agent memory
 - `rag-tool` - Retrieval-augmented generation
 - `skill-loader-tool` - Load AI skills
 
 **Media:**
+
 - `media-search-tool` - Getty Images & DALL-E integration
 
 **Specialized:**
+
 - `commerce-product-tool` - Product management
 - `website-scraper-tool` - Web scraping
 - `app-plan-tool` - App planning
@@ -453,6 +478,7 @@ AI agents use tools to interact with the filesystem, git, databases, and externa
 5. Add to agent's available tools
 
 **Example:**
+
 ```typescript
 import { z } from 'zod';
 import { BaseTool } from './base-tool.js';
@@ -462,7 +488,7 @@ export class MyTool extends BaseTool {
   description = 'Does something useful';
 
   schema = z.object({
-    param: z.string()
+    param: z.string(),
   });
 
   async execute(input: z.infer<typeof this.schema>) {
@@ -502,6 +528,7 @@ const conversations = await convRepo.findByAppId(appId);
 ```
 
 **Common Operations:**
+
 - `findById(id)` - Find by ID
 - `findAll(limit, offset)` - List with pagination
 - `create(data)` - Create record
@@ -515,6 +542,7 @@ const conversations = await convRepo.findByAppId(appId);
 ### Required Variables
 
 **AI Configuration:**
+
 ```bash
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4  # or gpt-3.5-turbo
@@ -522,18 +550,21 @@ OPENAI_BASE_URL=https://api.openai.com/v1  # Optional: custom endpoint
 ```
 
 **Database:**
+
 ```bash
 MYSQL_ROOT_PASSWORD=...  # For app/ MySQL
 MYSQL_ROOT_HOST=localhost
 ```
 
 **Feature Flags:**
+
 ```bash
 ENABLE_COMMERCE_AGENT=true
 ENABLE_SOCIAL=false
 ```
 
 **Media:**
+
 ```bash
 GETTY_API_URL=https://api.gettyimages.com
 GETTY_TOKEN=...
@@ -541,6 +572,7 @@ IMAGE_SEARCH_DRIVER=getty  # or dalle
 ```
 
 **Logging:**
+
 ```bash
 LOG_LEVEL=info  # debug|info|warn|error|fatal
 LOG_DOMAINS=app,websocket  # Allowlist
@@ -578,6 +610,7 @@ pnpm --filter @airo/agents lint
 **File:** `src/logging/events/index.ts`
 
 Event category exports:
+
 - `appCreationEvents` - App creation lifecycle
 - `appServerEvents` - Server start/stop
 - `appDockerEvents` - Docker operations
@@ -598,15 +631,19 @@ const logger = Logger.create({ service: 'my-service' });
 logger.info('app.create.begin', {
   appId,
   name,
-  templateVersion
+  templateVersion,
 });
 
 // Error event
-logger.error('conversation.load.failure', {
-  appId,
-  conversationId,
-  error: getErrorMessage(error)
-}, { tags: ['error', 'database'] });
+logger.error(
+  'conversation.load.failure',
+  {
+    appId,
+    conversationId,
+    error: getErrorMessage(error),
+  },
+  { tags: ['error', 'database'] }
+);
 ```
 
 ### Log Control
