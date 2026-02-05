@@ -63,6 +63,7 @@ export default function ChatInput({
     toggle: toggleSpeech,
     transcript: speechTranscript,
     stop: stopSpeech,
+    resetTranscript,
   } = useSpeechRecognition({ language: locale })
 
   useEffect(function ensureMicrophoneOffOnMount() {
@@ -86,10 +87,20 @@ export default function ChatInput({
     }
   }, [isListening]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  function handleSend() {
+    if (isListening) {
+      // Clear ref before stopping to prevent race condition with captureTextOnListeningStart effect
+      textBeforeListeningRef.current = ''
+      stopSpeech()
+      resetTranscript()
+    }
+    onSendMessage()
+  }
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      onSendMessage()
+      handleSend()
     }
   }
 
@@ -178,7 +189,7 @@ export default function ChatInput({
               )}
               <Button
                 id="chat-send-button"
-                onClick={() => onSendMessage()}
+                onClick={handleSend}
                 data-eid={generateClickEID('develop.prompt.send')}
                 disabled={!inputValue?.trim() || isDisabled}
                 aria-label={t('builder_chatinput_send')}

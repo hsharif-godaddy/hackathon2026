@@ -43,6 +43,25 @@ vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
 
+const mockStopSpeech = vi.fn();
+const mockResetTranscript = vi.fn();
+const mockToggleSpeech = vi.fn();
+const mockSpeechRecognition = vi.hoisted(() => ({
+  isListening: false,
+  isSupported: true,
+}));
+
+vi.mock('@/hooks/useSpeechRecognition', () => ({
+  useSpeechRecognition: () => ({
+    isListening: mockSpeechRecognition.isListening,
+    isSupported: mockSpeechRecognition.isSupported,
+    toggle: mockToggleSpeech,
+    transcript: '',
+    stop: mockStopSpeech,
+    resetTranscript: mockResetTranscript,
+  }),
+}));
+
 describe('ChatInput', () => {
   const defaultProps = {
     inputValue: '',
@@ -55,6 +74,7 @@ describe('ChatInput', () => {
     vi.clearAllMocks();
     mockDevelopStore.isMobile = false;
     mockDevelopStore.isAssetManagerOpen = false;
+    mockSpeechRecognition.isListening = false;
     mockUseSwitchboard.mockImplementation((feature: string) => {
       if (feature === 'appbuilder-image-manager') return { data: true };
       if (feature === 'appbuilder-chat-gauge') return { data: true };
@@ -302,6 +322,58 @@ describe('ChatInput', () => {
       renderWithProviders(<ChatInput {...defaultProps} appId="test-app-123" />);
 
       expect(screen.queryByRole('button', { name: /builder_usage_gauge_aria_label/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('speech recognition', () => {
+    it('should disable textarea when listening', function disableTextareaWhileListening() {
+      mockSpeechRecognition.isListening = true;
+      renderWithProviders(<ChatInput {...defaultProps} inputValue="Test" />);
+
+      const textarea = screen.getByRole('textbox');
+      expect(textarea).toBeDisabled();
+    });
+
+    it('should stop speech and reset transcript when sending while listening via button click', async function stopOnButtonClick() {
+      mockSpeechRecognition.isListening = true;
+      const onSendMessage = vi.fn();
+      const { user } = renderWithProviders(
+        <ChatInput {...defaultProps} inputValue="Test" onSendMessage={onSendMessage} />
+      );
+
+      // Clear mocks after render (ensureMicrophoneOffOnMount calls stopSpeech on mount)
+      vi.clearAllMocks();
+
+      // Note: Enter key cannot be tested for speech cleanup because textarea is disabled
+      // when listening. Users must click the send button to send while voice recording.
+      const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
+      await user.click(sendButton);
+
+      await waitFor(() => {
+        expect(mockStopSpeech).toHaveBeenCalledOnce();
+        expect(mockResetTranscript).toHaveBeenCalledOnce();
+        expect(onSendMessage).toHaveBeenCalledOnce();
+      });
+    });
+
+    it('should not call stop or reset when sending while not listening', async function noCleanupWhenNotListening() {
+      mockSpeechRecognition.isListening = false;
+      const onSendMessage = vi.fn();
+      const { user } = renderWithProviders(
+        <ChatInput {...defaultProps} inputValue="Test" onSendMessage={onSendMessage} />
+      );
+
+      // Clear mocks after render (ensureMicrophoneOffOnMount calls stopSpeech on mount)
+      vi.clearAllMocks();
+
+      const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
+      await user.click(sendButton);
+
+      await waitFor(() => {
+        expect(onSendMessage).toHaveBeenCalledOnce();
+      });
+      expect(mockStopSpeech).not.toHaveBeenCalled();
+      expect(mockResetTranscript).not.toHaveBeenCalled();
     });
   });
 });

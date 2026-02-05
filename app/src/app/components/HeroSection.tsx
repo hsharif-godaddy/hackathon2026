@@ -41,6 +41,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     isSupported: isSpeechSupported,
     toggle: toggleSpeech,
     transcript: speechTranscript,
+    stop: stopSpeech,
+    resetTranscript,
   } = useSpeechRecognition({ language: locale })
 
   // Update text when speech transcript changes (replace, don't append)
@@ -63,6 +65,16 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       textBeforeListeningRef.current = displayText
     }
   }, [isListening]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleStartBuilding() {
+    if (isListening) {
+      // Clear ref before stopping to prevent race condition with captureTextOnListeningStart effect
+      textBeforeListeningRef.current = ''
+      stopSpeech()
+      resetTranscript()
+    }
+    onStartBuilding()
+  }
 
   // Keep expanded if focused OR has content OR listening
   const isExpanded = isFocused || displayText.trim().length > 0 || isListening
@@ -349,7 +361,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   />
                 )}
                 <Button
-                  onClick={onStartBuilding}
+                  onClick={handleStartBuilding}
                   data-partial="componentAiro"
                   data-eid={generateClickEID('homepage.prompt.submit')}
                   disabled={!promptText.trim() || isLoading || isTyping || promptText.length >= MAX_PROMPT_LENGTH}
