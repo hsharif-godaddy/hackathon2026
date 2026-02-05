@@ -79,6 +79,8 @@ export interface ImageSearchEnvConfig {
 	defaultMaxWaitSeconds: number;
 	ssoHost: string;
 	useGettyProxy: boolean;
+	authType: string;
+	jwksUrl: string;
 }
 
 export class EnvGenerator {
@@ -1295,6 +1297,11 @@ DEFAULT_MAX_WAIT_SECONDS=${config.defaultMaxWaitSeconds}
 # SSO (for auth)
 SSO_HOST=${config.ssoHost}
 
+# Authentication
+# AUTH_TYPE: "jwt" for production (validates tokens), "none" for local dev (no auth)
+AUTH_TYPE=${config.authType}
+JWKS_URL=${config.jwksUrl}
+
 # APM (optional)
 ELASTIC_APM_SERVER_URL=
 ELASTIC_APM_SERVICE_NAME=image-search-service
@@ -1484,6 +1491,8 @@ ELASTIC_APM_ENVIRONMENT=dev
 			defaultMaxWaitSeconds: 30,
 			ssoHost: "sso.godaddy.com",
 			useGettyProxy,
+			authType: "none", // Local dev doesn't need auth
+			jwksUrl: "https://airo-builder.test-godaddy.com/.well-known/jwks.json",
 		};
 
 		const envContent = this.generateImageSearchEnvContent(config);

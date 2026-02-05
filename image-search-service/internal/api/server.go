@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/airo-ai-builder/image-search-service/internal/analysis"
+	"github.com/airo-ai-builder/image-search-service/internal/auth"
 	"github.com/airo-ai-builder/image-search-service/internal/config"
 	"github.com/airo-ai-builder/image-search-service/internal/embeddings"
 	"github.com/airo-ai-builder/image-search-service/internal/getty"
@@ -35,6 +36,9 @@ type Server struct {
 
 	// Orchestrator
 	orchestrator *search.Orchestrator
+
+	// Auth
+	authMiddleware *auth.Middleware
 }
 
 // NewServer creates a new HTTP API server with the provided configuration.
@@ -44,6 +48,9 @@ func NewServer(cfg *config.Config, version string) *Server {
 		router:  mux.NewRouter(),
 		version: version,
 	}
+
+	// Initialize auth middleware
+	s.authMiddleware = auth.NewMiddleware(cfg.AuthType, cfg.JWKSURL, "airo-app", "agents-service")
 
 	// Apply logging middleware to all routes
 	s.router.Use(loggingMiddleware)
@@ -155,9 +162,14 @@ func (s *Server) Shutdown(ctx context.Context) error {
 func (s *Server) setupRoutes() {
 	api := s.router.PathPrefix("/api/v1").Subrouter()
 
+	// Public routes (no auth required)
 	api.HandleFunc("/health", s.handleHealth).Methods(http.MethodGet)
 	api.HandleFunc("/stats", s.handleStats).Methods(http.MethodGet)
-	api.HandleFunc("/search", s.handleSearch).Methods(http.MethodPost)
-	api.HandleFunc("/images/{gettyId}", s.handleGetImage).Methods(http.MethodGet)
-	api.HandleFunc("/images/batch", s.handleBatchLookup).Methods(http.MethodPost)
+
+	// Protected routes (auth required)
+	protected := api.PathPrefix("").Subrouter()
+	protected.Use(s.authMiddleware.Authenticate)
+	protected.HandleFunc("/search", s.handleSearch).Methods(http.MethodPost)
+	protected.HandleFunc("/images/{gettyId}", s.handleGetImage).Methods(http.MethodGet)
+	protected.HandleFunc("/images/batch", s.handleBatchLookup).Methods(http.MethodPost)
 }

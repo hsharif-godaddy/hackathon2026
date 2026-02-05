@@ -54,6 +54,10 @@ type Config struct {
 	APMServerURL   string
 	APMServiceName string
 	APMEnvironment string
+
+	// Auth
+	AuthType string
+	JWKSURL  string
 }
 
 // LoadConfig loads configuration from environment variables, applying sensible defaults
@@ -104,6 +108,10 @@ func LoadConfig() *Config {
 		APMServerURL:   getEnvString("ELASTIC_APM_SERVER_URL", ""),
 		APMServiceName: getEnvString("ELASTIC_APM_SERVICE_NAME", "image-search-service"),
 		APMEnvironment: getEnvString("ELASTIC_APM_ENVIRONMENT", "dev"),
+
+		// Auth
+		AuthType: getEnvString("AUTH_TYPE", "jwt"),
+		JWKSURL:  getEnvString("JWKS_URL", "https://airo-builder.test-godaddy.com/.well-known/jwks.json"),
 	}
 }
 
