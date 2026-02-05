@@ -4,6 +4,7 @@
 @import "@ux/icon/arrow-left/index.css";
 @import "@ux/icon/arrow-right/index.css";
 @import "@ux/icon/attachment/index.css";
+@import "@ux/icon/calendar/index.css";
 @import "@ux/icon/chat/index.css";
 @import "@ux/icon/checkbox-filled/index.css";
 @import "@ux/icon/checkbox-list/index.css";
@@ -42,6 +43,7 @@
 @import "@ux/icon/lightbulb/index.css";
 @import "@ux/icon/link/index.css";
 @import "@ux/icon/locked/index.css";
+@import "@ux/icon/mail/index.css";
 @import "@ux/icon/map-pin/index.css";
 @import "@ux/icon/menu/index.css";
 @import "@ux/icon/mic/index.css";
@@ -55,6 +57,7 @@
 @import "@ux/icon/revert/index.css";
 @import "@ux/icon/send/index.css";
 @import "@ux/icon/settings/index.css";
+@import "@ux/icon/share/index.css";
 @import "@ux/icon/show/index.css";
 @import "@ux/icon/shield-check/index.css";
 @import "@ux/icon/shield-check-filled/index.css";

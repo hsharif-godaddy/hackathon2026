@@ -68,7 +68,7 @@ interface PostImageProps {
  * @param imagesRequested - Whether images were requested for this post
  * @returns Image element or placeholder
  */
-const PostImage = memo(({ postImage, imageAspectRatio, imagesRequested , platform }: PostImageProps) => {
+const PostImage = memo(({ postImage, imageAspectRatio, imagesRequested, platform }: PostImageProps) => {
   const t = useTranslations();
   const imageUrl = useAppImageUrl(postImage?.url);
 
@@ -95,7 +95,7 @@ const PostImage = memo(({ postImage, imageAspectRatio, imagesRequested , platfor
   )
 })
 
-const PreviewHeader = memo(({ platform , previewDate }: { platform: string, previewDate: string }) => {
+const PreviewHeader = memo(({ platform, previewDate }: { platform: string, previewDate: string }) => {
   return (
     <div className="flex items-center justify-between px-2 py-1 order-1">
       <div className="flex items-center">

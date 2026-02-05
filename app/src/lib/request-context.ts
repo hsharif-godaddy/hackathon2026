@@ -1,4 +1,4 @@
-import { context as otelContext,trace } from '@opentelemetry/api';
+import { context as otelContext, trace } from '@opentelemetry/api';
 
 import { ClientLogBuffer } from './logging/client-log-buffer';
 

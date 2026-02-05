@@ -1,4 +1,4 @@
-import { useEffect,useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { appFetch } from '@/lib/gasket-config';
@@ -8,7 +8,7 @@ import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
-import { logAiroHQEvent,logImpressionEvent } from '@/utils/instrumentation';
+import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
 
 const INITIAL_POLL_DELAY_MS = 5000;  // Wait 5 seconds before first poll

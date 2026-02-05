@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 
-import { gasketConfig,getGasketConfig } from '@/lib/gasket-config';
+import { gasketConfig, getGasketConfig } from '@/lib/gasket-config';
 import { useGasketConfig, useGasketConfigSection } from './useGasketConfig';
 
 // Mock dependencies

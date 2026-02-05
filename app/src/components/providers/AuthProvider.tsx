@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { createContext, ReactNode, useContext,useEffect, useState } from 'react';
+import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 
 import AccessDisabledComponent from '@/components/auth/AccessDisabledComponent'
 import LoadingComponent from '@/components/auth/LoadingComponent';

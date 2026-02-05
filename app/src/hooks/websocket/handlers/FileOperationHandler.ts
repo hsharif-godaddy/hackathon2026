@@ -6,7 +6,7 @@
  */
 
 import { logger } from '@/lib/request-context'
-import { type FileOperationType,useCodeSyncStore } from '@/stores/useCodeSyncStore'
+import { type FileOperationType, useCodeSyncStore } from '@/stores/useCodeSyncStore'
 import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
 
 // File operation tool names

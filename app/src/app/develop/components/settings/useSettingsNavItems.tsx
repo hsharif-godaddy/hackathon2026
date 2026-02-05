@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode } from 'react';
+import CalendarIcon from '@ux/icon/calendar';
 import ClipboardIcon from '@ux/icon/clipboard';
 import ContentIcon from '@ux/icon/content';
 import DatabaseIcon from '@ux/icon/database';
@@ -49,6 +50,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
   const { data: isSocialEnabled } = useSwitchboard('appbuilder-settings-social');
   const { data: isAnalyticsEnabled } = useSwitchboard('appbuilder-settings-analytics');
+  const { data: isMarketingEnabled } = useSwitchboard('appbuilder-settings-marketing');
 
   const handleFeedbackClick = () => {
     localStorage.removeItem('airo-feedback-shown:airo#app-builder');
@@ -116,6 +118,12 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       icon: <GraphIcon />,
       disabled: isAnalyticsEnabled !== true,
     },
+    ...(isMarketingEnabled ? [{
+      id: SettingsSection.MARKETING,
+      label: t('builder_settings_nav_marketing'),
+      icon: <CalendarIcon />,
+      disabled: false,
+    }] : []),
     ...(!isMobile ? [{
       id: SettingsSection.FEEDBACK,
       label: t('builder_settings_nav_feedback'),

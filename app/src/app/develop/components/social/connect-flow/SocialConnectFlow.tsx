@@ -11,7 +11,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { generateClickEID } from '@/utils/instrumentation'
 import { getCurrentRenderState, getRenderConfig } from './social-connect-flow-render'
-import { ContainerVariant,SocialConnectFlowContainer } from './SocialConnectFlowContainer'
+import { ContainerVariant, SocialConnectFlowContainer } from './SocialConnectFlowContainer'
 
 interface SocialConnectFlowProps {
   platform: string

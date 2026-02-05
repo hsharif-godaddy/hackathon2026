@@ -4,6 +4,7 @@ import AnalyticsPanel from '@/app/develop/components/settings/Analytics/Analytic
 import BackupsPanel from '@/app/develop/components/settings/BackupsPanel'
 import { DatabasePanel } from '@/app/develop/components/settings/Database/DatabasePanel'
 import DomainPanel from '@/app/develop/components/settings/DomainPanel'
+import MarketingPanel from '@/app/develop/components/settings/MarketingPanel'
 import ProjectPanel from '@/app/develop/components/settings/ProjectPanel'
 import { SecretsPanel } from '@/app/develop/components/settings/SecretsPanel'
 import SecurityPanel from '@/app/develop/components/settings/SecurityPanel'
@@ -29,6 +30,7 @@ export default function SettingsView() {
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
   const { data: isSocialEnabled } = useSwitchboard('appbuilder-settings-social');
   const { data: isAnalyticsEnabled } = useSwitchboard('appbuilder-settings-analytics');
+  const { data: isMarketingEnabled } = useSwitchboard('appbuilder-settings-marketing');
 
   const renderSection = () => {
     switch (activeSettingsSection) {
@@ -52,14 +54,21 @@ export default function SettingsView() {
         return isVisualScanEnabled ? <VisualScanPanel /> : null;
       case SettingsSection.ANALYTICS:
         return isAnalyticsEnabled ? <AnalyticsPanel /> : null;
+      case SettingsSection.MARKETING:
+        return isMarketingEnabled ? <MarketingPanel /> : null;
       case SettingsSection.FEEDBACK:
       default:
         return isProjectEnabled ? <ProjectPanel /> : null;
     }
   }
 
+  // Use wider max-width for Marketing section to give calendar more room
+  const maxWidthClass = activeSettingsSection === SettingsSection.MARKETING
+    ? 'md:max-w-7xl'
+    : 'md:max-w-5xl';
+
   return (
-    <div className="h-full flex flex-col overflow-y-auto p-2 w-full md:max-w-5xl mx-auto">
+    <div className={`h-full flex flex-col overflow-y-auto p-2 w-full ${maxWidthClass} mx-auto`}>
       {renderSection()}
     </div>
   )
