@@ -147,11 +147,11 @@ export class ServerPaywallProvider implements PaywallDataProvider {
    * Gets the customer's subscription with plan information.
    * Prioritizes active paid subscriptions over free ones.
    *
-   * When appbuilder-manage-plan flag is enabled:
+   * When app-builder-grants flag is enabled:
    * - Checks for free/starter/airoPlus plans
    * - Auto-creates free plan if subscription exists but has no valid plan
    *
-   * When appbuilder-manage-plan flag is disabled (legacy):
+   * When app-builder-grants flag is disabled (legacy):
    * - Only checks for airoPlus plans
    * - Does not auto-create plans
    *
@@ -161,16 +161,16 @@ export class ServerPaywallProvider implements PaywallDataProvider {
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
     const client = new AiroMgmtClient({ baseUrl, jwt: this.jwt });
 
-    // Check if new paid plans feature is enabled
-    const isManagePlanEnabled = await checkSwitchboardFlag(
-      'appbuilder-manage-plan',
+    // Check if grants feature is enabled
+    const isGrantsEnabled = await checkSwitchboardFlag(
+      'app-builder-grants',
       this.jwt,
       this.headers
     );
 
     logger.info('paywall.server-provider.get-account-subscription', {
       message: 'Fetching account subscription',
-      managePlanEnabled: isManagePlanEnabled
+      grantsEnabled: isGrantsEnabled
     });
 
     let subscriptions = await client.getSubscriptions(
@@ -202,11 +202,11 @@ export class ServerPaywallProvider implements PaywallDataProvider {
     }
 
     // Use appropriate plan validation based on feature flag
-    const validPlans = getValidPlans(isManagePlanEnabled);
+    const validPlans = getValidPlans(isGrantsEnabled);
     const hasValidPlan = bestSubscription && validPlans.includes(bestSubscription.plan);
 
-    // Only auto-create free plan if new paid plans feature is enabled
-    if (isManagePlanEnabled && subscriptions.length > 0 && !hasValidPlan) {
+    // Only auto-create free plan if grants feature is enabled
+    if (isGrantsEnabled && subscriptions.length > 0 && !hasValidPlan) {
       // Use the first active subscription, or fall back to first subscription
       const targetSubscription = subscriptions.find(sub => sub.status === SubscriptionStatus.Active) || subscriptions[0];
 

@@ -283,7 +283,7 @@ describe('GET /api/subscriptions', function describeRoute() {
       const data = await response.json();
 
       expect(data.data.meta.hasValidPlan).toBe(true);
-      expect(data.data.meta.managePlanEnabled).toBe(true);
+      expect(data.data.meta.grantsEnabled).toBe(true);
     });
 
     it('should report hasValidPlan false when no valid plans', async function noValidPlan() {
@@ -304,7 +304,7 @@ describe('GET /api/subscriptions', function describeRoute() {
       const data = await response.json();
 
       // After auto-creation attempt, should have valid plan
-      expect(data.data.meta.managePlanEnabled).toBe(true);
+      expect(data.data.meta.grantsEnabled).toBe(true);
     });
   });
 });

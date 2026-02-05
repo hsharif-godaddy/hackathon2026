@@ -25,16 +25,16 @@ export const dynamic = 'force-dynamic';
  *     active: {...},         // Best/active subscription
  *     meta: {
  *       hasValidPlan: boolean,
- *       managePlanEnabled: boolean
+ *       grantsEnabled: boolean
  *     }
  *   }
  * }
  *
- * When appbuilder-manage-plan flag is enabled:
+ * When app-builder-grants flag is enabled:
  * - Checks for free/starter/airoPlus plans
  * - Auto-creates free plan if subscription exists but has no valid plan
  *
- * When appbuilder-manage-plan flag is disabled (legacy):
+ * When app-builder-grants flag is disabled (legacy):
  * - Only checks for airoPlus plans
  * - Does not auto-create plans
  */
@@ -51,9 +51,9 @@ export const GET = withCustomerAuth(async (
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
     const client = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt });
 
-    // Check if new paid plans feature is enabled
-    const isManagePlanEnabled = await checkSwitchboardFlag(
-      'appbuilder-manage-plan',
+    // Check if grants feature is enabled
+    const isGrantsEnabled = await checkSwitchboardFlag(
+      'app-builder-grants',
       authContext.jwt,
       request.headers
     );
@@ -61,7 +61,7 @@ export const GET = withCustomerAuth(async (
     logger.info('subscriptions.api.start', {
       message: 'Fetching all subscriptions with best selection',
       customerId: authContext.user.customerId,
-      managePlanEnabled: isManagePlanEnabled
+      grantsEnabled: isGrantsEnabled
     });
 
     // Get all customer's subscriptions
@@ -73,11 +73,11 @@ export const GET = withCustomerAuth(async (
     });
 
     // Use appropriate plan validation based on feature flag
-    const validPlans = getValidPlans(isManagePlanEnabled);
+    const validPlans = getValidPlans(isGrantsEnabled);
     const anyHasValidPlan = subscriptions.some(sub => hasValidPlan(sub, validPlans));
 
-    // Only auto-create free plan if new paid plans feature is enabled
-    if (isManagePlanEnabled && subscriptions.length > 0 && !anyHasValidPlan) {
+    // Only auto-create free plan if grants feature is enabled
+    if (isGrantsEnabled && subscriptions.length > 0 && !anyHasValidPlan) {
       // Use the first active subscription, or fall back to first subscription
       const targetSubscription = subscriptions.find(sub => sub.status === SubscriptionStatus.Active) || subscriptions[0];
 
@@ -177,7 +177,7 @@ export const GET = withCustomerAuth(async (
       count: subscriptionsWithPlan.length,
       hasValidPlan: anyWithValidPlan,
       bestPlan: bestSubscription?.plan,
-      managePlanEnabled: isManagePlanEnabled,
+      grantsEnabled: isGrantsEnabled,
       customerId: authContext.user.customerId
     });
 
@@ -188,7 +188,7 @@ export const GET = withCustomerAuth(async (
         active: bestSubscription,
         meta: {
           hasValidPlan: anyWithValidPlan,
-          managePlanEnabled: isManagePlanEnabled
+          grantsEnabled: isGrantsEnabled
         }
       }
     });
