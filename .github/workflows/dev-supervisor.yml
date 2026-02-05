@@ -65,19 +65,13 @@ jobs:
           go-version: "1.25"
           cache-dependency-path: dev-supervisor/go.sum
 
-      - name: Cache Go modules
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('dev-supervisor/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
       - name: Download dependencies
         working-directory: dev-supervisor
         run: go mod download
+
+      - name: Verify dependencies
+        working-directory: dev-supervisor
+        run: go mod verify
 
       - name: Run tests
         working-directory: dev-supervisor
@@ -86,7 +80,7 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          file: dev-supervisor/coverage.out
+          files: dev-supervisor/coverage.out
           flags: dev-supervisor
           name: dev-supervisor
 
@@ -116,11 +110,8 @@ jobs:
     needs: [lint, test, test-docker]
     strategy:
       matrix:
-        goos: [linux, darwin, windows]
+        goos: [linux]
         goarch: [amd64, arm64]
-        exclude:
-          - goos: windows
-            goarch: arm64
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -130,16 +121,6 @@ jobs:
         with:
           go-version: "1.25"
           cache-dependency-path: dev-supervisor/go.sum
-
-      - name: Cache Go modules
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('dev-supervisor/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
 
       - name: Download dependencies
         working-directory: dev-supervisor
@@ -183,6 +164,8 @@ jobs:
         run: |
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
             --tag dev-supervisor:latest \
             --file Dockerfile \
             .
