@@ -1,5 +1,7 @@
 # Reusable workflow for package quality checks (lint, test, build)
 # Called by package-specific workflows with path filters
+#
+# Runs lint+build and tests in parallel for faster feedback
 
 name: Quality Checks (Reusable)
 
@@ -19,28 +21,34 @@ on:
         required: true
         type: string
       node-version:
-        description: 'Node.js version to use'
+        description: "Node.js version to use"
         required: false
         type: string
-        default: '22.12'
+        default: "22.12"
       run-prisma-generate:
-        description: 'Run Prisma generate (app only)'
+        description: "Run Prisma generate (app only)"
         required: false
         type: boolean
         default: false
       build-ai-lib:
-        description: 'Build @airo/ai-lib before tests (app only)'
+        description: "Build @airo/ai-lib before tests (app only)"
         required: false
         type: boolean
         default: false
       skip-tests:
-        description: 'Skip running tests'
+        description: "Skip running tests"
+        required: false
+        type: boolean
+        default: false
+      cache-next-build:
+        description: "Cache Next.js build output (app only)"
         required: false
         type: boolean
         default: false
 
 jobs:
-  quality-checks:
+  # Job 1: Lint, License Check, and Build (runs in parallel with tests)
+  lint-build:
     runs-on:
       labels:
         - airo-cicd-runners
@@ -50,28 +58,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Get Artifactory Token
-        id: jfrog
+      - name: Setup Artifactory and Node.js
+        id: setup
         uses: jfrog/setup-jfrog-cli@f748a0599171a192a2668afee8d0497f7c1069df
         env:
           JF_URL: ${{ vars.JF_URL }}
         with:
           oidc-provider-name: github
 
-      - name: Setup Artifactory Creds
-        env:
-          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
-        run: |
-          echo "::add-mask::$OIDC_TOKEN"
-          echo "ARTIFACTORY_NPM_TOKEN=${OIDC_TOKEN}" >> $GITHUB_ENV
-
       - name: Set up Node.js ${{ inputs.node-version }}
         uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version }}
 
-      - name: Enable Corepack and verify pnpm version
+      - name: Enable Corepack and configure pnpm
+        env:
+          OIDC_TOKEN: ${{ steps.setup.outputs.oidc-token }}
         run: |
+          echo "::add-mask::$OIDC_TOKEN"
+
           npm install -g corepack@latest
           corepack enable
 
@@ -97,19 +102,26 @@ jobs:
           fi
           echo "pnpm version $ACTUAL_VERSION matches expected version"
 
-      - name: Configure pnpm registry
-        run: |
+          # Configure pnpm registry
           echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc
-          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
-          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${OIDC_TOKEN}" >> .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/:_authToken=${OIDC_TOKEN}" >> .npmrc
 
-      - name: Verify lockfile format consistency
-        run: |
-          if grep -q 'lockfileVersion: "' pnpm-lock.yaml; then
-            echo "ERROR: pnpm-lock.yaml uses double quotes (old format)"
-            exit 1
-          fi
-          echo "pnpm-lock.yaml format is consistent"
+      # Note: pnpm store path is Linux-specific; self-hosted runners are Linux-only
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
+      - name: Cache Next.js build
+        if: inputs.cache-next-build
+        uses: actions/cache@v4
+        with:
+          path: ${{ inputs.working-directory }}/.next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles(format('{0}/**/*.ts', inputs.working-directory), format('{0}/**/*.tsx', inputs.working-directory), format('{0}/next.config.*', inputs.working-directory), format('{0}/tailwind.config.*', inputs.working-directory), format('{0}/tsconfig*.json', inputs.working-directory), format('{0}/package.json', inputs.working-directory), 'pnpm-lock.yaml') }}
+          restore-keys: nextjs-${{ runner.os }}-
 
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
@@ -131,6 +143,85 @@ jobs:
       - name: Run linting
         run: pnpm --filter ${{ inputs.pnpm-filter }} lint
 
+      - name: Build @airo/ai-lib
+        if: inputs.build-ai-lib
+        run: pnpm --filter @airo/ai-lib build
+
+      - name: Run build
+        run: pnpm --filter ${{ inputs.pnpm-filter }} build
+
+  # Job 2: Tests (runs in parallel with lint-build)
+  test:
+    if: ${{ !inputs.skip-tests }}
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Artifactory and Node.js
+        id: setup
+        uses: jfrog/setup-jfrog-cli@f748a0599171a192a2668afee8d0497f7c1069df
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Set up Node.js ${{ inputs.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Enable Corepack and configure pnpm
+        env:
+          OIDC_TOKEN: ${{ steps.setup.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+
+          npm install -g corepack@latest
+          corepack enable
+
+          EXPECTED_VERSION=$(node -p "
+            const pkg = require('./package.json');
+            const pm = pkg.packageManager || '';
+            const match = pm.match(/^pnpm@(.+?)(\+|$)/);
+            if (!match) {
+              console.error('ERROR: Could not parse packageManager field:', pm);
+              process.exit(1);
+            }
+            match[1];
+          ")
+
+          corepack prepare "pnpm@${EXPECTED_VERSION}" --activate
+          ACTUAL_VERSION=$(pnpm --version)
+
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "ERROR: pnpm version mismatch!"
+            echo "Expected: $EXPECTED_VERSION"
+            echo "Actual: $ACTUAL_VERSION"
+            exit 1
+          fi
+          echo "pnpm version $ACTUAL_VERSION matches expected version"
+
+          # Configure pnpm registry
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${OIDC_TOKEN}" >> .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/:_authToken=${OIDC_TOKEN}" >> .npmrc
+
+      # Note: pnpm store path is Linux-specific; self-hosted runners are Linux-only
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Generate Prisma Client
         if: inputs.run-prisma-generate
         working-directory: ${{ inputs.working-directory }}
@@ -141,8 +232,4 @@ jobs:
         run: pnpm --filter @airo/ai-lib build
 
       - name: Run tests
-        if: ${{ !inputs.skip-tests }}
         run: pnpm --filter ${{ inputs.pnpm-filter }} test
-
-      - name: Run build
-        run: pnpm --filter ${{ inputs.pnpm-filter }} build

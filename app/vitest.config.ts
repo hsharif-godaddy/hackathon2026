@@ -23,6 +23,15 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
     include: ['src/**/__tests__/**/*.test.ts', 'src/**/*.test.ts', 'src/**/*.test.tsx'],
+    // Use thread pool for parallel test execution
+    pool: 'threads',
+    poolOptions: {
+      threads: {
+        singleThread: false,
+        minThreads: 1,
+        maxThreads: 4,
+      },
+    },
     // Inline workspace packages so Vitest resolves subpath exports correctly
     deps: {
       inline: ['@airo/ai-lib'],

@@ -38,4 +38,5 @@ jobs:
       working-directory: ./app
       run-prisma-generate: true
       build-ai-lib: true
+      cache-next-build: true
     secrets: inherit
