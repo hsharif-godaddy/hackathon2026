@@ -3,6 +3,7 @@ package processmanager
 
 import (
 	"net"
+	"strconv"
 	"testing"
 	"time"
 
@@ -835,4 +836,123 @@ func TestProcessManager_WasHealthyBeforeIdle_NotSetOnStopFailure(t *testing.T) {
 	err = pm.stopForIdle()
 	require.Error(t, err, "stopForIdle should fail when process is already stopped")
 	assert.False(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should remain false after failed stop")
+}
+
+// TestProcessManager_SetStartRequest tests that SetStartRequest properly stores a deep copy
+// of the start request for deferred startup
+func TestProcessManager_SetStartRequest(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Create a start request with environment variables
+	originalReq := validation.ProcessStartRequest{
+		Command:    "npm run dev",
+		WorkingDir: "/app",
+		Env: map[string]string{
+			"PORT":     "3000",
+			"NODE_ENV": "development",
+		},
+		Ports: []int{3000, 3001},
+	}
+
+	// Save the request
+	pm.SetStartRequest(originalReq)
+
+	// Retrieve the saved request
+	saved := pm.GetStartRequest()
+	require.NotNil(t, saved, "saved request should not be nil")
+
+	// Verify fields match
+	assert.Equal(t, originalReq.Command, saved.Command)
+	assert.Equal(t, originalReq.WorkingDir, saved.WorkingDir)
+	assert.Equal(t, originalReq.Env, saved.Env)
+	assert.Equal(t, originalReq.Ports, saved.Ports)
+
+	// Verify deep copy by mutating original and checking saved request is unchanged
+	originalReq.Command = "changed"
+	originalReq.Env["PORT"] = "4000"
+	originalReq.Ports[0] = 9999
+
+	saved = pm.GetStartRequest()
+	assert.Equal(t, "npm run dev", saved.Command, "command should not be affected by original mutation")
+	assert.Equal(t, "3000", saved.Env["PORT"], "env should not be affected by original mutation")
+	assert.Equal(t, 3000, saved.Ports[0], "ports should not be affected by original mutation")
+}
+
+// TestProcessManager_GetStartRequest_Priority tests the priority logic:
+// 1) Running process config, 2) Saved start request, 3) nil
+func TestProcessManager_GetStartRequest_Priority(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Initially, no process and no saved request - should return nil
+	req := pm.GetStartRequest()
+	assert.Nil(t, req, "should return nil when no process and no saved request")
+
+	// Save a start request (deferred mode)
+	savedReq := validation.ProcessStartRequest{
+		Command:    "npm run dev",
+		WorkingDir: "/app",
+		Env:        map[string]string{"PORT": "3000"},
+	}
+	pm.SetStartRequest(savedReq)
+
+	// Should now return the saved request
+	req = pm.GetStartRequest()
+	require.NotNil(t, req, "should return saved request")
+	assert.Equal(t, "npm run dev", req.Command)
+
+	// Start a process (which should take priority over saved request)
+	runningReq := validation.ProcessStartRequest{
+		Command:    "sleep 10",
+		WorkingDir: "/tmp",
+		Env:        map[string]string{},
+	}
+	require.NoError(t, pm.Start(runningReq), "should start process")
+	time.Sleep(100 * time.Millisecond)
+
+	// Should now return the running process config (priority 1)
+	// Note: currentProcess takes precedence even after stop until it's nil
+	req = pm.GetStartRequest()
+	require.NotNil(t, req, "should return running process config")
+	assert.Equal(t, "sleep 10", req.Command, "should prioritize running process over saved request")
+
+	// Clean up
+	require.NoError(t, pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1}))
+	time.Sleep(100 * time.Millisecond)
+}
+
+// TestProcessManager_SetStartRequest_Concurrent tests that SetStartRequest is thread-safe
+func TestProcessManager_SetStartRequest_Concurrent(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Run concurrent SetStartRequest and GetStartRequest calls
+	done := make(chan bool)
+	for i := range 10 {
+		go func(id int) {
+			defer func() { done <- true }()
+			for range 100 {
+				req := validation.ProcessStartRequest{
+					Command:    "test",
+					WorkingDir: "/tmp",
+					Env:        map[string]string{"ID": strconv.Itoa(id)},
+				}
+				pm.SetStartRequest(req)
+				pm.GetStartRequest()
+			}
+		}(i)
+	}
+
+	// Wait for all goroutines
+	for range 10 {
+		<-done
+	}
+
+	// Should not panic and should have a valid saved request
+	req := pm.GetStartRequest()
+	require.NotNil(t, req, "should have saved request after concurrent operations")
 }

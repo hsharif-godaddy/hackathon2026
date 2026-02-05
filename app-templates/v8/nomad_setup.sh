@@ -1,0 +1,104 @@
+#!/bin/sh
+
+# Setup script for nomad deployment (git init, npm install, file syncing)
+# This script runs setup logic only - process start is handled separately
+
+# fail immediately if anything fails
+set -e
+
+# In production, CUSTOMER_APP_DIR is set by deployment system
+# BASE_APP_DIR contains the template files
+CUSTOMER_APP_DIR="${CUSTOMER_APP_DIR:-/app}"
+BASE_APP_DIR="${BASE_APP_DIR:-/app}"
+
+# Create .is_ready file to indicate template files are ready
+touch "$CUSTOMER_APP_DIR"/.is_ready
+echo "Template files ready, proceeding with setup..."
+
+# add the customer app directory to the git safe directory
+git config --global --add safe.directory "${CUSTOMER_APP_DIR}"
+git config --global user.name "Airo AI Builder"
+git config --global user.email "ai@airo.dev"
+
+if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
+    echo "Existing application detected, checking if restoration is needed"
+
+    # Only restore tracked files if the directory is essentially empty (only .git exists)
+    # This prevents discarding uncommitted changes
+    cd "$CUSTOMER_APP_DIR"
+    FILE_COUNT=$(find . -mindepth 1 -maxdepth 1 ! -name '.git' | wc -l)
+
+    if [ "$FILE_COUNT" -eq 0 ]; then
+        echo "Directory is empty (only .git exists), restoring all tracked files"
+        git checkout .
+    else
+        echo "Directory contains files, skipping checkout to preserve uncommitted changes"
+    fi
+
+    # Only run npm install if package.json or package-lock.json changed since last install
+    # This optimization skips redundant installs, reducing container startup from 47s to ~15s
+    NEEDS_INSTALL=false
+
+    # Check for hash file - try /app first (written after npm install), then /node_modules (from image)
+    # The /node_modules/.npm-install-hash survives the /app bind mount and represents base image deps
+    if [ -f ".npm-install-hash" ]; then
+        HASH_FILE=".npm-install-hash"
+    elif [ -f "/node_modules/.npm-install-hash" ]; then
+        HASH_FILE="/node_modules/.npm-install-hash"
+    else
+        HASH_FILE=""
+    fi
+
+    if [ -z "$HASH_FILE" ]; then
+        # No hash file anywhere - need to install
+        NEEDS_INSTALL=true
+        echo "No dependency hash found, npm install required"
+    else
+        # Check if package files changed
+        CURRENT_HASH=$(cat "package.json" "package-lock.json" 2>/dev/null | md5sum | cut -d' ' -f1)
+        LAST_HASH=$(cat "$HASH_FILE" 2>/dev/null) || LAST_HASH=""
+
+        if [ -z "$LAST_HASH" ]; then
+            NEEDS_INSTALL=true
+            echo "Could not read hash file, npm install required"
+        elif [ "$CURRENT_HASH" != "$LAST_HASH" ]; then
+            NEEDS_INSTALL=true
+            echo "package.json or package-lock.json changed, npm install required"
+        else
+            echo "Dependencies unchanged, skipping npm install (using pre-built node_modules from image)"
+        fi
+    fi
+
+    if [ "$NEEDS_INSTALL" = true ]; then
+        CI=true npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
+        # Store hash of package files to detect future changes
+        cat "package.json" "package-lock.json" 2>/dev/null | md5sum | cut -d' ' -f1 > .npm-install-hash
+        echo "npm install completed, hash saved"
+    fi
+
+    echo "Completed: Existing application detected, restored all tracked files and dependencies"
+fi
+
+if [ ! -f "$CUSTOMER_APP_DIR/.git/config" ]; then
+    echo "Fresh application detected, initializing git repository"
+
+    # Initialize git repository
+    git init --initial-branch=main
+
+    # Files are already in place from Docker COPY, so just add them
+    # Initial commit
+    git add .
+    git commit -m "Initial application setup"
+
+    echo "Completed: Fresh application detected, initialized git repository"
+fi
+
+cd "$CUSTOMER_APP_DIR"
+
+# Check if custom configuration exists (dev-supervisor will read the command directly)
+if [ -f ".airo/config.json" ]; then
+    echo "Custom configuration detected at .airo/config.json"
+    # Dev-supervisor will read runtime.dev.command from config if present
+fi
+
+echo "Setup complete"

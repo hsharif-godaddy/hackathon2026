@@ -46,6 +46,12 @@ type Config struct {
 	StartOnRequestEnabled bool          // Enable start-on-request (auto-start stopped apps, auto-stop idle apps)
 	IdleTimeout           time.Duration // Duration of inactivity before auto-stopping (default: 30m)
 	IdleCheckInterval     time.Duration // How often to check for idle timeout (default: 30s)
+
+	// Script execution configuration
+	DetectionScript        string        // Path to detection script
+	SetupScript            string        // Path to setup script
+	DetectionScriptTimeout time.Duration // Timeout for detection script (default: 30s)
+	SetupScriptTimeout     time.Duration // Timeout for setup script (default: 10m)
 }
 
 // LoadConfig loads configuration from environment variables with defaults
@@ -123,6 +129,12 @@ func LoadConfig() *Config {
 		// Note: This will log after initLogging() is called in main
 		config.StartOnRequestEnabled = false
 	}
+
+	// Script execution configuration
+	config.DetectionScript = GetEnvStringWithDefault("DEV_SUPERVISOR_DETECTION_SCRIPT", "")
+	config.SetupScript = GetEnvStringWithDefault("DEV_SUPERVISOR_SETUP_SCRIPT", "")
+	config.DetectionScriptTimeout = GetEnvDurationWithDefault("DEV_SUPERVISOR_DETECTION_TIMEOUT", 30*time.Second)
+	config.SetupScriptTimeout = GetEnvDurationWithDefault("DEV_SUPERVISOR_SETUP_TIMEOUT", 10*time.Minute)
 
 	return config
 }

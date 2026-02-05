@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -43,6 +44,8 @@ type ProcessManager struct {
 	// When true, indicates the process was healthy before being idled due to inactivity.
 	// Used by health checks to report "healthy" for idled apps instead of "unhealthy".
 	wasHealthyBeforeIdle atomic.Bool
+
+	savedStartRequest *validation.ProcessStartRequest // Saved for deferred start
 }
 
 func NewProcessManager(logMgr logs.Logger, pid1Mgr *process.PID1Manager) *ProcessManager {
@@ -335,16 +338,56 @@ func (pm *ProcessManager) StopAllProcesses() {
 	// which could block indefinitely. The process will clean up asynchronously.
 }
 
-// GetStartRequest returns the current process start request for auto-restart
+// GetStartRequest returns the current process start request for auto-restart.
+// Priority: 1) Running process config, 2) Saved start request, 3) nil
+// Returns a defensive copy to prevent caller mutation.
 func (pm *ProcessManager) GetStartRequest() *validation.ProcessStartRequest {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
+	var source *validation.ProcessStartRequest
+
+	// Priority 1: Running process config (takes precedence)
 	if pm.currentProcess != nil {
-		return &pm.currentProcess.config
+		source = &pm.currentProcess.config
+	} else if pm.savedStartRequest != nil {
+		// Priority 2: Saved start request (deferred start mode)
+		source = pm.savedStartRequest
+	} else {
+		return nil
 	}
 
-	return nil
+	// Return defensive copy to prevent caller mutation
+	envCopy := make(map[string]string, len(source.Env))
+	maps.Copy(envCopy, source.Env)
+
+	return &validation.ProcessStartRequest{
+		Command:    source.Command,
+		Env:        envCopy,
+		WorkingDir: source.WorkingDir,
+		Ports:      append([]int{}, source.Ports...),
+	}
+}
+
+// SetStartRequest saves a start request for deferred startup
+func (pm *ProcessManager) SetStartRequest(req validation.ProcessStartRequest) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	// Deep copy to prevent external mutation
+	envCopy := make(map[string]string, len(req.Env))
+	maps.Copy(envCopy, req.Env)
+
+	pm.savedStartRequest = &validation.ProcessStartRequest{
+		Command:    req.Command,
+		Env:        envCopy,
+		WorkingDir: req.WorkingDir,
+		Ports:      append([]int{}, req.Ports...),
+	}
+
+	slog.Info("process.start_request.saved",
+		"command", req.Command,
+		"working_dir", req.WorkingDir)
 }
 
 // SetProcessLogging enables or disables child process stdout/stderr logging
