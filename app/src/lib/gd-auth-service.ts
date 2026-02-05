@@ -11,10 +11,9 @@ export class GdAuthService {
   private ssoHost: string;
 
   constructor() {
-    // Add stack trace to see where this is being called from
-    logger.info('🔍 GdAuthService.constructor.called', {
-      message: 'GdAuthService constructor called',
-      stack: new Error().stack?.split('\n').slice(1, 6).join('\n'),
+    // Log service initialization for diagnostics
+    logger.debug('gdauth.service.constructor', {
+      message: 'GdAuthService initializing',
       authType: process.env.AUTH_TYPE,
       nodeEnv: process.env.NODE_ENV
     });
@@ -47,6 +46,7 @@ export class GdAuthService {
       type: 'idp',                   // IDP token type
       auths: authUtils.getSupportedAuthTypes(), // Support both basic and e2s (impersonation)
       allowHeartbeat: true,          // Enable automatic heartbeat
+      use12HourExpiration: true,     // Use 12-hour expiration for per=true tokens (matches gateway requirements)
       fetchKey: require('gd-auth/src/fetch-key') // eslint-disable-line @typescript-eslint/no-require-imports
     });
   }
@@ -74,40 +74,28 @@ export class GdAuthService {
         };
       }
 
-      // Use gd-auth for authentication - it handles heartbeat automatically
-      const jwt = await this.gdAuth.authenticate(this.ssoHost, token, 0);
-      const authType = jwt.auth;
-      const isImpersonation = authType === 'e2s';
-      const isDelegation = authType === 's2s';
+      // Use gd-auth for authentication with medium risk level (2)
+      // With use12HourExpiration=true, this enforces:
+      // - VAT ≤ 5 minutes for basic/s2s tokens (e2s tokens skip VAT check)
+      // - IAT ≤ 12 hours for per=true tokens, ≤ 1 hour for per=false
+      // - e2s tokens: 2 hour expiration (via verify())
+      const jwt = await this.gdAuth.authenticate(this.ssoHost, token, 2);
 
-      // Extract shopper/customer info based on auth type
-      let shopperId: string;
-      let cid: string;
-
-      if (isImpersonation) {
-        // Employee-to-Shopper: Use e2s nested object
-        shopperId = jwt.e2s.shopperId;
-        cid = jwt.e2s.cid;
-      } else if (isDelegation) {
-        // Shopper-to-Shopper: Use s2s nested object
-        shopperId = jwt.s2s.shopperId;
-        cid = jwt.s2s.cid;
-      } else {
-        // Basic auth: Use root level
-        shopperId = jwt.shopperId;
-        cid = jwt.cid;
-      }
+      // Use gd-auth's built-in methods to extract shopper/customer info
+      // These handle all auth types: basic, e2s, s2s, e2s2s, s2snpr, cert2s, etc.
+      const shopperId = jwt.getShopperId();
+      const cid = jwt.getCustomerId();
 
       return {
         valid: true,
         payload: {
+          // Spread jwt.payload first, then override with extracted values to prevent field overwrites
+          ...jwt.payload,
           shopperId,
           cid,
           exp: jwt.exp,
           iat: jwt.iat,
-          authType, // Include auth type for debugging
-          // Include all other JWT payload properties
-          ...jwt.payload
+          authType: jwt.auth
         }
       };
     } catch (error: any) {

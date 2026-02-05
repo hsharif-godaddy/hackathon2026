@@ -4,11 +4,19 @@ import { authUtils } from '@/lib/features';
 
 describe('authUtils', () => {
   describe('getSupportedAuthTypes', () => {
-    it('should return all supported auth types including s2s', () => {
+    it('should return all 12 auth types supported by gd-auth', () => {
       const types = authUtils.getSupportedAuthTypes();
 
-      expect(types).toEqual(['basic', 'e2s', 's2s']);
-      expect(types).toContain('s2s'); // Specifically check for s2s support
+      // All 12 auth types that gd-auth handles (from gd-auth source code)
+      expect(types).toEqual(['basic', 'e2s', 's2s', 'e2s2s', 'e2s2p', 'e2s2snpr', 'e2s2s2p', 'cert2s', 'e2p', 's2p', 's2snpr', 's2s2p']);
+
+      // Verify length
+      expect(types).toHaveLength(12);
+
+      // Verify key types are present
+      expect(types).toContain('basic');
+      expect(types).toContain('e2s');
+      expect(types).toContain('s2s');
     });
   });
 
@@ -92,38 +100,6 @@ describe('authUtils', () => {
       const authType = authUtils.detectAuthTypeFromToken('');
 
       expect(authType).toBe('basic');
-    });
-  });
-
-  describe('isE2SToken', () => {
-    it('should return true for e2s tokens', () => {
-      const token = createMockToken({
-        auth: 'e2s',
-        e2s: {
-          shopperId: 'customer-456'
-        }
-      });
-
-      expect(authUtils.isE2SToken(token)).toBe(true);
-    });
-
-    it('should return false for s2s tokens', () => {
-      const token = createMockToken({
-        auth: 's2s',
-        s2s: {
-          shopperId: 'client-456'
-        }
-      });
-
-      expect(authUtils.isE2SToken(token)).toBe(false);
-    });
-
-    it('should return false for basic tokens', () => {
-      const token = createMockToken({
-        shopperId: 'test-123'
-      });
-
-      expect(authUtils.isE2SToken(token)).toBe(false);
     });
   });
 });

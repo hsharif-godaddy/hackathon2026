@@ -7,7 +7,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { context as otelContext, trace } from '@opentelemetry/api';
 
 import { AccountAdapterFactory } from '@/lib/account-adapters/AccountAdapterFactory';
-import { decodeJWT, getTokenAgeMinutes, getTokenValidationAgeMinutes, isTokenTooOld } from '@/lib/auth/token-refresh';
 import { isFeatureEnabled } from '@/lib/features';
 import { isAuthDisabled } from '@/lib/gasket-config';
 import { MOCK_USER } from '@/lib/mock-auth';
@@ -154,7 +153,11 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       };
     }
 
-    // Use gd-auth for authentication (includes automatic heartbeat)
+    // Use gd-auth for authentication (includes automatic heartbeat and expiration checking)
+    // gd-auth with use12HourExpiration=true and level=2 enforces:
+    // - VAT ≤ 5 minutes (only for basic/s2s, not e2s)
+    // - IAT ≤ 12 hours (per=true) or ≤ 1 hour (per=false)
+    // - e2s tokens: 2 hour expiration
     const result = await gdAuthService.authenticate(token);
     if (!result.valid || !result.payload) {
       logger.warn('auth.gdauth.validate.failed', { reason: result.reason }, { tags: ['security'] });
@@ -164,7 +167,6 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
         error: result.reason || 'Invalid or expired token'
       };
     }
-
 
     // Extract customer information from JWT payload
     const shopperId = result.payload.shopperId as string;
@@ -200,21 +202,6 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       authType,
       isE2S: authType === 'e2s' || authType === 's2s' // Backward compatibility: true for any delegation
     };
-
-    // Monitor token ages for observability
-    // Gateway checks: vat ≤ 5 min, iat ≤ 12 hours (per=true) or 1 hour (per=false)
-    // Browser heartbeat keeps vat fresh automatically (~4 min intervals)
-    const tokenAge = getTokenAgeMinutes(token);
-    const vatAge = getTokenValidationAgeMinutes(token);
-
-    logger.debug('auth.token.age', {
-      iatAgeMinutes: tokenAge,
-      vatAgeMinutes: vatAge,
-      customerId,
-      shopperId
-    }, {
-      tags: ['security']
-    });
 
     return {
       isAuthenticated: true,
@@ -281,46 +268,12 @@ export function withCustomerAuth<T extends unknown[]>(
       );
     }
 
-    // Fail-fast check: Detect tokens that will be rejected by downstream gateway
-    // Gateway checks both timestamps:
-    // - vat (validated at time) must be ≤ 5 minutes old
-    // - iat (issued at time) must be ≤ 12 hours old (for per=true tokens, 99% of cases)
-    // Browser heartbeat keeps vat fresh automatically (~4 min intervals)
-    //
-    // Benefits of server-side checking:
-    // 1. Prevents wasted gateway API calls
-    // 2. Stops mgmt-airo retry loops before they start (was retrying 3x, adding 7+ sec latency)
-    // 3. Provides clear `requiresRefresh` signal to client
-    // 4. Better error messages and user experience
-    const jwt = authContext.jwt
-    const looksLikeJwt = typeof jwt === 'string' && jwt.split('.').length === 3
-    if (looksLikeJwt && isTokenTooOld(jwt)) {
-      const iatAgeMinutes = getTokenAgeMinutes(jwt);
-      const vatAgeMinutes = getTokenValidationAgeMinutes(jwt);
-
-      // Decode to get per flag for better diagnostics
-      const payload = decodeJWT(jwt);
-      const hasPer = payload?.per === true || payload?.per === 'true';
-
-      logger.warn('auth.token.too-old.rejecting', {
-        message: 'JWT token too old for downstream gateway, returning 401 to force refresh',
-        iatAgeMinutes,
-        vatAgeMinutes,
-        hasPer,
-        customerId: authContext.user.customerId,
-        shopperId: authContext.user.shopperId,
-        // Include appId if available from URL path for correlation
-        appId: extractAppIdFromPath(request.url) || undefined
-      }, {
-        tags: ['security']
-      });
-
-      return createCustomerAuthErrorWithData(
-        'Your session is stale. Please log in again to continue.',
-        401,
-        { requiresRefresh: true, iatAgeMinutes, vatAgeMinutes }
-      );
-    }
+    // Token expiration is now handled by gd-auth with use12HourExpiration=true and level=2
+    // which enforces gateway requirements:
+    // - VAT ≤ 5 minutes (only for basic/s2s, not e2s)
+    // - IAT ≤ 12 hours (per=true) or ≤ 1 hour (per=false)
+    // - e2s tokens: 2 hour expiration
+    // No need for custom isTokenTooOld() check - gd-auth handles it correctly
 
     // Set up request context for the entire request lifecycle
     const requestContext: RequestContext = {

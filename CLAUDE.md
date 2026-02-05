@@ -322,6 +322,147 @@ pnpm --filter website add -D <pkg>         # Dev dependency
 
 </pnpm_requirement>
 
+## Authentication & JWT Standards
+
+<jwt_authentication_requirements>
+**ALWAYS use gd-auth library methods instead of custom JWT validation.**
+
+The `gd-auth` library correctly handles all authentication types (basic auth, impersonation, delegation chains) and token expiration rules. Custom JWT validation code is error-prone and duplicates library functionality.
+</jwt_authentication_requirements>
+
+### gd-auth Configuration
+
+**Location:** `app/src/lib/gd-auth-service.ts`
+
+**Required configuration:**
+
+```typescript
+this.gdAuth = new GdAuth({
+  app: 'airo-builder',
+  type: 'idp',
+  auths: authUtils.getSupportedAuthTypes(), // All supported auth types
+  allowHeartbeat: true,
+  use12HourExpiration: true,  // REQUIRED: Enforces gateway token age limits
+  fetchKey: require('gd-auth/src/fetch-key')
+});
+
+// Use level=2 (medium risk) for token validation
+const jwt = await this.gdAuth.authenticate(ssoHost, token, 2);
+```
+
+**Supported auth types (12 total - from gd-auth source):**
+- `basic` - Normal authentication
+- `e2s` - Employee-to-shopper impersonation
+- `s2s` - Shopper-to-shopper delegation
+- `e2s2s` - Employee-to-shopper-to-shopper
+- `e2s2p` - Employee-to-shopper-to-partner
+- `e2s2snpr` - Employee-to-shopper-to-shopper (NPR)
+- `e2s2s2p` - Employee-to-shopper-to-shopper-to-partner
+- `cert2s` - Certificate-to-shopper
+- `e2p` - Employee-to-partner
+- `s2p` - Shopper-to-partner
+- `s2snpr` - Shopper-to-shopper (non-personalized reseller)
+- `s2s2p` - Shopper-to-shopper-to-partner
+
+**IMPORTANT:** gd-auth validates tokens against this list. If a token's auth type is not included, gd-auth throws `TokenAuthMismatchError` and rejects it. This list cannot be obtained from gd-auth - it must be maintained in `authUtils.getSupportedAuthTypes()`.
+
+**Why `use12HourExpiration: true` is critical:**
+- Enforces 12-hour IAT limit for per=true tokens (1-hour for per=false)
+- Correctly skips VAT validation for e2s tokens (e2s tokens are NOT heartbeated)
+- Enforces 5-minute VAT limit for basic/s2s tokens (heartbeat required)
+- Matches gateway requirements exactly
+
+### Use gd-auth Built-in Methods
+
+**❌ DON'T write custom code:**
+
+```typescript
+// DON'T manually decode JWT
+const decoded = decodeJWT(token);
+const shopperId = decoded.shopperId;
+const customerId = decoded.cid;
+
+// DON'T write custom expiration checks
+if (Date.now() / 1000 > decoded.exp) { ... }
+if (decoded.vat && Date.now() / 1000 - decoded.vat > 300) { ... }
+```
+
+**✅ DO use gd-auth methods:**
+
+```typescript
+// Extract shopper and customer IDs
+const shopperId = jwt.getShopperId();     // Handles all auth types
+const customerId = jwt.getCustomerId();   // Handles all auth types
+
+// Access JWT properties directly
+const exp = jwt.exp;
+const iat = jwt.iat;
+const authType = jwt.auth; // 'basic', 'e2s', 's2s'
+
+// Expiration is automatically handled by gd-auth.authenticate()
+// No custom expiration checks needed
+```
+
+### Token Expiration Rules
+
+gd-auth enforces these rules automatically when `use12HourExpiration: true` and `level >= 2`:
+
+| Auth Type | VAT Check | IAT Check | Notes |
+|-----------|-----------|-----------|-------|
+| **basic** | ≤ 5 min | ≤ 12 hours (per=true) or 1 hour (per=false) | Heartbeat required |
+| **e2s** | SKIPPED | ≤ 2 hours | Employee impersonation, not heartbeated |
+| **s2s** | ≤ 5 min | ≤ 12 hours (per=true) or 1 hour (per=false) | Shopper delegation, heartbeat required |
+
+**Never write custom code to check these rules** - gd-auth handles it correctly.
+
+### Authentication Type Detection
+
+```typescript
+// Use gd-auth to detect auth type from token
+import { authUtils } from '@/lib/features';
+
+const authType = authUtils.detectAuthTypeFromToken(token);
+// Returns: 'basic' | 'e2s' | 's2s'
+```
+
+### Common Mistakes
+
+**❌ Mistake: Custom VAT validation that breaks e2s tokens**
+
+```typescript
+// DON'T DO THIS - breaks e2s tokens (they have no VAT claim)
+if (token.vat && Date.now() / 1000 - token.vat > 300) {
+  throw new Error('Token VAT expired');
+}
+```
+
+**❌ Mistake: Manual token age calculations**
+
+```typescript
+// DON'T DO THIS - gd-auth handles this
+const tokenAge = Date.now() / 1000 - token.iat;
+if (tokenAge > 43200) { throw new Error('Token too old'); }
+```
+
+**✅ Correct: Trust gd-auth validation**
+
+```typescript
+// gd-auth.authenticate() returns valid jwt or throws
+// No custom validation needed
+const result = await gdAuthService.authenticate(token);
+if (!result.valid) {
+  // Token is invalid/expired - gd-auth already checked everything
+  return { error: result.reason };
+}
+```
+
+### Reference
+
+- gd-auth library: `node_modules/gd-auth/`
+- Service implementation: `app/src/lib/gd-auth-service.ts`
+- Customer auth: `app/src/lib/customer-auth.ts`
+- Feature detection: `app/src/lib/features.ts` (authUtils)
+
 ## Working with Claude
 
 <default_to_action>

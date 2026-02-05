@@ -18,6 +18,7 @@ vi.mock('@/lib/features', () => ({
 vi.mock('@/lib/request-context', () => ({
   logger: {
     info: vi.fn(),
+    debug: vi.fn(),
     error: vi.fn()
   }
 }));

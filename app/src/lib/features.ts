@@ -150,12 +150,29 @@ export const devSupervisor = {
  * Authentication helper functions for JWT token handling
  */
 export const authUtils = {
-  /** 
+  /**
    * Get supported auth types for JWT authentication
-   * Includes basic, e2s (employee-to-shopper), and s2s (shopper-to-shopper delegation)
+   *
+   * IMPORTANT: gd-auth validates tokens against this list. If a token's auth type
+   * is not in this array, gd-auth will throw TokenAuthMismatchError and reject it.
+   * This list must include ALL auth types we want to support.
+   *
+   * Auth types (from gd-auth source):
+   * - basic: Normal authentication
+   * - e2s: Employee-to-shopper impersonation
+   * - s2s: Shopper-to-shopper delegation
+   * - e2s2s: Employee-to-shopper-to-shopper
+   * - e2s2p: Employee-to-shopper-to-partner
+   * - e2s2snpr: Employee-to-shopper-to-shopper (NPR)
+   * - e2s2s2p: Employee-to-shopper-to-shopper-to-partner
+   * - cert2s: Certificate-to-shopper
+   * - e2p: Employee-to-partner
+   * - s2p: Shopper-to-partner
+   * - s2snpr: Shopper-to-shopper (non-personalized reseller)
+   * - s2s2p: Shopper-to-shopper-to-partner
    */
   getSupportedAuthTypes: (): string[] => {
-    return ['basic', 'e2s', 's2s'];
+    return ['basic', 'e2s', 's2s', 'e2s2s', 'e2s2p', 'e2s2snpr', 'e2s2s2p', 'cert2s', 'e2p', 's2p', 's2snpr', 's2s2p'];
   },
   
   /**
@@ -184,8 +201,8 @@ export const authUtils = {
       return 's2s';
     }
     
-    // Check for other nested auth types
-    const nestedAuthTypes = ['cert2s', 'e2s2s'];
+    // Check for other nested auth types (delegation chains and impersonation)
+    const nestedAuthTypes = ['cert2s', 'e2s2s', 'e2s2p', 'e2s2snpr', 'e2s2s2p', 'e2p', 's2p', 's2snpr', 's2s2p'];
     for (const authType of nestedAuthTypes) {
       if (payload[authType] && typeof payload[authType] === 'object') {
         return authType;
@@ -194,15 +211,6 @@ export const authUtils = {
     
     // Default to basic auth
     return 'basic';
-  },
-  
-  /**
-   * Check if a token is an impersonation (e2s) token
-   * @param token - JWT token string  
-   * @returns True if token is e2s impersonation
-   */
-  isE2SToken: (token: string): boolean => {
-    return authUtils.detectAuthTypeFromToken(token) === 'e2s';
   }
 } as const
 
