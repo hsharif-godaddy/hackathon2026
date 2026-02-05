@@ -58,6 +58,7 @@ func checkCephFilesystem() *CheckResult {
 
 	appDir := os.Getenv("CUSTOMER_APP_DIR")
 	if appDir == "" {
+		slog.Error("canary.ceph.env_missing", "var", "CUSTOMER_APP_DIR")
 		return &CheckResult{
 			Status:  "unhealthy",
 			Latency: time.Since(start).Round(time.Millisecond).String(),
@@ -70,7 +71,7 @@ func checkCephFilesystem() *CheckResult {
 
 	// Write test file
 	if err := os.WriteFile(testFile, testData, 0600); err != nil {
-		slog.Debug("canary.ceph.write_failed", "path", testFile, "error", err)
+		slog.Error("canary.ceph.write_failed", "path", testFile, "error", err)
 		return &CheckResult{
 			Status:  "unhealthy",
 			Latency: time.Since(start).Round(time.Millisecond).String(),
@@ -81,14 +82,14 @@ func checkCephFilesystem() *CheckResult {
 	// Ensure cleanup
 	defer func() {
 		if removeErr := os.Remove(testFile); removeErr != nil {
-			slog.Debug("canary.ceph.cleanup_failed", "path", testFile, "error", removeErr)
+			slog.Error("canary.ceph.cleanup_failed", "path", testFile, "error", removeErr)
 		}
 	}()
 
 	// Read and verify
 	readData, err := os.ReadFile(testFile)
 	if err != nil {
-		slog.Debug("canary.ceph.read_failed", "path", testFile, "error", err)
+		slog.Error("canary.ceph.read_failed", "path", testFile, "error", err)
 		return &CheckResult{
 			Status:  "unhealthy",
 			Latency: time.Since(start).Round(time.Millisecond).String(),
@@ -97,7 +98,7 @@ func checkCephFilesystem() *CheckResult {
 	}
 
 	if string(readData) != string(testData) {
-		slog.Debug("canary.ceph.verify_failed", "path", testFile)
+		slog.Error("canary.ceph.verify_failed", "path", testFile)
 		return &CheckResult{
 			Status:  "unhealthy",
 			Latency: time.Since(start).Round(time.Millisecond).String(),
@@ -118,7 +119,7 @@ func checkMySQL() *CheckResult {
 
 	config, err := loadAllocConfig()
 	if err != nil {
-		slog.Debug("canary.mysql.config_failed", "error", err)
+		slog.Error("canary.mysql.config_failed", "error", err)
 		return &CheckResult{
 			Status:  "unhealthy",
 			Latency: time.Since(start).Round(time.Millisecond).String(),
@@ -127,6 +128,7 @@ func checkMySQL() *CheckResult {
 	}
 
 	if config.Database == nil {
+		slog.Error("canary.mysql.not_configured")
 		return &CheckResult{
 			Status:  "unhealthy",
 			Latency: time.Since(start).Round(time.Millisecond).String(),
@@ -136,6 +138,7 @@ func checkMySQL() *CheckResult {
 
 	dbVal := config.Database.Value
 	if dbVal.IP == "" || dbVal.Username == "" {
+		slog.Error("canary.mysql.incomplete_credentials")
 		return &CheckResult{
 			Status:  "unhealthy",
 			Latency: time.Since(start).Round(time.Millisecond).String(),
@@ -156,7 +159,7 @@ func checkMySQL() *CheckResult {
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
-		slog.Debug("canary.mysql.open_failed", "error", err)
+		slog.Error("canary.mysql.open_failed", "error", err)
 		return &CheckResult{
 			Status:  "unhealthy",
 			Latency: time.Since(start).Round(time.Millisecond).String(),
@@ -174,7 +177,7 @@ func checkMySQL() *CheckResult {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		slog.Debug("canary.mysql.ping_failed", "error", err)
+		slog.Error("canary.mysql.ping_failed", "error", err)
 		return &CheckResult{
 			Status:  "unhealthy",
 			Latency: time.Since(start).Round(time.Millisecond).String(),
