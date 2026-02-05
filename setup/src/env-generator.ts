@@ -1463,7 +1463,7 @@ ELASTIC_APM_ENVIRONMENT=dev
 			awsRegion: "us-west-2",
 			port: 8080,
 			logLevel: "info",
-			qdrantHost: "localhost",
+			qdrantHost: "127.0.0.1",
 			qdrantPort: 6334,
 			qdrantCollection: "image_analyses",
 			gettyUpstream,

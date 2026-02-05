@@ -81,8 +81,8 @@ func LoadConfig() *Config {
 		OpenAIAPIKey:  getEnvString("OPENAI_API_KEY", ""),
 		OpenAIBaseURL: getEnvString("OPENAI_BASE_URL", ""),
 
-		// Qdrant
-		QdrantHost:       getEnvString("QDRANT_HOST", "localhost"),
+		// Qdrant (use 127.0.0.1 to avoid IPv6 timeout when Docker only binds IPv4)
+		QdrantHost:       getEnvString("QDRANT_HOST", "127.0.0.1"),
 		QdrantPort:       getEnvInt("QDRANT_PORT", 6334),
 		QdrantCollection: getEnvString("QDRANT_COLLECTION", "image_analyses"),
 		QdrantAPIKey:     getEnvString("QDRANT_API_KEY", ""),
