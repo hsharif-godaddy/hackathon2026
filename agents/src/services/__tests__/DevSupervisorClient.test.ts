@@ -108,6 +108,79 @@ describe('DevSupervisorClient', () => {
 
       await expect(client.exec(options)).rejects.toThrow('HTTP 500: Command failed');
     });
+
+    it('should capture timed_out field from response', async () => {
+      const mockResponse = {
+        command: 'long-running-command',
+        exit_code: -1,
+        stdout: '',
+        stderr: 'Command timed out',
+        execution_time: 30000,
+        success: false,
+        timed_out: true,
+        error: 'Command timed out after 30 seconds'
+      };
+
+      const mockRequest = createMockRequest(200, mockResponse);
+      vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+      const options = {
+        command: 'long-running-command',
+        timeout: 30
+      };
+
+      const result = await client.exec(options);
+
+      expect(result.timed_out).toBe(true);
+      expect(result.error).toBe('Command timed out after 30 seconds');
+      expect(result.success).toBe(false);
+    });
+
+    it('should not set timed_out when command succeeds', async () => {
+      const mockResponse = {
+        command: 'echo test',
+        exit_code: 0,
+        stdout: 'test\n',
+        stderr: '',
+        execution_time: 100,
+        success: true
+      };
+
+      const mockRequest = createMockRequest(200, mockResponse);
+      vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+      const options = { command: 'echo test' };
+
+      const result = await client.exec(options);
+
+      expect(result.timed_out).toBeUndefined();
+      expect(result.error).toBeUndefined();
+      expect(result.success).toBe(true);
+    });
+
+    it('should capture error field without timeout', async () => {
+      const mockResponse = {
+        command: 'failing-command',
+        exit_code: 1,
+        stdout: '',
+        stderr: 'Command failed',
+        execution_time: 500,
+        success: false,
+        timed_out: false,
+        error: 'Command exited with code 1'
+      };
+
+      const mockRequest = createMockRequest(200, mockResponse);
+      vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+      const options = { command: 'failing-command' };
+
+      const result = await client.exec(options);
+
+      expect(result.timed_out).toBe(false);
+      expect(result.error).toBe('Command exited with code 1');
+      expect(result.success).toBe(false);
+    });
   });
 
   describe('startProcess', () => {

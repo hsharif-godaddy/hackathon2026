@@ -30,6 +30,10 @@ export interface ExecResult {
   execution_time: number;
   /** Whether the command succeeded */
   success: boolean;
+  /** Whether the command timed out */
+  timed_out?: boolean;
+  /** Error message from dev-supervisor */
+  error?: string;
 }
 
 export interface ProcessStartOptions {
@@ -334,11 +338,21 @@ export class DevSupervisorClient {
         capture_output: options.capture_output !== false
       });
 
-      this.logger.info('dev_supervisor.exec.success', {
-        command: options.command,
-        exit_code: response.exit_code,
-        execution_time: response.execution_time
-      });
+      // Log timeout separately from success for better observability
+      if (response.timed_out) {
+        this.logger.warn('dev_supervisor.exec.timeout', {
+          command: options.command,
+          timeout_seconds: options.timeout || 30,
+          execution_time: response.execution_time,
+          error: response.error,
+        });
+      } else {
+        this.logger.info('dev_supervisor.exec.success', {
+          command: options.command,
+          exit_code: response.exit_code,
+          execution_time: response.execution_time
+        });
+      }
 
       // Ensure success field is properly set based on exit code
       const result: ExecResult = {
@@ -347,7 +361,9 @@ export class DevSupervisorClient {
         stdout: response.stdout || '',
         stderr: response.stderr || '',
         execution_time: response.execution_time || 0,
-        success: response.success ?? (response.exit_code === 0)
+        success: response.success ?? (response.exit_code === 0),
+        timed_out: response.timed_out,
+        error: response.error,
       };
 
       return result;

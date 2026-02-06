@@ -133,7 +133,7 @@ export class GitUtils {
         repoPath,
         options
       );
-      
+
       // Only attempt comparison if remote branch exists
       if (remoteCheckResult.success) {
         const trackingResult = await this.executeGitCommand(
@@ -167,7 +167,10 @@ export class GitUtils {
    * Add files to staging area
    */
   async addFiles(repoPath: string, files: string[] = ['.'], options: GitCommandOptions = {}): Promise<GitCommandResult> {
-    return this.executeGitCommand(['add', ...files], repoPath, options);
+    return this.executeGitCommand(['add', ...files], repoPath, {
+      ...options,
+      timeout: options.timeout || 60000  // 1 minutes for large repos
+    });
   }
 
   /**
@@ -284,7 +287,7 @@ export class GitUtils {
   /**
    * Delete a branch
    * Uses -D flag to force delete (even if not fully merged, since we've already squash merged)
-   * 
+   *
    * @throws {Error} If attempting to delete main or master branch
    */
   async deleteBranch(
@@ -347,7 +350,7 @@ export class GitUtils {
   /**
    * Check branch count and clean up old branches if needed
    * If branch count > 50, deletes oldest 25 branches (excluding main)
-   * 
+   *
    * @returns Object with cleanup stats
    */
   async cleanupOldBranches(
@@ -357,7 +360,7 @@ export class GitUtils {
     try {
       // Get all branches sorted by date
       const branches = await this.getBranchesSortedByDate(repoPath, options);
-      
+
       // Check if cleanup is needed
       if (branches.length <= 50) {
         return { needed: false, deleted: 0, failed: [], gcPerformed: false };
@@ -856,7 +859,7 @@ export class GitUtils {
           if (checkLockResult.success) {
             // Lock file still exists, remove it
             logger.info('git.util.recovery.lock.removing', { repoPath });
-            
+
             const lockRemovalResult = await this.devSupervisor!.exec({
               command: buildShellCommand(['rm', '-f', '.git/index.lock']),
               working_dir: '/app',
@@ -888,7 +891,7 @@ export class GitUtils {
     }
 
     // Check for configuration error
-    if (errorLower.includes('user.name') || errorLower.includes('user.email') || 
+    if (errorLower.includes('user.name') || errorLower.includes('user.email') ||
         errorLower.includes('config') || errorLower.includes('author identity')) {
       logger.info('git.util.recovery.config.detected', { repoPath });
 
@@ -906,7 +909,7 @@ export class GitUtils {
     }
 
     // Check for repository corruption
-    if (errorLower.includes('corrupt') || errorLower.includes('broken') || 
+    if (errorLower.includes('corrupt') || errorLower.includes('broken') ||
         errorLower.includes('damaged') || errorLower.includes('invalid object')) {
       logger.warn('git.util.recovery.corruption.detected', { repoPath });
 
@@ -914,7 +917,7 @@ export class GitUtils {
         if (this.isDevSupervisorAvailable()) {
           // Run git fsck to check and repair
           logger.info('git.util.recovery.corruption.fsck_running', { repoPath });
-          
+
           const fsckResult = await this.devSupervisor!.exec({
             command: buildShellCommand(['git', 'fsck', '--full']),
             working_dir: '/app',

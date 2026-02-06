@@ -97,4 +97,45 @@ describe('GitUtils', () => {
       expect(callArgs.command).toContain('--allow-unrelated-histories');
     });
   });
+
+  describe('addFiles', () => {
+    it('should use 60 second default timeout for large repos', async () => {
+      await gitUtils.addFiles('/app', ['.']);
+
+      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
+        expect.objectContaining({
+          timeout: 60 // 60 seconds (60000ms converted to seconds for dev-supervisor)
+        })
+      );
+    });
+
+    it('should respect custom timeout when provided', async () => {
+      await gitUtils.addFiles('/app', ['.'], { timeout: 180000 });
+
+      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
+        expect.objectContaining({
+          timeout: 180 // 180 seconds
+        })
+      );
+    });
+
+    it('should add specified files', async () => {
+      await gitUtils.addFiles('/app', ['file1.txt', 'file2.txt']);
+
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
+      expect(callArgs.command).toContain('git');
+      expect(callArgs.command).toContain('add');
+      expect(callArgs.command).toContain('file1.txt');
+      expect(callArgs.command).toContain('file2.txt');
+    });
+
+    it('should add all files by default', async () => {
+      await gitUtils.addFiles('/app');
+
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
+      expect(callArgs.command).toContain('git');
+      expect(callArgs.command).toContain('add');
+      expect(callArgs.command).toContain("'.'");
+    });
+  });
 });
