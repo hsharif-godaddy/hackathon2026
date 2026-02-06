@@ -1,20 +1,17 @@
 'use client';
 
-import clsx from 'clsx';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import Box from '@ux/box';
-import Button from '@ux/button';
-import Tag from '@ux/tag';
+import { useEffect, useMemo, useState } from 'react';
 import text from '@ux/text';
 
 import CreditsUpgradeContainer from '@/app/develop/components/CreditsUpgradeContainer';
 import SinglePlanUpgradeContainer from '@/app/develop/components/SinglePlanUpgradeContainer';
 import {
-  CreditPacksCard,
+  AddonCreditCard,
   ManagePlanSkeleton,
   PageLayout,
-  PlanCreditCard,
+  type PaywallType,
+  TotalCreditsCard,
 } from '@/app/manage-plan/components';
 import { ProtectedRoute } from '@/components/auth';
 import { useCreditGrants } from '@/hooks/useCreditGrants';
@@ -26,17 +23,13 @@ import { ClientLogBuffer, shipAnalyticsLog } from '@/lib/logging';
 import type { CreditGrant } from '@/types/credits';
 import { SubscriptionPlan } from '@/types/credits';
 import {
-  formatFullCreditDate,
   getActiveGrant,
   getCreditPackGrants,
   getMonthlyPlanGrant,
-  getPlanDisplayLabelKey,
   getPlanFromSubscription,
 } from '@/utils/credits';
-import { getRootDomain } from '@/utils/getRootDomain';
-import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation';
-
-type PaywallType = 'upgrade' | 'credits';
+import { logImpressionEvent } from '@/utils/instrumentation';
+import PlanCreditsCard from './components/PlanCreditsCard';
 
 /**
  * Wrapper component for the credits paywall fallback that logs a warning
@@ -117,6 +110,23 @@ function ManagePlanContent() {
     subscriptionId: subscription?.id,
   });
 
+  // Memoize total credits calculation across all grants
+  const { totalCreditsSpent, totalCreditsMax } = useMemo(
+    function calculateTotalCredits() {
+      const grants = grantsData || [];
+      return grants.reduce(
+        function sumCredits(acc, grant) {
+          return {
+            totalCreditsSpent: acc.totalCreditsSpent + grant.creditsSpent,
+            totalCreditsMax: acc.totalCreditsMax + grant.creditsMax,
+          };
+        },
+        { totalCreditsSpent: 0, totalCreditsMax: 0 }
+      );
+    },
+    [grantsData]
+  );
+
   if (isSubscriptionLoading || isGrantsLoading) {
     return (
       <PageLayout>
@@ -128,41 +138,19 @@ function ManagePlanContent() {
   if (isSubscriptionError || isGrantsError) {
     return (
       <PageLayout>
-        <div className="bg-intents-ux-box-backgroundColor rounded-xl border border-border p-4 sm:p-6">
           <text.p as="paragraph" className="text-center" text={t('builder_manageplan_error')} />
-        </div>
       </PageLayout>
     );
   }
 
   const grants: CreditGrant[] = grantsData || [];
 
-  const monthlyGrant = getMonthlyPlanGrant(grants);
+  const planGrant = getMonthlyPlanGrant(grants);
   const creditPacks = getCreditPackGrants(grants);
   const activeGrant = getActiveGrant(grants);
 
   const currentPlan = getPlanFromSubscription(subscription);
-  const planLabelKey = getPlanDisplayLabelKey(currentPlan);
-  const planDisplayLabel = planLabelKey ? t(planLabelKey) : '';
-  const isFreePlan = currentPlan === SubscriptionPlan.Free;
-  const hasCreditsNoPlan = creditPacks.length > 0 && isFreePlan;
   const paywallSourceId = paywallSource ?? 'manage_plan';
-
-  // Calculate reset date from monthly grant useBefore or subscription renewsAt
-  const resetDate = monthlyGrant
-    ? formatFullCreditDate(monthlyGrant.useBefore, locale)
-    : subscription.renewsAt
-      ? formatFullCreditDate(subscription.renewsAt, locale)
-      : null;
-
-  // Calculate reset time from monthly grant created time
-  const resetTime = monthlyGrant
-    ? new Date(monthlyGrant.createdAt).toLocaleTimeString(locale, {
-        hour: 'numeric',
-        minute: '2-digit',
-        timeZoneName: 'short',
-      })
-    : null;
 
   // Get builder entitlement ID for credits purchase
   const builderEntitlementId = subscription?.builderEntitlementId;
@@ -225,85 +213,36 @@ function ManagePlanContent() {
         />
       )}
       <PageLayout>
-        <div className="bg-intents-ux-box-backgroundColor rounded-xl border border-border p-4 sm:p-6">
-          <div className="flex flex-col-reverse items-start gap-2 md:flex-row md:justify-between mb-2">
-            <text.h2 as="title" size={3} text={t('builder_manageplan_title')} />
-            {isFreePlan ? (
-              <Tag emphasis="passive">
-                {planDisplayLabel}
-              </Tag>
-            ) : planDisplayLabel ? (
-              <Tag className="!bg-ai-light !text-intents-ux-boxHighContrast-foregroundColor">
-                {planDisplayLabel}
-              </Tag>
-            ) : null}
-          </div>
-
-          <div className="flex flex-col">
-            {resetDate && resetTime && (
-                <text.p as="paragraph" className={clsx(hasCreditsNoPlan ? 'mb-1' : 'mb-4')}>
-                {t('builder_manageplan_reset_info', {
-                    date: resetDate,
-                    time: resetTime,
-                })}
-                </text.p>
-            )}
-            {hasCreditsNoPlan && (
-                <text.p as="paragraph" className="mb-4" text={t('builder_manageplan_creditpacks_empty_plan_description')} />
-            )}
-          </div>
-
-          { (creditPacks.length > 0 || (!isFreePlan && creditPacks.length === 0)) && (
-            <Box orientation="horizontal" gap="md" className="mb-4">
-                { isFreePlan && creditPacks.length > 0 && (
-                    <Button
-                        design="primary"
-                        data-partial='componentAiro'
-                        data-eid={generateClickEID('manage_plan.upgrade')}
-                        size="sm"
-                        text={t('builder_manageplan_upgrade')}
-                        onClick={() => openPaywall('manage_plan.upgrade', 'upgrade')}
-                    />
-                )}
-                { creditPacks.length > 0 && (
-                    <Button
-                        design="secondary"
-                        data-partial='componentAiro'
-                        data-eid={generateClickEID('manage_plan.buy_credits')}
-                        size="sm"
-                        text={t('builder_manageplan_buy_credits')}
-                        onClick={() => openPaywall('manage_plan.buy_credits', 'credits')}
-                    />
-                )}
-                { !isFreePlan && (
-                    <Button
-                        className="items-center"
-                        design="inline"
-                        data-partial='componentAiro'
-                        data-eid={generateClickEID('manage_plan.cancel_plan')}
-                        size="sm"
-                        text={t('builder_manageplan_cancel_plan')}
-                        href={`https://account.${getRootDomain() || 'godaddy.com'}/subscriptions`}
-                    />
-                )}
-            </Box>
-          )}
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <PlanCreditCard
-                grant={monthlyGrant}
-                isActive={monthlyGrant ? activeGrant?.id === monthlyGrant.id : false}
-                locale={locale}
+        <div className="flex flex-col gap-2">
+          <text.h2 as="title" size={3} text={t('builder_manageplan_title')} />
+          <text.p as="paragraph" className="mb-2" text={t('builder_manageplan_description')} />
+         
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+              <TotalCreditsCard
+                totalCreditsSpent={totalCreditsSpent}
+                totalCreditsMax={totalCreditsMax}
               />
 
-              <CreditPacksCard
-                creditPacks={creditPacks}
-                subscriptionPlan={currentPlan}
+            <div className='md:col-span-2 grid grid-cols-1 gap-4'>
+              <PlanCreditsCard
+                subscription={subscription}
+                planGrant={planGrant}
                 activeGrantId={activeGrant?.id}
                 locale={locale}
-                onOpenPaywall={openPaywall}
-                isGrantsEnabled={isGrantsEnabled}
+                creditPacks={creditPacks}
+                openPaywall={openPaywall}
               />
+              {currentPlan !== SubscriptionPlan.AiroPlus && (
+                <AddonCreditCard
+                  creditPacks={creditPacks}
+                  subscriptionPlan={currentPlan}
+                  activeGrantId={activeGrant?.id}
+                  locale={locale}
+                  onOpenPaywall={openPaywall}
+                  isGrantsEnabled={isGrantsEnabled}
+                />
+              )}
+            </div>
         </div>
       </div>
       </PageLayout>

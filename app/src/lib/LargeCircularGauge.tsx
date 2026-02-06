@@ -38,7 +38,7 @@ export default memo(function LargeCircularGauge({
     >
       <defs>
         <linearGradient id={gradientId} x1="0%" y1="100%" x2="0%" y2="0%">
-          <stop offset="0%" stopColor="var(--color-ai-light)" stopOpacity="0" />
+          <stop offset="0%" stopColor="var(--color-ai-light)" stopOpacity="0.15" />
           <stop offset="100%" stopColor="var(--color-ai-light)" stopOpacity="1" />
         </linearGradient>
       </defs>
@@ -49,8 +49,7 @@ export default memo(function LargeCircularGauge({
         r={radius}
         fill="none"
         strokeWidth={strokeWidth}
-        stroke="var(--color-ai-light)"
-        className="opacity-20"
+        stroke="#11111120"
       />
       {/* Progress arc with gradient or solid color when full */}
       <circle

@@ -6,7 +6,7 @@ import { screen } from '@testing-library/react';
 import { renderWithProviders } from '@/tests/test-utils';
 import type { CreditGrant } from '@/types/credits';
 import { GrantType, SubscriptionPlan } from '@/types/credits';
-import CreditPacksCard from './CreditPacksCard';
+import CreditPacksCard from './AddonCreditCard';
 
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string) => key,
@@ -254,6 +254,18 @@ describe('CreditPacksCard', function creditPacksCardTests() {
 
       expect(screen.getByText('builder_manageplan_creditpacks_empty_title')).toBeInTheDocument();
       expect(screen.getByText('builder_manageplan_creditpacks_empty_description')).toBeInTheDocument();
+    });
+
+    it('should NOT show Buy Credits button for AiroPlus plan with no packs', function airoPlusNoBuyCredits() {
+      renderWithProviders(
+        <CreditPacksCard
+          creditPacks={[]}
+          subscriptionPlan={SubscriptionPlan.AiroPlus}
+          onOpenPaywall={mockOnOpenPaywall}
+        />
+      );
+
+      expect(screen.queryByText('builder_manageplan_buy_credits')).not.toBeInTheDocument();
     });
   });
 

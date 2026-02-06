@@ -156,7 +156,7 @@ describe('ManagePlan', function managePlanTests() {
         isError: false,
       });
       mockUseCreditGrants.mockReturnValue({
-        data: [],
+        data: [createMonthlyGrant()],
         isLoading: false,
         isError: false,
       });
@@ -260,7 +260,7 @@ describe('ManagePlan', function managePlanTests() {
         isError: false,
       });
       mockUseCreditGrants.mockReturnValue({
-        data: [],
+        data: [createMonthlyGrant()],
         isLoading: false,
         isError: false,
       });
@@ -277,7 +277,7 @@ describe('ManagePlan', function managePlanTests() {
         isError: false,
       });
       mockUseCreditGrants.mockReturnValue({
-        data: [],
+        data: [createMonthlyGrant()],
         isLoading: false,
         isError: false,
       });
@@ -294,7 +294,7 @@ describe('ManagePlan', function managePlanTests() {
         isError: false,
       });
       mockUseCreditGrants.mockReturnValue({
-        data: [],
+        data: [createMonthlyGrant()],
         isLoading: false,
         isError: false,
       });
@@ -318,7 +318,7 @@ describe('ManagePlan', function managePlanTests() {
 
       renderWithProviders(<ManagePlan />);
 
-      expect(screen.getByText('builder_manageplan_monthly_credits')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_total_credits')).toBeInTheDocument();
     });
 
     it('should render CreditPacksCard component', function renderCreditPacksCard() {
@@ -328,7 +328,7 @@ describe('ManagePlan', function managePlanTests() {
         isError: false,
       });
       mockUseCreditGrants.mockReturnValue({
-        data: [],
+        data: [createMonthlyGrant()],
         isLoading: false,
         isError: false,
       });
@@ -353,7 +353,7 @@ describe('ManagePlan', function managePlanTests() {
           isError: false,
         });
         mockUseCreditGrants.mockReturnValue({
-          data: [],
+          data: [createMonthlyGrant()],
           isLoading: false,
           isError: false,
         });
@@ -371,7 +371,7 @@ describe('ManagePlan', function managePlanTests() {
           isError: false,
         });
         mockUseCreditGrants.mockReturnValue({
-          data: [createMockGrant()],
+          data: [createMonthlyGrant(), createMockGrant()],
           isLoading: false,
           isError: false,
         });
@@ -389,7 +389,7 @@ describe('ManagePlan', function managePlanTests() {
           isError: false,
         });
         mockUseCreditGrants.mockReturnValue({
-          data: [createMockGrant()],
+          data: [createMonthlyGrant(), createMockGrant()],
           isLoading: false,
           isError: false,
         });
@@ -401,14 +401,14 @@ describe('ManagePlan', function managePlanTests() {
     });
 
     describe('paid plan scenarios', function paidPlanTests() {
-      it('should show cancel plan button for paid plan without credit packs', function paidNoPacks() {
+      it('should show cancel plan button for Starter plan without credit packs', function starterNoPacks() {
         mockUseActiveSubscription.mockReturnValue({
-          data: { id: 'sub-1', plan: SubscriptionPlan.AiroPlus },
+          data: { id: 'sub-1', plan: SubscriptionPlan.Starter },
           isLoading: false,
           isError: false,
         });
         mockUseCreditGrants.mockReturnValue({
-          data: [],
+          data: [createMonthlyGrant()],
           isLoading: false,
           isError: false,
         });
@@ -418,34 +418,31 @@ describe('ManagePlan', function managePlanTests() {
         expect(screen.getByText('builder_manageplan_cancel_plan')).toBeInTheDocument();
       });
 
-      it('should not show upgrade or buy credits buttons for paid plan without credit packs', function paidNoPacksNoUpgrade() {
+      it('should not show upgrade or buy credits buttons for Starter plan without credit packs', function starterNoPacksNoUpgrade() {
         mockUseActiveSubscription.mockReturnValue({
-          data: { id: 'sub-1', plan: SubscriptionPlan.AiroPlus },
+          data: { id: 'sub-1', plan: SubscriptionPlan.Starter },
           isLoading: false,
           isError: false,
         });
         mockUseCreditGrants.mockReturnValue({
-          data: [],
+          data: [createMonthlyGrant()],
           isLoading: false,
           isError: false,
         });
 
         renderWithProviders(<ManagePlan />);
 
-        // Page-level upgrade button should not exist for paid users
         expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
-        // Page-level buy credits should not show without credit packs
-        // (CreditPacksCard has its own buy credits button in empty state)
       });
 
-      it('should show buy credits and cancel buttons for paid plan with credit packs', function paidWithPacks() {
+      it('should show buy credits and cancel buttons for Starter plan with credit packs', function starterWithPacks() {
         mockUseActiveSubscription.mockReturnValue({
-          data: { id: 'sub-1', plan: SubscriptionPlan.AiroPlus },
+          data: { id: 'sub-1', plan: SubscriptionPlan.Starter },
           isLoading: false,
           isError: false,
         });
         mockUseCreditGrants.mockReturnValue({
-          data: [createMockGrant()],
+          data: [createMonthlyGrant(), createMockGrant()],
           isLoading: false,
           isError: false,
         });
@@ -456,14 +453,87 @@ describe('ManagePlan', function managePlanTests() {
         expect(screen.getByText('builder_manageplan_cancel_plan')).toBeInTheDocument();
       });
 
-      it('should not show upgrade button for paid plan with credit packs', function paidWithPacksNoUpgrade() {
+      it('should not show upgrade button for Starter plan with credit packs', function starterWithPacksNoUpgrade() {
+        mockUseActiveSubscription.mockReturnValue({
+          data: { id: 'sub-1', plan: SubscriptionPlan.Starter },
+          isLoading: false,
+          isError: false,
+        });
+        mockUseCreditGrants.mockReturnValue({
+          data: [createMonthlyGrant(), createMockGrant()],
+          isLoading: false,
+          isError: false,
+        });
+
+        renderWithProviders(<ManagePlan />);
+
+        expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
+      });
+    });
+
+    describe('AiroPlus plan scenarios', function airoPlusTests() {
+      it('should NOT show cancel plan button for AiroPlus plan', function airoPlusNoCancel() {
         mockUseActiveSubscription.mockReturnValue({
           data: { id: 'sub-1', plan: SubscriptionPlan.AiroPlus },
           isLoading: false,
           isError: false,
         });
         mockUseCreditGrants.mockReturnValue({
-          data: [createMockGrant()],
+          data: [createMonthlyGrant()],
+          isLoading: false,
+          isError: false,
+        });
+
+        renderWithProviders(<ManagePlan />);
+
+        expect(screen.queryByText('builder_manageplan_cancel_plan')).not.toBeInTheDocument();
+      });
+
+      it('should NOT show buy credits button for AiroPlus plan', function airoPlusNoBuyCredits() {
+        mockUseActiveSubscription.mockReturnValue({
+          data: { id: 'sub-1', plan: SubscriptionPlan.AiroPlus },
+          isLoading: false,
+          isError: false,
+        });
+        mockUseCreditGrants.mockReturnValue({
+          data: [createMonthlyGrant(), createMockGrant()],
+          isLoading: false,
+          isError: false,
+        });
+
+        renderWithProviders(<ManagePlan />);
+
+        expect(screen.queryByText('builder_manageplan_buy_credits')).not.toBeInTheDocument();
+      });
+
+      it('should NOT show AddonCreditCard for AiroPlus plan', function airoPlusNoAddonCard() {
+        mockUseActiveSubscription.mockReturnValue({
+          data: { id: 'sub-1', plan: SubscriptionPlan.AiroPlus },
+          isLoading: false,
+          isError: false,
+        });
+        mockUseCreditGrants.mockReturnValue({
+          data: [createMonthlyGrant()],
+          isLoading: false,
+          isError: false,
+        });
+
+        renderWithProviders(<ManagePlan />);
+
+        // AddonCreditCard empty state title should not be visible
+        expect(screen.queryByText('builder_manageplan_creditpacks_empty_title')).not.toBeInTheDocument();
+        // Addons title from populated state should also not be visible
+        expect(screen.queryByText('builder_manageplan_addons_title')).not.toBeInTheDocument();
+      });
+
+      it('should NOT show upgrade button for AiroPlus plan', function airoPlusNoUpgrade() {
+        mockUseActiveSubscription.mockReturnValue({
+          data: { id: 'sub-1', plan: SubscriptionPlan.AiroPlus },
+          isLoading: false,
+          isError: false,
+        });
+        mockUseCreditGrants.mockReturnValue({
+          data: [createMonthlyGrant()],
           isLoading: false,
           isError: false,
         });
@@ -487,7 +557,7 @@ describe('ManagePlan', function managePlanTests() {
         isError: false,
       });
       mockUseCreditGrants.mockReturnValue({
-        data: [createMockGrant()],
+        data: [createMonthlyGrant(), createMockGrant()],
         isLoading: false,
         isError: false,
       });
@@ -508,7 +578,7 @@ describe('ManagePlan', function managePlanTests() {
         isError: false,
       });
       mockUseCreditGrants.mockReturnValue({
-        data: [createMockGrant()],
+        data: [createMonthlyGrant(), createMockGrant()],
         isLoading: false,
         isError: false,
       });
@@ -530,7 +600,7 @@ describe('ManagePlan', function managePlanTests() {
         isError: false,
       });
       mockUseCreditGrants.mockReturnValue({
-        data: [createMockGrant()],
+        data: [createMonthlyGrant(), createMockGrant()],
         isLoading: false,
         isError: false,
       });
@@ -553,7 +623,7 @@ describe('ManagePlan', function managePlanTests() {
         isError: false,
       });
       mockUseCreditGrants.mockReturnValue({
-        data: [createMockGrant()],
+        data: [createMonthlyGrant(), createMockGrant()],
         isLoading: false,
         isError: false,
       });
@@ -577,7 +647,7 @@ describe('ManagePlan', function managePlanTests() {
         isError: false,
       });
       mockUseCreditGrants.mockReturnValue({
-        data: [createMockGrant()],
+        data: [createMonthlyGrant(), createMockGrant()],
         isLoading: false,
         isError: false,
       });

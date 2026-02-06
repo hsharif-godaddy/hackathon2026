@@ -51,11 +51,9 @@ vi.mock('@/utils/propTypes', () => ({
   ensurePropTypes: vi.fn().mockResolvedValue(undefined),
 }));
 
-let capturedProps: any = {}; // eslint-disable-line @typescript-eslint/no-unused-vars
 vi.mock('next/dynamic', () => ({
   default: () => {
     const MockComponent = (props: any) => {
-      capturedProps = props;
       return (
         <div data-testid="upgrade-modal">
           <span data-testid="product-id">{props.productId}</span>
@@ -84,7 +82,6 @@ vi.mock('next/dynamic', () => ({
 describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
-    capturedProps = {};
     mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false, error: null });
   });
 

@@ -47,11 +47,9 @@ vi.mock('@/utils/propTypes', () => ({
 }));
 
 // Mock the ComponentLoader to capture props and simulate behavior
-let capturedProps: any = {}; // eslint-disable-line @typescript-eslint/no-unused-vars
 vi.mock('next/dynamic', () => ({
   default: () => {
     const MockComponent = (props: any) => {
-      capturedProps = props;
       return (
         <div data-testid="credits-upgrade-modal">
           <span data-testid="product-id">{props.productId}</span>
@@ -76,7 +74,6 @@ vi.mock('next/dynamic', () => ({
 describe('CreditsUpgradeContainer', function creditsUpgradeContainerTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
-    capturedProps = {};
   });
 
   describe('renders correctly', function renderTests() {

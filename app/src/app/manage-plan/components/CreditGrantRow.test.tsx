@@ -9,11 +9,14 @@ import { GrantFinalState, GrantType } from '@/types/credits';
 import CreditGrantRow from './CreditGrantRow';
 
 vi.mock('@/hooks/useTranslations', () => ({
-  useTranslations: () => (key: string, params?: Record<string, string>) => {
+  useTranslations: () => (key: string, params?: Record<string, string | number>) => {
+    if (key === 'builder_manageplan_credits_count' && params) {
+      return `${params.spent}/${params.max}`;
+    }
     if (params) {
       let result = key;
       Object.entries(params).forEach(([k, v]) => {
-        result = result.replace(`{${k}}`, v);
+        result = result.replace(`{${k}}`, String(v));
       });
       return result;
     }
@@ -32,7 +35,7 @@ function createMockGrant(overrides: Partial<CreditGrant> = {}): CreditGrant {
     creditsSpent: 3491,
     isAvailable: true,
     finalState: null,
-    useBefore: '2026-02-04T00:00:00.000Z',
+    useBefore: '2027-02-04T00:00:00.000Z',
     consumedAt: null,
     createdAt: '2026-01-04T00:00:00.000Z',
     updatedAt: '2026-01-14T00:00:00.000Z',
@@ -65,8 +68,8 @@ describe('CreditGrantRow', function creditGrantRowTests() {
         <CreditGrantRow grant={createMockGrant({ creditsSpent: 3491, creditsMax: 5000 })} />
       );
 
-      expect(screen.getByText('3,491')).toBeInTheDocument();
-      expect(screen.getByText('5,000')).toBeInTheDocument();
+      // The translation mock returns "spent/max" format for credits_count
+      expect(screen.getByText('3,491/5,000')).toBeInTheDocument();
     });
 
     it('should render progress bar', function renderProgressBar() {
@@ -116,7 +119,8 @@ describe('CreditGrantRow', function creditGrantRowTests() {
         />
       );
 
-      expect(screen.getByText(/builder_manageplan_expired/)).toBeInTheDocument();
+      // Check for expired date text (exact key, not tag)
+      expect(screen.getByText('builder_manageplan_expired')).toBeInTheDocument();
     });
 
     it('should show expired text for expired grant', function showExpiredExpired() {
@@ -130,14 +134,15 @@ describe('CreditGrantRow', function creditGrantRowTests() {
         />
       );
 
-      expect(screen.getByText(/builder_manageplan_expired/)).toBeInTheDocument();
+      // Check for expired date text (exact key, not tag)
+      expect(screen.getByText('builder_manageplan_expired')).toBeInTheDocument();
     });
   });
 
   describe('handles unavailable state styling', function unavailableStateTests() {
     it('should render unavailable grant with appropriate elements', function unavailableRender() {
       const { container } = renderWithProviders(
-        <CreditGrantRow grant={createMockGrant({ isAvailable: false })} />
+        <CreditGrantRow grant={createMockGrant({ isAvailable: false, finalState: GrantFinalState.Consumed })} />
       );
 
       // Component should render without errors when unavailable
@@ -146,24 +151,54 @@ describe('CreditGrantRow', function creditGrantRowTests() {
       expect(screen.getByText('builder_manageplan_pack')).toBeInTheDocument();
     });
 
-    it('should pass isExpired to CreditProgressBar when unavailable', function expiredProgressBar() {
-      const { container } = renderWithProviders(
-        <CreditGrantRow grant={createMockGrant({ isAvailable: false })} />
+    it('should show USED tag when credits are fully consumed before expiration', function showUsedTag() {
+      renderWithProviders(
+        <CreditGrantRow grant={createMockGrant({
+          isAvailable: false,
+          finalState: GrantFinalState.Consumed,
+          creditsSpent: 5000,
+          creditsMax: 5000,
+          useBefore: '2027-12-31T00:00:00.000Z', // Future date - consumed before expiration
+        })} />
       );
 
-      // Progress bar should have opacity class when expired
-      const progressBar = container.querySelector('[class*="opacity-50"]');
-      expect(progressBar).toBeInTheDocument();
+      // Should show USED tag when consumed before useBefore date
+      expect(screen.getByText('builder_manageplan_used')).toBeInTheDocument();
     });
 
-    it('should not have opacity when available', function noOpacityWhenAvailable() {
+    it('should show EXPIRED tag when grant expired by time', function showExpiredTag() {
+      renderWithProviders(
+        <CreditGrantRow grant={createMockGrant({
+          isAvailable: false,
+          finalState: GrantFinalState.Expired,
+          creditsSpent: 2000,
+          creditsMax: 5000,
+          useBefore: '2025-01-01T00:00:00.000Z', // Past date - expired by time
+        })} />
+      );
+
+      // Should show EXPIRED tag when useBefore date has passed
+      expect(screen.getByText('builder_manageplan_expired_tag')).toBeInTheDocument();
+    });
+
+    it('should not show progress bar when grant is unavailable', function noProgressBarWhenUnavailable() {
+      const { container } = renderWithProviders(
+        <CreditGrantRow grant={createMockGrant({ isAvailable: false, finalState: GrantFinalState.Consumed })} />
+      );
+
+      // Progress bar should not be present when unavailable
+      const progressBar = container.querySelector('[role="progressbar"]');
+      expect(progressBar).not.toBeInTheDocument();
+    });
+
+    it('should show progress bar when grant is available', function showProgressBarWhenAvailable() {
       const { container } = renderWithProviders(
         <CreditGrantRow grant={createMockGrant({ isAvailable: true })} />
       );
 
-      // Progress bar should not have opacity class
-      const progressBar = container.querySelector('[class*="rounded-full"]');
-      expect(progressBar?.className).not.toContain('opacity-50');
+      // Progress bar should be present when available
+      const progressBar = container.querySelector('[role="progressbar"]');
+      expect(progressBar).toBeInTheDocument();
     });
   });
 
@@ -173,7 +208,7 @@ describe('CreditGrantRow', function creditGrantRowTests() {
         <CreditGrantRow grant={createMockGrant({ creditsSpent: 0, creditsMax: 5000 })} />
       );
 
-      expect(screen.getByText('0')).toBeInTheDocument();
+      expect(screen.getByText('0/5,000')).toBeInTheDocument();
     });
 
     it('should handle fully consumed credits', function fullyConsumed() {
@@ -181,9 +216,7 @@ describe('CreditGrantRow', function creditGrantRowTests() {
         <CreditGrantRow grant={createMockGrant({ creditsSpent: 5000, creditsMax: 5000 })} />
       );
 
-      // Both values should be 5,000
-      const texts = screen.getAllByText('5,000');
-      expect(texts).toHaveLength(2);
+      expect(screen.getByText('5,000/5,000')).toBeInTheDocument();
     });
   });
 });
