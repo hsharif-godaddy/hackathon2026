@@ -415,6 +415,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 agentsAppContext.metadata.subscriptionId = app.subscriptionId
               }
               agentsAppContext.metadata.customerId = app.customerId
+
+              // NOTE: SSO JWT is NOT passed through context for security reasons.
+              // MCP tools that need user authentication use ClientActionService to proxy
+              // calls through the browser, where the auth_idp cookie is available.
+              // This ensures user credentials never flow through agent context.
             }
           }
 

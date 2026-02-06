@@ -17,7 +17,9 @@ import FileEditToolRenderer from './FileEditToolRenderer'
 import FontThemeToolRenderer from './FontThemeToolRenderer'
 import GrepSearchToolRenderer from './GrepSearchToolRenderer'
 import HandoffToolRenderer from './HandoffToolRenderer'
+import ImageGeneratorToolRenderer from './ImageGeneratorToolRenderer'
 import ImageSearchToolRenderer from './ImageSearchToolRenderer'
+import LogoGeneratorToolRenderer from './LogoGeneratorToolRenderer'
 import MediaSearchToolRenderer from './MediaSearchToolRenderer'
 import OAuthToolRenderer from './OAuthToolRenderer'
 import PublishClientToolRenderer from './PublishClientToolRenderer'
@@ -33,6 +35,7 @@ import SocialPublishToolRenderer from './SocialPublishToolRenderer'
 import SuggestedResponseToolRenderer from './SuggestedResponseToolRenderer'
 import TerminalCommandToolRenderer from './TerminalCommandToolRenderer'
 import TodoListToolRenderer from './TodoListToolRenderer'
+import VideoGeneratorToolRenderer from './VideoGeneratorToolRenderer'
 import WebsiteRebuildToolRenderer from './WebsiteRebuildToolRenderer'
 
 /**
@@ -75,6 +78,9 @@ export const toolRendererRegistry = {
   publishClient: PublishClientToolRenderer,
   websiteRebuild: WebsiteRebuildToolRenderer,
   rebuildPageSelector: RebuildPageSelectorToolRenderer,
+  media__generate_logo: LogoGeneratorToolRenderer,
+  media__generate_image: ImageGeneratorToolRenderer,
+  media__generate_video: VideoGeneratorToolRenderer,
 } as const
 
 /**
@@ -119,7 +125,9 @@ export {
   FontThemeToolRenderer,
   GrepSearchToolRenderer,
   HandoffToolRenderer,
+  ImageGeneratorToolRenderer,
   ImageSearchToolRenderer,
+  LogoGeneratorToolRenderer,
   MediaSearchToolRenderer,
   OAuthToolRenderer,
   PublishClientToolRenderer,
@@ -134,6 +142,7 @@ export {
   SuggestedResponseToolRenderer,
   TerminalCommandToolRenderer,
   TodoListToolRenderer,
+  VideoGeneratorToolRenderer,
   WebsiteRebuildToolRenderer,
 }
 export type { DefaultToolRendererProps }
