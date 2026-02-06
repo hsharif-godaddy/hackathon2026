@@ -87,8 +87,8 @@ export default function CalendarDay({
         </div>
 
         {/* Mobile: Show dots (warning for scheduled, success for published, info for events) */}
-        {(scheduledPosts.length > 0 || events.length > 0) && (
-          <div className="flex flex-row items-center justify-center gap-1 mb-1 xl:hidden">
+        {allItems.length > 0 && (
+          <div className="max-xl:flex flex-row items-center justify-center gap-1 mb-1 xl:hidden">
             {scheduledPosts.some(p => p.status === 'scheduled') && (
               <div className="w-2 h-2 bg-intents-ux-feedbackHighContrastWarning-feedbackColor rounded-full flex-shrink-0" />
             )}
@@ -102,7 +102,7 @@ export default function CalendarDay({
         )}
 
         {/* Desktop: Show full badges (no dots) */}
-        <div className="!hidden xl:!flex flex-1 flex-col gap-1.5 overflow-hidden w-full">
+        <div className="hidden xl:flex flex-1 flex-col gap-1.5 overflow-hidden w-full">
           {visibleItems.map((item, idx) => {
             const isScheduledPost = 'publishedAt' in item;
             return isScheduledPost ? (
