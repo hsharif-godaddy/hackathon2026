@@ -50,7 +50,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger className="hover:cursor-pointer px-1">
+        <PopoverTrigger className="hover:cursor-pointer px-1" aria-label={t('builder_usermenu_title', undefined, 'User menu')}>
           <UserIcon />
         </PopoverTrigger>
         <PopoverContent align="end" className='p-1 w-[250px]'>
@@ -113,11 +113,13 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
           </div>
         </PopoverContent>
       </Popover>
-      <InviteFriendsModal
-        isOpen={inviteModalOpen}
-        onClose={() => setInviteModalOpen(false)}
-        location={location}
-      />
+      {isAuthenticated && (
+        <InviteFriendsModal
+          isOpen={inviteModalOpen}
+          onClose={() => setInviteModalOpen(false)}
+          location={location}
+        />
+      )}
     </>
   );
 }

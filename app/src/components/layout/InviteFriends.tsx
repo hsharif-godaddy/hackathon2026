@@ -35,11 +35,11 @@ interface InviteFriendsProps {
  */
 export default function InviteFriends({ location = 'unknown', variant = InviteFriendsVariant.Button, onOpenModal }: InviteFriendsProps) {
   const t = useTranslations();
-  const { isAuthenticated } = useAuthContext();
+  const { isAuthenticated, needsReauth } = useAuthContext();
   const [modalOpen, setModalOpen] = useState(false);
 
-  // Only show for authenticated users
-  if (!isAuthenticated) {
+  // Only show for authenticated users with valid session
+  if (!isAuthenticated || needsReauth) {
     return null;
   }
 
