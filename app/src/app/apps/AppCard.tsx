@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
@@ -35,23 +36,6 @@ interface AlertState {
   message: string | React.ReactNode
 }
 
-function getStatusConfig(status: string): { key: string; emphasis: 'success' | 'warning' | 'info' | 'critical' | 'neutral' } {
-  switch (status) {
-    case 'running':
-      return { key: 'builder_status_running', emphasis: 'success' };
-    case 'creating':
-    case 'created':
-      return { key: 'builder_status_creating', emphasis: 'warning' };
-    case 'failed':
-    case 'error':
-      return { key: 'builder_status_failed', emphasis: 'critical' };
-    case 'stopped':
-      return { key: 'builder_status_stopped', emphasis: 'info' };
-    default:
-      return { key: 'builder_status_unknown', emphasis: 'neutral' };
-  }
-}
-
 export default function AppCard({ site }: { site: SiteInfo }) {
   const router = useRouter();
   const t = useTranslations();
@@ -87,11 +71,6 @@ export default function AppCard({ site }: { site: SiteInfo }) {
 
     fetchSiteDetails()
   }, [site.id])
-
-  const renderStatusTag = () => {
-    const { key, emphasis } = getStatusConfig(site.status);
-    return <Tag emphasis={emphasis}>{t(key)}</Tag>;
-  }
 
   const handleDeleteSite = async (siteId: string) => {
     setActionLoading(siteId)
@@ -294,11 +273,26 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     </text.span>
   )
 
+  const publishedTag = hasBeenPublished(site) && (
+    <Tag emphasis="highlight">{t('builder_status_published')}</Tag>
+  )
+
+  const errorTag = (site.status === 'error' || site.status === 'failed') && (
+    <Tag emphasis="critical">{t('builder_status_error')}</Tag>
+  )
+
+  const statusTags = (publishedTag || errorTag) && (
+    <Box data-partial="componentAiro" orientation="horizontal" gap="sm" wrap>
+      {publishedTag}
+      {errorTag}
+    </Box>
+  )
   const title = (
-    <div className="flex flex-col gap-1 w-full">
-      <div>
-        {renderStatusTag()}
-      </div>
+    // When there are no status tags, add padding-top to title element to maintain vertical
+    // alignment with cards that have status tags. Only needed on md screens and up where media
+    // and text show side-by-side.
+    <div className={clsx("flex flex-col gap-1 w-full", !statusTags && "md:pt-3.5")}>
+      {statusTags}
       <div className="flex flex-col w-full">
         <span className="line-clamp-1">{site.name || t('builder_apps_alert_delete_untitled')}</span>
         {createdDate}

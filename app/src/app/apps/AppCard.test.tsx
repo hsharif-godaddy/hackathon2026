@@ -75,52 +75,64 @@ describe('AppCard', () => {
   });
 
   describe('renders status correctly', () => {
-    it('should display running status', () => {
-      renderWithProviders(<AppCard site={mockSite} />);
-
-      expect(screen.getByText('builder_status_running')).toBeInTheDocument();
+    it('should display published status when app is published', async () => {
+      const publishedSite = createMockSite({
+        variants: ['publish'],
+      });
+      
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          ...mockSite,
+          published_url: 'https://published.test/app',
+          published_at: '2024-01-01T00:00:00.000Z',
+          variants: ['publish'],
+        }),
+      } as Response);
+      
+      renderWithProviders(<AppCard site={publishedSite} />);
+      
+      await waitFor(() => {
+        expect(screen.getByText('builder_status_published')).toBeInTheDocument();
+      });
     });
 
-    it('should display creating status', () => {
-      const creatingSite = createMockSite({ status: 'creating' });
-      renderWithProviders(<AppCard site={creatingSite} />);
-
-      expect(screen.getByText('builder_status_creating')).toBeInTheDocument();
-    });
-
-    it('should display created status', () => {
-      const createdSite = createMockSite({ status: 'created' });
-      renderWithProviders(<AppCard site={createdSite} />);
-
-      expect(screen.getByText('builder_status_creating')).toBeInTheDocument();
-    });
-
-    it('should display failed status', () => {
+    it('should display error status when there is a failure', () => {
       const failedSite = createMockSite({ status: 'failed' });
       renderWithProviders(<AppCard site={failedSite} />);
 
-      expect(screen.getByText('builder_status_failed')).toBeInTheDocument();
+      expect(screen.getByText('builder_status_error')).toBeInTheDocument();
     });
 
-    it('should display error status', () => {
+    it('should display error status when there is an error', () => {
       const errorSite = createMockSite({ status: 'error' });
       renderWithProviders(<AppCard site={errorSite} />);
 
-      expect(screen.getByText('builder_status_failed')).toBeInTheDocument();
+      expect(screen.getByText('builder_status_error')).toBeInTheDocument();
     });
 
-    it('should display stopped status', () => {
-      const stoppedSite = createMockSite({ status: 'stopped' });
-      renderWithProviders(<AppCard site={stoppedSite} />);
-
-      expect(screen.getByText('builder_status_stopped')).toBeInTheDocument();
-    });
-
-    it('should display unknown status for unrecognized status', () => {
-      const unknownSite = createMockSite({ status: 'unknown-status' as any });
-      renderWithProviders(<AppCard site={unknownSite} />);
-
-      expect(screen.getByText('builder_status_unknown')).toBeInTheDocument();
+    it('should display published and error status when both are present', async () => {
+      const publishedAndErrorSite = createMockSite({
+        variants: ['publish'],
+        status: 'error',
+      });
+      
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          ...mockSite,
+          published_url: 'https://published.test/app',
+          published_at: '2024-01-01T00:00:00.000Z',
+          variants: ['publish'],
+        }),
+      } as Response);
+      
+      renderWithProviders(<AppCard site={publishedAndErrorSite} />);
+      
+      await waitFor(() => {
+        expect(screen.getByText('builder_status_published')).toBeInTheDocument();
+        expect(screen.getByText('builder_status_error')).toBeInTheDocument();
+      });
     });
   });
 

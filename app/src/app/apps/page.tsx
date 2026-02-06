@@ -94,10 +94,10 @@ function SitesPageContent() {
       <main className="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 pt-4 pb-8">
         <AppInactivityAlert />
         <div className="mb-4">
-          <Box orientation="horizontal" gap="md" data-partial="componentAiro">
+          <Box orientation="horizontal" gap="md">
             {t('builder_apps_title')}
             <div>
-              <Tag emphasis="highlight">
+              <Tag emphasis="info">
                 {t('builder_apps_count', { count: totalSites })}
               </Tag>
             </div>
