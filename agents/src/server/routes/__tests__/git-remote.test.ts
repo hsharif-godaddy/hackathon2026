@@ -30,9 +30,19 @@ vi.mock('../../middleware/app-ownership.js', () => ({
   validateAppOwnership: vi.fn((_req, _res, next) => next()),
 }));
 
+vi.mock('../../../services/GitOpsService.js', () => ({
+  gitOpsService: {
+    startPull: vi.fn(),
+    startPush: vi.fn(),
+    getJobStatus: vi.fn(),
+  },
+}));
+
 // Import after mocks
 import gitRemoteRouter from '../git-remote.js';
 import { isCapabilityEnabled } from '../../../utils/capability-config.js';
+import { gitOpsService } from '../../../services/GitOpsService.js';
+import { ImportJobStatus } from '../../../types/import.js';
 
 const createTestApp = () => {
   const app = express();
@@ -286,6 +296,89 @@ describe('git-remote routes', function gitRemoteTests() {
 
         expect(response.body.error).toBe('Git operation not allowed');
       });
+    });
+  });
+
+  describe('/git/pull modifyViteConfig parameter', function modifyViteConfigTests() {
+    beforeEach(() => {
+      process.env.ENABLE_GIT_REMOTE_SYNC = 'true';
+      app = createTestApp();
+    });
+
+    it('should pass modifyViteConfig: true to gitOpsService.startPull', async function passModifyViteConfigTrue() {
+      vi.mocked(gitOpsService.startPull).mockResolvedValue({
+        success: true,
+        jobId: 'test-job-id',
+        status: ImportJobStatus.PENDING,
+      });
+
+      await request(app)
+        .post('/apps/test-id/git/pull')
+        .send({ modifyViteConfig: true })
+        .expect(202);
+
+      expect(gitOpsService.startPull).toHaveBeenCalledWith({
+        appId: 'test-id',
+        remoteName: undefined,
+        branch: undefined,
+        token: undefined,
+        repoUrl: undefined,
+        modifyViteConfig: true,
+      });
+    });
+
+    it('should pass modifyViteConfig: false to gitOpsService.startPull', async function passModifyViteConfigFalse() {
+      vi.mocked(gitOpsService.startPull).mockResolvedValue({
+        success: true,
+        jobId: 'test-job-id',
+        status: ImportJobStatus.PENDING,
+      });
+
+      await request(app)
+        .post('/apps/test-id/git/pull')
+        .send({ modifyViteConfig: false })
+        .expect(202);
+
+      expect(gitOpsService.startPull).toHaveBeenCalledWith({
+        appId: 'test-id',
+        remoteName: undefined,
+        branch: undefined,
+        token: undefined,
+        repoUrl: undefined,
+        modifyViteConfig: false,
+      });
+    });
+
+    it('should pass modifyViteConfig: undefined when not provided', async function passModifyViteConfigUndefined() {
+      vi.mocked(gitOpsService.startPull).mockResolvedValue({
+        success: true,
+        jobId: 'test-job-id',
+        status: ImportJobStatus.PENDING,
+      });
+
+      await request(app)
+        .post('/apps/test-id/git/pull')
+        .send({})
+        .expect(202);
+
+      expect(gitOpsService.startPull).toHaveBeenCalledWith({
+        appId: 'test-id',
+        remoteName: undefined,
+        branch: undefined,
+        token: undefined,
+        repoUrl: undefined,
+        modifyViteConfig: undefined,
+      });
+    });
+
+    it('should return 400 when modifyViteConfig is not a boolean', async function invalidModifyViteConfigType() {
+      const response = await request(app)
+        .post('/apps/test-id/git/pull')
+        .send({ modifyViteConfig: 'true' })
+        .expect(400);
+
+      expect(response.body.error).toBe('modifyViteConfig must be a boolean');
+      expect(gitOpsService.startPull).not.toHaveBeenCalled();
     });
   });
 });

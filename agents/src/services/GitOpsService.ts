@@ -12,6 +12,7 @@ import { GitTool } from '../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { isSupportedProjectOnHost, SUPPORTED_BUILD_TOOLS } from '../server/middleware/git-import-validation.js';
 import { appRestartService } from './AppRestartService.js';
+import { modifyViteConfig } from './ViteConfigModifier.js';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
 
@@ -36,9 +37,12 @@ export interface GitPushParams extends GitSyncParams {
 }
 
 /**
- * Parameters for git pull (same as base, explicit type for clarity)
+ * Parameters for git pull (extends base with vite config modification option)
  */
-export type GitPullParams = GitSyncParams;
+export interface GitPullParams extends GitSyncParams {
+  /** Whether to modify vite config to set server.allowedHosts: true (for proxy compatibility) */
+  modifyViteConfig?: boolean;
+}
 
 /**
  * Result from starting a git operation
@@ -248,12 +252,13 @@ export class GitOpsService {
    * @returns Result with job ID for status polling
    */
   async startPull(params: GitPullParams): Promise<GitOperationStartResult> {
-    const { appId, remoteName, branch, token, repoUrl } = params;
+    const { appId, remoteName, branch, token, repoUrl, modifyViteConfig: shouldModifyViteConfig } = params;
 
     logger.info('git-ops.pull.begin', {
       appId,
       remoteName: remoteName || 'origin',
       branch,
+      modifyViteConfig: shouldModifyViteConfig,
     });
 
     try {
@@ -314,6 +319,7 @@ export class GitOpsService {
           branch,
           token,
           repoUrl,
+          modifyViteConfig: shouldModifyViteConfig,
         });
       });
 
@@ -348,6 +354,7 @@ export class GitOpsService {
       branch?: string;
       token?: string;
       repoUrl?: string;
+      modifyViteConfig?: boolean;
     }
   ): Promise<void> {
 
@@ -419,6 +426,26 @@ export class GitOpsService {
           'pulling'
         );
         return;
+      }
+
+      // Modify vite config if requested (for proxy compatibility).
+      // Non-fatal: failures are logged as warnings but don't fail the job,
+      // matching zip import behavior. The app may still work without this modification.
+      if (options.modifyViteConfig) {
+        const viteConfigResult = await modifyViteConfig(devSupervisor, '/app');
+        if (viteConfigResult.modified) {
+          logger.info('git-ops.pull.vite-config.modified', {
+            appId,
+            jobId,
+            configFile: viteConfigResult.configFile,
+          });
+        } else if (viteConfigResult.error) {
+          logger.warn('git-ops.pull.vite-config.warning', {
+            appId,
+            jobId,
+            error: viteConfigResult.error,
+          });
+        }
       }
 
       // Perform restart cycle (same as zip import)

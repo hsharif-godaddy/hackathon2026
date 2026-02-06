@@ -256,6 +256,9 @@ router.post(
  * - branch: string (optional) - Branch to pull (default: configured default branch)
  * - token: string (optional, required with repoUrl for PaaS) - GitHub token for authentication
  * - repoUrl: string (optional, required with token for PaaS) - Repository URL
+ * - modifyViteConfig: boolean (optional) - Whether to modify vite config to set server.allowedHosts: true.
+ *   Use this when pulling external projects that need proxy compatibility (e.g., projects not originally
+ *   created in Airo). This is the same modification applied during zip import.
  *
  * Returns 202 Accepted with job ID for tracking
  */
@@ -265,10 +268,15 @@ router.post(
   validateAppOwnership,
   async (req: Request, res: Response) => {
     const appId = req.params.id;
-    const { remoteName, branch, token, repoUrl } = req.body;
+    const { remoteName, branch, token, repoUrl, modifyViteConfig } = req.body;
 
     if (!appId) {
       res.status(400).json({ error: 'App ID is required' });
+      return;
+    }
+
+    if (modifyViteConfig !== undefined && typeof modifyViteConfig !== 'boolean') {
+      res.status(400).json({ error: 'modifyViteConfig must be a boolean' });
       return;
     }
 
@@ -278,6 +286,7 @@ router.post(
       branch,
       token,
       repoUrl,
+      modifyViteConfig,
     });
 
     if (!result.success) {
