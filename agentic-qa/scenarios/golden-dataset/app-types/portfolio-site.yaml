@@ -1,0 +1,44 @@
+# Test creating a portfolio website
+name: Create Portfolio Site
+description: |
+  Create a personal portfolio website for a designer
+  with project showcase and contact form.
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 480000  # 8 minutes
+maxSteps: 80
+headed: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+sitePrompt:
+  prompt: |
+    I am Alex Chen, Senior UX Designer with 8 years at Spotify and Airbnb, now freelancing. Need a minimal impressive portfolio site like Apple design aesthetic.
+
+    About section: specialize in mobile apps and design systems, based in San Francisco, available for contract work.
+
+    Projects section with 4 case studies: Spotify Playlist Redesign improved engagement 40%, Airbnb Checkout Flow reduced abandonment 25%, Headspace Meditation Timer featured in App Store, Stripe Dashboard Overhaul enterprise project. Each needs thumbnail and description.
+
+    Skills: Figma, Sketch, Prototyping, User Research, Design Systems, Accessibility.
+
+    Add availability banner. Contact form with name, email, project type dropdown, budget range, and message.
+
+    Footer with Dribbble, LinkedIn, Twitter links. Super clean white background, black text, subtle blue accent.
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+goal: |
+  1. Wait for site creation to complete
+  2. Verify the preview contains:
+     - Designer's name "Alex Chen"
+     - Portfolio/project showcase section
+     - Contact form or contact information
+     - Clean, minimal design aesthetic
+  3. Report success if portfolio structure is complete
+
+

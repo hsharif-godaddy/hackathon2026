@@ -1,0 +1,44 @@
+# Test creating a medical practice website
+name: Create Medical Practice Website
+description: |
+  Create a healthcare/medical practice website with
+  services, doctors, and appointment booking.
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 480000 # 8 minutes
+maxSteps: 80
+headed: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+sitePrompt:
+  prompt: |
+    Need a professional website for Sunrise Family Medicine in Austin TX. Been serving the community for 15 years.
+
+    Our team: Dr Patricia Huang for Family Medicine who speaks Mandarin, Dr Michael Torres the Pediatrics specialist, and Dr Amanda Foster focusing on Womens Health and prenatal care.
+
+    Services: Annual Wellness Exams, Pediatric Care from newborn to 18, Womens Health and Family Planning, Chronic Disease Management for diabetes and hypertension, Immunizations, and Minor Urgent Care.
+
+    We accept Aetna, Blue Cross, Cigna, United Healthcare, Medicare. Hours Mon-Fri 8am-6pm, Sat 9am-1pm.
+
+    Need appointment booking and contact form. Address: 4521 Medical Parkway Suite 200 Austin TX 78756. Phone 512-555-0198.
+
+    Patient portal login button in header. Calming blues and greens. Mention telehealth visits available.
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+goal: |
+  1. Wait for site creation to complete
+  2. Verify the preview contains:
+     - "Sunrise Family Medicine" clinic name
+     - List of medical services offered
+     - Doctor profiles or team section
+     - Appointment booking or contact form
+     - Location information
+  3. Report success if healthcare essentials are present
+

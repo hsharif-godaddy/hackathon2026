@@ -1,0 +1,44 @@
+# Test creating a blog website
+name: Create Blog Site
+description: |
+  Create a personal blog with article listings,
+  categories, and author information.
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 480000 # 8 minutes
+maxSteps: 80
+headed: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+sitePrompt:
+  prompt: |
+    Starting a tech blog called Code and Coffee about web development, AI, and startup life. I am Maya Rodriguez, full-stack developer at a YC startup.
+
+    Homepage with featured post section and grid of recent posts.
+
+    5 sample articles: Why I Switched from React to Svelte (Web Dev), Building RAG Applications with LangChain (AI/ML), My Side Project Journey to $10k MRR (Startups), PostgreSQL Tips That Saved Hours (Databases), Future of Edge Computing (Infrastructure). Each shows title, date, category tag, preview text.
+
+    About page: 5 years coding, Stanford CS grad, based in SF, previously at Google.
+
+    Newsletter signup: Join 5000+ developers getting weekly insights with email field.
+
+    Dark theme with orange accents. Categories: Web Dev, AI/ML, Startups, Career, Tutorials.
+
+    Social links Twitter GitHub LinkedIn in footer.
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+goal: |
+  1. Wait for site creation to complete
+  2. Verify the preview contains:
+     - "Code & Coffee" blog name
+     - Article/post listings or previews
+     - Category or tag indicators
+     - Author information or about section
+  3. Report success if blog structure is complete

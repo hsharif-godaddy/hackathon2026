@@ -1,0 +1,46 @@
+# Test creating an event planning website
+name: Create Event Planner Website
+description: |
+  Create a wedding/event planning website with
+  services, gallery, and inquiry form.
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 480000 # 8 minutes
+maxSteps: 80
+headed: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+sitePrompt:
+  prompt: |
+    Finally launching my dream business called Ever After Events! Been planning weddings for friends for years and now going legit. Based in Nashville but travel anywhere.
+
+    Hero should be dreamy and romantic with a beautiful outdoor wedding setup.
+
+    Services: Weddings from elopements to 300+ guest events, Corporate Events like holiday parties and product launches, Social Events including birthdays, anniversaries, and baby showers.
+
+    Packages: Day-Of Coordination at $1,500, Partial Planning at $3,500, Full Service at $7,500+, and Luxury Experience starting at $15,000.
+
+    Need a photo gallery with event photos. Add testimonials from happy clients like The Hendersons and TechStart Inc.
+
+    Contact form with name, email, phone, event type, event date, guest count, and budget range.
+
+    Rose gold and blush pink colors. Instagram @everafterevents.
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+goal: |
+  1. Wait for site creation to complete
+  2. Verify the preview contains:
+     - "Ever After Events" business name
+     - Services or event types offered
+     - Packages or pricing tiers
+     - Photo gallery or portfolio section
+     - Contact or inquiry form
+  3. Report success if event planning elements are present
+

@@ -1,0 +1,49 @@
+# Test creating an e-commerce store
+name: Create E-Commerce Store
+description: |
+  Create an e-commerce store for a clothing brand with
+  product listings and shopping cart.
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 480000  # 8 minutes
+maxSteps: 80
+headed: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+sitePrompt:
+  prompt: |
+    Starting streetwear brand Urban Threads. Need an online store that screams premium but edgy.
+
+    Homepage with bold hero showing New Collection Street Royalty with shop now button.
+
+    Featured products: Midnight Hoodie $89, Classic Logo Tee $45, Cargo Joggers $75, limited Collab Jacket $150.
+
+    Products page with at least 6 items showing prices, sizes S M L XL, and Add to Cart button.
+
+    Black and gold color scheme, Versace meets streetwear vibes.
+
+    About page: started in Brooklyn, designed for the culture, sustainable materials.
+
+    Add size guide and Coming Soon section for hype drops.
+
+    Footer with Instagram and TikTok links.
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+  ${common.verifyInstructions}
+
+goal: |
+  1. Wait for site creation to complete
+  2. Verify the preview contains:
+     - "Urban Threads" brand name
+     - Product cards or listings with prices
+     - Navigation menu with multiple pages
+  3. Report success if e-commerce elements are visible
+
+

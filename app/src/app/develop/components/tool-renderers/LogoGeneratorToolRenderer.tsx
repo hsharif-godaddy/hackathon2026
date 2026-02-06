@@ -1,11 +1,11 @@
 'use client'
 
-import Button from '@ux/button'
-import XThickIcon from '@ux/icon/x-thick'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Sparkles } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import Button from '@ux/button'
+import XThickIcon from '@ux/icon/x-thick'
 
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'

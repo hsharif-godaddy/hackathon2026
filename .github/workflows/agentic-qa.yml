@@ -1,0 +1,402 @@
+name: Agentic QA Tests
+
+run-name: "Agentic QA - ${{ inputs.environment || 'prod' }} (by ${{ github.actor }})"
+
+on:
+  # Run on push to agentic-qa feature branches - runs ALL scenarios in PARALLEL
+  push:
+    branches:
+      - "feat/agentic-qa*"
+    paths:
+      - "agentic-qa/**"
+      - ".github/workflows/agentic-qa.yml"
+
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to test against"
+        required: true
+        default: "prod"
+        type: choice
+        options:
+          - test
+          - dev
+          - prod
+      scenario:
+        description: "Scenario to run (all/golden-dataset-all run in PARALLEL)"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - golden-dataset-all
+          # Main scenarios
+          - scenarios/create-site.yaml
+          # App Types (10 scenarios)
+          - scenarios/golden-dataset/app-types/landing-page.yaml
+          - scenarios/golden-dataset/app-types/ecommerce-store.yaml
+          - scenarios/golden-dataset/app-types/portfolio-site.yaml
+          - scenarios/golden-dataset/app-types/restaurant-site.yaml
+          - scenarios/golden-dataset/app-types/blog-site.yaml
+          - scenarios/golden-dataset/app-types/fitness-studio.yaml
+          - scenarios/golden-dataset/app-types/medical-practice.yaml
+          - scenarios/golden-dataset/app-types/law-firm.yaml
+          - scenarios/golden-dataset/app-types/event-planner.yaml
+          - scenarios/golden-dataset/app-types/nonprofit-charity.yaml
+      headed:
+        description: "Run with visible browser"
+        required: false
+        type: boolean
+        default: false
+
+  # Allow triggering from other workflows
+  workflow_call:
+    inputs:
+      environment:
+        description: "Environment to test against"
+        required: true
+        default: "prod"
+        type: string
+      scenario:
+        description: "Scenario to run"
+        required: false
+        type: string
+        default: "all"
+
+# Cancel in-progress runs for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # Setup job: determine which scenarios to run and output as matrix
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      environment: ${{ steps.env-config.outputs.environment }}
+      base_url: ${{ steps.env-config.outputs.base_url }}
+    steps:
+      - name: Determine test environment
+        id: env-config
+        env:
+          INPUT_ENVIRONMENT: ${{ github.event.inputs.environment || 'prod' }}
+        run: |
+          ENV="$INPUT_ENVIRONMENT"
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+
+          case "$ENV" in
+            prod)
+              echo "base_url=https://airo-builder.godaddy.com" >> $GITHUB_OUTPUT
+              ;;
+            dev)
+              echo "base_url=https://airo-builder.dev-godaddy.com" >> $GITHUB_OUTPUT
+              ;;
+            test)
+              echo "base_url=https://airo-builder.test-godaddy.com" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "❌ Unknown environment: $ENV"
+              exit 1
+              ;;
+          esac
+          echo "✅ Test environment: $ENV"
+
+      - name: Build scenario matrix
+        id: set-matrix
+        env:
+          INPUT_SCENARIO: ${{ github.event.inputs.scenario || 'all' }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          # Define all available scenarios (single-line JSON to avoid output format issues)
+          ALL_SCENARIOS='["scenarios/create-site.yaml","scenarios/golden-dataset/app-types/landing-page.yaml","scenarios/golden-dataset/app-types/ecommerce-store.yaml","scenarios/golden-dataset/app-types/portfolio-site.yaml","scenarios/golden-dataset/app-types/restaurant-site.yaml","scenarios/golden-dataset/app-types/blog-site.yaml","scenarios/golden-dataset/app-types/fitness-studio.yaml","scenarios/golden-dataset/app-types/medical-practice.yaml","scenarios/golden-dataset/app-types/law-firm.yaml","scenarios/golden-dataset/app-types/event-planner.yaml","scenarios/golden-dataset/app-types/nonprofit-charity.yaml"]'
+
+          GOLDEN_DATASET_SCENARIOS='["scenarios/golden-dataset/app-types/landing-page.yaml","scenarios/golden-dataset/app-types/ecommerce-store.yaml","scenarios/golden-dataset/app-types/portfolio-site.yaml","scenarios/golden-dataset/app-types/restaurant-site.yaml","scenarios/golden-dataset/app-types/blog-site.yaml","scenarios/golden-dataset/app-types/fitness-studio.yaml","scenarios/golden-dataset/app-types/medical-practice.yaml","scenarios/golden-dataset/app-types/law-firm.yaml","scenarios/golden-dataset/app-types/event-planner.yaml","scenarios/golden-dataset/app-types/nonprofit-charity.yaml"]'
+
+          # For push events, run ALL scenarios in parallel
+          if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "ℹ️ Push/PR trigger: running ALL scenarios in PARALLEL"
+            SCENARIOS="$ALL_SCENARIOS"
+          elif [ "$INPUT_SCENARIO" = "all" ]; then
+            echo "ℹ️ Running ALL scenarios in PARALLEL"
+            SCENARIOS="$ALL_SCENARIOS"
+          elif [ "$INPUT_SCENARIO" = "golden-dataset-all" ]; then
+            echo "ℹ️ Running golden-dataset scenarios in PARALLEL"
+            SCENARIOS="$GOLDEN_DATASET_SCENARIOS"
+          else
+            echo "ℹ️ Running single scenario: $INPUT_SCENARIO"
+            SCENARIOS="[\"$INPUT_SCENARIO\"]"
+          fi
+
+          # Output as JSON for matrix (must be single line)
+          echo "matrix={\"scenario\":$SCENARIOS}" >> $GITHUB_OUTPUT
+          echo "✅ Matrix set successfully"
+
+  # Test job: runs scenarios in parallel via matrix strategy
+  agentic-qa:
+    needs: setup
+    timeout-minutes: 30
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    strategy:
+      fail-fast: false # Don't cancel other scenarios if one fails
+      max-parallel: 11 # Run up to 11 scenarios in parallel
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@88e9eba31c07e31beefa4cef5c0e93d1af9535d7 # v4.6.1
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Setup Artifactory Creds
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "ARTIFACTORY_NPM_TOKEN=${OIDC_TOKEN}" >> $GITHUB_ENV
+
+      - name: Configure pnpm registry
+        run: |
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
+
+      - name: Get test credentials from Secrets Manager
+        id: get-credentials
+        run: |
+          set -e
+
+          echo "Retrieving test credentials from Secrets Manager..."
+          CREDENTIALS=$(aws secretsmanager get-secret-value --secret-id "/test/airo-app-builder-user" --query 'SecretString' --output text --region us-west-2)
+
+          USERNAME=$(echo $CREDENTIALS | jq -r 'keys[0]')
+          PASSWORD=$(echo $CREDENTIALS | jq -r '.[]')
+          echo "Extracted username: ${USERNAME}"
+
+          if [ "$USERNAME" = "null" ] || [ "$PASSWORD" = "null" ] || [ -z "$USERNAME" ] || [ -z "$PASSWORD" ]; then
+            echo "❌ Failed to extract valid credentials"
+            exit 1
+          fi
+
+          echo "::add-mask::$USERNAME"
+          echo "::add-mask::$PASSWORD"
+          echo "username=$USERNAME" >> $GITHUB_OUTPUT
+          echo "password=$PASSWORD" >> $GITHUB_OUTPUT
+          echo "✅ Test credentials retrieved successfully"
+
+      - name: Get CaaS Proxy API Key from Secrets Manager
+        id: get-caas-key
+        run: |
+          set -e
+
+          echo "Retrieving CaaS proxy API key from Secrets Manager..."
+          SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "/airo/anthropic-api-key" --query 'SecretString' --output text --region us-west-2 2>/dev/null || echo "")
+
+          if [ -z "$SECRET_JSON" ]; then
+            echo "❌ CaaS API key not found in Secrets Manager"
+            exit 1
+          fi
+
+          # Extract API key from JSON (format: {"ANTHROPIC_API_KEY": "sk-..."})
+          API_KEY=$(echo "$SECRET_JSON" | jq -r '.ANTHROPIC_API_KEY // empty')
+          if [ -z "$API_KEY" ]; then
+            echo "❌ ANTHROPIC_API_KEY not found in secret JSON"
+            exit 1
+          fi
+
+          echo "::add-mask::$API_KEY"
+          echo "api_key=$API_KEY" >> $GITHUB_OUTPUT
+          echo "✅ CaaS proxy API key retrieved successfully"
+
+      - name: Get Elasticsearch credentials from Secrets Manager
+        id: get-es-creds
+        continue-on-error: true
+        run: |
+          echo "Retrieving Elasticsearch credentials from Secrets Manager..."
+          SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "/airo/elasticsearch-credentials" --query 'SecretString' --output text --region us-west-2 2>/dev/null || echo "")
+
+          if [ -z "$SECRET_JSON" ]; then
+            echo "⚠️ Elasticsearch credentials not found - indexing will be skipped"
+            exit 0
+          fi
+
+          ES_URL=$(echo "$SECRET_JSON" | jq -r '.url // .ingestion_url // empty')
+          ES_API_KEY=$(echo "$SECRET_JSON" | jq -r '.api_key // empty')
+
+          if [ -n "$ES_URL" ]; then
+            echo "::add-mask::$ES_URL"
+            echo "es_url=$ES_URL" >> $GITHUB_OUTPUT
+
+            if [ -n "$ES_API_KEY" ]; then
+              echo "::add-mask::$ES_API_KEY"
+              echo "es_api_key=$ES_API_KEY" >> $GITHUB_OUTPUT
+              echo "✅ Elasticsearch credentials retrieved (URL + API Key)"
+            else
+              echo "✅ Elasticsearch URL retrieved (no API key - assuming open access)"
+            fi
+          else
+            echo "⚠️ Elasticsearch URL not found in secret - indexing will be skipped"
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install pnpm
+        run: npm install -g pnpm@10.17.0+sha512.fce8a3dd29a4ed2ec566fb53efbb04d8c44a0f05bc6f24a73046910fb9c3ce7afa35a0980500668fa3573345bd644644fa98338fa168235c80f4aa17aa17fbef
+
+      - name: Install dependencies
+        run: |
+          echo "Installing workspace dependencies with pnpm..."
+          pnpm install --frozen-lockfile
+
+      - name: Build agentic-qa
+        run: pnpm --filter agentic-qa build
+
+      - name: Install Chrome/Chromium for Stagehand
+        run: |
+          echo "📥 Installing Chromium browser (without system deps - assuming runner has them)..."
+          npx playwright install chromium
+
+          # Find the Playwright Chromium executable
+          PLAYWRIGHT_BROWSERS_PATH="${HOME}/.cache/ms-playwright"
+          echo "Looking for Chrome in: $PLAYWRIGHT_BROWSERS_PATH"
+
+          # List what's in the playwright cache
+          echo "Playwright cache contents:"
+          ls -la "$PLAYWRIGHT_BROWSERS_PATH" 2>/dev/null || echo "Cache directory not found"
+
+          # Find chrome executable (Playwright stores it in chromium-*/chrome-linux/chrome)
+          CHROME_EXECUTABLE=$(find "$PLAYWRIGHT_BROWSERS_PATH" -path "*/chrome-linux/chrome" -type f 2>/dev/null | head -1)
+
+          if [ -z "$CHROME_EXECUTABLE" ]; then
+            # Try alternative paths
+            CHROME_EXECUTABLE=$(find "$PLAYWRIGHT_BROWSERS_PATH" -name "chrome" -type f -executable 2>/dev/null | head -1)
+          fi
+
+          if [ -z "$CHROME_EXECUTABLE" ]; then
+            # Fallback to system Chrome
+            echo "Trying system Chrome..."
+            CHROME_EXECUTABLE=$(which google-chrome-stable || which google-chrome || which chromium-browser || which chromium || echo "")
+          fi
+
+          if [ -z "$CHROME_EXECUTABLE" ]; then
+            echo "❌ Could not find Chrome/Chromium executable"
+            echo "Full playwright cache contents:"
+            find "$PLAYWRIGHT_BROWSERS_PATH" -type f 2>/dev/null | head -30
+            exit 1
+          fi
+
+          echo "CHROME_PATH=$CHROME_EXECUTABLE" >> $GITHUB_ENV
+          echo "✅ CHROME_PATH set to: $CHROME_EXECUTABLE"
+
+      - name: Run Agentic QA Test - ${{ matrix.scenario }}
+        id: run-tests
+        env:
+          CI: true
+          TEST_USERNAME: ${{ steps.get-credentials.outputs.username }}
+          TEST_PASSWORD: ${{ steps.get-credentials.outputs.password }}
+          OPENAI_API_KEY: ${{ steps.get-caas-key.outputs.api_key }}
+          OPENAI_BASE_URL: "https://caas-gocode-prod.caas-prod.prod.onkatana.net/v1"
+          INPUT_HEADED: ${{ github.event.inputs.headed }}
+          # Elasticsearch for result indexing (optional)
+          ES_URL: ${{ steps.get-es-creds.outputs.es_url }}
+          ES_API_KEY: ${{ steps.get-es-creds.outputs.es_api_key }}
+          TEST_ENVIRONMENT: ${{ needs.setup.outputs.environment }}
+        run: |
+          # Use array-based command construction to prevent shell injection
+          ARGS=("--filter" "agentic-qa" "test")
+
+          # Add the specific scenario from matrix
+          ARGS+=("${{ matrix.scenario }}")
+
+          if [ "$INPUT_HEADED" = "true" ]; then
+            ARGS+=("--headed")
+          fi
+
+          echo "🚀 Running: pnpm ${ARGS[*]}"
+          pnpm "${ARGS[@]}"
+
+      - name: Extract scenario name for artifact
+        if: always()
+        id: scenario-name
+        run: |
+          # Extract filename without path and extension for cleaner artifact names
+          SCENARIO="${{ matrix.scenario }}"
+          SCENARIO_NAME=$(basename "$SCENARIO" .yaml)
+          echo "name=$SCENARIO_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload Agentic QA Reports
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: agentic-qa-reports-${{ steps.scenario-name.outputs.name }}
+          path: agentic-qa/reports/
+          retention-days: 30
+
+      - name: Upload Screenshots
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: agentic-qa-screenshots-${{ steps.scenario-name.outputs.name }}
+          path: agentic-qa/reports/screenshots/
+          retention-days: 30
+
+  # Summary job: collect results and send notification
+  summary:
+    name: Test Summary
+    if: always()
+    needs: [setup, agentic-qa]
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ needs.setup.outputs.environment }}
+    steps:
+      - name: Check test results
+        run: |
+          echo "📊 Agentic QA Test Summary"
+          echo "=========================="
+          echo "Environment: ${{ needs.setup.outputs.environment }}"
+          echo "Overall Result: ${{ needs.agentic-qa.result }}"
+
+          if [ "${{ needs.agentic-qa.result }}" = "success" ]; then
+            echo "✅ All scenarios passed!"
+          elif [ "${{ needs.agentic-qa.result }}" = "failure" ]; then
+            echo "❌ Some scenarios failed"
+          else
+            echo "⚠️ Tests completed with status: ${{ needs.agentic-qa.result }}"
+          fi
+
+  slack-notify:
+    name: Send Slack Notification
+    if: always()
+    needs: [setup, agentic-qa, summary]
+    uses: ./.github/workflows/slack-notify.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      result: ${{ needs.agentic-qa.result }}
+      environment: ${{ needs.setup.outputs.environment }}
+      title: "Agentic QA - ${{ needs.setup.outputs.environment }} (by ${{ github.actor }})"
+      message: |
+        *Environment:* ${{ needs.setup.outputs.environment }}
+        *Scenario:* ${{ github.event.inputs.scenario || 'All scenarios (parallel)' }}
+        *Execution:* Parallel matrix strategy
+        *Actor:* ${{ github.actor }}
+        *Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>
+      footer: "airo-app-builder | Agentic QA"

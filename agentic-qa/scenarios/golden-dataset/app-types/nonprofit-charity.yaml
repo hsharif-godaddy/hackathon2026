@@ -1,0 +1,47 @@
+# Test creating a non-profit website
+name: Create Non-Profit Website
+description: |
+  Create a charity/non-profit website with
+  mission, programs, and donation capabilities.
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 480000 # 8 minutes
+maxSteps: 80
+headed: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+sitePrompt:
+  prompt: |
+    I run a non-profit called Hope for Tomorrow and need a better website for donations and volunteer signups. We serve underprivileged children in Detroit, founded in 2018.
+
+    Mission: Empowering children through education, nutrition, and mentorship to build brighter futures.
+
+    Our 3 programs: After-School Tutoring with free homework help Mon-Fri 3-6pm at 5 schools, Weekend Meal Program providing 500+ meals every weekend, and Summer Learning Camp for 6 weeks with field trips and STEM activities.
+
+    Impact stats for donations: 2,847 children served in 2023, 15,000+ meals distributed monthly, 89% of tutored students improved grades, 127 active volunteers.
+
+    Donate section with suggested amounts: $25 feeds a family for a week, $50 sponsors tutoring, $100 sends a kid to camp, $500 becomes a Hope Champion.
+
+    Volunteer signup form with name, email, phone, and availability.
+
+    Colors: hopeful green and energetic orange. Social links: Facebook, Instagram, LinkedIn.
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+goal: |
+  1. Wait for site creation to complete
+  2. Verify the preview contains:
+     - "Hope for Tomorrow" organization name
+     - Mission statement or about section
+     - Programs or services offered
+     - Impact statistics or achievements
+     - Donate button or donation section
+     - Volunteer signup or ways to help
+  3. Report success if non-profit elements are present
+

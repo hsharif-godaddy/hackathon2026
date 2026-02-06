@@ -7,4 +7,5 @@ packages:
   - "proxy"
   - "bedrock-log-viewer"
   - "debug-console"
+  - "agentic-qa"
   - "!app-templates/**"

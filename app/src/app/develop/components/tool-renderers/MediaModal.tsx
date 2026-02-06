@@ -1,10 +1,10 @@
 'use client'
 
+import { AnimatePresence, motion } from 'framer-motion'
+import { type ReactNode, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import Button from '@ux/button'
 import XThickIcon from '@ux/icon/x-thick'
-import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 
 interface MediaModalProps {
   isOpen: boolean

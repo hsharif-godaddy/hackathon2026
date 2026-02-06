@@ -1,0 +1,46 @@
+# Test creating a law firm website
+name: Create Law Firm Website
+description: |
+  Create a professional law firm website with
+  practice areas, attorney profiles, and consultations.
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 480000 # 8 minutes
+maxSteps: 80
+headed: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+sitePrompt:
+  prompt: |
+    Building a website for Mitchell and Associates Law Firm in Chicago. Need to look professional and trustworthy with dark navy and gold colors.
+
+    Practice areas: Personal Injury including car accidents and medical malpractice, Family Law for divorce and custody, Criminal Defense for DUI and drug charges, and Workers Compensation.
+
+    Our attorneys: James Mitchell the Founding Partner with 30 years experience, Sarah Chen specializing in family law, David Washington a former prosecutor, and Maria Rodriguez who is bilingual.
+
+    Hero section with Fighting For Justice Since 1994 headline and prominent Free Consultation button.
+
+    Contact form collecting name, phone, email, case type, and situation description.
+
+    Results section: $2.5M settlements, 95% case win rate, 10,000+ clients served.
+
+    Office at 233 S Wacker Drive Suite 4500 Chicago IL 60606. Phone 312-555-0156.
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+goal: |
+  1. Wait for site creation to complete
+  2. Verify the preview contains:
+     - "Mitchell & Associates" firm name
+     - Practice areas (personal injury, family law, etc.)
+     - Attorney profiles or team section
+     - Consultation form or contact method
+     - Professional, trustworthy design
+  3. Report success if law firm elements are present
+

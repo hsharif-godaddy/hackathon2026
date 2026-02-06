@@ -1,0 +1,46 @@
+# Test creating a fitness studio website
+name: Create Fitness Studio Site
+description: |
+  Create a fitness studio website with class schedules,
+  trainers, and membership information.
+
+startUrl: https://airo-builder.godaddy.com
+timeout: 480000  # 8 minutes
+maxSteps: 80
+headed: false
+
+credentials:
+  username: ${TEST_USERNAME}
+  password: ${TEST_PASSWORD}
+
+sitePrompt:
+  prompt: |
+    Opening my boutique fitness studio ZenFit in Venice Beach. Need a website that converts visitors to members.
+
+    Hero should be inspiring with someone in yoga pose or high-energy group class.
+
+    Class schedule: Morning Flow Yoga at 6am and 8am daily, Power Pilates at 10am Mon Wed Fri, HIIT Bootcamp at 5:30pm Tue Thu Sat, and Meditation on Sunday 9am.
+
+    Three trainers: Sarah Kim the certified yoga instructor with 10 years experience, Marcus Johnson NASM certified strength specialist and former D1 athlete, Elena Reyes Pilates instructor trained in Germany.
+
+    Memberships: Drop-in $25, Monthly Unlimited $149/month, Annual $1299/year. First class free for new members.
+
+    Address: 1847 Pacific Avenue Venice CA 90291. Add prominent class booking button.
+
+    Colors: teal white and coral. Mention showers lockers and mat rentals. Instagram @zenfitvenice.
+
+systemPrompt: |
+  ${common.developPageBase}
+
+  ${common.errorHandlingInstructions}
+
+goal: |
+  1. Wait for site creation to complete
+  2. Verify the preview contains:
+     - "ZenFit" studio name
+     - Class types or schedule information
+     - Trainer/instructor profiles
+     - Membership or pricing information
+  3. Report success if fitness studio elements are present
+
+
