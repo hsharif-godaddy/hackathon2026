@@ -12,7 +12,8 @@ describe('useAuthUIStore', () => {
         isSsoLoading: true,
         needsReauth: false,
         reauthReason: null,
-        requiresRefresh: false,
+        loginUrl: null,
+        authMetadata: null,
         needsReauthSeq: 0,
       });
     });
@@ -80,21 +81,32 @@ describe('useAuthUIStore', () => {
       expect(state.reauthReason).toBe('session_expired');
     });
 
-    it('should set needsReauth with requiresRefresh flag', () => {
+    it('should set needsReauth with loginUrl and metadata', () => {
+      const metadata = { requiresAuth: true, requiresRefresh: false };
+
       act(() => {
-        useAuthUIStore.getState().setNeedsReauth('session_stale', true);
+        useAuthUIStore.getState().setNeedsReauth(
+          'session_stale',
+          'https://sso.example.com/login',
+          metadata
+        );
       });
 
       const state = useAuthUIStore.getState();
       expect(state.needsReauth).toBe(true);
       expect(state.reauthReason).toBe('session_stale');
-      expect(state.requiresRefresh).toBe(true);
+      expect(state.loginUrl).toBe('https://sso.example.com/login');
+      expect(state.authMetadata).toEqual(metadata);
     });
 
     it('should clear needsReauth and all related state', () => {
       // First set some state
       act(() => {
-        useAuthUIStore.getState().setNeedsReauth('session_expired', true);
+        useAuthUIStore.getState().setNeedsReauth(
+          'session_expired',
+          'https://sso.example.com',
+          { requiresAuth: true }
+        );
       });
 
       // Then clear it
@@ -105,7 +117,8 @@ describe('useAuthUIStore', () => {
       const state = useAuthUIStore.getState();
       expect(state.needsReauth).toBe(false);
       expect(state.reauthReason).toBeNull();
-      expect(state.requiresRefresh).toBe(false);
+      expect(state.loginUrl).toBeNull();
+      expect(state.authMetadata).toBeNull();
     });
 
     it('should handle not_authenticated reason', () => {

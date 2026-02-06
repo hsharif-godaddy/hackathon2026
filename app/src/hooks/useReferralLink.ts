@@ -43,7 +43,7 @@ interface UseReferralLinkResult {
  * ```
  */
 export function useReferralLink({ enabled = true }: UseReferralLinkOptions = {}): UseReferralLinkResult {
-  const { isAuthenticated, needsReauth } = useAuthContext();
+  const { isAuthenticated } = useAuthContext();
 
   const { data, isLoading, error } = useQuery<ReferralLinkResponse>({
     queryKey: ['referral-link'],
@@ -59,7 +59,7 @@ export function useReferralLink({ enabled = true }: UseReferralLinkOptions = {})
 
       return response.json();
     },
-    enabled: isAuthenticated && !needsReauth && enabled,
+    enabled: isAuthenticated && enabled,
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
   });

@@ -65,23 +65,14 @@ const SsoDeckDynamic = dynamic<SsoDeckComponentProps>(
 export default function SsoLogin() {
   const [error, setError] = useState<string | null>(null);
   const [ssoHost, setSsoHost] = useState<string | null>(null);
-  const [consumingPort, setConsumingPort] = useState<string>('');
 
   const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, clearNeedsReauth, redirectUrl, setRedirectUrl } = useAuthUIStore();
   const clearRequiresAuth = useSitesStore((state) => state.clearRequiresAuth);
+  const { refreshAuth } = useAuthContext();
 
-  // Determine SSO host and consuming port on client-side only
+  // Determine SSO host on client-side only
   useEffect(function determineSsoHost() {
     setSsoHost(getRootDomain() || 'godaddy.com');
-
-    // For local development with non-standard ports, pass the port to SsoDeck
-    if (typeof window !== 'undefined') {
-      const port = window.location.port;
-      // Only set port if it's non-standard (not 80/443)
-      if (port && port !== '80' && port !== '443') {
-        setConsumingPort(port);
-      }
-    }
   }, []);
 
   const handleLoad = useCallback(function onSsoLoad() {
@@ -234,11 +225,14 @@ export default function SsoLogin() {
     clearNeedsReauth();
     clearRequiresAuth(); // Allow sites store to refetch
 
+    // Refresh auth state to pick up new cookies without full page reload
+    refreshAuth();
+
     // Apply redirect if one was captured
     if (applyRedirect()) {
       return;
     }
-  }, [closeSsoLogin, clearNeedsReauth, clearRequiresAuth, applyRedirect]);
+  }, [closeSsoLogin, clearNeedsReauth, clearRequiresAuth, refreshAuth, applyRedirect]);
 
   // Don't render if not open
   if (!isSsoLoginOpen) {
@@ -272,7 +266,6 @@ export default function SsoLogin() {
               ssoPort=''
               consumingApp='airo-builder'
               consumingPath='/'
-              consumingPort={consumingPort}
               pageToLoad='/login'
               pageToLoadParams={{}}
               onAuth={handleAuth}

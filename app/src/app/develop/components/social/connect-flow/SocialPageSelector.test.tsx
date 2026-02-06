@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-
 import type { FacebookPage, GoogleLocation } from '@/lib/social'
 import { SocialPageSelector } from './SocialPageSelector'
 

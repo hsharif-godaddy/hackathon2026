@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
-
-import { SocialPlatform } from '@/types/social'
 import { getPlatformStrategy, PLATFORM_STRATEGIES } from './social-platforms'
+import { SocialPlatform } from '@/types/social'
 
 describe('social-platforms', () => {
   describe('PLATFORM_STRATEGIES', () => {

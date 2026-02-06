@@ -89,7 +89,6 @@ export default function AppSelector({ location }: { location?: string }) {
         className="hover:cursor-pointer"
         data-eid={generateClickEID(`${location}.apps_menu.trigger`)}
         onClick={() => (sites.length < 1 || isLoading) ? router.push('/apps') : null}
-        aria-label={isMobile ? t('builder_common_my_apps') : undefined}
       >
         <Box orientation="horizontal" gap="sm">
           { isMobile ? (

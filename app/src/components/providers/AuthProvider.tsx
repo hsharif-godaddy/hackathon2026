@@ -31,9 +31,9 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   // Homepage should be accessible to everyone - both authenticated and unauthenticated users
   const isHomepage = pathname === '/' || pathname === '';
 
-  // Homepage uses plain AuthProvider (no Gasket withAuthProvider) to avoid 401 redirects
-  // Auth validation still runs via /api/auth/validate, users can view page regardless of auth state
-  const authData = useAuth();
+  // On homepage: allow unauthenticated access (disables heartbeat that could cause 401 redirects)
+  // Auth validation still runs, but users can view the page regardless of auth state
+  const authData = useAuth({ allowUnauthenticated: isHomepage });
   const {isAuthenticated, isAuthDisabled, isLoading} = authData;
 
   // Only check switchboard access when user is authenticated AND not on homepage
@@ -137,7 +137,6 @@ export function useAuthContext() {
       isAuthenticated: false,
       isLoading: false,
       authState: null,
-      needsReauth: false,
       config: null,
       gasketConfig: null,
       configLoading: false,
@@ -151,6 +150,7 @@ export function useAuthContext() {
       }),
       handleSignIn: () => {},
       handleSignOut: () => {},
+      refreshAuth: () => {},
       isAuthDisabled: actualIsDisabled,
       authType: actualAuthType,
       isMockAuth: actualIsMock,

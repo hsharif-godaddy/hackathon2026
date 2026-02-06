@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import type { AuthResponseMetadata } from '@/lib/gasket-config';
+
 /**
  * Reason why authentication is required
  */
@@ -20,8 +22,10 @@ interface AuthUIStore {
   needsReauth: boolean;
   /** Reason why auth is required */
   reauthReason: AuthRequiredReason | null;
-  /** Whether the session requires refresh (token is stale but valid) */
-  requiresRefresh: boolean;
+  /** URL to redirect to for login (if user chooses to login) */
+  loginUrl: string | null;
+  /** Additional metadata from the 401 response */
+  authMetadata: AuthResponseMetadata | null;
   /** Sequence incremented every time needsReauth is set */
   needsReauthSeq: number;
   /**
@@ -43,9 +47,11 @@ interface AuthUIStore {
    * Set auth required state (called automatically by appFetch on 401)
    * Components can subscribe to needsReauth to show "login required" UI via AuthBoundary
    */
-  setNeedsReauth: (reason: AuthRequiredReason, requiresRefresh?: boolean) => void;
+  setNeedsReauth: (reason: AuthRequiredReason, loginUrl?: string, metadata?: AuthResponseMetadata) => void;
   /** Clear the auth required state (called after successful login or user dismisses) */
   clearNeedsReauth: (expectedSeq?: number) => void;
+  /** Convenience: redirect to login URL if set */
+  redirectToLogin: () => void;
   /** Set URL to redirect to after successful authentication */
   setRedirectUrl: (url: string | null) => void;
 }
@@ -84,7 +90,8 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
   // Auth Boundary State
   needsReauth: false,
   reauthReason: null,
-  requiresRefresh: false,
+  loginUrl: null,
+  authMetadata: null,
   needsReauthSeq: 0,
   redirectUrl: null,
 
@@ -98,10 +105,11 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
   setSsoLoaded: () => set({ isSsoLoading: false }),
 
   // Auth Boundary Actions
-  setNeedsReauth: (reason, requiresRefresh = false) => set((state) => ({
+  setNeedsReauth: (reason, loginUrl, metadata) => set((state) => ({
     needsReauth: true,
     reauthReason: reason,
-    requiresRefresh,
+    loginUrl: loginUrl ?? null,
+    authMetadata: metadata ?? null,
     needsReauthSeq: state.needsReauthSeq + 1
   })),
 
@@ -112,10 +120,18 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
     return {
       needsReauth: false,
       reauthReason: null,
-      requiresRefresh: false,
+      loginUrl: null,
+      authMetadata: null,
       redirectUrl: null  // Clear redirect URL when clearing auth state
     };
   }),
+
+  redirectToLogin: () => {
+    const { loginUrl } = get();
+    if (loginUrl && typeof window !== 'undefined') {
+      window.location.href = loginUrl;
+    }
+  },
 
   setRedirectUrl: (url) => set({ redirectUrl: url })
 }));

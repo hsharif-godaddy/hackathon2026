@@ -154,7 +154,6 @@ export function mockAuthContext(overrides: {
   gasketConfig?: any;
   isMockAuth?: boolean;
   isLoading?: boolean;
-  needsReauth?: boolean;
 } = {}) {
   return {
     isAuthenticated: false,
@@ -162,7 +161,6 @@ export function mockAuthContext(overrides: {
     gasketConfig: null,
     isMockAuth: false,
     isLoading: false,
-    needsReauth: false,
     ...overrides,
   };
 }

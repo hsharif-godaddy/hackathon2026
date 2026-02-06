@@ -365,7 +365,6 @@ export default function AppPublish({ location }: { location?: string }) {
             disabled={isButtonDisabled}
             icon={<CloudUploadIcon />}
             text={isMobile ? undefined : getPublishButtonText()}
-            aria-label={isMobile ? getPublishButtonText() : undefined}
           />
         </PopoverTrigger>
         <PopoverContent align='end' className='w-[400px] p-3'>

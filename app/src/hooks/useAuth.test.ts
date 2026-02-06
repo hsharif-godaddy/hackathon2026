@@ -64,16 +64,11 @@ const mockStore = {
     mockStore.needsReauth = true;
   }
 };
-vi.mock('@/stores/useAuthUIStore', () => {
-  const useAuthUIStore = (selector?: (state: typeof mockStore) => unknown) => {
-    if (typeof selector === 'function') {
-      return selector(mockStore);
-    }
-    return mockStore;
-  };
-  useAuthUIStore.getState = () => mockStore;
-  return { useAuthUIStore };
-});
+vi.mock('@/stores/useAuthUIStore', () => ({
+  useAuthUIStore: {
+    getState: () => mockStore,
+  },
+}));
 
 describe('useAuth', () => {
   beforeEach(() => {
@@ -126,57 +121,6 @@ describe('useAuth', () => {
 
     expect(result.current).toHaveProperty('isAuthenticated');
     expect(result.current).toHaveProperty('isLoading');
-  });
-
-  it('should treat needsReauth as unauthenticated for JWT mode', async () => {
-    const { auth } = await import('@/lib/features');
-    const { useAuthState } = await import('@godaddy/gasket-auth');
-    vi.mocked(auth.isJWT).mockReturnValue(true);
-    vi.mocked(auth.isMock).mockReturnValue(false);
-
-    vi.mocked(useAuthState).mockImplementation(() => ({
-      status: 'authenticated',
-      valid: false,
-      details: { email: 'test@example.com', cid: 'customer-123' },
-    }));
-
-    mockStore.needsReauth = true;
-
-    global.fetch = vi.fn((url) => {
-      if (url === '/api/config') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            auth: {
-              realm: 'idp',
-              risk: 'low',
-              type: ['sso'],
-              authType: 'JWT',
-              isDisabled: false,
-              isMock: false,
-              isJWT: true,
-            },
-            sso: {
-              loginUrl: 'https://sso.example.com/login',
-              logoutUrl: 'https://sso.example.com/logout',
-            },
-            redirects: {
-              loginRedirectUrl: 'https://app.example.com',
-              logoutRedirectUrl: 'https://app.example.com/logout',
-            },
-          }),
-        } as Response);
-      }
-      return Promise.resolve({ ok: false } as Response);
-    }) as any;
-
-    const { result } = renderHook(() => useAuth());
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
-
-    expect(result.current.isAuthenticated).toBe(false);
   });
 
   it('should provide getUserEmail function', () => {
@@ -234,93 +178,67 @@ describe('useAuth', () => {
     });
   });
 
-  it('should clear needsReauth when auth becomes valid in JWT mode', async () => {
+  it('should clear needsReauth flag when JWT validation succeeds', async () => {
+    // Mock JWT mode
     const { auth } = await import('@/lib/features');
-    const { useAuthState } = await import('@godaddy/gasket-auth');
     vi.mocked(auth.isJWT).mockReturnValue(true);
     vi.mocked(auth.isMock).mockReturnValue(false);
 
-    let authValid = false;
-    vi.mocked(useAuthState).mockImplementation(() => ({
-      status: 'authenticated',
-      valid: authValid,
-      details: { email: 'test@example.com', cid: 'customer-123' },
-    }));
+    // Mock successful validation response
+    global.fetch = vi.fn((url) => {
+      if (url === '/api/config') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            auth: {
+              realm: 'idp',
+              risk: 'low',
+              type: ['sso'],
+              authType: 'JWT',
+              isDisabled: false,
+              isMock: false,
+              isJWT: true,
+            },
+            sso: {
+              loginUrl: 'https://sso.example.com/login',
+              logoutUrl: 'https://sso.example.com/logout',
+            },
+            redirects: {
+              loginRedirectUrl: 'https://app.example.com',
+              logoutRedirectUrl: 'https://app.example.com/logout',
+            },
+          }),
+        } as Response);
+      }
 
-    mockStore.needsReauth = true;
+      if (url === '/api/auth/validate') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            valid: true,
+            payload: {
+              shopperId: 'test-123',
+              cid: 'customer-123',
+            },
+          }),
+        } as Response);
+      }
 
-    const { rerender } = renderHook(() => useAuth());
+      return Promise.resolve({ ok: false } as Response);
+    }) as any;
 
-    authValid = true;
-    rerender();
+    renderHook(() => useAuth());
 
+    // Wait for auth validation to complete
     await waitFor(() => {
-      expect(mockClearNeedsReauth).toHaveBeenCalledWith(mockStore.needsReauthSeq);
+      expect(mockClearNeedsReauth).toHaveBeenCalled();
     });
   });
 
-  it('should not clear needsReauth when auth remains invalid in JWT mode', async () => {
+  it('should not clear needsReauth flag when JWT validation fails', async () => {
     const { auth } = await import('@/lib/features');
-    const { useAuthState } = await import('@godaddy/gasket-auth');
     vi.mocked(auth.isJWT).mockReturnValue(true);
     vi.mocked(auth.isMock).mockReturnValue(false);
-
-    vi.mocked(useAuthState).mockImplementation(() => ({
-      status: 'authenticated',
-      valid: false,
-      details: { email: 'test@example.com', cid: 'customer-123' },
-    }));
-
-    mockStore.needsReauth = true;
-
-    const { result } = renderHook(() => useAuth());
-
-    await waitFor(() => {
-      expect(result.current.configLoading).toBe(false);
-    });
-
-    await waitFor(() => {
-      expect(mockClearNeedsReauth).not.toHaveBeenCalled();
-    });
-  });
-
-  it('should not clear needsReauth when JWT mode is disabled', async () => {
-    const { auth } = await import('@/lib/features');
-    const { useAuthState } = await import('@godaddy/gasket-auth');
-    vi.mocked(auth.isJWT).mockReturnValue(false);
-    vi.mocked(auth.isMock).mockReturnValue(false);
-
-    vi.mocked(useAuthState).mockImplementation(() => ({
-      status: 'authenticated',
-      valid: true,
-      details: { email: 'test@example.com', cid: 'customer-123' },
-    }));
-
-    mockStore.needsReauth = true;
-
-    const { result } = renderHook(() => useAuth());
-
-    await waitFor(() => {
-      expect(result.current.configLoading).toBe(false);
-    });
-
-    await waitFor(() => {
-      expect(mockClearNeedsReauth).not.toHaveBeenCalled();
-    });
-  });
-
-  it('should gate isAuthenticated when authState.valid is true but needsReauth is true (expired e2s token)', async () => {
-    const { auth } = await import('@/lib/features');
-    const { useAuthState } = await import('@godaddy/gasket-auth');
-    vi.mocked(auth.isJWT).mockReturnValue(true);
-    vi.mocked(auth.isMock).mockReturnValue(false);
-
-    // Start with valid auth that's already been seen as valid (previousAuthValidRef = true)
-    vi.mocked(useAuthState).mockImplementation(() => ({
-      status: 'authenticated',
-      valid: true,
-      details: { email: 'test@example.com', cid: 'customer-123' },
-    }));
 
     global.fetch = vi.fn((url) => {
       if (url === '/api/config') {
@@ -347,27 +265,131 @@ describe('useAuth', () => {
           }),
         } as Response);
       }
+
+      if (url === '/api/auth/validate') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            valid: false,
+          }),
+        } as Response);
+      }
+
       return Promise.resolve({ ok: false } as Response);
     }) as any;
 
-    // Start with authState.valid=true and no needsReauth (normal authenticated state)
-    mockStore.needsReauth = false;
-    const { result, rerender } = renderHook(() => useAuth());
+    renderHook(() => useAuth());
 
     await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
+      expect(global.fetch).toHaveBeenCalledWith('/api/auth/validate');
     });
 
-    // Verify initially authenticated
-    expect(result.current.isAuthenticated).toBe(true);
+    expect(mockClearNeedsReauth).not.toHaveBeenCalled();
+  });
 
-    // Now simulate 401 response setting needsReauth=true while Gasket Auth still has stale valid=true
+  it('should not clear needsReauth if sequence advanced during validation', async () => {
+    // This test simulates the race condition:
+    // 1. JWT validation starts with seq=0
+    // 2. A concurrent 401 response increments seq to 1
+    // 3. JWT validation completes and tries to clear with seq=0
+    // 4. Clear should be a no-op because seq has advanced
+
+    const { auth } = await import('@/lib/features');
+    vi.mocked(auth.isJWT).mockReturnValue(true);
+    vi.mocked(auth.isMock).mockReturnValue(false);
+
+    // Track validation promises - we need to control ALL validation calls
+    // because the useEffect runs again when configLoading changes
+    let firstValidationResolve: (value: any) => void;
+    let validationCallCount = 0;
+
+    global.fetch = vi.fn((url) => {
+      if (url === '/api/config') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            auth: {
+              realm: 'idp',
+              risk: 'low',
+              type: ['sso'],
+              authType: 'JWT',
+              isDisabled: false,
+              isMock: false,
+              isJWT: true,
+            },
+            sso: {
+              loginUrl: 'https://sso.example.com/login',
+              logoutUrl: 'https://sso.example.com/logout',
+            },
+            redirects: {
+              loginRedirectUrl: 'https://app.example.com',
+              logoutRedirectUrl: 'https://app.example.com/logout',
+            },
+          }),
+        } as Response);
+      }
+
+      if (url === '/api/auth/validate') {
+        validationCallCount++;
+        // Return a new pending promise for each validation call
+        // This allows us to control when each validation resolves
+        if (validationCallCount === 1) {
+          return new Promise((resolve) => {
+            firstValidationResolve = resolve;
+          });
+        } else {
+          // Second (and any subsequent) validation call - never resolve
+          // This simulates the second validation still being in flight
+          return new Promise((resolve) => {
+            secondValidationResolve = resolve;
+          });
+        }
+      }
+
+      return Promise.resolve({ ok: false } as Response);
+    }) as any;
+
+    renderHook(() => useAuth());
+
+    // Wait for the FIRST validation request to be made
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith('/api/auth/validate');
+    });
+
+    // Simulate a concurrent 401 response that increments the sequence
+    // This happens AFTER the first validation started (captured seq=0)
+    // but BEFORE it completes
     mockStore.setNeedsReauth('session_expired');
+    expect(mockStore.needsReauthSeq).toBe(1);
+    expect(mockStore.needsReauth).toBe(true);
 
-    // Rerender to pick up needsReauth change
-    rerender();
+    // Now resolve the FIRST validation with success
+    // This should call clearNeedsReauth(0) but it should be a no-op
+    // because the sequence has advanced to 1
+    firstValidationResolve!({
+      ok: true,
+      json: () => Promise.resolve({
+        valid: true,
+        payload: {
+          shopperId: 'test-123',
+          cid: 'customer-123',
+        },
+      }),
+    });
 
-    // isAuthenticated should now be false even though authState.valid is still true
-    expect(result.current.isAuthenticated).toBe(false);
+    // Wait for the first validation to complete and call clearNeedsReauth
+    await waitFor(() => {
+      expect(mockClearNeedsReauth).toHaveBeenCalled();
+    });
+
+    // Verify clearNeedsReauth was called with the old sequence (0)
+    // The first validation captured seq=0 before we called setNeedsReauth
+    expect(mockClearNeedsReauth).toHaveBeenCalledWith(0);
+
+    // Verify the clear was a no-op due to sequence mismatch
+    // Since we passed expectedSeq=0 but mockStore.needsReauthSeq=1,
+    // the mock's clearNeedsReauth should have detected the mismatch and NOT cleared
+    expect(mockStore.needsReauthSeq).toBe(1); // Sequence hasn't changed
+    expect(mockStore.needsReauth).toBe(true); // Flag still set (clear was no-op)
   });
 });

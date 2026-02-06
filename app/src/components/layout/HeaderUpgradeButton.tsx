@@ -60,7 +60,6 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
           open ? 'bg-ai-light hover:bg-ring-ai' : 'hover:bg-ai-dark-transparent'
         )}
         data-eid={generateClickEID(`${location}.header.upgrade`)}
-        aria-label={isMobile ? t('builder_upgrade_button') : undefined}
       >
         <DiamondIcon className='size-2.5' />
         {!isMobile && t('builder_upgrade_button')}

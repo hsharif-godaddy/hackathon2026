@@ -11,12 +11,10 @@ import { MockLoginDialog } from './MockLogin';
 
 interface UnauthorizedComponentProps {
   unauthorizedMessage?: string;
-  onSignIn?: () => void;
 }
 
 export default function UnauthorizedComponent({
-  unauthorizedMessage,
-  onSignIn
+  unauthorizedMessage
 }: UnauthorizedComponentProps) {
   const t = useTranslations();
   const [showMockLogin, setShowMockLogin] = useState(false);
@@ -40,7 +38,6 @@ export default function UnauthorizedComponent({
           )}
           <Button
             onClick={() => {
-              onSignIn?.();
               signIn({ onShowMockLogin: () => setShowMockLogin(true) });
             }}
             size='sm'

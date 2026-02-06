@@ -21,14 +21,14 @@ import { HeaderProps } from './types';
 
 export default function Header({ actions, onShowMockLogin, location = 'unknown' }: HeaderProps) {
   const t = useTranslations();
-  const { isAuthenticated, isAuthDisabled, isLoading, needsReauth } = useAuthContext();
+  const { isAuthenticated, isAuthDisabled, isLoading } = useAuthContext();
   const { isMobile } = useResponsive();
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop');
 
   // Only show authenticated UI components when auth is confirmed (not loading) and user is authenticated
   // This prevents authenticated API calls from being made
-  const showAuthenticatedUI = !isLoading && !needsReauth && (isAuthenticated || isAuthDisabled);
+  const showAuthenticatedUI = !isLoading && (isAuthenticated || isAuthDisabled);
 
   return (
     <header className={clsx(
