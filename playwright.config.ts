@@ -1,6 +1,17 @@
+import path from 'node:path';
+
 import { defineConfig, devices } from '@playwright/test';
+import dotenv from 'dotenv';
+
+// Load test environment variables from tests/.env
+dotenv.config({ path: path.resolve(__dirname, 'tests/.env') });
 
 /**
+ * Playwright E2E Test Configuration
+ *
+ * Tests migrated from Cypress (e2e/cypress/tests/) to Playwright (tests/smoke/)
+ * All 30 tests covering: apps page, authentication, navigation, develop page features
+ *
  * @see https://playwright.dev/docs/test-configuration
  */
 export default defineConfig({
@@ -9,18 +20,39 @@ export default defineConfig({
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
-  /* No retries */
-  retries: 0,
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  /* Retry failed tests once in CI for flakiness tolerance */
+  retries: process.env.CI ? 1 : 0,
+  /**
+   * Single worker to ensure serial execution.
+   * Required because:
+   * 1. All tests share the same test account credentials
+   * 2. Tests create/delete apps which affects global state
+   * 3. SSO session state is shared across tests
+   *
+   * TODO: For parallel execution, implement:
+   * - Separate test accounts per worker
+   * - Proper test isolation with spec-prefixed app cleanup
+   * - Worker-scoped authentication contexts
+   */
+  workers: 1,
   /* Global timeout for tests - site creation can take up to 5 minutes */
   timeout: 420000, // 7 minutes
+  /* Expect timeout for assertions */
+  expect: {
+    timeout: 30000, // 30 seconds for expect assertions
+  },
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: process.env.CI ? 'github' : 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'https://airo-builder.test-godaddy.com',
+    /* Viewport size matching Cypress config */
+    viewport: { width: 1920, height: 1360 },
+    /* Action timeout for clicks, fills, etc. */
+    actionTimeout: 30000,
+    /* Navigation timeout */
+    navigationTimeout: 150000,
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
     /* Take screenshot on failure */

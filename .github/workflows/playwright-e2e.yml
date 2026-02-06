@@ -259,21 +259,21 @@ jobs:
           TEST_ENVIRONMENT: ${{ steps.env-config.outputs.environment }}
           BASE_URL: ${{ steps.env-config.outputs.base_url }}
 
-  slack-notify:
-    name: Send Slack Notification
-    if: always()
-    needs: [test]
-    uses: ./.github/workflows/slack-notify.yml
-    permissions:
-      id-token: write
-      contents: read
-    with:
-      result: ${{ needs.test.result }}
-      environment: ${{ needs.test.outputs.environment }}
-      title: "E2E Tests - ${{ needs.test.outputs.environment }} (by ${{ github.actor }})"
-      message: |
-        *Environment:* ${{ needs.test.outputs.environment }}
-        *Trigger:* ${{ github.event_name == 'schedule' && 'Scheduled' || (github.event_name == 'workflow_dispatch' && github.event.inputs.post_promotion == 'true' && 'Post-Promotion' || 'Manual') }}
-        *Actor:* ${{ github.actor }}
-        *Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>
-      footer: "airo-app-builder | E2E Tests"
+  # slack-notify:
+  #   name: Send Slack Notification
+  #   if: always()
+  #   needs: [test]
+  #   uses: ./.github/workflows/slack-notify.yml
+  #   permissions:
+  #     id-token: write
+  #     contents: read
+  #   with:
+  #     result: ${{ needs.test.result }}
+  #     environment: ${{ needs.test.outputs.environment }}
+  #     title: "E2E Tests - ${{ needs.test.outputs.environment }} (by ${{ github.actor }})"
+  #     message: |
+  #       *Environment:* ${{ needs.test.outputs.environment }}
+  #       *Trigger:* ${{ github.event_name == 'schedule' && 'Scheduled' || (github.event_name == 'workflow_dispatch' && github.event.inputs.post_promotion == 'true' && 'Post-Promotion' || 'Manual') }}
+  #       *Actor:* ${{ github.actor }}
+  #       *Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>
+  #     footer: "airo-app-builder | E2E Tests"
