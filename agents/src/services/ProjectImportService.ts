@@ -26,6 +26,22 @@ import {
 } from '../server/middleware/git-import-validation.js';
 
 /**
+ * Airo platform-specific .gitignore patterns
+ * These patterns are essential for proper platform operation and should be present in all apps
+ */
+const AIRO_GITIGNORE_PATTERNS = [
+  'node_modules',
+  '.import-*',
+  'public/assets',
+  '.api/',
+  '.ssl/*.pem',
+  '.claude/',
+  '.env',
+  '.env.local',
+  '.env.*.local',
+] as const;
+
+/**
  * Parameters for starting an import
  */
 export interface StartImportParams {
@@ -269,6 +285,13 @@ export class ProjectImportService {
         if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
         return;
       }
+
+      // Ensure .gitignore has Airo-specific patterns after copy
+      await this.ensureAiroGitignorePatterns(
+        devSupervisor,
+        '/app',
+        validation.hasGitignoreFile ?? false
+      );
 
       // Phase 7: Modify vite config to allow all hosts (for proxy compatibility)
       // Use '/app' as this is the standard container mount
@@ -514,6 +537,7 @@ export class ProjectImportService {
     packageManager?: 'npm' | 'yarn' | 'pnpm';
     hasBuildScript?: boolean;
     hasDevScript?: boolean;
+    hasGitignoreFile?: boolean;
     errors?: ValidationError[];
     warnings?: ValidationError[];
   }> {
@@ -651,12 +675,20 @@ export class ProjectImportService {
       });
     }
 
+    // Check if imported project has .gitignore
+    const gitignoreCheckResult = await devSupervisor.exec({
+      command: `test -f "${projectRoot}/.gitignore" && echo "found" || echo "notfound"`,
+      timeout: 5, // seconds
+    });
+    const hasGitignoreFile = gitignoreCheckResult.stdout?.trim() === 'found';
+
     const result: {
       valid: boolean;
       projectRoot?: string;
       packageManager?: 'npm' | 'yarn' | 'pnpm';
       hasBuildScript?: boolean;
       hasDevScript?: boolean;
+      hasGitignoreFile?: boolean;
       errors?: ValidationError[];
       warnings?: ValidationError[];
     } = {
@@ -665,6 +697,7 @@ export class ProjectImportService {
       packageManager,
       hasBuildScript,
       hasDevScript,
+      hasGitignoreFile,
     };
 
     if (warnings.length > 0) {
@@ -690,10 +723,11 @@ export class ProjectImportService {
       // Convert agent path to container path (/app is the standard container mount)
       const containerAppPath = '/app';
 
-      // Delete all files except .git, node_modules, .is_ready, dev_setup_and_serve.sh, and public/assets
+      // Delete all files except .git, .gitignore, node_modules, .is_ready, dev_setup_and_serve.sh, and public/assets
+      // Preserve .gitignore so it's not lost when imported project doesn't have one
       // Preserve public/assets as it contains persistent user data, refer this doc for more detail -> docs/persistent-storage-architecture.md
       const deleteResult = await devSupervisor.exec({
-        command: `find "${containerAppPath}" -mindepth 1 -maxdepth 1 ! -name ".git" ! -name "node_modules" ! -name ".is_ready" ! -name ".import-*" ! -name "dev_setup_and_serve.sh" ! -name "public" -exec rm -rf {} + && find "${containerAppPath}/public" -mindepth 1 -maxdepth 1 ! -name "assets" -exec rm -rf {} +`,
+        command: `find "${containerAppPath}" -mindepth 1 -maxdepth 1 ! -name ".git" ! -name ".gitignore" ! -name "node_modules" ! -name ".is_ready" ! -name ".import-*" ! -name "dev_setup_and_serve.sh" ! -name "public" -exec rm -rf {} + && find "${containerAppPath}/public" -mindepth 1 -maxdepth 1 ! -name "assets" -exec rm -rf {} +`,
         timeout: 30, // seconds
       });
 
@@ -738,6 +772,81 @@ export class ProjectImportService {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to copy files',
       };
+    }
+  }
+
+  /**
+   * Ensure Airo-specific .gitignore patterns are present after import
+   *
+   * Handles three scenarios:
+   * 1. Imported project HAS .gitignore: Append missing Airo patterns to customer's file
+   * 2. Imported project has NO .gitignore but app already has one: Keep the existing
+   *    .gitignore (it was preserved during file deletion by excluding it from the find command)
+   * 3. Neither has .gitignore: Create default with essential Airo platform patterns
+   *
+   * @param devSupervisor - Client to execute commands in container
+   * @param containerAppPath - Path to app directory in container
+   * @param importedProjectHadGitignoreFile - Whether the imported project contained a .gitignore
+   */
+  private async ensureAiroGitignorePatterns(
+    devSupervisor: DevSupervisorClient,
+    containerAppPath: string,
+    importedProjectHadGitignoreFile: boolean
+  ): Promise<void> {
+    const gitignorePath = `${containerAppPath}/.gitignore`;
+
+    try {
+      // Check if .gitignore exists in app directory
+      const checkResult = await devSupervisor.exec({
+        command: `test -f "${gitignorePath}" && echo "exists" || echo "missing"`,
+        timeout: 5,
+      });
+
+      const exists = checkResult.stdout?.trim() === 'exists';
+
+      if (!exists) {
+        // Edge case: neither had .gitignore - create default
+        this.logger.info('project-import.gitignore.create-default', { containerAppPath });
+        const defaultContent = `# Airo Platform\n${AIRO_GITIGNORE_PATTERNS.join('\n')}`;
+        const createResult = await devSupervisor.exec({
+          command: `cat > "${gitignorePath}" << 'EOF'\n${defaultContent}\nEOF`,
+          timeout: 10,
+        });
+
+        if (!createResult.success) {
+          this.logger.warn('project-import.gitignore.create-failed', {
+            containerAppPath,
+            stderr: createResult.stderr,
+            exitCode: createResult.exit_code,
+          });
+        }
+        return;
+      }
+
+      if (importedProjectHadGitignoreFile) {
+        // Imported project had .gitignore - append Airo patterns if missing
+        this.logger.info('project-import.gitignore.append-patterns', { containerAppPath });
+
+        for (const pattern of AIRO_GITIGNORE_PATTERNS) {
+          // Escape single quotes in pattern for shell safety
+          const escapedPattern = pattern.replace(/'/g, "'\\''");
+          // Use grep -qxF for exact line match, append if not found
+          await devSupervisor.exec({
+            command: `grep -qxF '${escapedPattern}' "${gitignorePath}" || echo '${escapedPattern}' >> "${gitignorePath}"`,
+            timeout: 5,
+          });
+        }
+      } else {
+        // Imported project had NO .gitignore, but app directory has one
+        // The existing .gitignore was preserved during file deletion (excluded from find command)
+        this.logger.info('project-import.gitignore.preserved', { containerAppPath });
+      }
+    } catch (error) {
+      // Non-critical operation - log but don't fail the import
+      this.logger.warn('project-import.gitignore.error', {
+        containerAppPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
