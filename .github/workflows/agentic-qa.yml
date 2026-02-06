@@ -380,23 +380,3 @@ jobs:
           else
             echo "⚠️ Tests completed with status: ${{ needs.agentic-qa.result }}"
           fi
-
-  slack-notify:
-    name: Send Slack Notification
-    if: always()
-    needs: [setup, agentic-qa, summary]
-    uses: ./.github/workflows/slack-notify.yml
-    permissions:
-      id-token: write
-      contents: read
-    with:
-      result: ${{ needs.agentic-qa.result }}
-      environment: ${{ needs.setup.outputs.environment }}
-      title: "Agentic QA - ${{ needs.setup.outputs.environment }} (by ${{ github.actor }})"
-      message: |
-        *Environment:* ${{ needs.setup.outputs.environment }}
-        *Scenario:* ${{ github.event.inputs.scenario || 'All scenarios (parallel)' }}
-        *Execution:* Parallel matrix strategy
-        *Actor:* ${{ github.actor }}
-        *Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>
-      footer: "airo-app-builder | Agentic QA"
