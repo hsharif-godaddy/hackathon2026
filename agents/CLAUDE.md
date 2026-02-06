@@ -234,13 +234,48 @@ if (requestedAppId !== authenticatedSiteId) {
 
 ## Testing
 
+**Test Framework:** Vitest (not Jest)
+
+### Running Tests
+
+```bash
+# All unit tests
+pnpm --filter @airo/agents test:unit
+
+# All integration tests
+pnpm --filter @airo/agents test:integration
+
+# Watch mode
+pnpm --filter @airo/agents test:watch:unit
+```
+
+### Filtering Tests (Vitest Syntax)
+
+**Important:** Vitest uses different syntax than Jest. Do NOT use `--testPathPattern`.
+
+```bash
+# Filter by file path (positional argument)
+pnpm --filter @airo/agents test:unit -- "font-theme"
+pnpm --filter @airo/agents test:unit -- "app-ownership"
+
+# Filter by test name (-t flag)
+pnpm --filter @airo/agents test:unit -- -t "should validate ownership"
+
+# Multiple file filters
+pnpm --filter @airo/agents test:unit -- "font-theme" "color-tool"
+
+# Combine file and test name filters
+pnpm --filter @airo/agents test:unit -- "app-ownership" -t "cross-tenant"
+```
+
+| What you want       | Vitest syntax  | Jest syntax (DON'T USE) |
+| ------------------- | -------------- | ----------------------- |
+| Filter by file      | `-- "pattern"` | `--testPathPattern`     |
+| Filter by test name | `-- -t "name"` | `--testNamePattern`     |
+
 ### Unit Tests
 
 Authorization middleware unit tests: `src/server/middleware/__tests__/app-ownership.test.ts`
-
-```bash
-pnpm --filter @airo/agents test:unit
-```
 
 ### Integration Tests
 
