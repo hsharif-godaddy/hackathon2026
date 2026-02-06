@@ -160,15 +160,31 @@ function DevelopPageContent() {
 
   // Track when streaming completes to show preview update indicator
   const prevIsStreamingRef = useRef(isStreaming)
+  const prevMessagesCountRef = useRef(messages.length)
   useEffect(() => {
     const wasStreaming = prevIsStreamingRef.current
+    const prevMessagesCount = prevMessagesCountRef.current
     prevIsStreamingRef.current = isStreaming
+    prevMessagesCountRef.current = messages.length
 
-    // When streaming stops, mark preview as updated (on mobile only)
-    if (wasStreaming && !isStreaming && isMobile) {
-      setHasPreviewUpdate(true)
+    // When streaming stops, check if any files were edited in the new messages
+    if (wasStreaming && !isStreaming && isMobile && messages.length > prevMessagesCount) {
+      // Only check messages added during this stream
+      const newMessages = messages.slice(prevMessagesCount)
+      const hadFileEdits = newMessages.some(msg =>
+        msg.role === 'assistant' &&
+        msg.toolCalls?.some(
+          toolCall => toolCall.name === 'fileEdit' &&
+                      toolCall.status === 'completed' &&
+                      !toolCall.error
+        )
+      )
+
+      if (hadFileEdits) {
+        setHasPreviewUpdate(true)
+      }
     }
-  }, [isStreaming, isMobile])
+  }, [isStreaming, isMobile, messages])
 
   // Clear preview update indicator when user navigates to preview
   useEffect(() => {

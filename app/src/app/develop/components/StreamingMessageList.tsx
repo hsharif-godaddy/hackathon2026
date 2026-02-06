@@ -37,6 +37,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   const activeStreamSignatureRef = useRef<string | null>(null)
   const hasLoggedFirstResponseRef = useRef(false)
   const prevIsStreamingRef = useRef(false)
+  const hasUserInteractedRef = useRef(false)
   const t = useTranslations();
 
   // Store hooks for loading state
@@ -59,6 +60,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
       prevLastMessageId.current = null
       prevAppIdRef.current = currentAppId
       hasLoggedFirstResponseRef.current = false
+      hasUserInteractedRef.current = false
 
       // Clear any pending scroll timeouts
       if (scrollTimeoutRef.current) {
@@ -71,6 +73,15 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
       }
     }
   }, [currentAppId])
+
+  // Track user interaction - set flag when user sends a message
+  useEffect(() => {
+    // Check if there's at least one user message in this session
+    const hasUserMessage = allMessages.some(msg => msg.role === 'user')
+    if (hasUserMessage && !hasUserInteractedRef.current) {
+      hasUserInteractedRef.current = true
+    }
+  }, [allMessages])
 
   // Funnel event: Track when first assistant response is rendered (visible to user)
   // Only during create flow from homepage
@@ -291,10 +302,11 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     }
   }, [scrollToBottom, userHasScrolledUp])
 
-  // Play notification sound when streaming completes
+  // Play notification sound when streaming completes (only after user interaction)
   useEffect(() => {
     // Detect transition from streaming to not streaming
-    if (prevIsStreamingRef.current && !isStreaming) {
+    // Only play sound if user has actively sent a message in this session
+    if (prevIsStreamingRef.current && !isStreaming && hasUserInteractedRef.current) {
       playBeep()
     }
     prevIsStreamingRef.current = isStreaming
