@@ -191,26 +191,11 @@ export interface AppFetchOptions {
 }
 
 /**
- * Auth metadata extracted from 401 responses.
- * These flags are set by the server in customer-auth.ts
- */
-export interface AuthResponseMetadata {
-  /** True when the request requires authentication */
-  requiresAuth?: boolean;
-  /** True when the token is stale and needs refresh */
-  requiresRefresh?: boolean;
-  /** Age of the token's issued-at time in minutes */
-  iatAgeMinutes?: number;
-  /** Age of the token's validated-at time in minutes */
-  vatAgeMinutes?: number;
-}
-
-/**
- * Extended Response type that includes auth metadata for 401 responses
+ * Extended Response type that includes requiresRefresh flag for 401 responses
  */
 export interface AppFetchResponse extends Response {
-  /** Auth metadata extracted from 401 response body */
-  authMetadata?: AuthResponseMetadata;
+  /** Whether the session requires refresh (token is stale but valid) */
+  requiresRefresh?: boolean;
 }
 
 /**
@@ -225,7 +210,7 @@ export interface AppFetchResponse extends Response {
  * @param url - API endpoint URL
  * @param options - Fetch options (standard RequestInit)
  * @param appOptions - Additional options for appFetch behavior
- * @returns Response from the API, with authMetadata attached for 401 responses
+ * @returns Response from the API, with requiresRefresh flag attached for 401 responses
  *
  * @example
  * ```typescript
@@ -264,40 +249,34 @@ export async function appFetch(
 
   // Handle 401 responses at the UI layer
   if (response.status === 401) {
-    let authMetadata: AuthResponseMetadata = {};
+    let requiresRefresh = false;
 
-    // Extract auth metadata from response body
+    // Extract requiresRefresh flag from response body
     try {
       const contentType = response.headers.get('content-type');
       if (contentType?.includes('application/json')) {
         // Clone response so caller can still read the body
         const data = await response.clone().json();
-        authMetadata = {
-          requiresAuth: data.requiresAuth,
-          requiresRefresh: data.requiresRefresh,
-          iatAgeMinutes: data.iatAgeMinutes,
-          vatAgeMinutes: data.vatAgeMinutes
-        };
-        response.authMetadata = authMetadata;
+        requiresRefresh = data.requiresRefresh ?? false;
+        response.requiresRefresh = requiresRefresh;
 
         logger.debug('app-fetch.auth-required', {
           message: '401 response - authentication required',
-          requiresAuth: data.requiresAuth,
-          requiresRefresh: data.requiresRefresh,
+          requiresRefresh,
           url: resolvedUrl
         });
       }
     } catch (error) {
-      logger.debug('app-fetch.auth-metadata.parse-error', {
-        message: 'Could not parse 401 response for auth metadata',
+      logger.debug('app-fetch.parse-error', {
+        message: 'Could not parse 401 response',
         error: error instanceof Error ? error.message : String(error)
       });
     }
 
     // Set auth state in UI store (client-side only)
     if (setAuthState && typeof window !== 'undefined') {
-      const reason = authMetadata.requiresRefresh ? 'session_stale' : 'not_authenticated';
-      useAuthUIStore.getState().setNeedsReauth(reason, undefined, authMetadata);
+      const reason = requiresRefresh ? 'session_stale' : 'not_authenticated';
+      useAuthUIStore.getState().setNeedsReauth(reason, requiresRefresh);
     }
   }
 

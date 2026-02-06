@@ -141,7 +141,7 @@ function HomeContent() {
       if (!createSiteResponse.ok) {
         // Check if this is a session stale/expired error (401 with requiresRefresh)
         // In this case, trigger SSO login to refresh the session instead of showing error
-        if (createSiteResponse.status === 401 && createSiteResponse.authMetadata?.requiresRefresh) {
+        if (createSiteResponse.status === 401 && createSiteResponse.requiresRefresh) {
           logger.info('homepage.session-stale', {
             action: 'triggering-sso-login',
             phase: 'quick-create'

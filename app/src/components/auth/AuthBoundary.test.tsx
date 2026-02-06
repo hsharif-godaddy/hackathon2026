@@ -57,8 +57,7 @@ describe('AuthBoundary', () => {
         isSsoLoading: true,
         needsReauth: false,
         reauthReason: null,
-        loginUrl: null,
-        authMetadata: null,
+        requiresRefresh: false,
       });
     });
     vi.clearAllMocks();
