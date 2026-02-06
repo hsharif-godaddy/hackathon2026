@@ -1,0 +1,36 @@
+{
+  "name": "@airo/design-rag",
+  "version": "0.1.0",
+  "description": "Experimental RAG data processing pipelines for KnowB",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "upload": "tsx src/upload.ts",
+    "search": "tsx src/search.ts",
+    "process": "tsx src/process.ts"
+  },
+  "dependencies": {
+    "@airo/ai-lib": "workspace:*",
+    "@godaddy/goknowb-client": "^1.0.6",
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.12",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  },
+  "keywords": [
+    "rag",
+    "knowb",
+    "design",
+    "llm",
+    "data-processing"
+  ],
+  "author": "Airo AI Builder",
+  "license": "MIT"
+}

@@ -14,6 +14,7 @@ import { CertConfigSetup } from './cert-config.js';
 import { JWTKeysGenerator } from './jwt-keys-generator.js';
 import { CASetup } from './ca-setup.js';
 import { KnowBConfigSetup } from './knowb-config.js';
+import { DesignRagConfigSetup } from './design-rag-config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '../..');
@@ -97,6 +98,7 @@ async function selectiveConfiguration(): Promise<void> {
   const jwtGenerator = new JWTKeysGenerator(projectRoot);
   const caSetup = new CASetup(projectRoot);
   const knowbSetup = new KnowBConfigSetup();
+  const designRagSetup = new DesignRagConfigSetup();
 
   while (true) {
     printSelectiveHeader();
@@ -113,6 +115,7 @@ async function selectiveConfiguration(): Promise<void> {
       { name: '🔐 Generate JWT Keys', value: 'jwt-keys' },
       { name: '🖼️  Configure Getty Images Proxy', value: 'getty-config' },
       { name: '📚 Configure KnowB Knowledge Base', value: 'knowb-config' },
+      { name: '🎨 Configure Design RAG Environment', value: 'design-rag-config' },
       { name: '🛒 Configure GoDaddy Commerce OAuth', value: 'commerce-config' },
       { name: '📜 Configure Client Certificates', value: 'cert-config' },
       { name: '🗄️  Check MySQL Container Status', value: 'mysql-check' },
@@ -165,6 +168,9 @@ async function selectiveConfiguration(): Promise<void> {
         case 'knowb-config':
           await configureKnowB(knowbSetup);
           break;
+        case 'design-rag-config':
+          await configureDesignRag(designRagSetup);
+          break;
         case 'commerce-config':
           await commerceSetup.setup();
           break;
@@ -178,7 +184,7 @@ async function selectiveConfiguration(): Promise<void> {
           await startMySQLContainer();
           break;
         case 'status-check':
-          await checkCurrentStatus(envGenerator, gettySetup, knowbSetup, commerceSetup, certSetup, jwtGenerator, caSetup);
+          await checkCurrentStatus(envGenerator, gettySetup, knowbSetup, designRagSetup, commerceSetup, certSetup, jwtGenerator, caSetup);
           break;
       }
     } catch (error) {
@@ -257,7 +263,30 @@ async function configureKnowB(knowbSetup: KnowBConfigSetup): Promise<void> {
   }
 }
 
-async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyConfigSetup, knowbSetup: KnowBConfigSetup, commerceSetup: CommerceConfigSetup, certSetup: CertConfigSetup, jwtGenerator: JWTKeysGenerator, caSetup: CASetup): Promise<void> {
+async function configureDesignRag(designRagSetup: DesignRagConfigSetup): Promise<void> {
+  const result = await designRagSetup.setup();
+
+  if (result.success && result.token) {
+    console.log('');
+    const { writeEnv } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'writeEnv',
+        message: 'Create design-rag/.env with this configuration?',
+        default: true
+      }
+    ]);
+
+    if (writeEnv) {
+      await designRagSetup.writeEnvFile(projectRoot, result.token);
+    } else {
+      console.log(chalk.yellow('Remember to create design-rag/.env manually'));
+      console.log(chalk.gray('Run: pnpm --filter @airo/design-rag to see available commands'));
+    }
+  }
+}
+
+async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyConfigSetup, knowbSetup: KnowBConfigSetup, designRagSetup: DesignRagConfigSetup, commerceSetup: CommerceConfigSetup, certSetup: CertConfigSetup, jwtGenerator: JWTKeysGenerator, caSetup: CASetup): Promise<void> {
   console.log(chalk.cyan('🔍 Current Configuration Status'));
   console.log('');
 
@@ -287,6 +316,13 @@ async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyC
     console.log(chalk.green('  ✅ image-search-service/.env exists'));
   } else {
     console.log(chalk.yellow('  ⚠️  image-search-service/.env missing (optional)'));
+  }
+
+  const designRagEnvPath = path.join(projectRoot, 'design-rag', '.env');
+  if (await fs.pathExists(designRagEnvPath)) {
+    console.log(chalk.green('  ✅ design-rag/.env exists'));
+  } else {
+    console.log(chalk.yellow('  ⚠️  design-rag/.env missing (optional)'));
   }
 
   console.log('');
@@ -319,6 +355,15 @@ async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyC
   const knowbConfigured = await knowbSetup.quickCheck();
   if (!knowbConfigured) {
     console.log(chalk.yellow('  ⚠️  KnowB not configured (ssojwt binary required)'));
+  }
+
+  console.log('');
+
+  // Check Design RAG configuration
+  console.log(chalk.blue('🎨 Design RAG:'));
+  const designRagConfigured = await designRagSetup.quickCheck();
+  if (!designRagConfigured) {
+    console.log(chalk.yellow('  ⚠️  Design RAG not configured (ssojwt binary required)'));
   }
 
   console.log('');
