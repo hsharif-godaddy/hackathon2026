@@ -108,9 +108,12 @@ const createDefaultPublishState = () => {
     hasGoneLive: goLiveStatus.hasGoneLive,
     wentLiveAt: goLiveStatus.wentLiveAt,
     showGoLiveModal: false,
-    goLiveModalStep: null as 'confirm' | 'qa' | 'security-results' | 'republish' | 'video' | 'marketing' | null,
+    goLiveModalStep: null as 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null,
     securityScanResults: null,
     launchVideoUrl: null,
+    // Feature selections
+    featureSelections: null as { qa: boolean; security: boolean; video: boolean; marketing: boolean } | null,
+    marketingSelections: null as { seo: boolean; socialPosts: boolean; blogPost: boolean } | null,
   };
 }
 
@@ -167,9 +170,11 @@ interface DevelopPageStore {
     hasGoneLive: boolean
     wentLiveAt: string | null
     showGoLiveModal: boolean
-    goLiveModalStep: 'confirm' | 'qa' | 'security-results' | 'republish' | 'video' | 'marketing' | null
+    goLiveModalStep: 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null
     securityScanResults: any | null
     launchVideoUrl: string | null
+    featureSelections: { qa: boolean; security: boolean; video: boolean; marketing: boolean } | null
+    marketingSelections: { seo: boolean; socialPosts: boolean; blogPost: boolean } | null
   }>
 
   // Page loading orchestration
@@ -235,16 +240,20 @@ interface DevelopPageStore {
     hasGoneLive: boolean
     wentLiveAt: string | null
     showGoLiveModal: boolean
-    goLiveModalStep: 'confirm' | 'qa' | 'security-results' | 'republish' | 'video' | 'marketing' | null
+    goLiveModalStep: 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null
     securityScanResults: any | null
     launchVideoUrl: string | null
+    featureSelections: { qa: boolean; security: boolean; video: boolean; marketing: boolean } | null
+    marketingSelections: { seo: boolean; socialPosts: boolean; blogPost: boolean } | null
   }
 
   // Go Live modal actions
   setShowGoLiveModal: (appId: string, show: boolean) => void
-  setGoLiveModalStep: (appId: string, step: 'confirm' | 'qa' | 'security-results' | 'republish' | 'video' | 'marketing' | null) => void
+  setGoLiveModalStep: (appId: string, step: 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null) => void
   setSecurityScanResults: (appId: string, results: any | null) => void
   setLaunchVideoUrl: (appId: string, url: string | null) => void
+  setFeatureSelections: (appId: string, selections: { qa: boolean; security: boolean; video: boolean; marketing: boolean }) => void
+  setMarketingSelections: (appId: string, selections: { seo: boolean; socialPosts: boolean; blogPost: boolean }) => void
   markAsGoneLive: (appId: string) => Promise<void>
   hasGoneLive: (appId: string) => boolean
 
@@ -730,10 +739,12 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId].goLiveModalStep = null;
         state.publishStates[appId].securityScanResults = null;
         state.publishStates[appId].launchVideoUrl = null;
+        state.publishStates[appId].featureSelections = null;
+        state.publishStates[appId].marketingSelections = null;
       }
     }),
 
-    setGoLiveModalStep: (appId: string, step: 'confirm' | 'qa' | 'security-results' | 'republish' | 'video' | 'marketing' | null) => set((state) => {
+    setGoLiveModalStep: (appId: string, step: 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null) => set((state) => {
       if (!state.publishStates[appId]) {
         state.publishStates[appId] = createDefaultPublishState();
       }
@@ -752,6 +763,20 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].launchVideoUrl = url;
+    }),
+
+    setFeatureSelections: (appId: string, selections: { qa: boolean; security: boolean; video: boolean; marketing: boolean }) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState();
+      }
+      state.publishStates[appId].featureSelections = selections;
+    }),
+
+    setMarketingSelections: (appId: string, selections: { seo: boolean; socialPosts: boolean; blogPost: boolean }) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState();
+      }
+      state.publishStates[appId].marketingSelections = selections;
     }),
 
     markAsGoneLive: async (appId: string) => {

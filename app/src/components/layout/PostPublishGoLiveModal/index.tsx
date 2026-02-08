@@ -2,13 +2,14 @@
  * Post-Publish Go Live Modal
  *
  * Guides first-time publishers through:
- * 1. Confirmation - Are you ready to go live?
- * 2. QA - Quality assurance check
- * 3. Security Results - Show security scan results
- * 4. Video - Show generated launch video
- * 5. Marketing - Generate social posts and blog post
+ * 1. Feature Selection - Choose which go-live features to run (token-aware)
+ * 2. QA - Quality assurance check (if selected)
+ * 3. Security Results - Show security scan results (if selected)
+ * 4. Video - Show generated launch video (if selected)
+ * 5. Marketing Selection - Choose which marketing actions to run (if selected)
+ * 6. Marketing - Generate social posts and blog post (based on selections)
  *
- * Background tasks (video generation, security scan) start immediately when modal opens
+ * Background tasks (video generation, security scan) start after user confirms selections
  */
 'use client';
 
@@ -26,10 +27,10 @@ import { ModalErrorBoundaryWithTranslations as ModalErrorBoundary } from './comp
 import { useQAAnalysis } from './hooks/useQAAnalysis';
 import { useSecurityScan } from './hooks/useSecurityScan';
 import { useVideoGeneration } from './hooks/useVideoGeneration';
-import { ConfirmStep } from './steps/ConfirmStep';
-import { MarketingStep } from './steps/MarketingStep';
 import { QAStep } from './steps/QAStep';
 import { SecurityResultsStep } from './steps/SecurityResultsStep';
+import { type FeatureSelections, SelectFeaturesStep } from './steps/SelectFeaturesStep';
+import { type MarketingSelections, SelectMarketingStep } from './steps/SelectMarketingStep';
 import { VideoStep } from './steps/VideoStep';
 import type { TaskStatus } from './types';
 
@@ -43,6 +44,8 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
     getPublishState,
     setShowGoLiveModal,
     setGoLiveModalStep,
+    setFeatureSelections,
+    setMarketingSelections,
     markAsGoneLive
   } = useDevelopPageStore();
 
@@ -55,6 +58,7 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
     goLiveModalStep,
     securityScanResults,
     launchVideoUrl,
+    featureSelections,
   } = publishState;
 
   // Custom hooks
@@ -63,27 +67,15 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
   const { isAnalyzing, analysisError, analysisResults, runAnalysis, updateFixedIssues } = useQAAnalysis(appId);
 
   // Local state for background task status
-  const [videoStatus, setVideoStatus] = useState<TaskStatus>('pending');
   const [securityStatus, setSecurityStatus] = useState<TaskStatus>('pending');
 
   // Initialize modal step
   useEffect(() => {
     if (showGoLiveModal && !goLiveModalStep) {
-      setGoLiveModalStep(appId, 'confirm');
+      setGoLiveModalStep(appId, 'select-features');
       shipAnalyticsLog('go_live.modal.shown', { appId });
     }
   }, [showGoLiveModal, goLiveModalStep, appId, setGoLiveModalStep]);
-
-  // Update video status based on generation state
-  useEffect(() => {
-    if (launchVideoUrl) {
-      setVideoStatus('completed');
-    } else if (videoError) {
-      setVideoStatus('failed');
-    } else if (isGeneratingVideo) {
-      setVideoStatus('running');
-    }
-  }, [launchVideoUrl, videoError, isGeneratingVideo]);
 
   // Update security status based on scan state
   useEffect(() => {
@@ -97,36 +89,203 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
   }, [securityScanResults, scanError, isScanning]);
 
 
-  const handleClose = () => {
+  const handleClose = (reason: 'dismiss' | 'complete' | 'action-taken' = 'dismiss') => {
     setShowGoLiveModal(appId, false);
-    shipAnalyticsLog('go_live.modal.dismissed', { appId, step: goLiveModalStep });
+    // Only log dismissal for user-initiated closes without taking action
+    // 'complete' = full flow completed successfully
+    // 'action-taken' = user took action (e.g., requested fixes) but didn't complete full flow
+    if (reason === 'dismiss') {
+      shipAnalyticsLog('go_live.modal.dismissed', { appId, step: goLiveModalStep });
+    }
   };
 
-  const handleConfirm = async () => {
-    // Start background tasks when user confirms (idempotent operations)
-    if (!launchVideoUrl) {
-      void generateVideo();
+  // Helper to get the next step based on current step and feature selections
+  const getNextStepAfter = (currentStep: string): 'qa' | 'security-results' | 'video' | 'select-marketing' | null => {
+    if (!featureSelections) return null;
+
+    switch (currentStep) {
+      case 'qa':
+        if (featureSelections.security) return 'security-results';
+        if (featureSelections.video) return 'video';
+        if (featureSelections.marketing) return 'select-marketing';
+        return null;
+
+      case 'security-results':
+        if (featureSelections.video) return 'video';
+        if (featureSelections.marketing) return 'select-marketing';
+        return null;
+
+      case 'video':
+        if (featureSelections.marketing) return 'select-marketing';
+        return null;
+
+      case 'select-marketing':
+        return null; // Marketing is always last
+
+      default:
+        return null;
+    }
+  };
+
+  // Helper to navigate to next step or complete flow
+  const navigateOrComplete = (currentStep: string) => {
+    const nextStep = getNextStepAfter(currentStep);
+
+    if (nextStep) {
+      setGoLiveModalStep(appId, nextStep);
+      const stepNameMap: Record<string, string> = {
+        'security-results': 'security_results',
+        'video': 'video',
+        'select-marketing': 'marketing_select'
+      };
+      const analyticsStep = stepNameMap[nextStep] || nextStep;
+      shipAnalyticsLog(`go_live.${analyticsStep}.shown`, { appId });
+    } else {
+      // This was the last step, complete the flow
+      void handleCompleteFlow();
+    }
+  };
+
+  const handleCompleteFlow = async () => {
+    shipAnalyticsLog('go_live.completed', { appId });
+    handleClose('complete');
+
+    // Mark as gone live in background (don't block UI)
+    void (async () => {
+      try {
+        await markAsGoneLive(appId);
+        shipAnalyticsLog('go_live.mark_success', { appId });
+      } catch (err) {
+        logger.error('go-live.mark-failed.first-attempt', { appId, error: String(err) });
+
+        // Retry once after brief delay
+        try {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          await markAsGoneLive(appId);
+          shipAnalyticsLog('go_live.mark_success.retry', { appId });
+        } catch (retryErr) {
+          logger.error('go-live.mark-failed.retry-attempt', { appId, error: String(retryErr) });
+          shipAnalyticsLog('go_live.mark_failed', { appId, error: String(retryErr) });
+        }
+      }
+    })();
+  };
+
+  const handleFeatureSelection = async (selections: FeatureSelections) => {
+    setFeatureSelections(appId, selections);
+    shipAnalyticsLog('go_live.features_selected', { appId, selections });
+
+    // If no features selected (shouldn't happen, button disabled), just close
+    const hasAnySelection = Object.values(selections).some((v: boolean) => v);
+    if (!hasAnySelection) {
+      handleClose();
+      return;
     }
 
-    if (!securityScanResults) {
+    // Start background tasks for selected features
+    if (selections.video && !launchVideoUrl) {
+      void generateVideo();
+    }
+    if (selections.security && !securityScanResults) {
       void runScan();
     }
 
-    // Move to QA step and start QA analysis
-    setGoLiveModalStep(appId, 'qa');
-    void runAnalysis();
-    shipAnalyticsLog('go_live.qa.shown', { appId });
+    // Navigate to first selected feature
+    if (selections.qa) {
+      setGoLiveModalStep(appId, 'qa');
+      void runAnalysis();
+      shipAnalyticsLog('go_live.qa.shown', { appId });
+    } else if (selections.security) {
+      setGoLiveModalStep(appId, 'security-results');
+      shipAnalyticsLog('go_live.security_results.shown', { appId });
+    } else if (selections.video) {
+      setGoLiveModalStep(appId, 'video');
+      shipAnalyticsLog('go_live.video.shown', { appId });
+    } else if (selections.marketing) {
+      setGoLiveModalStep(appId, 'select-marketing');
+      shipAnalyticsLog('go_live.marketing_select.shown', { appId });
+    }
   };
 
+  const handleMarketingSelection = async (selections: MarketingSelections) => {
+    setMarketingSelections(appId, selections);
+    shipAnalyticsLog('go_live.marketing_actions_selected', { appId, selections });
+
+    const site = getSite(appId);
+    if (!site) {
+      logger.error('go-live.marketing.no-site', { appId });
+      return;
+    }
+
+    const siteName = site.name || t('golive_default_site_name');
+    const message = t('golive_marketing_launch_prompt', { siteName });
+
+    // Build task list based on selections
+    const tasks = [];
+    if (selections.seo) {
+      tasks.push({
+        id: 'seo_optimization',
+        title: 'Optimize SEO',
+        description: 'Use your available SEO tools and skills to improve search engine optimization'
+      });
+    }
+    if (selections.blogPost) {
+      tasks.push({
+        id: 'blog_post',
+        title: 'Create launch announcement blog post',
+        description: 'First check if the site has a blog. If yes, use the blog-writing skill to add a launch announcement post (800-1200 words). If no blog exists, first use the blog skill to add a blog feature to the site, then use the blog-writing skill to create the launch announcement post.'
+      });
+    }
+    if (selections.socialPosts) {
+      tasks.push({
+        id: 'social_media_posts',
+        title: 'Generate and publish social media posts',
+        description: 'Check if you have access to social skills (social-platform, social-posts, social-publish). If available, use them to connect platforms, generate 3-5 engaging launch announcement posts, and publish them. If social skills are not available, create 3-5 social media posts manually for different platforms with varied tone and style. Include the promotional video from /public/images/ (the file starting with go_live-) in at least one of the posts.'
+      });
+    }
+
+    shipAnalyticsLog('go_live.marketing.started', { appId });
+
+    // Build explicit instructions based on what was selected
+    const taskCount = tasks.length;
+    const taskNames = tasks.map(t => t.title).join(', ');
+    const restrictiveInstructions = `IMPORTANT: The user has specifically selected ${taskCount} marketing task${taskCount === 1 ? '' : 's'}: ${taskNames}.
+
+ONLY complete these ${taskCount} task${taskCount === 1 ? '' : 's'}. DO NOT do any additional marketing tasks beyond what is listed below. The user wants to conserve tokens, so do not create emails, press releases, newsletters, or any other marketing content unless explicitly listed in the tasks.
+
+Create a todo list to track these ${taskCount} specific task${taskCount === 1 ? '' : 's'} and complete each one. After completing tasks that modify the site code (blog, SEO), remind the user to publish their site again to deploy the changes.`;
+
+    await sendMessage(
+      message,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        type: 'marketing_launch_package',
+        data: {
+          siteName,
+          tasks,
+          instructions: restrictiveInstructions,
+          videoPath: '/public/images/',
+          videoPrefix: 'go_live-'
+        },
+        persistence: 'ephemeral',
+        source: 'go-live-modal'
+      }
+    );
+
+    await handleCompleteFlow();
+  };
+
+
   const handleQAContinue = () => {
-    // Always go to security results step
-    setGoLiveModalStep(appId, 'security-results');
-    shipAnalyticsLog('go_live.security_results.shown', { appId });
+    navigateOrComplete('qa');
   };
 
   const handleQASkip = () => {
-    setGoLiveModalStep(appId, 'security-results');
     shipAnalyticsLog('go_live.qa.skipped', { appId });
+    navigateOrComplete('qa');
   };
 
   const handlePublishSecurityFixes = async () => {
@@ -162,97 +321,34 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
         source: 'security-modal'
       }
     );
-    handleClose();
+    handleClose('action-taken');
   };
 
   const handleSecurityResultsSkip = () => {
-    setGoLiveModalStep(appId, 'video');
     shipAnalyticsLog('go_live.security_results.skipped', { appId });
+    navigateOrComplete('security-results');
+  };
+
+  const handleVideoSkip = () => {
+    shipAnalyticsLog('go_live.video.skipped', { appId });
+    navigateOrComplete('video');
   };
 
   const handleContinueToMarketing = () => {
-    setGoLiveModalStep(appId, 'marketing');
-    shipAnalyticsLog('go_live.marketing.shown', { appId });
+    navigateOrComplete('video');
   };
 
 
-  const handleStartMarketing = async () => {
-    const site = getSite(appId);
-    const siteName = site?.name || t('golive_default_site_name');
-
-    // Clean user-facing message
-    const message = t('golive_marketing_launch_prompt', { siteName });
-
-    shipAnalyticsLog('go_live.marketing.started', { appId });
-    shipAnalyticsLog('go_live.completed', { appId });
-
-    // Send message with detailed marketing instructions in context
-    await sendMessage(
-      message,
-      undefined, // aiEditContext
-      undefined, // selectedAsset
-      undefined, // todoListContext
-      undefined, // isActionRequest
-      {
-        type: 'marketing_launch_package',
-        data: {
-          siteName,
-          tasks: [
-            {
-              id: 'seo_optimization',
-              title: 'Optimize SEO',
-              description: 'Use your available SEO tools and skills to improve search engine optimization'
-            },
-            {
-              id: 'blog_post',
-              title: 'Create launch announcement blog post',
-              description: 'First check if the site has a blog. If yes, use the blog-writing skill to add a launch announcement post (800-1200 words). If no blog exists, first use the blog skill to add a blog feature to the site, then use the blog-writing skill to create the launch announcement post.'
-            },
-            {
-              id: 'social_media_posts',
-              title: 'Generate and publish social media posts',
-              description: 'Check if you have access to social skills (social-platform, social-posts, social-publish). If available, use them to connect platforms, generate 3-5 engaging launch announcement posts, and publish them. If social skills are not available, create 3-5 social media posts manually for different platforms with varied tone and style. Include the promotional video from /public/images/ (the file starting with go_live-) in at least one of the posts.'
-            }
-          ],
-          instructions: 'Create a todo list to track all these tasks and complete each one. Make all content ready to copy-paste and use immediately. After completing tasks that modify the site code (blog, SEO), remind the user to publish their site again to deploy the changes.',
-          videoPath: '/public/images/',
-          videoPrefix: 'go_live-'
-        },
-        persistence: 'ephemeral',
-        source: 'go-live-modal'
-      }
-    );
-    handleClose();
-
-    // Mark as gone live in background (don't block UI)
-    void (async () => {
-      try {
-        await markAsGoneLive(appId);
-        shipAnalyticsLog('go_live.mark_success', { appId });
-      } catch (err) {
-        logger.error('go-live.mark-failed.first-attempt', { appId, error: String(err) });
-
-        // Retry once after brief delay
-        try {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          await markAsGoneLive(appId);
-          shipAnalyticsLog('go_live.mark_success.retry', { appId });
-        } catch (retryErr) {
-          logger.error('go-live.mark-failed.retry-attempt', { appId, error: String(retryErr) });
-          shipAnalyticsLog('go_live.mark_failed', { appId, error: String(retryErr) });
-        }
-      }
-    })();
-  };
 
   const renderStep = () => {
     switch (goLiveModalStep) {
-      case 'confirm':
+      case 'select-features':
         return (
-          <ModalErrorBoundary stepName="confirm" appId={appId}>
-            <ConfirmStep
-              onConfirm={handleConfirm}
-              onCancel={handleClose}
+          <ModalErrorBoundary stepName="select-features" appId={appId}>
+            <SelectFeaturesStep
+              appId={appId}
+              onConfirm={handleFeatureSelection}
+              onCancel={() => handleClose()}
             />
           </ModalErrorBoundary>
         );
@@ -268,7 +364,7 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
               updateFixedIssues={updateFixedIssues}
               onContinue={handleQAContinue}
               onSkip={handleQASkip}
-              onClose={handleClose}
+              onClose={() => handleClose()}
             />
           </ModalErrorBoundary>
         );
@@ -295,17 +391,17 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
               videoError={videoError}
               launchVideoUrl={launchVideoUrl}
               onContinue={handleContinueToMarketing}
-              onSkip={handleContinueToMarketing}
+              onSkip={handleVideoSkip}
             />
           </ModalErrorBoundary>
         );
 
-      case 'marketing':
+      case 'select-marketing':
         return (
-          <ModalErrorBoundary stepName="marketing" appId={appId}>
-            <MarketingStep
-              onSkip={handleClose}
-              onGenerate={handleStartMarketing}
+          <ModalErrorBoundary stepName="select-marketing" appId={appId}>
+            <SelectMarketingStep
+              onConfirm={handleMarketingSelection}
+              onSkip={() => navigateOrComplete('select-marketing')}
             />
           </ModalErrorBoundary>
         );
@@ -321,11 +417,11 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
 
   const modalTitle = (() => {
     switch (goLiveModalStep) {
-      case 'confirm': return t('golive_modal_title_confirm');
+      case 'select-features': return t('builder_golive_modal_title_select_features');
       case 'qa': return t('golive_modal_title_qa');
       case 'security-results': return t('golive_modal_title_security');
       case 'video': return t('golive_modal_title_video');
-      case 'marketing': return t('golive_modal_title_marketing');
+      case 'select-marketing': return t('builder_golive_modal_title_select_marketing');
       default: return t('golive_modal_title_default');
     }
   })();
@@ -333,13 +429,13 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
   return (
     <Modal
       show={showGoLiveModal}
-      onClose={handleClose}
+      onClose={() => handleClose()}
       title={modalTitle}
       id="go-live-modal"
       className="relative"
     >
-      {/* Confetti decoration at top of modal (only on marketing step) */}
-      {goLiveModalStep === 'marketing' && (
+      {/* Confetti decoration at top of modal (only on marketing selection step) */}
+      {goLiveModalStep === 'select-marketing' && (
         <div className="absolute top-0 left-0 right-0 h-20 overflow-hidden pointer-events-none z-10">
           <Confetti />
         </div>

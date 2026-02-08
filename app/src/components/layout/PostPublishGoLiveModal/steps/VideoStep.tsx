@@ -194,14 +194,12 @@ export function VideoStep({
 
       {/* Action Buttons */}
       <div className="flex justify-end gap-3">
-        {videoError && (
-          <Button
-            design="secondary"
-            text={t('golive_video_button_skip')}
-            size="md"
-            onClick={onSkip}
-          />
-        )}
+        <Button
+          design="secondary"
+          text={t('golive_video_button_skip')}
+          size="md"
+          onClick={onSkip}
+        />
         <Button
           design="primary"
           text={t('golive_video_button_continue')}
