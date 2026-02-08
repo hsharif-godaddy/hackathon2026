@@ -6,6 +6,7 @@ import Card from "@ux/card";
 import ShieldIcon from '@ux/icon/shield-check-filled';
 import Tag from '@ux/tag';
 import text from '@ux/text';
+import TextLockup from '@ux/text-lockup';
 
 import { useAppIdFromParams } from '@/app/develop/components/utils';
 import { useTranslations } from '@/hooks/useTranslations';
@@ -69,21 +70,16 @@ interface SecurityTestResult {
 function SecuritySuccessScreen() {
   const t = useTranslations();
   return (
-    <Card className="p-4 text-center">
-      <Box gap="lg" className="items-center">
-        <div className="flex justify-center">
-          <div className="p-2">
-            <ShieldIcon color="green" height="3rem" width="3rem" />
-          </div>
-        </div>
-        <Box gap="md">
-          <text.h3 as="title" size={2}>
-            {t('builder_settings_security_results_complete_title')}
-          </text.h3>
-          <text.p>
-            {t('builder_settings_security_results_complete_text')}
-          </text.p>
-        </Box>
+    <Card className="p-4">
+      <Box gap="md" blockAlignChildren="center" inlineAlignChildren="center">
+        <ShieldIcon color="green" height="3rem" width="3rem" aria-hidden="true" focusable="false" />
+        <TextLockup
+          title={t('builder_settings_security_results_complete_title')}
+          titleLevel={3}
+          centered
+        >
+          {t('builder_settings_security_results_complete_text')}
+        </TextLockup>
       </Box>
     </Card>
   );
