@@ -22,6 +22,7 @@ interface ErrorSummary {
     message: string;
     count: number;
     lastSeen?: string;
+    event?: string;
   }>;
 }
 
@@ -81,10 +82,14 @@ export default function Dashboard() {
 
   // Initialize from URL params on mount
   useEffect(() => {
-    const urlAppId = searchParams.get('appId');
+    const urlAppId = searchParams?.get('appId');
+    const urlTab = searchParams?.get('tab') as TabId | null;
     if (urlAppId) {
       setAppId(urlAppId);
       setSubmittedAppId(urlAppId);
+    }
+    if (urlTab && ['summary', 'conversation', 'agent-logs', 'ui-logs', 'hosting-logs', 'publish'].includes(urlTab)) {
+      setActiveTab(urlTab);
     }
   }, [searchParams]);
 
@@ -135,11 +140,27 @@ export default function Dashboard() {
     }
   }, [refreshKeys.summary]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const updateUrl = useCallback((newAppId?: string, newTab?: TabId) => {
+    const params = new URLSearchParams();
+    const effectiveAppId = newAppId ?? submittedAppId;
+    const effectiveTab = newTab ?? activeTab;
+
+    if (effectiveAppId) {
+      params.set('appId', effectiveAppId);
+    }
+    if (effectiveTab && effectiveTab !== 'summary') {
+      params.set('tab', effectiveTab);
+    }
+
+    const query = params.toString();
+    router.push(query ? `/?${query}` : '/', { scroll: false });
+  }, [router, submittedAppId, activeTab]);
+
   const handleSearch = () => {
     const trimmed = appId.trim();
     if (trimmed) {
       setSubmittedAppId(trimmed);
-      router.push(`/?appId=${encodeURIComponent(trimmed)}`, { scroll: false });
+      updateUrl(trimmed, activeTab);
     }
   };
 
@@ -149,6 +170,13 @@ export default function Dashboard() {
     setContext(null);
     setActiveTab('summary');
     router.push('/', { scroll: false });
+  };
+
+  const handleTabChange = (tabId: TabId) => {
+    setActiveTab(tabId);
+    if (submittedAppId) {
+      updateUrl(submittedAppId, tabId);
+    }
   };
 
   const handleExpandError = async (errorMessage: string) => {
@@ -435,7 +463,7 @@ export default function Dashboard() {
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => handleTabChange(tab.id)}
                   style={{
                     padding: '0.875rem 1.5rem',
                     backgroundColor: activeTab === tab.id ? 'white' : 'transparent',
@@ -608,7 +636,22 @@ export default function Dashboard() {
                                     <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
                                       {expandedError === group.message ? '▼' : '▶'}
                                     </span>
-                                    {group.message}
+                                    <div>
+                                      {group.event && (
+                                        <span style={{
+                                          fontSize: '0.7rem',
+                                          fontFamily: 'monospace',
+                                          color: '#6366f1',
+                                          backgroundColor: '#eef2ff',
+                                          padding: '0.125rem 0.375rem',
+                                          borderRadius: '3px',
+                                          marginRight: '0.5rem'
+                                        }}>
+                                          {group.event}
+                                        </span>
+                                      )}
+                                      {group.message}
+                                    </div>
                                   </div>
                                   {group.lastSeen && (
                                     <div style={{
@@ -670,7 +713,7 @@ export default function Dashboard() {
                                           <div style={{ color: '#374151', wordBreak: 'break-word' }}>
                                             {detail.message}
                                           </div>
-                                          {detail.raw?.data && (
+                                          {!!detail.raw?.data && (
                                             <details style={{ marginTop: '0.25rem' }}>
                                               <summary style={{ cursor: 'pointer', color: '#6b7280', fontSize: '0.7rem' }}>
                                                 View raw data

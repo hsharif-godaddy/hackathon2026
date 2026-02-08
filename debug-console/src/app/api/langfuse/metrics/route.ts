@@ -6,17 +6,6 @@ const LANGFUSE_BASE_URL = process.env.LANGFUSE_BASE_URL;
 const LANGFUSE_PUBLIC_KEY = process.env.LANGFUSE_PUBLIC_KEY;
 const LANGFUSE_SECRET_KEY = process.env.LANGFUSE_SECRET_KEY;
 
-interface MetricsQuery {
-    view: string;
-    dimensions: Array<{ field: string }>;
-    metrics: Array<{ measure: string; aggregation: string }>;
-    filters: unknown[];
-    timeDimension: { granularity: string };
-    fromTimestamp: string;
-    toTimestamp: string;
-    orderBy: unknown;
-}
-
 export const GET = withAuth(async (request) => {
     try {
         if (!LANGFUSE_BASE_URL || !LANGFUSE_PUBLIC_KEY || !LANGFUSE_SECRET_KEY) {
@@ -36,9 +25,8 @@ export const GET = withAuth(async (request) => {
             );
         }
 
-        let _query: MetricsQuery;
         try {
-            _query = JSON.parse(queryParam);
+            JSON.parse(queryParam);
         } catch {
             return NextResponse.json(
                 { error: 'Invalid JSON in query parameter' },

@@ -81,6 +81,9 @@ export default function PublishEventsPanel({ appId, timeRange = '7d', refreshKey
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedError, setExpandedError] = useState<string | null>(null);
+  const [showStarted, setShowStarted] = useState(false);
+
+  const filteredEvents = showStarted ? events : events.filter(e => e.eventType !== 'begin');
 
   const days = timeRangeToDays(timeRange);
 
@@ -119,25 +122,43 @@ export default function PublishEventsPanel({ appId, timeRange = '7d', refreshKey
         <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>
           Publish Events {appId ? `for ${appId}` : '(All Apps)'}
         </h3>
-        {onRefresh && (
-          <button
-            onClick={onRefresh}
-            disabled={loading}
-            style={{
-              padding: '0.625rem 1.25rem',
-              backgroundColor: loading ? '#9ca3af' : '#3b82f6',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: '0.875rem',
-              fontWeight: 500,
-              opacity: loading ? 0.6 : 1
-            }}
-          >
-            Refresh
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            fontSize: '0.875rem',
+            color: '#374151',
+            cursor: 'pointer'
+          }}>
+            <input
+              type="checkbox"
+              checked={showStarted}
+              onChange={(e) => setShowStarted(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            Show Started
+          </label>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              disabled={loading}
+              style={{
+                padding: '0.625rem 1.25rem',
+                backgroundColor: loading ? '#9ca3af' : '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              Refresh
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Error */}
@@ -162,14 +183,15 @@ export default function PublishEventsPanel({ appId, timeRange = '7d', refreshKey
       )}
 
       {/* Empty state */}
-      {!loading && events.length === 0 && (
+      {!loading && filteredEvents.length === 0 && (
         <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
           No publish events found for the selected time range.
+          {!showStarted && events.length > 0 && ' (Try enabling "Show Started" to see begin events)'}
         </div>
       )}
 
       {/* Events list */}
-      {events.length > 0 && (
+      {filteredEvents.length > 0 && (
         <div style={{
           backgroundColor: 'white',
           borderRadius: '8px',
@@ -197,7 +219,7 @@ export default function PublishEventsPanel({ appId, timeRange = '7d', refreshKey
 
           {/* Table rows */}
           <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
-            {events.map((event) => (
+            {filteredEvents.map((event) => (
               <div key={event.id}>
                 <div
                   style={{

@@ -100,6 +100,7 @@ interface AppContext {
       message: string;
       count: number;
       lastSeen?: string;
+      event?: string;
     }>;
   };
   activityStats: {
@@ -244,6 +245,7 @@ interface ErrorGroup {
   message: string;
   count: number;
   lastSeen?: string;
+  event?: string;
 }
 
 interface ErrorSummaryResult {
@@ -281,7 +283,7 @@ async function fetchErrorSummary(
 
   let totalErrors = 0;
   let last24HoursCount = 0;
-  const messageCountMap = new Map<string, { count: number; lastSeen: string | null }>();
+  const messageCountMap = new Map<string, { count: number; lastSeen: string | null; event: string | null }>();
 
   for (const sourceId of sourceIds) {
     const sourceConfig = sources.find((s) => s.id === sourceId);
@@ -338,6 +340,12 @@ async function fetchErrorSummary(
                 max: {
                   field: fieldMapping.timestampField
                 }
+              },
+              top_event: {
+                terms: {
+                  field: 'event.keyword',
+                  size: 1
+                }
               }
             }
           },
@@ -351,6 +359,12 @@ async function fetchErrorSummary(
                 max: {
                   field: fieldMapping.timestampField
                 }
+              },
+              top_event: {
+                terms: {
+                  field: 'event.keyword',
+                  size: 1
+                }
               }
             }
           },
@@ -363,6 +377,12 @@ async function fetchErrorSummary(
               last_seen: {
                 max: {
                   field: fieldMapping.timestampField
+                }
+              },
+              top_event: {
+                terms: {
+                  field: 'event.keyword',
+                  size: 1
                 }
               }
             }
@@ -392,14 +412,16 @@ async function fetchErrorSummary(
           for (const bucket of data.aggregations.error_messages.buckets) {
             const msg = bucket.key as string;
             if (msg && msg.trim()) {
-              const existing = messageCountMap.get(msg) || { count: 0, lastSeen: null };
+              const existing = messageCountMap.get(msg) || { count: 0, lastSeen: null, event: null };
               const bucketLastSeen = bucket.last_seen?.value_as_string || null;
+              const bucketEvent = bucket.top_event?.buckets?.[0]?.key || null;
               const newLastSeen = bucketLastSeen && (!existing.lastSeen || bucketLastSeen > existing.lastSeen)
                 ? bucketLastSeen
                 : existing.lastSeen;
               messageCountMap.set(msg, {
                 count: existing.count + bucket.doc_count,
-                lastSeen: newLastSeen
+                lastSeen: newLastSeen,
+                event: existing.event || bucketEvent
               });
             }
           }
@@ -410,14 +432,16 @@ async function fetchErrorSummary(
           for (const bucket of data.aggregations.data_error_messages.buckets) {
             const msg = bucket.key as string;
             if (msg && msg.trim()) {
-              const existing = messageCountMap.get(msg) || { count: 0, lastSeen: null };
+              const existing = messageCountMap.get(msg) || { count: 0, lastSeen: null, event: null };
               const bucketLastSeen = bucket.last_seen?.value_as_string || null;
+              const bucketEvent = bucket.top_event?.buckets?.[0]?.key || null;
               const newLastSeen = bucketLastSeen && (!existing.lastSeen || bucketLastSeen > existing.lastSeen)
                 ? bucketLastSeen
                 : existing.lastSeen;
               messageCountMap.set(msg, {
                 count: existing.count + bucket.doc_count,
-                lastSeen: newLastSeen
+                lastSeen: newLastSeen,
+                event: existing.event || bucketEvent
               });
             }
           }
@@ -428,14 +452,16 @@ async function fetchErrorSummary(
           for (const bucket of data.aggregations.data_message_errors.buckets) {
             const msg = bucket.key as string;
             if (msg && msg.trim()) {
-              const existing = messageCountMap.get(msg) || { count: 0, lastSeen: null };
+              const existing = messageCountMap.get(msg) || { count: 0, lastSeen: null, event: null };
               const bucketLastSeen = bucket.last_seen?.value_as_string || null;
+              const bucketEvent = bucket.top_event?.buckets?.[0]?.key || null;
               const newLastSeen = bucketLastSeen && (!existing.lastSeen || bucketLastSeen > existing.lastSeen)
                 ? bucketLastSeen
                 : existing.lastSeen;
               messageCountMap.set(msg, {
                 count: existing.count + bucket.doc_count,
-                lastSeen: newLastSeen
+                lastSeen: newLastSeen,
+                event: existing.event || bucketEvent
               });
             }
           }
@@ -447,10 +473,11 @@ async function fetchErrorSummary(
   }
 
   const errorGroups = Array.from(messageCountMap.entries())
-    .map(([message, { count, lastSeen }]) => ({
+    .map(([message, { count, lastSeen, event }]) => ({
       message,
       count,
-      lastSeen: lastSeen || undefined
+      lastSeen: lastSeen || undefined,
+      event: event || undefined
     }))
     .sort((a, b) => {
       // Sort by lastSeen descending (most recent first), then by count descending

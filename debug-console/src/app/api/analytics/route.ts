@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getSummary, getAllApps, getToolStats, getHealthMetrics, getHourlyStats, getErrorStats, getHourlyErrorStats, getLast24HoursStats, getLast24HoursErrorStats, getSummarizationStats, getHourlySummarizationStats, getRollingHourlySummarizations, getPublishStats, getHourlyPublishStats, getRollingHourlyPublish, getClientErrorStats, getHourlyClientErrorStats, getRollingHourlyClientErrors, getDiagnostics, init } from '@/lib/analytics/es-db';
-import { getSchedulerStatus, runBackfill, startScheduler } from '@/lib/analytics/scheduler';
+import { getSchedulerStatus, runBackfill, startScheduler, type BackfillIndexFilter } from '@/lib/analytics/scheduler';
 import { withAuth } from '@/lib/api-auth';
 
 export const dynamic = 'force-dynamic';
@@ -74,7 +74,12 @@ export const GET = withAuth(async (request) => {
         if (days < 1 || days > 30) {
           return NextResponse.json({ error: 'days must be 1-30' }, { status: 400 });
         }
-        return NextResponse.json(await runBackfill(days));
+        const validIndices = ['all', 'errors', 'agent_runs', 'compressions', 'conversations', 'summarizations', 'tool_failures', 'publish_events', 'client_errors'];
+        const indexParam = searchParams.get('index') || 'all';
+        if (!validIndices.includes(indexParam)) {
+          return NextResponse.json({ error: `index must be one of: ${validIndices.join(', ')}` }, { status: 400 });
+        }
+        return NextResponse.json(await runBackfill(days, indexParam as BackfillIndexFilter));
       }
 
       case 'hourly': {

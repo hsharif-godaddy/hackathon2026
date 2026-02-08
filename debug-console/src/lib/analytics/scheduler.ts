@@ -650,40 +650,73 @@ export async function runFetch(): Promise<FetchResult> {
   return { startTime, endTime, pioneerCounts, katanaCount };
 }
 
-export async function runBackfill(days: number): Promise<FetchResult> {
+// Valid index filter values for backfill
+export type BackfillIndexFilter = 'all' | 'errors' | 'agent_runs' | 'compressions' | 'conversations' | 'summarizations' | 'tool_failures' | 'publish_events' | 'client_errors';
+
+// Map index filter to Pioneer events
+const INDEX_TO_EVENTS: Record<BackfillIndexFilter, string[] | 'all' | 'katana'> = {
+  all: 'all',
+  errors: ['websocket.conversation.error', 'knowb-driver.proxy.error'],
+  agent_runs: ['agent.run.finish'],
+  compressions: ['compression.batch.complete'],
+  conversations: ['conversation.history.loader.token_limit_reached', 'websocket.conversation.error', 'conversation.start', 'conversation.continue'],
+  summarizations: ['summarization.background.complete', 'summarization.detailed_llm.failure', 'summarization.detailed_llm.token_budget_exceeded'],
+  tool_failures: ['tool.file.edit.operation.failure', 'tool.file.edit.batch.failure', 'tool.git.operation.failure', 'tool.image.search.failure', 'tool.ast.edit.failure'],
+  publish_events: ['route.publish.begin', 'route.publish.success', 'route.publish.build.failed', 'route.publish.git-archive.failed'],
+  client_errors: 'katana'
+};
+
+export async function runBackfill(days: number, indexFilter: BackfillIndexFilter = 'all'): Promise<FetchResult> {
+  // Limit to 30 days because ES retention policy doesn't hold data beyond that
+  if (days < 1 || days > 30) {
+    throw new Error(`Invalid backfill days: ${days}. Must be between 1 and 30.`);
+  }
+
   await init();
 
   const endTime = new Date();
   const startTime = new Date(endTime.getTime() - days * 24 * 60 * 60 * 1000);
 
-  console.log(`[Scheduler] Running backfill for ${days} days: ${startTime.toISOString()} to ${endTime.toISOString()}`);
+  console.log(`[Scheduler] Running backfill for ${days} days (index: ${indexFilter}): ${startTime.toISOString()} to ${endTime.toISOString()}`);
 
   const pioneerCounts: Record<string, number> = {};
   const ONE_DAY_MS = 24 * 60 * 60 * 1000;
   const pendingCount = { value: 0 };
 
-  // Process in daily chunks
-  let chunkStart = new Date(startTime);
-  while (chunkStart < endTime) {
-    const chunkEnd = new Date(Math.min(chunkStart.getTime() + ONE_DAY_MS, endTime.getTime()));
+  const eventMapping = INDEX_TO_EVENTS[indexFilter];
+  const shouldProcessPioneer = eventMapping !== 'katana';
+  const shouldProcessKatana = indexFilter === 'all' || indexFilter === 'client_errors';
 
-    for (const event of PIONEER_EVENTS) {
-      const count = await fetchAndProcessPioneerEvents(chunkStart, chunkEnd, event, pendingCount);
-      if (count > 0) {
-        pioneerCounts[event] = (pioneerCounts[event] || 0) + count;
+  // Determine which Pioneer events to process
+  const eventsToProcess = eventMapping === 'all' ? PIONEER_EVENTS :
+    eventMapping === 'katana' ? [] : eventMapping;
+
+  // Process Pioneer events in daily chunks
+  if (shouldProcessPioneer && eventsToProcess.length > 0) {
+    let chunkStart = new Date(startTime);
+    while (chunkStart < endTime) {
+      const chunkEnd = new Date(Math.min(chunkStart.getTime() + ONE_DAY_MS, endTime.getTime()));
+
+      for (const event of eventsToProcess) {
+        const count = await fetchAndProcessPioneerEvents(chunkStart, chunkEnd, event, pendingCount);
+        if (count > 0) {
+          pioneerCounts[event] = (pioneerCounts[event] || 0) + count;
+        }
       }
-    }
 
-    chunkStart = chunkEnd;
+      chunkStart = chunkEnd;
+    }
   }
 
   // Process Katana logs
   let katanaCount = 0;
-  chunkStart = new Date(startTime);
-  while (chunkStart < endTime) {
-    const chunkEnd = new Date(Math.min(chunkStart.getTime() + ONE_DAY_MS, endTime.getTime()));
-    katanaCount += await fetchAndProcessKatanaErrors(chunkStart, chunkEnd, pendingCount);
-    chunkStart = chunkEnd;
+  if (shouldProcessKatana) {
+    let chunkStart = new Date(startTime);
+    while (chunkStart < endTime) {
+      const chunkEnd = new Date(Math.min(chunkStart.getTime() + ONE_DAY_MS, endTime.getTime()));
+      katanaCount += await fetchAndProcessKatanaErrors(chunkStart, chunkEnd, pendingCount);
+      chunkStart = chunkEnd;
+    }
   }
 
   // Final flush

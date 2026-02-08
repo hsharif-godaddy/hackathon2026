@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { useAuth } from '@/hooks/useAuth';
 
@@ -30,22 +30,32 @@ export default function ProtectedRoute({
     children: React.ReactNode;
 }) {
     const { isAuthenticated, isLoading } = useAuth();
+    const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (!mounted) return;
+
         // Skip redirect in local development
         if (isLocalEnv()) {
             return;
         }
 
         if (!isLoading && !isAuthenticated) {
-            let ssoLoginUrl = process.env.NEXT_PUBLIC_SSO_LOGIN_URL ||
-                process.env.SSO_LOGIN_URL ||
-                'https://sso.test-godaddy.com/login';
-
             const returnUrl = window.location.href;
-            ssoLoginUrl = returnUrl.includes('test') ? 'sso.test-godaddy.com' : 'sso.godaddy.com';
-            ssoLoginUrl = `https://${ssoLoginUrl}/login`;
-            console.log('ssoLoginUrl', ssoLoginUrl);
+            const hostname = window.location.hostname;
+
+            // Use env var if set, otherwise detect from hostname
+            let ssoLoginUrl = process.env.NEXT_PUBLIC_SSO_LOGIN_URL;
+            if (!ssoLoginUrl) {
+                const isTestEnv = hostname.includes('test-') || hostname.includes('.test.');
+                const ssoDomain = isTestEnv ? 'sso.test-godaddy.com' : 'sso.godaddy.com';
+                ssoLoginUrl = `https://${ssoDomain}/login`;
+            }
+
             const params = new URLSearchParams({
                 app: 'console.airo-builder',
                 redirect: returnUrl,
@@ -54,15 +64,16 @@ export default function ProtectedRoute({
 
             window.location.href = `${ssoLoginUrl}?${params.toString()}`;
         }
-    }, [isAuthenticated, isLoading]);
+    }, [isAuthenticated, isLoading, mounted]);
+
+    // Show loading on server and until mounted on client to avoid hydration mismatch
+    if (!mounted || isLoading) {
+        return <LoadingComponent />;
+    }
 
     // In local env, always allow access
     if (isLocalEnv()) {
         return <>{children}</>;
-    }
-
-    if (isLoading) {
-        return <LoadingComponent />;
     }
 
     if (!isAuthenticated) {
