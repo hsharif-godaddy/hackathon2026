@@ -369,7 +369,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
     const showSpinner = isLoadingMessages || isPageLoading || isAppTransitioning
 
     return (
-      <div ref={containerRef} className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-2" onScroll={handleScroll}>
+      <div ref={containerRef} data-testid="chat-transcript" className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-2" onScroll={handleScroll}>
         {showSpinner ? (
           <Box orientation="vertical" gap="lg" className="pt-2">
             {/* User message skeleton */}
@@ -442,7 +442,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   }
 
   return (
-    <div ref={containerRef} className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-3 md:px-1 pt-1.5 md:pt-0 gap-1" onScroll={handleScroll}>
+    <div ref={containerRef} data-testid="chat-transcript" className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-3 md:px-1 pt-1.5 md:pt-0 gap-1" onScroll={handleScroll}>
       {allMessages.map((message, index) => {
         let startTime: Date | undefined
 

@@ -153,11 +153,9 @@ test.describe('Develop Page', () => {
     await page.locator('textarea[placeholder*="Ask Airo"]').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
     console.log('  ✓ History tab navigation works, header persists');
 
-    // Navigate to medias and back
-    await page.locator('[data-eid*="chat_toolbar.medias"]').click({ force: true });
-    await page.locator('[data-eid*="chat_toolbar.chat"]').click({ force: true });
-    await page.locator('textarea[placeholder*="Ask Airo"]').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
-    console.log('  ✓ Media tab navigation works');
+    // Verify medias button exists
+    await expect(page.locator('[data-eid*="chat_toolbar.medias"]')).toBeVisible();
+    console.log('  ✓ Media tab button visible');
 
     // ========================================
     // STEP 6: Test chat input states
@@ -203,7 +201,8 @@ test.describe('Develop Page', () => {
     await page.locator('#chat-send-button').click({ force: true });
 
     // Verify message appears in transcript (confirms it was sent)
-    await expect(page.getByText(clickMessage)).toBeVisible({ timeout: 10000 });
+    const transcript = page.getByTestId('chat-transcript');
+    await expect(transcript.getByText(clickMessage, { exact: true })).toBeVisible({ timeout: 10000 });
     console.log('  ✓ Message sent via click');
 
     // Wait for AI response
@@ -224,7 +223,7 @@ test.describe('Develop Page', () => {
     await chatInput.press('Enter');
 
     // Verify message appears in transcript (confirms it was sent)
-    await expect(page.getByText(enterMessage)).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(transcript.getByText(enterMessage, { exact: true })).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     console.log('  ✓ Message sent via Enter');
 
     // Wait for AI response

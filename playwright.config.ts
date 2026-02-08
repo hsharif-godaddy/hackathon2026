@@ -53,20 +53,12 @@ export default defineConfig({
     actionTimeout: 30000,
     /* Navigation timeout */
     navigationTimeout: 150000,
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: 'on-first-retry',
+    /* Collect trace on failure. See https://playwright.dev/docs/trace-viewer */
+    trace: 'retain-on-failure',
     /* Take screenshot on failure */
     screenshot: 'only-on-failure',
     /* Record video on failure */
     video: 'retain-on-failure',
-    /* Record HAR file for network debugging in CI */
-    ...(process.env.CI && {
-      recordHar: {
-        mode: 'full',
-        path: './test-results/network.har',
-        content: 'embed',
-      },
-    }),
   },
 
   /* Configure projects for major browsers */
