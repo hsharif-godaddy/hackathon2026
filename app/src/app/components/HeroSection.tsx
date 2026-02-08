@@ -27,7 +27,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   onExampleClick
 }, ref) => {
   const t = useTranslations();
-  const { locale } = useIntl();
+  const intl = useIntl();
   const [isTyping, setIsTyping] = useState(false)
   const [displayText, setDisplayText] = useState(promptText)
   const [isFocused, setIsFocused] = useState(false)
@@ -43,7 +43,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     transcript: speechTranscript,
     stop: stopSpeech,
     resetTranscript,
-  } = useSpeechRecognition({ language: locale })
+  } = useSpeechRecognition({ language: intl.locale })
 
   // Update text when speech transcript changes (replace, don't append)
   useEffect(function syncSpeechTranscript() {
@@ -262,6 +262,14 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     requestAnimationFrame(animateScroll);
   }, [])
 
+  // Memoize aria-label to prevent translation errors on every render (20-33 times/second due to placeholder animation)
+  // Use intl.formatMessage directly as intl instance is stable (unlike t which is recreated each render)
+  const microphoneAriaLabel = useMemo(() => {
+    return isListening
+      ? intl.formatMessage({ id: 'builder_homepage_hero_stop_listening', defaultMessage: 'Stop listening' })
+      : intl.formatMessage({ id: 'builder_homepage_hero_start_listening', defaultMessage: 'Start voice input' })
+  }, [isListening, intl])
+
   return (
     <Box className="flex flex-col gap-2 md:gap-3 px-2 sm:px-3 lg:px-4 pt-6 md:pt-12 min-h-[calc(100vh-3rem)] items-center justify-center">
       <text.h1
@@ -355,6 +363,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                       '!bg-transparent': !isListening,
                     })}
                     icon={<MicIcon />}
+                    aria-label={microphoneAriaLabel}
                     size={isMobile ? 'sm' : 'md'}
                   />
                 )}
