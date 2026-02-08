@@ -48,6 +48,7 @@ describe('TeamPanel', () => {
     const link = screen.getByRole('link', { name: /builder_settings_team_manage_access/i });
     expect(link).toHaveAttribute('href', 'https://sso.godaddy.com/access');
     expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('should use test SSO URL when domain is test-godaddy.com', () => {
@@ -58,6 +59,7 @@ describe('TeamPanel', () => {
     const link = screen.getByRole('link', { name: /builder_settings_team_manage_access/i });
     expect(link).toHaveAttribute('href', 'https://sso.test-godaddy.com/access');
     expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('should default to production SSO URL when getRootDomain returns null', () => {
@@ -68,5 +70,6 @@ describe('TeamPanel', () => {
     const link = screen.getByRole('link', { name: /builder_settings_team_manage_access/i });
     expect(link).toHaveAttribute('href', 'https://sso.godaddy.com/access');
     expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 });

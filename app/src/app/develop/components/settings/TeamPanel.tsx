@@ -24,10 +24,12 @@ export default function TeamPanel() {
       >
         <div>
           <Button
+            as="external"
             design="primary"
             size="md"
             text={t("builder_settings_team_manage_access")}
             href={delegationUrl}
+            rel="noopener noreferrer"
             external
           />
         </div>
