@@ -70,6 +70,14 @@ export default function SsoLogin() {
   const clearRequiresAuth = useSitesStore((state) => state.clearRequiresAuth);
   const { refreshAuth } = useAuthContext();
 
+  // Determine consuming port on client-side only using lazy initializer to avoid SSR hydration issues
+  // Only pass non-standard ports (not 80, 443, or 3000) to SsoDeck for proper origin validation
+  const [consumingPort] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    const port = window.location.port;
+    return (port && port !== '80' && port !== '443' && port !== '3000') ? port : '';
+  });
+
   // Determine SSO host on client-side only
   useEffect(function determineSsoHost() {
     setSsoHost(getRootDomain() || 'godaddy.com');
@@ -266,6 +274,7 @@ export default function SsoLogin() {
               ssoPort=''
               consumingApp='airo-builder'
               consumingPath='/'
+              {...(consumingPort && { consumingPort })}
               pageToLoad='/login'
               pageToLoadParams={{}}
               onAuth={handleAuth}
