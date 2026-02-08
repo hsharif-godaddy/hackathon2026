@@ -1,5 +1,6 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import Alert from '@ux/alert';
 import Box from "@ux/box";
 import Button from "@ux/button";
 import Card from "@ux/card";
@@ -163,19 +164,17 @@ export default function SecurityResults({ results }: { results: { security?: Tes
   const [isCreatingTodoList, setIsCreatingTodoList] = useState(false);
   const todoListService = new TodoListService();
 
-  // Check if security results exists
+  const errorAlert = (
+    <Alert
+      emphasis="critical"
+      title={t('builder_settings_security_results_failed_title')}
+    >
+      {t('builder_settings_security_results_failed_text')}
+    </Alert>
+  );
+
   if (!results.security) {
-    return (
-      <div>
-        <text.p className="font-medium">
-          <text.span emphasis="critical">{t('builder_status_error')}:</text.span>
-          {t('builder_settings_security_results_failed_title')}
-        </text.p>
-        <text.p>
-          {t('builder_settings_security_results_failed_text')}
-        </text.p>
-      </div>
-    );
+    return errorAlert;
   }
 
   const securityRunResult = results.security;
@@ -183,19 +182,17 @@ export default function SecurityResults({ results }: { results: { security?: Tes
   // Handle timeout case
   if (securityRunResult.timedOut) {
     return (
-      <div>
-        <text.p className="font-medium">
-          <text.span emphasis="critical">{t('builder_status_timeout')}:</text.span>
-          {t('builder_settings_security_results_timeout_title')}
-        </text.p>
-        <text.p>
-          {t('builder_settings_security_results_timeout_text_1')}
-        </text.p>
-        <text.p className="text-sm mt-2">
-          {t('builder_settings_security_results_timeout_text_2')}
-        </text.p>
-      </div>
+      <Alert
+        emphasis="warning"
+        title={t('builder_settings_security_results_timeout_title')}
+      >
+        {t('builder_settings_security_results_timeout_text')}
+      </Alert>
     );
+  }
+
+  if (!securityRunResult.results || securityRunResult.results.errors?.length) {
+    return errorAlert;
   }
 
   const securityData: SecurityTestResult = securityRunResult.results;
