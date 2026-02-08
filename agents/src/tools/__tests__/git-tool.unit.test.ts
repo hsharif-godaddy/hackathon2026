@@ -1,8 +1,8 @@
 /**
  * Git Tool Unit Tests
  *
- * Tests for GitTool pattern validation and helper methods.
- * These tests focus on the PaaS vs AiroAppBuilder pattern detection logic.
+ * Tests for GitTool parameter resolution and helper methods.
+ * Tests the priority-based resolution: options first, then database fallback.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -97,51 +97,53 @@ describe('GitTool', () => {
     gitTool = new GitTool(mockDevSupervisor as any);
   });
 
-  describe('Pattern Parameter Validation', () => {
+  describe('Parameter Resolution (options first, then database fallback)', () => {
     describe('push operation', () => {
-      it('should return error when only token is provided without repoUrl', async () => {
+      it('should use token from options when provided (without repoUrl falls back to DB)', async () => {
+        // When only token is provided, repoUrl comes from database
+        const { GitRemoteConfigRepository } = await import('../../database/repositories/GitRemoteConfigRepository.js');
+        const mockRepo = vi.mocked(GitRemoteConfigRepository).mock.results[0]?.value;
+        if (mockRepo) {
+          mockRepo.findByAppAndRemote.mockReturnValue(null); // No DB config
+        }
+
         const result = await gitTool.executeGitOperation('/tmp/apps/test-app-id/app', {
           operation: 'push',
           token: 'ghp_test_token'
-          // repoUrl is missing
+          // repoUrl not provided - falls back to DB (which returns null)
         });
 
+        // Should fail because no repoUrl in options AND no DB config
         expect(result.success).toBe(false);
         expect(result.operation).toBe('push');
-        expect(result.error).toContain('Incomplete PaaS parameters');
-        expect(result.error).toContain("'token' was provided but 'repoUrl' is missing");
-        expect(result.error).toContain('For PaaS pattern, both');
+        expect(result.error).toContain("Remote 'origin' not configured");
       });
 
-      it('should return error when only repoUrl is provided without token', async () => {
+      it('should use repoUrl from options and token from config when only repoUrl provided', async () => {
         const result = await gitTool.executeGitOperation('/tmp/apps/test-app-id/app', {
           operation: 'push',
           repoUrl: 'https://github.com/user/repo.git'
-          // token is missing
+          // token not provided - falls back to /alloc/config.json via GitRemoteTokenManager
         });
 
-        expect(result.success).toBe(false);
+        // Should proceed (token resolved from config.json by GitRemoteTokenManager)
+        // The actual push may fail if config.json doesn't have token, but validation passes
         expect(result.operation).toBe('push');
-        expect(result.error).toContain('Incomplete PaaS parameters');
-        expect(result.error).toContain("'repoUrl' was provided but 'token' is missing");
-        expect(result.error).toContain('For AiroAppBuilder pattern, omit both');
       });
 
-      it('should proceed with PaaS pattern when both token and repoUrl are provided', async () => {
+      it('should use both token and repoUrl from options when provided', async () => {
         const result = await gitTool.executeGitOperation('/tmp/apps/test-app-id/app', {
           operation: 'push',
           token: 'ghp_test_token',
           repoUrl: 'https://github.com/user/repo.git'
         });
 
-        // Should not fail with pattern validation error (error is undefined or doesn't contain the validation message)
-        if (result.error) {
-          expect(result.error).not.toContain('Incomplete PaaS parameters');
-        }
+        // Should proceed without DB lookup
+        expect(result.operation).toBe('push');
       });
 
-      it('should proceed with AAB pattern when neither token nor repoUrl are provided', async () => {
-        // Mock the repository to return a config for AAB pattern
+      it('should fall back to database config when neither token nor repoUrl provided', async () => {
+        // Mock the repository to return a config
         const { GitRemoteConfigRepository } = await import('../../database/repositories/GitRemoteConfigRepository.js');
         const mockRepo = vi.mocked(GitRemoteConfigRepository).mock.results[0]?.value;
         if (mockRepo) {
@@ -158,58 +160,58 @@ describe('GitTool', () => {
 
         const result = await gitTool.executeGitOperation('/tmp/apps/test-app-id/app', {
           operation: 'push'
-          // Neither token nor repoUrl provided - AAB pattern
+          // Neither token nor repoUrl provided - uses database
         });
 
-        // Should not fail with pattern validation error (error is undefined or doesn't contain the validation message)
-        if (result.error) {
-          expect(result.error).not.toContain('Incomplete PaaS parameters');
-        }
+        expect(result.operation).toBe('push');
       });
     });
 
     describe('pull operation', () => {
-      it('should return error when only token is provided without repoUrl', async () => {
+      it('should use token from options when provided (without repoUrl falls back to DB)', async () => {
+        // When only token is provided, repoUrl comes from database
+        const { GitRemoteConfigRepository } = await import('../../database/repositories/GitRemoteConfigRepository.js');
+        const mockRepo = vi.mocked(GitRemoteConfigRepository).mock.results[0]?.value;
+        if (mockRepo) {
+          mockRepo.findByAppAndRemote.mockReturnValue(null); // No DB config
+        }
+
         const result = await gitTool.executeGitOperation('/tmp/apps/test-app-id/app', {
           operation: 'pull',
           token: 'ghp_test_token'
-          // repoUrl is missing
+          // repoUrl not provided - falls back to DB (which returns null)
         });
 
+        // Should fail because no repoUrl in options AND no DB config
         expect(result.success).toBe(false);
         expect(result.operation).toBe('pull');
-        expect(result.error).toContain('Incomplete PaaS parameters');
-        expect(result.error).toContain("'token' was provided but 'repoUrl' is missing");
+        expect(result.error).toContain("Remote 'origin' not configured");
       });
 
-      it('should return error when only repoUrl is provided without token', async () => {
+      it('should use repoUrl from options and token from config when only repoUrl provided', async () => {
         const result = await gitTool.executeGitOperation('/tmp/apps/test-app-id/app', {
           operation: 'pull',
           repoUrl: 'https://github.com/user/repo.git'
-          // token is missing
+          // token not provided - falls back to /alloc/config.json via GitRemoteTokenManager
         });
 
-        expect(result.success).toBe(false);
+        // Should proceed (token resolved from config.json by GitRemoteTokenManager)
         expect(result.operation).toBe('pull');
-        expect(result.error).toContain('Incomplete PaaS parameters');
-        expect(result.error).toContain("'repoUrl' was provided but 'token' is missing");
       });
 
-      it('should proceed with PaaS pattern when both token and repoUrl are provided', async () => {
+      it('should use both token and repoUrl from options when provided', async () => {
         const result = await gitTool.executeGitOperation('/tmp/apps/test-app-id/app', {
           operation: 'pull',
           token: 'ghp_test_token',
           repoUrl: 'https://github.com/user/repo.git'
         });
 
-        // Should not fail with pattern validation error (error is undefined or doesn't contain the validation message)
-        if (result.error) {
-          expect(result.error).not.toContain('Incomplete PaaS parameters');
-        }
+        // Should proceed without DB lookup
+        expect(result.operation).toBe('pull');
       });
 
-      it('should proceed with AAB pattern when neither token nor repoUrl are provided', async () => {
-        // Mock the repository to return a config for AAB pattern
+      it('should fall back to database config when neither token nor repoUrl provided', async () => {
+        // Mock the repository to return a config
         const { GitRemoteConfigRepository } = await import('../../database/repositories/GitRemoteConfigRepository.js');
         const mockRepo = vi.mocked(GitRemoteConfigRepository).mock.results[0]?.value;
         if (mockRepo) {
@@ -226,13 +228,10 @@ describe('GitTool', () => {
 
         const result = await gitTool.executeGitOperation('/tmp/apps/test-app-id/app', {
           operation: 'pull'
-          // Neither token nor repoUrl provided - AAB pattern
+          // Neither token nor repoUrl provided - uses database
         });
 
-        // Should not fail with pattern validation error (error is undefined or doesn't contain the validation message)
-        if (result.error) {
-          expect(result.error).not.toContain('Incomplete PaaS parameters');
-        }
+        expect(result.operation).toBe('pull');
       });
     });
   });
@@ -260,7 +259,7 @@ describe('GitTool', () => {
   });
 
   describe('Remote Configuration Error Messages', () => {
-    it('should provide clear error message when remote not configured for AAB pattern', async () => {
+    it('should provide clear error message when remote not configured and no repoUrl provided', async () => {
       // Mock empty repository response
       const { GitRemoteConfigRepository } = await import('../../database/repositories/GitRemoteConfigRepository.js');
       const mockRepo = vi.mocked(GitRemoteConfigRepository).mock.results[0]?.value;
@@ -270,13 +269,13 @@ describe('GitTool', () => {
 
       const result = await gitTool.executeGitOperation('/tmp/apps/test-app-id/app', {
         operation: 'push'
-        // AAB pattern - no token/repoUrl
+        // No repoUrl provided - must fall back to DB which returns null
       });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Remote 'origin' not configured");
       expect(result.error).toContain('configure-remote');
-      expect(result.error).toContain("'repoUrl' and 'token'");
+      expect(result.error).toContain("'repoUrl'");
     });
 
     it('should provide clear error message when remote is disabled', async () => {

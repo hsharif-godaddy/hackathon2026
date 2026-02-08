@@ -533,6 +533,71 @@ export class MyTool extends BaseTool {
 }
 ```
 
+### Git Tool Patterns
+
+<git_tool_requirements>
+**All git operations in git-tool.ts MUST use GitUtils methods.**
+
+The `GitUtils` class (`src/utils/git.ts`) provides:
+
+- Consistent error recovery via `attemptGitRecovery()`
+- Proper logging and telemetry
+- Shell command escaping via `buildShellCommand()`
+
+**❌ DON'T call buildShellCommand directly in git-tool.ts:**
+
+```typescript
+// WRONG - bypasses error recovery
+await this.devSupervisor.exec({
+  command: buildShellCommand(['git', 'add', ...files]),
+  ...
+});
+```
+
+**✅ DO use GitUtils methods:**
+
+```typescript
+// CORRECT - uses centralized execution with error recovery
+await this.gitUtils.addFiles(appPath, files);
+```
+
+If a git operation isn't available in GitUtils, add a new method there rather than calling buildShellCommand directly.
+</git_tool_requirements>
+
+**Available GitUtils Methods:**
+
+| Method                                           | Description                                                                  |
+| ------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `addFiles(path, files, options)`                 | Stage files (`git add`). Use `{ ignoreErrors: true }` for optional files     |
+| `removeFiles(path, files, options)`              | Remove files (`git rm`). Use `{ recursive, cached, force, quiet }` for flags |
+| `writeTree(path)`                                | Create tree object from index (`git write-tree`)                             |
+| `commitTree(path, treeHash, message)`            | Create orphan commit (`git commit-tree`)                                     |
+| `reset(path, options)`                           | Reset HEAD (`git reset`). Use `{ mode: 'soft'\|'mixed'\|'hard', target }`    |
+| `push(path, remote, branch, options, forcePush)` | Push to remote. Supports refspec format (`commitHash:branch`)                |
+| `commit(path, message)`                          | Create a standard commit                                                     |
+| `getStatus(path)`                                | Get repository status                                                        |
+
+**Pattern for Filtered Push:**
+
+```typescript
+// 1. Clear index
+await this.gitUtils.removeFiles(appPath, ['.'], { recursive: true, cached: true, quiet: true });
+
+// 2. Add only allowed files
+await this.gitUtils.addFiles(appPath, ALLOWED_DIRECTORIES, { ignoreErrors: true });
+await this.gitUtils.addFiles(appPath, ALLOWED_CONFIG_FILES, { ignoreErrors: true });
+
+// 3. Create tree and commit
+const treeResult = await this.gitUtils.writeTree(appPath);
+const commitResult = await this.gitUtils.commitTree(appPath, treeHash, message);
+
+// 4. Force push with refspec
+await this.gitUtils.push(appPath, remoteName, `${commitHash}:${branch}`, {}, true);
+
+// 5. Restore to clean state (in finally block)
+await this.gitUtils.reset(appPath, { hard: true });
+```
+
 ## Database
 
 **Type:** SQLite

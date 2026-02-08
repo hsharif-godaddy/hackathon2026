@@ -12,6 +12,8 @@ export interface GitCommandOptions {
   timeout?: number;
   /** Environment variables */
   env?: Record<string, string>;
+  /** Git add: Continue even if some files fail (--ignore-errors) */
+  ignoreErrors?: boolean;
 }
 
 export interface GitCommandResult {
@@ -167,7 +169,12 @@ export class GitUtils {
    * Add files to staging area
    */
   async addFiles(repoPath: string, files: string[] = ['.'], options: GitCommandOptions = {}): Promise<GitCommandResult> {
-    return this.executeGitCommand(['add', ...files], repoPath, {
+    const args = ['add'];
+    if (options.ignoreErrors) {
+      args.push('--ignore-errors');
+    }
+    args.push(...files);
+    return this.executeGitCommand(args, repoPath, {
       ...options,
       timeout: options.timeout || 60000  // 1 minutes for large repos
     });
@@ -808,6 +815,120 @@ export class GitUtils {
     }
 
     return result.stdout;
+  }
+
+  // ==================================================================================
+  // Low-level Git Operations (for filtered push and similar workflows)
+  // ==================================================================================
+
+  /**
+   * Remove files from git (git rm)
+   * Generic method matching addFiles pattern with configurable options
+   *
+   * @param repoPath - Path to the git repository
+   * @param files - Files or directories to remove (default: ['.'])
+   * @param options - Git command options plus rm-specific options:
+   *   - recursive: -r flag (remove directories recursively)
+   *   - cached: --cached (only affects index, not working directory)
+   *   - force: -f flag (override up-to-date check)
+   *   - quiet: --quiet (suppress output)
+   * @returns GitCommandResult
+   */
+  async removeFiles(
+    repoPath: string,
+    files: string[] = ['.'],
+    options: GitCommandOptions & {
+      recursive?: boolean;
+      cached?: boolean;
+      force?: boolean;
+      quiet?: boolean;
+    } = {}
+  ): Promise<GitCommandResult> {
+    const args = ['rm'];
+    if (options.recursive) args.push('-r');
+    if (options.cached) args.push('--cached');
+    if (options.force) args.push('-f');
+    if (options.quiet) args.push('--quiet');
+    args.push(...files);
+    return this.executeGitCommand(args, repoPath, {
+      ...options,
+      timeout: options.timeout || 30000
+    });
+  }
+
+  /**
+   * Create a tree object from the current index state
+   * Uses `git write-tree` to create a tree SHA from staged files
+   *
+   * @param repoPath - Path to the git repository
+   * @param options - Git command options
+   * @returns GitCommandResult with tree hash in stdout
+   */
+  async writeTree(
+    repoPath: string,
+    options: GitCommandOptions = {}
+  ): Promise<GitCommandResult> {
+    return this.executeGitCommand(['write-tree'], repoPath, {
+      ...options,
+      timeout: options.timeout || 30000
+    });
+  }
+
+  /**
+   * Create a commit object from a tree hash
+   * Uses `git commit-tree` to create an orphan commit (no parent)
+   *
+   * @param repoPath - Path to the git repository
+   * @param treeHash - The tree SHA to create a commit from
+   * @param message - Commit message
+   * @param options - Git command options
+   * @returns GitCommandResult with commit hash in stdout
+   */
+  async commitTree(
+    repoPath: string,
+    treeHash: string,
+    message: string,
+    options: GitCommandOptions = {}
+  ): Promise<GitCommandResult> {
+    return this.executeGitCommand(['commit-tree', treeHash, '-m', message], repoPath, {
+      ...options,
+      timeout: options.timeout || 30000
+    });
+  }
+
+  /**
+   * Reset the current HEAD to a specified state
+   * Supports soft, mixed (default), and hard reset modes
+   *
+   * @param repoPath - Path to the git repository
+   * @param options - Git command options plus reset-specific options:
+   *   - mode: Reset mode ('soft', 'mixed', 'hard') - explicit mode selection
+   *   - hard: If true, use --hard reset (legacy, prefer mode option)
+   *   - target: The commit/ref to reset to (default: 'HEAD')
+   * @returns GitCommandResult
+   */
+  async reset(
+    repoPath: string,
+    options: GitCommandOptions & {
+      mode?: 'soft' | 'mixed' | 'hard';
+      hard?: boolean;
+      target?: string;
+    } = {}
+  ): Promise<GitCommandResult> {
+    const args = ['reset'];
+    // Support explicit mode or legacy hard boolean
+    if (options.mode) {
+      args.push(`--${options.mode}`);
+    } else if (options.hard) {
+      args.push('--hard');
+    }
+    if (options.target) {
+      args.push(options.target);
+    }
+    return this.executeGitCommand(args, repoPath, {
+      ...options,
+      timeout: options.timeout || 30000
+    });
   }
 
   /**
