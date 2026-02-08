@@ -301,13 +301,13 @@ export default function AppCard({ site }: { site: SiteInfo }) {
   )
 
   const description = (
-    <div className="line-clamp-2 sm:line-clamp-3">
+    <div className="line-clamp-2 sm:line-clamp-3 wrap-anywhere">
       {site.initial_prompt}
     </div>
   )
 
   const media = (
-    <div className="w-full sm:w-1/2 h-[144px] sm:h-[192px] rounded-lg overflow-hidden">
+    <div className="w-full sm:w-1/2 h-[144px] sm:h-[192px] rounded-lg overflow-hidden shrink-0">
       <AppThumbnail
         siteId={site.id}
         siteName={site.name || t('builder_apps_alert_delete_untitled')}
