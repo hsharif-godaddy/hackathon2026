@@ -42,6 +42,7 @@ program
   .option('-m, --max <number>', 'Maximum results', '5')
   .option('-t, --threshold <number>', 'Score threshold (0-1)', '0.35')
   .option('--json', 'Output as JSON', false)
+  .option('-f, --full', 'Show full content (default: first 5 lines)', false)
   .action(async (query, options) => {
     const client = new KnowBClient();
 
@@ -96,15 +97,21 @@ program
         return;
       }
 
+      // Sort results by score (descending)
+      const sortedResults = [...result.results].sort((a, b) => b.score - a.score);
+
       if (options.json) {
-        console.log(JSON.stringify(result.results, null, 2));
+        console.log(JSON.stringify(sortedResults, null, 2));
         return;
       }
 
-      console.log(`${colors.green}Found ${result.results.length} result(s)${colors.reset}`);
+      console.log(`${colors.green}Found ${sortedResults.length} result(s)${colors.reset}`);
+      if (!options.full) {
+        console.log(`${colors.dim}(showing first 5 lines per result, use --full for complete content)${colors.reset}`);
+      }
       console.log('');
 
-      for (const item of result.results) {
+      for (const item of sortedResults) {
         console.log(
           `${colors.bright}════════════════════════════════════════════════════════════${colors.reset}`
         );
@@ -115,9 +122,19 @@ program
           `${colors.bright}════════════════════════════════════════════════════════════${colors.reset}`
         );
 
-        // Truncate long text
-        const displayText =
-          item.text.length > 1500 ? item.text.substring(0, 1500) + '\n... (truncated)' : item.text;
+        // Show full or truncated content
+        let displayText: string;
+        if (options.full) {
+          displayText = item.text;
+        } else {
+          // Show first 5 lines
+          const lines = item.text.split('\n');
+          if (lines.length > 5) {
+            displayText = lines.slice(0, 5).join('\n') + `\n${colors.dim}... (${lines.length - 5} more lines)${colors.reset}`;
+          } else {
+            displayText = item.text;
+          }
+        }
         console.log(displayText);
         console.log('');
       }
