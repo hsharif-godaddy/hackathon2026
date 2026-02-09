@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import type { QualityEvaluation } from '../quality/types.js';
+
 export const CredentialsSchema = z.object({
   username: z.string(),
   password: z.string(),
@@ -26,6 +28,25 @@ export const SitePromptSchema = z.object({
   handleLogin: z.boolean().default(true),
 });
 
+// Quality evaluation configuration
+export const QualityEvalSchema = z.object({
+  enabled: z.boolean().default(true),
+  siteType: z.enum([
+    'landing-page', 'ecommerce', 'portfolio', 'restaurant',
+    'blog', 'service-business', 'nonprofit', 'medical', 'legal',
+    'fitness', 'event-planner', 'generic'
+  ]).default('generic'),
+  skipCategories: z.array(z.enum([
+    'performance', 'accessibility', 'seo', 'functional',
+    'visual', 'content', 'security', 'usability', 'businessFit'
+  ])).default([]),
+  thresholds: z.object({
+    minOverallScore: z.number().min(0).max(100).default(70),
+    minPerformance: z.number().min(0).max(100).default(50),
+    minAccessibility: z.number().min(0).max(100).default(80),
+  }).default({}),
+});
+
 export const ScenarioSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
@@ -41,19 +62,23 @@ export const ScenarioSchema = z.object({
   previewScreenshots: PreviewScreenshotSchema.optional(),
   // Site prompt: uses Playwright selectors (no AI tokens) for login, prompt entry, and start building
   sitePrompt: SitePromptSchema.optional(),
+  // Quality evaluation: evaluates the built website against quality criteria
+  qualityEval: QualityEvalSchema.optional(),
 });
 
 export type Scenario = z.infer<typeof ScenarioSchema>;
 export type Credentials = z.infer<typeof CredentialsSchema>;
 export type PreviewScreenshot = z.infer<typeof PreviewScreenshotSchema>;
 export type SitePrompt = z.infer<typeof SitePromptSchema>;
+export type QualityEval = z.infer<typeof QualityEvalSchema>;
 
 export interface ScreenshotInfo {
   path: string;
-  type: 'initial' | 'final' | 'preview' | 'error';
+  type: 'final' | 'preview';
   url?: string;
   scrollPosition?: string;
   timestamp: number;
+  base64?: string;
 }
 
 export interface AgentAction {
@@ -80,6 +105,10 @@ export interface EvalResult {
   screenshots: ScreenshotInfo[];
   previewUrl?: string;
   error?: string;
+  // Quality evaluation results (if enabled)
+  quality?: QualityEvaluation;
+  qualityStatus?: 'success' | 'failed' | 'skipped';
+  qualityError?: string;
 }
 
 export interface Report {

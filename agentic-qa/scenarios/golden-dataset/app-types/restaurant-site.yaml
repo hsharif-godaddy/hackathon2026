@@ -1,12 +1,13 @@
-# Test creating a restaurant website
+# Test creating a restaurant website with rich content, design specs, and DB form flow
 name: Create Restaurant Website
 description: |
-  Create a restaurant website with menu, location,
-  and reservation capabilities.
+  Create a content-heavy Italian restaurant website with full menu,
+  wine list, chef bio, reservation form, then use chat to add a wine
+  section and wire the reservation form to a database.
 
 startUrl: https://airo-builder.godaddy.com
-timeout: 480000  # 8 minutes
-maxSteps: 80
+timeout: 600000  # 10 minutes (creation + 2 chat modifications)
+maxSteps: 90
 headed: false
 
 credentials:
@@ -15,32 +16,74 @@ credentials:
 
 sitePrompt:
   prompt: |
-    My family owns Bella Cucina, an Italian restaurant in downtown Portland for 25 years. Need a website that makes people hungry.
+    My family owns Bella Cucina, an authentic Italian restaurant in downtown Portland for 25 years. Need a website that makes people hungry and tells our story.
 
-    Big hero image of homemade pasta.
+    Design: Deep burgundy and warm cream color scheme with gold accents. Traditional Italian trattoria feel, like walking into a rustic Tuscan villa. Use Playfair Display for headings and a clean sans-serif for body text. Full-width hero image of homemade pasta with an overlapping reservation card. Menu section should use a 2-column layout on desktop that stacks to single column on mobile.
 
-    Menu is crucial: Appetizers with Bruschetta $12, Caprese Salad $14, Calamari Fritti $16. Mains with Spaghetti Carbonara $22, Osso Buco $34, Chicken Parmigiana $26, Seafood Risotto $28. Desserts: Tiramisu $10, Panna Cotta $9, Cannoli $8.
+    Hero section: Big beautiful hero with the tagline "Authentic Italian Tradition Since 1999" and a prominent "Reserve a Table" button.
 
-    Hours: Tuesday-Sunday 5pm-10pm, closed Mondays.
+    Chef bio section: Chef Marco Bellini, our head chef, trained at Culinary Institute of Bologna. 30 years of experience. Known for hand-rolled pasta and slow-braised osso buco. Include a quote from him: "Every dish tells the story of my grandmother's kitchen in Tuscany."
 
-    Address: 742 Pearl Street Portland OR 97205. Phone 503-555-0147.
+    Menu is crucial and must be detailed:
 
-    Need a reservation form with name, email, phone, date, time, party size.
+    Antipasti:
+    - Bruschetta Classica - Grilled sourdough topped with heirloom tomatoes, fresh basil, garlic, and aged balsamic reduction - $12
+    - Caprese Salad - Buffalo mozzarella, vine-ripened tomatoes, fresh basil, extra virgin olive oil from Puglia - $14
+    - Calamari Fritti - Lightly battered calamari with house-made marinara and lemon aioli - $16
+    - Carpaccio di Manzo - Thinly sliced beef tenderloin with arugula, shaved parmesan, and truffle oil - $18
 
-    Warm colors burgundy cream and gold. Traditional Italian trattoria feel.
+    Piatti Principali:
+    - Spaghetti Carbonara - House-made spaghetti with guanciale, pecorino romano, black pepper, egg yolk - $22
+    - Osso Buco alla Milanese - Slow-braised veal shank with gremolata, saffron risotto, and root vegetables - $34
+    - Chicken Parmigiana - Free-range chicken breast with house-made marinara and melted mozzarella di bufala - $26
+    - Seafood Risotto - Arborio rice with shrimp, mussels, clams, and calamari in white wine saffron broth - $28
+    - Tagliatelle al Ragu - Hand-cut tagliatelle with slow-simmered Bolognese sauce, 8-hour cook - $24
+    - Branzino al Forno - Whole roasted Mediterranean sea bass with lemon, capers, and roasted potatoes - $32
+
+    Dolci:
+    - Tiramisu - Classic lady fingers soaked in espresso with mascarpone cream and cocoa - $10
+    - Panna Cotta - Vanilla bean panna cotta with seasonal berry compote - $9
+    - Cannoli Siciliani - Crispy shells filled with sweet ricotta, chocolate chips, and candied orange - $8
+    - Affogato - Double espresso poured over house-made vanilla gelato - $7
+
+    Seasonal Specials section: "Winter Menu" featuring Truffle Risotto $30 and Wild Boar Ragu $28. Note: menu changes quarterly.
+
+    Hours: Tuesday-Thursday 5pm-9:30pm, Friday-Saturday 5pm-10:30pm, Sunday 4pm-9pm, closed Mondays. Happy Hour Tuesday-Thursday 5pm-6:30pm.
+
+    Address: 742 Pearl Street Portland OR 97205. Phone 503-555-0147. Email reservations@bellacucina.com.
+
+    Reservation form with fields: Full Name, Email, Phone Number, Preferred Date, Preferred Time, Party Size (dropdown 1-10+), Special Requests or Dietary Needs (textarea), and a Submit Reservation button.
+
+    Footer with Instagram @bellacucinapdx, Facebook, and Yelp links. Include a small embedded map placeholder showing location. Copyright 2024 Bella Cucina. Privacy policy link.
 
 systemPrompt: |
   ${common.developPageBase}
 
   ${common.errorHandlingInstructions}
 
+  ${common.chatInstructions}
+
+  Chat messages to send (in order):
+  1. "Can you add a Wine List section? We have: Chianti Classico by the glass $14 or bottle $52, Barolo $18/$72, Pinot Grigio $12/$44, and Prosecco $10/$38. Organize it as a nice table with glass and bottle prices."
+  2. "I need the reservation form to actually save submissions to a database so I can see all the bookings that come in. Make it store the name, email, phone, date, time, party size, and any special requests."
+
 goal: |
-  1. Wait for site creation to complete
-  2. Verify the preview contains:
-     - "Bella Cucina" restaurant name
-     - Menu items with prices
-     - Operating hours
-     - Location or address information
-  3. Report success if restaurant essentials are present
+  Send 2 chat messages to modify the site. Success criteria:
+  - Site creation completed with full menu displayed
+  - "Bella Cucina" restaurant name is prominent
+  - Menu shows at least 10 dishes with prices across multiple categories
+  - Chef bio section with "Marco Bellini" is visible
+  - Reservation form is present with name, email, phone, date, time, and party size fields
+  - Wine list section was added after first chat message
+  - Reservation form was connected to database after second chat message
+  - Hours and address (742 Pearl Street) are displayed
 
+  Report success if the site has the full menu, reservation form, and at least 1 of the 2 chat modifications are visible.
 
+qualityEval:
+  enabled: true
+  siteType: restaurant
+  thresholds:
+    minOverallScore: 60
+    minPerformance: 40
+    minAccessibility: 70

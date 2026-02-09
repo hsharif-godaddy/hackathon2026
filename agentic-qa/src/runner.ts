@@ -2,7 +2,10 @@ import { Stagehand } from '@browserbasehq/stagehand';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { Scenario, EvalResult, ScreenshotInfo, PreviewScreenshot } from './scenarios/types.js';
+import { evaluate as evaluateQuality } from './quality/index.js';
+import type { PlaywrightPage } from './quality/playwright-types.js';
+import type { QualityEvaluation } from './quality/types.js';
+import type { EvalResult, PreviewScreenshot, Scenario, ScreenshotInfo } from './scenarios/types.js';
 import { deleteAllSitesViaAPI, deleteOldestSitesIfOverLimit } from './utils/auth.js';
 import { runDeterministicSetup } from './utils/deterministic-actions.js';
 
@@ -11,6 +14,10 @@ export interface RunnerOptions {
   screenshotDir?: string;
   model?: string;
   verbose?: boolean;
+  // Quality evaluation options
+  qualityEnabled?: boolean;
+  anthropicApiKey?: string;
+  anthropicModel?: string;
 }
 
 export async function runScenario(
@@ -20,6 +27,9 @@ export async function runScenario(
   const startTime = Date.now();
   const screenshots: ScreenshotInfo[] = [];
   let previewUrl: string | undefined;
+  let quality: QualityEvaluation | undefined;
+  let qualityStatus: 'success' | 'failed' | 'skipped' = 'skipped';
+  let qualityErrorMsg: string | undefined;
 
   // Configure Stagehand with the model
   // GoDaddy proxy expects just the model name without provider prefix
@@ -77,17 +87,6 @@ export async function runScenario(
       console.log('Will navigate to SSO for login first, then to Airo');
     }
 
-    // Take initial screenshot
-    if (options.screenshotDir) {
-      const initialScreenshot = await captureScreenshot(
-        page,
-        options.screenshotDir,
-        `${scenario.name}-initial`,
-        { type: 'initial', url: handleLogin ? 'sso.godaddy.com' : scenario.startUrl }
-      );
-      screenshots.push(initialScreenshot);
-    }
-
     // Run deterministic setup if configured (prompt entry, start building, and optionally login)
     // This uses Playwright selectors instead of AI for faster, more reliable execution
     if (scenario.sitePrompt?.enabled !== false && scenario.sitePrompt?.prompt) {
@@ -106,7 +105,7 @@ export async function runScenario(
       }, scenario.startUrl); // Pass the Airo URL to navigate to after login
 
       if (!setupResult.success) {
-        console.error(`Deterministic setup failed: ${setupResult.error}`);
+        console.error('Deterministic setup failed: %s', setupResult.error);
         throw new Error(`Deterministic setup failed: ${setupResult.error}`);
       }
 
@@ -191,6 +190,54 @@ Always verify the final state matches the expected outcome.`,
       }
     }
 
+    // Run quality evaluation if enabled and we have a preview URL
+    const qualityConfig = scenario.qualityEval;
+    const shouldRunQuality = options.qualityEnabled !== false &&
+      qualityConfig?.enabled !== false &&
+      previewUrl;
+
+    if (shouldRunQuality && previewUrl) {
+      const qualityUrl = previewUrl; // Type narrowing helper
+      console.log('\n========== QUALITY EVALUATION ==========');
+      console.log(`Evaluating: ${qualityUrl}`);
+
+      try {
+        quality = await evaluateQuality({
+          url: qualityUrl,
+          config: {
+            enabled: true,
+            siteType: qualityConfig?.siteType,
+            skipCategories: qualityConfig?.skipCategories || [],
+            originalPrompt: scenario.sitePrompt?.prompt,
+            thresholds: qualityConfig?.thresholds || {
+              minOverallScore: 70,
+              minPerformance: 50,
+              minAccessibility: 80,
+            },
+          },
+          page: stagehand.context.pages().find(p => p.url() === qualityUrl) as PlaywrightPage | undefined,
+          screenshots: screenshots.map(s => ({ path: s.path, type: s.type })),
+          anthropicApiKey: options.anthropicApiKey || process.env.ANTHROPIC_API_KEY,
+          anthropicModel: options.anthropicModel || process.env.ANTHROPIC_MODEL,
+          headless: !(options.headed ?? scenario.headed),
+        });
+
+        qualityStatus = 'success';
+        console.log(`Quality Score: ${quality.overall.score}/100 (Grade: ${quality.overall.grade})`);
+        if (quality.overall.criticalIssues.length > 0) {
+          console.log('Critical Issues:');
+          quality.overall.criticalIssues.forEach(issue => console.log(`  - ${issue}`));
+        }
+        console.log('=========================================\n');
+      } catch (qualityError) {
+        qualityStatus = 'failed';
+        qualityErrorMsg = qualityError instanceof Error ? qualityError.message : String(qualityError);
+        console.warn('Quality evaluation failed: %s', qualityErrorMsg);
+      }
+    } else {
+      qualityStatus = 'skipped';
+    }
+
     // Run cleanup if specified
     if (scenario.cleanup?.deleteAllSitesViaAPI) {
       await deleteAllSitesViaAPI(stagehand);
@@ -232,29 +279,16 @@ Always verify the final state matches the expected outcome.`,
       },
       screenshots,
       previewUrl,
+      quality,
+      qualityStatus,
+      qualityError: qualityErrorMsg,
     };
   } catch (error) {
     const duration = Date.now() - startTime;
 
-    console.error(`Scenario failed with error: ${error}`);
+    console.error('Scenario failed with error: %s', error);
 
-    // Try to take error screenshot
-    try {
-      if (options.screenshotDir) {
-        const page = stagehand.context.pages()[0];
-        if (page) {
-          const errorScreenshot = await captureScreenshot(
-            page,
-            options.screenshotDir,
-            `${scenario.name}-error`,
-            { type: 'error', url: page.url() }
-          );
-          screenshots.push(errorScreenshot);
-        }
-      }
-    } catch {
-      // Ignore screenshot errors during error handling
-    }
+    // No screenshots captured on error — only final/preview screenshots are stored
 
     // Try cleanup even on error
     try {
@@ -290,7 +324,7 @@ Always verify the final state matches the expected outcome.`,
 }
 
 interface ScreenshotOptions {
-  type: 'initial' | 'final' | 'preview' | 'error';
+  type: 'final' | 'preview';
   url?: string;
   scrollPosition?: string;
   fullPage?: boolean;
@@ -307,6 +341,8 @@ async function captureScreenshot(
   const filename = `${name}-${timestamp}.png`;
   const filepath = join(dir, filename);
 
+  // Let the page stabilize before capturing (animations, lazy images, fonts)
+  await new Promise(resolve => setTimeout(resolve, 5000));
   const buffer = await page.screenshot({ fullPage: options.fullPage ?? false });
   await writeFile(filepath, buffer);
 
@@ -317,6 +353,7 @@ async function captureScreenshot(
     url: options.url,
     scrollPosition: options.scrollPosition,
     timestamp,
+    base64: Buffer.from(buffer).toString('base64'),
   };
 }
 
@@ -594,7 +631,7 @@ async function captureAllSitePages(
         console.log(`  Captured: ${pageName} (${pageCount}/${maxPages})`);
 
       } catch (error) {
-        console.log(`  Failed to capture ${link}: ${error}`);
+        console.log('  Failed to capture %s: %s', link, error);
       }
     }
 

@@ -1,11 +1,11 @@
-# Test creating a medical practice website
+# Test creating a medical practice website with rich content and design specs
 name: Create Medical Practice Website
 description: |
-  Create a healthcare/medical practice website with
-  services, doctors, and appointment booking.
+  Create a healthcare website with detailed services, doctor profiles,
+  insurance info, patient testimonials, FAQ, and appointment booking.
 
 startUrl: https://airo-builder.godaddy.com
-timeout: 480000 # 8 minutes
+timeout: 480000  # 8 minutes
 maxSteps: 80
 headed: false
 
@@ -15,17 +15,49 @@ credentials:
 
 sitePrompt:
   prompt: |
-    Need a professional website for Sunrise Family Medicine in Austin TX. Been serving the community for 15 years.
+    Need a professional website for Sunrise Family Medicine in Austin TX. Been serving the community for 15 years. Must feel calming, trustworthy, and HIPAA-aware.
 
-    Our team: Dr Patricia Huang for Family Medicine who speaks Mandarin, Dr Michael Torres the Pediatrics specialist, and Dr Amanda Foster focusing on Womens Health and prenatal care.
+    Design: Calming sky blue and soft white color scheme with teal accents. Clean and professional like One Medical or ZocDoc. Use a rounded sans-serif font for headings to feel approachable and a clean sans-serif for body text. Services should display as a 3-column card grid on desktop that stacks to single column on mobile. Hero should have a welcoming family photo with an overlapping appointment booking card.
 
-    Services: Annual Wellness Exams, Pediatric Care from newborn to 18, Womens Health and Family Planning, Chronic Disease Management for diabetes and hypertension, Immunizations, and Minor Urgent Care.
+    Hero: "Your Family's Health, Our Priority" with a "Book Appointment" button and a secondary "New Patient? Start Here" link.
 
-    We accept Aetna, Blue Cross, Cigna, United Healthcare, Medicare. Hours Mon-Fri 8am-6pm, Sat 9am-1pm.
+    Our team with detailed bios:
+    - Dr. Patricia Huang, MD - Family Medicine, Board Certified ABFM. Stanford Medical School 2005. Speaks English and Mandarin. Special interests: preventive care, geriatrics, diabetes management. 18 years experience. "I believe in treating the whole person, not just symptoms."
+    - Dr. Michael Torres, MD - Pediatrics, Board Certified AAP. UT Southwestern 2010. Speaks English and Spanish. Special interests: childhood development, ADHD, asthma management. 14 years experience.
+    - Dr. Amanda Foster, DO - Women's Health, Board Certified AOBOG. TCOM 2008. Special interests: prenatal care, family planning, menopause management, PCOS. 16 years experience.
+    - Rachel Kim, PA-C - Physician Assistant. Baylor PA program 2015. Special interests: urgent care, sports medicine, wound care. 9 years experience.
 
-    Need appointment booking and contact form. Address: 4521 Medical Parkway Suite 200 Austin TX 78756. Phone 512-555-0198.
+    Services with detailed descriptions:
+    - Annual Wellness Exams - Comprehensive health screening including blood work, vitals, and personalized prevention plan
+    - Pediatric Care - Newborn through 18, well-child visits, developmental screenings, school and sports physicals
+    - Women's Health & Family Planning - Annual exams, prenatal care, contraception counseling, menopause support
+    - Chronic Disease Management - Ongoing care for diabetes, hypertension, thyroid disorders, and heart disease
+    - Immunizations & Vaccines - Full childhood schedule, flu shots, shingles, travel vaccines, COVID boosters
+    - Minor Urgent Care - Same-day appointments for infections, sprains, minor injuries, rashes
+    - Mental Health Screening - Depression, anxiety, and ADHD screening with referral network
+    - Telehealth Visits - Video appointments available Mon-Fri for follow-ups and minor concerns
 
-    Patient portal login button in header. Calming blues and greens. Mention telehealth visits available.
+    Insurance accepted: Aetna, Blue Cross Blue Shield, Cigna, United Healthcare, Humana, Medicare, Medicaid, Oscar Health, Ambetter. Note: We also offer a self-pay discount program starting at $75/visit.
+
+    Patient testimonials:
+    - "Dr. Huang caught something my previous doctor missed for years. Truly thorough." - Maria G., patient since 2015
+    - "Dr. Torres is amazing with our kids. They actually look forward to checkups." - The Johnson Family
+    - "The telehealth option saved me so much time. Got my prescription renewed in 15 minutes." - David R.
+    - "Front desk staff is incredibly kind and the wait times are minimal." - Susan L., patient since 2018
+
+    FAQ section:
+    - "Are you accepting new patients?" - Yes, we welcome new patients of all ages. Call to schedule your first visit.
+    - "Do I need a referral?" - No referral needed for primary care visits. Specialists may require one depending on your insurance.
+    - "What should I bring to my first appointment?" - Photo ID, insurance card, list of current medications, and any recent medical records.
+    - "Do you offer same-day appointments?" - Yes, we reserve slots daily for urgent needs. Call before 10am for best availability.
+    - "Is parking available?" - Free parking lot behind the building. Handicap accessible entrance on the south side.
+    - "What are your COVID protocols?" - Masks optional, enhanced cleaning, separate sick and well waiting areas available.
+
+    Hours: Mon-Fri 8am-6pm, Saturday 9am-1pm, closed Sunday. After-hours nurse line available 24/7 at 512-555-0199.
+
+    Address: 4521 Medical Parkway Suite 200 Austin TX 78756. Main phone 512-555-0198. Fax 512-555-0197.
+
+    Patient portal login button in header. Footer with Healthgrades and Google Reviews links. ADA accessible badge. Copyright 2024 Sunrise Family Medicine.
 
 systemPrompt: |
   ${common.developPageBase}
@@ -36,9 +68,20 @@ goal: |
   1. Wait for site creation to complete
   2. Verify the preview contains:
      - "Sunrise Family Medicine" clinic name
-     - List of medical services offered
-     - Doctor profiles or team section
-     - Appointment booking or contact form
-     - Location information
-  3. Report success if healthcare essentials are present
+     - At least 3 doctor/provider profiles with names and specialties
+     - At least 6 services listed with descriptions
+     - Insurance accepted section mentioning specific carriers (Aetna, Blue Cross, etc.)
+     - Patient testimonials section with quotes
+     - FAQ section with at least 4 questions and answers
+     - Appointment booking form or button
+     - Address showing "4521 Medical Parkway" and phone "512-555-0198"
+     - Hours of operation
+  3. Report success if at least 7 of the above elements are present
 
+qualityEval:
+  enabled: true
+  siteType: medical
+  thresholds:
+    minOverallScore: 60
+    minPerformance: 40
+    minAccessibility: 70

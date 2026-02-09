@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
 import { config } from 'dotenv';
-import { resolve, dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { generateReport, formatReportSummary, saveReport } from './evaluator.js';
-import { runScenario, runAllScenarios } from './runner.js';
-import { loadScenario, loadAllScenarios } from './scenarios/loader.js';
+import { evaluateStandalone } from './quality/index.js';
+import type { EvaluationCategory, SiteType } from './quality/types.js';
+import { runAllScenarios, runScenario } from './runner.js';
+import { loadAllScenarios, loadScenario } from './scenarios/loader.js';
 import { maybeIndexResults } from './utils/elasticsearch.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -28,6 +30,12 @@ interface CLIOptions {
   verbose: boolean;
   output: string;
   scenarios: string;
+  // Quality evaluation options
+  quality: boolean;
+  qualityOnly: boolean;
+  qualityUrl?: string;
+  siteType?: SiteType;
+  skipQuality?: EvaluationCategory[];
 }
 
 function parseArgs(): { options: CLIOptions; scenarioPath?: string } {
@@ -39,6 +47,8 @@ function parseArgs(): { options: CLIOptions; scenarioPath?: string } {
     verbose: false,
     output: DEFAULT_REPORTS_DIR,
     scenarios: DEFAULT_SCENARIOS_DIR,
+    quality: true, // Quality evaluation enabled by default
+    qualityOnly: false,
   };
   let scenarioPath: string | undefined;
 
@@ -66,6 +76,34 @@ function parseArgs(): { options: CLIOptions; scenarioPath?: string } {
       if (value) {
         options.scenarios = resolve(value);
       }
+    } else if (arg === '--quality' || arg === '-q') {
+      options.quality = true;
+    } else if (arg === '--no-quality') {
+      options.quality = false;
+    } else if (arg === '--quality-only') {
+      options.qualityOnly = true;
+      options.quality = true;
+    } else if (arg === '--url' || arg === '-u') {
+      const value = args[++i];
+      if (value) {
+        try {
+          new URL(value);
+        } catch {
+          console.error('Invalid URL: %s — must be a fully qualified URL (e.g. https://example.com)', value);
+          process.exit(1);
+        }
+        options.qualityUrl = value;
+      }
+    } else if (arg === '--site-type') {
+      const value = args[++i];
+      if (value) {
+        options.siteType = value as SiteType;
+      }
+    } else if (arg === '--skip-quality') {
+      const value = args[++i];
+      if (value) {
+        options.skipQuality = value.split(',').map(s => s.trim()) as EvaluationCategory[];
+      }
     } else if (arg === '--help') {
       printHelp();
       process.exit(0);
@@ -85,20 +123,40 @@ Usage:
   pnpm --filter agentic-qa test [options] [scenario-file]
 
 Options:
-  --all, -a           Run all scenarios in the scenarios directory
-  --headed, -h        Run with visible browser (not headless)
-  --model, -m <name>  AI model to use (default: anthropic/claude-sonnet-4-5-20250929)
-  --verbose, -v       Enable verbose logging
-  --output, -o <dir>  Output directory for reports (default: ./reports)
+  --all, -a             Run all scenarios in the scenarios directory
+  --headed, -h          Run with visible browser (not headless)
+  --model, -m <name>    AI model to use (default: anthropic/claude-sonnet-4-5-20250929)
+  --verbose, -v         Enable verbose logging
+  --output, -o <dir>    Output directory for reports (default: ./reports)
   --scenarios, -s <dir> Scenarios directory (default: ./scenarios)
-  --help              Show this help message
+  --help                Show this help message
+
+Quality Evaluation Options:
+  --quality, -q         Enable quality evaluation (default: on)
+  --no-quality          Disable quality evaluation
+  --quality-only        Run quality evaluation only (skip scenario execution)
+  --url, -u <url>       URL to evaluate (for standalone quality evaluation)
+  --site-type <type>    Site type for business-fit evaluation
+                        (landing-page, ecommerce, portfolio, restaurant, blog, etc.)
+  --skip-quality <cats> Skip quality categories (comma-separated)
+                        (performance, accessibility, seo, functional, visual,
+                         content, security, usability, businessFit)
 
 Examples:
-  # Run a specific scenario
+  # Run a specific scenario with quality evaluation
   pnpm --filter agentic-qa test scenarios/create-site.yaml
 
   # Run all scenarios
   pnpm --filter agentic-qa test --all
+
+  # Evaluate an existing website (standalone mode)
+  pnpm --filter agentic-qa test --quality-only --url https://example.com
+
+  # Evaluate with specific site type
+  pnpm --filter agentic-qa test --quality-only --url https://shop.example.com --site-type ecommerce
+
+  # Skip AI-based evaluators for faster results
+  pnpm --filter agentic-qa test --skip-quality visual,content,usability,businessFit
 
   # Run with visible browser
   pnpm --filter agentic-qa test --headed scenarios/create-site.yaml
@@ -109,7 +167,7 @@ Examples:
 Environment Variables:
   TEST_USERNAME       GoDaddy test account username
   TEST_PASSWORD       GoDaddy test account password
-  ANTHROPIC_API_KEY   Anthropic API key (for Claude models)
+  ANTHROPIC_API_KEY   Anthropic API key (for Claude models and quality evaluation)
   OPENAI_API_KEY      OpenAI API key (for GPT models)
 
 Elasticsearch (optional - for CI/CD result indexing):
@@ -123,7 +181,80 @@ Elasticsearch (optional - for CI/CD result indexing):
 async function main(): Promise<void> {
   const { options, scenarioPath } = parseArgs();
 
-  // Validate environment
+  console.log('');
+  console.log('╔═══════════════════════════════════════════════════════════════╗');
+  console.log('║               AGENTIC QA - Airo Builder                       ║');
+  console.log('╚═══════════════════════════════════════════════════════════════╝');
+  console.log('');
+
+  // Standalone quality evaluation mode
+  if (options.qualityOnly && options.qualityUrl) {
+    console.log('Running standalone quality evaluation...');
+    console.log(`URL: ${options.qualityUrl}`);
+    console.log(`Site Type: ${options.siteType || 'generic'}`);
+    console.log('');
+
+    const result = await evaluateStandalone({
+      url: options.qualityUrl,
+      siteType: options.siteType,
+      skipCategories: options.skipQuality || [],
+      anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+      anthropicModel: process.env.ANTHROPIC_MODEL,
+      outputDir: options.output,
+      format: 'both',
+      headless: !options.headed,
+    });
+
+    // Display results
+    console.log('\n═══════════════════════════════════════════════════════════════');
+    console.log('                    QUALITY EVALUATION RESULTS                  ');
+    console.log('═══════════════════════════════════════════════════════════════\n');
+
+    console.log(`Overall Score: ${result.evaluation.overall.score}/100`);
+    console.log(`Grade: ${result.evaluation.overall.grade}`);
+    console.log(`Meets Thresholds: ${result.meetsThresholds ? 'Yes' : 'No'}`);
+    console.log('');
+
+    console.log('Category Scores:');
+    if (result.evaluation.performance) console.log(`  Performance:   ${result.evaluation.performance.score}/100`);
+    if (result.evaluation.accessibility) console.log(`  Accessibility: ${result.evaluation.accessibility.score}/100`);
+    if (result.evaluation.seo) console.log(`  SEO:           ${result.evaluation.seo.score}/100`);
+    if (result.evaluation.functional) console.log(`  Functional:    ${result.evaluation.functional.score}/100`);
+    if (result.evaluation.visual) console.log(`  Visual:        ${result.evaluation.visual.score}/100`);
+    if (result.evaluation.content) console.log(`  Content:       ${result.evaluation.content.score}/100`);
+    if (result.evaluation.security) console.log(`  Security:      ${result.evaluation.security.score}/100`);
+    if (result.evaluation.usability) console.log(`  Usability:     ${result.evaluation.usability.score}/100`);
+    if (result.evaluation.businessFit) console.log(`  Business Fit:  ${result.evaluation.businessFit.score}/100`);
+    console.log('');
+
+    if (result.evaluation.overall.criticalIssues.length > 0) {
+      console.log('Critical Issues:');
+      result.evaluation.overall.criticalIssues.forEach(issue => console.log(`  - ${issue}`));
+      console.log('');
+    }
+
+    if (result.evaluation.overall.recommendations.length > 0) {
+      console.log('Recommendations:');
+      result.evaluation.overall.recommendations.slice(0, 5).forEach(rec => console.log(`  - ${rec}`));
+      console.log('');
+    }
+
+    console.log(`Duration: ${(result.evaluation.metadata.duration / 1000).toFixed(1)}s`);
+    console.log('═══════════════════════════════════════════════════════════════\n');
+
+    // Save the quality report
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    const { join } = await import('node:path');
+    await mkdir(options.output, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const jsonPath = join(options.output, `quality-report-${timestamp}.json`);
+    await writeFile(jsonPath, JSON.stringify(result, null, 2));
+    console.log(`Quality report saved: ${jsonPath}`);
+
+    process.exit(result.meetsThresholds ? 0 : 1);
+  }
+
+  // Validate environment for scenario execution
   if (!process.env.TEST_USERNAME || !process.env.TEST_PASSWORD) {
     console.error('Error: TEST_USERNAME and TEST_PASSWORD environment variables are required');
     process.exit(1);
@@ -134,17 +265,14 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  console.log('');
-  console.log('╔═══════════════════════════════════════════════════════════════╗');
-  console.log('║               AGENTIC QA - Airo Builder                       ║');
-  console.log('╚═══════════════════════════════════════════════════════════════╝');
-  console.log('');
-
   const runnerOptions = {
     headed: options.headed,
     screenshotDir: resolve(options.output, 'screenshots'),
     model: options.model,
     verbose: options.verbose,
+    qualityEnabled: options.quality,
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+    anthropicModel: process.env.ANTHROPIC_MODEL,
   };
 
   let results;
@@ -160,8 +288,13 @@ async function main(): Promise<void> {
     const scenario = await loadScenario(scenarioPath);
 
     results = [await runScenario(scenario, runnerOptions)];
+  } else if (options.qualityOnly) {
+    console.log('Error: --quality-only requires --url <url> to specify the website to evaluate.');
+    console.log('Run with --help for usage information.');
+    process.exit(1);
   } else {
     console.log('No scenario specified. Use --all to run all scenarios or specify a scenario file.');
+    console.log('For standalone quality evaluation, use: --quality-only --url <url>');
     console.log('Run with --help for usage information.');
     process.exit(1);
   }

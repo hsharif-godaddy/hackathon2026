@@ -1,6 +1,6 @@
 import { Client } from '@elastic/elasticsearch';
 
-import type { AgentAction, EvalResult, Report, ScreenshotInfo } from '../scenarios/types.js';
+import type { EvalResult, Report } from '../scenarios/types.js';
 
 const ES_INDEX = 'agentic-qa-results';
 
@@ -9,27 +9,6 @@ export interface ElasticsearchConfig {
   username?: string;
   password?: string;
   apiKey?: string;
-}
-
-export interface IndexableAction {
-  type: string;
-  reasoning?: string;
-  taskCompleted: boolean;
-  action?: string;
-  pageUrl?: string;
-  timestamp: number;
-  timestampISO: string;
-  stepNumber: number;
-}
-
-export interface IndexableScreenshot {
-  path: string;
-  filename: string;
-  type: 'initial' | 'final' | 'preview' | 'error';
-  url?: string;
-  scrollPosition?: string;
-  timestamp: number;
-  timestampISO: string;
 }
 
 export interface IndexableResult {
@@ -54,7 +33,6 @@ export interface IndexableResult {
 
   // Agent actions summary (clean fields for Kibana)
   actionCount: number;
-  actionTypes: string[];
   uniqueActionTypes: string[];
   uniquePageUrls: string[];
   pageUrlCount: number;
@@ -62,16 +40,42 @@ export interface IndexableResult {
   firstActionTimestamp?: string;
   lastActionTimestamp?: string;
   actionDurationMs?: number;
-  // Full actions as JSON string (for debugging, not for querying)
-  actionsJson: string;
 
   // Screenshots summary (clean fields for Kibana)
   screenshotCount: number;
-  screenshotTypes: string[];
   previewScreenshotCount: number;
-  errorScreenshotCount: number;
-  // Full screenshots as JSON string (for debugging)
-  screenshotsJson: string;
+  // Base64-encoded screenshot images
+  screenshots: Array<{
+    type: string;
+    url?: string;
+    scrollPosition?: string;
+    timestamp: string;
+    base64: string;
+  }>;
+
+  // Quality evaluation metrics
+  qualityScore?: number;
+  qualityGrade?: string;
+  performanceScore?: number;
+  accessibilityScore?: number;
+  accessibilityViolationsCritical?: number;
+  accessibilityViolationsSerious?: number;
+  seoScore?: number;
+  functionalScore?: number;
+  functionalJsErrors?: number;
+  functionalBrokenLinks?: number;
+  visualScore?: number;
+  visualPlaceholders?: number;
+  contentScore?: number;
+  contentRelevance?: number;
+  contentCoherence?: number;
+  securityScore?: number;
+  securityIsHttps?: boolean;
+  usabilityScore?: number;
+  businessFitScore?: number;
+  businessFitSiteType?: string;
+  qualityCriticalIssues?: string[];
+  qualityRecommendations?: string[];
 
   // CI/CD context
   environment: string;
@@ -90,9 +94,8 @@ export interface IndexableResult {
   job: string;
   eventName: string;
 
-  // Timestamps
+  // Timestamp
   timestamp: string;
-  indexedAt: string;
 
   // Test result details
   previewUrl?: string;
@@ -102,8 +105,6 @@ export interface IndexableResult {
   // Model info
   model: string;
 
-  // Raw data for debugging
-  rawMessage: string;
 }
 
 /**
@@ -158,45 +159,68 @@ export function createClient(config?: Partial<ElasticsearchConfig>): Client | nu
 }
 
 /**
- * Transform action to indexable format
+ * Ensure the index exists with proper mappings for binary screenshot data.
+ * Elasticsearch can't auto-map base64 strings — they must be declared as `binary` type.
  */
-function toIndexableAction(action: AgentAction, index: number): IndexableAction {
-  return {
-    type: action.type,
-    reasoning: action.reasoning,
-    taskCompleted: action.taskCompleted,
-    action: action.action,
-    pageUrl: action.pageUrl,
-    timestamp: action.timestamp,
-    timestampISO: new Date(action.timestamp).toISOString(),
-    stepNumber: index + 1,
-  };
-}
+async function ensureIndex(client: Client, index: string): Promise<void> {
+  const exists = await client.indices.exists({ index });
+  if (exists) {
+    // Update mapping for existing index — adds binary type for new screenshots field.
+    // This only works if the field doesn't already exist with a different type.
+    try {
+      await client.indices.putMapping({
+        index,
+        body: {
+          properties: {
+            screenshots: {
+              type: 'nested',
+              properties: {
+                type: { type: 'keyword' },
+                url: { type: 'keyword' },
+                scrollPosition: { type: 'keyword' },
+                timestamp: { type: 'date' },
+                base64: { type: 'binary' },
+              },
+            },
+          },
+        },
+      });
+    } catch {
+      // Mapping conflict — field exists with incompatible type.
+      // Delete and recreate the index to apply correct mappings.
+      console.warn('Recreating index %s due to mapping conflict with screenshots field', index);
+      await client.indices.delete({ index });
+      return ensureIndex(client, index);
+    }
+    return;
+  }
 
-/**
- * Transform screenshot to indexable format
- */
-function toIndexableScreenshot(screenshot: ScreenshotInfo): IndexableScreenshot {
-  return {
-    path: screenshot.path,
-    filename: screenshot.path.split('/').pop() || screenshot.path,
-    type: screenshot.type,
-    url: screenshot.url,
-    scrollPosition: screenshot.scrollPosition,
-    timestamp: screenshot.timestamp,
-    timestampISO: new Date(screenshot.timestamp).toISOString(),
-  };
+  await client.indices.create({
+    index,
+    body: {
+      mappings: {
+        properties: {
+          screenshots: {
+            type: 'nested',
+            properties: {
+              type: { type: 'keyword' },
+              url: { type: 'keyword' },
+              scrollPosition: { type: 'keyword' },
+              timestamp: { type: 'date' },
+              base64: { type: 'binary' },
+            },
+          },
+        },
+      },
+    },
+  });
 }
 
 /**
  * Transform EvalResult to fully indexable document with ALL available data
  */
 function toIndexableResult(result: EvalResult): IndexableResult {
-  const actions = result.actions.map(toIndexableAction);
-  const screenshots = result.screenshots.map(toIndexableScreenshot);
-
-  const actionTypes = result.actions.map(a => a.type);
-  const uniqueActionTypes = [...new Set(actionTypes)];
+  const uniqueActionTypes = [...new Set(result.actions.map(a => a.type))];
 
   const firstAction = result.actions[0];
   const lastAction = result.actions[result.actions.length - 1];
@@ -228,8 +252,7 @@ function toIndexableResult(result: EvalResult): IndexableResult {
     costEstimateUSD: Math.round(estimateCost(result.usage.inputTokens, result.usage.outputTokens) * 10000) / 10000,
 
     // Agent actions summary (clean fields for Kibana)
-    actionCount: actions.length,
-    actionTypes,
+    actionCount: result.actions.length,
     uniqueActionTypes,
     uniquePageUrls,
     pageUrlCount: uniquePageUrls.length,
@@ -237,16 +260,19 @@ function toIndexableResult(result: EvalResult): IndexableResult {
     firstActionTimestamp: firstAction ? new Date(firstAction.timestamp).toISOString() : undefined,
     lastActionTimestamp: lastAction ? new Date(lastAction.timestamp).toISOString() : undefined,
     actionDurationMs: firstAction && lastAction ? lastAction.timestamp - firstAction.timestamp : undefined,
-    // Full actions as JSON string (for debugging, not for querying)
-    actionsJson: JSON.stringify(actions),
 
     // Screenshots summary (clean fields for Kibana)
-    screenshotCount: screenshots.length,
-    screenshotTypes: screenshots.map(s => s.type),
-    previewScreenshotCount: screenshots.filter(s => s.type === 'preview').length,
-    errorScreenshotCount: screenshots.filter(s => s.type === 'error').length,
-    // Full screenshots as JSON string (for debugging)
-    screenshotsJson: JSON.stringify(screenshots),
+    screenshotCount: result.screenshots.length,
+    previewScreenshotCount: result.screenshots.filter(s => s.type === 'preview').length,
+    screenshots: result.screenshots
+      .filter(s => s.base64)
+      .map(s => ({
+        type: s.type,
+        url: s.url,
+        scrollPosition: s.scrollPosition,
+        timestamp: new Date(s.timestamp).toISOString(),
+        base64: s.base64!,
+      })),
 
     // CI/CD context (comprehensive)
     environment: process.env.TEST_ENVIRONMENT || 'local',
@@ -267,9 +293,8 @@ function toIndexableResult(result: EvalResult): IndexableResult {
     job: process.env.GITHUB_JOB || 'local',
     eventName: process.env.GITHUB_EVENT_NAME || 'local',
 
-    // Timestamps
+    // Timestamp
     timestamp: new Date().toISOString(),
-    indexedAt: new Date().toISOString(),
 
     // Test result details
     previewUrl: result.previewUrl,
@@ -279,8 +304,29 @@ function toIndexableResult(result: EvalResult): IndexableResult {
     // Model info
     model: process.env.OPENAI_MODEL || process.env.ANTHROPIC_MODEL || 'unknown',
 
-    // Raw message for full-text search
-    rawMessage: result.message,
+    // Quality evaluation metrics
+    qualityScore: result.quality?.overall.score,
+    qualityGrade: result.quality?.overall.grade,
+    performanceScore: result.quality?.performance?.score,
+    accessibilityScore: result.quality?.accessibility?.score,
+    accessibilityViolationsCritical: result.quality?.accessibility?.violations.critical,
+    accessibilityViolationsSerious: result.quality?.accessibility?.violations.serious,
+    seoScore: result.quality?.seo?.score,
+    functionalScore: result.quality?.functional?.score,
+    functionalJsErrors: result.quality?.functional?.jsErrors.length,
+    functionalBrokenLinks: result.quality?.functional?.brokenLinks.length,
+    visualScore: result.quality?.visual?.score,
+    visualPlaceholders: result.quality?.visual?.placeholders.length,
+    contentScore: result.quality?.content?.score,
+    contentRelevance: result.quality?.content?.relevance,
+    contentCoherence: result.quality?.content?.coherence,
+    securityScore: result.quality?.security?.score,
+    securityIsHttps: result.quality?.security?.isHttps,
+    usabilityScore: result.quality?.usability?.score,
+    businessFitScore: result.quality?.businessFit?.score,
+    businessFitSiteType: result.quality?.businessFit?.siteType,
+    qualityCriticalIssues: result.quality?.overall.criticalIssues,
+    qualityRecommendations: result.quality?.overall.recommendations,
   };
 }
 
@@ -293,6 +339,7 @@ export async function indexResult(
   index: string = ES_INDEX
 ): Promise<boolean> {
   try {
+    await ensureIndex(client, index);
     const doc = toIndexableResult(result);
 
     await client.index({
@@ -321,6 +368,8 @@ export async function indexResults(
   }
 
   try {
+    await ensureIndex(client, index);
+
     const operations = results.flatMap(result => [
       { index: { _index: index } },
       toIndexableResult(result),
@@ -330,7 +379,10 @@ export async function indexResults(
 
     if (response.errors) {
       const erroredDocs = response.items.filter((item: { index?: { error?: unknown } }) => item.index?.error);
-      console.error(`${erroredDocs.length} documents failed to index`);
+      console.error('%d documents failed to index', erroredDocs.length);
+      for (const doc of erroredDocs.slice(0, 3)) {
+        console.error('  Index error: %O', doc.index?.error);
+      }
       return {
         indexed: results.length - erroredDocs.length,
         failed: erroredDocs.length,

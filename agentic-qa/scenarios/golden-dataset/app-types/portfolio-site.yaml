@@ -1,12 +1,13 @@
-# Test creating a portfolio website
+# Test creating a portfolio website with rich content, design specs, and chat mods
 name: Create Portfolio Site
 description: |
-  Create a personal portfolio website for a designer
-  with project showcase and contact form.
+  Create a minimal UX designer portfolio with 6 case studies,
+  client logos, detailed process section, then use chat to add
+  a client logos section and change the accent color.
 
 startUrl: https://airo-builder.godaddy.com
-timeout: 480000  # 8 minutes
-maxSteps: 80
+timeout: 600000  # 10 minutes (creation + 2 chat modifications)
+maxSteps: 90
 headed: false
 
 credentials:
@@ -15,30 +16,65 @@ credentials:
 
 sitePrompt:
   prompt: |
-    I am Alex Chen, Senior UX Designer with 8 years at Spotify and Airbnb, now freelancing. Need a minimal impressive portfolio site like Apple design aesthetic.
+    I am Alex Chen, Senior UX Designer with 8 years at Spotify and Airbnb, now freelancing. Need a minimal impressive portfolio site. Think Apple design simplicity meets Stripe's attention to detail.
 
-    About section: specialize in mobile apps and design systems, based in San Francisco, available for contract work.
+    Design: Clean white background with black text and a subtle electric blue accent for links and hover states. Minimalist and elegant. Use Space Grotesk for headings and Inter for body. Case study cards should be large with full-width images, 2 per row on desktop, 1 on mobile. Generous whitespace everywhere. Smooth scroll animations on section entry.
 
-    Projects section with 4 case studies: Spotify Playlist Redesign improved engagement 40%, Airbnb Checkout Flow reduced abandonment 25%, Headspace Meditation Timer featured in App Store, Stripe Dashboard Overhaul enterprise project. Each needs thumbnail and description.
+    Hero: Simple and bold. "Alex Chen" in large type, subtitle "Senior UX Designer" and a one-liner "I design digital products that people love using." with a "View Work" button and a "Get in Touch" secondary link.
 
-    Skills: Figma, Sketch, Prototyping, User Research, Design Systems, Accessibility.
+    About section: 8 years designing for the world's best companies. Started at Spotify on the mobile team, moved to Airbnb's core experience team, now independent. Based in San Francisco, available for contract work and consulting. Stanford HCI program 2016. "I believe great design is invisible. My job is to make complex things feel simple."
 
-    Add availability banner. Contact form with name, email, project type dropdown, budget range, and message.
+    Process/methodology section with 4 steps:
+    1. Discovery - Stakeholder interviews, user research, competitive analysis, defining success metrics
+    2. Design - Wireframes, prototypes in Figma, design system components, interaction patterns
+    3. Test - Usability testing with 5-8 users, A/B testing frameworks, accessibility audits
+    4. Ship - Developer handoff via Figma, design QA, post-launch analytics review
 
-    Footer with Dribbble, LinkedIn, Twitter links. Super clean white background, black text, subtle blue accent.
+    6 case studies with detailed metrics:
+    - Spotify Playlist Redesign - Reimagined the playlist creation flow for mobile. Reduced steps from 7 to 3. Result: 40% increase in playlist creation, 25% higher engagement. Role: Lead Designer. Timeline: 4 months.
+    - Airbnb Checkout Optimization - Redesigned the booking checkout for international guests. Result: 25% reduction in cart abandonment, $12M incremental annual revenue. Role: Senior Designer. Timeline: 6 months.
+    - Headspace Meditation Timer - Designed an adaptive meditation timer with haptic feedback. Featured in App Store "Apps We Love". Result: 60% increase in session completion. Role: Contract Designer. Timeline: 3 months.
+    - Stripe Dashboard Overhaul - Enterprise dashboard redesign for large merchants. Result: 35% reduction in support tickets, NPS score improved from 42 to 71. Role: Design Lead. Timeline: 8 months.
+    - Notion Template Gallery - Designed the template discovery and preview experience. Result: 50% increase in template adoption, 30% more user-created templates. Role: Contract Designer. Timeline: 2 months.
+    - Figma Plugin Marketplace - Redesigned plugin browsing, installation, and management. Result: 45% increase in plugin installs, 3x more plugin reviews. Role: Senior Designer. Timeline: 5 months.
+
+    Skills: Figma, Sketch, Framer, Protopie, User Research, Design Systems, Accessibility (WCAG 2.1), Motion Design, Front-end CSS/HTML.
+
+    Availability banner at top: "Currently accepting new projects for Q2 2024. Let's talk."
+
+    Contact form: Full Name, Email, Company/Organization, Project Type (dropdown: Product Design, Design System, UX Audit, Consulting, Other), Budget Range (dropdown: Under $10K, $10-25K, $25-50K, $50K+), Project Description (textarea), and "Send Inquiry" button.
+
+    Footer with Dribbble, LinkedIn, Twitter, Read.cv links. "Designed and built by Alex Chen" and copyright 2024.
 
 systemPrompt: |
   ${common.developPageBase}
 
   ${common.errorHandlingInstructions}
 
+  ${common.chatInstructions}
+
+  Chat messages to send (in order):
+  1. "Can you add a client logos section? Show logos or names for these companies I've worked with: Spotify, Airbnb, Headspace, Stripe, Notion, Figma, Square, and Dropbox. Display them in a single row that scrolls or wraps, with a subtle grayscale effect."
+  2. "Change the accent color from blue to coral. I want all links, buttons, and hover states to use a warm coral color instead of the electric blue. Keep everything else the same."
+
 goal: |
-  1. Wait for site creation to complete
-  2. Verify the preview contains:
-     - Designer's name "Alex Chen"
-     - Portfolio/project showcase section
-     - Contact form or contact information
-     - Clean, minimal design aesthetic
-  3. Report success if portfolio structure is complete
+  Send 2 chat messages to modify the site. Success criteria:
+  - Site creation completed with portfolio displayed
+  - "Alex Chen" name and "UX Designer" title visible
+  - At least 5 case studies with project names and metrics
+  - Process/methodology section with design steps
+  - Contact form with project type and budget fields
+  - Skills section listing Figma, Sketch, etc.
+  - Client logos section was added after first chat message
+  - Accent color changed to coral after second chat message
+  - Availability banner visible
 
+  Report success if the site has case studies, contact form, and at least 1 of the 2 chat modifications are visible.
 
+qualityEval:
+  enabled: true
+  siteType: portfolio
+  thresholds:
+    minOverallScore: 60
+    minPerformance: 40
+    minAccessibility: 70

@@ -1,12 +1,13 @@
-# Test creating a modern SaaS landing page
+# Test creating a SaaS landing page with rich content, design specs, and chat mods
 name: Create SaaS Landing Page
 description: |
-  Create a modern SaaS landing page with hero section,
-  features, pricing, and call-to-action.
+  Create a modern SaaS landing page with detailed features,
+  comparison table, social proof, FAQ, then use chat to add
+  a FAQ section and competitor comparison table.
 
 startUrl: https://airo-builder.godaddy.com
-timeout: 480000  # 8 minutes
-maxSteps: 80
+timeout: 600000  # 10 minutes (creation + 2 chat modifications)
+maxSteps: 90
 headed: false
 
 credentials:
@@ -15,28 +16,74 @@ credentials:
 
 sitePrompt:
   prompt: |
-    Building a SaaS startup called TaskFlow - a project management tool for remote teams. Need a killer landing page.
+    Building a SaaS startup called TaskFlow - a project management tool for remote teams. Need a killer landing page that converts. Think Linear meets Notion in design quality.
 
-    Hero section with headline like Finally Project Management That Actually Works and a big Start Free Trial button with product screenshot.
+    Design: Clean blue and white color scheme with a dark navy hero section. Modern and trustworthy like Linear.app or Stripe's website. Use Inter for all text. Feature cards in a 3-column grid on desktop, single column on mobile. Pricing cards should highlight the Pro plan as "Most Popular". Generous whitespace, subtle shadows on cards, and smooth scroll behavior.
 
-    Show 3 key features: Real-time Collaboration where teams edit together, Smart Automations reducing repetitive tasks by 80%, and Integrations with Slack GitHub Notion and 50+ tools.
+    Hero section: Dark navy background, headline "Finally, Project Management That Actually Works" with subtext "TaskFlow helps remote teams ship 2x faster with real-time collaboration, smart automations, and integrations that just work." Big "Start Free Trial" button (no credit card required) and a secondary "Watch Demo" link. Product screenshot or mockup below the headline showing the dashboard.
 
-    Pricing: Free tier for up to 5 users, Pro at $12/user/month with unlimited projects, Enterprise with custom pricing and SSO support.
+    Social proof bar: "Trusted by 10,000+ teams at" followed by company logos/names: Shopify, Figma, Vercel, Notion, Ramp, Linear, Loom, Webflow.
 
-    Modern and trustworthy design with blues and whites. Include social proof like 10,000+ teams trust TaskFlow.
+    3 key features with detailed descriptions and metrics:
+    - Real-time Collaboration: "Teams edit together with zero lag. See who's typing, track changes live, and never lose work with automatic conflict resolution. 99.9% uptime SLA." Include mention of cursor presence, inline comments, and @mentions.
+    - Smart Automations: "Reduce repetitive tasks by 80%. Set up workflows in minutes with our visual automation builder. Auto-assign tasks, send reminders, update statuses, and trigger notifications across 50+ integrations." Include examples: auto-close stale tasks, sprint planning templates.
+    - Powerful Integrations: "Connect with Slack, GitHub, Notion, Figma, Jira, Linear, Google Drive, and 50+ more tools. Two-way sync means your data is always up to date. Average setup time: 2 minutes." Show integration logos.
+
+    Additional features section (6 items as icon cards):
+    - Custom Views: Kanban boards, Gantt charts, calendar view, and spreadsheet mode
+    - Time Tracking: Built-in timer with detailed reports and billable hours
+    - Goals & OKRs: Set team goals, track progress, and align work to outcomes
+    - API & Webhooks: REST API, GraphQL, and webhooks for custom integrations
+    - Mobile Apps: Native iOS and Android apps with offline support
+    - Enterprise Security: SOC 2 Type II, SSO/SAML, audit logs, role-based access
+
+    Pricing with 3 tiers:
+    - Free: Up to 5 users, 3 projects, basic views (kanban and list), 500MB storage, community support. "Perfect for small teams getting started."
+    - Pro ($12/user/month, billed annually or $15 monthly): Unlimited users and projects, all views, 100GB storage, automations, integrations, priority support, custom fields, time tracking. "Most Popular - everything growing teams need."
+    - Enterprise (Custom pricing): Everything in Pro plus SSO/SAML, advanced permissions, audit logs, dedicated success manager, 99.99% SLA, custom contracts, on-premise option. "Contact Sales" button.
+    Annual billing saves 20%. All plans include a 14-day free trial.
+
+    Testimonials section (3 quotes):
+    - "We switched from Jira and our sprint velocity increased 40% in the first month." - Sarah Kim, Engineering Lead at Ramp
+    - "TaskFlow is the first PM tool my designers actually enjoy using." - Marcus Chen, Head of Design at Webflow
+    - "The automation builder alone saves our ops team 15 hours per week." - Elena Rodriguez, COO at Loom
+
+    Stats section: 10,000+ teams, 50+ integrations, 99.9% uptime, 4.8/5 on G2.
+
+    CTA section at bottom: "Start building better together" with email input and "Start Free Trial" button. "No credit card required. Free for up to 5 users."
+
+    Footer with links: Product (Features, Pricing, Integrations, Changelog, Roadmap), Company (About, Careers, Blog, Press), Resources (Documentation, API Reference, Community, Status Page, Security), Legal (Privacy, Terms, DPA). Social: Twitter @taskflow, LinkedIn, GitHub. Copyright 2024 TaskFlow Inc.
 
 systemPrompt: |
   ${common.developPageBase}
 
   ${common.errorHandlingInstructions}
 
+  ${common.chatInstructions}
+
+  Chat messages to send (in order):
+  1. "Add a FAQ section with these questions and answers: 'Is there a free plan?' - Yes, free for up to 5 users with core features. 'Can I import from Jira/Asana?' - Yes, one-click import with full history. 'Is my data secure?' - SOC 2 Type II certified, encrypted at rest and in transit. 'Do you offer discounts for nonprofits?' - Yes, 50% off all plans for verified nonprofits and education. 'Can I cancel anytime?' - Yes, no long-term contracts on any plan."
+  2. "Add a comparison table showing TaskFlow vs Jira vs Asana vs Monday.com. Compare these features: Real-time collaboration (TaskFlow yes, others limited or no), Built-in automations (TaskFlow unlimited on Pro, Jira limited, Asana limited, Monday yes), Starting price per user (TaskFlow $12, Jira $8, Asana $11, Monday $9), Free tier users (TaskFlow 5, Jira 10, Asana 10, Monday 2). Make TaskFlow stand out with checkmarks and highlights."
+
 goal: |
-  1. Wait for site creation to complete
-  2. Verify the preview contains:
-     - "TaskFlow" brand name somewhere
-     - A hero section with a call-to-action button
-     - Multiple feature items
-     - Pricing information
-  3. Report success if key elements are present
+  Send 2 chat messages to modify the site. Success criteria:
+  - Site creation completed with landing page displayed
+  - "TaskFlow" brand name prominent in hero
+  - Hero with headline and "Start Free Trial" CTA button
+  - At least 3 key features with descriptions
+  - Pricing section with 3 tiers (Free, Pro $12/user, Enterprise)
+  - Social proof showing company names or logos
+  - Testimonials from real-sounding people
+  - FAQ section was added after first chat message
+  - Comparison table was added after second chat message
+  - Footer with organized link sections
 
+  Report success if the landing page has hero, features, pricing, and at least 1 of the 2 chat modifications are visible.
 
+qualityEval:
+  enabled: true
+  siteType: landing-page
+  thresholds:
+    minOverallScore: 60
+    minPerformance: 40
+    minAccessibility: 70

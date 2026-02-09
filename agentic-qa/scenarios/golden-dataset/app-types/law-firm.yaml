@@ -1,11 +1,11 @@
-# Test creating a law firm website
+# Test creating a law firm website with rich content and design specs
 name: Create Law Firm Website
 description: |
-  Create a professional law firm website with
-  practice areas, attorney profiles, and consultations.
+  Create a professional law firm website with detailed practice areas,
+  attorney bios with education, case results, FAQ, and consultation form.
 
 startUrl: https://airo-builder.godaddy.com
-timeout: 480000 # 8 minutes
+timeout: 480000  # 8 minutes
 maxSteps: 80
 headed: false
 
@@ -15,19 +15,46 @@ credentials:
 
 sitePrompt:
   prompt: |
-    Building a website for Mitchell and Associates Law Firm in Chicago. Need to look professional and trustworthy with dark navy and gold colors.
+    Building a website for Mitchell and Associates Law Firm in Chicago. Established 1994. Must look authoritative, trustworthy, and professional. Think top-tier firm, not ambulance chaser.
 
-    Practice areas: Personal Injury including car accidents and medical malpractice, Family Law for divorce and custody, Criminal Defense for DUI and drug charges, and Workers Compensation.
+    Design: Dark navy and gold color scheme with white backgrounds for content areas. Classic and authoritative like a major law firm site. Use a serif font for headings to convey tradition and a clean sans-serif for body. Practice areas should display as icon cards in a 2-column grid. Hero should be a full-width image of the Chicago skyline with overlapping text.
 
-    Our attorneys: James Mitchell the Founding Partner with 30 years experience, Sarah Chen specializing in family law, David Washington a former prosecutor, and Maria Rodriguez who is bilingual.
+    Hero: "Fighting For Justice Since 1994" headline with a prominent "Free Consultation" button and phone number 312-555-0156 visible in the header.
 
-    Hero section with Fighting For Justice Since 1994 headline and prominent Free Consultation button.
+    Practice areas with detailed descriptions:
+    - Personal Injury - Car accidents, truck accidents, motorcycle collisions, slip and fall, medical malpractice, wrongful death. We handle cases on contingency, you pay nothing unless we win.
+    - Family Law - Divorce and separation, child custody and visitation, child support modifications, prenuptial agreements, adoption, domestic violence protective orders.
+    - Criminal Defense - DUI/DWI defense, drug charges, assault and battery, white collar crimes, federal cases, expungements. Available 24/7 for emergency arrests.
+    - Workers Compensation - Workplace injuries, repetitive stress injuries, construction accidents, denied claims appeals, disability benefits. We fight insurance companies so you don't have to.
+    - Estate Planning - Wills and trusts, power of attorney, healthcare directives, probate administration, estate litigation, business succession planning.
 
-    Contact form collecting name, phone, email, case type, and situation description.
+    Attorney profiles with full credentials:
+    - James Mitchell, Founding Partner - JD University of Chicago Law School 1991. Admitted to Illinois Bar 1992, US District Court Northern District of Illinois. 30+ years trial experience. Former Cook County Assistant State's Attorney. Super Lawyers selection 2015-2024. Focus: personal injury and wrongful death.
+    - Sarah Chen, Partner - JD Northwestern Pritzker School of Law 2005. Certified Family Law Specialist. Illinois State Bar Association Family Law Section Council member. Published author on custody law. Focus: complex divorce and custody.
+    - David Washington, Senior Associate - JD Howard University School of Law 2010. Former Cook County prosecutor with 200+ jury trials. Expertise in federal criminal defense. Focus: criminal defense and white collar.
+    - Maria Rodriguez, Associate - JD Loyola University Chicago 2016. Bilingual English/Spanish. Pro bono award recipient 2022. Focus: workers compensation and immigration-related employment issues.
 
-    Results section: $2.5M settlements, 95% case win rate, 10,000+ clients served.
+    Case results section as a table or grid:
+    - $4.2M - Truck accident settlement, multiple fractures
+    - $2.5M - Medical malpractice, surgical error
+    - $1.8M - Workplace injury, construction fall
+    - $950K - Car accident, rear-end collision
+    - Not Guilty - Federal drug conspiracy, 3-week trial
+    - Custody Won - Complex interstate custody dispute
+    Note: Past results do not guarantee future outcomes.
 
-    Office at 233 S Wacker Drive Suite 4500 Chicago IL 60606. Phone 312-555-0156.
+    FAQ section:
+    - "How much does a consultation cost?" - Initial consultations are always free. We'll review your case and explain your options with no obligation.
+    - "Do I have a case?" - Every situation is unique. Contact us for a free evaluation. We handle personal injury on contingency so there's no financial risk.
+    - "How long will my case take?" - Timelines vary from months to years depending on complexity. We'll give you a realistic estimate during consultation.
+    - "Can I switch attorneys mid-case?" - Yes, you have the right to change representation at any time. We handle many cases where clients switched from other firms.
+    - "Do you handle cases outside Illinois?" - We're licensed in Illinois and Indiana. For other states, we work with partner firms and can provide referrals.
+
+    Contact form: Name, Phone, Email, Case Type (dropdown: Personal Injury, Family Law, Criminal Defense, Workers Comp, Estate Planning, Other), Brief Description of Your Situation (textarea), Preferred Contact Method (phone or email radio). Include disclaimer: "Submitting this form does not create an attorney-client relationship."
+
+    Office: 233 S Wacker Drive Suite 4500 Chicago IL 60606. Phone 312-555-0156. Hours Mon-Fri 8:30am-6pm, Saturday by appointment. Free parking validation.
+
+    Footer with Avvo rating badge, Super Lawyers badge, BBB accredited. Links to attorney disciplinary records and privacy policy. Copyright 2024 Mitchell & Associates.
 
 systemPrompt: |
   ${common.developPageBase}
@@ -37,10 +64,20 @@ systemPrompt: |
 goal: |
   1. Wait for site creation to complete
   2. Verify the preview contains:
-     - "Mitchell & Associates" firm name
-     - Practice areas (personal injury, family law, etc.)
-     - Attorney profiles or team section
-     - Consultation form or contact method
-     - Professional, trustworthy design
-  3. Report success if law firm elements are present
+     - "Mitchell & Associates" or "Mitchell and Associates" firm name
+     - At least 4 practice areas with descriptions
+     - At least 3 attorney profiles with names (James Mitchell, Sarah Chen, David Washington)
+     - Case results section showing dollar amounts
+     - FAQ section with at least 3 questions and answers
+     - Contact or consultation form with case type selection
+     - Office address showing "233 S Wacker Drive" and phone "312-555-0156"
+     - Professional dark navy and gold design
+  3. Report success if at least 6 of the above elements are present
 
+qualityEval:
+  enabled: true
+  siteType: legal
+  thresholds:
+    minOverallScore: 60
+    minPerformance: 40
+    minAccessibility: 70

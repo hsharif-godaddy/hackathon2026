@@ -205,12 +205,202 @@ Available common prompts:
 - `${common.waitInstructions}` - Patience instructions for loading
 - `${common.verifyInstructions}` - How to verify changes
 
+## Website Quality Evaluation
+
+The framework includes a comprehensive quality evaluation system that scores built websites across 9 dimensions. It works in two modes:
+
+- **Post-build mode**: Automatically evaluates the website after a scenario builds it
+- **Standalone mode**: Evaluates any existing website URL directly
+
+### Quick Start (Standalone Evaluation)
+
+```bash
+# Evaluate any website
+pnpm --filter agentic-qa test -- --quality-only --url https://example.com
+
+# With visible browser
+pnpm --filter agentic-qa test -- --quality-only --url https://example.com --headed
+
+# Specify site type for business-fit scoring
+pnpm --filter agentic-qa test -- --quality-only --url https://shop.example.com --site-type ecommerce
+
+# Fast mode: skip AI evaluators, run deterministic checks only
+pnpm --filter agentic-qa test -- --quality-only --url https://example.com --skip-quality visual,content,usability,businessFit
+```
+
+### Quality CLI Options
+
+```
+--quality, -q           Enable quality evaluation (default: on)
+--no-quality            Disable quality evaluation
+--quality-only          Run quality evaluation only (skip scenario execution)
+--url, -u <url>         URL to evaluate (for standalone quality evaluation)
+--site-type <type>      Site type for business-fit scoring
+--skip-quality <cats>   Skip categories (comma-separated)
+```
+
+### Evaluation Categories
+
+The evaluator scores 9 dimensions, each with a specific weight in the overall score:
+
+| Category          | Weight | Method               | What It Checks                                   |
+| ----------------- | ------ | -------------------- | ------------------------------------------------ |
+| **Functional**    | 25%    | Playwright           | JS errors, broken links, broken images, resources |
+| **Content**       | 20%    | LLM-as-Judge         | Relevance, coherence, completeness, uniqueness   |
+| **Visual**        | 15%    | AI Vision + DOM      | Placeholder text, responsive design, aesthetics  |
+| **Performance**   | 10%    | Lighthouse / Nav API | LCP, CLS, FCP, TBT, Speed Index                 |
+| **Accessibility** | 10%    | axe-core             | WCAG 2.0/2.1/2.2 violations (A + AA)            |
+| **Usability**     | 10%    | AI Vision            | Nielsen's 10 heuristics evaluation               |
+| **SEO**           | 5%     | DOM inspection       | Title, meta, headings, alt text, structured data |
+| **Security**      | 3%     | HTTP + DOM           | HTTPS, mixed content, security headers           |
+| **Business Fit**  | 2%     | AI + keyword match   | Site-type specific elements present/missing      |
+
+### How It Works
+
+```
+                  ┌─────────────────────────────┐
+                  │       Quality Evaluator      │
+                  │     (src/quality/index.ts)    │
+                  └──────────┬──────────────────┘
+                             │
+            ┌────────────────┼────────────────┐
+            │                │                │
+   ┌────────▼───────┐ ┌─────▼─────┐ ┌────────▼───────┐
+   │  Deterministic  │ │ AI-Powered │ │   Composite    │
+   │  (no AI needed) │ │ (Claude)   │ │   Scorer       │
+   └────────┬───────┘ └─────┬─────┘ └────────────────┘
+            │                │
+   ┌────────┴────────┐  ┌───┴───────────┐
+   │ • Performance   │  │ • Visual      │
+   │ • Accessibility │  │ • Content     │
+   │ • SEO           │  │ • Usability   │
+   │ • Functional    │  │ • Business Fit│
+   │ • Security      │  │               │
+   └─────────────────┘  └───────────────┘
+```
+
+**Deterministic evaluators** run in parallel using Playwright's page APIs. They require no AI tokens and produce consistent results.
+
+**AI-powered evaluators** use Anthropic Claude (text + vision) to assess subjective quality. They run sequentially to respect API rate limits. If no `ANTHROPIC_API_KEY` is set, they gracefully fall back to basic heuristic checks.
+
+### Evaluation Flow
+
+1. **Post-build mode** (with scenarios):
+   - Scenario builds the website via Stagehand
+   - Preview URL is extracted from the iframe
+   - Screenshots are captured
+   - Quality evaluator receives the page + screenshots
+   - Results are included in the scenario report
+
+2. **Standalone mode** (any URL):
+   - Playwright launches a browser
+   - Navigates to the URL
+   - Runs all enabled evaluators
+   - Outputs scores to console + JSON file
+
+### Scoring
+
+Each category produces a score from 0-100. The overall score is a weighted average:
+
+```
+Overall = Σ (category_score × category_weight) / Σ (weights_of_evaluated_categories)
+```
+
+The overall score maps to a letter grade:
+
+| Grade | Score Range | Meaning            |
+| ----- | ----------- | ------------------ |
+| A     | 90-100      | Excellent quality  |
+| B     | 80-89       | Good quality       |
+| C     | 70-79       | Acceptable quality |
+| D     | 60-69       | Below average      |
+| F     | 0-59        | Needs major work   |
+
+### Supported Site Types
+
+For business-fit evaluation, specify the site type to check for industry-specific elements:
+
+| Site Type          | Key Elements Checked                                           |
+| ------------------ | -------------------------------------------------------------- |
+| `ecommerce`        | Product display, prices, cart, checkout, search, categories    |
+| `restaurant`       | Menu, hours, location, reservations, food photos, contact      |
+| `portfolio`        | Work samples, about section, contact, skills, testimonials     |
+| `blog`             | Articles, dates, authors, categories, search, recent posts     |
+| `landing-page`     | Value proposition, CTA, testimonials, features, pricing        |
+| `service-business` | Services list, pricing, contact, testimonials, about           |
+| `nonprofit`        | Mission, donate button, impact stats, team, events             |
+| `medical`          | Services, doctors, appointments, location, insurance, contact  |
+| `legal`            | Practice areas, attorneys, contact, testimonials, case results |
+| `fitness`          | Classes, schedule, pricing, trainers, membership, location     |
+| `event-planner`    | Services, portfolio, testimonials, contact, pricing, about     |
+| `generic`          | Navigation, contact, about, content, footer                    |
+
+### Scenario Configuration
+
+Add quality evaluation to any scenario YAML:
+
+```yaml
+name: Create Restaurant Site
+startUrl: https://airo-builder.godaddy.com
+
+sitePrompt:
+  prompt: "Create an Italian restaurant website"
+
+qualityEval:
+  enabled: true
+  siteType: restaurant
+  skipCategories: []  # Run all categories
+  thresholds:
+    minOverallScore: 70
+    minAccessibility: 80
+    minPerformance: 50
+
+goal: |
+  Verify the restaurant website was created successfully
+```
+
+### Environment Variables for Quality Evaluation
+
+| Variable          | Required | Description                                      |
+| ----------------- | -------- | ------------------------------------------------ |
+| `ANTHROPIC_API_KEY` | No     | Enables AI-powered evaluators (visual, content, usability, business-fit). Without it, these fall back to basic checks. |
+| `ANTHROPIC_MODEL`   | No     | Claude model to use (default: claude-sonnet-4-20250514) |
+
+### Output
+
+**Console** (standalone mode):
+
+```
+═════════════════════════════════════════════════
+              QUALITY EVALUATION RESULTS
+═════════════════════════════════════════════════
+
+Overall Score: 82/100
+Grade: B
+Meets Thresholds: Yes
+
+Category Scores:
+  Performance:   75/100
+  Accessibility: 90/100
+  SEO:           85/100
+  Functional:    95/100
+  Visual:        70/100
+  Content:       78/100
+  Security:      80/100
+  Usability:     75/100
+  Business Fit:  72/100
+```
+
+**HTML Report** (with scenarios): Includes a quality dashboard with color-coded bars for each category, critical issues list, and actionable recommendations.
+
+**JSON Report**: Full evaluation data saved to `reports/quality-report-<timestamp>.json` with all metrics, individual check results, and metadata.
+
 ## Reports
 
 After running tests, reports are saved to `./reports/`:
 
 - **JSON report**: Machine-readable results with all metrics
-- **HTML report**: Human-readable report with pass/fail status, screenshots, and action logs
+- **HTML report**: Human-readable report with pass/fail status, screenshots, quality dashboard, and action logs
 
 ## AI Models
 

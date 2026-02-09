@@ -1,12 +1,13 @@
-# Test creating an e-commerce store
+# Test creating an e-commerce store with rich product catalog and design specs
 name: Create E-Commerce Store
 description: |
-  Create an e-commerce store for a clothing brand with
-  product listings and shopping cart.
+  Create a premium streetwear e-commerce store with 10+ products,
+  size chart, shipping info, then use chat to add a sale banner
+  and size guide page.
 
 startUrl: https://airo-builder.godaddy.com
-timeout: 480000  # 8 minutes
-maxSteps: 80
+timeout: 600000  # 10 minutes (creation + 2 chat modifications)
+maxSteps: 90
 headed: false
 
 credentials:
@@ -15,35 +16,73 @@ credentials:
 
 sitePrompt:
   prompt: |
-    Starting streetwear brand Urban Threads. Need an online store that screams premium but edgy.
+    Starting streetwear brand Urban Threads. Need an online store that screams premium but edgy, like a mix between Fear of God and Stussy.
 
-    Homepage with bold hero showing New Collection Street Royalty with shop now button.
+    Design: Black and gold color scheme. Bold and luxurious, Versace meets streetwear vibes. Use Bebas Neue for headings and a clean sans-serif for body text. Product grid should be 3 columns on desktop, 2 on tablet, 1 on mobile. Full-width hero with parallax-style background. Product cards should have hover zoom effect.
 
-    Featured products: Midnight Hoodie $89, Classic Logo Tee $45, Cargo Joggers $75, limited Collab Jacket $150.
+    Hero section: Bold hero showing "New Collection: Street Royalty" with a Shop Now button and a secondary "View Lookbook" link.
 
-    Products page with at least 6 items showing prices, sizes S M L XL, and Add to Cart button.
+    Products page with these items showing price, available sizes S M L XL XXL, and Add to Cart button:
 
-    Black and gold color scheme, Versace meets streetwear vibes.
+    Outerwear:
+    - Midnight Bomber Jacket - Premium nylon with satin lining, embroidered logo on back - $189
+    - Limited Collab Jacket - Collaboration with artist Kenzo Tanaka, only 200 made - $250
+    - Oversized Puffer Vest - Matte black with gold zipper hardware - $145
 
-    About page: started in Brooklyn, designed for the culture, sustainable materials.
+    Tops:
+    - Classic Logo Tee - 100% organic cotton heavyweight tee, screen-printed logo - $45
+    - Distressed Longsleeve - Vintage wash with raw edge hems and chest graphic - $65
+    - Mesh Basketball Jersey - Breathable mesh with embroidered Urban Threads cursive - $58
+    - Cropped Hoodie - French terry cropped hoodie with kangaroo pocket - $89
 
-    Add size guide and Coming Soon section for hype drops.
+    Bottoms:
+    - Cargo Joggers - Ripstop fabric with 6 pockets and elastic cuffs - $75
+    - Wide Leg Denim - Raw selvedge denim, relaxed fit, 14oz Japanese fabric - $120
+    - Track Pants - Side stripe detail with zip ankles - $68
 
-    Footer with Instagram and TikTok links.
+    Accessories:
+    - Snapback Cap - Structured crown with flat brim and metal clasp - $35
+    - Canvas Tote - Heavy duty canvas with leather handles and screen print - $42
+    - Chain Necklace - Stainless steel Cuban link, 20 inch - $55
+
+    Size guide data: Chest measurements S=36in M=38in L=40in XL=42in XXL=44in. Waist: S=28in M=30in L=32in XL=34in XXL=36in.
+
+    Shipping policy: Free shipping on orders over $100. Standard shipping $8 (5-7 business days). Express shipping $15 (2-3 business days). International shipping $25 (7-14 business days).
+
+    Returns: 30-day return policy. Items must be unworn with tags attached. Free returns on US orders. Exchanges available for different sizes.
+
+    About page: Started in Brooklyn 2020, designed for the culture, sustainable materials where possible. Founder Jaylen Marcus left corporate fashion to build something authentic.
+
+    Footer with Instagram @urbanthreads, TikTok @urbanthreadsnyc. Newsletter signup: "Join the Thread" with email field. Copyright 2024 Urban Threads LLC.
 
 systemPrompt: |
   ${common.developPageBase}
 
   ${common.errorHandlingInstructions}
 
-  ${common.verifyInstructions}
+  ${common.chatInstructions}
+
+  Chat messages to send (in order):
+  1. "Add a big sale banner at the top of the homepage that says WINTER CLEARANCE - 20% OFF EVERYTHING with code WINTER20. Make it eye-catching with a gold background and countdown timer showing 3 days left."
+  2. "Create a separate size guide page that shows a detailed measurement table with chest, waist, hip, and sleeve length for all sizes S through XXL. Include a how to measure yourself section with instructions."
 
 goal: |
-  1. Wait for site creation to complete
-  2. Verify the preview contains:
-     - "Urban Threads" brand name
-     - Product cards or listings with prices
-     - Navigation menu with multiple pages
-  3. Report success if e-commerce elements are visible
+  Send 2 chat messages to modify the site. Success criteria:
+  - Site creation completed with product catalog displayed
+  - "Urban Threads" brand name is prominent
+  - At least 10 products visible with prices and Add to Cart buttons
+  - Product cards show available sizes
+  - Navigation menu with multiple pages (Shop, About, etc.)
+  - Sale banner was added after first chat message
+  - Size guide page was created after second chat message
+  - Shipping and returns information is accessible
 
+  Report success if the store has 10+ products with prices and at least 1 of the 2 chat modifications are visible.
 
+qualityEval:
+  enabled: true
+  siteType: ecommerce
+  thresholds:
+    minOverallScore: 60
+    minPerformance: 40
+    minAccessibility: 70

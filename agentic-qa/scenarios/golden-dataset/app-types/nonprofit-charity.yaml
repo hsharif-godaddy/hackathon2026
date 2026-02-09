@@ -1,11 +1,11 @@
-# Test creating a non-profit website
+# Test creating a non-profit website with rich content and design specs
 name: Create Non-Profit Website
 description: |
-  Create a charity/non-profit website with
-  mission, programs, and donation capabilities.
+  Create a charity website with detailed programs, board of directors,
+  impact report, partnership logos, donation tiers, and volunteer signup.
 
 startUrl: https://airo-builder.godaddy.com
-timeout: 480000 # 8 minutes
+timeout: 480000  # 8 minutes
 maxSteps: 80
 headed: false
 
@@ -15,19 +15,56 @@ credentials:
 
 sitePrompt:
   prompt: |
-    I run a non-profit called Hope for Tomorrow and need a better website for donations and volunteer signups. We serve underprivileged children in Detroit, founded in 2018.
+    I run a non-profit called Hope for Tomorrow and need a better website for donations and volunteer signups. We serve underprivileged children in Detroit, founded in 2018. The site should feel hopeful, warm, and community-driven.
 
-    Mission: Empowering children through education, nutrition, and mentorship to build brighter futures.
+    Design: Hopeful green and energetic orange color scheme with warm white backgrounds. Warm and community-focused like charity:water or DonorsChoose. Use a friendly rounded sans-serif for headings and a clean sans-serif for body. Impact stats should be large numbers in a banner-style section. Programs in a 3-column card layout on desktop, stacked on mobile. Prominent "Donate Now" button that stays visible as you scroll.
 
-    Our 3 programs: After-School Tutoring with free homework help Mon-Fri 3-6pm at 5 schools, Weekend Meal Program providing 500+ meals every weekend, and Summer Learning Camp for 6 weeks with field trips and STEM activities.
+    Hero: "Building Brighter Futures, One Child at a Time" with a "Donate Now" primary button and "Become a Volunteer" secondary button. Show happy children in a learning environment.
 
-    Impact stats for donations: 2,847 children served in 2023, 15,000+ meals distributed monthly, 89% of tutored students improved grades, 127 active volunteers.
+    Mission statement: "Hope for Tomorrow empowers children in underserved Detroit communities through education, nutrition, and mentorship. We believe every child deserves the tools and support to reach their full potential."
 
-    Donate section with suggested amounts: $25 feeds a family for a week, $50 sponsors tutoring, $100 sends a kid to camp, $500 becomes a Hope Champion.
+    3 programs with detailed descriptions:
+    - After-School Tutoring Program: Free homework help and academic support Monday-Friday 3-6pm at 5 partner schools (Cass Tech, Martin Luther King Jr, Cody, Mumford, Renaissance). Subjects: Math, Reading, Science, English. 45 volunteer tutors, 1:3 tutor-to-student ratio. Includes healthy snacks and safe transportation home.
+    - Weekend Meal Program: Partnership with Detroit Food Bank and 8 local restaurants. 500+ meals distributed every Saturday and Sunday at community centers across 4 neighborhoods (Midtown, Corktown, Brightmoor, East English Village). Meals are nutritionally balanced and culturally diverse.
+    - Summer Learning Camp: 6-week intensive program (late June through early August). Activities include STEM workshops, art classes, field trips to Michigan Science Center and Detroit Institute of Arts, swimming lessons, and career day with local professionals. Capacity: 200 children ages 6-14. Completely free for all participants.
 
-    Volunteer signup form with name, email, phone, and availability.
+    Annual impact report highlights (2023):
+    - 2,847 children served across all programs
+    - 15,000+ meals distributed monthly
+    - 89% of tutored students improved grades by at least one letter
+    - 127 active volunteers contributing 12,000+ hours annually
+    - $1.2M raised in donations and grants
+    - 5 new school partnerships established
+    - 94% parent satisfaction rating
+    - 3 students awarded college scholarships through our mentorship program
 
-    Colors: hopeful green and energetic orange. Social links: Facebook, Instagram, LinkedIn.
+    Board of Directors:
+    - Reverend James Washington, Board Chair - Senior Pastor of Grace Community Church, community leader for 25 years
+    - Dr. Linda Okafor, Vice Chair - Pediatrician at Detroit Medical Center, Harvard Medical School graduate
+    - Marcus Thompson, Treasurer - CFO at Detroit Manufacturing Co., CPA with 20 years nonprofit financial management
+    - Councilwoman Patricia Reyes - Detroit City Council District 5, education policy advocate
+    - Tyrone Banks, Secretary - Principal of Cass Technical High School, former Hope for Tomorrow program participant
+
+    Partnership logos/names: Detroit Food Bank, United Way of Southeastern Michigan, Kellogg Foundation, Ford Fund, DTE Energy Foundation, Meijer Community Fund, Detroit Public Schools Community District.
+
+    Donation tiers with impact descriptions:
+    - $25 - Feeds a family of 4 for one week through our Weekend Meal Program
+    - $50 - Sponsors one month of after-school tutoring for a child
+    - $100 - Sends a child to Summer Learning Camp for one week
+    - $250 - Provides school supplies for an entire classroom
+    - $500 - Become a Hope Champion and fund a full summer camp scholarship
+    - $1,000 - Name a tutoring station at one of our partner schools
+    - Custom amount option
+    Note: "Hope for Tomorrow is a registered 501(c)(3). All donations are tax-deductible. EIN: 84-3219876"
+
+    Volunteer signup form: Full Name, Email, Phone, Availability (checkboxes: Weekday Afternoons, Weekday Evenings, Saturday, Sunday), Interests (checkboxes: Tutoring, Meal Distribution, Event Planning, Fundraising, Transportation, Administrative), Special Skills or Certifications, Why Do You Want to Volunteer (textarea), "Join Our Team" button.
+
+    Upcoming events section:
+    - Annual Gala "Night of Hope" - March 15, 2024 at Detroit Athletic Club, $150/ticket
+    - Spring Volunteer Orientation - February 10, 2024, free
+    - Community Meal Day - Every Saturday 10am-1pm, volunteers welcome
+
+    Footer with Facebook, Instagram @hopefortomorrowdet, LinkedIn. "A 501(c)(3) nonprofit organization." Charity Navigator 4-star rating badge. GuideStar Gold Seal. Address: 2847 Gratiot Avenue Detroit MI 48207. Phone 313-555-0142. Copyright 2024 Hope for Tomorrow.
 
 systemPrompt: |
   ${common.developPageBase}
@@ -38,10 +75,20 @@ goal: |
   1. Wait for site creation to complete
   2. Verify the preview contains:
      - "Hope for Tomorrow" organization name
-     - Mission statement or about section
-     - Programs or services offered
-     - Impact statistics or achievements
-     - Donate button or donation section
-     - Volunteer signup or ways to help
-  3. Report success if non-profit elements are present
+     - Mission statement about empowering children
+     - At least 3 programs with descriptions (Tutoring, Meal Program, Summer Camp)
+     - Impact statistics (2,847 children, 15,000+ meals, etc.)
+     - Board of Directors section with at least 3 members
+     - Donation section with tiered amounts ($25, $50, $100, etc.)
+     - Volunteer signup form with name and availability fields
+     - Partnership logos or names
+     - "Donate Now" button prominently displayed
+  3. Report success if at least 7 of the above elements are present
 
+qualityEval:
+  enabled: true
+  siteType: nonprofit
+  thresholds:
+    minOverallScore: 60
+    minPerformance: 40
+    minAccessibility: 70

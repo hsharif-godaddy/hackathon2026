@@ -2,8 +2,9 @@
 
 name: Create Hello World Site
 description: |
-  Create a simple Hello World website using Airo Builder,
+  Create a professional consulting website using Airo Builder,
   then use chat to make 5 modifications to the site.
+  Tests the full iterative design workflow.
 
 startUrl: https://airo-builder.godaddy.com
 timeout: 900000 # 15 minutes (site creation + 5 chat interactions)
@@ -16,13 +17,15 @@ credentials:
 
 sitePrompt:
   prompt: |
-    Launching my freelance consulting business and need a simple professional website called Summit Consulting.
+    Launching my freelance consulting business and need a professional website called Summit Consulting.
 
-    Clean hero section with tagline Elevate Your Business. About section explaining I help small businesses with strategy and growth. Contact form for potential clients.
+    Design: Modern forest green and white color scheme, clean and trustworthy like Stripe or Linear. Use Inter for headings and a clean sans-serif for body text. Hero should be full-width with a subtle gradient overlay. Services in a 2-column card layout on desktop, stacked on mobile. Plenty of whitespace.
 
-    Modern blue color scheme like Stripe or Linear. Clean and trustworthy looking.
+    Clean hero section with tagline "Elevate Your Business" and subtext about helping small businesses grow. Big "Book a Call" button in the hero and a secondary "Learn More" link.
 
-    Make sure there is a clear Book a Call button in the hero.
+    About section explaining I help small businesses with strategy and growth. 10 years of experience working with Fortune 500 companies before going independent. Based in Austin TX.
+
+    Contact form with Name, Email, Company, Message fields and a Submit button.
 
 systemPrompt: |
   ${common.developPageBase}
@@ -42,10 +45,17 @@ goal: |
   Send 5 chat messages to modify the site. Success criteria:
   - All 5 chat messages were sent successfully
   - Site shows green color scheme (changed from blue)
-  - Testimonials section is visible
-  - Services section with cards is visible
-  - Footer is dark with social icons
+  - Testimonials section is visible with client names (Sarah, Mike, Lisa)
+  - Headline reads "Transform Your Business, Accelerate Your Growth"
+  - Services section with 4 offerings and prices ($500, $2000, $1500, $300)
+  - Footer is dark with social icons (LinkedIn, Twitter, Calendly)
 
   Report success if at least 3 of the 5 modifications are visible in the preview.
 
-# previewScreenshots uses defaults: fullPage, all scroll positions, captureAllPages
+qualityEval:
+  enabled: true
+  siteType: service-business
+  thresholds:
+    minOverallScore: 60
+    minPerformance: 40
+    minAccessibility: 70
