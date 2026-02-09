@@ -136,7 +136,12 @@ func (p *HTTPProxy) newReverseProxy(targetURL *url.URL, transport http.RoundTrip
 				"remote_addr", r.RemoteAddr)
 		}
 
-		// CORS headers are set by CORS middleware (outermost layer)
+		// Add CORS headers to error responses
+		// The rs/cors middleware handles OPTIONS preflight requests (never reach here),
+		// but actual request errors (GET, POST, etc.) need explicit CORS headers
+		// to prevent browsers from showing "CORS error" instead of the actual error
+		p.addCORSHeadersToErrorResponse(w, r)
+
 		// Return appropriate status code with generic error message to avoid information disclosure
 		// Use http.Error to avoid XSS vulnerability from fmt.Fprintf
 		// Detailed error information is already logged above
@@ -144,4 +149,45 @@ func (p *HTTPProxy) newReverseProxy(targetURL *url.URL, transport http.RoundTrip
 	}
 
 	return proxy
+}
+
+// addCORSHeadersToErrorResponse adds CORS headers to error responses when appropriate.
+// This ensures browsers display the actual error instead of a misleading "CORS error".
+func (p *HTTPProxy) addCORSHeadersToErrorResponse(w http.ResponseWriter, r *http.Request) {
+	if p.corsMiddleware == nil || !p.corsMiddleware.OriginAllowed(r) {
+		return
+	}
+
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return
+	}
+
+	// Match rs/cors behavior: echo origin for credential requests
+	// Since we have AllowCredentials: true, always echo the origin
+	w.Header().Set("Access-Control-Allow-Origin", origin)
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+	// Ensure "Origin" is included in Vary without clobbering existing values
+	addOriginToVaryHeader(w)
+}
+
+// addOriginToVaryHeader ensures "Origin" is included in the Vary header
+// without duplicating it if already present or clobbering existing values.
+func addOriginToVaryHeader(w http.ResponseWriter) {
+	existingVary := w.Header().Get("Vary")
+	if existingVary == "" {
+		w.Header().Set("Vary", "Origin")
+		return
+	}
+
+	// Check if Origin is already present (case-insensitive)
+	for v := range strings.SplitSeq(existingVary, ",") {
+		if strings.EqualFold(strings.TrimSpace(v), "Origin") {
+			return // Already present, nothing to do
+		}
+	}
+
+	// Not present, append it
+	w.Header().Set("Vary", existingVary+", Origin")
 }

@@ -38,6 +38,7 @@ type HTTPProxy struct {
 	listener              net.Listener
 	running               bool
 	reverseProxy          *httputil.ReverseProxy
+	corsMiddleware        *cors.Cors
 	startTime             time.Time
 	procMgr               ProcessController
 	startOnRequestEnabled bool
@@ -242,7 +243,7 @@ func (p *HTTPProxy) Start() error {
 
 	// CORS middleware using rs/cors library
 	// Handles CORS for all requests (preflight, actual requests, errors)
-	corsMiddleware := cors.New(cors.Options{
+	p.corsMiddleware = cors.New(cors.Options{
 		AllowedOrigins: p.config.AllowedOrigins,
 		AllowedMethods: []string{
 			http.MethodGet,
@@ -259,7 +260,7 @@ func (p *HTTPProxy) Start() error {
 		AllowCredentials: true,
 		MaxAge:           86400, // Cache preflight for 24 hours
 	})
-	handler = corsMiddleware.Handler(handler)
+	handler = p.corsMiddleware.Handler(handler)
 
 	// Logging middleware (outermost layer)
 	// Logs all requests with response details

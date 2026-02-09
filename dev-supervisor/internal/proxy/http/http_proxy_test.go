@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/cors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -2339,4 +2340,150 @@ func TestHTTPProxy_HealthCheck_NoStartOnRequest(t *testing.T) {
 	require.NoError(t, err, "should parse JSON response")
 
 	assert.Equal(t, "unhealthy", resp.Status, "status should be 'unhealthy'")
+}
+
+// TestReverseProxy_ErrorHandler_CORSHeaders tests that error responses
+// include proper CORS headers when backend is unavailable
+func TestReverseProxy_ErrorHandler_CORSHeaders(t *testing.T) {
+	// Create a proxy that points to a non-existent backend (connection will fail)
+	targetURL := &url.URL{
+		Scheme: "http",
+		Host:   "localhost:9999", // Non-existent port
+	}
+
+	// Create CORS middleware with allowed origins
+	corsMiddleware := cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://example.com", "https://example.com"},
+		AllowCredentials: true,
+	})
+
+	// Create HTTP proxy with our error handler
+	proxy := &HTTPProxy{
+		config: Config{
+			Enabled:        true,
+			AllowedOrigins: []string{"http://example.com", "https://example.com"},
+		},
+		corsMiddleware: corsMiddleware,
+	}
+
+	// Create transport with minimal timeout to fail fast
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: 10 * time.Millisecond,
+		}).DialContext,
+	}
+
+	// Create reverse proxy with the error handler
+	proxy.reverseProxy = proxy.newReverseProxy(targetURL, transport)
+
+	// Make request with allowed Origin header
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	req.Header.Set("Origin", "http://example.com")
+	rec := httptest.NewRecorder()
+
+	// Serve request (will fail and trigger ErrorHandler)
+	proxy.reverseProxy.ServeHTTP(rec, req)
+
+	// Should return 503 Service Unavailable (connection refused/timeout)
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code,
+		"should return 503 when backend unavailable")
+
+	// Verify CORS headers are present
+	assert.Equal(t, "http://example.com", rec.Header().Get("Access-Control-Allow-Origin"),
+		"should echo origin in Access-Control-Allow-Origin")
+	assert.Equal(t, "true", rec.Header().Get("Access-Control-Allow-Credentials"),
+		"should set Access-Control-Allow-Credentials to true")
+
+	// Verify Vary header includes Origin
+	varyHeader := rec.Header().Get("Vary")
+	assert.Contains(t, varyHeader, "Origin",
+		"Vary header should include Origin")
+}
+
+// TestReverseProxy_ErrorHandler_VaryHeaderAppend tests that Vary header
+// is properly set when CORS headers are added to error responses
+func TestReverseProxy_ErrorHandler_VaryHeaderAppend(t *testing.T) {
+	// Create a proxy that points to a non-existent backend
+	targetURL := &url.URL{
+		Scheme: "http",
+		Host:   "localhost:9999",
+	}
+
+	corsMiddleware := cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://example.com"},
+		AllowCredentials: true,
+	})
+
+	proxy := &HTTPProxy{
+		config: Config{
+			Enabled:        true,
+			AllowedOrigins: []string{"http://example.com"},
+		},
+		corsMiddleware: corsMiddleware,
+	}
+
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: 10 * time.Millisecond,
+		}).DialContext,
+	}
+
+	proxy.reverseProxy = proxy.newReverseProxy(targetURL, transport)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	req.Header.Set("Origin", "http://example.com")
+	rec := httptest.NewRecorder()
+
+	proxy.reverseProxy.ServeHTTP(rec, req)
+
+	// Verify Vary header is set when CORS headers are added
+	varyHeader := rec.Header().Get("Vary")
+	assert.Contains(t, varyHeader, "Origin",
+		"should set Vary: Origin when CORS headers are added")
+}
+
+// TestReverseProxy_ErrorHandler_NoCORSForDisallowedOrigin tests that
+// CORS headers are NOT added for disallowed origins
+func TestReverseProxy_ErrorHandler_NoCORSForDisallowedOrigin(t *testing.T) {
+	targetURL := &url.URL{
+		Scheme: "http",
+		Host:   "localhost:9999",
+	}
+
+	corsMiddleware := cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://example.com"},
+		AllowCredentials: true,
+	})
+
+	proxy := &HTTPProxy{
+		config: Config{
+			Enabled:        true,
+			AllowedOrigins: []string{"http://example.com"},
+		},
+		corsMiddleware: corsMiddleware,
+	}
+
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: 10 * time.Millisecond,
+		}).DialContext,
+	}
+
+	proxy.reverseProxy = proxy.newReverseProxy(targetURL, transport)
+
+	// Request with DISALLOWED origin
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	req.Header.Set("Origin", "http://evil.com")
+	rec := httptest.NewRecorder()
+
+	proxy.reverseProxy.ServeHTTP(rec, req)
+
+	// Should still return 503
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+
+	// CORS headers should NOT be present for disallowed origin
+	assert.Empty(t, rec.Header().Get("Access-Control-Allow-Origin"),
+		"should not set CORS headers for disallowed origin")
+	assert.Empty(t, rec.Header().Get("Access-Control-Allow-Credentials"),
+		"should not set CORS headers for disallowed origin")
 }
