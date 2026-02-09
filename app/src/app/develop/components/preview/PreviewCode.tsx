@@ -22,6 +22,7 @@ import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useCodeSyncStore } from '@/stores/useCodeSyncStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useSiteCreationStore } from '@/stores/useSiteCreationStore'
 
 // Dynamically import Monaco Editor to avoid SSR issues
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
@@ -115,6 +116,11 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const [showFileTree, setShowFileTree] = useState(isMobile)
   const setHasUnsavedChanges = useDevelopPageStore((state) => state.setHasUnsavedChanges)
 
+  // Use realAppId if available (during temp→real ID transition), otherwise use appId from params
+  // This prevents ensure-running calls with stale temp IDs after navigation
+  const realAppId = useSiteCreationStore((state) => state.realAppId)
+  const effectiveAppId = realAppId ?? appId
+
   // Subscribe to file changes from CodeSyncStore
   // Use changeVersion to trigger updates without recreating arrays
   const changeVersion = useCodeSyncStore((state) => state.changeVersion)
@@ -125,6 +131,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const getFileChange = useCodeSyncStore((state) => state.getFileChange)
 
   // Refs to prevent duplicate loads and manage retry
+  // Initialize refs in a way that ensures they're properly reset on mount
   const isLoadingRef = useRef(false)
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const editorRef = useRef<any>(null)
@@ -132,10 +139,11 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const loadingFilesRef = useRef<Set<string>>(new Set())
   const processedChangesRef = useRef<Set<string>>(new Set())
   const changeTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
+  const isMountedRef = useRef(true)
 
   // Load real files from backend
   const loadFiles = useCallback(async () => {
-    if (!appId) return
+    if (!effectiveAppId) return
 
     // Prevent duplicate simultaneous loads
     if (isLoadingRef.current) return
@@ -152,12 +160,12 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
 
     try {
       // First try to ensure the app is running
-      await appService.ensureAppIsRunning(appId)
+      await appService.ensureAppIsRunning(effectiveAppId)
 
       // Wait for app to fully start before fetching files
       await new Promise(resolve => setTimeout(resolve, APP_START_DELAY_MS))
 
-      const result = await appService.getFiles(appId, 5)
+      const result = await appService.getFiles(effectiveAppId, 5)
 
       if (result.entries && result.entries.length > 0) {
         const fileTree = buildFileTree(result.entries)
@@ -189,7 +197,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
         isLoadingRef.current = false
       }
     }
-  }, [appId, t])
+  }, [effectiveAppId, t])
 
   // Convert flat file list to hierarchical tree structure
   const buildFileTree = (entries: Array<{name: string; isDirectory: boolean; path: string; depth: number}>): FileItem[] => {
@@ -293,20 +301,63 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
 
   // Load file content from backend - throws on error to allow caller to handle
   const loadFileContent = useCallback(async (filePath: string): Promise<string> => {
-    const result = await appService.readFile(appId, filePath)
-    return result.content
-  }, [appId])
+    if (!effectiveAppId) {
+      throw new Error('App ID is required to load file content')
+    }
+    try {
+      const result = await appService.readFile(effectiveAppId, filePath)
+      return result.content
+    } catch (error) {
+      logger.error('code-editor.file.load-error', { 
+        message: 'Error loading file', 
+        filePath,
+        error: error instanceof Error ? error.message : String(error) 
+      })
+      throw error // Re-throw to allow caller to handle
+    }
+  }, [effectiveAppId])
 
   // Save file content to backend
   const saveFileContent = useCallback(async (filePath: string, content: string): Promise<boolean> => {
-    try {
-      const result = await appService.writeFile(appId, filePath, content, 'rewrite')
-      return result.success || true
-    } catch (error) {
-      logger.error('code-editor.file.save-error', { message: 'Error saving file', error: error instanceof Error ? error.message : String(error) })
-      return false
+    if (!effectiveAppId) {
+      throw new Error('App ID is required to save file')
     }
-  }, [appId])
+    try {
+      const result = await appService.writeFile(effectiveAppId, filePath, content, 'rewrite')
+      return typeof result.success === 'boolean' ? result.success : true
+    } catch (error) {
+      logger.error('code-editor.file.save-error', { 
+        message: 'Error saving file', 
+        filePath,
+        error: error instanceof Error ? error.message : String(error) 
+      })
+      return false // Return false for save errors (UI can continue)
+    }
+  }, [effectiveAppId])
+
+  // Master cleanup effect - ensures refs are reset on unmount
+  useEffect(() => {
+    isMountedRef.current = true
+    
+    return () => {
+      isMountedRef.current = false
+      
+      // Clear retry timeout
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current)
+        retryTimeoutRef.current = null
+      }
+
+      // Clear all change timeouts
+      changeTimeoutsRef.current.forEach(timeout => clearTimeout(timeout))
+      changeTimeoutsRef.current.clear()
+
+      // Reset all refs to initial state
+      isLoadingRef.current = false
+      loadingFilesRef.current.clear()
+      processedChangesRef.current.clear()
+    }
+  }, [])
 
   useEffect(() => {
     // Clear processed changes when appId changes (prevents stale state across different apps)
@@ -315,16 +366,27 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     // Load real files from backend - only when appId changes
     loadFiles()
 
-    // Cleanup: cancel pending retry when appId changes or component unmounts
+    // Cleanup: cancel pending operations when effectiveAppId changes
     return () => {
+      // Clear retry timeout
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current)
         retryTimeoutRef.current = null
       }
-      isLoadingRef.current = false
+
+      // Clear all change timeouts
+      changeTimeoutsRef.current.forEach(timeout => clearTimeout(timeout))
+      changeTimeoutsRef.current.clear()
+
+      // Clear loading state refs (only if still mounted, otherwise master cleanup handles it)
+      if (isMountedRef.current) {
+        isLoadingRef.current = false
+        loadingFilesRef.current.clear()
+        processedChangesRef.current.clear()
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFiles identity changes due to t(), but we only want to reload when appId changes
-  }, [appId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFiles identity changes due to t(), but we only want to reload when effectiveAppId changes
+  }, [effectiveAppId])
 
   // Handle file changes from agent operations
   useEffect(() => {
@@ -700,7 +762,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                 icon={<XIcon />}
               />
             </div>
-            <CodeSearch appId={appId} files={files} onResultClick={handleFileSelect} />
+            <CodeSearch appId={effectiveAppId} files={files} onResultClick={handleFileSelect} />
             <div className="flex-1 overflow-y-auto">
               <FileTree
                 files={files}
@@ -714,7 +776,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       ) : (
         // Desktop: Fixed sidebar
         <div className="border-r min-h-0 w-[250px] flex-shrink-0 flex flex-col">
-          <CodeSearch appId={appId} files={files} onResultClick={handleFileSelect} />
+          <CodeSearch appId={effectiveAppId} files={files} onResultClick={handleFileSelect} />
           <div className="flex-1 overflow-y-auto">
             <FileTree
               files={files}
