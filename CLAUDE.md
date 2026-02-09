@@ -338,12 +338,12 @@ The `gd-auth` library correctly handles all authentication types (basic auth, im
 
 ```typescript
 this.gdAuth = new GdAuth({
-  app: 'airo-builder',
-  type: 'idp',
+  app: "airo-builder",
+  type: "idp",
   auths: authUtils.getSupportedAuthTypes(), // All supported auth types
   allowHeartbeat: true,
-  use12HourExpiration: true,  // REQUIRED: Enforces gateway token age limits
-  fetchKey: require('gd-auth/src/fetch-key')
+  use12HourExpiration: true, // REQUIRED: Enforces gateway token age limits
+  fetchKey: require("gd-auth/src/fetch-key"),
 });
 
 // Use level=2 (medium risk) for token validation
@@ -351,6 +351,7 @@ const jwt = await this.gdAuth.authenticate(ssoHost, token, 2);
 ```
 
 **Supported auth types (12 total - from gd-auth source):**
+
 - `basic` - Normal authentication
 - `e2s` - Employee-to-shopper impersonation
 - `s2s` - Shopper-to-shopper delegation
@@ -367,6 +368,7 @@ const jwt = await this.gdAuth.authenticate(ssoHost, token, 2);
 **IMPORTANT:** gd-auth validates tokens against this list. If a token's auth type is not included, gd-auth throws `TokenAuthMismatchError` and rejects it. This list cannot be obtained from gd-auth - it must be maintained in `authUtils.getSupportedAuthTypes()`.
 
 **Why `use12HourExpiration: true` is critical:**
+
 - Enforces 12-hour IAT limit for per=true tokens (1-hour for per=false)
 - Correctly skips VAT validation for e2s tokens (e2s tokens are NOT heartbeated)
 - Enforces 5-minute VAT limit for basic/s2s tokens (heartbeat required)
@@ -391,8 +393,8 @@ if (decoded.vat && Date.now() / 1000 - decoded.vat > 300) { ... }
 
 ```typescript
 // Extract shopper and customer IDs
-const shopperId = jwt.getShopperId();     // Handles all auth types
-const customerId = jwt.getCustomerId();   // Handles all auth types
+const shopperId = jwt.getShopperId(); // Handles all auth types
+const customerId = jwt.getCustomerId(); // Handles all auth types
 
 // Access JWT properties directly
 const exp = jwt.exp;
@@ -407,11 +409,11 @@ const authType = jwt.auth; // 'basic', 'e2s', 's2s'
 
 gd-auth enforces these rules automatically when `use12HourExpiration: true` and `level >= 2`:
 
-| Auth Type | VAT Check | IAT Check | Notes |
-|-----------|-----------|-----------|-------|
-| **basic** | ≤ 5 min | ≤ 12 hours (per=true) or 1 hour (per=false) | Heartbeat required |
-| **e2s** | SKIPPED | ≤ 2 hours | Employee impersonation, not heartbeated |
-| **s2s** | ≤ 5 min | ≤ 12 hours (per=true) or 1 hour (per=false) | Shopper delegation, heartbeat required |
+| Auth Type | VAT Check | IAT Check                                   | Notes                                   |
+| --------- | --------- | ------------------------------------------- | --------------------------------------- |
+| **basic** | ≤ 5 min   | ≤ 12 hours (per=true) or 1 hour (per=false) | Heartbeat required                      |
+| **e2s**   | SKIPPED   | ≤ 2 hours                                   | Employee impersonation, not heartbeated |
+| **s2s**   | ≤ 5 min   | ≤ 12 hours (per=true) or 1 hour (per=false) | Shopper delegation, heartbeat required  |
 
 **Never write custom code to check these rules** - gd-auth handles it correctly.
 
@@ -419,7 +421,7 @@ gd-auth enforces these rules automatically when `use12HourExpiration: true` and 
 
 ```typescript
 // Use gd-auth to detect auth type from token
-import { authUtils } from '@/lib/features';
+import { authUtils } from "@/lib/features";
 
 const authType = authUtils.detectAuthTypeFromToken(token);
 // Returns: 'basic' | 'e2s' | 's2s'
@@ -432,7 +434,7 @@ const authType = authUtils.detectAuthTypeFromToken(token);
 ```typescript
 // DON'T DO THIS - breaks e2s tokens (they have no VAT claim)
 if (token.vat && Date.now() / 1000 - token.vat > 300) {
-  throw new Error('Token VAT expired');
+  throw new Error("Token VAT expired");
 }
 ```
 
@@ -441,7 +443,9 @@ if (token.vat && Date.now() / 1000 - token.vat > 300) {
 ```typescript
 // DON'T DO THIS - gd-auth handles this
 const tokenAge = Date.now() / 1000 - token.iat;
-if (tokenAge > 43200) { throw new Error('Token too old'); }
+if (tokenAge > 43200) {
+  throw new Error("Token too old");
+}
 ```
 
 **✅ Correct: Trust gd-auth validation**
@@ -496,7 +500,7 @@ Context auto-compacts at limits. Complete tasks fully regardless of budget. Save
 - Deployment: `app/DEPLOYMENT-ADAPTER-SYSTEM.md`
 - Testing: `app/TESTING.md`
 - Logging: `LOGGING-GUIDE.md`
-- Local setup: `app/LOCAL_SETUP.md`
+- Setup guide: `GETTING_STARTED.md` - Local development setup (run `./setup.sh`)
 - Mock auth: `app/MOCK-AUTH-SETUP.md`
 - **Agents security:** `agents/CLAUDE.md` - Authorization patterns and route protection
 

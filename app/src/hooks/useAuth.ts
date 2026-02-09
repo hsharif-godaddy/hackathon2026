@@ -28,12 +28,6 @@ interface AppConfig {
 
 interface UseAuthOptions {
   onShowMockLogin?: () => void;
-  /**
-   * Allow unauthenticated access - for pages that work for both authed and unauthed users (e.g., homepage)
-   * This option is passed through but primarily used by AuthProvider to decide whether to use
-   * Gasket's withAuthProvider (which sets up 401 redirect interceptors)
-   */
-  allowUnauthenticated?: boolean;
 }
 
 /**
@@ -41,13 +35,8 @@ interface UseAuthOptions {
  *
  * Supports JWT (production), MOCK (development), and NONE (local dev) authentication.
  * Uses Gasket Auth for JWT mode and custom mock auth for development.
- *
- * @param options.allowUnauthenticated - When true, allows page to work for unauthed users (no redirect on 401)
  */
 export function useAuth(options: UseAuthOptions = {}) {
-  // allowUnauthenticated is destructured but not used here - it's used by AuthProvider
-  // to decide whether to use withAuthProvider (which sets up 401 redirect interceptors)
-  //
   // @deprecated The old `useAuth(callback)` signature is deprecated.
   // Use `useAuth({ onShowMockLogin: callback })` instead. This backward
   // compatibility will be removed in a future release.
@@ -58,10 +47,14 @@ export function useAuth(options: UseAuthOptions = {}) {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
-  const [jwtAuthValid, setJwtAuthValid] = useState<boolean | null>(null);
-  const [authRefreshTrigger, setAuthRefreshTrigger] = useState(0);
-  const isValidatingRef = useRef(false);
-  const latestValidationRequestIdRef = useRef(0);
+  const needsReauth = useAuthUIStore((state) => state.needsReauth);
+  const needsReauthSeq = useAuthUIStore((state) => state.needsReauthSeq);
+  const previousAuthValidRef = useRef<boolean | undefined>(undefined);
+  // Track if we've seen a validation cycle (loading state) after needsReauth was set
+  // This prevents clearing needsReauth based on stale cached authState.valid
+  const sawValidationAfterReauthSeqRef = useRef<number | null>(null);
+  const previousNeedsReauthRef = useRef(false);
+  const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Memoize auth configuration to prevent unnecessary re-renders
   const authType = useMemo(() => config?.auth?.authType || auth.getType(), [config?.auth?.authType]);
@@ -129,90 +122,93 @@ export function useAuth(options: UseAuthOptions = {}) {
     };
   }, []);
 
-  // Check JWT authentication and authorization
-  // Uses our own /api/auth/validate endpoint which doesn't trigger SSO redirects on 401
+  // Cleanup validation timeout on unmount
   useEffect(() => {
-    async function checkJwtAuth() {
-      if (!shouldUseJWT || isMockAuth || isAuthDisabled) {
-        setJwtAuthValid(null);
-        isValidatingRef.current = false;
-        return;
+    return () => {
+      if (validationTimeoutRef.current) {
+        clearTimeout(validationTimeoutRef.current);
+        validationTimeoutRef.current = null;
       }
+    };
+  }, []);
 
-      // Prevent duplicate validation requests using ref to avoid dependency cycles
-      if (isValidatingRef.current) {
-        return;
+  // Clear needsReauth when auth transitions to valid after a fresh validation cycle (JWT mode only)
+  // FIXED: Only clears after seeing a validation cycle, not on cached authState.valid
+  useEffect(() => {
+    if (!shouldUseJWT || isMockAuth || isAuthDisabled) {
+      previousAuthValidRef.current = authState.valid;
+      previousNeedsReauthRef.current = needsReauth;
+      return;
+    }
+
+    // Detect transition to needsReauth=true (new 401 occurred)
+    // Reset validation tracking to require a NEW validation cycle for this 401
+    if (needsReauth && !previousNeedsReauthRef.current) {
+      sawValidationAfterReauthSeqRef.current = null;
+      logger.debug('auth.needs_reauth_set', {
+        message: 'needsReauth became true, waiting for validation cycle',
+        needsReauthSeq
+      });
+
+      // Set timeout to clear needsReauth if validation cycle doesn't occur within 10 seconds
+      // This prevents indefinite waiting if Gasket Auth doesn't trigger a validation
+      if (validationTimeoutRef.current) {
+        clearTimeout(validationTimeoutRef.current);
       }
-
-      // Capture sequence before validation starts to detect concurrent 401s
-      // If a 401 arrives during validation, the sequence will increment and
-      // clearNeedsReauth() will become a no-op to preserve the fresh 401 state
-      const needsReauthSeqAtStart = useAuthUIStore.getState().needsReauthSeq;
-      // Generate unique request ID to track latest request
-      const requestId = ++latestValidationRequestIdRef.current;
-      isValidatingRef.current = true;
-
-      try {
-        const response = await fetch('/api/auth/validate');
-
-        // Only update state if this is still the latest request
-        if (requestId !== latestValidationRequestIdRef.current) {
-          logger.debug('auth.jwt.stale_response_ignored', {
-            message: 'Ignoring stale JWT validation response',
-            requestId,
-            latestRequestId: latestValidationRequestIdRef.current
+      validationTimeoutRef.current = setTimeout(() => {
+        if (needsReauth && sawValidationAfterReauthSeqRef.current === null) {
+          logger.warn('auth.validation_timeout', {
+            message: 'Validation cycle not detected within timeout, clearing needsReauth',
+            needsReauthSeq
           });
-          return;
+          useAuthUIStore.getState().clearNeedsReauth(needsReauthSeq);
         }
+      }, 10000);
+    }
 
-        if (response.ok) {
-          const data = await response.json();
-          setJwtAuthValid(data.valid);
+    // Track when Gasket Auth runs a validation cycle (status becomes loading)
+    // Store the seq number so we know which 401 this validation applies to
+    if (needsReauth && authState.status === 'loading' && sawValidationAfterReauthSeqRef.current !== needsReauthSeq) {
+      sawValidationAfterReauthSeqRef.current = needsReauthSeq;
+      logger.debug('auth.validation_cycle_detected', {
+        message: 'Detected Gasket Auth validation cycle after needsReauth',
+        authStateStatus: authState.status,
+        needsReauthSeq
+      });
 
-          // If auth is valid, clear any needsReauth flag that may have been set by a previous 401
-          // This handles cases where:
-          // 1. Transient network issues caused a 401 but auth is actually still valid
-          // 2. Auth was refreshed in another tab and is now valid again
-          // 3. User manually refreshed their session outside of the SSO modal
-          if (data.valid) {
-            useAuthUIStore.getState().clearNeedsReauth(needsReauthSeqAtStart);
-          }
-        } else {
-          // Auth validation failed - user is not authenticated
-          // On pages that allow unauthenticated access, this is fine - just show unauthed UI
-          // On other pages, the ProtectedRoute component will handle the redirect
-          setJwtAuthValid(false);
-        }
-      } catch (error) {
-        // Only update error state if this is still the latest request
-        if (requestId !== latestValidationRequestIdRef.current) {
-          logger.debug('auth.jwt.stale_error_ignored', {
-            message: 'Ignoring stale JWT validation error',
-            requestId,
-            latestRequestId: latestValidationRequestIdRef.current
-          });
-          return;
-        }
-
-        logger.error('auth.jwt.check.error', {
-          message: 'Failed to check JWT authentication',
-          error: error as Error
-        });
-        setJwtAuthValid(false);
-      } finally {
-        isValidatingRef.current = false;
+      // Clear timeout since we detected the validation cycle
+      if (validationTimeoutRef.current) {
+        clearTimeout(validationTimeoutRef.current);
+        validationTimeoutRef.current = null;
       }
     }
 
-    checkJwtAuth();
-  }, [shouldUseJWT, isMockAuth, isAuthDisabled, configLoading, authRefreshTrigger]);
+    // Only clear needsReauth after we've seen a validation cycle complete FOR THIS 401
+    // This prevents clearing based on stale cached authState.valid = true
+    // AND prevents clearing a newer 401 with an older validation cycle
+    // Also ensure we're not in the middle of loading to avoid race conditions
+    if (needsReauth && authState.valid && authState.status !== 'loading' &&
+        sawValidationAfterReauthSeqRef.current === needsReauthSeq) {
+      logger.debug('auth.clear_needs_reauth', {
+        message: 'Clearing needsReauth after fresh validation confirmed auth is valid',
+        authStateValid: authState.valid,
+        authStateStatus: authState.status,
+        needsReauthSeq
+      });
+      useAuthUIStore.getState().clearNeedsReauth(needsReauthSeq);
+      // Reset tracking state for the next 401 occurrence
+      sawValidationAfterReauthSeqRef.current = null;
 
-  // Function to refresh auth state (call after SSO login)
-  const refreshAuth = useCallback(() => {
-    isValidatingRef.current = false;
-    setJwtAuthValid(null);
-    setAuthRefreshTrigger(prev => prev + 1);
-  }, []);
+      // Clear timeout if it's still pending
+      if (validationTimeoutRef.current) {
+        clearTimeout(validationTimeoutRef.current);
+        validationTimeoutRef.current = null;
+      }
+    }
+
+    previousAuthValidRef.current = authState.valid;
+    previousNeedsReauthRef.current = needsReauth;
+  }, [authState.valid, authState.status, shouldUseJWT, isMockAuth, isAuthDisabled, needsReauth, needsReauthSeq]);
 
   // Helper function to get user email from auth details
   const getUserEmail = () => {
@@ -254,6 +250,17 @@ export function useAuth(options: UseAuthOptions = {}) {
 
   // Handle sign out - different behavior per auth mode
   const handleSignOut = () => {
+    // Clear needsReauth flag on logout
+    if (needsReauth) {
+      useAuthUIStore.getState().clearNeedsReauth(needsReauthSeq);
+    }
+
+    // Clear validation timeout if pending
+    if (validationTimeoutRef.current) {
+      clearTimeout(validationTimeoutRef.current);
+      validationTimeoutRef.current = null;
+    }
+
     if (configError) {
       logger.error('auth.signout.config_error', 'Cannot sign out: configuration not loaded');
       return;
@@ -317,6 +324,20 @@ export function useAuth(options: UseAuthOptions = {}) {
   };
 
   // Determine authentication state based on mode
+  /**
+   * Determines authentication state based on auth mode and validates session status.
+   *
+   * Critical gating behavior: Returns isAuthenticated=true ONLY when BOTH conditions are met:
+   * 1. authState.valid is true (Gasket Auth's periodic server validation via /api/auth/validate)
+   * 2. needsReauth is false (no 401 errors detected by our interceptor)
+   *
+   * This dual-gating handles expired e2s tokens (12-hour expiration) where Gasket Auth's
+   * cached validation (60s TTL) may still return valid=true but the server has already
+   * rejected the token (401). The needsReauth flag provides immediate UI feedback while
+   * waiting for Gasket Auth's next validation cycle to update authState.valid.
+   *
+   * @returns {Object} Authentication state with isAuthenticated and isLoading flags
+   */
   const getAuthenticationState = () => {
     // If config failed to load, treat as not authenticated and not loading
     if (configError) {
@@ -327,15 +348,20 @@ export function useAuth(options: UseAuthOptions = {}) {
       return { isAuthenticated: true, isLoading: false }; // No auth required
     }
     if (isMockAuth) {
+      // Mock auth doesn't use the needsReauth flow - it has its own state management
       return {
         isAuthenticated: mockAuth.isAuthenticated,
         isLoading: mockAuth.isLoading
       };
     }
-    // JWT mode - use our API validation result if available, fallback to Gasket Auth
+    // JWT mode - use Gasket Auth's server-validated state
+    // Gasket Auth periodically calls /api/auth/validate (cached for ~60s) which uses gd-auth
+    // to validate JWT tokens server-side (exp, iat, vat, auth type checks).
+    // We gate with needsReauth to handle the window where authState.valid is stale but the
+    // server has already rejected the token (401). This provides immediate UI feedback.
     if (shouldUseJWT) {
-      const isLoading = authState.status === 'loading' || configLoading || jwtAuthValid === null;
-      const isAuthenticated = jwtAuthValid !== null ? jwtAuthValid : authState.valid;
+      const isLoading = authState.status === 'loading' || configLoading;
+      const isAuthenticated = authState.valid && !needsReauth;
       return { isAuthenticated, isLoading };
     }
 
@@ -352,6 +378,7 @@ export function useAuth(options: UseAuthOptions = {}) {
     isAuthenticated,
     isLoading,
     authState: shouldUseJWT ? authState : null,
+    needsReauth,
 
     // Configuration
     config,
@@ -366,7 +393,6 @@ export function useAuth(options: UseAuthOptions = {}) {
     // Auth actions
     handleSignIn,
     handleSignOut,
-    refreshAuth,
 
     // Auth status and mode
     isAuthDisabled,

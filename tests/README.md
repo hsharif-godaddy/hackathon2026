@@ -17,10 +17,13 @@ npx playwright test --headed
 # Run specific test file
 npx playwright test develop-publish.spec.ts --headed
 
-# Run against different environments
-PLAYWRIGHT_BASE_URL=https://airo-builder.test-godaddy.com npx playwright test --headed  # test
-PLAYWRIGHT_BASE_URL=https://airo-builder.dev-godaddy.com npx playwright test --headed   # dev
+# Run against different cloud environments
+PLAYWRIGHT_BASE_URL=https://airo-builder.test-godaddy.com npx playwright test --headed  # test (cloud)
+PLAYWRIGHT_BASE_URL=https://airo-builder.dev-godaddy.com npx playwright test --headed   # dev (cloud)
 PLAYWRIGHT_BASE_URL=https://airo-builder.godaddy.com npx playwright test --headed       # prod
+
+# Run against local development (requires local server at https://local.gasket.dev-godaddy.com:8443)
+PLAYWRIGHT_BASE_URL=https://local.gasket.dev-godaddy.com:8443 npx playwright test --headed
 ```
 
 ## Environment Setup

@@ -6,7 +6,6 @@ import Alert from '@ux/alert';
 import Modal from '@ux/modal';
 import Spinner from '@ux/spinner';
 
-import { useAuthContext } from '@/components/providers/AuthProvider';
 import { logger } from '@/lib/request-context';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { useSitesStore } from '@/stores/useSitesStore';
@@ -65,10 +64,10 @@ const SsoDeckDynamic = dynamic<SsoDeckComponentProps>(
 export default function SsoLogin() {
   const [error, setError] = useState<string | null>(null);
   const [ssoHost, setSsoHost] = useState<string | null>(null);
+  const [currentOrigin, setCurrentOrigin] = useState<string>('');
 
-  const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, clearNeedsReauth, redirectUrl, setRedirectUrl } = useAuthUIStore();
+  const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, redirectUrl, setRedirectUrl } = useAuthUIStore();
   const clearRequiresAuth = useSitesStore((state) => state.clearRequiresAuth);
-  const { refreshAuth } = useAuthContext();
 
   // Determine consuming port on client-side only using lazy initializer to avoid SSR hydration issues
   // Only pass non-standard ports (not 80, 443, or 3000) to SsoDeck for proper origin validation
@@ -78,9 +77,10 @@ export default function SsoLogin() {
     return (port && port !== '80' && port !== '443' && port !== '3000') ? port : '';
   });
 
-  // Determine SSO host on client-side only
+  // Determine SSO host and current origin on client-side only
   useEffect(function determineSsoHost() {
     setSsoHost(getRootDomain() || 'godaddy.com');
+    setCurrentOrigin(window.location.origin);
   }, []);
 
   const handleLoad = useCallback(function onSsoLoad() {
@@ -229,18 +229,46 @@ export default function SsoLogin() {
 
     setError(null);
     closeSsoLogin();
-    // Clear auth-related flags so UI components know auth is restored
-    clearNeedsReauth();
     clearRequiresAuth(); // Allow sites store to refetch
 
-    // Refresh auth state to pick up new cookies without full page reload
-    refreshAuth();
+    // Use redirect_url from SSO if provided AND it matches our origin
+    // We pass the current origin to SSO Deck via pageToLoadParams to ensure it constructs
+    // the correct redirect URL. This validation is a safety net (defense in depth).
+    // This triggers a navigation with the new auth cookie, forcing Gasket Auth to do a
+    // fresh server-side check and bypassing the client-side 60-second cache that would
+    // otherwise delay authentication recognition
+    const ssoData = data as { data?: { redirect_url?: string } } | undefined;
+    if (ssoData?.data?.redirect_url) {
+      // Validate that SSO's redirect URL matches our current origin (safety net)
+      if (isValidRedirectUrl(ssoData.data.redirect_url)) {
+        logger.info('sso-login.redirect.sso', {
+          message: 'Navigating to SSO-provided redirect URL',
+          url: ssoData.data.redirect_url,
+        });
+        window.location.href = ssoData.data.redirect_url;
+        return;
+      } else {
+        logger.warn('sso-login.redirect.sso-rejected', {
+          message: 'SSO redirect URL does not match current origin, using fallback',
+          ssoRedirectUrl: ssoData.data.redirect_url,
+          currentOrigin: window.location.origin,
+        });
+        // Fall through to use our own redirect logic
+      }
+    }
 
-    // Apply redirect if one was captured
+    // Apply redirect if one was captured from store
     if (applyRedirect()) {
       return;
     }
-  }, [closeSsoLogin, clearNeedsReauth, clearRequiresAuth, refreshAuth, applyRedirect]);
+
+    // No redirect available - reload current page to pick up new auth cookie
+    // This ensures Gasket Auth does a fresh check instead of using stale cached state
+    logger.info('sso-login.reload', {
+      message: 'No redirect available, reloading page to pick up new auth cookie',
+    });
+    window.location.reload();
+  }, [closeSsoLogin, clearRequiresAuth, applyRedirect]);
 
   // Don't render if not open
   if (!isSsoLoginOpen) {
@@ -276,7 +304,7 @@ export default function SsoLogin() {
               consumingPath='/'
               {...(consumingPort && { consumingPort })}
               pageToLoad='/login'
-              pageToLoadParams={{}}
+              pageToLoadParams={currentOrigin ? { redirect_url: currentOrigin } : {}}
               onAuth={handleAuth}
               onLoad={handleLoad}
               autoResize

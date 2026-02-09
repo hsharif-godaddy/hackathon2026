@@ -65,22 +65,12 @@ vi.mock('@/lib/request-context', () => ({
   logger: mockLogger,
 }));
 
-vi.mock('@/components/providers/AuthProvider', () => {
-  const refreshAuth = vi.fn();
-  return {
-    useAuthContext: () => ({
-      refreshAuth,
-    }),
-  };
-});
-
 vi.mock('@/stores/useAuthUIStore', () => {
   const state = {
     isSsoLoginOpen: true,
     isSsoLoading: false,
     closeSsoLogin: vi.fn(),
     setSsoLoaded: vi.fn(),
-    clearNeedsReauth: vi.fn(),
   };
   return {
     useAuthUIStore: (selector?: any) => (typeof selector === 'function' ? selector(state) : state),

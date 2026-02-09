@@ -75,13 +75,17 @@ e2e/
 
 The project uses a **single Cypress config file** (`cypress.config.ts`) that reads the `CYPRESS_ENV` environment variable to determine which environment to target.
 
-| CYPRESS_ENV | Base URL                                |
-| ----------- | --------------------------------------- |
-| `dev`       | `https://airo-builder.dev-godaddy.com`  |
-| `test`      | `https://airo-builder.test-godaddy.com` |
-| `prod`      | `https://airo-builder.godaddy.com`      |
+### Cloud Environments (for E2E testing)
+
+| CYPRESS_ENV | Base URL                                | Purpose         |
+| ----------- | --------------------------------------- | --------------- |
+| `dev`       | `https://airo-builder.dev-godaddy.com`  | Cloud dev       |
+| `test`      | `https://airo-builder.test-godaddy.com` | Test            |
+| `prod`      | `https://airo-builder.godaddy.com`      | Production      |
 
 **Default:** If `CYPRESS_ENV` is not set, it defaults to `prod`.
+
+**Local Development:** For testing against your local development server, use `https://local.gasket.dev-godaddy.com:8443` (requires local server running via `pnpm run dev`).
 
 ## Setup
 
