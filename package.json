@@ -24,6 +24,7 @@
     "apm:clean": "./scripts/local-apm.sh clean"
   },
   "devDependencies": {
+    "@elastic/elasticsearch": "^8.19.1",
     "@playwright/test": "^1.56.1",
     "concurrently": "^9.1.2",
     "husky": "^8.0.0",

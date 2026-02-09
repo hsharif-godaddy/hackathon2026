@@ -149,6 +149,45 @@ Artifacts uploaded on failure:
 - Videos
 - HAR files (network traces)
 
+## Elasticsearch Reporting
+
+Test results (pass/fail) are automatically indexed to Elasticsearch when `ES_URL` is configured. This enables Kibana dashboards for tracking test health over time.
+
+### Configuration
+
+Set these environment variables (in `tests/.env` for local, or as CI secrets):
+
+```env
+ES_URL=https://your-elasticsearch-instance:9200
+ES_API_KEY=your-api-key          # Option 1: API key auth
+ES_USERNAME=your-username         # Option 2: Basic auth
+ES_PASSWORD=your-password
+```
+
+### Index
+
+A single consolidated document is indexed to `playwright-e2e-results` per run:
+
+- `success` (boolean), `status` - overall run outcome
+- `totalTests`, `passed`, `failed`, `skipped` - test counts
+- `duration`, `durationSeconds`, `durationMinutes` - timing metrics
+- `environment`, `baseUrl`, `projectName` - target environment
+- CI/CD context (`gitSha`, `gitBranch`, `runId`, `runUrl`, `actor`, etc.)
+
+### Local Usage
+
+```bash
+# With ES configured
+ES_URL=http://localhost:9200 npx playwright test
+
+# Without ES (reporter silently skips)
+npx playwright test
+```
+
+### CI
+
+The GitHub Actions workflow automatically retrieves ES credentials from AWS Secrets Manager (`/airo/elasticsearch-credentials`) — the same secret used by agentic-qa. If credentials are unavailable, tests still run normally without indexing.
+
 ## Debugging
 
 ### View test report

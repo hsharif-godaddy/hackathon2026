@@ -163,6 +163,36 @@ jobs:
           fi
           echo "ℹ️ Skipping system dependencies installation (assuming self-hosted runner has required deps)"
 
+      - name: Get Elasticsearch credentials from Secrets Manager
+        id: get-es-credentials
+        continue-on-error: true
+        run: |
+          echo "Retrieving Elasticsearch credentials from Secrets Manager..."
+          SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "/airo/elasticsearch-credentials" --query 'SecretString' --output text --region us-west-2 2>/dev/null || echo "")
+
+          if [ -z "$SECRET_JSON" ]; then
+            echo "⚠️ Elasticsearch credentials not found - indexing will be skipped"
+            exit 0
+          fi
+
+          ES_URL=$(echo "$SECRET_JSON" | jq -r '.url // .ingestion_url // empty')
+          ES_API_KEY=$(echo "$SECRET_JSON" | jq -r '.api_key // empty')
+
+          if [ -n "$ES_URL" ]; then
+            echo "::add-mask::$ES_URL"
+            echo "es_url=$ES_URL" >> $GITHUB_OUTPUT
+
+            if [ -n "$ES_API_KEY" ]; then
+              echo "::add-mask::$ES_API_KEY"
+              echo "es_api_key=$ES_API_KEY" >> $GITHUB_OUTPUT
+              echo "✅ Elasticsearch credentials retrieved (URL + API Key)"
+            else
+              echo "✅ Elasticsearch URL retrieved (no API key - assuming open access)"
+            fi
+          else
+            echo "⚠️ Elasticsearch URL not found in secret - indexing will be skipped"
+          fi
+
       - name: Run Playwright tests
         run: npx playwright test
         env:
@@ -170,14 +200,9 @@ jobs:
           TEST_USERNAME: ${{ steps.get-credentials.outputs.username }}
           TEST_PASSWORD: ${{ steps.get-credentials.outputs.password }}
           PLAYWRIGHT_BASE_URL: ${{ steps.env-config.outputs.base_url }}
-
-      - name: Upload Playwright Report
-        uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 30
+          TEST_ENVIRONMENT: ${{ steps.env-config.outputs.environment }}
+          ES_URL: ${{ steps.get-es-credentials.outputs.es_url }}
+          ES_API_KEY: ${{ steps.get-es-credentials.outputs.es_api_key }}
 
       - name: Upload Test Results
         uses: actions/upload-artifact@v6

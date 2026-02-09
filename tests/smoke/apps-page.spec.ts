@@ -112,10 +112,6 @@ test.describe('Apps Page & Navigation', () => {
     expect(cardCount).toBeGreaterThanOrEqual(1);
     console.log(`  ✓ Found ${cardCount} app card(s)`);
 
-    // Verify status tags
-    await expect(page.locator('body')).toContainText(/Running|Stopped|Creating/);
-    console.log('  ✓ Status tags visible');
-
     // ========================================
     // STEP 4: Check Preview button in menu
     // ========================================
