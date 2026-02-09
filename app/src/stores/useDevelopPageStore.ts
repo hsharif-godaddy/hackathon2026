@@ -132,8 +132,6 @@ interface DevelopPageStore {
   // UI loading indicators
   isRestarting: boolean
   hasUnsavedChanges: boolean
-  isCheckingApp: boolean
-  isStartingApp: boolean
   isPollingEntitlements: boolean
 
   // Version history UI
@@ -266,7 +264,6 @@ interface DevelopPageStore {
 
   // Coordinated actions (call domain stores + manage UI state)
   restartApp: (appId: string, appStoreRestartApp: (appId: string) => Promise<void>) => Promise<void>
-  ensureAppIsRunning: (appId: string, appStoreEnsureAppIsRunning: (appId: string) => Promise<{ success: boolean; action?: string; message?: string }>) => Promise<void>
 
   // UI helpers
   toggleSelectMode: () => void
@@ -292,8 +289,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     isPreviewVisible: false,
     isRestarting: false,
     hasUnsavedChanges: false,
-    isCheckingApp: false,
-    isStartingApp: false,
     isPollingEntitlements: false,
     isVersionHistoryOpen: false,
 
@@ -653,33 +648,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         throw error
       } finally {
         set((state) => { state.isRestarting = false })
-      }
-    },
-
-    ensureAppIsRunning: async (appId: string, appStoreEnsureAppIsRunning: (appId: string) => Promise<{ success: boolean; action?: string; message?: string }>) => {
-      set((state) => { state.isCheckingApp = true })
-
-      try {
-        // Call the actual business logic from useAppStore
-        const data = await appStoreEnsureAppIsRunning(appId)
-
-        if (data.action === 'rebuild' || data.action === 'start') {
-          set((state) => { state.isStartingApp = true })
-
-          // Wait for the action to complete
-          await new Promise(resolve => setTimeout(resolve, 1000))
-
-          set((state) => { state.isStartingApp = false })
-        }
-      } catch (error) {
-        logger.error('develop-store.ensure-running.failure', {
-          error: error instanceof Error ? error.message : String(error)
-        })
-      } finally {
-        set((state) => {
-          state.isCheckingApp = false
-          state.isStartingApp = false
-        })
       }
     },
 

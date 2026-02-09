@@ -36,7 +36,6 @@ interface AppStore {
   pollAppStatus: (appId: string) => Promise<void>
   loadApps: () => Promise<void>
   clearCreationState: () => void
-  ensureAppIsRunning: (appId: string) => Promise<{ success: boolean; action?: string; message?: string }>
   restartApp: (appId: string) => Promise<void>
   syncActualPorts: () => Promise<void>
   
@@ -201,26 +200,7 @@ export const useAppStore = create<AppStore>()(
       const { currentApp, creationError } = get()
       return !creationError && currentApp?.status === AppStatus.CREATED
     },
-    
-    // Ensure app is running
-    ensureAppIsRunning: async (appId: string) => {
-      try {
-        logger.info('app-store.ensure-running.begin', { message: 'Ensuring app is running', appId })
-        
-        const data = await appService.ensureAppIsRunning(appId)
-        logger.info('app-store.ensure-running.response', { message: 'App ensure-running response', data })
-        
-        if (data.success) {
-          logger.info('app-store.ensure-running.success', { message: 'App is now running', appMessage: data.message })
-        }
-        
-        return data
-      } catch (error) {
-        logger.error('app-store.ensure-running.failure', { message: 'Error ensuring app is running', error: error instanceof Error ? error.message : 'Unknown error' })
-        throw error
-      }
-    },
-    
+
     // Restart app with retry logic
     restartApp: async (appId: string) => {
       const maxRetries = 2

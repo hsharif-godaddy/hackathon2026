@@ -9,8 +9,6 @@ import { PreviewViewMode, ViewMode } from '../types';
 
 const mockDevelopStore = {
   viewMode: ViewMode.PREVIEW,
-  isCheckingApp: false,
-  isStartingApp: false,
   isRestarting: false,
   previewViewMode: PreviewViewMode.DESKTOP,
   selectedDeviceId: 'full',
@@ -172,15 +170,6 @@ describe('PreviewHeader', () => {
     const deviceSelectorButton = container.querySelector('[data-eid="develop.preview.device_selector"]');
     expect(deviceSelectorButton).toBeInTheDocument();
     expect(deviceSelectorButton).toBeDisabled();
-  });
-
-  it('should disable open in new tab when app is starting', () => {
-    mockDevelopStore.isStartingApp = true;
-
-    renderWithProviders(<PreviewHeader {...defaultProps} />);
-
-    const newTabButton = screen.getByLabelText('builder_common_open_new_tab');
-    expect(newTabButton).toBeDisabled();
   });
 
   it('should disable open in new tab when app is restarting', () => {

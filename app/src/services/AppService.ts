@@ -224,23 +224,6 @@ export class AppService {
   }
 
   /**
-   * Ensure app is running
-   */
-  async ensureAppIsRunning(appId: string): Promise<{ success: boolean; action?: string; message?: string }> {
-    const apiUrl = await buildDynamicApiUrl(`ensure-running`, appId)
-    const response = await agentFetch(apiUrl, {
-      siteId: appId,
-      method: 'POST'
-    })
-
-    if (!response.ok) {
-      throw new Error(`Failed to ensure app is running: ${response.status}`)
-    }
-
-    return response.json()
-  }
-
-  /**
    * Restart app server
    */
   async restartApp(appId: string): Promise<{ success: boolean; message?: string }> {

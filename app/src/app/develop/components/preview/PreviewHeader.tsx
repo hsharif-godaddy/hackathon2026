@@ -21,8 +21,6 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
   const appId = useAppIdFromParams()
 
   const viewMode = useDevelopPageStore((state) => state.viewMode)
-  const isCheckingApp = useDevelopPageStore((state) => state.isCheckingApp)
-  const isStartingApp = useDevelopPageStore((state) => state.isStartingApp)
   const isRestarting = useDevelopPageStore((state) => state.isRestarting)
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
   const isSelectMode = useDevelopPageStore((state) => state.isSelectMode)
@@ -136,7 +134,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
           openFeedbackModal('airo#app-builder')
         }}
         dataEid={ generateClickEID('develop.preview.new_tab') }
-        disabled={!actualPort || isCheckingApp || isRestarting || isStartingApp}
+        disabled={!actualPort || isRestarting}
         label={t('builder_common_open_new_tab')}
         showLabelWhenActive={false}
         className="flex-shrink-0"
