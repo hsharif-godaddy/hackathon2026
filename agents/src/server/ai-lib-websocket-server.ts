@@ -1143,7 +1143,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         )
         if (messageTransaction) {
           messageTransaction.setLabel('socket_id', socketId)
-          messageTransaction.setLabel('appId', siteId)
+          // appId is set via globalLabels in APM config
           messageTransaction.setLabel('agent_name', agentName || 'default')
           messageTransaction.setLabel('message_length', message.length)
           messageTransaction.setLabel('event', 'message_start')

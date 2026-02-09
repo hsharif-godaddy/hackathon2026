@@ -126,6 +126,11 @@ const apm = apmAgent.start({
   serverUrl: process.env.ELASTIC_APM_SERVER_URL || '',
   environment: process.env.NODE_ENV || 'development',
   active: isApmEnabled,
+  // Global labels added to ALL data: transactions, spans, errors, AND metrics
+  // This ensures appId is available for filtering metrics by app
+  globalLabels: {
+    appId: process.env.SITE_ID || 'default-site',
+  },
   // Express specific configuration for route template support
   usePathAsTransactionName: true,
   transactionSampleRate: 1.0,
@@ -170,7 +175,6 @@ import { createServer } from 'http';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware } from './middleware/index.js';
 import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter, debugRouter, filesRouter, publishRouter, downloadRouter, dbRouter, todoListRouter, securityScanRouter, vulnerabilityScanRouter, secretsScanRouter,oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, zipImportRouter } from './routes/index.js';
-import { auth } from '../services/features.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
 import { getDatabase } from '../database/index.js';
@@ -213,12 +217,7 @@ if (isApmEnabled) {
       transaction.setLabel('method', req.method);
       transaction.setLabel('path', req.path);
       transaction.setLabel('url', req.url);
-
-      // Add site_id label for distinguishing transactions
-      const siteId = auth.getSiteId();
-      if (siteId) {
-        transaction.setLabel('appId', siteId);
-      }
+      // appId is set via globalLabels in APM config
 
       res.on('finish', () => {
         // Update transaction name with route template if available

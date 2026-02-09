@@ -99,10 +99,10 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
 
       if (transaction) {
         // Add metadata as labels (strings for filtering)
+        // appId is set via globalLabels in APM config
         transaction.setLabel('token_usage_type', type)
         transaction.setLabel('agent_name', metadata.agentName)
         transaction.setLabel('model_name', metadata.modelName)
-        transaction.setLabel('appId', metadata.appId)
         transaction.setLabel('conversation_id', metadata.conversationId)
 
         if (metadata.targetAgent) {
