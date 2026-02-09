@@ -18,6 +18,7 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { Separator } from '@/lib/shadcn/separator';
@@ -51,6 +52,7 @@ export default function AppPublish({ location }: { location?: string }) {
   const { checkAndShowPaywall, PaywallModal, isPolling, isPaywallLoading } = usePaywallModal({
     appId: currentAppId,
     source: 'publish',
+    itc: PAYWALL_ITC.PUBLISH,
     onPurchaseSuccess: async () => {
       // Open publish modal after successful purchase
       setOpen(true);

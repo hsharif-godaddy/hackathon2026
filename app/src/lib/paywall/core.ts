@@ -9,9 +9,8 @@
  */
 
 import { logger } from '@/lib/request-context';
-import { SubscriptionPlan } from '@/types/credits';
 import type { PaywallDataProvider } from './providers';
-import { isMatchingProject, type PaywallCheckResult } from './shared';
+import { isMatchingProject, isPaidPlan, type PaywallCheckResult } from './shared';
 
 /**
  * Check if user has Airo Plus access (app-agnostic)
@@ -130,7 +129,7 @@ export async function checkPaywallEligibility(
     }
 
     // Check plan level for access
-    const hasAccessByPlan = accountSubscription.plan === SubscriptionPlan.AiroPlus || accountSubscription.plan === SubscriptionPlan.Starter;
+    const hasAccessByPlan = isPaidPlan(accountSubscription.plan);
 
     if (hasAccessByPlan) {
       result.details.hasSubscription = true;

@@ -3,6 +3,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { renderWithProviders } from '@/tests/test-utils';
 import { WarningLevel } from '@/types/usage';
 import UsageGauge from './UsageGauge';
@@ -206,7 +207,7 @@ describe('UsageGauge', function usageGaugeTests() {
 
       await user.click(screen.getByText('builder_usage_gauge_upgrade'));
 
-      expect(mockOpenUpgradeModal).toHaveBeenCalledWith('usage_gauge.upgrade');
+      expect(mockOpenUpgradeModal).toHaveBeenCalledWith('usage_gauge.upgrade', PAYWALL_ITC.UPGRADE);
     });
 
     it('should call openCreditsModal when buy tokens button is clicked and grants enabled', async function clickBuyTokensWithGrants() {
@@ -241,7 +242,7 @@ describe('UsageGauge', function usageGaugeTests() {
 
       await user.click(screen.getByText('builder_usage_gauge_buy_tokens'));
 
-      expect(mockOpenCreditsModal).toHaveBeenCalledWith('usage_gauge.buy_tokens');
+      expect(mockOpenCreditsModal).toHaveBeenCalledWith('usage_gauge.buy_tokens', PAYWALL_ITC.CREDITS);
       expect(mockOpenUpgradeModal).not.toHaveBeenCalled();
     });
 
@@ -277,7 +278,7 @@ describe('UsageGauge', function usageGaugeTests() {
 
       await user.click(screen.getByText('builder_usage_gauge_buy_tokens'));
 
-      expect(mockOpenUpgradeModal).toHaveBeenCalledWith('usage_gauge.buy_tokens');
+      expect(mockOpenUpgradeModal).toHaveBeenCalledWith('usage_gauge.buy_tokens', PAYWALL_ITC.UPGRADE);
       expect(mockOpenCreditsModal).not.toHaveBeenCalled();
     });
 

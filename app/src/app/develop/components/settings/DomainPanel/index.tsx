@@ -11,6 +11,7 @@ import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { useSwitchboard } from "@/hooks/useSwitchboard";
 import { useTranslations } from '@/hooks/useTranslations';
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { useDevelopPageStore } from "@/stores/useDevelopPageStore";
 import { useSiteStore } from "@/stores/useSiteStore";
 import RidingArrow from '@/svgs/riding-arrow';
@@ -69,7 +70,7 @@ export default function DomainPanel() {
               text={t('builder_upgrade_button')}
               design="primary"
               size="sm"
-              onClick={() => openUpgradeModal('domains.upgrade')}
+              onClick={() => openUpgradeModal('domains.upgrade', PAYWALL_ITC.UPGRADE)}
               data-eid={generateClickEID(`settings/domains.upgrade`)}
             />
           </div>

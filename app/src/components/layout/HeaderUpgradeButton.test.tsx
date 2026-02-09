@@ -3,6 +3,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { renderWithProviders } from '@/tests/test-utils';
 import HeaderUpgradeButton from './HeaderUpgradeButton';
 
@@ -210,7 +211,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const ctaButton = buttons.find(btn => btn.textContent === 'builder_upgrade_popover_cta');
       await user.click(ctaButton!);
 
-      expect(mockOpenUpgradeModal).toHaveBeenCalledWith('header.upgrade_button');
+      expect(mockOpenUpgradeModal).toHaveBeenCalledWith('header.upgrade_button', PAYWALL_ITC.UPGRADE);
     });
 
     it('should call shipAnalyticsLog when CTA is clicked', async function logAnalytics() {

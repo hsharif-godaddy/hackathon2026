@@ -7,6 +7,7 @@ import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import ChatBanner from '@/lib/ChatBanner'
+import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 
 const STORAGE_KEY = 'airoplus_upgrade_banner_dismissed'
@@ -53,7 +54,7 @@ export default function UpgradeBanner({ appId }: UpgradeBannerProps) {
 
   const handleUpgradeClick = (e: React.MouseEvent) => {
     e.preventDefault()
-    openUpgradeModal('airoplus_upgrade_banner.upgrade')
+    openUpgradeModal('airoplus_upgrade_banner.upgrade', PAYWALL_ITC.UPGRADE)
   }
 
   const link = (

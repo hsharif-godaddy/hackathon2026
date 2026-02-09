@@ -66,6 +66,8 @@ interface SinglePlanUpgradeContainerProps {
   onSuccessClick?: () => void
   onErrorClick?: () => void
   source?: string
+  /** Internal Tracking Code for purchase attribution */
+  itc?: string
 }
 
 const SinglePlanUpgradeContainer = ({
@@ -73,6 +75,7 @@ const SinglePlanUpgradeContainer = ({
   onSuccessClick,
   onErrorClick,
   source,
+  itc,
 }: SinglePlanUpgradeContainerProps) => {
   const gasketData = useGasketData();
   const { getUserInfo } = useAuth();
@@ -112,6 +115,7 @@ const SinglePlanUpgradeContainer = ({
         locale={gasketData?.intl?.locale || 'en-US'}
         returnApp="airo-builder"
         source="app-builder"
+        itc={itc}
         onClose={onClose}
         onPurchaseSuccess={handleSuccess}
         onSuccessClick={onSuccessClick}

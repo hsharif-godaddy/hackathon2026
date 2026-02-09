@@ -13,6 +13,7 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { generateClickEID } from '@/utils/instrumentation';
@@ -38,7 +39,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
 
   const handleUpgradeClick = () => {
     setOpen(false);
-    openUpgradeModal('header.upgrade_button');
+    openUpgradeModal('header.upgrade_button', PAYWALL_ITC.UPGRADE);
     shipAnalyticsLog('header.upgrade_button.clicked', {
       appId: currentAppId,
       location,

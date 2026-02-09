@@ -6,6 +6,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { publishAction } from './publishAction'
 import { createMockMessageContext } from '../handlers/__tests__/testUtils'
 
@@ -245,7 +246,7 @@ describe('publishAction', () => {
       // Verify paywall state was tracked (prevents error alert)
       expect(mockStoreActions.setShowPaywallModal).toHaveBeenCalledWith('app-123', true)
       // Verify upgrade modal was actually shown in UI
-      expect(mockStoreActions.openUpgradeModal).toHaveBeenCalledWith('publish')
+      expect(mockStoreActions.openUpgradeModal).toHaveBeenCalledWith('publish', PAYWALL_ITC.PUBLISH)
 
       // Verify publish API was NOT called
       expect(global.fetch).not.toHaveBeenCalledWith(
@@ -270,7 +271,7 @@ describe('publishAction', () => {
 
       await expect(publishAction(params, context)).rejects.toThrow('No active subscription found')
       expect(mockStoreActions.setShowPaywallModal).toHaveBeenCalledWith('app-123', true)
-      expect(mockStoreActions.openUpgradeModal).toHaveBeenCalledWith('publish')
+      expect(mockStoreActions.openUpgradeModal).toHaveBeenCalledWith('publish', PAYWALL_ITC.PUBLISH)
     })
 
     it('should continue gracefully if modal trigger fails', async () => {
@@ -764,7 +765,7 @@ describe('publishAction', () => {
       // Paywall state should be tracked (prevents error alert)
       expect(mockStoreActions.setShowPaywallModal).toHaveBeenCalledWith('app-123', true)
       // Upgrade modal should be shown in UI
-      expect(mockStoreActions.openUpgradeModal).toHaveBeenCalledWith('publish')
+      expect(mockStoreActions.openUpgradeModal).toHaveBeenCalledWith('publish', PAYWALL_ITC.PUBLISH)
       // Should NOT set publish error when paywall modal is showing
       expect(mockStoreActions.setPublishError).not.toHaveBeenCalled()
       // But should still clear publishing state

@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
 
 import { shipAnalyticsLog } from '@/lib/logging';
-import { isMatchingProject } from '@/lib/paywall/shared';
-import { SubscriptionPlan } from '@/types/credits';
+import { isMatchingProject, isPaidPlan } from '@/lib/paywall/shared';
 import { useEntitlements } from './useEntitlements';
 import { usePaywallFeatureFlags } from './usePaywallFeatureFlags';
 import { useProjects } from './useProjects';
@@ -38,10 +37,7 @@ export const usePaywallEligibility = (appId?: string): PaywallEligibilityResult 
   // Check if user has active paid plan - if so, grant access immediately
   // Subscription must be active AND have a paid plan type
   const isActive = subscription?.status === 'active';
-  const hasPaidPlan = isActive && (
-    subscription?.plan === SubscriptionPlan.AiroPlus ||
-    subscription?.plan === SubscriptionPlan.Starter
-  );
+  const hasPaidPlan = isActive && isPaidPlan(subscription?.plan);
 
   // Only need additional checks for free/none plans
   // Coerce to boolean - when subscription is undefined, the && expression returns undefined

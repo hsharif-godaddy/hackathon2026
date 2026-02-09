@@ -6,6 +6,7 @@ import text from '@ux/text';
 
 import { useTranslations } from '@/hooks/useTranslations';
 import type { AiroSubscription } from '@/lib/mgmt-airo';
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { type CreditGrant, SubscriptionPlan } from '@/types/credits';
 import { formatFullCreditDate, getPlanDisplayLabelKey, getPlanFromSubscription } from '@/utils/credits';
 import { getRootDomain } from '@/utils/getRootDomain';
@@ -20,7 +21,7 @@ interface PlanCreditsCardProps {
   activeGrantId?: string;
   locale?: string;
   creditPacks: CreditGrant[];
-  openPaywall: (source: string, type: PaywallType) => void;
+  openPaywall: (source: string, type: PaywallType, itc?: string) => void;
 }
 
 const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, creditPacks, openPaywall }: PlanCreditsCardProps) => {
@@ -89,7 +90,7 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
               <text.p as="label" text={t('builder_manageplan_creditpacks_empty_plan_description')} />
           )}
           <CreditProgressBar spent={planGrant.creditsSpent} max={planGrant.creditsMax} />
-        { (creditPacks.length > 0 || (!isFreePlan && creditPacks.length === 0)) && currentPlan !== SubscriptionPlan.AiroPlus && (
+        { (creditPacks.length > 0 || (!isFreePlan && creditPacks.length === 0)) && currentPlan && currentPlan !== SubscriptionPlan.AiroPlus && (
           <Box orientation="horizontal" gap="md">
               { isFreePlan && creditPacks.length > 0 && (
                   <Button
@@ -98,7 +99,7 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
                       data-eid={generateClickEID('manageplan.buttons.upgrade')}
                       size="sm"
                       text={t('builder_manageplan_upgrade')}
-                      onClick={() => openPaywall('manage_plan.upgrade', 'upgrade')}
+                      onClick={() => openPaywall('manage_plan.upgrade', 'upgrade', PAYWALL_ITC.UPGRADE)}
                   />
               )}
               { creditPacks.length > 0 && (
@@ -108,7 +109,7 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
                       data-eid={generateClickEID('manageplan.buttons.buy_credits')}
                       size="sm"
                       text={t('builder_manageplan_buy_credits')}
-                      onClick={() => openPaywall('manage_plan.buy_credits', 'credits')}
+                      onClick={() => openPaywall('manage_plan.buy_credits', 'credits', PAYWALL_ITC.CREDITS)}
                   />
               )}
               { !isFreePlan && (

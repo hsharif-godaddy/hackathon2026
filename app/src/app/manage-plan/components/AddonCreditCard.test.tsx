@@ -3,6 +3,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { renderWithProviders } from '@/tests/test-utils';
 import type { CreditGrant } from '@/types/credits';
 import { GrantType, SubscriptionPlan } from '@/types/credits';
@@ -152,7 +153,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
 
       await user.click(screen.getByText('builder_manageplan_upgrade'));
 
-      expect(mockOnOpenPaywall).toHaveBeenCalledWith('manage_plan.upgrade', 'upgrade');
+      expect(mockOnOpenPaywall).toHaveBeenCalledWith('manage_plan.upgrade', 'upgrade', PAYWALL_ITC.UPGRADE);
     });
 
     it('should call onOpenPaywall with credits type when Buy Credits clicked and grants enabled', async function clickBuyCreditsGrantsEnabled() {
@@ -167,7 +168,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
 
       await user.click(screen.getByText('builder_manageplan_buy_credits'));
 
-      expect(mockOnOpenPaywall).toHaveBeenCalledWith('manage_plan.buy_credits', 'credits');
+      expect(mockOnOpenPaywall).toHaveBeenCalledWith('manage_plan.buy_credits', 'credits', PAYWALL_ITC.CREDITS);
     });
 
     it('should call onOpenPaywall with upgrade type when Buy Credits clicked and grants disabled', async function clickBuyCreditsGrantsDisabled() {
@@ -182,7 +183,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
 
       await user.click(screen.getByText('builder_manageplan_buy_credits'));
 
-      expect(mockOnOpenPaywall).toHaveBeenCalledWith('manage_plan.buy_credits', 'upgrade');
+      expect(mockOnOpenPaywall).toHaveBeenCalledWith('manage_plan.buy_credits', 'upgrade', PAYWALL_ITC.UPGRADE);
     });
   });
 

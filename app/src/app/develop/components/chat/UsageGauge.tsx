@@ -10,6 +10,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import CircularGauge from '@/lib/CircularGauge'
 import { shipAnalyticsLog } from '@/lib/logging'
+import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 
@@ -39,7 +40,7 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
   const percentage = data ? Math.min(data.percentage, 100) : 0
 
   const handleUpgradeClick = () => {
-    openUpgradeModal('usage_gauge.upgrade')
+    openUpgradeModal('usage_gauge.upgrade', PAYWALL_ITC.UPGRADE)
     setOpen(false)
     shipAnalyticsLog('usage_gauge.upgrade.clicked', { appId, percentage })
   }
@@ -47,9 +48,9 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
   const handleBuyTokensClick = () => {
     // When grants feature is on, open credits modal; otherwise fall back to upgrade modal
     if (isGrantsEnabled) {
-      openCreditsModal('usage_gauge.buy_tokens')
+      openCreditsModal('usage_gauge.buy_tokens', PAYWALL_ITC.CREDITS)
     } else {
-      openUpgradeModal('usage_gauge.buy_tokens')
+      openUpgradeModal('usage_gauge.buy_tokens', PAYWALL_ITC.UPGRADE)
     }
     setOpen(false)
     shipAnalyticsLog('usage_gauge.buy_tokens.clicked', { appId, percentage })

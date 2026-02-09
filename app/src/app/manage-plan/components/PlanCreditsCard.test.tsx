@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
 import type { AiroSubscription } from '@/lib/mgmt-airo';
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { renderWithProviders } from '@/tests/test-utils';
 import type { CreditGrant } from '@/types/credits';
 import { GrantType, SubscriptionPlan } from '@/types/credits';
@@ -394,7 +395,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
 
       await user.click(screen.getByText('builder_manageplan_upgrade'));
 
-      expect(mockOpenPaywall).toHaveBeenCalledWith('manage_plan.upgrade', 'upgrade');
+      expect(mockOpenPaywall).toHaveBeenCalledWith('manage_plan.upgrade', 'upgrade', PAYWALL_ITC.UPGRADE);
     });
 
     it('should call openPaywall with credits when Buy Credits clicked', async function clickBuyCredits() {
@@ -409,7 +410,7 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
 
       await user.click(screen.getByText('builder_manageplan_buy_credits'));
 
-      expect(mockOpenPaywall).toHaveBeenCalledWith('manage_plan.buy_credits', 'credits');
+      expect(mockOpenPaywall).toHaveBeenCalledWith('manage_plan.buy_credits', 'credits', PAYWALL_ITC.CREDITS);
     });
 
     it('should have Cancel button with correct href', function cancelHref() {

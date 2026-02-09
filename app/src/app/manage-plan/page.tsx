@@ -20,6 +20,7 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { ClientLogBuffer, shipAnalyticsLog } from '@/lib/logging';
+import { isPaidPlan } from '@/lib/paywall/shared';
 import type { CreditGrant } from '@/types/credits';
 import { SubscriptionPlan } from '@/types/credits';
 import {
@@ -41,12 +42,14 @@ function CreditsPaywallFallback({
   onSuccessClick,
   onClose,
   onErrorClick,
+  itc,
 }: {
   source: string;
   subscriptionId?: string;
   onSuccessClick: () => void;
   onClose: () => void;
   onErrorClick: () => void;
+  itc?: string;
 }) {
   useEffect(function logFallbackWarning() {
     // Log warning when fallback is triggered - helps identify edge cases
@@ -65,6 +68,7 @@ function CreditsPaywallFallback({
   return (
     <SinglePlanUpgradeContainer
       source={source}
+      itc={itc}
       onSuccessClick={onSuccessClick}
       onClose={onClose}
       onErrorClick={onErrorClick}
@@ -79,17 +83,20 @@ function ManagePlanContent() {
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [paywallSource, setPaywallSource] = useState<string | null>(null);
   const [paywallType, setPaywallType] = useState<PaywallType>('upgrade');
+  const [paywallItc, setPaywallItc] = useState<string | null>(null);
   const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants');
 
-  const openPaywall = (source: string, type: PaywallType = 'upgrade') => {
+  const openPaywall = (source: string, type: PaywallType = 'upgrade', itc?: string) => {
     setPaywallSource(source);
     setPaywallType(type);
+    setPaywallItc(itc ?? null);
     setShowPaywallModal(true);
     shipAnalyticsLog(`${source}.shown`, { paywallType: type });
   };
 
   const closePaywall = () => {
     setShowPaywallModal(false);
+    setPaywallItc(null);
   };
 
   useEffect(function logPageView() {
@@ -161,6 +168,7 @@ function ManagePlanContent() {
       {showPaywallModal && paywallType === 'upgrade' && (
         <SinglePlanUpgradeContainer
           source={paywallSourceId}
+          itc={paywallItc ?? undefined}
           onSuccessClick={() => {
             closePaywall();
           }}
@@ -180,6 +188,7 @@ function ManagePlanContent() {
         <CreditsUpgradeContainer
           source={paywallSourceId}
           entitlementId={builderEntitlementId}
+          itc={paywallItc ?? undefined}
           onSuccess={() => {
             closePaywall();
           }}
@@ -199,6 +208,7 @@ function ManagePlanContent() {
         <CreditsPaywallFallback
           source={paywallSourceId}
           subscriptionId={subscription?.id}
+          itc={paywallItc ?? undefined}
           onSuccessClick={() => {
             closePaywall();
           }}
@@ -232,7 +242,7 @@ function ManagePlanContent() {
                 creditPacks={creditPacks}
                 openPaywall={openPaywall}
               />
-              {currentPlan !== SubscriptionPlan.AiroPlus && (
+              {currentPlan && currentPlan !== SubscriptionPlan.AiroPlus && (
                 <AddonCreditCard
                   creditPacks={creditPacks}
                   subscriptionPlan={currentPlan}

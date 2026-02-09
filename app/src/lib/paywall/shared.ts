@@ -100,6 +100,44 @@ export const SUBSCRIPTION_PLAN_CONFIG = {
 } as const;
 
 /**
+ * Plans that grant paid-tier access
+ *
+ * Used throughout the codebase for feature gating and UI conditional rendering.
+ * Add new paid plan types here when they are introduced.
+ */
+export const PAID_PLANS = [SubscriptionPlan.AiroPlus, SubscriptionPlan.Starter] as const;
+
+/**
+ * Type representing any paid plan
+ */
+export type PaidPlan = typeof PAID_PLANS[number];
+
+/**
+ * Check if a plan is a paid plan
+ *
+ * @param plan - Subscription plan to check
+ * @returns True if plan grants paid-tier access
+ */
+export function isPaidPlan(plan: SubscriptionPlan | undefined | null): plan is PaidPlan {
+  return plan != null && (PAID_PLANS as readonly SubscriptionPlan[]).includes(plan);
+}
+
+/**
+ * Internal Tracking Codes (ITCs) for purchase attribution
+ *
+ * Centralized constants to avoid duplication and typos across call sites.
+ * These are passed to the unified plans and pricing library for tracking.
+ */
+export const PAYWALL_ITC = {
+  /** ITC for publish paywall (when publish is blocked) */
+  PUBLISH: 'upp_airo_ai_builder_publish',
+  /** ITC for upgrade buttons (chat gauge, header, budget exceeded, manage plan, etc.) */
+  UPGRADE: 'upp_airo_ai_builder_upgrade',
+  /** ITC for buy credits buttons (capital 'B' in Builder is intentional per product team) */
+  CREDITS: 'upp_airo_ai_Builder_credit',
+} as const;
+
+/**
  * Plan priority ranking for selecting the best subscription
  *
  * Higher numbers indicate higher priority plans. Used when a user has

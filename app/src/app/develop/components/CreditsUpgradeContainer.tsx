@@ -28,6 +28,8 @@ interface CreditsUpgradeContainerProps {
   source?: string
   /** Builder entitlement ID from the subscription (required for credits purchase) */
   entitlementId?: string
+  /** Internal Tracking Code for purchase attribution */
+  itc?: string
 }
 
 /**
@@ -42,6 +44,7 @@ const CreditsUpgradeContainer = ({
   onErrorClick,
   source = 'airo-builder',
   entitlementId,
+  itc,
 }: CreditsUpgradeContainerProps) => {
   const gasketData = useGasketData();
   const { getUserInfo } = useAuth();
@@ -89,6 +92,7 @@ const CreditsUpgradeContainer = ({
         productId={UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS}
         entitlementId={entitlementId}
         source={source}
+        itc={itc}
         onSuccess={handleSuccess}
         onClose={onClose}
         onErrorClick={onErrorClick}

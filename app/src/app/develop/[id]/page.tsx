@@ -128,9 +128,11 @@ function DevelopPageContent() {
   const setIsAssetManagerOpen = useDevelopPageStore((state) => state.setIsAssetManagerOpen);
   const showUpgradeModal = useDevelopPageStore((state) => state.showUpgradeModal);
   const upgradeModalSource = useDevelopPageStore((state) => state.upgradeModalSource);
+  const upgradeModalItc = useDevelopPageStore((state) => state.upgradeModalItc);
   const closeUpgradeModal = useDevelopPageStore((state) => state.closeUpgradeModal);
   const showCreditsModal = useDevelopPageStore((state) => state.showCreditsModal);
   const creditsModalSource = useDevelopPageStore((state) => state.creditsModalSource);
+  const creditsModalItc = useDevelopPageStore((state) => state.creditsModalItc);
   const closeCreditsModal = useDevelopPageStore((state) => state.closeCreditsModal);
 
   // Feature flag and subscription for credits modal
@@ -1033,6 +1035,7 @@ function DevelopPageContent() {
         {showUpgradeModal && (
           <SinglePlanUpgradeContainer
             source={upgradeModalSource ?? 'unknown'}
+            itc={upgradeModalItc ?? undefined}
             onSuccessClick={() => {
               closeUpgradeModal()
             }}
@@ -1053,6 +1056,7 @@ function DevelopPageContent() {
           <CreditsUpgradeContainer
             entitlementId={builderEntitlementId}
             source={creditsModalSource ?? 'unknown'}
+            itc={creditsModalItc ?? undefined}
             onSuccess={() => {
               closeCreditsModal()
             }}

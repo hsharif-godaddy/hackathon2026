@@ -3,6 +3,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { createMockSite, mockInstrumentation } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import DomainPanel from './index';
@@ -159,7 +160,7 @@ describe('DomainPanel', function domainPanelTests() {
       const upgradeButton = screen.getByRole('button', { name: 'builder_upgrade_button' });
       await user.click(upgradeButton);
 
-      expect(mockOpenUpgradeModal).toHaveBeenCalledWith('domains.upgrade');
+      expect(mockOpenUpgradeModal).toHaveBeenCalledWith('domains.upgrade', PAYWALL_ITC.UPGRADE);
     });
 
     it('should render RidingArrow SVG in upgrade screen', async function renderRidingArrow() {

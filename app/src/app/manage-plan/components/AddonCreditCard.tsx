@@ -5,6 +5,7 @@ import Button from '@ux/button';
 import text from '@ux/text';
 
 import { useTranslations } from '@/hooks/useTranslations';
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { type CreditGrant, SubscriptionPlan } from '@/types/credits';
 import { generateClickEID } from '@/utils/instrumentation';
 import CreditGrantRow from './CreditGrantRow';
@@ -17,7 +18,7 @@ interface CreditPacksCardProps {
   subscriptionPlan?: SubscriptionPlan;
   activeGrantId?: string;
   locale?: string;
-  onOpenPaywall: (source: string, type?: PaywallType) => void;
+  onOpenPaywall: (source: string, type?: PaywallType, itc?: string) => void;
   /** When grants are disabled, buy credits should show upgrade modal instead */
   isGrantsEnabled?: boolean;
 }
@@ -32,6 +33,7 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
 
   // When grants are disabled, show upgrade modal instead of credits modal
   const creditsPaywallType: PaywallType = isGrantsEnabled ? 'credits' : 'upgrade';
+  const creditsItc = isGrantsEnabled ? PAYWALL_ITC.CREDITS : PAYWALL_ITC.UPGRADE;
 
   if (hasNoPlanAndNoCredits || creditPacks.length === 0) {
     return (
@@ -47,7 +49,7 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
                       data-partial='componentAiro'
                       data-eid={generateClickEID('manageplan.buttons.upgrade')}
                       size="sm"
-                      text={t('builder_manageplan_upgrade')} onClick={() => onOpenPaywall('manage_plan.upgrade', 'upgrade')}
+                      text={t('builder_manageplan_upgrade')} onClick={() => onOpenPaywall('manage_plan.upgrade', 'upgrade', PAYWALL_ITC.UPGRADE)}
                     />
                     <Button
                       design="secondary"
@@ -55,7 +57,7 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
                       data-eid={generateClickEID('manageplan.buttons.buy_credits')}
                       size="sm"
                       text={t('builder_manageplan_buy_credits')}
-                      onClick={() => onOpenPaywall('manage_plan.buy_credits', creditsPaywallType)}
+                      onClick={() => onOpenPaywall('manage_plan.buy_credits', creditsPaywallType, creditsItc)}
                     />
                 </Box>
             ) : subscriptionPlan !== SubscriptionPlan.AiroPlus ? (
@@ -65,7 +67,7 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
                   data-eid={generateClickEID('manageplan.buttons.buy_credits')}
                   size="sm"
                   text={t('builder_manageplan_buy_credits')}
-                  onClick={() => onOpenPaywall('manage_plan.buy_credits', creditsPaywallType)}
+                  onClick={() => onOpenPaywall('manage_plan.buy_credits', creditsPaywallType, creditsItc)}
                 />
             ) : null}
           </div>

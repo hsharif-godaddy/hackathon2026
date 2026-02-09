@@ -12,6 +12,7 @@ import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessag
 import { hasValidSegments, isStreamingMessage } from '@/app/develop/components/utils'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
@@ -267,15 +268,15 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                 <Button
                   design="primary"
                   size="sm"
-                  onClick={() => openUpgradeModal('budget_exceeded.upgrade')}
+                  onClick={() => openUpgradeModal('budget_exceeded.upgrade', PAYWALL_ITC.UPGRADE)}
                   text={t('builder_usage_gauge_upgrade')}
                 />
                 <Button
                   design="secondary"
                   size="sm"
                   onClick={() => isGrantsEnabled
-                    ? openCreditsModal('budget_exceeded.buy_credits')
-                    : openUpgradeModal('budget_exceeded.buy_credits')
+                    ? openCreditsModal('budget_exceeded.buy_credits', PAYWALL_ITC.CREDITS)
+                    : openUpgradeModal('budget_exceeded.buy_credits', PAYWALL_ITC.UPGRADE)
                   }
                   text={t('builder_usage_gauge_buy_tokens')}
                 />

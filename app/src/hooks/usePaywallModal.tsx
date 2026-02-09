@@ -14,6 +14,8 @@ import { useSwitchboard } from './useSwitchboard'
 interface UsePaywallModalOptions {
   appId?: string // Made optional for account-level subscriptions
   source: string
+  /** Internal Tracking Code for purchase attribution */
+  itc?: string
   onPurchaseSuccess?: () => Promise<void>
 }
 
@@ -59,6 +61,7 @@ interface UsePaywallModalReturn {
 export function usePaywallModal({
   appId,
   source,
+  itc,
   onPurchaseSuccess,
 }: UsePaywallModalOptions): UsePaywallModalReturn {
   const [showAiroPlusPaywall, setShowAiroPlusPaywall] = useState(false)
@@ -170,6 +173,7 @@ export function usePaywallModal({
     return (
       <SinglePlanUpgradeContainer
         source={source}
+        itc={itc}
         onErrorClick={async () => {
           setShowAiroPlusPaywall(false)
           shipAnalyticsLog('airoplus.paywall.error', {
@@ -189,7 +193,7 @@ export function usePaywallModal({
         onSuccessClick={handlePurchaseSuccess}
       />
     )
-  }, [showAiroPlusPaywall, appId, site?.name, source, handlePurchaseSuccess])
+  }, [showAiroPlusPaywall, appId, site?.name, source, itc, handlePurchaseSuccess])
 
   return {
     checkAndShowPaywall,

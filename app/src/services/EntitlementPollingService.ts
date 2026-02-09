@@ -1,5 +1,5 @@
+import { isPaidPlan } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
-import { SubscriptionPlan } from '@/types/credits';
 
 export interface EntitlementData {
   subscription: any;
@@ -72,7 +72,7 @@ export class EntitlementPollingService {
           const subscription = subscriptionData.data.active;
 
           // Check if the subscription plan indicates access
-          if (subscription.plan === SubscriptionPlan.AiroPlus || subscription.plan === SubscriptionPlan.Starter) {
+          if (isPaidPlan(subscription.plan)) {
             resolve({
               success: true,
               data: {

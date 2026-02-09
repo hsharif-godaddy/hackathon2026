@@ -11,6 +11,7 @@ import { appFetch } from '@/lib/gasket-config'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { ClientPaywallProvider } from '@/lib/paywall/client-provider'
 import { checkPaywallEligibility } from '@/lib/paywall/core'
+import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -40,7 +41,7 @@ export const publishAction: ClientActionExecutor = async (params) => {
         // Track that paywall blocked this publish (prevents error alert from showing)
         store.setShowPaywallModal(appId, true)
         // Actually show the upgrade modal in the UI
-        store.openUpgradeModal('publish')
+        store.openUpgradeModal('publish', PAYWALL_ITC.PUBLISH)
       } catch (storeError) {
         logger.warn('publish-action.paywall-modal-trigger-failed', {
           appId,
