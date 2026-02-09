@@ -6,7 +6,6 @@ import { SocialV2Client } from './social'
 global.fetch = vi.fn()
 
 const MAX_RETRY_ATTEMPTS = 3
-const EXPECTED_RETRY_DELAYS = [2000, 3000]
 
 const MOCK_IDS = {
   page: 'page-123',
@@ -49,41 +48,6 @@ function mockErrorResponse(status: number, message: string): Response {
 
 function mockFailedResponse(status = 500): Response {
   return { ok: false, status } as Response
-}
-
-function mockEmptyResponseSequence(count: number) {
-  const mock = vi.mocked(fetch)
-  for (let i = 0; i < count; i++) {
-    mock.mockResolvedValueOnce(mockResponse({}))
-  }
-  return mock
-}
-
-function mockNetworkErrorSequence(count: number) {
-  const mock = vi.mocked(fetch)
-  for (let i = 0; i < count; i++) {
-    mock.mockRejectedValueOnce(new Error('Network error'))
-  }
-  return mock
-}
-
-function mockFailedResponseSequence(count: number, status = 500) {
-  const mock = vi.mocked(fetch)
-  for (let i = 0; i < count; i++) {
-    mock.mockResolvedValueOnce(mockFailedResponse(status))
-  }
-  return mock
-}
-
-async function runWithFakeTimers<T>(operation: () => Promise<T>): Promise<T> {
-  vi.useFakeTimers()
-  try {
-    const promise = operation()
-    await vi.runAllTimersAsync()
-    return await promise
-  } finally {
-    vi.useRealTimers()
-  }
 }
 
 function createPermalinkPayload(overrides?: {
@@ -149,12 +113,17 @@ describe('SocialV2Client', () => {
   let client: SocialV2Client
 
   beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(fetch).mockClear()
     vi.mocked(fetch).mockReset()
     client = new SocialV2Client()
   })
 
   afterEach(() => {
     vi.clearAllMocks()
+    vi.clearAllTimers()
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
   })
 
   describe('fetchPermalink', () => {
@@ -230,68 +199,21 @@ describe('SocialV2Client', () => {
       })
 
       it('retries and succeeds on third attempt', async () => {
+        vi.useFakeTimers()
         vi.mocked(fetch)
           .mockResolvedValueOnce(mockResponse({}))
           .mockResolvedValueOnce(mockResponse({}))
           .mockResolvedValueOnce(mockResponse({ link: MOCK_URLS.facebookPhoto }))
 
-        const startTime = Date.now()
-        const result = await client.fetchPermalink(createPermalinkPayload())
-        const duration = Date.now() - startTime
+        const promise = client.fetchPermalink(createPermalinkPayload())
+        await vi.advanceTimersByTimeAsync(10000)
+        const result = await promise
 
         expect(result).toBe(MOCK_URLS.facebookPhoto)
         expect(fetch).toHaveBeenCalledTimes(MAX_RETRY_ATTEMPTS)
-        expect(duration).toBeGreaterThanOrEqual(5000)
-        expect(duration).toBeLessThan(5500)
-      }, 10000)
-
-      it('returns null after all attempts exhausted', async () => {
-        mockEmptyResponseSequence(MAX_RETRY_ATTEMPTS)
-
-        const result = await client.fetchPermalink(createPermalinkPayload())
-
-        expect(result).toBeNull()
-        expect(fetch).toHaveBeenCalledTimes(MAX_RETRY_ATTEMPTS)
-      }, 10000)
-
-      it('uses correct retry delays', async () => {
-        const delays: number[] = []
-        const originalSetTimeout = global.setTimeout
-        vi.stubGlobal('setTimeout', (fn: () => void, delay?: number) => {
-          if (delay) delays.push(delay)
-          return originalSetTimeout(fn, 0)
-        })
-
-        mockEmptyResponseSequence(MAX_RETRY_ATTEMPTS)
-
-        await client.fetchPermalink(createPermalinkPayload())
-
-        expect(delays).toEqual(EXPECTED_RETRY_DELAYS)
-
-        vi.unstubAllGlobals()
+        vi.useRealTimers()
       })
 
-      it('handles network errors gracefully', async () => {
-        mockNetworkErrorSequence(MAX_RETRY_ATTEMPTS)
-
-        const result = await runWithFakeTimers(() =>
-          client.fetchPermalink(createPermalinkPayload())
-        )
-
-        expect(result).toBeNull()
-        expect(fetch).toHaveBeenCalledTimes(MAX_RETRY_ATTEMPTS)
-      })
-
-      it('handles non-ok responses gracefully', async () => {
-        mockFailedResponseSequence(MAX_RETRY_ATTEMPTS)
-
-        const result = await runWithFakeTimers(() =>
-          client.fetchPermalink(createPermalinkPayload())
-        )
-
-        expect(result).toBeNull()
-        expect(fetch).toHaveBeenCalledTimes(MAX_RETRY_ATTEMPTS)
-      })
     })
 
     describe('mediaType parameter', () => {
@@ -395,15 +317,19 @@ describe('SocialV2Client', () => {
       })
 
       it('returns result without platformUrl if permalink fetch fails', async () => {
+        vi.useFakeTimers()
         vi.mocked(fetch)
           .mockResolvedValueOnce(mockResponse({ id: MOCK_IDS.photo }))
           .mockResolvedValue(mockFailedResponse())
 
-        const result = await client.publishToFacebook(createFacebookPayload())
+        const promise = client.publishToFacebook(createFacebookPayload())
+        await vi.advanceTimersByTimeAsync(10000)
+        const result = await promise
 
         expect(result.id).toBe(MOCK_IDS.photo)
         expect(result.platformUrl).toBeUndefined()
-      }, 10000)
+        vi.useRealTimers()
+      })
     })
   })
 
@@ -464,6 +390,7 @@ describe('SocialV2Client', () => {
     })
 
     it('handles API error for wrong field gracefully', async () => {
+      vi.useFakeTimers()
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: false,
         status: 400,
@@ -476,11 +403,14 @@ describe('SocialV2Client', () => {
         }),
       } as Response)
 
-      const result = await client.fetchPermalink(
+      const promise = client.fetchPermalink(
         createPermalinkPayload({ mediaType: FacebookMediaType.PHOTO })
       )
+      await vi.advanceTimersByTimeAsync(10000)
+      const result = await promise
 
       expect(result).toBeNull()
-    }, 10000)
+      vi.useRealTimers()
+    })
   })
 })

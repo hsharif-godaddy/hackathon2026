@@ -26,6 +26,7 @@ export interface SocialConnectFlowOrchestratorProps {
   initialStep?: FlowStep
   initialUserTokenId?: string
   autoOpen?: boolean
+  isActive: boolean
   onSuccess?: () => void
 }
 
@@ -72,6 +73,7 @@ export function useSocialConnectFlowOrchestrator({
   initialStep,
   initialUserTokenId,
   autoOpen = true,
+  isActive,
   onSuccess,
 }: SocialConnectFlowOrchestratorProps): SocialConnectFlowOrchestratorResult {
   const t = useTranslations()
@@ -107,7 +109,7 @@ export function useSocialConnectFlowOrchestrator({
   } = useSocialConnectFlow({
     platform,
     appId,
-    enabled: flowState.showSelectExisting && !flowState.forceNewConnection
+    enabled: isActive && flowState.showSelectExisting && !flowState.forceNewConnection
   })
 
   const createConnectionFlow = useCreateAndLinkConnection()
@@ -133,7 +135,7 @@ export function useSocialConnectFlowOrchestrator({
     platform: normalizedPlatform as SocialPlatform,
     appId,
     state,
-    enabled: shouldProceedToOAuth,
+    enabled: isActive && shouldProceedToOAuth,
     flowStep: flowState.step,
     userTokenId: flowState.userTokenId || '',
     pageTokens: flowState.pageTokens || [],

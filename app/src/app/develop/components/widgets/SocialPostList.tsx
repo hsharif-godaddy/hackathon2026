@@ -11,6 +11,7 @@ import EyeIcon from '@ux/icon/show'
 import text from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
+import type { SiteAssociation } from '@/types/social'
 import { SocialPostData, SocialPostState } from '@/types/social-posts'
 import { SocialPostModal } from './SocialPostModal'
 
@@ -116,6 +117,7 @@ interface SocialPostListProps {
   appId?: string
   onPublish?: (post: SocialPostData) => void
   onPostUpdate?: (updatedPost: SocialPostData) => void
+  associations?: SiteAssociation[]
 }
 
 /**
@@ -132,7 +134,8 @@ export function SocialPostList({
   posts: propsPosts = [],
   appId,
   onPublish,
-  onPostUpdate
+  onPostUpdate,
+  associations = []
 }: SocialPostListProps = {}) {
 
   const [localPosts, setLocalPosts] = useState<SocialPostData[]>([])
@@ -190,6 +193,7 @@ export function SocialPostList({
           onClose={() => setSelectedPost(null)}
           onSave={handleSaveEdit}
           onPublish={onPublish}
+          associations={associations}
         />
       )}
     </>

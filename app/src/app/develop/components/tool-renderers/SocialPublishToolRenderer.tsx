@@ -14,6 +14,7 @@ function SocialPublishToolRenderer({
   toolId,
   conversationId,
   result,
+  isLastAssistantMessage = false,
   ...rest
 }: DefaultToolRendererProps) {
   const t = useTranslations()
@@ -37,6 +38,7 @@ function SocialPublishToolRenderer({
             toolId={toolId}
             conversationId={conversationId ?? null}
             initialResult={result}
+            isLastAssistantMessage={isLastAssistantMessage}
           />
         </>
       )

@@ -10,10 +10,9 @@ import TextInput from '@ux/text-input'
 
 import { PostCardPreview } from '@/app/develop/components/widgets/PostCardPreview'
 import { useWebSocketContext } from '@/contexts/WebSocketContext'
-import { useSiteAssociations } from '@/hooks/useSocial'
 import { useTranslations } from '@/hooks/useTranslations'
 import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
-import { CONNECT_REQUEST_FROM_PUBLISH } from '@/types/social'
+import { CONNECT_REQUEST_FROM_PUBLISH, type SiteAssociation } from '@/types/social'
 import { SocialPostData, SocialPostState } from '@/types/social-posts'
 import { formatHashtags, formatPlatformName, getCharacterCount, getPlatformLimits, isPostOverLimit } from '@/utils/social'
 
@@ -173,16 +172,16 @@ interface SocialPostModalProps {
   onClose: () => void
   onSave?: (updatedPost: SocialPostData) => void
   onPublish?: (post: SocialPostData) => void
+  associations?: SiteAssociation[]
 }
 
 /**
  * Modal component for viewing and editing a social post
  * Combines preview, edit, and form functionality in a single component
  */
-export const SocialPostModal = memo(({ post, appId, onClose, onSave, onPublish }: SocialPostModalProps) => {
+export const SocialPostModal = memo(({ post, appId, onClose, onSave, onPublish, associations = [] }: SocialPostModalProps) => {
   const t = useTranslations();
   const { sendMessage } = useWebSocketContext()
-  const { data: associationsData } = useSiteAssociations(appId)
 
   const [isEditMode, setIsEditMode] = useState(false)
   const [isPublishing, setIsPublishing] = useState(false)
@@ -206,7 +205,7 @@ export const SocialPostModal = memo(({ post, appId, onClose, onSave, onPublish }
   }, [])
 
   const handleChange = useCallback((field: keyof SocialPostData, value: any) => {
-    setEditedPost(prev => ({...prev, [field]: value}))
+    setEditedPost(prev => ({ ...prev, [field]: value }))
   }, [])
 
   const handleAddHashtag = useCallback((tag: string) => {
@@ -244,7 +243,6 @@ export const SocialPostModal = memo(({ post, appId, onClose, onSave, onPublish }
     setIsPublishing(true)
 
     try {
-      const associations = associationsData?.associations || []
       const hasConnection = associations.some(a =>
         a.platform.toLowerCase() === editedPost.platform.toLowerCase()
       )
@@ -308,7 +306,7 @@ export const SocialPostModal = memo(({ post, appId, onClose, onSave, onPublish }
     } finally {
       setIsPublishing(false)
     }
-  }, [editedPost, associationsData, sendMessage, onSave, onPublish, onClose])
+  }, [editedPost, associations, sendMessage, onSave, onPublish, onClose])
 
   const isPublished = editedPost.publishedState === SocialPostState.PUBLISHED
 

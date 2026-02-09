@@ -1,12 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback } from 'react'
 
+import { buildDynamicAgentUrl } from '@/config/dynamic-api'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
-import { getRootDomain } from '@/utils/getRootDomain'
-
-const AGENTS_BASE_URL = `https://airo-builder-api.${getRootDomain() || 'godaddy.com'}`
 
 export interface ToolResultSyncParams {
   conversationId: string | null
@@ -14,89 +12,61 @@ export interface ToolResultSyncParams {
   appId: string
 }
 
-export interface UseToolResultSyncOptions {
-  debounceMs?: number
-  enabled?: boolean
-  onSuccess?: () => void
-  onError?: (error: Error) => void
-}
-
-export function useToolResultSync<T = unknown>(
-  state: T,
-  params: ToolResultSyncParams,
-  options: UseToolResultSyncOptions = {}
-) {
-  const {
-    debounceMs = 500,
-    enabled = true,
-    onSuccess,
-    onError
-  } = options
-
+export function useToolResultSync(params: ToolResultSyncParams) {
   const { conversationId, toolId, appId } = params
-  const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
-  const lastSyncedStateRef = useRef<string | undefined>(undefined)
 
-  const stateJson = useMemo(() => JSON.stringify(state), [state])
-
-  useEffect(() => {
-    if (!enabled || !conversationId || !toolId || !appId) {
-      return
+  const syncResult = useCallback(async <T = unknown>(state: T): Promise<boolean> => {
+    if (!conversationId || !toolId || !appId) {
+      logger.warn('tool-result-sync.missing-params', {
+        hasConversationId: !!conversationId,
+        hasToolId: !!toolId,
+        hasAppId: !!appId
+      })
+      return false
     }
 
-    if (stateJson === lastSyncedStateRef.current) {
-      return
-    }
+    try {
+      const url = await buildDynamicAgentUrl(
+        `api/conversations/${conversationId}/tools/${toolId}?appId=${appId}`,
+        appId
+      )
 
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current)
-    }
-
-    timeoutRef.current = setTimeout(async () => {
-      try {
-        const response = await appFetch(
-          `${AGENTS_BASE_URL}/api/conversations/${conversationId}/tools/${toolId}?appId=${appId}`,
-          {
-            method: 'PATCH',
-            credentials: 'include',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ result: state })
-          }
-        )
-
-        if (!response.ok) {
-          const errorText = await response.text()
-          throw new Error(`Failed to sync tool result: ${response.status} - ${errorText}`)
-        }
-
-        lastSyncedStateRef.current = stateJson
-
-        logger.debug('tool-result-sync.success', {
-          conversationId,
-          toolId,
-          appId
-        })
-
-        onSuccess?.()
-      } catch (error) {
-        logger.error('tool-result-sync.error', {
-          conversationId,
-          toolId,
-          appId,
-          error: error instanceof Error ? error.message : String(error)
-        })
-
-        const err = error instanceof Error ? error : new Error(String(error))
-        onError?.(err)
+      if (!url || typeof url !== 'string' || !url.startsWith('http')) {
+        logger.error('tool-result-sync.invalid-url', { url, conversationId, toolId, appId })
+        return false
       }
-    }, debounceMs)
 
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
+      const response = await appFetch(url, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ result: state })
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Failed to sync tool result: ${response.status} - ${errorText}`)
       }
+
+      logger.debug('tool-result-sync.success', {
+        conversationId,
+        toolId,
+        appId
+      })
+
+      return true
+    } catch (error) {
+      logger.error('tool-result-sync.error', {
+        conversationId,
+        toolId,
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return false
     }
-  }, [stateJson, conversationId, toolId, appId, debounceMs, enabled, onSuccess, onError, state])
+  }, [conversationId, toolId, appId])
+
+  return syncResult
 }

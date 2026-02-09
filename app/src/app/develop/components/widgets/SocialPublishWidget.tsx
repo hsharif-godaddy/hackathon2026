@@ -8,10 +8,12 @@ import { type Emphasis, text } from '@ux/text'
 import { usePublishFlow } from '@/hooks/social/usePublishFlow'
 import { useToolResultSync } from '@/hooks/useToolResultSync'
 import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
 import { PLATFORM_CONFIG } from '@/lib/social-platforms'
 import { type PendingPublish, PublishFlowState, type PublishResult, type PublishStatus, type SocialPostData } from '@/types/social-posts'
 import { generateClickEID } from '@/utils/instrumentation'
 import { emitPostPublished, formatPlatformName } from '@/utils/social'
+import { SocialPublishStatus, SocialPublishStatusMessage } from './SocialPublishStatusMessage'
 
 interface SocialPublishWidgetProps {
   appId: string
@@ -19,50 +21,68 @@ interface SocialPublishWidgetProps {
   toolId: string
   conversationId: string | null
   initialResult?: Record<string, unknown> | string
+  isLastAssistantMessage?: boolean
 }
 
-export function SocialPublishWidget({ appId, publishId, toolId, conversationId, initialResult }: SocialPublishWidgetProps) {
+export function SocialPublishWidget({ appId, publishId, toolId, conversationId, initialResult, isLastAssistantMessage = false }: SocialPublishWidgetProps) {
   const t = useTranslations()
   const emittedRef = useRef(false)
+  const publishStartedRef = useRef(false)
 
-  // Initialize local state from tool result (contains pendingPublish and postData)
+  const result = initialResult && typeof initialResult === 'object'
+    ? initialResult as Record<string, unknown>
+    : null
+
+  // From history if not the last assistant message (regardless of result fields)
+  const isFromHistory = !isLastAssistantMessage
+
+  // Capture initial history state to prevent race conditions with sync
+  const initialIsFromHistoryRef = useRef(isFromHistory)
+
+  // Initialize local state from tool result
   const [localState, setLocalState] = useState<{
     pendingPublish: PendingPublish | null
     postData: SocialPostData | null
     publishStatus: PublishStatus | null
     publishResult: PublishResult | null
-    initialized: boolean
-    isFromHistory: boolean
   }>(() => {
-    if (initialResult && typeof initialResult === 'object') {
-      const result = initialResult as Record<string, unknown>
+    if (result) {
+      logger.debug('social-publish-widget.init', {
+        publishId,
+        hasPublishStatus: !!result.publishStatus,
+        publishStatus: result.publishStatus,
+        hasPendingPublish: !!result.pendingPublish,
+        isLastAssistantMessage,
+        isFromHistory
+      })
 
-      // Check for persisted state (from history reload)
-      // If publishStatus exists in result, this is a reload - don't re-execute publish
-      if (result.publishStatus && result.pendingPublish) {
+      if (isFromHistory && result.pendingPublish) {
+        logger.info('social-publish-widget.from-history', {
+          publishId,
+          publishStatus: result.publishStatus
+        })
         return {
           pendingPublish: { ...(result.pendingPublish as PendingPublish), publishId },
           postData: (result.postData as SocialPostData) || null,
-          publishStatus: result.publishStatus as PublishStatus,
-          publishResult: (result.publishResult as PublishResult) || null,
-          initialized: true,
-          isFromHistory: true
+          publishStatus: (result.publishStatus as PublishStatus) || PublishFlowState.Error,
+          publishResult: (result.publishResult as PublishResult) || null
         }
       }
 
-      // Fresh publish from tool result (no publishStatus means never synced before)
+      // Fresh publish from tool result
       if (result.pendingPublish) {
+        logger.info('social-publish-widget.fresh-publish', {
+          publishId
+        })
         return {
           pendingPublish: { ...(result.pendingPublish as PendingPublish), publishId },
           postData: (result.postData as SocialPostData) || null,
           publishStatus: PublishFlowState.ReadyToPublish,
-          publishResult: null,
-          initialized: true,
-          isFromHistory: false
+          publishResult: null
         }
       }
     }
-    return { pendingPublish: null, postData: null, publishStatus: null, publishResult: null, initialized: false, isFromHistory: false }
+    return { pendingPublish: null, postData: null, publishStatus: null, publishResult: null }
   })
 
   // Emit post published event on success (once)
@@ -81,35 +101,47 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
     setLocalState(prev => ({ ...prev, publishResult: result }))
   }
 
-  // Run publish flow with callbacks (only if fresh publish, not history reload)
-  const isActiveFlow = localState.initialized &&
+  // Only run publish flow if this is the last message AND status is ReadyToPublish AND we haven't started yet
+  // This prevents duplicate posts to social platforms when viewing conversation history or on re-renders
+  const shouldPublish = isLastAssistantMessage &&
     localState.publishStatus === PublishFlowState.ReadyToPublish &&
-    !localState.isFromHistory
+    !publishStartedRef.current
+
+  // Track when publish starts to prevent multiple attempts
+  if (shouldPublish && !publishStartedRef.current) {
+    publishStartedRef.current = true
+  }
+
   usePublishFlow(
     appId,
     publishId,
     localState.pendingPublish,
-    isActiveFlow,
+    shouldPublish,
     { onStatusChange: handleStatusChange, onResultChange: handleResultChange }
   )
 
-  // Sync local state to backend for history persistence
-  useToolResultSync(
-    {
-      action: 'publish',
-      appId,
-      publishId,
-      pendingPublish: localState.pendingPublish,
-      postData: localState.postData,
-      publishStatus: localState.publishStatus,
-      publishResult: localState.publishResult
-    },
-    { conversationId, toolId, appId },
-    {
-      debounceMs: 300,
-      enabled: localState.initialized && !!localState.publishStatus
+  // Sync to conversation history once when reaching terminal state (not from history)
+  const syncResult = useToolResultSync({ conversationId, toolId, appId })
+  const hasSyncedRef = useRef(false)
+
+  useEffect(() => {
+    const isTerminalState = localState.publishStatus === PublishFlowState.Success ||
+      localState.publishStatus === PublishFlowState.Error
+
+    // Only sync if it was NEVER from history (use initial state, not current reactive value)
+    if (isTerminalState && !initialIsFromHistoryRef.current && !hasSyncedRef.current) {
+      hasSyncedRef.current = true
+      syncResult({
+        action: 'publish',
+        appId,
+        publishId,
+        pendingPublish: localState.pendingPublish,
+        postData: localState.postData,
+        publishStatus: localState.publishStatus,
+        publishResult: localState.publishResult
+      })
     }
-  )
+  }, [localState.publishStatus, syncResult, appId, publishId, localState.pendingPublish, localState.postData, localState.publishResult])
 
   const { pendingPublish, publishStatus, publishResult } = localState
 
@@ -122,10 +154,33 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
     return null
   }
 
+  // HISTORY: Show read-only status message
+  if (isFromHistory) {
+    const platformName = formatPlatformName(platformConfig?.name || pendingPublish.platform)
+    const platformUrl = publishResult && 'platformUrl' in publishResult ? publishResult.platformUrl : undefined
+
+    // Map publish status to display status
+    // Success -> Success, Error -> Error, transient states (ReadyToPublish, Publishing) -> Incomplete
+    const displayStatus = publishStatus === PublishFlowState.Success
+      ? SocialPublishStatus.Success
+      : publishStatus === PublishFlowState.Error
+      ? SocialPublishStatus.Error
+      : SocialPublishStatus.Incomplete
+
+    return (
+      <SocialPublishStatusMessage
+        status={displayStatus}
+        platformName={platformName}
+        platformUrl={platformUrl}
+        errorMessage={publishResult && 'error' in publishResult ? publishResult.error : undefined}
+      />
+    )
+  }
+
   const renderPublishStatusHeading = () => {
     const renderStatusText = (textContent: string, emphasis?: Emphasis) => {
-    return <text.p size={-1} text={textContent} emphasis={emphasis} />
-  }
+      return <text.p size={-1} text={textContent} emphasis={emphasis} />
+    }
 
     switch (publishStatus) {
       case PublishFlowState.ReadyToPublish:
@@ -144,7 +199,7 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
   const renderPublishSuccessSubtext = () => {
     if (publishStatus === PublishFlowState.Success) {
       const platformName = formatPlatformName(platformConfig?.name || (pendingPublish?.platform))
-      return<div className="mb-1">
+      return <div className="mb-1">
         <text.p size={-1} text={t('builder_widgets_socialpublish_live_on', { platformName })} />
       </div>
     }
@@ -170,7 +225,7 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
   }
 
   const isLoading = publishStatus === PublishFlowState.ReadyToPublish ||
-                    publishStatus === PublishFlowState.Publishing
+    publishStatus === PublishFlowState.Publishing
 
   return (
     <div className="rounded-md border border-intents-ux-info-borderColor bg-intents-ux-info-backgroundColor p-2 mt-2">

@@ -57,6 +57,7 @@ export function SocialConnectModal({
           initialStep={initialStep}
           initialUserTokenId={initialUserTokenId}
           autoOpen={false}
+          isActive={true}
           onSuccess={onSuccess}
         />
       </div>

@@ -35,7 +35,7 @@ export function usePublishFlow(
     commonError: t('builder_common_unknown_error')
   }), [t, pendingPublish?.platform])
 
-  const { data: associationsData, isLoading: isLoadingAssociations } = useSiteAssociations(appId)
+  const { data: associationsData, isLoading: isLoadingAssociations } = useSiteAssociations(appId, isActiveFlow)
   const [selectedAssociation, setSelectedAssociation] = useState<SiteAssociation | null>(null)
 
   const isPublishingRef = useRef(false)

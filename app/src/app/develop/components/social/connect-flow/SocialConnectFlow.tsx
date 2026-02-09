@@ -20,6 +20,7 @@ interface SocialConnectFlowProps {
   initialStep?: FlowStep
   initialUserTokenId?: string
   autoOpen?: boolean
+  isActive: boolean
   onSuccess?: () => void
 }
 
@@ -95,7 +96,8 @@ const SocialConnectFlow = memo(function SocialConnectFlow(props: SocialConnectFl
     prevProps.state === nextProps.state &&
     prevProps.initialStep === nextProps.initialStep &&
     prevProps.initialUserTokenId === nextProps.initialUserTokenId &&
-    prevProps.autoOpen === nextProps.autoOpen
+    prevProps.autoOpen === nextProps.autoOpen &&
+    prevProps.isActive === nextProps.isActive
 })
 
 function SocialConnectFlowError(error: Error, reset: () => void, t: ReturnType<typeof useTranslations>) {
