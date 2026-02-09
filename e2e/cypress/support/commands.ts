@@ -569,13 +569,13 @@ Cypress.Commands.add('dismissGoLiveModalIfPresent', (waitTime = 20000) => {
 
   // Check if modal exists and dismiss if found
   return cy.get('body').then(($body) => {
-    if ($body.find('[data-testid="go-live-modal-skip"]').length > 0) {
-      cy.get('[data-testid="go-live-modal-skip"]')
+    if ($body.find('[data-testid="go-live-modal-later"]').length > 0) {
+      cy.get('[data-testid="go-live-modal-later"]')
         .should('be.visible')
         .click();
 
       // Verify modal is dismissed
-      cy.get('[data-testid="go-live-modal-skip"]', { timeout: 5000 })
+      cy.get('[data-testid="go-live-modal-later"]', { timeout: 5000 })
         .should('not.exist');
 
       cy.log('✓ Dismissed Go Live modal (first publish)');

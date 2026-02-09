@@ -65,7 +65,7 @@ test.describe('Publish Flow', () => {
     console.log('✅ Step 3: Verifying publish success...');
 
     const publishButton = page.locator('[data-eid*="header"][data-eid*="publish"]');
-    const goLiveModal = page.locator('[data-testid="go-live-modal-skip"]');
+    const goLiveModal = page.locator('[data-testid="go-live-modal-later"]');
 
     // Wait for either Go Live modal OR Republish button (whichever comes first)
     const successIndicator = await Promise.race([

@@ -2,12 +2,13 @@
  * Post-Publish Go Live Modal
  *
  * Guides first-time publishers through:
- * 1. Feature Selection - Choose which go-live features to run (token-aware)
- * 2. QA - Quality assurance check (if selected)
- * 3. Security Results - Show security scan results (if selected)
- * 4. Video - Show generated launch video (if selected)
- * 5. Marketing Selection - Choose which marketing actions to run (if selected)
- * 6. Marketing - Generate social posts and blog post (based on selections)
+ * 1. Confirmation - Do you want to go live?
+ * 2. Feature Selection - Choose which go-live features to run (token-aware)
+ * 3. QA - Quality assurance check (if selected)
+ * 4. Security Results - Show security scan results (if selected)
+ * 5. Video - Show generated launch video (if selected)
+ * 6. Marketing Selection - Choose which marketing actions to run (if selected)
+ * 7. Marketing - Generate social posts and blog post (based on selections)
  *
  * Background tasks (video generation, security scan) start after user confirms selections
  */
@@ -27,6 +28,7 @@ import { ModalErrorBoundaryWithTranslations as ModalErrorBoundary } from './comp
 import { useQAAnalysis } from './hooks/useQAAnalysis';
 import { useSecurityScan } from './hooks/useSecurityScan';
 import { useVideoGeneration } from './hooks/useVideoGeneration';
+import { ConfirmStep } from './steps/ConfirmStep';
 import { QAStep } from './steps/QAStep';
 import { SecurityResultsStep } from './steps/SecurityResultsStep';
 import { type FeatureSelections, SelectFeaturesStep } from './steps/SelectFeaturesStep';
@@ -72,7 +74,7 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
   // Initialize modal step
   useEffect(() => {
     if (showGoLiveModal && !goLiveModalStep) {
-      setGoLiveModalStep(appId, 'select-features');
+      setGoLiveModalStep(appId, 'confirm');
       shipAnalyticsLog('go_live.modal.shown', { appId });
     }
   }, [showGoLiveModal, goLiveModalStep, appId, setGoLiveModalStep]);
@@ -97,6 +99,12 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
     if (reason === 'dismiss') {
       shipAnalyticsLog('go_live.modal.dismissed', { appId, step: goLiveModalStep });
     }
+  };
+
+  const handleConfirm = () => {
+    shipAnalyticsLog('go_live.confirmed', { appId });
+    setGoLiveModalStep(appId, 'select-features');
+    shipAnalyticsLog('go_live.select_features.shown', { appId });
   };
 
   // Helper to get the next step based on current step and feature selections
@@ -342,6 +350,16 @@ Create a todo list to track these ${taskCount} specific task${taskCount === 1 ? 
 
   const renderStep = () => {
     switch (goLiveModalStep) {
+      case 'confirm':
+        return (
+          <ModalErrorBoundary stepName="confirm" appId={appId}>
+            <ConfirmStep
+              onConfirm={handleConfirm}
+              onCancel={() => handleClose()}
+            />
+          </ModalErrorBoundary>
+        );
+
       case 'select-features':
         return (
           <ModalErrorBoundary stepName="select-features" appId={appId}>
@@ -417,6 +435,7 @@ Create a todo list to track these ${taskCount} specific task${taskCount === 1 ? 
 
   const modalTitle = (() => {
     switch (goLiveModalStep) {
+      case 'confirm': return t('builder_golive_modal_title_confirm');
       case 'select-features': return t('builder_golive_modal_title_select_features');
       case 'qa': return t('golive_modal_title_qa');
       case 'security-results': return t('golive_modal_title_security');

@@ -4,9 +4,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getPrismaClient } from '@/lib/prisma';
 import { GET } from './route';
 
+// Mock auth context that will be injected by withCustomerAuth mock
+const mockAuthContext = {
+  user: {
+    customerId: 'test-customer-id',
+    shopperId: 'test-shopper-id',
+    accountId: 'test-account-id',
+  },
+  isAuthenticated: true,
+  jwt: 'test-jwt-token',
+};
+
 // Mock dependencies
 vi.mock('@/lib/customer-auth', () => ({
-  withCustomerAuth: (handler: any) => handler,
+  withCustomerAuth: (handler: any) => {
+    // Wrap the handler to inject mockAuthContext automatically
+    return (request: NextRequest) => handler(request, mockAuthContext);
+  },
   createCustomerAuthError: vi.fn((message: string, status: number) => {
     return new Response(JSON.stringify({ error: 'Forbidden', message }), {
       status,
@@ -58,16 +72,6 @@ function createMockRequest(path: string): NextRequest {
 }
 
 describe('Marketing Calendar API Route', () => {
-  const mockAuthContext = {
-    user: {
-      customerId: 'test-customer-id',
-      shopperId: 'test-shopper-id',
-      accountId: 'test-account-id',
-    },
-    isAuthenticated: true,
-    jwt: 'test-jwt-token',
-  };
-
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = vi.fn();
@@ -93,7 +97,7 @@ describe('Marketing Calendar API Route', () => {
     it('should return 400 for missing appId parameter', async () => {
       const request = createMockRequest('/api/marketing/calendar');
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -105,7 +109,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=abcd-01'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -117,7 +121,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2024-ab'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -129,7 +133,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2024-00'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -141,7 +145,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2024-13'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -153,7 +157,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=1899-01'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -165,7 +169,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2101-01'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -177,7 +181,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=invalid-id&month=2024-01'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -189,7 +193,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2024-01&market=invalid'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -201,7 +205,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2024-01&market=en-US&timezone=invalid/../../etc'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -227,7 +231,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2024-01&market=en-US&timezone=America/New_York'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(403);
@@ -245,7 +249,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2024-01&market=en-US&timezone=America/New_York'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
     });
@@ -265,7 +269,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2024-02&market=en-US&timezone=America/New_York'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -277,7 +281,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2023-02&market=en-US&timezone=America/New_York'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -289,7 +293,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2024-12&market=en-US&timezone=America/New_York'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -301,7 +305,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2024-03&market=en-US&timezone=America/New_York'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -313,7 +317,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2024-11&market=en-US&timezone=America/New_York'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -342,7 +346,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2024-01&market=en-US&timezone=America/New_York'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
 
       // Should still return 200 with empty events (graceful degradation)
       expect(response.status).toBe(200);
@@ -357,7 +361,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2024-01&market=en-US&timezone=America/New_York'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
 
       // Should still return 200 with empty events (graceful degradation)
       expect(response.status).toBe(200);
@@ -379,7 +383,7 @@ describe('Marketing Calendar API Route', () => {
         '/api/marketing/calendar?siteId=12345678-1234-1234-1234-123456789abc&month=2024-01&market=en-US&timezone=America/New_York'
       );
 
-      const response = await GET(request, mockAuthContext);
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(404);

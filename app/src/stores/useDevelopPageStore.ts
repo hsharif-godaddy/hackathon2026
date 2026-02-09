@@ -108,7 +108,7 @@ const createDefaultPublishState = () => {
     hasGoneLive: goLiveStatus.hasGoneLive,
     wentLiveAt: goLiveStatus.wentLiveAt,
     showGoLiveModal: false,
-    goLiveModalStep: null as 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null,
+    goLiveModalStep: null as 'confirm' | 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null,
     securityScanResults: null,
     launchVideoUrl: null,
     // Feature selections
@@ -170,7 +170,7 @@ interface DevelopPageStore {
     hasGoneLive: boolean
     wentLiveAt: string | null
     showGoLiveModal: boolean
-    goLiveModalStep: 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null
+    goLiveModalStep: 'confirm' | 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null
     securityScanResults: any | null
     launchVideoUrl: string | null
     featureSelections: { qa: boolean; security: boolean; video: boolean; marketing: boolean } | null
@@ -240,7 +240,7 @@ interface DevelopPageStore {
     hasGoneLive: boolean
     wentLiveAt: string | null
     showGoLiveModal: boolean
-    goLiveModalStep: 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null
+    goLiveModalStep: 'confirm' | 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null
     securityScanResults: any | null
     launchVideoUrl: string | null
     featureSelections: { qa: boolean; security: boolean; video: boolean; marketing: boolean } | null
@@ -249,7 +249,7 @@ interface DevelopPageStore {
 
   // Go Live modal actions
   setShowGoLiveModal: (appId: string, show: boolean) => void
-  setGoLiveModalStep: (appId: string, step: 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null) => void
+  setGoLiveModalStep: (appId: string, step: 'confirm' | 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null) => void
   setSecurityScanResults: (appId: string, results: any | null) => void
   setLaunchVideoUrl: (appId: string, url: string | null) => void
   setFeatureSelections: (appId: string, selections: { qa: boolean; security: boolean; video: boolean; marketing: boolean }) => void
@@ -720,7 +720,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       }
     }),
 
-    setGoLiveModalStep: (appId: string, step: 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null) => set((state) => {
+    setGoLiveModalStep: (appId: string, step: 'confirm' | 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null) => set((state) => {
       if (!state.publishStates[appId]) {
         state.publishStates[appId] = createDefaultPublishState();
       }

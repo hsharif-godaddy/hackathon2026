@@ -227,10 +227,10 @@ export async function setupIsolatedApp(page: Page, specPrefix: string, appDescri
 export async function dismissGoLiveModalIfPresent(page: Page, waitTime = GO_LIVE_MODAL_TIMEOUT): Promise<boolean> {
   await page.waitForTimeout(waitTime);
 
-  const skipButton = page.getByTestId('go-live-modal-skip');
-  if (await skipButton.isVisible({ timeout: SHORT_TIMEOUT }).catch(() => false)) {
-    await skipButton.click();
-    await expect(skipButton).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+  const laterButton = page.getByTestId('go-live-modal-later');
+  if (await laterButton.isVisible({ timeout: SHORT_TIMEOUT }).catch(() => false)) {
+    await laterButton.click();
+    await expect(laterButton).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
     console.log('Dismissed Go Live modal (first publish)');
     return true;
   }
