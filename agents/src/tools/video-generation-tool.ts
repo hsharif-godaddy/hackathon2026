@@ -121,6 +121,23 @@ export class VideoGenerationTool {
         resolution
       });
 
+      // Verify source video exists and has size
+      if (!fs.existsSync(videoPath)) {
+        throw new Error(`Source video not found: ${videoPath}`);
+      }
+      const videoStats = fs.statSync(videoPath);
+      if (!videoStats.isFile()) {
+        throw new Error(`Source video path is not a regular file: ${videoPath}`);
+      }
+      if (videoStats.size === 0) {
+        throw new Error(`Source video is empty: ${videoPath}`);
+      }
+
+      logger.debug('Source video validated', {
+        videoPath,
+        size: videoStats.size
+      });
+
       // Step 1: Convert image to 1-second video
       await execa('ffmpeg', [
         '-loop', '1',
@@ -136,23 +153,39 @@ export class VideoGenerationTool {
 
       logger.debug('Outro video created', { tempOutroVideo });
 
-      // Step 2: Create concat demuxer file with absolute paths (safer, no escaping needed)
-      const concatContent = `file '${videoPath}'\nfile '${tempOutroVideo}'`;
+      // Step 2: Create concat demuxer file — escape \ and ' per ffmpeg concat syntax
+      const escapeForConcat = (p: string) => p.replace(/\\/g, '\\\\').replace(/'/g, "'\\''");
+      const concatContent = `file '${escapeForConcat(videoPath)}'\nfile '${escapeForConcat(tempOutroVideo)}'`;
       fs.writeFileSync(concatList, concatContent);
 
+      logger.debug('Concat file created', {
+        concatList,
+        content: concatContent
+      });
+
       // Step 3: Concatenate videos
-      await execa('ffmpeg', [
-        '-f', 'concat',
-        '-safe', '0',
-        '-i', concatList,
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-threads', '4',
-        '-c:a', 'aac',
-        '-pix_fmt', 'yuv420p',
-        '-y',
-        finalVideo
-      ], { timeout: 120000 });
+      try {
+        await execa('ffmpeg', [
+          '-f', 'concat',
+          '-safe', '0',
+          '-i', concatList,
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-threads', '4',
+          '-c:a', 'aac',
+          '-pix_fmt', 'yuv420p',
+          '-y',
+          finalVideo
+        ], { timeout: 120000 });
+      } catch (concatError) {
+        logger.error('FFmpeg concat failed', {
+          videoPath,
+          tempOutroVideo,
+          concatList,
+          error: concatError instanceof Error ? concatError.message : String(concatError)
+        });
+        throw concatError;
+      }
 
       logger.debug('Videos concatenated', { finalVideo });
 
@@ -332,13 +365,7 @@ export class VideoGenerationTool {
             }
 
             if (statusData.status === 'failed') {
-              // Delete stale metadata so a fresh generation can be started
-              try {
-                fs.unlinkSync(videoMetadataPath);
-                logger.info('video-generation.metadata-deleted', { appId, videoId: videoMetadata.videoId });
-              } catch {
-                // Ignore deletion errors
-              }
+              this.deleteMetadata(videoMetadataPath, appId, videoMetadata.videoId);
               return { status: 'failed', error: 'Video generation failed' };
             }
 
@@ -434,7 +461,47 @@ export class VideoGenerationTool {
   }
 
   /**
+   * Validate that a video file is valid and complete using ffmpeg.
+   * Returns null on success or an error message string on failure.
+   */
+  private async validateVideoFile(filePath: string): Promise<string | null> {
+    try {
+      await execa('ffmpeg', [
+        '-v', 'error',
+        '-i', filePath,
+        '-f', 'null',
+        '-'
+      ], { timeout: 30000 });
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  /**
+   * Delete metadata file so the frontend stops polling and a fresh generation can start
+   */
+  private deleteMetadata(videoMetadataPath: string, appId: string, videoId: string): void {
+    try {
+      if (fs.existsSync(videoMetadataPath)) {
+        fs.unlinkSync(videoMetadataPath);
+        logger.info('video-generation.metadata-deleted', { appId, videoId });
+      }
+    } catch (error) {
+      logger.warn('video-generation.metadata-delete-failed', {
+        appId,
+        videoId,
+        videoMetadataPath,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  /**
    * Download completed video from OpenAI and process (stitch outro)
+   *
+   * On download/validation failure: clears metadata so frontend stops polling and can retry.
+   * On ffmpeg failure: marks video as completed without the outro (non-blocking).
    */
   private async downloadAndProcessVideo(
     options: VideoGenerationOptions,
@@ -450,20 +517,26 @@ export class VideoGenerationTool {
     const appPath = app.path;
     const airoDir = path.join(appPath, '.airo');
     const videoMetadataPath = path.join(airoDir, 'video.json');
-    const publicDir = path.join(appPath, 'public');
-    const imagesDir = path.join(publicDir, 'images');
+    const imagesDir = path.join(appPath, 'public', 'images');
 
     fs.mkdirSync(imagesDir, { recursive: true });
 
-    // Download video content
+    // Download video content — clear metadata on failure so frontend stops polling
     const contentResponse = await videoApiFetch(openaiClient, `/videos/${videoId}/content`);
     if (!contentResponse.ok) {
       logger.error('video-generation.download-failed', { appId, videoId, status: contentResponse.status });
+      this.deleteMetadata(videoMetadataPath, appId, videoId);
       return;
     }
 
     const content = await contentResponse.arrayBuffer();
     const videoBuffer = Buffer.from(content);
+
+    if (videoBuffer.length === 0) {
+      logger.error('video-generation.empty-buffer', { appId, videoId });
+      this.deleteMetadata(videoMetadataPath, appId, videoId);
+      return;
+    }
 
     // Save video file
     const safeFilename = filename || 'video';
@@ -472,12 +545,35 @@ export class VideoGenerationTool {
 
     fs.writeFileSync(filePath, videoBuffer);
 
-    // Stitch outro
-    await this.processOutroStitching(filePath, resolution, appId, videoId);
+    logger.info('video-generation.downloaded', {
+      appId,
+      videoId,
+      filename: fullFilename,
+      size: videoBuffer.length
+    });
 
-    // Update metadata as complete
+    // Validate the downloaded video — clear metadata on failure
+    const validationError = await this.validateVideoFile(filePath);
+    if (validationError) {
+      logger.error('video-generation.invalid-file', { appId, videoId, filePath, reason: validationError });
+      try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+      this.deleteMetadata(videoMetadataPath, appId, videoId);
+      return;
+    }
+
+    // Stitch outro — if ffmpeg fails, still mark video as completed without outro
+    try {
+      await this.processOutroStitching(filePath, resolution, appId, videoId);
+    } catch (outroError) {
+      logger.warn('video-generation.outro-stitch-failed', {
+        appId,
+        videoId,
+        error: outroError instanceof Error ? outroError.message : String(outroError)
+      });
+    }
+
+    // Mark as complete — video is usable with or without outro
     this.saveVideoMetadata(airoDir, videoMetadataPath, videoId, true, appId, fullFilename);
-
     logger.info('video-generation.completed', { appId, videoId, filename: fullFilename });
   }
 
