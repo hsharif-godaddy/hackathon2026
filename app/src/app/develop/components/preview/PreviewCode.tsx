@@ -85,7 +85,6 @@ function handleEditorWillMount(monaco: typeof import('monaco-editor')) {
 }
 
 // Timing constants for file loading
-const APP_START_DELAY_MS = 2000  // Wait for app to fully start after ensure-running
 const RETRY_DELAY_MS = 5000     // Delay between retry attempts on failure
 
 interface OpenFile {
@@ -116,6 +115,11 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const [showFileTree, setShowFileTree] = useState(isMobile)
   const setHasUnsavedChanges = useDevelopPageStore((state) => state.setHasUnsavedChanges)
 
+  // Subscribe to page initialization state - only load files when page is ready
+  // This prevents redundant ensure-running calls since the initialization state machine
+  // already handles app readiness verification
+  const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
+
   // Use realAppId if available (during temp→real ID transition), otherwise use appId from params
   // This prevents ensure-running calls with stale temp IDs after navigation
   const realAppId = useSiteCreationStore((state) => state.realAppId)
@@ -142,8 +146,21 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const isMountedRef = useRef(true)
 
   // Load real files from backend
+  // Note: This should only run after the initialization state machine has verified the app is ready.
+  // The loadingPhase guard prevents loading before the app is ready, which would cause errors.
   const loadFiles = useCallback(async () => {
     if (!effectiveAppId) return
+
+    // Guard: Don't attempt to load files until page initialization is complete
+    // This prevents race conditions when retry button is clicked before app is ready
+    if (loadingPhase !== 'ready') {
+      logger.info('code-editor.load-files.skipped', {
+        message: 'Skipping file load - page initialization not complete',
+        loadingPhase,
+        effectiveAppId
+      })
+      return
+    }
 
     // Prevent duplicate simultaneous loads
     if (isLoadingRef.current) return
@@ -159,12 +176,6 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     setError(null)
 
     try {
-      // First try to ensure the app is running
-      await appService.ensureAppIsRunning(effectiveAppId)
-
-      // Wait for app to fully start before fetching files
-      await new Promise(resolve => setTimeout(resolve, APP_START_DELAY_MS))
-
       const result = await appService.getFiles(effectiveAppId, 5)
 
       if (result.entries && result.entries.length > 0) {
@@ -197,7 +208,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
         isLoadingRef.current = false
       }
     }
-  }, [effectiveAppId, t])
+  }, [effectiveAppId, loadingPhase, t])
 
   // Convert flat file list to hierarchical tree structure
   const buildFileTree = (entries: Array<{name: string; isDirectory: boolean; path: string; depth: number}>): FileItem[] => {
@@ -360,13 +371,18 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   }, [])
 
   useEffect(() => {
-    // Clear processed changes when appId changes (prevents stale state across different apps)
+    // Clear processed changes when effectiveAppId changes (including temp→real ID transitions)
+    // to prevent stale state across different apps
     processedChangesRef.current.clear()
 
-    // Load real files from backend - only when appId changes
-    loadFiles()
+    // Only load files when the page initialization is complete
+    // The initialization state machine ensures the app is registered and running
+    // before setting loadingPhase to 'ready'
+    if (loadingPhase === 'ready') {
+      loadFiles()
+    }
 
-    // Cleanup: cancel pending operations when effectiveAppId changes
+    // Cleanup: cancel pending operations when effectiveAppId or loadingPhase changes
     return () => {
       // Clear retry timeout
       if (retryTimeoutRef.current) {
@@ -385,8 +401,8 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
         processedChangesRef.current.clear()
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFiles identity changes due to t(), but we only want to reload when effectiveAppId changes
-  }, [effectiveAppId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFiles identity changes due to t(), but we only want to reload when effectiveAppId or loadingPhase changes
+  }, [effectiveAppId, loadingPhase])
 
   // Handle file changes from agent operations
   useEffect(() => {
