@@ -28,12 +28,10 @@ interface AppBranchInfo {
  */
 export class GitHookService {
   private appRepository: AppRepository;
-  private gitErrorsMap: Map<string, string[]>;
   private appBranches: Map<string, AppBranchInfo>;
 
   constructor() {
     this.appRepository = new AppRepository();
-    this.gitErrorsMap = new Map();
     this.appBranches = new Map();
   }
 
@@ -76,36 +74,16 @@ export class GitHookService {
   }
 
   /**
-   * Log git error silently and accumulate for later reporting
+   * Log git error silently (non-blocking to avoid disrupting agent flow)
    */
   private logGitError(appId: string, operation: string, error: Error | string): void {
     const errorMessage = error instanceof Error ? error.message : error;
-    
-    if (!this.gitErrorsMap.has(appId)) {
-      this.gitErrorsMap.set(appId, []);
-    }
-    
-    this.gitErrorsMap.get(appId)!.push(`[${operation}] ${errorMessage}`);
-    
+
     logger.warn('git_hook.error.silent', {
       appId,
       operation,
       error: errorMessage
     });
-  }
-
-  /**
-   * Get accumulated git errors for an app (if any)
-   */
-  getGitErrors(appId: string): string[] {
-    return this.gitErrorsMap.get(appId) || [];
-  }
-
-  /**
-   * Clear accumulated git errors for an app
-   */
-  clearGitErrors(appId: string): void {
-    this.gitErrorsMap.delete(appId);
   }
 
   /**
