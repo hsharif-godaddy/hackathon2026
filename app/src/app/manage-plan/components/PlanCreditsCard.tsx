@@ -7,9 +7,8 @@ import text from '@ux/text';
 import { useTranslations } from '@/hooks/useTranslations';
 import type { AiroSubscription } from '@/lib/mgmt-airo';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
-import { type CreditGrant, SubscriptionPlan } from '@/types/credits';
+import { type CreditGrant, PAID_PLANS, SubscriptionPlan } from '@/types/credits';
 import { formatFullCreditDate, getPlanDisplayLabelKey, getPlanFromSubscription } from '@/utils/credits';
-import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID } from '@/utils/instrumentation';
 import ActiveTag from './ActiveTag';
 import CreditProgressBar from './CreditProgressBar';
@@ -22,9 +21,11 @@ interface PlanCreditsCardProps {
   locale?: string;
   creditPacks: CreditGrant[];
   openPaywall: (source: string, type: PaywallType, itc?: string) => void;
+  autoRenewStatus?: { autoRenew: boolean; paidThroughDate?: string; subscriptionId?: string } | null;
+  onDowngradeClick?: () => void;
 }
 
-const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, creditPacks, openPaywall }: PlanCreditsCardProps) => {
+const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, creditPacks, openPaywall, autoRenewStatus, onDowngradeClick }: PlanCreditsCardProps) => {
   const t = useTranslations();
 
   if (!planGrant || !subscription) {
@@ -112,15 +113,15 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
                       onClick={() => openPaywall('manage_plan.buy_credits', 'credits', PAYWALL_ITC.CREDITS)}
                   />
               )}
-              { !isFreePlan && (
+              { PAID_PLANS.includes(currentPlan) && autoRenewStatus?.autoRenew === true && onDowngradeClick && (
                   <Button
                       className="items-center"
                       design="inline"
                       data-partial='componentAiro'
-                      data-eid={generateClickEID('manageplan.buttons.cancel_plan')}
+                      data-eid={generateClickEID('manageplan.buttons.downgrade_plan')}
                       size="sm"
-                      text={t('builder_manageplan_cancel_plan')}
-                      href={`https://account.${getRootDomain() || 'godaddy.com'}/subscriptions`}
+                      text={t('builder_manageplan_downgrade_plan')}
+                      onClick={onDowngradeClick}
                   />
               )}
           </Box>

@@ -255,17 +255,19 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
       expect(screen.getByText('builder_manageplan_buy_credits')).toBeInTheDocument();
     });
 
-    it('should NOT show Cancel button for Free plan', function freeNoCancel() {
+    it('should NOT show Downgrade button for Free plan', function freeNoDowngrade() {
       renderWithProviders(
         <PlanCreditsCard
           subscription={createMockSubscription({ plan: SubscriptionPlan.Free })}
           planGrant={createMockPlanGrant()}
           creditPacks={[createMockCreditPack()]}
           openPaywall={mockOpenPaywall}
+          autoRenewStatus={{ autoRenew: true }}
+          onDowngradeClick={vi.fn()}
         />
       );
 
-      expect(screen.queryByText('builder_manageplan_cancel_plan')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_manageplan_downgrade_plan')).not.toBeInTheDocument();
     });
 
     it('should NOT show any buttons for Free plan without credit packs', function freeNoPacksNoButtons() {
@@ -280,36 +282,55 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
 
       expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_manageplan_buy_credits')).not.toBeInTheDocument();
-      expect(screen.queryByText('builder_manageplan_cancel_plan')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_manageplan_downgrade_plan')).not.toBeInTheDocument();
     });
   });
 
   describe('button visibility for Starter plan', function starterPlanButtonTests() {
-    it('should show Cancel button for Starter plan without credit packs', function starterNoPacks() {
+    it('should show Downgrade button for Starter plan when autoRenew is true', function starterNoPacks() {
       renderWithProviders(
         <PlanCreditsCard
           subscription={createMockSubscription({ plan: SubscriptionPlan.Starter })}
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
+          autoRenewStatus={{ autoRenew: true }}
+          onDowngradeClick={vi.fn()}
         />
       );
 
-      expect(screen.getByText('builder_manageplan_cancel_plan')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_downgrade_plan')).toBeInTheDocument();
     });
 
-    it('should show Buy Credits and Cancel buttons for Starter plan with credit packs', function starterWithPacks() {
+    it('should NOT show Downgrade button when autoRenew is false', function noDowngradeWhenAutoRenewFalse() {
+      renderWithProviders(
+        <PlanCreditsCard
+          subscription={createMockSubscription({ plan: SubscriptionPlan.Starter })}
+          planGrant={createMockPlanGrant()}
+          creditPacks={[]}
+          openPaywall={mockOpenPaywall}
+          autoRenewStatus={{ autoRenew: false }}
+          onDowngradeClick={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByText('builder_manageplan_downgrade_plan')).not.toBeInTheDocument();
+    });
+
+    it('should show Buy Credits and Downgrade buttons for Starter plan with credit packs', function starterWithPacks() {
       renderWithProviders(
         <PlanCreditsCard
           subscription={createMockSubscription({ plan: SubscriptionPlan.Starter })}
           planGrant={createMockPlanGrant()}
           creditPacks={[createMockCreditPack()]}
           openPaywall={mockOpenPaywall}
+          autoRenewStatus={{ autoRenew: true }}
+          onDowngradeClick={vi.fn()}
         />
       );
 
       expect(screen.getByText('builder_manageplan_buy_credits')).toBeInTheDocument();
-      expect(screen.getByText('builder_manageplan_cancel_plan')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_downgrade_plan')).toBeInTheDocument();
     });
 
     it('should NOT show Upgrade button for Starter plan', function starterNoUpgrade() {
@@ -327,17 +348,19 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
   });
 
   describe('button visibility for AiroPlus plan', function airoPlusPlanButtonTests() {
-    it('should NOT show Cancel button for AiroPlus plan', function airoPlusNoCancel() {
+    it('should NOT show Downgrade button for AiroPlus plan', function airoPlusNoDowngrade() {
       renderWithProviders(
         <PlanCreditsCard
           subscription={createMockSubscription({ plan: SubscriptionPlan.AiroPlus })}
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
+          autoRenewStatus={{ autoRenew: true }}
+          onDowngradeClick={vi.fn()}
         />
       );
 
-      expect(screen.queryByText('builder_manageplan_cancel_plan')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_manageplan_downgrade_plan')).not.toBeInTheDocument();
     });
 
     it('should NOT show Buy Credits button for AiroPlus plan', function airoPlusNoBuyCredits() {
@@ -373,12 +396,14 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
           planGrant={createMockPlanGrant()}
           creditPacks={[createMockCreditPack(), createMockCreditPack({ id: 'pack-2' })]}
           openPaywall={mockOpenPaywall}
+          autoRenewStatus={{ autoRenew: true }}
+          onDowngradeClick={vi.fn()}
         />
       );
 
       expect(screen.queryByText('builder_manageplan_upgrade')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_manageplan_buy_credits')).not.toBeInTheDocument();
-      expect(screen.queryByText('builder_manageplan_cancel_plan')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_manageplan_downgrade_plan')).not.toBeInTheDocument();
     });
   });
 
@@ -413,21 +438,36 @@ describe('PlanCreditsCard', function planCreditsCardTests() {
       expect(mockOpenPaywall).toHaveBeenCalledWith('manage_plan.buy_credits', 'credits', PAYWALL_ITC.CREDITS);
     });
 
-    it('should have Cancel button with correct href', function cancelHref() {
+    it('should call onDowngradeClick when Downgrade button is clicked', async function clickDowngrade() {
+      const mockOnDowngradeClick = vi.fn();
+      const { user } = renderWithProviders(
+        <PlanCreditsCard
+          subscription={createMockSubscription({ plan: SubscriptionPlan.Starter })}
+          planGrant={createMockPlanGrant()}
+          creditPacks={[]}
+          openPaywall={mockOpenPaywall}
+          autoRenewStatus={{ autoRenew: true }}
+          onDowngradeClick={mockOnDowngradeClick}
+        />
+      );
+
+      await user.click(screen.getByText('builder_manageplan_downgrade_plan'));
+
+      expect(mockOnDowngradeClick).toHaveBeenCalledTimes(1);
+    });
+
+    it('should NOT show Downgrade button when onDowngradeClick is not provided', function noDowngradeWithoutCallback() {
       renderWithProviders(
         <PlanCreditsCard
           subscription={createMockSubscription({ plan: SubscriptionPlan.Starter })}
           planGrant={createMockPlanGrant()}
           creditPacks={[]}
           openPaywall={mockOpenPaywall}
+          autoRenewStatus={{ autoRenew: true }}
         />
       );
 
-      const cancelButton = screen.getByText('builder_manageplan_cancel_plan');
-      expect(cancelButton.closest('a')).toHaveAttribute(
-        'href',
-        'https://account.godaddy.com/subscriptions'
-      );
+      expect(screen.queryByText('builder_manageplan_downgrade_plan')).not.toBeInTheDocument();
     });
   });
 

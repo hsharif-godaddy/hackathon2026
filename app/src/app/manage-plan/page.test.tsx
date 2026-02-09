@@ -56,6 +56,26 @@ vi.mock('@/hooks/useCreditGrants', () => ({
   useCreditGrants: () => mockUseCreditGrants(),
 }));
 
+vi.mock('@/hooks/useEcommSubscriptionAutoRenewStatus', () => ({
+  useEcommSubscriptionAutoRenewStatus: () => ({
+    data: { autoRenew: true, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
+vi.mock('@/hooks/useEcommSubscriptionAutoRenew', () => ({
+  useEcommSubscriptionAutoRenew: () => ({
+    setAutoRenew: {
+      mutate: vi.fn(),
+      mutateAsync: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+    },
+  }),
+}));
+
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string) => key,
 }));
@@ -361,7 +381,7 @@ describe('ManagePlan', function managePlanTests() {
         renderWithProviders(<ManagePlan />);
 
         // Page-level buttons should not be visible (CreditPacksCard has its own buttons)
-        expect(screen.queryByText('builder_manageplan_cancel_plan')).not.toBeInTheDocument();
+        expect(screen.queryByText('builder_manageplan_downgrade_plan')).not.toBeInTheDocument();
       });
 
       it('should show upgrade and buy credits buttons for free plan with credit packs', function freeWithPacks() {
@@ -396,7 +416,7 @@ describe('ManagePlan', function managePlanTests() {
 
         renderWithProviders(<ManagePlan />);
 
-        expect(screen.queryByText('builder_manageplan_cancel_plan')).not.toBeInTheDocument();
+        expect(screen.queryByText('builder_manageplan_downgrade_plan')).not.toBeInTheDocument();
       });
     });
 
@@ -415,7 +435,7 @@ describe('ManagePlan', function managePlanTests() {
 
         renderWithProviders(<ManagePlan />);
 
-        expect(screen.getByText('builder_manageplan_cancel_plan')).toBeInTheDocument();
+        expect(screen.getByText('builder_manageplan_downgrade_plan')).toBeInTheDocument();
       });
 
       it('should not show upgrade or buy credits buttons for Starter plan without credit packs', function starterNoPacksNoUpgrade() {
@@ -450,7 +470,7 @@ describe('ManagePlan', function managePlanTests() {
         renderWithProviders(<ManagePlan />);
 
         expect(screen.getByText('builder_manageplan_buy_credits')).toBeInTheDocument();
-        expect(screen.getByText('builder_manageplan_cancel_plan')).toBeInTheDocument();
+        expect(screen.getByText('builder_manageplan_downgrade_plan')).toBeInTheDocument();
       });
 
       it('should not show upgrade button for Starter plan with credit packs', function starterWithPacksNoUpgrade() {
@@ -486,7 +506,7 @@ describe('ManagePlan', function managePlanTests() {
 
         renderWithProviders(<ManagePlan />);
 
-        expect(screen.queryByText('builder_manageplan_cancel_plan')).not.toBeInTheDocument();
+        expect(screen.queryByText('builder_manageplan_downgrade_plan')).not.toBeInTheDocument();
       });
 
       it('should NOT show buy credits button for AiroPlus plan', function airoPlusNoBuyCredits() {
