@@ -14,6 +14,7 @@ import { ImportJobRepository, UpdateImportJobParams } from '../database/reposito
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { zipSecurityService } from './ZipSecurityService.js';
 import { gitCloneService } from './GitCloneService.js';
+import { codeSyncFileCleanupService } from './CodeSyncFileCleanupService.js';
 import { modifyViteConfig } from './ViteConfigModifier.js';
 import { appRestartService, DEFAULT_DEV_COMMAND } from './AppRestartService.js';
 import { GitTool } from '../tools/git-tool.js';
@@ -284,6 +285,26 @@ export class ProjectImportService {
         await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
         if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
         return;
+      }
+
+      // Phase 6b: Clean up junk/security-sensitive files after copy
+      // Delete all configured patterns (single command, no scanning needed)
+      await codeSyncFileCleanupService.deleteCleanablePatterns(devSupervisor, '/app');
+
+      // Add warnings for files detected during zip validation
+      const cleanableFiles = securityValidation.cleanableFiles;
+      if (cleanableFiles && cleanableFiles.length > 0) {
+        const cleanedWarnings = codeSyncFileCleanupService.createWarnings(cleanableFiles);
+        const existingWarnings = validation.warnings || [];
+        await this.importJobRepo.update(jobId, {
+          validationErrors: [...existingWarnings, ...cleanedWarnings],
+        });
+
+        this.logger.info('project-import.cleanup-files.success', {
+          jobId,
+          appId,
+          cleanedCount: cleanableFiles.length,
+        });
       }
 
       // Ensure .gitignore has Airo-specific patterns after copy

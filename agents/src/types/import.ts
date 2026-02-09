@@ -42,6 +42,8 @@ export enum ValidationErrorKey {
   ZIP_EXTRACTED_TOO_LARGE = 'ZIP_EXTRACTED_TOO_LARGE',
   ZIP_DANGEROUS_FILE = 'ZIP_DANGEROUS_FILE',
   ZIP_SUSPICIOUS_FILE = 'ZIP_SUSPICIOUS_FILE',
+  /** File was automatically cleaned during import */
+  FILE_CLEANED = 'FILE_CLEANED',
   ZIP_INVALID_FILENAME = 'ZIP_INVALID_FILENAME',
   ZIP_PATH_TOO_LONG = 'ZIP_PATH_TOO_LONG',
   // Project structure errors
@@ -277,6 +279,8 @@ export interface ZipValidationResult {
   errors: ValidationError[];
   /** Statistics about the zip file (undefined if validation failed early) */
   stats?: ZipValidationStats;
+  /** Files that will be cleaned during import */
+  cleanableFiles?: string[];
 }
 
 

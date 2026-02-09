@@ -8,6 +8,7 @@ import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { getErrorMessage } from '../../utils/error.js';
 import { isCapabilityEnabled } from '../../utils/capability-config.js';
 import { gitOpsService } from '../../services/GitOpsService.js';
+import { ImportJobStatus, type ValidationError } from '../../types/import.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -390,14 +391,34 @@ router.get(
     }
 
     const job = result.job!;
+
+    // Parse validation errors/warnings from job
+    let validationErrors: Pick<ValidationError, 'key' | 'message'>[] | undefined;
+    if (job.validationErrors) {
+      try {
+        const rawErrors: ValidationError[] = JSON.parse(job.validationErrors);
+        validationErrors = rawErrors.map(err => ({
+          key: err.key,
+          message: err.message,
+        }));
+      } catch {
+        // Ignore parse errors
+      }
+    }
+
+    const warnings = job.status === ImportJobStatus.COMPLETED ? validationErrors : undefined;
+    const errors = job.status === ImportJobStatus.FAILED ? validationErrors : undefined;
+
     res.json({
       success: true,
       jobId: job.id,
       appId: job.appId,
       status: job.status,
       sourceType: job.sourceType,
-      errorMessage: job.status === 'failed' ? job.errorMessage : undefined,
-      errorStage: job.status === 'failed' ? job.errorStage : undefined,
+      errorMessage: job.status === ImportJobStatus.FAILED ? job.errorMessage : undefined,
+      errorStage: job.status === ImportJobStatus.FAILED ? job.errorStage : undefined,
+      validationErrors: errors && errors.length > 0 ? errors : undefined,
+      warnings: warnings && warnings.length > 0 ? warnings : undefined,
       createdAt: job.createdAt.toISOString(),
       updatedAt: job.updatedAt.toISOString(),
       completedAt: job.completedAt?.toISOString(),

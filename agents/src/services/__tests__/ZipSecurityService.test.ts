@@ -358,47 +358,75 @@ describe('ZipSecurityService', () => {
     });
   });
 
-  describe('Suspicious File Detection', () => {
-    it('should detect __MACOSX files', async () => {
+  describe('Cleanable File Detection', () => {
+    it('should identify __MACOSX files as cleanable', async () => {
       const zipPath = await createTestZip('macosx.zip', [
         { name: '__MACOSX/._file.txt', content: 'metadata' },
+        { name: 'index.js', content: 'console.log("hello")' },
       ]);
 
       const result = await service.validate(zipPath);
 
-      expect(result.valid).toBe(false);
-      const suspiciousError = result.errors.find(
-        (e) => e.key === ValidationErrorKey.ZIP_SUSPICIOUS_FILE
-      );
-      expect(suspiciousError).toBeDefined();
+      // Zip is valid but contains cleanable files
+      expect(result.valid).toBe(true);
+      expect(result.cleanableFiles).toBeDefined();
+      expect(result.cleanableFiles).toContain('__MACOSX/._file.txt');
     });
 
-    it('should detect .DS_Store files', async () => {
+    it('should identify .DS_Store files as cleanable', async () => {
       const zipPath = await createTestZip('dsstore.zip', [
         { name: '.DS_Store', content: 'metadata' },
+        { name: 'index.js', content: 'console.log("hello")' },
       ]);
 
       const result = await service.validate(zipPath);
 
-      expect(result.valid).toBe(false);
-      const suspiciousError = result.errors.find(
-        (e) => e.key === ValidationErrorKey.ZIP_SUSPICIOUS_FILE
-      );
-      expect(suspiciousError).toBeDefined();
+      // Zip is valid but contains cleanable files
+      expect(result.valid).toBe(true);
+      expect(result.cleanableFiles).toBeDefined();
+      expect(result.cleanableFiles).toContain('.DS_Store');
     });
 
-    it('should detect Git hooks', async () => {
+    it('should identify Git hooks as cleanable', async () => {
       const zipPath = await createTestZip('git-hooks.zip', [
-        { name: '.git/hooks/pre-commit', content: '#!/bin/bash\nrm -rf /' },
+        { name: '.git/hooks/pre-commit', content: '#!/bin/bash\necho "hook"' },
+        { name: 'index.js', content: 'console.log("hello")' },
       ]);
 
       const result = await service.validate(zipPath);
 
-      expect(result.valid).toBe(false);
-      const suspiciousError = result.errors.find(
-        (e) => e.key === ValidationErrorKey.ZIP_SUSPICIOUS_FILE
-      );
-      expect(suspiciousError).toBeDefined();
+      // Zip is valid but contains cleanable files
+      expect(result.valid).toBe(true);
+      expect(result.cleanableFiles).toBeDefined();
+      expect(result.cleanableFiles).toContain('.git/hooks/pre-commit');
+    });
+
+    it('should identify .env files as cleanable', async () => {
+      const zipPath = await createTestZip('env.zip', [
+        { name: '.env', content: 'SECRET=password' },
+        { name: '.env.local', content: 'LOCAL_SECRET=value' },
+        { name: 'index.js', content: 'console.log("hello")' },
+      ]);
+
+      const result = await service.validate(zipPath);
+
+      // Zip is valid but contains cleanable files
+      expect(result.valid).toBe(true);
+      expect(result.cleanableFiles).toBeDefined();
+      expect(result.cleanableFiles).toContain('.env');
+      expect(result.cleanableFiles).toContain('.env.local');
+    });
+
+    it('should not include regular files in cleanableFiles', async () => {
+      const zipPath = await createTestZip('normal.zip', [
+        { name: 'index.js', content: 'console.log("hello")' },
+        { name: 'package.json', content: '{}' },
+      ]);
+
+      const result = await service.validate(zipPath);
+
+      expect(result.valid).toBe(true);
+      expect(result.cleanableFiles).toBeUndefined();
     });
   });
 

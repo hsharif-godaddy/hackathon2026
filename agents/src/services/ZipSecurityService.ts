@@ -23,6 +23,7 @@ import {
   type ZipValidationResult,
   type ZipValidationStats,
 } from '../types/import.js';
+import { codeSyncFileCleanupService } from './CodeSyncFileCleanupService.js';
 
 // Security constants
 const UNIX_MODE_MASK = 0xFFFF; // Mask to extract Unix file mode from external file attributes
@@ -108,9 +109,15 @@ export class ZipSecurityService {
       this.logger.info('zip-security.validate.success', {
         zipPath,
         stats: inspectionResult.stats,
+        cleanableFilesCount: inspectionResult.cleanableFiles?.length ?? 0,
       });
 
-      return { valid: true, errors: [], stats: inspectionResult.stats };
+      return {
+        valid: true,
+        errors: [],
+        stats: inspectionResult.stats,
+        cleanableFiles: inspectionResult.cleanableFiles,
+      };
 
     } catch (error) {
       this.logger.error('zip-security.validate.failed', {
@@ -143,6 +150,7 @@ export class ZipSecurityService {
 
     return new Promise((resolve, reject) => {
       const errors: ValidationError[] = [];
+      const cleanableFiles: string[] = [];
       let totalUncompressed = 0;
       let totalCompressed = 0; // Track cumulative compressed size for accurate ratio calculation
       let fileCount = 0;
@@ -201,13 +209,10 @@ export class ZipSecurityService {
             });
           }
 
-          // Check 5: Suspicious files
-          if (this.isSuspiciousFile(entry.fileName)) {
-            errors.push({
-              key: ValidationErrorKey.ZIP_SUSPICIOUS_FILE,
-              message: `Suspicious file: ${entry.fileName}`,
-              details: { fileName: entry.fileName },
-            });
+          // Check 5: Cleanable files (junk, security-sensitive, IDE config)
+          // These files will be cleaned during import, not rejected
+          if (codeSyncFileCleanupService.isCleanableFile(entry.fileName)) {
+            cleanableFiles.push(entry.fileName);
           }
 
           // Check 6: Compression ratio (incremental check - EARLY ABORT)
@@ -312,6 +317,7 @@ export class ZipSecurityService {
             valid: errors.length === 0,
             errors,
             stats,
+            cleanableFiles: cleanableFiles.length > 0 ? cleanableFiles : undefined,
           });
         });
 
@@ -415,19 +421,6 @@ export class ZipSecurityService {
     const lower = fileName.toLowerCase();
     const limits = getZipImportLimits();
     return limits.blockedExtensions.some(ext => lower.endsWith(ext));
-  }
-
-  /**
-   * Check for suspicious file patterns
-   */
-  private isSuspiciousFile(fileName: string): boolean {
-    const lower = fileName.toLowerCase();
-    const suspicious = [
-      '.ds_store',
-      'thumbs.db',
-      '.git/hooks/', // Git hooks can execute code
-    ];
-    return suspicious.some(pattern => lower.includes(pattern));
   }
 
   /**

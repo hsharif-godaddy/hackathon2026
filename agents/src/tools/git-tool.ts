@@ -412,6 +412,17 @@ export class GitTool {
         };
       }
 
+      // Check if there are any changes to commit
+      const status = await this.gitUtils.getStatus(appPath);
+      if (status.isClean) {
+        // Nothing to commit - return success (idempotent operation)
+        return {
+          success: true,
+          operation: 'commit',
+          output: 'Nothing to commit, working tree clean',
+        };
+      }
+
       const result = await this.gitUtils.commit(appPath, message);
 
       // If commit was successful, check if this marks the initial build completion

@@ -92,6 +92,11 @@ const DEFAULT_MAX_COMPRESSION_RATIO = 100;
 const DEFAULT_MAX_FILES = 50000;
 const DEFAULT_MAX_PATH_LENGTH = 260;
 
+// Cleanable file patterns defaults
+const DEFAULT_CLEANABLE_OS_JUNK = ['.DS_Store', 'Thumbs.db', '__MACOSX/', 'desktop.ini'];
+const DEFAULT_CLEANABLE_SECURITY = ['.env', '.git/hooks/', '.pem', '.key', '.npmrc', '.yarnrc'];
+const DEFAULT_CLEANABLE_IDE = ['.idea/', '.vscode/'];
+
 /**
  * Zip Import security limits configuration
  */
@@ -103,6 +108,15 @@ export interface ZipImportLimits {
   maxFiles: number;
   maxPathLength: number;
   blockedExtensions: string[];
+  /** Patterns for files that should be cleaned up instead of rejected */
+  cleanablePatterns: {
+    /** OS-generated junk files (e.g., .DS_Store, Thumbs.db) */
+    osJunk: string[];
+    /** Security-sensitive files (e.g., .env, .git/hooks/) */
+    securitySensitive: string[];
+    /** IDE configuration directories (e.g., .idea/, .vscode/) */
+    ideConfig: string[];
+  };
 }
 
 /**
@@ -121,6 +135,14 @@ export function getZipImportLimits(): ZipImportLimits {
                        'exe,dll,so,dylib,bin,deb,rpm,pkg,app,ps1')
       .split(',')
       .map(ext => `.${ext.trim().toLowerCase()}`),
+    cleanablePatterns: {
+      osJunk: (process.env.ZIP_IMPORT_CLEANABLE_OS_JUNK || DEFAULT_CLEANABLE_OS_JUNK.join(','))
+        .split(',').map(p => p.trim()).filter(Boolean),
+      securitySensitive: (process.env.ZIP_IMPORT_CLEANABLE_SECURITY || DEFAULT_CLEANABLE_SECURITY.join(','))
+        .split(',').map(p => p.trim()).filter(Boolean),
+      ideConfig: (process.env.ZIP_IMPORT_CLEANABLE_IDE || DEFAULT_CLEANABLE_IDE.join(','))
+        .split(',').map(p => p.trim()).filter(Boolean),
+    },
   };
 }
 

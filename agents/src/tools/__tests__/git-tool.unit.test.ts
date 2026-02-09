@@ -434,4 +434,64 @@ describe('GitTool', () => {
       );
     });
   });
+
+  describe('Commit Operation - Clean Working Tree', () => {
+    it('should return success when working tree is clean (idempotent commit)', async () => {
+      // Default mock already returns isClean: true
+      const result = await gitTool.executeGitOperation('/tmp/apps/test-app-id/app', {
+        operation: 'commit',
+        message: 'Test commit message'
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.operation).toBe('commit');
+      expect(result.output).toBe('Nothing to commit, working tree clean');
+    });
+
+    it('should proceed with commit when working tree has changes', async () => {
+      // Get the mocked GitUtils and override getStatus to return dirty state
+      const { GitUtils } = await import('../../utils/git.js');
+      const mockGitUtils = vi.mocked(GitUtils).mock.results[0]?.value;
+
+      // Mock dirty working tree
+      mockGitUtils.getStatus.mockResolvedValueOnce({
+        branch: 'main',
+        ahead: 0,
+        behind: 0,
+        isClean: false,
+        hasChanges: true,
+        stagedFiles: 1,
+        modifiedFiles: 1,
+        untrackedFiles: 0
+      });
+
+      // Mock successful commit
+      mockGitUtils.commit = vi.fn().mockResolvedValueOnce({
+        success: true,
+        stdout: '[main abc1234] Test commit message',
+        stderr: ''
+      });
+
+      const result = await gitTool.executeGitOperation('/tmp/apps/test-app-id/app', {
+        operation: 'commit',
+        message: 'Test commit message'
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.operation).toBe('commit');
+      expect(result.output).toBe('Committed: Test commit message');
+      expect(mockGitUtils.commit).toHaveBeenCalledWith('/tmp/apps/test-app-id/app', 'Test commit message');
+    });
+
+    it('should return error when commit message is missing', async () => {
+      const result = await gitTool.executeGitOperation('/tmp/apps/test-app-id/app', {
+        operation: 'commit'
+        // No message provided
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.operation).toBe('commit');
+      expect(result.error).toBe('Commit message is required');
+    });
+  });
 });

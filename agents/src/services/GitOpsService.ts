@@ -13,6 +13,7 @@ import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-facto
 import { isSupportedProjectOnHost, SUPPORTED_BUILD_TOOLS } from '../server/middleware/git-import-validation.js';
 import { appRestartService } from './AppRestartService.js';
 import { modifyViteConfig } from './ViteConfigModifier.js';
+import { codeSyncFileCleanupService } from './CodeSyncFileCleanupService.js';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
 
@@ -427,6 +428,10 @@ export class GitOpsService {
         );
         return;
       }
+
+      // Clean up junk/security-sensitive files after pull (single command, no scanning)
+      await codeSyncFileCleanupService.deleteCleanablePatterns(devSupervisor, '/app');
+      logger.info('git-ops.pull.cleanup-files.complete', { appId, jobId });
 
       // Modify vite config if requested (for proxy compatibility).
       // Non-fatal: failures are logged as warnings but don't fail the job,
