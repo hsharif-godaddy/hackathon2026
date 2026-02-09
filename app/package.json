@@ -32,8 +32,8 @@
     "install-gd-packages": "pnpm --registry https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ install @godaddy/gasket-plugin-auth"
   },
   "dependencies": {
-    "@airo/ai-lib": "workspace:*",
     "@airo-ux/loader": "^2.1.0",
+    "@airo/ai-lib": "workspace:*",
     "@aws-sdk/client-secrets-manager": "3.679.0",
     "@aws-sdk/client-sqs": "3.679.0",
     "@aws-sdk/client-sts": "3.679.0",
@@ -119,6 +119,7 @@
     "@ux/tailwind-intents": "^2500.7.1",
     "@ux/text": "^2500.7.1",
     "@ux/text-input": "^2500.7.2",
+    "@ux/text-lockup": "^2500.9.0",
     "@ux/toggle-button": "^2500.7.1",
     "@ux/tooltip": "^2500.7.2",
     "@ux/tooltip-legacy": "^2400.15.1",
