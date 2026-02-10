@@ -160,8 +160,8 @@ importers:
         specifier: ^7.28.0
         version: 7.28.4
       '@godaddy/goknowb-client':
-        specifier: ^1.0.6
-        version: 1.0.6
+        specifier: ^1.0.8
+        version: 1.0.8
       '@langfuse/otel':
         specifier: ^4.5.1
         version: 4.5.1(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.5.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))
@@ -3029,6 +3029,9 @@ packages:
 
   '@godaddy/goknowb-client@1.0.6':
     resolution: {integrity: sha512-0fvebg6BXf6MRR17GmRrYz/G43EMwypSZoXOmI9PqzL4bh2pQzmVFIL3P9AZ7tbQOKAS/yZsFLrv6hELM0WC8Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/goknowb-client/-/@godaddy/goknowb-client-1.0.6.tgz}
+
+  '@godaddy/goknowb-client@1.0.8':
+    resolution: {integrity: sha512-fEFPZa0wyd78P6H6vbmbikCYZC/E7Y97eaRCMwNB2g3lG2KcQTTohzXGoWMvVnbGRptVJhdWzos0zMH6WFt/Ug==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/goknowb-client/-/@godaddy/goknowb-client-1.0.8.tgz}
 
   '@godaddy/internal-ips@2.3.1':
     resolution: {integrity: sha512-MYKXQ20eZBdcKvR7VRD0NM7HxSM+7yFk2ZbBFUanPKs+Ip4Zgfdc5uH9bnisfqDeHWlUEDRY6y27t5sEtDwZJA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/internal-ips/-/@godaddy/internal-ips-2.3.1.tgz}
@@ -16328,6 +16331,13 @@ snapshots:
   '@godaddy/gasket-private-labels@3.4.0': {}
 
   '@godaddy/goknowb-client@1.0.6':
+    dependencies:
+      axios: 1.12.2
+      form-data: 4.0.4
+    transitivePeerDependencies:
+      - debug
+
+  '@godaddy/goknowb-client@1.0.8':
     dependencies:
       axios: 1.12.2
       form-data: 4.0.4
