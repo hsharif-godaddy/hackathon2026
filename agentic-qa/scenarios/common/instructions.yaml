@@ -11,6 +11,13 @@ developPageBase: |
   - Each modification can take 1-2 minutes - be patient
   - Verify changes appear in the preview before proceeding
 
+  Clarifying questions during build:
+  - During site creation, Airo may ask clarifying questions with multiple-choice
+    options (radio buttons). You MUST click on the most relevant option to continue.
+  - Do NOT passively wait if a question is displayed - select an answer immediately.
+  - If questions are numbered (e.g. "1/2", "2/2"), answer each one as it appears.
+  - Pick the option that best matches the site being built.
+
   Error handling:
   - If you see "Something went wrong" error message with an "Ask Airo to Fix Code" button, CLICK IT immediately
   - We want a working website, so always attempt to fix code errors automatically

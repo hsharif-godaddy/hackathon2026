@@ -36,6 +36,8 @@ interface CLIOptions {
   qualityUrl?: string;
   siteType?: SiteType;
   skipQuality?: EvaluationCategory[];
+  // Budget override (USD)
+  budget?: number;
 }
 
 function parseArgs(): { options: CLIOptions; scenarioPath?: string } {
@@ -104,6 +106,18 @@ function parseArgs(): { options: CLIOptions; scenarioPath?: string } {
       if (value) {
         options.skipQuality = value.split(',').map(s => s.trim()) as EvaluationCategory[];
       }
+    } else if (arg === '--budget' || arg === '-b') {
+      const value = args[++i];
+      if (value === undefined) {
+        console.error('Missing value for --budget/-b — expected a positive number (USD)');
+        process.exit(1);
+      }
+      const parsed = parseFloat(value);
+      if (isNaN(parsed) || parsed <= 0) {
+        console.error('Invalid budget: %s — must be a positive number (USD)', value);
+        process.exit(1);
+      }
+      options.budget = parsed;
     } else if (arg === '--help') {
       printHelp();
       process.exit(0);
@@ -131,6 +145,9 @@ Options:
   --scenarios, -s <dir> Scenarios directory (default: ./scenarios)
   --help                Show this help message
 
+Budget Options:
+  --budget, -b <usd>    Override tokenBudgetUSD for the scenario (e.g. --budget 5.00)
+
 Quality Evaluation Options:
   --quality, -q         Enable quality evaluation (default: on)
   --no-quality          Disable quality evaluation
@@ -145,6 +162,12 @@ Quality Evaluation Options:
 Examples:
   # Run a specific scenario with quality evaluation
   pnpm --filter agentic-qa test scenarios/create-site.yaml
+
+  # Run a budget-based build (build until $5 spent)
+  pnpm --filter agentic-qa test scenarios/budget-build.yaml
+
+  # Override budget from CLI
+  pnpm --filter agentic-qa test --budget 10.00 scenarios/budget-build.yaml
 
   # Run all scenarios
   pnpm --filter agentic-qa test --all
@@ -280,12 +303,26 @@ async function main(): Promise<void> {
   if (options.all) {
     console.log(`Loading scenarios from: ${options.scenarios}`);
     const scenarios = await loadAllScenarios(options.scenarios);
-    console.log(`Found ${scenarios.length} scenarios`);
 
+    // Apply budget override from CLI
+    if (options.budget) {
+      for (const s of scenarios) {
+        s.tokenBudgetUSD = options.budget;
+      }
+      console.log(`Budget override: $${options.budget} applied to all scenarios`);
+    }
+
+    console.log(`Found ${scenarios.length} scenarios`);
     results = await runAllScenarios(scenarios, runnerOptions);
   } else if (scenarioPath) {
     console.log(`Loading scenario: ${scenarioPath}`);
     const scenario = await loadScenario(scenarioPath);
+
+    // Apply budget override from CLI
+    if (options.budget) {
+      scenario.tokenBudgetUSD = options.budget;
+      console.log(`Budget override: $${options.budget}`);
+    }
 
     results = [await runScenario(scenario, runnerOptions)];
   } else if (options.qualityOnly) {

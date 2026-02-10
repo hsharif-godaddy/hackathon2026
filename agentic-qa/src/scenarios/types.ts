@@ -64,7 +64,16 @@ export const ScenarioSchema = z.object({
   sitePrompt: SitePromptSchema.optional(),
   // Quality evaluation: evaluates the built website against quality criteria
   qualityEval: QualityEvalSchema.optional(),
-});
+  // Budget mode: keep sending chatMessages until app has spent this much (USD)
+  tokenBudgetUSD: z.number().positive().optional(),
+  // Iterative chat messages to send one-by-one (used with tokenBudgetUSD)
+  chatMessages: z.array(z.string()).optional(),
+  // Max agent steps per individual chat message (default: 20)
+  stepsPerMessage: z.number().default(20),
+}).refine(
+  (data) => !data.tokenBudgetUSD || (data.chatMessages && data.chatMessages.length > 0),
+  { message: 'tokenBudgetUSD requires a non-empty chatMessages array' }
+);
 
 export type Scenario = z.infer<typeof ScenarioSchema>;
 export type Credentials = z.infer<typeof CredentialsSchema>;
@@ -109,6 +118,12 @@ export interface EvalResult {
   quality?: QualityEvaluation;
   qualityStatus?: 'success' | 'failed' | 'skipped';
   qualityError?: string;
+  // Budget mode: incremental spend during this run (from token-budget API)
+  appCostUSD?: number;
+  // Budget mode: how many chat messages were completed before budget was reached
+  chatMessagesCompleted?: number;
+  // Budget mode: the configured budget limit
+  tokenBudgetUSD?: number;
 }
 
 export interface Report {
@@ -118,5 +133,6 @@ export interface Report {
   failed: number;
   totalTokens: number;
   totalDuration: number;
+  totalAppCostUSD: number;
   results: EvalResult[];
 }

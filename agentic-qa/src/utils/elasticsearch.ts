@@ -105,6 +105,10 @@ export interface IndexableResult {
   // Model info
   model: string;
 
+  // Budget mode metrics
+  appCostUSD?: number;
+  chatMessagesCompleted?: number;
+  tokenBudgetUSD?: number;
 }
 
 /**
@@ -303,6 +307,11 @@ function toIndexableResult(result: EvalResult): IndexableResult {
 
     // Model info
     model: process.env.OPENAI_MODEL || process.env.ANTHROPIC_MODEL || 'unknown',
+
+    // Budget mode metrics
+    appCostUSD: result.appCostUSD,
+    chatMessagesCompleted: result.chatMessagesCompleted,
+    tokenBudgetUSD: result.tokenBudgetUSD,
 
     // Quality evaluation metrics
     qualityScore: result.quality?.overall.score,
