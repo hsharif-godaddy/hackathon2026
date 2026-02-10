@@ -8,6 +8,8 @@ const registry = AgentRegistry.getInstance();
 
 /**
  * GET /health - Health check endpoint
+ * Returns basic health information (no detailed stats)
+ * For detailed V8 heap diagnostics, use /diagnostics/memory endpoint
  */
 router.get('/', async (req, res) => {
   let status = 'healthy';

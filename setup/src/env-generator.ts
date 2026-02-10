@@ -945,12 +945,15 @@ ENABLE_SOCIAL=false
 		const envConfigs = {
 			dev: {
 				jwksUrl: 'https://local.gasket.dev-godaddy.com:8443/.well-known/jwks.json',
+				ssoHost: 'sso.dev-godaddy.com',
 			},
 			test: {
 				jwksUrl: 'https://airo-builder.test-godaddy.com/.well-known/jwks.json',
+				ssoHost: 'sso.test-godaddy.com',
 			},
 			prod: {
 				jwksUrl: 'https://airo-builder.godaddy.com/.well-known/jwks.json',
+				ssoHost: 'sso.godaddy.com',
 			},
 		};
 
@@ -971,6 +974,13 @@ JWKS_URL=${envConfig.jwksUrl}
 
 # Site ID for JWT authorization (typically set by deployment system in production)
 # SITE_ID=default-site
+
+# =============================================================================
+# SSO Configuration for Diagnostics Endpoint
+# =============================================================================
+
+# SSO host for JOMAX token validation (used by /diagnostics/memory endpoint)
+SSO_HOST=${envConfig.ssoHost}
 `;
 	}
 

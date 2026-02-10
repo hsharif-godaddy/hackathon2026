@@ -174,7 +174,7 @@ import compression from 'compression';
 import { createServer } from 'http';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter, debugRouter, filesRouter, publishRouter, downloadRouter, dbRouter, todoListRouter, securityScanRouter, vulnerabilityScanRouter, secretsScanRouter,oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, zipImportRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, publishRouter, downloadRouter, dbRouter, todoListRouter, securityScanRouter, vulnerabilityScanRouter, secretsScanRouter,oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, zipImportRouter } from './routes/index.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
 import { getDatabase } from '../database/index.js';
@@ -188,6 +188,7 @@ const port = process.env.PORT || 4000;
 const server = createServer(app);
 let wsServer: Awaited<ReturnType<typeof setupAILibWebSocketServer>>['wsServer'] | null = null;
 let isShuttingDown = false;
+let memoryLogInterval: NodeJS.Timeout | null = null;
 
 // APM middleware should be added BEFORE other middleware
 if (isApmEnabled) {
@@ -252,6 +253,7 @@ if (isApmEnabled) {
 
 // Public routes (no authentication required)
 app.use('/health', healthRouter);
+app.use('/diagnostics', diagnosticsRouter);
 app.use('/oauth', oauthRouter);
 
 // Root endpoint (public)
@@ -300,6 +302,48 @@ app.use('/', jwtAuthMiddleware.authenticate, socialRouter);
 // Error handling
 app.use(notFoundHandler);
 app.use(errorHandler);
+
+/**
+ * Start periodic memory logging
+ * Logs memory usage at a configurable interval (default: 5 minutes)
+ * Set MEMORY_LOG_INTERVAL_MS=0 to disable
+ */
+function startPeriodicMemoryLogging() {
+  const intervalMs = parseInt(process.env.MEMORY_LOG_INTERVAL_MS || '300000', 10);
+
+  // Guard against invalid values (NaN, Infinity, or negative/zero)
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+    logger.info('memory.logging.disabled', {
+      reason: !Number.isFinite(intervalMs)
+        ? 'Invalid MEMORY_LOG_INTERVAL_MS value'
+        : 'MEMORY_LOG_INTERVAL_MS set to 0 or negative',
+      configuredValue: process.env.MEMORY_LOG_INTERVAL_MS,
+    });
+    return;
+  }
+
+  logger.info('memory.logging.started', {
+    intervalMs,
+    intervalMinutes: intervalMs / 60000,
+  });
+
+  memoryLogInterval = setInterval(() => {
+    const memUsage = process.memoryUsage();
+    const uptimeSeconds = process.uptime();
+
+    logger.info('memory.periodic.snapshot', {
+      heapUsedMB: Math.round(memUsage.heapUsed / 1024 / 1024),
+      heapTotalMB: Math.round(memUsage.heapTotal / 1024 / 1024),
+      rssMB: Math.round(memUsage.rss / 1024 / 1024),
+      externalMB: Math.round(memUsage.external / 1024 / 1024),
+      arrayBuffersMB: Math.round(memUsage.arrayBuffers / 1024 / 1024),
+      uptimeMinutes: Math.round(uptimeSeconds / 60),
+    });
+  }, intervalMs);
+
+  // Prevent interval from keeping process alive during shutdown
+  memoryLogInterval.unref();
+}
 
 /**
  * Generate socket paths based on architecture (v3 vs v4)
@@ -429,6 +473,9 @@ async function initialize() {
     fileCleanupService.start();
     logger.info('server.cleanup.start.success', {});
 
+    // Start periodic memory logging
+    startPeriodicMemoryLogging();
+
     // Get WebSocket server info for health checks
     const wsInfo = getWebSocketServerInfo();
     logger.info('server.websocket.info', {
@@ -540,6 +587,14 @@ async function shutdown() {
 
   try {
     fileCleanupService.stop();
+
+    if (memoryLogInterval) {
+      clearInterval(memoryLogInterval);
+      memoryLogInterval = null;
+      logger.info('server.memory_logging.stopped', {
+        service: serviceName,
+      });
+    }
 
     if (wsServer) {
       try {

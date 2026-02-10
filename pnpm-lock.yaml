@@ -216,6 +216,9 @@ importers:
       express:
         specifier: ^4.22.1
         version: 4.22.1
+      gd-auth:
+        specifier: 1.4.1
+        version: 1.4.1
       glob:
         specifier: '>=10.5.0 <11 || >=11.1.0'
         version: 13.0.0

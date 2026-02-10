@@ -701,6 +701,132 @@ pnpm --filter @airo/agents typecheck
 pnpm --filter @airo/agents lint
 ```
 
+## Memory Debugging
+
+The agents service includes memory diagnostics instrumentation to help diagnose memory issues in production.
+
+### Health Endpoint Memory Metrics
+
+The `/health` endpoint provides basic health information (public, no authentication required).
+
+For detailed V8 heap diagnostics, use the `/diagnostics/memory` endpoint (requires authentication).
+
+**Basic health check (public, no auth):**
+
+```bash
+curl localhost:4000/health | jq '.memory'
+```
+
+**Detailed memory diagnostics (requires token):**
+
+```bash
+# With JOMAX token (from debug-console)
+JOMAX_TOKEN="<jomax-token>"
+curl localhost:4000/diagnostics/memory \
+  -H "Authorization: Bearer $JOMAX_TOKEN" \
+  | jq '.heapStats'
+```
+
+**Authentication:**
+
+- Basic health checks are public (`/health`)
+- Detailed diagnostics require authentication (`/diagnostics/memory`)
+- Only accepts JOMAX tokens (from debug-console)
+- Uses gd-auth for JOMAX validation (network calls to SSO)
+- Returns 401 if token missing, 403 if token invalid
+- **Requires SSO_HOST environment variable** - set in `.env.local.{dev|test|prod}` files
+
+**Response fields:**
+
+- `/health` - status, timestamp, uptime, memory (process.memoryUsage()), registry stats, versions
+- `/diagnostics/memory` - heapStats (V8 heap), heapSpaces (space breakdown), memory, uptime, timestamp
+
+**Configuration:**
+
+The SSO_HOST environment variable must be set to the appropriate SSO host for JOMAX token validation:
+
+- Development: `SSO_HOST=sso.dev-godaddy.com`
+- Test: `SSO_HOST=sso.test-godaddy.com`
+- Production: `SSO_HOST=sso.godaddy.com`
+
+The setup script automatically configures this in environment-specific `.env.local.{env}` files.
+
+### Periodic Memory Logging
+
+Memory snapshots are logged automatically every 5 minutes (configurable):
+
+```bash
+# Default: 5 minutes (300000ms)
+MEMORY_LOG_INTERVAL_MS=300000
+
+# Disable periodic logging (0, negative, or invalid values)
+MEMORY_LOG_INTERVAL_MS=0
+
+# More frequent: 1 minute (60000ms)
+MEMORY_LOG_INTERVAL_MS=60000
+```
+
+**Configuration:**
+
+- Value must be a positive integer in milliseconds
+- Invalid values (NaN, Infinity, 0, negative) disable logging with a warning
+- Default: 300000ms (5 minutes)
+
+**Log events:** Search logs for `memory.periodic.snapshot` events containing:
+
+- `heapUsedMB` - Heap memory used (MB)
+- `heapTotalMB` - Total heap allocated (MB)
+- `rssMB` - Resident Set Size / total process memory (MB)
+- `externalMB` - External memory (e.g., ArrayBuffers) (MB)
+- `arrayBuffersMB` - ArrayBuffer memory (MB)
+- `uptimeMinutes` - Process uptime (minutes)
+
+### Development Memory Limits
+
+Development scripts include `--max-old-space-size=384` to match production constraints (512MB max - overhead). This helps catch memory issues during development.
+
+```bash
+# Memory limit is automatically applied in dev scripts
+pnpm --filter @airo/agents dev
+
+# Override memory limit for debugging
+NODE_OPTIONS='--max-old-space-size=512' pnpm --filter @airo/agents dev
+```
+
+### V8 Debugging Flags
+
+For debugging memory issues, use these Node.js flags temporarily:
+
+```bash
+# GC tracing (verbose, use for short debugging sessions)
+NODE_OPTIONS='--trace-gc --max-old-space-size=384' pnpm --filter @airo/agents dev
+
+# Automatic heap snapshots before OOM (captures up to 3 snapshots)
+NODE_OPTIONS='--heapsnapshot-near-heap-limit=3 --max-old-space-size=384' pnpm --filter @airo/agents dev
+
+# Detailed GC statistics
+NODE_OPTIONS='--trace-gc --trace-gc-verbose --max-old-space-size=384' pnpm --filter @airo/agents dev
+
+# Export heap snapshots for analysis
+NODE_OPTIONS='--expose-gc --max-old-space-size=384' pnpm --filter @airo/agents dev
+```
+
+**Heap snapshot analysis:**
+
+1. Heap snapshots are saved to `.heapsnapshot` files in the working directory
+2. Open in Chrome DevTools: DevTools → Memory → Load snapshot
+3. Analyze object retention and memory leaks
+
+### Memory Overhead Analysis
+
+All memory diagnostics have minimal overhead:
+
+| Feature                          | Memory Cost                       | CPU Cost               |
+| -------------------------------- | --------------------------------- | ---------------------- |
+| Health endpoint V8 stats         | ~0 bytes (reads existing V8 data) | Negligible per request |
+| Periodic logging (5-min default) | ~0 bytes (no retention)           | ~1ms per interval      |
+| Dev memory limits                | N/A                               | N/A                    |
+
 ## Logging Patterns
 
 **Location:** `src/logging/`
