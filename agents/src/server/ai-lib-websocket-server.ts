@@ -152,6 +152,34 @@ let ioInstance: any = null
 const clientActionServices = new Map<string, ClientActionService>()
 
 /**
+ * Memory tracking data for request-scoped memory monitoring
+ * Stored separately from context.metadata to avoid polluting the metadata contract
+ */
+interface MemoryTrackingData {
+  heapUsed: number;
+  heapTotal: number;
+  rss: number;
+  timestamp: number;
+}
+
+/**
+ * Map to track memory usage per socket request
+ * Key: socketId, Value: memory snapshot at request start
+ * Cleaned up on request completion or socket disconnection
+ */
+const requestMemoryTracking = new Map<string, MemoryTrackingData>()
+
+/**
+ * Threshold in bytes for high memory usage warnings
+ * Configurable via MEMORY_HIGH_USAGE_THRESHOLD_MB env var (default: 50MB)
+ * This value was chosen based on typical request memory footprint analysis -
+ * requests exceeding 50MB delta often indicate inefficient operations or potential leaks
+ */
+const MEMORY_HIGH_USAGE_THRESHOLD_BYTES = (
+  parseInt(process.env.MEMORY_HIGH_USAGE_THRESHOLD_MB || '50', 10) * 1024 * 1024
+)
+
+/**
  * Get or create ClientActionService for a socket
  */
 function getOrCreateClientActionService(
@@ -1098,6 +1126,24 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const typedContext = context as AgentsAppContext;
         const siteId = typedContext?.metadata?.appId;
 
+        // Track memory at request start for leak detection
+        // Store in dedicated Map to avoid polluting context.metadata
+        const startMemory = process.memoryUsage();
+        requestMemoryTracking.set(socketId, {
+          heapUsed: startMemory.heapUsed,
+          heapTotal: startMemory.heapTotal,
+          rss: startMemory.rss,
+          timestamp: Date.now(),
+        });
+
+        logger.debug('memory.request.start', {
+          appId: siteId,
+          socketId,
+          heapUsedBytes: startMemory.heapUsed,
+          heapTotalBytes: startMemory.heapTotal,
+          rssBytes: startMemory.rss,
+        });
+
         if (!siteId) {
           throw new Error('siteId is required in context.metadata.appId but was not provided');
         }
@@ -1280,6 +1326,55 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const duration = result.duration || 'unknown';
         const steps = result.steps || 0;
         const agentId = result.agentId || 'unknown';
+        const typedContext = context as AgentsAppContext;
+        const appId = typedContext?.metadata?.appId;
+
+        // Track memory at request end and calculate delta
+        const endMemory = process.memoryUsage();
+        const startTracking = requestMemoryTracking.get(socketId);
+
+        if (startTracking) {
+          const heapDelta = endMemory.heapUsed - startTracking.heapUsed;
+          const rssDelta = endMemory.rss - startTracking.rss;
+          const requestDuration = Date.now() - startTracking.timestamp;
+
+          // Log memory metrics for every request (raw bytes for log aggregation)
+          logger.info('memory.request.complete', {
+            appId,
+            socketId,
+            agentId,
+            heapUsedBytes: endMemory.heapUsed,
+            heapTotalBytes: endMemory.heapTotal,
+            rssBytes: endMemory.rss,
+            heapDeltaBytes: heapDelta,
+            rssDeltaBytes: rssDelta,
+            requestDurationMs: requestDuration,
+            steps,
+          });
+
+          // Warn on high memory usage (threshold configurable via MEMORY_HIGH_USAGE_THRESHOLD_MB)
+          if (heapDelta > MEMORY_HIGH_USAGE_THRESHOLD_BYTES) {
+            logger.warn('memory.request.high_usage', {
+              appId,
+              socketId,
+              agentId,
+              heapDeltaBytes: heapDelta,
+              heapUsedBytes: endMemory.heapUsed,
+              thresholdBytes: MEMORY_HIGH_USAGE_THRESHOLD_BYTES,
+              steps,
+              message: 'High memory usage detected for this request',
+            });
+          }
+
+          // Clean up tracking data
+          requestMemoryTracking.delete(socketId);
+        } else {
+          logger.debug('memory.request.tracking_missing', {
+            appId,
+            socketId,
+            reason: 'No start tracking data found - request may have started before tracking was enabled',
+          });
+        }
 
         logger.info('websocket.message.completed', {
           message: 'WebSocket message completed',
@@ -1290,8 +1385,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         });
 
         // Log site context if available (for audit purposes)
-        const typedContext = context as AgentsAppContext;
-        const siteId = typedContext?.metadata?.appId;
+        const siteId = appId;
 
         if (!siteId) {
           logger.warn('websocket.message.completion.no_siteid', {

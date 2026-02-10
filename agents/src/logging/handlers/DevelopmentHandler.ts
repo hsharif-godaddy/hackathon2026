@@ -65,6 +65,11 @@ export class DevelopmentHandler implements LogHandler {
       return this.formatToolEvent(event);
     }
 
+    // Special compact formatting for memory events
+    if (event.event.startsWith('memory.request.')) {
+      return this.formatMemoryEvent(event);
+    }
+
     const parts: string[] = [];
 
     // Timestamp
@@ -989,6 +994,105 @@ export class DevelopmentHandler implements LogHandler {
       parts.push(this.red(`- ${event.error.message}`));
     }
     
+    return parts.join(' ');
+  }
+
+  private formatMemoryEvent(event: LogEvent): string {
+    const parts: string[] = [];
+
+    // Timestamp
+    if (this.showTimestamps) {
+      const timestamp = new Date(event.timestamp).toLocaleTimeString();
+      parts.push(this.gray(`[${timestamp}]`));
+    }
+
+    const data = event.data || {};
+    const isHighUsage = event.event === 'memory.request.high_usage';
+    const memIcon = isHighUsage ? this.red('📊') : this.cyan('📊');
+    parts.push(memIcon);
+
+    // Convert bytes to MiB
+    const toMiB = (bytes: number | undefined): string => {
+      if (bytes === undefined) return '?';
+      return (bytes / 1024 / 1024).toFixed(1);
+    };
+
+    if (event.event === 'memory.request.complete') {
+      parts.push(this.blue('MEM'));
+
+      // App context
+      if (data.appId) {
+        parts.push(`app:${this.cyan(String(data.appId).substring(0, 8))}`);
+      }
+
+      // Memory values in MiB
+      const heapUsed = toMiB(data.heapUsedBytes);
+      const heapDelta = toMiB(data.heapDeltaBytes);
+      const rss = toMiB(data.rssBytes);
+
+      // Format: heap:123.4MiB (Δ+12.3MiB) rss:200.5MiB
+      parts.push(`heap:${this.yellow(heapUsed)}MiB`);
+
+      // Color delta based on sign and magnitude
+      const deltaNum = data.heapDeltaBytes || 0;
+      const deltaSign = deltaNum >= 0 ? '+' : '';
+      let deltaStr = `Δ${deltaSign}${heapDelta}MiB`;
+      if (deltaNum > 50 * 1024 * 1024) {
+        deltaStr = this.red(deltaStr);
+      } else if (deltaNum > 10 * 1024 * 1024) {
+        deltaStr = this.yellow(deltaStr);
+      } else if (deltaNum < 0) {
+        deltaStr = this.green(deltaStr);
+      } else {
+        deltaStr = this.gray(deltaStr);
+      }
+      parts.push(`(${deltaStr})`);
+
+      parts.push(`rss:${this.gray(rss)}MiB`);
+
+      // Duration and steps
+      if (data.requestDurationMs) {
+        parts.push(this.gray(`${data.requestDurationMs}ms`));
+      }
+      if (data.steps) {
+        parts.push(this.gray(`${data.steps}steps`));
+      }
+
+    } else if (event.event === 'memory.request.high_usage') {
+      parts.push(this.red('MEM-HIGH'));
+
+      if (data.appId) {
+        parts.push(`app:${this.cyan(String(data.appId).substring(0, 8))}`);
+      }
+
+      const heapDelta = toMiB(data.heapDeltaBytes);
+      const heapUsed = toMiB(data.heapUsedBytes);
+      const threshold = toMiB(data.thresholdBytes);
+
+      parts.push(this.red(`Δ${heapDelta}MiB`));
+      parts.push(`(threshold:${threshold}MiB)`);
+      parts.push(`heap:${this.yellow(heapUsed)}MiB`);
+
+      if (data.steps) {
+        parts.push(this.gray(`${data.steps}steps`));
+      }
+
+    } else if (event.event === 'memory.request.start') {
+      // Compact format for start events (debug level)
+      parts.push(this.gray('MEM-START'));
+      if (data.appId) {
+        parts.push(`app:${this.cyan(String(data.appId).substring(0, 8))}`);
+      }
+      parts.push(`heap:${this.gray(toMiB(data.heapUsedBytes))}MiB`);
+
+    } else if (event.event === 'memory.request.tracking_missing') {
+      parts.push(this.yellow('MEM-SKIP'));
+      if (data.appId) {
+        parts.push(`app:${this.cyan(String(data.appId).substring(0, 8))}`);
+      }
+      parts.push(this.gray('(no start data)'));
+    }
+
     return parts.join(' ');
   }
 

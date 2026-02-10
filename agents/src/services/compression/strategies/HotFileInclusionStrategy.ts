@@ -10,6 +10,13 @@ const DEFAULT_TOKEN_COUNTING_MODEL = 'claude-sonnet-4-5';
 import { createSafePathBuilder } from '../../../utils/safe-path.js';
 import { basename } from 'path';
 
+/**
+ * Maximum tokens for hot files context injection
+ * Configurable via HOT_FILES_MAX_TOKENS env var (default: 15000)
+ * Reduced from 30k to lower memory pressure during agent requests
+ */
+const DEFAULT_HOT_FILES_MAX_TOKENS = parseInt(process.env.HOT_FILES_MAX_TOKENS || '15000', 10);
+
 interface HotFileMetrics {
   path: string;
   firstReadIndex: number;
@@ -43,7 +50,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
   constructor(appPath?: string, config?: Partial<HotFileConfig>) {
     this.appPath = appPath;
     this.config = {
-      maxTokens: 30000,
+      maxTokens: DEFAULT_HOT_FILES_MAX_TOKENS,
       maxFileSize: 1024 * 1024,
       recencyWindowMs: 10 * 60 * 1000,
       minReadCount: 1,
