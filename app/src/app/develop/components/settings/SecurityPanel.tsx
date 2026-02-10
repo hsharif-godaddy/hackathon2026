@@ -1,8 +1,11 @@
 import { useState } from 'react';
+import Alert from '@ux/alert';
 import Box from "@ux/box";
 import Button from "@ux/button";
+import Card from "@ux/card";
 import WandIcon from "@ux/icon/wand";
 import Spinner from "@ux/spinner";
+import TextLockup from "@ux/text-lockup";
 
 import { useAppIdFromParams } from '@/app/develop/components/utils';
 import BigCard from "@/components/layout/BigCard";
@@ -26,6 +29,7 @@ export default function SecurityPanel() {
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<{ security?: TestPilotRunResult } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorTitle, setErrorTitle] = useState<string | null>(null);
 
   /**
    * Retry a timed out task by polling its results
@@ -44,7 +48,7 @@ export default function SecurityPanel() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Attempt failed');
+        throw new Error(errorData.error || t('builder_settings_security_error_attempt_failed'));
       }
 
       const data = await response.json();
@@ -65,8 +69,9 @@ export default function SecurityPanel() {
           retryTimedOutTask(taskId, currentRetryCount + 1);
         }, 2000);
       } else {
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred during retry';
-        setError(`Attempt failed: ${errorMessage}`);
+        const errorMessage = err instanceof Error ? err.message : t('builder_settings_security_error_unknown');
+        setError(errorMessage);
+        setErrorTitle(t('builder_settings_security_error_attempt_failed_title'));
         setIsLoading(false);
       }
     }
@@ -80,12 +85,13 @@ export default function SecurityPanel() {
    */
   const handleRunAnalysis = async () => {
     if (!appId || !serverState?.url) {
-      setError('Application not ready for analysis');
+      setError(t('builder_settings_security_error_not_ready'));
       return;
     }
 
     setIsLoading(true);
     setError(null);
+    setErrorTitle(null);
 
     try {
       const response = await fetch('/api/testpilot', {
@@ -102,7 +108,7 @@ export default function SecurityPanel() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Security analysis failed');
+        throw new Error(errorData.error || t('builder_settings_security_error_analysis_failed'));
       }
 
       const data = await response.json();
@@ -115,7 +121,7 @@ export default function SecurityPanel() {
         setIsLoading(false);
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      const errorMessage = err instanceof Error ? err.message : t('builder_settings_security_error_unknown');
       setError(errorMessage);
       setIsLoading(false);
     }
@@ -138,36 +144,42 @@ export default function SecurityPanel() {
           />
         }
         hideStatus={true}>
-        <Box>
-          {error && (
-            <div className="mb-2">
-              <p className="font-medium">{t('builder_status_error')}:</p>
-              <p>{error}</p>
-            </div>
-          )}
 
-          {(isLoading) && (
-            <div className="flex flex-col items-center justify-center py-4">
-              <Spinner size="lg" />
-              <p className="mt-2">
-                {t('builder_settings_security_loading_running')}
-              </p>
-              <p className="mt-1 text-sm text-gray-500">
+        {!isReady && !error && !isLoading && (
+          <Card>
+            <Box gap="md" inlineAlignChildren="center">
+              <Spinner size="md" />
+              <p>{t('builder_settings_security_waiting')}</p>
+            </Box>
+          </Card>
+        )}
+
+        {isLoading && (
+          <Card>
+            <Box gap="md" inlineAlignChildren="center">
+              <Spinner size="md" />
+              <TextLockup
+                title={t('builder_settings_security_loading_running')}
+                centered
+              >
                 {t('builder_settings_security_loading_few_moments')}
-              </p>
-            </div>
-          )}
+              </TextLockup>
+            </Box>
+          </Card>
+        )}
 
-          {!isReady && !error && !isLoading && (
-            <p>{t('builder_settings_security_waiting')}</p>
-          )}
+        {results && !isLoading && (
+          <SecurityResults results={results} />
+        )}
 
-          {results && !isLoading ? (
-            <SecurityResults results={results} />
-          ) : !error && !isLoading && isReady && (
-            <p>{t('builder_settings_security_no_results')}</p>
-          )}
-        </Box>
+        {error && (
+          <Alert
+            emphasis="critical"
+            title={errorTitle}
+          >
+            {error}
+          </Alert>
+        )}
       </BigCard>
     </Box>
   );
