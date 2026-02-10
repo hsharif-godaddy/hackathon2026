@@ -38,6 +38,28 @@ describe('PageSection', () => {
     expect(section).not.toHaveClass('overflow-visible');
   });
 
+  it('should not apply id by default', () => {
+    const { container } = renderWithProviders(
+      <PageSection>
+        <div>Content</div>
+      </PageSection>
+    );
+    
+    const section = container.firstChild;
+    expect(section).not.toHaveAttribute('id');
+  });
+
+  it('should apply id when it is provided', () => {
+    const { container } = renderWithProviders(
+      <PageSection id="test-section">
+        <div>Content</div>
+      </PageSection>
+    );
+    
+    const section = container.firstChild;
+    expect(section).toHaveAttribute('id', 'test-section');
+  });
+
   it('should apply overflow visible when allowOverflow is true', () => {
     const { container } = renderWithProviders(
       <PageSection allowOverflow={true}>

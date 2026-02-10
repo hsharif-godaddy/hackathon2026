@@ -237,9 +237,19 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     typeText
   }), [typeText])
 
-  const scrollToStartSection = useCallback(() => {
+  const scrollToNextSection = useCallback(() => {
+    const nextSection = document.getElementById('infra-section');
+
+    // Calculate target position with fallback
+    let targetPosition: number;
+    if (nextSection) {
+      const rect = nextSection.getBoundingClientRect();
+      targetPosition = window.pageYOffset + rect.top;
+    } else {
+      targetPosition = window.pageYOffset + window.innerHeight;
+    };
+
     const startPosition = window.pageYOffset;
-    const targetPosition = startPosition + window.innerHeight;
     const duration = 1000;
     const startTime = Date.now();
 
@@ -426,7 +436,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
           />
 
           <button
-            onClick={scrollToStartSection}
+            onClick={scrollToNextSection}
             className="mx-auto mt-2 flex items-center gap-1 text-sm opacity-60 hover:opacity-100 hover:cursor-pointer transition-opacity group"
             data-eid={generateClickEID('homepage.hero.see_how_it_works')}
           >

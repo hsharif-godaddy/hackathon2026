@@ -13,7 +13,7 @@ export default function InfraSection() {
   const isInView = useInView(ref, { once: true, amount: 0.5 })
 
   return(
-    <PageSection allowOverflow={true}>
+    <PageSection id="infra-section" allowOverflow={true}>
       <div ref={ref} className="max-w-screen-lg mx-auto grid grid-cols-1 lg:grid-cols-2 gap-4 items-center relative overflow-visible">
         <div className="relative lg:min-h-[600px] overflow-visible">
           <motion.img
