@@ -14,7 +14,7 @@ import { test, expect } from '@playwright/test';
 
 import { deleteAllSitesViaAPI } from '../helpers/api';
 import { handleSsoLogin } from '../helpers/auth';
-import { LONG_TIMEOUT, DEFAULT_TIMEOUT } from '../helpers/constants';
+import { LONG_TIMEOUT, DEFAULT_TIMEOUT, getSpecPrefix } from '../helpers/constants';
 import { waitForDevelopPage, waitForChatInput } from '../helpers/ui';
 
 test.describe('Publish Flow', () => {
@@ -36,7 +36,7 @@ test.describe('Publish Flow', () => {
 
     const promptInput = page.getByTestId('homepage-prompt-input');
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
-    await promptInput.fill('[e2e:publish] Single page hello world app - do not ask follow up questions and publish this app');
+    await promptInput.fill(`${getSpecPrefix('publish')} Single page hello world app - do not ask follow up questions and publish this app`);
 
     await page.locator('[data-eid*="homepage.prompt.submit"]').click();
 

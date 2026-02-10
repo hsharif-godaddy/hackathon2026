@@ -15,7 +15,7 @@ import { test, expect } from '@playwright/test';
 
 import { deleteAllSitesViaAPI } from '../helpers/api';
 import { handleSsoLogin, openUserMenu } from '../helpers/auth';
-import { LONG_TIMEOUT, CHAT_INPUT_TIMEOUT, DEFAULT_TIMEOUT, PREVIEW_TIMEOUT } from '../helpers/constants';
+import { LONG_TIMEOUT, CHAT_INPUT_TIMEOUT, DEFAULT_TIMEOUT, PREVIEW_TIMEOUT, getSpecPrefix } from '../helpers/constants';
 import { waitForDevelopPage } from '../helpers/ui';
 
 test.describe('Apps Page & Navigation', () => {
@@ -37,7 +37,7 @@ test.describe('Apps Page & Navigation', () => {
 
     const promptInput = page.getByTestId('homepage-prompt-input');
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
-    await promptInput.fill('[e2e:apps-page] Single page app that displays hello world');
+    await promptInput.fill(`${getSpecPrefix('apps-page')} Single page app that displays hello world`);
 
     await page.locator('[data-eid*="homepage.prompt.submit"]').click();
 

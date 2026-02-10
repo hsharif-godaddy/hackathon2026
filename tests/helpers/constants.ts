@@ -74,10 +74,33 @@ export function getCredentials(): { username: string; password: string } {
   return { username, password };
 }
 
+const SALT_LENGTH = 4;
+
+/**
+ * Generate a random alphanumeric salt.
+ * Prevents prompt collisions across retries and parallel runs.
+ */
+function salt(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < SALT_LENGTH; i++) {
+    result += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return result;
+}
+
+// Memoize salt per spec name so repeated calls within the same process
+// return a stable prefix (important for cleanup/grouping). Retries run
+// in a new worker process, so they naturally get a fresh salt.
+const saltCache = new Map<string, string>();
+
 /**
  * Get spec prefix for app naming (for parallel-safe execution)
  */
 export function getSpecPrefix(specName: string): string {
   const name = specName.replace('.spec.ts', '').replace('.spec.js', '');
-  return `[e2e:${name}]`;
+  if (!saltCache.has(name)) {
+    saltCache.set(name, salt());
+  }
+  return `[e2e:${name}:${saltCache.get(name)}]`;
 }
