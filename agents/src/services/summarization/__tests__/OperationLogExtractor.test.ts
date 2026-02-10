@@ -153,4 +153,95 @@ describe('OperationLogExtractor', function operationLogExtractorTests() {
       expect(terminalOps.length).toBe(125);
     });
   });
+
+  describe('serialize/deserialize', function serializeDeserializeTests() {
+    it('should parse legacy formatted logs', function legacyRoundTrip() {
+      const formatted = [
+        'Files modified: foo.ts, bar.ts',
+        'Files read: readme.md',
+        'Commands run: npm: npm install; git: git status',
+        'Searches: Searched for "needle"; Searched for "haystack"',
+        'Git operations: git commit; git push',
+      ].join('\n');
+
+      const parsed = OperationLogExtractor.deserialize(formatted);
+      const reformatted = OperationLogExtractor.format(parsed);
+
+      expect(reformatted).toBe(formatted);
+    });
+
+    it('should deserialize versioned JSON envelope format', function jsonEnvelopeFormat() {
+      const entries = [
+        { tool: 'read_file', files: ['readme.md'], description: 'Read readme.md' },
+      ];
+      const raw = JSON.stringify({ version: 1, entries });
+
+      const parsed = OperationLogExtractor.deserialize(raw);
+
+      expect(parsed).toEqual(entries);
+    });
+
+    it('should fall back on malformed JSON', function malformedJsonFallback() {
+      const parsed = OperationLogExtractor.deserialize('{"version":1,"entries":[');
+
+      expect(parsed).toEqual([]);
+    });
+
+    it('should handle whitespace and BOM before JSON', function bomWhitespace() {
+      const entries = [
+        { tool: 'git', description: 'git status' },
+      ];
+      const raw = `\uFEFF  ${JSON.stringify({ version: 1, entries })}`;
+
+      const parsed = OperationLogExtractor.deserialize(raw);
+
+      expect(parsed).toEqual(entries);
+    });
+
+    it('should round-trip serialized entries', function jsonRoundTrip() {
+      const entries = [
+        { tool: 'file_edit', files: ['foo.ts'], mode: 'edit', description: 'edit: foo.ts' },
+        { tool: 'grep', description: 'Searched for "needle"' },
+      ];
+
+      const serialized = OperationLogExtractor.serialize(entries);
+      const parsed = OperationLogExtractor.deserialize(serialized);
+
+      expect(parsed).toEqual(entries);
+    });
+  });
+
+  describe('mergeAndPrune', function mergeAndPruneTests() {
+    it('should deduplicate by tool + description keeping most recent', function dedupe() {
+      const existing = [
+        { tool: 'git', description: 'git commit' },
+        { tool: 'terminal', description: 'npm: npm install' },
+      ];
+      const newer = [
+        { tool: 'git', description: 'git commit' },
+        { tool: 'git', description: 'git push' },
+      ];
+
+      const merged = OperationLogExtractor.mergeAndPrune(existing, newer, 500);
+
+      expect(merged.length).toBe(3);
+      expect(merged[merged.length - 2]?.description).toBe('git commit');
+      expect(merged[merged.length - 1]?.description).toBe('git push');
+    });
+
+    it('should prune to max size', function pruneToMax() {
+      const existing = [];
+      const newer = Array.from({ length: 600 }, (_, i) => ({
+        tool: 'file_edit',
+        files: [`file-${i}.ts`],
+        mode: 'edit',
+        description: `edit: file-${i}.ts`,
+      }));
+
+      const merged = OperationLogExtractor.mergeAndPrune(existing, newer, 500);
+
+      expect(merged.length).toBe(500);
+      expect(merged.every(entry => entry.tool === 'file_edit')).toBe(true);
+    });
+  });
 });

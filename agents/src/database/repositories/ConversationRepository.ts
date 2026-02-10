@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { nanoid } from 'nanoid';
 import { getDatabase } from '../connection.js';
 import type { Conversation, ConversationMessage, ToolCall, MessageSegment } from '../schema.js';
+import type { DatabaseMessage } from '../../types/conversation-messages.js';
 import { logger } from '../../logging/index.js';
 
 /**
@@ -517,12 +518,22 @@ export class ConversationRepository {
    */
   private normalizeSegments(segments: any[]): any[] {
     return segments.map(segment => {
-      if (segment.type === 'tool_call' && segment.toolCall && !segment.tool_call) {
-        return {
-          ...segment,
-          tool_call: segment.toolCall,
-          toolCall: segment.toolCall
-        };
+      if (segment.type === 'tool_call') {
+        const toolCall = segment.toolCall || segment.tool_call;
+        if (toolCall) {
+          const normalizedToolCall = {
+            ...toolCall,
+            tool_name: toolCall.name || toolCall.tool_name,
+            tool_args: toolCall.input || toolCall.tool_args,
+            tool_result: toolCall.result || toolCall.output || toolCall.tool_result
+          };
+
+          return {
+            ...segment,
+            tool_call: normalizedToolCall,
+            toolCall: normalizedToolCall
+          };
+        }
       }
       return segment;
     });
@@ -636,6 +647,96 @@ export class ConversationRepository {
         metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
         createdAt: new Date(row.created_at)
       };
+    });
+  }
+
+  /**
+   * Get messages for an app that come after a specific message ID
+   * Used for incremental summarization to load only new messages
+   *
+   * @param appId - The app ID to filter conversations
+   * @param afterMessageId - Load messages after this message ID (by created_at and id)
+   * @returns Promise resolving to array of messages
+   */
+  async getMessagesAfterMessageId(appId: string, afterMessageId: string): Promise<DatabaseMessage[]> {
+    // First get the timestamp and rowid of the reference message
+    const refStmt = this.db.prepare(`
+      SELECT created_at, rowid FROM conversation_messages WHERE id = ?
+    `);
+    const refRow = refStmt.get(afterMessageId) as { created_at: string; rowid: number } | undefined;
+
+    if (!refRow) {
+      // Reference message not found; caller must check getMessageById to distinguish
+      // between "no new messages" and "reference missing"
+      return [];
+    }
+
+    // Get all conversations for this app
+    const conversationsStmt = this.db.prepare(`
+      SELECT id FROM conversations WHERE app_id = ?
+    `);
+    const conversations = conversationsStmt.all(appId) as Array<{ id: string }>;
+
+    if (conversations.length === 0) {
+      return [];
+    }
+
+    // Get all messages after the reference using timestamp + rowid for tie-breaking
+    // rowid is monotonically increasing and guarantees correct ordering
+    // This handles messages created in the same millisecond (created_at has ms precision)
+    const conversationIds = conversations.map(c => c.id);
+    const placeholders = conversationIds.map(() => '?').join(',');
+
+    const stmt = this.db.prepare(`
+      SELECT * FROM conversation_messages
+      WHERE conversation_id IN (${placeholders})
+        AND (
+          created_at > ?
+          OR (created_at = ? AND rowid > ?)
+        )
+      ORDER BY created_at ASC, rowid ASC
+    `);
+
+    const rows = stmt.all(...conversationIds, refRow.created_at, refRow.created_at, refRow.rowid) as any[];
+
+    return rows.map(row => {
+      const message: any = {
+        id: row.id,
+        conversationId: row.conversation_id,
+        sender: row.sender,
+        content: row.content,
+        createdAt: new Date(row.created_at)
+      };
+
+      if (row.segments) {
+        const rawSegments = JSON.parse(row.segments);
+        message.segments = rawSegments.map((seg: any) => {
+          const normalized: any = {
+            id: seg.id,
+            type: seg.type,
+            timestamp: new Date(seg.timestamp)
+          };
+
+          if (seg.type === 'content') {
+            normalized.content = seg.content;
+          } else if (seg.type === 'tool_call') {
+            const toolCall = seg.toolCall || seg.tool_call;
+            if (toolCall) {
+              normalized.tool_call = {
+                id: toolCall.id,
+                tool_name: toolCall.name || toolCall.tool_name,
+                tool_args: toolCall.input || toolCall.tool_args,
+                tool_result: toolCall.result || toolCall.output || toolCall.tool_result,
+                error: toolCall.error
+              };
+            }
+          }
+
+          return normalized;
+        });
+      }
+
+      return message;
     });
   }
 

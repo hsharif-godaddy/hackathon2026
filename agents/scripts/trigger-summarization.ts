@@ -31,9 +31,8 @@ async function main() {
 
   // Initialize background summarization system with aggressive settings
   const backgroundSummarizer = await initializeBackgroundSummarization({
-    tokenThreshold: 10000, // Lower threshold for more frequent summarization
+    maxPromptTokens: 10000, // Lower threshold for more frequent summarization
     debounceMs: 100, // Short debounce for manual trigger
-    modelName: 'claude-3-5-sonnet',
     keepRecentTurns: 3, // Keep last 3 user/assistant turns unsummarized
     strategy: 'detailed-llm', // Use detailed strategy for testing
   });
@@ -59,4 +58,3 @@ main().catch((error) => {
   console.error(`\nError: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 });
-

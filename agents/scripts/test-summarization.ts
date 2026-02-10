@@ -2,7 +2,7 @@
 /**
  * Test script for conversation summarization
  * 
- * Usage: pnpm test:summarization <appId> [conversationId] [strategy] [tokenThreshold]
+ * Usage: pnpm test:summarization <appId> [conversationId] [strategy] [maxPromptTokens]
  * 
  * This script runs summarization in dry-run mode (doesn't save to database)
  * and outputs the generated summary.
@@ -11,7 +11,7 @@
  *   appId          - Required. App ID to summarize conversations for
  *   conversationId - Optional. Specific conversation ID to summarize (if omitted, summarizes all conversations for the app)
  *   strategy       - Optional. Summarization strategy: 'llm' or 'simple' (default: 'llm')
- *   tokenThreshold - Optional. Token threshold to trigger summarization (default: 50000)
+ *   maxPromptTokens - Optional. Max prompt tokens to trigger summarization (default: 50000)
  */
 
 import { ConversationRepository } from '../src/database/repositories/ConversationRepository.js';
@@ -28,17 +28,17 @@ import type { LLMMessage, DatabaseMessage } from '../src/services/ConversationHi
 const appId = process.argv[2];
 const conversationId = process.argv[3];
 const strategyName = process.argv[4] || 'llm';
-const tokenThreshold = process.argv[5] ? parseInt(process.argv[5], 10) : 10000;
+const maxPromptTokens = process.argv[5] ? parseInt(process.argv[5], 10) : 10000;
 
 if (!appId) {
-  console.error('Usage: pnpm test:summarization <appId> [conversationId] [strategy] [tokenThreshold]');
+  console.error('Usage: pnpm test:summarization <appId> [conversationId] [strategy] [maxPromptTokens]');
   console.error('');
   console.error('Arguments:');
   console.error('  appId          - Required. App ID to summarize conversations for');
   console.error('  conversationId - Optional. Specific conversation ID to summarize (if omitted, summarizes all conversations)');
   console.error('  strategy       - Optional. Summarization strategy (default: "llm")');
   console.error('                   Options: "llm" (baseline), "detailed-llm" (structured), "simple" (test)');
-  console.error('  tokenThreshold - Optional. Token threshold to trigger summarization (default: 10000)');
+  console.error('  maxPromptTokens - Optional. Max prompt tokens to trigger summarization (default: 10000)');
   console.error('');
   console.error('Examples:');
   console.error('  pnpm test:summarization my-app-id');
@@ -139,7 +139,7 @@ async function main() {
     console.log(`Conversation ID: All conversations for app`);
   }
   console.log(`Strategy: ${strategyName}`);
-  console.log(`Token Threshold: ${tokenThreshold}`);
+  console.log(`Max Prompt Tokens: ${maxPromptTokens}`);
   console.log('');
 
   // Initialize repositories
@@ -218,14 +218,14 @@ async function main() {
   console.log(`📊 Token Statistics:`);
   console.log(`   Total messages: ${llmMessages.length}`);
   console.log(`   Total tokens: ${totalTokens.toLocaleString()}`);
-  console.log(`   Token threshold: ${tokenThreshold.toLocaleString()}`);
-  console.log(`   Exceeds threshold: ${totalTokens > tokenThreshold ? '✓ Yes' : '✗ No'}`);
+  console.log(`   Max prompt tokens: ${maxPromptTokens.toLocaleString()}`);
+  console.log(`   Exceeds max: ${totalTokens > maxPromptTokens ? '✓ Yes' : '✗ No'}`);
   console.log('');
 
   // Check if summarization is needed
-  if (totalTokens <= tokenThreshold) {
-    console.log('ℹ️  Token count is below threshold. Summarization would not be triggered.');
-    console.log('   To test summarization anyway, use a lower threshold.');
+  if (totalTokens <= maxPromptTokens) {
+  console.log('ℹ️  Token count is below max prompt tokens. Summarization would not be triggered.');
+  console.log('   To test summarization anyway, use a lower max prompt value.');
     console.log('');
   }
 
@@ -305,7 +305,7 @@ async function main() {
       const result = await countTokens(serialized, modelName);
       accumulatedTokens += result.tokenCount;
 
-      if (accumulatedTokens > tokenThreshold && i > 0) {
+      if (accumulatedTokens > maxPromptTokens && i > 0) {
         cutoffIndex = i;
         break;
       }
@@ -386,4 +386,3 @@ main().catch((error) => {
   console.error('Fatal error:', error);
   process.exit(1);
 });
-

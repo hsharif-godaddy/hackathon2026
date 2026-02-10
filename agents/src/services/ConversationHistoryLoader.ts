@@ -1,5 +1,6 @@
 import type { ModelMessage, ToolModelMessage, UserModelMessage, AssistantModelMessage, SystemModelMessage } from 'ai';
 import type { ToolCall } from '../database/schema.js';
+import type { DatabaseMessage } from '../types/conversation-messages.js';
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js';
 import { SummaryRepository } from '../database/repositories/SummaryRepository.js';
 import { logger } from '../logging/index.js';
@@ -100,31 +101,8 @@ export function getMessageContent(message: LLMMessage): string {
   return '';
 }
 
-/**
- * Raw database message with conversation context
- */
-export interface DatabaseMessage {
-  id: string;
-  conversationId: string;
-  sender: 'user' | 'agent';
-  content: string;
-  segments?: Array<{
-    id: string;
-    type: 'content' | 'tool_call';
-    content?: string;
-    tool_call?: {
-      id: string;
-      tool_name: string;
-      tool_args: any;
-      tool_result?: any;
-      error?: string;
-      status?: 'running' | 'success' | 'error';
-    };
-    timestamp: Date;
-  }>;
-  toolCalls?: ToolCall[];
-  createdAt: Date;
-}
+// Re-export DatabaseMessage for backwards compatibility
+export type { DatabaseMessage };
 
 /**
  * Loads conversation messages from database and converts them to LLM format

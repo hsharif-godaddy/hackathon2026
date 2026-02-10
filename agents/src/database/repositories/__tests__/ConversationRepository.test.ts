@@ -250,4 +250,156 @@ describe('ConversationRepository - Single Conversation Per App', () => {
       expect(count2).toBe(1)
     })
   })
+
+  describe('getMessagesAfterMessageId', () => {
+    it('should return empty array when reference message not found', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'initial', 'Test Conv')
+      await repo.addMessage(conv.id, 'user', 'Message 1')
+
+      const messages = await repo.getMessagesAfterMessageId('app-123', 'nonexistent-msg')
+
+      expect(messages).toEqual([])
+    })
+
+    it('should return messages after reference message', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'initial', 'Test Conv')
+
+      const msg1 = await repo.addMessage(conv.id, 'user', 'Message 1')
+      const msg2 = await repo.addMessage(conv.id, 'agent', 'Message 2')
+      const msg3 = await repo.addMessage(conv.id, 'user', 'Message 3')
+      const msg4 = await repo.addMessage(conv.id, 'agent', 'Message 4')
+
+      const messages = await repo.getMessagesAfterMessageId('app-123', msg2.id)
+
+      expect(messages).toHaveLength(2)
+      expect(messages[0].id).toBe(msg3.id)
+      expect(messages[1].id).toBe(msg4.id)
+    })
+
+    it('should handle messages from multiple conversations', async () => {
+      createApp('app-123')
+      const conv1 = await repo.create('app-123', 'initial', 'Conv 1')
+      const conv2 = await repo.create('app-123', 'initial', 'Conv 2')
+
+      const msg1 = await repo.addMessage(conv1.id, 'user', 'Conv1 Msg1')
+      await repo.addMessage(conv1.id, 'agent', 'Conv1 Msg2')
+      const msg3 = await repo.addMessage(conv2.id, 'user', 'Conv2 Msg1')
+      const msg4 = await repo.addMessage(conv1.id, 'user', 'Conv1 Msg3')
+
+      const messages = await repo.getMessagesAfterMessageId('app-123', msg1.id)
+
+      // Should get messages from both conversations
+      expect(messages.length).toBeGreaterThanOrEqual(2)
+      const messageIds = messages.map(m => m.id)
+      expect(messageIds).toContain(msg3.id)
+      expect(messageIds).toContain(msg4.id)
+    })
+
+    it('should return messages in chronological order', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'initial', 'Test Conv')
+
+      const msg1 = await repo.addMessage(conv.id, 'user', 'Message 1')
+      await new Promise(resolve => setTimeout(resolve, 10)) // Ensure different timestamps
+      const msg2 = await repo.addMessage(conv.id, 'agent', 'Message 2')
+      await new Promise(resolve => setTimeout(resolve, 10))
+      const msg3 = await repo.addMessage(conv.id, 'user', 'Message 3')
+
+      const messages = await repo.getMessagesAfterMessageId('app-123', msg1.id)
+
+      expect(messages).toHaveLength(2)
+      expect(messages[0].id).toBe(msg2.id)
+      expect(messages[1].id).toBe(msg3.id)
+      expect(messages[0].createdAt.getTime()).toBeLessThan(messages[1].createdAt.getTime())
+    })
+
+    it('should return empty array when no messages after reference', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'initial', 'Test Conv')
+
+      const msg1 = await repo.addMessage(conv.id, 'user', 'Message 1')
+      const msg2 = await repo.addMessage(conv.id, 'agent', 'Message 2')
+
+      const messages = await repo.getMessagesAfterMessageId('app-123', msg2.id)
+
+      expect(messages).toEqual([])
+    })
+
+    it('should only return messages for specified app', async () => {
+      createApp('app-123')
+      createApp('app-456')
+
+      const conv1 = await repo.create('app-123', 'initial', 'App1 Conv')
+      const conv2 = await repo.create('app-456', 'initial', 'App2 Conv')
+
+      const msg1 = await repo.addMessage(conv1.id, 'user', 'App1 Msg1')
+      await repo.addMessage(conv1.id, 'agent', 'App1 Msg2')
+      await repo.addMessage(conv2.id, 'user', 'App2 Msg1')
+
+      const messages = await repo.getMessagesAfterMessageId('app-123', msg1.id)
+
+      // Should only get messages from app-123
+      messages.forEach(msg => {
+        expect(msg.conversationId).toBe(conv1.id)
+      })
+    })
+
+    it('should include message segments and metadata', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'initial', 'Test Conv')
+
+      const msg1 = await repo.addMessage(conv.id, 'user', 'Message 1')
+      const msg2 = await repo.addMessage(conv.id, 'agent', 'Message 2', {
+        segments: [
+          {
+            id: 'seg-1',
+            type: 'content',
+            content: 'Response text',
+            timestamp: new Date()
+          }
+        ]
+      })
+
+      const messages = await repo.getMessagesAfterMessageId('app-123', msg1.id)
+
+      expect(messages).toHaveLength(1)
+      expect(messages[0].segments).toBeDefined()
+      expect(messages[0].segments).toHaveLength(1)
+    })
+
+    it('should handle messages with same timestamp using rowid', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'initial', 'Test Conv')
+
+      // Insert messages directly with same timestamp to test rowid ordering
+      const timestamp = new Date().toISOString()
+      const msg1Id = 'msg-same-time-1'
+      const msg2Id = 'msg-same-time-2'
+      const msg3Id = 'msg-same-time-3'
+
+      testDb.prepare(`
+        INSERT INTO conversation_messages (id, conversation_id, sender, content, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(msg1Id, conv.id, 'user', 'Same time 1', timestamp)
+
+      testDb.prepare(`
+        INSERT INTO conversation_messages (id, conversation_id, sender, content, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(msg2Id, conv.id, 'agent', 'Same time 2', timestamp)
+
+      testDb.prepare(`
+        INSERT INTO conversation_messages (id, conversation_id, sender, content, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(msg3Id, conv.id, 'user', 'Same time 3', timestamp)
+
+      const messages = await repo.getMessagesAfterMessageId('app-123', msg1Id)
+
+      // Should get msg2 and msg3, not msg1
+      expect(messages).toHaveLength(2)
+      expect(messages[0].id).toBe(msg2Id)
+      expect(messages[1].id).toBe(msg3Id)
+    })
+  })
 })

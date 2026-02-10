@@ -50,6 +50,8 @@ export interface OperationLogEntry {
  * - File name extraction from various path formats
  */
 export class OperationLogExtractor {
+  private static readonly logVersion = 1;
+
   /**
    * Extract operation log entries from a list of messages
    *
@@ -299,6 +301,48 @@ export class OperationLogExtractor {
   }
 
   /**
+   * Deserialize operation log from storage into structured entries
+   *
+   * Supports:
+   * - Versioned JSON envelope: { version: 1, entries: [...] }
+   * - Legacy formatted text (best-effort parse)
+   *
+   * @param operationLog - Stored operation log string
+   * @returns Array of operation log entries
+   */
+  static deserialize(operationLog: string | null | undefined): OperationLogEntry[] {
+    if (!operationLog || operationLog.trim() === '') {
+      return [];
+    }
+
+    const normalized = operationLog.replace(/^\uFEFF/, '').trimStart();
+
+    if (normalized.startsWith('{') || normalized.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(normalized) as unknown;
+        const entries = this.extractEntriesFromParsedLog(parsed);
+        if (entries) {
+          return entries;
+        }
+      } catch {
+        // Fall through to legacy parsing
+      }
+    }
+
+    return this.parseLegacyText(operationLog);
+  }
+
+  /**
+   * Serialize operation log entries for storage
+   *
+   * @param entries - Operation log entries to serialize
+   * @returns Versioned JSON string
+   */
+  static serialize(entries: OperationLogEntry[]): string {
+    return JSON.stringify({ version: this.logVersion, entries });
+  }
+
+  /**
    * Extract and prune operation log entries to prevent unbounded growth
    *
    * This is a convenience method that combines extract() and pruning logic.
@@ -320,5 +364,141 @@ export class OperationLogExtractor {
     }
 
     return OperationLogPruner.prune(entries, maxOperations);
+  }
+
+  private static extractEntriesFromParsedLog(parsed: unknown): OperationLogEntry[] | null {
+    if (parsed && typeof parsed === 'object') {
+      const envelope = parsed as { entries?: unknown };
+      if (Array.isArray(envelope.entries)) {
+        return this.normalizeEntries(envelope.entries);
+      }
+    }
+
+    return null;
+  }
+
+  private static normalizeEntries(entries: unknown[]): OperationLogEntry[] {
+    return entries.filter(this.isOperationLogEntry);
+  }
+
+  private static isOperationLogEntry(entry: unknown): entry is OperationLogEntry {
+    if (!entry || typeof entry !== 'object') {
+      return false;
+    }
+
+    const candidate = entry as Partial<OperationLogEntry>;
+    return typeof candidate.tool === 'string' && typeof candidate.description === 'string';
+  }
+
+  private static parseLegacyText(formattedLog: string): OperationLogEntry[] {
+    if (!formattedLog || formattedLog.trim() === '') {
+      return [];
+    }
+
+    const entries: OperationLogEntry[] = [];
+    const lines = formattedLog.split('\n').filter(line => line.trim());
+
+    for (const line of lines) {
+      // Parse "Files modified: file1, file2, file3"
+      if (line.startsWith('Files modified:')) {
+        const filesStr = line.substring('Files modified:'.length).trim();
+        const files = filesStr.split(',').map(f => f.trim()).filter(f => f);
+        for (const file of files) {
+          entries.push({
+            tool: 'file_edit',
+            files: [file],
+            mode: 'edit',
+            description: `edit: ${file}`,
+          });
+        }
+      }
+      // Parse "Files read: file4, file5"
+      else if (line.startsWith('Files read:')) {
+        const filesStr = line.substring('Files read:'.length).trim();
+        const files = filesStr.split(',').map(f => f.trim()).filter(f => f);
+        for (const file of files) {
+          entries.push({
+            tool: 'read_file',
+            files: [file],
+            description: `Read ${file}`,
+          });
+        }
+      }
+      // Parse "Commands run: npm: npm install; git: git commit"
+      else if (line.startsWith('Commands run:')) {
+        const cmdsStr = line.substring('Commands run:'.length).trim();
+        const cmds = cmdsStr.split(';').map(c => c.trim()).filter(c => c);
+        for (const cmd of cmds) {
+          entries.push({
+            tool: 'terminal',
+            description: cmd,
+          });
+        }
+      }
+      // Parse "Searches: Searched for \"pattern\""
+      else if (line.startsWith('Searches:')) {
+        const searchesStr = line.substring('Searches:'.length).trim();
+        const searches = searchesStr.split(';').map(s => s.trim()).filter(s => s);
+        for (const search of searches) {
+          entries.push({
+            tool: 'grep',
+            description: search,
+          });
+        }
+      }
+      // Parse "Git operations: git commit; git push"
+      else if (line.startsWith('Git operations:')) {
+        const opsStr = line.substring('Git operations:'.length).trim();
+        const ops = opsStr.split(';').map(o => o.trim()).filter(o => o);
+        for (const op of ops) {
+          entries.push({
+            tool: 'git',
+            description: op,
+          });
+        }
+      }
+    }
+
+    return entries;
+  }
+
+  /**
+   * Merge existing operation log entries with new entries and prune to max size
+   *
+   * This method deduplicates entries by description to avoid redundant operations
+   * in the log, then prunes to the maximum size if needed.
+   *
+   * @param existingEntries - Existing operation log entries
+   * @param newEntries - New entries to merge in
+   * @param maxOperations - Maximum operations to keep (default: 500)
+   * @returns Merged and pruned operation log entries
+   */
+  static mergeAndPrune(
+    existingEntries: OperationLogEntry[],
+    newEntries: OperationLogEntry[],
+    maxOperations: number = 500
+  ): OperationLogEntry[] {
+    // Combine entries, with new entries at the end (preserving chronological order)
+    const combined = [...existingEntries, ...newEntries];
+
+    // Deduplicate by description (keep most recent occurrence)
+    const seen = new Map<string, OperationLogEntry>();
+    for (const entry of combined) {
+      const key = `${entry.tool}:${entry.description}`;
+      // Delete before re-setting to move key to end (preserves chronological order)
+      if (seen.has(key)) {
+        seen.delete(key);
+      }
+      seen.set(key, entry);
+    }
+
+    const deduplicated = Array.from(seen.values());
+
+    // Prune if over limit
+    if (deduplicated.length <= maxOperations) {
+      return deduplicated;
+    }
+
+    return OperationLogPruner.prune(deduplicated, maxOperations);
   }
 }

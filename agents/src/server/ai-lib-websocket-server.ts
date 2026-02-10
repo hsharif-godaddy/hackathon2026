@@ -331,6 +331,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     process.env.DEBUG = 'ai:*'
   }
 
+  let backgroundSummarizer: {
+    checkAndSummarize(appId: string, triggerTokenCount?: number): Promise<void>
+    getMaxPromptTokens(): number
+  } | null = null
+
   try {
     // Initialize context attachment registry with default renderers
     initializeContextRegistry()
@@ -363,7 +368,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     const { conversationRepository } = await import('../database/repositories/index.js')
     const { initializeBackgroundSummarization } = await import('../services/summarization/index.js')
     
-    await initializeBackgroundSummarization()
+    backgroundSummarizer = await initializeBackgroundSummarization()
 
     // Create token-based conversation history provider using singleton repository
     const conversationContextManager = new ConversationContextManager(conversationRepository, 10) // Max 10 messages
@@ -1059,6 +1064,22 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             cost: costEstimate.totalCost,
             hasConversation: !!metadata.conversationId
           })
+
+          if (backgroundSummarizer) {
+            const maxPromptTokens = backgroundSummarizer.getMaxPromptTokens()
+            if (usage.inputTokens > maxPromptTokens) {
+              logger.info('summarization.background.trigger.token_usage_exceeded', {
+                appId: metadata.appId,
+                conversationId: metadata.conversationId,
+                agentName: metadata.agentName,
+                modelName: metadata.modelName,
+                inputTokens: usage.inputTokens,
+                totalTokens: usage.totalTokens,
+                maxPromptTokens
+              })
+              void backgroundSummarizer.checkAndSummarize(metadata.appId, usage.inputTokens)
+            }
+          }
         } catch (error) {
           logger.error('websocket.token_usage.tracking_failed', {
             error: error instanceof Error ? error.message : String(error),

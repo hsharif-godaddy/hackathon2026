@@ -21,7 +21,7 @@ export type SummarizationStrategyType = 'llm' | 'detailed-llm' | 'simple';
  * @returns The initialized BackgroundSummarizer instance
  */
 export async function initializeBackgroundSummarization(config?: {
-  tokenThreshold?: number;
+  maxPromptTokens?: number;
   debounceMs?: number;
   keepRecentTurns?: number;
   strategy?: SummarizationStrategyType;
@@ -36,18 +36,18 @@ export async function initializeBackgroundSummarization(config?: {
   const strategyType = config?.strategy || 'detailed-llm';
 
   // Build config object only with explicitly provided values
-  // This allows BackgroundSummarizer's tuned defaults (35k tokens, 30s debounce, 4 turns) to apply
+  // This allows BackgroundSummarizer's tuned defaults (40k max prompt, 30s debounce, 4 turns) to apply
   const summarizerConfig: Partial<{
-    tokenThreshold: number;
+    maxPromptTokens: number;
     debounceMs: number;
     keepRecentTurns: number;
   }> = {};
-  if (config?.tokenThreshold !== undefined) summarizerConfig.tokenThreshold = config.tokenThreshold;
+  if (config?.maxPromptTokens !== undefined) summarizerConfig.maxPromptTokens = config.maxPromptTokens;
   if (config?.debounceMs !== undefined) summarizerConfig.debounceMs = config.debounceMs;
   if (config?.keepRecentTurns !== undefined) summarizerConfig.keepRecentTurns = config.keepRecentTurns;
 
   logger.info('summarization.initialize.begin', {
-    tokenThreshold: config?.tokenThreshold ?? 35000,
+    maxPromptTokens: config?.maxPromptTokens ?? 40000,
     debounceMs: config?.debounceMs ?? 30000,
     keepRecentTurns: config?.keepRecentTurns ?? 4,
     strategy: strategyType,
@@ -83,36 +83,10 @@ export async function initializeBackgroundSummarization(config?: {
     summarizerConfig
   );
 
-  // Register hook on the singleton conversation repository
-  conversationRepository.registerMessageAddedHook(async (message, conversationId) => {
-    try {
-      const conversation = await conversationRepository.getById(conversationId);
-      if (conversation) {
-        logger.debug('summarization.hook.triggered', {
-          conversationId,
-          appId: conversation.appId,
-          messageId: message.id,
-        });
-
-        // Trigger summarization check
-        await backgroundSummarizer?.checkAndSummarize(conversation.appId);
-
-        // Note: Skill auto-unload is now handled by step-based tracking in prepareStep hook
-        // See agent-factory.ts prepareStep and SkillToolManager.cleanupInactiveSkills
-      }
-    } catch (error) {
-      logger.error('summarization.hook.failure', {
-        conversationId,
-        messageId: message.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
-
   isInitialized = true;
 
   logger.info('summarization.initialize.complete', {
-    message: 'Background summarization initialized and hook registered',
+    message: 'Background summarization initialized',
   });
 
   return backgroundSummarizer;
@@ -133,4 +107,3 @@ export function getBackgroundSummarizer(): BackgroundSummarizer | null {
 export function isBackgroundSummarizationInitialized(): boolean {
   return isInitialized;
 }
-

@@ -4,21 +4,18 @@ This document describes the summarization system that manages conversation conte
 
 ## Overview
 
-The summarization system compresses conversation history to maintain context within LLM token limits while preserving critical information about work performed. It operates in the background, automatically triggered when token thresholds are exceeded.
+The summarization system compresses conversation history to maintain context within LLM token limits while preserving critical information about work performed. It operates in the background, automatically triggered when a single LLM call exceeds the max prompt size and then debounced.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         Conversation Flow                                   │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  User Message ──► ConversationRepository ──► Message Added Hook             │
-│                                                     │                       │
-│                                                     ▼                       │
-│                                          BackgroundSummarizer               │
+│  LLM Call ──► Token Usage Callback ──► BackgroundSummarizer                 │
 │                                          (debounced, async)                 │
 │                                                     │                       │
 │                                                     ▼                       │
-│                                          Token Threshold Check              │
+│                                    Last-Call Token Threshold Check          │
 │                                                     │                       │
 │                              ┌──────────────────────┴───────────────────┐   │
 │                              │                                          │   │
@@ -43,16 +40,16 @@ The summarization system compresses conversation history to maintain context wit
 
 Orchestrates the summarization process with these responsibilities:
 
-- **Debouncing**: Waits 30 seconds after last message to avoid summarizing mid-conversation
-- **Token counting**: Tracks conversation size using the same tokenizer as the agent
-- **Threshold checking**: Triggers summarization when incremental messages exceed 35k tokens
+- **Debouncing**: Waits 30 seconds after last trigger to avoid summarizing mid-conversation
+- **Token counting**: Uses last-call token usage from the LLM provider
+- **Threshold checking**: Triggers summarization when a single call exceeds `maxPromptTokens`
 - **Recent turns preservation**: Keeps the last 4 user/assistant turns unsummarized for immediate context
 
 **Configuration defaults:**
 
 ```typescript
 {
-  tokenThreshold: 35000,  // Trigger threshold for incremental messages
+  maxPromptTokens: 40000, // Target max prompt size (summary + new messages)
   debounceMs: 30000,      // Wait for conversation lulls
   keepRecentTurns: 4      // Preserve immediate context
 }
@@ -74,6 +71,10 @@ Lightweight summarization producing ~2000 token summaries with sections:
 - **Pending**: Outstanding work
 
 Uses Claude Sonnet ('full' tier) for 6x better compression than Haiku.
+
+### Compression Metrics
+
+`summaryTokenCount` vs `originalTokenCount` reflects the **cumulative** compression ratio for the summarized range, not the per-run reduction of the incremental slice.
 
 #### DetailedLLMSummarizationStrategy
 
@@ -230,7 +231,7 @@ Triggered when `incrementalUpdateCount >= 5` to prevent quality degradation:
 import { initializeBackgroundSummarization } from './services/summarization/index.js';
 
 await initializeBackgroundSummarization({
-  tokenThreshold: 5000, // Lower for aggressive summarization
+  maxPromptTokens: 30000, // Lower for aggressive summarization
   debounceMs: 10000, // 10 second debounce
   keepRecentTurns: 2, // Keep last 2 turns
   strategy: 'detailed-llm', // Use detailed strategy
