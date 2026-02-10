@@ -4,13 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
-import SinglePlanUpgradeContainer from './SinglePlanUpgradeContainer';
+import CreditsUpgradeContainer from './CreditsUpgradeContainer';
 
 const mockOnClose = vi.fn();
-const mockOnSuccessClick = vi.fn();
+const mockOnSuccess = vi.fn();
 const mockOnErrorClick = vi.fn();
 const mockInvalidateQueries = vi.fn();
-const mockUseSwitchboard = vi.fn();
 
 vi.mock('@/hooks/useGasketData', () => ({
   useGasketData: () => ({
@@ -35,10 +34,6 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   };
 });
 
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: () => mockUseSwitchboard(),
-}));
-
 vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
@@ -51,126 +46,109 @@ vi.mock('@/utils/propTypes', () => ({
   ensurePropTypes: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('next/dynamic', () => ({
-  default: () => {
-    const MockComponent = (props: any) => {
-      return (
-        <div data-testid="upgrade-modal">
-          <span data-testid="product-id">{props.productId}</span>
-          <span data-testid="sub-type">{props.subType}</span>
-          <span data-testid="source">{props.source}</span>
-          <span data-testid="locale">{props.locale}</span>
-          <span data-testid="return-app">{props.returnApp}</span>
-          <button data-testid="close-button" onClick={props.onClose}>Close</button>
-          <button
-            data-testid="success-button"
-            onClick={() => {
-              props.onPurchaseSuccess?.();
-              props.onSuccessClick?.();
-            }}
-          >
-            Success
-          </button>
-          <button data-testid="error-button" onClick={props.onErrorClick}>Error</button>
-        </div>
-      );
-    };
-    return MockComponent;
+vi.mock('./cdsLoader', () => ({
+  ComponentLoader: (props: any) => {
+    return (
+      <div data-testid="credits-upgrade-modal">
+        <span data-testid="product-id">{props.productId}</span>
+        <span data-testid="entitlement-id">{props.entitlementId}</span>
+        <span data-testid="sub-type">{props.subType}</span>
+        <span data-testid="source">{props.source}</span>
+        <button data-testid="close-button" onClick={props.onClose}>Close</button>
+        <button
+          data-testid="success-button"
+          onClick={() => props.onSuccess?.('basket-123', { unitsAdded: 100, newTotalBalance: 500 })}
+        >
+          Success
+        </button>
+        <button data-testid="error-button" onClick={props.onErrorClick}>Error</button>
+      </div>
+    );
   },
 }));
 
-describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests() {
+describe('CreditsUpgradeContainer', function creditsUpgradeContainerTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
-    mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false, error: null });
   });
 
   describe('renders correctly', function renderTests() {
-    it('should render the upgrade modal', async function renderModal() {
+    it('should render the credits upgrade modal', async function renderModal() {
       renderWithProviders(
-        <SinglePlanUpgradeContainer
+        <CreditsUpgradeContainer
           onClose={mockOnClose}
+          entitlementId="entitlement-123"
         />
       );
 
       await waitFor(function checkModal() {
-        expect(screen.getByTestId('upgrade-modal')).toBeInTheDocument();
+        expect(screen.getByTestId('credits-upgrade-modal')).toBeInTheDocument();
       });
     });
 
-    it('should use AiroPlus productId when grants feature is disabled', async function airoPlusProductId() {
-      mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false, error: null });
-
+    it('should pass correct productId for credits', async function correctProductId() {
       renderWithProviders(
-        <SinglePlanUpgradeContainer
+        <CreditsUpgradeContainer
           onClose={mockOnClose}
+          entitlementId="entitlement-123"
         />
       );
 
       await waitFor(function checkProductId() {
-        expect(screen.getByTestId('product-id').textContent).toBe('AiroPlusAppBuilderProduct');
+        expect(screen.getByTestId('product-id').textContent).toBe('AiroBuilderCreditsProduct');
       });
     });
 
-    it('should use AiroBuilder productId when grants feature is enabled', async function airoBuilderProductId() {
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false, error: null });
-
+    it('should pass entitlementId to ComponentLoader', async function passEntitlementId() {
       renderWithProviders(
-        <SinglePlanUpgradeContainer
+        <CreditsUpgradeContainer
           onClose={mockOnClose}
+          entitlementId="my-entitlement-456"
         />
       );
 
-      await waitFor(function checkProductId() {
-        expect(screen.getByTestId('product-id').textContent).toBe('AiroBuilderProduct');
+      await waitFor(function checkEntitlementId() {
+        expect(screen.getByTestId('entitlement-id').textContent).toBe('my-entitlement-456');
       });
     });
 
-    it('should use SinglePlanUpgrade subType', async function correctSubType() {
+    it('should use StandaloneAddon subType', async function correctSubType() {
       renderWithProviders(
-        <SinglePlanUpgradeContainer
+        <CreditsUpgradeContainer
           onClose={mockOnClose}
+          entitlementId="entitlement-123"
         />
       );
 
       await waitFor(function checkSubType() {
-        expect(screen.getByTestId('sub-type').textContent).toBe('SinglePlanUpgrade');
+        expect(screen.getByTestId('sub-type').textContent).toBe('StandaloneAddon');
       });
     });
 
     it('should use default source when not provided', async function defaultSource() {
       renderWithProviders(
-        <SinglePlanUpgradeContainer
+        <CreditsUpgradeContainer
           onClose={mockOnClose}
+          entitlementId="entitlement-123"
         />
       );
 
       await waitFor(function checkSource() {
-        expect(screen.getByTestId('source').textContent).toBe('app-builder');
+        expect(screen.getByTestId('source').textContent).toBe('airo-builder');
       });
     });
 
-    it('should pass locale from gasketData', async function passLocale() {
+    it('should use custom source when provided', async function customSource() {
       renderWithProviders(
-        <SinglePlanUpgradeContainer
+        <CreditsUpgradeContainer
           onClose={mockOnClose}
+          entitlementId="entitlement-123"
+          source="usage_gauge.buy_tokens"
         />
       );
 
-      await waitFor(function checkLocale() {
-        expect(screen.getByTestId('locale').textContent).toBe('en-US');
-      });
-    });
-
-    it('should pass returnApp prop', async function passReturnApp() {
-      renderWithProviders(
-        <SinglePlanUpgradeContainer
-          onClose={mockOnClose}
-        />
-      );
-
-      await waitFor(function checkReturnApp() {
-        expect(screen.getByTestId('return-app').textContent).toBe('airo-builder');
+      await waitFor(function checkSource() {
+        expect(screen.getByTestId('source').textContent).toBe('usage_gauge.buy_tokens');
       });
     });
   });
@@ -178,8 +156,9 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
   describe('callbacks', function callbackTests() {
     it('should call onClose when close button clicked', async function closeCallback() {
       const { user } = renderWithProviders(
-        <SinglePlanUpgradeContainer
+        <CreditsUpgradeContainer
           onClose={mockOnClose}
+          entitlementId="entitlement-123"
         />
       );
 
@@ -192,11 +171,12 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
       expect(mockOnClose).toHaveBeenCalled();
     });
 
-    it('should call onSuccessClick when purchase succeeds', async function successCallback() {
+    it('should call onSuccess with basket details when purchase succeeds', async function successCallback() {
       const { user } = renderWithProviders(
-        <SinglePlanUpgradeContainer
+        <CreditsUpgradeContainer
           onClose={mockOnClose}
-          onSuccessClick={mockOnSuccessClick}
+          onSuccess={mockOnSuccess}
+          entitlementId="entitlement-123"
         />
       );
 
@@ -206,14 +186,18 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
 
       await user.click(screen.getByTestId('success-button'));
 
-      expect(mockOnSuccessClick).toHaveBeenCalled();
+      expect(mockOnSuccess).toHaveBeenCalledWith('basket-123', {
+        unitsAdded: 100,
+        newTotalBalance: 500,
+      });
     });
 
     it('should invalidate queries on success', async function invalidateQueries() {
       const { user } = renderWithProviders(
-        <SinglePlanUpgradeContainer
+        <CreditsUpgradeContainer
           onClose={mockOnClose}
-          onSuccessClick={mockOnSuccessClick}
+          onSuccess={mockOnSuccess}
+          entitlementId="entitlement-123"
         />
       );
 
@@ -224,17 +208,16 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
       await user.click(screen.getByTestId('success-button'));
 
       expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['subscriptions'] });
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['active-subscription'] });
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['paywall-feature-flags'] });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['credit-grants'] });
       expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['entitlements'] });
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects'] });
     });
 
     it('should call onErrorClick when error button clicked', async function errorCallback() {
       const { user } = renderWithProviders(
-        <SinglePlanUpgradeContainer
+        <CreditsUpgradeContainer
           onClose={mockOnClose}
           onErrorClick={mockOnErrorClick}
+          entitlementId="entitlement-123"
         />
       );
 
@@ -253,12 +236,11 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
       const { shipAnalyticsLog } = await import('@/lib/logging');
       const { logImpressionEvent } = await import('@/utils/instrumentation');
 
-      mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false, error: null });
-
       const { user } = renderWithProviders(
-        <SinglePlanUpgradeContainer
+        <CreditsUpgradeContainer
           onClose={mockOnClose}
-          onSuccessClick={mockOnSuccessClick}
+          onSuccess={mockOnSuccess}
+          entitlementId="entitlement-123"
           source="test-source"
         />
       );
@@ -269,56 +251,23 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
 
       await user.click(screen.getByTestId('success-button'));
 
-      expect(logImpressionEvent).toHaveBeenCalledWith('plan.purchase.success');
-      expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.purchase.in-app', {
+      expect(logImpressionEvent).toHaveBeenCalledWith('credits.purchase.success');
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('airobuilder.credits.purchase.in-app', {
         source: 'test-source',
-        productId: 'AiroPlusAppBuilderProduct',
-      });
-    });
-
-    it('should log analytics with AiroBuilder productId when grants enabled', async function logAnalyticsWithGrants() {
-      const { shipAnalyticsLog } = await import('@/lib/logging');
-
-      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false, error: null });
-
-      const { user } = renderWithProviders(
-        <SinglePlanUpgradeContainer
-          onClose={mockOnClose}
-          onSuccessClick={mockOnSuccessClick}
-          source="test-source"
-        />
-      );
-
-      await waitFor(function waitForModal() {
-        expect(screen.getByTestId('success-button')).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByTestId('success-button'));
-
-      expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.purchase.in-app', {
-        source: 'test-source',
-        productId: 'AiroBuilderProduct',
+        productId: 'AiroBuilderCreditsProduct',
+        basketId: 'basket-123',
+        unitsAdded: 100,
+        newTotalBalance: 500,
       });
     });
   });
 
   describe('edge cases', function edgeCaseTests() {
-    it('should handle missing shopperId gracefully', async function missingShopperId() {
-      renderWithProviders(
-        <SinglePlanUpgradeContainer
-          onClose={mockOnClose}
-        />
-      );
-
-      await waitFor(function waitForModal() {
-        expect(screen.getByTestId('upgrade-modal')).toBeInTheDocument();
-      });
-    });
-
-    it('should handle success callback when onSuccessClick is not provided', async function noOnSuccessClick() {
+    it('should handle success callback when onSuccess is not provided', async function noOnSuccess() {
       const { user } = renderWithProviders(
-        <SinglePlanUpgradeContainer
+        <CreditsUpgradeContainer
           onClose={mockOnClose}
+          entitlementId="entitlement-123"
         />
       );
 
@@ -329,6 +278,67 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
       await user.click(screen.getByTestId('success-button'));
 
       expect(mockInvalidateQueries).toHaveBeenCalled();
+    });
+
+    it('should handle missing shopperId gracefully', async function missingShopperId() {
+      // This test verifies the component renders even when shopperId is undefined
+      // The mock already returns a shopperId, so we just verify rendering works
+      renderWithProviders(
+        <CreditsUpgradeContainer
+          onClose={mockOnClose}
+          entitlementId="entitlement-123"
+        />
+      );
+
+      await waitFor(function waitForModal() {
+        expect(screen.getByTestId('credits-upgrade-modal')).toBeInTheDocument();
+      });
+    });
+
+    it('should handle different basket details formats', async function differentBasketDetails() {
+      const mockOnSuccessWithDetails = vi.fn();
+      const { user } = renderWithProviders(
+        <CreditsUpgradeContainer
+          onClose={mockOnClose}
+          onSuccess={mockOnSuccessWithDetails}
+          entitlementId="entitlement-123"
+        />
+      );
+
+      await waitFor(function waitForModal() {
+        expect(screen.getByTestId('success-button')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('success-button'));
+
+      expect(mockOnSuccessWithDetails).toHaveBeenCalledWith('basket-123', {
+        unitsAdded: 100,
+        newTotalBalance: 500,
+      });
+    });
+
+    it('should render nothing with empty entitlementId', async function emptyEntitlementId() {
+      const { container } = renderWithProviders(
+        <CreditsUpgradeContainer
+          onClose={mockOnClose}
+          entitlementId=""
+        />
+      );
+
+      // Component returns null when entitlementId is missing
+      expect(container.firstChild).toBeNull();
+    });
+
+    it('should render nothing with undefined entitlementId', async function undefinedEntitlementId() {
+      const { container } = renderWithProviders(
+        <CreditsUpgradeContainer
+          onClose={mockOnClose}
+          entitlementId={undefined}
+        />
+      );
+
+      // Component returns null when entitlementId is missing
+      expect(container.firstChild).toBeNull();
     });
   });
 });

@@ -591,4 +591,73 @@ describe('StreamingWebSocketController', () => {
       await connectPromise.catch(() => {}) // Cleanup promise
     })
   })
+
+  describe('onGrantRefreshRequested', () => {
+    it('should register callback for grant refresh events', () => {
+      const callback = vi.fn()
+      const cleanup = controller.onGrantRefreshRequested(callback)
+
+      // Emit the event
+      controller.emit('grant:refresh-requested')
+
+      expect(callback).toHaveBeenCalledTimes(1)
+
+      // Cleanup
+      cleanup()
+    })
+
+    it('should return cleanup function that removes listener', () => {
+      const callback = vi.fn()
+      const cleanup = controller.onGrantRefreshRequested(callback)
+
+      // Call cleanup
+      cleanup()
+
+      // Emit the event after cleanup
+      controller.emit('grant:refresh-requested')
+
+      // Callback should not be called since we cleaned up
+      expect(callback).not.toHaveBeenCalled()
+    })
+
+    it('should handle cleanup when removeListener is not available (HMR edge case)', () => {
+      const callback = vi.fn()
+      const cleanup = controller.onGrantRefreshRequested(callback)
+
+      // Simulate HMR edge case where removeListener might be unavailable
+      const originalRemoveListener = controller.removeListener
+      ;(controller as any).removeListener = undefined
+
+      // Cleanup should not throw even when removeListener is unavailable
+      expect(() => cleanup()).not.toThrow()
+
+      // Restore
+      controller.removeListener = originalRemoveListener
+    })
+
+    it('should allow multiple callbacks to be registered', () => {
+      const callback1 = vi.fn()
+      const callback2 = vi.fn()
+
+      const cleanup1 = controller.onGrantRefreshRequested(callback1)
+      const cleanup2 = controller.onGrantRefreshRequested(callback2)
+
+      controller.emit('grant:refresh-requested')
+
+      expect(callback1).toHaveBeenCalledTimes(1)
+      expect(callback2).toHaveBeenCalledTimes(1)
+
+      // Cleanup first callback only
+      cleanup1()
+
+      controller.emit('grant:refresh-requested')
+
+      // First callback should not be called again
+      expect(callback1).toHaveBeenCalledTimes(1)
+      // Second callback should be called again
+      expect(callback2).toHaveBeenCalledTimes(2)
+
+      cleanup2()
+    })
+  })
 })

@@ -1,7 +1,7 @@
 import { JSX, useCallback, useState } from "react";
 import { useQueryClient } from '@tanstack/react-query';
 
-import SinglePlanUpgradeContainer from '@/app/develop/components/SinglePlanUpgradeContainer'
+import { SinglePlanUpgradeContainer } from '@/app/develop/components/paywall'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'

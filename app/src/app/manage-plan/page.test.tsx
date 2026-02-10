@@ -100,12 +100,9 @@ vi.mock('@/utils/getRootDomain', () => ({
   getRootDomain: () => 'godaddy.com',
 }));
 
-vi.mock('@/app/develop/components/SinglePlanUpgradeContainer', () => ({
-  default: () => <div data-testid="upgrade-modal">Upgrade Modal</div>,
-}));
-
-vi.mock('@/app/develop/components/CreditsUpgradeContainer', () => ({
-  default: ({ entitlementId }: { entitlementId: string }) => (
+vi.mock('@/app/develop/components/paywall', () => ({
+  SinglePlanUpgradeContainer: () => <div data-testid="upgrade-modal">Upgrade Modal</div>,
+  CreditsUpgradeContainer: ({ entitlementId }: { entitlementId: string }) => (
     <div data-testid="credits-modal">
       <span data-testid="entitlement-id">{entitlementId}</span>
       Credits Modal

@@ -1,30 +1,24 @@
 'use client'
 
-import dynamic from 'next/dynamic';
-import { useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
-import ErrorBoundary from '@/components/ErrorBoundary';
-import { useAuth } from '@/hooks/useAuth';
-import { useGasketData } from '@/hooks/useGasketData';
-import { shipAnalyticsLog } from '@/lib/logging';
-import { logImpressionEvent } from '@/utils/instrumentation';
-import { ensurePropTypes } from '@/utils/propTypes';
-import { UPGRADE_DEPS, UPGRADE_PRODUCT_IDS } from './SinglePlanUpgradeContainer';
-
-const ComponentLoader = dynamic(
-  async () => {
-    await ensurePropTypes()
-    const cdsLoaderModule = await import('@venture/cds-loader')
-    return cdsLoaderModule.default
-  },
-  { ssr: false }
-) as any
+import ErrorBoundary from '@/components/ErrorBoundary'
+import { useAuth } from '@/hooks/useAuth'
+import { useGasketData } from '@/hooks/useGasketData'
+import { shipAnalyticsLog } from '@/lib/logging'
+import { logImpressionEvent } from '@/utils/instrumentation'
+import { ComponentLoader } from './cdsLoader'
+import { UPGRADE_DEPS, UPGRADE_PRODUCT_IDS } from './constants'
+import { PaywallErrorModal } from './PaywallErrorModal'
+import { PaywallLoadingModal } from './PaywallLoadingModal'
 
 interface CreditsUpgradeContainerProps {
   onClose: () => void
   onSuccess?: (basketId: string, details: { unitsAdded: number; newTotalBalance: number }) => void
   onErrorClick?: () => void
+  /** Callback when CDS fails to load - use for analytics logging */
+  onError?: (error: Error) => void
   source?: string
   /** Builder entitlement ID from the subscription (required for credits purchase) */
   entitlementId?: string
@@ -42,14 +36,15 @@ const CreditsUpgradeContainer = ({
   onClose,
   onSuccess,
   onErrorClick,
+  onError,
   source = 'airo-builder',
   entitlementId,
   itc,
 }: CreditsUpgradeContainerProps) => {
-  const gasketData = useGasketData();
-  const { getUserInfo } = useAuth();
-  const queryClient = useQueryClient();
-  const shopperId = getUserInfo()?.shopperId;
+  const gasketData = useGasketData()
+  const { getUserInfo } = useAuth()
+  const queryClient = useQueryClient()
+  const shopperId = getUserInfo()?.shopperId
 
   const handleSuccess = useCallback((basketId: string, details: { unitsAdded: number; newTotalBalance: number }) => {
     // Log impression event for credits purchase success tracking
@@ -75,13 +70,35 @@ const CreditsUpgradeContainer = ({
     }
   }, [source, queryClient, onSuccess])
 
+  const handleError = useCallback((error: Error) => {
+    shipAnalyticsLog('paywall.cds.load.error', {
+      source,
+      productId: UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS,
+      error: error.message,
+      component: 'CreditsUpgradeContainer',
+    })
+    onError?.(error)
+  }, [source, onError])
+
   // Early return if entitlementId is missing - cannot purchase credits without it
   if (!entitlementId) {
-    return null;
+    return null
   }
 
   return (
-    <ErrorBoundary>
+    <ErrorBoundary
+      fallback={(error, reset) => {
+        handleError(error)
+        return (
+          <PaywallErrorModal
+            onClose={onClose}
+            onRetry={() => {
+              reset()
+            }}
+          />
+        )
+      }}
+    >
       <ComponentLoader
         type='godaddyUnifiedPlansAndPricingLibrary'
         locale={gasketData?.intl?.locale || 'en-US'}
@@ -96,9 +113,10 @@ const CreditsUpgradeContainer = ({
         onSuccess={handleSuccess}
         onClose={onClose}
         onErrorClick={onErrorClick}
+        LoadingComponent={<PaywallLoadingModal onClose={onClose} />}
       />
     </ErrorBoundary>
   )
-};
+}
 
-export default CreditsUpgradeContainer;
+export default CreditsUpgradeContainer

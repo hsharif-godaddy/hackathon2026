@@ -6,8 +6,7 @@ import Alert from '@ux/alert';
 import Button from '@ux/button';
 import text from '@ux/text';
 
-import CreditsUpgradeContainer from '@/app/develop/components/CreditsUpgradeContainer';
-import SinglePlanUpgradeContainer from '@/app/develop/components/SinglePlanUpgradeContainer';
+import { CreditsUpgradeContainer, SinglePlanUpgradeContainer } from '@/app/develop/components/paywall';
 import {
   AddonCreditCard,
   DowngradeModal,
