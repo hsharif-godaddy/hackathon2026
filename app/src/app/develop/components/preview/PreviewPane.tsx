@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { animate, motion, useMotionValue } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader } from '@airo-ux/loader'
+import Alert from '@ux/alert'
 import Button from '@ux/button'
 
 import { getDevicePreset } from '@/app/develop/components/preview/devicePresets'
@@ -499,21 +500,23 @@ export default function PreviewPane({
     return (
       <div className="h-full flex flex-col">
         {isViewingHistoricalCommit && (
-          <div className="bg-intents-ux-feedbackInfo-feedbackColor rounded pl-1 pr-2 py-1 mx-1 my-1 md:mx-2 md:my-0">
-            <div className="flex items-center items-space-between w-full">
-              <span className="font-mono px-1 text-sm py-0.5 rounded mr-1 grow">
-                {t('builder_preview_git_text')}
-              </span>
-              <Button
-                design="secondary"
-                size="sm"
-                onClick={handleRestoreConfirm}
-                disabled={restoreMutation.isPending}
-                title={t('builder_preview_git_title')}
-              >
-                {restoreMutation.isPending ? t('builder_preview_error_restoring') : t('builder_preview_error_restore')}
-              </Button>
-            </div>
+          <div className="mx-1 my-1 md:mx-2 md:my-0">
+            <Alert
+              emphasis="info"
+              actions={
+                <Button
+                  design="secondary"
+                  size="sm"
+                  onClick={handleRestoreConfirm}
+                  disabled={restoreMutation.isPending}
+                  title={t('builder_preview_git_title')}
+                >
+                  {restoreMutation.isPending ? t('builder_preview_error_restoring') : t('builder_preview_error_restore')}
+                </Button>
+              }
+            >
+              {t('builder_preview_git_text')}
+            </Alert>
           </div>
         )}
 
