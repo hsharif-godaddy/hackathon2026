@@ -162,18 +162,17 @@ describe('PublishStatusAlert', () => {
     expect(screen.getByText('builder_publish_success_title')).toBeInTheDocument();
   });
 
-  it('should render domain settings button in success alert', () => {
+  it('should render domain settings button when domain ends with airoapp.ai', () => {
     mockDevelopStore.publishStates = {
       'app-123': { showSuccessAlert: true },
     };
     mockSiteStore.getSite.mockReturnValue({
       id: 'app-123',
-      published_url: 'https://example.com',
+      published_url: 'https://myapp.airoapp.ai',
     });
 
     renderWithProviders(<PublishStatusAlert />);
 
-    // Should show button to view domain settings
     expect(screen.getByText('builder_publish_success_button_domain')).toBeInTheDocument();
   });
 
@@ -204,7 +203,7 @@ describe('PublishStatusAlert', () => {
     };
     mockSiteStore.getSite.mockReturnValue({
       id: 'app-123',
-      published_url: 'https://example.com',
+      published_url: 'https://myapp.airoapp.ai',
     });
 
     const { user } = renderWithProviders(<PublishStatusAlert />);
@@ -302,7 +301,7 @@ describe('PublishStatusAlert', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('should render success alert with custom domain', () => {
+  it('should render success alert with custom domain without domain button', () => {
     mockDevelopStore.publishStates = {
       'app-123': { showSuccessAlert: true },
     };
@@ -316,7 +315,7 @@ describe('PublishStatusAlert', () => {
 
     // Success alert should render when site has been published
     expect(screen.getByText('builder_publish_success_title')).toBeInTheDocument();
-    expect(screen.getByText('builder_publish_success_button_domain')).toBeInTheDocument();
+    expect(screen.queryByText('builder_publish_success_button_domain')).not.toBeInTheDocument();
   });
 
   it('should automatically show Go Live modal on first successful publish', async () => {

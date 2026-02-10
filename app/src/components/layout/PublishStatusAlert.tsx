@@ -189,12 +189,22 @@ export default function PublishStatusAlert() {
           ? rawFqdn
           : `https://${rawFqdn}`);
 
+    // Only show "Custom Domain" button for airoapp.ai subdomains
+    const showDomainButton = (() => {
+      if (!fqdn) return false;
+      const { hostname } = new URL(fqdn);
+      return hostname.endsWith('.airoapp.ai') || 
+        hostname.endsWith('.test-airoapp.ai') || 
+        hostname.endsWith('.dev-airoapp.ai')
+      ;
+    })();
+
     return (
       <div className='px-2 py-1'>
         <Alert
           emphasis='success'
           onClose={() => currentAppId && dismissPublishSuccess(currentAppId)}
-          actions={
+          actions={showDomainButton && (
             <Button
               design="primary"
               text={t('builder_publish_success_button_domain')}
@@ -202,7 +212,7 @@ export default function PublishStatusAlert() {
               className="!hover:bg-transparent"
               onClick={handleViewSettings}
             />
-          }
+          )}
         >
           <text.h3 as='title' size={1}>{t('builder_publish_success_title')}</text.h3>
           <text.p>
