@@ -11,7 +11,7 @@ import { shipAnalyticsLog } from '@/lib/logging'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { ComponentLoader } from './cdsLoader'
 import { UPGRADE_DEPS, UPGRADE_PRODUCT_IDS } from './constants'
-import { PaywallErrorModal } from './PaywallErrorModal'
+import { PaywallErrorFallback } from './PaywallErrorFallback'
 import { PaywallLoadingModal } from './PaywallLoadingModal'
 
 interface SinglePlanUpgradeContainerProps {
@@ -71,17 +71,14 @@ const SinglePlanUpgradeContainer = ({
 
   return (
     <ErrorBoundary
-      fallback={(error, reset) => {
-        handleError(error)
-        return (
-          <PaywallErrorModal
-            onClose={onClose}
-            onRetry={() => {
-              reset()
-            }}
-          />
-        )
-      }}
+      fallback={(error, reset) => (
+        <PaywallErrorFallback
+          error={error}
+          reset={reset}
+          onClose={onClose}
+          onError={handleError}
+        />
+      )}
     >
       <ComponentLoader
         type='godaddyUnifiedPlansAndPricingLibrary'

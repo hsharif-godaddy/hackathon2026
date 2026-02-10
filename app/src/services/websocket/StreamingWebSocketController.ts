@@ -486,7 +486,10 @@ export class StreamingWebSocketController extends EventEmitter {
     this.on('grant:refresh-requested', callback)
     return () => {
       // Guard against cleanup being called after controller is destroyed or during HMR
-      if (typeof this.removeListener === 'function') {
+      // Prefer off() for consistency with on(), fall back to removeListener()
+      if (typeof this.off === 'function') {
+        this.off('grant:refresh-requested', callback)
+      } else if (typeof this.removeListener === 'function') {
         this.removeListener('grant:refresh-requested', callback)
       }
     }

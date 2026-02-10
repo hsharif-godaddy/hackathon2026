@@ -28,13 +28,26 @@ vi.mock('@ux/icon/alert', () => ({
   ),
 }))
 
+vi.mock('@ux/button', () => ({
+  default: ({ children, onClick, design, size }: any) => (
+    <button
+      data-testid="retry-button"
+      data-design={design}
+      data-size={size}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  ),
+}))
+
 vi.mock('@/hooks/useTranslations', () => ({
-  useTranslations: () => (key: string) => {
+  useTranslations: () => (key: string, _values?: unknown, defaultMessage?: string) => {
     const translations: Record<string, string> = {
       builder_common_something_went_wrong: 'Something went wrong',
       builder_paywall_load_error: 'We couldn\'t load the purchase options.',
     }
-    return translations[key] || key
+    return translations[key] || defaultMessage || key
   },
 }))
 
@@ -85,13 +98,34 @@ describe('PaywallErrorModal', function paywallErrorModalTests() {
     expect(screen.getByTestId('modal')).toHaveAttribute('data-centered', 'true')
   })
 
-  it('should accept onRetry prop', function acceptOnRetryProp() {
+  it('should render retry button when onRetry is provided', function renderRetryButton() {
     const mockOnClose = vi.fn()
     const mockOnRetry = vi.fn()
 
-    // Should render without errors even though onRetry is passed
     render(<PaywallErrorModal onClose={mockOnClose} onRetry={mockOnRetry} />)
 
-    expect(screen.getByTestId('modal')).toBeInTheDocument()
+    const retryButton = screen.getByTestId('retry-button')
+    expect(retryButton).toBeInTheDocument()
+    expect(retryButton).toHaveTextContent('Try again')
+  })
+
+  it('should call onRetry when retry button is clicked', function callOnRetry() {
+    const mockOnClose = vi.fn()
+    const mockOnRetry = vi.fn()
+
+    render(<PaywallErrorModal onClose={mockOnClose} onRetry={mockOnRetry} />)
+
+    const retryButton = screen.getByTestId('retry-button')
+    retryButton.click()
+
+    expect(mockOnRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('should not render retry button when onRetry is not provided', function noRetryButton() {
+    const mockOnClose = vi.fn()
+
+    render(<PaywallErrorModal onClose={mockOnClose} />)
+
+    expect(screen.queryByTestId('retry-button')).not.toBeInTheDocument()
   })
 })

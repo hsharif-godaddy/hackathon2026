@@ -1,5 +1,6 @@
 'use client'
 
+import Button from '@ux/button'
 import AlertIcon from '@ux/icon/alert'
 import Modal from '@ux/modal'
 import text from '@ux/text'
@@ -26,6 +27,11 @@ export function PaywallErrorModal({ onClose, onRetry }: PaywallErrorModalProps) 
       <div className="flex flex-col items-center gap-3">
         <AlertIcon className="w-8 h-8 text-intents-ux-critical-textColor" />
         <text.p>{t('builder_paywall_load_error')}</text.p>
+        {onRetry && (
+          <Button design="primary" size="md" onClick={onRetry}>
+            {t('builder_common_try_again', undefined, 'Try again')}
+          </Button>
+        )}
       </div>
     </Modal>
   )
