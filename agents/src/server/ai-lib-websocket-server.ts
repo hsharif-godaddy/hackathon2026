@@ -44,6 +44,10 @@ import { logger, log } from '../logging/index.js'
 import { jwtAuthMiddleware } from './middleware/jwt-auth.js'
 import { getAgentConfig } from '../services/features.js'
 import { getModelOverride } from '../utils/model-selection.js'
+import {
+  calculateCacheMetrics,
+  calculateContextWindowUtilization
+} from '../utils/model-context-window.js'
 import type { AgentsAppContext } from '../types/websocket-context.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
 import { initializeContextRegistry } from '../services/initializeContextRegistry.js'
@@ -1055,18 +1059,34 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             }
           )
 
+          // Calculate cache metrics for all token usage logs
+          const cacheMetrics = calculateCacheMetrics(
+            usage.inputTokens,
+            usage.cachedInputTokens
+          )
+          const contextUtilization = calculateContextWindowUtilization(
+            usage.inputTokens,
+            metadata.modelName
+          )
+
           logger.info('websocket.token_usage.tracked', {
             appId: metadata.appId,
             agentName: metadata.agentName,
             modelName: metadata.modelName,
             conversationId: metadata.conversationId,
+            inputTokens: usage.inputTokens,
+            cachedInputTokens: cacheMetrics.cachedTokens,
+            freshInputTokens: cacheMetrics.freshTokens,
             totalTokens: usage.totalTokens,
             cost: costEstimate.totalCost,
+            contextWindowUtilization: contextUtilization,
+            cacheHitRate: cacheMetrics.cacheHitRate,
             hasConversation: !!metadata.conversationId
           })
 
           if (backgroundSummarizer) {
             const maxPromptTokens = backgroundSummarizer.getMaxPromptTokens()
+
             if (usage.inputTokens > maxPromptTokens) {
               logger.info('summarization.background.trigger.token_usage_exceeded', {
                 appId: metadata.appId,
@@ -1074,8 +1094,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 agentName: metadata.agentName,
                 modelName: metadata.modelName,
                 inputTokens: usage.inputTokens,
+                cachedInputTokens: cacheMetrics.cachedTokens,
+                freshInputTokens: cacheMetrics.freshTokens,
                 totalTokens: usage.totalTokens,
-                maxPromptTokens
+                maxPromptTokens,
+                contextWindowUtilization: contextUtilization,
+                cacheHitRate: cacheMetrics.cacheHitRate
               })
               void backgroundSummarizer.checkAndSummarize(metadata.appId, usage.inputTokens)
             }
