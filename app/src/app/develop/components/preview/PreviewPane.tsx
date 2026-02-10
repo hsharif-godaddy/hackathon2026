@@ -511,10 +511,7 @@ export default function PreviewPane({
                 disabled={restoreMutation.isPending}
                 title={t('builder_preview_git_title')}
               >
-                {restoreMutation.isPending
-                  ? t('builder_preview_error_restoring')
-                  : `${t('builder_preview_error_restore_to')} ${selectedCommit ? selectedCommit.hash.substring(0, 7) : t('builder_preview_error_this_commit')}`
-                }
+                {restoreMutation.isPending ? t('builder_preview_error_restoring') : t('builder_preview_error_restore')}
               </Button>
             </div>
           </div>

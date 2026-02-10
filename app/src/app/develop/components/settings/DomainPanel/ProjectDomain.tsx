@@ -314,7 +314,7 @@ export default function ProjectDomain() {
            <Button
              design="inline"
              text={projectDomainDisplay}
-             data-eid={generateClickEID(`settings/domains.project_domain.link`)}
+             data-eid={generateClickEID(`settings.domains.project_domain_link`)}
              className="!hover:bg-transparent"
              href={getProjectDomainUrl(projectDomainDisplay)}
              as="external"
@@ -337,7 +337,7 @@ export default function ProjectDomain() {
               }
               design="primary"
               onClick={handleUpdateAppName}
-              data-eid={generateClickEID(`settings/domains.project_domain.update`)}
+              data-eid={generateClickEID(`settings.domains.project_domain_update`)}
               className="!hover:bg-transparent"
               text={isValidatingDomain || (currentProjectName !== debouncedDomain)
                 ? t('builder_project_domain_button_checking')
@@ -348,7 +348,7 @@ export default function ProjectDomain() {
               disabled={updateAppNameMutation.isPending }
               design="secondary"
               onClick={handleCancel}
-              data-eid={generateClickEID(`settings/domains.project_domain.cancel`)}
+              data-eid={generateClickEID(`settings.domains.project_domain_cancel`)}
               className="!hover:bg-transparent"
               text={t('builder_project_domain_button_cancel')}
             />

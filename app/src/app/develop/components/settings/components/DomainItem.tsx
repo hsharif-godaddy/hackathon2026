@@ -99,7 +99,7 @@ export default function DomainItem({
           {isConnected && appDomain?.status === DomainStatus.ACTIVE ? (
             <Button
               design="inline"
-              data-eid={generateClickEID(`settings/domains.domain_item.link`)}
+              data-eid={generateClickEID(`settings.domains.domain_link`)}
               className="!hover:bg-transparent"
               href={getDomainUrl(domainName)}
               external

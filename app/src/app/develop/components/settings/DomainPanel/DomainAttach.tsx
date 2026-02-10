@@ -369,7 +369,7 @@ export default function DomainAttach() {
         <Button
           text={t('builder_custom_domain_button_buy')}
           design="primary"
-          data-eid={generateClickEID(`settings/domains.custom_domain.buy_new_domain`)}
+          data-eid={generateClickEID(`settings.domains.buy_new_domain`)}
           href={`https://www.${getRootDomain()}/domains`}
           external
         />
@@ -476,7 +476,7 @@ export default function DomainAttach() {
               (customDomain !== debouncedDomain) || // Validation hasn't completed yet (debounce pending)
               (validationData && !validationData.available) // Validation failed
             }
-            data-eid={generateClickEID(`settings/domains.custom_domain.add`)}
+            data-eid={generateClickEID(`settings.domains.add_domain`)}
             className="!hover:bg-transparent"
           />
         </div>
@@ -492,13 +492,13 @@ export default function DomainAttach() {
                  design="primary"
                  onClick={handleConfirmAdd}
                  text={t('builder_custom_domain_modal_button_continue')}
-                 data-eid={generateClickEID(`settings/domains.connect_confirm.continue`)}
+                 data-eid={generateClickEID(`settings.domains.connect_continue`)}
                />
                <Button
                  design="secondary"
                  onClick={() => setShowAddConfirmation(false)}
                  text={t('builder_custom_domain_modal_button_cancel')}
-                 data-eid={generateClickEID(`settings/domains.connect_confirm.cancel`)}
+                 data-eid={generateClickEID(`settings.domains.connect_cancel`)}
                />
              </Box>
            </Box>

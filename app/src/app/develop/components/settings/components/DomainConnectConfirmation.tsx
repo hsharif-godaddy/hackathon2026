@@ -43,14 +43,14 @@ export default function DomainConnectConfirmation({
           design="primary"
           onClick={onConfirm}
           text={t('builder_custom_domain_modal_button_continue')}
-          data-eid={generateClickEID(`settings/domains.connect_confirm.continue`)}
+          data-eid={generateClickEID(`settings.domains.connect_continue`)}
           size="sm"
         />
         <Button
           design="secondary"
           onClick={onCancel}
           text={t('builder_custom_domain_modal_button_cancel')}
-          data-eid={generateClickEID(`settings/domains.connect_confirm.cancel`)}
+          data-eid={generateClickEID(`settings.domains.connect_cancel`)}
           size="sm"
         />
       </Box>

@@ -48,6 +48,7 @@ export default function ChatToolbar({
   const isSelectMode = useDevelopPageStore((state) => state.isSelectMode);
   const isSelectingCommit = useGitStore((state) => state.isSelectingCommit);
   const returnToMain = useGitStore((state) => state.returnToMain);
+  const setSelectedCommitHash = useGitStore((state) => state.setSelectedCommitHash);
 
   const { data: isSettingsEnabled } = useSwitchboard('appbuilder-settings');
 
@@ -89,9 +90,15 @@ export default function ChatToolbar({
     const historyTabJustClosed = prevChatTab === ChatTab.HISTORY && activeChatTab !== ChatTab.HISTORY
 
     if (codeEditorJustOpened || selectModeJustActivated || historyTabJustClosed) {
+      // Reset selected commit hash to the latest commit to prevent showing historical commit
+      // banner during the async returnToMain operation. This provides smooth UX when switching
+      // from History tab to Chat/Preview tab.
+      setSelectedCommitHash(appId, latestCommitHash)
+
+      // Trigger async backend checkout to main branch
       returnToMain(appId, latestCommitHash)
     }
-  }, [appId, viewMode, isSelectMode, activeChatTab, latestCommitHash, returnToMain])
+  }, [appId, viewMode, isSelectMode, activeChatTab, latestCommitHash, returnToMain, setSelectedCommitHash])
 
 
   const handleTabClick = (tab: ChatTab) => {

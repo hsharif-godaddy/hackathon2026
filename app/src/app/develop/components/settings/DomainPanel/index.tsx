@@ -71,7 +71,7 @@ export default function DomainPanel() {
               design="primary"
               size="sm"
               onClick={() => openUpgradeModal('domains.upgrade', PAYWALL_ITC.UPGRADE)}
-              data-eid={generateClickEID(`settings/domains.upgrade`)}
+              data-eid={generateClickEID(`settings.domains.upgrade`)}
             />
           </div>
         </Box>
