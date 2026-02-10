@@ -204,6 +204,7 @@ export default function PublishStatusAlert() {
         <Alert
           emphasis='success'
           onClose={() => currentAppId && dismissPublishSuccess(currentAppId)}
+          title={t('builder_publish_success_title')}
           actions={showDomainButton && (
             <Button
               design="primary"
@@ -214,22 +215,19 @@ export default function PublishStatusAlert() {
             />
           )}
         >
-          <text.h3 as='title' size={1}>{t('builder_publish_success_title')}</text.h3>
-          <text.p>
-            <FormattedMessage
-              id='builder_publish_success_message'
-              values={{
-                fqdn: (
-                  <Button
-                    design='inline'
-                    href={fqdn}
-                    text={fqdn.replace('https://', '')}
-                    external
-                  />
-                )
-              }}
-            />
-          </text.p>
+          <FormattedMessage
+            id='builder_publish_success_message'
+            values={{
+              fqdn: (
+                <Button
+                  design='inline'
+                  href={fqdn}
+                  text={fqdn.replace('https://', '')}
+                  external
+                />
+              )
+            }}
+          />
         </Alert>
       </div>
     );
@@ -240,11 +238,9 @@ export default function PublishStatusAlert() {
       <div className='px-2 py-1'>
         <Alert
           emphasis='info'
+          title={t('builder_publish_progress_title')}
         >
-          <div className='font-semibold'>{t('builder_publish_progress_title')}</div>
-          <div className='text-sm mt-0.5'>
-            {t('builder_publish_progress_message')}
-          </div>
+          {t('builder_publish_progress_message')}
         </Alert>
       </div>
     );
@@ -257,6 +253,7 @@ export default function PublishStatusAlert() {
         <Alert
           emphasis='critical'
           onClose={handleDismiss}
+          title={t('builder_publish_build_failed_title')}
           actions={
             <div className='flex gap-1'>
               <Button design='secondary' onClick={handleTryAgain} text={t('builder_publish_error_button_try_again')} />
@@ -264,10 +261,7 @@ export default function PublishStatusAlert() {
             </div>
           }
         >
-          <div className='font-semibold'>{t('builder_publish_build_failed_title')}</div>
-          <div className='text-sm mt-0.5'>
-            {buildErrorDetails.error}
-          </div>
+          {buildErrorDetails.error}
           {buildErrorDetails.exitCode && (
             <text.p size={0} emphasis='passive' className='mt-0.5'>
               {t('builder_publish_build_failed_exit_code', { exitCode: buildErrorDetails.exitCode })}
@@ -285,10 +279,10 @@ export default function PublishStatusAlert() {
         <Alert
           emphasis='critical'
           onClose={handleDismiss}
+          title={t('builder_publish_failed_title')}
           actions={<Button design='primary' onClick={handleTryAgain} text={t('builder_publish_error_button_try_again')} />}
         >
-          <div className='font-semibold'>{t('builder_publish_failed_title')}</div>
-          <div className='text-sm mt-0.5'>{t('builder_publish_failed_message')}</div>
+          {t('builder_publish_failed_message')}
         </Alert>
       </div>
     );
@@ -296,4 +290,3 @@ export default function PublishStatusAlert() {
 
   return null;
 }
-
