@@ -223,4 +223,11 @@ describe('ChatPane', () => {
 
     expect(screen.getByTestId('plan-tracker')).toBeInTheDocument();
   });
+
+  it('should not render rebuild context panel', () => {
+    renderWithProviders(<ChatPane sendMessage={mockSendMessage} />);
+
+    expect(screen.queryByText(/rebuild mode/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/loading rebuild context/i)).not.toBeInTheDocument();
+  });
 });

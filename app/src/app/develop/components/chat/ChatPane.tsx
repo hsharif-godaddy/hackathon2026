@@ -9,23 +9,19 @@ import ChatInput from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
 import PersistentTodoList from '@/app/develop/components/PersistentTodoList'
 import PlanTracker from '@/app/develop/components/PlanTracker'
-import RebuildContextPanel from '@/app/develop/components/RebuildContextPanel'
 import SettingsPane from '@/app/develop/components/settings/SettingsPane'
 import StreamingMessageList from '@/app/develop/components/StreamingMessageList'
 import { ChatTab } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import { useChatTabs } from '@/hooks/useChatTabs'
-import { useRebuildMode } from '@/hooks/useRebuildMode'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
-import { agentFetch } from '@/lib/agent-fetch'
 import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useSiteStore } from '@/stores/useSiteStore'
 import {
   useActiveStream,
   useAiEditContext,
@@ -81,7 +77,6 @@ export default function ChatPane({
   const { data: isAssetManagerEnabled } = useSwitchboard('appbuilder-image-manager')
 
   const appId = useAppIdFromParams()
-  const { isRebuildMode } = useRebuildMode(appId)
 
   // On desktop, if Preview tab is selected, fall back to Chat
   useEffect(() => {
@@ -477,57 +472,6 @@ export default function ChatPane({
       />
 
       {activeChatTab === ChatTab.CHAT && <PersistentTodoList />}
-
-      {activeChatTab === ChatTab.CHAT && isRebuildMode && appId && (
-        <div className="mx-2 mb-2">
-          <RebuildContextPanel
-            appId={appId}
-            onBuildPage={async (pageSlug) => {
-              try {
-                logger.info('rebuild-context.build-page-start', {
-                  appId,
-                  pageSlug,
-                  message: 'Generating page prompt...'
-                })
-
-                const site = await useSiteStore.getState().fetchSite(appId)
-                if (!site?.agent_url) {
-                  throw new Error('Agent URL not available for this site')
-                }
-
-                const response = await agentFetch(`${site.agent_url}/rebuild/${appId}/build-page`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ pageSlug }),
-                  siteId: appId
-                })
-
-                if (!response.ok) {
-                  throw new Error('Failed to build page')
-                }
-
-                const { prompt } = await response.json()
-
-                logger.info('rebuild-context.build-page-complete', {
-                  appId,
-                  pageSlug,
-                  promptLength: prompt.length,
-                  message: 'Prompt generated, sending to agent...'
-                })
-
-                handleSendMessage(prompt)
-              } catch (error) {
-                logger.error('rebuild-context.build-page-error', {
-                  appId,
-                  pageSlug,
-                  error: error instanceof Error ? error.message : String(error)
-                })
-                throw error // Re-throw so the loading state can be cleared
-              }
-            }}
-          />
-        </div>
-      )}
 
       {activeChatTab === ChatTab.CHAT && (
         <>
