@@ -107,4 +107,4 @@ qualityEval:
     minAccessibility: 60
 
 cleanup:
-  deleteAllSitesViaAPI: true
+  deleteAllSitesViaAPI: false

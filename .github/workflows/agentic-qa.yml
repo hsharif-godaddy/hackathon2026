@@ -25,6 +25,7 @@ on:
           - golden-dataset-all
           # Main scenarios
           - scenarios/create-site.yaml
+          - scenarios/budget-build.yaml
           # App Types (10 scenarios)
           - scenarios/golden-dataset/app-types/landing-page.yaml
           - scenarios/golden-dataset/app-types/ecommerce-store.yaml
@@ -132,7 +133,7 @@ jobs:
   # Test job: runs scenarios in parallel via matrix strategy
   agentic-qa:
     needs: setup
-    timeout-minutes: 30
+    timeout-minutes: 60
     runs-on:
       labels:
         - airo-cicd-runners
