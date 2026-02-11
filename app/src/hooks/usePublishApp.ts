@@ -7,6 +7,7 @@ import { regenerateToken } from '@/lib/jwt-regeneration';
 import { logger } from '@/lib/request-context';
 import { appService } from '@/services/AppService';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { useSitesStore } from '@/stores/useSitesStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 
 /**
@@ -60,7 +61,8 @@ async function handleLocalDevPublishSuccess(
   setLastPublishedCommitHash: (appId: string, hash: string) => void,
   setIsPublishing: (appId: string, isPublishing: boolean) => void,
   setPublishSuccess: (appId: string, success: boolean) => void,
-  fetchSite: (appId: string, forceRefresh: boolean) => Promise<any>
+  fetchSite: (appId: string, forceRefresh: boolean) => Promise<any>,
+  fetchSitesList: (siteId: string) => Promise<any>
 ) {
   // Store published commit hash for unpublished changes tracking
   setLastPublishedCommitHash(appId, commitHash);
@@ -72,7 +74,11 @@ async function handleLocalDevPublishSuccess(
   // LegacyControlPlaneAdapter.mapToSiteInfo() automatically computes variants from published_url
   // published_url is already in DB (set during app creation with coming soon page)
   try {
-    await fetchSite(appId, true);
+    // Update both stores to keep them in sync
+    await Promise.all([
+      fetchSite(appId, true), // Updates useSiteStore
+      fetchSitesList(appId),  // Updates useSitesStore
+    ]);
     // Site now has variants: ['preview', 'publish'] computed from published_url
     // Show success alert
     setPublishSuccess(appId, true);
@@ -133,6 +139,7 @@ export function usePublishApp() {
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishSuccess = useDevelopPageStore((state) => state.setPublishSuccess);
   const fetchSite = useSiteStore((state) => state.fetchSite);
+  const fetchSitesList = useSitesStore((state) => state.fetchSite);
   const { data: isSecretsSyncEnabled } = useSwitchboard('appbuilder-settings-secrets');
 
   return useMutation<PublishResult, Error, PublishParams>({
@@ -347,7 +354,8 @@ export function usePublishApp() {
           setLastPublishedCommitHash,
           setIsPublishing,
           setPublishSuccess,
-          fetchSite
+          fetchSite,
+          fetchSitesList
         );
       }
     },

@@ -80,6 +80,7 @@ vi.mock('@/stores/useAuthUIStore', () => {
 vi.mock('@/stores/useSitesStore', () => {
   const state = {
     clearRequiresAuth: vi.fn(),
+    fetchSite: vi.fn(),
   };
   return {
     useSitesStore: (selector?: any) => (typeof selector === 'function' ? selector(state) : state),

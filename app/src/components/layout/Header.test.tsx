@@ -22,6 +22,7 @@ vi.mock('@/components/providers/AuthProvider', () => ({
 }));
 vi.mock('@/stores/useSitesStore', () => ({
   useSites: () => ({ sites: [], isLoading: false }),
+  useSitesStore: vi.fn(() => ({ fetchSite: vi.fn() })),
 }));
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => {
