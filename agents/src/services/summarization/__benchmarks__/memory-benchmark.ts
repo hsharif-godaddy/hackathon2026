@@ -157,7 +157,20 @@ function createMockRepos(
       const idx = allMessages.findIndex(m => m.id === messageId);
       return idx >= 0 ? allMessages.slice(idx + 1) : [];
     },
-    getMessageById: async (messageId: string) => allMessages.find(m => m.id === messageId) || null
+    getMessageById: async (messageId: string) => allMessages.find(m => m.id === messageId) || null,
+    getEstimatedTokensAfterMessageId: async (_appId: string, messageId: string) => {
+      const idx = allMessages.findIndex(m => m.id === messageId);
+      if (idx < 0) return null;
+      // Estimate tokens from content length (chars / 4)
+      const afterMessages = allMessages.slice(idx + 1);
+      const totalChars = afterMessages.reduce((sum, m) => sum + m.content.length + JSON.stringify(m.segments || []).length, 0);
+      return Math.ceil(totalChars / 4);
+    },
+    getEstimatedTokensForApp: async () => {
+      // Estimate tokens from content length (chars / 4)
+      const totalChars = allMessages.reduce((sum, m) => sum + m.content.length + JSON.stringify(m.segments || []).length, 0);
+      return Math.ceil(totalChars / 4);
+    }
   };
 
   const summaryRepo: BackgroundSummarizerSummaryRepo = {

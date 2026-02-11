@@ -15,7 +15,7 @@ import {
 export type BackgroundSummarizerConversationRepo = Omit<
   Pick<
     ConversationRepository,
-    'getByAppId' | 'getMessagesBatch' | 'getMessagesAfterMessageId' | 'getMessageById'
+    'getByAppId' | 'getMessagesBatch' | 'getMessagesAfterMessageId' | 'getMessageById' | 'getEstimatedTokensAfterMessageId' | 'getEstimatedTokensForApp'
   >,
   'getMessagesBatch' | 'getMessageById'
 > & {
@@ -143,51 +143,102 @@ export class BackgroundSummarizer {
       // Track if we're in incremental mode (affects keepRecentTurns behavior)
       const isIncrementalMode = !shouldLoadFullHistory && !!existingSummary;
 
-      if (!shouldLoadFullHistory && existingSummary) {
-        // Incremental mode: Load only messages after the last summary
-        logger.debug('summarization.background.incremental_mode_attempt', {
-          appId,
-          lastSummaryEndId: existingSummary.messageRangeEnd,
-        });
+      // OPTIMIZATION: Early exit using content-length-based token estimation before loading full content
+      // Uses SUM(LENGTH(content) + LENGTH(segments)) / 4 as token estimate (4 chars ≈ 1 token)
+      // This accounts for varying message sizes (1 tool call vs 50 tool calls)
 
-        allMessages = await this.conversationRepo.getMessagesAfterMessageId(
+      if (existingSummary && shouldRegenerateFromScratch) {
+        // For regenerate mode: estimate TOTAL tokens since full history will be processed
+        // (not just new messages - regenerate processes everything from scratch)
+        const estimatedTotalTokens = await this.conversationRepo.getEstimatedTokensForApp(appId);
+        // Use 80% of threshold as cutoff to account for estimation variance
+        const estimateThreshold = this.config.maxPromptTokens * 0.8;
+
+        if (estimatedTotalTokens < estimateThreshold) {
+          logger.debug('summarization.background.skip_regenerate_estimate', {
+            appId,
+            estimatedTotalTokens,
+            threshold: this.config.maxPromptTokens,
+            message: `Skipping regenerate: estimated ${estimatedTotalTokens} total tokens < ${estimateThreshold} threshold`,
+          });
+          return;
+        }
+      } else if (!existingSummary) {
+        // For first-time summarization: estimate total tokens from content length
+        const estimatedTotalTokens = await this.conversationRepo.getEstimatedTokensForApp(appId);
+        // Use 80% of threshold as cutoff to account for estimation variance
+        const estimateThreshold = this.config.maxPromptTokens * 0.8;
+
+        if (estimatedTotalTokens < estimateThreshold) {
+          logger.debug('summarization.background.skip_first_time_estimate', {
+            appId,
+            estimatedTotalTokens,
+            threshold: this.config.maxPromptTokens,
+            message: `Skipping first-time: estimated ${estimatedTotalTokens} tokens < ${estimateThreshold} threshold`,
+          });
+          return;
+        }
+      }
+
+      if (!shouldLoadFullHistory && existingSummary) {
+        // Incremental mode: First check if new messages could exceed threshold
+        // Use content-length-based estimation to avoid loading messages unnecessarily
+        const estimatedNewTokens = await this.conversationRepo.getEstimatedTokensAfterMessageId(
           appId,
           existingSummary.messageRangeEnd
         );
 
-        // If no messages found, check if reference message still exists
-        // Distinguish between "no new messages" vs "reference missing"
-        if (allMessages.length === 0) {
-          // Check if the reference message exists
-          const refExists = await this.conversationRepo.getMessageById(existingSummary.messageRangeEnd);
+        if (estimatedNewTokens === null) {
+          // Reference message not found - fall back to full mode
+          logger.warn('summarization.background.incremental_fallback_to_full', {
+            appId,
+            lastSummaryEndId: existingSummary.messageRangeEnd,
+            reason: 'Reference message not found, falling back to full summarization',
+          });
 
-          if (!refExists) {
-            // Reference message is missing (deleted/migrated) - fall back to full mode
-            logger.warn('summarization.background.incremental_fallback_to_full', {
-              appId,
-              lastSummaryEndId: existingSummary.messageRangeEnd,
-              reason: 'Reference message not found, falling back to full summarization',
-            });
+          const conversationIds = conversations.map(c => c.id);
+          const messages = await this.conversationRepo.getMessagesBatch(conversationIds);
 
-            const conversationIds = conversations.map(c => c.id);
-            const messages = await this.conversationRepo.getMessagesBatch(conversationIds);
+          allMessages = messages.map((msg) => ({
+            ...msg,
+            conversationId: msg.conversationId,
+          }));
 
-            allMessages = messages.map((msg) => ({
-              ...msg,
-              conversationId: msg.conversationId,
-            }));
-
-            // Clear existingSummary to treat this as a full run, not incremental
-            // This prevents double-counting and ensures proper context
-            existingSummary = null;
-          } else {
-            // Reference exists but no new messages - this is expected, log and return
-            logger.debug('summarization.background.no_new_messages_after_summary', {
-              appId,
-              lastSummaryEndId: existingSummary.messageRangeEnd,
-            });
-          }
+          // Clear existingSummary to treat this as a full run, not incremental
+          existingSummary = null;
+        } else if (estimatedNewTokens === 0) {
+          // No new messages - exit early
+          logger.debug('summarization.background.no_new_messages_after_summary', {
+            appId,
+            lastSummaryEndId: existingSummary.messageRangeEnd,
+          });
+          return;
         } else {
+          // Check if estimated tokens are under threshold
+          const estimateThreshold = this.config.maxPromptTokens * 0.8;
+          if (estimatedNewTokens < estimateThreshold) {
+            logger.debug('summarization.background.skip_incremental_estimate', {
+              appId,
+              estimatedNewTokens,
+              threshold: this.config.maxPromptTokens,
+              message: `Skipping incremental: estimated ${estimatedNewTokens} tokens < ${estimateThreshold} threshold`,
+            });
+            return;
+          }
+
+          // Load messages after the last summary
+          logger.debug('summarization.background.incremental_mode_attempt', {
+            appId,
+            lastSummaryEndId: existingSummary.messageRangeEnd,
+            estimatedNewTokens,
+          });
+
+          allMessages = await this.conversationRepo.getMessagesAfterMessageId(
+            appId,
+            existingSummary.messageRangeEnd
+          );
+
+
           logger.debug('summarization.background.incremental_mode_success', {
             appId,
             messagesLoaded: allMessages.length,

@@ -44,7 +44,9 @@ describe('BackgroundSummarizer', () => {
       getByAppId: vi.fn(),
       getMessagesAfterMessageId: vi.fn(),
       getMessagesBatch: vi.fn(),
-      getMessageById: vi.fn()
+      getMessageById: vi.fn(),
+      getEstimatedTokensAfterMessageId: vi.fn().mockResolvedValue(50000), // Default to high estimate to not skip
+      getEstimatedTokensForApp: vi.fn().mockResolvedValue(50000) // Default to high estimate to not skip
     } as unknown as ConversationRepository;
 
     summaryRepo = {
@@ -245,8 +247,7 @@ describe('BackgroundSummarizer', () => {
 
       vi.mocked(summaryRepo.findLatestForApp).mockResolvedValue(mockExistingSummary);
       vi.mocked(conversationRepo.getByAppId).mockResolvedValue(mockConversations);
-      vi.mocked(conversationRepo.getMessagesAfterMessageId).mockResolvedValue([]);
-      vi.mocked(conversationRepo.getMessageById).mockResolvedValue(null); // Reference missing
+      vi.mocked(conversationRepo.getEstimatedTokensAfterMessageId).mockResolvedValue(null); // Reference missing
       vi.mocked(conversationRepo.getMessagesBatch).mockResolvedValue(mockAllMessages);
 
       // Mock high token count to trigger summarization
@@ -256,8 +257,8 @@ describe('BackgroundSummarizer', () => {
       await summarizer.checkAndSummarize('app-123');
       await new Promise(resolve => setTimeout(resolve, 10));
 
-      // Should detect missing reference and fallback to batch query
-      expect(conversationRepo.getMessageById).toHaveBeenCalledWith('msg2-deleted');
+      // Should detect missing reference via estimation and fallback to batch query
+      expect(conversationRepo.getEstimatedTokensAfterMessageId).toHaveBeenCalledWith('app-123', 'msg2-deleted');
       expect(conversationRepo.getMessagesBatch).toHaveBeenCalledWith(['conv1']);
 
       // Should treat as full run (no existingSummary in context)

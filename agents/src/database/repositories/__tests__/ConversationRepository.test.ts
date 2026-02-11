@@ -402,4 +402,124 @@ describe('ConversationRepository - Single Conversation Per App', () => {
       expect(messages[1].id).toBe(msg3Id)
     })
   })
+
+  describe('getEstimatedTokensAfterMessageId', () => {
+    it('should return estimated tokens for messages after reference', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      await repo.addMessage(conv.id, 'user', 'Message 1')
+      const msg2 = await repo.addMessage(conv.id, 'agent', 'Message 2')
+      await repo.addMessage(conv.id, 'user', 'Message 3 with more content here')
+      await repo.addMessage(conv.id, 'agent', 'Message 4 also has content')
+
+      const tokens = await repo.getEstimatedTokensAfterMessageId('app-123', msg2.id)
+
+      // Should estimate tokens from Message 3 and 4 content lengths
+      // "Message 3 with more content here" = 32 chars
+      // "Message 4 also has content" = 26 chars
+      // Total = 58 chars / 4 ≈ 15 tokens (plus empty segments)
+      expect(tokens).toBeGreaterThan(0)
+      expect(tokens).toBeLessThan(100) // Sanity check
+    })
+
+    it('should return 0 when no messages after reference', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      await repo.addMessage(conv.id, 'user', 'Message 1')
+      const msg2 = await repo.addMessage(conv.id, 'agent', 'Message 2')
+
+      const tokens = await repo.getEstimatedTokensAfterMessageId('app-123', msg2.id)
+
+      expect(tokens).toBe(0)
+    })
+
+    it('should return null when reference message not found', async () => {
+      createApp('app-123')
+      await repo.create('app-123', 'develop', 'Test')
+
+      const tokens = await repo.getEstimatedTokensAfterMessageId('app-123', 'non-existent-msg')
+
+      expect(tokens).toBeNull()
+    })
+
+    it('should include segments in token estimation', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      const msg1 = await repo.addMessage(conv.id, 'user', 'First message')
+      // Add message with segments (simulates tool calls)
+      await repo.addMessage(conv.id, 'agent', 'Response', {
+        segments: [
+          { id: 'seg1', type: 'content', content: 'Some content here' },
+          { id: 'seg2', type: 'tool_call', tool_call: { id: 'tc1', tool_name: 'test', tool_args: { data: 'x'.repeat(100) } } }
+        ] as any
+      })
+
+      const tokens = await repo.getEstimatedTokensAfterMessageId('app-123', msg1.id)
+
+      // Tokens should be higher due to segments JSON
+      expect(tokens).toBeGreaterThan(30) // Segments add significant length
+    })
+
+    it('should return null when reference message belongs to different app', async () => {
+      createApp('app-123')
+      createApp('app-456')
+      const conv1 = await repo.create('app-123', 'develop', 'Conv 1')
+      const conv2 = await repo.create('app-456', 'develop', 'Conv 2')
+
+      const msg = await repo.addMessage(conv2.id, 'user', 'Message in app-456')
+      await repo.addMessage(conv1.id, 'user', 'Message in app-123')
+
+      // Reference message belongs to app-456, but we're querying app-123
+      const tokens = await repo.getEstimatedTokensAfterMessageId('app-123', msg.id)
+
+      expect(tokens).toBeNull()
+    })
+  })
+
+  describe('getEstimatedTokensForApp', () => {
+    it('should return estimated tokens for all messages in an app', async () => {
+      createApp('app-123')
+      const conv1 = await repo.create('app-123', 'develop', 'Conv 1')
+      const conv2 = await repo.create('app-123', 'develop', 'Conv 2')
+
+      await repo.addMessage(conv1.id, 'user', 'Message in conv 1')
+      await repo.addMessage(conv1.id, 'agent', 'Response in conv 1')
+      await repo.addMessage(conv2.id, 'user', 'Message in conv 2')
+
+      const tokens = await repo.getEstimatedTokensForApp('app-123')
+
+      // All three messages have content
+      expect(tokens).toBeGreaterThan(0)
+    })
+
+    it('should return 0 when app has no messages', async () => {
+      createApp('app-123')
+      await repo.create('app-123', 'develop', 'Empty Conv')
+
+      const tokens = await repo.getEstimatedTokensForApp('app-123')
+
+      expect(tokens).toBe(0)
+    })
+
+    it('should not include messages from other apps', async () => {
+      createApp('app-123')
+      createApp('app-456')
+
+      const conv1 = await repo.create('app-123', 'develop', 'App 1 Conv')
+      const conv2 = await repo.create('app-456', 'develop', 'App 2 Conv')
+
+      await repo.addMessage(conv1.id, 'user', 'Short')
+      await repo.addMessage(conv2.id, 'user', 'This is a much longer message with more content')
+      await repo.addMessage(conv2.id, 'user', 'Another long message in app 2')
+
+      const tokensApp1 = await repo.getEstimatedTokensForApp('app-123')
+      const tokensApp2 = await repo.getEstimatedTokensForApp('app-456')
+
+      // App 2 should have more estimated tokens due to longer messages
+      expect(tokensApp2).toBeGreaterThan(tokensApp1)
+    })
+  })
 })

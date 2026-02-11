@@ -651,6 +651,70 @@ export class ConversationRepository {
   }
 
   /**
+   * Get estimated token count for messages after a specific message ID
+   * Uses content + segments length as a proxy (chars / 4 ≈ tokens)
+   * Used for efficient threshold checks before loading full message content
+   *
+   * @param appId - The app ID to filter conversations
+   * @param afterMessageId - Count messages after this message ID (by created_at and rowid)
+   * @returns Promise resolving to estimated token count, or null if reference message not found or belongs to different app
+   */
+  async getEstimatedTokensAfterMessageId(appId: string, afterMessageId: string): Promise<number | null> {
+    // Get the timestamp and rowid of the reference message, validating it belongs to the specified appId
+    // This prevents cross-app reference bugs where a message ID from another app could be used
+    const refStmt = this.db.prepare(`
+      SELECT cm.created_at, cm.rowid
+      FROM conversation_messages cm
+      JOIN conversations c ON cm.conversation_id = c.id
+      WHERE cm.id = ? AND c.app_id = ?
+    `);
+    const refRow = refStmt.get(afterMessageId, appId) as { created_at: string; rowid: number } | undefined;
+
+    if (!refRow) {
+      // Reference message not found or belongs to different app
+      return null;
+    }
+
+    // Sum content lengths after the reference using timestamp + rowid for tie-breaking
+    // Uses a single JOIN query for better performance (avoids separate conversation ID fetch)
+    // Estimate tokens as total_chars / 4 (rough char-to-token ratio for mixed content)
+    const stmt = this.db.prepare(`
+      SELECT SUM(LENGTH(cm.content) + LENGTH(COALESCE(cm.segments, ''))) as total_chars
+      FROM conversation_messages cm
+      JOIN conversations c ON cm.conversation_id = c.id
+      WHERE c.app_id = ?
+        AND (
+          cm.created_at > ?
+          OR (cm.created_at = ? AND cm.rowid > ?)
+        )
+    `);
+
+    const row = stmt.get(appId, refRow.created_at, refRow.created_at, refRow.rowid) as { total_chars: number | null };
+    // Convert chars to estimated tokens (4 chars ≈ 1 token)
+    return Math.ceil((row.total_chars ?? 0) / 4);
+  }
+
+  /**
+   * Get estimated token count for all messages in an app
+   * Uses content + segments length as a proxy (chars / 4 ≈ tokens)
+   * Used for efficient threshold checks before loading full message content
+   *
+   * @param appId - The app ID
+   * @returns Promise resolving to estimated token count
+   */
+  async getEstimatedTokensForApp(appId: string): Promise<number> {
+    const stmt = this.db.prepare(`
+      SELECT SUM(LENGTH(cm.content) + LENGTH(COALESCE(cm.segments, ''))) as total_chars
+      FROM conversation_messages cm
+      JOIN conversations c ON cm.conversation_id = c.id
+      WHERE c.app_id = ?
+    `);
+    const row = stmt.get(appId) as { total_chars: number | null };
+    // Convert chars to estimated tokens (4 chars ≈ 1 token)
+    return Math.ceil((row.total_chars ?? 0) / 4);
+  }
+
+  /**
    * Get messages for an app that come after a specific message ID
    * Used for incremental summarization to load only new messages
    *
