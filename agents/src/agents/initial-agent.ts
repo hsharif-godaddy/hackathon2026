@@ -92,6 +92,9 @@ export async function createInitialAgent(
     maxOutputTokens: 2000,
     logger: createAgentTelemetryLogger('initial'),
 
+    // Enable prompt caching for cost savings
+    enablePromptCaching: true,
+
     metadata: {
       contextPreferences: {
         includeAppContext: true,

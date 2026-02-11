@@ -59,6 +59,21 @@ export interface OpenAIMessage {
  */
 export type LLMMessage = OpenAIMessage | AIToolMessage;
 
+export interface ConversationHistorySummary {
+  text: string;
+  operationLog?: string;
+  tokenCount: number;
+  originalTokenCount: number;
+  summaryId?: string;
+  messagesCovered?: number;
+  messagesRemaining?: number;
+}
+
+export interface ConversationHistoryWithSummary {
+  messages: LLMMessage[];
+  summary?: ConversationHistorySummary;
+}
+
 /**
  * Type guard for AI SDK v6 tool messages
  */
@@ -755,7 +770,7 @@ export class ConversationHistoryLoader {
     enableCompression: boolean = true,
     appPath?: string,
     enableSummarization: boolean = true
-  ): Promise<LLMMessage[]> {
+  ): Promise<ConversationHistoryWithSummary> {
     const conversations = await this.conversationRepo.getByAppId(appId);
 
     logger.debug('conversation.history.loader.load_with_summarization.begin', {
@@ -800,31 +815,25 @@ export class ConversationHistoryLoader {
       }
     }
 
-    // Build LLM messages with summary replacing old messages
+    let summary: ConversationHistorySummary | undefined;
+
+    if (latestSummary && summaryEndIndex !== -1) {
+      summary = {
+        text: latestSummary.summaryText,
+        operationLog: latestSummary.operationLog,
+        tokenCount: latestSummary.summaryTokenCount,
+        originalTokenCount: latestSummary.originalTokenCount,
+        summaryId: latestSummary.id,
+        messagesCovered: summaryEndIndex + 1,
+        messagesRemaining: allMessages.length - (summaryEndIndex + 1),
+      };
+    }
+
+    // Build LLM messages for conversation history (summary handled separately)
     const llmMessages: LLMMessage[] = [];
     let messageIndex = 0;
 
     if (latestSummary && summaryEndIndex !== -1) {
-      // Add operation log first (if available) - provides cumulative record of all operations
-      // This survives compression and ensures the agent sees what files were touched
-      if (latestSummary.operationLog) {
-        llmMessages.push({
-          role: 'user',
-          content: `[OPERATION LOG - Cumulative record of all work done]\n${latestSummary.operationLog}`,
-          metadata: { isOperationLog: true },
-        });
-      }
-
-      // Add summary as user message (Anthropic doesn't support multiple system messages)
-      // The latest summary contains the full cumulative summary text. Incremental summarization
-      // updates this summary by including only new messages since the last summary, so the latest
-      // summary alone provides complete historical context without duplication.
-      llmMessages.push({
-        role: 'user',
-        content: `[CONVERSATION SUMMARY]\n${latestSummary.summaryText}`,
-        metadata: { isSummary: true },
-      });
-
       // Skip all messages covered by the summary
       messageIndex = summaryEndIndex + 1;
       
@@ -952,7 +961,8 @@ export class ConversationHistoryLoader {
       });
     }
 
-    return await this.applyTokenLimit(compressedMessages, maxTokens, modelName);
+    const limitedMessages = await this.applyTokenLimit(compressedMessages, maxTokens, modelName);
+    return { messages: limitedMessages, summary };
   }
 
   /**

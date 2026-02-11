@@ -115,10 +115,21 @@ export function addCacheControlToMessages(
   const breakpoints: number[] = []
 
   // Breakpoint 1: System prompt (if enabled and exists)
+  // Skip if a system message is already explicitly cached.
   if (config.cacheSystemPrompts) {
-    const systemIndex = messages.findIndex(m => m.role === 'system')
-    if (systemIndex >= 0) {
-      breakpoints.push(systemIndex)
+    const hasCachedSystemMessage = messages.some(msg => {
+      if (msg.role !== 'system') {
+        return false
+      }
+      const providerOptions = (msg as any).providerOptions
+      return !!(providerOptions?.bedrock?.cachePoint || providerOptions?.anthropic?.cacheControl)
+    })
+
+    if (!hasCachedSystemMessage) {
+      const systemIndex = messages.findIndex(m => m.role === 'system')
+      if (systemIndex >= 0) {
+        breakpoints.push(systemIndex)
+      }
     }
   }
 

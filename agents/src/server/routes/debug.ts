@@ -136,7 +136,7 @@ router.get('/context/:appId', validateAppIdParam, async (req: Request, res: Resp
             conversationId,
             executionContext
           )
-          conversationHistory = historyMessages.map((msg: any) => ({
+          conversationHistory = historyMessages.messages.map((msg: any) => ({
             role: msg.role as 'user' | 'assistant' | 'system',
             content: msg.content
           }))

@@ -1,14 +1,11 @@
-import type { ConversationMessage, ToolCall, MessageSegment } from '../database/schema.js';
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { AppContextManager } from './AppContextManager.js';
 import { TodoContextManager } from './TodoContextManager.js';
 import { LLMSummarizationStrategy } from './summarization/index.js';
 import type { AgentExecutionContext } from '../base/agent.interface.js';
-import { ToolCallRenderer } from './ToolCallRenderer.js';
 import { logger } from '../logging/index.js';
-import { conversationContextEvents, conversationHistoryEvents, conversationTokenLimitEvents } from '../logging/events/index.js';
-import { countTokens } from '../utils/token-counter.js';
+import { conversationContextEvents } from '../logging/events/index.js';
 import { ConversationHistoryLoader } from './ConversationHistoryLoader.js';
 import {
   HotFileInclusionStrategy,
@@ -20,7 +17,12 @@ import {
 } from './compression/strategies/index.js';
 import { CssSuggestCompressionStrategy } from './compression/strategies/CssSuggestCompressionStrategy.js';
 import { ContextFormatter } from './helpers/ContextFormatter.js';
-import { type LLMMessage, type OpenAIMessage, isOpenAIMessage, getMessageContent } from './ConversationHistoryLoader.js';
+import {
+  type LLMMessage,
+  type ConversationHistoryWithSummary,
+  isOpenAIMessage,
+  getMessageContent
+} from './ConversationHistoryLoader.js';
 
 /**
  * Manages conversation context for LLM interactions
@@ -98,15 +100,24 @@ export class ConversationContextManager {
       throw new Error('Current user message cannot be empty');
     }
 
-    const messages: LLMMessage[] = [
-      { role: 'system', content: systemPrompt.trim() }
-    ];
+    let historyResult: ConversationHistoryWithSummary | null = null;
 
     // Load conversation history if we have a conversation ID
     // Use compressed token-limited loader for efficiency
     if (conversationId) {
-      const historyMessages = await this.loadConversationHistoryCompressed(conversationId, executionContext);
-      messages.push(...historyMessages);
+      historyResult = await this.loadConversationHistoryCompressed(conversationId, executionContext);
+    }
+
+    const systemPromptWithMemory = historyResult?.summary
+      ? this.composeSystemPromptWithMemory(systemPrompt.trim(), historyResult.summary, executionContext)
+      : systemPrompt.trim();
+
+    const messages: LLMMessage[] = [
+      { role: 'system', content: systemPromptWithMemory }
+    ];
+
+    if (historyResult) {
+      messages.push(...historyResult.messages);
     }
 
     // Add app context (directory listing) before AI edit context if execution context is available
@@ -179,7 +190,7 @@ export class ConversationContextManager {
     conversationContextEvents.buildSuccess(logger, {
       conversationId,
       totalMessages: validatedMessages.length,
-      systemPromptLength: systemPrompt.length,
+      systemPromptLength: systemPromptWithMemory.length,
       currentMessageLength: currentUserMessage.length,
       hasHistory: !!conversationId && validatedMessages.length > 2,
       hasAppContext,
@@ -201,7 +212,7 @@ export class ConversationContextManager {
   private async loadConversationHistoryCompressed(
     conversationId: string,
     executionContext?: AgentExecutionContext
-  ): Promise<LLMMessage[]> {
+  ): Promise<ConversationHistoryWithSummary> {
     const appId = executionContext?.metadata?.appId as string | undefined;
 
     if (!appId) {
@@ -209,7 +220,7 @@ export class ConversationContextManager {
         conversationId,
         message: 'Cannot load compressed history without appId for app path lookup'
       });
-      return [];
+      return { messages: [] };
     }
 
     const appRepo = new AppRepository();
@@ -220,7 +231,7 @@ export class ConversationContextManager {
 
     try {
       // Use summarization-aware loading
-      const llmMessages = await this.historyLoader.loadMessagesWithSummarization(
+      const historyResult = await this.historyLoader.loadMessagesWithSummarization(
         appId,
         maxTokens,
         undefined,
@@ -231,17 +242,42 @@ export class ConversationContextManager {
 
       logger.debug('conversation.history.compressed.loaded', {
         appId,
-        messageCount: llmMessages.length,
+        messageCount: historyResult.messages.length,
       });
 
-      return llmMessages;
+      return historyResult;
     } catch (error) {
       logger.error('conversation.history.compressed.load_failure', {
         appId,
         error: error instanceof Error ? error.message : String(error),
       });
-      return [];
+      return { messages: [] };
     }
+  }
+
+  private composeSystemPromptWithMemory(
+    basePrompt: string,
+    summary: ConversationHistoryWithSummary['summary'],
+    executionContext?: AgentExecutionContext
+  ): string {
+    if (!summary) {
+      return basePrompt;
+    }
+
+    const sections: string[] = [basePrompt, '# Memory', summary.text];
+    if (summary.operationLog) {
+      sections.push('## Operation Log', summary.operationLog);
+    }
+
+    const appId = executionContext?.metadata?.appId as string | undefined;
+    logger.info('context.summary.memory_injected', {
+      appId,
+      summaryTokens: summary.tokenCount,
+      originalTokens: summary.originalTokenCount,
+      hasOperationLog: !!summary.operationLog,
+    });
+
+    return sections.join('\n\n');
   }
 
   /**

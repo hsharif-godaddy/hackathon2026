@@ -12,14 +12,23 @@ vi.mock('../../utils/token-counter.js', () => ({
   })
 }));
 
+let latestSummary: any = null;
+vi.mock('../../database/repositories/SummaryRepository.js', () => ({
+  SummaryRepository: class {
+    findLatestForApp = vi.fn().mockImplementation(async () => latestSummary);
+  }
+}));
+
 describe('ConversationHistoryLoader', () => {
   let loader: ConversationHistoryLoader;
   let mockRepo: ConversationRepository;
 
   beforeEach(() => {
+    latestSummary = null;
     mockRepo = {
       findByAppAndAgent: vi.fn(),
       getMessagesForHistory: vi.fn(),
+      getByAppId: vi.fn(),
     } as any;
 
     loader = new ConversationHistoryLoader(mockRepo);
@@ -320,6 +329,56 @@ describe('ConversationHistoryLoader', () => {
         expect(toolMsg.name).toBeDefined();
         expect(toolMsg.content).toBeDefined();
       });
+    });
+  });
+
+  describe('loadMessagesWithSummarization', () => {
+    it('should return summary separately without injecting summary messages', async () => {
+      vi.mocked(mockRepo.getByAppId).mockResolvedValue([
+        { id: 'conv1', appId: 'test-app', createdAt: new Date(), updatedAt: new Date() }
+      ]);
+
+      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue([
+        {
+          id: 'm1',
+          conversationId: 'conv1',
+          sender: 'user' as const,
+          content: 'hello',
+          createdAt: new Date('2025-01-01')
+        },
+        {
+          id: 'm2',
+          conversationId: 'conv1',
+          sender: 'agent' as const,
+          content: 'hi there',
+          createdAt: new Date('2025-01-02')
+        }
+      ]);
+
+      latestSummary = {
+        id: 'sum1',
+        summaryText: '# Summary',
+        operationLog: 'Edited file A',
+        summaryTokenCount: 100,
+        originalTokenCount: 1000,
+        messageRangeStart: 'm1',
+        messageRangeEnd: 'm1'
+      };
+
+      const result = await loader.loadMessagesWithSummarization('test-app', 10000);
+
+      expect(result.summary?.text).toBe('# Summary');
+      expect(result.summary?.operationLog).toBe('Edited file A');
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0]?.role).toBe('assistant');
+      expect(result.messages[0]?.content).toBe('hi there');
+
+      const hasSummaryMessage = result.messages.some((msg: any) =>
+        msg.role === 'user' &&
+        typeof msg.content === 'string' &&
+        msg.content.includes('[CONVERSATION SUMMARY]')
+      );
+      expect(hasSummaryMessage).toBe(false);
     });
   });
 

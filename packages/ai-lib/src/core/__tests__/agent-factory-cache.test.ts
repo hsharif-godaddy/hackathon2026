@@ -365,6 +365,55 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
     expect(newUserMessage.providerOptions?.anthropic?.cacheControl).toBeUndefined()
   })
 
+  it('should not auto-cache system context messages when system prompt caching is enabled', async () => {
+    const conversationMessages: any[] = [
+      {
+        role: 'user',
+        content: 'First message'
+      },
+      {
+        role: 'assistant',
+        content: 'First response'
+      }
+    ]
+
+    mockAgent.stream.mockResolvedValue({
+      textStream: (async function* () {
+        yield 'test response'
+      })(),
+      baseStream: null,
+      usage: Promise.resolve({ totalTokens: 100, promptTokens: 50, completionTokens: 50 }),
+      finishReason: Promise.resolve('stop'),
+      toolCalls: Promise.resolve([]),
+      toolResults: Promise.resolve([])
+    })
+
+    await agentWrapper.streamGenerate('Second message', {
+      messages: conversationMessages as ModelMessage[],
+      contextMessages: [
+        {
+          role: 'system',
+          content: 'Injected system context'
+        }
+      ]
+    })
+
+    const callArgs = mockAgent.stream.mock.calls[0][0]
+    const prepared = await lastSettings.prepareCall(callArgs)
+
+    const injectedSystem = prepared.messages.find((msg: any) =>
+      msg.content === 'Injected system context'
+    )
+    const lastHistoryMessage = prepared.messages.find((msg: any) =>
+      msg.content === 'First response'
+    )
+
+    expect(injectedSystem).toBeDefined()
+    expect(lastHistoryMessage).toBeDefined()
+    expect(injectedSystem.providerOptions?.anthropic?.cacheControl).toBeUndefined()
+    expect(lastHistoryMessage.providerOptions?.anthropic?.cacheControl).toBeDefined()
+  })
+
   it('should apply cache breakpoint to system prompt when enabled', async () => {
     mockAgent.stream.mockResolvedValue({
       textStream: (async function* () {

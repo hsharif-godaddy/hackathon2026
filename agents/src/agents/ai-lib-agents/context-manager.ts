@@ -8,6 +8,7 @@ import { ConversationContextManager } from '../../services/ConversationContextMa
 import { isAIToolMessage, isOpenAIMessage, getMessageContent } from '../../services/ConversationHistoryLoader.js'
 import { AppContextManager } from '../../services/AppContextManager.js'
 import { conversationRepository } from '../../database/repositories/index.js'
+import { SummaryRepository } from '../../database/repositories/SummaryRepository.js'
 import type { EnhancedAgentContext, ContextMessage, ContextGenerationConfig, AgentContextPreferences } from './types.js'
 import { DEFAULT_CONTEXT_CONFIG } from './types.js'
 import { logger, log } from '../../logging/index.js'
@@ -39,6 +40,7 @@ export class AILibContextManager {
     private conversationContextManager: ConversationContextManager
     private appContextManager: AppContextManager
     private appRepository: AppRepository
+    private summaryRepository: SummaryRepository
     private config: ContextGenerationConfig
 
     constructor(config: Partial<ContextGenerationConfig> = {}) {
@@ -49,6 +51,7 @@ export class AILibContextManager {
         )
         this.appContextManager = new AppContextManager()
         this.appRepository = new AppRepository()
+        this.summaryRepository = new SummaryRepository()
         this.config = { ...DEFAULT_CONTEXT_CONFIG, ...config }
     }
 
@@ -113,6 +116,7 @@ export class AILibContextManager {
         // Check agent preferences for template description inclusion
         const includeTemplate = agentPreferences?.includeTemplateDescription !== false // Default true if not specified
         const templateDescription = includeTemplate ? await this.getTemplateDescription(context) : null
+        const templateCached = false
         if (templateDescription) {
             // Template content logging if enabled
             if (contextLogging.templateContent) {
@@ -124,19 +128,31 @@ export class AILibContextManager {
             conversationContextMessages.push({
                 role: 'system',
                 content: templateDescription,
+                insertionOrder: 'before_history'
+            })
+        }
+
+        const memorySummary = await this.loadConversationSummary(context)
+        let memoryCached = false
+        if (memorySummary) {
+            const memoryContent = this.formatMemorySummary(memorySummary)
+            conversationContextMessages.push({
+                role: 'system',
+                content: memoryContent,
                 insertionOrder: 'before_history',
                 cachePoint: { type: 'ephemeral' }
             })
+            memoryCached = true
         }
 
         // Add app context as system message (second priority)
         const appContextMessages = contextMessages.filter(msg => msg.type === 'app_context')
+        const appContextCached = false
         if (appContextMessages.length > 0) {
             conversationContextMessages.push({
                 role: 'system',
                 content: appContextMessages.map(msg => msg.content).join('\n\n'),
-                insertionOrder: 'before_history',
-                cachePoint: { type: 'ephemeral' }
+                insertionOrder: 'before_history'
             })
         }
 
@@ -175,6 +191,64 @@ export class AILibContextManager {
             contextMessages: conversationContextMessages,
             formattedContexts
         }
+    }
+
+    private async loadConversationSummary(context: EnhancedAgentContext): Promise<{
+        text: string
+        operationLog?: string
+        tokenCount: number
+        originalTokenCount: number
+    } | null> {
+        const appId = context.metadata?.appId as string | undefined
+        if (!appId) {
+            return null
+        }
+
+        const latestSummary = await this.summaryRepository.findLatestForApp(appId)
+        if (!latestSummary) {
+            return null
+        }
+
+        // Data integrity check: Verify the summary's message range end still exists
+        // NOTE: This adds an extra DB lookup on every context build with summaries.
+        // Future optimization: Move this validation into findLatestForApp or rely on FK constraints
+        const rangeEnd = latestSummary.messageRangeEnd
+        if (rangeEnd) {
+            const rangeEndExists = await conversationRepository.getMessageById(rangeEnd)
+            if (!rangeEndExists) {
+                logger.warn('context.summary.range_end_missing', {
+                    appId,
+                    summaryId: latestSummary.id,
+                    messageRangeEnd: rangeEnd
+                })
+                return null
+            }
+        }
+
+        logger.info('context.summary.memory_injected', {
+            appId,
+            summaryTokens: latestSummary.summaryTokenCount,
+            originalTokens: latestSummary.originalTokenCount,
+            hasOperationLog: !!latestSummary.operationLog
+        })
+
+        return {
+            text: latestSummary.summaryText,
+            operationLog: latestSummary.operationLog,
+            tokenCount: latestSummary.summaryTokenCount,
+            originalTokenCount: latestSummary.originalTokenCount
+        }
+    }
+
+    private formatMemorySummary(summary: {
+        text: string
+        operationLog?: string
+    }): string {
+        const sections: string[] = ['# Memory', summary.text]
+        if (summary.operationLog) {
+            sections.push('## Operation Log', summary.operationLog)
+        }
+        return sections.join('\n\n')
     }
 
     /**
