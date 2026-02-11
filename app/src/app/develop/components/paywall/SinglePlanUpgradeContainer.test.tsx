@@ -10,6 +10,8 @@ const mockOnClose = vi.fn();
 const mockOnSuccessClick = vi.fn();
 const mockOnErrorClick = vi.fn();
 const mockInvalidateQueries = vi.fn();
+const mockRefetchQueries = vi.fn().mockResolvedValue(undefined);
+const mockGetQueryData = vi.fn();
 const mockUseSwitchboard = vi.fn();
 
 vi.mock('@/hooks/useGasketData', () => ({
@@ -31,6 +33,8 @@ vi.mock('@tanstack/react-query', async () => {
     ...actual,
     useQueryClient: () => ({
       invalidateQueries: mockInvalidateQueries,
+      refetchQueries: mockRefetchQueries,
+      getQueryData: mockGetQueryData,
     }),
   };
 });
@@ -39,8 +43,21 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: () => mockUseSwitchboard(),
 }));
 
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: () => ({
+    data: { builderEntitlementId: 'test-entitlement-123' },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
 vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
+}));
+
+const mockWaitForQueryUpdate = vi.fn();
+vi.mock('@/lib/query-utils', () => ({
+  waitForQueryUpdate: (...args: unknown[]) => mockWaitForQueryUpdate(...args),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
@@ -60,6 +77,7 @@ vi.mock('./cdsLoader', () => ({
         <span data-testid="source">{props.source}</span>
         <span data-testid="locale">{props.locale}</span>
         <span data-testid="return-app">{props.returnApp}</span>
+        <span data-testid="entitlement-id">{props.entitlementId ?? ''}</span>
         <button data-testid="close-button" onClick={props.onClose}>Close</button>
         <button
           data-testid="success-button"
@@ -80,6 +98,10 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
   beforeEach(function setup() {
     vi.clearAllMocks();
     mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false, error: null });
+    // Return plan for planBeforePurchase capture
+    mockGetQueryData.mockReturnValue({ active: { plan: 'free' } });
+    // Default: polling succeeds (plan changed)
+    mockWaitForQueryUpdate.mockResolvedValue(true);
   });
 
   describe('renders correctly', function renderTests() {
@@ -120,6 +142,34 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
 
       await waitFor(function checkProductId() {
         expect(screen.getByTestId('product-id').textContent).toBe('AiroBuilderProduct');
+      });
+    });
+
+    it('should pass entitlementId when grants feature is enabled', async function passEntitlementId() {
+      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false, error: null });
+
+      renderWithProviders(
+        <SinglePlanUpgradeContainer
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(function checkEntitlementId() {
+        expect(screen.getByTestId('entitlement-id').textContent).toBe('test-entitlement-123');
+      });
+    });
+
+    it('should not pass entitlementId when grants feature is disabled', async function noEntitlementId() {
+      mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false, error: null });
+
+      renderWithProviders(
+        <SinglePlanUpgradeContainer
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(function checkNoEntitlementId() {
+        expect(screen.getByTestId('entitlement-id').textContent).toBe('');
       });
     });
 
@@ -203,10 +253,13 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
 
       await user.click(screen.getByTestId('success-button'));
 
-      expect(mockOnSuccessClick).toHaveBeenCalled();
+      // onSuccessClick is called synchronously after onPurchaseSuccess in the mock
+      await waitFor(function checkCallback() {
+        expect(mockOnSuccessClick).toHaveBeenCalled();
+      });
     });
 
-    it('should invalidate queries on success', async function invalidateQueries() {
+    it('should poll subscriptions and invalidate other queries on success', async function invalidateQueries() {
       const { user } = renderWithProviders(
         <SinglePlanUpgradeContainer
           onClose={mockOnClose}
@@ -220,11 +273,49 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
 
       await user.click(screen.getByTestId('success-button'));
 
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['subscriptions'] });
+      // Wait for async handleSuccess to complete
+      await waitFor(function checkPolling() {
+        expect(mockWaitForQueryUpdate).toHaveBeenCalledWith(
+          expect.anything(),
+          ['subscriptions'],
+          expect.any(Function),
+          { maxAttempts: 15, intervalMs: 2000 }
+        );
+      });
+
       expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['active-subscription'] });
       expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['paywall-feature-flags'] });
       expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['entitlements'] });
       expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects'] });
+    });
+
+    it('should log timeout when polling fails to detect plan change', async function pollingTimeout() {
+      const { shipAnalyticsLog } = await import('@/lib/logging');
+      mockWaitForQueryUpdate.mockResolvedValue(false); // Simulate timeout
+
+      const { user } = renderWithProviders(
+        <SinglePlanUpgradeContainer
+          onClose={mockOnClose}
+          source="test-source"
+        />
+      );
+
+      await waitFor(function waitForModal() {
+        expect(screen.getByTestId('success-button')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('success-button'));
+
+      await waitFor(function checkTimeoutLog() {
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.purchase.polling-timeout', {
+          source: 'test-source',
+          productId: 'AiroPlusAppBuilderProduct',
+          planBeforePurchase: 'free',
+        });
+      });
+
+      // Should still invalidate queries even on timeout
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['active-subscription'] });
     });
 
     it('should call onErrorClick when error button clicked', async function errorCallback() {
@@ -266,7 +357,11 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
 
       await user.click(screen.getByTestId('success-button'));
 
-      expect(logImpressionEvent).toHaveBeenCalledWith('plan.purchase.success');
+      // Wait for async handleSuccess to complete
+      await waitFor(function checkAnalytics() {
+        expect(logImpressionEvent).toHaveBeenCalledWith('plan.purchase.success');
+      });
+
       expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.purchase.in-app', {
         source: 'test-source',
         productId: 'AiroPlusAppBuilderProduct',
@@ -292,9 +387,12 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
 
       await user.click(screen.getByTestId('success-button'));
 
-      expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.purchase.in-app', {
-        source: 'test-source',
-        productId: 'AiroBuilderProduct',
+      // Wait for async handleSuccess to complete
+      await waitFor(function checkAnalytics() {
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.purchase.in-app', {
+          source: 'test-source',
+          productId: 'AiroBuilderProduct',
+        });
       });
     });
   });
@@ -324,6 +422,11 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
       });
 
       await user.click(screen.getByTestId('success-button'));
+
+      // Wait for async handleSuccess to complete
+      await waitFor(function checkPolling() {
+        expect(mockWaitForQueryUpdate).toHaveBeenCalled();
+      });
 
       expect(mockInvalidateQueries).toHaveBeenCalled();
     });

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { createCorsOptionsHandler, withCorsHeaders } from '@/lib/cors';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { AIRO_OWNER_PRODUCTS, AiroHttpError, AiroMgmtClient, type AiroSubscription } from '@/lib/mgmt-airo';
 import { getValidPlans, hasValidPlan, PLAN_PRIORITY } from '@/lib/paywall/shared';
@@ -10,6 +11,9 @@ import { getPlanFromSubscription } from '@/utils/credits';
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
+
+// CORS preflight handler
+export const OPTIONS = createCorsOptionsHandler();
 
 /**
  * GET /api/subscriptions - Get all subscriptions with best subscription selection
@@ -42,10 +46,12 @@ export const GET = withCustomerAuth(async (
   request: NextRequest,
   authContext: CustomerAuthContext
 ): Promise<NextResponse> => {
+  const origin = request.headers.get('origin');
+
   try {
     // JWT required
     if (!authContext.jwt) {
-      return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
+      return withCorsHeaders(NextResponse.json({ error: 'Authentication token required' }, { status: 401 }), origin);
     }
 
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
@@ -181,7 +187,7 @@ export const GET = withCustomerAuth(async (
       customerId: authContext.user.customerId
     });
 
-    return NextResponse.json({
+    return withCorsHeaders(NextResponse.json({
       success: true,
       data: {
         subscriptions: subscriptionsWithPlan,
@@ -191,7 +197,7 @@ export const GET = withCustomerAuth(async (
           grantsEnabled: isGrantsEnabled
         }
       }
-    });
+    }), origin);
 
   } catch (error) {
     logger.error('subscriptions.api.error', {
@@ -201,15 +207,15 @@ export const GET = withCustomerAuth(async (
     });
 
     if (error instanceof AiroHttpError) {
-      return NextResponse.json(
+      return withCorsHeaders(NextResponse.json(
         { error: error.status === 404 ? 'No subscriptions found' : 'Failed to fetch subscriptions' },
         { status: error.status ?? 500 }
-      );
+      ), origin);
     }
 
-    return NextResponse.json(
+    return withCorsHeaders(NextResponse.json(
       { error: 'Failed to fetch subscriptions' },
       { status: 500 }
-    );
+    ), origin);
   }
 });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { handleControlPlaneError } from '@/lib/control-plane/error-handler';
+import { createCorsOptionsHandler, withCorsHeaders } from '@/lib/cors';
 import {
   createCustomerAuthError,
   type CustomerAuthContext,
@@ -13,8 +14,11 @@ import { detectLocale } from '@/lib/translations/server-intl';
 // Force dynamic rendering to prevent database calls during build
 export const dynamic = 'force-dynamic';
 
+// CORS preflight handler
+export const OPTIONS = createCorsOptionsHandler();
+
 // GET /api/sites - Get sites using control plane adapter
-async function handleGetSites(request: NextRequest, jwt: string) {
+async function handleGetSites(request: NextRequest, jwt: string, origin: string | null) {
   const { searchParams } = new URL(request.url);
   const siteId = searchParams.get('site_id');
 
@@ -24,27 +28,30 @@ async function handleGetSites(request: NextRequest, jwt: string) {
     // Get specific site
     const site = await adapter.getSite(siteId, jwt);
     if (!site) {
-      return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+      return withCorsHeaders(NextResponse.json({ error: 'Site not found' }, { status: 404 }), origin);
     }
-    return NextResponse.json(site);
+    return withCorsHeaders(NextResponse.json(site), origin);
   }
 
   // List all sites
   const sites = await adapter.listSites(jwt);
-  return NextResponse.json(sites);
+  return withCorsHeaders(NextResponse.json(sites), origin);
 }
 
 // Authenticated GET for production
 export const GET = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
+  const origin = request.headers.get('origin');
+
   try {
     // JWT token required
     if (!authContext.jwt) {
-      return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
+      return withCorsHeaders(NextResponse.json({ error: 'Authentication token required' }, { status: 401 }), origin);
     }
 
-    return await handleGetSites(request, authContext.jwt);
+    return await handleGetSites(request, authContext.jwt, origin);
   } catch (error) {
-    return handleControlPlaneError(error, 'sites.fetch');
+    const errorResponse = handleControlPlaneError(error, 'sites.fetch');
+    return withCorsHeaders(errorResponse, origin);
   }
 });
 
