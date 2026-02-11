@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { PrismaSiteService } from '@/lib/database/prisma-site-service';
-import { getDeploymentAdapter } from '@/lib/deployment';
+import { deploymentAdapter } from '@/lib/deployment';
 import { getAllocPath } from '@/lib/dev-environment/utils/app-paths';
 import { logger } from '@/lib/request-context';
 import { CreateSiteParams, CreateSiteResult, DeploySiteOptions, IControlPlaneAdapter, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteInfo } from './types';
@@ -145,7 +145,6 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
   async deleteSite(siteId: string, _jwt: string, _systemId?: string, _subscriptionId?: string): Promise<{ success: boolean; error?: string }> {
     try {
       // Destroy infrastructure
-      const deploymentAdapter = getDeploymentAdapter();
       await deploymentAdapter.destroy(siteId);
 
       // Delete database record
@@ -257,7 +256,6 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
    */
   private async deployInBackground(siteId: string, accountId: string, prompt: string): Promise<void> {
     try {
-      const deploymentAdapter = getDeploymentAdapter();
       const site = await this.siteService.getSiteById(siteId);
 
       if (!site) {

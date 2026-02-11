@@ -136,9 +136,9 @@ interface DeploymentAdapter {
   destroy(siteId: string): Promise<DestroyResult>;
 }
 
-// Two implementations:
-// - DockerDeploymentAdapter (Docker containers for development)
-// - ProductionDeploymentAdapter (Nomad + SQS + Ceph for production)
+// Implementation:
+// - DockerDeploymentAdapter (Docker containers for local development)
+// Production environments use mhp-core Nomad templates (external)
 ```
 
 #### Account Adapters
@@ -504,40 +504,27 @@ interface DatabaseAdapter {
 2. Uses v8 template (only supported version)
 3. Composes with template-specific instructions from `prompts/template-descriptions/v8.md`
 
-### 4. Production Mode Integrations
+### 4. Deployment Architecture
 
-#### Nomad Scheduler
+#### Local Development
+
+Uses Docker Compose for container orchestration:
 
 ```typescript
-// Job submission via SQS
-const jobSpec = generateNomadJobSpec({
-  jobName: generateJobName(siteId),
-  cephMountId: metadata.cephMountId,
-  cephDirNumber: metadata.cephDirNumber,
-});
-
-await sqsNomadService.submitJobCreation({
+// Docker deployment via DockerDeploymentAdapter
+const deploymentAdapter = new DockerDeploymentAdapter();
+await deploymentAdapter.deploy({
   siteId,
-  jobId: jobName,
-  jobSpec: jobSpec.Job,
   accountId,
+  prompt,
 });
 ```
 
-#### Ceph Storage Assignment
+#### Production Environments
 
-```typescript
-// Dynamic storage allocation
-async getNextCephAssignment(): Promise<{cephMountId: string; cephDirNumber: string}> {
-  const cephMounts = [
-    'ac214cd3-b745-47a2-921c-61b4419679fe',
-    'a2a8a675-dcb4-40ec-a719-27854cc0956c'
-  ];
+Production deployments use Nomad job templates managed in the [mhp-core](https://github.com/gdcorp-partners/mhp-core) repository. The deployment adapter pattern remains consistent, but infrastructure provisioning is handled externally
 
-  // Find mount with lowest next available directory (0-99 per mount)
-  // Returns: {cephMountId, cephDirNumber}
-}
-```
+````
 
 ### 5. Real-time Communication
 
@@ -573,7 +560,7 @@ OPENAI_MODEL="claude-sonnet-4"       # AI model to use
 APP_TEMPLATE_DIR='app-templates/v8'  # Template directory
 SHOW_USAGE_COST=true                # Show token costs in UI
 DOC_APPS=true                       # Docker mode (false for local)
-```
+````
 
 #### Main App Environment
 

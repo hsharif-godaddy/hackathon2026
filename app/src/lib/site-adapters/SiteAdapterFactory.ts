@@ -59,13 +59,13 @@ export class SiteAdapterFactory {
   }
 
   /**
-   * Comprehensive production mode detection
+   * Production mode detection
+   * Note: Even in production, the deployment adapter is Docker-based
+   * Actual production deployments use mhp-core Nomad templates
    */
   private static isProductionMode(): boolean {
     return process.env.NODE_ENV === 'production' ||
-           !!process.env.MYSQL_DB_USERNAME ||        // MySQL indicates production
-           !!process.env.AWS_REGION_NOMAD ||         // AWS/Nomad indicates production
-           !!process.env.PRODUCTION_DOMAIN;         // Production domain set
+           !!process.env.MYSQL_DB_USERNAME;         // MySQL indicates production
   }
 
   /**
@@ -76,8 +76,6 @@ export class SiteAdapterFactory {
     const productionIndicators = {
       hasProductionEnv: process.env.NODE_ENV === 'production',
       hasMySQL: !!process.env.MYSQL_DB_USERNAME,
-      hasAWS: !!process.env.AWS_REGION_NOMAD,
-      hasProdDomain: !!process.env.PRODUCTION_DOMAIN,
       hasProductionDbUrl: process.env.DATABASE_URL?.includes('prod'),
       hasProductionApiKey: process.env.OPENAI_API_KEY?.includes('prod')
     };

@@ -42,7 +42,7 @@ vi.mock('@/lib/database/prisma-site-service', () => ({
 }));
 
 vi.mock('@/lib/deployment', () => ({
-  getDeploymentAdapter: vi.fn().mockReturnValue(mockDeploymentAdapterInstance)
+  deploymentAdapter: mockDeploymentAdapterInstance
 }));
 
 vi.mock('@/lib/request-context', () => ({

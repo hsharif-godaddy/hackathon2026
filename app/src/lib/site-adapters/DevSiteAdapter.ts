@@ -1,6 +1,6 @@
 import { SiteStatus } from '@/generated/prisma';
 import { PrismaSiteService } from '@/lib/database/prisma-site-service';
-import { getDeploymentAdapter } from '@/lib/deployment';
+import { deploymentAdapter } from '@/lib/deployment';
 import { DevEnvironmentManager } from '@/lib/dev-environment/DevEnvironmentManager';
 import type { CreateSiteRequest, ISiteAdapter, ServerInfo, SiteInfo, SiteLimitCheck } from './interfaces/ISiteAdapter';
 import { logger } from '../request-context';
@@ -85,9 +85,8 @@ export class DevSiteAdapter implements ISiteAdapter {
       try {
         logger.info('dev-site-adapter.deploy.start', { siteId });
 
-        const deploymentAdapter = getDeploymentAdapter();
         const site = await this.siteService.getSiteById(siteId);
-        
+
         if (!site) {
           logger.error('dev-site-adapter.deploy.site-not-found', { siteId });
           return;
@@ -208,7 +207,6 @@ export class DevSiteAdapter implements ISiteAdapter {
 
     try {
       // Use deployment adapter to handle infrastructure cleanup
-      const deploymentAdapter = getDeploymentAdapter();
       const destroyResult = await deploymentAdapter.destroy(siteId);
 
       if (!destroyResult.success) {

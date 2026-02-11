@@ -35,22 +35,8 @@ export function logStartupConfiguration() {
     ...(!hasDatabaseUrl && !hasMySqlCredentials ? { warning: 'No MySQL configuration found' } : {})
   });
 
-  // SQS Nomad Service Configuration
-  const region = process.env.AWS_REGION_NOMAD || 'eu-central-1';
-  const accountId = process.env.AWS_ACCOUNT_ID_NOMAD || '418549769352';
-  const targetRoleArn = `arn:aws:iam::${accountId}:role/pioneerc1-custom-cross-account-airo-builder-sqs`;
-  const queueUrl = `https://${region}.queue.amazonaws.com/${accountId}/c4-dev-sxb1-eu-central-1_nomadJobsQueue`;
-
-  logger.info('startup.config.sqs', {
-    message: '🔗 SQS Nomad Service Configuration',
-    region,
-    accountId,
-    targetRoleArn,
-    queueUrl
-  });
-
   // GdAuth Service Configuration
-  const ssoHost = 'sso.test-godaddy.com';
+  const ssoHost = process.env.SSO_HOST || 'sso.test-godaddy.com';
   logger.info('startup.config.gdauth', {
     message: '🔐 GdAuth Service Configuration',
     ssoHost,

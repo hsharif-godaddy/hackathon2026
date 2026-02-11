@@ -125,9 +125,11 @@ _Additional services:_ `website/` (marketing), `app-templates/` (v8 template), `
 
 ### Key Patterns
 
-**Deployment:** Docker Compose (dev/local), enterprise adapter (prod) via adapter pattern
+**Deployment:**
 
-- Implementation: `app/src/lib/dev-environment/adapters/DockerAppService.ts`
+- **Local Development**: Docker Compose via `docker-compose-generator.ts`
+- **Test/Dev/Production Environments**: Nomad job templates in [mhp-core](https://github.com/gdcorp-partners/mhp-core) (external repo)
+- **Deployment Adapter**: Always uses `DockerDeploymentAdapter` (`app/src/lib/deployment/docker-adapter.ts`)
 - See: `app/DEPLOYMENT-ADAPTER-SYSTEM.md`
 
 **Container Orchestration:**

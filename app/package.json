@@ -35,7 +35,6 @@
     "@airo-ux/loader": "^2.1.0",
     "@airo/ai-lib": "workspace:*",
     "@aws-sdk/client-secrets-manager": "3.679.0",
-    "@aws-sdk/client-sqs": "3.679.0",
     "@aws-sdk/client-sts": "3.679.0",
     "@aws-sdk/credential-provider-node": "^3.888.0",
     "@babel/runtime": "^7.28.4",

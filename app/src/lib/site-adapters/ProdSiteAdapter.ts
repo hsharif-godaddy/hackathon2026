@@ -1,5 +1,5 @@
 import { PrismaSiteService } from '@/lib/database/prisma-site-service';
-import { getDeploymentAdapter } from '@/lib/deployment';
+import { deploymentAdapter } from '@/lib/deployment';
 import type { CreateSiteRequest, ISiteAdapter, ServerInfo, SiteInfo, SiteLimitCheck } from './interfaces/ISiteAdapter';
 import { logger } from '../request-context';
 
@@ -38,8 +38,7 @@ export class ProdSiteAdapter implements ISiteAdapter {
     });
 
     try {
-      // Deploy using production deployment adapter
-      const deploymentAdapter = getDeploymentAdapter();
+      // Deploy using deployment adapter
       const deploymentResult = await deploymentAdapter.deploy({
         siteId: site.id,
         accountId: request.accountId,
@@ -131,7 +130,6 @@ export class ProdSiteAdapter implements ISiteAdapter {
 
     try {
       // Use deployment adapter to handle infrastructure cleanup
-      const deploymentAdapter = getDeploymentAdapter();
       const destroyResult = await deploymentAdapter.destroy(siteId);
 
       if (!destroyResult.success) {

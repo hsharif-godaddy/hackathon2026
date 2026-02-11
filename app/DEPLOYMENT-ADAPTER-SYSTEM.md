@@ -18,81 +18,53 @@ The deployment adapter system provides a flexible, environment-aware approach to
    - Structured logging with environment context
 
 3. **Deployment Adapters**
-   - **ProductionDeploymentAdapter**: Nomad + SQS + Ceph (enterprise infrastructure)
-   - **DockerDeploymentAdapter**: Docker containers via agents service (development)
+   - **DockerDeploymentAdapter**: Docker containers via agents service (local development)
 
-4. **AdapterFactory** (`src/lib/deployment/adapter-factory.ts`)
-   - Environment detection and adapter selection
-   - Singleton pattern for consistent adapter usage
-   - Configuration management
+4. **Adapter Singleton** (`src/lib/deployment/adapter-factory.ts`)
+   - Exports singleton `deploymentAdapter` instance
+   - Always uses DockerDeploymentAdapter
+   - Production deployments use mhp-core Nomad templates (external)
 
-## Environment Detection
+## Deployment Architecture
 
-The system automatically detects the deployment mode:
+### Local Development
 
-### Production Mode
+Uses Docker containers via the agents service:
 
-Detected when **any** of these conditions are true:
+- Docker containers orchestrated by `DockerDeploymentAdapter`
+- Local URLs (localhost:3000, etc.)
+- Simplified infrastructure for development
 
-- `NODE_ENV=production`
-- `MYSQL_DB_USERNAME` is set (MySQL indicates production)
-- `AWS_REGION_NOMAD` is set (AWS/Nomad indicates production)
-- `PRODUCTION_DOMAIN` is set
+### Test/Dev/Production Environments
 
-**Infrastructure**: Nomad + SQS + Ceph storage + Production URLs
+Production deployments are managed externally:
 
-### Docker Development Mode
-
-Detected when:
-
-- `NODE_ENV=development`
-
-**Infrastructure**: Docker containers via agents service + Local URLs
-
-### Explicit Override
-
-- Set `DEPLOYMENT_MODE=docker|production` to force a specific mode
+- Nomad job templates defined in [mhp-core](https://github.com/gdcorp-partners/mhp-core)
+- Infrastructure provisioning handled outside the application
+- The application uses the same `DockerDeploymentAdapter` interface
 
 ## Site Creation Flow
 
-### Before (Broken)
+### Deployment Flow
 
 ```
 User clicks "Start Building"
 │
-└── Always uses production infrastructure
-    ├── Creates site with Ceph storage
-    ├── Generates Nomad job spec
-    ├── Submits to AWS SQS queue
-    ├── Sets production domain URLs
-    └── Hangs in development (no local infrastructure)
-```
-
-### After (Flexible)
-
-```
-User clicks "Start Building"
-│
-├── Production Mode
-│   ├── Creates site with Ceph storage
-│   ├── Uses ProductionDeploymentAdapter
-│   ├── Generates Nomad job + submits to SQS
-│   └── Sets production URLs
-│
-└── Development Mode
-    ├── Creates simplified site record
-    ├── Uses DockerDeploymentAdapter
-    ├── Calls agents service for Docker container management
+└── Uses DockerDeploymentAdapter
+    ├── Creates site record in database
+    ├── Calls agents service for container orchestration
+    ├── Docker containers managed locally
     └── Sets localhost URLs
+
+Note: Production environments use mhp-core Nomad templates
 ```
 
 ## Key Benefits
 
-1. **Environment Awareness**: Automatically adapts to dev/staging/production
-2. **Clean Separation**: Production complexity is isolated from development
-3. **Extensible**: Easy to add new deployment strategies (Docker, Kubernetes, etc.)
-4. **Testable**: Each adapter can be tested independently
-5. **Consistent Interface**: All deployment strategies use the same API
+1. **Simplicity**: Single deployment adapter for all environments
+2. **Clean Separation**: Production infrastructure managed externally via mhp-core
+3. **Testable**: Adapter can be mocked for testing
+4. **Consistent Interface**: Same deployment API regardless of environment
 
 ## Configuration
 
@@ -127,10 +99,9 @@ For local development, ensure:
 ### In API Routes
 
 ```typescript
-import { getDeploymentAdapter } from "@/lib/deployment";
+import { deploymentAdapter } from "@/lib/deployment";
 
-const adapter = getDeploymentAdapter();
-const result = await adapter.deploy({
+const result = await deploymentAdapter.deploy({
   siteId: "abc123",
   accountId: "user123",
   prompt: "Build me a website",
@@ -143,39 +114,32 @@ const result = await adapter.deploy({
 import { getDeploymentEnvironmentInfo } from "@/lib/deployment";
 
 const info = getDeploymentEnvironmentInfo();
-console.log("Current mode:", info.mode); // 'docker' or 'production'
+console.log("Current mode:", info.mode); // always 'docker'
 ```
 
 ## File Structure
 
 ```
 src/lib/deployment/
-├── types.ts              # Interfaces and types
-├── base-adapter.ts       # Common functionality
-├── production-adapter.ts # Nomad + SQS + Ceph
-├── docker-adapter.ts     # Docker containers via agents service
-├── adapter-factory.ts    # Environment detection
-└── index.ts             # Exports
+├── types.ts           # Interfaces and types
+├── base-adapter.ts    # Common functionality
+├── docker-adapter.ts  # Docker containers via agents service
+├── adapter-factory.ts # Singleton instance export
+└── index.ts          # Exports
 ```
 
 ## Migration Notes
 
-### Updated Files
+### Removed Components
 
-- `src/app/api/sites/route.ts` - Uses adapter pattern instead of hardcoded production logic
-- `src/lib/database/site-service.ts` - Added `createSiteSimple()` for development mode
+- Old internal Nomad job template generator (`job-template.ts`)
+- SQS-based job submission service (`sqs-nomad.ts`)
+- Production deployment adapter (`production-adapter.ts`)
+- Factory pattern replaced with singleton export
 
-### Removed Dependencies
+### Production Deployment
 
-- Site creation no longer always requires Ceph storage assignment
-- Site creation no longer always generates Nomad job specs
-- Site creation no longer always submits to AWS SQS
-
-### Backward Compatibility
-
-- Production deployments work exactly as before
-- All existing production sites continue to function
-- Database schema unchanged
+Production environments now use Nomad job templates from [mhp-core](https://github.com/gdcorp-partners/mhp-core) repository. The deployment adapter interface remains consistent, but infrastructure provisioning is handled externally.
 
 ## Testing
 
