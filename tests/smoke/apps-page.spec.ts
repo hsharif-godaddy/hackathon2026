@@ -152,11 +152,15 @@ test.describe('Apps Page & Navigation', () => {
     // STEP 7: Test homepage dropdown navigation
     // ========================================
     console.log('📂 Step 7: Testing homepage dropdown navigation...');
+    // Register listener before navigation to avoid race condition
+    const sitesResponse = page.waitForResponse(function matchSitesApi(response) {
+      return response.url().includes('/api/sites') &&
+        response.request().method() === 'GET' &&
+        response.ok();
+    });
     await page.goto('/');
     await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
-
-    // Wait for sites API to load dropdown
-    await page.waitForResponse('**/api/sites');
+    await sitesResponse;
 
     // Click on app in dropdown (if visible)
     const appMenuItem = page.locator('[data-eid="appbuilder.homepage.apps_menu.app.click"]').first();

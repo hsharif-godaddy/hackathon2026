@@ -1,4 +1,6 @@
 import type { Page, BrowserContext, FrameLocator } from '@playwright/test';
+import { expect } from '@playwright/test';
+
 import { getCredentials, DEFAULT_TIMEOUT, LONG_TIMEOUT, SSO_TIMEOUT, SHORT_TIMEOUT } from './constants';
 
 /** SSO detection result types */
@@ -57,8 +59,16 @@ export async function handleSsoLogin(page: Page): Promise<void> {
 
   if (signInType === 'iframe') {
     console.log('Sign-in iframe modal detected (production mode)');
-    const frame = getIframeFrame(page, 'iframe[title="Container for sign in"]');
+    const ssoIframeSelector = 'iframe[title="Container for sign in"]';
+    const iframeLocator = page.locator(ssoIframeSelector);
+    const frame = getIframeFrame(page, ssoIframeSelector);
     await fillCredentials(frame, username, password);
+
+    // Wait for SSO iframe to close (confirms auth was processed)
+    await iframeLocator.waitFor({ state: 'hidden', timeout: SSO_TIMEOUT });
+
+    // Wait for the post-SSO page reload triggered by the parent page
+    await page.waitForURL('**/', { timeout: SSO_TIMEOUT });
   } else if (signInType === 'redirect') {
     console.log('Redirected to sign-in page (test environment)');
     await fillCredentials(page, username, password);
@@ -152,17 +162,23 @@ export async function clearAuthState(context: BrowserContext): Promise<void> {
 }
 
 /**
- * Verify user is authenticated by checking user menu
+ * Verify user is authenticated by checking user menu.
+ * Uses retry pattern because auth state may take time to propagate
+ * to React after SSO redirect completes.
  */
 export async function verifyAuthenticated(page: Page): Promise<void> {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
 
-  // Open user menu
   const userMenuButton = page.getByTestId('user-menu-trigger');
 
-  await userMenuButton.click({ force: true });
-  await page.getByRole('button', { name: /sign out/i }).waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+  await expect(async () => {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    await userMenuButton.click({ force: true });
+    await expect(page.getByRole('button', { name: /sign out/i })).toBeVisible({ timeout: 0 });
+  }).toPass({ timeout: DEFAULT_TIMEOUT });
+
   await page.keyboard.press('Escape');
 }
 
