@@ -31,7 +31,9 @@ import { filterInactiveSkillInstructions } from './SkillInstructionFilter.js';
  */
 export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
   readonly name = 'detailed-llm';
-  private readonly maxTokensPerBatch = 25000;
+  // 12k batch size: allows for large responses while keeping relevancy high
+  // Cost analysis shows summarization pays off after 2-4 requests at 10k threshold
+  private readonly maxTokensPerBatch = 12000;
 
   /**
    * Singleton AppRepository instance to avoid creating new instances on every summarization
@@ -46,7 +48,7 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
     const isIncremental = !!existingSummary;
     const previousUpdateCount = context.incrementalUpdateCount ?? 0;
     // Regenerate from scratch every 5 incremental updates to maintain quality
-    // This balances cost (incremental is 5-10x cheaper) with quality (fresh regeneration)
+    // and ensure cumulative drift doesn't lose important context
     const shouldRegenerateFromScratch = previousUpdateCount >= 5;
 
     // Determine which messages to use:

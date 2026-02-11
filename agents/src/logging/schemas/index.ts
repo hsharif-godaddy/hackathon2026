@@ -101,7 +101,8 @@ function sanitizeSensitiveData(obj: Record<string, any>): Record<string, any> {
     'cacheReadTokens', 'cacheWriteTokens', 'batchTokenCount', 'batchTokens',
     'totalSummaryTokens', 'originalTokens', 'summaryTokens', 'reasoningTokens',
     'cachedInputTokens', 'freshInputTokens', 'unsummarizedTokenCount', 'projectedPromptTokens',
-    'thresholdTokenCount', 'contextWindowUtilization', 'cacheHitRate'
+    'thresholdTokenCount', 'contextWindowUtilization', 'cacheHitRate',
+    'tokensSaved', 'cumulativeOriginalTokens', 'incrementalTokens', 'fullHistoryTokens'
   ];
 
   const sanitized = { ...obj };

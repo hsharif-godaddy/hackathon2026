@@ -33,18 +33,17 @@ import { OperationLogPruner } from './OperationLogPruner.js';
 /**
  * Configuration for background summarization
  *
- * Tuned for conversational agentic platforms where users interact with
- * seconds-to-minutes between messages:
- * - Higher debounce (30s) waits for natural conversation lulls
- * - Higher max prompt (40k) reduces summarization frequency
- * - More recent turns (4) preserves immediate context
+ * Tuned based on cost analysis:
+ * - 10k token threshold: Summarization pays off after 2-4 requests
+ * - 3s debounce: Short delay for GC and avoiding race conditions
+ * - 4 recent messages skipped: Preserves immediate context
  */
 export interface BackgroundSummarizerConfig {
-  /** Target maximum prompt size (summary + new messages), used for background trigger (default: 40000) */
+  /** Token threshold for unsummarized messages to trigger summarization (default: 10000) */
   maxPromptTokens: number;
-  /** Debounce delay in milliseconds (default: 30000) */
+  /** Debounce delay in milliseconds (default: 3000) - short delay for GC, not batching */
   debounceMs: number;
-  /** Number of recent user/assistant message pairs to keep unsummarized (default: 4) */
+  /** Number of recent conversation messages to keep unsummarized / excluded from summarization (default: 4) */
   keepRecentTurns: number;
 }
 
@@ -73,8 +72,8 @@ export class BackgroundSummarizer {
     this.summaryRepo = summaryRepo;
     this.strategy = strategy;
     this.config = {
-      maxPromptTokens: config.maxPromptTokens ?? 40000,
-      debounceMs: config.debounceMs ?? 30000,
+      maxPromptTokens: config.maxPromptTokens ?? 10000,
+      debounceMs: config.debounceMs ?? 3000,
       keepRecentTurns: config.keepRecentTurns ?? 4,
     };
   }
@@ -137,8 +136,12 @@ export class BackgroundSummarizer {
 
       // Load messages based on summarization mode
       let allMessages: DatabaseMessage[] = [];
+      // Regenerate from scratch every 5 incremental updates to maintain quality
+      // and ensure cumulative drift doesn't lose important context
       const shouldRegenerateFromScratch = (existingSummary?.incrementalUpdateCount ?? 0) >= 5;
       const shouldLoadFullHistory = !existingSummary || shouldRegenerateFromScratch;
+      // Track if we're in incremental mode (affects keepRecentTurns behavior)
+      const isIncrementalMode = !shouldLoadFullHistory && !!existingSummary;
 
       if (!shouldLoadFullHistory && existingSummary) {
         // Incremental mode: Load only messages after the last summary
@@ -213,102 +216,113 @@ export class BackgroundSummarizer {
         return;
       }
 
-      // Convert to LLM messages once (optimization: single conversion instead of 3x)
-      const allLlmMessages = this.convertToLLMMessages(allMessages);
+      // Calculate how many recent DB messages to keep (exclude from summarization)
+      // In incremental mode: skip last N messages (simple count), skip if <= N total
+      // In full mode: use keepRecentTurns (counts user turns)
+      const recentMessagesToSkip = this.config.keepRecentTurns;
+      let recentDbMessageCount = 0;
+      let summarizableDbMessageCount: number;
 
-      // Calculate how many recent messages to keep (exclude from summarization)
-      // Count user/assistant pairs from the end
-      const recentTurnsToKeep = this.config.keepRecentTurns;
-      let recentMessageCount = 0;
-      let turnCount = 0;
+      if (isIncrementalMode) {
+        // Incremental mode: skip last 4 messages, don't run if <= 4 messages
+        if (allMessages.length <= recentMessagesToSkip) {
+          logger.debug('summarization.background.incremental_skip_few_messages', {
+            appId,
+            totalDbMessages: allMessages.length,
+            recentMessagesToSkip,
+            message: `Incremental mode: skipping - only ${allMessages.length} messages (<= ${recentMessagesToSkip})`,
+          });
+          return;
+        }
+        recentDbMessageCount = recentMessagesToSkip;
+        summarizableDbMessageCount = allMessages.length - recentMessagesToSkip;
+        logger.debug('summarization.background.incremental_mode', {
+          appId,
+          totalDbMessages: allMessages.length,
+          recentMessagesToSkip,
+          summarizableDbMessageCount,
+        });
+      } else {
+        // Full mode: apply keepRecentTurns to exclude recent conversation (counts user turns)
+        const recentTurnsToKeep = this.config.keepRecentTurns;
+        let turnCount = 0;
 
-      for (let i = allMessages.length - 1; i >= 0 && turnCount < recentTurnsToKeep; i--) {
-        const msg = allMessages[i];
-        if (!msg) continue;
+        for (let i = allMessages.length - 1; i >= 0 && turnCount < recentTurnsToKeep; i--) {
+          const msg = allMessages[i];
+          if (!msg) continue;
 
-        // Count user and assistant messages as turns
-        if (msg.sender === 'user' || msg.sender === 'agent') {
-          recentMessageCount++;
-          if (msg.sender === 'user') {
-            turnCount++;
+          // Count user and assistant messages as turns
+          if (msg.sender === 'user' || msg.sender === 'agent') {
+            recentDbMessageCount++;
+            if (msg.sender === 'user') {
+              turnCount++;
+            }
+          } else {
+            // Include system/tool messages that are part of recent turns
+            recentDbMessageCount++;
           }
-        } else {
-          // Include system/tool messages that are part of recent turns
-          recentMessageCount++;
+        }
+
+        summarizableDbMessageCount = allMessages.length - recentDbMessageCount;
+
+        logger.debug('summarization.background.recent_turns_calculation', {
+          appId,
+          totalDbMessages: allMessages.length,
+          recentTurnsToKeep,
+          recentDbMessageCount,
+          summarizableDbMessageCount,
+        });
+
+        if (summarizableDbMessageCount <= 0) {
+          logger.debug('summarization.background.all_messages_recent', {
+            appId,
+            message: 'All messages are within recent turns, nothing to summarize',
+          });
+          return;
         }
       }
 
-      // Calculate the cutoff point (everything before recent messages should be summarized)
-      const summarizableMessageCount = allMessages.length - recentMessageCount;
+      // CRITICAL: Slice DB messages FIRST, then convert to LLM format
+      // Previously we converted all messages then sliced by DB count, which caused
+      // messages to be lost because 1 DB message can expand to many LLM messages
+      // (e.g., 1 agent message with 5 tool calls becomes 11 LLM messages)
+      const fullHistoryMessagesDb = allMessages.slice(0, summarizableDbMessageCount);
+      const fullHistoryMessages = this.convertToLLMMessages(fullHistoryMessagesDb);
 
-      logger.debug('summarization.background.recent_turns_calculation', {
-        appId,
-        totalMessages: allMessages.length,
-        recentTurnsToKeep,
-        recentMessageCount,
-        summarizableMessageCount,
-      });
-
-      if (summarizableMessageCount <= 0) {
-        logger.debug('summarization.background.all_messages_recent', {
-          appId,
-          message: 'All messages are within recent turns, nothing to summarize',
-        });
-        return;
-      }
-
-      // Use sliced LLM messages (optimization: avoid reconverting)
-      const fullHistoryMessagesDb = allMessages.slice(0, summarizableMessageCount);
-      const fullHistoryMessages = allLlmMessages.slice(0, summarizableMessageCount);
+      // Build full LLM message history by reusing the already-converted prefix
+      // and only converting the non-summarized tail of DB messages (avoids O(2n) conversion)
+      const recentDbMessages = allMessages.slice(summarizableDbMessageCount);
+      const recentLlmMessages = this.convertToLLMMessages(recentDbMessages);
+      const allLlmMessages = [...fullHistoryMessages, ...recentLlmMessages];
 
       if (fullHistoryMessages.length === 0) {
         logger.debug('summarization.background.no_messages_to_summarize', { appId });
         return;
       }
 
-      // Count tokens for full history (summarizable slice)
-      const fullHistoryTokenCount = await this.countTokensForMessages(fullHistoryMessages, modelName);
-
-      // Count tokens for all new messages (including recent turns)
-      const totalNewTokenCount = await this.countTokensForMessages(allLlmMessages, modelName);
-
-      // In the new approach, all loaded messages are "incremental" (new since last summary or first run)
-      // So incrementalMessages = fullHistoryMessages (summarizable portion)
-      const incrementalMessages = fullHistoryMessages;
-      const incrementalTokenCount = totalNewTokenCount;
-
-      const projectedPromptTokens =
-        (existingSummary?.summaryTokenCount ?? 0) + totalNewTokenCount;
-
-      const thresholdTokenCount = triggerTokenCount ?? projectedPromptTokens;
-      const thresholdBasis = triggerTokenCount !== undefined ? 'lastCallTokens' : 'projectedPromptTokens';
+      // Count tokens for summarizable messages (excluding skipped recent messages)
+      const summarizableTokenCount = await this.countTokensForMessages(fullHistoryMessages, modelName);
 
       // Log token check at info level for visibility
       logger.info('summarization.background.token_check', {
         appId,
         loadedMessagesCount: allMessages.length,
-        newMessagesCount: incrementalMessages.length,
-        recentTurnsExcluded: recentMessageCount,
-        incrementalTokens: incrementalTokenCount,
-        summarizableTokens: fullHistoryTokenCount,
-        projectedPromptTokens,
+        summarizableMessagesCount: fullHistoryMessages.length,
+        recentMessagesExcluded: recentDbMessageCount,
+        summarizableTokens: summarizableTokenCount,
         maxPromptTokens: this.config.maxPromptTokens,
-        thresholdBasis,
-        thresholdTokenCount,
-        thresholdExceeded: thresholdTokenCount > this.config.maxPromptTokens,
-        fullHistoryTokens: fullHistoryTokenCount,
-        totalMessagesCount: allMessages.length,
+        thresholdExceeded: summarizableTokenCount > this.config.maxPromptTokens,
       });
 
-      // Check if projected prompt size exceeds the target
-      if (thresholdTokenCount <= this.config.maxPromptTokens) {
+      // Check if summarizable tokens exceed the threshold
+      // This checks ONLY the messages that will be summarized (excludes 4 skipped)
+      if (summarizableTokenCount <= this.config.maxPromptTokens) {
         logger.info('summarization.background.threshold_not_exceeded', {
           appId,
-          thresholdBasis,
-          thresholdTokenCount,
+          summarizableTokens: summarizableTokenCount,
           maxPromptTokens: this.config.maxPromptTokens,
-          tokensRemaining: this.config.maxPromptTokens - thresholdTokenCount,
-          message: `No summarization needed: ${thresholdTokenCount} ${thresholdBasis} < ${this.config.maxPromptTokens} max`,
+          tokensRemaining: this.config.maxPromptTokens - summarizableTokenCount,
+          message: `No summarization needed: ${summarizableTokenCount} summarizable tokens < ${this.config.maxPromptTokens} threshold`,
         });
         return;
       }
@@ -316,11 +330,10 @@ export class BackgroundSummarizer {
       // Log when threshold IS exceeded and summarization will be triggered
       logger.info('summarization.background.threshold_exceeded_triggering', {
         appId,
-        thresholdBasis,
-        thresholdTokenCount,
+        summarizableTokens: summarizableTokenCount,
         maxPromptTokens: this.config.maxPromptTokens,
-        tokensOverThreshold: thresholdTokenCount - this.config.maxPromptTokens,
-        message: `SUMMARIZATION TRIGGERED: ${thresholdTokenCount} ${thresholdBasis} > ${this.config.maxPromptTokens} max`,
+        tokensOverThreshold: summarizableTokenCount - this.config.maxPromptTokens,
+        message: `SUMMARIZATION TRIGGERED: ${summarizableTokenCount} summarizable tokens > ${this.config.maxPromptTokens} threshold`,
       });
 
       // Incremental operation log extraction optimization:
@@ -382,35 +395,33 @@ export class BackgroundSummarizer {
       // Perform summarization
       logger.info('summarization.background.begin', {
         appId,
-        totalMessagesToSummarize: fullHistoryMessages.length,
-        newMessagesSinceLastSummary: incrementalMessages.length,
-        totalTokens: fullHistoryTokenCount,
-        incrementalTokens: incrementalTokenCount,
+        messagesToSummarize: fullHistoryMessages.length,
+        summarizableTokens: summarizableTokenCount,
         hasExistingSummary: !!existingSummary,
+        isIncrementalMode,
         operationLogEntries: finalOperationEntries.length,
         strategy: this.strategy.name,
-        message: `STARTING SUMMARIZATION: ${fullHistoryMessages.length} summarizable messages (${fullHistoryTokenCount} tokens); ${incrementalMessages.length} new messages (${incrementalTokenCount} tokens)`,
+        message: `STARTING SUMMARIZATION: ${fullHistoryMessages.length} messages (${summarizableTokenCount} tokens)`,
       });
 
-      const isIncrementalRun = !!existingSummary && !shouldLoadFullHistory;
-      const cumulativeStartId = isIncrementalRun
+      const cumulativeStartId = isIncrementalMode
         ? existingSummary?.messageRangeStart || fullHistoryMessagesDb[0]?.id || ''
         : fullHistoryMessagesDb[0]?.id || '';
       const cumulativeEndId = fullHistoryMessagesDb[fullHistoryMessagesDb.length - 1]?.id || '';
-      const cumulativeOriginalTokenCount = isIncrementalRun
-        ? (existingSummary?.originalTokenCount ?? 0) + fullHistoryTokenCount
-        : fullHistoryTokenCount;
+      const cumulativeOriginalTokenCount = isIncrementalMode
+        ? (existingSummary?.originalTokenCount ?? 0) + summarizableTokenCount
+        : summarizableTokenCount;
 
       const context: SummarizationContext = {
         appId,
-        messages: incrementalMessages,
+        messages: fullHistoryMessages,
         fullMessageHistory: fullHistoryMessages,
         messageRange: {
           startId: cumulativeStartId,
           endId: cumulativeEndId,
         },
         originalTokenCount: cumulativeOriginalTokenCount,
-        incrementalTokenCount,
+        incrementalTokenCount: summarizableTokenCount,
       };
 
       // Only add operationLog if it has content
