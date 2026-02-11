@@ -148,6 +148,13 @@ export class DockerComposeGenerator {
 			// - API/JSON requests: Return 401 Unauthorized with JSON error
 		}
 
+		// Share Token Authentication (Public Preview Links)
+		// Enables unauthenticated preview access via share tokens (e.g., ?airoShareToken=abc123)
+		// When enabled, dev-supervisor validates tokens with the agents API before falling back to JWT
+		env.DEV_SUPERVISOR_ENABLE_SHARE_TOKENS = "true";
+		const agentsBaseUrl = process.env.AGENTS_BASE_URL || 'http://host.docker.internal:4000';
+		env.DEV_SUPERVISOR_AGENTS_BASE_URL = agentsBaseUrl;
+
 		// SITE_ID is required by dev-supervisor regardless of JWT auth status
 		// Used for: logging context, X-SITE-UID header, SMTP proxy, and JWT smart redirects
 		// In production, this is set by the deployment system. For local docker-compose, we set it explicitly.

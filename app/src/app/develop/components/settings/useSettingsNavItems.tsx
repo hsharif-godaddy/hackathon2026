@@ -10,6 +10,7 @@ import LinkIcon from '@ux/icon/link';
 import LockedIcon from '@ux/icon/locked';
 import RevertIcon from '@ux/icon/revert';
 import SettingsIcon from '@ux/icon/settings';
+import ShareIcon from '@ux/icon/share';
 import SocialIcon from '@ux/icon/social';
 import Users3Icon from '@ux/icon/users3';
 
@@ -44,6 +45,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const { data: isDomainEnabled } = useSwitchboard('appbuilder-settings-domain');
   const { data: isBackupsEnabled } = useSwitchboard('appbuilder-settings-backups');
   const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security');
+  const { data: isShareLinksEnabled } = useSwitchboard('appbuilder-share-links');
   const { data: isTeamEnabled } = useSwitchboard('appbuilder-settings-team');
   const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
   const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
@@ -82,6 +84,12 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       icon: <LockedIcon />,
       disabled: isSecurityEnabled !== true,
     },
+    ...(isShareLinksEnabled ? [{
+      id: SettingsSection.SHARE,
+      label: t('builder_settings_nav_share', undefined, 'Share'),
+      icon: <ShareIcon />,
+      disabled: false,
+    }] : []),
     {
       id: SettingsSection.TEAM,
       label: t('builder_settings_nav_team'),

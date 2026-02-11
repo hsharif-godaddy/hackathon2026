@@ -8,6 +8,7 @@ import MarketingPanel from '@/app/develop/components/settings/MarketingPanel'
 import ProjectPanel from '@/app/develop/components/settings/ProjectPanel'
 import { SecretsPanel } from '@/app/develop/components/settings/SecretsPanel'
 import SecurityPanel from '@/app/develop/components/settings/SecurityPanel'
+import SharePanel from '@/app/develop/components/settings/SharePanel'
 import SocialPanel from '@/app/develop/components/settings/social/SocialPanel'
 import TeamPanel from '@/app/develop/components/settings/TeamPanel'
 import VisualScanPanel from '@/app/develop/components/settings/VisualScanPanel'
@@ -24,6 +25,7 @@ export default function SettingsView() {
   const { data: isDomainEnabled } = useSwitchboard('appbuilder-settings-domain');
   const { data: isBackupsEnabled } = useSwitchboard('appbuilder-settings-backups');
   const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security');
+  const { data: isShareLinksEnabled } = useSwitchboard('appbuilder-share-links');
   const { data: isTeamEnabled } = useSwitchboard('appbuilder-settings-team');
   const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
   const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
@@ -42,6 +44,8 @@ export default function SettingsView() {
         return isBackupsEnabled ? <BackupsPanel /> : null;
       case SettingsSection.SECURITY:
         return isSecurityEnabled ? <SecurityPanel /> : null;
+      case SettingsSection.SHARE:
+        return isShareLinksEnabled ? <SharePanel /> : null;
       case SettingsSection.TEAM:
         return isTeamEnabled ? <TeamPanel /> : null;
       case SettingsSection.DATABASE:

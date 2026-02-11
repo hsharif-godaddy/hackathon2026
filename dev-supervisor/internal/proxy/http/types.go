@@ -60,6 +60,23 @@ func getRayID(req *http.Request) string {
 	return strings.TrimSpace(req.Header.Get("Cf-Ray"))
 }
 
+// getShareToken extracts the share token from query param or cookie.
+// Checks query param first (airoShareToken), then cookie (airo_share_token).
+// Returns empty string if not present.
+func getShareToken(req *http.Request) string {
+	// Check query param first
+	if token := req.URL.Query().Get("airoShareToken"); token != "" {
+		return strings.TrimSpace(token)
+	}
+
+	// Check cookie second
+	if cookie, err := req.Cookie("airo_share_token"); err == nil && cookie.Value != "" {
+		return strings.TrimSpace(cookie.Value)
+	}
+
+	return ""
+}
+
 // Config defines configuration for the HTTP proxy server.
 type Config struct {
 	Enabled        bool          // Enable HTTP proxy mode
@@ -89,6 +106,10 @@ type Config struct {
 	JWTBuilderBaseURL string   // Builder app base URL for smart redirects
 	SiteID            string   // Site ID for smart redirects (from SITE_ID env var)
 	JWTExcludedPaths  []string // Paths to exclude from JWT validation
+
+	// Share token configuration (for public preview links)
+	EnableShareTokens bool   // Enable share token validation (default: false)
+	AgentsBaseURL     string // Base URL for agents API (for share token validation)
 }
 
 // Status represents the current status of the HTTP proxy.

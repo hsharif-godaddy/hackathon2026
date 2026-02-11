@@ -64,6 +64,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		clientIP := getClientIP(r)
 		srcIP, srcPort := getSrcIPAndPort(r.RemoteAddr)
 		rayID := getRayID(r)
+		shareToken := getShareToken(r)
 
 		logAttrs := []any{
 			"type", "http_request",
@@ -84,6 +85,11 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		// Add ray_id if present (Cloudflare CF-Ray for tracing).
 		if rayID != "" {
 			logAttrs = append(logAttrs, "ray_id", rayID)
+		}
+
+		// Add share_token if present (for analytics).
+		if shareToken != "" {
+			logAttrs = append(logAttrs, "share_token", shareToken)
 		}
 
 		slog.Info("http.request", logAttrs...)

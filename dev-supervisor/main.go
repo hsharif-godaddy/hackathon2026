@@ -285,6 +285,10 @@ func (s *Server) startHTTPProxyIfEnabled() error {
 		JWTBuilderBaseURL: s.config.JWTBuilderBaseURL,
 		SiteID:            s.config.SiteID,
 		JWTExcludedPaths:  s.config.JWTExcludedPaths,
+
+		// Share token configuration (for public preview links)
+		EnableShareTokens: s.config.EnableShareTokens,
+		AgentsBaseURL:     s.config.AgentsBaseURL,
 	}
 	s.httpProxy = httpproxy.NewHTTPProxy(proxyConfig)
 

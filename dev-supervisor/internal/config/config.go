@@ -42,6 +42,10 @@ type Config struct {
 	SiteID            string   // Site ID for smart redirects (from SITE_ID env var)
 	JWTExcludedPaths  []string // Paths to exclude from JWT validation
 
+	// Share token configuration (for public preview links)
+	EnableShareTokens bool   // Enable share token validation (default: false)
+	AgentsBaseURL     string // Base URL for agents API (for share token validation)
+
 	// Start-on-request configuration (preview variant only)
 	StartOnRequestEnabled bool          // Enable start-on-request (auto-start stopped apps, auto-stop idle apps)
 	IdleTimeout           time.Duration // Duration of inactivity before auto-stopping (default: 30m)
@@ -116,6 +120,11 @@ func LoadConfig() *Config {
 			config.JWTExcludedPaths = append(config.JWTExcludedPaths, "/airo/canary_checks")
 		}
 	}
+
+	// Share token configuration (for public preview links)
+	config.EnableShareTokens = GetEnvBoolWithDefault("DEV_SUPERVISOR_ENABLE_SHARE_TOKENS", false)
+	// Note: Default uses HTTP for local development. Production deployments MUST set DEV_SUPERVISOR_AGENTS_BASE_URL to HTTPS URL.
+	config.AgentsBaseURL = GetEnvStringWithDefault("DEV_SUPERVISOR_AGENTS_BASE_URL", "http://localhost:4000")
 
 	// Start-on-request configuration (preview variant only)
 	config.StartOnRequestEnabled = GetEnvBoolWithDefault("DEV_SUPERVISOR_ENABLE_START_ON_REQUEST", false)

@@ -207,6 +207,19 @@ export interface GitRemoteConfig {
 }
 
 /**
+ * Share token for public preview access
+ * Allows time-limited access to preview apps without authentication
+ * Tokens are cryptographically secure and expire after 7 days
+ */
+export interface ShareToken {
+  token: string;
+  appId: string;
+  expiresAt: number; // Unix timestamp (milliseconds)
+  createdAt: Date;
+  firstUsedAt: Date | null; // Track first access only
+}
+
+/**
  * Social platform association
  * Stores connections between apps and social media accounts
  */
@@ -263,6 +276,7 @@ export function initializeSchema(db: Database): void {
   createImportJobsTable(db);
   createConversationSummariesTable(db);
   createGitRemoteConfigTable(db);
+  createShareTokensTable(db);
 
   // Apply migrations BEFORE creating indexes (migrations may alter schema)
   // Note: oauth_tokens and social tables creation moved to migrations
@@ -537,6 +551,23 @@ function createGitRemoteConfigTable(db: Database): void {
 }
 
 /**
+ * Create the share_tokens table for shareable preview links
+ * Stores time-limited tokens for public preview access without authentication
+ */
+function createShareTokensTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS share_tokens (
+      token TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      first_used_at DATETIME,
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+    )
+  `);
+}
+
+/**
  * Create the social_associations table for social platform connections
  * Stores connections between apps and social media accounts
  */
@@ -731,6 +762,15 @@ function createIndexes(db: Database): void {
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_social_posts_campaign_id ON social_posts(campaign_id)
+  `);
+
+  // Share tokens table indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_share_tokens_app_id ON share_tokens(app_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_share_tokens_expires_at ON share_tokens(expires_at)
   `);
 }
 

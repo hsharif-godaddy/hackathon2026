@@ -21,12 +21,13 @@ var siteIDPattern = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 type JWTMiddlewareConfig struct {
 	Enabled        bool // Enable JWT validation
 	Validator      *JWTValidator
-	RedirectURL    string   // URL to redirect to on auth failure (supports {url} placeholder)
-	BuilderBaseURL string   // Builder app base URL for smart redirects (e.g., https://airo-builder.test-godaddy.com)
-	SiteID         string   // Site ID for smart redirects (from SITE_ID env var, e.g., "41gb5nrnyl" or UUID)
-	ExcludedPaths  []string // Paths to exclude from JWT validation (e.g., /health, /api/health)
-	APIPrefix      string   // API route prefix for hybrid mode (default: /api)
-	AllowedOrigins []string // CORS allowed origins (whitelist)
+	ShareValidator *ShareValidator // Share token validator (optional, for public preview links)
+	RedirectURL    string          // URL to redirect to on auth failure (supports {url} placeholder)
+	BuilderBaseURL string          // Builder app base URL for smart redirects (e.g., https://airo-builder.test-godaddy.com)
+	SiteID         string          // Site ID for smart redirects (from SITE_ID env var, e.g., "41gb5nrnyl" or UUID)
+	ExcludedPaths  []string        // Paths to exclude from JWT validation (e.g., /health, /api/health)
+	APIPrefix      string          // API route prefix for hybrid mode (default: /api)
+	AllowedOrigins []string        // CORS allowed origins (whitelist)
 }
 
 // JWTMiddleware wraps HTTP handlers with JWT authentication
@@ -62,6 +63,16 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 			return
 		}
 
+		// Priority 1: Check for share token (if ShareValidator is configured)
+		if m.config.ShareValidator != nil {
+			// Try share token validation from query param or cookie
+			if handled := m.tryShareTokenAuth(w, r, next); handled {
+				return // Share token handled the request
+			}
+			// Share token validation failed, fall through to JWT
+		}
+
+		// Priority 2: Fall back to JWT validation
 		// Extract token from Authorization header or cookie
 		authHeader := r.Header.Get("Authorization")
 		token := ExtractTokenFromHeader(authHeader)
@@ -132,6 +143,110 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		// Continue to next handler
 		next.ServeHTTP(w, r)
 	})
+}
+
+// tryShareTokenAuth attempts to authenticate using share token from query param or cookie
+// Returns true if request was handled (success or error), false to fall through to JWT
+func (m *JWTMiddleware) tryShareTokenAuth(
+	w http.ResponseWriter,
+	r *http.Request,
+	next http.Handler,
+) bool {
+	// Check query param first
+	if shareToken := r.URL.Query().Get("airoShareToken"); shareToken != "" {
+		if m.handleShareToken(w, r, shareToken, "query_param", next) {
+			return true // Successfully handled
+		}
+		// If share token validation failed, fall through to cookie/JWT
+	}
+
+	// Check cookie second
+	if cookie, err := r.Cookie("airo_share_token"); err == nil && cookie.Value != "" {
+		if m.handleShareToken(w, r, cookie.Value, "cookie", next) {
+			return true // Successfully handled
+		}
+		// If share token validation failed, fall through to JWT
+	}
+
+	return false // No share token found or validation failed, try JWT
+}
+
+// handleShareToken validates a share token and handles the request if valid
+// Returns true if the request was handled (either successfully or with error), false to fall through to JWT
+func (m *JWTMiddleware) handleShareToken(
+	w http.ResponseWriter,
+	r *http.Request,
+	shareToken string,
+	source string,
+	next http.Handler,
+) bool {
+	valid, appID, err := m.config.ShareValidator.ValidateToken(shareToken)
+
+	if err != nil {
+		// Validation error (network/API issue)
+		slog.Error("share.validation.error",
+			"error", err.Error(),
+			"share_token", shareToken,
+			"source", source)
+		m.handleAuthFailure(w, r, "validation error")
+		return true // Handled with error
+	}
+
+	if !valid {
+		// Invalid token - clear cookie if present and fall through to JWT
+		if source == "cookie" {
+			http.SetCookie(w, &http.Cookie{
+				Name:   "airo_share_token",
+				Value:  "",
+				Path:   "/",
+				MaxAge: -1, // Delete cookie
+			})
+		}
+		slog.Warn("share.validation.failed",
+			"share_token", shareToken,
+			"source", source)
+		// Return false to fall through to JWT validation
+		return false
+	}
+
+	// Validate appID matches site (authorization check)
+	if m.config.SiteID != "" && appID != m.config.SiteID {
+		slog.Warn("share.siteid_mismatch",
+			"share_token", shareToken,
+			"expected_site_id", m.config.SiteID,
+			"actual_site_id", appID)
+		m.handleAuthFailure(w, r, "token not valid for this site")
+		return true // Handled with error
+	}
+
+	// Valid token - set cookie on first access (query param)
+	if source == "query_param" {
+		expiresAt := m.config.ShareValidator.GetTokenExpiration(shareToken)
+		http.SetCookie(w, &http.Cookie{
+			Name:     "airo_share_token",
+			Value:    shareToken,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
+			Expires:  expiresAt,
+		})
+	}
+
+	// Log for analytics (Elasticsearch)
+	slog.Info("share.token.authorized",
+		"app_id", appID,
+		"share_token", shareToken,
+		"source", source,
+		"path", r.URL.Path,
+		"method", r.Method,
+		"remote_addr", r.RemoteAddr,
+		"user_agent", r.UserAgent(),
+		"referer", r.Referer())
+
+	// Continue to next handler
+	next.ServeHTTP(w, r)
+	return true // Successfully handled
 }
 
 // handleAuthFailure handles authentication failures using hybrid mode

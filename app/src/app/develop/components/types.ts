@@ -87,6 +87,7 @@ export enum SettingsSection {
   DOMAIN = 'domain',
   BACKUPS = 'backups',
   SECURITY = 'security',
+  SHARE = 'share',
   TEAM = 'team',
   DATABASE = 'database',
   SECRETS = 'secrets',

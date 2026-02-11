@@ -217,10 +217,19 @@ func (p *HTTPProxy) Start() error {
 			SkipTLSVerify: p.config.JWKSSkipTLSVerify,
 		})
 
+		// Create share token validator if enabled
+		var shareValidator *auth.ShareValidator
+		if p.config.EnableShareTokens {
+			shareValidator = auth.NewShareValidator(p.config.AgentsBaseURL)
+			slog.Info("Share token validation enabled",
+				"agents_base_url", p.config.AgentsBaseURL)
+		}
+
 		// Create JWT middleware (uses hybrid mode: redirects browsers, 401 for APIs)
 		jwtMiddleware := auth.NewJWTMiddleware(auth.JWTMiddlewareConfig{
 			Enabled:        true,
 			Validator:      validator,
+			ShareValidator: shareValidator,
 			RedirectURL:    p.config.JWTRedirectURL,
 			BuilderBaseURL: p.config.JWTBuilderBaseURL,
 			SiteID:         p.config.SiteID,

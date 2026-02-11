@@ -15,6 +15,7 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-manage-plan': true,
   'appbuilder-settings-team': true,
   'appbuilder-settings-marketing': true,
+  'appbuilder-share-links': true,
 };
 
 /**
