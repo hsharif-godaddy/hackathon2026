@@ -70,8 +70,8 @@ test.describe('Develop Page', () => {
     // ========================================
     console.log('🔧 Step 2: Verifying all components loaded...');
 
-    // Header - skip HCS header (id="hcs-header-container"), target Airo header
-    const airoHeader = page.locator('header:not(#hcs-header-container)').first();
+    // Header
+    const airoHeader = page.getByTestId('airo-header');
     await expect(airoHeader).toBeVisible();
     console.log('  ✓ Header visible');
 
@@ -82,13 +82,13 @@ test.describe('Develop Page', () => {
     console.log('  ✓ Publish button visible and enabled');
 
     // Chat input
-    await page.locator('textarea[placeholder*="Ask Airo"]').waitFor({ state: 'visible', timeout: CHAT_INPUT_TIMEOUT });
-    await expect(page.locator('textarea[placeholder*="Ask Airo"]')).not.toBeDisabled();
+    await page.getByTestId('chat-input-textarea').waitFor({ state: 'visible', timeout: CHAT_INPUT_TIMEOUT });
+    await expect(page.getByTestId('chat-input-textarea')).not.toBeDisabled();
     console.log('  ✓ Chat input visible and enabled');
 
     // Preview iframe
-    await page.locator('#preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
-    await expect(page.locator('#preview-iframe')).toHaveAttribute('src', /.+/);
+    await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
+    await expect(page.getByTestId('preview-iframe')).toHaveAttribute('src', /.+/);
     console.log('  ✓ Preview iframe loaded with src');
 
     // ========================================
@@ -114,7 +114,7 @@ test.describe('Develop Page', () => {
 
     // Test refresh button
     await page.locator('[data-eid*="preview.refresh"]').click({ force: true });
-    await expect(page.locator('#preview-iframe')).toBeVisible();
+    await expect(page.getByTestId('preview-iframe')).toBeVisible();
     console.log('  ✓ Refresh button works');
 
     // Test device selector - mobile view
@@ -122,8 +122,8 @@ test.describe('Develop Page', () => {
     await page.locator('[data-radix-popper-content-wrapper]')
       .locator('[data-eid*="preview.device_select_iphone-se"]')
       .click({ force: true });
-    await expect(page.locator('#preview-iframe')).toBeVisible();
-    await expect(page.locator('header:not(#hcs-header-container)').first()).toBeVisible();
+    await expect(page.getByTestId('preview-iframe')).toBeVisible();
+    await expect(page.getByTestId('airo-header')).toBeVisible();
     console.log('  ✓ Mobile view works, header persists');
 
     // Test device selector - back to desktop
@@ -131,7 +131,7 @@ test.describe('Develop Page', () => {
     await page.locator('[data-radix-popper-content-wrapper]')
       .locator('[data-eid*="preview.device_select_full"]')
       .click({ force: true });
-    await expect(page.locator('#preview-iframe')).toBeVisible();
+    await expect(page.getByTestId('preview-iframe')).toBeVisible();
     console.log('  ✓ Desktop view restored');
 
     // ========================================
@@ -148,9 +148,9 @@ test.describe('Develop Page', () => {
 
     // Navigate to history and back
     await page.locator('[data-eid*="chat_toolbar.history"]').click({ force: true });
-    await expect(page.locator('header:not(#hcs-header-container)').first()).toBeVisible();
+    await expect(page.getByTestId('airo-header')).toBeVisible();
     await page.locator('[data-eid*="chat_toolbar.chat"]').click({ force: true });
-    await page.locator('textarea[placeholder*="Ask Airo"]').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+    await page.getByTestId('chat-input-textarea').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
     console.log('  ✓ History tab navigation works, header persists');
 
     // Verify medias button exists
@@ -162,17 +162,17 @@ test.describe('Develop Page', () => {
     // ========================================
     console.log('📝 Step 6: Testing chat input states...');
 
-    const chatInput = page.locator('#chat-input-textarea');
+    const chatInput = page.getByTestId('chat-input-textarea');
     await waitForChatInput(page);
 
     // Send button disabled when empty
     await chatInput.clear();
-    await expect(page.locator('#chat-send-button')).toBeDisabled();
+    await expect(page.getByTestId('chat-send-button')).toBeDisabled();
     console.log('  ✓ Send button disabled when empty');
 
     // Send button enabled when text
     await chatInput.fill('Test message');
-    await expect(page.locator('#chat-send-button')).not.toBeDisabled();
+    await expect(page.getByTestId('chat-send-button')).not.toBeDisabled();
     console.log('  ✓ Send button enabled when text entered');
 
     // Shift+Enter multiline
@@ -198,7 +198,7 @@ test.describe('Develop Page', () => {
 
     const clickMessage = 'Add a header section';
     await chatInput.fill(clickMessage);
-    await page.locator('#chat-send-button').click({ force: true });
+    await page.getByTestId('chat-send-button').click({ force: true });
 
     // Verify message appears in transcript (confirms it was sent)
     const transcript = page.getByTestId('chat-transcript');
@@ -241,10 +241,10 @@ test.describe('Develop Page', () => {
     await page.reload();
 
     await expect(page).toHaveURL(/\/develop\//);
-    await expect(page.locator('header:not(#hcs-header-container)').first()).toBeVisible();
-    await page.locator('textarea[placeholder*="Ask Airo"]').waitFor({ state: 'visible', timeout: CHAT_INPUT_TIMEOUT });
-    await expect(page.locator('textarea[placeholder*="Ask Airo"]')).not.toBeDisabled();
-    await page.locator('#preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
+    await expect(page.getByTestId('airo-header')).toBeVisible();
+    await page.getByTestId('chat-input-textarea').waitFor({ state: 'visible', timeout: CHAT_INPUT_TIMEOUT });
+    await expect(page.getByTestId('chat-input-textarea')).not.toBeDisabled();
+    await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
     console.log('  ✓ Page refresh maintains state');
 
     console.log('🎉 All develop page tests passed!');

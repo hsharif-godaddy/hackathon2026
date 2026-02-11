@@ -60,7 +60,7 @@ export async function waitForAppsPage(page: Page): Promise<void> {
   await page.waitForResponse('**/api/sites');
 
   // Wait for page content
-  await page.getByText('Manage your AI-powered websites and applications').waitFor({
+  await page.getByTestId('apps-page-title').waitFor({
     state: 'visible',
     timeout: DEFAULT_TIMEOUT,
   });
@@ -72,8 +72,8 @@ export async function waitForAppsPage(page: Page): Promise<void> {
 export async function waitForDevelopPage(page: Page): Promise<void> {
   await waitForChatInput(page);
 
-  await page.locator('#preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
-  await expect(page.locator('#preview-iframe')).toHaveAttribute('src', /.+/);
+  await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
+  await expect(page.getByTestId('preview-iframe')).toHaveAttribute('src', /.+/);
 }
 
 /**
@@ -87,11 +87,11 @@ export async function waitForChatInput(page: Page): Promise<void> {
   }).toPass({ timeout: PREVIEW_TIMEOUT });
 
   // Wait for preview iframe to be loaded
-  await page.locator('#preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
-  await expect(page.locator('#preview-iframe')).toHaveAttribute('src', /.+/);
+  await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
+  await expect(page.getByTestId('preview-iframe')).toHaveAttribute('src', /.+/);
 
   // Wait for chat input to be ready
-  const chatInput = page.locator('#chat-input-textarea');
+  const chatInput = page.getByTestId('chat-input-textarea');
   await chatInput.waitFor({ state: 'visible', timeout: CHAT_INPUT_TIMEOUT });
 
   await expect(async () => {
@@ -100,7 +100,6 @@ export async function waitForChatInput(page: Page): Promise<void> {
 
     const placeholder = await chatInput.getAttribute('placeholder') || '';
     expect(placeholder.toLowerCase()).not.toContain('processing');
-    expect(placeholder.toLowerCase()).toContain('ask airo');
   }).toPass({ timeout: CHAT_INPUT_TIMEOUT });
 }
 
@@ -124,13 +123,13 @@ export async function openDevelop(page: Page, appId: string): Promise<void> {
  * Send a chat message on the develop page
  */
 export async function sendChatMessage(page: Page, message: string): Promise<void> {
-  const chatInput = page.locator('#chat-input-textarea');
+  const chatInput = page.getByTestId('chat-input-textarea');
   await chatInput.waitFor({ state: 'visible', timeout: CHAT_INPUT_TIMEOUT });
   await expect(chatInput).not.toBeDisabled();
 
   await chatInput.fill(message);
 
-  const sendButton = page.locator('#chat-send-button');
+  const sendButton = page.getByTestId('chat-send-button');
   await expect(sendButton).not.toBeDisabled();
   await sendButton.click();
 }

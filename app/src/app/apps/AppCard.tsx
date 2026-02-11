@@ -156,10 +156,11 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     onConfirm: () => void
     onCancel: () => void
   }) => (
-    <div className="absolute inset-0 bg-intents-ux-box-backgroundColor rounded-lg flex flex-col items-center justify-center p-2 z-10">
+    <div data-testid="delete-confirmation" className="absolute inset-0 bg-intents-ux-box-backgroundColor rounded-lg flex flex-col items-center justify-center p-2 z-10">
       <p className="mb-2 text-center">{message}</p>
       <Box orientation="horizontal" gap="sm">
         <Button
+          data-testid="delete-confirm-button"
           onClick={onConfirm}
           disabled={actionLoading === siteId}
           data-eid={generateClickEID('apps.app.delete_confirm')}
@@ -415,6 +416,7 @@ export const AppCardEmptyState = () => {
   return (
     <Card
       as="button"
+      data-testid="create-app-card"
       onClick={() => router.push(`/`)}
       className="items-center justify-center"
     >

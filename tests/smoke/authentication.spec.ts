@@ -84,8 +84,7 @@ test.describe('Authentication', () => {
     // STEP 2: Verify authenticated homepage
     // ========================================
     console.log('🏠 Step 2: Verifying authenticated homepage...');
-    // Use specific header selector (page has multiple headers)
-    await expect(page.locator('header').filter({ hasText: 'My Apps' })).toBeVisible();
+    await expect(page.getByTestId('airo-header')).toBeVisible();
     await verifyAuthenticated(page);
     console.log('  ✓ User menu shows Sign Out (authenticated)');
 
@@ -101,7 +100,7 @@ test.describe('Authentication', () => {
       // Test See All navigation
       await page.locator('[data-eid*="apps_menu.see_all"]').click();
       await expect(page).toHaveURL(/\/apps/);
-      await expect(page.getByText('Manage your AI-powered websites and applications')).toBeVisible();
+      await expect(page.getByTestId('apps-page-title')).toBeVisible();
       console.log('  ✓ See All navigates to /apps');
     } else {
       console.log('  ⚠ No apps menu (user has no apps)');
@@ -115,7 +114,7 @@ test.describe('Authentication', () => {
     await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
 
     await page.goto('/apps');
-    await expect(page.getByText('Manage your AI-powered websites and applications')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(page.getByTestId('apps-page-title')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
     await page.goto('/');
     await verifyAuthenticated(page);
@@ -126,10 +125,10 @@ test.describe('Authentication', () => {
     // ========================================
     console.log('🔃 Step 5: Testing protected content after refresh...');
     await page.goto('/apps');
-    await expect(page.getByText('Manage your AI-powered websites and applications')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(page.getByTestId('apps-page-title')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
     await page.reload();
-    await expect(page.getByText('Manage your AI-powered websites and applications')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(page.getByTestId('apps-page-title')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     console.log('  ✓ Protected content persists after refresh');
 
     // ========================================
@@ -176,9 +175,7 @@ test.describe('Authentication', () => {
     // STEP 2: Sign In option in user menu
     // ========================================
     console.log('👤 Step 2: Checking user menu (unauthenticated)...');
-    const userMenuButton = page.locator('header button[data-state]').filter({
-      has: page.locator('svg'),
-    }).first();
+    const userMenuButton = page.getByTestId('user-menu-trigger');
     await userMenuButton.click({ force: true });
     await page.getByRole('button', { name: /sign in/i }).waitFor({ state: 'visible', timeout: 5000 });
     console.log('  ✓ Sign In option visible in user menu');

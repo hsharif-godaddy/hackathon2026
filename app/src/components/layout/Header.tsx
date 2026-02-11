@@ -31,7 +31,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
   const showAuthenticatedUI = !isLoading && (isAuthenticated || isAuthDisabled);
 
   return (
-    <header className={clsx(
+    <header data-testid="airo-header" className={clsx(
       "text-intents-ux-boxHighContrast-foregroundColor",
       {
         "bg-gradient bg-intents-ux-boxHighContrast-backgroundColor": location !== 'homepage',

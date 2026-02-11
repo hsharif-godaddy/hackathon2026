@@ -575,6 +575,7 @@ export default function PreviewPane({
                         key={iframeKey}
                         ref={iframeRef}
                         id="preview-iframe"
+                        data-testid="preview-iframe"
                         src={previewUrl}
                         className="w-full h-full border rounded-md"
                         onError={handleIframeError}

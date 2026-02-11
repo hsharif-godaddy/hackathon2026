@@ -176,6 +176,7 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
         {displayedExamples.map((example, index) => (
           <button
             key={example.title}
+            data-testid="homepage-suggestion-button"
             data-eid={generateClickEID(`homepage.examples.example_${example.slug}`)}
             onClick={() => {
               onExampleClick(example.prompt);

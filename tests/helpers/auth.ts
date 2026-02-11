@@ -85,10 +85,7 @@ export async function authenticate(page: Page, context: BrowserContext): Promise
     await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
 
     // Check if Sign Out exists in user menu (indicates authenticated)
-    const userMenuButton = page.locator('header button[data-state]').filter({
-      has: page.locator('svg'),
-      hasNot: page.locator('text'),
-    }).first();
+    const userMenuButton = page.getByTestId('user-menu-trigger');
 
     // Wait for button to be visible before clicking (fixes race condition)
     await userMenuButton.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT });
@@ -121,9 +118,7 @@ export async function authenticate(page: Page, context: BrowserContext): Promise
  */
 async function triggerSignIn(page: Page): Promise<void> {
   // Open user menu
-  const userMenuButton = page.locator('header button[data-state]').filter({
-    has: page.locator('svg'),
-  }).first();
+  const userMenuButton = page.getByTestId('user-menu-trigger');
 
   await userMenuButton.click({ force: true });
 
@@ -164,10 +159,7 @@ export async function verifyAuthenticated(page: Page): Promise<void> {
   await page.waitForTimeout(300);
 
   // Open user menu
-  const userMenuButton = page.locator('header button[data-state]').filter({
-    has: page.locator('svg'),
-    hasNot: page.getByText(/.+/),
-  }).first();
+  const userMenuButton = page.getByTestId('user-menu-trigger');
 
   await userMenuButton.click({ force: true });
   await page.getByRole('button', { name: /sign out/i }).waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
@@ -178,9 +170,7 @@ export async function verifyAuthenticated(page: Page): Promise<void> {
  * Verify user is NOT authenticated by checking user menu
  */
 export async function verifyUnauthenticated(page: Page): Promise<void> {
-  const userMenuButton = page.locator('header button[data-state]').filter({
-    has: page.locator('svg'),
-  }).first();
+  const userMenuButton = page.getByTestId('user-menu-trigger');
 
   await userMenuButton.click({ force: true });
   await page.getByRole('button', { name: /sign in/i }).waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
@@ -191,10 +181,7 @@ export async function verifyUnauthenticated(page: Page): Promise<void> {
  * Sign out via user menu
  */
 export async function signOut(page: Page): Promise<void> {
-  const userMenuButton = page.locator('header button[data-state]').filter({
-    has: page.locator('svg'),
-    hasNot: page.getByText(/.+/),
-  }).first();
+  const userMenuButton = page.getByTestId('user-menu-trigger');
 
   await userMenuButton.click({ force: true });
   await page.locator('[data-eid*="user_menu.sign_out"]').click();
@@ -204,9 +191,7 @@ export async function signOut(page: Page): Promise<void> {
  * Click Sign In from user menu
  */
 export async function signIn(page: Page): Promise<void> {
-  const userMenuButton = page.locator('header button[data-state]').filter({
-    has: page.locator('svg'),
-  }).first();
+  const userMenuButton = page.getByTestId('user-menu-trigger');
 
   await userMenuButton.click({ force: true });
   await page.locator('[data-eid*="user_menu.sign_in"]').click();
@@ -216,10 +201,7 @@ export async function signIn(page: Page): Promise<void> {
  * Open user menu in header
  */
 export async function openUserMenu(page: Page): Promise<void> {
-  const userMenuButton = page.locator('header button[data-state]').filter({
-    has: page.locator('svg'),
-    hasNot: page.getByText(/.+/),
-  }).first();
+  const userMenuButton = page.getByTestId('user-menu-trigger');
 
   await userMenuButton.click({ force: true });
 }

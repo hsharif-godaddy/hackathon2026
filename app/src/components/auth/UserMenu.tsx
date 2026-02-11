@@ -50,7 +50,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger className="hover:cursor-pointer px-1">
+        <PopoverTrigger className="hover:cursor-pointer px-1" data-testid="user-menu-trigger">
           <UserIcon />
         </PopoverTrigger>
         <PopoverContent align="end" className='p-1 w-[250px]'>

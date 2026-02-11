@@ -136,6 +136,7 @@ export default function ChatInput({
             <div className="flex-1">
               <textarea
                 id="chat-input-textarea"
+                data-testid="chat-input-textarea"
                 value={inputValue}
                 onChange={(e) => {
                   if (isListening) return
@@ -186,6 +187,7 @@ export default function ChatInput({
               )}
               <Button
                 id="chat-send-button"
+                data-testid="chat-send-button"
                 onClick={handleSend}
                 data-eid={generateClickEID('develop.prompt.send')}
                 disabled={!inputValue?.trim() || isDisabled}

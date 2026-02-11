@@ -68,8 +68,8 @@ test.describe('Apps Page & Navigation', () => {
     // ========================================
     console.log('🔧 Step 2: Verifying develop page components...');
 
-    // Verify header (skip HCS header which is hidden)
-    await expect(page.locator('header:not(#hcs-header-container)').first()).toBeVisible();
+    // Verify header
+    await expect(page.getByTestId('airo-header')).toBeVisible();
     console.log('  ✓ Header visible');
 
     // Verify Publish button (use data-eid to target header button specifically)
@@ -79,12 +79,12 @@ test.describe('Apps Page & Navigation', () => {
     console.log('  ✓ Publish button visible and enabled');
 
     // Verify preview iframe
-    await page.locator('#preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
-    await expect(page.locator('#preview-iframe')).toHaveAttribute('src', /.+/);
+    await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
+    await expect(page.getByTestId('preview-iframe')).toHaveAttribute('src', /.+/);
     console.log('  ✓ Preview iframe loaded with src');
 
     // Verify chat input
-    await page.locator('#chat-input-textarea').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
+    await page.getByTestId('chat-input-textarea').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
     console.log('  ✓ Chat input visible');
 
     // ========================================
@@ -95,7 +95,7 @@ test.describe('Apps Page & Navigation', () => {
     await page.getByTestId('app-card-edit-button').first().waitFor({ state: 'visible', timeout: 30000 });
 
     // Verify page header
-    await expect(page.getByText('Manage your AI-powered websites and applications')).toBeVisible();
+    await expect(page.getByTestId('apps-page-title')).toBeVisible();
     console.log('  ✓ Page header visible');
 
     // Verify app count
@@ -103,8 +103,8 @@ test.describe('Apps Page & Navigation', () => {
     console.log('  ✓ App count displayed');
 
     // Verify Create button
-    await expect(page.getByText('Create a new app')).toBeVisible();
-    await expect(page.getByText('Create a new app')).not.toBeDisabled();
+    await expect(page.getByTestId('create-app-card')).toBeVisible();
+    await expect(page.getByTestId('create-app-card')).not.toBeDisabled();
     console.log('  ✓ Create button visible and enabled');
 
     // Verify app card exists
@@ -131,7 +131,7 @@ test.describe('Apps Page & Navigation', () => {
     // STEP 5: Test "Create a new app" navigation
     // ========================================
     console.log('🏠 Step 5: Testing Create navigation...');
-    await page.getByText('Create a new app').click();
+    await page.getByTestId('create-app-card').click();
     await expect(page).toHaveURL(/\/$/);
     await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
     console.log('  ✓ Navigated to homepage');
@@ -145,7 +145,7 @@ test.describe('Apps Page & Navigation', () => {
     await page.getByTestId('app-card-edit-button').first().click();
 
     await expect(page).toHaveURL(/\/develop\//);
-    await page.locator('textarea[placeholder*="Ask Airo"]').waitFor({ state: 'visible', timeout: CHAT_INPUT_TIMEOUT });
+    await page.getByTestId('chat-input-textarea').waitFor({ state: 'visible', timeout: CHAT_INPUT_TIMEOUT });
     console.log('  ✓ Navigated to develop page from /apps');
 
     // ========================================
@@ -163,7 +163,7 @@ test.describe('Apps Page & Navigation', () => {
     if (await appMenuItem.isVisible({ timeout: 5000 }).catch(() => false)) {
       await appMenuItem.click();
       await expect(page).toHaveURL(/\/develop\//);
-      await page.locator('#preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
+      await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
       console.log('  ✓ Navigated to develop page from homepage dropdown');
     } else {
       console.log('  ⚠ Apps dropdown not visible (may need more apps)');
@@ -184,15 +184,15 @@ test.describe('Apps Page & Navigation', () => {
     await page.getByTestId('app-card-delete-button').click();
 
     // Verify confirmation dialog
-    await expect(page.getByText('Are you sure you want to delete')).toBeVisible();
+    await expect(page.getByTestId('delete-confirmation')).toBeVisible();
 
     // Delete and wait for response
     const deletePromise = page.waitForResponse('**/api/sites/*');
-    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+    await page.getByTestId('delete-confirm-button').click();
     await deletePromise;
 
     // Verify deletion
-    await expect(page.getByText('Are you sure you want to delete')).not.toBeVisible();
+    await expect(page.getByTestId('delete-confirmation')).not.toBeVisible();
     await expect(page.getByTestId('app-card-edit-button')).toHaveCount(countBefore - 1);
     console.log(`  ✓ App deleted - now ${countBefore - 1} apps remain`);
 
@@ -259,7 +259,7 @@ test.describe('Apps Page & Navigation', () => {
     console.log('💡 Step 4: Testing suggestion buttons...');
 
     // Find suggestion buttons
-    const suggestionButtons = page.locator('button.bg-ai-dark-transparent');
+    const suggestionButtons = page.getByTestId('homepage-suggestion-button');
     await expect(suggestionButtons.first()).toBeVisible();
 
     const count = await suggestionButtons.count();
