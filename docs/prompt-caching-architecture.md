@@ -1,0 +1,226 @@
+# Prompt Caching Architecture
+
+This document describes the message segment ordering and cache point strategy for optimizing LLM costs with Anthropic's prompt caching.
+
+## Overview
+
+Anthropic's prompt caching allows caching of message prefixes to reduce costs on repeated requests. Cache points mark boundaries where the prefix can be cached and reused.
+
+**Key constraints:**
+
+- Maximum 4 cache breakpoints per request
+- System messages must be contiguous at the start (cannot interleave with user/assistant)
+- Cache works on prefix matching - if any part of the prefix changes, cache is invalidated
+- Cache points can be set on user, assistant, and system messages
+
+## Message Segment Order
+
+Messages are assembled in this order for each request:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ SEGMENT 1: System Prompt (system role)                              │
+│ - Base agent instructions                                           │
+│ - Stable per agent type                                             │
+│ - No explicit cache point (covered by ai-lib auto-caching)          │
+├─────────────────────────────────────────────────────────────────────┤
+│ SEGMENT 2: Template Description (system role)                       │
+│ - App template documentation (e.g., Next.js patterns)               │
+│ - Stable per app                                                    │
+│ - insertionOrder: 'before_history'                                  │
+├─────────────────────────────────────────────────────────────────────┤
+│ SEGMENT 3: Memory Summary (user role) [cachePoint: ephemeral]       │
+│ - Summarized conversation history                                   │
+│ - Changes only on re-summarization (infrequent)                     │
+│ - insertionOrder: 'before_history'                                  │
+│ - SECURITY: Must be user role to prevent prompt injection           │
+├─────────────────────────────────────────────────────────────────────┤
+│ SEGMENT 4: App Context (user role)                                  │
+│ - Current project structure/file listing                            │
+│ - Mostly stable within a session                                    │
+│ - insertionOrder: 'before_history'                                  │
+│ - Must be user role (Anthropic requires contiguous system messages) │
+├─────────────────────────────────────────────────────────────────────┤
+│ SEGMENT 5: Conversation History [cachePoint on last message]        │
+│ - Previous user/assistant message exchanges                         │
+│ - Append-only (only changes on summarization)                       │
+│ - Cache point on last message maximizes prefix caching              │
+├─────────────────────────────────────────────────────────────────────┤
+│ SEGMENT 6: KnowB Results (user role)                                │
+│ - Knowledge base search results                                     │
+│ - Query-dependent (changes every request)                           │
+│ - insertionOrder: 'after_history'                                   │
+│ - NO cache point (content is dynamic)                               │
+├─────────────────────────────────────────────────────────────────────┤
+│ SEGMENT 7: Todo Context (user role)                                 │
+│ - Current todo list state                                           │
+│ - insertionOrder: 'after_history'                                   │
+├─────────────────────────────────────────────────────────────────────┤
+│ SEGMENT 8: Dynamic Data (user role)                                 │
+│ - Request-specific context attachments                              │
+│ - insertionOrder: 'after_history'                                   │
+├─────────────────────────────────────────────────────────────────────┤
+│ SEGMENT 9: Current User Message                                     │
+│ - The actual user prompt for this request                           │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+## Cache Point Strategy
+
+### Placement Rationale
+
+```
+Segment                    Stability        Cache Point    Reason
+─────────────────────────────────────────────────────────────────────
+1. System Prompt           Very stable      (auto)         ai-lib handles
+2. Template Description    Stable/app       No             Covered by prefix
+3. Memory Summary          Slow-changing    YES            Changes infrequently
+4. App Context             Mostly stable    No             Covered by prefix
+5. Conversation History    Append-only      YES (last)     Grows but stable
+6. KnowB Results           Every request    No             Dynamic content
+7. Todo Context            Variable         No             After cache boundary
+8. Dynamic Data            Every request    No             After cache boundary
+9. User Message            Every request    No             Always new
+```
+
+### Why These Placements?
+
+**Memory Summary (Segment 3):**
+
+- Generated by LLM summarization of conversation history
+- Only regenerated when history exceeds token limits
+- Caching saves re-reading ~30-50% of typical context
+
+**Conversation History (Segment 5):**
+
+- Append-only: new messages added to end
+- Previous messages never change (unless summarized)
+- Cache point on LAST message means entire prefix is cached
+- New requests only add the new user message after cache boundary
+
+**KnowB and beyond (Segments 6-9):**
+
+- Intentionally placed AFTER cache boundary
+- These change every request, so caching would be ineffective
+- Keeping them after history preserves the cached prefix
+
+## Anthropic API Constraints
+
+### System Message Ordering
+
+```
+VALID:
+  system → system → user → user → assistant → user
+
+INVALID:
+  system → user → system → user  ❌
+  (Error: "Multiple system messages separated by user/assistant messages")
+```
+
+This is why:
+
+- Template description is `system` (first)
+- Memory summary is `user` (comes after system)
+- App context is `user` (must follow user, not be system)
+
+### Cache Breakpoint Limits
+
+Anthropic allows maximum 4 cache breakpoints per request. Our strategy uses 2-3:
+
+1. **Memory Summary** - slow-changing summarized history
+2. **Last History Message** - append-only conversation
+3. (Optional) **System Prompt** - if ai-lib auto-caching is enabled
+
+## Security Considerations
+
+### Why Memory is User Role (Not System)
+
+Memory summaries are derived from user conversations. Placing user-derived content in system prompts creates a **prompt injection vulnerability**:
+
+```
+DANGEROUS (old approach):
+  System Prompt: "You are a helpful assistant.
+
+  # Memory
+  [User-derived summary that could contain injected instructions]"
+
+  → Attacker crafts messages that survive summarization
+  → Malicious content appears in system prompt
+  → LLM treats it as trusted instructions
+
+SAFE (current approach):
+  System: "You are a helpful assistant."
+  User: "[CONVERSATION SUMMARY]\n..."
+
+  → Summary clearly marked as user-provided context
+  → LLM treats it as user input, not system instructions
+```
+
+## Implementation Files
+
+| Component        | File                                                             | Responsibility                |
+| ---------------- | ---------------------------------------------------------------- | ----------------------------- |
+| Context Manager  | `agents/src/agents/ai-lib-agents/context-manager.ts`             | Builds segments 2-4           |
+| History Loader   | `agents/src/services/ConversationHistoryLoader.ts`               | Loads segment 3, 5            |
+| WebSocket Server | `agents/src/server/ai-lib-websocket-server.ts`                   | Assembles all segments        |
+| Message Assembly | `packages/ai-lib/src/websocket/experimental-websocket-server.ts` | Final ordering + cache points |
+| Prompt Caching   | `packages/ai-lib/src/utils/prompt-caching.ts`                    | Auto cache point logic        |
+
+## Cache Behavior Examples
+
+### Scenario 1: Normal Conversation
+
+```
+Request 1: "Hello"
+  - Segments 1-5: NEW (cache miss)
+  - Cache points set on Memory, Last History
+
+Request 2: "Tell me more"
+  - Segments 1-5: CACHED (cache hit on prefix)
+  - Segment 6-9: NEW (after cache boundary)
+  - Cost savings: ~60-70%
+```
+
+### Scenario 2: After Summarization
+
+```
+Request N: History exceeds limit, triggers summarization
+  - Memory summary regenerated
+  - Cache INVALIDATED (memory content changed)
+  - Next request: cache miss, then cached again
+```
+
+### Scenario 3: Different KnowB Query
+
+```
+Request: "How do I deploy?"
+  - Segments 1-5: CACHED
+  - Segment 6 (KnowB): Different results for "deploy" query
+  - No cache impact - KnowB is after cache boundary
+```
+
+## Monitoring Cache Effectiveness
+
+Check logs for cache metrics:
+
+```typescript
+// ai-lib logs cache point count
+logger.info("Message assembly complete", {
+  contextMessages: contextMessages.length,
+  messages: messages.length,
+  cachePoints:
+    contextMessages.filter((m) => m.cachePoint).length +
+    messages.filter((m) => m.cachePoint).length,
+});
+```
+
+Anthropic API responses include cache statistics:
+
+- `cache_creation_input_tokens`: Tokens written to cache
+- `cache_read_input_tokens`: Tokens read from cache (savings!)
+
+## References
+
+- [Anthropic Prompt Caching Docs](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching)
+- PR #1606: Security fix + caching optimization
+- PR #1596: Original (problematic) caching attempt

@@ -51,6 +51,12 @@ export interface OpenAIMessage {
     isSummary?: boolean;
     isOperationLog?: boolean;
   };
+  /**
+   * Cache control for Anthropic prompt caching.
+   * Per Anthropic's docs, caching is effective for user and assistant messages.
+   * This implementation uses it specifically on user messages for summary caching.
+   */
+  cachePoint?: { type: 'ephemeral' };
 }
 
 /**
@@ -815,28 +821,41 @@ export class ConversationHistoryLoader {
       }
     }
 
-    let summary: ConversationHistorySummary | undefined;
-
-    if (latestSummary && summaryEndIndex !== -1) {
-      summary = {
-        text: latestSummary.summaryText,
-        operationLog: latestSummary.operationLog,
-        tokenCount: latestSummary.summaryTokenCount,
-        originalTokenCount: latestSummary.originalTokenCount,
-        summaryId: latestSummary.id,
-        messagesCovered: summaryEndIndex + 1,
-        messagesRemaining: allMessages.length - (summaryEndIndex + 1),
-      };
-    }
-
-    // Build LLM messages for conversation history (summary handled separately)
+    // Build LLM messages for conversation history
+    // Summary is injected as cacheable user messages (NOT system prompt) for security
+    // User-derived content should never be elevated to system prompt privilege
     const llmMessages: LLMMessage[] = [];
     let messageIndex = 0;
 
     if (latestSummary && summaryEndIndex !== -1) {
+      // Add operation log first (if available) - provides cumulative record of all operations
+      // This survives compression and ensures the agent sees what files were touched
+      // SECURITY: Injected as user message to prevent prompt injection via system prompt
+      if (latestSummary.operationLog) {
+        llmMessages.push({
+          role: 'user',
+          content: `[OPERATION LOG - Cumulative record of all work done]\n${latestSummary.operationLog}`,
+          metadata: { isOperationLog: true },
+          cachePoint: { type: 'ephemeral' },
+        });
+      }
+
+      // Add summary as user message with cache control
+      // SECURITY: User-derived summaries must remain as user messages, not system prompts
+      // System prompts have higher privilege and could enable prompt injection attacks
+      // The latest summary contains the full cumulative summary text. Incremental summarization
+      // updates this summary by including only new messages since the last summary, so the latest
+      // summary alone provides complete historical context without duplication.
+      llmMessages.push({
+        role: 'user',
+        content: `[CONVERSATION SUMMARY]\n${latestSummary.summaryText}`,
+        metadata: { isSummary: true },
+        cachePoint: { type: 'ephemeral' },
+      });
+
       // Skip all messages covered by the summary
       messageIndex = summaryEndIndex + 1;
-      
+
       logger.debug('conversation.history.loader.summary_applied', {
         appId,
         summaryId: latestSummary.id,
@@ -962,7 +981,9 @@ export class ConversationHistoryLoader {
     }
 
     const limitedMessages = await this.applyTokenLimit(compressedMessages, maxTokens, modelName);
-    return { messages: limitedMessages, summary };
+    // Summary is now injected as user messages in the history, not returned separately
+    // This prevents user-derived content from being elevated to system prompt privilege
+    return { messages: limitedMessages };
   }
 
   /**

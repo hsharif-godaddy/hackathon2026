@@ -24,7 +24,7 @@ describe('AILibContextManager', () => {
     getMessageById.mockClear()
   })
 
-  it('injects summary as cached system memory message', async () => {
+  it('injects summary as cached USER memory message (not system, for security)', async () => {
     latestSummary.value = {
       id: 'sum1',
       summaryText: '# Summary',
@@ -41,13 +41,21 @@ describe('AILibContextManager', () => {
       { includeTemplateDescription: false, includeAppContext: false }
     )
 
+    // SECURITY: Memory must be injected as USER message, not system
+    // User-derived content should never be elevated to system prompt privilege
     const memoryMessage = result.contextMessages.find(
-      (msg) => msg.role === 'system' && msg.content.includes('# Memory')
+      (msg) => msg.role === 'user' && msg.content.includes('# Memory')
     )
 
     expect(memoryMessage).toBeDefined()
     expect(memoryMessage?.cachePoint?.type).toBe('ephemeral')
     expect(memoryMessage?.content).toContain('# Summary')
     expect(memoryMessage?.content).toContain('## Operation Log')
+
+    // Verify it's NOT a system message
+    const systemMemoryMessage = result.contextMessages.find(
+      (msg) => msg.role === 'system' && msg.content.includes('# Memory')
+    )
+    expect(systemMemoryMessage).toBeUndefined()
   })
 })

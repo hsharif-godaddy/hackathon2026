@@ -579,6 +579,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           }
 
           // Search KnowB with user's message for relevant documentation
+          // CACHING: KnowB results are query-dependent (change every request), so they MUST be
+          // inserted 'after_history' to preserve caching of stable prefix content (system prompt,
+          // template, memory summary, app context). Inserting query-dependent content in
+          // 'before_history' would invalidate the cache on every request.
           let knowBContextMessage: ContextMessage | null = null
           const userMessage = agentsAppContext.metadata?._userMessage as string | undefined
 
@@ -595,9 +599,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
               if (retrievalResult && retrievalResult.results && retrievalResult.results.length > 0) {
                 knowBContextMessage = {
-                  role: 'assistant',
-                  content: `# Relevant Documentation\n\nHere is relevant documentation from the knowledge base that may help answer this question:\n\n${retrievalResult.content}\n\n---\n*Use this documentation to inform your response, but respond naturally without explicitly referencing it unless directly relevant.*`,
-                  insertionOrder: 'before_history'
+                  // Use 'user' role for injected context - more natural conversation flow
+                  // and avoids breaking user/assistant alternation pattern
+                  role: 'user',
+                  content: `[Relevant Documentation from Knowledge Base]\n\n${retrievalResult.content}\n\n---\n*Use this documentation to inform your response, but respond naturally without explicitly referencing it unless directly relevant.*`,
+                  // CRITICAL: Must be 'after_history' to preserve caching of stable prefix
+                  insertionOrder: 'after_history'
                 }
               }
             } catch (error) {

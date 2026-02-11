@@ -333,7 +333,7 @@ describe('ConversationHistoryLoader', () => {
   });
 
   describe('loadMessagesWithSummarization', () => {
-    it('should return summary separately without injecting summary messages', async () => {
+    it('should inject summary as cacheable USER messages (not returned separately for security)', async () => {
       vi.mocked(mockRepo.getByAppId).mockResolvedValue([
         { id: 'conv1', appId: 'test-app', createdAt: new Date(), updatedAt: new Date() }
       ]);
@@ -367,18 +367,34 @@ describe('ConversationHistoryLoader', () => {
 
       const result = await loader.loadMessagesWithSummarization('test-app', 10000);
 
-      expect(result.summary?.text).toBe('# Summary');
-      expect(result.summary?.operationLog).toBe('Edited file A');
-      expect(result.messages).toHaveLength(1);
-      expect(result.messages[0]?.role).toBe('assistant');
-      expect(result.messages[0]?.content).toBe('hi there');
+      // SECURITY: Summary should NOT be returned separately (would go to system prompt)
+      // Instead it's injected as user messages to prevent prompt injection
+      expect(result.summary).toBeUndefined();
 
-      const hasSummaryMessage = result.messages.some((msg: any) =>
+      // Should have exactly 3 messages: operation log (user), summary (user), and remaining assistant message
+      expect(result.messages).toHaveLength(3);
+
+      // Find summary message - MUST be user role
+      const summaryMessage = result.messages.find((msg: any) =>
         msg.role === 'user' &&
         typeof msg.content === 'string' &&
         msg.content.includes('[CONVERSATION SUMMARY]')
       );
-      expect(hasSummaryMessage).toBe(false);
+      expect(summaryMessage).toBeDefined();
+      expect(summaryMessage?.content).toContain('# Summary');
+      // SECURITY: Must have cache control for cost savings
+      expect((summaryMessage as any)?.cachePoint?.type).toBe('ephemeral');
+
+      // Find operation log message - MUST be user role
+      const operationLogMessage = result.messages.find((msg: any) =>
+        msg.role === 'user' &&
+        typeof msg.content === 'string' &&
+        msg.content.includes('[OPERATION LOG')
+      );
+      expect(operationLogMessage).toBeDefined();
+      expect(operationLogMessage?.content).toContain('Edited file A');
+      // SECURITY: Must have cache control for cost savings
+      expect((operationLogMessage as any)?.cachePoint?.type).toBe('ephemeral');
     });
   });
 

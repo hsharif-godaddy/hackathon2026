@@ -2424,13 +2424,20 @@ export class WebSocketServer {
     contextMessages.push(...beforeHistoryMessages)
 
     // 2. Conversation history (if provided) - preserve full message structure including tool calls
+    // CACHING: Add cache point to last history message. History is append-only (only changes
+    // when re-summarized), so caching the entire prefix including history is efficient.
     if (data.conversationHistory && data.conversationHistory.length > 0) {
       this.logger.info(`Adding ${data.conversationHistory.length} conversation history messages`)
-      const convertedHistoryMessages = data.conversationHistory.map(msg => {
+      const historyLength = data.conversationHistory.length
+      const convertedHistoryMessages = data.conversationHistory.map((msg, index) => {
+        const isLastMessage = index === historyLength - 1
         const converted: any = {
           role: msg.role,
           content: msg.content,
-          ...(msg.cachePoint && { cachePoint: msg.cachePoint })
+          // Preserve existing cache points, or add one to the last history message
+          // This allows caching of the entire stable prefix (system + context + history)
+          ...(msg.cachePoint && { cachePoint: msg.cachePoint }),
+          ...(isLastMessage && !msg.cachePoint && { cachePoint: { type: 'ephemeral' } })
         }
 
         // Preserve tool calls for assistant messages

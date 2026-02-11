@@ -100,25 +100,22 @@ export class ConversationContextManager {
       throw new Error('Current user message cannot be empty');
     }
 
-    let historyResult: ConversationHistoryWithSummary | null = null;
-
     // Load conversation history if we have a conversation ID
     // Use compressed token-limited loader for efficiency
+    // Summaries are injected as cacheable USER messages in the history (not system prompt)
+    // This prevents prompt injection attacks from user-derived content
+    let historyMessages: LLMMessage[] = [];
     if (conversationId) {
-      historyResult = await this.loadConversationHistoryCompressed(conversationId, executionContext);
+      const historyResult = await this.loadConversationHistoryCompressed(conversationId, executionContext);
+      historyMessages = historyResult.messages;
     }
-
-    const systemPromptWithMemory = historyResult?.summary
-      ? this.composeSystemPromptWithMemory(systemPrompt.trim(), historyResult.summary, executionContext)
-      : systemPrompt.trim();
 
     const messages: LLMMessage[] = [
-      { role: 'system', content: systemPromptWithMemory }
+      { role: 'system', content: systemPrompt.trim() }
     ];
 
-    if (historyResult) {
-      messages.push(...historyResult.messages);
-    }
+    // Add conversation history (includes summary as cached user messages if present)
+    messages.push(...historyMessages);
 
     // Add app context (directory listing) before AI edit context if execution context is available
     if (executionContext) {
@@ -190,7 +187,7 @@ export class ConversationContextManager {
     conversationContextEvents.buildSuccess(logger, {
       conversationId,
       totalMessages: validatedMessages.length,
-      systemPromptLength: systemPromptWithMemory.length,
+      systemPromptLength: systemPrompt.length,
       currentMessageLength: currentUserMessage.length,
       hasHistory: !!conversationId && validatedMessages.length > 2,
       hasAppContext,
@@ -253,31 +250,6 @@ export class ConversationContextManager {
       });
       return { messages: [] };
     }
-  }
-
-  private composeSystemPromptWithMemory(
-    basePrompt: string,
-    summary: ConversationHistoryWithSummary['summary'],
-    executionContext?: AgentExecutionContext
-  ): string {
-    if (!summary) {
-      return basePrompt;
-    }
-
-    const sections: string[] = [basePrompt, '# Memory', summary.text];
-    if (summary.operationLog) {
-      sections.push('## Operation Log', summary.operationLog);
-    }
-
-    const appId = executionContext?.metadata?.appId as string | undefined;
-    logger.info('context.summary.memory_injected', {
-      appId,
-      summaryTokens: summary.tokenCount,
-      originalTokens: summary.originalTokenCount,
-      hasOperationLog: !!summary.operationLog,
-    });
-
-    return sections.join('\n\n');
   }
 
   /**

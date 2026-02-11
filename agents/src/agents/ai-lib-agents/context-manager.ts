@@ -136,8 +136,11 @@ export class AILibContextManager {
         let memoryCached = false
         if (memorySummary) {
             const memoryContent = this.formatMemorySummary(memorySummary)
+            // SECURITY: Memory is injected as USER message, not system message
+            // User-derived content (conversation summaries) must not be elevated to system prompt privilege
+            // System prompts have higher trust and could enable prompt injection attacks
             conversationContextMessages.push({
-                role: 'system',
+                role: 'user',
                 content: memoryContent,
                 insertionOrder: 'before_history',
                 cachePoint: { type: 'ephemeral' }
@@ -145,12 +148,14 @@ export class AILibContextManager {
             memoryCached = true
         }
 
-        // Add app context as system message (second priority)
+        // Add app context as user message (project structure info)
+        // NOTE: Must be 'user' role because Anthropic requires all system messages to be
+        // contiguous at the start. Memory (user) comes before this, so this must also be user.
         const appContextMessages = contextMessages.filter(msg => msg.type === 'app_context')
         const appContextCached = false
         if (appContextMessages.length > 0) {
             conversationContextMessages.push({
-                role: 'system',
+                role: 'user',
                 content: appContextMessages.map(msg => msg.content).join('\n\n'),
                 insertionOrder: 'before_history'
             })
