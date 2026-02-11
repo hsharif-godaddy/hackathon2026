@@ -198,6 +198,8 @@ export class ConnectionStateManager {
   /**
    * Transition a connection to a new state
    * Returns true if transition was successful, false if invalid
+   * Note: Idempotent transitions (same state -> same state) are no-ops and return true immediately.
+   * Use updateConnection() if you need to update params without changing state.
    */
   transitionTo(socketId: string, newState: ConnectionState, params: TransitionParams = {}): boolean {
     const effectiveId = this.getEffectiveSocketId(socketId)
@@ -209,6 +211,12 @@ export class ConnectionStateManager {
     }
 
     const oldState = data.state
+
+    // Idempotent transition - return immediately as no-op
+    // If params need updating, use updateConnection() instead
+    if (oldState === newState) {
+      return true
+    }
 
     // Validate transition
     if (!this.isValidTransition(oldState, newState)) {
@@ -279,11 +287,12 @@ export class ConnectionStateManager {
 
   /**
    * Check if a state transition is valid
+   * Note: This is called after idempotent check in transitionTo(), so from !== to here
    */
   private isValidTransition(from: ConnectionState, to: ConnectionState): boolean {
     // Define valid transitions
     const validTransitions: Record<ConnectionState, ConnectionState[]> = {
-      connected: ['disconnected', 'cleaned'],
+      connected: ['recovering', 'disconnected', 'cleaned'], // Allow recovering for initial recovery
       disconnected: ['recovering', 'connected', 'cleaned'],
       recovering: ['connected', 'cleaned'],
       cleaned: [] // Terminal state

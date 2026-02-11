@@ -111,6 +111,12 @@ describe('ConnectionStateManager', () => {
         expect(manager.getState('socket-1')).toBe('disconnected')
       })
 
+      it('allows connected -> recovering (for initial recovery)', () => {
+        const result = manager.transitionTo('socket-1', 'recovering')
+        expect(result).toBe(true)
+        expect(manager.getState('socket-1')).toBe('recovering')
+      })
+
       it('allows connected -> cleaned', () => {
         const result = manager.transitionTo('socket-1', 'cleaned')
         expect(result).toBe(true)
@@ -153,19 +159,25 @@ describe('ConnectionStateManager', () => {
         expect(result).toBe(true)
         expect(manager.getState('socket-1')).toBe('cleaned')
       })
+
+      it('allows idempotent transitions (same state -> same state)', () => {
+        // connected -> connected
+        expect(manager.transitionTo('socket-1', 'connected')).toBe(true)
+        expect(manager.getState('socket-1')).toBe('connected')
+
+        // disconnected -> disconnected
+        manager.transitionTo('socket-1', 'disconnected')
+        expect(manager.transitionTo('socket-1', 'disconnected')).toBe(true)
+        expect(manager.getState('socket-1')).toBe('disconnected')
+
+        // recovering -> recovering
+        manager.transitionTo('socket-1', 'recovering')
+        expect(manager.transitionTo('socket-1', 'recovering')).toBe(true)
+        expect(manager.getState('socket-1')).toBe('recovering')
+      })
     })
 
     describe('invalid transitions', () => {
-      it('rejects connected -> recovering (must go through disconnected)', () => {
-        const result = manager.transitionTo('socket-1', 'recovering')
-        expect(result).toBe(false)
-        expect(manager.getState('socket-1')).toBe('connected')
-        expect(mockLogger.warn).toHaveBeenCalledWith(
-          'connection.transition.invalid',
-          expect.objectContaining({ oldState: 'connected', newState: 'recovering' })
-        )
-      })
-
       it('rejects cleaned -> any (terminal state)', () => {
         manager.transitionTo('socket-1', 'cleaned')
 

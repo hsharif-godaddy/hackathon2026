@@ -469,6 +469,8 @@ export class ConnectionRecoveryManager {
     try {
       // Register state with ConnectionStateManager before executing recovery flow.
       // This MUST be wrapped in the try/catch so failures don't leave orphaned state.
+      // Initial recovery: connected → recovering (loading history from DB)
+      // Other modes: disconnected → recovering (replaying from buffer)
       this.stateManager.createConnection(socketId, stateData)
       this.stateManager.transitionTo(socketId, 'recovering')
       stateRegistered = true
