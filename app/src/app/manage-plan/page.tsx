@@ -13,7 +13,6 @@ import {
   DowngradeScheduledAlert,
   ManagePlanSkeleton,
   PageLayout,
-  type PaywallType,
   TotalCreditsCard,
 } from '@/app/manage-plan/components';
 import { ProtectedRoute } from '@/components/auth';
@@ -25,9 +24,8 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { ClientLogBuffer, shipAnalyticsLog } from '@/lib/logging';
-import { isPaidPlan } from '@/lib/paywall/shared';
+import { isPaidPlanForGrants, type PaywallType } from '@/lib/paywall/shared';
 import type { CreditGrant } from '@/types/credits';
-import { PAID_PLANS, SubscriptionPlan } from '@/types/credits';
 import {
   getActiveGrant,
   getCreditPackGrants,
@@ -105,7 +103,6 @@ function ManagePlanContent() {
   const [paywallItc, setPaywallItc] = useState<string | null>(null);
   const [showDowngradeModal, setShowDowngradeModal] = useState(false);
   const [isAlertDismissed, setIsAlertDismissed] = useState(false);
-  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants');
   const { setAutoRenew } = useEcommSubscriptionAutoRenew();
 
   const openPaywall = (source: string, type: PaywallType = 'upgrade', itc?: string) => {
@@ -138,6 +135,8 @@ function ManagePlanContent() {
   } = useCreditGrants({
     subscriptionId: subscription?.id,
   });
+
+  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants');
 
   const builderEntitlementId = subscription?.builderEntitlementId;
 
@@ -184,7 +183,7 @@ function ManagePlanContent() {
   const currentPlan = getPlanFromSubscription(subscription);
   const paywallSourceId = paywallSource ?? 'manage_plan';
 
-  const isPaidPlan = PAID_PLANS.includes(currentPlan);
+  const isPaidPlan = isPaidPlanForGrants(currentPlan, isGrantsEnabled ?? true);
   const planLabelKey = getPlanDisplayLabelKey(currentPlan);
   const planDisplayLabel = planLabelKey ? t(planLabelKey) : '';
 
@@ -338,15 +337,16 @@ function ManagePlanContent() {
                 openPaywall={openPaywall}
                 autoRenewStatus={autoRenewStatus}
                 onDowngradeClick={() => setShowDowngradeModal(true)}
+                isGrantsEnabled={isGrantsEnabled ?? true}
               />
-              {currentPlan && currentPlan !== SubscriptionPlan.AiroPlus && (
+              {currentPlan && (
                 <AddonCreditCard
                   creditPacks={creditPacks}
                   subscriptionPlan={currentPlan}
                   activeGrantId={activeGrant?.id}
                   locale={locale}
                   onOpenPaywall={openPaywall}
-                  isGrantsEnabled={isGrantsEnabled}
+                  isGrantsEnabled={isGrantsEnabled ?? true}
                 />
               )}
             </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
+import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { VentureService } from '@/lib/venture-service';
 
 export const dynamic = 'force-dynamic';
@@ -53,6 +54,34 @@ export const GET = withCustomerAuth(
         shopperId: user.shopperId,
         after,
       });
+
+      // When app-builder-grants is enabled, product-graph project lookups are disabled
+      // The new grants system uses /api/subscriptions for plan-based access control
+      const isGrantsEnabled = await checkSwitchboardFlag(
+        'app-builder-grants',
+        authContext.jwt,
+        request.headers
+      );
+
+      if (isGrantsEnabled) {
+        logger.info('api.projects.get.skipped', {
+          message: 'Projects endpoint disabled when app-builder-grants is enabled',
+          customerId: user.customerId,
+        });
+        return NextResponse.json({
+          success: true,
+          data: {
+            projects: {
+              edges: [],
+              pageInfo: {
+                hasNextPage: false,
+                endCursor: null,
+              },
+            },
+          },
+        });
+      }
+
       // Create venture service instance
       const ventureService = new VentureService(authContext.jwt);
 

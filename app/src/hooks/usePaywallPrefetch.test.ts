@@ -51,11 +51,12 @@ describe('usePaywallPrefetch', function hooks() {
         // Verify feature flags were prefetched
         expect(prefetchSwitchboard).toHaveBeenCalledWith(queryClient, 'appbuilder-airoplus-paywall');
         expect(prefetchSwitchboard).toHaveBeenCalledWith(queryClient, 'appbuilder-paywall-markets');
+        expect(prefetchSwitchboard).toHaveBeenCalledWith(queryClient, 'app-builder-grants');
 
         // Verify subscription was prefetched
         expect(prefetchSubscription).toHaveBeenCalledWith(queryClient);
 
-        // Verify projects were prefetched
+        // Verify projects were prefetched (only when grants is disabled)
         expect(prefetchProjects).toHaveBeenCalledWith(queryClient);
       });
     });
@@ -64,7 +65,7 @@ describe('usePaywallPrefetch', function hooks() {
       const { rerender } = renderHook(() => usePaywallPrefetch(), { wrapper });
 
       await waitFor(() => {
-        expect(prefetchSwitchboard).toHaveBeenCalledTimes(2); // Two flags
+        expect(prefetchSwitchboard).toHaveBeenCalledTimes(3); // Three flags: paywall, markets, grants
       });
 
       const initialCallCount = vi.mocked(prefetchSwitchboard).mock.calls.length;

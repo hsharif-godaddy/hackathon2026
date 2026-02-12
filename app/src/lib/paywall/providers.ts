@@ -108,4 +108,17 @@ export interface PaywallDataProvider {
    * @returns Promise with array of project edges
    */
   getProjects(): Promise<ProjectEdge[]>;
+
+  /**
+   * Check if app-builder-grants feature flag is enabled
+   *
+   * When enabled, the new grants-based access control is active and
+   * legacy entitlements/project matching should be skipped.
+   *
+   * Client: Calls useSwitchboard or fetches directly
+   * Server: Uses checkSwitchboardFlag
+   *
+   * @returns Promise with boolean indicating if grants feature is enabled
+   */
+  isGrantsEnabled(): Promise<boolean>;
 }

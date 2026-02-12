@@ -21,10 +21,13 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
 /**
  * Fetch feature flag value from BFF API
  *
+ * This is the non-React version for use in services and providers.
+ * For React components, use the `useSwitchboard` hook instead.
+ *
  * @param featureName - Name of the feature flag to fetch
  * @returns Promise with the feature flag value (boolean)
  */
-async function fetchFeatureFlag(featureName: string): Promise<boolean> {
+export async function fetchFeatureFlag(featureName: string): Promise<boolean> {
   if (isFeatureEnabled.localFeatures() && featureName in LOCAL_FEATURE_OVERRIDES) {
     logger.info('switchboard.local_override', {
       featureName,

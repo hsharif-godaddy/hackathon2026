@@ -6,13 +6,13 @@ import text from '@ux/text';
 
 import { useTranslations } from '@/hooks/useTranslations';
 import type { AiroSubscription } from '@/lib/mgmt-airo';
-import { PAYWALL_ITC } from '@/lib/paywall/shared';
-import { type CreditGrant, PAID_PLANS, SubscriptionPlan } from '@/types/credits';
+import { isPaidPlanForGrants, PAYWALL_ITC } from '@/lib/paywall/shared';
+import { PAYWALL_TYPE, type PaywallType } from '@/lib/paywall/shared';
+import type { CreditGrant } from '@/types/credits';
 import { formatFullCreditDate, getPlanDisplayLabelKey, getPlanFromSubscription } from '@/utils/credits';
 import { generateClickEID } from '@/utils/instrumentation';
 import ActiveTag from './ActiveTag';
 import CreditProgressBar from './CreditProgressBar';
-import type { PaywallType } from './types';
 
 interface PlanCreditsCardProps {
   subscription: AiroSubscription;
@@ -23,9 +23,10 @@ interface PlanCreditsCardProps {
   openPaywall: (source: string, type: PaywallType, itc?: string) => void;
   autoRenewStatus?: { autoRenew: boolean; paidThroughDate?: string; subscriptionId?: string } | null;
   onDowngradeClick?: () => void;
+  isGrantsEnabled: boolean;
 }
 
-const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, creditPacks, openPaywall, autoRenewStatus, onDowngradeClick }: PlanCreditsCardProps) => {
+const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, creditPacks, openPaywall, autoRenewStatus, onDowngradeClick, isGrantsEnabled }: PlanCreditsCardProps) => {
   const t = useTranslations();
 
   if (!planGrant || !subscription) {
@@ -35,7 +36,8 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
   const currentPlan = getPlanFromSubscription(subscription);
   const planLabelKey = getPlanDisplayLabelKey(currentPlan);
   const planDisplayLabel = planLabelKey ? t(planLabelKey) : '';
-  const isFreePlan = currentPlan === SubscriptionPlan.Free;
+  const isPaidPlan = isPaidPlanForGrants(currentPlan, isGrantsEnabled);
+  const isFreePlan = !isPaidPlan;
   const hasCreditsNoPlan = creditPacks.length > 0 && isFreePlan;
   const isActive = activeGrantId === planGrant.id;
 
@@ -91,7 +93,7 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
               <text.p as="label" text={t('builder_manageplan_creditpacks_empty_plan_description')} />
           )}
           <CreditProgressBar spent={planGrant.creditsSpent} max={planGrant.creditsMax} />
-        { (creditPacks.length > 0 || (!isFreePlan && creditPacks.length === 0)) && currentPlan && currentPlan !== SubscriptionPlan.AiroPlus && (
+        { (creditPacks.length > 0 || (!isFreePlan && creditPacks.length === 0)) && currentPlan && (
           <Box orientation="horizontal" gap="md">
               { isFreePlan && creditPacks.length > 0 && (
                   <Button
@@ -100,7 +102,7 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
                       data-eid={generateClickEID('manageplan.buttons.upgrade')}
                       size="sm"
                       text={t('builder_manageplan_upgrade')}
-                      onClick={() => openPaywall('manage_plan.upgrade', 'upgrade', PAYWALL_ITC.UPGRADE)}
+                      onClick={() => openPaywall('manage_plan.upgrade', PAYWALL_TYPE.UPGRADE, PAYWALL_ITC.UPGRADE)}
                   />
               )}
               { creditPacks.length > 0 && (
@@ -110,10 +112,10 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
                       data-eid={generateClickEID('manageplan.buttons.buy_credits')}
                       size="sm"
                       text={t('builder_manageplan_buy_credits')}
-                      onClick={() => openPaywall('manage_plan.buy_credits', 'credits', PAYWALL_ITC.CREDITS)}
+                      onClick={() => openPaywall('manage_plan.buy_credits', PAYWALL_TYPE.CREDITS, PAYWALL_ITC.CREDITS)}
                   />
               )}
-              { PAID_PLANS.includes(currentPlan) && autoRenewStatus?.autoRenew === true && onDowngradeClick && (
+              { isPaidPlan && autoRenewStatus?.autoRenew === true && onDowngradeClick && (
                   <Button
                       className="items-center"
                       design="inline"

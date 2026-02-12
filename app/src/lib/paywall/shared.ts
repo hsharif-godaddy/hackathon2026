@@ -88,9 +88,9 @@ export interface ProjectEdge {
 export const SUBSCRIPTION_PLAN_CONFIG = {
   /**
    * Valid plans when new paid plans feature is enabled (appbuilder-manage-plan flag)
-   * Includes free, starter, and airoPlus plans
+   * Includes free and starter plans (AiroPlus is not included)
    */
-  NEW_VALID_PLANS: [SubscriptionPlan.Free, SubscriptionPlan.Starter, SubscriptionPlan.AiroPlus] as const,
+  NEW_VALID_PLANS: [SubscriptionPlan.Free, SubscriptionPlan.Starter] as const,
 
   /**
    * Valid plans when new paid plans feature is disabled (legacy behavior)
@@ -100,7 +100,7 @@ export const SUBSCRIPTION_PLAN_CONFIG = {
 } as const;
 
 /**
- * Plans that grant paid-tier access
+ * Plans that grant paid-tier access (legacy - when grants is disabled)
  *
  * Used throughout the codebase for feature gating and UI conditional rendering.
  * Add new paid plan types here when they are introduced.
@@ -108,9 +108,22 @@ export const SUBSCRIPTION_PLAN_CONFIG = {
 export const PAID_PLANS = [SubscriptionPlan.AiroPlus, SubscriptionPlan.Starter] as const;
 
 /**
+ * Plans that grant paid-tier access when app-builder-grants is enabled
+ *
+ * When grants is enabled, AiroPlus is NOT considered a paid plan.
+ * Only Starter plan grants access; AiroPlus users need to upgrade.
+ */
+export const GRANTS_PAID_PLANS = [SubscriptionPlan.Starter] as const;
+
+/**
  * Type representing any paid plan
  */
 export type PaidPlan = typeof PAID_PLANS[number];
+
+/**
+ * Type representing paid plans when grants is enabled
+ */
+export type GrantsPaidPlan = typeof GRANTS_PAID_PLANS[number];
 
 /**
  * Check if a plan is a paid plan
@@ -121,6 +134,37 @@ export type PaidPlan = typeof PAID_PLANS[number];
 export function isPaidPlan(plan: SubscriptionPlan | undefined | null): plan is PaidPlan {
   return plan != null && (PAID_PLANS as readonly SubscriptionPlan[]).includes(plan);
 }
+
+/**
+ * Check if a plan is a paid plan based on grants feature flag
+ *
+ * When grants is enabled, only Starter is considered a paid plan.
+ * When grants is disabled (legacy), both AiroPlus and Starter are paid plans.
+ *
+ * @param plan - Subscription plan to check
+ * @param isGrantsEnabled - Whether app-builder-grants flag is enabled
+ * @returns True if plan grants paid-tier access given the grants flag state
+ */
+export function isPaidPlanForGrants(
+  plan: SubscriptionPlan | undefined | null,
+  isGrantsEnabled: boolean
+): boolean {
+  if (plan == null) return false;
+  const paidPlans = isGrantsEnabled ? GRANTS_PAID_PLANS : PAID_PLANS;
+  return (paidPlans as readonly SubscriptionPlan[]).includes(plan);
+}
+
+/**
+ * Paywall modal types
+ *
+ * Determines which modal to show to the user.
+ */
+export type PaywallType = 'upgrade' | 'credits';
+
+export const PAYWALL_TYPE = {
+  UPGRADE: 'upgrade',
+  CREDITS: 'credits',
+} as const satisfies Record<string, PaywallType>;
 
 /**
  * Internal Tracking Codes (ITCs) for purchase attribution
@@ -143,12 +187,14 @@ export const PAYWALL_ITC = {
  * Higher numbers indicate higher priority plans. Used when a user has
  * multiple subscriptions to determine which one to use.
  *
- * Priority order: Starter > AiroPlus > Free > None
+ * Priority order: Starter > Free > AiroPlus > None
+ * Note: When grants is enabled, AiroPlus does NOT grant paid access - only Starter does.
+ * The priority ranking is for subscription selection, not access control.
  */
 export const PLAN_PRIORITY: Record<SubscriptionPlan, number> = {
   [SubscriptionPlan.Starter]: 4,
-  [SubscriptionPlan.AiroPlus]: 3,
-  [SubscriptionPlan.Free]: 2,
+  [SubscriptionPlan.Free]: 3,
+  [SubscriptionPlan.AiroPlus]: 2,
   [SubscriptionPlan.None]: 1,
 };
 

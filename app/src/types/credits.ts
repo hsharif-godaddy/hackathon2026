@@ -26,11 +26,6 @@ export enum SubscriptionPlan {
 }
 
 /**
- * Plans that are considered paid subscriptions
- */
-export const PAID_PLANS: readonly SubscriptionPlan[] = [SubscriptionPlan.Starter] as const;
-
-/**
  * Subscription status types
  */
 export enum SubscriptionStatus {

@@ -10,27 +10,33 @@
 
 import { logger } from '@/lib/request-context';
 import type { PaywallDataProvider } from './providers';
-import { isMatchingProject, isPaidPlan, type PaywallCheckResult } from './shared';
+import { isMatchingProject, isPaidPlanForGrants, type PaywallCheckResult } from './shared';
 
 /**
  * Check if user has Airo Plus access (app-agnostic)
  *
  * This is the main paywall eligibility check used by both client and server.
- * It follows a 4-step algorithm:
  *
+ * When app-builder-grants is ENABLED (new grants-based system):
  * 1. Check if paywall is enabled via switchboard flags
- *    - If check fails (network error, service down), throw error and deny access (fail closed)
+ * 2. Get user's account-level subscription and check plan
+ *    - Paid plan (Starter only) = access granted
+ *    - Non-paid plans (Free, None, AiroPlus) = paywall (no fallbacks)
+ *
+ * When app-builder-grants is DISABLED (legacy system):
+ * 1. Check if paywall is enabled via switchboard flags
+ *    - If check fails (network error, service down), deny access (fail closed)
  *    - If paywall explicitly disabled by flags, allow access
  *
  * 2. Get user's account-level subscription
  *    - Check the plan field (none|free|starter|airoPlus)
- *    - Free and none plans require paywall
+ *    - Free and none plans require additional checks
  *    - Starter and airoPlus plans have access
  *
- * 3. Check if user has entitlements (for legacy compatibility)
+ * 3. Check if user has entitlements (legacy compatibility)
  *    - If yes, grant access
  *
- * 4. Fallback: Check for matching Airo Plus project
+ * 4. Fallback: Check for matching Airo Plus project via product-graph
  *    - If found, grant access
  *    - Otherwise, deny access
  *
@@ -128,12 +134,18 @@ export async function checkPaywallEligibility(
       return result;
     }
 
-    // Check plan level for access
-    const hasAccessByPlan = isPaidPlan(accountSubscription.plan);
+    result.details.hasSubscription = true;
+    result.details.subscriptionId = accountSubscription.id;
+
+    // Check if grants feature is enabled - this affects which plans are considered "paid"
+    // When grants is ON: only Starter is a paid plan (AiroPlus users need to upgrade)
+    // When grants is OFF: both Starter and AiroPlus are paid plans
+    const grantsEnabled = await provider.isGrantsEnabled();
+
+    // Check plan level for access using grants-aware function
+    const hasAccessByPlan = isPaidPlanForGrants(accountSubscription.plan, grantsEnabled);
 
     if (hasAccessByPlan) {
-      result.details.hasSubscription = true;
-      result.details.subscriptionId = accountSubscription.id;
       result.hasAccess = true;
 
       logger.info('paywall.eligibility.access-granted', {
@@ -141,16 +153,28 @@ export async function checkPaywallEligibility(
         reason: 'user-has-paid-plan',
         subscriptionId: accountSubscription.id,
         plan: accountSubscription.plan,
+        grantsEnabled,
       });
 
       return result;
     }
 
-    // If user has free or none plan, check entitlements and projects in parallel
-    result.details.hasSubscription = true;
-    result.details.subscriptionId = accountSubscription.id;
+    // User does not have a paid plan - check if we should use legacy fallbacks
+    if (grantsEnabled) {
+      // When grants is enabled, non-paid plans require paywall - no legacy fallbacks
+      // This includes Free, None, AND AiroPlus (which is not a paid plan when grants is ON)
+      logger.warn('paywall.eligibility.access-denied', {
+        appId,
+        subscriptionId: accountSubscription.id,
+        plan: accountSubscription.plan,
+        reason: 'grants-enabled-non-paid-plan',
+      });
+      result.reason = 'Subscription upgrade required';
+      return result;
+    }
 
-    // Step 3 & 4: Check entitlements and projects in parallel for faster response
+    // Legacy path: Step 3 & 4 - Check entitlements and projects in parallel for faster response
+    // This is only used when app-builder-grants is disabled
     const [entitlementResult, projectsResult] = await Promise.allSettled([
       accountSubscription.id ? provider.getEntitlements(accountSubscription.id) : Promise.resolve(undefined),
       provider.getProjects(),

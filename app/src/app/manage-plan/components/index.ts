@@ -7,4 +7,3 @@ export { default as DowngradeScheduledAlert } from './DowngradeScheduledAlert';
 export { default as ManagePlanSkeleton } from './ManagePlanSkeleton';
 export { default as PageLayout } from './PageLayout';
 export { default as TotalCreditsCard } from './TotalCreditCard';
-export type { PaywallType } from './types';

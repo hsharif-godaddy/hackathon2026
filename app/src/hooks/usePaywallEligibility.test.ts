@@ -35,15 +35,27 @@ vi.mock('./useUpdateEntitlement', () => ({
   }),
 }));
 
+vi.mock('./useSwitchboard', () => ({
+  useSwitchboard: vi.fn(),
+}));
+
 import { useEntitlements } from './useEntitlements';
 import { usePaywallEligibility } from './usePaywallEligibility';
 import { usePaywallFeatureFlags } from './usePaywallFeatureFlags';
 import { useProjects } from './useProjects';
 import { useSubscription } from './useSubscription';
+import { useSwitchboard } from './useSwitchboard';
 
 describe('usePaywallEligibility', function hook() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+
+    // Default mock for grants flag - disabled (legacy behavior for most tests)
+    vi.mocked(useSwitchboard).mockReturnValue({
+      data: false,
+      isLoading: false,
+      isError: false,
+    } as any);
 
     // Default mocks - paywall enabled, free plan, no entitlements, no projects
     vi.mocked(usePaywallFeatureFlags).mockReturnValue({

@@ -71,6 +71,7 @@ export function usePaywallModal({
   const setIsPollingEntitlements = useDevelopPageStore((state) => state.setIsPollingEntitlements)
   const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall')
   const { data: isPaywallEnabledInMarket } = useSwitchboard('appbuilder-airoplus-markets')
+  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId)
   const site = useSiteStore((state) => (appId ? state.getSite(appId) : null))
 
@@ -89,54 +90,52 @@ export function usePaywallModal({
 
   const handlePurchaseSuccess = useCallback(async () => {
     setShowAiroPlusPaywall(false)
-    setIsPollingEntitlements(true)
 
-    const result = await entitlementPollingService.pollForAccountEntitlements()
-    setIsPollingEntitlements(false)
+    // Skip entitlements polling when grants are enabled - access is based on subscription plan only
+    // Use explicit === false check to avoid polling while flag is loading (undefined)
+    if (isGrantsEnabled === false) {
+      setIsPollingEntitlements(true)
 
-    if (result.success) {
-      if (result.data) {
+      const result = await entitlementPollingService.pollForAccountEntitlements()
+      setIsPollingEntitlements(false)
+
+      if (result.success && result.data) {
         logInAppPurchase(result.data.subscriptionId, result.data.entitlementId)
       }
-      setHasCompletedPurchase(true)
-
-      // Regenerate JWT with fresh permissions after successful purchase if appId provided
-      // This ensures the user immediately gets canDownload and canPublish permissions
-      if (appId) {
-        try {
-          logger.info('paywall-modal.regenerating-jwt', { appId, reason: 'subscription_purchased' })
-          await regenerateToken({ siteId: appId, force: true })
-          logger.info('paywall-modal.jwt-regenerated', { appId })
-        } catch (jwtError) {
-          // Non-critical - log but continue
-          // Token will be regenerated on next download/publish attempt
-          logger.warn('paywall-modal.jwt-regeneration-failed', {
-            appId,
-            error: jwtError instanceof Error ? jwtError.message : String(jwtError),
-          })
-        }
-      }
-
-      // Invalidate paywall-related queries to update UI immediately
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['subscriptions'] }),
-        queryClient.invalidateQueries({ queryKey: ['active-subscription'] }),
-        queryClient.invalidateQueries({ queryKey: ['entitlements'] }),
-        queryClient.invalidateQueries({ queryKey: ['projects'] }),
-      ])
-
-      // Execute optional post-purchase callback
-      if (onPurchaseSuccess) {
-        await onPurchaseSuccess()
-      }
-    } else {
-      logger.error('paywall-modal.entitlements.polling.failed', {
-        appId,
-        source,
-        error: result.error,
-      })
     }
-  }, [appId, source, logInAppPurchase, setIsPollingEntitlements, onPurchaseSuccess, queryClient])
+
+    setHasCompletedPurchase(true)
+
+    // Regenerate JWT with fresh permissions after successful purchase if appId provided
+    // This ensures the user immediately gets canDownload and canPublish permissions
+    if (appId) {
+      try {
+        logger.info('paywall-modal.regenerating-jwt', { appId, reason: 'subscription_purchased' })
+        await regenerateToken({ siteId: appId, force: true })
+        logger.info('paywall-modal.jwt-regenerated', { appId })
+      } catch (jwtError) {
+        // Non-critical - log but continue
+        // Token will be regenerated on next download/publish attempt
+        logger.warn('paywall-modal.jwt-regeneration-failed', {
+          appId,
+          error: jwtError instanceof Error ? jwtError.message : String(jwtError),
+        })
+      }
+    }
+
+    // Invalidate paywall-related queries to update UI immediately
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['subscriptions'] }),
+      queryClient.invalidateQueries({ queryKey: ['active-subscription'] }),
+      queryClient.invalidateQueries({ queryKey: ['entitlements'] }),
+      queryClient.invalidateQueries({ queryKey: ['projects'] }),
+    ])
+
+    // Execute optional post-purchase callback
+    if (onPurchaseSuccess) {
+      await onPurchaseSuccess()
+    }
+  }, [appId, source, isGrantsEnabled, logInAppPurchase, setIsPollingEntitlements, onPurchaseSuccess, queryClient])
 
   const checkAndShowPaywall = useCallback(
     async (action: () => Promise<void>) => {

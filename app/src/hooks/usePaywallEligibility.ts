@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
 
 import { shipAnalyticsLog } from '@/lib/logging';
-import { isMatchingProject, isPaidPlan } from '@/lib/paywall/shared';
+import { isMatchingProject, isPaidPlanForGrants } from '@/lib/paywall/shared';
 import { useEntitlements } from './useEntitlements';
 import { usePaywallFeatureFlags } from './usePaywallFeatureFlags';
 import { useProjects } from './useProjects';
 import { useSubscription } from './useSubscription';
+import { useSwitchboard } from './useSwitchboard';
 import { useUpdateEntitlement } from './useUpdateEntitlement';
 
 interface PaywallEligibilityResult {
@@ -21,10 +22,20 @@ interface PaywallEligibilityResult {
  * Uses individual query hooks for each data source.
  * React Query handles caching and deduplication automatically.
  *
+ * When app-builder-grants is enabled:
+ * - Paid plan (Starter only) = access granted
+ * - Non-paid plans (Free, None, AiroPlus) = paywall (no legacy fallbacks)
+ *
+ * When app-builder-grants is disabled (legacy):
+ * - Also checks entitlements and matching Airo Plus projects
+ *
  * @param appId - Optional app ID for legacy compatibility and logging
  * @returns PaywallEligibilityResult
  */
 export const usePaywallEligibility = (appId?: string): PaywallEligibilityResult => {
+  // Check if grants feature is enabled - controls whether legacy fallbacks are used
+  const { data: isGrantsEnabled, isLoading: isGrantsFlagLoading } = useSwitchboard('app-builder-grants');
+
   // Step 1: Fetch feature flags
   const { data: featureFlags, isLoading: isFlagsLoading, isError: isFlagsError } = usePaywallFeatureFlags();
   // Explicitly check for true to ensure paywallEnabled is always boolean, never undefined
@@ -36,20 +47,22 @@ export const usePaywallEligibility = (appId?: string): PaywallEligibilityResult 
 
   // Check if user has active paid plan - if so, grant access immediately
   // Subscription must be active AND have a paid plan type
+  // When grants is enabled, only Starter is a paid plan (AiroPlus is not)
   const isActive = subscription?.status === 'active';
-  const hasPaidPlan = isActive && isPaidPlan(subscription?.plan);
+  const hasPaidPlan = isActive && isPaidPlanForGrants(subscription?.plan, !!isGrantsEnabled);
 
-  // Only need additional checks for free/none plans
-  // Coerce to boolean - when subscription is undefined, the && expression returns undefined
-  const needsAdditionalChecks = !!(paywallEnabled && subscription && !hasPaidPlan);
+  // Only need additional checks for free/none plans when grants is NOT enabled
+  // When grants is enabled, only subscription plan matters - no legacy fallbacks
+  // Wait for grants flag to load before enabling legacy checks (isGrantsEnabled === false, not undefined)
+  const needsAdditionalChecks = !!(paywallEnabled && subscription && !hasPaidPlan && isGrantsEnabled === false);
 
-  // Step 3: Fetch entitlements (only if needed)
+  // Step 3: Fetch entitlements (only if needed - disabled when grants is enabled)
   const { data: entitlementId, isLoading: isEntitlementsLoading } = useEntitlements({
     subscriptionId: subscription?.id,
     enabled: needsAdditionalChecks,
   });
 
-  // Step 4: Fetch projects for Airo Plus matching (only if needed)
+  // Step 4: Fetch projects for Airo Plus matching (only if needed - disabled when grants is enabled)
   const { data: projects, isLoading: isProjectsLoading } = useProjects({
     enabled: needsAdditionalChecks,
   });
@@ -59,7 +72,7 @@ export const usePaywallEligibility = (appId?: string): PaywallEligibilityResult 
   const billingId = matchingProject?.node?.billing?.id;
 
   // Compute loading state - only wait for what we need
-  const isLoading = isFlagsLoading ||
+  const isLoading = isGrantsFlagLoading || isFlagsLoading ||
     (paywallEnabled && isSubscriptionLoading) ||
     (needsAdditionalChecks && (isEntitlementsLoading || isProjectsLoading));
 

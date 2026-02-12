@@ -5,11 +5,11 @@ import Button from '@ux/button';
 import text from '@ux/text';
 
 import { useTranslations } from '@/hooks/useTranslations';
-import { PAYWALL_ITC } from '@/lib/paywall/shared';
-import { type CreditGrant, SubscriptionPlan } from '@/types/credits';
+import { isPaidPlanForGrants, PAYWALL_ITC } from '@/lib/paywall/shared';
+import { PAYWALL_TYPE, type PaywallType } from '@/lib/paywall/shared';
+import type { CreditGrant, SubscriptionPlan } from '@/types/credits';
 import { generateClickEID } from '@/utils/instrumentation';
 import CreditGrantRow from './CreditGrantRow';
-import type { PaywallType } from './types';
 import RidingArrow from '../../../svgs/riding-arrow';
 import SiteBuild from '../../../svgs/site-build';
 
@@ -19,8 +19,7 @@ interface CreditPacksCardProps {
   activeGrantId?: string;
   locale?: string;
   onOpenPaywall: (source: string, type?: PaywallType, itc?: string) => void;
-  /** When grants are disabled, buy credits should show upgrade modal instead */
-  isGrantsEnabled?: boolean;
+  isGrantsEnabled: boolean;
 }
 
 /**
@@ -29,11 +28,8 @@ interface CreditPacksCardProps {
 export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeGrantId, locale, onOpenPaywall, isGrantsEnabled }: CreditPacksCardProps) {
   const t = useTranslations();
 
-  const hasNoPlanAndNoCredits = creditPacks.length === 0 && (subscriptionPlan === SubscriptionPlan.Free || subscriptionPlan === SubscriptionPlan.None);
-
-  // When grants are disabled, show upgrade modal instead of credits modal
-  const creditsPaywallType: PaywallType = isGrantsEnabled ? 'credits' : 'upgrade';
-  const creditsItc = isGrantsEnabled ? PAYWALL_ITC.CREDITS : PAYWALL_ITC.UPGRADE;
+  const isNonPaidPlan = !isPaidPlanForGrants(subscriptionPlan, isGrantsEnabled);
+  const hasNoPlanAndNoCredits = creditPacks.length === 0 && isNonPaidPlan;
 
   if (hasNoPlanAndNoCredits || creditPacks.length === 0) {
     return (
@@ -57,19 +53,19 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
                       data-eid={generateClickEID('manageplan.buttons.buy_credits')}
                       size="sm"
                       text={t('builder_manageplan_buy_credits')}
-                      onClick={() => onOpenPaywall('manage_plan.buy_credits', creditsPaywallType, creditsItc)}
+                      onClick={() => onOpenPaywall('manage_plan.buy_credits', PAYWALL_TYPE.CREDITS, PAYWALL_ITC.CREDITS)}
                     />
                 </Box>
-            ) : subscriptionPlan !== SubscriptionPlan.AiroPlus ? (
+            ) : (
                 <Button
                   design="secondary"
                   data-partial='componentAiro'
                   data-eid={generateClickEID('manageplan.buttons.buy_credits')}
                   size="sm"
                   text={t('builder_manageplan_buy_credits')}
-                  onClick={() => onOpenPaywall('manage_plan.buy_credits', creditsPaywallType, creditsItc)}
+                  onClick={() => onOpenPaywall('manage_plan.buy_credits', PAYWALL_TYPE.CREDITS, PAYWALL_ITC.CREDITS)}
                 />
-            ) : null}
+            )}
           </div>
           {hasNoPlanAndNoCredits ? <RidingArrow /> : <SiteBuild />}
         </div>

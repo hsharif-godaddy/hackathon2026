@@ -1,38 +1,64 @@
 import { describe, expect, it } from 'vitest';
 
-import { PAID_PLANS, SubscriptionPlan } from './credits';
+import { GRANTS_PAID_PLANS, isPaidPlanForGrants, PAID_PLANS } from '@/lib/paywall/shared';
+import { SubscriptionPlan } from './credits';
 
 describe('credits types', function creditsTypesTests() {
-  describe('PAID_PLANS', function paidPlansTests() {
-    it('should include Starter plan', function includesStarter() {
-      expect(PAID_PLANS).toContain(SubscriptionPlan.Starter);
-    });
-
-    it('should not include Free plan', function excludesFree() {
-      expect(PAID_PLANS).not.toContain(SubscriptionPlan.Free);
-    });
-
-    it('should not include None plan', function excludesNone() {
-      expect(PAID_PLANS).not.toContain(SubscriptionPlan.None);
-    });
-
-    it('should be usable with includes() for plan checking', function includesCheck() {
-      expect(PAID_PLANS.includes(SubscriptionPlan.Starter)).toBe(true);
-      expect(PAID_PLANS.includes(SubscriptionPlan.Free)).toBe(false);
-      expect(PAID_PLANS.includes(SubscriptionPlan.None)).toBe(false);
-    });
-
-    it('should be an array', function isArray() {
-      expect(Array.isArray(PAID_PLANS)).toBe(true);
-    });
-  });
-
   describe('SubscriptionPlan enum', function subscriptionPlanTests() {
     it('should have correct values', function correctValues() {
       expect(SubscriptionPlan.None).toBe('none');
       expect(SubscriptionPlan.AiroPlus).toBe('airoPlus');
       expect(SubscriptionPlan.Free).toBe('free');
       expect(SubscriptionPlan.Starter).toBe('starter');
+    });
+  });
+
+  describe('PAID_PLANS (legacy - grants disabled)', function paidPlansTests() {
+    it('should include Starter and AiroPlus plans', function includesPaidPlans() {
+      expect(PAID_PLANS).toContain(SubscriptionPlan.Starter);
+      expect(PAID_PLANS).toContain(SubscriptionPlan.AiroPlus);
+    });
+
+    it('should not include Free or None plans', function excludesFreePlans() {
+      expect(PAID_PLANS).not.toContain(SubscriptionPlan.Free);
+      expect(PAID_PLANS).not.toContain(SubscriptionPlan.None);
+    });
+  });
+
+  describe('GRANTS_PAID_PLANS (grants enabled)', function grantsPaidPlansTests() {
+    it('should only include Starter plan', function onlyStarter() {
+      expect(GRANTS_PAID_PLANS).toContain(SubscriptionPlan.Starter);
+      expect(GRANTS_PAID_PLANS).toHaveLength(1);
+    });
+
+    it('should not include AiroPlus, Free, or None plans', function excludesOthers() {
+      expect(GRANTS_PAID_PLANS).not.toContain(SubscriptionPlan.AiroPlus);
+      expect(GRANTS_PAID_PLANS).not.toContain(SubscriptionPlan.Free);
+      expect(GRANTS_PAID_PLANS).not.toContain(SubscriptionPlan.None);
+    });
+  });
+
+  describe('isPaidPlanForGrants', function isPaidPlanForGrantsTests() {
+    it('should return true for Starter regardless of grants flag', function starterAlwaysPaid() {
+      expect(isPaidPlanForGrants(SubscriptionPlan.Starter, true)).toBe(true);
+      expect(isPaidPlanForGrants(SubscriptionPlan.Starter, false)).toBe(true);
+    });
+
+    it('should return true for AiroPlus only when grants is disabled', function airoPlusLegacyOnly() {
+      expect(isPaidPlanForGrants(SubscriptionPlan.AiroPlus, false)).toBe(true);
+      expect(isPaidPlanForGrants(SubscriptionPlan.AiroPlus, true)).toBe(false);
+    });
+
+    it('should return false for Free and None plans', function freeAndNoneNotPaid() {
+      expect(isPaidPlanForGrants(SubscriptionPlan.Free, true)).toBe(false);
+      expect(isPaidPlanForGrants(SubscriptionPlan.Free, false)).toBe(false);
+      expect(isPaidPlanForGrants(SubscriptionPlan.None, true)).toBe(false);
+      expect(isPaidPlanForGrants(SubscriptionPlan.None, false)).toBe(false);
+    });
+
+    it('should return false for null or undefined', function handlesNullish() {
+      expect(isPaidPlanForGrants(null, true)).toBe(false);
+      expect(isPaidPlanForGrants(undefined, false)).toBe(false);
     });
   });
 });

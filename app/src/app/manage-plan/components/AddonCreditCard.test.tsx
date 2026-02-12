@@ -49,6 +49,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
         <CreditPacksCard
           creditPacks={[createMockGrant()]}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
@@ -63,7 +64,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
       ];
 
       renderWithProviders(
-        <CreditPacksCard creditPacks={packs} onOpenPaywall={mockOnOpenPaywall} />
+        <CreditPacksCard creditPacks={packs} onOpenPaywall={mockOnOpenPaywall} isGrantsEnabled={true} />
       );
 
       // Each pack should be rendered - check for pack names
@@ -82,6 +83,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={packs}
           activeGrantId="pack-1"
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
@@ -97,6 +99,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
@@ -109,6 +112,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
@@ -121,6 +125,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
@@ -134,6 +139,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
@@ -148,6 +154,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
@@ -156,7 +163,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
       expect(mockOnOpenPaywall).toHaveBeenCalledWith('manage_plan.upgrade', 'upgrade', PAYWALL_ITC.UPGRADE);
     });
 
-    it('should call onOpenPaywall with credits type when Buy Credits clicked and grants enabled', async function clickBuyCreditsGrantsEnabled() {
+    it('should call onOpenPaywall with credits type when Buy Credits clicked', async function clickBuyCredits() {
       const { user } = renderWithProviders(
         <CreditPacksCard
           creditPacks={[]}
@@ -170,21 +177,6 @@ describe('CreditPacksCard', function creditPacksCardTests() {
 
       expect(mockOnOpenPaywall).toHaveBeenCalledWith('manage_plan.buy_credits', 'credits', PAYWALL_ITC.CREDITS);
     });
-
-    it('should call onOpenPaywall with upgrade type when Buy Credits clicked and grants disabled', async function clickBuyCreditsGrantsDisabled() {
-      const { user } = renderWithProviders(
-        <CreditPacksCard
-          creditPacks={[]}
-          subscriptionPlan={SubscriptionPlan.Free}
-          onOpenPaywall={mockOnOpenPaywall}
-          isGrantsEnabled={false}
-        />
-      );
-
-      await user.click(screen.getByText('builder_manageplan_buy_credits'));
-
-      expect(mockOnOpenPaywall).toHaveBeenCalledWith('manage_plan.buy_credits', 'upgrade', PAYWALL_ITC.UPGRADE);
-    });
   });
 
   describe('zero state: None plan with zero packs', function zeroNonePlanTests() {
@@ -194,6 +186,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.None}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
@@ -209,6 +202,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Starter}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
@@ -223,6 +217,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Starter}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
@@ -236,6 +231,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.Starter}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
@@ -244,29 +240,34 @@ describe('CreditPacksCard', function creditPacksCardTests() {
       expect(svg).toBeInTheDocument();
     });
 
-    it('should render empty state for AiroPlus plan with no packs', function airoPlusNoPacks() {
+    it('should render empty state for AiroPlus plan with no packs (treated as non-paid)', function airoPlusNoPacks() {
       renderWithProviders(
         <CreditPacksCard
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.AiroPlus}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
       expect(screen.getByText('builder_manageplan_creditpacks_empty_title')).toBeInTheDocument();
-      expect(screen.getByText('builder_manageplan_creditpacks_empty_description')).toBeInTheDocument();
+      // AiroPlus is now treated as non-paid plan, so shows plan-specific description
+      expect(screen.getByText('builder_manageplan_creditpacks_empty_plan_description')).toBeInTheDocument();
     });
 
-    it('should NOT show Buy Credits button for AiroPlus plan with no packs', function airoPlusNoBuyCredits() {
+    it('should show both buttons for AiroPlus plan with no packs (treated as non-paid)', function airoPlusBothButtons() {
       renderWithProviders(
         <CreditPacksCard
           creditPacks={[]}
           subscriptionPlan={SubscriptionPlan.AiroPlus}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
-      expect(screen.queryByText('builder_manageplan_buy_credits')).not.toBeInTheDocument();
+      // AiroPlus is now treated as non-paid, so shows both buttons like Free plan
+      expect(screen.getByText('builder_manageplan_upgrade')).toBeInTheDocument();
+      expect(screen.getByText('builder_manageplan_buy_credits')).toBeInTheDocument();
     });
   });
 
@@ -277,6 +278,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[createMockGrant()]}
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
@@ -290,6 +292,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[createMockGrant()]}
           subscriptionPlan={SubscriptionPlan.Starter}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
@@ -302,6 +305,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[createMockGrant()]}
           subscriptionPlan={SubscriptionPlan.AiroPlus}
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 
@@ -316,6 +320,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           creditPacks={[createMockGrant()]}
           locale="de-DE"
           onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
         />
       );
 

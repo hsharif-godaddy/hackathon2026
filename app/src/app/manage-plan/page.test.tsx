@@ -488,8 +488,90 @@ describe('ManagePlan', function managePlanTests() {
       });
     });
 
-    describe('AiroPlus plan scenarios', function airoPlusTests() {
-      it('should NOT show cancel plan button for AiroPlus plan', function airoPlusNoCancel() {
+    describe('AiroPlus plan scenarios (grants enabled - AiroPlus treated as non-paid)', function airoPlusGrantsEnabledTests() {
+      // When grants is ON (set in parent beforeEach), AiroPlus is NOT a paid plan
+      // AiroPlus users are treated like Free users and should see upgrade options
+
+      it('should NOT show cancel plan button for AiroPlus plan (not a paid plan)', function airoPlusNoCancel() {
+        mockUseActiveSubscription.mockReturnValue({
+          data: { id: 'sub-1', plan: SubscriptionPlan.AiroPlus },
+          isLoading: false,
+          isError: false,
+        });
+        mockUseCreditGrants.mockReturnValue({
+          data: [createMonthlyGrant()],
+          isLoading: false,
+          isError: false,
+        });
+
+        renderWithProviders(<ManagePlan />);
+
+        // AiroPlus is not a paid plan when grants is ON, so no cancel/downgrade button
+        expect(screen.queryByText('builder_manageplan_downgrade_plan')).not.toBeInTheDocument();
+      });
+
+      it('should show buy credits button for AiroPlus plan with credit packs (treated like Free)', function airoPlusWithPacksShowBuyCredits() {
+        mockUseActiveSubscription.mockReturnValue({
+          data: { id: 'sub-1', plan: SubscriptionPlan.AiroPlus },
+          isLoading: false,
+          isError: false,
+        });
+        mockUseCreditGrants.mockReturnValue({
+          data: [createMonthlyGrant(), createMockGrant()],
+          isLoading: false,
+          isError: false,
+        });
+
+        renderWithProviders(<ManagePlan />);
+
+        // AiroPlus is treated like Free when grants is ON - should see buy credits
+        expect(screen.getByText('builder_manageplan_buy_credits')).toBeInTheDocument();
+      });
+
+      it('should show AddonCreditCard for AiroPlus plan (treated like Free)', function airoPlusShowAddonCard() {
+        mockUseActiveSubscription.mockReturnValue({
+          data: { id: 'sub-1', plan: SubscriptionPlan.AiroPlus },
+          isLoading: false,
+          isError: false,
+        });
+        mockUseCreditGrants.mockReturnValue({
+          data: [createMonthlyGrant()],
+          isLoading: false,
+          isError: false,
+        });
+
+        renderWithProviders(<ManagePlan />);
+
+        // AddonCreditCard empty state should be visible for AiroPlus when grants is ON
+        expect(screen.getByText('builder_manageplan_creditpacks_empty_title')).toBeInTheDocument();
+      });
+
+      it('should show upgrade button for AiroPlus plan with credit packs (treated like Free)', function airoPlusShowUpgrade() {
+        mockUseActiveSubscription.mockReturnValue({
+          data: { id: 'sub-1', plan: SubscriptionPlan.AiroPlus },
+          isLoading: false,
+          isError: false,
+        });
+        mockUseCreditGrants.mockReturnValue({
+          data: [createMonthlyGrant(), createMockGrant()],
+          isLoading: false,
+          isError: false,
+        });
+
+        renderWithProviders(<ManagePlan />);
+
+        // AiroPlus is treated like Free when grants is ON - should see upgrade
+        expect(screen.getByText('builder_manageplan_upgrade')).toBeInTheDocument();
+      });
+    });
+
+    describe('AiroPlus plan scenarios (grants disabled - legacy behavior)', function airoPlusGrantsDisabledTests() {
+      beforeEach(function setupGrantsDisabled() {
+        // Override to disable grants - tests legacy AiroPlus behavior
+        mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
+      });
+
+      it('should NOT show cancel plan button for AiroPlus plan (legacy)', function airoPlusNoCancel() {
         mockUseActiveSubscription.mockReturnValue({
           data: { id: 'sub-1', plan: SubscriptionPlan.AiroPlus },
           isLoading: false,
@@ -506,7 +588,7 @@ describe('ManagePlan', function managePlanTests() {
         expect(screen.queryByText('builder_manageplan_downgrade_plan')).not.toBeInTheDocument();
       });
 
-      it('should NOT show buy credits button for AiroPlus plan', function airoPlusNoBuyCredits() {
+      it('should NOT show buy credits button for AiroPlus plan (legacy)', function airoPlusNoBuyCredits() {
         mockUseActiveSubscription.mockReturnValue({
           data: { id: 'sub-1', plan: SubscriptionPlan.AiroPlus },
           isLoading: false,
@@ -523,7 +605,7 @@ describe('ManagePlan', function managePlanTests() {
         expect(screen.queryByText('builder_manageplan_buy_credits')).not.toBeInTheDocument();
       });
 
-      it('should NOT show AddonCreditCard for AiroPlus plan', function airoPlusNoAddonCard() {
+      it('should NOT show AddonCreditCard for AiroPlus plan (legacy)', function airoPlusNoAddonCard() {
         mockUseActiveSubscription.mockReturnValue({
           data: { id: 'sub-1', plan: SubscriptionPlan.AiroPlus },
           isLoading: false,
@@ -537,13 +619,12 @@ describe('ManagePlan', function managePlanTests() {
 
         renderWithProviders(<ManagePlan />);
 
-        // AddonCreditCard empty state title should not be visible
+        // AddonCreditCard should not be visible for legacy AiroPlus
         expect(screen.queryByText('builder_manageplan_creditpacks_empty_title')).not.toBeInTheDocument();
-        // Addons title from populated state should also not be visible
         expect(screen.queryByText('builder_manageplan_addons_title')).not.toBeInTheDocument();
       });
 
-      it('should NOT show upgrade button for AiroPlus plan', function airoPlusNoUpgrade() {
+      it('should NOT show upgrade button for AiroPlus plan (legacy)', function airoPlusNoUpgrade() {
         mockUseActiveSubscription.mockReturnValue({
           data: { id: 'sub-1', plan: SubscriptionPlan.AiroPlus },
           isLoading: false,

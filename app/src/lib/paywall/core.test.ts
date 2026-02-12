@@ -25,6 +25,7 @@ describe('checkPaywallEligibility', () => {
       getSubscription: vi.fn(),
       getEntitlements: vi.fn(),
       getProjects: vi.fn(),
+      isGrantsEnabled: vi.fn().mockResolvedValue(false), // Default to legacy behavior
     } as any;
   });
 
@@ -68,12 +69,13 @@ describe('checkPaywallEligibility', () => {
       expect(result.details.subscriptionId).toBe('sub-starter');
     });
 
-    it('should deny access for free plan', async () => {
+    it('should deny access for free plan (legacy - grants disabled)', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
       });
+      mockProvider.isGrantsEnabled.mockResolvedValue(false);
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-free',
         plan: SubscriptionPlan.Free,
@@ -90,12 +92,13 @@ describe('checkPaywallEligibility', () => {
       expect(result.details.subscriptionId).toBe('sub-free');
     });
 
-    it('should deny access for none plan', async () => {
+    it('should deny access for none plan (legacy - grants disabled)', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
       });
+      mockProvider.isGrantsEnabled.mockResolvedValue(false);
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-none',
         plan: SubscriptionPlan.None,
@@ -129,13 +132,14 @@ describe('checkPaywallEligibility', () => {
     });
   });
 
-  describe('Legacy entitlement checks for free plans', () => {
+  describe('Legacy entitlement checks for free plans (grants disabled)', () => {
     it('should check entitlements for free plan and grant access if found', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
       });
+      mockProvider.isGrantsEnabled.mockResolvedValue(false);
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-free',
         plan: SubscriptionPlan.Free,
@@ -156,6 +160,7 @@ describe('checkPaywallEligibility', () => {
         paywall: true,
         markets: true,
       });
+      mockProvider.isGrantsEnabled.mockResolvedValue(false);
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-free',
         plan: SubscriptionPlan.Free,
@@ -179,6 +184,96 @@ describe('checkPaywallEligibility', () => {
       expect(result.hasAccess).toBe(true);
       expect(result.details.hasMatchingProject).toBe(true);
       expect(result.details.billingId).toBe('billing-456');
+    });
+  });
+
+  describe('Grants enabled behavior (app-builder-grants ON)', () => {
+    it('should deny access for free plan without checking entitlements/projects', async () => {
+      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+      });
+      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-free',
+        plan: SubscriptionPlan.Free,
+        status: 'active',
+      });
+
+      const result = await checkPaywallEligibility(mockProvider);
+
+      expect(result.hasAccess).toBe(false);
+      expect(result.reason).toBe('Subscription upgrade required');
+      expect(mockProvider.getEntitlements).not.toHaveBeenCalled();
+      expect(mockProvider.getProjects).not.toHaveBeenCalled();
+    });
+
+    it('should deny access for none plan without checking entitlements/projects', async () => {
+      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+      });
+      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-none',
+        plan: SubscriptionPlan.None,
+        status: 'active',
+      });
+
+      const result = await checkPaywallEligibility(mockProvider);
+
+      expect(result.hasAccess).toBe(false);
+      expect(result.reason).toBe('Subscription upgrade required');
+      expect(mockProvider.getEntitlements).not.toHaveBeenCalled();
+      expect(mockProvider.getProjects).not.toHaveBeenCalled();
+    });
+
+    it('should grant access for Starter plan when grants enabled', async () => {
+      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+      });
+      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-starter',
+        plan: SubscriptionPlan.Starter,
+        status: 'active',
+      });
+
+      const result = await checkPaywallEligibility(mockProvider);
+
+      expect(result.hasAccess).toBe(true);
+      expect(result.details.hasSubscription).toBe(true);
+      // Grants flag is checked to determine which plans are paid
+      expect(mockProvider.isGrantsEnabled).toHaveBeenCalled();
+      // Should not check entitlements or projects for paid plans
+      expect(mockProvider.getEntitlements).not.toHaveBeenCalled();
+      expect(mockProvider.getProjects).not.toHaveBeenCalled();
+    });
+
+    it('should deny access for AiroPlus plan when grants enabled', async () => {
+      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+      });
+      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-airoplus',
+        plan: SubscriptionPlan.AiroPlus,
+        status: 'active',
+      });
+
+      const result = await checkPaywallEligibility(mockProvider);
+
+      // When grants is ON, AiroPlus is NOT a paid plan
+      expect(result.hasAccess).toBe(false);
+      expect(result.reason).toBe('Subscription upgrade required');
+      expect(mockProvider.getEntitlements).not.toHaveBeenCalled();
+      expect(mockProvider.getProjects).not.toHaveBeenCalled();
     });
   });
 
@@ -253,13 +348,14 @@ describe('checkPaywallEligibility', () => {
     });
   });
 
-  describe('Error handling', () => {
+  describe('Error handling (legacy - grants disabled)', () => {
     it('should continue to entitlement check if error fetching subscription details', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
       });
+      mockProvider.isGrantsEnabled.mockResolvedValue(false);
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-free',
         plan: SubscriptionPlan.Free,
@@ -280,6 +376,7 @@ describe('checkPaywallEligibility', () => {
         paywall: true,
         markets: true,
       });
+      mockProvider.isGrantsEnabled.mockResolvedValue(false);
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-free',
         plan: SubscriptionPlan.Free,
@@ -311,12 +408,13 @@ describe('checkPaywallEligibility', () => {
   });
 
   describe('Complete flow integration', () => {
-    it('should check all steps in order for free plan', async () => {
+    it('should check all steps in order for free plan (legacy - grants disabled)', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
       });
+      mockProvider.isGrantsEnabled.mockResolvedValue(false);
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-free',
         plan: SubscriptionPlan.Free,
@@ -334,19 +432,20 @@ describe('checkPaywallEligibility', () => {
         mockProvider.getAccountSubscription as any
       );
       expect(mockProvider.getAccountSubscription).toHaveBeenCalledBefore(
-        mockProvider.getEntitlements as any
+        mockProvider.isGrantsEnabled as any
       );
-      expect(mockProvider.getEntitlements).toHaveBeenCalledBefore(
-        mockProvider.getProjects as any
+      expect(mockProvider.isGrantsEnabled).toHaveBeenCalledBefore(
+        mockProvider.getEntitlements as any
       );
     });
 
-    it('should skip entitlement checks for paid plans', async () => {
+    it('should skip entitlement checks for paid plans (legacy - grants disabled)', async () => {
       mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
       mockProvider.checkSwitchboardFlags.mockResolvedValue({
         paywall: true,
         markets: true,
       });
+      mockProvider.isGrantsEnabled.mockResolvedValue(false);
       mockProvider.getAccountSubscription.mockResolvedValue({
         id: 'sub-plus',
         plan: SubscriptionPlan.AiroPlus,
@@ -354,6 +453,27 @@ describe('checkPaywallEligibility', () => {
 
       await checkPaywallEligibility(mockProvider);
 
+      // With grants disabled, AiroPlus is a paid plan - skip entitlements/projects
+      expect(mockProvider.getEntitlements).not.toHaveBeenCalled();
+      expect(mockProvider.getProjects).not.toHaveBeenCalled();
+    });
+
+    it('should skip entitlement/project checks for free plan when grants enabled', async () => {
+      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+      });
+      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-free',
+        plan: SubscriptionPlan.Free,
+      });
+
+      const result = await checkPaywallEligibility(mockProvider);
+
+      expect(result.hasAccess).toBe(false);
+      expect(mockProvider.isGrantsEnabled).toHaveBeenCalled();
       expect(mockProvider.getEntitlements).not.toHaveBeenCalled();
       expect(mockProvider.getProjects).not.toHaveBeenCalled();
     });

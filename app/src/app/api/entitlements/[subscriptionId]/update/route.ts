@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
+import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { VentureService } from '@/lib/venture-service';
 
 // Force dynamic rendering
@@ -52,6 +53,24 @@ export const PUT = withCustomerAuth(async (request: NextRequest, authContext: Cu
     // JWT required
     if (!authContext.jwt) {
       return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
+    }
+
+    // When app-builder-grants is enabled, this legacy entitlement update endpoint is disabled
+    // Access control is based solely on subscription plans, not entitlements
+    const isGrantsEnabled = await checkSwitchboardFlag(
+      'app-builder-grants',
+      authContext.jwt,
+      request.headers
+    );
+
+    if (isGrantsEnabled) {
+      logger.info('entitlements.api.update.disabled', {
+        message: 'Entitlement update endpoint disabled when app-builder-grants is enabled',
+      });
+      return NextResponse.json(
+        { error: 'This endpoint is deprecated. Use subscription plans for access control.' },
+        { status: 410 }
+      );
     }
 
     const { subscriptionId } = params;

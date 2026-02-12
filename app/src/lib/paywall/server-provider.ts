@@ -146,9 +146,8 @@ export class ServerPaywallProvider implements PaywallDataProvider {
    *
    * Gets the customer's subscription with plan information.
    * Prioritizes active paid subscriptions over free ones.
-   *
    * When app-builder-grants flag is enabled:
-   * - Checks for free/starter/airoPlus plans
+   * - Checks for free/starter plans
    * - Auto-creates free plan if subscription exists but has no valid plan
    *
    * When app-builder-grants flag is disabled (legacy):
@@ -177,9 +176,10 @@ export class ServerPaywallProvider implements PaywallDataProvider {
       AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER
     );
 
-    // Prioritize active paid subscriptions
-    // Order of precedence: starter > airoPlus > free > none
-    // AiroPlus is legacy but maintains paid access during transition
+    // Prioritize subscriptions by plan type for selection
+    // Order of precedence: starter > free > airoPlus > none
+    // Note: This priority is for subscription selection, NOT access control.
+    // When grants is enabled, only Starter grants paid access (AiroPlus does not).
     let bestSubscription: (AiroSubscription & { plan: SubscriptionPlan }) | null = null;
 
     for (const subscription of subscriptions) {
@@ -411,13 +411,40 @@ export class ServerPaywallProvider implements PaywallDataProvider {
   }
 
   /**
+   * Check if app-builder-grants feature flag is enabled
+   *
+   * When enabled, access control is based solely on subscription plans
+   * and legacy entitlements/project matching should be skipped.
+   *
+   * @returns Promise with boolean indicating if grants feature is enabled
+   */
+  async isGrantsEnabled(): Promise<boolean> {
+    return checkSwitchboardFlag('app-builder-grants', this.jwt, this.headers);
+  }
+
+  /**
    * Get user's projects
    *
    * Uses VentureService to fetch customer projects with billing information.
+   * TODO: This should be deprecated when grants is enabled pg project matching is no longer used for access control.
+   * When app-builder-grants is enabled, this returns empty as project lookups
+   * are no longer used for access control - only subscription plans matter.
    *
    * @returns Promise with array of project edges
    */
   async getProjects(): Promise<ProjectEdge[]> {
+    // When app-builder-grants is enabled, skip product-graph project lookups
+    // Access control is based solely on subscription plan (paid vs free)
+    const isGrantsEnabled = await this.isGrantsEnabled();
+
+    if (isGrantsEnabled) {
+      logger.info('paywall.server-provider.projects-skipped', {
+        customerId: this.customerId,
+        message: 'Project lookups disabled when app-builder-grants is enabled',
+      });
+      return [];
+    }
+
     const ventureService = new VentureService(this.jwt);
 
     try {

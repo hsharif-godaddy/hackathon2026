@@ -25,6 +25,7 @@ export class EntitlementPollingService {
 
   /**
    * Poll for account-level entitlements until they are created in the backend
+   * TODO: This should be deprecated when grants is enabled
    */
   async pollForAccountEntitlements(
     onStatusUpdate?: (attempt: number, maxAttempts: number) => void

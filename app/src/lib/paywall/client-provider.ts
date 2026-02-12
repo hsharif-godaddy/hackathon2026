@@ -8,6 +8,7 @@
  * React Query for automatic caching and deduplication.
  */
 
+import { fetchFeatureFlag } from '@/hooks/useSwitchboard';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { getRootDomain } from '@/utils/getRootDomain';
@@ -189,6 +190,7 @@ export class ClientPaywallProvider implements PaywallDataProvider {
    * Get user's projects
    *
    * Calls /api/projects to get the user's projects.
+   * When app-builder-grants is enabled, the API returns empty results.
    *
    * @returns Promise with array of project edges
    */
@@ -203,5 +205,19 @@ export class ClientPaywallProvider implements PaywallDataProvider {
 
     const data = await response.json();
     return data?.data?.projects?.edges || [];
+  }
+
+  /**
+   * Check if app-builder-grants feature flag is enabled
+   *
+   * When enabled, access control is based solely on subscription plans
+   * and legacy entitlements/project matching should be skipped.
+   *
+   * Uses the shared fetchFeatureFlag utility from useSwitchboard.
+   *
+   * @returns Promise with boolean indicating if grants feature is enabled
+   */
+  async isGrantsEnabled(): Promise<boolean> {
+    return fetchFeatureFlag('app-builder-grants');
   }
 }

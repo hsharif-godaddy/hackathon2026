@@ -19,7 +19,7 @@ export const OPTIONS = createCorsOptionsHandler();
  * GET /api/subscriptions - Get all subscriptions with best subscription selection
  *
  * Returns all subscriptions for the authenticated user with derived plan fields,
- * plus the "best" subscription based on plan priority (Starter > AiroPlus > Free > None).
+ * plus the "best" subscription based on plan priority (Starter > Free > AiroPlus > None).
  *
  * Response format:
  * {
@@ -153,8 +153,9 @@ export const GET = withCustomerAuth(async (
     }));
 
     // Determine the "best" subscription based on plan priority
-    // Order: Starter > AiroPlus > Free > None
-    // AiroPlus is legacy but maintains paid access during transition
+    // Order: Starter > Free > AiroPlus >  None
+    // Note: When grants is enabled, AiroPlus does NOT grant paid access - only Starter does.
+    // The priority ranking is for subscription selection, not access control.
     let bestSubscription: (AiroSubscription & { plan: SubscriptionPlan }) | null = null;
 
     for (const subscription of subscriptionsWithPlan) {
