@@ -1,5 +1,6 @@
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { agentFetch } from '@/lib/agent-fetch'
+import { scheduleInstagramPost } from '@/lib/marketing-api'
 import { SocialV2Client } from '@/lib/social'
 import { type PublishablePlatform, SocialPlatform } from '@/lib/social-platforms'
 import { isFacebookConnection, isInstagramConnection } from '@/lib/utils/social-type-guards'
@@ -80,19 +81,35 @@ async function publishToInstagram(
   if (!isInstagramConnection(connection)) {
     throw new Error(errorMessages?.platformMismatchInstagram)
   }
-  if (!connection.igAccountId || !connection.userTokenId) {
-    throw new Error(errorMessages?.missingInstagramCredentials)
-  }
   if (!publish.imageUrls?.length) {
     throw new Error(errorMessages?.instagramImageRequired)
+  }
+
+  // Use Marketing API for scheduled posts
+  if (publish.scheduledAt) {
+    const result = await scheduleInstagramPost({
+      socialId: connection.socialId,
+      images: publish.imageUrls,
+      message: publish.message,
+      scheduleTime: publish.scheduledAt.toISOString()
+    })
+
+    return {
+      id: result.jobId,
+      scheduledAt: result.scheduleTime
+    }
+  }
+
+  // Use Social V2 API for immediate posts
+  if (!connection.igAccountId || !connection.userTokenId) {
+    throw new Error(errorMessages?.missingInstagramCredentials)
   }
 
   return socialV2Client.publishToInstagram({
     igAccountId: connection.igAccountId,
     tokenId: connection.userTokenId,
     imageUrl: publish.imageUrls[0],
-    caption: publish.message,
-    scheduledAt: publish.scheduledAt
+    caption: publish.message
   })
 }
 

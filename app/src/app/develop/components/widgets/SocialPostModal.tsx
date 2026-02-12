@@ -8,13 +8,15 @@ import Modal from '@ux/modal'
 import text from '@ux/text'
 import TextInput from '@ux/text-input'
 
+import { SchedulingView } from '@/app/develop/components/social/post/SchedulingView'
 import { PostCardPreview } from '@/app/develop/components/widgets/PostCardPreview'
-import { useWebSocketContext } from '@/contexts/WebSocketContext'
+import { useScheduling } from '@/hooks/useScheduling'
+import { useSocialPublish } from '@/hooks/useSocialPublish'
 import { useTranslations } from '@/hooks/useTranslations'
-import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
-import { CONNECT_REQUEST_FROM_PUBLISH, type SiteAssociation } from '@/types/social'
-import { SocialPostData, SocialPostState } from '@/types/social-posts'
-import { formatHashtags, formatPlatformName, getCharacterCount, getPlatformLimits, isPostOverLimit } from '@/utils/social'
+import { type SiteAssociation } from '@/types/social'
+import { PublishTiming, SocialPostData, SocialPostState } from '@/types/social-posts'
+import { formatPlatformName } from '@/utils/social/format'
+import { getCharacterCount, getPlatformLimits, isPostOverLimit } from '@/utils/social/validation'
 
 interface HashtagEditorProps {
   hashtags: string[]
@@ -123,7 +125,7 @@ const PostEditorForm = memo(({
   onRemoveHashtag,
   t
 }: PostEditorFormProps) => (
-  <div className="w-full max-w-[450px] mx-auto border border-gray-200 shadow-sm pb-2">
+  <div className="w-full border border-intents-ux-border-borderColor shadow-sm pb-2">
     <div className="px-2 mx-1 mb-1 pt-2">
       <TextInput
         id="post-content"
@@ -179,14 +181,23 @@ interface SocialPostModalProps {
  * Modal component for viewing and editing a social post
  * Combines preview, edit, and form functionality in a single component
  */
-export const SocialPostModal = memo(({ post, appId, onClose, onSave, onPublish, associations = [] }: SocialPostModalProps) => {
-  const t = useTranslations();
-  const { sendMessage } = useWebSocketContext()
+export const SocialPostModal = memo(({ post, onClose, onSave, onPublish, associations = [] }: SocialPostModalProps) => {
+  const t = useTranslations()
 
   const [isEditMode, setIsEditMode] = useState(false)
-  const [isPublishing, setIsPublishing] = useState(false)
   const [editedPost, setEditedPost] = useState<SocialPostData>(post)
   const [hashtagInput, setHashtagInput] = useState('')
+
+  // Use scheduling hook for date/time management
+  const scheduling = useScheduling()
+
+  // Use social publish hook for publish logic
+  const { isPublishing, publish } = useSocialPublish({
+    associations,
+    onSave,
+    onPublish,
+    onComplete: onClose,
+  })
 
   const validation = useMemo(() => {
     const limits = getPlatformLimits(editedPost.platform)
@@ -239,86 +250,29 @@ export const SocialPostModal = memo(({ post, appId, onClose, onSave, onPublish, 
     setHashtagInput('')
   }, [post])
 
-  const handlePublish = useCallback(async () => {
-    setIsPublishing(true)
+  const handlePublishClick = useCallback(async () => {
+    await publish({
+      post: editedPost,
+      timing: scheduling.timing,
+      scheduleDate: scheduling.date,
+      scheduleTime: scheduling.time,
+    })
+  }, [publish, editedPost, scheduling])
 
-    try {
-      const hasConnection = associations.some(a =>
-        a.platform.toLowerCase() === editedPost.platform.toLowerCase()
-      )
-
-      const platformName = formatPlatformName(editedPost.platform)
-
-      // Save edits to post list before publishing (so history shows edited version)
-      if (onSave) {
-        onSave(editedPost)
-      }
-
-      // Transform post data for publishing
-      const pendingPublish = {
-        platform: PLATFORM_TRANSFORMS.toDisplay(editedPost.platform),
-        message: [editedPost.content, editedPost.callToAction, formatHashtags(editedPost.hashtags)].filter(Boolean).join('\n\n'),
-        imageUrls: editedPost.images?.map(img => img.url) || [],
-      }
-
-      if (hasConnection) {
-        await sendMessage(
-          `Publish ${editedPost.styleLabel} to ${platformName}`,
-          undefined,
-          undefined,
-          undefined,
-          false,
-          {
-            type: 'social_publish_ready',
-            data: {
-              platform: editedPost.platform,
-              connectionVerified: true,
-              pendingPublish,
-              postData: editedPost
-            },
-            persistence: 'ephemeral'
-          }
-        )
-      } else {
-        await sendMessage(
-          `Connect to ${platformName}`,
-          undefined,
-          undefined,
-          undefined,
-          false,
-          {
-            type: CONNECT_REQUEST_FROM_PUBLISH,
-            data: {
-              platform: editedPost.platform,
-              pendingPublish,
-              postData: editedPost
-            },
-            persistence: 'ephemeral'
-          }
-        )
-      }
-
-      if (onPublish) {
-        onPublish(editedPost)
-      }
-
-      onClose()
-    } finally {
-      setIsPublishing(false)
-    }
-  }, [editedPost, associations, sendMessage, onSave, onPublish, onClose])
+  const isPublishDisabled = useMemo(() => {
+    return isPublishing || validation.isOverLimit || !scheduling.isValid
+  }, [isPublishing, validation.isOverLimit, scheduling.isValid])
 
   const isPublished = editedPost.publishedState === SocialPostState.PUBLISHED
+  const isScheduled = editedPost.publishedState === SocialPostState.SCHEDULED
+  const isViewOnly = isPublished || isScheduled
 
   return (
     <Modal
       title={post.styleLabel}
       onClose={onClose}
       actions={
-        isPublished ? (
-          // Published state: Only show close button (no edit/publish)
-          null
-        ) : isEditMode ? (
+        isViewOnly ? null : isEditMode ? (
           <Box orientation="horizontal" gap="md">
             <Button
               design="secondary"
@@ -345,32 +299,47 @@ export const SocialPostModal = memo(({ post, appId, onClose, onSave, onPublish, 
             />
             <Button
               design="primary"
-              text={isPublishing ? t('builder_common_loading') : t('builder_widgets_socialpublish_publish')}
+              text={isPublishing ? t('builder_common_loading') : (scheduling.timing === PublishTiming.LATER ? t('builder_social_schedule_post') : t('builder_widgets_socialpublish_publish'))}
               size='sm'
-              onClick={handlePublish}
-              disabled={isPublishing}
+              onClick={handlePublishClick}
+              disabled={isPublishDisabled}
             />
           </Box>
         )
       }
     >
-      <div className="w-full max-w-[650px]">
-        <div className="max-h-[70vh] overflow-y-auto">
-          {isEditMode ? (
-            <PostEditorForm
-              post={editedPost}
-              hashtagInput={hashtagInput}
-              validation={validation}
-              onChange={handleChange}
-              onHashtagInputChange={setHashtagInput}
-              onAddHashtag={handleAddHashtag}
-              onRemoveHashtag={handleRemoveHashtag}
-              t={t}
-            />
-          ) : (
-            <PostCardPreview post={editedPost} />
-          )}
+      <div className={`flex flex-col md:flex-row gap-4 w-full mx-auto ${isViewOnly ? 'max-w-[450px]' : 'max-w-[850px]'}`}>
+        <div className={isViewOnly ? "w-full" : "flex-1 min-w-0"}>
+          <div className="min-h-[400px] md:min-h-[500px] overflow-y-auto">
+            {isEditMode ? (
+              <PostEditorForm
+                post={editedPost}
+                hashtagInput={hashtagInput}
+                validation={validation}
+                onChange={handleChange}
+                onHashtagInputChange={setHashtagInput}
+                onAddHashtag={handleAddHashtag}
+                onRemoveHashtag={handleRemoveHashtag}
+                t={t}
+              />
+            ) : (
+              <PostCardPreview post={editedPost} />
+            )}
+          </div>
         </div>
+
+        {!isViewOnly && (
+          <div className="w-full md:w-[320px] flex-shrink-0 pt-4 md:pt-0 md:pl-4">
+            <SchedulingView
+              timing={scheduling.timing}
+              date={scheduling.date}
+              time={scheduling.time}
+              onTimingChange={scheduling.setTiming}
+              onDateChange={scheduling.setDate}
+              onTimeChange={scheduling.setTime}
+            />
+          </div>
+        )}
       </div>
     </Modal>
   )

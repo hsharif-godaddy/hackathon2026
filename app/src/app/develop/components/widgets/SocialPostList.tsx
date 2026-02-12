@@ -78,7 +78,20 @@ interface PostListItemProps {
 const PostListItem = memo(({ post, onClick }: PostListItemProps) => {
   const t = useTranslations()
   const isPublished = post.publishedState === SocialPostState.PUBLISHED
-  const Icon = isPublished ? EyeIcon : EditIcon
+  const isScheduled = post.publishedState === SocialPostState.SCHEDULED
+  const Icon = (isPublished || isScheduled) ? EyeIcon : EditIcon
+
+  const getStatusEmphasis = () => {
+    if (isPublished) return 'success'
+    if (isScheduled) return 'info'
+    return 'passive'
+  }
+
+  const getStatusText = () => {
+    if (isPublished) return t('builder_social_post_status_published')
+    if (isScheduled) return t('builder_social_post_status_scheduled')
+    return t('builder_social_post_status_draft')
+  }
 
   return (
     <div
@@ -95,13 +108,10 @@ const PostListItem = memo(({ post, onClick }: PostListItemProps) => {
               <text.span
                 as="label"
                 size={-2}
-                emphasis={isPublished ? 'success' : 'passive'}
+                emphasis={getStatusEmphasis()}
                 className="px-1 py-0.5 rounded uppercase bg-intents-ux-boxLowContrast-backgroundColor"
               >
-                {isPublished
-                  ? t('builder_social_post_status_published')
-                  : t('builder_social_post_status_draft')
-                }
+                {getStatusText()}
               </text.span>
               <Icon className="w-2 h-2 text-intents-ux-textSubtle-textColor" />
             </div>

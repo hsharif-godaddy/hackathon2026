@@ -6,7 +6,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import { SocialPostState } from '@/types/social-posts'
 
 const mockSyncResult = vi.fn().mockResolvedValue(true)
-let postPublishedCallback: ((postId: string) => void) | null = null
+let postPublishedCallback: ((postId: string, state: SocialPostState) => void) | null = null
 
 vi.mock('@/hooks/useToolResultSync', () => ({
   useToolResultSync: () => mockSyncResult
@@ -21,8 +21,8 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
     selector({ currentAppId: 'test-app-id' })
 }))
 
-vi.mock('@/utils/social', () => ({
-  onPostPublished: (callback: (postId: string) => void) => {
+vi.mock('@/utils/social/events', () => ({
+  onPostPublished: (callback: (postId: string, state: SocialPostState) => void) => {
     postPublishedCallback = callback
     return () => { postPublishedCallback = null }
   }
@@ -166,7 +166,7 @@ describe('SocialPostCreateToolRenderer', () => {
 
       // Simulate post published event
       act(() => {
-        postPublishedCallback?.('post-1')
+        postPublishedCallback?.('post-1', SocialPostState.PUBLISHED)
       })
 
       await waitFor(() => {
@@ -197,7 +197,7 @@ describe('SocialPostCreateToolRenderer', () => {
 
       // Simulate post published event
       act(() => {
-        postPublishedCallback?.('post-1')
+        postPublishedCallback?.('post-1', SocialPostState.PUBLISHED)
       })
 
       // UI should update to show published state

@@ -15,7 +15,7 @@ import { logger } from '@/lib/request-context'
 import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { SocialPostData } from '@/types/social-posts'
-import { formatHashtags, formatPlatformName } from '@/utils/social'
+import { formatHashtags, formatPlatformName } from '@/utils/social/format'
 
 type ConnectStatus = 'pending' | 'connected' | 'error'
 

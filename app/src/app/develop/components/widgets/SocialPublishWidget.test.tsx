@@ -21,12 +21,6 @@ vi.mock('@/utils/social', () => ({
   formatPlatformName: (platform: string) => platform.charAt(0).toUpperCase() + platform.slice(1)
 }))
 
-vi.mock('@/lib/social-platforms', () => ({
-  PLATFORM_CONFIG: {
-    facebook: { name: 'Facebook' },
-    instagram: { name: 'Instagram' }
-  }
-}))
 
 import { SocialPublishWidget } from './SocialPublishWidget'
 

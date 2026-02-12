@@ -253,17 +253,18 @@ describe('SocialV2Client', () => {
 
   describe('publishToFacebook', () => {
     describe('photo posts', () => {
-      it('uses /photos endpoint and fetches link', async () => {
+      it('uses /photos endpoint and fetches permalink_url using post_id', async () => {
         vi.mocked(fetch)
-          .mockResolvedValueOnce(mockResponse({ id: MOCK_IDS.photo }))
-          .mockResolvedValueOnce(mockResponse({ link: MOCK_URLS.facebookPhoto }))
+          .mockResolvedValueOnce(mockResponse({ id: MOCK_IDS.photo, post_id: MOCK_IDS.post }))
+          .mockResolvedValueOnce(mockResponse({ permalink_url: MOCK_URLS.facebookPost }))
 
         const result = await client.publishToFacebook(createFacebookPayload())
 
         expect(result.id).toBe(MOCK_IDS.photo)
-        expect(result.platformUrl).toBe(MOCK_URLS.facebookPhoto)
+        expect(result.platformUrl).toBe(MOCK_URLS.facebookPost)
         expect(getFetchUrlAt(0)).toContain('/photos')
-        expect(getFetchUrlAt(1)).toContain('fields=link')
+        expect(getFetchUrlAt(1)).toContain('fields=permalink_url')
+        expect(getFetchUrlAt(1)).toContain(MOCK_IDS.post)
       })
 
       it('skips permalink fetch for scheduled posts', async () => {
@@ -345,18 +346,6 @@ describe('SocialV2Client', () => {
       expect(result.id).toBe(MOCK_IDS.post)
       expect(result.platformUrl).toBe(MOCK_URLS.instagramPost)
       expect(fetch).toHaveBeenCalledTimes(3)
-    })
-
-    it('returns container ID for scheduled posts without publishing', async () => {
-      vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ id: MOCK_IDS.container }))
-
-      const result = await client.publishToInstagram(
-        createInstagramPayload({ scheduledAt: oneHourFromNow() })
-      )
-
-      expect(result.id).toBe(MOCK_IDS.container)
-      expect(result.platformUrl).toBeUndefined()
-      expect(fetch).toHaveBeenCalledTimes(1)
     })
 
     it('throws on container creation failure', async () => {

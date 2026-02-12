@@ -28,11 +28,6 @@ vi.mock('@/utils/social', () => ({
   formatHashtags: (hashtags: string[]) => hashtags.join(' ')
 }))
 
-vi.mock('@/lib/social-platforms', () => ({
-  PLATFORM_TRANSFORMS: {
-    toDisplay: (platform: string) => platform
-  }
-}))
 
 vi.mock('@/app/develop/components/social/connect-flow/SocialConnectFlow', () => ({
   default: ({ isActive }: { isActive: boolean }) => (
@@ -177,7 +172,7 @@ describe('SocialConnectToolRenderer', () => {
         platform: 'facebook'
       }
 
-      const { container } = renderWithProviders(
+      renderWithProviders(
         <SocialConnectToolRenderer
           {...baseProps}
           result={result}

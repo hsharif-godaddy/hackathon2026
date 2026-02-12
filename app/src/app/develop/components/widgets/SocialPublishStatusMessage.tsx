@@ -7,6 +7,7 @@ import Button from '@ux/button'
 import text, { type Emphasis } from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
+import { getUserLocale } from '@/utils/common'
 import { generateClickEID } from '@/utils/instrumentation'
 
 export enum SocialPublishStatus {
@@ -20,6 +21,7 @@ interface SocialPublishStatusMessageProps {
   platformName: string
   platformUrl?: string
   errorMessage?: string
+  scheduledAt?: Date
 }
 
 const statusConfig = {
@@ -44,21 +46,40 @@ export const SocialPublishStatusMessage = memo(function SocialPublishStatusMessa
   status,
   platformName,
   platformUrl,
-  errorMessage
+  errorMessage,
+  scheduledAt
 }: SocialPublishStatusMessageProps) {
   const t = useTranslations()
   const config = statusConfig[status]
+  const isScheduled = !!scheduledAt
+
+  const scheduledDateTime = scheduledAt
+    ? scheduledAt.toLocaleString(getUserLocale(), {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZoneName: 'short'
+      })
+    : ''
 
   const message =
     status === SocialPublishStatus.Success
-      ? t('builder_widgets_socialpublish_success')
+      ? isScheduled
+        ? t('builder_widgets_socialschedule_success')
+        : t('builder_widgets_socialpublish_success')
       : status === SocialPublishStatus.Incomplete
       ? t('builder_widgets_socialpublish_incomplete')
+      : isScheduled
+      ? t('builder_widgets_socialschedule_failed')
       : t('builder_widgets_socialpublish_failed')
 
   const subtext =
     status === SocialPublishStatus.Success
-      ? t('builder_widgets_socialpublish_live_on', { platformName })
+      ? isScheduled
+        ? t('builder_widgets_socialschedule_will_post_on', { platformName, dateTime: scheduledDateTime })
+        : t('builder_widgets_socialpublish_live_on', { platformName })
       : status === SocialPublishStatus.Incomplete
       ? t('builder_widgets_socialpublish_incomplete_subtext', { platformName })
       : null
@@ -70,7 +91,7 @@ export const SocialPublishStatusMessage = memo(function SocialPublishStatusMessa
         {subtext && (
           <text.span size={-1} text={subtext} />
         )}
-        {status === SocialPublishStatus.Success && platformUrl && (
+        {status === SocialPublishStatus.Success && platformUrl && !isScheduled && (
           <div className="mt-1">
             <Button
               design="secondary"

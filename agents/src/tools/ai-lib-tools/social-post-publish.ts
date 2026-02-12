@@ -24,11 +24,11 @@ interface SocialPublishReadyData {
 }
 
 export const socialPostPublish: Tool = createTool(
-  `Publish a social media post to Facebook or Instagram.
+  `Publish or schedule a social media post to Facebook or Instagram.
 
 This tool triggers the publish widget to post content to connected social platforms. It:
 - Generates a unique publishId for tracking the publish operation
-- Triggers the publish widget that handles platform connection checks and posting
+- Triggers the publish widget that handles platform connection checks and posting/scheduling
 - Shows real-time status and results to the user
 - Requires no parameters (post data is already in frontend state)
 
@@ -37,9 +37,9 @@ IMPORTANT:
 - Widget handles connection flow, API calls, and status display
 - Stay silent after calling this tool - let the widget show the status
 - Only respond after user confirms completion
-- When user sends "Publish {StyleLabel} to {Platform}", the message includes a social_publish_ready context attachment indicating the frontend has already verified the platform connection exists
+- When user sends "Post {StyleLabel} to {Platform}" (immediate) OR "Schedule {StyleLabel} for {Platform} on {DateTime}" (scheduled), the message includes a social_publish_ready context attachment indicating the frontend has already verified the platform connection exists
 
-Use this when user wants to publish a post they've created and reviewed.`,
+Use this when user wants to publish or schedule a post they've created and reviewed.`,
   z.object({}),
   async (_input, context) => {
     const agentContext = context as AgentsAppContext;

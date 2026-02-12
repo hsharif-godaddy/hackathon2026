@@ -1,11 +1,36 @@
 import { logger } from '@/lib/request-context'
 import type { SocialConnection, SocialPublishResult } from '@/types/social'
-import { FacebookMediaType, SocialPlatformKey } from '@/types/social'
+import { FacebookMediaType, SocialPlatform, SocialPlatformKey } from '@/types/social'
 import { getRootDomain } from '@/utils/getRootDomain'
+import { validatePlatformScheduleTime } from '@/utils/social/scheduling'
 
 const SOCIAL_V2_BASE_URL = `https://social-v2.api.${getRootDomain() || 'godaddy.com'}`
 const SOCIAL_AUTH_BASE_URL = `https://social-auth.api.${getRootDomain() || 'godaddy.com'}`
 const FB_API_VERSION = 'v23.0'
+
+/**
+ * Instagram Graph API media creation request body (immediate posts only)
+ * https://developers.facebook.com/docs/instagram-api/reference/ig-user/media
+ *
+ * NOTE: For scheduled Instagram posts, use Marketing API (scheduleInstagramPost)
+ * which uses ISO 8601 scheduleTime, not Unix publish_time
+ */
+interface InstagramMediaCreateBody {
+  image_url: string
+  caption: string
+}
+
+/**
+ * Facebook Graph API post creation request body
+ * https://developers.facebook.com/docs/graph-api/reference/page/feed
+ */
+interface FacebookPostBody {
+  message?: string
+  url?: string
+  caption?: string
+  published?: boolean
+  scheduled_publish_time?: number  // Unix timestamp (seconds) - for scheduled posts
+}
 
 /**
  * Time constants for social platform integration
@@ -17,6 +42,12 @@ const MINUTES = (n: number) => n * MINUTE_MS
  * OAuth flow timeout - how long to wait for user to complete OAuth
  */
 export const OAUTH_TIMEOUT_MS = MINUTES(5) // 5 minutes
+
+/**
+ * Social platform scheduling constraints (via Social V2 proxy)
+ * Facebook: 10 min minimum, ~80 days maximum
+ * Instagram: 15 min minimum (via Marketing API)
+ */
 
 /**
  * React Query cache configurations for social data
@@ -456,10 +487,22 @@ export class SocialV2Client {
     imageUrls: string[]
     scheduledAt?: Date
   }): Promise<SocialPublishResult> {
+    if (params.scheduledAt) {
+      const validation = validatePlatformScheduleTime(params.scheduledAt, SocialPlatform.FACEBOOK)
+      if (!validation.isValid) {
+        logger.error('social.facebook.publish.validation.failed', {
+          pageId: params.pageId,
+          scheduledAt: params.scheduledAt,
+          error: validation.error
+        })
+        throw new Error(validation.error)
+      }
+    }
+
     const hasImages = params.imageUrls.length > 0
     const endpoint = hasImages ? 'photos' : 'feed'
 
-    const body: Record<string, unknown> = hasImages
+    const body: FacebookPostBody = hasImages
       ? { url: params.imageUrls[0], caption: params.message }
       : { message: params.message }
 
@@ -490,11 +533,16 @@ export class SocialV2Client {
     const data = await response.json()
 
     if (!params.scheduledAt && data.id) {
+      // For photos, use post_id to get the post permalink (not the photo link which requires login)
+      // For regular posts, use the post id directly
+      const mediaId = hasImages && data.post_id ? data.post_id : data.id
+
       const permalink = await this.fetchPermalink({
-        mediaId: data.id,
+        mediaId,
         tokenId: params.tokenId,
         platform: 'facebook',
-        mediaType: hasImages ? FacebookMediaType.PHOTO : FacebookMediaType.POST
+        // Always use POST type to get permalink_url (public post URL)
+        mediaType: FacebookMediaType.POST
       })
 
       if (permalink) {
@@ -505,26 +553,32 @@ export class SocialV2Client {
     return data
   }
 
+  /**
+   * Publish to Instagram via Facebook Graph API (immediate posts only)
+   *
+   * For scheduled Instagram posts, use the Marketing API (scheduleInstagramPost)
+   * which uses the Chatterbox job scheduler for reliable delayed posting.
+   *
+   * @param params.igAccountId - Instagram business account ID
+   * @param params.tokenId - Token ID for authentication
+   * @param params.imageUrl - Public URL of the image to post
+   * @param params.caption - Post caption text
+   * @param params.scheduledAt - NOT SUPPORTED. Instagram does not support scheduled posts via Graph API. Use scheduleInstagramPost() from marketing-api.ts instead.
+   * @see scheduleInstagramPost in marketing-api.ts for scheduled Instagram posts
+   */
   async publishToInstagram(params: {
     igAccountId: string
     tokenId: string
     imageUrl: string
     caption: string
-    scheduledAt?: Date
   }): Promise<SocialPublishResult> {
     logger.info('social.instagram.publish.start', {
-      igAccountId: params.igAccountId,
-      hasScheduledAt: !!params.scheduledAt,
-      scheduledAt: params.scheduledAt
+      igAccountId: params.igAccountId
     })
 
-    const createBody: any = {
+    const createBody: InstagramMediaCreateBody = {
       image_url: params.imageUrl,
       caption: params.caption
-    }
-
-    if (params.scheduledAt) {
-      createBody.publish_time = Math.floor(params.scheduledAt.getTime() / 1000)
     }
 
     logger.debug('social.instagram.publish.container.create', {
@@ -555,16 +609,7 @@ export class SocialV2Client {
       containerId
     })
 
-    if (params.scheduledAt) {
-      logger.info('social.instagram.publish.scheduled', {
-        containerId,
-        scheduledAt: params.scheduledAt
-      })
-      return {
-        id: containerId
-      }
-    }
-
+    // Publish the media container immediately
     logger.debug('social.instagram.publish.media.publish', {
       containerId,
       igAccountId: params.igAccountId

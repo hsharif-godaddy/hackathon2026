@@ -12,6 +12,23 @@ export enum SocialPostState {
 }
 
 /**
+ * View states for the social post modal
+ */
+export enum PostModalView {
+  PREVIEW = 'preview',
+  EDIT = 'edit',
+  SCHEDULING = 'scheduling'
+}
+
+/**
+ * Timing options for publishing
+ */
+export enum PublishTiming {
+  NOW = 'now',
+  LATER = 'later'
+}
+
+/**
  * Validation details for social posts
  */
 export interface ValidationDetails {

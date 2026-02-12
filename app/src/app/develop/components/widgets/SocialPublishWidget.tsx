@@ -10,9 +10,10 @@ import { useToolResultSync } from '@/hooks/useToolResultSync'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { PLATFORM_CONFIG } from '@/lib/social-platforms'
-import { type PendingPublish, PublishFlowState, type PublishResult, type PublishStatus, type SocialPostData } from '@/types/social-posts'
+import { type PendingPublish, PublishFlowState, type PublishResult, type PublishStatus, type SocialPostData, SocialPostState } from '@/types/social-posts'
 import { generateClickEID } from '@/utils/instrumentation'
-import { emitPostPublished, formatPlatformName } from '@/utils/social'
+import { emitPostPublished } from '@/utils/social/events'
+import { formatPlatformName } from '@/utils/social/format'
 import { SocialPublishStatus, SocialPublishStatusMessage } from './SocialPublishStatusMessage'
 
 interface SocialPublishWidgetProps {
@@ -33,8 +34,11 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
     ? initialResult as Record<string, unknown>
     : null
 
-  // From history if not the last assistant message (regardless of result fields)
-  const isFromHistory = !isLastAssistantMessage
+  // From history if not the last assistant message OR has been processed (any status except ReadyToPublish)
+  // This prevents duplicate publishing on page refresh when result is already synced
+  const hasBeenProcessed = result?.publishStatus &&
+    result.publishStatus !== PublishFlowState.ReadyToPublish
+  const isFromHistory = !isLastAssistantMessage || hasBeenProcessed
 
   // Capture initial history state to prevent race conditions with sync
   const initialIsFromHistoryRef = useRef(isFromHistory)
@@ -61,8 +65,14 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
           publishId,
           publishStatus: result.publishStatus
         })
+        const rawPublish = result.pendingPublish as any
+        const pendingPublish: PendingPublish = {
+          ...rawPublish,
+          publishId,
+          scheduledAt: rawPublish.scheduledAt ? new Date(rawPublish.scheduledAt) : undefined
+        }
         return {
-          pendingPublish: { ...(result.pendingPublish as PendingPublish), publishId },
+          pendingPublish,
           postData: (result.postData as SocialPostData) || null,
           publishStatus: (result.publishStatus as PublishStatus) || PublishFlowState.Error,
           publishResult: (result.publishResult as PublishResult) || null
@@ -71,14 +81,29 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
 
       // Fresh publish from tool result
       if (result.pendingPublish) {
+        // If publishStatus exists in result, use it (page refresh with synced result)
+        // Otherwise, initialize as ReadyToPublish (fresh publish from agent)
+        const statusFromResult = result.publishStatus as PublishStatus
+        const isAlreadySynced = !!statusFromResult
+
         logger.info('social-publish-widget.fresh-publish', {
-          publishId
+          publishId,
+          isAlreadySynced,
+          statusFromResult
         })
+
+        const rawPublish = result.pendingPublish as any
+        const pendingPublish: PendingPublish = {
+          ...rawPublish,
+          publishId,
+          scheduledAt: rawPublish.scheduledAt ? new Date(rawPublish.scheduledAt) : undefined
+        }
+
         return {
-          pendingPublish: { ...(result.pendingPublish as PendingPublish), publishId },
+          pendingPublish,
           postData: (result.postData as SocialPostData) || null,
-          publishStatus: PublishFlowState.ReadyToPublish,
-          publishResult: null
+          publishStatus: statusFromResult || PublishFlowState.ReadyToPublish,
+          publishResult: (result.publishResult as PublishResult) || null
         }
       }
     }
@@ -89,11 +114,16 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
   useEffect(() => {
     if (localState.publishStatus === PublishFlowState.Success && localState.postData?.id && !emittedRef.current) {
       emittedRef.current = true
-      emitPostPublished(localState.postData.id)
+      const state = localState.pendingPublish?.scheduledAt ? SocialPostState.SCHEDULED : SocialPostState.PUBLISHED
+      emitPostPublished(localState.postData.id, state)
     }
-  }, [localState.publishStatus, localState.postData?.id])
+  }, [localState.publishStatus, localState.postData?.id, localState.pendingPublish?.scheduledAt])
 
   const handleStatusChange = (status: PublishStatus) => {
+    // Track when publish actually starts (transitions to Publishing state)
+    if (status === PublishFlowState.Publishing && !publishStartedRef.current) {
+      publishStartedRef.current = true
+    }
     setLocalState(prev => ({ ...prev, publishStatus: status }))
   }
 
@@ -106,11 +136,6 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
   const shouldPublish = isLastAssistantMessage &&
     localState.publishStatus === PublishFlowState.ReadyToPublish &&
     !publishStartedRef.current
-
-  // Track when publish starts to prevent multiple attempts
-  if (shouldPublish && !publishStartedRef.current) {
-    publishStartedRef.current = true
-  }
 
   usePublishFlow(
     appId,
@@ -125,6 +150,7 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
   const hasSyncedRef = useRef(false)
 
   useEffect(() => {
+    // Terminal states are Success or Error - these are final and should be synced
     const isTerminalState = localState.publishStatus === PublishFlowState.Success ||
       localState.publishStatus === PublishFlowState.Error
 
@@ -164,8 +190,8 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
     const displayStatus = publishStatus === PublishFlowState.Success
       ? SocialPublishStatus.Success
       : publishStatus === PublishFlowState.Error
-      ? SocialPublishStatus.Error
-      : SocialPublishStatus.Incomplete
+        ? SocialPublishStatus.Error
+        : SocialPublishStatus.Incomplete
 
     return (
       <SocialPublishStatusMessage
@@ -173,6 +199,7 @@ export function SocialPublishWidget({ appId, publishId, toolId, conversationId, 
         platformName={platformName}
         platformUrl={platformUrl}
         errorMessage={publishResult && 'error' in publishResult ? publishResult.error : undefined}
+        scheduledAt={localState.pendingPublish?.scheduledAt}
       />
     )
   }

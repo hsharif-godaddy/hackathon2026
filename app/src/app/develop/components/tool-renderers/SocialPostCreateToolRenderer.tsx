@@ -13,7 +13,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { SocialPostData } from '@/types/social-posts'
 import { SocialPostState } from '@/types/social-posts'
-import { onPostPublished } from '@/utils/social'
+import { onPostPublished } from '@/utils/social/events'
 
 /**
  * Custom renderer for socialPostCreate tool
@@ -69,13 +69,13 @@ export default function SocialPostCreateToolRenderer({
     }
   }, [toolStatus, result])
 
-  // Listen for post published events to mark posts as published and sync to history
+  // Listen for post published events to mark posts as published/scheduled and sync to history
   useEffect(() => {
-    const unsubscribe = onPostPublished((postId) => {
+    const unsubscribe = onPostPublished((postId, state) => {
       setPosts(prevPosts => {
         const newPosts = prevPosts.map(p =>
           p.id === postId
-            ? { ...p, publishedState: SocialPostState.PUBLISHED }
+            ? { ...p, publishedState: state }
             : p
         )
         syncResult({ widget: { widgetData: { posts: newPosts } } })

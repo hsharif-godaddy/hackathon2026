@@ -24,7 +24,7 @@ function SocialPublishToolRenderer({
 
     if (r.action === 'publish' && r.appId && r.publishId && toolId) {
       return (
-        <>
+        <div>
           <ToolHeader
             icon={<SendIcon className="w-2 h-2" />}
             displayName={t('builder_tools_socialpublish_title')}
@@ -40,7 +40,7 @@ function SocialPublishToolRenderer({
             initialResult={result}
             isLastAssistantMessage={isLastAssistantMessage}
           />
-        </>
+        </div>
       )
     }
   }

@@ -16,7 +16,7 @@ import { useAppImageUrl } from '@/app/develop/hooks/useAppImageUrl'
 import { useTranslations } from '@/hooks/useTranslations'
 import { SocialPlatform } from '@/types/social'
 import { SocialPostData } from '@/types/social-posts'
-import { formatHashtags } from '@/utils/social'
+import { formatHashtags } from '@/utils/social/format'
 
 /**
  * Platform icon mapping
@@ -33,7 +33,7 @@ const PlatformIcon = {
  */
 const PostCardText = ({ post }: { post: SocialPostData }) => {
   return (
-    <div className={clsx('px-2 mx-1 mb-1', post.platform === SocialPlatform.INSTAGRAM ? 'order-3': 'order-2')}>
+    <div className={clsx('px-2 mx-1 mb-1', post.platform === SocialPlatform.INSTAGRAM ? 'order-3' : 'order-2')}>
       <div className="text-sm">
         {post.content}{' '}
         {post.callToAction && (
@@ -77,16 +77,19 @@ const PostImage = memo(({ postImage, imageAspectRatio, imagesRequested, platform
   }
 
   return (
-    <div className={ clsx("mx-0.5 flex items-center justify-center relative mt-0.5", platform === SocialPlatform.INSTAGRAM ? 'order-2 mb-1' : 'order-3') } style={{ aspectRatio: imageAspectRatio }}>
+    <div className={clsx("mx-0.5 flex items-center justify-center relative mt-0.5", platform === SocialPlatform.INSTAGRAM ? 'order-2 mb-1' : 'order-3')}>
       {postImage && imageUrl ? (
         <img
           src={imageUrl}
           alt={postImage.prompt || "Post image"}
-          className="w-full h-full"
-          style={{ objectFit: 'cover' }}
+          className="w-full"
+          style={{
+            height: '300px',
+            objectFit: 'cover'
+          }}
         />
       ) : (
-        <div className="w-full h-full border-2 border-dashed border-intents-ux-border-borderColor bg-intents-ux-boxLowContrast-backgroundColor flex flex-col items-center justify-center gap-1">
+        <div className="w-full border-2 border-dashed border-intents-ux-border-borderColor bg-intents-ux-boxLowContrast-backgroundColor flex flex-col items-center justify-center gap-1" style={{ height: '300px' }}>
           <AlertIcon className="w-6 h-6 text-intents-ux-critical-textColor" />
           <span className="text-xs text-intents-ux-textSubtle-textColor">{t('builder_widgets_postcard_error')}</span>
         </div>
@@ -130,20 +133,20 @@ const PreviewHeader = memo(({ platform, previewDate }: { platform: string, previ
 const PreviewFooter = memo(() => {
   const t = useTranslations();
   return (
-  <div className="flex justify-between items-center mt-1 px-2 mx-1 order-4">
-    <text.span as="paragraph" className="flex items-center gap-1" size={-1} emphasis='passive'>
-      <LikeIcon className="w-3 h-3 text-intents-ux-textSubtle-textColor" />
-      {t('builder_social_like')}
-    </text.span>
-    <text.span as="paragraph" className="flex items-center gap-1" size={-1} emphasis='passive'>
-      <CommentIcon className="w-3 h-3 text-intents-ux-textSubtle-textColor" />
-      {t('builder_social_comment')}
-    </text.span>
-    <text.span as="paragraph" className="flex items-center gap-1" size={-1} emphasis='passive'>
-      <ShareIcon className="w-3 h-3 text-intents-ux-textSubtle-textColor" />
-      {t('builder_social_share')}
-    </text.span>
-  </div>
+    <div className="flex justify-between items-center mt-1 px-2 mx-1 order-4">
+      <text.span as="paragraph" className="flex items-center gap-1" size={-1} emphasis='passive'>
+        <LikeIcon className="w-3 h-3 text-intents-ux-textSubtle-textColor" />
+        {t('builder_social_like')}
+      </text.span>
+      <text.span as="paragraph" className="flex items-center gap-1" size={-1} emphasis='passive'>
+        <CommentIcon className="w-3 h-3 text-intents-ux-textSubtle-textColor" />
+        {t('builder_social_comment')}
+      </text.span>
+      <text.span as="paragraph" className="flex items-center gap-1" size={-1} emphasis='passive'>
+        <ShareIcon className="w-3 h-3 text-intents-ux-textSubtle-textColor" />
+        {t('builder_social_share')}
+      </text.span>
+    </div>
   );
 });
 
@@ -172,7 +175,7 @@ export const PostCardPreview = ({ post }: { post: SocialPostData }) => {
   }, [post]);
 
   return (
-    <div className='shadow-xs flex flex-col border-border mx-auto relative pb-1 h-auto border' style={ { maxWidth: '450px' }}>
+    <div className='shadow-xs flex flex-col border-intents-ux-border-borderColor mx-auto relative pb-1 h-auto border w-full'>
       <PreviewHeader platform={post.platform} previewDate={previewDate} />
       <PostCardText post={post} />
       <PostImage

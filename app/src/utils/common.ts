@@ -11,6 +11,15 @@ export const formatDate = (date: string | Date, detailed = false) => {
 }
 
 /**
+ * Get the user's locale from the browser, with fallback to en-US
+ *
+ * @returns User's locale (e.g., "en-US", "es-ES", "fr-FR")
+ */
+export const getUserLocale = (): string => {
+  return typeof navigator !== 'undefined' ? navigator.language : 'en-US'
+}
+
+/**
  * Format duration in milliseconds to MM:SS format
  *
  * @param ms - Duration in milliseconds

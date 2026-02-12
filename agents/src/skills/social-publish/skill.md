@@ -6,7 +6,7 @@ enablementId: social
 
 # Social Publish Skill
 
-**Purpose:** Help users publish their social media posts to Facebook and Instagram.
+**Purpose:** Help users publish or schedule their social media posts to Facebook and Instagram.
 
 > **Note:** This skill provides social media publishing instructions. Some skills may also provide specialized tools that are automatically loaded when you activate the skill. Tools are prefixed with the skill name (e.g., `skillname__toolname`) to prevent naming conflicts. You can unload a skill's tools with `skill({ action: 'unload', skill: 'name' })` when no longer needed.
 
@@ -14,33 +14,41 @@ enablementId: social
 
 ## When to Use This Skill
 
-**User says:**
+**User says (immediate publish):**
 
 - "Publish Fresh & Bright to Facebook"
 - "Publish Limited Time to Instagram"
 - "Post this to Facebook"
 - "Share this on Instagram"
 
+**User says (schedule for later):**
+
+- "Schedule Fresh & Bright for Facebook on Feb 10 at 2:45 PM"
+- "Schedule Limited Time for Instagram on Feb 15 at 3:00 PM"
+- "Schedule this for Facebook on Feb 12 at 10:00 AM"
+
 **Context signals:**
 
 - Message includes `social_publish_ready` context attachment
-- User clicked "Publish" button in the post preview modal
+- User clicked "Publish" or "Schedule Post" button in the post preview modal
 
 ---
 
 # Your Role
 
-You publish social media posts to connected platforms. The frontend has already verified the connection exists and captured the post data.
+You publish or schedule social media posts to connected platforms. The frontend has already verified the connection exists and captured the post data (including scheduled time if applicable).
 
 ## Available Tools
 
-- **`socialPostPublish()`** - Publish a post to the connected platform (YOU MUST USE THIS)
+- **`socialPostPublish()`** - Publish or schedule a post to the connected platform (YOU MUST USE THIS)
 
-## Workflow: Publishing Posts
+## Workflow: Publishing or Scheduling Posts
 
-When user clicks "Publish" button in the post preview modal, they send a message like:
+When user clicks "Publish" or "Schedule Post" button in the post preview modal, they send a message like:
 
-**User**: "Publish Fresh & Bright to Facebook" or "Publish Limited Time to Instagram"
+**User (immediate)**: "Publish Fresh & Bright to Facebook" or "Publish Limited Time to Instagram"
+
+**User (scheduled)**: "Schedule Fresh & Bright for Facebook on Feb 10 at 2:45 PM" or "Schedule Limited Time for Instagram on Feb 15 at 3:00 PM"
 
 **CRITICAL - BE COMPLETELY SILENT:**
 
@@ -50,14 +58,22 @@ When user clicks "Publish" button in the post preview modal, they send a message
 
 The publish widget handles everything:
 
-- Shows "Publishing to Facebook/Instagram..."
-- Shows success message with link to view post
+- Shows "Publishing to Facebook/Instagram..." or "Scheduling post..."
+- Shows success message with link to view post (immediate) or scheduled confirmation (scheduled)
 - Shows error messages if something fails
 
-**Example - Correct Response:**
+**Example - Correct Response (immediate publish):**
 
 ```
 User: "Publish Fresh & Bright to Facebook"
+You: [Call socialPostPublish() tool - FIRST AND ONLY ACTION]
+[STOP - no text output, let widget show status]
+```
+
+**Example - Correct Response (scheduled publish):**
+
+```
+User: "Schedule Fresh & Bright for Facebook on Feb 10 at 2:45 PM"
 You: [Call socialPostPublish() tool - FIRST AND ONLY ACTION]
 [STOP - no text output, let widget show status]
 ```
@@ -71,9 +87,16 @@ You: [Call socialPostPublish() tool]
 You: "Your post is being published..." ❌ DO NOT SAY THIS
 ```
 
+```
+User: "Schedule Fresh & Bright for Facebook on Feb 10 at 2:45 PM"
+You: "I'll schedule your post..." ❌ DO NOT SAY THIS
+You: [Call socialPostPublish() tool]
+You: "Your post is being scheduled..." ❌ DO NOT SAY THIS
+```
+
 ## Important Rules
 
-- ❌ NEVER say "I'll publish your post" or "Publishing now"
+- ❌ NEVER say "I'll publish your post" or "I'll schedule your post" or "Publishing now" or "Scheduling now"
 - ❌ NEVER describe what's happening - the widget shows it
 - ❌ NEVER provide status updates - the widget does this
 - ✅ ONLY call the tool and stay completely silent

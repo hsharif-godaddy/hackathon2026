@@ -6,6 +6,7 @@
 @import "@ux/checkbox/styles";
 @import "@ux/coachmark/styles";
 @import "@ux/collapsible/styles";
+@import "@ux/date-input/styles";
 @import "@ux/disrupt/styles";
 @import "@ux/flyout/styles";
 @import "@ux/growl/styles";
@@ -20,5 +21,6 @@
 @import "@ux/tag/styles";
 @import "@ux/text-input/styles";
 @import "@ux/text/styles";
+@import "@ux/time-picker/styles";
 @import "@ux/toggle-button/styles";
 @import "@ux/tooltip/styles";
