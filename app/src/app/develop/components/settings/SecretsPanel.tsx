@@ -8,12 +8,12 @@ import Growl from '@ux/growl';
 import EditIcon from '@ux/icon/edit';
 import LockIcon from '@ux/icon/locked';
 import DeleteIcon from '@ux/icon/x-thick';
-import Spinner from '@ux/spinner';
 import Tag from '@ux/tag';
 import text from '@ux/text';
 import TextInput from '@ux/text-input';
 
 import IconButton from '@/app/develop/components/IconButton';
+import { SettingsLoadingState } from '@/app/develop/components/settings/components/SettingsLoadingState';
 import BigCard from '@/components/layout/BigCard';
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { useSecretOperations } from '@/hooks/useSecretOperations';
@@ -390,15 +390,10 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
 
   if (isLoading) {
     return (
-      <div className='flex flex-col justify-center items-center h-[calc(100vh-40rem)] gap-2'>
-        <Spinner size='md'/>
-        <div className='flex flex-col items-center gap-0.5'>
-          <text.div as='title' size={ -1 }>{t('builder_common_loading')}</text.div>
-          <text.div emphasis='passive' size={ -1 }>
-            {t('builder_common_loading_description')}
-          </text.div>
-        </div>
-      </div>
+      <SettingsLoadingState
+        fullPage
+        description={t('builder_common_loading_description')}
+      />
     );
   }
 

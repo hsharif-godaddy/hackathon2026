@@ -6,10 +6,10 @@ import Button from '@ux/button';
 import Checkbox from '@ux/checkbox';
 import AlertIcon from '@ux/icon/alert';
 import RefreshIcon from '@ux/icon/refresh';
-import Spinner from '@ux/spinner';
 import text from '@ux/text';
 import TextInput from '@ux/text-input';
 
+import { SettingsLoadingState } from '@/app/develop/components/settings/components/SettingsLoadingState';
 import { useAppIdFromParams } from '@/app/develop/components/utils';
 import BigCard from '@/components/layout/BigCard';
 import { type LogEntry, useLogs } from '@/hooks/useLogs';
@@ -393,10 +393,10 @@ export default function LogsPanel() {
 
           {/* Loading state */}
           {loading && accumulatedLogs.length === 0 && (
-            <div className="flex flex-col justify-center items-center h-64 gap-4">
-              <Spinner size="md" />
-              <text.p>{t('builder_settings_logs_loading_logs')}</text.p>
-            </div>
+            <SettingsLoadingState
+              fullPage
+              title={t('builder_settings_logs_loading_logs')}
+            />
           )}
 
           {/* Empty state */}

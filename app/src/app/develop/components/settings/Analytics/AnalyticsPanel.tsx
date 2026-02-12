@@ -66,7 +66,7 @@ export default function AnalyticsPanel() {
   }
 
   return (
-    <Box gap="lg" className="@container">
+    <Box gap="lg" className="@container min-h-full">
       <RUM />
     </Box>
   )

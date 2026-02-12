@@ -6,6 +6,7 @@ import AlertIcon from '@ux/icon/alert'
 import Select from '@ux/select'
 import Spinner from '@ux/spinner'
 
+import { SettingsLoadingState } from '@/app/develop/components/settings/components/SettingsLoadingState';
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { AnalyticsChart } from '@/components/analytics/AnalyticsChart'
 import { AnalyticsTables } from '@/components/analytics/AnalyticsTables'
@@ -91,7 +92,6 @@ export default function RUM() {
     viewsPerVisit,
     isLoading,
     isRefreshing,
-    loadingProgress,
     error
   } = useInsightsAnalytics({
     publishedUrl,
@@ -130,27 +130,11 @@ export default function RUM() {
   // Show loading state only on initial load (when no data exists)
   // If we have data, show it even if refreshing in background
   if (isLoading && dailyPageViews.length === 0 && totalPageViews === 0) {
-    const progressPercent = loadingProgress
-      ? Math.round((loadingProgress.current / loadingProgress.total) * 100)
-      : 0
-
     return (
-      <div className="flex flex-col justify-center items-center h-[calc(100vh-40rem)] gap-4">
-        <Spinner size="md" />
-        <div className="text-center space-y-2">
-          <p className="text-muted-foreground">
-            {loadingProgress ? t('builder_rum_fetching_data') : t('builder_rum_fetching_analytics_data')}
-          </p>
-          {loadingProgress && (
-            <div className="w-full max-w-xs bg-muted rounded-full h-2 mt-4">
-              <div
-                className="bg-primary h-2 rounded-full transition-all duration-300"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-          )}
-        </div>
-      </div>
+      <SettingsLoadingState
+        fullPage
+        title={t('builder_rum_fetching_data')}
+      />
     )
   }
 
@@ -193,9 +177,8 @@ export default function RUM() {
         <div className="h-full overflow-y-auto">
           <Box gap="md" className="relative">
             {isRefreshing && (
-              <div className="absolute z-50 pointer-events-none inset-0 flex items-center justify-center w-full gap-2 text-sm bg-intents-ux-boxLowContrastOverlay-backgroundColor">
-                <Spinner size="sm" />
-                <span>{t('builder_common_updating')}</span>
+              <div className="absolute z-50 pointer-events-none inset-0 flex items-center justify-center w-full bg-intents-ux-boxLowContrastOverlay-backgroundColor">
+                <SettingsLoadingState />
               </div>
             )}
             {/* Metric Cards */}

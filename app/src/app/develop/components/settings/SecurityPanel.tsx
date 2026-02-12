@@ -4,9 +4,8 @@ import Box from "@ux/box";
 import Button from "@ux/button";
 import Card from "@ux/card";
 import WandIcon from "@ux/icon/wand";
-import Spinner from "@ux/spinner";
-import TextLockup from "@ux/text-lockup";
 
+import { SettingsLoadingState } from '@/app/develop/components/settings/components/SettingsLoadingState';
 import { useAppIdFromParams } from '@/app/develop/components/utils';
 import BigCard from "@/components/layout/BigCard";
 import { useTranslations } from '@/hooks/useTranslations';
@@ -147,24 +146,18 @@ export default function SecurityPanel() {
 
         {!isReady && !error && !isLoading && (
           <Card>
-            <Box gap="md" inlineAlignChildren="center">
-              <Spinner size="md" />
-              <p>{t('builder_settings_security_waiting')}</p>
-            </Box>
+            <SettingsLoadingState
+              title={t('builder_settings_security_waiting')}
+            />
           </Card>
         )}
 
         {isLoading && (
           <Card>
-            <Box gap="md" inlineAlignChildren="center">
-              <Spinner size="md" />
-              <TextLockup
-                title={t('builder_settings_security_loading_running')}
-                centered
-              >
-                {t('builder_settings_security_loading_few_moments')}
-              </TextLockup>
-            </Box>
+            <SettingsLoadingState
+              title={t('builder_settings_security_loading_running')}
+              description={t('builder_common_loading_description')}
+            />
           </Card>
         )}
 

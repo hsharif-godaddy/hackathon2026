@@ -1,9 +1,9 @@
 import Box from "@ux/box";
 import Button from "@ux/button";
 import WebsiteIcon from '@ux/icon/website';
-import Spinner from "@ux/spinner";
 import text from "@ux/text";
 
+import { SettingsLoadingState } from '@/app/develop/components/settings/components/SettingsLoadingState';
 import DomainAttach from "@/app/develop/components/settings/DomainPanel/DomainAttach";
 import ProjectDomain from "@/app/develop/components/settings/DomainPanel/ProjectDomain";
 import { useAppIdFromParams } from "@/app/develop/components/utils";
@@ -43,10 +43,10 @@ export default function DomainPanel() {
 
   if (isDomainAttachLoading || isProjectDomainLoading || isSiteLoading || isPaywallLoading) {
     return (
-      <div className='flex flex-col justify-center items-center h-[calc(100vh-40rem)] gap-2'>
-        <Spinner size='md'/>
-        <text.p>{t('builder_domain_loading')}</text.p>
-      </div>
+      <SettingsLoadingState
+        fullPage
+        description={t('builder_common_loading_description')}
+      />
     );
   }
 

@@ -66,7 +66,7 @@ describe('DomainPanel', function domainPanelTests() {
 
       renderWithProviders(<DomainPanel />);
 
-      expect(screen.getByText('builder_domain_loading')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_loading_description')).toBeInTheDocument();
     });
 
     it('should show loading spinner when project domain feature is loading', async function projectDomainLoading() {
@@ -81,7 +81,7 @@ describe('DomainPanel', function domainPanelTests() {
 
       renderWithProviders(<DomainPanel />);
 
-      expect(screen.getByText('builder_domain_loading')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_loading_description')).toBeInTheDocument();
     });
 
     it('should show loading spinner when site is loading', async function siteLoading() {
@@ -99,7 +99,7 @@ describe('DomainPanel', function domainPanelTests() {
 
       renderWithProviders(<DomainPanel />);
 
-      expect(screen.getByText('builder_domain_loading')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_loading_description')).toBeInTheDocument();
     });
 
     it('should show loading spinner when paywall eligibility is loading', async function paywallLoading() {
@@ -111,7 +111,7 @@ describe('DomainPanel', function domainPanelTests() {
 
       renderWithProviders(<DomainPanel />);
 
-      expect(screen.getByText('builder_domain_loading')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_loading_description')).toBeInTheDocument();
     });
   });
 
