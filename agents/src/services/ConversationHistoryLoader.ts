@@ -565,67 +565,11 @@ export class ConversationHistoryLoader {
   ): Promise<LLMMessage[]> {
     const dbMessages = await this.loadDatabaseMessages(appId, agentId);
     let llmMessages = this.convertToLLMMessages(dbMessages);
-    
-    if (enableCompression) {
-      const hotFileStrategy = this.getStrategy('hot-file-inclusion');
-      
-      logger.debug('conversation.history.hot_files.strategy_check', {
-        appId,
-        agentId,
-        hasStrategy: !!hotFileStrategy,
-        hasAppPath: !!appPath,
-        appPath,
-      });
-      
-      if (hotFileStrategy && appPath) {
-        (hotFileStrategy as any).setAppPath(appPath);
-      }
 
+    if (enableCompression) {
       const compressionResult = this.compressor.compressMessages(llmMessages);
       llmMessages = compressionResult.messages;
-      
-      if (hotFileStrategy && appPath) {
-        await (hotFileStrategy as any).loadHotFilesContent();
-        const hotFilesList = (hotFileStrategy as any).getHotFilesList();
-        const hotFilesMessage = (hotFileStrategy as any).getHotFilesMessage();
-        
-        logger.debug('conversation.history.hot_files.load_result', {
-          appId,
-          agentId,
-          totalHotFiles: hotFilesList.length,
-          hasMessage: !!hotFilesMessage,
-          messageLength: hotFilesMessage?.length || 0,
-        });
-        
-        if (hotFilesMessage) {
-          llmMessages.unshift({
-            role: 'user',
-            content: hotFilesMessage,
-          });
-          
-          logger.info('conversation.history.hot_files.injected', {
-            appId,
-            agentId,
-            hotFiles: hotFilesList.length,
-            messageLength: hotFilesMessage.length,
-          });
-        } else if (hotFilesList.length > 0) {
-          logger.warn('conversation.history.hot_files.no_message', {
-            appId,
-            agentId,
-            hotFilesCount: hotFilesList.length,
-            reason: 'Hot files identified but no message generated',
-          });
-        }
-      } else {
-        logger.warn('conversation.history.hot_files.skipped', {
-          appId,
-          agentId,
-          hasStrategy: !!hotFileStrategy,
-          hasAppPath: !!appPath,
-        });
-      }
-      
+
       logger.info('conversation.history.compression.applied', {
         appId,
         agentId,
@@ -638,7 +582,7 @@ export class ConversationHistoryLoader {
         strategiesUsed: compressionResult.stats.strategiesUsed,
       });
     }
-    
+
     return await this.applyTokenLimit(llmMessages, maxTokens, modelName);
   }
 
@@ -649,18 +593,16 @@ export class ConversationHistoryLoader {
    * @param maxTokens - Maximum tokens to include (default: 40000)
    * @param modelName - Model name for accurate token counting
    * @param enableCompression - Whether to apply compression (default: true)
-   * @param appPath - Path to the app for hot file loading
    * @returns Token-limited array of LLM messages
    */
   async loadMessagesWithTokenLimitByAppId(
     appId: string,
     maxTokens: number = 40000,
     modelName?: string,
-    enableCompression: boolean = true,
-    appPath?: string
+    enableCompression: boolean = true
   ): Promise<LLMMessage[]> {
     const conversations = await this.conversationRepo.getByAppId(appId);
-    
+
     logger.debug('conversation.history.loader.load_by_app_begin', {
       appId,
       conversationsCount: conversations.length,
@@ -686,62 +628,11 @@ export class ConversationHistoryLoader {
     });
 
     let llmMessages = this.convertToLLMMessages(allMessages);
-    
-    if (enableCompression) {
-      const hotFileStrategy = this.getStrategy('hot-file-inclusion');
-      
-      logger.debug('conversation.history.hot_files.strategy_check', {
-        appId,
-        hasStrategy: !!hotFileStrategy,
-        hasAppPath: !!appPath,
-        appPath,
-      });
-      
-      if (hotFileStrategy && appPath) {
-        (hotFileStrategy as any).setAppPath(appPath);
-      }
 
+    if (enableCompression) {
       const compressionResult = this.compressor.compressMessages(llmMessages);
       llmMessages = compressionResult.messages;
-      
-      if (hotFileStrategy && appPath) {
-        await (hotFileStrategy as any).loadHotFilesContent();
-        const hotFilesList = (hotFileStrategy as any).getHotFilesList();
-        const hotFilesMessage = (hotFileStrategy as any).getHotFilesMessage();
-        
-        logger.debug('conversation.history.hot_files.load_result', {
-          appId,
-          totalHotFiles: hotFilesList.length,
-          hasMessage: !!hotFilesMessage,
-          messageLength: hotFilesMessage?.length || 0,
-        });
-        
-        if (hotFilesMessage) {
-          llmMessages.unshift({
-            role: 'user',
-            content: hotFilesMessage,
-          });
-          
-          logger.info('conversation.history.hot_files.injected', {
-            appId,
-            hotFiles: hotFilesList.length,
-            messageLength: hotFilesMessage.length,
-          });
-        } else if (hotFilesList.length > 0) {
-          logger.warn('conversation.history.hot_files.no_message', {
-            appId,
-            hotFilesCount: hotFilesList.length,
-            reason: 'Hot files identified but no message generated',
-          });
-        }
-      } else {
-        logger.warn('conversation.history.hot_files.skipped', {
-          appId,
-          hasStrategy: !!hotFileStrategy,
-          hasAppPath: !!appPath,
-        });
-      }
-      
+
       logger.info('conversation.history.compression.applied', {
         appId,
         originalMessages: compressionResult.stats.totalMessages,
@@ -753,19 +644,18 @@ export class ConversationHistoryLoader {
         strategiesUsed: compressionResult.stats.strategiesUsed,
       });
     }
-    
+
     return await this.applyTokenLimit(llmMessages, maxTokens, modelName);
   }
 
   /**
    * Load messages with summarization, compression, and token limit applied
    * Checks for existing summaries and replaces message ranges with summary messages
-   * 
+   *
    * @param appId - ID of the app
    * @param maxTokens - Maximum tokens to include (default: 40000)
    * @param modelName - Model name for accurate token counting
    * @param enableCompression - Whether to apply compression (default: true)
-   * @param appPath - Path to the app for hot file loading
    * @param enableSummarization - Whether to use summaries (default: true)
    * @returns Token-limited array of LLM messages with summaries injected
    */
@@ -774,7 +664,6 @@ export class ConversationHistoryLoader {
     maxTokens: number = 40000,
     modelName?: string,
     enableCompression: boolean = true,
-    appPath?: string,
     enableSummarization: boolean = true
   ): Promise<ConversationHistoryWithSummary> {
     logger.debug('conversation.history.loader.load_with_summarization.begin', {
@@ -910,34 +799,7 @@ export class ConversationHistoryLoader {
       llmMessagesCount: llmMessages.length,
     });
 
-    // CRITICAL: Hot files must ALWAYS be loaded and injected, regardless of summarization status
-    // The agent relies on hot file context for code edits - without it, edits become impossible
-    const hotFileStrategy = this.getStrategy('hot-file-inclusion');
     let compressedMessages = llmMessages;
-
-    if (hotFileStrategy && appPath) {
-      (hotFileStrategy as any).setAppPath(appPath);
-
-      // Analyze available messages to identify hot files (files frequently read/edited)
-      // When summary exists, we only analyze post-summary messages - this is intentional:
-      // 1. Performance: avoids loading full history just for hot file detection
-      // 2. Recency bias: recent file accesses are more relevant for current work
-      // 3. Operation log: historical file paths are captured there for reference
-      // Note: Hot file detection looks for actual file tool calls (read_file, edit_file),
-      // not textual mentions, so the operation log text isn't directly useful for this analysis
-      const llmMessagesForAnalysis = this.convertToLLMMessages(allMessages);
-      (hotFileStrategy as any).analyzeMessages(llmMessagesForAnalysis);
-
-      logger.debug('conversation.history.hot_files.strategy_check', {
-        appId,
-        hasStrategy: true,
-        hasAppPath: true,
-        appPath,
-        hasSummary: !!latestSummary,
-        messagesAnalyzed: allMessages.length,
-        note: latestSummary ? 'analyzing_post_summary_only' : 'analyzing_full_history',
-      });
-    }
 
     // Apply compression strategies based on summarization status
     if (latestSummary) {
@@ -971,48 +833,6 @@ export class ConversationHistoryLoader {
       });
     }
 
-    // ALWAYS inject hot files context (regardless of summarization status)
-    // This provides the agent with current file contents for making edits
-    if (hotFileStrategy && appPath) {
-      await (hotFileStrategy as any).loadHotFilesContent();
-      const hotFilesList = (hotFileStrategy as any).getHotFilesList();
-      const hotFilesMessage = (hotFileStrategy as any).getHotFilesMessage();
-
-      logger.debug('conversation.history.hot_files.load_result', {
-        appId,
-        totalHotFiles: hotFilesList.length,
-        hasMessage: !!hotFilesMessage,
-        messageLength: hotFilesMessage?.length || 0,
-        hasSummary: !!latestSummary,
-      });
-
-      if (hotFilesMessage) {
-        compressedMessages.unshift({
-          role: 'user',
-          content: hotFilesMessage,
-        });
-
-        logger.info('conversation.history.hot_files.injected', {
-          appId,
-          hotFiles: hotFilesList.length,
-          messageLength: hotFilesMessage.length,
-          hasSummary: !!latestSummary,
-        });
-      } else if (hotFilesList.length > 0) {
-        logger.warn('conversation.history.hot_files.no_message', {
-          appId,
-          hotFilesCount: hotFilesList.length,
-          reason: 'Hot files identified but no message generated',
-        });
-      }
-    } else if (appPath) {
-      logger.warn('conversation.history.hot_files.skipped', {
-        appId,
-        hasStrategy: !!hotFileStrategy,
-        hasAppPath: !!appPath,
-      });
-    }
-
     const limitedMessages = await this.applyTokenLimit(compressedMessages, maxTokens, modelName);
     // Summary is now injected as user messages in the history, not returned separately
     // This prevents user-derived content from being elevated to system prompt privilege
@@ -1026,74 +846,21 @@ export class ConversationHistoryLoader {
    * @param maxTokens - Maximum tokens to include (default: 40000)
    * @param modelName - Model name for accurate token counting
    * @param enableCompression - Whether to apply compression (default: true)
-   * @param appPath - Path to the app for hot file loading
    * @returns Token-limited array of LLM messages
    */
   async loadMessagesWithTokenLimitByConversationId(
     conversationId: string,
     maxTokens: number = 40000,
     modelName?: string,
-    enableCompression: boolean = true,
-    appPath?: string
+    enableCompression: boolean = true
   ): Promise<LLMMessage[]> {
     const dbMessages = await this.loadDatabaseMessagesByConversationId(conversationId);
     let llmMessages = this.convertToLLMMessages(dbMessages);
-    
-    if (enableCompression) {
-      const hotFileStrategy = this.getStrategy('hot-file-inclusion');
-      
-      logger.debug('conversation.history.hot_files.strategy_check', {
-        conversationId,
-        hasStrategy: !!hotFileStrategy,
-        hasAppPath: !!appPath,
-        appPath,
-      });
-      
-      if (hotFileStrategy && appPath) {
-        (hotFileStrategy as any).setAppPath(appPath);
-      }
 
+    if (enableCompression) {
       const compressionResult = this.compressor.compressMessages(llmMessages);
       llmMessages = compressionResult.messages;
-      
-      if (hotFileStrategy && appPath) {
-        await (hotFileStrategy as any).loadHotFilesContent();
-        const hotFilesList = (hotFileStrategy as any).getHotFilesList();
-        const hotFilesMessage = (hotFileStrategy as any).getHotFilesMessage();
-        
-        logger.debug('conversation.history.hot_files.load_result', {
-          conversationId,
-          totalHotFiles: hotFilesList.length,
-          hasMessage: !!hotFilesMessage,
-          messageLength: hotFilesMessage?.length || 0,
-        });
-        
-        if (hotFilesMessage) {
-          llmMessages.unshift({
-            role: 'user',
-            content: hotFilesMessage,
-          });
-          
-          logger.info('conversation.history.hot_files.injected', {
-            conversationId,
-            hotFiles: hotFilesList.length,
-            messageLength: hotFilesMessage.length,
-          });
-        } else if (hotFilesList.length > 0) {
-          logger.warn('conversation.history.hot_files.no_message', {
-            conversationId,
-            hotFilesCount: hotFilesList.length,
-            reason: 'Hot files identified but no message generated',
-          });
-        }
-      } else {
-        logger.warn('conversation.history.hot_files.skipped', {
-          conversationId,
-          hasStrategy: !!hotFileStrategy,
-          hasAppPath: !!appPath,
-        });
-      }
-      
+
       logger.info('conversation.history.compression.applied', {
         conversationId,
         originalMessages: compressionResult.stats.totalMessages,
@@ -1105,7 +872,7 @@ export class ConversationHistoryLoader {
         strategiesUsed: compressionResult.stats.strategiesUsed,
       });
     }
-    
+
     return await this.applyTokenLimit(llmMessages, maxTokens, modelName);
   }
 

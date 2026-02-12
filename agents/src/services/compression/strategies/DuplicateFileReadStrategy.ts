@@ -6,26 +6,15 @@ import {
   isAIToolMessage,
   isOpenAIMessage,
 } from '../../ConversationHistoryLoader.js';
-import type { HotFileInclusionStrategy } from './HotFileInclusionStrategy.js';
 
 /**
- * Compresses duplicate file reads by keeping only the most recent read of each file
+ * Compresses repeated file reads by keeping only the most recent read of each file
  * Removes older reads of the same file from the conversation history
- * Skips files that are in hot files list (they're already included)
  */
 export class DuplicateFileReadStrategy implements CompressionStrategy {
   readonly name = 'duplicate-file-read';
-  
+
   private fileReads = new Map<string, number[]>(); // filePath -> messageIndices
-  private hotFileStrategy: HotFileInclusionStrategy | undefined = undefined;
-
-  constructor(hotFileStrategy?: HotFileInclusionStrategy) {
-    this.hotFileStrategy = hotFileStrategy;
-  }
-
-  setHotFileStrategy(strategy: HotFileInclusionStrategy): void {
-    this.hotFileStrategy = strategy;
-  }
 
   /**
    * Extract file path from readFile tool call arguments
@@ -136,12 +125,6 @@ export class DuplicateFileReadStrategy implements CompressionStrategy {
       return false;
     }
 
-    // CRITICAL: Hot files are already included in hot files context
-    // Remove ALL reads of hot files, even if it's the only read
-    if (this.hotFileStrategy?.isHotFile(filePath)) {
-      return true;
-    }
-
     const reads = this.fileReads.get(filePath);
     if (!reads || reads.length <= 1) {
       return false;
@@ -163,14 +146,7 @@ export class DuplicateFileReadStrategy implements CompressionStrategy {
       return null;
     }
 
-    let compressedText: string;
-    if (this.hotFileStrategy?.isHotFile(filePath)) {
-      compressedText = `[File "${filePath}" is included in hot files context - redundant read removed]`;
-    } else {
-      const reads = this.fileReads.get(filePath);
-      const mostRecentIndex = reads ? Math.max(...reads) : -1;
-      compressedText = `[Duplicate file read removed - see message #${mostRecentIndex + 1} for most recent read of: ${filePath}]`;
-    }
+    const compressedText = `[Repeated file read removed - see the most recent read of: ${filePath} later in the conversation]`;
 
     // Return in same format as input
     if (isAIToolMessage(message)) {

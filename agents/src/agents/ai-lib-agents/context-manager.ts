@@ -578,15 +578,6 @@ export class AILibContextManager {
                     messages.push(appContextMessage)
                 }
             }
-
-            // Build hot files context
-            if (context.metadata?.appId) {
-                const hotFilesMessage = await this.buildHotFilesContextMessage(context)
-                if (hotFilesMessage) {
-                    messages.push(hotFilesMessage)
-                }
-            }
-
         } catch (error) {
             logger.error('context.messages.build.failure', {
                 error: error instanceof Error ? error.message : String(error)
@@ -655,46 +646,6 @@ export class AILibContextManager {
         }
 
         return messages
-    }
-
-    /**
-     * Build hot files context message using FileContextManager
-     */
-    private async buildHotFilesContextMessage(context: EnhancedAgentContext): Promise<ContextMessage | null> {
-        try {
-            // Extract appId and resolve appPath from context metadata
-            const appId = context.metadata?.appId as string
-            if (!appId) {
-                logger.debug('context.hot_files.skip', {
-                    reason: 'No appId found in context metadata'
-                })
-                return null
-            }
-
-            const contextLogger = log.forApp(appId)
-
-            // Look up app path using AppRepository
-            const app = this.appRepository.findById(appId)
-            if (!app) {
-                contextLogger.warn('context.hot_files.app_not_found', {
-                    reason: 'App not found in repository'
-                })
-                return null
-            }
-
-            // NOTE: Hot files are now automatically included during conversation history loading
-            // via the HotFileInclusionStrategy compression strategy. This method returns null
-            // as hot files are handled by the history loader during loadAllMessagesWithTokenLimit.
-            contextLogger.debug('context.hot_files.skip', {
-                reason: 'Hot files now handled by history loader compression'
-            })
-            return null
-        } catch (error) {
-            logger.error('context.hot_files.build.failure', {
-                error: error instanceof Error ? error.message : String(error)
-            })
-            return null
-        }
     }
 
     /**

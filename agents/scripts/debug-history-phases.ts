@@ -1,9 +1,9 @@
 #!/usr/bin/env tsx
 /**
  * Debug utility for conversation history processing
- * 
+ *
  * Usage: pnpm debug:history <appId> <agentId> [phase] [maxTokens] [modelName]
- * 
+ *
  * Phases:
  *   db          - Show raw database messages
  *   llm         - Show converted LLM messages (default)
@@ -15,11 +15,8 @@
 import { ConversationRepository } from '../src/database/repositories/ConversationRepository.js';
 import { ConversationHistoryLoader } from '../src/services/ConversationHistoryLoader.js';
 import {
-  HotFileInclusionStrategy,
-  FileEditCompressionStrategy,
   DuplicateFileReadStrategy,
 } from '../src/services/compression/strategies/index.js';
-import { AppRepository } from '../src/database/repositories/AppRepository.js';
 
 const appId = process.argv[2];
 const agentId = process.argv[3];
@@ -69,7 +66,7 @@ function formatDatabaseMessage(msg: any, index: number): void {
   console.log(`Sender: ${msg.sender}`);
   console.log(`Created At: ${msg.createdAt.toISOString()}`);
   console.log(`Content Length: ${msg.content?.length || 0} chars`);
-  
+
   if (msg.sender === 'user') {
     const preview = msg.content?.substring(0, 500) || '';
     console.log(`Content: ${preview}${msg.content?.length > 500 ? '...' : ''}`);
@@ -86,8 +83,8 @@ function formatDatabaseMessage(msg: any, index: number): void {
           console.log(`      Tool ID: ${segment.tool_call.id}`);
           console.log(`      Has Result: ${!!segment.tool_call.tool_result}`);
           if (segment.tool_call.tool_result) {
-            const resultStr = typeof segment.tool_call.tool_result === 'string' 
-              ? segment.tool_call.tool_result 
+            const resultStr = typeof segment.tool_call.tool_result === 'string'
+              ? segment.tool_call.tool_result
               : JSON.stringify(segment.tool_call.tool_result);
             const resultPreview = resultStr.substring(0, 200);
             console.log(`      Result Preview: ${resultPreview}${resultStr.length > 200 ? '...' : ''}`);
@@ -111,23 +108,23 @@ function formatDatabaseMessage(msg: any, index: number): void {
 function formatLLMMessage(msg: any, index: number): void {
   console.log(`\n--- LLM Message ${index + 1} ---`);
   console.log(`Role: ${msg.role}`);
-  
+
   if (msg.role === 'tool') {
     console.log(`Tool Call ID: ${msg.tool_call_id}`);
     console.log(`Tool Name: ${msg.name}`);
   }
-  
+
   if (msg.tool_calls && msg.tool_calls.length > 0) {
     console.log(`Tool Calls: ${msg.tool_calls.length}`);
     const displayLimit = 5;
     const toolCallsToShow = msg.tool_calls.slice(0, displayLimit);
-    
+
     toolCallsToShow.forEach((tc: any, tcIdx: number) => {
       console.log(`  [${tcIdx + 1}] ${tc.function.name} (ID: ${tc.id})`);
       const argsPreview = tc.function.arguments.substring(0, 200);
       console.log(`      Args: ${argsPreview}${tc.function.arguments.length > 200 ? '...' : ''}`);
     });
-    
+
     if (msg.tool_calls.length > displayLimit) {
       const remaining = msg.tool_calls.length - displayLimit;
       const remainingByType = msg.tool_calls.slice(displayLimit).reduce((acc: any, tc: any) => {
@@ -140,7 +137,7 @@ function formatLLMMessage(msg: any, index: number): void {
       });
     }
   }
-  
+
   const contentPreview = msg.content?.substring(0, 500) || '';
   console.log(`Content (${msg.content?.length || 0} chars): ${contentPreview}${msg.content?.length > 500 ? '...' : ''}`);
 }
@@ -161,51 +158,42 @@ async function main() {
 
   try {
     const conversationRepo = new ConversationRepository();
-    const appRepo = new AppRepository();
     const loader = new ConversationHistoryLoader(conversationRepo);
-    
-    const app = appRepo.findById(appId);
-    const appPath = app?.path;
-    
-    const hotFileStrategy = new HotFileInclusionStrategy(appPath);
-    const fileEditStrategy = new FileEditCompressionStrategy(hotFileStrategy);
-    const duplicateFileReadStrategy = new DuplicateFileReadStrategy(hotFileStrategy);
 
-    loader.registerCompressionStrategy(hotFileStrategy);
+    const duplicateFileReadStrategy = new DuplicateFileReadStrategy();
     loader.registerCompressionStrategy(duplicateFileReadStrategy);
-    loader.registerCompressionStrategy(fileEditStrategy);
 
     const dbMessages = await loader.loadDatabaseMessages(appId, agentId);
-    
+
     if (phase === 'db' || phase === 'all') {
       console.log('\n========================================');
       console.log('PHASE 1: RAW DATABASE MESSAGES');
       console.log('========================================');
       console.log(`Total messages: ${dbMessages.length}`);
-      
+
       dbMessages.forEach((msg, index) => {
         formatDatabaseMessage(msg, index);
       });
-      
+
       console.log('\n--- Summary ---');
       const senderCounts = dbMessages.reduce((acc, msg) => {
         acc[msg.sender] = (acc[msg.sender] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
-      
+
       console.log('Messages by sender:');
       Object.entries(senderCounts).forEach(([sender, count]) => {
         console.log(`  ${sender}: ${count}`);
       });
-      
+
       const withSegments = dbMessages.filter(msg => msg.segments && msg.segments.length > 0).length;
       const withoutSegments = dbMessages.filter(msg => msg.sender === 'agent' && (!msg.segments || msg.segments.length === 0)).length;
-      
-      const allToolCalls = dbMessages.flatMap(msg => 
+
+      const allToolCalls = dbMessages.flatMap(msg =>
         (msg.segments || []).filter(seg => seg.type === 'tool_call')
       );
       const toolCallsWithResults = allToolCalls.filter(seg => seg.tool_call?.tool_result);
-      
+
       console.log(`\nWith segments: ${withSegments}`);
       console.log(`Without segments (will be skipped): ${withoutSegments}`);
       console.log(`\nTool calls: ${allToolCalls.length}`);
@@ -215,32 +203,32 @@ async function main() {
 
     if (phase === 'llm' || phase === 'all') {
       const llmMessages = loader.convertToLLMMessages(dbMessages);
-      
+
       console.log('\n========================================');
       console.log('PHASE 2: CONVERTED LLM MESSAGES (UNCOMPRESSED)');
       console.log('========================================');
       console.log(`Total messages: ${llmMessages.length}`);
       console.log('Note: This shows the raw messages before compression.');
       console.log('');
-      
+
       llmMessages.forEach((msg, index) => {
         formatLLMMessage(msg, index);
       });
-      
+
       console.log('\n--- Summary ---');
       const roleCounts = llmMessages.reduce((acc, msg) => {
         acc[msg.role] = (acc[msg.role] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
-      
+
       console.log('Messages by role:');
       Object.entries(roleCounts).forEach(([role, count]) => {
         console.log(`  ${role}: ${count}`);
       });
-      
+
       const toolMessages = llmMessages.filter(msg => msg.role === 'tool').length;
       const assistantWithTools = llmMessages.filter(msg => msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0).length;
-      
+
       console.log(`\nTool messages: ${toolMessages}`);
       console.log(`Assistant messages with tool calls: ${assistantWithTools}`);
     }
@@ -250,9 +238,7 @@ async function main() {
       const compressor = loader.getCompressor();
       const result = compressor.compressMessages(llmMessages);
       const compressedMessages = result.messages;
-      
-      await hotFileStrategy.loadHotFilesContent();
-      
+
       console.log('\n========================================');
       console.log('PHASE 3: COMPRESSED LLM MESSAGES');
       console.log('========================================');
@@ -269,71 +255,29 @@ async function main() {
         console.log(`  ${strategy}: ${count} messages`);
       });
       console.log('');
-      
-      console.log('Hot Files Analysis (DEBUG METADATA - not sent to LLM):');
-      const hotFiles = hotFileStrategy.getHotFilesList();
-      if (hotFiles.length > 0) {
-        console.log(`  Total hot files identified: ${hotFiles.length}`);
-        hotFiles.forEach((file, idx) => {
-          console.log(`  [${idx + 1}] ${file.path}`);
-          console.log(`      Score: ${file.score}`);
-          console.log(`      Reads: ${file.readCount}, Writes: ${file.writeCount}`);
-          console.log(`      First read at message: ${file.firstReadIndex + 1}`);
-          if (file.tokenCount) {
-            console.log(`      Token count: ${file.tokenCount}`);
-          }
-        });
-        
-        const hotFilesMessage = hotFileStrategy.getHotFilesMessage();
-        if (hotFilesMessage) {
-          console.log('\nHot Files Message (SENT TO LLM):');
-          console.log(`  Content length: ${hotFilesMessage.length} chars`);
-          console.log(`  Files included:`);
-          hotFiles.filter(f => f.content).forEach((file) => {
-            console.log(`    **${file.path}** (${file.readCount} reads, ${file.writeCount} edits)`);
-          });
-        } else {
-          console.log('\nNote: No hot files content loaded');
-        }
-      } else {
-        console.log('  No hot files identified');
-      }
-      console.log('');
-      
+
       console.log('========================================');
       console.log('COMPRESSED MESSAGES (SENT TO LLM):');
       console.log('========================================');
-      
-      const hotFilesMessageContent = hotFileStrategy.getHotFilesMessage();
-      let messagesWithHotFiles = compressedMessages;
-      if (hotFilesMessageContent) {
-        messagesWithHotFiles = [
-          {
-            role: 'user' as const,
-            content: hotFilesMessageContent,
-          },
-          ...compressedMessages,
-        ];
-      }
-      
-      messagesWithHotFiles.forEach((msg, index) => {
+
+      compressedMessages.forEach((msg, index) => {
         formatLLMMessage(msg, index);
       });
-      
+
       console.log('\n--- Summary ---');
-      const roleCounts = messagesWithHotFiles.reduce((acc, msg) => {
+      const roleCounts = compressedMessages.reduce((acc, msg) => {
         acc[msg.role] = (acc[msg.role] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
-      
+
       console.log('Messages by role:');
       Object.entries(roleCounts).forEach(([role, count]) => {
         console.log(`  ${role}: ${count}`);
       });
-      
-      const toolMessages = messagesWithHotFiles.filter(msg => msg.role === 'tool').length;
-      const assistantWithTools = messagesWithHotFiles.filter(msg => msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0).length;
-      
+
+      const toolMessages = compressedMessages.filter(msg => msg.role === 'tool').length;
+      const assistantWithTools = compressedMessages.filter(msg => msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0).length;
+
       console.log(`\nTool messages: ${toolMessages}`);
       console.log(`Assistant messages with tool calls: ${assistantWithTools}`);
     }
@@ -343,23 +287,9 @@ async function main() {
       const compressor = loader.getCompressor();
       const compressionResult = compressor.compressMessages(llmMessages);
       const compressedMessages = compressionResult.messages;
-      
-      await hotFileStrategy.loadHotFilesContent();
-      const hotFilesMessageContent = hotFileStrategy.getHotFilesMessage();
-      
-      let messagesWithHotFiles = compressedMessages;
-      if (hotFilesMessageContent) {
-        messagesWithHotFiles = [
-          {
-            role: 'user' as const,
-            content: hotFilesMessageContent,
-          },
-          ...compressedMessages,
-        ];
-      }
-      
-      const limitedMessages = loader.applyTokenLimit(messagesWithHotFiles, maxTokens, modelName);
-      
+
+      const limitedMessages = await loader.applyTokenLimit(compressedMessages, maxTokens, modelName);
+
       console.log('\n========================================');
       console.log('PHASE 4: TOKEN-LIMITED LLM MESSAGES');
       console.log('========================================');
@@ -367,67 +297,37 @@ async function main() {
       console.log(`Model Name: ${modelName}`);
       console.log(`Total messages before compression: ${llmMessages.length}`);
       console.log(`Total messages after compression: ${compressedMessages.length}`);
-      console.log(`Total messages with hot files: ${messagesWithHotFiles.length}`);
       console.log(`Total messages after limiting: ${limitedMessages.length}`);
       console.log(`Messages dropped by compression: ${llmMessages.length - compressedMessages.length}`);
-      console.log(`Messages dropped by token limit: ${messagesWithHotFiles.length - limitedMessages.length}`);
+      console.log(`Messages dropped by token limit: ${compressedMessages.length - limitedMessages.length}`);
       console.log(`Total messages dropped: ${llmMessages.length - limitedMessages.length}`);
       console.log('');
       console.log('Compression stats:');
       console.log(`  Compression ratio: ${(compressionResult.stats.compressionRatio * 100).toFixed(1)}%`);
       console.log(`  Char savings: ${compressionResult.stats.originalTotalLength - compressionResult.stats.compressedTotalLength} chars`);
       console.log('');
-      
-      console.log('Hot Files Analysis (DEBUG METADATA - not sent to LLM):');
-      const hotFilesLimited = hotFileStrategy.getHotFilesList();
-      if (hotFilesLimited.length > 0) {
-        console.log(`  Total hot files identified: ${hotFilesLimited.length}`);
-        hotFilesLimited.forEach((file, idx) => {
-          console.log(`  [${idx + 1}] ${file.path}`);
-          console.log(`      Score: ${file.score}`);
-          console.log(`      Reads: ${file.readCount}, Writes: ${file.writeCount}`);
-          console.log(`      First read at message: ${file.firstReadIndex + 1}`);
-          if (file.tokenCount) {
-            console.log(`      Token count: ${file.tokenCount}`);
-          }
-        });
-        
-        if (hotFilesMessageContent) {
-          console.log('\nHot Files Message (SENT TO LLM):');
-          console.log(`  Content length: ${hotFilesMessageContent.length} chars`);
-          console.log(`  Files included:`);
-          hotFilesLimited.filter(f => f.content).forEach((file) => {
-            console.log(`    **${file.path}** (${file.readCount} reads, ${file.writeCount} edits)`);
-          });
-        } else {
-          console.log('\nNote: No hot files content loaded');
-        }
-      } else {
-        console.log('  No hot files identified');
-      }
-      console.log('');
-      
+
       console.log('========================================');
       console.log('TOKEN-LIMITED MESSAGES (SENT TO LLM):');
       console.log('========================================');
       limitedMessages.forEach((msg, index) => {
         formatLLMMessage(msg, index);
       });
-      
+
       console.log('\n--- Summary ---');
       const roleCounts = limitedMessages.reduce((acc, msg) => {
         acc[msg.role] = (acc[msg.role] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
-      
+
       console.log('Messages by role:');
       Object.entries(roleCounts).forEach(([role, count]) => {
         console.log(`  ${role}: ${count}`);
       });
-      
+
       const toolMessages = limitedMessages.filter(msg => msg.role === 'tool').length;
       const assistantWithTools = limitedMessages.filter(msg => msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0).length;
-      
+
       console.log(`\nTool messages: ${toolMessages}`);
       console.log(`Assistant messages with tool calls: ${assistantWithTools}`);
     }

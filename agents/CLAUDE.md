@@ -885,7 +885,7 @@ LOG_DOMAINS=app,websocket
 LOG_DISABLED_DOMAINS=compression,memory
 
 # Enable opt-in domains
-LOG_OPT_IN_DOMAINS=compression.hot_files
+LOG_OPT_IN_DOMAINS=compression.file_edit
 ```
 
 **See root `LOGGING-GUIDE.md` for complete documentation.**

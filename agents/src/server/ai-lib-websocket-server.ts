@@ -38,7 +38,6 @@ import { AgentsMessagePersistence } from './conversation-persistence.js'
 import { ConversationContextManager } from '../services/ConversationContextManager.js'
 import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js'
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
-import { fileContextRegistry } from '../services/FileContextRegistry.js'
 import { fileUploadService } from '../services/FileUploadService.js'
 import { logger, log } from '../logging/index.js'
 import { jwtAuthMiddleware } from './middleware/jwt-auth.js'
@@ -350,9 +349,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
     // Create context manager for app context and template descriptions
     const contextManager = new AILibContextManager()
-
-    // Register context manager with file context registry for tools
-    fileContextRegistry.setContextManager(contextManager)
 
     // Wire up todo list selection callback to state manager
     const { todoListTool } = await import('../tools/todo-list-tool.js')
@@ -757,8 +753,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             conversationId,  // Load ONLY this conversation's messages
             40000,
             modelName,
-            true,
-            appPath
+            true
           );
 
           const formattedMessages = historyLoader.formatMessagesForAISDK(llmMessages, appId, agentName);

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DuplicateFileReadStrategy } from '../DuplicateFileReadStrategy.js';
-import { HotFileInclusionStrategy } from '../HotFileInclusionStrategy.js';
 import type { CompressionContext } from '../../MessageCompressor.js';
 import { type LLMMessage, getMessageContent } from '../../../ConversationHistoryLoader.js';
 import type { ToolModelMessage } from 'ai';
@@ -19,20 +18,14 @@ function createToolMessage(toolCallId: string, toolName: string, content: string
 }
 
 describe('DuplicateFileReadStrategy', () => {
-  let hotFileStrategy: HotFileInclusionStrategy;
   let duplicateReadStrategy: DuplicateFileReadStrategy;
 
   beforeEach(() => {
-    hotFileStrategy = new HotFileInclusionStrategy('/test/app', {
-      minReadCount: 1,
-      minWriteCount: 1,
-      recencyWindowMs: 10 * 60 * 1000,
-    });
-    duplicateReadStrategy = new DuplicateFileReadStrategy(hotFileStrategy);
+    duplicateReadStrategy = new DuplicateFileReadStrategy();
   });
 
-  describe('canCompress - hot files', () => {
-    it('should compress ALL reads of hot files', () => {
+  describe('canCompress - duplicate detection', () => {
+    it('should detect duplicate file reads and compress older ones', () => {
       const messages: LLMMessage[] = [
         {
           role: 'assistant',
@@ -66,7 +59,6 @@ describe('DuplicateFileReadStrategy', () => {
         createToolMessage('call_2', 'readFile', 'File content...'),
       ];
 
-      hotFileStrategy.analyzeMessages(messages);
       duplicateReadStrategy.analyzeMessages(messages);
 
       const firstReadContext: CompressionContext = {
@@ -85,126 +77,12 @@ describe('DuplicateFileReadStrategy', () => {
         nextMessage: undefined,
       };
 
-      // BOTH reads should be compressed since the file is hot (already in hot files context)
+      // First read should be compressed (older), second read should be kept (most recent)
       expect(duplicateReadStrategy.canCompress(firstReadContext)).toBe(true);
-      expect(duplicateReadStrategy.canCompress(secondReadContext)).toBe(true);
+      expect(duplicateReadStrategy.canCompress(secondReadContext)).toBe(false);
     });
 
-    it('should create hot file reference message', () => {
-      const messages: LLMMessage[] = [
-        {
-          role: 'assistant',
-          content: '',
-          tool_calls: [
-            {
-              id: 'call_1',
-              type: 'function',
-              function: {
-                name: 'readFile',
-                arguments: JSON.stringify({ path: 'src/hot.ts' }),
-              },
-            },
-          ],
-        },
-        createToolMessage('call_1', 'readFile', 'File content here'),
-        {
-          role: 'assistant',
-          content: '',
-          tool_calls: [
-            {
-              id: 'call_2',
-              type: 'function',
-              function: {
-                name: 'readFile',
-                arguments: JSON.stringify({ path: 'src/hot.ts' }),
-              },
-            },
-          ],
-        },
-        createToolMessage('call_2', 'readFile', 'File content here'),
-      ];
-
-      hotFileStrategy.analyzeMessages(messages);
-      duplicateReadStrategy.analyzeMessages(messages);
-
-      const context: CompressionContext = {
-        messageIndex: 1,
-        totalMessages: 4,
-        message: messages[1]!,
-        previousMessage: messages[0],
-        nextMessage: messages[2],
-      };
-
-      const compressed = duplicateReadStrategy.compress(context);
-
-      expect(compressed).not.toBeNull();
-      const content = getMessageContent(compressed!);
-      expect(content).toContain('src/hot.ts');
-      expect(content).toContain('included in hot files context');
-      expect(content).toContain('redundant read removed');
-    });
-  });
-
-  describe('canCompress - duplicate detection', () => {
-    it('should detect duplicate file reads (same content)', () => {
-      const messages: LLMMessage[] = [
-        {
-          role: 'assistant',
-          content: '',
-          tool_calls: [
-            {
-              id: 'call_1',
-              type: 'function',
-              function: {
-                name: 'readFile',
-                arguments: JSON.stringify({ path: 'src/cold.ts' }),
-              },
-            },
-          ],
-        },
-        createToolMessage('call_1', 'readFile', 'export const value = 42;'),
-        {
-          role: 'assistant',
-          content: '',
-          tool_calls: [
-            {
-              id: 'call_2',
-              type: 'function',
-              function: {
-                name: 'readFile',
-                arguments: JSON.stringify({ path: 'src/cold.ts' }),
-              },
-            },
-          ],
-        },
-        createToolMessage('call_2', 'readFile', 'export const value = 42;'),
-      ];
-
-      hotFileStrategy.analyzeMessages(messages);
-      duplicateReadStrategy.analyzeMessages(messages);
-
-      const firstReadContext: CompressionContext = {
-        messageIndex: 1,
-        totalMessages: 4,
-        message: messages[1]!,
-        previousMessage: messages[0],
-        nextMessage: messages[2],
-      };
-
-      const secondReadContext: CompressionContext = {
-        messageIndex: 3,
-        totalMessages: 4,
-        message: messages[3]!,
-        previousMessage: messages[2],
-        nextMessage: undefined,
-      };
-
-      // BOTH reads should be compressed since the file is hot (already in hot files context)
-      expect(duplicateReadStrategy.canCompress(firstReadContext)).toBe(true);
-      expect(duplicateReadStrategy.canCompress(secondReadContext)).toBe(true);
-    });
-
-    it('should compress single read of hot file', () => {
+    it('should not compress single reads', () => {
       const messages: LLMMessage[] = [
         {
           role: 'assistant',
@@ -223,7 +101,6 @@ describe('DuplicateFileReadStrategy', () => {
         createToolMessage('call_1', 'readFile', 'Unique content'),
       ];
 
-      hotFileStrategy.analyzeMessages(messages);
       duplicateReadStrategy.analyzeMessages(messages);
 
       const context: CompressionContext = {
@@ -234,11 +111,11 @@ describe('DuplicateFileReadStrategy', () => {
         nextMessage: undefined,
       };
 
-      // File becomes hot after single read (minReadCount: 1), so it should be compressed
-      expect(duplicateReadStrategy.canCompress(context)).toBe(true);
+      // Single read should not be compressed
+      expect(duplicateReadStrategy.canCompress(context)).toBe(false);
     });
 
-    it('should compress reads of hot files with different content hashes', () => {
+    it('should compress older reads even with different content', () => {
       const messages: LLMMessage[] = [
         {
           role: 'assistant',
@@ -291,7 +168,6 @@ describe('DuplicateFileReadStrategy', () => {
         createToolMessage('call_3', 'readFile', 'const value = 2;'),
       ];
 
-      hotFileStrategy.analyzeMessages(messages);
       duplicateReadStrategy.analyzeMessages(messages);
 
       const firstReadContext: CompressionContext = {
@@ -310,23 +186,14 @@ describe('DuplicateFileReadStrategy', () => {
         nextMessage: undefined,
       };
 
-      // BOTH reads should be compressed since the file is hot (already in hot files context)
-      // Hot files are compressed regardless of content hash differences
+      // First read should be compressed (older), second read should be kept (most recent)
       expect(duplicateReadStrategy.canCompress(firstReadContext)).toBe(true);
-      expect(duplicateReadStrategy.canCompress(secondReadContext)).toBe(true);
+      expect(duplicateReadStrategy.canCompress(secondReadContext)).toBe(false);
     });
   });
 
   describe('compress - duplicate reads', () => {
-    it('should create reference to previous read with line number', () => {
-      // Use higher thresholds so the file isn't considered "hot"
-      const nonHotStrategy = new HotFileInclusionStrategy('/test/app', {
-        minReadCount: 5,
-        minWriteCount: 5,
-        recencyWindowMs: 10 * 60 * 1000,
-      });
-      const duplicateStrategy = new DuplicateFileReadStrategy(nonHotStrategy);
-
+    it('should create reference to most recent read with message number', () => {
       const messages: LLMMessage[] = [
         {
           role: 'assistant',
@@ -360,8 +227,7 @@ describe('DuplicateFileReadStrategy', () => {
         createToolMessage('call_2', 'readFile', 'File content'),
       ];
 
-      nonHotStrategy.analyzeMessages(messages);
-      duplicateStrategy.analyzeMessages(messages);
+      duplicateReadStrategy.analyzeMessages(messages);
 
       const context: CompressionContext = {
         messageIndex: 1,
@@ -371,13 +237,13 @@ describe('DuplicateFileReadStrategy', () => {
         nextMessage: messages[2],
       };
 
-      const compressed = duplicateStrategy.compress(context);
+      const compressed = duplicateReadStrategy.compress(context);
 
       expect(compressed).not.toBeNull();
       const content = getMessageContent(compressed!);
       expect(content).toContain('src/test.ts');
-      expect(content).toContain('Duplicate file read removed');
-      expect(content).toMatch(/message #\d+/);
+      expect(content).toContain('Repeated file read removed');
+      expect(content).toContain('later in the conversation');
     });
   });
 
@@ -469,7 +335,6 @@ describe('DuplicateFileReadStrategy', () => {
         createToolMessage('call_2', 'readFile', 'Content'),
       ];
 
-      hotFileStrategy.analyzeMessages(messages);
       duplicateReadStrategy.analyzeMessages(messages);
 
       const context: CompressionContext = {
@@ -539,19 +404,10 @@ describe('DuplicateFileReadStrategy', () => {
     });
   });
 
-  describe('integration with hot files', () => {
-    it('should prioritize hot file removal over duplicate detection', () => {
-      // Create hot file strategy with minReadCount: 3 so we can distinguish hot from cold
-      const testHotFileStrategy = new HotFileInclusionStrategy('/test/app', {
-        minReadCount: 3,
-        minWriteCount: 3,
-        recencyWindowMs: 10 * 60 * 1000,
-      });
-      const testDuplicateStrategy = new DuplicateFileReadStrategy(testHotFileStrategy);
-
-      // hot.ts is read 3 times (becomes hot), cold.ts is read 2 times (stays cold)
+  describe('multiple files', () => {
+    it('should track duplicates for multiple different files independently', () => {
       const messages: LLMMessage[] = [
-        // First read of hot.ts
+        // First read of file1
         {
           role: 'assistant',
           content: '',
@@ -561,13 +417,13 @@ describe('DuplicateFileReadStrategy', () => {
               type: 'function',
               function: {
                 name: 'readFile',
-                arguments: JSON.stringify({ path: 'src/hot.ts' }),
+                arguments: JSON.stringify({ path: 'src/file1.ts' }),
               },
             },
           ],
         },
-        createToolMessage('call_1', 'readFile', 'Hot file content'),
-        // Second read of hot.ts
+        createToolMessage('call_1', 'readFile', 'File 1 content'),
+        // First read of file2
         {
           role: 'assistant',
           content: '',
@@ -577,13 +433,13 @@ describe('DuplicateFileReadStrategy', () => {
               type: 'function',
               function: {
                 name: 'readFile',
-                arguments: JSON.stringify({ path: 'src/hot.ts' }),
+                arguments: JSON.stringify({ path: 'src/file2.ts' }),
               },
             },
           ],
         },
-        createToolMessage('call_2', 'readFile', 'Hot file content'),
-        // Third read of hot.ts (makes it hot)
+        createToolMessage('call_2', 'readFile', 'File 2 content'),
+        // Second read of file1
         {
           role: 'assistant',
           content: '',
@@ -593,13 +449,13 @@ describe('DuplicateFileReadStrategy', () => {
               type: 'function',
               function: {
                 name: 'readFile',
-                arguments: JSON.stringify({ path: 'src/hot.ts' }),
+                arguments: JSON.stringify({ path: 'src/file1.ts' }),
               },
             },
           ],
         },
-        createToolMessage('call_3', 'readFile', 'Hot file content'),
-        // First read of cold.ts
+        createToolMessage('call_3', 'readFile', 'File 1 content'),
+        // Second read of file2
         {
           role: 'assistant',
           content: '',
@@ -609,80 +465,146 @@ describe('DuplicateFileReadStrategy', () => {
               type: 'function',
               function: {
                 name: 'readFile',
-                arguments: JSON.stringify({ path: 'src/cold.ts' }),
+                arguments: JSON.stringify({ path: 'src/file2.ts' }),
               },
             },
           ],
         },
-        createToolMessage('call_4', 'readFile', 'Cold file content'),
-        // Second read of cold.ts (still not hot, just a duplicate)
-        {
-          role: 'assistant',
-          content: '',
-          tool_calls: [
-            {
-              id: 'call_5',
-              type: 'function',
-              function: {
-                name: 'readFile',
-                arguments: JSON.stringify({ path: 'src/cold.ts' }),
-              },
-            },
-          ],
-        },
-        createToolMessage('call_5', 'readFile', 'Cold file content'),
+        createToolMessage('call_4', 'readFile', 'File 2 content'),
       ];
 
-      testHotFileStrategy.analyzeMessages(messages);
-      testDuplicateStrategy.analyzeMessages(messages);
+      duplicateReadStrategy.analyzeMessages(messages);
 
-      const hotFirstRead: CompressionContext = {
+      // First read of file1 (index 1) - should be compressed
+      const file1FirstRead: CompressionContext = {
         messageIndex: 1,
-        totalMessages: 10,
+        totalMessages: 8,
         message: messages[1]!,
         previousMessage: messages[0],
         nextMessage: messages[2],
       };
 
-      const hotThirdRead: CompressionContext = {
+      // First read of file2 (index 3) - should be compressed
+      const file2FirstRead: CompressionContext = {
+        messageIndex: 3,
+        totalMessages: 8,
+        message: messages[3]!,
+        previousMessage: messages[2],
+        nextMessage: messages[4],
+      };
+
+      // Second read of file1 (index 5) - should NOT be compressed (most recent)
+      const file1SecondRead: CompressionContext = {
         messageIndex: 5,
-        totalMessages: 10,
+        totalMessages: 8,
         message: messages[5]!,
         previousMessage: messages[4],
         nextMessage: messages[6],
       };
 
-      const coldFirstRead: CompressionContext = {
+      // Second read of file2 (index 7) - should NOT be compressed (most recent)
+      const file2SecondRead: CompressionContext = {
         messageIndex: 7,
-        totalMessages: 10,
+        totalMessages: 8,
         message: messages[7]!,
         previousMessage: messages[6],
-        nextMessage: messages[8],
-      };
-
-      const coldSecondRead: CompressionContext = {
-        messageIndex: 9,
-        totalMessages: 10,
-        message: messages[9]!,
-        previousMessage: messages[8],
         nextMessage: undefined,
       };
 
-      // hot.ts: ALL reads should be compressed (file is in hot files context)
-      expect(testDuplicateStrategy.canCompress(hotFirstRead)).toBe(true);
-      expect(testDuplicateStrategy.canCompress(hotThirdRead)).toBe(true);
-      // cold.ts: first read can be compressed, second read (most recent) cannot
-      expect(testDuplicateStrategy.canCompress(coldFirstRead)).toBe(true);
-      expect(testDuplicateStrategy.canCompress(coldSecondRead)).toBe(false);
+      expect(duplicateReadStrategy.canCompress(file1FirstRead)).toBe(true);
+      expect(duplicateReadStrategy.canCompress(file2FirstRead)).toBe(true);
+      expect(duplicateReadStrategy.canCompress(file1SecondRead)).toBe(false);
+      expect(duplicateReadStrategy.canCompress(file2SecondRead)).toBe(false);
+    });
+  });
 
-      const hotCompressed = testDuplicateStrategy.compress(hotFirstRead);
-      const coldCompressed = testDuplicateStrategy.compress(coldFirstRead);
+  describe('getStats', () => {
+    it('should return accurate statistics', () => {
+      const messages: LLMMessage[] = [
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: {
+                name: 'readFile',
+                arguments: JSON.stringify({ path: 'src/file1.ts' }),
+              },
+            },
+          ],
+        },
+        createToolMessage('call_1', 'readFile', 'Content 1'),
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'call_2',
+              type: 'function',
+              function: {
+                name: 'readFile',
+                arguments: JSON.stringify({ path: 'src/file1.ts' }),
+              },
+            },
+          ],
+        },
+        createToolMessage('call_2', 'readFile', 'Content 1'),
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'call_3',
+              type: 'function',
+              function: {
+                name: 'readFile',
+                arguments: JSON.stringify({ path: 'src/file2.ts' }),
+              },
+            },
+          ],
+        },
+        createToolMessage('call_3', 'readFile', 'Content 2'),
+      ];
 
-      const hotContent = getMessageContent(hotCompressed!);
-      const coldContent = getMessageContent(coldCompressed!);
-      expect(hotContent).toContain('included in hot files context');
-      expect(coldContent).toContain('Duplicate file read removed');
-      expect(coldContent).toMatch(/message #\d+/);
+      duplicateReadStrategy.analyzeMessages(messages);
+      const stats = duplicateReadStrategy.getStats();
+
+      expect(stats.totalFiles).toBe(2);
+      expect(stats.filesWithDuplicates).toBe(1); // file1.ts has duplicates
+      expect(stats.totalReads).toBe(3);
+      expect(stats.duplicateReads).toBe(1); // one duplicate of file1.ts
+    });
+  });
+
+  describe('clear', () => {
+    it('should clear internal state', () => {
+      const messages: LLMMessage[] = [
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: {
+                name: 'readFile',
+                arguments: JSON.stringify({ path: 'src/file.ts' }),
+              },
+            },
+          ],
+        },
+        createToolMessage('call_1', 'readFile', 'Content'),
+      ];
+
+      duplicateReadStrategy.analyzeMessages(messages);
+      let stats = duplicateReadStrategy.getStats();
+      expect(stats.totalFiles).toBe(1);
+
+      duplicateReadStrategy.clear();
+      stats = duplicateReadStrategy.getStats();
+      expect(stats.totalFiles).toBe(0);
     });
   });
 });

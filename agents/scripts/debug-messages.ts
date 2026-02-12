@@ -9,8 +9,7 @@
  * 2. LLM conversion
  * 3. Compression
  * 4. Token limiting
- * 5. Hot files injection
- * 6. Final messageProvider output
+ * 5. Final messageProvider output
  */
 
 import { ConversationRepository } from '../src/database/repositories/ConversationRepository.js';

@@ -59,7 +59,7 @@ async function buildDevelopSystemPrompt(): Promise<string> {
 }
 
 interface ContextSection {
-  type: 'template' | 'app' | 'visual' | 'element' | 'conversation' | 'hot_files' | 'system_prompt' | 'unused'
+  type: 'template' | 'app' | 'visual' | 'element' | 'conversation' | 'system_prompt' | 'unused'
   role: 'system' | 'user'
   content: string
   tokenCount: number
@@ -158,11 +158,6 @@ router.get('/context/:appId', validateAppIdParam, async (req: Request, res: Resp
           }
         }
 
-        // 3. Hot files context - now handled by conversation history loader
-        // Hot files are automatically included during loadAllMessagesWithTokenLimit
-        // via the HotFileInclusionStrategy compression strategy.
-        // TODO: Add debug support to show hot files from history loader
-
       } catch (error) {
         logger.warn('debug.context.conversation_history.failure', {
           error: error instanceof Error ? error.message : String(error)
@@ -227,10 +222,7 @@ router.get('/context/:appId', validateAppIdParam, async (req: Request, res: Resp
       let sectionType: ContextSection['type'] = 'app' // default
 
       // Determine section type based on message type (if available) and content patterns
-      const messageType = (message as any).type
-      if (messageType === 'hot_files_context') {
-        sectionType = 'hot_files'
-      } else if (message.content.includes('[AI Edit Context]')) {
+      if (message.content.includes('[AI Edit Context]')) {
         sectionType = 'element'
       } else if (message.content.includes('[User\'s Current Visual Context]')) {
         sectionType = 'visual'
@@ -258,9 +250,6 @@ router.get('/context/:appId', validateAppIdParam, async (req: Request, res: Resp
         tokenCount
       })
     }
-
-    // Hot files are automatically included by buildContextMessages() via buildHotFilesContextMessage()
-    // No need to manually retrieve them here
 
     // Count system prompt tokens (use developSystemPrompt not systemPrompt)
     const systemPromptTokenResult = await countTokens(developSystemPrompt, TOKEN_COUNTING_MODEL)

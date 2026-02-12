@@ -1,5 +1,4 @@
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js';
-import { AppRepository } from '../database/repositories/AppRepository.js';
 import { AppContextManager } from './AppContextManager.js';
 import { TodoContextManager } from './TodoContextManager.js';
 import { LLMSummarizationStrategy } from './summarization/index.js';
@@ -8,8 +7,6 @@ import { logger } from '../logging/index.js';
 import { conversationContextEvents } from '../logging/events/index.js';
 import { ConversationHistoryLoader } from './ConversationHistoryLoader.js';
 import {
-  HotFileInclusionStrategy,
-  FileEditCompressionStrategy,
   DuplicateFileReadStrategy,
   AppContextRemovalStrategy,
   TodoListRemovalStrategy,
@@ -48,13 +45,7 @@ export class ConversationContextManager {
     // Note: Background summarization is initialized centrally via initializeBackgroundSummarization()
     // in the server startup code to ensure it uses the singleton conversationRepository
 
-    const hotFileStrategy = new HotFileInclusionStrategy();
-    const fileEditStrategy = new FileEditCompressionStrategy(hotFileStrategy);
-    const duplicateFileReadStrategy = new DuplicateFileReadStrategy(hotFileStrategy);
-
-    this.historyLoader.registerCompressionStrategy(hotFileStrategy);
-    this.historyLoader.registerCompressionStrategy(duplicateFileReadStrategy);
-    this.historyLoader.registerCompressionStrategy(fileEditStrategy);
+    this.historyLoader.registerCompressionStrategy(new DuplicateFileReadStrategy());
     // Remove all app context entries from history - fresh context is injected before history on every turn
     this.historyLoader.registerCompressionStrategy(new AppContextRemovalStrategy());
     // Remove all todoList entries from history - persistent [Current Todo List] section is the single source of truth
@@ -220,10 +211,6 @@ export class ConversationContextManager {
       return { messages: [] };
     }
 
-    const appRepo = new AppRepository();
-    const app = appRepo.findById(appId);
-    const appPath = app?.path;
-
     const maxTokens = 40000;
 
     try {
@@ -233,7 +220,6 @@ export class ConversationContextManager {
         maxTokens,
         undefined,
         true,
-        appPath,
         true // enableSummarization
       );
 

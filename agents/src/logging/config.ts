@@ -64,7 +64,6 @@ export function createConfigFromEnvironment(): LoggerConfig {
   } else {
     // Default opt-in domains (noisy debug logging)
     config.optInDomains = [
-      'compression.hot_files.load',
       'compression.file_edit',
       'compression.file_edit_input',
       'compression.message',
