@@ -488,3 +488,8 @@ linters:
           - gosec
           - noctx
           - wrapcheck
+      # waitgroup modernize check suggests WaitGroup.Go(), but traditional pattern
+      # is more reliable for concurrent tests that depend on precise timing
+      - text: "waitgroup: Goroutine creation can be simplified using WaitGroup.Go"
+        linters:
+          - modernize
