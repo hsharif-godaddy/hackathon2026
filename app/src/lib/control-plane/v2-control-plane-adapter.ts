@@ -1047,6 +1047,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       productId: app.system?.productId,
       variants: app.variants, // Simple string array ['preview', 'publish']
       variantsWithLifecycle: transformVariants(app.variantsWithLifecycle),
+      cellId: app.cellId,
     };
   }
 

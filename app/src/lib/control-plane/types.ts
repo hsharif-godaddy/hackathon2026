@@ -90,6 +90,7 @@ export interface SiteInfo {
   productId?: string; // V2 only: Product ID (e.g., "aab-v1", "paas-nodejs-v1")
   ownerProduct?: string; // V2 only: Owner product family (e.g., "AiroAppBuilder", "PaaSNodeJS")
   compositionId?: string; // V2 only: Composition type (e.g., "ai-builder", "node-app")
+  cellId?: string; // V2 only: Cell identifier (e.g., "c35-prod-sxb1-eu-central-1" or "c36-prod-p3-us-west-2")
 }
 
 /**

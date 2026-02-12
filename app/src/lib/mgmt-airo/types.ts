@@ -102,6 +102,7 @@ export interface AiroApp {
     };
     lastActivityTime?: string;
   }>;
+  cellId?: string;
 }
 
 /**
