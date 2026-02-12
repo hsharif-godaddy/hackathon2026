@@ -15,7 +15,13 @@ vi.mock('@/hooks/usePaywallEligibility', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => ({ data: true, isLoading: false })),
+  useSwitchboard: vi.fn((flag: string) => {
+    // Default: upgrade button enabled, grants enabled
+    if (flag === 'appbuilder-airoplus-upgrade-button' || flag === 'app-builder-grants') {
+      return { data: true, isLoading: false };
+    }
+    return { data: false, isLoading: false };
+  }),
 }));
 
 vi.mock('@/hooks/useResponsive', () => ({
@@ -41,8 +47,8 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
   beforeEach(async function setup() {
     vi.clearAllMocks();
     // Reset pathname mock to develop page for each test
-    const { usePathname } = await import('next/navigation');
-    vi.mocked(usePathname).mockReturnValue('/develop/test-app');
+    const nextNavigation = await import('next/navigation');
+    vi.mocked(nextNavigation).usePathname.mockReturnValue('/develop/test-app');
   });
 
   describe('rendering conditions', function renderingTests() {
@@ -51,7 +57,11 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+      });
 
       renderWithProviders(<HeaderUpgradeButton location="test" />);
 
@@ -75,7 +85,10 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: false, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+      });
 
       const { container } = renderWithProviders(<HeaderUpgradeButton location="test" />);
 
@@ -85,7 +98,10 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
     it('should not render while feature flag is loading', async function noRenderWhileFeatureLoading() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
-      vi.mocked(useSwitchboard).mockReturnValue({ data: undefined, isLoading: true } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: undefined, isLoading: true } as ReturnType<typeof useSwitchboard>;
+        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+      });
 
       const { container } = renderWithProviders(<HeaderUpgradeButton location="test" />);
 
@@ -105,11 +121,15 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
     it('should not render when not on develop page', async function noRenderOutsideDevelop() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      const { usePathname } = await import('next/navigation');
+      const nextNavigation = await import('next/navigation');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
-      vi.mocked(usePathname).mockReturnValue('/apps');
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+      });
+      vi.mocked(nextNavigation).usePathname.mockReturnValue('/apps');
 
       const { container } = renderWithProviders(<HeaderUpgradeButton location="test" />);
 
@@ -122,7 +142,11 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useResponsive } = await import('@/hooks/useResponsive');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+      });
       vi.mocked(useResponsive).mockReturnValue({ isMobile: false } as ReturnType<typeof useResponsive>);
 
       renderWithProviders(<HeaderUpgradeButton location="test" />);
@@ -138,7 +162,11 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useResponsive } = await import('@/hooks/useResponsive');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+      });
       vi.mocked(useResponsive).mockReturnValue({ isMobile: true } as ReturnType<typeof useResponsive>);
 
       renderWithProviders(<HeaderUpgradeButton location="test" />);
@@ -157,7 +185,11 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+      });
 
       const { user } = renderWithProviders(<HeaderUpgradeButton location="test" />);
 
@@ -168,22 +200,53 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       await user.click(screen.getByRole('button'));
 
       await waitFor(function waitForPopover() {
-        expect(screen.getByText('builder_upgrade_popover_title')).toBeInTheDocument();
+        // When grants is enabled, shows "plans" title
+        expect(screen.getByText('builder_upgrade_plans_popover_title')).toBeInTheDocument();
       });
     });
 
-    it('should display benefits in popover', async function displayBenefits() {
+    it('should display credits text when grants feature is enabled', async function displayBenefitsWithGrants() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+      });
 
       const { user } = renderWithProviders(<HeaderUpgradeButton location="test" />);
 
       await user.click(screen.getByRole('button'));
 
-      await waitFor(function waitForBenefits() {
+      await waitFor(function waitForTitleAndBenefits() {
+        // When grants is enabled, shows "plans" title and credits benefit
+        expect(screen.getByText('builder_upgrade_plans_popover_title')).toBeInTheDocument();
+        expect(screen.getByText('builder_upgrade_benefit_code')).toBeInTheDocument();
+        expect(screen.getByText('builder_upgrade_benefit_credits')).toBeInTheDocument();
+        expect(screen.getByText('builder_upgrade_benefit_publish')).toBeInTheDocument();
+      });
+    });
+
+    it('should display legacy payments text when grants feature is disabled', async function displayBenefitsWithoutGrants() {
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'app-builder-grants') return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+      });
+
+      const { user } = renderWithProviders(<HeaderUpgradeButton location="test" />);
+
+      await user.click(screen.getByRole('button'));
+
+      await waitFor(function waitForTitleAndBenefits() {
+        // When grants is disabled, shows non-plans title and payments benefit
+        expect(screen.getByText('builder_upgrade_popover_title')).toBeInTheDocument();
         expect(screen.getByText('builder_upgrade_benefit_code')).toBeInTheDocument();
         expect(screen.getByText('builder_upgrade_benefit_payments')).toBeInTheDocument();
         expect(screen.getByText('builder_upgrade_benefit_publish')).toBeInTheDocument();
@@ -195,7 +258,11 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+      });
 
       const { user } = renderWithProviders(<HeaderUpgradeButton location="test" />);
 
@@ -203,13 +270,12 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       await user.click(screen.getByRole('button'));
 
       await waitFor(function waitForCta() {
-        expect(screen.getByText('builder_upgrade_popover_cta')).toBeInTheDocument();
+        // When grants is enabled, shows "plans" CTA
+        expect(screen.getByText('builder_upgrade_plans_popover_cta')).toBeInTheDocument();
       });
 
-      // Click the CTA button (second button in the popover)
-      const buttons = screen.getAllByRole('button');
-      const ctaButton = buttons.find(btn => btn.textContent === 'builder_upgrade_popover_cta');
-      await user.click(ctaButton!);
+      // Click the CTA button using accessible name
+      await user.click(screen.getByRole('button', { name: 'builder_upgrade_plans_popover_cta' }));
 
       expect(mockOpenUpgradeModal).toHaveBeenCalledWith('header.upgrade_button', PAYWALL_ITC.UPGRADE);
     });
@@ -219,23 +285,57 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+      });
 
       const { user } = renderWithProviders(<HeaderUpgradeButton location="header" />);
 
       await user.click(screen.getByRole('button'));
 
       await waitFor(function waitForCta() {
-        expect(screen.getByText('builder_upgrade_popover_cta')).toBeInTheDocument();
+        // When grants is enabled, shows "plans" CTA
+        expect(screen.getByText('builder_upgrade_plans_popover_cta')).toBeInTheDocument();
       });
 
-      const buttons = screen.getAllByRole('button');
-      const ctaButton = buttons.find(btn => btn.textContent === 'builder_upgrade_popover_cta');
-      await user.click(ctaButton!);
+      await user.click(screen.getByRole('button', { name: 'builder_upgrade_plans_popover_cta' }));
 
       expect(mockShipAnalyticsLog).toHaveBeenCalledWith('header.upgrade_button.clicked', {
         appId: 'test-app-id',
         location: 'header',
+      });
+    });
+
+    it('should call openUpgradeModal with legacy CTA when grants is disabled', async function clickLegacyCta() {
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'app-builder-grants') return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+      });
+
+      const { user } = renderWithProviders(<HeaderUpgradeButton location="test" />);
+
+      // Open popover
+      await user.click(screen.getByRole('button'));
+
+      await waitFor(function waitForCta() {
+        // When grants is disabled, shows legacy CTA
+        expect(screen.getByText('builder_upgrade_popover_cta')).toBeInTheDocument();
+      });
+
+      // Click the legacy CTA button
+      await user.click(screen.getByRole('button', { name: 'builder_upgrade_popover_cta' }));
+
+      expect(mockOpenUpgradeModal).toHaveBeenCalledWith('header.upgrade_button', PAYWALL_ITC.UPGRADE);
+      expect(mockShipAnalyticsLog).toHaveBeenCalledWith('header.upgrade_button.clicked', {
+        appId: 'test-app-id',
+        location: 'test',
       });
     });
   });
@@ -246,19 +346,23 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-airoplus-upgrade-button') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
+        return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
+      });
 
       const { user } = renderWithProviders(<HeaderUpgradeButton />);
 
       await user.click(screen.getByRole('button'));
 
       await waitFor(function waitForCta() {
-        expect(screen.getByText('builder_upgrade_popover_cta')).toBeInTheDocument();
+        // When grants is enabled, shows "plans" CTA
+        expect(screen.getByText('builder_upgrade_plans_popover_cta')).toBeInTheDocument();
       });
 
-      const buttons = screen.getAllByRole('button');
-      const ctaButton = buttons.find(btn => btn.textContent === 'builder_upgrade_popover_cta');
-      await user.click(ctaButton!);
+      // Click the CTA button using accessible name
+      await user.click(screen.getByRole('button', { name: 'builder_upgrade_plans_popover_cta' }));
 
       expect(mockShipAnalyticsLog).toHaveBeenCalledWith('header.upgrade_button.clicked', {
         appId: 'test-app-id',

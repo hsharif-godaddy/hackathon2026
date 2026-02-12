@@ -10,12 +10,16 @@ import MessageToolCallsRenderer from '@/app/develop/components/MessageToolCallsR
 import ResponseMetadata from '@/app/develop/components/ResponseMetadata'
 import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessage'
 import { hasValidSegments, isStreamingMessage } from '@/app/develop/components/utils'
+import { useCreditGrants } from '@/hooks/useCreditGrants'
+import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
+import { SubscriptionPlan } from '@/types/credits'
+import { getMonthlyPlanGrant, getPlanFromSubscription } from '@/utils/credits'
 
 interface StreamingIntegratedResponseProps {
   message: ChatMessage | StreamingMessageType
@@ -49,19 +53,42 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
   const intl = useIntl();
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const openCreditsModal = useDevelopPageStore((state) => state.openCreditsModal)
-  const { data: purchaseEnabled } = useSwitchboard('appbuilder-usage-purchase')
   const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
   const hasSegments = hasValidSegments(message)
   const isComplete = isStreamingMessage(message) ? message.isComplete : true
 
-  // Calculate formatted reset time as "today at [time] [timezone]" or "tomorrow at [time] [timezone]"
+  // Subscription and grants for determining reset time when grants are enabled
+  const { data: subscription, isLoading: isSubscriptionLoading } = useSubscription()
+  const { data: grants } = useCreditGrants({
+    subscriptionId: isGrantsEnabled ? subscription?.id : undefined,
+  })
+
+  const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
+  const isFreePlan = !isSubscriptionLoading && subscription !== undefined &&
+    (currentPlan === SubscriptionPlan.Free || currentPlan === SubscriptionPlan.None)
+
+  // When grants enabled: use the plan-monthly grant's useBefore date
+  // When grants disabled: use legacy "today at" / "tomorrow at" format
   const resetTime = useMemo(() => {
+    if (isGrantsEnabled) {
+      if (!grants) return undefined;
+      const planGrant = getMonthlyPlanGrant(grants);
+      if (planGrant?.useBefore) {
+        const useByDate = new Date(planGrant.useBefore);
+        const date = intl.formatDate(useByDate, { month: 'long', day: 'numeric' });
+        const time = intl.formatDate(useByDate, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+        return t('builder_usage_limit_reset_on_date', { date, time });
+      }
+      return undefined;
+    }
+
+    // Legacy: "today at" / "tomorrow at" format
     const { date, isTomorrow } = getNextResetInfo();
     const time = intl.formatDate(date, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
     return isTomorrow
       ? t('builder_usage_limit_reset_tomorrow', { time }, `tomorrow at ${time}`)
       : t('builder_usage_limit_reset_today', { time }, `today at ${time}`);
-  }, [intl, t]);
+  }, [intl, t, isGrantsEnabled, grants]);
 
   /**
    * Extract tool calls directly from segments as a fallback when chronologicalContent is empty
@@ -263,16 +290,19 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                 t('builder_usage_limit_message_no_reset_time')
               )
             }
-            actions={purchaseEnabled && (
+            actions={isGrantsEnabled && (
               <div className="flex gap-2">
+                {/* When grants enabled: only show upgrade button if user is on free plan (not paid) */}
+                {isFreePlan && (
+                  <Button
+                    design="primary"
+                    size="sm"
+                    onClick={() => openUpgradeModal('budget_exceeded.upgrade', PAYWALL_ITC.UPGRADE)}
+                    text={t('builder_usage_gauge_upgrade')}
+                  />
+                )}
                 <Button
-                  design="primary"
-                  size="sm"
-                  onClick={() => openUpgradeModal('budget_exceeded.upgrade', PAYWALL_ITC.UPGRADE)}
-                  text={t('builder_usage_gauge_upgrade')}
-                />
-                <Button
-                  design="secondary"
+                  design={isFreePlan ? 'secondary' : 'primary'}
                   size="sm"
                   onClick={() => isGrantsEnabled
                     ? openCreditsModal('budget_exceeded.buy_credits', PAYWALL_ITC.CREDITS)

@@ -32,9 +32,10 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
 
   const { data: featureEnabled, isLoading: isFeatureLoading } = useSwitchboard('appbuilder-airoplus-upgrade-button');
+  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants');
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(currentAppId || undefined);
 
-  // Only show on develop page, when feature enabled, and user doesn't have Airo Plus
+  // Only show on develop page, when feature enabled, and user doesn't have paid plan
   if (!isDevelopPage || isFeatureLoading || isPaywallLoading || !featureEnabled || !showPaywall) return null;
 
   const handleUpgradeClick = () => {
@@ -46,9 +47,10 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
     });
   };
 
+  // When grants feature is enabled, use new paid-plan benefit text
   const benefits = [
     t('builder_upgrade_benefit_code'),
-    t('builder_upgrade_benefit_payments'),
+    isGrantsEnabled ? t('builder_upgrade_benefit_credits') : t('builder_upgrade_benefit_payments'),
     t('builder_upgrade_benefit_publish'),
   ];
 
@@ -71,8 +73,8 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
         className='w-[300px] p-3'
       >
         <div className='flex flex-col'>
-          <text.h4 as='title' className='mb-2'>
-            {t('builder_upgrade_popover_title')}
+          <text.h4 as='title' className='mb-1'>
+            { isGrantsEnabled ?  t('builder_upgrade_plans_popover_title') : t('builder_upgrade_popover_title') }
           </text.h4>
           <ul className='flex flex-col gap-1 mb-3'>
             {benefits.map((benefit, index) => (
@@ -90,7 +92,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
             data-partial='componentAiro'
             data-eid={generateClickEID(`${location}.header.upgrade_popover`)}
             onClick={handleUpgradeClick}
-            text={t('builder_upgrade_popover_cta')}
+            text={isGrantsEnabled ? t('builder_upgrade_plans_popover_cta') : t('builder_upgrade_popover_cta')}
           />
         </div>
       </PopoverContent>
