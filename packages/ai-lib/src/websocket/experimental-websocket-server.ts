@@ -2424,20 +2424,17 @@ export class WebSocketServer {
     contextMessages.push(...beforeHistoryMessages)
 
     // 2. Conversation history (if provided) - preserve full message structure including tool calls
-    // CACHING: Add cache point to last history message. History is append-only (only changes
-    // when re-summarized), so caching the entire prefix including history is efficient.
+    // NOTE: We do NOT auto-add cache points here. Cache points are managed centrally by
+    // addCacheControlToMessages() in prompt-caching.ts which handles the last message caching.
+    // Adding cache points here caused exceeding Anthropic's 4 breakpoint limit (5 total).
     if (data.conversationHistory && data.conversationHistory.length > 0) {
       this.logger.info(`Adding ${data.conversationHistory.length} conversation history messages`)
-      const historyLength = data.conversationHistory.length
-      const convertedHistoryMessages = data.conversationHistory.map((msg, index) => {
-        const isLastMessage = index === historyLength - 1
+      const convertedHistoryMessages = data.conversationHistory.map((msg) => {
         const converted: any = {
           role: msg.role,
           content: msg.content,
-          // Preserve existing cache points, or add one to the last history message
-          // This allows caching of the entire stable prefix (system + context + history)
-          ...(msg.cachePoint && { cachePoint: msg.cachePoint }),
-          ...(isLastMessage && !msg.cachePoint && { cachePoint: { type: 'ephemeral' } })
+          // Preserve existing cache points from history (e.g., from summarization)
+          ...(msg.cachePoint && { cachePoint: msg.cachePoint })
         }
 
         // Preserve tool calls for assistant messages
