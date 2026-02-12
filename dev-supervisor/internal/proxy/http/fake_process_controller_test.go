@@ -23,6 +23,7 @@ type fakeProcessController struct {
 	startOnRequestEnabled  bool
 	wasHealthyBeforeIdle   bool
 	registerWebSocketCalls int
+	stateChangeCh          chan struct{} // Lazily initialized in GetStateChangeChan()
 }
 
 func (f *fakeProcessController) GetStartRequest() *validation.ProcessStartRequest {
@@ -33,9 +34,9 @@ func (f *fakeProcessController) GetStartRequest() *validation.ProcessStartReques
 
 func (f *fakeProcessController) Start(req validation.ProcessStartRequest) error {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.startCalls++
 	if f.startErr != nil {
+		f.mu.Unlock()
 		return f.startErr
 	}
 	if f.startRequest == nil {
@@ -45,6 +46,10 @@ func (f *fakeProcessController) Start(req validation.ProcessStartRequest) error 
 	if f.status.PID == 0 {
 		f.status.PID = 1234
 	}
+	f.mu.Unlock()
+
+	// Broadcast state change to wake up any waiters
+	f.broadcastStateChange()
 	return nil
 }
 
@@ -99,3 +104,25 @@ func (f *fakeProcessController) RegisterWebSocket(_ net.Conn) {
 }
 
 func (f *fakeProcessController) UnregisterWebSocket(_ net.Conn) {}
+
+func (f *fakeProcessController) GetStateChangeChan() <-chan struct{} {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// Lazy initialization for test convenience (avoids requiring constructor usage)
+	if f.stateChangeCh == nil {
+		f.stateChangeCh = make(chan struct{})
+	}
+	return f.stateChangeCh
+}
+
+func (f *fakeProcessController) broadcastStateChange() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// Lazy initialization for test convenience (avoids requiring constructor usage)
+	if f.stateChangeCh == nil {
+		f.stateChangeCh = make(chan struct{})
+		return // Nothing to broadcast on first call
+	}
+	close(f.stateChangeCh)
+	f.stateChangeCh = make(chan struct{})
+}

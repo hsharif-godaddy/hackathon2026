@@ -76,3 +76,7 @@ func (p *processController) RegisterWebSocket(conn net.Conn) {
 func (p *processController) UnregisterWebSocket(conn net.Conn) {
 	p.pm.UnregisterWebSocket(conn)
 }
+
+func (p *processController) GetStateChangeChan() <-chan struct{} {
+	return p.pm.GetStateChangeChan()
+}

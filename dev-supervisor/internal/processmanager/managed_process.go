@@ -38,6 +38,10 @@ type ManagedProcess struct {
 
 	usePID1Wait    bool
 	externalWaitCh chan error
+
+	// State change callback
+	// Called whenever the process state changes, allowing ProcessManager to broadcast
+	onStateChange func()
 }
 
 // NewManagedProcess creates a new process instance.
@@ -248,6 +252,17 @@ func (mp *ManagedProcess) waitForCompletion(pid1Mgr *process.PID1Manager) {
 		}
 	}
 	mp.infoMu.Unlock()
+
+	// Notify ProcessManager of state change in a separate goroutine.
+	// NOTE: At this point, no locks are held (mp.infoMu was released above).
+	// The callback acquires pm.mu (ProcessManager lock, different struct).
+	// The goroutine spawn is defensive programming to ensure the callback
+	// can't block this cleanup goroutine, which is important for proper
+	// process lifecycle management. This also allows the callback to safely
+	// perform any long-running operations without blocking process exit.
+	if mp.onStateChange != nil {
+		go mp.onStateChange()
+	}
 
 	// Unregister from PID 1 manager when we owned the wait.
 	if pid1Mgr != nil && !mp.usePID1Wait {

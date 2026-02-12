@@ -170,6 +170,7 @@ type ProcessController interface {
 	UntrackRequest()
 	EnableStartOnRequest(idleTimeout, checkInterval time.Duration)
 	WasHealthyBeforeIdle() bool
+	GetStateChangeChan() <-chan struct{}
 }
 
 // Sentinel errors for start-on-request handling.

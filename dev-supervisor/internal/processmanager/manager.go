@@ -46,6 +46,26 @@ type ProcessManager struct {
 	wasHealthyBeforeIdle atomic.Bool
 
 	savedStartRequest *validation.ProcessStartRequest // Saved for deferred start
+
+	// State change broadcasting using close-and-replace pattern.
+	//
+	// Pattern: Close channel on state change, create new one for future waiters.
+	//
+	// Why this works (memory ordering guarantees):
+	// 1. Waiter calls GetStateChangeChan() (acquires RLock) -> gets channel reference
+	// 2. Waiter checks process status (synchronizes via RLock in GetStatus)
+	// 3. If state is still changing, waiter waits on channel
+	// 4. State change calls broadcastStateChangeLocked() (acquires Lock) -> closes channel
+	//
+	// The RLock in GetStateChangeChan() establishes a happens-before relationship with
+	// the Lock in broadcastStateChangeLocked(). This guarantees that if a state change
+	// happens after step 1, the waiter will either:
+	// - See the new state in step 2 (synchronized read), OR
+	// - Have the channel closed in step 4 (waking them to re-check)
+	//
+	// This prevents missing notifications: we can't miss a state change because the
+	// channel read in step 1 synchronizes with the channel close in step 4.
+	stateChangeCh chan struct{}
 }
 
 func NewProcessManager(logMgr logs.Logger, pid1Mgr *process.PID1Manager) *ProcessManager {
@@ -56,7 +76,34 @@ func NewProcessManager(logMgr logs.Logger, pid1Mgr *process.PID1Manager) *Proces
 		healthMon:             health.NewMonitor(logMgr),
 		enableLogging:         true,                               // Default: enable child process logging
 		outputToStructuredLog: config.GetProcessLoggingToStdout(), // Default: enable structured logging output, configurable via env
+		stateChangeCh:         make(chan struct{}),                // Initialize state change broadcast channel
 	}
+}
+
+// broadcastStateChangeLocked notifies all waiters that process state has changed.
+// MUST be called while holding pm.mu lock (name suffix documents this requirement).
+//
+// Closes the current channel (waking all waiters) and creates a new one for future waiters.
+// The Lock held during this call synchronizes with RLock in GetStateChangeChan(), ensuring
+// waiters see either the updated state or get woken by channel close.
+func (pm *ProcessManager) broadcastStateChangeLocked() {
+	close(pm.stateChangeCh)
+	pm.stateChangeCh = make(chan struct{})
+}
+
+// GetStateChangeChan returns the current state change channel for waiting.
+//
+// Callers MUST follow this pattern to avoid missing notifications:
+// 1. Call GetStateChangeChan() to get channel reference
+// 2. Check process status via GetStatus()
+// 3. If status requires waiting, wait on channel from step 1
+//
+// The RLock here synchronizes with Lock in broadcastStateChangeLocked(), guaranteeing
+// that state changes are never missed (see stateChangeCh field documentation for details).
+func (pm *ProcessManager) GetStateChangeChan() <-chan struct{} {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return pm.stateChangeCh
 }
 
 func (pm *ProcessManager) Start(req validation.ProcessStartRequest) error {
@@ -84,6 +131,9 @@ func (pm *ProcessManager) Start(req validation.ProcessStartRequest) error {
 		return err
 	}
 
+	// Set state change callback to broadcast state changes
+	pm.attachStateChangeBroadcast(managedProcess)
+
 	// Start the managed process
 	if err := managedProcess.Start(pm.logMgr, pm.pid1Mgr, pm.enableLogging, pm.outputToStructuredLog); err != nil {
 		return err
@@ -91,6 +141,9 @@ func (pm *ProcessManager) Start(req validation.ProcessStartRequest) error {
 
 	// Replace current process
 	pm.currentProcess = managedProcess
+
+	// Broadcast state change to wake up any waiters
+	pm.broadcastStateChangeLocked()
 
 	// Start health monitoring if configured
 	pm.healthMon.Start(func() error {
@@ -139,7 +192,12 @@ func (pm *ProcessManager) Stop(req ProcessStopRequest) error {
 	pm.healthMon.Stop()
 
 	// Stop the managed process
-	return pm.currentProcess.Stop(req.Signal, req.Timeout)
+	err := pm.currentProcess.Stop(req.Signal, req.Timeout)
+
+	// Broadcast state change to wake up any waiters
+	pm.broadcastStateChangeLocked()
+
+	return err
 }
 
 // stopForIdle stops the process due to idle timeout and sets wasHealthyBeforeIdle.
@@ -180,6 +238,10 @@ func (pm *ProcessManager) stopForIdle() error {
 		// before idle timeout triggers.
 		pm.wasHealthyBeforeIdle.Store(true)
 	}
+
+	// Broadcast state change to wake up any waiters
+	pm.broadcastStateChangeLocked()
+
 	return err
 }
 
@@ -225,6 +287,9 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 		return err
 	}
 
+	// Set state change callback to broadcast state changes
+	pm.attachStateChangeBroadcast(managedProcess)
+
 	if err := managedProcess.Start(pm.logMgr, pm.pid1Mgr, pm.enableLogging, pm.outputToStructuredLog); err != nil {
 		slog.Error("failed to start new process", "error", err)
 		return err
@@ -240,6 +305,9 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 		"command", config.Command,
 		"working_dir", config.WorkingDir,
 		"restart_count", pm.restartCount)
+
+	// Broadcast state change to wake up any waiters
+	pm.broadcastStateChangeLocked()
 
 	// Start health monitoring again if configured
 	pm.healthMon.Start(func() error {
@@ -334,8 +402,23 @@ func (pm *ProcessManager) StopAllProcesses() {
 		slog.Error("failed to stop process during cleanup", "error", err, "signal", stopReq.Signal)
 	}
 
+	// Broadcast state change after stop completes
+	pm.mu.Lock()
+	pm.broadcastStateChangeLocked()
+	pm.mu.Unlock()
+
 	// The Stop() method already waits with timeout, so no need to call WaitForCompletion()
 	// which could block indefinitely. The process will clean up asynchronously.
+}
+
+// attachStateChangeBroadcast sets up the state change callback for a managed process.
+// Centralizes the callback wiring to ensure consistent locking behavior.
+func (pm *ProcessManager) attachStateChangeBroadcast(mp *ManagedProcess) {
+	mp.onStateChange = func() {
+		pm.mu.Lock()
+		defer pm.mu.Unlock()
+		pm.broadcastStateChangeLocked()
+	}
 }
 
 // GetStartRequest returns the current process start request for auto-restart.
