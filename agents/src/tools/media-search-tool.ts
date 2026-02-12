@@ -33,8 +33,6 @@ import { AppRepository } from '../database/repositories/AppRepository.js';
 import { nanoid } from 'nanoid';
 import { logger } from '../logging/index.js';
 import { toolImageSearchEvents, toolVideoSearchEvents, toolImageGenerationEvents } from '../logging/events/index.js';
-import { ImageAnalysisService, IMAGE_ANALYSIS_CONFIG } from '../services/index.js';
-import { getFeatures } from '../services/features.js';
 import OpenAI from 'openai';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -58,13 +56,6 @@ export interface MediaSearchOptions {
   appId?: string;
   size?: '1024x1024' | '1024x1536' | '1536x1024' | 'auto';
   filename?: string;
-  // Image analysis options
-  analyzeImages?: boolean;     // Default: true for image search
-  relevanceThreshold?: number; // Default: 0.5, range 0-1
-  skipCache?: boolean;         // Force re-analysis, default: false
-  // Context for cost tracking
-  conversationId?: string;
-  customerId?: string;
 }
 
 /**
@@ -86,22 +77,6 @@ export interface MediaSearchResult {
   filepath?: string;
   publicPath?: string;
   base64Data?: string;
-  // For image analysis
-  images?: Array<{
-    url: string;
-    gettyId: string;
-    relevanceScore: number | null;
-    analysis: {
-      description: string;
-      composition: string;
-      usageContext: string;
-    } | null;
-    fromCache: boolean;
-    analysisSkipped?: boolean;
-    skipReason?: string;
-  }>;
-  filtered?: number;
-  warning?: string;
 }
 
 /**
@@ -132,7 +107,6 @@ export class MediaSearchTool {
    * @param size - Image size for generation (only for 'generate')
    * @param filename - Custom filename for generation (only for 'generate')
    * @param options - Additional search options (orientations, compositions, color)
-   * @param analysisOptions - Image analysis options (analyzeImages, relevanceThreshold, skipCache)
    * @returns An object containing the media URL(s) or generation result
    */
   async searchMedia(
@@ -146,13 +120,6 @@ export class MediaSearchTool {
       orientations?: string;
       compositions?: string;
       color?: string;
-    },
-    analysisOptions?: {
-      analyzeImages?: boolean;
-      relevanceThreshold?: number;
-      skipCache?: boolean;
-      conversationId?: string;
-      customerId?: string;
     }
   ): Promise<MediaSearchResult> {
     // Image generation
@@ -197,7 +164,7 @@ export class MediaSearchTool {
         };
       }
 
-      return this.searchSingle(prompt, 'video', 1, options, { analyzeImages: false });
+      return this.searchSingle(prompt, 'video', 1, options);
     }
 
     // Image search (default)
@@ -216,10 +183,7 @@ export class MediaSearchTool {
         };
       }
 
-      return this.searchParallel(prompt, count || 1, options, {
-        ...analysisOptions,
-        appId,
-      });
+      return this.searchParallel(prompt, count || 1, options);
     }
 
     // Single image search
@@ -237,10 +201,7 @@ export class MediaSearchTool {
       };
     }
 
-    return this.searchSingle(prompt, 'image', count || 1, options, {
-      ...analysisOptions,
-      appId,
-    });
+    return this.searchSingle(prompt, 'image', count || 1, options);
   }
 
   /**
@@ -250,7 +211,6 @@ export class MediaSearchTool {
    * @param mediaType - Type of media to search
    * @param count - Number of results (only for images)
    * @param options - Additional search options
-   * @param analysisOptions - Image analysis options
    * @returns Promise resolving to media search result
    */
   private async searchSingle(
@@ -261,14 +221,6 @@ export class MediaSearchTool {
       orientations?: string;
       compositions?: string;
       color?: string;
-    },
-    analysisOptions?: {
-      analyzeImages?: boolean;
-      relevanceThreshold?: number;
-      skipCache?: boolean;
-      appId?: string;
-      conversationId?: string;
-      customerId?: string;
     }
   ): Promise<MediaSearchResult> {
     try {
@@ -280,15 +232,10 @@ export class MediaSearchTool {
         provider: 'getty',
       });
 
-      // Request 2x images when analyzing to allow for filtering
-      const features = getFeatures();
-      const analyzeImages = features.enabledFeatures.imageAnalysisEnabled && (analysisOptions?.analyzeImages ?? (mediaType === 'image'));
-      const requestCount = analyzeImages ? Math.min(count * 2, 20) : count;
-
       const result = await this.driver.search(mediaType as 'image' | 'video', {
         phrase: prompt.trim(),
         page: 1,
-        pageSize: Math.min(requestCount, mediaType === 'image' ? 20 : 1),
+        pageSize: Math.min(count, mediaType === 'image' ? 20 : 1),
         ...(mediaType === 'image' && { graphicalStyles: 'photography' }),
         ...(options?.orientations && { orientations: options.orientations }),
         ...(options?.compositions && { compositions: options.compositions }),
@@ -309,47 +256,6 @@ export class MediaSearchTool {
         };
       }
 
-      // For images with analysis enabled, process through ImageAnalysisService
-      if (mediaType === 'image' && analyzeImages && result.items.length > 0) {
-        const analysisService = new ImageAnalysisService({
-          appId: analysisOptions?.appId,
-          conversationId: analysisOptions?.conversationId,
-          customerId: analysisOptions?.customerId,
-        });
-        const relevanceThreshold = analysisOptions?.relevanceThreshold ?? IMAGE_ANALYSIS_CONFIG.DEFAULT_THRESHOLD;
-
-        const processed = await analysisService.processSearchResults(
-          prompt,
-          result.items,
-          {
-            threshold: relevanceThreshold,
-            maxResults: count,
-            skipCache: analysisOptions?.skipCache,
-          }
-        );
-
-        // Log success with analysis info
-        (eventLogger as any).success(logger, {
-          toolName: 'MediaSearchTool',
-          prompt,
-          count,
-          provider: 'getty',
-          resultUrls: processed.images.map(i => i.url),
-          resultCount: processed.images.length,
-        });
-
-        return {
-          success: true,
-          images: processed.images,
-          filtered: processed.filtered,
-          warning: processed.warning,
-          // Backward compatibility
-          urls: processed.images.map(i => i.url),
-          ...(processed.images.length === 1 && processed.images[0] && { url: processed.images[0].url }),
-        };
-      }
-
-      // Non-analyzed path (video or analysis disabled)
       const mediaUrls: string[] = [];
       for (const item of result.items.slice(0, count)) {
         const mediaUrl = item?.urls?.highRes || item?.urls?.standard || item?.urls?.preview || item?.urls?.thumbnail;
@@ -421,7 +327,6 @@ export class MediaSearchTool {
    * @param prompts - Array of search prompts
    * @param count - Number of results per prompt
    * @param options - Additional search options
-   * @param analysisOptions - Image analysis options
    * @returns Promise resolving to parallel search result
    */
   private async searchParallel(
@@ -431,14 +336,6 @@ export class MediaSearchTool {
       orientations?: string;
       compositions?: string;
       color?: string;
-    },
-    analysisOptions?: {
-      analyzeImages?: boolean;
-      relevanceThreshold?: number;
-      skipCache?: boolean;
-      appId?: string;
-      conversationId?: string;
-      customerId?: string;
     }
   ): Promise<MediaSearchResult> {
     try {
@@ -449,7 +346,7 @@ export class MediaSearchTool {
         provider: 'getty',
       });
 
-      const searchPromises = prompts.map(prompt => this.searchSingle(prompt, 'image', count, options, analysisOptions));
+      const searchPromises = prompts.map(prompt => this.searchSingle(prompt, 'image', count, options));
       const results = await Promise.all(searchPromises);
 
       const combinedResults = results.map((result, index) => {
@@ -665,11 +562,6 @@ export async function findMedia(options: MediaSearchOptions): Promise<MediaSearc
     appId,
     size,
     filename,
-    analyzeImages,
-    relevanceThreshold,
-    skipCache,
-    conversationId,
-    customerId,
   } = options;
 
   // Validate prompt
@@ -694,13 +586,6 @@ export async function findMedia(options: MediaSearchOptions): Promise<MediaSearc
       ...(compositions !== undefined && { compositions }),
       ...(color !== undefined && { color })
     };
-    const analysisOpts = {
-      ...(analyzeImages !== undefined && { analyzeImages }),
-      ...(relevanceThreshold !== undefined && { relevanceThreshold }),
-      ...(skipCache !== undefined && { skipCache }),
-      ...(conversationId !== undefined && { conversationId }),
-      ...(customerId !== undefined && { customerId }),
-    };
     return await mediaSearchTool.searchMedia(
       prompt,
       mediaType,
@@ -708,8 +593,7 @@ export async function findMedia(options: MediaSearchOptions): Promise<MediaSearc
       appId,
       size,
       filename,
-      Object.keys(searchOptions).length > 0 ? searchOptions : undefined,
-      Object.keys(analysisOpts).length > 0 ? analysisOpts : undefined
+      Object.keys(searchOptions).length > 0 ? searchOptions : undefined
     );
   } catch (error) {
     const promptForLog = Array.isArray(prompt) ? prompt.join(', ') : prompt;

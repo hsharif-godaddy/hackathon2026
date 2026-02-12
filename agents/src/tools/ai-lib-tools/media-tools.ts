@@ -1,7 +1,6 @@
 import { createTool, type Tool } from '@airo/ai-lib';
 import { z } from 'zod';
 import { findMedia, type MediaSearchOptions, type MediaType } from '../media-search-tool.js';
-import { AppRepository } from '../../database/repositories/AppRepository.js';
 
 /**
  * Media search response interface for AI tool output
@@ -20,22 +19,6 @@ interface MediaSearchResponse {
     urls?: string[];
     error?: string;
   }>;
-  // Image analysis data
-  images?: Array<{
-    url: string;
-    gettyId: string;
-    relevanceScore: number | null;
-    analysis: {
-      description: string;
-      composition: string;
-      usageContext: string;
-    } | null;
-    fromCache: boolean;
-    analysisSkipped?: boolean;
-    skipReason?: string;
-  }>;
-  filtered?: number;
-  warning?: string;
 }
 
 /**
@@ -60,21 +43,19 @@ interface MediaSearchResponse {
  * - Use when image search fails or when user explicitly requests generation
  */
 export const mediaSearchAITool: Tool = createTool(
-  'Search for professional stock images/videos OR generate AI images with AI-powered relevance analysis. By DEFAULT, this searches for IMAGES and analyzes them for relevance. Use "video" for video search, or "generate" to create custom AI images. For images: supports single/multiple prompts, results are filtered by relevance score. For videos: single prompt only. For generation: single prompt only, use when image search fails or user explicitly requests AI-generated images.',
+  'Search for professional stock images/videos OR generate AI images. By DEFAULT, this searches for IMAGES. Use "video" for video search, or "generate" to create custom AI images. For images: supports single/multiple prompts. For videos: single prompt only. For generation: single prompt only, use when image search fails or user explicitly requests AI-generated images.',
   z.object({
     prompt: z.union([z.string(), z.array(z.string())]).describe('Text prompt(s) describing the media to search for. Can be a single string or array of strings (array only for images). Limit each prompt to 1-5 keywords for best results. Examples: "sunset over ocean", "business meeting", "happy family"'),
     mediaType: z.enum(['image', 'video', 'generate']).default('image').describe('Type of media to search for. Defaults to "image". Use "video" for video search, or "generate" to create AI images.'),
-    count: z.number().min(1).max(10).optional().describe('Number of results to return per prompt (1-10, default 5). Images are analyzed and filtered by relevance.'),
+    count: z.number().min(1).max(10).optional().describe('Number of results to return per prompt (1-10). If omitted, defaults to 1.'),
     orientations: z.string().optional().describe('Filter by image orientation. Only the first value is used if multiple comma-separated values are provided. Valid values: "horizontal", "vertical", "square", "panoramic_horizontal", "panoramic_vertical".'),
     compositions: z.string().optional().describe('Filter by image composition. Only the first value is used if multiple comma-separated values are provided. Valid values: "abstract", "candid", "close_up", "copy_space", "cut_out", "full_frame", "full_length", "headshot", "looking_at_camera", "macro", "medium_shot", "part_of_a_series", "portrait", "sparse", "still_life", "three_quarter_length", "waist_up", "wide_shot".'),
     color: z.string().optional().describe('Filter by color. Can be a hex code (e.g. "#FF0000").'),
     size: z.enum(['1024x1024', '1024x1536', '1536x1024', 'auto']).default('1024x1024').optional().describe('Size for generated images (only for mediaType: "generate")'),
-    filename: z.string().optional().describe('Optional custom filename without extension for generated images (only for mediaType: "generate")'),
-    analyzeImages: z.boolean().default(true).optional().describe('Enable AI analysis of images for relevance filtering. Default true for image search.'),
-    relevanceThreshold: z.number().min(0).max(1).default(0.5).optional().describe('Minimum relevance score (0-1). Images below this threshold are filtered out. Default 0.5.')
+    filename: z.string().optional().describe('Optional custom filename without extension for generated images (only for mediaType: "generate")')
   }),
   async (input, context) => {
-    const { prompt, mediaType = 'image', count, orientations, compositions, color, size, filename, analyzeImages, relevanceThreshold } = input;
+    const { prompt, mediaType = 'image', count, orientations, compositions, color, size, filename } = input;
     
     // Validate prompt
     if (Array.isArray(prompt)) {
@@ -88,19 +69,10 @@ export const mediaSearchAITool: Tool = createTool(
       throw new Error('A valid prompt is required');
     }
     
-    // Get appId from context for image generation and cost tracking
+    // Get appId from context for image generation
     const appId = context?.metadata?.appId as string;
-    const sessionId = context?.metadata?.sessionId as string | undefined;
     if (mediaType === 'generate' && !appId) {
       throw new Error('App ID is required for image generation and is not available in context');
-    }
-
-    // Look up customer ID for cost tracking LiteLLM tags
-    let customerId: string | undefined;
-    if (appId) {
-      const appRepo = new AppRepository();
-      const app = appRepo.findById(appId);
-      customerId = app?.subscriptionId || app?.customerId;
     }
 
     const options: MediaSearchOptions = {
@@ -113,10 +85,6 @@ export const mediaSearchAITool: Tool = createTool(
       ...(orientations && { orientations }),
       ...(compositions && { compositions }),
       ...(color && { color }),
-      ...(analyzeImages !== undefined && { analyzeImages }),
-      ...(relevanceThreshold !== undefined && { relevanceThreshold }),
-      ...(sessionId && { conversationId: sessionId }),
-      ...(customerId && { customerId }),
     };
     
     const result = await findMedia(options);
@@ -143,19 +111,6 @@ export const mediaSearchAITool: Tool = createTool(
     
     if ('results' in result && result.results) {
       response.results = result.results;
-    }
-
-    // Include image analysis data
-    if ('images' in result && result.images) {
-      response.images = result.images;
-    }
-
-    if ('filtered' in result && result.filtered !== undefined) {
-      response.filtered = result.filtered;
-    }
-
-    if ('warning' in result && result.warning) {
-      response.warning = result.warning;
     }
 
     return JSON.stringify(response, null, 2);
