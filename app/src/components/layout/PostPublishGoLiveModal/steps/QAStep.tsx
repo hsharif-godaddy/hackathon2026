@@ -8,6 +8,7 @@
 
 import { useState } from 'react';
 import Button from '@ux/button';
+import text from '@ux/text';
 
 import { useWebSocketContext } from '@/contexts/WebSocketContext';
 import { useTranslations } from '@/hooks/useTranslations';
@@ -187,7 +188,7 @@ export function QAStep({ appId, isAnalyzing, analysisError, analysisResults, upd
 
   return (
     <div>
-      <div className="mb-6" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+      <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
         <QAStateViews
           isAnalyzing={isAnalyzing}
           analysisError={analysisError}
@@ -212,17 +213,15 @@ export function QAStep({ appId, isAnalyzing, analysisError, analysisResults, upd
       </div>
 
       {/* Footer with selection info */}
-      <div className="flex items-center justify-between gap-3 pt-2 border-t border-intents-ux-boxLowContrast-borderColor">
-        <div className="text-xs text-intents-ux-textPassive-color">
-          {!isAnalyzing && selectedIssues.size > 0 && (
-            <span>
-              {selectedIssues.size === 1
-                ? t('golive_qa_selected_count_singular')
-                : t('golive_qa_selected_count_plural', { count: selectedIssues.size })}
-            </span>
-          )}
-        </div>
-        <div className="flex gap-2">
+      <div className="flex items-center justify-between gap-3 pt-4">
+        {!isAnalyzing && selectedIssues.size > 0 ? (
+          <text.span as="caption" emphasis="passive">
+            {selectedIssues.size === 1
+              ? t('golive_qa_selected_count_singular')
+              : t('golive_qa_selected_count_plural', { count: selectedIssues.size })}
+          </text.span>
+        ) : null}
+        <div className="flex flex-grow justify-end gap-2">
           <Button
             design="secondary"
             text={t('golive_qa_button_skip')}

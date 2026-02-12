@@ -2,7 +2,8 @@
  * QA Severity Icon Component
  * Displays the appropriate icon for each issue severity level
  */
-import { AlertCircle, AlertTriangle, Info } from 'lucide-react';
+import AlertIcon from '@ux/icon/alert';
+import InformationIcon from '@ux/icon/information';
 
 import type { QAIssue } from '@/types/qa';
 
@@ -16,10 +17,10 @@ export function QASeverityIcon({ severity, size = 16 }: QASeverityIconProps) {
 
   switch (severity) {
     case 'error':
-      return <AlertCircle style={{ ...style, color: '#ef4444' }} />;
+      return <AlertIcon style={{ ...style }} className="text-intents-ux-feedbackHighContrastCritical-feedbackColor" />;
     case 'warning':
-      return <AlertTriangle style={{ ...style, color: '#eab308' }} />;
+      return <AlertIcon style={{ ...style }} className="text-intents-ux-feedbackHighContrastWarning-feedbackColor" />;
     case 'suggestion':
-      return <Info style={{ ...style, color: '#3b82f6' }} />;
+      return <InformationIcon style={{ ...style }} className="text-intents-ux-feedbackHighContrastInfo-feedbackColor" />;
   }
 }

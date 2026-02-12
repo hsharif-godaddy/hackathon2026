@@ -2,10 +2,12 @@
  * QA State Views Component
  * Displays different states: analyzing, error, or success (clean)
  */
-import { AlertCircle, CheckCircle } from 'lucide-react';
 import Alert from '@ux/alert';
+import AlertIcon from '@ux/icon/alert';
+import OkIcon from '@ux/icon/ok';
 import Spinner from '@ux/spinner';
 import text from '@ux/text';
+import TextLockup from '@ux/text-lockup';
 
 import { useTranslations } from '@/hooks/useTranslations';
 
@@ -22,16 +24,11 @@ export function QAStateViews({ isAnalyzing, analysisError, isClean, totalFixedCo
   // Analyzing State
   if (isAnalyzing) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 gap-4">
+      <div className="flex flex-col items-center justify-center py-4 gap-4">
         <Spinner size="lg" />
-        <div className="text-center">
-          <text.p as="paragraph" size={1} className="font-semibold mb-2">
-            {t('golive_qa_analyzing_title')}
-          </text.p>
-          <text.p as="paragraph" size={0} emphasis="passive">
-            {t('golive_qa_analyzing_description')}
-          </text.p>
-        </div>
+        <TextLockup title={t('golive_qa_analyzing_title')} centered>
+          <div className="text-intents-ux-feedbackHighContrastPassive-feedbackColor">{t('golive_qa_analyzing_description')}</div>
+        </TextLockup>
       </div>
     );
   }
@@ -39,18 +36,12 @@ export function QAStateViews({ isAnalyzing, analysisError, isClean, totalFixedCo
   // Error State
   if (analysisError) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 gap-4">
-        <AlertCircle style={{ width: '64px', height: '64px', color: '#ef4444' }} />
-        <div className="text-center max-w-md">
-          <text.p as="paragraph" size={1} className="font-semibold mb-2" style={{ color: '#dc2626' }}>
-            {t('golive_qa_error_title')}
-          </text.p>
-          <Alert emphasis="critical">
-            <div className="text-sm">
-              {analysisError}
-            </div>
-          </Alert>
-        </div>
+      <div className="flex flex-col items-center justify-center py-4 gap-2">
+        <AlertIcon className="text-intents-ux-feedbackHighContrastCritical-feedbackColor size-8" />
+        <TextLockup title={t('golive_qa_error_title')} centered titleLevel={4} />
+        <Alert emphasis="critical" className="w-full mt-2">
+          {analysisError}
+        </Alert>
       </div>
     );
   }
@@ -58,20 +49,13 @@ export function QAStateViews({ isAnalyzing, analysisError, isClean, totalFixedCo
   // Clean State
   if (isClean) {
     return (
-      <div className="flex flex-col items-center justify-center py-12">
-        <div className="flex flex-col items-center text-center gap-4 max-w-md">
-          <CheckCircle style={{ width: '64px', height: '64px', color: '#16a34a' }} />
-          <div>
-            <text.h4 size={2} className="font-bold mb-2" style={{ color: '#166534' }}>
-              {t('golive_qa_clean_title')}
-            </text.h4>
-            <text.p size={0} style={{ color: '#15803d' }}>
-              {totalFixedCount > 0
-                ? t('golive_qa_clean_description_with_fixes', { count: totalFixedCount })
-                : t('golive_qa_clean_description')}
-            </text.p>
-          </div>
-        </div>
+      <div className="flex flex-col items-center justify-center py-4 gap-2">
+        <OkIcon className="text-intents-ux-feedbackHighContrastSuccess-feedbackColor size-8" />
+        <TextLockup title={t('golive_qa_clean_title')} centered titleLevel={4}>
+          {totalFixedCount > 0
+            ? t('golive_qa_clean_description_with_fixes', { count: totalFixedCount })
+            : t('golive_qa_clean_description')}
+        </TextLockup>
       </div>
     );
   }

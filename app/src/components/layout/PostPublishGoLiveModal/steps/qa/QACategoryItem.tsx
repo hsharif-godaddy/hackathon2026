@@ -2,11 +2,16 @@
  * QA Category Item Component
  * Displays a collapsible category with issues
  */
-import { AlertCircle, AlertTriangle, ChevronDown, ChevronRight, Info } from 'lucide-react';
+import Button from '@ux/button';
+import Checkbox from '@ux/checkbox';
+import ChevronDownIcon from '@ux/icon/chevron-down';
+import ChevronUpIcon from '@ux/icon/chevron-up';
+import text from '@ux/text';
 
 import { useTranslations } from '@/hooks/useTranslations';
 import type { QAIssue } from '@/types/qa';
 import { QAIssueItem } from './QAIssueItem';
+import { QASeverityIcon } from './QASeverityIcon';
 
 interface QACategoryItemProps {
   categoryName: string;
@@ -39,67 +44,45 @@ export function QACategoryItem({
   return (
     <div className="border border-intents-ux-boxLowContrast-borderColor rounded-lg overflow-hidden">
       {/* Category Header */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-intents-ux-boxLowContrast-backgroundColor">
-        {/* Chevron button */}
-        <button
-          onClick={onToggleCategory}
-          className="hover:bg-intents-ux-boxMediumContrast-backgroundColor rounded p-1 transition-colors"
-          aria-label={isExpanded ? t('golive_qa_category_collapse') : t('golive_qa_category_expand')}
-        >
-          {isExpanded ? (
-            <ChevronDown style={{ width: '16px', height: '16px' }} className="text-intents-ux-textPassive-color" />
-          ) : (
-            <ChevronRight style={{ width: '16px', height: '16px' }} className="text-intents-ux-textPassive-color" />
-          )}
-        </button>
-
-        {/* Select all checkbox */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleCategorySelection();
-          }}
-          className="flex-shrink-0"
+      <div className="flex items-center gap-2 px-3 py-2 bg-intents-ux-boxLowContrast-backgroundColor">
+        <Checkbox
+          id={`qa-category-${categoryName}`}
+          name={`qa-category-${categoryName}`}
+          checked={allCategorySelected || someCategorySelected}
+          indeterminate={someCategorySelected}
+          onChange={() => onToggleCategorySelection()}
           aria-label={allCategorySelected ? t('golive_qa_category_deselect_all') : t('golive_qa_category_select_all')}
-          style={{
-            width: '18px',
-            height: '18px',
-            borderRadius: '4px',
-            border: `2px solid ${allCategorySelected ? '#3b82f6' : '#d1d5db'}`,
-            backgroundColor: allCategorySelected ? '#3b82f6' : '#ffffff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            position: 'relative'
-          }}
-        >
-          {allCategorySelected ? (
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          ) : someCategorySelected ? (
-            <div style={{ width: '8px', height: '2px', backgroundColor: '#3b82f6' }} />
-          ) : null}
-        </button>
+        />
 
-        <span className="flex-1 text-left font-semibold text-base">{categoryName}</span>
-        <div className="flex gap-3 items-center">
-          {errorCount > 0 && (
-            <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: '#dc2626' }}>
-              <AlertCircle style={{ width: '14px', height: '14px' }} /> {errorCount}
-            </span>
-          )}
-          {warningCount > 0 && (
-            <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: '#ca8a04' }}>
-              <AlertTriangle style={{ width: '14px', height: '14px' }} /> {warningCount}
-            </span>
-          )}
-          {suggestionCount > 0 && (
-            <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: '#2563eb' }}>
-              <Info style={{ width: '14px', height: '14px' }} /> {suggestionCount}
-            </span>
-          )}
+        <div className="flex flex-grow sm:flex-wrap gap-x-2 gap-y-0.5 max-sm:flex-col">
+          <text.span as="title" className="flex-1 text-left">{categoryName}</text.span>
+          <div className="flex gap-2 items-center">
+            {errorCount > 0 && (
+              <text.span as="caption" emphasis="critical" className="flex items-center gap-0.5">
+                <QASeverityIcon severity="error" size={14} /> {errorCount}
+              </text.span>
+            )}
+            {warningCount > 0 && (
+              <text.span as="caption" emphasis="warning" className="flex items-center gap-0.5">
+                <QASeverityIcon severity="warning" size={14} /> {warningCount}
+              </text.span>
+            )}
+            {suggestionCount > 0 && (
+              <text.span as="caption" emphasis="info" className="flex items-center gap-0.5">
+                <QASeverityIcon severity="suggestion" size={14} /> {suggestionCount}
+              </text.span>
+            )}
+          </div>
         </div>
+
+        {/* Chevron button */}
+        <Button
+          design="minimal"
+          size="sm"
+          onClick={onToggleCategory}
+          icon={isExpanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
+          aria-label={isExpanded ? t('golive_qa_category_collapse') : t('golive_qa_category_expand')}
+        />
       </div>
 
       {/* Issues */}

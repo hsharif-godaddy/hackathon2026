@@ -19,6 +19,7 @@ import Modal from '@ux/modal';
 
 import { Confetti } from '@/components/icons/Confetti';
 import { useWebSocketContext } from '@/contexts/WebSocketContext';
+import { useResponsive } from '@/hooks/useResponsive';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
@@ -62,6 +63,8 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
     launchVideoUrl,
     featureSelections,
   } = publishState;
+
+  const { isMobile, isTablet } = useResponsive();
 
   // Custom hooks
   const { isScanning, scanError, runScan } = useSecurityScan(appId);
@@ -452,6 +455,7 @@ Create a todo list to track these ${taskCount} specific task${taskCount === 1 ? 
       title={modalTitle}
       id="go-live-modal"
       className="relative"
+      stretch={isMobile || isTablet}
     >
       {/* Confetti decoration at top of modal (only on marketing selection step) */}
       {goLiveModalStep === 'select-marketing' && (
@@ -460,7 +464,7 @@ Create a todo list to track these ${taskCount} specific task${taskCount === 1 ? 
         </div>
       )}
 
-      <div style={{ width: '600px', maxWidth: '90vw', minWidth: 0, overflow: 'hidden' }}>
+      <div className="w-full sm:min-w-[600px] overflow-hidden">
         {renderStep()}
       </div>
     </Modal>
