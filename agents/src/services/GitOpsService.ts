@@ -10,9 +10,10 @@ import { ImportJobRepository } from '../database/repositories/ImportJobRepositor
 import { ImportJobStatus, type ImportJob } from '../types/import.js';
 import { GitTool } from '../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
-import { isSupportedProjectOnHost, SUPPORTED_BUILD_TOOLS } from '../server/middleware/git-import-validation.js';
-import { appRestartService } from './AppRestartService.js';
+import { isSupportedProjectOnHost, matchesBuildToolOnHost, SUPPORTED_BUILD_TOOLS } from '../server/middleware/git-import-validation.js';
+import { appRestartService, type BuildToolType } from './AppRestartService.js';
 import { modifyViteConfig } from './ViteConfigModifier.js';
+import { injectPortHandling } from './ExpressPortInjector.js';
 import { codeSyncFileCleanupService } from './CodeSyncFileCleanupService.js';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
@@ -38,11 +39,28 @@ export interface GitPushParams extends GitSyncParams {
 }
 
 /**
+ * Command overrides for PaaS imports
+ * Allows customers to specify custom install/build/start commands
+ */
+export interface CommandOverrides {
+  /** Custom install command (default: 'npm install') */
+  install?: string;
+  /** Custom build command (default: 'npm run build') */
+  build?: string;
+  /** Custom start command (default: 'npm start' for Node.js, vite for Vite) */
+  start?: string;
+}
+
+/**
  * Parameters for git pull (extends base with vite config modification option)
  */
 export interface GitPullParams extends GitSyncParams {
   /** Whether to modify vite config to set server.allowedHosts: true (for proxy compatibility) */
   modifyViteConfig?: boolean;
+  /** Entry file for Node.js projects (e.g., 'src/server.ts') */
+  entryFile?: string;
+  /** Custom commands to override defaults */
+  commands?: CommandOverrides;
 }
 
 /**
@@ -321,6 +339,8 @@ export class GitOpsService {
           token,
           repoUrl,
           modifyViteConfig: shouldModifyViteConfig,
+          entryFile: params.entryFile,
+          commands: params.commands,
         });
       });
 
@@ -356,6 +376,8 @@ export class GitOpsService {
       token?: string;
       repoUrl?: string;
       modifyViteConfig?: boolean;
+      entryFile?: string;
+      commands?: CommandOverrides;
     }
   ): Promise<void> {
 
@@ -399,9 +421,11 @@ export class GitOpsService {
         return;
       }
 
-      // Validate pulled code uses a supported build tool
+      // Validate pulled code uses a supported build tool and detect which one
       const supportedToolNames = SUPPORTED_BUILD_TOOLS.map(t => t.name).join(', ');
-      if (!isSupportedProjectOnHost(appPath)) {
+      const matchedTool = SUPPORTED_BUILD_TOOLS.find(tool => matchesBuildToolOnHost(appPath, tool));
+
+      if (!matchedTool) {
         logger.warn('git-ops.pull.unsupported-project', { appId, jobId, supportedTools: supportedToolNames });
 
         // Rollback the pull using ORIG_HEAD
@@ -433,6 +457,9 @@ export class GitOpsService {
       await codeSyncFileCleanupService.deleteCleanablePatterns(devSupervisor, '/app');
       logger.info('git-ops.pull.cleanup-files.complete', { appId, jobId });
 
+      // Always use Node.js build tool type (Vite detection removed)
+      const buildToolType: BuildToolType = 'nodejs';
+
       // Modify vite config if requested (for proxy compatibility).
       // Non-fatal: failures are logged as warnings but don't fail the job,
       // matching zip import behavior. The app may still work without this modification.
@@ -453,8 +480,55 @@ export class GitOpsService {
         }
       }
 
-      // Perform restart cycle (same as zip import)
-      const restartResult = await appRestartService.performFullRestartCycle(appId, appPath);
+      // For Node.js projects, inject PORT handling
+      if (buildToolType === 'nodejs') {
+        if (!options.entryFile) {
+          logger.warn('git-ops.pull.nodejs.no-entry-file', {
+            appId,
+            jobId,
+            message: 'Node.js project detected but no entryFile provided. Skipping PORT injection.',
+          });
+        } else {
+          logger.info('git-ops.pull.nodejs.port-injection.start', {
+            appId,
+            jobId,
+            entryFile: options.entryFile,
+          });
+
+          const portInjectionResult = await injectPortHandling(
+            devSupervisor,
+            '/app',
+            options.entryFile
+          );
+
+          if (portInjectionResult.modified) {
+            logger.info('git-ops.pull.nodejs.port-injection.success', {
+              appId,
+              jobId,
+              entryFile: options.entryFile,
+            });
+          } else if (portInjectionResult.skipped) {
+            logger.info('git-ops.pull.nodejs.port-injection.skipped', {
+              appId,
+              jobId,
+              reason: portInjectionResult.reason,
+            });
+          } else if (portInjectionResult.error) {
+            logger.warn('git-ops.pull.nodejs.port-injection.failed', {
+              appId,
+              jobId,
+              error: portInjectionResult.error,
+            });
+            // Don't fail - the user might have already configured PORT handling
+          }
+        }
+      }
+
+      // Perform restart cycle with custom commands and build tool type
+      const restartResult = await appRestartService.performFullRestartCycle(appId, appPath, {
+        buildToolType,
+        commands: options.commands,
+      });
 
       if (!restartResult.success) {
         logger.warn('git-ops.pull.restart-failed', {

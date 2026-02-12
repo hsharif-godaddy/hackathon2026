@@ -14,7 +14,7 @@ import {
   matchesBuildToolInContainer,
   isSupportedProjectInContainer,
   isValidShellPath,
-  VITE_BUILD_TOOL,
+  NODEJS_BUILD_TOOL,
   SUPPORTED_BUILD_TOOLS,
   type PackageJsonDeps,
   type BuildToolConfig,
@@ -660,26 +660,28 @@ describe('importType', () => {
 });
 
 describe('BuildToolConfig', () => {
-  describe('VITE_BUILD_TOOL', () => {
+  describe('NODEJS_BUILD_TOOL', () => {
     it('should have correct name', () => {
-      expect(VITE_BUILD_TOOL.name).toBe('Vite');
+      expect(NODEJS_BUILD_TOOL.name).toBe('Node.js');
     });
 
-    it('should contain all standard Vite config file names', () => {
-      expect(VITE_BUILD_TOOL.configFiles).toContain('vite.config.js');
-      expect(VITE_BUILD_TOOL.configFiles).toContain('vite.config.ts');
-      expect(VITE_BUILD_TOOL.configFiles).toContain('vite.config.mjs');
-      expect(VITE_BUILD_TOOL.configFiles).toContain('vite.config.cjs');
+    it('should have no config files (any Node.js project is supported)', () => {
+      expect(NODEJS_BUILD_TOOL.configFiles).toHaveLength(0);
     });
 
-    it('should have vite as package name', () => {
-      expect(VITE_BUILD_TOOL.packageNames).toContain('vite');
+    it('should have no specific package requirements (any package.json is valid)', () => {
+      expect(NODEJS_BUILD_TOOL.packageNames).toHaveLength(0);
     });
   });
 
   describe('SUPPORTED_BUILD_TOOLS', () => {
-    it('should include Vite', () => {
-      expect(SUPPORTED_BUILD_TOOLS).toContainEqual(VITE_BUILD_TOOL);
+    it('should include Node.js', () => {
+      expect(SUPPORTED_BUILD_TOOLS).toContainEqual(NODEJS_BUILD_TOOL);
+    });
+
+    it('should only contain Node.js (Vite detection removed)', () => {
+      expect(SUPPORTED_BUILD_TOOLS).toHaveLength(1);
+      expect(SUPPORTED_BUILD_TOOLS[0].name).toBe('Node.js');
     });
 
     it('should be extensible (array)', () => {
@@ -690,28 +692,50 @@ describe('BuildToolConfig', () => {
 
 describe('hasDependency', () => {
   it('should return true when package is in dependencies', () => {
-    const packageJson: PackageJsonDeps = { dependencies: { vite: '^5.0.0' } };
-    expect(hasDependency(packageJson, ['vite'])).toBe(true);
+    const packageJson: PackageJsonDeps = { dependencies: { express: '^4.0.0' } };
+    expect(hasDependency(packageJson, ['express'])).toBe(true);
   });
 
   it('should return true when package is in devDependencies', () => {
-    const packageJson: PackageJsonDeps = { devDependencies: { vite: '^5.0.0' } };
-    expect(hasDependency(packageJson, ['vite'])).toBe(true);
+    const packageJson: PackageJsonDeps = { devDependencies: { typescript: '^5.0.0' } };
+    expect(hasDependency(packageJson, ['typescript'])).toBe(true);
   });
 
   it('should return true when any of multiple packages is found', () => {
-    const packageJson: PackageJsonDeps = { dependencies: { bun: '^1.0.0' } };
-    expect(hasDependency(packageJson, ['vite', 'bun', 'webpack'])).toBe(true);
+    const packageJson: PackageJsonDeps = { dependencies: { fastify: '^4.0.0' } };
+    expect(hasDependency(packageJson, ['express', 'fastify', 'koa'])).toBe(true);
   });
 
   it('should return false when none of the packages are found', () => {
     const packageJson: PackageJsonDeps = { dependencies: { react: '^18.0.0' } };
-    expect(hasDependency(packageJson, ['vite', 'bun'])).toBe(false);
+    expect(hasDependency(packageJson, ['express', 'fastify'])).toBe(false);
   });
 
-  it('should return false for empty package.json', () => {
+  it('should return true for empty packageNames (any package.json is valid)', () => {
+    const packageJson: PackageJsonDeps = { dependencies: { anything: '^1.0.0' } };
+    expect(hasDependency(packageJson, [])).toBe(true);
+  });
+
+  it('should return true for empty package.json when packageNames is empty', () => {
     const packageJson: PackageJsonDeps = {};
-    expect(hasDependency(packageJson, ['vite'])).toBe(false);
+    expect(hasDependency(packageJson, [])).toBe(true);
+  });
+
+  describe('NODEJS_BUILD_TOOL detection', () => {
+    it('should return true for any package.json (no specific packages required)', () => {
+      const packageJson: PackageJsonDeps = { dependencies: { express: '^4.18.2' } };
+      expect(hasDependency(packageJson, NODEJS_BUILD_TOOL.packageNames)).toBe(true);
+    });
+
+    it('should return true for package.json with any dependencies', () => {
+      const packageJson: PackageJsonDeps = { dependencies: { lodash: '^4.17.21' } };
+      expect(hasDependency(packageJson, NODEJS_BUILD_TOOL.packageNames)).toBe(true);
+    });
+
+    it('should return true for empty package.json (no specific packages required)', () => {
+      const packageJson: PackageJsonDeps = {};
+      expect(hasDependency(packageJson, NODEJS_BUILD_TOOL.packageNames)).toBe(true);
+    });
   });
 });
 
@@ -732,21 +756,19 @@ describe('isSupportedProjectOnHost', () => {
     vi.clearAllMocks();
   });
 
-  it('should return true when project matches any supported tool', () => {
-    vi.mocked(existsSync).mockImplementation((path: any) => {
-      return path.toString().endsWith('vite.config.ts');
-    });
-
-    expect(isSupportedProjectOnHost('/app/project')).toBe(true);
-  });
-
-  it('should return false when project matches no supported tool', () => {
+  it('should return true when project has valid package.json', () => {
     vi.mocked(existsSync).mockImplementation((path: any) => {
       return path.toString().endsWith('package.json');
     });
     vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
-      dependencies: { react: '^18.0.0' },
+      dependencies: { anything: '^1.0.0' },
     }));
+
+    expect(isSupportedProjectOnHost('/app/project')).toBe(true);
+  });
+
+  it('should return false when package.json does not exist', () => {
+    vi.mocked(existsSync).mockReturnValue(false);
 
     expect(isSupportedProjectOnHost('/app/project')).toBe(false);
   });
@@ -763,7 +785,6 @@ describe('isSupportedProjectOnHost', () => {
     });
 
     expect(isSupportedProjectOnHost('/app/project', [customTool])).toBe(true);
-    expect(isSupportedProjectOnHost('/app/project', [VITE_BUILD_TOOL])).toBe(false);
   });
 });
 
@@ -862,31 +883,33 @@ describe('isValidShellPath', () => {
 });
 
 describe('isSupportedProjectInContainer', () => {
-  it('should return supported=true with matchedTool when project matches', async () => {
+  it('should return supported=true with matchedTool for any valid package.json', async () => {
     const mockDevSupervisor = {
-      exec: vi.fn().mockResolvedValueOnce({ stdout: 'found' }),
+      exec: vi.fn(),
+    };
+    const packageJson: PackageJsonDeps = { dependencies: { anything: '^1.0.0' } };
+
+    const result = await isSupportedProjectInContainer(mockDevSupervisor as any, '/app', packageJson);
+
+    expect(result.supported).toBe(true);
+    expect(result.matchedTool).toBe('Node.js');
+    // No exec calls needed since NODEJS_BUILD_TOOL has no config files
+    expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+  });
+
+  it('should return supported=true even for empty dependencies', async () => {
+    const mockDevSupervisor = {
+      exec: vi.fn(),
     };
     const packageJson: PackageJsonDeps = { dependencies: {} };
 
     const result = await isSupportedProjectInContainer(mockDevSupervisor as any, '/app', packageJson);
 
     expect(result.supported).toBe(true);
-    expect(result.matchedTool).toBe('Vite');
+    expect(result.matchedTool).toBe('Node.js');
   });
 
-  it('should return supported=false when no tool matches', async () => {
-    const mockDevSupervisor = {
-      exec: vi.fn().mockResolvedValue({ stdout: 'notfound' }),
-    };
-    const packageJson: PackageJsonDeps = { dependencies: { react: '^18.0.0' } };
-
-    const result = await isSupportedProjectInContainer(mockDevSupervisor as any, '/app', packageJson);
-
-    expect(result.supported).toBe(false);
-    expect(result.matchedTool).toBeUndefined();
-  });
-
-  it('should work with custom build tools', async () => {
+  it('should work with custom build tools that have config files', async () => {
     const customTool: BuildToolConfig = {
       name: 'CustomBundler',
       configFiles: ['custom.config.js'],
@@ -909,15 +932,68 @@ describe('isSupportedProjectInContainer', () => {
     expect(result.matchedTool).toBe('CustomBundler');
   });
 
-  it('should match by dependency when no config file exists', async () => {
+  it('should match custom tool by dependency when no config file exists', async () => {
+    const customTool: BuildToolConfig = {
+      name: 'CustomBundler',
+      configFiles: ['custom.config.js'],
+      packageNames: ['custom-bundler'],
+    };
+
     const mockDevSupervisor = {
       exec: vi.fn().mockResolvedValue({ stdout: 'notfound' }),
     };
-    const packageJson: PackageJsonDeps = { dependencies: { vite: '^5.0.0' } };
+    const packageJson: PackageJsonDeps = { dependencies: { 'custom-bundler': '^1.0.0' } };
 
-    const result = await isSupportedProjectInContainer(mockDevSupervisor as any, '/app', packageJson);
+    const result = await isSupportedProjectInContainer(
+      mockDevSupervisor as any,
+      '/app',
+      packageJson,
+      [customTool]
+    );
 
     expect(result.supported).toBe(true);
-    expect(result.matchedTool).toBe('Vite');
+    expect(result.matchedTool).toBe('CustomBundler');
+  });
+
+  describe('NODEJS_BUILD_TOOL detection', () => {
+    it('should support any Node.js project (no specific package required)', async () => {
+      const mockDevSupervisor = {
+        exec: vi.fn(),
+      };
+      const packageJson: PackageJsonDeps = { dependencies: { express: '^4.18.2' } };
+
+      const result = await isSupportedProjectInContainer(mockDevSupervisor as any, '/app', packageJson);
+
+      expect(result.supported).toBe(true);
+      expect(result.matchedTool).toBe('Node.js');
+    });
+
+    it('should support projects with any dependencies', async () => {
+      const mockDevSupervisor = {
+        exec: vi.fn(),
+      };
+      const packageJson: PackageJsonDeps = { dependencies: { lodash: '^4.17.21' } };
+
+      const result = await isSupportedProjectInContainer(mockDevSupervisor as any, '/app', packageJson);
+
+      expect(result.supported).toBe(true);
+      expect(result.matchedTool).toBe('Node.js');
+    });
+
+    it('should support projects with vitest in devDependencies (not Vite project)', async () => {
+      const mockDevSupervisor = {
+        exec: vi.fn(),
+      };
+      // Project has vitest for testing but is not a Vite frontend project
+      const packageJson: PackageJsonDeps = {
+        dependencies: { express: '^4.18.2' },
+        devDependencies: { vitest: '^1.0.0' }
+      };
+
+      const result = await isSupportedProjectInContainer(mockDevSupervisor as any, '/app', packageJson);
+
+      expect(result.supported).toBe(true);
+      expect(result.matchedTool).toBe('Node.js');
+    });
   });
 });

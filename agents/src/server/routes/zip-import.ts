@@ -195,6 +195,12 @@ export async function handleZipImport(req: Request, res: Response, appId: string
           } as CreateImportResponse));
         }
 
+        // Extract optional PaaS parameters from form data
+        const entryFile = req.body.entryFile as string | undefined;
+        const installCommand = req.body.installCommand as string | undefined;
+        const buildCommand = req.body.buildCommand as string | undefined;
+        const startCommand = req.body.startCommand as string | undefined;
+
         const importJob = await projectImportService.startImport({
           appId,
           appName: appId,
@@ -202,6 +208,11 @@ export async function handleZipImport(req: Request, res: Response, appId: string
           zipPath,
           zipFileName: req.file.originalname,
           zipFileSize: req.file.size,
+          // PaaS Node.js parameters
+          entryFile,
+          commands: (installCommand || buildCommand || startCommand)
+            ? { install: installCommand, build: buildCommand, start: startCommand }
+            : undefined,
         });
 
         zipLogger.info('route.zip.upload.success', {

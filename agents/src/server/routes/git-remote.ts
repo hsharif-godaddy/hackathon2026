@@ -269,7 +269,18 @@ router.post(
   validateAppOwnership,
   async (req: Request, res: Response) => {
     const appId = req.params.id;
-    const { remoteName, branch, token, repoUrl, modifyViteConfig } = req.body;
+    const {
+      remoteName,
+      branch,
+      token,
+      repoUrl,
+      modifyViteConfig,
+      // PaaS Node.js parameters
+      entryFile,
+      installCommand,
+      buildCommand,
+      startCommand,
+    } = req.body;
 
     if (!appId) {
       res.status(400).json({ error: 'App ID is required' });
@@ -288,6 +299,11 @@ router.post(
       token,
       repoUrl,
       modifyViteConfig,
+      // PaaS Node.js parameters
+      entryFile,
+      commands: (installCommand || buildCommand || startCommand)
+        ? { install: installCommand, build: buildCommand, start: startCommand }
+        : undefined,
     });
 
     if (!result.success) {

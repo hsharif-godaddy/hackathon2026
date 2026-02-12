@@ -18,9 +18,38 @@ const RESTART_TIMEOUTS = {
   BUILD: 10 * 60 * 1000, // 10 minutes
 } as const;
 
-export const DEFAULT_DEV_COMMAND = 'node_modules/.bin/vite --host 0.0.0.0 --port $PORT';
-const DEFAULT_BUILD_COMMAND = 'node_modules/.bin/vite build --outDir dist';
-const DEFAULT_SERVE_COMMAND = 'serve dist -l tcp://0.0.0.0:$PORT';
+// Node.js defaults - customers define their own start script in package.json
+export const DEFAULT_START_COMMAND = 'npm start';
+export const DEFAULT_INSTALL_COMMAND = 'npm install';
+export const DEFAULT_BUILD_COMMAND = 'npm run build';
+
+/**
+ * @deprecated Build tool type is no longer used - always Node.js
+ */
+export type BuildToolType = 'nodejs';
+
+/**
+ * Command overrides for PaaS imports
+ */
+export interface CommandOverrides {
+  install?: string;
+  build?: string;
+  start?: string;
+}
+
+/**
+ * Options for performFullRestartCycle
+ */
+export interface RestartCycleOptions {
+  skipInstall?: boolean;
+  skipBuild?: boolean;
+  /** @deprecated Use commands.start instead */
+  devCommand?: string;
+  /** Build tool type to determine default commands */
+  buildToolType?: BuildToolType;
+  /** Custom command overrides */
+  commands?: CommandOverrides;
+}
 
 export interface RestartCycleResult {
   success: boolean;
@@ -53,11 +82,7 @@ export class AppRestartService {
   async performFullRestartCycle(
     appId: string,
     appPath: string,
-    options?: {
-      skipInstall?: boolean;
-      skipBuild?: boolean;
-      devCommand?: string;
-    }
+    options?: RestartCycleOptions
   ): Promise<RestartCycleResult> {
     const result: RestartCycleResult = {
       success: false,
@@ -84,50 +109,52 @@ export class AppRestartService {
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
-      // Step 2: Run npm install (unless skipped)
+      // Step 2: Run install (unless skipped)
       if (!options?.skipInstall) {
-        const installResult = await this.runNpmInstall(appId, appPath);
+        const installCommand = options?.commands?.install || DEFAULT_INSTALL_COMMAND;
+        const installResult = await this.runCommand(appId, appPath, installCommand, 'install');
         if (!installResult.success) {
-          result.error = installResult.error || 'npm install failed';
+          result.error = installResult.error || 'install failed';
           this.logger.error('app-restart.install.failed', {
             appId,
             error: result.error,
+            command: installCommand,
           });
           return result;
         }
         result.phases.install = true;
-        this.logger.info('app-restart.install.success', { appId });
+        this.logger.info('app-restart.install.success', { appId, command: installCommand });
       } else {
         result.phases.install = true; // Mark as success since it was skipped
       }
 
-      // Step 3: Run npm build (unless skipped)
+      // Step 3: Run build (unless skipped)
       if (!options?.skipBuild) {
-        const buildResult = await this.runNpmBuild(appId, appPath);
+        const buildCommand = options?.commands?.build || DEFAULT_BUILD_COMMAND;
+        const buildResult = await this.runCommand(appId, appPath, buildCommand, 'build');
         if (!buildResult.success) {
           // Build failure is not critical - log warning but continue
           this.logger.warn('app-restart.build.failed', {
             appId,
             error: buildResult.error,
+            command: buildCommand,
           });
           // Still mark as success since build is optional for dev mode
           result.phases.build = true;
         } else {
           result.phases.build = true;
-          this.logger.info('app-restart.build.success', { appId });
+          this.logger.info('app-restart.build.success', { appId, command: buildCommand });
         }
       } else {
         result.phases.build = true; // Mark as success since it was skipped
       }
 
       // Step 4: Create PaaS config
-      await this.createPaasConfig(appPath);
+      await this.createPaasConfig(appPath, options?.buildToolType, options?.commands?.start);
 
-      // Step 5: Restart dev server
-      const restartResult = await this.restartDevServer(
-        appId,
-        options?.devCommand || DEFAULT_DEV_COMMAND
-      );
+      // Step 5: Restart dev server with resolved start command
+      const startCommand = this.resolveStartCommand(options);
+      const restartResult = await this.restartDevServer(appId, startCommand);
       if (!restartResult.success) {
         result.error = restartResult.error || 'Failed to restart dev server';
         this.logger.error('app-restart.restart.failed', {
@@ -148,6 +175,70 @@ export class AppRestartService {
         error: result.error,
       });
       return result;
+    }
+  }
+
+  /**
+   * Resolve the start command based on options.
+   * Always defaults to npm start - customers define their own start script.
+   */
+  private resolveStartCommand(options?: RestartCycleOptions): string {
+    // Custom start command takes priority
+    if (options?.commands?.start) {
+      return options.commands.start;
+    }
+
+    // Legacy devCommand support
+    if (options?.devCommand) {
+      return options.devCommand;
+    }
+
+    // Always use npm start by default
+    return DEFAULT_START_COMMAND;
+  }
+
+  /**
+   * Run a command via dev-supervisor terminal
+   */
+  private async runCommand(
+    appId: string,
+    appPath: string,
+    command: string,
+    phase: 'install' | 'build'
+  ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
+    try {
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+
+      if (!devSupervisor) {
+        return {
+          success: false,
+          error: 'Dev supervisor not available',
+        };
+      }
+
+      const terminalTool = new TerminalTool(devSupervisor);
+      const timeout = phase === 'install' ? RESTART_TIMEOUTS.INSTALL : RESTART_TIMEOUTS.BUILD;
+
+      const result = await terminalTool.executeCommand(appPath, {
+        command,
+        timeout,
+      });
+
+      const response: { success: boolean; output?: string; error?: string; exitCode?: number } = {
+        success: result.success,
+        exitCode: result.exitCode,
+      };
+      const combinedOutput = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
+      if (combinedOutput) response.output = combinedOutput;
+      if (!result.success) {
+        response.error = result.stderr || `${command} failed`;
+      }
+      return response;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : `${command} failed`,
+      };
     }
   }
 
@@ -261,21 +352,31 @@ export class AppRestartService {
 
   /**
    * Create PaaS configuration file for apps
+   * @param appPath - Path to the app directory
+   * @param _buildToolType - Deprecated, no longer used
+   * @param customStartCommand - Custom start command override
    */
-  async createPaasConfig(appPath: string): Promise<void> {
+  async createPaasConfig(
+    appPath: string,
+    _buildToolType?: BuildToolType,
+    customStartCommand?: string
+  ): Promise<void> {
     const airoDir = join(appPath, '.airo');
     const configPath = join(airoDir, 'config.json');
+
+    // Always use Node.js commands - customers define their own scripts
+    const devCommand = customStartCommand || DEFAULT_START_COMMAND;
 
     const paasConfig = {
       runtime: {
         dev: {
-          command: DEFAULT_DEV_COMMAND,
+          command: devCommand,
         },
         build: {
           command: DEFAULT_BUILD_COMMAND,
         },
         serve: {
-          command: DEFAULT_SERVE_COMMAND,
+          command: DEFAULT_START_COMMAND,
         },
       },
     };

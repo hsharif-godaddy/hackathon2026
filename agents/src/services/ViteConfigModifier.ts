@@ -11,7 +11,9 @@ import _generate from '@babel/generator';
 import * as t from '@babel/types';
 import { Logger } from '../logging/index.js';
 import type { DevSupervisorClient } from './DevSupervisorClient.js';
-import { VITE_BUILD_TOOL } from '../server/middleware/git-import-validation.js';
+
+/** Vite config file names to check for */
+const VITE_CONFIG_FILES = ['vite.config.js', 'vite.config.ts', 'vite.config.mjs', 'vite.config.cjs'] as const;
 
 // Handle ES module default exports
 const traverse = _traverse.default || _traverse;
@@ -33,7 +35,7 @@ async function findViteConfigFile(
   devSupervisor: DevSupervisorClient,
   containerPath: string
 ): Promise<string | null> {
-  for (const configFile of VITE_BUILD_TOOL.configFiles) {
+  for (const configFile of VITE_CONFIG_FILES) {
     const checkResult = await devSupervisor.exec({
       command: `test -f "${containerPath}/${configFile}" && echo "found" || echo "notfound"`,
       timeout: 5,

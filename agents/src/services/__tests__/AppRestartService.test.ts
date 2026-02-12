@@ -212,12 +212,22 @@ describe('AppRestartService', () => {
         'utf-8'
       );
 
-      // Verify the JSON structure
+      // Verify the JSON structure - always Node.js commands
       const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
       const writtenConfig = JSON.parse(writeCall[1] as string);
-      expect(writtenConfig.runtime.dev.command).toBe('node_modules/.bin/vite --host 0.0.0.0 --port $PORT');
-      expect(writtenConfig.runtime.build.command).toBe('node_modules/.bin/vite build --outDir dist');
-      expect(writtenConfig.runtime.serve.command).toBe('serve dist -l tcp://0.0.0.0:$PORT');
+      expect(writtenConfig.runtime.dev.command).toBe('npm start');
+      expect(writtenConfig.runtime.build.command).toBe('npm run build');
+      expect(writtenConfig.runtime.serve.command).toBe('npm start');
+    });
+
+    it('should use custom start command when provided', async () => {
+      await service.createPaasConfig(testAppPath, undefined, 'node server.js');
+
+      const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
+      const writtenConfig = JSON.parse(writeCall[1] as string);
+      expect(writtenConfig.runtime.dev.command).toBe('node server.js');
+      expect(writtenConfig.runtime.build.command).toBe('npm run build');
+      expect(writtenConfig.runtime.serve.command).toBe('npm start');
     });
   });
 

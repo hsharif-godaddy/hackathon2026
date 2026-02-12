@@ -447,28 +447,21 @@ export interface BuildToolConfig {
 }
 
 /**
- * Vite build tool configuration
+ * Node.js build tool configuration
+ * Any Node.js project with package.json is supported - customers define their own start script.
  */
-export const VITE_BUILD_TOOL: BuildToolConfig = {
-  name: 'Vite',
-  configFiles: ['vite.config.js', 'vite.config.ts', 'vite.config.mjs', 'vite.config.cjs'],
-  packageNames: ['vite'],
+export const NODEJS_BUILD_TOOL: BuildToolConfig = {
+  name: 'Node.js',
+  configFiles: [], // No standard config file - any Node.js project is supported
+  packageNames: [], // No specific packages required - any project with package.json
 } as const;
-
-// To add Bun support in future:
-// export const BUN_BUILD_TOOL: BuildToolConfig = {
-//   name: 'Bun',
-//   configFiles: ['bunfig.toml'],
-//   packageNames: ['bun'],
-// } as const;
 
 /**
  * List of all supported build tools.
- * Add new tools here to enable validation for them.
+ * Currently only Node.js is supported - customers define their own start script in package.json.
  */
 export const SUPPORTED_BUILD_TOOLS: readonly BuildToolConfig[] = [
-  VITE_BUILD_TOOL,
-  // Add more: BUN_BUILD_TOOL, WEBPACK_BUILD_TOOL, etc.
+  NODEJS_BUILD_TOOL,
 ] as const;
 
 /**
@@ -481,8 +474,13 @@ export function isValidShellPath(path: string): boolean {
 
 /**
  * Checks if package.json has any of the specified packages as dependency.
+ * If packageNames is empty, returns true (any package.json is valid).
  */
 export function hasDependency(packageJson: PackageJsonDeps, packageNames: readonly string[]): boolean {
+  // Empty packageNames means "any package.json is valid"
+  if (packageNames.length === 0) {
+    return true;
+  }
   return packageNames.some(pkg =>
     packageJson.dependencies?.[pkg] || packageJson.devDependencies?.[pkg]
   );
@@ -499,7 +497,7 @@ export function hasConfigFileOnHost(appPath: string, configFiles: readonly strin
  * Checks if a project matches a build tool on the host filesystem.
  */
 export function matchesBuildToolOnHost(appPath: string, buildTool: BuildToolConfig): boolean {
-  if (hasConfigFileOnHost(appPath, buildTool.configFiles)) {
+  if (buildTool.configFiles.length > 0 && hasConfigFileOnHost(appPath, buildTool.configFiles)) {
     return true;
   }
 
@@ -560,8 +558,10 @@ export async function matchesBuildToolInContainer(
   packageJson: PackageJsonDeps,
   buildTool: BuildToolConfig
 ): Promise<boolean> {
-  const hasConfig = await hasConfigFileInContainer(devSupervisor, projectRoot, buildTool.configFiles);
-  if (hasConfig) return true;
+  if (buildTool.configFiles.length > 0) {
+    const hasConfig = await hasConfigFileInContainer(devSupervisor, projectRoot, buildTool.configFiles);
+    if (hasConfig) return true;
+  }
 
   return hasDependency(packageJson, buildTool.packageNames);
 }

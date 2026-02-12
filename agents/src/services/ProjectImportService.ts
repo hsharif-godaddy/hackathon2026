@@ -16,7 +16,8 @@ import { zipSecurityService } from './ZipSecurityService.js';
 import { gitCloneService } from './GitCloneService.js';
 import { codeSyncFileCleanupService } from './CodeSyncFileCleanupService.js';
 import { modifyViteConfig } from './ViteConfigModifier.js';
-import { appRestartService, DEFAULT_DEV_COMMAND } from './AppRestartService.js';
+import { appRestartService, DEFAULT_START_COMMAND } from './AppRestartService.js';
+import { injectPortHandling } from './ExpressPortInjector.js';
 import { GitTool } from '../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { DevSupervisorClient } from './DevSupervisorClient.js';
@@ -43,6 +44,19 @@ const AIRO_GITIGNORE_PATTERNS = [
 ] as const;
 
 /**
+ * Command overrides for PaaS imports
+ * Allows customers to specify custom install/build/start commands
+ */
+export interface CommandOverrides {
+  /** Custom install command (default: 'npm install') */
+  install?: string;
+  /** Custom build command (default: 'npm run build') */
+  build?: string;
+  /** Custom start command (default: 'npm start' for Node.js, vite for Vite) */
+  start?: string;
+}
+
+/**
  * Parameters for starting an import
  */
 export interface StartImportParams {
@@ -54,6 +68,12 @@ export interface StartImportParams {
   zipPath?: string;
   zipFileName?: string;
   zipFileSize?: number;
+
+  // For PaaS Node.js imports
+  /** Entry file for Node.js projects (e.g., 'src/server.ts') */
+  entryFile?: string;
+  /** Custom commands to override defaults */
+  commands?: CommandOverrides;
 }
 
 /**
@@ -314,7 +334,43 @@ export class ProjectImportService {
         validation.hasGitignoreFile ?? false
       );
 
-      // Phase 7: Modify vite config to allow all hosts (for proxy compatibility)
+      // Phase 7a: Inject PORT handling for entry file if provided
+      if (params.entryFile) {
+        this.logger.info('project-import.port-injection.start', {
+          jobId,
+          appId,
+          entryFile: params.entryFile,
+        });
+
+        const portInjectionResult = await injectPortHandling(
+          devSupervisor,
+          '/app',
+          params.entryFile
+        );
+
+        if (portInjectionResult.modified) {
+          this.logger.info('project-import.port-injection.success', {
+            jobId,
+            appId,
+            entryFile: params.entryFile,
+          });
+        } else if (portInjectionResult.skipped) {
+          this.logger.info('project-import.port-injection.skipped', {
+            jobId,
+            appId,
+            reason: portInjectionResult.reason,
+          });
+        } else if (portInjectionResult.error) {
+          this.logger.warn('project-import.port-injection.failed', {
+            jobId,
+            appId,
+            error: portInjectionResult.error,
+          });
+          // Don't fail the import - the user might have already configured PORT handling
+        }
+      }
+
+      // Phase 7b: Modify vite config to allow all hosts (for proxy compatibility)
       // Use '/app' as this is the standard container mount
       const viteConfigResult = await modifyViteConfig(devSupervisor, '/app');
       if (viteConfigResult.modified) {
@@ -385,7 +441,7 @@ export class ProjectImportService {
 
       // Phase 10: Create PaaS configuration file for uploaded apps
       this.logger.info('project-import.config.create', { jobId, appId });
-      await appRestartService.createPaasConfig(app.path);
+      await appRestartService.createPaasConfig(app.path, undefined, params.commands?.start);
       this.logger.info('project-import.config.created', { jobId, appId });
 
       // Phase 10.5: Cleanup temp files BEFORE git commit to prevent them from being committed
@@ -423,9 +479,10 @@ export class ProjectImportService {
         return;
       }
 
-      // Phase 12: Restart dev server with new command from config
+      // Phase 12: Restart dev server with npm start (or custom command)
       await this.updateStatus(jobId, ImportJobStatus.RESTARTING);
-      const restartResult = await appRestartService.restartDevServer(appId, DEFAULT_DEV_COMMAND);
+      const startCommand = params.commands?.start || DEFAULT_START_COMMAND;
+      const restartResult = await appRestartService.restartDevServer(appId, startCommand);
 
       if (!restartResult.success) {
         this.logger.warn('project-import.restart.failed', {
@@ -559,6 +616,7 @@ export class ProjectImportService {
     hasBuildScript?: boolean;
     hasDevScript?: boolean;
     hasGitignoreFile?: boolean;
+    matchedTool?: string;
     errors?: ValidationError[];
     warnings?: ValidationError[];
   }> {
@@ -710,6 +768,7 @@ export class ProjectImportService {
       hasBuildScript?: boolean;
       hasDevScript?: boolean;
       hasGitignoreFile?: boolean;
+      matchedTool?: string;
       errors?: ValidationError[];
       warnings?: ValidationError[];
     } = {
@@ -719,6 +778,7 @@ export class ProjectImportService {
       hasBuildScript,
       hasDevScript,
       hasGitignoreFile,
+      matchedTool: buildToolCheck.matchedTool,
     };
 
     if (warnings.length > 0) {
