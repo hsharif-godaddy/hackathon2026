@@ -1,5 +1,5 @@
 import type { ModelMessage, ToolModelMessage, UserModelMessage, AssistantModelMessage, SystemModelMessage } from 'ai';
-import type { ToolCall } from '../database/schema.js';
+import type { ToolCall, ConversationSummary } from '../database/schema.js';
 import type { DatabaseMessage } from '../types/conversation-messages.js';
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js';
 import { SummaryRepository } from '../database/repositories/SummaryRepository.js';
@@ -777,57 +777,91 @@ export class ConversationHistoryLoader {
     appPath?: string,
     enableSummarization: boolean = true
   ): Promise<ConversationHistoryWithSummary> {
-    const conversations = await this.conversationRepo.getByAppId(appId);
-
     logger.debug('conversation.history.loader.load_with_summarization.begin', {
       appId,
-      conversationsCount: conversations.length,
       enableSummarization,
     });
 
-    const allMessages: DatabaseMessage[] = [];
+    // OPTIMIZATION: Check for summary FIRST before loading messages
+    // If summary exists, only load messages after the summary's end point
+    // This avoids loading potentially thousands of old messages from the database
+    let latestSummary: ConversationSummary | null = null;
+    let messagesAfterSummary: DatabaseMessage[] = [];
 
-    for (const conversation of conversations) {
-      const messages = await this.conversationRepo.getMessagesForHistory(conversation.id);
-      allMessages.push(
-        ...messages.map((msg) => ({
-          ...msg,
-          conversationId: conversation.id,
-        }))
-      );
-    }
-
-    allMessages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-
-    // Load latest summary if enabled (summaries are cumulative, only use the most recent)
-    let latestSummary: any = null;
-    let summaryEndIndex = -1;
-    
     if (enableSummarization && this.summarizationStrategy) {
       latestSummary = await this.summaryRepo.findLatestForApp(appId);
-      
+
       if (latestSummary) {
-        // Find where the summary ends in the message array
-        summaryEndIndex = allMessages.findIndex((msg) => msg.id === latestSummary.messageRangeEnd);
-        
-        if (summaryEndIndex === -1) {
-          logger.warn('conversation.history.loader.summary_end_not_found', {
+        // Only load messages AFTER the summary's end point
+        messagesAfterSummary = await this.conversationRepo.getMessagesAfterMessageId(
+          appId,
+          latestSummary.messageRangeEnd
+        );
+
+        // STALE SUMMARY DETECTION: If no messages returned, verify the reference still exists
+        // This handles edge cases where conversation messages were deleted/migrated but summary remains
+        // The extra getMessageById call only happens when messagesAfterSummary is empty, which is
+        // the less common case (most loads have new messages since the last summary)
+        if (messagesAfterSummary.length === 0) {
+          const refExists = await this.conversationRepo.getMessageById(latestSummary.messageRangeEnd);
+          if (!refExists) {
+            // Reference message missing - summary is stale, fall back to loading all
+            logger.warn('conversation.history.loader.summary_ref_missing', {
+              appId,
+              summaryId: latestSummary.id,
+              messageRangeEnd: latestSummary.messageRangeEnd,
+            });
+            latestSummary = null;
+          }
+          // If refExists but no new messages, that's fine - we just have summary + 0 new messages
+        }
+
+        if (latestSummary) {
+          logger.debug('conversation.history.loader.summary_optimized_load', {
             appId,
             summaryId: latestSummary.id,
-            messageRangeEnd: latestSummary.messageRangeEnd,
+            messagesAfterSummary: messagesAfterSummary.length,
+            skippedMessages: latestSummary.messageCount ?? 'unknown',
           });
-          latestSummary = null;
         }
       }
     }
+
+    // Fall back to loading all messages if no valid summary
+    let allMessages: DatabaseMessage[];
+    if (latestSummary) {
+      // Use only messages after summary
+      allMessages = messagesAfterSummary;
+    } else {
+      // No summary - load all messages
+      const conversations = await this.conversationRepo.getByAppId(appId);
+      allMessages = [];
+
+      for (const conversation of conversations) {
+        const messages = await this.conversationRepo.getMessagesForHistory(conversation.id);
+        allMessages.push(
+          ...messages.map((msg) => ({
+            ...msg,
+            conversationId: conversation.id,
+          }))
+        );
+      }
+
+      logger.debug('conversation.history.loader.full_load', {
+        appId,
+        conversationsCount: conversations.length,
+        totalMessages: allMessages.length,
+      });
+    }
+
+    allMessages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
     // Build LLM messages for conversation history
     // Summary is injected as cacheable user messages (NOT system prompt) for security
     // User-derived content should never be elevated to system prompt privilege
     const llmMessages: LLMMessage[] = [];
-    let messageIndex = 0;
 
-    if (latestSummary && summaryEndIndex !== -1) {
+    if (latestSummary) {
       // Add operation log first (if available) - provides cumulative record of all operations
       // This survives compression and ensures the agent sees what files were touched
       // SECURITY: Injected as user message to prevent prompt injection via system prompt
@@ -853,27 +887,20 @@ export class ConversationHistoryLoader {
         cachePoint: { type: 'ephemeral' },
       });
 
-      // Skip all messages covered by the summary
-      messageIndex = summaryEndIndex + 1;
-
       logger.debug('conversation.history.loader.summary_applied', {
         appId,
         summaryId: latestSummary.id,
         summaryTokens: latestSummary.summaryTokenCount,
         originalTokens: latestSummary.originalTokenCount,
-        messagesCovered: messageIndex,
-        messagesRemaining: allMessages.length - messageIndex,
+        messagesAfterSummary: allMessages.length,
       });
     }
 
-    // Add remaining messages after summary
-    while (messageIndex < allMessages.length) {
-      const dbMsg = allMessages[messageIndex];
-      if (dbMsg) {
-        const converted = this.convertToLLMMessages([dbMsg]);
-        llmMessages.push(...converted);
-      }
-      messageIndex++;
+    // Add all messages (when no summary) or messages after summary (when summary exists)
+    // allMessages already contains only the relevant messages based on summary check above
+    for (const dbMsg of allMessages) {
+      const converted = this.convertToLLMMessages([dbMsg]);
+      llmMessages.push(...converted);
     }
 
     logger.debug('conversation.history.loader.load_with_summarization.complete', {
@@ -881,7 +908,6 @@ export class ConversationHistoryLoader {
       hasSummary: !!latestSummary,
       totalMessages: allMessages.length,
       llmMessagesCount: llmMessages.length,
-      messagesCovered: latestSummary ? summaryEndIndex + 1 : 0,
     });
 
     // CRITICAL: Hot files must ALWAYS be loaded and injected, regardless of summarization status
@@ -892,10 +918,15 @@ export class ConversationHistoryLoader {
     if (hotFileStrategy && appPath) {
       (hotFileStrategy as any).setAppPath(appPath);
 
-      // Analyze ALL messages (including those before summary) to identify hot files
-      // This ensures files heavily accessed early in conversation are still included
-      const allLlmMessages = this.convertToLLMMessages(allMessages);
-      (hotFileStrategy as any).analyzeMessages(allLlmMessages);
+      // Analyze available messages to identify hot files (files frequently read/edited)
+      // When summary exists, we only analyze post-summary messages - this is intentional:
+      // 1. Performance: avoids loading full history just for hot file detection
+      // 2. Recency bias: recent file accesses are more relevant for current work
+      // 3. Operation log: historical file paths are captured there for reference
+      // Note: Hot file detection looks for actual file tool calls (read_file, edit_file),
+      // not textual mentions, so the operation log text isn't directly useful for this analysis
+      const llmMessagesForAnalysis = this.convertToLLMMessages(allMessages);
+      (hotFileStrategy as any).analyzeMessages(llmMessagesForAnalysis);
 
       logger.debug('conversation.history.hot_files.strategy_check', {
         appId,
@@ -903,6 +934,8 @@ export class ConversationHistoryLoader {
         hasAppPath: true,
         appPath,
         hasSummary: !!latestSummary,
+        messagesAnalyzed: allMessages.length,
+        note: latestSummary ? 'analyzing_post_summary_only' : 'analyzing_full_history',
       });
     }
 

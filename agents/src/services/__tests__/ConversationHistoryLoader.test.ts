@@ -29,6 +29,8 @@ describe('ConversationHistoryLoader', () => {
       findByAppAndAgent: vi.fn(),
       getMessagesForHistory: vi.fn(),
       getByAppId: vi.fn(),
+      getMessagesAfterMessageId: vi.fn().mockResolvedValue([]),
+      getMessageById: vi.fn().mockResolvedValue(null),
     } as any;
 
     loader = new ConversationHistoryLoader(mockRepo);
@@ -334,18 +336,8 @@ describe('ConversationHistoryLoader', () => {
 
   describe('loadMessagesWithSummarization', () => {
     it('should inject summary as cacheable USER messages (not returned separately for security)', async () => {
-      vi.mocked(mockRepo.getByAppId).mockResolvedValue([
-        { id: 'conv1', appId: 'test-app', createdAt: new Date(), updatedAt: new Date() }
-      ]);
-
-      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue([
-        {
-          id: 'm1',
-          conversationId: 'conv1',
-          sender: 'user' as const,
-          content: 'hello',
-          createdAt: new Date('2025-01-01')
-        },
+      // Mock messages AFTER the summary (only m2, since m1 is covered by summary)
+      vi.mocked(mockRepo.getMessagesAfterMessageId).mockResolvedValue([
         {
           id: 'm2',
           conversationId: 'conv1',
@@ -395,6 +387,64 @@ describe('ConversationHistoryLoader', () => {
       expect(operationLogMessage?.content).toContain('Edited file A');
       // SECURITY: Must have cache control for cost savings
       expect((operationLogMessage as any)?.cachePoint?.type).toBe('ephemeral');
+    });
+
+    it('should fall back to loading all messages when summary reference is stale', async () => {
+      // Mock a stale summary - reference message no longer exists
+      vi.mocked(mockRepo.getMessagesAfterMessageId).mockResolvedValue([]);
+      vi.mocked(mockRepo.getMessageById).mockResolvedValue(null); // Reference missing!
+
+      vi.mocked(mockRepo.getByAppId).mockResolvedValue([
+        { id: 'conv1', appId: 'test-app', agentId: 'develop', createdAt: new Date(), updatedAt: new Date(), title: 'Test Conv' }
+      ]);
+
+      vi.mocked(mockRepo.getMessagesForHistory).mockResolvedValue([
+        {
+          id: 'm1',
+          conversationId: 'conv1',
+          sender: 'user' as const,
+          content: 'hello world',
+          createdAt: new Date('2025-01-01')
+        },
+        {
+          id: 'm2',
+          conversationId: 'conv1',
+          sender: 'agent' as const,
+          content: 'hi there',
+          createdAt: new Date('2025-01-02')
+        }
+      ]);
+
+      latestSummary = {
+        id: 'stale-sum',
+        summaryText: '# Stale Summary',
+        operationLog: 'Old operations',
+        summaryTokenCount: 100,
+        originalTokenCount: 1000,
+        messageRangeStart: 'deleted-msg-1',
+        messageRangeEnd: 'deleted-msg-2' // This message no longer exists
+      };
+
+      const result = await loader.loadMessagesWithSummarization('test-app', 10000);
+
+      // When summary is stale, should NOT include summary content
+      expect(result.summary).toBeUndefined();
+
+      const summaryMessage = result.messages.find((msg: any) =>
+        msg.role === 'user' &&
+        typeof msg.content === 'string' &&
+        msg.content.includes('[CONVERSATION SUMMARY]')
+      );
+      expect(summaryMessage).toBeUndefined();
+
+      // Should have loaded all messages instead
+      expect(mockRepo.getByAppId).toHaveBeenCalledWith('test-app');
+      expect(mockRepo.getMessagesForHistory).toHaveBeenCalledWith('conv1');
+
+      // Result should include the loaded messages
+      expect(result.messages).toHaveLength(2);
+      expect(result.messages[0]).toEqual({ role: 'user', content: 'hello world' });
+      expect(result.messages[1]).toEqual({ role: 'assistant', content: 'hi there' });
     });
   });
 
