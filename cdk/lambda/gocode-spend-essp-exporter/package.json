@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "backfill-activity": "tsx scripts/backfill-activity-to-es.ts"
   },
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.709.0",

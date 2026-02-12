@@ -119,13 +119,13 @@ export class GocaasSpendLambdaStack extends GDStack {
           image: lambda.Runtime.NODEJS_22_X.bundlingImage,
           command: [
             'bash', '-c',
-            'cd /asset-input && npm install && npm run build && cp dist/index.js dist/handler.js package.json /asset-output/ && cp -r node_modules /asset-output/'
+            'cd /asset-input && npm install && npm run build && cp dist/*.js package.json /asset-output/ && cp -r node_modules /asset-output/'
           ],
           user: 'root'
         }
       }),
       timeout: cdk.Duration.minutes(5),
-      memorySize: 2048,
+      memorySize: 512,
       role: this.syncLambdaRole,
       logGroup: syncLogGroup,
       vpc,
