@@ -104,6 +104,22 @@ cd dev-supervisor && go fmt ./...
 cd dev-supervisor && golangci-lint run
 ```
 
+**Test Filtering (Vitest):**
+
+```bash
+# IMPORTANT: Always filter to a specific package first
+pnpm --filter @airo/agents test:unit "pattern"      # Filter by file path
+pnpm --filter @airo/agents test:unit -t "test name" # Filter by test name
+pnpm --filter website test "pattern"                # App package tests
+
+# DO NOT use root "pnpm test -- filter" - causes OOM by running all packages
+```
+
+| What you want       | Vitest syntax | Jest syntax (DON'T USE) |
+| ------------------- | ------------- | ----------------------- |
+| Filter by file      | `"pattern"`   | `--testPathPattern`     |
+| Filter by test name | `-t "name"`   | `--testNamePattern`     |
+
 **Ports:** Agents=4000, App=3000. Kill conflicting processes.
 
 ## Architecture

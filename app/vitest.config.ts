@@ -23,15 +23,17 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
     include: ['src/**/__tests__/**/*.test.ts', 'src/**/*.test.ts', 'src/**/*.test.tsx'],
-    // Use thread pool for parallel test execution
-    pool: 'threads',
+    // Use forks pool to isolate memory per test file (prevents OOM)
+    pool: 'forks',
     poolOptions: {
-      threads: {
-        singleThread: false,
-        minThreads: 1,
-        maxThreads: 4,
+      forks: {
+        minForks: 1,
+        maxForks: 4, // Limit parallelism to prevent memory exhaustion
+        isolate: true, // Each test file runs in fresh process
       },
     },
+    // Limit concurrent tests within each file
+    maxConcurrency: 5,
     // Inline workspace packages so Vitest resolves subpath exports correctly
     deps: {
       inline: ['@airo/ai-lib'],

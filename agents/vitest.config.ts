@@ -4,6 +4,17 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
+    // Use forks pool to isolate memory per test file (prevents OOM)
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        minForks: 1,
+        maxForks: 4, // Limit parallelism to prevent memory exhaustion
+        isolate: true, // Each test file runs in fresh process
+      },
+    },
+    // Limit concurrent tests within each file
+    maxConcurrency: 5,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
