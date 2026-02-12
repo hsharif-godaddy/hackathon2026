@@ -2254,7 +2254,7 @@ func TestHTTPProxy_HealthCheck_RunningProcess(t *testing.T) {
 func TestHTTPProxy_ImageSlotRoute(t *testing.T) {
 	// Create temporary static directory with manifest
 	tmpDir := t.TempDir()
-	manifestPath := filepath.Join(tmpDir, "image-slots.json")
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
 
 	manifest := ImageManifest{
 		"pages/home/hero": {CurrentURL: "https://media.gettyimages.com/id/abc123/photo.jpg"},
@@ -2291,13 +2291,13 @@ func TestHTTPProxy_ImageSlotRoute(t *testing.T) {
 }
 
 func TestHTTPProxy_ImageSlotRoute_NoManifest(t *testing.T) {
-	// When static root doesn't have image-slots.json, handler should return 500
+	// When static root doesn't have airo-media.json, handler should return 500
 	tmpDir := t.TempDir()
 	// Don't create the manifest file
 
 	mux := http.NewServeMux()
 
-	cache := NewManifestCache(filepath.Join(tmpDir, "image-slots.json"))
+	cache := NewManifestCache(filepath.Join(tmpDir, "airo-media.json"))
 	mux.Handle("/airo-assets/images/", NewImageSlotHandler(cache))
 
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/home/hero", nil)

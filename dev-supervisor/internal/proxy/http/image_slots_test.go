@@ -66,7 +66,7 @@ func TestImageSlot_Types(t *testing.T) {
 
 func TestManifestCache_Get_ReturnsSlot(t *testing.T) {
 	tmpDir := t.TempDir()
-	manifestPath := filepath.Join(tmpDir, "image-slots.json")
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
 
 	manifest := httpproxy.ImageManifest{
 		"pages/home/hero": {
@@ -98,7 +98,7 @@ func TestManifestCache_Get_ReturnsSlot(t *testing.T) {
 
 func TestManifestCache_Get_MissingSlot(t *testing.T) {
 	tmpDir := t.TempDir()
-	manifestPath := filepath.Join(tmpDir, "image-slots.json")
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
 
 	manifest := httpproxy.ImageManifest{
 		"pages/home/hero": {CurrentURL: "https://media.gettyimages.com/img.jpg"},
@@ -118,7 +118,7 @@ func TestManifestCache_Get_MissingSlot(t *testing.T) {
 }
 
 func TestManifestCache_Get_MissingFile(t *testing.T) {
-	cache := httpproxy.NewManifestCache("/nonexistent/image-slots.json")
+	cache := httpproxy.NewManifestCache("/nonexistent/airo-media.json")
 	slot, err := cache.Get("any/slot")
 
 	if err == nil {
@@ -131,7 +131,7 @@ func TestManifestCache_Get_MissingFile(t *testing.T) {
 
 func TestManifestCache_Get_InvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
-	manifestPath := filepath.Join(tmpDir, "image-slots.json")
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
 	_ = os.WriteFile(manifestPath, []byte("not valid json"), 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
@@ -147,7 +147,7 @@ func TestManifestCache_Get_InvalidJSON(t *testing.T) {
 
 func TestManifestCache_Get_ReloadsOnMtimeChange(t *testing.T) {
 	tmpDir := t.TempDir()
-	manifestPath := filepath.Join(tmpDir, "image-slots.json")
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
 
 	manifest := httpproxy.ImageManifest{
 		"pages/home/hero": {CurrentURL: "https://media.gettyimages.com/v1.jpg"},
@@ -182,7 +182,7 @@ func TestManifestCache_Get_ReloadsOnMtimeChange(t *testing.T) {
 
 func TestHandleImageSlot_Success(t *testing.T) {
 	tmpDir := t.TempDir()
-	manifestPath := filepath.Join(tmpDir, "image-slots.json")
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
 
 	manifest := httpproxy.ImageManifest{
 		"pages/home/hero": {CurrentURL: "https://media.gettyimages.com/id/abc123/photo.jpg"},
@@ -209,7 +209,7 @@ func TestHandleImageSlot_Success(t *testing.T) {
 
 func TestHandleImageSlot_NotFound(t *testing.T) {
 	tmpDir := t.TempDir()
-	manifestPath := filepath.Join(tmpDir, "image-slots.json")
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
 
 	manifest := httpproxy.ImageManifest{}
 	data, _ := json.Marshal(manifest)
@@ -235,7 +235,7 @@ func TestHandleImageSlot_NotFound(t *testing.T) {
 
 func TestHandleImageSlot_EmptySlotPath(t *testing.T) {
 	tmpDir := t.TempDir()
-	manifestPath := filepath.Join(tmpDir, "image-slots.json")
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
 	_ = os.WriteFile(manifestPath, []byte("{}"), 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
@@ -253,7 +253,7 @@ func TestHandleImageSlot_EmptySlotPath(t *testing.T) {
 
 func TestHandleImageSlot_MethodNotAllowed(t *testing.T) {
 	tmpDir := t.TempDir()
-	manifestPath := filepath.Join(tmpDir, "image-slots.json")
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
 	_ = os.WriteFile(manifestPath, []byte("{}"), 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
@@ -271,7 +271,7 @@ func TestHandleImageSlot_MethodNotAllowed(t *testing.T) {
 
 func TestHandleImageSlot_HeadRequest(t *testing.T) {
 	tmpDir := t.TempDir()
-	manifestPath := filepath.Join(tmpDir, "image-slots.json")
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
 
 	manifest := httpproxy.ImageManifest{
 		"pages/home/hero": {CurrentURL: "https://media.gettyimages.com/image.jpg"},
@@ -293,7 +293,7 @@ func TestHandleImageSlot_HeadRequest(t *testing.T) {
 }
 
 func TestHandleImageSlot_ManifestReadError(t *testing.T) {
-	cache := httpproxy.NewManifestCache("/nonexistent/image-slots.json")
+	cache := httpproxy.NewManifestCache("/nonexistent/airo-media.json")
 	handler := httpproxy.NewImageSlotHandler(cache)
 
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/home/hero", nil)
@@ -308,7 +308,7 @@ func TestHandleImageSlot_ManifestReadError(t *testing.T) {
 
 func TestHandleImageSlot_InvalidRedirectURL(t *testing.T) {
 	tmpDir := t.TempDir()
-	manifestPath := filepath.Join(tmpDir, "image-slots.json")
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
 
 	// Use untrusted domain - should be blocked
 	manifest := httpproxy.ImageManifest{
@@ -332,7 +332,7 @@ func TestHandleImageSlot_InvalidRedirectURL(t *testing.T) {
 
 func TestHandleImageSlot_MalformedPath(t *testing.T) {
 	tmpDir := t.TempDir()
-	manifestPath := filepath.Join(tmpDir, "image-slots.json")
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
 	_ = os.WriteFile(manifestPath, []byte("{}"), 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
@@ -353,7 +353,7 @@ func TestHandleImageSlot_MalformedPath(t *testing.T) {
 
 func TestHandleImageSlot_InvalidScheme(t *testing.T) {
 	tmpDir := t.TempDir()
-	manifestPath := filepath.Join(tmpDir, "image-slots.json")
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
 
 	// Use javascript: scheme to test scheme validation
 	manifest := httpproxy.ImageManifest{
@@ -377,7 +377,7 @@ func TestHandleImageSlot_InvalidScheme(t *testing.T) {
 
 func TestHandleImageSlot_DataScheme(t *testing.T) {
 	tmpDir := t.TempDir()
-	manifestPath := filepath.Join(tmpDir, "image-slots.json")
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
 
 	// Use data: scheme to test scheme validation
 	manifest := httpproxy.ImageManifest{

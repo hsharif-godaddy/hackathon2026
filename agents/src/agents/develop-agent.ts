@@ -14,7 +14,7 @@ import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 import { logger, log } from '../logging/index.js'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
-import { agents as featureAgents } from '../services/features.js'
+import { agents as featureAgents, features as featureFlags } from '../services/features.js'
 import { GitHookService } from '../services/git-hook-service.js'
 import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
 import { skillToolManager } from '../tools/skill-tool-manager.js'
@@ -248,7 +248,10 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       publishStatus: allAILibTools.publishStatus,
 
       // Specialized development tools
-      mediaSearch: allAILibTools.mediaSearch,
+      // Use slot-based media tool when ENABLE_MEDIA_SLOTS=true, otherwise use direct URL media search
+      ...(featureFlags.isEnabled('mediaSlots')
+        ? { media: allAILibTools.media }
+        : { mediaSearch: allAILibTools.mediaSearch }),
       qrCode: allAILibTools.qrCode,
       websiteScraper: allAILibTools.websiteScraper,
 

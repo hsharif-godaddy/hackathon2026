@@ -112,28 +112,16 @@ func (c *ManifestCache) reload(modTime time.Time) error {
 	return nil
 }
 
-const imageSlotPrefix = "/airo-assets/images/"
-
-// allowedRedirectHosts contains the trusted domains for image redirects.
-// Only HTTPS URLs with these hosts are allowed as redirect targets.
-var allowedRedirectHosts = map[string]struct{}{
-	"media.gettyimages.com":                     {},
-	"media.istockphoto.com":                     {},
-	"oaidalleapiprodscus.blob.core.windows.net": {}, // DALL-E
+// mediaSlotHandler provides shared logic for image and video slot handlers.
+type mediaSlotHandler struct {
+	cache        *ManifestCache
+	prefix       string
+	allowedHosts map[string]struct{}
+	mediaType    string // "image" or "video" for logging
 }
 
-// ImageSlotHandler handles requests for image slots.
-type ImageSlotHandler struct {
-	cache *ManifestCache
-}
-
-// NewImageSlotHandler creates a new handler with the given manifest cache.
-func NewImageSlotHandler(cache *ManifestCache) *ImageSlotHandler {
-	return &ImageSlotHandler{cache: cache}
-}
-
-// ServeHTTP handles image slot requests.
-func (h *ImageSlotHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// serveSlot handles the common logic for serving media slots.
+func (h *mediaSlotHandler) serveSlot(w http.ResponseWriter, r *http.Request) {
 	// Only GET and HEAD allowed
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -141,9 +129,9 @@ func (h *ImageSlotHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract slot path - verify prefix was actually removed
-	slotPath := strings.TrimPrefix(r.URL.Path, imageSlotPrefix)
+	slotPath := strings.TrimPrefix(r.URL.Path, h.prefix)
 	if slotPath == "" || slotPath == r.URL.Path {
-		slog.Debug("image_slot.invalid_path", "url", r.URL.Path)
+		slog.Debug(h.mediaType+"_slot.invalid_path", "url", r.URL.Path)
 		h.respondError(w, "invalid slot path", http.StatusBadRequest)
 		return
 	}
@@ -151,12 +139,12 @@ func (h *ImageSlotHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Look up in manifest
 	slot, err := h.cache.Get(slotPath)
 	if errors.Is(err, ErrSlotNotFound) {
-		slog.Debug("image_slot.not_found", "slot", slotPath)
+		slog.Debug(h.mediaType+"_slot.not_found", "slot", slotPath)
 		h.respondError(w, "slot not found", http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		slog.Error("image_slot.manifest_error", "slot", slotPath, "error", err.Error())
+		slog.Error(h.mediaType+"_slot.manifest_error", "slot", slotPath, "error", err.Error())
 		h.respondError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -165,25 +153,92 @@ func (h *ImageSlotHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Must be HTTPS with a trusted host to prevent javascript:, data:, or other scheme attacks
 	redirectURL, err := url.Parse(slot.CurrentURL)
 	if err != nil || redirectURL.Scheme != "https" {
-		slog.Error("image_slot.invalid_redirect_url",
+		slog.Error(h.mediaType+"_slot.invalid_redirect_url",
 			"slot", slotPath, "url", slot.CurrentURL, "reason", "invalid_scheme")
-		h.respondError(w, "invalid image URL", http.StatusInternalServerError)
+		h.respondError(w, "invalid "+h.mediaType+" URL", http.StatusInternalServerError)
 		return
 	}
-	if _, ok := allowedRedirectHosts[redirectURL.Host]; !ok {
-		slog.Error("image_slot.invalid_redirect_url",
+	if _, ok := h.allowedHosts[redirectURL.Host]; !ok {
+		slog.Error(h.mediaType+"_slot.invalid_redirect_url",
 			"slot", slotPath, "url", slot.CurrentURL, "reason", "untrusted_host")
-		h.respondError(w, "invalid image URL", http.StatusInternalServerError)
+		h.respondError(w, "invalid "+h.mediaType+" URL", http.StatusInternalServerError)
 		return
 	}
 
-	slog.Debug("image_slot.redirect", "slot", slotPath, "url", slot.CurrentURL)
+	slog.Debug(h.mediaType+"_slot.redirect", "slot", slotPath, "url", slot.CurrentURL)
 	http.Redirect(w, r, slot.CurrentURL, http.StatusFound)
 }
 
 // respondError writes a JSON error response using proper JSON encoding.
-func (h *ImageSlotHandler) respondError(w http.ResponseWriter, msg string, status int) {
+func (h *mediaSlotHandler) respondError(w http.ResponseWriter, msg string, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+const imageSlotPrefix = "/airo-assets/images/"
+
+// allowedImageRedirectHosts contains the trusted domains for image redirects.
+// Only HTTPS URLs with these hosts are allowed as redirect targets.
+var allowedImageRedirectHosts = map[string]struct{}{
+	"media.gettyimages.com":                     {},
+	"media.istockphoto.com":                     {},
+	"oaidalleapiprodscus.blob.core.windows.net": {}, // DALL-E
+}
+
+// ImageSlotHandler handles requests for image slots.
+type ImageSlotHandler struct {
+	mediaSlotHandler
+}
+
+// NewImageSlotHandler creates a new handler with the given manifest cache.
+func NewImageSlotHandler(cache *ManifestCache) *ImageSlotHandler {
+	return &ImageSlotHandler{
+		mediaSlotHandler: mediaSlotHandler{
+			cache:        cache,
+			prefix:       imageSlotPrefix,
+			allowedHosts: allowedImageRedirectHosts,
+			mediaType:    "image",
+		},
+	}
+}
+
+// ServeHTTP handles image slot requests.
+func (h *ImageSlotHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.serveSlot(w, r)
+}
+
+const videoSlotPrefix = "/airo-assets/videos/"
+
+// allowedVideoRedirectHosts contains the trusted domains for video redirects.
+// Only HTTPS URLs with these hosts are allowed as redirect targets.
+var allowedVideoRedirectHosts = map[string]struct{}{
+	"media.gettyimages.com":  {},
+	"media.istockphoto.com":  {},
+	"cdn.videvo.net":         {},
+	"player.vimeo.com":       {},
+	"www.youtube.com":        {},
+	"storage.googleapis.com": {},
+}
+
+// VideoSlotHandler handles requests for video slots.
+type VideoSlotHandler struct {
+	mediaSlotHandler
+}
+
+// NewVideoSlotHandler creates a new handler with the given manifest cache.
+func NewVideoSlotHandler(cache *ManifestCache) *VideoSlotHandler {
+	return &VideoSlotHandler{
+		mediaSlotHandler: mediaSlotHandler{
+			cache:        cache,
+			prefix:       videoSlotPrefix,
+			allowedHosts: allowedVideoRedirectHosts,
+			mediaType:    "video",
+		},
+	}
+}
+
+// ServeHTTP handles video slot requests.
+func (h *VideoSlotHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.serveSlot(w, r)
 }

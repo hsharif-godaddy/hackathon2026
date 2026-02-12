@@ -69,6 +69,7 @@ interface FeatureConfig {
   enabledFeatures: {
     sessionFeedback: boolean
     imageAnalysisEnabled: boolean
+    mediaSlots: boolean
   }
 }
 
@@ -229,7 +230,8 @@ function parseEnvironmentFeatures(): FeatureConfig {
     // Widget/Feature enablement configuration
     enabledFeatures: {
       sessionFeedback: process.env.ENABLE_SESSION_FEEDBACK === 'true',
-      imageAnalysisEnabled: process.env.IMAGE_ANALYSIS_ENABLED === 'true'
+      imageAnalysisEnabled: process.env.IMAGE_ANALYSIS_ENABLED === 'true',
+      mediaSlots: process.env.ENABLE_MEDIA_SLOTS === 'true'
     }
   }
 }
@@ -347,7 +349,7 @@ export const skills = {
  */
 export const features = {
   /** Check if a specific feature is enabled */
-  isEnabled: (featureId: 'sessionFeedback'): boolean => {
+  isEnabled: (featureId: keyof FeatureConfig['enabledFeatures']): boolean => {
     const features = getFeatures();
     return features.enabledFeatures[featureId] ?? false;
   }

@@ -59,6 +59,7 @@ export { askQuestionAITool } from './ask-question.js';
 export { qrCodeAITool } from './qr-code.js';
 export { websiteRebuildAITool } from './website-rebuild.js';
 export { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
+export { mediaSlotAITool } from './media-slot.js';
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js';
@@ -113,6 +114,7 @@ import { askQuestionAITool } from './ask-question.js';
 import { qrCodeAITool } from './qr-code.js';
 import { websiteRebuildAITool } from './website-rebuild.js';
 import { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
+import { mediaSlotAITool } from './media-slot.js';
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -168,6 +170,7 @@ export const allAILibTools: Record<string, Tool> = {
   qrCode: qrCodeAITool,
   websiteRebuild: websiteRebuildAITool,
   rebuildPageSelector: rebuildPageSelectorAITool,
+  media: mediaSlotAITool,
 };
 
 /**
@@ -214,6 +217,7 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
   // Media and content tools
   media: {
     mediaSearch: mediaSearchAITool,
+    mediaSlot: mediaSlotAITool,
     imageEditor: imageEditorAITool,
     iconsValidator: iconsValidatorAITool,
     ragSearch: ragSearchAITool,

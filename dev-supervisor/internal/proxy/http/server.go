@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -130,12 +131,17 @@ func (p *HTTPProxy) Start() error {
 	// Add canary checks endpoint for infrastructure verification
 	mux.HandleFunc("/airo/canary_checks", handleCanaryChecks)
 
-	// Add image slot handler if static root is configured
-	if p.config.StaticRoot != "" {
-		manifestPath := filepath.Join(p.config.StaticRoot, "image-slots.json")
-		imageSlotCache := NewManifestCache(manifestPath)
-		mux.Handle("/airo-assets/images/", NewImageSlotHandler(imageSlotCache))
+	// Add media slot handlers - use app directory for manifest (not static root)
+	// The manifest is written to the app root by the agents service, not to the build output
+	appDir := os.Getenv("CUSTOMER_APP_DIR")
+	if appDir == "" {
+		appDir = "/app" // Default app directory in container
 	}
+	manifestPath := filepath.Join(appDir, "airo-media.json")
+	mediaSlotCache := NewManifestCache(manifestPath)
+	mux.Handle("/airo-assets/images/", NewImageSlotHandler(mediaSlotCache))
+	mux.Handle("/airo-assets/videos/", NewVideoSlotHandler(mediaSlotCache))
+	slog.Debug("media_slot.handlers_registered", "manifest_path", manifestPath)
 
 	// Add catch-all for /airo/* that returns 404 for unmatched paths
 	// This MUST come after specific /airo/* handlers but before the / catch-all
