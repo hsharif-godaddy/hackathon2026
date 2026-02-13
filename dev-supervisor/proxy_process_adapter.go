@@ -53,8 +53,8 @@ func (p *processController) IsStartOnRequestEnabled() bool {
 	return p.pm.IsStartOnRequestEnabled()
 }
 
-func (p *processController) TrackRequest() {
-	p.pm.TrackRequest()
+func (p *processController) TrackRequest() bool {
+	return p.pm.TrackRequest()
 }
 
 func (p *processController) UntrackRequest() {

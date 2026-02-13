@@ -139,6 +139,8 @@ type Monitor struct {
 	onRestart     func() error
 	logMgr        logs.Logger
 	startTime     time.Time
+	restartCh     chan struct{} // Buffered channel for restart requests
+	httpClient    *http.Client  // Reused HTTP client for health checks
 }
 
 // NewMonitor creates a new health monitor with disabled status.
@@ -148,8 +150,9 @@ func NewMonitor(logMgr logs.Logger) *Monitor {
 		result: HealthResult{
 			Status: HealthStatusDisabled,
 		},
-		enabled: false,
-		logMgr:  logMgr,
+		enabled:    false,
+		logMgr:     logMgr,
+		httpClient: &http.Client{}, // Reuse client across health checks
 	}
 }
 
@@ -242,12 +245,17 @@ func (hm *Monitor) Start(onRestart func() error) {
 	hm.result.Status = HealthStatusStarting
 	hm.result.LastCheck = time.Now()
 
-	// Create context and start monitoring goroutine
+	// Create buffered channel for restart requests (buffer prevents blocking on send)
+	hm.restartCh = make(chan struct{}, 10)
+	restartCh := hm.restartCh // Capture channel locally to avoid field access race
+
+	// Create context and start monitoring goroutines
 	ctx, cancel := context.WithCancel(context.Background())
 	hm.cancel = cancel
 	hm.mu.Unlock()
 
 	go hm.monitorLoop(ctx)
+	go hm.restartLoop(ctx, restartCh) // Pass channel as parameter
 }
 
 func (hm *Monitor) Stop() {
@@ -388,16 +396,17 @@ func (hm *Monitor) performHTTPCheck(ctx context.Context, healthCheck *HealthChec
 		return false, "No URL specified", errors.New("empty URL")
 	}
 
-	client := &http.Client{
-		Timeout: healthCheck.Timeout.ToDuration(),
-	}
+	// Create request-specific context with timeout
+	reqCtx, cancel := context.WithTimeout(ctx, healthCheck.Timeout.ToDuration())
+	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthCheck.URL, nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, healthCheck.URL, nil)
 	if err != nil {
 		return false, "Failed to create request", err
 	}
 
-	resp, err := client.Do(req)
+	// Reuse the Monitor's http.Client instead of creating a new one each time
+	resp, err := hm.httpClient.Do(req)
 	if err != nil {
 		return false, "HTTP request failed", err
 	}
@@ -442,35 +451,56 @@ func (hm *Monitor) processHealthCheckResult(
 		return
 	}
 
+	var (
+		status         HealthStatus
+		logMgr         logs.Logger
+		logLevel       string
+		logMessage     string
+		restartDropped bool
+	)
+
 	hm.mu.Lock()
-	defer hm.mu.Unlock()
 
 	if success {
 		hm.handleHealthSuccess(healthCheck)
 	} else {
-		hm.handleHealthFailure(healthCheck)
+		restartDropped = hm.handleHealthFailure(healthCheck)
 	}
 
-	hm.updateResult(hm.result.Status, message, checkTime, duration)
+	// Update result while holding lock (called from locked context)
+	hm.result.Message = message
+	hm.result.LastCheck = checkTime
+	hm.result.Duration = duration
 
-	// Log health check result
-	if hm.logMgr != nil {
-		logLevel := logLevelInfo
-		if !success {
-			logLevel = logLevelError
-		}
+	status = hm.result.Status
+	logMgr = hm.logMgr
+	logLevel = logLevelInfo
+	if !success {
+		logLevel = logLevelError
+	}
+	logMessage = fmt.Sprintf(
+		"Health check %s: %s (took %v)",
+		strings.ToLower(string(status)),
+		message,
+		duration,
+	)
+	hm.mu.Unlock()
 
-		hm.logMgr.AddLog(logs.LogEntry{
+	if logMgr != nil {
+		logMgr.AddLog(logs.LogEntry{
 			Timestamp: checkTime,
 			Source:    "health_monitor",
 			Level:     logLevel,
-			Message: fmt.Sprintf(
-				"Health check %s: %s (took %v)",
-				strings.ToLower(string(hm.result.Status)),
-				message,
-				duration,
-			),
+			Message:   logMessage,
 		})
+		if restartDropped {
+			logMgr.AddLog(logs.LogEntry{
+				Timestamp: time.Now(),
+				Source:    "health_monitor",
+				Level:     logLevelWarning,
+				Message:   "Restart request dropped (restart queue full)",
+			})
+		}
 	}
 }
 
@@ -485,7 +515,7 @@ func (hm *Monitor) handleHealthSuccess(healthCheck *HealthCheck) {
 }
 
 // handleHealthFailure updates counters and status when health check fails
-func (hm *Monitor) handleHealthFailure(healthCheck *HealthCheck) {
+func (hm *Monitor) handleHealthFailure(healthCheck *HealthCheck) bool {
 	hm.result.Failures++
 	hm.result.Successes = 0
 
@@ -493,25 +523,58 @@ func (hm *Monitor) handleHealthFailure(healthCheck *HealthCheck) {
 		hm.result.Status = HealthStatusUnhealthy
 
 		// Trigger restart if policy is enabled
+		// Send to channel instead of spawning goroutine (non-blocking send)
 		if rp := hm.restartPolicy.Load(); rp != nil && rp.Enabled {
-			go hm.attemptRestart()
+			select {
+			case hm.restartCh <- struct{}{}:
+				// Restart request queued
+			default:
+				// Channel full, restart already pending
+				return true
+			}
 		}
 	}
+	return false
 }
 
+// updateResult updates the health check result with proper locking.
+// This method assumes the caller does NOT hold hm.mu lock.
 func (hm *Monitor) updateResult(
 	status HealthStatus,
 	message string,
 	checkTime time.Time,
 	duration time.Duration,
 ) {
+	hm.mu.Lock()
+	defer hm.mu.Unlock()
+
 	hm.result.Status = status
 	hm.result.Message = message
 	hm.result.LastCheck = checkTime
 	hm.result.Duration = duration
 }
 
-func (hm *Monitor) attemptRestart() {
+// restartLoop processes restart requests with context cancellation support.
+// This ensures restarts don't fire after Stop() is called.
+// Takes restartCh as a parameter to avoid racing with field reassignment in Start().
+func (hm *Monitor) restartLoop(ctx context.Context, restartCh <-chan struct{}) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-restartCh:
+			hm.attemptRestart(ctx)
+		}
+	}
+}
+
+func (hm *Monitor) attemptRestart(ctx context.Context) {
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
+
 	// Load restart policy atomically
 	rp := hm.restartPolicy.Load()
 	if rp == nil {
@@ -577,8 +640,25 @@ func (hm *Monitor) attemptRestart() {
 		})
 	}
 
-	// Wait for backoff delay
-	time.Sleep(delay)
+	// Wait for backoff delay with context cancellation support
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		// Monitor was stopped during backoff, abort restart
+		return
+	case <-timer.C:
+		// Backoff complete, proceed
+	}
+
+	// Check if monitor is still enabled after backoff
+	hm.mu.RLock()
+	if !hm.enabled {
+		hm.mu.RUnlock()
+		return
+	}
+	hm.mu.RUnlock()
 
 	// Attempt restart
 	if onRestart != nil {

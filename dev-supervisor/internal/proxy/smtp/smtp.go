@@ -97,9 +97,13 @@ func (p *Proxy) Start() error {
 		return errors.New("SMTP proxy already running")
 	}
 
+	// Snapshot headers to prevent races if LoadHeaders() is called after Start()
+	headersCopy := make(map[string]string, len(p.customHeaders))
+	maps.Copy(headersCopy, p.customHeaders)
+
 	backend := &proxyBackend{
 		destinationAddr: p.destinationAddr,
-		customHeaders:   p.customHeaders,
+		customHeaders:   headersCopy,
 	}
 
 	p.server = smtp.NewServer(backend)
@@ -119,9 +123,16 @@ func (p *Proxy) Start() error {
 	actualAddr := listener.Addr().String()
 	slog.Info("SMTP proxy started", "listen_addr", actualAddr, "destination", p.destinationAddr)
 
+	// Capture running flag under lock for goroutine
 	go func() {
-		if err := p.server.Serve(listener); err != nil && p.running {
-			slog.Error("SMTP server error", "error", err)
+		if err := p.server.Serve(listener); err != nil {
+			// Check running status under lock to avoid race
+			p.mu.Lock()
+			stillRunning := p.running
+			p.mu.Unlock()
+			if stillRunning {
+				slog.Error("SMTP server error", "error", err)
+			}
 		}
 	}()
 

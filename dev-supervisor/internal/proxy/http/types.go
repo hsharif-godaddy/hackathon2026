@@ -166,7 +166,7 @@ type ProcessController interface {
 	GetStatus() ProcessStatus
 	UpdateActivity()
 	IsStartOnRequestEnabled() bool
-	TrackRequest()
+	TrackRequest() bool // Returns false if request should be rejected (idle stopping)
 	UntrackRequest()
 	EnableStartOnRequest(idleTimeout, checkInterval time.Duration)
 	WasHealthyBeforeIdle() bool

@@ -12,9 +12,13 @@ func activityTrackingMiddleware(next http.Handler, procMgr ProcessController, ex
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Track request start (always count in-flight requests)
-		procMgr.TrackRequest()
-		// Ensure cleanup always happens, even on panic.
+		// Track request start - reject if idle shutdown is in progress
+		if !procMgr.TrackRequest() {
+			// Idle shutdown in progress, reject request
+			http.Error(w, "Service draining", http.StatusServiceUnavailable)
+			return
+		}
+		// Ensure cleanup always happens, even on panic
 		defer procMgr.UntrackRequest()
 
 		// Update activity at request start for non-excluded paths.

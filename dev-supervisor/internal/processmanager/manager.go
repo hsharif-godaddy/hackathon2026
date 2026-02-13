@@ -417,6 +417,10 @@ func (pm *ProcessManager) GetRestartStats() map[string]any {
 }
 
 func (pm *ProcessManager) StopAllProcesses() {
+	// Acquire lifecycleMu to serialize with other lifecycle operations
+	pm.lifecycleMu.Lock()
+	defer pm.lifecycleMu.Unlock()
+
 	pm.mu.Lock()
 
 	// Stop idle monitor if running

@@ -39,12 +39,7 @@ func (lm *Manager) AddLog(entry LogEntry) {
 }
 
 func (lm *Manager) GetLogs(req GetRequest) (*GetResponse, error) {
-	lm.mu.RLock()
-	defer lm.mu.RUnlock()
-
-	var filteredLogs []LogEntry
-
-	// Parse since timestamp if provided
+	// Parse since timestamp before taking lock (no shared state access)
 	var sinceTime time.Time
 	if req.Since != "" {
 		var err error
@@ -58,8 +53,12 @@ func (lm *Manager) GetLogs(req GetRequest) (*GetResponse, error) {
 		}
 	}
 
-	// Filter logs
-	for _, log := range lm.logs {
+	// Snapshot logs under RLock, then release before filtering
+	logsCopy := lm.snapshot()
+
+	// Filter logs without holding lock (prevents blocking AddLog writers)
+	var filteredLogs []LogEntry
+	for _, log := range logsCopy {
 		// Filter by timestamp
 		if !sinceTime.IsZero() && log.Timestamp.Before(sinceTime) {
 			continue
@@ -84,6 +83,17 @@ func (lm *Manager) GetLogs(req GetRequest) (*GetResponse, error) {
 		Logs:  filteredLogs,
 		Total: len(filteredLogs),
 	}, nil
+}
+
+// snapshot creates a copy of the log buffer under read lock.
+// This allows filtering to proceed without holding locks that block writers.
+func (lm *Manager) snapshot() []LogEntry {
+	lm.mu.RLock()
+	defer lm.mu.RUnlock()
+
+	snapshot := make([]LogEntry, len(lm.logs))
+	copy(snapshot, lm.logs)
+	return snapshot
 }
 
 func (lm *Manager) GetStats() map[string]any {

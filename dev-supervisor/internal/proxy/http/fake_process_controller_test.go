@@ -72,10 +72,11 @@ func (f *fakeProcessController) IsStartOnRequestEnabled() bool {
 	return f.startOnRequestEnabled
 }
 
-func (f *fakeProcessController) TrackRequest() {
+func (f *fakeProcessController) TrackRequest() bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.trackCalls++
+	return true // Fake always accepts requests
 }
 
 func (f *fakeProcessController) UntrackRequest() {

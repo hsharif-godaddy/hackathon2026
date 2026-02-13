@@ -128,36 +128,48 @@ func (pm *PID1Manager) setupBasicSignalHandling() {
 }
 
 func (pm *PID1Manager) handleSignal(sig os.Signal) {
+	// Get child count for logging without holding lock during shutdown
 	pm.mu.RLock()
-	defer pm.mu.RUnlock()
+	childCount := len(pm.childProcesses)
+	pm.mu.RUnlock()
 
-	slog.Info("forwarding signal to child processes", "signal", sig, "child_count", len(pm.childProcesses))
+	slog.Info("forwarding signal to child processes", "signal", sig, "child_count", childCount)
 
 	switch sig {
 	case syscall.SIGTERM, syscall.SIGINT:
-		// Graceful shutdown signals
+		// Graceful shutdown signals - don't hold lock when calling initiateShutdown
+		// as it needs to acquire write lock (prevents deadlock)
 		pm.initiateShutdown()
 
-	case syscall.SIGHUP:
-		// Reload signal - forward to children
-		pm.forwardSignalToChildren(sig)
-
-	case syscall.SIGUSR1, syscall.SIGUSR2:
-		// User-defined signals - forward to children
-		pm.forwardSignalToChildren(sig)
-
 	default:
-		// Forward unknown signals
-		pm.forwardSignalToChildren(sig)
+		// Other signals - forward to children
+		// Snapshot children under lock, then forward without holding lock
+		children := pm.snapshotChildren()
+		pm.forwardSignalToChildrenSnapshot(sig, children)
 	}
 }
 
-func (pm *PID1Manager) forwardSignalToChildren(sig os.Signal) {
-	for pid, child := range pm.childProcesses {
-		if err := child.process.Signal(sig); err != nil {
-			slog.Error("failed to send signal to child", "signal", sig, "pid", pid, "error", err)
+// snapshotChildren creates a copy of the child process list under read lock.
+// This allows signal forwarding to proceed without holding locks during blocking operations.
+func (pm *PID1Manager) snapshotChildren() []*os.Process {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	snapshot := make([]*os.Process, 0, len(pm.childProcesses))
+	for _, child := range pm.childProcesses {
+		snapshot = append(snapshot, child.process)
+	}
+	return snapshot
+}
+
+// forwardSignalToChildrenSnapshot forwards a signal to a snapshot of child processes.
+// Does not require holding any locks, safe to call after snapshotChildren().
+func (pm *PID1Manager) forwardSignalToChildrenSnapshot(sig os.Signal, children []*os.Process) {
+	for _, proc := range children {
+		if err := proc.Signal(sig); err != nil {
+			slog.Error("failed to send signal to child", "signal", sig, "pid", proc.Pid, "error", err)
 		} else {
-			slog.Debug("forwarded signal to child", "signal", sig, "pid", pid)
+			slog.Debug("forwarded signal to child", "signal", sig, "pid", proc.Pid)
 		}
 	}
 }

@@ -62,14 +62,25 @@ func (pm *ProcessManager) UpdateActivity() {
 }
 
 // TrackRequest increments the in-flight request counter.
-// Checks idleStopping flag to prevent accepting new requests during shutdown.
-func (pm *ProcessManager) TrackRequest() {
-	// Check if idle stop is in progress (without holding pm.mu for performance)
+// Returns false if the request should be rejected due to idle shutdown in progress.
+// Uses double-check pattern to eliminate TOCTOU race between check and increment.
+func (pm *ProcessManager) TrackRequest() bool {
+	// First check: reject if idle stop is in progress
 	if pm.idleStopping.Load() {
-		// Process is stopping, reject new requests to prevent 502 errors
-		return
+		return false
 	}
+
+	// Increment counter
 	pm.inFlightRequests.Add(1)
+
+	// Double-check after incrementing (TOCTOU defense)
+	// If idle stop started between first check and increment, rollback and reject
+	if pm.idleStopping.Load() {
+		pm.inFlightRequests.Add(-1)
+		return false
+	}
+
+	return true
 }
 
 // UntrackRequest decrements the in-flight request counter and updates activity.

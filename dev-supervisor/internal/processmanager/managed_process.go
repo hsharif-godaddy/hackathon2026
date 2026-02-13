@@ -141,19 +141,24 @@ func (mp *ManagedProcess) Start(
 
 // Stop stops the process with the given signal and timeout.
 func (mp *ManagedProcess) Stop(signal string, timeout int) error {
+	// Validate and mark stopping under lock, then release before blocking
 	mp.infoMu.Lock()
-	defer mp.infoMu.Unlock()
 
 	if mp.cmd == nil || mp.cmd.Process == nil {
+		mp.infoMu.Unlock()
 		return errors.New("process not initialized")
 	}
 
 	if mp.info.State != ProcessStateRunning {
-		return fmt.Errorf("process not running (current state: %s)", mp.info.State)
+		currentState := mp.info.State
+		mp.infoMu.Unlock()
+		return fmt.Errorf("process not running (current state: %s)", currentState)
 	}
 
 	mp.info.State = ProcessStateStopping
+	mp.infoMu.Unlock() // Release lock before blocking operations
 
+	// Parse signal
 	sig := syscall.SIGTERM
 	if signal != "" {
 		switch signal {
@@ -173,30 +178,35 @@ func (mp *ManagedProcess) Stop(signal string, timeout int) error {
 		timeoutDuration = time.Duration(timeout) * time.Second
 	}
 
-	// Send signal to process.
+	// Send signal to process (can block on OS scheduling, no lock held)
 	if err := mp.cmd.Process.Signal(sig); err != nil {
 		return fmt.Errorf("failed to send signal: %w", err)
 	}
 
-	// Wait for process to exit with timeout.
+	// Wait for process to exit with timeout (can block, no lock held)
 	done := make(chan error, 1)
 	go func() {
 		done <- mp.SafeWait()
 	}()
 
+	var waitErr error
 	select {
-	case err := <-done:
-		// For gracefully terminated processes, we don't treat the signal as an error.
-		mp.info.State = ProcessStateStopped
-		return mp.handleProcessExit(err)
+	case waitErr = <-done:
+		// Process exited gracefully
 	case <-time.After(timeoutDuration):
-		// Force kill if timeout exceeded.
+		// Timeout exceeded, force kill
 		if err := mp.cmd.Process.Kill(); err != nil {
 			return fmt.Errorf("failed to force kill process: %w", err)
 		}
-		mp.info.State = ProcessStateStopped
-		return nil
+		// Wait for kill to complete
+		waitErr = <-done
 	}
+
+	// Update final state under lock
+	mp.infoMu.Lock()
+	defer mp.infoMu.Unlock()
+	mp.info.State = ProcessStateStopped
+	return mp.handleProcessExit(waitErr)
 }
 
 // WaitForCompletion waits for the process to complete and returns when cleanup is done.
