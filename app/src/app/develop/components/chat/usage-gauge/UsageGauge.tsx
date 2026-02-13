@@ -13,7 +13,7 @@ import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { SubscriptionPlan } from '@/types/credits'
-import { getPlanFromSubscription } from '@/utils/credits'
+import { getEffectiveCreditsSpent, getPlanFromSubscription } from '@/utils/credits'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
 import { GrantsPopoverContent, LegacyPopoverContent } from '.'
 
@@ -65,7 +65,7 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
   const isFreePlan = currentPlan === SubscriptionPlan.Free || currentPlan === SubscriptionPlan.None
 
   // Calculate percentage for gauge
-  const totalCreditsSpent = grants?.reduce((sum, g) => sum + g.creditsSpent, 0) ?? 0
+  const totalCreditsSpent = grants?.reduce((sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax), 0) ?? 0
   const totalCreditsMax = grants?.reduce((sum, g) => sum + g.creditsMax, 0) ?? 0
   const grantsPercentage = totalCreditsMax > 0 ? (totalCreditsSpent / totalCreditsMax) * 100 : 0
   const percentage = isGrantsEnabled ? grantsPercentage : (data ? Math.min(data.percentage, 100) : 0)

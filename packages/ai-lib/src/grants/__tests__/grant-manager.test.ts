@@ -54,6 +54,31 @@ describe('grant-manager', function grantManagerTests() {
       expect(GrantManager.isGrantUsable(grant)).toBe(false)
     })
 
+    it('should return true when creditsSpent is 0', function zeroSpent() {
+      const grant = createGrant({ creditsSpent: 0, creditsMax: 1500 })
+      expect(GrantManager.isGrantUsable(grant)).toBe(true)
+    })
+
+    it('should return true when creditsSpent is 1 less than creditsMax', function almostExhausted() {
+      const grant = createGrant({ creditsSpent: 1499, creditsMax: 1500 })
+      expect(GrantManager.isGrantUsable(grant)).toBe(true)
+    })
+
+    it('should return false when both creditsSpent and creditsMax are 0', function bothZero() {
+      const grant = createGrant({ creditsSpent: 0, creditsMax: 0 })
+      expect(GrantManager.isGrantUsable(grant)).toBe(false)
+    })
+
+    it('should handle large credit values', function largeValues() {
+      const grant = createGrant({ creditsSpent: 99999, creditsMax: 100000 })
+      expect(GrantManager.isGrantUsable(grant)).toBe(true)
+    })
+
+    it('should return false when creditsSpent greatly exceeds creditsMax', function greatlyExceeds() {
+      const grant = createGrant({ creditsSpent: 10000, creditsMax: 1500 })
+      expect(GrantManager.isGrantUsable(grant)).toBe(false)
+    })
+
     it('should return false when useBefore is in the past', function pastDate() {
       const grant = createGrant({
         useBefore: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
@@ -84,6 +109,46 @@ describe('grant-manager', function grantManagerTests() {
         finalState: null,
         creditsSpent: 1500,
         creditsMax: 1500,
+      })
+      expect(GrantManager.getUnusableReason(grant)).toBe(GrantUnusableReason.Exhausted)
+    })
+
+    it('should return Exhausted when creditsSpent exceeds creditsMax', function exceeds() {
+      const grant = createGrant({
+        isAvailable: true,
+        finalState: null,
+        creditsSpent: 2000,
+        creditsMax: 1500,
+      })
+      expect(GrantManager.getUnusableReason(grant)).toBe(GrantUnusableReason.Exhausted)
+    })
+
+    it('should return null when creditsSpent is 0', function zeroSpent() {
+      const grant = createGrant({
+        isAvailable: true,
+        finalState: null,
+        creditsSpent: 0,
+        creditsMax: 1500,
+      })
+      expect(GrantManager.getUnusableReason(grant)).toBe(null)
+    })
+
+    it('should return null when creditsSpent is 1 less than creditsMax', function almostExhausted() {
+      const grant = createGrant({
+        isAvailable: true,
+        finalState: null,
+        creditsSpent: 1499,
+        creditsMax: 1500,
+      })
+      expect(GrantManager.getUnusableReason(grant)).toBe(null)
+    })
+
+    it('should return Exhausted when both creditsSpent and creditsMax are 0', function bothZero() {
+      const grant = createGrant({
+        isAvailable: true,
+        finalState: null,
+        creditsSpent: 0,
+        creditsMax: 0,
       })
       expect(GrantManager.getUnusableReason(grant)).toBe(GrantUnusableReason.Exhausted)
     })

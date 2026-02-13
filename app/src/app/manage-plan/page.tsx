@@ -29,6 +29,7 @@ import type { CreditGrant } from '@/types/credits';
 import {
   getActiveGrant,
   getCreditPackGrants,
+  getEffectiveCreditsSpent,
   getMonthlyPlanGrant,
   getPlanDisplayLabelKey,
   getPlanFromSubscription,
@@ -148,7 +149,7 @@ function ManagePlanContent() {
       return grants.reduce(
         function sumCredits(acc, grant) {
           return {
-            totalCreditsSpent: acc.totalCreditsSpent + grant.creditsSpent,
+            totalCreditsSpent: acc.totalCreditsSpent + getEffectiveCreditsSpent(grant.creditsSpent, grant.creditsMax),
             totalCreditsMax: acc.totalCreditsMax + grant.creditsMax,
           };
         },

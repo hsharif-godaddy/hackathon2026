@@ -5,6 +5,32 @@ import type { CreditGrant } from '@/types/credits';
 import { GrantType, SubscriptionPlan } from '@/types/credits';
 
 /**
+ * Get the effective credits spent, capped at creditsMax.
+ *
+ * This utility exists because the billing system can report creditsSpent > creditsMax
+ * due to latency in usage tracking. For display purposes, we cap the spent value
+ * to prevent showing confusing states like "1600/1500 credits used".
+ *
+ * @param creditsSpent - The raw credits spent value from the API
+ * @param creditsMax - The maximum credits allowed for the grant
+ * @returns The capped credits spent value:
+ *   - Returns Math.min(spent, max) for normal cases
+ *   - Returns 0 if creditsMax is null/undefined (invalid grant data)
+ *   - Returns 0 if both values are null/undefined
+ */
+export function getEffectiveCreditsSpent(
+  creditsSpent: number | null | undefined,
+  creditsMax: number | null | undefined
+): number {
+  if (creditsSpent == null && creditsMax == null) {
+    return 0;
+  }
+  const spent = creditsSpent ?? 0;
+  const max = creditsMax ?? 0;
+  return Math.min(spent, max);
+}
+
+/**
  * Get the monthly plan grant from the grants list
  */
 export function getMonthlyPlanGrant(grants: CreditGrant[]): CreditGrant | undefined {

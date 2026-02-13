@@ -6,6 +6,7 @@ import text from '@ux/text';
 
 import { useTranslations } from '@/hooks/useTranslations';
 import LargeCircularGauge from '@/lib/LargeCircularGauge';
+import { getEffectiveCreditsSpent } from '@/utils/credits';
 
 interface TotalCreditsCardProps {
   /** Total credits spent across all grants */
@@ -40,14 +41,14 @@ export default memo(function TotalCreditsCard({
 
       <text.strong as="title" size={2}>
         {t('builder_manageplan_credits_count', {
-          spent: Math.min(totalCreditsSpent, totalCreditsMax).toLocaleString(),
+          spent: getEffectiveCreditsSpent(totalCreditsSpent, totalCreditsMax).toLocaleString(),
           max: totalCreditsMax.toLocaleString(),
         })}
       </text.strong>
 
       <div className="my-2">
         <LargeCircularGauge
-          value={totalCreditsSpent}
+          value={getEffectiveCreditsSpent(totalCreditsSpent, totalCreditsMax)}
           max={totalCreditsMax}
           size={120}
           strokeWidth={10}

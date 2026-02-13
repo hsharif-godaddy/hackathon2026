@@ -7,7 +7,7 @@ import CreditProgressBar from '@/app/manage-plan/components/CreditProgressBar';
 import { useTranslations } from '@/hooks/useTranslations';
 import type { CreditGrant } from '@/types/credits';
 import { GrantFinalState } from '@/types/credits';
-import { formatCreditDate } from '@/utils/credits';
+import { formatCreditDate, getEffectiveCreditsSpent } from '@/utils/credits';
 
 interface CreditGrantRowProps {
   grant: CreditGrant;
@@ -58,7 +58,7 @@ export default function CreditGrantRow({ grant, isActive = false, locale }: Cred
               : t('builder_manageplan_used')}
           </Tag>
         ) : (
-          <CreditProgressBar spent={grant.creditsSpent} max={grant.creditsMax} />
+          <CreditProgressBar spent={getEffectiveCreditsSpent(grant.creditsSpent, grant.creditsMax)} max={grant.creditsMax} />
         )}
       </div>
     </div>

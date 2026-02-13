@@ -8,6 +8,7 @@ import {
   getActiveGrant,
   getBillingPeriod,
   getCreditPackGrants,
+  getEffectiveCreditsSpent,
   getMonthlyPlanGrant,
   getPlanDisplayLabelKey,
 } from '@/utils/credits';
@@ -290,6 +291,68 @@ describe('credits', function creditsTests() {
       const result = getPlanDisplayLabelKey(SubscriptionPlan.None);
 
       expect(result).toBe('');
+    });
+  });
+
+  describe('#getEffectiveCreditsSpent', function getEffectiveCreditsSpentTests() {
+    it('should return creditsSpent when less than creditsMax', function spentLessThanMax() {
+      const result = getEffectiveCreditsSpent(2500, 5000);
+
+      expect(result).toBe(2500);
+    });
+
+    it('should return creditsMax when creditsSpent exceeds creditsMax', function spentExceedsMax() {
+      const result = getEffectiveCreditsSpent(6000, 5000);
+
+      expect(result).toBe(5000);
+    });
+
+    it('should return creditsMax when creditsSpent equals creditsMax', function spentEqualsMax() {
+      const result = getEffectiveCreditsSpent(5000, 5000);
+
+      expect(result).toBe(5000);
+    });
+
+    it('should return 0 when creditsSpent is 0', function spentIsZero() {
+      const result = getEffectiveCreditsSpent(0, 5000);
+
+      expect(result).toBe(0);
+    });
+
+    it('should return 0 when both values are null', function bothNull() {
+      const result = getEffectiveCreditsSpent(null, null);
+
+      expect(result).toBe(0);
+    });
+
+    it('should return 0 when both values are undefined', function bothUndefined() {
+      const result = getEffectiveCreditsSpent(undefined, undefined);
+
+      expect(result).toBe(0);
+    });
+
+    it('should treat null creditsSpent as 0', function nullSpent() {
+      const result = getEffectiveCreditsSpent(null, 5000);
+
+      expect(result).toBe(0);
+    });
+
+    it('should treat undefined creditsSpent as 0', function undefinedSpent() {
+      const result = getEffectiveCreditsSpent(undefined, 5000);
+
+      expect(result).toBe(0);
+    });
+
+    it('should return 0 when creditsMax is null and creditsSpent is positive', function nullMax() {
+      const result = getEffectiveCreditsSpent(2500, null);
+
+      expect(result).toBe(0);
+    });
+
+    it('should return 0 when creditsMax is 0', function maxIsZero() {
+      const result = getEffectiveCreditsSpent(100, 0);
+
+      expect(result).toBe(0);
     });
   });
 });

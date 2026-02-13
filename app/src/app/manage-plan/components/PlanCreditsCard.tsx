@@ -9,7 +9,7 @@ import type { AiroSubscription } from '@/lib/mgmt-airo';
 import { isPaidPlanForGrants, PAYWALL_ITC } from '@/lib/paywall/shared';
 import { PAYWALL_TYPE, type PaywallType } from '@/lib/paywall/shared';
 import type { CreditGrant } from '@/types/credits';
-import { formatFullCreditDate, getPlanDisplayLabelKey, getPlanFromSubscription } from '@/utils/credits';
+import { formatFullCreditDate, getEffectiveCreditsSpent, getPlanDisplayLabelKey, getPlanFromSubscription } from '@/utils/credits';
 import { generateClickEID } from '@/utils/instrumentation';
 import ActiveTag from './ActiveTag';
 import CreditProgressBar from './CreditProgressBar';
@@ -92,7 +92,7 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
           {hasCreditsNoPlan && (
               <text.p as="label" text={t('builder_manageplan_creditpacks_empty_plan_description')} />
           )}
-          <CreditProgressBar spent={planGrant.creditsSpent} max={planGrant.creditsMax} />
+          <CreditProgressBar spent={getEffectiveCreditsSpent(planGrant.creditsSpent, planGrant.creditsMax)} max={planGrant.creditsMax} />
         { (creditPacks.length > 0 || (!isFreePlan && creditPacks.length === 0)) && currentPlan && (
           <Box orientation="horizontal" gap="md">
               { isFreePlan && creditPacks.length > 0 && (

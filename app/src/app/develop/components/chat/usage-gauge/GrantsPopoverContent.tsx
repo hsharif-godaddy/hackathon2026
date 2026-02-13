@@ -10,7 +10,7 @@ import TextLockup from '@ux/text-lockup'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import type { CreditGrant } from '@/types/credits'
-import { getCreditPackGrants, getMonthlyPlanGrant } from '@/utils/credits'
+import { getCreditPackGrants, getEffectiveCreditsSpent, getMonthlyPlanGrant } from '@/utils/credits'
 import { generateClickEID } from '@/utils/instrumentation'
 
 interface GrantsPopoverContentProps {
@@ -33,16 +33,16 @@ export function GrantsPopoverContent({
   const creditPacks = grants ? getCreditPackGrants(grants) : []
 
   // Calculate totals from grants
-  const totalCreditsSpent = grants?.reduce((sum, g) => sum + g.creditsSpent, 0) ?? 0
+  const totalCreditsSpent = grants?.reduce((sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax), 0) ?? 0
   const totalCreditsMax = grants?.reduce((sum, g) => sum + g.creditsMax, 0) ?? 0
 
   // Monthly plan credits
-  const monthlyCreditsSpent = planGrant?.creditsSpent ?? 0
+  const monthlyCreditsSpent = getEffectiveCreditsSpent(planGrant?.creditsSpent, planGrant?.creditsMax)
   const monthlyCreditsMax = planGrant?.creditsMax ?? 0
 
   // Credit pack totals
   const creditPackTotal = creditPacks.reduce((sum, g) => sum + g.creditsMax, 0)
-  const creditPackSpent = creditPacks.reduce((sum, g) => sum + g.creditsSpent, 0)
+  const creditPackSpent = creditPacks.reduce((sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax), 0)
 
   // Reset date formatting
   const resetDate = planGrant?.useBefore
