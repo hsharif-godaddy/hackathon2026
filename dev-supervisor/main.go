@@ -107,8 +107,9 @@ type Server struct {
 	httpProxy              *httpproxy.HTTPProxy
 	startTime              time.Time
 	config                 *Config
-	processLogging         bool // Current process logging configuration
-	processLoggingToStdout bool // Current structured logging configuration
+	processLogging         bool       // Current process logging configuration
+	processLoggingToStdout bool       // Current structured logging configuration
+	pruneMu                sync.Mutex // Serialize prune operations
 }
 
 type HealthResponse struct {

@@ -62,11 +62,14 @@ func (pm *ProcessManager) UpdateActivity() {
 }
 
 // TrackRequest increments the in-flight request counter.
-// Acquires mutex to coordinate with idle shutdown checks.
+// Checks idleStopping flag to prevent accepting new requests during shutdown.
 func (pm *ProcessManager) TrackRequest() {
-	pm.mu.Lock()
+	// Check if idle stop is in progress (without holding pm.mu for performance)
+	if pm.idleStopping.Load() {
+		// Process is stopping, reject new requests to prevent 502 errors
+		return
+	}
 	pm.inFlightRequests.Add(1)
-	pm.mu.Unlock()
 }
 
 // UntrackRequest decrements the in-flight request counter and updates activity.
@@ -191,18 +194,22 @@ func (pm *ProcessManager) checkIdleAndStop() {
 		return // Not idle long enough.
 	}
 
-	// Final re-check immediately before stopping to catch late arrivals.
-	finalWSCheck := false
+	// Mark stopping BEFORE final check to catch late arrivals
+	pm.idleStopping.Store(true)
+
+	// Re-check after setting flag to catch requests that arrived during check
+	hasActiveWS = false
 	pm.activeWebSockets.Range(func(_, _ any) bool {
-		finalWSCheck = true
+		hasActiveWS = true
 		return false
 	})
 	finalInFlight := pm.inFlightRequests.Load()
 
-	if finalWSCheck || finalInFlight > 0 {
+	if hasActiveWS || finalInFlight > 0 {
+		pm.idleStopping.Store(false) // Abort, clear flag
 		pm.mu.Unlock()
 		slog.Debug("idle.check.late_arrival_detected",
-			"websockets", finalWSCheck,
+			"websockets", hasActiveWS,
 			"in_flight_requests", finalInFlight)
 		return // New activity arrived, abort shutdown.
 	}
@@ -218,6 +225,7 @@ func (pm *ProcessManager) checkIdleAndStop() {
 
 	// stopForIdle sets wasHealthyBeforeIdle=true on success (while holding lock).
 	err := pm.stopForIdle()
+	pm.idleStopping.Store(false) // Clear flag regardless of outcome
 
 	if err != nil {
 		slog.Error("idle.stop_failed",

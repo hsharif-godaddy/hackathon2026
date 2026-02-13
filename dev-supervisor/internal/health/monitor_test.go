@@ -73,8 +73,9 @@ func TestHealthMonitor_Configure(t *testing.T) {
 		t.Errorf("Expected timeout 2s, got %v", healthCheck.Timeout)
 	}
 
-	if hm.restartPolicy.MaxRestarts != 5 {
-		t.Errorf("Expected max restarts 5, got %d", hm.restartPolicy.MaxRestarts)
+	rp := hm.restartPolicy.Load()
+	if rp.MaxRestarts != 5 {
+		t.Errorf("Expected max restarts 5, got %d", rp.MaxRestarts)
 	}
 }
 
@@ -109,8 +110,9 @@ func TestHealthMonitor_ConfigureDefaults(t *testing.T) {
 		t.Errorf("Expected default retries 3, got %d", healthCheck.Retries)
 	}
 
-	if hm.restartPolicy.MaxRestarts != 5 {
-		t.Errorf("Expected default max restarts 5, got %d", hm.restartPolicy.MaxRestarts)
+	rp := hm.restartPolicy.Load()
+	if rp.MaxRestarts != 5 {
+		t.Errorf("Expected default max restarts 5, got %d", rp.MaxRestarts)
 	}
 }
 
@@ -450,4 +452,51 @@ func TestHealthMonitor_GetRestartStats(t *testing.T) {
 	if stats["max_restarts"] != 5 {
 		t.Errorf("Expected max_restarts 5, got %v", stats["max_restarts"])
 	}
+}
+
+// TestRaceCondition_RestartPolicyAtomicAccess tests Fix #1:
+// Restart policy uses atomic.Pointer to prevent torn reads during concurrent access
+func TestRaceCondition_RestartPolicyAtomicAccess(t *testing.T) {
+	t.Parallel()
+
+	var logMgr logs.Logger
+	hm := NewMonitor(logMgr)
+
+	// Goroutine 1: Repeatedly configure restart policy
+	done := make(chan bool)
+	go func() {
+		for i := range 100 {
+			policy := &RestartPolicy{
+				Enabled:           true,
+				MaxRestarts:       i + 1,
+				RestartWindow:     Duration(time.Duration(i+1) * time.Minute),
+				BackoffMultiplier: float64(i+1) * 2.0,
+				MaxBackoff:        Duration(time.Duration(i+1) * time.Minute),
+				InitialDelay:      Duration(time.Duration(i+1) * time.Second),
+			}
+			hm.Configure(nil, policy)
+			time.Sleep(time.Millisecond)
+		}
+		done <- true
+	}()
+
+	// Goroutine 2: Repeatedly read restart policy
+	go func() {
+		for range 100 {
+			stats := hm.GetRestartStats()
+			// Just access the stats to trigger reads
+			_ = stats["max_restarts"]
+			_ = stats["restart_window"]
+			time.Sleep(time.Millisecond)
+		}
+		done <- true
+	}()
+
+	// Wait for both goroutines
+	<-done
+	<-done
+
+	// Verify no crashes occurred (race detector would catch torn reads)
+	stats := hm.GetRestartStats()
+	t.Logf("Final stats: %v", stats)
 }

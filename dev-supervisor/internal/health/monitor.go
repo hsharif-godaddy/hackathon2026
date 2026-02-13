@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os/exec"
@@ -129,7 +130,7 @@ type RestartPolicy struct {
 type Monitor struct {
 	mu            sync.RWMutex
 	healthCheck   atomic.Pointer[HealthCheck]
-	restartPolicy *RestartPolicy
+	restartPolicy atomic.Pointer[RestartPolicy]
 	result        HealthResult
 	enabled       bool
 	cancel        context.CancelFunc
@@ -192,29 +193,31 @@ func (hm *Monitor) configureHealthCheck(healthCheck *HealthCheck) {
 
 // configureRestartPolicy applies defaults and stores restart policy configuration
 func (hm *Monitor) configureRestartPolicy(restartPolicy *RestartPolicy) {
-	hm.mu.Lock()
-	hm.restartPolicy = restartPolicy
-	hm.mu.Unlock()
-
 	if restartPolicy == nil || !restartPolicy.Enabled {
+		hm.restartPolicy.Store(nil)
 		return
 	}
 
-	if hm.restartPolicy.MaxRestarts == 0 {
-		hm.restartPolicy.MaxRestarts = 5
+	// Copy and apply defaults to local variable
+	rpCopy := *restartPolicy
+	if rpCopy.MaxRestarts == 0 {
+		rpCopy.MaxRestarts = 5
 	}
-	if hm.restartPolicy.RestartWindow == 0 {
-		hm.restartPolicy.RestartWindow = Duration(5 * time.Minute)
+	if rpCopy.RestartWindow == 0 {
+		rpCopy.RestartWindow = Duration(5 * time.Minute)
 	}
-	if hm.restartPolicy.BackoffMultiplier == 0 {
-		hm.restartPolicy.BackoffMultiplier = 2.0
+	if rpCopy.BackoffMultiplier == 0 {
+		rpCopy.BackoffMultiplier = 2.0
 	}
-	if hm.restartPolicy.MaxBackoff == 0 {
-		hm.restartPolicy.MaxBackoff = Duration(5 * time.Minute)
+	if rpCopy.MaxBackoff == 0 {
+		rpCopy.MaxBackoff = Duration(5 * time.Minute)
 	}
-	if hm.restartPolicy.InitialDelay == 0 {
-		hm.restartPolicy.InitialDelay = Duration(1 * time.Second)
+	if rpCopy.InitialDelay == 0 {
+		rpCopy.InitialDelay = Duration(1 * time.Second)
 	}
+
+	// Store atomically, no lock needed
+	hm.restartPolicy.Store(&rpCopy)
 }
 
 func (hm *Monitor) Start(onRestart func() error) {
@@ -224,6 +227,14 @@ func (hm *Monitor) Start(onRestart func() error) {
 	}
 
 	hm.mu.Lock()
+
+	// Guard: cancel existing monitor if running
+	if hm.cancel != nil {
+		slog.Warn("health_monitor.already_running",
+			"message", "canceling existing monitor")
+		hm.cancel()
+	}
+
 	hm.enabled = true
 	hm.onRestart = onRestart
 	hm.startTime = time.Now()
@@ -246,6 +257,7 @@ func (hm *Monitor) Stop() {
 	hm.enabled = false
 	if hm.cancel != nil {
 		hm.cancel()
+		hm.cancel = nil // Clear to prevent false positives in Start() guard
 	}
 	hm.result.Status = HealthStatusDisabled
 }
@@ -265,9 +277,9 @@ func (hm *Monitor) GetRestartStats() map[string]any {
 		"recent_restarts": 0,
 	}
 
-	if hm.restartPolicy != nil {
+	if rp := hm.restartPolicy.Load(); rp != nil {
 		recentRestarts := 0
-		cutoff := time.Now().Add(-hm.restartPolicy.RestartWindow.ToDuration())
+		cutoff := time.Now().Add(-rp.RestartWindow.ToDuration())
 		for _, restartTime := range hm.restartTimes {
 			if restartTime.After(cutoff) {
 				recentRestarts++
@@ -275,8 +287,8 @@ func (hm *Monitor) GetRestartStats() map[string]any {
 		}
 
 		stats["recent_restarts"] = recentRestarts
-		stats["restart_window"] = hm.restartPolicy.RestartWindow.ToDuration().String()
-		stats["max_restarts"] = hm.restartPolicy.MaxRestarts
+		stats["restart_window"] = rp.RestartWindow.ToDuration().String()
+		stats["max_restarts"] = rp.MaxRestarts
 	} else {
 		stats["restart_window"] = "not configured"
 		stats["max_restarts"] = 0
@@ -481,7 +493,7 @@ func (hm *Monitor) handleHealthFailure(healthCheck *HealthCheck) {
 		hm.result.Status = HealthStatusUnhealthy
 
 		// Trigger restart if policy is enabled
-		if hm.restartPolicy != nil && hm.restartPolicy.Enabled {
+		if rp := hm.restartPolicy.Load(); rp != nil && rp.Enabled {
 			go hm.attemptRestart()
 		}
 	}
@@ -500,11 +512,17 @@ func (hm *Monitor) updateResult(
 }
 
 func (hm *Monitor) attemptRestart() {
+	// Load restart policy atomically
+	rp := hm.restartPolicy.Load()
+	if rp == nil {
+		return
+	}
+
 	hm.mu.Lock()
 
 	// Check if we've exceeded max restarts in the time window
 	now := time.Now()
-	cutoff := now.Add(-hm.restartPolicy.RestartWindow.ToDuration())
+	cutoff := now.Add(-rp.RestartWindow.ToDuration())
 
 	recentRestarts := 0
 	for _, restartTime := range hm.restartTimes {
@@ -513,7 +531,7 @@ func (hm *Monitor) attemptRestart() {
 		}
 	}
 
-	if recentRestarts >= hm.restartPolicy.MaxRestarts {
+	if recentRestarts >= rp.MaxRestarts {
 		hm.mu.Unlock()
 		if hm.logMgr != nil {
 			hm.logMgr.AddLog(logs.LogEntry{
@@ -522,8 +540,8 @@ func (hm *Monitor) attemptRestart() {
 				Level:     logLevelError,
 				Message: fmt.Sprintf(
 					"Max restarts (%d) exceeded in window %v, not restarting",
-					hm.restartPolicy.MaxRestarts,
-					hm.restartPolicy.RestartWindow.ToDuration(),
+					rp.MaxRestarts,
+					rp.RestartWindow.ToDuration(),
 				),
 			})
 		}
@@ -531,11 +549,11 @@ func (hm *Monitor) attemptRestart() {
 	}
 
 	// Calculate backoff delay
-	delay := hm.restartPolicy.InitialDelay.ToDuration()
+	delay := rp.InitialDelay.ToDuration()
 	for range recentRestarts {
-		delay = time.Duration(float64(delay) * hm.restartPolicy.BackoffMultiplier)
-		if delay > hm.restartPolicy.MaxBackoff.ToDuration() {
-			delay = hm.restartPolicy.MaxBackoff.ToDuration()
+		delay = time.Duration(float64(delay) * rp.BackoffMultiplier)
+		if delay > rp.MaxBackoff.ToDuration() {
+			delay = rp.MaxBackoff.ToDuration()
 			break
 		}
 	}

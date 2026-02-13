@@ -20,8 +20,26 @@ import (
 )
 
 // ProcessManager manages the current process instance and persistent configuration.
+//
+// Lock Ordering (CRITICAL - to prevent deadlocks):
+//  1. lifecycleMu must be acquired BEFORE mu when both are needed
+//  2. Never acquire lifecycleMu while holding mu
+//  3. Release mu before blocking operations, but keep lifecycleMu held
+//
+// Example correct pattern:
+//
+//	pm.lifecycleMu.Lock()
+//	pm.mu.Lock()
+//	// ... read/write shared state
+//	pm.mu.Unlock()
+//	// ... blocking operation (process start/stop, port waits)
+//	pm.mu.Lock()
+//	// ... update state
+//	pm.mu.Unlock()
+//	pm.lifecycleMu.Unlock()
 type ProcessManager struct {
-	mu                    sync.RWMutex
+	lifecycleMu           sync.Mutex      // Serializes Start/Stop/Restart operations
+	mu                    sync.RWMutex    // Protects shared state
 	currentProcess        *ManagedProcess // nil when no process running
 	logMgr                logs.Logger
 	healthMon             *health.Monitor
@@ -44,6 +62,8 @@ type ProcessManager struct {
 	// When true, indicates the process was healthy before being idled due to inactivity.
 	// Used by health checks to report "healthy" for idled apps instead of "unhealthy".
 	wasHealthyBeforeIdle atomic.Bool
+
+	idleStopping atomic.Bool // Guards against stop-in-progress
 
 	savedStartRequest *validation.ProcessStartRequest // Saved for deferred start
 
@@ -107,16 +127,19 @@ func (pm *ProcessManager) GetStateChangeChan() <-chan struct{} {
 }
 
 func (pm *ProcessManager) Start(req validation.ProcessStartRequest) error {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
+	pm.lifecycleMu.Lock()
+	defer pm.lifecycleMu.Unlock() // Serialize lifecycle ops
 
+	pm.mu.Lock()
 	// Check if we already have a running process
 	if pm.currentProcess != nil {
 		status := pm.currentProcess.GetInfo()
 		if status.State == ProcessStateRunning {
+			pm.mu.Unlock()
 			return ErrAlreadyRunning
 		}
 		if status.State == ProcessStateStarting {
+			pm.mu.Unlock()
 			return ErrAlreadyStarting
 		}
 	}
@@ -124,8 +147,9 @@ func (pm *ProcessManager) Start(req validation.ProcessStartRequest) error {
 	// Clear the "was healthy before idle" flag on start
 	// It will be re-evaluated on the next idle stop
 	pm.wasHealthyBeforeIdle.Store(false)
+	pm.mu.Unlock() // UNLOCK pm.mu before blocking
 
-	// Create new managed process
+	// Blocking operations (no pm.mu, but lifecycleMu still held)
 	managedProcess, err := NewManagedProcess(req)
 	if err != nil {
 		return err
@@ -139,6 +163,8 @@ func (pm *ProcessManager) Start(req validation.ProcessStartRequest) error {
 		return err
 	}
 
+	// Re-lock pm.mu for state update
+	pm.mu.Lock()
 	// Replace current process
 	pm.currentProcess = managedProcess
 
@@ -158,20 +184,24 @@ func (pm *ProcessManager) Start(req validation.ProcessStartRequest) error {
 		go pm.idleMonitorLoop(ctx, pm.idleCheckInterval)
 		slog.Debug("idle_monitor.restarted_on_process_start")
 	}
+	pm.mu.Unlock()
 
 	return nil
 }
 
 func (pm *ProcessManager) Stop(req ProcessStopRequest) error {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
+	pm.lifecycleMu.Lock()
+	defer pm.lifecycleMu.Unlock() // Serialize lifecycle ops
 
+	pm.mu.Lock()
 	if pm.currentProcess == nil {
+		pm.mu.Unlock()
 		return errors.New("no process is running")
 	}
 
 	status := pm.currentProcess.GetInfo()
 	if status.State != ProcessStateRunning {
+		pm.mu.Unlock()
 		return fmt.Errorf("process is not running (current state: %s)", status.State)
 	}
 
@@ -191,11 +221,17 @@ func (pm *ProcessManager) Stop(req ProcessStopRequest) error {
 	// Stop health monitoring
 	pm.healthMon.Stop()
 
-	// Stop the managed process
-	err := pm.currentProcess.Stop(req.Signal, req.Timeout)
+	process := pm.currentProcess
+	pm.mu.Unlock() // UNLOCK pm.mu before blocking
 
+	// Stop the managed process (blocking operation, no pm.mu held)
+	err := process.Stop(req.Signal, req.Timeout)
+
+	// Re-lock pm.mu for state update
+	pm.mu.Lock()
 	// Broadcast state change to wake up any waiters
 	pm.broadcastStateChangeLocked()
+	pm.mu.Unlock()
 
 	return err
 }
@@ -205,15 +241,19 @@ func (pm *ProcessManager) Stop(req ProcessStopRequest) error {
 // flag on successful stop, allowing health checks to report "healthy" for idled apps.
 // The flag is set while holding the lock to prevent race conditions with concurrent Start().
 func (pm *ProcessManager) stopForIdle() error {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
+	// Acquire lifecycleMu to serialize with explicit Stop/Restart operations
+	pm.lifecycleMu.Lock()
+	defer pm.lifecycleMu.Unlock()
 
+	pm.mu.Lock()
 	if pm.currentProcess == nil {
+		pm.mu.Unlock()
 		return errors.New("no process is running")
 	}
 
 	status := pm.currentProcess.GetInfo()
 	if status.State != ProcessStateRunning {
+		pm.mu.Unlock()
 		return fmt.Errorf("process is not running (current state: %s)", status.State)
 	}
 
@@ -227,10 +267,16 @@ func (pm *ProcessManager) stopForIdle() error {
 	// Stop health monitoring
 	pm.healthMon.Stop()
 
-	// Stop the managed process
-	err := pm.currentProcess.Stop("SIGTERM", 30)
+	process := pm.currentProcess
+	pm.mu.Unlock() // UNLOCK pm.mu before blocking
+
+	// Stop the managed process (blocking operation, no pm.mu held)
+	err := process.Stop("SIGTERM", 30)
+
+	// Re-lock pm.mu for state update
+	pm.mu.Lock()
 	if err == nil {
-		// Set wasHealthyBeforeIdle ONLY on successful stop, while still holding the lock.
+		// Set wasHealthyBeforeIdle ONLY on successful stop, while holding the lock.
 		// This prevents race conditions where a concurrent Start() could set the flag to false
 		// after we release the lock but before we set it to true.
 		// Note: We assume a running process is healthy. If the health monitor is configured
@@ -241,16 +287,19 @@ func (pm *ProcessManager) stopForIdle() error {
 
 	// Broadcast state change to wake up any waiters
 	pm.broadcastStateChangeLocked()
+	pm.mu.Unlock()
 
 	return err
 }
 
 func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
+	pm.lifecycleMu.Lock()
+	defer pm.lifecycleMu.Unlock() // Serialize lifecycle ops
 
+	pm.mu.Lock()
 	// Check if we have a current process to get config from
 	if pm.currentProcess == nil {
+		pm.mu.Unlock()
 		slog.Error("restart failed: no process to restart",
 			"restart_count", pm.restartCount)
 		return errors.New("no previous process to restart")
@@ -271,8 +320,9 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 
 	// Get ports using the safest approach: explicit config first, then runtime discovery
 	ports := pm.discoverProcessPorts(config)
+	pm.mu.Unlock() // UNLOCK pm.mu before blocking
 
-	// Stop current process if running (recheck status)
+	// Stop current process if running (blocking operation, no pm.mu held)
 	if currentStatus.State == ProcessStateRunning {
 		if err := pm.stopProcessForRestart(req, currentStatus, ports); err != nil {
 			return err
@@ -295,6 +345,8 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 		return err
 	}
 
+	// Re-lock pm.mu for state update
+	pm.mu.Lock()
 	// Replace current process
 	pm.currentProcess = managedProcess
 	pm.restartCount++
@@ -322,6 +374,7 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 		go pm.idleMonitorLoop(ctx, pm.idleCheckInterval)
 		slog.Debug("idle_monitor.restarted_after_restart")
 	}
+	pm.mu.Unlock()
 
 	return nil
 }
@@ -527,6 +580,7 @@ func (pm *ProcessManager) discoverProcessPorts(config validation.ProcessStartReq
 }
 
 // stopProcessForRestart stops the current process in preparation for restart
+// Caller must hold lifecycleMu but must NOT hold pm.mu (method will acquire it as needed)
 func (pm *ProcessManager) stopProcessForRestart(
 	req ProcessRestartRequest, currentStatus ProcessInfo, ports []int,
 ) error {
@@ -544,6 +598,8 @@ func (pm *ProcessManager) stopProcessForRestart(
 		"timeout_seconds", stopReq.Timeout,
 		"pid", currentStatus.PID)
 
+	// Acquire pm.mu to access shared fields
+	pm.mu.Lock()
 	// Stop idle monitoring if enabled
 	if pm.idleMonitorCancel != nil {
 		pm.idleMonitorCancel()
@@ -554,13 +610,17 @@ func (pm *ProcessManager) stopProcessForRestart(
 	// Stop health monitoring
 	pm.healthMon.Stop()
 
-	// Stop the current process
-	if err := pm.currentProcess.Stop(stopReq.Signal, stopReq.Timeout); err != nil {
+	// Snapshot process reference before unlocking
+	process := pm.currentProcess
+	pm.mu.Unlock()
+
+	// Stop the current process (blocking operation, no pm.mu held)
+	if err := process.Stop(stopReq.Signal, stopReq.Timeout); err != nil {
 		return fmt.Errorf("failed to stop process for restart: %w", err)
 	}
 
 	// Wait for the process to fully stop
-	pm.currentProcess.WaitForCompletion()
+	process.WaitForCompletion()
 
 	// Wait for ports to become available after process termination
 	// This prevents "address already in use" errors during restart

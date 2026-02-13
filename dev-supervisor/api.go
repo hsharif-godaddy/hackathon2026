@@ -566,7 +566,7 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 	slog.Info("publish.symlink.updated", "commit_hash", req.CommitHash, "symlink", currentSymlink)
 
 	// Clean up old archives in background
-	go pruneOldArchives(distDir, maxArchivedVersions)
+	go s.pruneOldArchivesSerialized(distDir, maxArchivedVersions)
 
 	// Restart the Node.js application to load the new version
 	slog.Info("publish.restart.begin", "commit_hash", req.CommitHash)
@@ -1039,4 +1039,11 @@ func pruneOldArchives(distDir string, keep int) {
 	}
 
 	slog.Info("publish.prune.complete", "removed", removed, "kept", kept)
+}
+
+// pruneOldArchivesSerialized wraps pruneOldArchives with mutex to serialize concurrent prunes
+func (s *Server) pruneOldArchivesSerialized(distDir string, keep int) {
+	s.pruneMu.Lock()
+	defer s.pruneMu.Unlock()
+	pruneOldArchives(distDir, keep)
 }
