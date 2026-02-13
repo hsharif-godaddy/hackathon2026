@@ -52,6 +52,7 @@ export default function DowngradeModal({
     <Modal
       title={t('builder_manageplan_downgrade_title')}
       onClose={onClose}
+      data-partial="componentAiro"
     >
       <Box className="md:max-w-xl" orientation="vertical" gap="lg">
       {error && (

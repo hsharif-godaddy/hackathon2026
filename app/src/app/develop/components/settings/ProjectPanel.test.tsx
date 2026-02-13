@@ -22,6 +22,8 @@ vi.mock('@/hooks/usePaywallModal', () => ({
     PaywallModal: () => null,
     isPolling: false,
     shouldShowPaywall: false,
+    isPaywallLoading: false,
+    isPublishLimitLoading: false,
   })),
 }));
 
@@ -80,6 +82,7 @@ describe('ProjectPanel', () => {
         isPolling: false,
         shouldShowPaywall: false,
         isPaywallLoading: false,
+        isPublishLimitLoading: false,
       });
 
       renderWithProviders(<ProjectPanel />);
@@ -114,6 +117,7 @@ describe('ProjectPanel', () => {
         isPolling: false,
         shouldShowPaywall: false,
         isPaywallLoading: false,
+        isPublishLimitLoading: false,
       });
 
       renderWithProviders(<ProjectPanel />);
@@ -148,6 +152,7 @@ describe('ProjectPanel', () => {
         isPolling: true,
         shouldShowPaywall: false,
         isPaywallLoading: false,
+        isPublishLimitLoading: false,
       });
 
       renderWithProviders(<ProjectPanel />);
@@ -170,6 +175,7 @@ describe('ProjectPanel', () => {
         isPolling: false,
         shouldShowPaywall: false,
         isPaywallLoading: false,
+        isPublishLimitLoading: false,
       });
 
       renderWithProviders(<ProjectPanel />);

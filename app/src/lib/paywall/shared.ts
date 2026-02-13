@@ -37,6 +37,20 @@ export const PAYWALL_CONFIG = {
 } as const;
 
 /**
+ * Reasons for paywall denial
+ */
+export enum PaywallDenialReason {
+  /** User has reached their publish limit for their plan */
+  PublishLimitReached = 'publish_limit_reached',
+  /** User does not have an active subscription */
+  NoSubscription = 'no_subscription',
+  /** User needs Airo Plus subscription */
+  SubscriptionRequired = 'subscription_required',
+  /** Unable to verify subscription status */
+  VerificationFailed = 'verification_failed',
+}
+
+/**
  * Detailed breakdown of paywall check results
  */
 export interface PaywallCheckDetails {
@@ -52,6 +66,10 @@ export interface PaywallCheckDetails {
   entitlementId?: string;
   /** Billing ID from matching project if found */
   billingId?: string;
+  /** Publish limit for the plan (when grants enabled) */
+  publishLimit?: number | null;
+  /** Current published apps count (when grants enabled) */
+  publishedCount?: number;
 }
 
 /**
@@ -60,8 +78,8 @@ export interface PaywallCheckDetails {
 export interface PaywallCheckResult {
   /** Whether user has access to publish */
   hasAccess: boolean;
-  /** Human-readable reason for denial (if applicable) */
-  reason?: string;
+  /** Reason for denial (if applicable) */
+  reason?: PaywallDenialReason | string;
   /** Detailed breakdown of check results */
   details: PaywallCheckDetails;
 }
@@ -86,15 +104,24 @@ export interface ProjectEdge {
  * Used throughout the codebase for feature gating and UI conditional rendering.
  * Add new paid plan types here when they are introduced.
  */
-export const PAID_PLANS = [SubscriptionPlan.AiroPlus, SubscriptionPlan.Starter] as const;
+export const PAID_PLANS = [
+  SubscriptionPlan.AiroPlus,
+  SubscriptionPlan.Starter,
+  SubscriptionPlan.Professional,
+  SubscriptionPlan.Ultimate,
+] as const;
 
 /**
  * Plans that grant paid-tier access when app-builder-grants is enabled
  *
  * When grants is enabled, AiroPlus is NOT considered a paid plan.
- * Only Starter plan grants access; AiroPlus users need to upgrade.
+ * Starter, Professional, and Ultimate grant access; AiroPlus users need to upgrade.
  */
-export const GRANTS_PAID_PLANS = [SubscriptionPlan.Starter] as const;
+export const GRANTS_PAID_PLANS = [
+  SubscriptionPlan.Starter,
+  SubscriptionPlan.Professional,
+  SubscriptionPlan.Ultimate,
+] as const;
 
 /**
  * Type representing any paid plan
@@ -168,11 +195,14 @@ export const PAYWALL_ITC = {
  * Higher numbers indicate higher priority plans. Used when a user has
  * multiple subscriptions to determine which one to use.
  *
- * Priority order: Starter > Free > AiroPlus > None
- * Note: When grants is enabled, AiroPlus does NOT grant paid access - only Starter does.
+ * Priority order: Ultimate > Professional > Starter > Free > AiroPlus > None
+ * Note: When grants is enabled, AiroPlus does NOT grant paid access.
+ * Only Starter, Professional, and Ultimate grant paid access when grants is enabled.
  * The priority ranking is for subscription selection, not access control.
  */
 export const PLAN_PRIORITY: Record<SubscriptionPlan, number> = {
+  [SubscriptionPlan.Ultimate]: 6,
+  [SubscriptionPlan.Professional]: 5,
   [SubscriptionPlan.Starter]: 4,
   [SubscriptionPlan.Free]: 3,
   [SubscriptionPlan.AiroPlus]: 2,

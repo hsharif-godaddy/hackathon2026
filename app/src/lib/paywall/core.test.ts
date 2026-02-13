@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, type Mocked, vi } from 'vitest';
 
 import { SubscriptionPlan } from '@/types/credits';
-import { checkPaywallEligibility } from './core';
+import { checkPaywallEligibility, PaywallAction } from './core';
 import type { PaywallDataProvider } from './providers';
+import { PaywallDenialReason } from './shared';
 
 // Mock logger
 vi.mock('@/lib/request-context', () => ({
@@ -26,6 +27,7 @@ describe('checkPaywallEligibility', () => {
       getEntitlements: vi.fn(),
       getProjects: vi.fn(),
       isGrantsEnabled: vi.fn().mockResolvedValue(false), // Default to legacy behavior
+      getPublishedApps: vi.fn().mockResolvedValue({ count: 0, publishedAppIds: [] }),
     } as any;
   });
 
@@ -476,6 +478,447 @@ describe('checkPaywallEligibility', () => {
       expect(mockProvider.isGrantsEnabled).toHaveBeenCalled();
       expect(mockProvider.getEntitlements).not.toHaveBeenCalled();
       expect(mockProvider.getProjects).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Professional and Ultimate plans (grants enabled)', () => {
+    it('should grant access for Professional plan when grants enabled', async () => {
+      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+        grants: true,
+      });
+      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-professional',
+        plan: SubscriptionPlan.Professional,
+        status: 'active',
+      });
+      mockProvider.getPublishedApps.mockResolvedValue({
+        count: 0,
+        publishedAppIds: [],
+      });
+
+      const result = await checkPaywallEligibility(mockProvider);
+
+      expect(result.hasAccess).toBe(true);
+      expect(result.details.hasSubscription).toBe(true);
+    });
+
+    it('should grant access for Ultimate plan when grants enabled', async () => {
+      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+        grants: true,
+      });
+      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-ultimate',
+        plan: SubscriptionPlan.Ultimate,
+        status: 'active',
+      });
+      mockProvider.getPublishedApps.mockResolvedValue({
+        count: 0,
+        publishedAppIds: [],
+      });
+
+      const result = await checkPaywallEligibility(mockProvider);
+
+      expect(result.hasAccess).toBe(true);
+      expect(result.details.hasSubscription).toBe(true);
+    });
+  });
+
+  describe('Publish limits (grants enabled, bypassPublishLimit OFF)', () => {
+    beforeEach(() => {
+      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
+      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+    });
+
+    describe('Starter plan (limit: 1 app)', () => {
+      it('should allow publish when under limit (0 published)', async () => {
+        mockProvider.checkSwitchboardFlags.mockResolvedValue({
+          paywall: true,
+          markets: true,
+          grants: true,
+          bypassPublishLimit: false,
+        });
+        mockProvider.getAccountSubscription.mockResolvedValue({
+          id: 'sub-starter',
+          plan: SubscriptionPlan.Starter,
+          status: 'active',
+        });
+        mockProvider.getPublishedApps.mockResolvedValue({
+          count: 0,
+          publishedAppIds: [],
+        });
+
+        const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
+
+        expect(result.hasAccess).toBe(true);
+      });
+
+      it('should deny publish when at limit (1 published)', async () => {
+        mockProvider.checkSwitchboardFlags.mockResolvedValue({
+          paywall: true,
+          markets: true,
+          grants: true,
+          bypassPublishLimit: false,
+        });
+        mockProvider.getAccountSubscription.mockResolvedValue({
+          id: 'sub-starter',
+          plan: SubscriptionPlan.Starter,
+          status: 'active',
+        });
+        mockProvider.getPublishedApps.mockResolvedValue({
+          count: 1,
+          publishedAppIds: ['app-existing'],
+        });
+
+        const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
+
+        expect(result.hasAccess).toBe(false);
+        expect(result.reason).toBe(PaywallDenialReason.PublishLimitReached);
+        expect(result.details.publishLimit).toBe(1);
+        expect(result.details.publishedCount).toBe(1);
+      });
+
+      it('should allow re-publish of existing app even at limit', async () => {
+        mockProvider.checkSwitchboardFlags.mockResolvedValue({
+          paywall: true,
+          markets: true,
+          grants: true,
+          bypassPublishLimit: false,
+        });
+        mockProvider.getAccountSubscription.mockResolvedValue({
+          id: 'sub-starter',
+          plan: SubscriptionPlan.Starter,
+          status: 'active',
+        });
+        mockProvider.getPublishedApps.mockResolvedValue({
+          count: 1,
+          publishedAppIds: ['app-existing'],
+        });
+
+        // Re-publishing the same app that's already published
+        const result = await checkPaywallEligibility(mockProvider, 'app-existing', PaywallAction.Publish);
+
+        expect(result.hasAccess).toBe(true);
+      });
+    });
+
+    describe('Professional plan (limit: 3 apps)', () => {
+      it('should allow publish when under limit (2 published)', async () => {
+        mockProvider.checkSwitchboardFlags.mockResolvedValue({
+          paywall: true,
+          markets: true,
+          grants: true,
+          bypassPublishLimit: false,
+        });
+        mockProvider.getAccountSubscription.mockResolvedValue({
+          id: 'sub-professional',
+          plan: SubscriptionPlan.Professional,
+          status: 'active',
+        });
+        mockProvider.getPublishedApps.mockResolvedValue({
+          count: 2,
+          publishedAppIds: ['app-1', 'app-2'],
+        });
+
+        const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
+
+        expect(result.hasAccess).toBe(true);
+      });
+
+      it('should deny publish when at limit (3 published)', async () => {
+        mockProvider.checkSwitchboardFlags.mockResolvedValue({
+          paywall: true,
+          markets: true,
+          grants: true,
+          bypassPublishLimit: false,
+        });
+        mockProvider.getAccountSubscription.mockResolvedValue({
+          id: 'sub-professional',
+          plan: SubscriptionPlan.Professional,
+          status: 'active',
+        });
+        mockProvider.getPublishedApps.mockResolvedValue({
+          count: 3,
+          publishedAppIds: ['app-1', 'app-2', 'app-3'],
+        });
+
+        const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
+
+        expect(result.hasAccess).toBe(false);
+        expect(result.reason).toBe(PaywallDenialReason.PublishLimitReached);
+        expect(result.details.publishLimit).toBe(3);
+        expect(result.details.publishedCount).toBe(3);
+      });
+    });
+
+    describe('Ultimate plan (limit: 10 apps)', () => {
+      it('should allow publish when under limit (9 published)', async () => {
+        mockProvider.checkSwitchboardFlags.mockResolvedValue({
+          paywall: true,
+          markets: true,
+          grants: true,
+          bypassPublishLimit: false,
+        });
+        mockProvider.getAccountSubscription.mockResolvedValue({
+          id: 'sub-ultimate',
+          plan: SubscriptionPlan.Ultimate,
+          status: 'active',
+        });
+        mockProvider.getPublishedApps.mockResolvedValue({
+          count: 9,
+          publishedAppIds: Array.from({ length: 9 }, (_, i) => `app-${i}`),
+        });
+
+        const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
+
+        expect(result.hasAccess).toBe(true);
+      });
+
+      it('should deny publish when at limit (10 published)', async () => {
+        mockProvider.checkSwitchboardFlags.mockResolvedValue({
+          paywall: true,
+          markets: true,
+          grants: true,
+          bypassPublishLimit: false,
+        });
+        mockProvider.getAccountSubscription.mockResolvedValue({
+          id: 'sub-ultimate',
+          plan: SubscriptionPlan.Ultimate,
+          status: 'active',
+        });
+        mockProvider.getPublishedApps.mockResolvedValue({
+          count: 10,
+          publishedAppIds: Array.from({ length: 10 }, (_, i) => `app-${i}`),
+        });
+
+        const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
+
+        expect(result.hasAccess).toBe(false);
+        expect(result.reason).toBe(PaywallDenialReason.PublishLimitReached);
+        expect(result.details.publishLimit).toBe(10);
+        expect(result.details.publishedCount).toBe(10);
+      });
+    });
+
+    describe('Users with entitlementId (unlimited publishing)', () => {
+      it('should grant unlimited publishing for users with entitlementId', async () => {
+        mockProvider.checkSwitchboardFlags.mockResolvedValue({
+          paywall: true,
+          markets: true,
+          grants: true,
+          bypassPublishLimit: false,
+        });
+        mockProvider.getAccountSubscription.mockResolvedValue({
+          id: 'sub-starter',
+          plan: SubscriptionPlan.Starter,
+          status: 'active',
+          entitlementId: 'ent-legacy-airoplus', // Legacy AiroPlus entitlement
+        });
+        // User already has many apps published (beyond Starter limit)
+        mockProvider.getPublishedApps.mockResolvedValue({
+          count: 5,
+          publishedAppIds: Array.from({ length: 5 }, (_, i) => `app-${i}`),
+        });
+
+        const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
+
+        expect(result.hasAccess).toBe(true);
+        expect(result.details.hasEntitlements).toBe(true);
+        expect(result.details.entitlementId).toBe('ent-legacy-airoplus');
+        // Should not even check published apps count
+        expect(mockProvider.getPublishedApps).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('Bypass publish limit flag (bypassPublishLimit ON)', () => {
+    it('should bypass publish limits when bypassPublishLimit flag is enabled', async () => {
+      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+        grants: true,
+        bypassPublishLimit: true, // Bypass enabled
+      });
+      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-starter',
+        plan: SubscriptionPlan.Starter,
+        status: 'active',
+      });
+
+      const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
+
+      expect(result.hasAccess).toBe(true);
+      // Should not check published apps when bypass is enabled
+      expect(mockProvider.getPublishedApps).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('PaywallAction.Download (bypasses publish limits)', () => {
+    beforeEach(() => {
+      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
+      mockProvider.isGrantsEnabled.mockResolvedValue(true);
+    });
+
+    it('should allow download for paid plan even at publish limit', async () => {
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+        grants: true,
+        bypassPublishLimit: false,
+      });
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-starter',
+        plan: SubscriptionPlan.Starter,
+        status: 'active',
+      });
+      // User is at publish limit
+      mockProvider.getPublishedApps.mockResolvedValue({
+        count: 1,
+        publishedAppIds: ['app-1'],
+      });
+
+      // Download action should bypass publish limits
+      const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Download);
+
+      expect(result.hasAccess).toBe(true);
+      // Should not check published apps for download
+      expect(mockProvider.getPublishedApps).not.toHaveBeenCalled();
+    });
+
+    it('should deny download for free plan (still requires paid plan)', async () => {
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+        grants: true,
+        bypassPublishLimit: false,
+      });
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-free',
+        plan: SubscriptionPlan.Free,
+        status: 'active',
+      });
+
+      const result = await checkPaywallEligibility(mockProvider, 'app-1', PaywallAction.Download);
+
+      expect(result.hasAccess).toBe(false);
+      expect(result.reason).toBe('Subscription upgrade required');
+    });
+
+    it('should deny download for AiroPlus when grants enabled (not a paid plan)', async () => {
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+        grants: true,
+        bypassPublishLimit: false,
+      });
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-airoplus',
+        plan: SubscriptionPlan.AiroPlus,
+        status: 'active',
+      });
+
+      const result = await checkPaywallEligibility(mockProvider, 'app-1', PaywallAction.Download);
+
+      expect(result.hasAccess).toBe(false);
+      expect(result.reason).toBe('Subscription upgrade required');
+    });
+
+    it('should allow download for all new paid plans (Starter, Professional, Ultimate)', async () => {
+      const paidPlans = [
+        SubscriptionPlan.Starter,
+        SubscriptionPlan.Professional,
+        SubscriptionPlan.Ultimate,
+      ];
+
+      for (const plan of paidPlans) {
+        mockProvider.checkSwitchboardFlags.mockResolvedValue({
+          paywall: true,
+          markets: true,
+          grants: true,
+          bypassPublishLimit: false,
+        });
+        mockProvider.getAccountSubscription.mockResolvedValue({
+          id: `sub-${plan}`,
+          plan,
+          status: 'active',
+        });
+
+        const result = await checkPaywallEligibility(mockProvider, 'app-1', PaywallAction.Download);
+
+        expect(result.hasAccess).toBe(true);
+      }
+    });
+  });
+
+  describe('Legacy behavior (grants disabled)', () => {
+    beforeEach(() => {
+      mockProvider.getRootDomain.mockReturnValue('test-godaddy.com');
+      mockProvider.isGrantsEnabled.mockResolvedValue(false);
+    });
+
+    it('should allow download for AiroPlus when grants disabled', async () => {
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+        grants: false,
+      });
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-airoplus',
+        plan: SubscriptionPlan.AiroPlus,
+        status: 'active',
+      });
+
+      const result = await checkPaywallEligibility(mockProvider, 'app-1', PaywallAction.Download);
+
+      expect(result.hasAccess).toBe(true);
+    });
+
+    it('should allow publish for AiroPlus when grants disabled (no limit check)', async () => {
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+        grants: false,
+      });
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-airoplus',
+        plan: SubscriptionPlan.AiroPlus,
+        status: 'active',
+      });
+
+      const result = await checkPaywallEligibility(mockProvider, 'app-new', PaywallAction.Publish);
+
+      expect(result.hasAccess).toBe(true);
+      // Should not check published apps when grants is disabled
+      expect(mockProvider.getPublishedApps).not.toHaveBeenCalled();
+    });
+
+    it('should use legacy entitlement fallback for free plan when grants disabled', async () => {
+      mockProvider.checkSwitchboardFlags.mockResolvedValue({
+        paywall: true,
+        markets: true,
+        grants: false,
+      });
+      mockProvider.getAccountSubscription.mockResolvedValue({
+        id: 'sub-free',
+        plan: SubscriptionPlan.Free,
+        status: 'active',
+      });
+      mockProvider.getEntitlements.mockResolvedValue('ent-123');
+
+      const result = await checkPaywallEligibility(mockProvider, 'app-1');
+
+      expect(result.hasAccess).toBe(true);
+      expect(result.details.hasEntitlements).toBe(true);
+      expect(mockProvider.getEntitlements).toHaveBeenCalled();
     });
   });
 });

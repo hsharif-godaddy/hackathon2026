@@ -14,8 +14,9 @@ import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-p
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser, withCustomerAuth } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
 import { AIRO_OWNER_PRODUCTS } from '@/lib/mgmt-airo';
-import { checkPaywallEligibility } from '@/lib/paywall/core';
+import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core';
 import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
+import { PaywallDenialReason } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
 import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 
@@ -127,11 +128,16 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         user.customerId,
         request.headers
       );
-      const eligibility = await checkPaywallEligibility(provider, body.siteId);
+      const eligibility = await checkPaywallEligibility(provider, body.siteId, PaywallAction.Publish);
 
-      // Both download and publish require Airo Plus subscription
-      canDownload = eligibility.hasAccess;
+      // Publish requires passing publish limit check, download does not
       canPublish = eligibility.hasAccess;
+      // Allow download even if publish limit reached, but only if user has a paid subscription
+      // This prevents free users (limit=0) from getting download access via this bypass
+      canDownload = eligibility.hasAccess || (
+        eligibility.reason === PaywallDenialReason.PublishLimitReached &&
+        eligibility.details.hasSubscription
+      );
 
       eligibilityDetails = {
         hasAccess: eligibility.hasAccess,

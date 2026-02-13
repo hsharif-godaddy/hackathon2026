@@ -24,6 +24,7 @@ import { ProtectedRoute } from '@/components/auth'
 import { Feedback } from '@/components/feedback/Feedback'
 import Header from '@/components/layout/Header'
 import PostPublishGoLiveModal from '@/components/layout/PostPublishGoLiveModal'
+import PublishLimitModal from '@/components/layout/PublishLimitModal'
 import PublishStatusAlert from '@/components/layout/PublishStatusAlert'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
@@ -134,6 +135,13 @@ function DevelopPageContent() {
   const creditsModalSource = useDevelopPageStore((state) => state.creditsModalSource);
   const creditsModalItc = useDevelopPageStore((state) => state.creditsModalItc);
   const closeCreditsModal = useDevelopPageStore((state) => state.closeCreditsModal);
+  const publishLimitModalState = useDevelopPageStore((state) =>
+    appId ? state.publishStates[appId] : undefined
+  );
+  const showPublishLimitModal = publishLimitModalState?.showPublishLimitModal ?? false;
+  const publishLimitData = publishLimitModalState?.publishLimitData;
+  const setShowPublishLimitModal = useDevelopPageStore((state) => state.setShowPublishLimitModal);
+  const setShowPaywallModal = useDevelopPageStore((state) => state.setShowPaywallModal);
 
   // Feature flag and subscription for credits modal
   const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants');
@@ -1069,6 +1077,23 @@ function DevelopPageContent() {
               const source = creditsModalSource ?? 'unknown'
               closeCreditsModal()
               shipAnalyticsLog(`${source}.error`, { appId })
+            }}
+          />
+        )}
+
+        {showPublishLimitModal && publishLimitData && appId && (
+          <PublishLimitModal
+            plan={publishLimitData.plan}
+            currentCount={publishLimitData.currentCount}
+            limit={publishLimitData.limit}
+            publishedApps={publishLimitData.publishedApps}
+            onClose={() => {
+              setShowPublishLimitModal(appId, false)
+              setShowPaywallModal(appId, false)
+              shipAnalyticsLog('publish.limit.modal.dismissed', {
+                appId,
+                plan: publishLimitData.plan,
+              })
             }}
           />
         )}

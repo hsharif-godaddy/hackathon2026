@@ -163,7 +163,7 @@ describe('useDownloadApp', () => {
     await act(async () => {
       try {
         await result.current.download();
-      } catch (error) {
+      } catch {
         // Expected to throw
       }
     });
@@ -201,7 +201,7 @@ describe('useDownloadApp', () => {
     await act(async () => {
       try {
         await result.current.download();
-      } catch (error) {
+      } catch {
         // Expected to throw
       }
     });
@@ -229,7 +229,7 @@ describe('useDownloadApp', () => {
     await act(async () => {
       try {
         await result.current.download();
-      } catch (error) {
+      } catch {
         // Expected to throw
       }
     });
@@ -247,7 +247,7 @@ describe('useDownloadApp', () => {
     await act(async () => {
       try {
         await result.current.download();
-      } catch (error) {
+      } catch {
         // Expected to throw
       }
     });

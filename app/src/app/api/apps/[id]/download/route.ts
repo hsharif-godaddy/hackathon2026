@@ -27,7 +27,7 @@ import {
 } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
-import { checkPaywallEligibility } from '@/lib/paywall/core';
+import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core';
 import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
 import { logger } from '@/lib/request-context';
 
@@ -200,7 +200,7 @@ export const POST = withCustomerAuth(async (
     let canDownload = false;
     try {
       const provider = new ServerPaywallProvider(jwt, user.customerId, request.headers);
-      const eligibility = await checkPaywallEligibility(provider, siteId);
+      const eligibility = await checkPaywallEligibility(provider, siteId, PaywallAction.Download);
       canDownload = eligibility.hasAccess;
 
       if (!canDownload) {

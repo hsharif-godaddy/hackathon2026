@@ -23,6 +23,8 @@ export enum SubscriptionPlan {
   AiroPlus = 'airoPlus',
   Free = 'free',
   Starter = 'starter',
+  Professional = 'professional',
+  Ultimate = 'ultimate',
 }
 
 /**

@@ -8,9 +8,18 @@
  * data, allowing it to work in both client (browser) and server (Node.js) contexts.
  */
 
+import { canPublishWithPlan, getPublishLimit } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
-import type { PaywallDataProvider } from './providers';
-import { isMatchingProject, isPaidPlanForGrants, type PaywallCheckResult } from './shared';
+import type { PaywallDataProvider, SwitchboardFlagsResult } from './providers';
+import { isMatchingProject, isPaidPlanForGrants, type PaywallCheckResult, PaywallDenialReason } from './shared';
+
+/**
+ * Action types for paywall eligibility check
+ */
+export enum PaywallAction {
+  Publish = 'publish',
+  Download = 'download',
+}
 
 /**
  * Check if user has Airo Plus access (app-agnostic)
@@ -42,13 +51,15 @@ import { isMatchingProject, isPaidPlanForGrants, type PaywallCheckResult } from 
  *
  * @param provider - Environment-specific data provider
  * @param appId - Optional app ID for legacy compatibility
+ * @param action - Action being checked ('publish' | 'download'). Publish limits only apply to 'publish'.
  * @returns Promise with detailed access result
  */
 export async function checkPaywallEligibility(
   provider: PaywallDataProvider,
-  appId?: string
+  appId?: string,
+  action: PaywallAction = PaywallAction.Publish
 ): Promise<PaywallCheckResult> {
-  logger.info('paywall.eligibility.check.start', { appId });
+  logger.info('paywall.eligibility.check.start', { appId, action });
 
   // Initialize result structure
   const result: PaywallCheckResult = {
@@ -83,14 +94,17 @@ export async function checkPaywallEligibility(
     }
 
     let paywallEnabled: boolean;
+    let flags: SwitchboardFlagsResult;
     try {
-      const flags = await provider.checkSwitchboardFlags(rootDomain);
+      flags = await provider.checkSwitchboardFlags(rootDomain);
       paywallEnabled = flags.paywall && flags.markets;
 
       logger.info('paywall.eligibility.switchboard.checked', {
         appId,
         isPaywallEnabled: flags.paywall,
         isPaywallEnabledInMarket: flags.markets,
+        isGrantsEnabled: flags.grants,
+        isBypassEnabled: flags.bypassPublishLimit,
       });
     } catch (error) {
       logger.error('paywall.eligibility.switchboard.check-failed', {
@@ -146,16 +160,77 @@ export async function checkPaywallEligibility(
     const hasAccessByPlan = isPaidPlanForGrants(accountSubscription.plan, grantsEnabled);
 
     if (hasAccessByPlan) {
+      result.details.hasSubscription = true;
+      result.details.subscriptionId = accountSubscription.id;
+
+      // When grants flag is enabled, check publish limits for paid plans (only for publish action)
+      if (action === PaywallAction.Publish && flags.grants && !flags.bypassPublishLimit) {
+        // Users with entitlementId get unlimited publishing
+        if (accountSubscription.entitlementId) {
+          result.hasAccess = true;
+          result.details.hasEntitlements = true;
+          result.details.entitlementId = accountSubscription.entitlementId;
+
+          logger.info('paywall.eligibility.access-granted', {
+            appId,
+            reason: 'user-has-entitlement-unlimited',
+            subscriptionId: accountSubscription.id,
+            entitlementId: accountSubscription.entitlementId,
+          });
+
+          return result;
+        }
+
+        // Check publish limit for the plan
+        const publishedApps = await provider.getPublishedApps();
+        const limit = getPublishLimit(accountSubscription.plan);
+        const canPublish = canPublishWithPlan(
+          accountSubscription.plan,
+          publishedApps.count,
+          appId,
+          publishedApps.publishedAppIds
+        );
+
+        if (!canPublish) {
+          logger.warn('paywall.eligibility.publish-limit-reached', {
+            appId,
+            plan: accountSubscription.plan,
+            currentCount: publishedApps.count,
+            limit,
+          });
+
+          return {
+            hasAccess: false,
+            reason: PaywallDenialReason.PublishLimitReached,
+            details: {
+              hasSubscription: true,
+              subscriptionId: accountSubscription.id,
+              hasEntitlements: false,
+              hasMatchingProject: false,
+              publishLimit: limit,
+              publishedCount: publishedApps.count,
+            },
+          };
+        }
+
+        logger.info('paywall.eligibility.access-granted', {
+          appId,
+          reason: 'user-has-paid-plan-under-limit',
+          subscriptionId: accountSubscription.id,
+          plan: accountSubscription.plan,
+          currentCount: publishedApps.count,
+          limit,
+        });
+      } else {
+        logger.info('paywall.eligibility.access-granted', {
+          appId,
+          reason: 'user-has-paid-plan',
+          subscriptionId: accountSubscription.id,
+          plan: accountSubscription.plan,
+        });
+      }
+
       result.hasAccess = true;
-
-      logger.info('paywall.eligibility.access-granted', {
-        appId,
-        reason: 'user-has-paid-plan',
-        subscriptionId: accountSubscription.id,
-        plan: accountSubscription.plan,
-        grantsEnabled,
-      });
-
       return result;
     }
 

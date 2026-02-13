@@ -10,9 +10,11 @@
 
 import { fetchFeatureFlag } from '@/hooks/useSwitchboard';
 import { appFetch } from '@/lib/gasket-config';
+import { filterPublishedApps } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
+import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
 import { getRootDomain } from '@/utils/getRootDomain';
-import type { AccountSubscription, PaywallDataProvider, SwitchboardFlagsResult } from './providers';
+import type { AccountSubscription, PaywallDataProvider, PublishedAppsData, SwitchboardFlagsResult } from './providers';
 import { PAYWALL_CONFIG, type ProjectEdge } from './shared';
 
 /**
@@ -52,10 +54,14 @@ export class ClientPaywallProvider implements PaywallDataProvider {
 
     const paywallFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/${SWITCHBOARD_FLAGS.PAYWALL}?app=${SWITCHBOARD_APP}`;
     const marketsFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/${SWITCHBOARD_FLAGS.MARKETS}?app=${SWITCHBOARD_APP}`;
+    const grantsFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/app-builder-grants?app=${SWITCHBOARD_APP}`;
+    const bypassFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/app-builder-bypass-publish-limit?app=${SWITCHBOARD_APP}`;
 
-    const [paywallResponse, marketsResponse] = await Promise.all([
+    const [paywallResponse, marketsResponse, grantsResponse, bypassResponse] = await Promise.all([
       fetch(paywallFlagUrl, { credentials: 'include' }),
       fetch(marketsFlagUrl, { credentials: 'include' }),
+      fetch(grantsFlagUrl, { credentials: 'include' }).catch(() => null),
+      fetch(bypassFlagUrl, { credentials: 'include' }).catch(() => null),
     ]);
 
     // Fail closed: Throw error if flag fetch fails
@@ -86,6 +92,8 @@ export class ClientPaywallProvider implements PaywallDataProvider {
     // Parse flag responses with error handling
     let paywallFlag: boolean;
     let marketsFlag: boolean;
+    let grantsFlag = false;
+    let bypassFlag = false;
 
     try {
       const paywallData = await paywallResponse.json();
@@ -113,9 +121,30 @@ export class ClientPaywallProvider implements PaywallDataProvider {
       );
     }
 
+    // Parse grants and bypass flags (optional, don't fail if unavailable)
+    if (grantsResponse?.ok) {
+      try {
+        const grantsData = await grantsResponse.json();
+        grantsFlag = grantsData.setting ?? false;
+      } catch {
+        // Ignore parse errors for optional flags
+      }
+    }
+
+    if (bypassResponse?.ok) {
+      try {
+        const bypassData = await bypassResponse.json();
+        bypassFlag = bypassData.setting ?? false;
+      } catch {
+        // Ignore parse errors for optional flags
+      }
+    }
+
     return {
       paywall: paywallFlag,
       markets: marketsFlag,
+      grants: grantsFlag,
+      bypassPublishLimit: bypassFlag,
     };
   }
 
@@ -219,5 +248,41 @@ export class ClientPaywallProvider implements PaywallDataProvider {
    */
   async isGrantsEnabled(): Promise<boolean> {
     return fetchFeatureFlag('app-builder-grants');
+  }
+
+  /**
+   * Get published apps data
+   *
+   * Calls /api/sites and filters for apps with active 'publish' variant.
+   *
+   * @returns Promise with published apps count, IDs, and app info for UI display
+   */
+  async getPublishedApps(): Promise<PublishedAppsData> {
+    try {
+      const response = await appFetch('/api/sites', {
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        logger.warn('paywall.client-provider.published-apps.fetch-failed', {
+          status: response.status,
+        });
+        return { count: 0, publishedAppIds: [] };
+      }
+
+      const sites: SiteInfo[] = await response.json();
+      const publishedApps = filterPublishedApps(sites);
+
+      return {
+        count: publishedApps.length,
+        publishedAppIds: publishedApps.map(app => app.id),
+        apps: publishedApps,
+      };
+    } catch (error) {
+      logger.warn('paywall.client-provider.published-apps.error', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { count: 0, publishedAppIds: [] };
+    }
   }
 }

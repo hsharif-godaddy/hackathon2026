@@ -5,8 +5,10 @@ import { immer } from 'zustand/middleware/immer'
 import { DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/develop/components/preview/devicePresets'
 import { PreviewViewMode, ViewMode } from '@/app/develop/components/types'
 import { logger } from '@/lib/request-context'
+import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
 import { type App, appService } from '@/services/AppService'
 import { type Site, useSitesStore } from '@/stores/useSitesStore'
+import { SubscriptionPlan } from '@/types/credits'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
@@ -93,6 +95,14 @@ const saveGoLiveStatus = async (appId: string) => {
   }
 }
 
+// Publish limit modal data type
+interface PublishLimitData {
+  plan: SubscriptionPlan | undefined;
+  currentCount: number;
+  limit: number | null;
+  publishedApps: SiteInfo[];
+}
+
 // Helper to create default publish state
 const createDefaultPublishState = () => {
   const goLiveStatus = loadGoLiveStatus();
@@ -105,6 +115,8 @@ const createDefaultPublishState = () => {
     deploymentInProgressId: null,
     showSuccessAlert: false,
     showPaywallModal: false,
+    showPublishLimitModal: false,
+    publishLimitData: null as PublishLimitData | null,
     hasGoneLive: goLiveStatus.hasGoneLive,
     wentLiveAt: goLiveStatus.wentLiveAt,
     showGoLiveModal: false,
@@ -166,6 +178,9 @@ interface DevelopPageStore {
     deploymentInProgressId: string | null
     showSuccessAlert: boolean
     showPaywallModal: boolean
+    // Publish limit modal state
+    showPublishLimitModal: boolean
+    publishLimitData: PublishLimitData | null
     // Go Live modal state
     hasGoneLive: boolean
     wentLiveAt: string | null
@@ -229,6 +244,7 @@ interface DevelopPageStore {
   dismissPublishSuccess: (appId: string) => void
   clearPublishStatus: (appId: string) => void
   setShowPaywallModal: (appId: string, show: boolean) => void
+  setShowPublishLimitModal: (appId: string, show: boolean, data?: PublishLimitData) => void
   getPublishState: (appId: string) => {
     isPublishing: boolean
     publishError: boolean
@@ -237,6 +253,8 @@ interface DevelopPageStore {
     deploymentsRefetch: (() => Promise<any>) | null
     deploymentInProgressId: string | null
     showSuccessAlert: boolean
+    showPublishLimitModal: boolean
+    publishLimitData: PublishLimitData | null
     hasGoneLive: boolean
     wentLiveAt: string | null
     showGoLiveModal: boolean
@@ -531,6 +549,13 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].showPaywallModal = show;
+    }),
+    setShowPublishLimitModal: (appId: string, show: boolean, data?: PublishLimitData) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState();
+      }
+      state.publishStates[appId].showPublishLimitModal = show;
+      state.publishStates[appId].publishLimitData = show && data ? data : null;
     }),
 
     // Page loading orchestration

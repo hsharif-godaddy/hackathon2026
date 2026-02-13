@@ -8,6 +8,7 @@
  * This abstraction allows the core paywall logic to be environment-agnostic.
  */
 
+import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
 import { SubscriptionPlan } from '@/types/credits';
 import type { ProjectEdge } from './shared';
 
@@ -19,6 +20,22 @@ export interface SwitchboardFlagsResult {
   paywall: boolean;
   /** Whether paywall is enabled in the current market */
   markets: boolean;
+  /** Whether app-builder-grants flag is enabled (new plan-based limits) */
+  grants?: boolean;
+  /** Whether app-builder-bypass-publish-limit flag is enabled */
+  bypassPublishLimit?: boolean;
+}
+
+/**
+ * Published apps data for limit checking
+ */
+export interface PublishedAppsData {
+  /** Number of currently published apps */
+  count: number;
+  /** IDs of published apps (for re-publish check) */
+  publishedAppIds: string[];
+  /** Published apps data for UI display (only populated client-side) */
+  apps?: SiteInfo[];
 }
 
 /**
@@ -121,4 +138,11 @@ export interface PaywallDataProvider {
    * @returns Promise with boolean indicating if grants feature is enabled
    */
   isGrantsEnabled(): Promise<boolean>;
+
+  /**
+   * Get published apps data for limit checking
+   *
+   * @returns Promise with published apps count and IDs
+   */
+  getPublishedApps(): Promise<PublishedAppsData>;
 }

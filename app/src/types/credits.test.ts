@@ -26,9 +26,11 @@ describe('credits types', function creditsTypesTests() {
   });
 
   describe('GRANTS_PAID_PLANS (grants enabled)', function grantsPaidPlansTests() {
-    it('should only include Starter plan', function onlyStarter() {
+    it('should include Starter, Professional, and Ultimate plans', function includesNewPaidPlans() {
       expect(GRANTS_PAID_PLANS).toContain(SubscriptionPlan.Starter);
-      expect(GRANTS_PAID_PLANS).toHaveLength(1);
+      expect(GRANTS_PAID_PLANS).toContain(SubscriptionPlan.Professional);
+      expect(GRANTS_PAID_PLANS).toContain(SubscriptionPlan.Ultimate);
+      expect(GRANTS_PAID_PLANS).toHaveLength(3);
     });
 
     it('should not include AiroPlus, Free, or None plans', function excludesOthers() {
@@ -39,9 +41,13 @@ describe('credits types', function creditsTypesTests() {
   });
 
   describe('isPaidPlanForGrants', function isPaidPlanForGrantsTests() {
-    it('should return true for Starter regardless of grants flag', function starterAlwaysPaid() {
+    it('should return true for Starter, Professional, Ultimate regardless of grants flag', function newPaidPlansAlwaysPaid() {
       expect(isPaidPlanForGrants(SubscriptionPlan.Starter, true)).toBe(true);
       expect(isPaidPlanForGrants(SubscriptionPlan.Starter, false)).toBe(true);
+      expect(isPaidPlanForGrants(SubscriptionPlan.Professional, true)).toBe(true);
+      expect(isPaidPlanForGrants(SubscriptionPlan.Professional, false)).toBe(true);
+      expect(isPaidPlanForGrants(SubscriptionPlan.Ultimate, true)).toBe(true);
+      expect(isPaidPlanForGrants(SubscriptionPlan.Ultimate, false)).toBe(true);
     });
 
     it('should return true for AiroPlus only when grants is disabled', function airoPlusLegacyOnly() {

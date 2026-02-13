@@ -42,6 +42,10 @@ vi.mock('@/lib/request-context', () => ({
 
 vi.mock('@/lib/paywall/core', () => ({
   checkPaywallEligibility: vi.fn(),
+  PaywallAction: {
+    Publish: 'publish',
+    Download: 'download',
+  },
 }))
 
 vi.mock('@/lib/paywall/client-provider', () => ({
@@ -201,7 +205,7 @@ describe('publishAction', () => {
 
       await publishAction(params, context)
 
-      expect(checkPaywallEligibility).toHaveBeenCalledWith(expect.any(Object), 'app-123')
+      expect(checkPaywallEligibility).toHaveBeenCalledWith(expect.any(Object), 'app-123', 'publish')
     })
 
     it('should allow publish when user has access', async () => {

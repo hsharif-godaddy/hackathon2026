@@ -133,6 +133,10 @@ export function getPlanDisplayLabelKey(plan: SubscriptionPlan): string {
       return 'builder_manageplan_plan_airo_plus';
     case SubscriptionPlan.Starter:
       return 'builder_manageplan_plan_starter';
+    case SubscriptionPlan.Professional:
+      return 'builder_manageplan_plan_professional';
+    case SubscriptionPlan.Ultimate:
+      return 'builder_manageplan_plan_ultimate';
     case SubscriptionPlan.Free:
       return 'builder_manageplan_plan_free';
     case SubscriptionPlan.None:

@@ -2,13 +2,17 @@ import { JSX, useCallback, useState } from "react";
 import { useQueryClient } from '@tanstack/react-query';
 
 import { SinglePlanUpgradeContainer } from '@/app/develop/components/paywall'
+import PublishLimitModal from '@/components/layout/PublishLimitModal'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
+import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
 import { entitlementPollingService } from '@/services/EntitlementPollingService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useSiteStore } from '@/stores/useSiteStore'
+import { SubscriptionPlan } from '@/types/credits'
 import { usePaywallEligibility } from './usePaywallEligibility'
+import { usePublishLimitCheck } from './usePublishLimitCheck'
 import { useSwitchboard } from './useSwitchboard'
 
 interface UsePaywallModalOptions {
@@ -25,6 +29,8 @@ interface UsePaywallModalReturn {
   isPolling: boolean
   shouldShowPaywall: boolean
   isPaywallLoading: boolean
+  /** Whether publish limit check is loading */
+  isPublishLimitLoading: boolean
 }
 
 /**
@@ -65,6 +71,13 @@ export function usePaywallModal({
   onPurchaseSuccess,
 }: UsePaywallModalOptions): UsePaywallModalReturn {
   const [showAiroPlusPaywall, setShowAiroPlusPaywall] = useState(false)
+  const [showPublishLimitModal, setShowPublishLimitModal] = useState(false)
+  const [publishLimitData, setPublishLimitData] = useState<{
+    plan: SubscriptionPlan | undefined;
+    currentCount: number;
+    limit: number | null;
+    publishedApps: SiteInfo[];
+  } | null>(null)
   const [hasCompletedPurchase, setHasCompletedPurchase] = useState(false)
   const queryClient = useQueryClient()
   const isPollingEntitlements = useDevelopPageStore((state) => state.isPollingEntitlements)
@@ -74,6 +87,17 @@ export function usePaywallModal({
   const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants')
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId)
   const site = useSiteStore((state) => (appId ? state.getSite(appId) : null))
+
+  // Publish limit check (only applies when source is 'publish')
+  const isPublishSource = source === 'publish'
+  const {
+    canPublish: canPublishWithLimit,
+    currentCount,
+    limit,
+    plan,
+    publishedApps,
+    isLoading: isPublishLimitLoading,
+  } = usePublishLimitCheck({ currentAppId: appId, enabled: isPublishSource })
 
   const logInAppPurchase = useCallback(
     (subscriptionId: string, entitlementId: string) => {
@@ -135,10 +159,44 @@ export function usePaywallModal({
     if (onPurchaseSuccess) {
       await onPurchaseSuccess()
     }
-  }, [appId, source, isGrantsEnabled, logInAppPurchase, setIsPollingEntitlements, onPurchaseSuccess, queryClient])
+  }, [appId, isGrantsEnabled, logInAppPurchase, setIsPollingEntitlements, onPurchaseSuccess, queryClient])
 
   const checkAndShowPaywall = useCallback(
     async (action: () => Promise<void>) => {
+      // For publish source, check publish limits first
+      if (isPublishSource && !canPublishWithLimit) {
+        // Free plan or no plan (limit === 0) - show paywall
+        if (limit === 0) {
+          if (isAiroPlusPaywallEnabled && isPaywallEnabledInMarket) {
+            setShowAiroPlusPaywall(true)
+            shipAnalyticsLog('airoplus.paywall.shown', {
+              appId,
+              appName: site?.name,
+              source,
+              plan,
+            })
+            return
+          }
+        } else {
+          // Paid plan at limit - show publish limit modal
+          setPublishLimitData({
+            plan,
+            currentCount,
+            limit,
+            publishedApps,
+          })
+          setShowPublishLimitModal(true)
+          shipAnalyticsLog('publish.limit.modal.shown', {
+            appId,
+            appName: site?.name,
+            plan,
+            currentCount,
+            limit,
+          })
+          return
+        }
+      }
+
       // Show paywall only if not completed purchase and showPaywall is true
       const shouldShowPaywall = !hasCompletedPurchase && showPaywall
 
@@ -163,10 +221,37 @@ export function usePaywallModal({
       isPaywallEnabledInMarket,
       site?.name,
       source,
+      isPublishSource,
+      canPublishWithLimit,
+      plan,
+      currentCount,
+      limit,
+      publishedApps,
     ]
   )
 
   const PaywallModal = useCallback(() => {
+    // Show publish limit modal if applicable
+    if (showPublishLimitModal && publishLimitData) {
+      return (
+        <PublishLimitModal
+          plan={publishLimitData.plan}
+          currentCount={publishLimitData.currentCount}
+          limit={publishLimitData.limit}
+          publishedApps={publishLimitData.publishedApps}
+          onClose={() => {
+            setShowPublishLimitModal(false)
+            setPublishLimitData(null)
+            shipAnalyticsLog('publish.limit.modal.dismissed', {
+              appId,
+              appName: site?.name,
+              plan: publishLimitData.plan,
+            })
+          }}
+        />
+      )
+    }
+
     if (!showAiroPlusPaywall) return null
 
     return (
@@ -192,7 +277,7 @@ export function usePaywallModal({
         onSuccessClick={handlePurchaseSuccess}
       />
     )
-  }, [showAiroPlusPaywall, appId, site?.name, source, itc, handlePurchaseSuccess])
+  }, [showAiroPlusPaywall, showPublishLimitModal, publishLimitData, appId, site?.name, source, itc, handlePurchaseSuccess])
 
   return {
     checkAndShowPaywall,
@@ -200,5 +285,6 @@ export function usePaywallModal({
     isPolling: isPollingEntitlements,
     shouldShowPaywall: !hasCompletedPurchase && showPaywall,
     isPaywallLoading,
+    isPublishLimitLoading,
   }
 }

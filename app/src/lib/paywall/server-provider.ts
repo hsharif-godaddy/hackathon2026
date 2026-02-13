@@ -6,13 +6,14 @@
  */
 
 import { AIRO_OWNER_PRODUCTS, AiroMgmtClient, type AiroSubscription } from '@/lib/mgmt-airo';
+import { filterPublishedApps } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { VentureService } from '@/lib/venture-service';
 import { SubscriptionPlan, SubscriptionStatus } from '@/types/credits';
 import { getPlanFromSubscription } from '@/utils/credits';
 import { getRootDomainFromHeaders } from '@/utils/getRootDomain';
-import type { AccountSubscription, PaywallDataProvider, SwitchboardFlagsResult } from './providers';
+import type { AccountSubscription, PaywallDataProvider, PublishedAppsData, SwitchboardFlagsResult } from './providers';
 import { PAYWALL_CONFIG, PLAN_PRIORITY, type ProjectEdge } from './shared';
 
 /**
@@ -66,18 +67,16 @@ export class ServerPaywallProvider implements PaywallDataProvider {
 
     const paywallFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/${SWITCHBOARD_FLAGS.PAYWALL}?app=${SWITCHBOARD_APP}`;
     const marketsFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/${SWITCHBOARD_FLAGS.MARKETS}?app=${SWITCHBOARD_APP}`;
+    const grantsFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/app-builder-grants?app=${SWITCHBOARD_APP}`;
+    const bypassFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/app-builder-bypass-publish-limit?app=${SWITCHBOARD_APP}`;
 
-    const [paywallResponse, marketsResponse] = await Promise.all([
-      fetch(paywallFlagUrl, {
-        headers: {
-          'Authorization': `sso-jwt ${this.jwt}`
-        },
-      }),
-      fetch(marketsFlagUrl, {
-        headers: {
-          'Authorization': `sso-jwt ${this.jwt}`
-        },
-      }),
+    const authHeaders = { 'Authorization': `sso-jwt ${this.jwt}` };
+
+    const [paywallResponse, marketsResponse, grantsResponse, bypassResponse] = await Promise.all([
+      fetch(paywallFlagUrl, { headers: authHeaders }),
+      fetch(marketsFlagUrl, { headers: authHeaders }),
+      fetch(grantsFlagUrl, { headers: authHeaders }).catch(() => null),
+      fetch(bypassFlagUrl, { headers: authHeaders }).catch(() => null),
     ]);
 
     // Fail closed: Throw error if flag fetch fails
@@ -108,6 +107,8 @@ export class ServerPaywallProvider implements PaywallDataProvider {
     // Parse flag responses
     let paywallFlag: boolean;
     let marketsFlag: boolean;
+    let grantsFlag = false;
+    let bypassFlag = false;
 
     try {
       const paywallData = await paywallResponse.json();
@@ -135,9 +136,30 @@ export class ServerPaywallProvider implements PaywallDataProvider {
       );
     }
 
+    // Parse grants and bypass flags (optional, don't fail if unavailable)
+    if (grantsResponse?.ok) {
+      try {
+        const grantsData = await grantsResponse.json();
+        grantsFlag = grantsData.setting ?? false;
+      } catch {
+        // Ignore parse errors for optional flags
+      }
+    }
+
+    if (bypassResponse?.ok) {
+      try {
+        const bypassData = await bypassResponse.json();
+        bypassFlag = bypassData.setting ?? false;
+      } catch {
+        // Ignore parse errors for optional flags
+      }
+    }
+
     return {
       paywall: paywallFlag,
       markets: marketsFlag,
+      grants: grantsFlag,
+      bypassPublishLimit: bypassFlag,
     };
   }
 
@@ -359,6 +381,34 @@ export class ServerPaywallProvider implements PaywallDataProvider {
         error: error instanceof Error ? error.message : String(error),
       });
       return [];
+    }
+  }
+
+  /**
+   * Get published apps data
+   *
+   * Uses AiroMgmtClient to get all apps and filters for apps with active 'publish' variant.
+   *
+   * @returns Promise with published apps count and IDs
+   */
+  async getPublishedApps(): Promise<PublishedAppsData> {
+    try {
+      const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
+      const client = new AiroMgmtClient({ baseUrl, jwt: this.jwt });
+
+      const apps = await client.getAllAppsForCustomer();
+      const publishedApps = filterPublishedApps(apps);
+
+      return {
+        count: publishedApps.length,
+        publishedAppIds: publishedApps.map(app => app.id),
+      };
+    } catch (error) {
+      logger.warn('paywall.server-provider.published-apps-error', {
+        customerId: this.customerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { count: 0, publishedAppIds: [] };
     }
   }
 }

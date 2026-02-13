@@ -10,8 +10,8 @@ import { dynamicApiConfigService } from '@/config/dynamic-api'
 import { appFetch } from '@/lib/gasket-config'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { ClientPaywallProvider } from '@/lib/paywall/client-provider'
-import { checkPaywallEligibility } from '@/lib/paywall/core'
-import { PAYWALL_ITC } from '@/lib/paywall/shared'
+import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core'
+import { PAYWALL_ITC, PaywallDenialReason } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -31,19 +31,37 @@ export const publishAction: ClientActionExecutor = async (params) => {
   try {
     // Check paywall eligibility using core algorithm with client provider
     const provider = new ClientPaywallProvider()
-    const { hasAccess, reason } = await checkPaywallEligibility(provider, appId)
+    const { hasAccess, reason, details } = await checkPaywallEligibility(provider, appId, PaywallAction.Publish)
     if (!hasAccess) {
       logger.warn('publish-action.access-denied', { appId, reason })
 
-      // Show paywall modal
       try {
         const store = useDevelopPageStore.getState()
-        // Track that paywall blocked this publish (prevents error alert from showing)
-        store.setShowPaywallModal(appId, true)
-        // Actually show the upgrade modal in the UI
-        store.openUpgradeModal('publish', PAYWALL_ITC.PUBLISH)
+
+        // Check if it's a publish limit issue vs a paywall issue
+        if (reason === PaywallDenialReason.PublishLimitReached) {
+          // Fetch published apps and subscription data for the modal
+          const [publishedAppsData, subscriptionData] = await Promise.all([
+            provider.getPublishedApps(),
+            provider.getAccountSubscription(),
+          ])
+
+          // Show publish limit modal
+          store.setShowPublishLimitModal(appId, true, {
+            plan: subscriptionData?.plan,
+            currentCount: publishedAppsData.count,
+            limit: details.publishLimit ?? null,
+            publishedApps: publishedAppsData.apps ?? [],
+          })
+          // Track that limit modal blocked this publish (prevents error alert from showing)
+          store.setShowPaywallModal(appId, true)
+        } else {
+          // Show paywall modal for other cases (no subscription, free plan, etc.)
+          store.setShowPaywallModal(appId, true)
+          store.openUpgradeModal('publish', PAYWALL_ITC.PUBLISH)
+        }
       } catch (storeError) {
-        logger.warn('publish-action.paywall-modal-trigger-failed', {
+        logger.warn('publish-action.modal-trigger-failed', {
           appId,
           error: storeError instanceof Error ? storeError.message : String(storeError),
         })

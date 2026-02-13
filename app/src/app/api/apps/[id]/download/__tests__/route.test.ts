@@ -64,7 +64,11 @@ vi.mock('@/lib/jwt-service', function mockJwtServiceModule() {
 
 vi.mock('@/lib/paywall/core', function mockPaywallCoreModule() {
   return {
-    checkPaywallEligibility: vi.fn().mockImplementation(() => mockPaywallProvider.checkPaywallEligibility())
+    checkPaywallEligibility: vi.fn().mockImplementation(() => mockPaywallProvider.checkPaywallEligibility()),
+    PaywallAction: {
+      Publish: 'publish',
+      Download: 'download',
+    },
   };
 });
 
