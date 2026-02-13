@@ -4,7 +4,6 @@
  * Tests for server-side paywall data provider, particularly focusing on:
  * - Switchboard flag fetch error handling
  * - Feature flag behavior for plan validation
- * - Auto-creation of free plans
  * - Backwards compatibility
  */
 
@@ -29,18 +28,14 @@ vi.mock('@/lib/switchboard/server', () => ({
 
 // Mock mgmt-airo client
 const mockGetSubscriptions = vi.fn();
-const mockGetSubscription = vi.fn();
 const mockGetEntitlements = vi.fn();
-const mockCreateBuilderPlan = vi.fn();
 const mockGetSystems = vi.fn();
 const mockGetAppsForSystem = vi.fn();
 
 vi.mock('@/lib/mgmt-airo', () => ({
   AiroMgmtClient: vi.fn().mockImplementation(() => ({
     getSubscriptions: mockGetSubscriptions,
-    getSubscription: mockGetSubscription,
     getEntitlements: mockGetEntitlements,
-    createBuilderPlan: mockCreateBuilderPlan,
     getSystems: mockGetSystems,
     getAppsForSystem: mockGetAppsForSystem,
   })),
@@ -220,13 +215,13 @@ describe('ServerPaywallProvider', () => {
         mockCheckSwitchboardFlag.mockResolvedValue(false);
       });
 
-      it('should NOT auto-create free plan when flag is OFF', async () => {
+      it('should return None plan for trial aab-v1 subscription when flag is OFF', async () => {
         mockGetSubscriptions.mockResolvedValue([
           {
             id: 'sub-1',
             productId: 'aab-v1',
             status: 'active',
-            isTrial: true, // Maps to Free plan
+            isTrial: true, // Maps to None plan (legacy trial behavior)
           },
         ]);
 
@@ -235,7 +230,6 @@ describe('ServerPaywallProvider', () => {
         const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
         const result = await provider.getAccountSubscription();
 
-        expect(mockCreateBuilderPlan).not.toHaveBeenCalled();
         expect(result?.plan).toBe(SubscriptionPlan.None);
       });
 
@@ -246,6 +240,7 @@ describe('ServerPaywallProvider', () => {
             productId: 'aab-v1',
             status: 'active',
             isTrial: false,
+            entitlementId: '12334-1234-1234-1234-123412341234',
           },
         ]);
 
@@ -263,55 +258,7 @@ describe('ServerPaywallProvider', () => {
         mockCheckSwitchboardFlag.mockResolvedValue(true);
       });
 
-      it('should auto-create free plan when subscription exists but has no valid plan', async () => {
-        // Use unknown productId to get SubscriptionPlan.None from getPlanFromSubscription
-        const subscriptionWithoutPlan = {
-          id: 'sub-1',
-          productId: 'unknown-product',
-          status: 'active',
-          isTrial: false,
-          // No plan field - returns None
-        };
-
-        const subscriptionWithPlan = {
-          id: 'sub-1',
-          productId: 'unknown-product',
-          status: 'active',
-          isTrial: false,
-          plan: SubscriptionPlan.Free,
-        };
-
-        mockGetSubscriptions
-          .mockResolvedValueOnce([subscriptionWithoutPlan])
-          .mockResolvedValueOnce([subscriptionWithPlan]);
-
-        // Idempotency check: return subscription without plan
-        mockGetSubscription.mockResolvedValue(subscriptionWithoutPlan);
-
-        mockCreateBuilderPlan.mockResolvedValue({
-          subscriptionId: 'sub-1',
-          plan: SubscriptionPlan.Free,
-          builderEntitlementId: 'builder-ent-123',
-        });
-
-        mockGetEntitlements.mockResolvedValue({
-          id: 'sub-1',
-          productId: 'unknown-product',
-          customerId: 'customer-123',
-          status: 'active',
-          isTrial: false,
-          plan: SubscriptionPlan.Free,
-          builderEntitlementId: 'builder-ent-123',
-        });
-
-        const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
-        const result = await provider.getAccountSubscription();
-
-        expect(mockCreateBuilderPlan).toHaveBeenCalledWith('sub-1', { plan: SubscriptionPlan.Free });
-        expect(result?.plan).toBe(SubscriptionPlan.Free);
-      });
-
-      it('should NOT auto-create plan if subscription already has valid plan', async () => {
+      it('should return subscription with existing valid plan', async () => {
         mockGetSubscriptions.mockResolvedValue([
           {
             id: 'sub-1',
@@ -334,12 +281,10 @@ describe('ServerPaywallProvider', () => {
         const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
         const result = await provider.getAccountSubscription();
 
-        expect(mockCreateBuilderPlan).not.toHaveBeenCalled();
         expect(result?.plan).toBe(SubscriptionPlan.Starter);
       });
 
-      it('should handle createBuilderPlan failure gracefully', async () => {
-        // Use unknown productId to trigger auto-creation
+      it('should return None plan when subscription has no valid plan', async () => {
         const subscription = {
           id: 'sub-1',
           productId: 'unknown-product',
@@ -348,14 +293,11 @@ describe('ServerPaywallProvider', () => {
         };
 
         mockGetSubscriptions.mockResolvedValue([subscription]);
-        mockGetSubscription.mockResolvedValue(subscription);
-        mockCreateBuilderPlan.mockRejectedValue(new Error('Plan creation failed'));
         mockGetEntitlements.mockRejectedValue(new Error('Not found'));
 
         const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
         const result = await provider.getAccountSubscription();
 
-        // Should return the subscription with mapped plan (None)
         expect(result?.plan).toBe(SubscriptionPlan.None);
       });
     });
@@ -369,7 +311,6 @@ describe('ServerPaywallProvider', () => {
         const result = await provider.getAccountSubscription();
 
         expect(result).toBeUndefined();
-        expect(mockCreateBuilderPlan).not.toHaveBeenCalled();
       });
 
       it('should return undefined when no subscriptions exist (flag ON)', async () => {
@@ -380,7 +321,6 @@ describe('ServerPaywallProvider', () => {
         const result = await provider.getAccountSubscription();
 
         expect(result).toBeUndefined();
-        expect(mockCreateBuilderPlan).not.toHaveBeenCalled();
       });
     });
 
@@ -426,52 +366,6 @@ describe('ServerPaywallProvider', () => {
         expect(result?.plan).toBe(SubscriptionPlan.AiroPlus);
       });
 
-      it('should prefer active subscription for auto-plan creation', async () => {
-        // Use unknown productId to trigger auto-creation
-        const inactiveSubscription = {
-          id: 'sub-inactive',
-          productId: 'unknown-product',
-          status: 'inactive',
-        };
-
-        const activeSubscriptionWithoutPlan = {
-          id: 'sub-active',
-          productId: 'unknown-product',
-          status: 'active',
-        };
-
-        const activeSubscriptionWithPlan = {
-          id: 'sub-active',
-          productId: 'unknown-product',
-          status: 'active',
-          plan: SubscriptionPlan.Free,
-        };
-
-        mockGetSubscriptions
-          .mockResolvedValueOnce([inactiveSubscription, activeSubscriptionWithoutPlan])
-          .mockResolvedValueOnce([inactiveSubscription, activeSubscriptionWithPlan]);
-
-        // Idempotency check: return active subscription without plan
-        mockGetSubscription.mockResolvedValue(activeSubscriptionWithoutPlan);
-
-        mockCreateBuilderPlan.mockResolvedValue({
-          subscriptionId: 'sub-active',
-          plan: SubscriptionPlan.Free,
-        });
-
-        mockGetEntitlements.mockResolvedValue({
-          id: 'sub-active',
-          productId: 'unknown-product',
-          customerId: 'customer-123',
-          status: 'active',
-          plan: SubscriptionPlan.Free,
-        });
-
-        const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
-        await provider.getAccountSubscription();
-
-        expect(mockCreateBuilderPlan).toHaveBeenCalledWith('sub-active', { plan: SubscriptionPlan.Free });
-      });
     });
 
     describe('Error handling', () => {
@@ -486,7 +380,6 @@ describe('ServerPaywallProvider', () => {
         };
 
         mockGetSubscriptions.mockResolvedValue([subscription]);
-        mockGetSubscription.mockResolvedValue(subscription);
         mockGetEntitlements.mockRejectedValue(new Error('API error'));
 
         const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);

@@ -38,8 +38,6 @@ describe('GET /api/subscriptions', function describeRoute() {
     // Create mock client
     mockClient = {
       getSubscriptions: vi.fn(),
-      getSubscription: vi.fn(),
-      createBuilderPlan: vi.fn(),
     };
 
     // Mock AiroMgmtClient constructor
@@ -144,99 +142,6 @@ describe('GET /api/subscriptions', function describeRoute() {
     });
   });
 
-  describe('Auto-creation of free plan', function autoCreate() {
-    it('should auto-create free plan when feature enabled and no valid plan exists', async function createFreePlan() {
-      const request = new NextRequest('http://localhost/api/subscriptions');
-      const authContext = createAuthContext('jwt-token');
-
-      // Feature flag enabled
-      vi.mocked(checkSwitchboardFlag).mockResolvedValue(true);
-
-      // Initial fetch: subscription exists but no plan
-      const subWithNoPlan = createSubscription({ id: 'sub-1', plan: SubscriptionPlan.None });
-      mockClient.getSubscriptions
-        .mockResolvedValueOnce([subWithNoPlan]) // First call
-        .mockResolvedValueOnce([{ ...subWithNoPlan, plan: SubscriptionPlan.Free }]); // After creation
-
-      // Recheck returns same (still no plan)
-      mockClient.getSubscription.mockResolvedValue(subWithNoPlan);
-
-      // Plan creation succeeds
-      mockClient.createBuilderPlan.mockResolvedValue({ success: true });
-
-      const response = await GET(request, authContext);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(mockClient.createBuilderPlan).toHaveBeenCalledWith('sub-1', { plan: SubscriptionPlan.Free });
-      expect(data.data.active.plan).toBe(SubscriptionPlan.Free);
-    });
-
-    it('should NOT auto-create when feature flag is disabled', async function noAutoCreate() {
-      const request = new NextRequest('http://localhost/api/subscriptions');
-      const authContext = createAuthContext('jwt-token');
-
-      // Feature flag disabled (default)
-      vi.mocked(checkSwitchboardFlag).mockResolvedValue(false);
-
-      // Subscription with no plan
-      mockClient.getSubscriptions.mockResolvedValue([
-        createSubscription({ plan: SubscriptionPlan.None }),
-      ]);
-
-      const response = await GET(request, authContext);
-
-      expect(response.status).toBe(200);
-      expect(mockClient.createBuilderPlan).not.toHaveBeenCalled();
-    });
-
-    it('should NOT auto-create when valid plan already exists', async function existingPlan() {
-      const request = new NextRequest('http://localhost/api/subscriptions');
-      const authContext = createAuthContext('jwt-token');
-
-      // Feature flag enabled
-      vi.mocked(checkSwitchboardFlag).mockResolvedValue(true);
-
-      // Subscription already has a valid plan
-      mockClient.getSubscriptions.mockResolvedValue([
-        createSubscription({ plan: SubscriptionPlan.Starter }),
-      ]);
-
-      const response = await GET(request, authContext);
-
-      expect(response.status).toBe(200);
-      expect(mockClient.createBuilderPlan).not.toHaveBeenCalled();
-    });
-
-    it('should handle 409 conflict gracefully (race condition)', async function handleConflict() {
-      const request = new NextRequest('http://localhost/api/subscriptions');
-      const authContext = createAuthContext('jwt-token');
-
-      // Feature flag enabled
-      vi.mocked(checkSwitchboardFlag).mockResolvedValue(true);
-
-      const subWithNoPlan = createSubscription({ plan: SubscriptionPlan.None });
-      mockClient.getSubscriptions
-        .mockResolvedValueOnce([subWithNoPlan])
-        .mockResolvedValueOnce([{ ...subWithNoPlan, plan: SubscriptionPlan.Free }]);
-
-      mockClient.getSubscription.mockResolvedValue(subWithNoPlan);
-
-      // Plan creation fails with 409 (another request created it)
-      const { AiroHttpError } = await import('@/lib/mgmt-airo');
-      mockClient.createBuilderPlan.mockRejectedValue(
-        new AiroHttpError(409, 'Conflict', 'Plan already exists')
-      );
-
-      const response = await GET(request, authContext);
-      const data = await response.json();
-
-      // Should succeed - 409 is treated as success
-      expect(response.status).toBe(200);
-      expect(data.data.active.plan).toBe(SubscriptionPlan.Free);
-    });
-  });
-
   describe('Error handling', function errors() {
     it('should return 500 on unexpected error', async function unexpectedError() {
       const request = new NextRequest('http://localhost/api/subscriptions');
@@ -269,7 +174,7 @@ describe('GET /api/subscriptions', function describeRoute() {
   });
 
   describe('Meta information', function meta() {
-    it('should include hasValidPlan in meta', async function hasValidPlan() {
+    it('should include grantsEnabled in meta when flag is enabled', async function grantsEnabled() {
       const request = new NextRequest('http://localhost/api/subscriptions');
       const authContext = createAuthContext('jwt-token');
 
@@ -282,29 +187,23 @@ describe('GET /api/subscriptions', function describeRoute() {
       const response = await GET(request, authContext);
       const data = await response.json();
 
-      expect(data.data.meta.hasValidPlan).toBe(true);
       expect(data.data.meta.grantsEnabled).toBe(true);
     });
 
-    it('should report hasValidPlan false when no valid plans', async function noValidPlan() {
+    it('should include grantsEnabled false in meta when flag is disabled', async function grantsDisabled() {
       const request = new NextRequest('http://localhost/api/subscriptions');
       const authContext = createAuthContext('jwt-token');
 
-      vi.mocked(checkSwitchboardFlag).mockResolvedValue(true);
+      vi.mocked(checkSwitchboardFlag).mockResolvedValue(false);
 
       mockClient.getSubscriptions.mockResolvedValue([
         createSubscription({ plan: SubscriptionPlan.None }),
       ]);
-      mockClient.getSubscription.mockResolvedValue(
-        createSubscription({ plan: SubscriptionPlan.None })
-      );
-      mockClient.createBuilderPlan.mockResolvedValue({ success: true });
 
       const response = await GET(request, authContext);
       const data = await response.json();
 
-      // After auto-creation attempt, should have valid plan
-      expect(data.data.meta.grantsEnabled).toBe(true);
+      expect(data.data.meta.grantsEnabled).toBe(false);
     });
   });
 });

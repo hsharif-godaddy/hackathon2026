@@ -5,7 +5,7 @@
  * Uses direct service clients and explicit JWT authentication.
  */
 
-import { AIRO_OWNER_PRODUCTS, AiroHttpError, AiroMgmtClient, type AiroSubscription } from '@/lib/mgmt-airo';
+import { AIRO_OWNER_PRODUCTS, AiroMgmtClient, type AiroSubscription } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { VentureService } from '@/lib/venture-service';
@@ -13,7 +13,7 @@ import { SubscriptionPlan, SubscriptionStatus } from '@/types/credits';
 import { getPlanFromSubscription } from '@/utils/credits';
 import { getRootDomainFromHeaders } from '@/utils/getRootDomain';
 import type { AccountSubscription, PaywallDataProvider, SwitchboardFlagsResult } from './providers';
-import { getValidPlans, PAYWALL_CONFIG, PLAN_PRIORITY, type ProjectEdge } from './shared';
+import { PAYWALL_CONFIG, PLAN_PRIORITY, type ProjectEdge } from './shared';
 
 /**
  * Server-side implementation of paywall data provider
@@ -172,7 +172,7 @@ export class ServerPaywallProvider implements PaywallDataProvider {
       grantsEnabled: isGrantsEnabled
     });
 
-    let subscriptions = await client.getSubscriptions(
+    const subscriptions = await client.getSubscriptions(
       AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER
     );
 
@@ -198,103 +198,6 @@ export class ServerPaywallProvider implements PaywallDataProvider {
           ...subscription,
           plan
         };
-      }
-    }
-
-    // Use appropriate plan validation based on feature flag
-    const validPlans = getValidPlans(isGrantsEnabled);
-    const hasValidPlan = bestSubscription && validPlans.includes(bestSubscription.plan);
-
-    // Only auto-create free plan if grants feature is enabled
-    if (isGrantsEnabled && subscriptions.length > 0 && !hasValidPlan) {
-      // Use the first active subscription, or fall back to first subscription
-      const targetSubscription = subscriptions.find(sub => sub.status === SubscriptionStatus.Active) || subscriptions[0];
-
-      logger.info('paywall.server-provider.creating-free-plan', {
-        subscriptionId: targetSubscription.id,
-        message: 'No valid builder plan found, creating free plan'
-      });
-
-      try {
-        // Idempotency check: verify plan still doesn't exist before creating
-        // Handles race condition if another request already created the plan
-        // Force fresh data by bypassing cache
-        const recheckSubscription = await client.getSubscription(targetSubscription.id, { noCache: true });
-        const recheckPlan = getPlanFromSubscription(recheckSubscription);
-        const recheckHasValidPlan = (validPlans as readonly SubscriptionPlan[]).includes(recheckPlan);
-
-        if (!recheckHasValidPlan) {
-          try {
-            await client.createBuilderPlan(targetSubscription.id, { plan: SubscriptionPlan.Free });
-
-            logger.info('paywall.server-provider.free-plan-created', {
-              subscriptionId: targetSubscription.id
-            });
-          } catch (createError) {
-            // Handle 409 Conflict - plan was created by another request (race condition)
-            if (createError instanceof AiroHttpError && createError.status === 409) {
-              logger.info('paywall.server-provider.plan-exists-race-condition', {
-                subscriptionId: targetSubscription.id,
-                message: 'Plan was created concurrently by another request'
-              });
-              // Treat as success - the plan exists, which is what we wanted
-            } else {
-              // Re-throw other errors
-              throw createError;
-            }
-          }
-        } else {
-          logger.info('paywall.server-provider.plan-already-exists', {
-            subscriptionId: targetSubscription.id,
-            plan: recheckPlan,
-            message: 'Plan was created by another request, skipping creation'
-          });
-        }
-
-        // Refetch subscriptions to get updated data with the new plan
-        subscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
-
-        // Re-evaluate best subscription with updated data
-        bestSubscription = null;
-        for (const subscription of subscriptions) {
-          if (subscription.status !== SubscriptionStatus.Active && bestSubscription) {
-            continue;
-          }
-          const plan = getPlanFromSubscription(subscription);
-          if (!bestSubscription ||
-              (PLAN_PRIORITY[plan] || 0) > (PLAN_PRIORITY[bestSubscription.plan] || 0)) {
-            bestSubscription = { ...subscription, plan };
-          }
-        }
-      } catch (planError) {
-        logger.error('paywall.server-provider.create-plan-error', {
-          subscriptionId: targetSubscription.id,
-          error: planError instanceof Error ? planError.message : String(planError),
-          errorType: planError instanceof AiroHttpError ? `HTTP ${planError.status}` : 'Unknown'
-        });
-
-        // Always refetch to get current state, even on error
-        try {
-          subscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
-
-          // Re-evaluate best subscription with refetched data
-          bestSubscription = null;
-          for (const subscription of subscriptions) {
-            if (subscription.status !== SubscriptionStatus.Active && bestSubscription) {
-              continue;
-            }
-            const plan = getPlanFromSubscription(subscription);
-            if (!bestSubscription ||
-                (PLAN_PRIORITY[plan] || 0) > (PLAN_PRIORITY[bestSubscription.plan] || 0)) {
-              bestSubscription = { ...subscription, plan };
-            }
-          }
-        } catch (refetchError) {
-          logger.error('paywall.server-provider.refetch-error', {
-            error: refetchError instanceof Error ? refetchError.message : String(refetchError)
-          });
-        }
-        // Continue with existing subscription data if refetch fails
       }
     }
 

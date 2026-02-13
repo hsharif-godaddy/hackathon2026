@@ -2,9 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { SubscriptionPlan } from '@/types/credits';
 import {
-  getValidPlans,
   GRANTS_PAID_PLANS,
-  hasValidPlan,
   isMatchingProject,
   isPaidPlan,
   isPaidPlanForGrants,
@@ -12,7 +10,6 @@ import {
   PAYWALL_CONFIG,
   PAYWALL_ITC,
   PLAN_PRIORITY,
-  SUBSCRIPTION_PLAN_CONFIG,
 } from './shared';
 
 describe('paywall/shared', function paywallSharedTests() {
@@ -103,45 +100,6 @@ describe('paywall/shared', function paywallSharedTests() {
       expect(PLAN_PRIORITY[SubscriptionPlan.None]).toBeLessThan(PLAN_PRIORITY[SubscriptionPlan.Free]);
       expect(PLAN_PRIORITY[SubscriptionPlan.None]).toBeLessThan(PLAN_PRIORITY[SubscriptionPlan.AiroPlus]);
       expect(PLAN_PRIORITY[SubscriptionPlan.None]).toBeLessThan(PLAN_PRIORITY[SubscriptionPlan.Starter]);
-    });
-  });
-
-  describe('SUBSCRIPTION_PLAN_CONFIG', function subscriptionPlanConfigTests() {
-    it('should have NEW_VALID_PLANS with Free and Starter', function newValidPlans() {
-      expect(SUBSCRIPTION_PLAN_CONFIG.NEW_VALID_PLANS).toContain(SubscriptionPlan.Free);
-      expect(SUBSCRIPTION_PLAN_CONFIG.NEW_VALID_PLANS).toContain(SubscriptionPlan.Starter);
-      expect(SUBSCRIPTION_PLAN_CONFIG.NEW_VALID_PLANS).not.toContain(SubscriptionPlan.AiroPlus);
-    });
-
-    it('should have LEGACY_VALID_PLANS with only AiroPlus', function legacyValidPlans() {
-      expect(SUBSCRIPTION_PLAN_CONFIG.LEGACY_VALID_PLANS).toContain(SubscriptionPlan.AiroPlus);
-      expect(SUBSCRIPTION_PLAN_CONFIG.LEGACY_VALID_PLANS).toHaveLength(1);
-    });
-  });
-
-  describe('getValidPlans', function getValidPlansTests() {
-    it('should return NEW_VALID_PLANS when enabled', function returnsNewPlans() {
-      const plans = getValidPlans(true);
-      expect(plans).toContain(SubscriptionPlan.Free);
-      expect(plans).toContain(SubscriptionPlan.Starter);
-    });
-
-    it('should return LEGACY_VALID_PLANS when disabled', function returnsLegacyPlans() {
-      const plans = getValidPlans(false);
-      expect(plans).toContain(SubscriptionPlan.AiroPlus);
-      expect(plans).not.toContain(SubscriptionPlan.Free);
-    });
-  });
-
-  describe('hasValidPlan', function hasValidPlanTests() {
-    it('should return true for subscription with valid plan', function validPlan() {
-      const subscription = { plan: SubscriptionPlan.Starter } as any;
-      expect(hasValidPlan(subscription, [SubscriptionPlan.Starter])).toBe(true);
-    });
-
-    it('should return false for subscription with invalid plan', function invalidPlan() {
-      const subscription = { plan: SubscriptionPlan.None } as any;
-      expect(hasValidPlan(subscription, [SubscriptionPlan.Starter])).toBe(false);
     });
   });
 

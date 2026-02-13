@@ -23,9 +23,13 @@ Object.defineProperty(navigator, 'clipboard', {
   configurable: true,
 });
 
+const mockPush = vi.fn();
+const mockUseSwitchboard = vi.fn();
+const mockUseSubscription = vi.fn();
+
 vi.mock('next/navigation', () => ({
   usePathname: () => '/develop',
-  useRouter: () => mockRouter(),
+  useRouter: () => ({ ...mockRouter(), push: mockPush }),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
@@ -57,9 +61,21 @@ vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: () => mockAuthContext({ isAuthenticated: true, isAuthDisabled: false }),
 }));
 
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: () => mockUseSwitchboard(),
+}));
+
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: () => mockUseSubscription(),
+}));
+
 describe('UserMenu', function userMenuTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    mockPush.mockClear();
+    // Default mock values
+    mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
+    mockUseSubscription.mockReturnValue({ data: undefined, isLoading: false });
   });
 
   describe('when user is authenticated on develop page', function authenticatedDevelopTests() {
@@ -74,10 +90,7 @@ describe('UserMenu', function userMenuTests() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
       // Click the user icon to open popover
-      const trigger = document.querySelector('[class*="cursor-pointer"]');
-      if (trigger) {
-        await user.click(trigger);
-      }
+      await user.click(screen.getByTestId('user-menu-trigger'));
 
       await waitFor(function checkPopover() {
         // Popover should be open - check for sign out button
@@ -89,10 +102,7 @@ describe('UserMenu', function userMenuTests() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
       // Click to open popover
-      const trigger = document.querySelector('[class*="cursor-pointer"]');
-      if (trigger) {
-        await user.click(trigger);
-      }
+      await user.click(screen.getByTestId('user-menu-trigger'));
 
       await waitFor(function checkInviteFriends() {
         expect(screen.getByText('builder_invite_friend_title')).toBeInTheDocument();
@@ -103,10 +113,7 @@ describe('UserMenu', function userMenuTests() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
       // Click to open popover
-      const trigger = document.querySelector('[class*="cursor-pointer"]');
-      if (trigger) {
-        await user.click(trigger);
-      }
+      await user.click(screen.getByTestId('user-menu-trigger'));
 
       await waitFor(function checkDiscord() {
         // Discord uses default fallback text
@@ -118,14 +125,103 @@ describe('UserMenu', function userMenuTests() {
       const { user } = renderWithProviders(<UserMenu location="develop" />);
 
       // Click to open popover
-      const trigger = document.querySelector('[class*="cursor-pointer"]');
-      if (trigger) {
-        await user.click(trigger);
-      }
+      await user.click(screen.getByTestId('user-menu-trigger'));
 
       await waitFor(function checkSignOut() {
         expect(screen.getByText('builder_common_signout')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('Manage Plan menu item', function managePlanTests() {
+    it('should not show Manage Plan when feature flag is disabled', async function hideWhenFlagDisabled() {
+      mockUseSwitchboard.mockReturnValue({ data: false, isLoading: false });
+      mockUseSubscription.mockReturnValue({
+        data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
+        isLoading: false,
+      });
+
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByTestId('user-menu-trigger'));
+
+      await waitFor(function checkPopoverOpen() {
+        expect(screen.getByText('builder_common_signout')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('builder_usermenu_manage_plan')).not.toBeInTheDocument();
+    });
+
+    it('should not show Manage Plan when subscription is undefined', async function hideWhenNoSubscription() {
+      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSubscription.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+      });
+
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByTestId('user-menu-trigger'));
+
+      await waitFor(function checkPopoverOpen() {
+        expect(screen.getByText('builder_common_signout')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('builder_usermenu_manage_plan')).not.toBeInTheDocument();
+    });
+
+    it('should not show Manage Plan when builderEntitlementId is undefined', async function hideWhenNoEntitlementId() {
+      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSubscription.mockReturnValue({
+        data: { id: 'sub-1' }, // no builderEntitlementId
+        isLoading: false,
+      });
+
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByTestId('user-menu-trigger'));
+
+      await waitFor(function checkPopoverOpen() {
+        expect(screen.getByText('builder_common_signout')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('builder_usermenu_manage_plan')).not.toBeInTheDocument();
+    });
+
+    it('should show Manage Plan when all conditions are met', async function showWhenAllConditionsMet() {
+      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSubscription.mockReturnValue({
+        data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
+        isLoading: false,
+      });
+
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByTestId('user-menu-trigger'));
+
+      await waitFor(function checkManagePlan() {
+        expect(screen.getByText('builder_usermenu_manage_plan')).toBeInTheDocument();
+      });
+    });
+
+    it('should navigate to /manage-plan when clicked', async function navigateOnClick() {
+      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockUseSubscription.mockReturnValue({
+        data: { id: 'sub-1', builderEntitlementId: 'entitlement-123' },
+        isLoading: false,
+      });
+
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByTestId('user-menu-trigger'));
+
+      await waitFor(function checkManagePlan() {
+        expect(screen.getByText('builder_usermenu_manage_plan')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('builder_usermenu_manage_plan'));
+
+      expect(mockPush).toHaveBeenCalledWith('/manage-plan');
     });
   });
 });

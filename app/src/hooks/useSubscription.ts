@@ -14,6 +14,10 @@ const QUERY_KEY = ['subscriptions'] as const;
 const STALE_TIME = 5 * 60 * 1000;
 const GC_TIME = 10 * 60 * 1000;
 
+interface UseSubscriptionOptions {
+  enabled?: boolean;
+}
+
 interface UseSubscriptionResult {
   data: AiroSubscription | undefined;
   subscriptions: AiroSubscription[];
@@ -44,12 +48,15 @@ async function fetch() {
   };
 }
 
-export function useSubscription(): UseSubscriptionResult {
+export function useSubscription(options: UseSubscriptionOptions = {}): UseSubscriptionResult {
+  const { enabled = true } = options;
+
   const query = useQuery({
     queryKey: QUERY_KEY,
     queryFn: fetch,
     staleTime: STALE_TIME,
     gcTime: GC_TIME,
+    enabled,
   });
 
   return {

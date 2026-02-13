@@ -9,6 +9,7 @@ import InviteFriends, { InviteFriendsVariant } from '@/components/layout/InviteF
 import InviteFriendsModal from '@/components/layout/InviteFriendsModal';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useSsoSignIn } from '@/hooks/useSsoSignIn';
+import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { Button } from "@/lib/shadcn/button"
@@ -41,6 +42,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
 
   const { signIn } = useSsoSignIn();
   const { data: isManagePlanEnabled } = useSwitchboard('appbuilder-manage-plan', { enabled: isAuthenticated });
+  const { data: activeSubscription } = useSubscription({ enabled: isAuthenticated && !!isManagePlanEnabled });
 
   const handleSignInClick = () => {
     setOpen(false); // Close the popover
@@ -84,7 +86,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
                 <Separator className="my-0.5" />
               </>
             )}
-            {isAuthenticated && isManagePlanEnabled && (
+            {isAuthenticated && isManagePlanEnabled && activeSubscription?.builderEntitlementId && (
               <>
                 <Button
                   variant="ghost"
