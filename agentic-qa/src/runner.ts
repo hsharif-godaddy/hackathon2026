@@ -454,6 +454,7 @@ interface ScreenshotOptions {
   url?: string;
   scrollPosition?: string;
   fullPage?: boolean;
+  waitMs?: number;
 }
 
 async function captureScreenshot(
@@ -467,8 +468,8 @@ async function captureScreenshot(
   const filename = `${name}-${timestamp}.png`;
   const filepath = join(dir, filename);
 
-  // Let the page stabilize before capturing (animations, lazy images, fonts)
-  await new Promise(resolve => setTimeout(resolve, 5000));
+  // Single stabilization point: let animations, lazy images, fonts settle
+  await new Promise(resolve => setTimeout(resolve, options.waitMs ?? 5000));
   const buffer = await page.screenshot({ fullPage: options.fullPage ?? false });
   await writeFile(filepath, buffer);
 
@@ -577,10 +578,6 @@ async function capturePreviewScreenshots(
     const previewPage = await stagehand.context.newPage();
     await previewPage.goto(previewUrl, { waitUntil: 'networkidle' });
 
-    // Wait for page to stabilize
-    const waitMs = config.waitMs ?? 2000;
-    await new Promise(resolve => setTimeout(resolve, waitMs));
-
     // Wait for specific selector if provided
     if (config.waitForSelector) {
       try {
@@ -595,7 +592,7 @@ async function capturePreviewScreenshots(
 
     for (const position of positions) {
       await scrollToPosition(previewPage, position);
-      await new Promise(resolve => setTimeout(resolve, 500)); // Wait for scroll
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for scroll + render
 
       const screenshot = await captureScreenshot(
         previewPage,
@@ -606,6 +603,7 @@ async function capturePreviewScreenshots(
           url: previewUrl,
           scrollPosition: position,
           fullPage: position === 'top' ? (config.fullPage ?? true) : false,
+          waitMs: config.waitMs,
         }
       );
       screenshots.push(screenshot);
@@ -620,7 +618,7 @@ async function capturePreviewScreenshots(
         scenarioName,
         {
           fullPage: config.fullPage ?? true,
-          waitMs: config.waitMs ?? 2000,
+          waitMs: config.waitMs,
           maxPages: config.maxPages ?? 10,
         },
         screenshots
@@ -668,7 +666,7 @@ async function captureAllSitePages(
   baseUrl: string,
   screenshotDir: string,
   scenarioName: string,
-  config: { fullPage: boolean; waitMs: number; maxPages: number },
+  config: { fullPage: boolean; waitMs?: number; maxPages: number },
   screenshots: ScreenshotInfo[]
 ): Promise<void> {
   console.log('\n  Capturing all site pages...');
@@ -733,14 +731,11 @@ async function captureAllSitePages(
         visitedUrls.add(link);
         visitedUrls.add(normalizedLink);
 
-        // Wait for page to stabilize
-        await new Promise(resolve => setTimeout(resolve, config.waitMs));
-
         // Extract page name from URL for the filename
         const urlPath = new URL(link).pathname;
         const pageName = urlPath === '/' ? 'home' : urlPath.replace(/^\/|\/$/g, '').replace(/\//g, '-') || 'page';
 
-        // Take full page screenshot
+        // Take full page screenshot (captureScreenshot handles stabilization wait)
         const screenshot = await captureScreenshot(
           page,
           screenshotDir,
@@ -749,6 +744,7 @@ async function captureAllSitePages(
             type: 'preview',
             url: link,
             fullPage: config.fullPage,
+            waitMs: config.waitMs,
           }
         );
         screenshots.push(screenshot);

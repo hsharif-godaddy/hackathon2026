@@ -25,7 +25,11 @@ on:
           - golden-dataset-all
           # Main scenarios
           - scenarios/create-site.yaml
-          - scenarios/budget-build.yaml
+          # Budget constraint runs
+          - scenarios/budget-constraint-runs/budget-build.yaml
+          - scenarios/budget-constraint-runs/budget-ecommerce.yaml
+          - scenarios/budget-constraint-runs/budget-saas.yaml
+          - scenarios/budget-constraint-runs/budget-healthcare.yaml
           # App Types (10 scenarios)
           - scenarios/golden-dataset/app-types/landing-page.yaml
           - scenarios/golden-dataset/app-types/ecommerce-store.yaml
@@ -42,6 +46,11 @@ on:
         required: false
         type: boolean
         default: false
+      budget:
+        description: "Token budget override in USD (e.g. 5.00). Only applies to budget-constraint scenarios."
+        required: false
+        type: string
+        default: ""
 
   # Allow triggering from other workflows
   workflow_call:
@@ -56,6 +65,11 @@ on:
         required: false
         type: string
         default: "all"
+      budget:
+        description: "Token budget override in USD (e.g. 5.00). Only applies to budget-constraint scenarios."
+        required: false
+        type: string
+        default: ""
 
 # Cancel in-progress runs for the same branch
 concurrency:
@@ -310,6 +324,7 @@ jobs:
           OPENAI_API_KEY: ${{ steps.get-caas-key.outputs.api_key }}
           OPENAI_BASE_URL: "https://caas-gocode-prod.caas-prod.prod.onkatana.net/v1"
           INPUT_HEADED: ${{ github.event.inputs.headed }}
+          INPUT_BUDGET: ${{ inputs.budget || github.event.inputs.budget }}
           # Elasticsearch for result indexing (optional)
           ES_URL: ${{ steps.get-es-creds.outputs.es_url }}
           ES_API_KEY: ${{ steps.get-es-creds.outputs.es_api_key }}
@@ -323,6 +338,10 @@ jobs:
 
           if [ "$INPUT_HEADED" = "true" ]; then
             ARGS+=("--headed")
+          fi
+
+          if [ -n "$INPUT_BUDGET" ]; then
+            ARGS+=("--budget" "$INPUT_BUDGET")
           fi
 
           echo "🚀 Running: pnpm ${ARGS[*]}"
