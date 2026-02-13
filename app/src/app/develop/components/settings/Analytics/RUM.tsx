@@ -100,10 +100,8 @@ export default function RUM() {
     enabled: !!publishedUrl
   })
 
-  // Convert daily page views to chart data format
-  // Reverse to show oldest to newest (left to right)
   const chartData = useMemo(() => {
-    return [...dailyPageViews].reverse().map(d => ({
+    return dailyPageViews.map(d => ({
       date: d.date,
       value: d.pageViews
     }))
