@@ -531,18 +531,23 @@ export class GitOpsService {
       });
 
       if (!restartResult.success) {
-        logger.warn('git-ops.pull.restart-failed', {
+        logger.error('git-ops.pull.restart-failed', {
           appId,
           jobId,
           error: restartResult.error,
           phases: restartResult.phases,
         });
-      } else {
-        // Commit pulled changes only after successful restart
-        void this.commitPostPulledChanges(gitTool, appPath, appId, jobId);
+        await this.importJobRepo.markFailed(
+          jobId,
+          restartResult.error || 'Restart failed after git pull',
+          'restarting'
+        );
+        return;
       }
 
-      logger.info('git-ops.pull.success', { appId, jobId, restartSuccess: restartResult.success });
+      // Commit pulled changes only after successful restart
+      void this.commitPostPulledChanges(gitTool, appPath, appId, jobId);
+      logger.info('git-ops.pull.success', { appId, jobId });
       await this.importJobRepo.markCompleted(jobId);
     } catch (error) {
       logger.error('git-ops.pull.exception', {

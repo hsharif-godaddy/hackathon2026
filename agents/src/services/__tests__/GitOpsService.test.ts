@@ -34,13 +34,28 @@ vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
 
 vi.mock('../../server/middleware/git-import-validation.js', () => ({
   isSupportedProjectOnHost: vi.fn(),
-  SUPPORTED_BUILD_TOOLS: [{ name: 'vite' }, { name: 'next' }],
+  matchesBuildToolOnHost: vi.fn(),
+  SUPPORTED_BUILD_TOOLS: [{ name: 'vite' }, { name: 'nodejs' }],
 }));
 
 vi.mock('../AppRestartService.js', () => ({
   appRestartService: {
     performFullRestartCycle: vi.fn(),
   },
+}));
+
+vi.mock('../CodeSyncFileCleanupService.js', () => ({
+  codeSyncFileCleanupService: {
+    deleteCleanablePatterns: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+vi.mock('../ViteConfigModifier.js', () => ({
+  modifyViteConfig: vi.fn().mockResolvedValue({ modified: false }),
+}));
+
+vi.mock('../ExpressPortInjector.js', () => ({
+  injectPortHandling: vi.fn().mockResolvedValue({ modified: false }),
 }));
 
 vi.mock('../../logging/index.js', () => ({
@@ -58,7 +73,7 @@ import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { ImportJobRepository } from '../../database/repositories/ImportJobRepository.js';
 import { GitTool } from '../../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
-import { isSupportedProjectOnHost } from '../../server/middleware/git-import-validation.js';
+import { isSupportedProjectOnHost, matchesBuildToolOnHost } from '../../server/middleware/git-import-validation.js';
 import { appRestartService } from '../AppRestartService.js';
 
 describe('GitOpsService', () => {
@@ -130,8 +145,9 @@ describe('GitOpsService', () => {
       status: ImportJobStatus.PENDING,
     });
 
-    // Default: project is supported
+    // Default: project is supported (matchesBuildToolOnHost returns true for the first tool)
     vi.mocked(isSupportedProjectOnHost).mockReturnValue(true);
+    vi.mocked(matchesBuildToolOnHost).mockReturnValue(true);
 
     service = new GitOpsService();
   });
@@ -265,12 +281,12 @@ describe('GitOpsService', () => {
       expect(commitCall[1].message).toBe('Post-pull state commit');
     });
 
-    it('should NOT commit when restart fails', async () => {
+    it('should NOT commit when restart fails and should mark job as FAILED', async () => {
       // Setup failed restart
       vi.mocked(appRestartService.performFullRestartCycle).mockResolvedValue({
         success: false,
-        error: 'Restart failed',
-        phases: { install: true, build: true, restart: false },
+        error: 'npm install failed: ENOENT',
+        phases: { install: false, build: false, restart: false },
       });
 
       await service.startPull({
@@ -293,6 +309,39 @@ describe('GitOpsService', () => {
 
       const commitCall = gitCalls.find((call) => call[1].operation === 'commit');
       expect(commitCall).toBeUndefined();
+
+      // CRITICAL: Verify job is marked as FAILED, not COMPLETED
+      expect(mockImportJobRepo.markFailed).toHaveBeenCalledWith(
+        testJobId,
+        'npm install failed: ENOENT',
+        'restarting'
+      );
+      expect(mockImportJobRepo.markCompleted).not.toHaveBeenCalled();
+    });
+
+    it('should use fallback error message when restart fails without error details', async () => {
+      // Setup failed restart without error message
+      vi.mocked(appRestartService.performFullRestartCycle).mockResolvedValue({
+        success: false,
+        // No error message provided
+        phases: { install: true, build: false, restart: false },
+      });
+
+      await service.startPull({
+        appId: testAppId,
+        token: 'ghp_test_token',
+        repoUrl: 'https://github.com/user/repo.git',
+      });
+
+      await vi.runAllTimersAsync();
+
+      // Verify job is marked as FAILED with fallback message
+      expect(mockImportJobRepo.markFailed).toHaveBeenCalledWith(
+        testJobId,
+        'Restart failed after git pull',
+        'restarting'
+      );
+      expect(mockImportJobRepo.markCompleted).not.toHaveBeenCalled();
     });
 
     it('should NOT commit when pull fails', async () => {
@@ -407,7 +456,7 @@ describe('GitOpsService', () => {
     });
 
     it('should rollback and fail when project is unsupported', async () => {
-      vi.mocked(isSupportedProjectOnHost).mockReturnValue(false);
+      vi.mocked(matchesBuildToolOnHost).mockReturnValue(false);
 
       // Setup reset for rollback
       mockGitTool.executeGitOperation
