@@ -3,23 +3,62 @@
  * Displays token usage level with appropriate color coding
  */
 
-interface TokenBadgeProps {
-  level: 'low' | 'medium' | 'high' | 'varies';
-  label: string;
+import Tag from '@ux/tag';
+
+import { useTranslations } from '@/hooks/useTranslations';
+
+export enum TokenCostLevel {
+  LOW = 'low',
+  MEDIUM = 'medium',
+  HIGH = 'high',
+  VARIES = 'varies',
 }
 
+interface TokenBadgeProps {
+  level: TokenCostLevel;
+  label?: string;
+}
+
+const levelToEmphasis = (level: TokenCostLevel): 'success' | 'warning' | 'critical' | 'info' => {
+  switch (level) {
+    case TokenCostLevel.LOW:
+      return 'success';
+    case TokenCostLevel.MEDIUM:
+      return 'warning';
+    case TokenCostLevel.HIGH:
+      return 'critical';
+    case TokenCostLevel.VARIES:
+      return 'info';
+    default:
+      return 'info';
+  }
+};
+
 export function TokenBadge({ level, label }: TokenBadgeProps) {
-  const colorClass = level === 'low'
-    ? 'bg-intents-ux-feedbackSuccess-backgroundColor text-intents-ux-feedbackSuccess-textColor border-intents-ux-feedbackSuccess-borderColor'
-    : level === 'medium'
-    ? 'bg-intents-ux-feedbackWarning-backgroundColor text-intents-ux-feedbackWarning-textColor border-intents-ux-feedbackWarning-borderColor'
-    : level === 'varies'
-    ? 'bg-intents-ux-feedbackInfo-backgroundColor text-intents-ux-feedbackInfo-textColor border-intents-ux-feedbackInfo-borderColor'
-    : 'bg-intents-ux-feedbackCritical-backgroundColor text-intents-ux-feedbackCritical-textColor border-intents-ux-feedbackCritical-borderColor';
+  const t = useTranslations();
+
+  const getLabel = (): string => {
+    if (label) return label;
+
+    switch (level) {
+      case TokenCostLevel.LOW:
+        return t('builder_golive_feature_token_cost_low');
+      case TokenCostLevel.MEDIUM:
+        return t('builder_golive_feature_token_cost_medium');
+      case TokenCostLevel.HIGH:
+        return t('builder_golive_feature_token_cost_high');
+      case TokenCostLevel.VARIES:
+        return t('builder_golive_feature_token_cost_varies');
+      default:
+        return t('builder_golive_feature_token_cost_varies');
+    }
+  };
 
   return (
-    <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${colorClass}`}>
-      {label}
-    </span>
+    <div>
+      <Tag emphasis={levelToEmphasis(level)} size="sm">
+        {getLabel()}
+      </Tag>
+    </div>
   );
 }

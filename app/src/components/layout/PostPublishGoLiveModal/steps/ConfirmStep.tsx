@@ -4,8 +4,9 @@
  * (site is already published, this is about post-publish optimization)
  */
 
+import Box from '@ux/box';
 import Button from '@ux/button';
-import text from '@ux/text';
+import TextLockup from '@ux/text-lockup';
 
 import { useTranslations } from '@/hooks/useTranslations';
 
@@ -18,16 +19,22 @@ export function ConfirmStep({ onConfirm, onCancel }: ConfirmStepProps) {
   const t = useTranslations();
 
   return (
-    <div className="space-y-6">
-      <text.h2 as="heading" size={1} className="text-center font-semibold">
-        {t('builder_golive_confirm_title')}
-      </text.h2>
-
-      <text.p as="paragraph" size={0} className="text-center">
+    <Box inlineAlignChildren="center" gap="xl">
+      <TextLockup
+        title={
+          <>
+            {t('builder_golive_modal_title_confirm')}
+            <br />
+            {t('builder_golive_confirm_title')}
+          </>
+        }
+        size="xl"
+        centered
+      >
         {t('builder_golive_confirm_description')}
-      </text.p>
+      </TextLockup>
 
-      <div className="flex justify-center gap-3 pt-4">
+      <Box orientation="horizontal" blockAlignChildren="center" gap="md" wrap>
         <Button
           design="secondary"
           text={t('builder_golive_confirm_button_later')}
@@ -42,7 +49,7 @@ export function ConfirmStep({ onConfirm, onCancel }: ConfirmStepProps) {
           onClick={onConfirm}
           data-testid="go-live-modal-continue"
         />
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 }

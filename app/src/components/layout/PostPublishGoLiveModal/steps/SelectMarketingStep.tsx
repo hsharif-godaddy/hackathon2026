@@ -12,7 +12,7 @@ import PageIcon from '@ux/icon/page';
 import SocialIcon from '@ux/icon/social';
 import text from '@ux/text';
 
-import { TokenBadge } from '@/components/layout/PostPublishGoLiveModal/components/TokenBadge';
+import { TokenBadge, TokenCostLevel } from '@/components/layout/PostPublishGoLiveModal/components/TokenBadge';
 import { useTranslations } from '@/hooks/useTranslations';
 import { cn } from '@/lib/utils';
 
@@ -113,7 +113,7 @@ export function SelectMarketingStep({ onConfirm, onSkip }: SelectMarketingStepPr
                 {t('builder_golive_marketing_seo_title')}
               </text.p>
               <div className="ml-auto">
-                <TokenBadge level="low" label={t('builder_golive_feature_token_cost_low')} />
+                <TokenBadge level={TokenCostLevel.LOW} label={t('builder_golive_feature_token_cost_low')} />
               </div>
             </Box>
             <text.p as="paragraph" size={-1} emphasis="passive">
@@ -155,7 +155,7 @@ export function SelectMarketingStep({ onConfirm, onSkip }: SelectMarketingStepPr
                 {t('builder_golive_marketing_social_title')}
               </text.p>
               <div className="ml-auto">
-                <TokenBadge level="high" label={t('builder_golive_feature_token_cost_high')} />
+                <TokenBadge level={TokenCostLevel.HIGH} label={t('builder_golive_feature_token_cost_high')} />
               </div>
             </Box>
             <text.p as="paragraph" size={-1} emphasis="passive">
@@ -197,7 +197,7 @@ export function SelectMarketingStep({ onConfirm, onSkip }: SelectMarketingStepPr
                 {t('builder_golive_marketing_blog_title')}
               </text.p>
               <div className="ml-auto">
-                <TokenBadge level="high" label={t('builder_golive_feature_token_cost_high')} />
+                <TokenBadge level={TokenCostLevel.HIGH} label={t('builder_golive_feature_token_cost_high')} />
               </div>
             </Box>
             <text.p as="paragraph" size={-1} emphasis="passive">

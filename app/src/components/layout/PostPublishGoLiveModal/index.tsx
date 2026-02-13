@@ -438,7 +438,7 @@ Create a todo list to track these ${taskCount} specific task${taskCount === 1 ? 
 
   const modalTitle = (() => {
     switch (goLiveModalStep) {
-      case 'confirm': return t('builder_golive_modal_title_confirm');
+      case 'confirm': return null;
       case 'select-features': return t('builder_golive_modal_title_select_features');
       case 'qa': return t('golive_modal_title_qa');
       case 'security-results': return t('golive_modal_title_security');
@@ -457,14 +457,14 @@ Create a todo list to track these ${taskCount} specific task${taskCount === 1 ? 
       className="relative"
       stretch={isMobile || isTablet}
     >
-      {/* Confetti decoration at top of modal (only on marketing selection step) */}
-      {goLiveModalStep === 'select-marketing' && (
+      {/* Confetti decoration at top of modal (on confirm and marketing steps only) */}
+      {(goLiveModalStep === 'confirm' || goLiveModalStep === 'select-marketing') && (
         <div className="absolute top-0 left-0 right-0 h-20 overflow-hidden pointer-events-none z-10">
           <Confetti />
         </div>
       )}
 
-      <div className="w-full sm:min-w-[600px] overflow-hidden">
+      <div className="w-full sm:min-w-[600px]">
         {renderStep()}
       </div>
     </Modal>
