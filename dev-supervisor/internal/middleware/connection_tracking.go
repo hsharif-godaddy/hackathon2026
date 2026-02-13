@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -129,14 +130,82 @@ type trackedConnection struct {
 	once    sync.Once
 }
 
-// Close unregisters the WebSocket connection and closes the underlying connection
-// Uses sync.Once to ensure unregistration happens exactly once
+// Read wraps the underlying connection's Read method and triggers cleanup on terminal errors.
+// This ensures that connections are unregistered even when the client abruptly disconnects
+// (browser closed, network error, TCP connection drop) without the owner calling Close().
+func (c *trackedConnection) Read(b []byte) (int, error) {
+	n, err := c.Conn.Read(b)
+	if err != nil && isTerminalError(err) {
+		// Explicitly ignore error from Close() as we're already handling a read error
+		// and Close() is idempotent (can be called multiple times safely)
+		_ = c.Close()
+	}
+	return n, err
+}
+
+// Write wraps the underlying connection's Write method and triggers cleanup on terminal errors.
+// This ensures that connections are unregistered when write failures indicate the connection
+// is no longer viable (peer disconnect, network error).
+func (c *trackedConnection) Write(b []byte) (int, error) {
+	n, err := c.Conn.Write(b)
+	if err != nil && isTerminalError(err) {
+		// Explicitly ignore error from Close() as we're already handling a write error
+		// and Close() is idempotent (can be called multiple times safely)
+		_ = c.Close()
+	}
+	return n, err
+}
+
+// Close unregisters the WebSocket connection and closes the underlying connection.
+// Uses sync.Once to ensure unregistration happens exactly once, while allowing
+// the underlying connection's Close() to be called multiple times (it is idempotent).
 func (c *trackedConnection) Close() error {
-	// Unregister exactly once, even if Close is called multiple times
+	// Unregister exactly once, even if Close is called multiple times.
+	// The unregistration is wrapped in sync.Once to prevent duplicate map deletions.
 	c.once.Do(func() {
 		if c.tracker != nil {
 			c.tracker.UnregisterWebSocket(c)
 		}
 	})
+	// Call the underlying connection's Close() outside of sync.Once because
+	// net.Conn.Close() is idempotent and safe to call multiple times.
+	// This ensures the connection is properly closed even if this method
+	// is called multiple times from different code paths.
 	return c.Conn.Close()
+}
+
+// isTerminalError determines if an error indicates the connection is no longer usable
+// and should be cleaned up. Timeout-related errors and context cancellation are not
+// considered terminal as they may be recoverable or represent intentional interruption.
+func isTerminalError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// EOF indicates the peer has closed the connection
+	if errors.Is(err, io.EOF) {
+		return true
+	}
+
+	// Context deadline exceeded is not terminal - it's a timeout condition
+	// This can occur when read/write deadlines are set on the connection
+	if errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	// Context canceled is not terminal - it represents intentional cancellation
+	// This can occur during graceful shutdown or request cancellation
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+
+	// Check if this is a timeout error (not terminal)
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return false
+	}
+
+	// All other errors are considered terminal
+	// This includes connection refused, connection reset, broken pipe, etc.
+	return true
 }

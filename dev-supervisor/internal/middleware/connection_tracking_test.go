@@ -98,5 +98,6 @@ func TestConnectionTrackingWithMockTracker(t *testing.T) {
 
 	// Note: WebSocket upgrade would require Hijack() which isn't testable
 	// with httptest.ResponseRecorder since it doesn't implement http.Hijacker.
-	// The full WebSocket tracking behavior is tested in integration tests.
+	// The full WebSocket tracking behavior is tested in connection_tracking_internal_test.go
+	// which has access to unexported types.
 }
