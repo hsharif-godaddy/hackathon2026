@@ -11,6 +11,7 @@
 @import "@ux/flyout/styles";
 @import "@ux/growl/styles";
 @import "@ux/menu/styles";
+@import "@ux/message-overlay/styles";
 @import "@ux/modal/styles";
 @import "@ux/pagination/styles";
 @import "@ux/radio/styles";

@@ -8,7 +8,7 @@ import AppNotFound from '@/app/develop/components/AppNotFound'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
 import ChatPaneLoader, { ResumeLoaderPhase } from '@/app/develop/components/chat/ChatPaneLoader'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
-import { CreditsUpgradeContainer } from '@/app/develop/components/paywall'
+import { CreditsUpgradeContainer, GrantPollingModal } from '@/app/develop/components/paywall'
 import { SinglePlanUpgradeContainer } from '@/app/develop/components/paywall'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
@@ -32,13 +32,14 @@ import { WebSocketProvider } from '@/contexts/WebSocketContext'
 import { useAppDetails } from '@/hooks/useAppDetails'
 import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useChatTabs } from '@/hooks/useChatTabs'
+import { useCreditGrants } from '@/hooks/useCreditGrants'
+import { useIsCreditPolling } from '@/hooks/useCreditPurchase'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { usePageTiming } from '@/hooks/usePageTiming'
 import { usePaywallPrefetch } from '@/hooks/usePaywallPrefetch'
 import { useRumAppContext } from '@/hooks/useRumAppContext'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
-import { useSubscription } from '@/hooks/useSubscription'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { useSubscriptionWithPolling } from '@/hooks/useSubscriptionWithPolling'
 import { useSyncResponsiveState } from '@/hooks/useSyncResponsiveState'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
@@ -143,10 +144,21 @@ function DevelopPageContent() {
   const setShowPublishLimitModal = useDevelopPageStore((state) => state.setShowPublishLimitModal);
   const setShowPaywallModal = useDevelopPageStore((state) => state.setShowPaywallModal);
 
-  // Feature flag and subscription for credits modal
-  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants');
-  const { data: subscription } = useSubscription();
-  const builderEntitlementId = subscription?.builderEntitlementId;
+  // Subscription with automatic polling when grants enabled but entitlement not yet available
+  const {
+    subscription,
+    builderEntitlementId,
+    isGrantsEnabled,
+  } = useSubscriptionWithPolling();
+
+  // Get grants for polling after credit purchase
+  const { data: grantsData } = useCreditGrants({
+    subscriptionId: subscription?.id,
+    syncSpend: false,
+  });
+
+  // Credit purchase polling state (global store survives component unmounts)
+  const isCreditPolling = useIsCreditPolling();
 
   useGitHistoryQuery({
     appId: appId || '',
@@ -1040,6 +1052,9 @@ function DevelopPageContent() {
           onClose={() => setShowIntroTour(false)}
         />
 
+        {/* Polling overlay while waiting for new grant after credit purchase */}
+        {isCreditPolling && <GrantPollingModal />}
+
         {showUpgradeModal && (
           <SinglePlanUpgradeContainer
             source={upgradeModalSource ?? 'unknown'}
@@ -1060,9 +1075,11 @@ function DevelopPageContent() {
           />
         )}
 
-        {showCreditsModal && isGrantsEnabled && builderEntitlementId && (
+        {showCreditsModal && isGrantsEnabled && builderEntitlementId && subscription?.id && (
           <CreditsUpgradeContainer
             entitlementId={builderEntitlementId}
+            subscriptionId={subscription.id}
+            initialGrantCount={grantsData?.length ?? 0}
             source={creditsModalSource ?? 'unknown'}
             itc={creditsModalItc ?? undefined}
             onSuccess={() => {

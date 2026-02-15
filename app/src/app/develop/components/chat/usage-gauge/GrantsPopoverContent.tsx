@@ -18,6 +18,8 @@ interface GrantsPopoverContentProps {
   isFreePlan: boolean
   onUpgradeClick: () => void
   onBuyCreditsClick: () => void
+  /** Disable purchase buttons (e.g., when builderEntitlementId not yet available) */
+  disabled?: boolean
 }
 
 export function GrantsPopoverContent({
@@ -25,6 +27,7 @@ export function GrantsPopoverContent({
   isFreePlan,
   onUpgradeClick,
   onBuyCreditsClick,
+  disabled = false,
 }: GrantsPopoverContentProps) {
   const t = useTranslations()
 
@@ -148,6 +151,7 @@ export function GrantsPopoverContent({
             data-eid={generateClickEID('usage_gauge.popover.upgrade')}
             onClick={onUpgradeClick}
             text={t('builder_usage_gauge_upgrade_plan')}
+            disabled={disabled}
           />
         )}
         <Button
@@ -158,6 +162,7 @@ export function GrantsPopoverContent({
           data-eid={generateClickEID('usage_gauge.popover.buy_credits')}
           onClick={onBuyCreditsClick}
           text={t('builder_usage_gauge_buy_credits')}
+          disabled={disabled}
         />
       </Box>
     </div>

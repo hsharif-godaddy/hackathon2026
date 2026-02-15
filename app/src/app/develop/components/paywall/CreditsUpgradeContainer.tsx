@@ -1,12 +1,14 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { useAuth } from '@/hooks/useAuth'
+import { useCreditPurchase } from '@/hooks/useCreditPurchase'
 import { useGasketData } from '@/hooks/useGasketData'
+import { getErrorMessage } from '@/lib/errors'
 import { shipAnalyticsLog } from '@/lib/logging'
+import { logger } from '@/lib/request-context'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { ComponentLoader } from './cdsLoader'
 import { UPGRADE_DEPS, UPGRADE_PRODUCT_IDS } from './constants'
@@ -24,6 +26,10 @@ interface CreditsUpgradeContainerProps {
   entitlementId?: string
   /** Internal Tracking Code for purchase attribution */
   itc?: string
+  /** Subscription ID for grant polling after purchase */
+  subscriptionId?: string
+  /** Current number of grants before purchase (for polling comparison) */
+  initialGrantCount?: number
 }
 
 /**
@@ -40,17 +46,17 @@ const CreditsUpgradeContainer = ({
   source = 'airo-builder',
   entitlementId,
   itc,
+  subscriptionId,
+  initialGrantCount,
 }: CreditsUpgradeContainerProps) => {
   const gasketData = useGasketData()
   const { getUserInfo } = useAuth()
-  const queryClient = useQueryClient()
   const shopperId = getUserInfo()?.shopperId
+  const { handlePurchaseSuccess, invalidateQueries } = useCreditPurchase()
 
-  const handleSuccess = useCallback((basketId: string, details: { unitsAdded: number; newTotalBalance: number }) => {
-    // Log impression event for credits purchase success tracking
+  const handleSuccess = useCallback(async (basketId: string, details: { unitsAdded: number; newTotalBalance: number }) => {
     logImpressionEvent('credits.purchase.success')()
 
-    // Ship unified analytics log to Elastic for credits purchase
     shipAnalyticsLog('airobuilder.credits.purchase.in-app', {
       source,
       productId: UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS,
@@ -59,16 +65,24 @@ const CreditsUpgradeContainer = ({
       newTotalBalance: details.newTotalBalance,
     })
 
-    // Invalidate queries so UI updates with new credits balance
-    queryClient.invalidateQueries({ queryKey: ['subscriptions'] })
-    queryClient.invalidateQueries({ queryKey: ['credit-grants'] })
-    queryClient.invalidateQueries({ queryKey: ['entitlements'] })
-
-    // Call the success callback if provided
-    if (onSuccess) {
-      onSuccess(basketId, details)
+    try {
+      if (subscriptionId && initialGrantCount !== undefined) {
+        await handlePurchaseSuccess(subscriptionId, initialGrantCount, () => onSuccess?.(basketId, details))
+      } else {
+        invalidateQueries()
+        onSuccess?.(basketId, details)
+      }
+    } catch (error) {
+      logger.error('credits.purchase.handle-success-error', {
+        source,
+        basketId,
+        error: getErrorMessage(error),
+      })
+      // Still call onSuccess to close the modal and not leave user stuck
+      invalidateQueries()
+      onSuccess?.(basketId, details)
     }
-  }, [source, queryClient, onSuccess])
+  }, [source, subscriptionId, initialGrantCount, handlePurchaseSuccess, invalidateQueries, onSuccess])
 
   const handleError = useCallback((error: Error) => {
     shipAnalyticsLog('paywall.cds.load.error', {

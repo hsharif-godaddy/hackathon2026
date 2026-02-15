@@ -16,6 +16,7 @@ const GC_TIME = 10 * 60 * 1000;
 
 interface UseSubscriptionOptions {
   enabled?: boolean;
+  refetchInterval?: number | false;
 }
 
 interface UseSubscriptionResult {
@@ -49,7 +50,7 @@ async function fetch() {
 }
 
 export function useSubscription(options: UseSubscriptionOptions = {}): UseSubscriptionResult {
-  const { enabled = true } = options;
+  const { enabled = true, refetchInterval = false } = options;
 
   const query = useQuery({
     queryKey: QUERY_KEY,
@@ -57,6 +58,7 @@ export function useSubscription(options: UseSubscriptionOptions = {}): UseSubscr
     staleTime: STALE_TIME,
     gcTime: GC_TIME,
     enabled,
+    refetchInterval,
   });
 
   return {

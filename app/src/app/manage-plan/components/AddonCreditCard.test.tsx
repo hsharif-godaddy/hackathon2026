@@ -155,6 +155,7 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
           isGrantsEnabled={true}
+          builderEntitlementId="test-entitlement-123"
         />
       );
 
@@ -170,12 +171,27 @@ describe('CreditPacksCard', function creditPacksCardTests() {
           subscriptionPlan={SubscriptionPlan.Free}
           onOpenPaywall={mockOnOpenPaywall}
           isGrantsEnabled={true}
+          builderEntitlementId="test-entitlement-123"
         />
       );
 
       await user.click(screen.getByText('builder_manageplan_buy_credits'));
 
       expect(mockOnOpenPaywall).toHaveBeenCalledWith('manage_plan.buy_credits', 'credits', PAYWALL_ITC.CREDITS);
+    });
+
+    it('should disable buttons when builderEntitlementId is missing', function disableWithoutEntitlement() {
+      renderWithProviders(
+        <CreditPacksCard
+          creditPacks={[]}
+          subscriptionPlan={SubscriptionPlan.Free}
+          onOpenPaywall={mockOnOpenPaywall}
+          isGrantsEnabled={true}
+        />
+      );
+
+      expect(screen.getByText('builder_manageplan_upgrade').closest('button')).toBeDisabled();
+      expect(screen.getByText('builder_manageplan_buy_credits').closest('button')).toBeDisabled();
     });
   });
 

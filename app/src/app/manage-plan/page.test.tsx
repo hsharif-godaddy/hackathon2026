@@ -663,7 +663,7 @@ describe('ManagePlan', function managePlanTests() {
 
     it('should open upgrade modal when upgrade button is clicked', async function openUpgradeOnUpgrade() {
       mockUseActiveSubscription.mockReturnValue({
-        data: { id: 'sub-1', plan: SubscriptionPlan.Free },
+        data: { id: 'sub-1', plan: SubscriptionPlan.Free, builderEntitlementId: 'entitlement-123' },
         isLoading: false,
         isError: false,
       });
@@ -704,7 +704,7 @@ describe('ManagePlan', function managePlanTests() {
       });
     });
 
-    it('should open upgrade modal when buy credits button is clicked without entitlementId', async function openUpgradeOnBuyCreditsNoEntitlement() {
+    it('should disable buy credits button when builderEntitlementId is not available', async function disableBuyCreditsNoEntitlement() {
       mockUseActiveSubscription.mockReturnValue({
         data: { id: 'sub-1', plan: SubscriptionPlan.Free },
         isLoading: false,
@@ -716,20 +716,18 @@ describe('ManagePlan', function managePlanTests() {
         isError: false,
       });
 
-      const { user } = renderWithProviders(<ManagePlan />);
+      renderWithProviders(<ManagePlan />);
 
-      await user.click(screen.getByText('builder_manageplan_buy_credits'));
-
-      await waitFor(function checkModal() {
-        expect(screen.getByTestId('upgrade-modal')).toBeInTheDocument();
-        expect(screen.queryByTestId('credits-modal')).not.toBeInTheDocument();
+      await waitFor(function checkButtonDisabled() {
+        const buyCreditsButton = screen.getByText('builder_manageplan_buy_credits').closest('button');
+        expect(buyCreditsButton).toBeDisabled();
       });
     });
 
     it('should log analytics when opening upgrade modal', async function logUpgradeAnalytics() {
       const { shipAnalyticsLog } = await import('@/lib/logging');
       mockUseActiveSubscription.mockReturnValue({
-        data: { id: 'sub-1', plan: SubscriptionPlan.Free },
+        data: { id: 'sub-1', plan: SubscriptionPlan.Free, builderEntitlementId: 'entitlement-123' },
         isLoading: false,
         isError: false,
       });

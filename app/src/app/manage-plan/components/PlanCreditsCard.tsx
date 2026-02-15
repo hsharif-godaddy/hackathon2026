@@ -34,6 +34,8 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
   }
 
   const currentPlan = getPlanFromSubscription(subscription);
+  // Disable buttons when grants enabled but entitlement not yet available (async subscription)
+  const isButtonDisabled = isGrantsEnabled && !subscription.builderEntitlementId;
   const planLabelKey = getPlanDisplayLabelKey(currentPlan);
   const planDisplayLabel = planLabelKey ? t(planLabelKey) : '';
   const isPaidPlan = isPaidPlanForGrants(currentPlan, isGrantsEnabled);
@@ -103,6 +105,7 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
                       size="sm"
                       text={t('builder_manageplan_upgrade')}
                       onClick={() => openPaywall('manage_plan.upgrade', PAYWALL_TYPE.UPGRADE, PAYWALL_ITC.UPGRADE)}
+                      disabled={isButtonDisabled}
                   />
               )}
               { creditPacks.length > 0 && (
@@ -113,6 +116,7 @@ const PlanCreditsCard = ({ subscription, planGrant, activeGrantId, locale, credi
                       size="sm"
                       text={t('builder_manageplan_buy_credits')}
                       onClick={() => openPaywall('manage_plan.buy_credits', PAYWALL_TYPE.CREDITS, PAYWALL_ITC.CREDITS)}
+                      disabled={isButtonDisabled}
                   />
               )}
               { isPaidPlan && autoRenewStatus?.autoRenew === true && onDowngradeClick && (

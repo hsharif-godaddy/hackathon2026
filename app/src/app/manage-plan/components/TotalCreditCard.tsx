@@ -37,9 +37,9 @@ export default memo(function TotalCreditsCard({
     <div
       className="flex flex-col items-center gap-2 bg-ai-light/4 border border-ai-light/20 rounded-lg p-4 relative max-h-44 lg:max-h-40"
     >
-      <text.strong as="title" size={0} className="text-center" text={t('builder_manageplan_total_credits')} />
+      <text.strong as="caption" size={1} className="text-center" text={t('builder_manageplan_total_credits')} />
 
-      <text.strong as="title" size={2}>
+      <text.strong as="title" size={3}>
         {t('builder_manageplan_credits_count', {
           spent: getEffectiveCreditsSpent(totalCreditsSpent, totalCreditsMax).toLocaleString(),
           max: totalCreditsMax.toLocaleString(),

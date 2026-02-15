@@ -33,6 +33,7 @@ function createMockSubscription(overrides: Partial<AiroSubscription> = {}): Airo
     plan: SubscriptionPlan.Free,
     status: 'active',
     renewsAt: '2026-02-04T00:00:00.000Z',
+    builderEntitlementId: 'test-entitlement-123',
     ...overrides,
   } as AiroSubscription;
 }

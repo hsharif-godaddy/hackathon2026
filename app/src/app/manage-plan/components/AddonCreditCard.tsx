@@ -20,15 +20,19 @@ interface CreditPacksCardProps {
   locale?: string;
   onOpenPaywall: (source: string, type?: PaywallType, itc?: string) => void;
   isGrantsEnabled: boolean;
+  /** Builder entitlement ID - required for credits purchase when grants enabled */
+  builderEntitlementId?: string;
 }
 
 /**
  * Credit packs card displaying purchased credit packs
  */
-export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeGrantId, locale, onOpenPaywall, isGrantsEnabled }: CreditPacksCardProps) {
+export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeGrantId, locale, onOpenPaywall, isGrantsEnabled, builderEntitlementId }: CreditPacksCardProps) {
   const t = useTranslations();
 
   const isNonPaidPlan = !isPaidPlanForGrants(subscriptionPlan, isGrantsEnabled);
+  // Disable buttons when grants enabled but entitlement not yet available (async subscription)
+  const isButtonDisabled = isGrantsEnabled && !builderEntitlementId;
   const hasNoPlanAndNoCredits = creditPacks.length === 0 && isNonPaidPlan;
 
   if (hasNoPlanAndNoCredits || creditPacks.length === 0) {
@@ -45,7 +49,9 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
                       data-partial='componentAiro'
                       data-eid={generateClickEID('manageplan.buttons.upgrade')}
                       size="sm"
-                      text={t('builder_manageplan_upgrade')} onClick={() => onOpenPaywall('manage_plan.upgrade', 'upgrade', PAYWALL_ITC.UPGRADE)}
+                      text={t('builder_manageplan_upgrade')}
+                      onClick={() => onOpenPaywall('manage_plan.upgrade', 'upgrade', PAYWALL_ITC.UPGRADE)}
+                      disabled={isButtonDisabled}
                     />
                     <Button
                       design="secondary"
@@ -54,6 +60,7 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
                       size="sm"
                       text={t('builder_manageplan_buy_credits')}
                       onClick={() => onOpenPaywall('manage_plan.buy_credits', PAYWALL_TYPE.CREDITS, PAYWALL_ITC.CREDITS)}
+                      disabled={isButtonDisabled}
                     />
                 </Box>
             ) : (
@@ -64,6 +71,7 @@ export default function CreditPacksCard({ creditPacks, subscriptionPlan, activeG
                   size="sm"
                   text={t('builder_manageplan_buy_credits')}
                   onClick={() => onOpenPaywall('manage_plan.buy_credits', PAYWALL_TYPE.CREDITS, PAYWALL_ITC.CREDITS)}
+                  disabled={isButtonDisabled}
                 />
             )}
           </div>

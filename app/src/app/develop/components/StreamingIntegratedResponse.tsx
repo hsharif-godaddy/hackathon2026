@@ -66,6 +66,10 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
   const isFreePlan = !isSubscriptionLoading && subscription !== undefined &&
     (currentPlan === SubscriptionPlan.Free || currentPlan === SubscriptionPlan.None)
+  const builderEntitlementId = subscription?.builderEntitlementId
+
+  // Disable purchase buttons when grants enabled but entitlement not yet available
+  const isPurchaseDisabled = isGrantsEnabled === true && !builderEntitlementId
 
   // When grants enabled: use the plan-monthly grant's useBefore date
   // When grants disabled: use legacy "today at" / "tomorrow at" format
@@ -299,6 +303,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                     size="sm"
                     onClick={() => openUpgradeModal('budget_exceeded.upgrade', PAYWALL_ITC.UPGRADE)}
                     text={t('builder_usage_gauge_upgrade')}
+                    disabled={isPurchaseDisabled}
                   />
                 )}
                 <Button
@@ -309,6 +314,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                     : openUpgradeModal('budget_exceeded.buy_credits', PAYWALL_ITC.UPGRADE)
                   }
                   text={t('builder_usage_gauge_buy_tokens')}
+                  disabled={isPurchaseDisabled}
                 />
               </div>
             )}

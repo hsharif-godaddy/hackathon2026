@@ -6,7 +6,7 @@ import Alert from '@ux/alert';
 import Button from '@ux/button';
 import text from '@ux/text';
 
-import { CreditsUpgradeContainer, SinglePlanUpgradeContainer } from '@/app/develop/components/paywall';
+import { CreditsUpgradeContainer, GrantPollingModal, SinglePlanUpgradeContainer } from '@/app/develop/components/paywall';
 import {
   AddonCreditCard,
   DowngradeModal,
@@ -17,10 +17,11 @@ import {
 } from '@/app/manage-plan/components';
 import { ProtectedRoute } from '@/components/auth';
 import { useCreditGrants } from '@/hooks/useCreditGrants';
+import { useIsCreditPolling } from '@/hooks/useCreditPurchase';
 import { useEcommSubscriptionAutoRenew } from '@/hooks/useEcommSubscriptionAutoRenew';
 import { useEcommSubscriptionAutoRenewStatus } from '@/hooks/useEcommSubscriptionAutoRenewStatus';
 import { useGasketData } from '@/hooks/useGasketData';
-import { useSubscription } from '@/hooks/useSubscription';
+import { useSubscriptionWithPolling } from '@/hooks/useSubscriptionWithPolling';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { ClientLogBuffer, shipAnalyticsLog } from '@/lib/logging';
@@ -105,6 +106,7 @@ function ManagePlanContent() {
   const [showDowngradeModal, setShowDowngradeModal] = useState(false);
   const [isAlertDismissed, setIsAlertDismissed] = useState(false);
   const { setAutoRenew } = useEcommSubscriptionAutoRenew();
+  const isCreditPolling = useIsCreditPolling();
 
   const openPaywall = (source: string, type: PaywallType = 'upgrade', itc?: string) => {
     setPaywallSource(source);
@@ -123,11 +125,14 @@ function ManagePlanContent() {
     logImpressionEvent('manage_plan.page.view')();
   }, []);
 
+  // Subscription with automatic polling when grants enabled but entitlement not yet available
   const {
-    data: subscription,
+    subscription,
     isLoading: isSubscriptionLoading,
     isError: isSubscriptionError,
-  } = useSubscription();
+    builderEntitlementId,
+    isGrantsEnabled,
+  } = useSubscriptionWithPolling();
 
   const {
     data: grantsData,
@@ -136,10 +141,6 @@ function ManagePlanContent() {
   } = useCreditGrants({
     subscriptionId: subscription?.id,
   });
-
-  const { data: isGrantsEnabled } = useSwitchboard('app-builder-grants');
-
-  const builderEntitlementId = subscription?.builderEntitlementId;
 
   const { data: autoRenewStatus } = useEcommSubscriptionAutoRenewStatus(builderEntitlementId);
 
@@ -200,6 +201,9 @@ function ManagePlanContent() {
 
   return (
     <>
+      {/* Polling overlay while waiting for new grant after credit purchase */}
+      {isCreditPolling && <GrantPollingModal />}
+
       {/* Upgrade Modal (for plan upgrades) */}
       {showPaywallModal && paywallType === 'upgrade' && (
         <SinglePlanUpgradeContainer
@@ -220,10 +224,12 @@ function ManagePlanContent() {
       )}
 
       {/* Credits Modal (for credits purchase) */}
-      {showPaywallModal && paywallType === 'credits' && builderEntitlementId && (
+      {showPaywallModal && paywallType === 'credits' && builderEntitlementId && subscription?.id && (
         <CreditsUpgradeContainer
           source={paywallSourceId}
           entitlementId={builderEntitlementId}
+          subscriptionId={subscription.id}
+          initialGrantCount={grants.length}
           itc={paywallItc ?? undefined}
           onSuccess={() => {
             closePaywall();
@@ -353,6 +359,7 @@ function ManagePlanContent() {
                   locale={locale}
                   onOpenPaywall={openPaywall}
                   isGrantsEnabled={isGrantsEnabled ?? true}
+                  builderEntitlementId={builderEntitlementId}
                 />
               )}
             </div>

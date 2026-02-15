@@ -63,6 +63,10 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
   // Calculate plan info
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
   const isFreePlan = currentPlan === SubscriptionPlan.Free || currentPlan === SubscriptionPlan.None
+  const builderEntitlementId = subscription?.builderEntitlementId
+
+  // Disable purchase buttons when grants enabled but entitlement not yet available
+  const isPurchaseDisabled = isGrantsEnabled === true && !builderEntitlementId
 
   // Calculate percentage for gauge
   const totalCreditsSpent = grants?.reduce((sum, g) => sum + getEffectiveCreditsSpent(g.creditsSpent, g.creditsMax), 0) ?? 0
@@ -142,6 +146,7 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
             isFreePlan={isFreePlan}
             onUpgradeClick={handleUpgradeClick}
             onBuyCreditsClick={handleBuyCreditsClick}
+            disabled={isPurchaseDisabled}
           />
         ) : (
           <LegacyPopoverContent
