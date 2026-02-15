@@ -271,6 +271,11 @@ function ManagePlanContent() {
                 onSuccess: () => {
                   setShowDowngradeModal(false);
                   setIsAlertDismissed(false);
+                  // Log cancellation success impression for grant tracking
+                  logImpressionEvent('plan.cancellation.success')();
+                  shipAnalyticsLog('plan.cancellation.success', {
+                    fromPlan: currentPlan,
+                  });
                 }
               }
             );

@@ -365,6 +365,7 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
       expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.purchase.in-app', {
         source: 'test-source',
         productId: 'AiroPlusAppBuilderProduct',
+        fromPlan: 'free',
       });
     });
 
@@ -392,8 +393,79 @@ describe('SinglePlanUpgradeContainer', function singlePlanUpgradeContainerTests(
         expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.purchase.in-app', {
           source: 'test-source',
           productId: 'AiroBuilderProduct',
+          fromPlan: 'free',
         });
       });
+    });
+
+    it('should log upgrade success analytics when plan changes after polling', async function logUpgradeSuccess() {
+      const { shipAnalyticsLog } = await import('@/lib/logging');
+      const { logImpressionEvent } = await import('@/utils/instrumentation');
+
+      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false, error: null });
+      // First call returns 'free' (before purchase), second call returns 'starter' (after purchase)
+      mockGetQueryData
+        .mockReturnValueOnce({ active: { plan: 'free' } })
+        .mockReturnValueOnce({ active: { plan: 'starter' } });
+      mockWaitForQueryUpdate.mockResolvedValue(true);
+
+      const { user } = renderWithProviders(
+        <SinglePlanUpgradeContainer
+          onClose={mockOnClose}
+          onSuccessClick={mockOnSuccessClick}
+          source="test-source"
+        />
+      );
+
+      await waitFor(function waitForModal() {
+        expect(screen.getByTestId('success-button')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('success-button'));
+
+      // Wait for async handleSuccess to complete
+      await waitFor(function checkUpgradeAnalytics() {
+        // Plan-specific impression with underscore format (parseEID requires 2 dots)
+        expect(logImpressionEvent).toHaveBeenCalledWith('plan.upgrade_starter.success');
+      });
+
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.upgrade.success', {
+        source: 'test-source',
+        productId: 'AiroBuilderProduct',
+        fromPlan: 'free',
+        toPlan: 'starter',
+      });
+    });
+
+    it('should not log upgrade success when polling times out', async function noUpgradeSuccessOnTimeout() {
+      const { shipAnalyticsLog } = await import('@/lib/logging');
+      const { logImpressionEvent } = await import('@/utils/instrumentation');
+
+      mockWaitForQueryUpdate.mockResolvedValue(false); // Polling timed out
+      // Plan stays the same (polling didn't detect change)
+      mockGetQueryData.mockReturnValue({ active: { plan: 'free' } });
+
+      const { user } = renderWithProviders(
+        <SinglePlanUpgradeContainer
+          onClose={mockOnClose}
+          source="test-source"
+        />
+      );
+
+      await waitFor(function waitForModal() {
+        expect(screen.getByTestId('success-button')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('success-button'));
+
+      // Wait for async handleSuccess to complete
+      await waitFor(function checkTimeoutLog() {
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.purchase.polling-timeout', expect.any(Object));
+      });
+
+      // Should NOT log upgrade success
+      expect(logImpressionEvent).not.toHaveBeenCalledWith(expect.stringContaining('plan.upgrade_'));
+      expect(shipAnalyticsLog).not.toHaveBeenCalledWith('airoplus.upgrade.success', expect.any(Object));
     });
   });
 

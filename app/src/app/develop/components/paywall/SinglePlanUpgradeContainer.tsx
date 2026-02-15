@@ -51,16 +51,16 @@ const SinglePlanUpgradeContainer = ({
   const entitlementId = isGrantsEnabled ? subscription?.builderEntitlementId : undefined
 
   const handleSuccess = useCallback(async () => {
+    // Capture current plan from cache at purchase time (before polling updates it)
+    // This is the "from" plan for conversion tracking
+    const cachedData = queryClient.getQueryData<{ active?: { plan: string } }>(['subscriptions'])
+    const planBeforePurchase = cachedData?.active?.plan
+
     // Log impression event for purchase success tracking. Do not remove - required for https://godaddy-corp.atlassian.net/browse/NEX-5186
     logImpressionEvent('plan.purchase.success')()
 
     // Ship unified analytics log to Elastic for all purchase paths
-    shipAnalyticsLog('airoplus.purchase.in-app', { source, productId })
-
-    // Capture current plan from cache at purchase time (not from render-time state)
-    // This prevents issues if component re-renders during polling
-    const cachedData = queryClient.getQueryData<{ active?: { plan: string } }>(['subscriptions'])
-    const planBeforePurchase = cachedData?.active?.plan
+    shipAnalyticsLog('airoplus.purchase.in-app', { source, productId, fromPlan: planBeforePurchase })
 
     // Poll until plan changes (up to 30 seconds)
     // External subscription service may take time to reflect the purchase
@@ -70,6 +70,21 @@ const SinglePlanUpgradeContainer = ({
       (data) => data?.active?.plan !== planBeforePurchase,
       { maxAttempts: 15, intervalMs: 2000 }
     )
+
+    // Get the new plan after polling to log the upgrade success with plan details
+    const updatedData = queryClient.getQueryData<{ active?: { plan: string } }>(['subscriptions'])
+    const planAfterPurchase = updatedData?.active?.plan
+
+    if (updated && planAfterPurchase) {
+      // Log plan-specific upgrade success impression for grant tracking
+      logImpressionEvent(`plan.upgrade_${planAfterPurchase}.success`)()
+      shipAnalyticsLog('airoplus.upgrade.success', {
+        source,
+        productId,
+        fromPlan: planBeforePurchase,
+        toPlan: planAfterPurchase,
+      })
+    }
 
     if (!updated) {
       shipAnalyticsLog('airoplus.purchase.polling-timeout', {

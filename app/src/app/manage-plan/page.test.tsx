@@ -14,6 +14,7 @@ const mockReplace = vi.fn();
 const mockUseSwitchboard = vi.fn();
 const mockUseActiveSubscription = vi.fn();
 const mockUseCreditGrants = vi.fn();
+const mockSetAutoRenewMutate = vi.fn();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ ...mockRouter(), replace: mockReplace }),
@@ -67,11 +68,12 @@ vi.mock('@/hooks/useEcommSubscriptionAutoRenewStatus', () => ({
 vi.mock('@/hooks/useEcommSubscriptionAutoRenew', () => ({
   useEcommSubscriptionAutoRenew: () => ({
     setAutoRenew: {
-      mutate: vi.fn(),
+      mutate: mockSetAutoRenewMutate,
       mutateAsync: vi.fn(),
       isPending: false,
       isError: false,
       error: null,
+      reset: vi.fn(),
     },
   }),
 }));
@@ -98,6 +100,17 @@ vi.mock('@/lib/logging', () => ({
 
 vi.mock('@/utils/getRootDomain', () => ({
   getRootDomain: () => 'godaddy.com',
+}));
+
+// Mock @ux/modal to avoid Disrupt rendering issues in test environment
+vi.mock('@ux/modal', () => ({
+  default: ({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) => (
+    <div role="dialog" aria-label={title}>
+      <h2>{title}</h2>
+      <button onClick={onClose} aria-label="Close">Close</button>
+      <div>{children}</div>
+    </div>
+  ),
 }));
 
 vi.mock('@/app/develop/components/paywall', () => ({
@@ -757,6 +770,55 @@ describe('ManagePlan', function managePlanTests() {
       await waitFor(function checkAnalytics() {
         expect(shipAnalyticsLog).toHaveBeenCalledWith('manage_plan.buy_credits.shown', {
           paywallType: 'credits',
+        });
+      });
+    });
+  });
+
+  describe('cancellation analytics', function cancellationTests() {
+    beforeEach(function setupCancellationTests() {
+      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+      mockSetAutoRenewMutate.mockClear();
+    });
+
+    it('should log cancellation analytics when downgrade is confirmed', async function logCancellationAnalytics() {
+      const { shipAnalyticsLog } = await import('@/lib/logging');
+      const { logImpressionEvent } = await import('@/utils/instrumentation');
+
+      // Setup mutate to call onSuccess callback
+      mockSetAutoRenewMutate.mockImplementation((_params: unknown, options?: { onSuccess?: () => void }) => {
+        options?.onSuccess?.();
+      });
+
+      mockUseActiveSubscription.mockReturnValue({
+        data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-123' },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: [createMonthlyGrant()],
+        isLoading: false,
+        isError: false,
+      });
+
+      const { user } = renderWithProviders(<ManagePlan />);
+
+      // Click downgrade button to open modal
+      await user.click(screen.getByText('builder_manageplan_downgrade_plan'));
+
+      // Wait for modal to open
+      await waitFor(function checkModalOpen() {
+        expect(screen.getByText('builder_manageplan_downgrade_title')).toBeInTheDocument();
+      });
+
+      // Click confirm in the modal
+      await user.click(screen.getByText('builder_manageplan_downgrade_confirm'));
+
+      // Verify cancellation analytics
+      await waitFor(function checkCancellationAnalytics() {
+        expect(logImpressionEvent).toHaveBeenCalledWith('plan.cancellation.success');
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('plan.cancellation.success', {
+          fromPlan: SubscriptionPlan.Starter,
         });
       });
     });
