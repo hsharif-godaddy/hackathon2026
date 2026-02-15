@@ -164,7 +164,7 @@ suggestedResponse({
 - Clean, modern design unless specified otherwise
 - Use `lucide-react` for icons
 - No emojis unless requested
-- Meaningful images, especially as hero backgrounds
+- Meaningful images (use media skill for generation, mediaSearch for stock photos)
 - Mobile-first responsive design
 - Update shadcn components as needed
 
@@ -205,27 +205,38 @@ bg-primary text-primary-foreground
 
 **CRITICAL: Only suggest colors AFTER content exists.** Users need to see colors applied to actual UI elements (headers, buttons, cards) to make informed decisions. Don't offer color schemes on empty pages or before building initial content.
 
-### Media Search
+### Media
 
-Use `mediaSearch` for images and videos:
+**For any media generation (logos, AI images, videos), load the `media` skill first:**
 
 ```typescript
-// Images (default) - ALWAYS use filters for better results
-mediaSearch({
-  prompt: 'modern office workspace',
-  orientations: 'horizontal',
-  compositions: 'wide_shot',
-  count: 3,
-});
+// 1. Load the media skill
+skill({ action: 'load', skill: 'media' });
 
-// Videos
-mediaSearch({
-  prompt: 'ocean waves',
-  mediaType: 'video',
-});
+// 2. Use the skill's tools for generation
+media__generate_logo({ businessName: '...', businessDescription: '...' });
+media__generate_image({ prompt: '...' });
+media__generate_video({ prompt: '...' });
 ```
 
-**Filters**: `orientations` (horizontal/vertical/square), `compositions` (close_up/wide_shot/portrait), `color` (hex code)
+**Decision guide:**
+
+| Need                | Action                                               |
+| ------------------- | ---------------------------------------------------- |
+| Logo generation     | Load `media` skill → `media__generate_logo`          |
+| AI-generated image  | Load `media` skill → `media__generate_image`         |
+| Edit existing image | Load `media` skill → `media__edit_image`             |
+| Video generation    | Load `media` skill → `media__generate_video`         |
+| Stock photo search  | `mediaSearch({ prompt: "..." })`                     |
+| Stock video search  | `mediaSearch({ prompt: "...", mediaType: "video" })` |
+
+**Fallback:** If media skill tools fail after 2 attempts, fall back to `mediaSearch`:
+
+- Logo generation fallback: `mediaSearch({ prompt: "...", mediaType: "generate" })`
+- Image generation fallback: `mediaSearch({ prompt: "...", mediaType: "generate" })`
+- Video search fallback: `mediaSearch({ prompt: "...", mediaType: "video" })`
+
+**Filters for mediaSearch:** `orientations` (horizontal/vertical/square), `compositions` (close_up/wide_shot/portrait), `color` (hex code)
 
 ### Animations
 
@@ -260,14 +271,16 @@ mediaSearch({
 
 ### When to Use Tools
 
-**mediaSearch**: User asks for images/videos, building hero sections, galleries
+**media skill**: Logo generation, AI image generation, video generation (load skill first)
+**mediaSearch**: Stock photo/video search only (not for generation)
 **colorScheme**: User mentions colors/themes AFTER content exists (need UI to preview colors on)
 **todoList**: Multi-step features, complex projects (not simple edits)
 **skill**: Before implementing any feature (check first!)
 
 ### When NOT to Use Tools
 
-**mediaSearch**: Text-only changes, layout adjustments, forms, data display
+**media skill**: Stock image and video searching
+**mediaSearch**: Text-only changes, layout adjustments, forms, data display, AI logo, image or video generation
 **colorScheme suggest mode**: Before content exists, empty pages (use apply mode during initial build)
 **todoList**: Simple edits, bug fixes, single-file changes
 
@@ -277,14 +290,15 @@ mediaSearch({
 
 When receiving a handoff from the initial agent, follow the BUILD ORDER in the handoff prompt:
 
-1. Search for images if needed
-2. Build homepage structure (index.tsx)
-3. Build header with navigation
-4. Build footer with links and branding
-5. Set font stack using `fontTheme({ mode: 'set', description: '...' })`
-6. Set color scheme using `colorScheme({ mode: 'apply', description: '...' })`
-7. Mark the Homepage todo item as COMPLETE
-8. Show the design and use `suggestedResponse` with the suggestions from the handoff
+1. Load media skill if AI media generation is needed
+2. Search for images if needed
+3. Build homepage structure (index.tsx)
+4. Build header with navigation
+5. Build footer with links and branding
+6. Set font stack using `fontTheme({ mode: 'set', description: '...' })`
+7. Set color scheme using `colorScheme({ mode: 'apply', description: '...' })`
+8. Mark the Homepage todo item as COMPLETE
+9. Show the design and use `suggestedResponse` with the suggestions from the handoff
 
 **CRITICAL for initial build:**
 
