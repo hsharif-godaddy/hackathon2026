@@ -1015,6 +1015,35 @@ export class AgentWrapper {
       toolCalls: any
     }>
   }> {
+    // For new accounts: wait for grants to be provisioned if feature is enabled but grants are empty
+    // This handles the case where subscription is active but grants haven't been created yet
+    if (socketId && retryCount === 0) {
+      const featureEnabled = grantSessionManager.isFeatureEnabled(socketId)
+      const hasGrants = grantSessionManager.hasGrants(socketId)
+
+      if (featureEnabled && !hasGrants) {
+        logger.info('grants.awaiting_provisioning', {
+          socketId,
+          message: 'Grants feature enabled but no grants yet - waiting for provisioning',
+        })
+
+        // Request refresh and wait for grants to be provisioned
+        const gotGrants = await grantSessionManager.requestGrantRefreshAndWait(socketId, 10000)
+
+        if (gotGrants) {
+          logger.info('grants.provisioning_complete', {
+            socketId,
+            message: 'Grants provisioned successfully',
+          })
+        } else {
+          logger.warn('grants.provisioning_timeout', {
+            socketId,
+            message: 'Grants provisioning timeout - will proceed with customerId fallback',
+          })
+        }
+      }
+    }
+
     let streamResult
     try {
       const callOptions: AgentCallOptions = {
@@ -1087,7 +1116,55 @@ export class AgentWrapper {
         const advanced = grantSessionManager.advanceToNextGrant(socketId)
 
         if (!advanced) {
-          // No more grants - surface error to user
+          // No more grants in current list - request refresh and wait for new grants
+          logger.info('grants.fallback.requesting_refresh', {
+            socketId,
+            retryCount,
+          })
+
+          const gotNewGrants = await grantSessionManager.requestGrantRefreshAndWait(socketId, 5000)
+
+          if (gotNewGrants) {
+            // New grants arrived, check if we now have a usable grant
+            const hasUsableGrant = grantSessionManager.getCurrentUserId(socketId) !== undefined
+            if (hasUsableGrant) {
+              // Enforce MAX_GRANT_RETRIES even after successful refresh
+              const nextRetryCount = retryCount + 1
+              if (nextRetryCount >= MAX_GRANT_RETRIES) {
+                logger.error('grants.fallback.max_retries_after_refresh', {
+                  socketId,
+                  retryCount: nextRetryCount,
+                })
+                throw new BudgetExceededError(
+                  'All credit grants have been exhausted.',
+                  400,
+                  GrantErrorCode.AllGrantsExhausted
+                )
+              }
+
+              logger.info('grants.fallback.refresh_success', {
+                socketId,
+                retryCount: nextRetryCount,
+              })
+              // Retry with the new grant
+              return this._executeStreamWithGrantFallback(prompt, options, socketId, nextRetryCount)
+            }
+            // New grants arrived but still no usable grant
+            logger.warn('grants.fallback.refresh_no_usable', {
+              socketId,
+              retryCount,
+              message: 'Received refreshed grants but none are usable',
+            })
+          } else {
+            // Refresh failed (timeout, no callback, or disconnected)
+            logger.warn('grants.fallback.refresh_failed', {
+              socketId,
+              retryCount,
+              message: 'Grant refresh failed - timed out or callback not registered',
+            })
+          }
+
+          // Still no usable grants after refresh - surface error to user
           throw new BudgetExceededError(
             'All credit grants have been exhausted. Please purchase more credits.',
             400,

@@ -6,6 +6,11 @@ import { logger } from '@/lib/request-context'
 import { useIsActivelyStreaming } from '@/stores/useStreamingConversationStore'
 import type { CreditGrant } from '@/types/credits'
 
+// Interval to retry fetching grants when empty (new account provisioning)
+const EMPTY_GRANTS_RETRY_INTERVAL_MS = 5000
+// Maximum duration to keep retrying for empty grants (5 minutes)
+const EMPTY_GRANTS_MAX_RETRY_DURATION_MS = 5 * 60 * 1000
+
 /**
  * Grant context controller interface
  * Abstracts the underlying transport for grant synchronization
@@ -236,5 +241,102 @@ export function useGrantContext({
       }
     },
     [isConnected]
+  )
+
+  // Retry fetching grants when list is empty (new account provisioning)
+  // This handles the case where subscription is active but grants aren't provisioned yet
+  const emptyGrantsRetryStartRef = useRef<number | null>(null)
+  const emptyGrantsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Use ref for refetchGrants to avoid re-creating interval when function reference changes
+  const refetchGrantsRef = useRef(refetchGrants)
+  refetchGrantsRef.current = refetchGrants
+
+  useEffect(
+    function retryOnEmptyGrants() {
+      // Helper to clear interval
+      const clearRetryInterval = () => {
+        if (emptyGrantsIntervalRef.current) {
+          clearInterval(emptyGrantsIntervalRef.current)
+          emptyGrantsIntervalRef.current = null
+        }
+      }
+
+      // Skip when feature is disabled
+      if (!grantsEnabled || !subscriptionId) {
+        clearRetryInterval()
+        emptyGrantsRetryStartRef.current = null
+        return
+      }
+
+      // Skip if we're still loading
+      if (isGrantsLoading || isFlagLoading) return
+
+      // If we have grants, stop retrying and reset timer
+      if (grants && grants.length > 0) {
+        clearRetryInterval()
+        emptyGrantsRetryStartRef.current = null
+        return
+      }
+
+      // No grants available - start or continue retry timer
+      const now = Date.now()
+      if (emptyGrantsRetryStartRef.current === null) {
+        emptyGrantsRetryStartRef.current = now
+        logger.info('websocket.grant_context.empty_grants_retry_start', {
+          subscriptionId,
+          message: 'Starting retry loop for empty grants (new account provisioning)',
+        })
+      }
+
+      // Check if we've exceeded the max retry duration
+      const elapsed = now - emptyGrantsRetryStartRef.current
+      if (elapsed >= EMPTY_GRANTS_MAX_RETRY_DURATION_MS) {
+        clearRetryInterval()
+        logger.warn('websocket.grant_context.empty_grants_retry_timeout', {
+          subscriptionId,
+          elapsedMs: elapsed,
+          message: 'Exceeded max retry duration for empty grants',
+        })
+        return
+      }
+
+      // Only create interval if one isn't already running
+      if (emptyGrantsIntervalRef.current) return
+
+      // Set up interval to refetch
+      emptyGrantsIntervalRef.current = setInterval(() => {
+        const startTime = emptyGrantsRetryStartRef.current
+        if (!startTime) {
+          // Retry was cancelled - stop interval
+          clearRetryInterval()
+          return
+        }
+
+        const currentElapsed = Date.now() - startTime
+        if (currentElapsed >= EMPTY_GRANTS_MAX_RETRY_DURATION_MS) {
+          clearRetryInterval()
+          logger.warn('websocket.grant_context.empty_grants_retry_timeout', {
+            subscriptionId,
+            elapsedMs: currentElapsed,
+            message: 'Exceeded max retry duration for empty grants',
+          })
+          return
+        }
+
+        logger.debug('websocket.grant_context.empty_grants_retry', {
+          subscriptionId,
+          elapsedMs: currentElapsed,
+        })
+        refetchGrantsRef.current().catch((error) => {
+          logger.warn('websocket.grant_context.empty_grants_retry_failed', {
+            subscriptionId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        })
+      }, EMPTY_GRANTS_RETRY_INTERVAL_MS)
+
+      return clearRetryInterval
+    },
+    [grantsEnabled, subscriptionId, grants, isGrantsLoading, isFlagLoading]
   )
 }

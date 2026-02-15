@@ -675,5 +675,258 @@ describe('grant-session-manager', function tests() {
       // Should skip exhausted grant-1 and use grant-3
       expect(sessionManager.getCurrentUserId('session-1')).toBe('airo-builder:grant:3')
     })
+
+    it('should reset index when current grant becomes unusable (exhausted) even if still in list', function resetOnUnusable() {
+      const now = Date.now()
+
+      // Start with a usable grant
+      const initialGrants = [
+        createGrant({
+          id: 'grant-monthly',
+          subscriptionId: 'sub-1',
+          llmBudgetUserId: 'airo-builder:grant:monthly',
+          creditsSpent: 500,
+          creditsMax: 1500,
+          useBefore: new Date(now + 10 * 24 * 60 * 60 * 1000).toISOString(),
+        }),
+      ]
+
+      sessionManager.setGrants('session-1', initialGrants, true)
+      expect(sessionManager.getCurrentUserId('session-1')).toBe('airo-builder:grant:monthly')
+
+      // Refresh: same grant now exhausted, but new credit pack added
+      const refreshedGrants = [
+        createGrant({
+          id: 'grant-monthly',
+          subscriptionId: 'sub-1',
+          llmBudgetUserId: 'airo-builder:grant:monthly',
+          creditsSpent: 1500, // Exhausted
+          creditsMax: 1500,
+          useBefore: new Date(now + 10 * 24 * 60 * 60 * 1000).toISOString(),
+        }),
+        createGrant({
+          id: 'grant-pack',
+          subscriptionId: 'sub-1',
+          type: GrantType.CreditPack,
+          llmBudgetUserId: 'airo-builder:grant:pack',
+          creditsSpent: 0,
+          creditsMax: 5000,
+          useBefore: new Date(now + 365 * 24 * 60 * 60 * 1000).toISOString(),
+        }),
+      ]
+
+      sessionManager.setGrants('session-1', refreshedGrants, true)
+
+      // Should automatically switch to the new credit pack
+      expect(sessionManager.getCurrentUserId('session-1')).toBe('airo-builder:grant:pack')
+    })
+  })
+
+  describe('#requestGrantRefreshAndWait', function refreshWaitTests() {
+    it('should return false when no callback registered', async function noCallback() {
+      const grants = [createGrant()]
+      sessionManager.setGrants('session-1', grants, true)
+
+      const result = await sessionManager.requestGrantRefreshAndWait('session-1', 200)
+      expect(result).toBe(false)
+    })
+
+    it('should return false when no grants set yet (no subscriptionId)', async function noSubscription() {
+      let callbackCalled = false
+      sessionManager.setRefreshCallback(() => {
+        callbackCalled = true
+      })
+
+      // Request refresh for a session that has no grants set yet
+      const result = await sessionManager.requestGrantRefreshAndWait('session-without-grants', 200)
+
+      // Should return false immediately without calling the callback
+      expect(result).toBe(false)
+      expect(callbackCalled).toBe(false)
+    })
+
+    it('should call refresh callback and resolve when new grants arrive', async function callbackAndResolve() {
+      let callbackCalled = false
+      let callbackSessionId: string | null = null
+
+      sessionManager.setRefreshCallback((sessionId) => {
+        callbackCalled = true
+        callbackSessionId = sessionId
+      })
+
+      const initialGrants = [
+        createGrant({
+          id: 'grant-1',
+          creditsSpent: 1500, // Exhausted
+          creditsMax: 1500,
+        }),
+      ]
+      sessionManager.setGrants('session-1', initialGrants, true)
+
+      // Start the wait
+      const waitPromise = sessionManager.requestGrantRefreshAndWait('session-1', 5000)
+
+      // Callback should be called
+      expect(callbackCalled).toBe(true)
+      expect(callbackSessionId).toBe('session-1')
+
+      // Simulate frontend sending new grants
+      const newGrants = [
+        createGrant({
+          id: 'grant-1',
+          creditsSpent: 1500,
+          creditsMax: 1500,
+        }),
+        createGrant({
+          id: 'grant-pack',
+          type: GrantType.CreditPack,
+          creditsSpent: 0,
+          creditsMax: 5000,
+        }),
+      ]
+      sessionManager.setGrants('session-1', newGrants, true)
+
+      // Wait should resolve with true
+      const result = await waitPromise
+      expect(result).toBe(true)
+    })
+
+    it('should timeout and resolve with false when no grants arrive', async function timeout() {
+      let callbackCalled = false
+
+      sessionManager.setRefreshCallback(() => {
+        callbackCalled = true
+      })
+
+      const grants = [createGrant()]
+      sessionManager.setGrants('session-1', grants, true)
+
+      // Start the wait with short timeout
+      const result = await sessionManager.requestGrantRefreshAndWait('session-1', 200)
+
+      expect(callbackCalled).toBe(true)
+      expect(result).toBe(false)
+    })
+
+    it('should resolve when usable grant arrives even if count unchanged', async function usableGrantArrives() {
+      sessionManager.setRefreshCallback(() => {})
+
+      // Start with exhausted grant
+      const initialGrants = [
+        createGrant({
+          id: 'grant-1',
+          creditsSpent: 1500,
+          creditsMax: 1500,
+        }),
+      ]
+      sessionManager.setGrants('session-1', initialGrants, true)
+
+      const waitPromise = sessionManager.requestGrantRefreshAndWait('session-1', 5000)
+
+      // Update same grant count but now has usable grant
+      const updatedGrants = [
+        createGrant({
+          id: 'grant-pack',
+          type: GrantType.CreditPack,
+          creditsSpent: 0,
+          creditsMax: 5000,
+        }),
+      ]
+      sessionManager.setGrants('session-1', updatedGrants, true)
+
+      const result = await waitPromise
+      expect(result).toBe(true)
+    })
+
+    it('should share pending promise for concurrent requests on same subscription', async function concurrentRequests() {
+      let callbackCount = 0
+      sessionManager.setRefreshCallback(() => {
+        callbackCount++
+      })
+
+      const grants = [
+        createGrant({
+          id: 'grant-1',
+          creditsSpent: 1500,
+          creditsMax: 1500,
+        }),
+      ]
+      sessionManager.setGrants('session-1', grants, true)
+
+      // Start two concurrent waits
+      const wait1 = sessionManager.requestGrantRefreshAndWait('session-1', 5000)
+      const wait2 = sessionManager.requestGrantRefreshAndWait('session-1', 5000)
+
+      // Callback should only be called once (second request reuses pending)
+      expect(callbackCount).toBe(1)
+
+      // Send new grants to resolve both
+      const newGrants = [
+        createGrant({
+          id: 'grant-pack',
+          type: GrantType.CreditPack,
+          creditsSpent: 0,
+          creditsMax: 5000,
+        }),
+      ]
+      sessionManager.setGrants('session-1', newGrants, true)
+
+      // Both waits should resolve to true
+      const [result1, result2] = await Promise.all([wait1, wait2])
+      expect(result1).toBe(true)
+      expect(result2).toBe(true)
+    })
+
+    it('should not resolve when grants change but none are usable', async function noUsableAfterRefresh() {
+      sessionManager.setRefreshCallback(() => {})
+
+      const initialGrants = [
+        createGrant({
+          id: 'grant-1',
+          creditsSpent: 1500,
+          creditsMax: 1500,
+        }),
+      ]
+      sessionManager.setGrants('session-1', initialGrants, true)
+
+      const waitPromise = sessionManager.requestGrantRefreshAndWait('session-1', 300)
+
+      // Send new grants that are also exhausted
+      const newGrants = [
+        createGrant({
+          id: 'grant-2',
+          creditsSpent: 1500, // Also exhausted
+          creditsMax: 1500,
+        }),
+      ]
+      sessionManager.setGrants('session-1', newGrants, true)
+
+      // Should timeout because no usable grant
+      const result = await waitPromise
+      expect(result).toBe(false)
+    })
+
+    it('should cancel pending refresh when last socket disconnects', async function cancelOnDisconnect() {
+      sessionManager.setRefreshCallback(() => {})
+
+      const grants = [
+        createGrant({
+          id: 'grant-1',
+          creditsSpent: 1500,
+          creditsMax: 1500,
+        }),
+      ]
+      sessionManager.setGrants('session-1', grants, true)
+
+      // Start a wait
+      const waitPromise = sessionManager.requestGrantRefreshAndWait('session-1', 5000)
+
+      // Disconnect the session
+      sessionManager.removeSession('session-1')
+
+      // Should resolve to false immediately (not timeout)
+      const result = await waitPromise
+      expect(result).toBe(false)
+    })
   })
 })

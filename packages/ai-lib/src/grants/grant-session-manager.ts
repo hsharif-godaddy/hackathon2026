@@ -22,6 +22,29 @@ interface SessionGrantState {
 }
 
 /**
+ * Callback type for requesting grant refresh from frontend
+ */
+export type GrantRefreshCallback = (sessionId: string) => void
+
+/**
+ * Pending refresh state for a session waiting for new grants
+ */
+interface PendingRefresh {
+  /** Promise that resolves when new grants arrive or timeout */
+  promise: Promise<boolean>
+  /** Resolve function to complete the promise */
+  resolve: (hasNewGrants: boolean) => void
+  /** Number of grants before refresh was requested */
+  previousGrantCount: number
+  /** Grant IDs before refresh was requested */
+  previousGrantIds: Set<string>
+  /** Timeout handle for cleanup */
+  timeoutId: ReturnType<typeof setTimeout>
+  /** Timestamp when refresh was requested (for stale detection) */
+  createdAt: number
+}
+
+/**
  * Manages grant state per WebSocket session
  *
  * Grants are received once per session via grant_context event and cached here.
@@ -43,12 +66,116 @@ export class GrantSessionManager {
   private subscriptionSessions = new Map<string, SessionGrantState>()
   private cleanupInterval: ReturnType<typeof setInterval> | null = null
   private apm: APMAgent | null = null
+  /** Callback to request grant refresh from frontend (set by websocket server) */
+  private requestRefreshCallback: GrantRefreshCallback | null = null
+  /** Pending refresh promises waiting for new grants to arrive */
+  private pendingRefreshes = new Map<string, PendingRefresh>()
 
   /**
    * Set APM agent for instrumentation
    */
   setAPM(apm: APMAgent): void {
     this.apm = apm
+  }
+
+  /**
+   * Set callback for requesting grant refresh from frontend
+   * Called when grants are exhausted and we need fresh data
+   *
+   * @param callback - Function to call with sessionId when refresh is needed
+   */
+  setRefreshCallback(callback: GrantRefreshCallback): void {
+    this.requestRefreshCallback = callback
+  }
+
+  /**
+   * Request a grant refresh and wait for new grants to arrive
+   *
+   * This method:
+   * 1. Calls the refresh callback to emit request_grant_refresh to the frontend
+   * 2. Returns a Promise that resolves when setGrants is called with new usable grants
+   * 3. Times out after the specified duration
+   *
+   * If a refresh is already pending for this subscription, returns the existing promise
+   * to avoid race conditions where multiple concurrent calls cancel each other.
+   *
+   * @param sessionId - WebSocket session ID (socketId)
+   * @param timeoutMs - Maximum time to wait for new grants (default: 5 seconds)
+   * @returns Promise that resolves to true if new usable grants arrived, false if timed out or no callback
+   */
+  async requestGrantRefreshAndWait(sessionId: string, timeoutMs: number = 5000): Promise<boolean> {
+    // Get current state for comparison
+    const subscriptionId = this.sessionToSubscription.get(sessionId)
+    const currentState = subscriptionId ? this.subscriptionSessions.get(subscriptionId) : undefined
+    const previousGrantCount = currentState?.grants.length ?? 0
+    const previousGrantIds = new Set(currentState?.grants.map((g) => g.id) ?? [])
+
+    // If no callback registered, we can't request refresh
+    if (!this.requestRefreshCallback) {
+      logger.warn('grants.session.refresh_no_callback', {
+        sessionId,
+        subscriptionId,
+        message: 'No refresh callback registered - grant refresh mechanism not configured',
+      })
+      return false
+    }
+
+    // If no subscriptionId, we can't track the pending refresh
+    // This happens when grants haven't been received yet for this session
+    if (!subscriptionId) {
+      logger.warn('grants.session.refresh_no_subscription', {
+        sessionId,
+        message: 'Cannot request grant refresh - no subscription mapped to session yet',
+      })
+      return false
+    }
+
+    // If there's already a pending refresh for this subscription, return that promise
+    // This prevents race conditions where multiple concurrent calls cancel each other
+    const existingPending = this.pendingRefreshes.get(subscriptionId)
+    if (existingPending) {
+      logger.debug('grants.session.refresh_reusing_pending', {
+        sessionId,
+        subscriptionId,
+        pendingAge: Date.now() - existingPending.createdAt,
+      })
+      return existingPending.promise
+    }
+
+    // Create promise that will be resolved when new grants arrive
+    let resolvePromise: (hasNewGrants: boolean) => void
+    const promise = new Promise<boolean>((resolve) => {
+      resolvePromise = resolve
+    })
+
+    const timeoutId = setTimeout(() => {
+      this.pendingRefreshes.delete(subscriptionId)
+      logger.warn('grants.session.refresh_timeout', {
+        sessionId,
+        subscriptionId,
+        timeoutMs,
+      })
+      resolvePromise!(false)
+    }, timeoutMs)
+
+    this.pendingRefreshes.set(subscriptionId, {
+      promise,
+      resolve: resolvePromise!,
+      previousGrantCount,
+      previousGrantIds,
+      timeoutId,
+      createdAt: Date.now(),
+    })
+
+    // Request refresh from frontend
+    logger.info('grants.session.refresh_requested', {
+      sessionId,
+      subscriptionId,
+      previousGrantCount,
+    })
+    this.requestRefreshCallback(sessionId)
+
+    return promise
   }
 
   /**
@@ -86,8 +213,31 @@ export class GrantSessionManager {
       const newIndex = sortedGrants.findIndex((g) => g.id === currentGrantId)
 
       if (newIndex >= 0) {
-        // Current grant still exists in new list - preserve position
-        currentIndex = newIndex
+        // Current grant still exists in new list
+        const currentGrantInNewList = sortedGrants[newIndex]
+        if (currentGrantInNewList && GrantManager.isGrantUsable(currentGrantInNewList)) {
+          // Current grant is still usable - preserve position
+          currentIndex = newIndex
+        } else {
+          // Current grant exists but is no longer usable (exhausted/expired)
+          // Find the first usable grant in the list
+          currentIndex = 0
+          for (let i = 0; i < sortedGrants.length; i++) {
+            const grant = sortedGrants[i]
+            if (grant && GrantManager.isGrantUsable(grant)) {
+              currentIndex = i
+              break
+            }
+          }
+
+          logger.info('grants.session.index_reset', {
+            sessionId,
+            subscriptionId,
+            previousGrantId: currentGrantId,
+            newIndex: currentIndex,
+            reason: 'current_grant_unusable',
+          })
+        }
       } else {
         // Current grant no longer exists (consumed/expired/removed)
         // Reset to 0 and find first usable grant to avoid skipping grants
@@ -131,6 +281,43 @@ export class GrantSessionManager {
       featureEnabled,
       currentIndex,
     })
+
+    // Check if there's a pending refresh waiting for new grants
+    const pendingRefresh = this.pendingRefreshes.get(subscriptionId)
+    if (pendingRefresh) {
+      // Check if we have new/different grants
+      const hasNewGrants =
+        sortedGrants.length !== pendingRefresh.previousGrantCount ||
+        sortedGrants.some((g) => !pendingRefresh.previousGrantIds.has(g.id))
+
+      // Check if any grant is usable - this is the key requirement
+      // Even if grants changed, we only resolve true if there's a usable one
+      const hasUsableGrant = sortedGrants.some((g) => GrantManager.isGrantUsable(g))
+
+      // Only resolve with true if there's actually a usable grant
+      // This prevents false positives where grants changed but all are still exhausted
+      if (hasUsableGrant) {
+        clearTimeout(pendingRefresh.timeoutId)
+        this.pendingRefreshes.delete(subscriptionId)
+        logger.info('grants.session.refresh_resolved', {
+          sessionId,
+          subscriptionId,
+          hasNewGrants,
+          hasUsableGrant,
+          newGrantCount: sortedGrants.length,
+        })
+        pendingRefresh.resolve(true)
+      } else if (hasNewGrants) {
+        // Grants changed but none are usable - log for debugging but keep waiting
+        logger.debug('grants.session.refresh_no_usable', {
+          sessionId,
+          subscriptionId,
+          hasNewGrants,
+          newGrantCount: sortedGrants.length,
+          message: 'New grants received but none are usable, continuing to wait',
+        })
+      }
+    }
   }
 
   /**
@@ -154,7 +341,7 @@ export class GrantSessionManager {
         return fallbackCustomerId
       }
 
-      // No grants in session - use fallback (fetch may have failed)
+      // No grants in session - use fallback (fetch may have failed or grants not provisioned yet)
       if (!state.grants.length) {
         logger.warn('grants.session.no_grants', { sessionId, subscriptionId })
         span?.setLabel?.('result', 'no_grants')
@@ -209,10 +396,13 @@ export class GrantSessionManager {
 
     const previousGrantId = state.grants[state.currentIndex]?.id
 
+
     // Find next usable grant after current
     for (let i = state.currentIndex + 1; i < state.grants.length; i++) {
       const grant = state.grants[i]
-      if (grant && GrantManager.isGrantUsable(grant)) {
+      const isUsable = grant && GrantManager.isGrantUsable(grant)
+
+      if (isUsable) {
         state.currentIndex = i
 
         // APM instrumentation
@@ -235,7 +425,9 @@ export class GrantSessionManager {
     logger.warn('grants.session.advance_failed', {
       sessionId,
       subscriptionId,
-      message: 'No more usable grants available',
+      currentIndex: state.currentIndex,
+      totalGrants: state.grants.length,
+      message: 'No more usable grants available after current index',
     })
     return false
   }
@@ -333,6 +525,7 @@ export class GrantSessionManager {
     return !!state && state.grants.length > 0
   }
 
+
   /**
    * Check if session grant state is stale (by socketId)
    * @param maxAgeMs - Maximum age in milliseconds (default: 5 minutes)
@@ -348,10 +541,35 @@ export class GrantSessionManager {
   /**
    * Clean up session on disconnect
    * Note: Does NOT remove subscription state - other sockets may still be using it
+   *
+   * If this is the last socket for a subscription and there's a pending refresh,
+   * the pending refresh is cancelled to avoid unnecessary timeout waiting.
    */
   removeSession(sessionId: string): void {
+    const subscriptionId = this.sessionToSubscription.get(sessionId)
+
     if (this.sessionToSubscription.delete(sessionId)) {
-      logger.debug('grants.session.removed', { sessionId })
+      logger.debug('grants.session.removed', { sessionId, subscriptionId })
+
+      // Check if this was the last socket for this subscription
+      if (subscriptionId) {
+        const hasOtherSockets = Array.from(this.sessionToSubscription.values()).includes(subscriptionId)
+
+        // If no other sockets and there's a pending refresh, cancel it
+        if (!hasOtherSockets) {
+          const pendingRefresh = this.pendingRefreshes.get(subscriptionId)
+          if (pendingRefresh) {
+            clearTimeout(pendingRefresh.timeoutId)
+            this.pendingRefreshes.delete(subscriptionId)
+            logger.info('grants.session.refresh_cancelled', {
+              sessionId,
+              subscriptionId,
+              reason: 'last_socket_disconnected',
+            })
+            pendingRefresh.resolve(false)
+          }
+        }
+      }
     }
   }
 
@@ -442,6 +660,27 @@ export class GrantSessionManager {
   }
 
   /**
+   * Get all socket IDs for a subscription
+   * Used to find alternative sockets when the original socket disconnects
+   */
+  getSocketsForSubscription(subscriptionId: string): string[] {
+    const sockets: string[] = []
+    for (const [socketId, subId] of this.sessionToSubscription) {
+      if (subId === subscriptionId) {
+        sockets.push(socketId)
+      }
+    }
+    return sockets
+  }
+
+  /**
+   * Get subscription ID for a session
+   */
+  getSubscriptionIdForSession(sessionId: string): string | undefined {
+    return this.sessionToSubscription.get(sessionId)
+  }
+
+  /**
    * Reset all state (for testing only)
    *
    * Clears all session mappings, subscription states, and stops cleanup interval.
@@ -454,6 +693,14 @@ export class GrantSessionManager {
     this.subscriptionSessions.clear()
     this.stopCleanupInterval()
     this.apm = null
+    this.requestRefreshCallback = null
+
+    // Clean up pending refreshes
+    for (const pending of this.pendingRefreshes.values()) {
+      clearTimeout(pending.timeoutId)
+      pending.resolve(false)
+    }
+    this.pendingRefreshes.clear()
 
     logger.debug('grants.session.reset', {
       message: 'Grant session manager reset (testing only)',

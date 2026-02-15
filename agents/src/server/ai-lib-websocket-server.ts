@@ -1702,6 +1702,50 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     // Start periodic cleanup of stale grant sessions
     grantSessionManager.startCleanupInterval()
 
+    // Register refresh callback to emit request_grant_refresh to frontend
+    // This allows the grant session manager to request fresh grants when exhausted
+    grantSessionManager.setRefreshCallback((sessionId: string) => {
+      // Get subscription info for logging correlation and alternative socket lookup
+      const subscriptionId = grantSessionManager.getSubscriptionIdForSession(sessionId)
+
+      // Try the original socket first
+      let socket = ioInstance.sockets.sockets.get(sessionId)
+
+      // If original socket disconnected, try to find another socket for the same subscription
+      // This handles the case where a user has multiple tabs open
+      if (!socket && subscriptionId) {
+        const alternativeSockets = grantSessionManager.getSocketsForSubscription(subscriptionId)
+        for (const altSocketId of alternativeSockets) {
+          if (altSocketId === sessionId) continue // Skip the original
+          const altSocket = ioInstance.sockets.sockets.get(altSocketId)
+          if (altSocket) {
+            logger.info('websocket.grant_context.refresh_using_alternative', {
+              originalSocketId: sessionId,
+              alternativeSocketId: altSocketId,
+              subscriptionId,
+            })
+            socket = altSocket
+            break
+          }
+        }
+      }
+
+      if (socket) {
+        logger.info('websocket.grant_context.refresh_emitted', {
+          socketId: socket.id,
+          subscriptionId,
+        })
+        socket.emit('request_grant_refresh')
+      } else {
+        // No connected sockets for this subscription - the pending refresh will timeout
+        logger.warn('websocket.grant_context.refresh_no_sockets', {
+          socketId: sessionId,
+          subscriptionId,
+          message: 'No connected sockets for subscription - refresh will timeout',
+        })
+      }
+    })
+
     // Graceful shutdown handler for grant session cleanup
     process.on('SIGTERM', () => {
       grantSessionManager.stopCleanupInterval()
