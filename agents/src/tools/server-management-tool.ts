@@ -75,13 +75,27 @@ export class ServerManagementTool {
           
           // Use built-in process status API instead of exec with ps/grep
           const processInfo = await devSupervisor.getProcessStatus();
-          
-          const isRunning = processInfo.state === 'running';
-          const status = processInfo.state === 'running' ? 'running' : 
-                        processInfo.state === 'error' ? 'error' : 'stopped';
-          
-          // Log health status
-          if (isRunning) {
+
+          // Map dev-supervisor states to tool status
+          // CRITICAL FIX for AIROBUILD-178: Treat transition states ('starting', 'stopping')
+          // as 'running' to prevent the agent from interfering with in-progress restarts.
+          //
+          // Bug: If we map 'starting' → 'stopped', the agent thinks the server crashed
+          // mid-restart and tries to start it again. This causes the SAME Node.js process
+          // to call listen() twice → ERR_SERVER_ALREADY_LISTEN.
+          //
+          // Solution: Treat transition states as "don't intervene" by mapping to 'running'.
+          // These are temporary states that will eventually resolve to a terminal state
+          // (running, stopped, or error).
+          const status = processInfo.state === 'error' ? 'error' :
+                        processInfo.state === 'running' ? 'running' :
+                        processInfo.state === 'starting' ? 'running' : // In-progress start
+                        processInfo.state === 'stopping' ? 'running' : // In-progress stop
+                        'stopped';
+
+          // Log health status based on the computed status (not raw state)
+          // This ensures transition states are logged as healthy, matching the returned status
+          if (status === 'running') {
             toolServerHealthEvents.healthy(this.logger, {
               toolName: 'server-management-tool',
               appId,
