@@ -73,6 +73,8 @@ export interface MediaSearchResult {
     urls?: string[];
     error?: string;
   }>;
+  // For video results - thumbnail image for preview
+  thumbnailUrl?: string;
   // For image generation
   filepath?: string;
   publicPath?: string;
@@ -295,15 +297,25 @@ export class MediaSearchTool {
         });
       }
 
+      // For videos, extract thumbnail URL from the item's display_sizes
+      let thumbnailUrl: string | undefined;
+      if (mediaType === 'video' && result.items[0]) {
+        const item = result.items[0];
+        // Prefer preview > thumbnail > standard for video thumbnails
+        thumbnailUrl = item.urls?.preview || item.urls?.thumbnail || item.urls?.standard;
+      }
+
       if (count === 1 && mediaUrls.length > 0) {
         return {
           success: true,
-          url: mediaUrls[0]!
+          url: mediaUrls[0]!,
+          ...(thumbnailUrl && { thumbnailUrl })
         };
       } else {
         return {
           success: true,
-          urls: mediaUrls
+          urls: mediaUrls,
+          ...(thumbnailUrl && { thumbnailUrl })
         };
       }
     } catch (error) {

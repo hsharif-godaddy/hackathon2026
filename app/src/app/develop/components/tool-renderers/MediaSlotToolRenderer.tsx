@@ -32,6 +32,8 @@ interface MediaSlotResultData {
 	mediaType: "image" | "video";
 	searchQuery: string;
 	resolvedUrl?: string;
+	/** For videos: thumbnail image URL for preview display */
+	thumbnailUrl?: string;
 	alternatives?: string[];
 	alternativeCount?: number;
 	error?: string;
@@ -52,6 +54,7 @@ export default function MediaSlotToolRenderer({
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 	const cardRef = useRef<HTMLButtonElement>(null);
+	const modalVideoRef = useRef<HTMLVideoElement>(null);
 	const [cardRect, setCardRect] = useState<DOMRect | null>(null);
 
 	// Parse input
@@ -75,6 +78,11 @@ export default function MediaSlotToolRenderer({
 	}
 
 	const hasResult = parsedResult?.success && parsedResult?.resolvedUrl;
+	const isVideo = parsedResult?.mediaType === "video";
+	// For videos, use thumbnailUrl for preview; for images, use resolvedUrl
+	const previewUrl = isVideo
+		? parsedResult?.thumbnailUrl || parsedResult?.resolvedUrl
+		: parsedResult?.resolvedUrl;
 	const allImages = hasResult
 		? [parsedResult!.resolvedUrl!, ...(parsedResult!.alternatives || [])]
 		: [];
@@ -102,6 +110,10 @@ export default function MediaSlotToolRenderer({
 	};
 
 	const handleCloseModal = () => {
+		// Pause video when closing modal
+		if (modalVideoRef.current) {
+			modalVideoRef.current.pause();
+		}
 		setIsModalOpen(false);
 	};
 
@@ -268,16 +280,33 @@ export default function MediaSlotToolRenderer({
 
 							{/* Content */}
 							<div className="p-3 overflow-y-auto flex-1">
-								{/* Main image preview */}
+								{/* Main preview - video player for videos, image for images */}
 								<div className="group/preview relative aspect-[4/3] rounded-lg overflow-hidden bg-intents-ux-boxLowContrast-backgroundColor max-h-80">
-									{/* eslint-disable-next-line @next/next/no-img-element */}
-									<img
-										src={ensureHttps(allImages[selectedImageIndex] || "")}
-										alt={parsedResult?.searchQuery || "Selected media"}
-										className="w-full h-full object-cover"
-									/>
-									{/* Replace overlay for non-current images - only shows on hover */}
-									{selectedImageIndex !== 0 && (
+									{isVideo ? (
+										/* Video player with thumbnail poster */
+										/* eslint-disable-next-line jsx-a11y/media-has-caption */
+										<video
+											ref={modalVideoRef}
+											src={ensureHttps(allImages[selectedImageIndex] || "")}
+											poster={
+												parsedResult?.thumbnailUrl
+													? ensureHttps(parsedResult.thumbnailUrl)
+													: undefined
+											}
+											className="w-full h-full object-contain"
+											controls
+										/>
+									) : (
+										/* Image display */
+										/* eslint-disable-next-line @next/next/no-img-element */
+										<img
+											src={ensureHttps(allImages[selectedImageIndex] || "")}
+											alt={parsedResult?.searchQuery || "Selected media"}
+											className="w-full h-full object-cover"
+										/>
+									)}
+									{/* Replace overlay for non-current images - only shows on hover (images only) */}
+									{!isVideo && selectedImageIndex !== 0 && (
 										<button
 											onClick={handleSwapImage}
 											className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-2 cursor-pointer opacity-0 group-hover/preview:opacity-100 transition-opacity"
@@ -379,11 +408,11 @@ export default function MediaSlotToolRenderer({
 				onClick={() => handleOpenModal(0)}
 				className="flex items-start gap-3 cursor-pointer group"
 			>
-				{/* Selected image */}
+				{/* Selected media preview (thumbnail for videos, image for images) */}
 				<div className="w-8 h-8 rounded-md overflow-hidden flex-shrink-0">
 					{/* eslint-disable-next-line @next/next/no-img-element */}
 					<img
-						src={ensureHttps(parsedResult.resolvedUrl!)}
+						src={ensureHttps(previewUrl || "")}
 						alt={parsedResult.searchQuery}
 						className="w-full h-full object-cover group-hover:scale-105 transition-transform"
 					/>

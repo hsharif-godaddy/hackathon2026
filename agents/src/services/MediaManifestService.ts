@@ -32,6 +32,8 @@ export interface MediaSize {
 export interface MediaSlot {
   mediaType: 'image' | 'video' | 'generated';
   currentUrl: string;
+  /** For videos: thumbnail image URL for preview display */
+  thumbnailUrl?: string;
   searchQuery: string;
   requestedSize?: MediaSize;
   orientations?: string;

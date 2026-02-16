@@ -184,6 +184,7 @@ var allowedImageRedirectHosts = map[string]struct{}{
 	"media.gettyimages.com":                     {},
 	"media.istockphoto.com":                     {},
 	"oaidalleapiprodscus.blob.core.windows.net": {}, // DALL-E
+	"blobby.wsimg.com":                          {}, // GoDaddy image hosting
 }
 
 // ImageSlotHandler handles requests for image slots.

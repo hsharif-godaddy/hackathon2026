@@ -29,6 +29,7 @@ interface ImageResult {
 interface VideoResult {
   prompt: string
   url: string
+  thumbnailUrl?: string
 }
 
 /**
@@ -126,7 +127,11 @@ export default function MediaSearchToolRenderer({
         }
       } else if (parsedResult && mediaType === 'video' && parsedResult.url) {
         const prompt = typeof parsedResult.prompt === 'string' ? parsedResult.prompt : 'Video'
-        video = { prompt, url: parsedResult.url }
+        video = {
+          prompt,
+          url: parsedResult.url,
+          thumbnailUrl: parsedResult.thumbnailUrl
+        }
       }
     } catch (e) {
       logger.error('tool.media_search.parse.failed', {
@@ -269,6 +274,7 @@ export default function MediaSearchToolRenderer({
                     <video
                       ref={modalVideoRef}
                       src={video.url}
+                      poster={video.thumbnailUrl ? ensureHttps(video.thumbnailUrl) : undefined}
                       className="max-w-full max-h-[70vh] rounded-lg shadow-lg"
                       controls
                     />
@@ -404,6 +410,7 @@ export default function MediaSearchToolRenderer({
               <video
                 ref={inlineVideoRef}
                 src={video.url}
+                poster={video.thumbnailUrl ? ensureHttps(video.thumbnailUrl) : undefined}
                 className="w-full object-contain rounded-md"
                 onClick={handleInlinePlayPause}
                 onPlay={() => setIsPlaying(true)}

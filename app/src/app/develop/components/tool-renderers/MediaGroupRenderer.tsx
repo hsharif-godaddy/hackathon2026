@@ -29,6 +29,8 @@ interface MediaSlotResultData {
   mediaType: 'image' | 'video'
   searchQuery: string
   resolvedUrl?: string
+  /** For videos: thumbnail image URL for preview display */
+  thumbnailUrl?: string
   alternatives?: string[]
   alternativeCount?: number
   error?: string
@@ -166,18 +168,25 @@ export default function MediaGroupRenderer({
     <div className="my-2">
       {/* Horizontal scroll container with vertical cards */}
       <div className="flex gap-3 overflow-x-auto pb-2 -mb-2">
-        {completedSlots.map((slot) => (
+        {completedSlots.map((slot) => {
+          // For videos, use thumbnailUrl for preview; for images, use resolvedUrl
+          const isVideo = slot.result!.mediaType === 'video'
+          const previewUrl = isVideo
+            ? slot.result!.thumbnailUrl || slot.result!.resolvedUrl
+            : slot.result!.resolvedUrl
+
+          return (
           <button
             type="button"
             key={slot.toolCall.id}
             onClick={() => handleThumbnailClick(slot.result!.slot)}
             className="flex-shrink-0 w-12 cursor-pointer group text-left"
           >
-            {/* Square image */}
+            {/* Square thumbnail (uses thumbnailUrl for videos, resolvedUrl for images) */}
             <div className="w-12 h-12 rounded-md overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={ensureHttps(slot.result!.resolvedUrl!)}
+                src={ensureHttps(previewUrl || '')}
                 alt={slot.result!.searchQuery}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform"
               />
@@ -194,7 +203,8 @@ export default function MediaGroupRenderer({
               </p>
             )}
           </button>
-        ))}
+          )
+        })}
 
         {/* Running slots placeholder */}
         {runningSlots.map((slot) => (

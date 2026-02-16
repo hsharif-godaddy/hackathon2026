@@ -56,6 +56,8 @@ export interface MediaSlotResult {
   mediaType: 'image' | 'video';
   searchQuery: string;
   resolvedUrl?: string;
+  /** For videos: thumbnail image URL for preview display */
+  thumbnailUrl?: string;
   alternatives?: string[];
   alternativeCount?: number;
   error?: string;
@@ -172,11 +174,15 @@ export class MediaSlotTool {
       const primaryUrl = urls[0]!;
       const alternatives = urls.slice(1);
 
+      // Extract thumbnail URL for videos (from Getty's display_sizes)
+      const thumbnailUrl = mediaType === 'video' ? searchResult.thumbnailUrl : undefined;
+
       // Build the slot entry
       const now = new Date().toISOString();
       const slotEntry: MediaSlot = {
         mediaType,
         currentUrl: primaryUrl,
+        ...(thumbnailUrl && { thumbnailUrl }),
         searchQuery: query,
         alternatives,
         userModified: false,
@@ -227,6 +233,7 @@ export class MediaSlotTool {
         mediaType,
         searchQuery: query,
         resolvedUrl: primaryUrl,
+        ...(thumbnailUrl && { thumbnailUrl }),
         alternatives,
         alternativeCount: alternatives.length,
       };
