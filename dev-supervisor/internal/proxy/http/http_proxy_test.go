@@ -2149,7 +2149,7 @@ func TestHTTPProxy_HealthCheck_IdledButWasHealthy(t *testing.T) {
 	require.NoError(t, err, "should parse JSON response")
 
 	assert.Equal(t, "healthy", resp.Status, "status should be 'healthy'")
-	assert.Equal(t, "idle", resp.Reason, "reason should be 'idle'")
+	assert.Equal(t, "autostart", resp.Reason, "reason should be 'autostart'")
 
 	// Verify cache headers are set
 	assert.Contains(t, rec.Header().Get("Cache-Control"), "no-cache",
@@ -2160,14 +2160,14 @@ func TestHTTPProxy_HealthCheck_IdledButWasHealthy(t *testing.T) {
 	assert.Equal(t, "0", rec.Header().Get("Expires"), "should have Expires: 0")
 }
 
-// TestHTTPProxy_HealthCheck_StoppedNotFromIdle tests that health check returns 503
-// for a process that was stopped explicitly (not from idle)
-func TestHTTPProxy_HealthCheck_StoppedNotFromIdle(t *testing.T) {
+// TestHTTPProxy_HealthCheck_StartOnRequestColdStart tests that health check returns 200
+// when start-on-request is enabled but the app hasn't started yet (cold start)
+func TestHTTPProxy_HealthCheck_StartOnRequestColdStart(t *testing.T) {
 	procMgr := &fakeProcessController{
 		status: ProcessStatus{
 			State: ProcessStateStopped,
 		},
-		wasHealthyBeforeIdle:  false,
+		wasHealthyBeforeIdle:  false, // Never started yet (cold start)
 		startOnRequestEnabled: true,
 	}
 
@@ -2189,16 +2189,24 @@ func TestHTTPProxy_HealthCheck_StoppedNotFromIdle(t *testing.T) {
 
 	proxy.handleHealthCheck(rec, req)
 
-	// Should return 503 with unhealthy status
-	assert.Equal(t, http.StatusServiceUnavailable, rec.Code,
-		"health check should return 503 for explicitly stopped app")
+	// Should return 200 with healthy status and reason "start_on_request"
+	assert.Equal(t, http.StatusOK, rec.Code,
+		"health check should return 200 for start-on-request cold start")
 
 	var resp ProxyHealthResponse
 	err := json.Unmarshal(rec.Body.Bytes(), &resp)
 	require.NoError(t, err, "should parse JSON response")
 
-	assert.Equal(t, "unhealthy", resp.Status, "status should be 'unhealthy'")
-	assert.Equal(t, "target not reachable", resp.Reason, "reason should indicate target not reachable")
+	assert.Equal(t, "healthy", resp.Status, "status should be 'healthy'")
+	assert.Equal(t, "autostart", resp.Reason, "reason should be 'autostart'")
+
+	// Verify cache headers are set
+	assert.Contains(t, rec.Header().Get("Cache-Control"), "no-cache",
+		"should have no-cache in Cache-Control")
+	assert.Contains(t, rec.Header().Get("Cache-Control"), "no-store",
+		"should have no-store in Cache-Control")
+	assert.Equal(t, "no-cache", rec.Header().Get("Pragma"), "should have Pragma: no-cache")
+	assert.Equal(t, "0", rec.Header().Get("Expires"), "should have Expires: 0")
 }
 
 // TestHTTPProxy_HealthCheck_RunningProcess tests that health check probes

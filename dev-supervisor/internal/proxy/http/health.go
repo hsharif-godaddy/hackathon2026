@@ -37,18 +37,18 @@ func (p *HTTPProxy) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if process is idled but was healthy before idle (start-on-request mode only)
-	// This allows health checks to pass for idled apps without waking them
+	// Check if process is stopped but will autostart on request
+	// If backend is not running but start-on-request is enabled, the system is ready to serve requests
 	if p.procMgr != nil && p.startOnRequestEnabled {
 		status := p.procMgr.GetStatus()
-		if status.State == ProcessStateStopped && p.procMgr.WasHealthyBeforeIdle() {
-			slog.Debug("proxy.health.idle_healthy",
+		if status.State == ProcessStateStopped {
+			slog.Debug("proxy.health.autostart_ready",
 				"remote_addr", r.RemoteAddr,
 				"state", status.State)
 
 			resp := ProxyHealthResponse{
 				Status: "healthy",
-				Reason: "idle",
+				Reason: "autostart",
 			}
 			w.WriteHeader(http.StatusOK)
 			if err := json.NewEncoder(w).Encode(resp); err != nil {
