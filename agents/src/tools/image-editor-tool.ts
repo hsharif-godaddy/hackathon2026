@@ -29,7 +29,7 @@ export class ImageEditorTool {
   private appRepository: AppRepository;
 
   constructor(appRepository?: AppRepository) {
-    this.appsBaseDir = process.env.APPS_BASE_DIR || '/tmp/apps';
+    this.appsBaseDir = process.env.APPS_BASE_DIR || '/tmp/airo-app-builder';
     this.appRepository = appRepository || new AppRepository();
   }
 

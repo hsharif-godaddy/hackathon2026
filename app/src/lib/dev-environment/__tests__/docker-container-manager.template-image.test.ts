@@ -60,7 +60,7 @@ describe('DockerContainerManager - Template Image Build Logic', () => {
       expect(buildCall?.[1]).toContain('aab-template-v8:latest');
     });
 
-    it('should include build contexts for dev-ca, dev-supervisor, and publish', async () => {
+    it('should include build contexts for dev-ca and dev-supervisor', async () => {
       // Setup
       mockExeca.mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
 
@@ -82,7 +82,7 @@ describe('DockerContainerManager - Template Image Build Logic', () => {
         }
       });
 
-      expect(buildContextIndices.length).toBeGreaterThanOrEqual(3);
+      expect(buildContextIndices.length).toBe(2);
 
       // Get all build context values
       const buildContexts = buildContextIndices.map(index => args?.[index + 1]);
@@ -90,7 +90,7 @@ describe('DockerContainerManager - Template Image Build Logic', () => {
       // Check for required build contexts
       expect(buildContexts.some(ctx => ctx?.match(/dev-ca=.*\.dev-ca/))).toBe(true);
       expect(buildContexts.some(ctx => ctx?.match(/dev-supervisor=.*dev-supervisor/))).toBe(true);
-      expect(buildContexts.some(ctx => ctx?.match(/publish=.*publish/))).toBe(true);
+      // Note: publish build context removed - publish image built separately
     });
 
     it('should pass HOST_UID and HOST_GID build arguments', async () => {
@@ -181,6 +181,92 @@ describe('DockerContainerManager - Template Image Build Logic', () => {
         call => call[0] === 'docker' && Array.isArray(call[1]) && call[1][0] === 'buildx'
       );
       expect(buildCall?.[1]).toContain('aab-template-v8:latest');
+    });
+  });
+
+  describe('Publish Image Build Logic', () => {
+    it('should call docker buildx build with correct image name for publish', async () => {
+      // Setup
+      mockExeca.mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
+
+      // Execute
+      await (manager as any).ensurePublishImage();
+
+      // Verify
+      const buildCall = mockExeca.mock.calls.find(
+        call => call[0] === 'docker' && Array.isArray(call[1]) && call[1][0] === 'buildx'
+      );
+      expect(buildCall).toBeDefined();
+      expect(buildCall?.[1]).toContain('build');
+      expect(buildCall?.[1]).toContain('-t');
+      expect(buildCall?.[1]).toContain('aab-publish:latest');
+    });
+
+    it('should specify correct Dockerfile path for publish image', async () => {
+      // Setup
+      mockExeca.mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
+
+      // Execute
+      await (manager as any).ensurePublishImage();
+
+      // Verify
+      const buildCall = mockExeca.mock.calls.find(
+        call => call[0] === 'docker' && Array.isArray(call[1]) && call[1][0] === 'buildx'
+      );
+      const args = buildCall?.[1] as string[] | undefined;
+      expect(args).toBeDefined();
+      expect(args).toContain('-f');
+
+      const dockerfileIndex = args?.indexOf('-f');
+      if (dockerfileIndex !== undefined && dockerfileIndex !== -1) {
+        expect(args?.[dockerfileIndex + 1]).toMatch(/app-publish\/Dockerfile\.dev$/);
+      }
+    });
+
+    it('should use app-publish as build context with dev-supervisor mounted separately', async () => {
+      // Setup
+      mockExeca.mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
+
+      // Execute
+      await (manager as any).ensurePublishImage();
+
+      // Verify
+      const buildCall = mockExeca.mock.calls.find(
+        call => call[0] === 'docker' && Array.isArray(call[1]) && call[1][0] === 'buildx'
+      );
+      const args = buildCall?.[1] as string[] | undefined;
+      expect(args).toBeDefined();
+
+      // Should include --build-context for dev-supervisor
+      expect(args).toContain('--build-context');
+      const contextIndex = args?.indexOf('--build-context');
+      if (contextIndex !== undefined && contextIndex !== -1) {
+        const contextArg = args?.[contextIndex + 1];
+        expect(contextArg).toMatch(/^dev-supervisor=/);
+      }
+
+      // Last argument should be the build context (app-publish directory)
+      const lastArg = args?.[args.length - 1];
+      expect(lastArg).toBeDefined();
+      expect(lastArg).toMatch(/app-publish$/);
+    });
+
+    it('should throw descriptive error when publish image build fails', async () => {
+      // Setup: Build command fails
+      mockExeca.mockRejectedValueOnce(new Error('Docker daemon not running'));
+
+      // Execute & Verify
+      await expect((manager as any).ensurePublishImage())
+        .rejects.toThrow('Failed to build publish image: Docker daemon not running');
+    });
+
+    it('should handle non-Error exceptions for publish image', async () => {
+      // Setup: Non-standard error
+      mockExeca.mockRejectedValueOnce('String error');
+
+      // Execute & Verify
+      await expect((manager as any).ensurePublishImage())
+        .rejects.toThrow('Failed to build publish image: String error');
     });
   });
 });

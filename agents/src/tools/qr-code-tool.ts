@@ -29,7 +29,7 @@ export class QRCodeTool {
   private appsBaseDir: string;
 
   constructor(appsBaseDir?: string) {
-    this.appsBaseDir = appsBaseDir || process.env.APPS_BASE_DIR || '/tmp/apps';
+    this.appsBaseDir = appsBaseDir || process.env.APPS_BASE_DIR || '/tmp/airo-app-builder';
   }
 
   /**

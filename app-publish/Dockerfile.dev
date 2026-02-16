@@ -1,0 +1,72 @@
+ARG UPSTREAM_VERSION=22
+
+# =================================================================
+# Build dev-supervisor stage
+# =================================================================
+FROM golang:1.25-alpine AS dev-supervisor-builder
+
+USER root
+
+# Install build dependencies
+RUN apk add --no-cache git make ca-certificates tzdata
+
+WORKDIR /build
+
+# Copy go mod files from build context
+# dev-supervisor is mounted as a build context by docker-container-manager
+COPY --from=dev-supervisor go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code from build context
+COPY --from=dev-supervisor . .
+
+# Build binary with static linking for Alpine
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o dev-supervisor .
+
+# =================================================================
+# Build publish app stage
+# =================================================================
+FROM node:${UPSTREAM_VERSION}-alpine
+
+USER root
+
+# Install runtime dependencies
+# Publish image only extracts pre-built tarballs - no compilation needed
+RUN apk add --no-cache curl git ca-certificates tzdata bash jq yq ripgrep
+
+# Create the agent user and group
+# Hardcoded GID/UID 790 to match production
+RUN addgroup -S -g 790 agent && \
+    adduser -S -G agent -u 790 agent
+
+# Copy dev-supervisor binary from builder stage
+COPY --chown=agent:agent --from=dev-supervisor-builder /build/dev-supervisor /usr/local/bin/dev-supervisor
+
+# Copy publish scripts from main build context (app-publish/)
+COPY --chown=agent:agent run-app.sh /publish/run-app.sh
+COPY --chown=agent:agent coming-soon.js /publish/coming-soon.js
+
+# Enable corepack (for pnpm), create directories, and set permissions
+# Pin versions to match project (pnpm@10.17.0) and Node 22 (corepack@0.34.0) for reproducible builds
+RUN chmod +x /usr/local/bin/dev-supervisor /publish/run-app.sh && \
+    npm install --yes --global corepack@0.34.0 && \
+    corepack enable && \
+    corepack install --global pnpm@10.17.0 && \
+    mkdir -p logs /app /dist && \
+    chown -R agent:agent /app /dist /publish logs
+
+# Environment variables for production mode
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+    NODE_ENV=production \
+    RUNNING_IN_DOCKER=true \
+    DIST_DIR=/dist
+
+# Switch to the agent user so we are not running as root
+USER agent
+WORKDIR /app
+
+# Use dev-supervisor as PID 1 to manage the publish process
+ENTRYPOINT ["/usr/local/bin/dev-supervisor"]
+CMD ["exec", "/publish/run-app.sh"]

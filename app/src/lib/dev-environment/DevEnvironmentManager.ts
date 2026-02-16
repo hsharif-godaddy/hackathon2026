@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 
 import { execa } from 'execa';
 import { appendFileSync, existsSync, promises as fsPromises, readdirSync, readFileSync, writeFileSync } from 'fs';
@@ -9,7 +10,7 @@ import { createAppAdapter, getAdapterType } from './adapters';
 import type { IAppAdapter, ServerStatus } from './adapters/interfaces/IAppAdapter';
 import { type DevAppInfo, DevDatabase } from './database/DevDatabase';
 import { TemplateCopyService } from './services/TemplateCopyService';
-import { getAllocPath, getAppPath, getBasePath } from './utils/app-paths';
+import { getAllocPath, getAppPath, getAppsBaseDir, getBasePath } from './utils/app-paths';
 import { GitUtils } from './utils/git';
 import { PortManager } from './utils/port-manager';
 import { SSLCertificateGenerator } from './utils/ssl-cert-generator';
@@ -154,73 +155,53 @@ export class DevEnvironmentManager {
 
       // 3. Determine app paths using centralized utility
       const basePath = getBasePath(siteId);
-      const appPath = getAppPath(siteId);
+      const previewPath = getAppPath(siteId); // Returns preview/ for V4 parity
+      const publishPath = path.join(basePath, 'publish');
+      const gitRepoPath = path.join(basePath, 'git-repo');
+      const assetsPath = path.join(basePath, 'assets');
+      const agentPath = path.join(basePath, 'agent');
+      const distPath = path.join(basePath, 'dist');
       const allocPath = getAllocPath(siteId);
 
-      // Ensure base and subdirectories exist
+      // Create base directory
       if (!existsSync(basePath)) {
         await fsPromises.mkdir(basePath, { recursive: true });
       }
-      if (!existsSync(allocPath)) {
-        await fsPromises.mkdir(allocPath, { recursive: true });
-      }
 
-      // Create V4 unified job directory structure (assets and dist)
-      // Security: siteId is a system-generated UUID from database, not user input.
-      // Subdirectories are hardcoded constants. Path traversal not possible.
-      // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-      const assetsPublicPath = path.join(appPath, 'assets', 'public');
-      // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-      const assetsPrivatePath = path.join(appPath, 'assets', 'private');
-      // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-      const distPath = path.join(appPath, 'dist');
-      // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-      const publishDistPath = path.join(basePath, 'dist');
+      // Create V4 unified job directory structure
+      const directories = [
+        { path: previewPath, name: 'preview workspace' },
+        { path: publishPath, name: 'publish workspace' },
+        { path: gitRepoPath, name: 'git repository' },
+        { path: path.join(assetsPath, 'public'), name: 'assets/public' },
+        { path: path.join(assetsPath, 'private'), name: 'assets/private' },
+        { path: agentPath, name: 'agent database directory' },
+        { path: distPath, name: 'distribution archives' },
+        { path: allocPath, name: 'configuration' },
+      ];
 
-      if (!existsSync(assetsPublicPath)) {
-        await fsPromises.mkdir(assetsPublicPath, { recursive: true });
-        logger.info('dev-environment.directories.created', {
-          siteId,
-          path: assetsPublicPath,
-          message: 'Created assets/public directory'
-        });
-      }
-      if (!existsSync(assetsPrivatePath)) {
-        await fsPromises.mkdir(assetsPrivatePath, { recursive: true });
-        logger.info('dev-environment.directories.created', {
-          siteId,
-          path: assetsPrivatePath,
-          message: 'Created assets/private directory'
-        });
-      }
-      if (!existsSync(distPath)) {
-        await fsPromises.mkdir(distPath, { recursive: true });
-        logger.info('dev-environment.directories.created', {
-          siteId,
-          path: distPath,
-          message: 'Created dist directory for versioned releases'
-        });
-      }
-      if (!existsSync(publishDistPath)) {
-        await fsPromises.mkdir(publishDistPath, { recursive: true });
-        logger.info('dev-environment.directories.created', {
-          siteId,
-          path: publishDistPath,
-          message: 'Created dist directory for published apps'
-        });
+      for (const { path: dirPath, name } of directories) {
+        if (!existsSync(dirPath)) {
+          await fsPromises.mkdir(dirPath, { recursive: true });
+          logger.info('dev-environment.directories.created', {
+            siteId,
+            path: dirPath,
+            message: `Created ${name} directory`
+          });
+        }
       }
 
       // Note: Coming soon server is handled by dev-supervisor when no published version exists
       // No need to pre-create /dist/current directory - dev-supervisor will create symlink on first publish
 
       // Copy V4 unified job entrypoint script if using Docker mode with publish ports
-      // Security: appPath/templateVersion derived from system UUIDs, filenames are hardcoded
+      // Security: previewPath/templateVersion derived from system UUIDs, filenames are hardcoded
       if (!this.adapter?.getCapabilities().supportsProcessOperations && publishSupervisorPort && publishPort) {
         // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-        const entrypointScriptPath = path.join(appPath, 'dev_entrypoint.sh');
+        const entrypointScriptPath = path.join(previewPath, 'dev_entrypoint.sh');
         // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
         const templateScriptPath = path.join(process.cwd(), 'app-templates', templateVersion, 'dev_entrypoint.sh');
-        
+
         if (existsSync(templateScriptPath)) {
           const scriptContent = readFileSync(templateScriptPath, 'utf-8');
           writeFileSync(entrypointScriptPath, scriptContent, 'utf-8');
@@ -247,26 +228,33 @@ export class DevEnvironmentManager {
         supervisorPort,
         publishSupervisorPort,
         publishPort,
-        appPath,
+        appPath: previewPath, // Agent writes to preview workspace
         templateVersion,
         status: 'creating'
       });
 
       // 5. Set up template (only runs for new/error apps now)
       // Set up the app using the template copy service
-      await this.setupAppFromTemplate(siteId, appPath, name);
+      await this.setupAppFromTemplate(siteId, previewPath, name);
+
+      // Setup assets bind mount structure (after template copy)
+      await this.setupAssetsBindMount(siteId, previewPath, assetsPath);
 
       // Generate SSL certificates for HTTPS development
-      await this.generateSSLCertificates(siteId, appPath);
+      await this.generateSSLCertificates(siteId, previewPath);
 
       // Copy SSL certificates to /alloc/.ssl/ for publish container access
       // The publish container doesn't have /app mounted, so it needs certs in /alloc
-      await this.copySSLCertsToAlloc(siteId, appPath, allocPath);
+      await this.copySSLCertsToAlloc(siteId, previewPath, allocPath);
 
-      // Initialize Git repository (skip for Docker mode - container handles it via script)
-      if (this.adapter?.getCapabilities().supportsProcessOperations) {
-        await this.initializeGitRepository(siteId, appPath, name);
-      }
+      // Initialize Git repository on host filesystem (V4 parity: git is external to container)
+      // Previously skipped in Docker mode, but V4 architecture requires git-repo to exist
+      // before container starts so it can be bind-mounted
+      await this.initializeGitRepository(siteId, previewPath, name);
+
+      // Setup git-repo bind mount structure (after git initialization)
+      // Move .git to git-repo/ and create symlink preview/.git -> ../git-repo/.git
+      await this.setupGitRepoBindMount(siteId, previewPath, gitRepoPath);
 
       // Update status to created
       this.devDb.updateDevAppStatus(siteId, 'created');
@@ -280,7 +268,7 @@ export class DevEnvironmentManager {
         success: true,
         appId: siteId,
         port,
-        appPath,
+        appPath: previewPath,
         templateVersion,
         urls
       };
@@ -621,6 +609,286 @@ export class DevEnvironmentManager {
   }
 
   /**
+   * Create bind mount structure for git-repo
+   * Git initializes in preview/.git, then we move it to git-repo/ and symlink
+   *
+   * Handles race conditions and ensures idempotent operations.
+   */
+  private async setupGitRepoBindMount(appId: string, previewPath: string, gitRepoPath: string): Promise<void> {
+    const previewGitPath = path.join(previewPath, '.git');
+    const gitRepoGitPath = path.join(gitRepoPath, '.git');
+
+    try {
+      // Check if preview/.git exists and what it is
+      let previewGitExists = false;
+      let previewGitIsSymlink = false;
+
+      try {
+        const previewGitStat = await fsPromises.lstat(previewGitPath);
+        previewGitExists = true;
+        previewGitIsSymlink = previewGitStat.isSymbolicLink();
+      } catch (error: any) {
+        if (error.code !== 'ENOENT') {
+          throw new Error(`Failed to stat ${previewGitPath}: ${error.message}`);
+        }
+      }
+
+      // If preview/.git is already a symlink, assume setup is complete
+      if (previewGitIsSymlink) {
+        logger.debug('dev-environment.git-repo.already-linked', {
+          appId,
+          link: previewGitPath,
+        });
+        return;
+      }
+
+      // If .git exists in preview as a directory, move it to git-repo
+      if (previewGitExists) {
+        // Check if git-repo/.git already exists
+        const gitRepoGitExists = existsSync(gitRepoGitPath);
+
+        if (!gitRepoGitExists) {
+          // Move .git to git-repo (atomic operation)
+          await fsPromises.rename(previewGitPath, gitRepoGitPath);
+
+          logger.info('dev-environment.git-repo.moved', {
+            appId,
+            from: previewGitPath,
+            to: gitRepoGitPath,
+          });
+        } else {
+          // git-repo/.git already exists, remove preview/.git to avoid conflict
+          await fsPromises.rm(previewGitPath, { recursive: true, force: true });
+
+          logger.warn('dev-environment.git-repo.removed-duplicate', {
+            appId,
+            path: previewGitPath,
+            message: 'Removed duplicate .git directory in preview',
+          });
+        }
+      }
+
+      // Create symlink preview/.git -> ../git-repo/.git (idempotent)
+      try {
+        await this.createDirectorySymlink('../git-repo/.git', previewGitPath);
+
+        logger.info('dev-environment.git-repo.linked', {
+          appId,
+          link: previewGitPath,
+          target: '../git-repo/.git',
+        });
+      } catch (error: any) {
+        // EEXIST is expected if another process created the symlink
+        if (error.code === 'EEXIST') {
+          logger.debug('dev-environment.git-repo.symlink-exists', {
+            appId,
+            link: previewGitPath,
+            message: 'Symlink already exists (race condition handled)',
+          });
+        } else {
+          throw error;
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('dev-environment.git-repo.setup-failure', {
+        appId,
+        previewPath,
+        gitRepoPath,
+        error: errorMessage,
+      });
+
+      // Re-throw with context for proper error handling upstream
+      throw new Error(`Failed to setup git-repo bind mount for app ${appId}: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Setup assets bind mount structure
+   * Moves assets from preview/ to assets/ and creates symlinks
+   *
+   * Uses merge strategy to prevent data loss - if assets already exist in both locations,
+   * preserves existing files and only copies new ones. Handles race conditions and ensures
+   * idempotent operations.
+   */
+  private async setupAssetsBindMount(appId: string, previewPath: string, assetsPath: string): Promise<void> {
+    const previewAssetsPath = path.join(previewPath, 'assets');
+
+    try {
+      // Check if preview/assets exists and what it is
+      let previewAssetsExists = false;
+      let previewAssetsIsSymlink = false;
+
+      try {
+        const previewAssetsStat = await fsPromises.lstat(previewAssetsPath);
+        previewAssetsExists = true;
+        previewAssetsIsSymlink = previewAssetsStat.isSymbolicLink();
+      } catch (error: any) {
+        if (error.code !== 'ENOENT') {
+          throw new Error(`Failed to stat ${previewAssetsPath}: ${error.message}`);
+        }
+      }
+
+      // If preview/assets is already a symlink, remove it.
+      // Docker bind mounts handle assets directly, and the symlink would be broken in-container.
+      if (previewAssetsIsSymlink) {
+        await fsPromises.unlink(previewAssetsPath);
+        logger.info('dev-environment.assets.symlink-removed', {
+          appId,
+          link: previewAssetsPath,
+          message: 'Removed preview/assets symlink to avoid broken path in container',
+        });
+        return;
+      }
+
+      // If assets exist in preview as a directory, merge them to assets/
+      if (previewAssetsExists) {
+        const publicSrc = path.join(previewAssetsPath, 'public');
+        const privateSrc = path.join(previewAssetsPath, 'private');
+        const publicDest = path.join(assetsPath, 'public');
+        const privateDest = path.join(assetsPath, 'private');
+
+        // Merge public assets if they exist (preserves existing files)
+        if (existsSync(publicSrc) && readdirSync(publicSrc).length > 0) {
+          const publicDestExists = existsSync(publicDest);
+
+          if (publicDestExists) {
+            // Merge: copy files that don't already exist in destination
+            const srcFiles = await fsPromises.readdir(publicSrc, { recursive: true, withFileTypes: true });
+            let mergedCount = 0;
+            let skippedCount = 0;
+
+            for (const entry of srcFiles) {
+              if (entry.isFile()) {
+                const relativePath = path.relative(publicSrc, path.join(entry.path, entry.name));
+                const destFile = path.join(publicDest, relativePath);
+
+                if (!existsSync(destFile)) {
+                  const srcFile = path.join(entry.path, entry.name);
+                  const destDir = path.dirname(destFile);
+
+                  // Ensure destination directory exists
+                  await fsPromises.mkdir(destDir, { recursive: true });
+                  await fsPromises.copyFile(srcFile, destFile);
+                  mergedCount++;
+                } else {
+                  skippedCount++;
+                }
+              }
+            }
+
+            logger.info('dev-environment.assets.merged', {
+              appId,
+              type: 'public',
+              mergedFiles: mergedCount,
+              skippedFiles: skippedCount,
+            });
+          } else {
+            // No existing assets, just copy
+            await fsPromises.cp(publicSrc, publicDest, { recursive: true, force: true });
+            logger.info('dev-environment.assets.copied', {
+              appId,
+              type: 'public',
+              from: publicSrc,
+              to: publicDest,
+            });
+          }
+        }
+
+        // Merge private assets if they exist (preserves existing files)
+        if (existsSync(privateSrc) && readdirSync(privateSrc).length > 0) {
+          const privateDestExists = existsSync(privateDest);
+
+          if (privateDestExists) {
+            // Merge: copy files that don't already exist in destination
+            const srcFiles = await fsPromises.readdir(privateSrc, { recursive: true, withFileTypes: true });
+            let mergedCount = 0;
+            let skippedCount = 0;
+
+            for (const entry of srcFiles) {
+              if (entry.isFile()) {
+                const relativePath = path.relative(privateSrc, path.join(entry.path, entry.name));
+                const destFile = path.join(privateDest, relativePath);
+
+                if (!existsSync(destFile)) {
+                  const srcFile = path.join(entry.path, entry.name);
+                  const destDir = path.dirname(destFile);
+
+                  // Ensure destination directory exists
+                  await fsPromises.mkdir(destDir, { recursive: true });
+                  await fsPromises.copyFile(srcFile, destFile);
+                  mergedCount++;
+                } else {
+                  skippedCount++;
+                }
+              }
+            }
+
+            logger.info('dev-environment.assets.merged', {
+              appId,
+              type: 'private',
+              mergedFiles: mergedCount,
+              skippedFiles: skippedCount,
+            });
+          } else {
+            // No existing assets, just copy
+            await fsPromises.cp(privateSrc, privateDest, { recursive: true, force: true });
+            logger.info('dev-environment.assets.copied', {
+              appId,
+              type: 'private',
+              from: privateSrc,
+              to: privateDest,
+            });
+          }
+        }
+
+        // Only remove preview/assets after successful copy/merge
+        await fsPromises.rm(previewAssetsPath, { recursive: true, force: true });
+      }
+
+      // Do not recreate preview/assets symlink in Docker mode.
+      // Bind mounts provide /app/public/assets and /private directly.
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('dev-environment.assets.setup-failure', {
+        appId,
+        previewPath,
+        assetsPath,
+        error: errorMessage,
+      });
+
+      // Re-throw with context for proper error handling upstream
+      throw new Error(`Failed to setup assets bind mount for app ${appId}: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Create a directory symlink with platform-specific handling
+   *
+   * - Unix/Linux/macOS: Uses standard directory symlink
+   * - Windows: Uses junction points for better compatibility (no admin required)
+   *
+   * @param target - Relative or absolute path to target directory
+   * @param link - Path where symlink/junction should be created
+   */
+  private async createDirectorySymlink(target: string, link: string): Promise<void> {
+    const platform = os.platform();
+
+    if (platform === 'win32') {
+      // Windows: Use junction points for directory symlinks
+      // Junctions don't require admin privileges and work well for local filesystem
+      // Note: Target must be absolute path for junctions
+      const isRelative = !path.isAbsolute(target);
+      const absoluteTarget = isRelative ? path.resolve(path.dirname(link), target) : target;
+
+      await fsPromises.symlink(absoluteTarget, link, 'junction');
+    } else {
+      // Unix-like: Use standard directory symlink
+      await fsPromises.symlink(target, link, 'dir');
+    }
+  }
+
+  /**
    * Clean up a dev app (used on creation failure)
    */
   private async cleanupDevApp(appId: string): Promise<void> {
@@ -869,11 +1137,11 @@ export class DevEnvironmentManager {
   }
 
   /**
-   * Get all app directories under /tmp/apps
+   * Get all app directories under apps base directory
    * Returns array of app IDs (directory names)
    */
   private async getAppDirectories(): Promise<string[]> {
-    const appsDir = '/tmp/apps';
+    const appsDir = getAppsBaseDir();
 
     if (!fs.existsSync(appsDir)) {
       return [];

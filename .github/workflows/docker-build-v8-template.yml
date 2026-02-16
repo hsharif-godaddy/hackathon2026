@@ -7,14 +7,14 @@ on:
     paths:
       - "app-templates/v8/**"
       - "dev-supervisor/**"
-      - "publish/**"
+      - "app-publish/**"
       - ".github/workflows/docker-build-v8-template.yml"
   push:
     branches: [main]
     paths:
       - "app-templates/v8/**"
       - "dev-supervisor/**"
-      - "publish/**"
+      - "app-publish/**"
       - ".github/workflows/docker-build-v8-template.yml"
 
 permissions:
@@ -76,13 +76,25 @@ jobs:
           docker build --platform linux/amd64 \
             --build-context dev-ca=.dev-ca \
             --build-context dev-supervisor=dev-supervisor \
-            --build-context publish=publish \
             -t airo-v8-template:latest \
             -f app-templates/v8/Dockerfile.dev \
             app-templates/v8/
           echo "V8 Template Docker image built successfully"
 
+      - name: Build Docker Image (Publish)
+        env:
+          NODE_ENV: production
+        run: |
+          echo "Building Docker image for publish container (no source code)..."
+          docker build --platform linux/amd64 \
+            --build-context dev-supervisor=dev-supervisor \
+            -t aab-publish:latest \
+            -f app-publish/Dockerfile.dev \
+            app-publish/
+          echo "Publish Docker image built successfully"
+
       - name: Clean up Docker images
         if: always()
         run: |
           docker rmi airo-v8-template:latest || true
+          docker rmi aab-publish:latest || true

@@ -1,0 +1,5 @@
+# .dockerignore for publish image
+# Context is app-publish/ directory (dev-supervisor mounted via --build-context)
+
+# Don't include Dockerfile in the image
+Dockerfile*

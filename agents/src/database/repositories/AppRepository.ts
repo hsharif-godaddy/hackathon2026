@@ -111,13 +111,13 @@ export class AppRepository {
       throw new Error('Site ID mismatch: This agent is locked to a specific site and cannot register other sites');
     }
 
-    // In production, CUSTOMER_APP_DIR points directly to app root (no /app subdir)
-    // In local/dev, we use /app subdirectory structure
+    // In production, CUSTOMER_APP_DIR points directly to preview root
+    // In local/dev, we use /preview subdirectory structure for V4 parity
     const finalAppPath = sanitizedAppPath ||
       process.env.CUSTOMER_APP_DIR ||  // Production: use as-is
       (process.env.APPS_BASE_DIR
-        ? `${process.env.APPS_BASE_DIR}/${sanitizedSiteId}/app`  // Local with custom APPS_BASE_DIR
-        : `/tmp/apps/${sanitizedSiteId}/app`);  // Local default
+        ? `${process.env.APPS_BASE_DIR}/${sanitizedSiteId}/preview`  // Local with custom APPS_BASE_DIR
+        : `/tmp/airo-app-builder/${sanitizedSiteId}/preview`);  // Local default - stable across restarts
 
     if (process.env.CUSTOMER_APP_DIR && finalAppPath !== process.env.CUSTOMER_APP_DIR) {
       throw new Error('App path mismatch: This agent is locked to a specific app directory');

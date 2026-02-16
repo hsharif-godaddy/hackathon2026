@@ -94,7 +94,7 @@ export class MediaSearchTool {
 
   constructor() {
     this.driver = new GettyMediaDriver();
-    this.appsBaseDir = process.env.APPS_BASE_DIR || '/tmp/apps';
+    this.appsBaseDir = process.env.APPS_BASE_DIR || '/tmp/airo-app-builder';
   }
 
   /**

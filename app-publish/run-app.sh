@@ -83,7 +83,9 @@ log "Archive path: $ARCHIVE_PATH"
 log "Archive size: $(du -h "$ARCHIVE_PATH" | cut -f1)"
 
 # Extract archive hash from filename (e.g., abc123.tar.gz -> abc123)
-ARCHIVE_FILENAME=$(basename "$ARCHIVE_PATH")
+# Resolve symlink to get actual filename
+ARCHIVE_TARGET=$(readlink "$ARCHIVE_PATH" || echo "$ARCHIVE_PATH")
+ARCHIVE_FILENAME=$(basename "$ARCHIVE_TARGET")
 ARCHIVE_HASH="${ARCHIVE_FILENAME%.tar.gz}"
 readonly APP_DIR="${APP_DIR_BASE}/${ARCHIVE_HASH}"
 
@@ -108,11 +110,11 @@ cd "$APP_DIR" || error_exit "Failed to change directory to $APP_DIR"
 log "Changed to app directory: $APP_DIR"
 
 # =================================================================
-# Detect Pre-built vs Build-Needed
+# Use Pre-built Artifacts
 # =================================================================
 
-# FAST PATH: Pre-built artifacts exist (future optimization)
-log "Detected pre-built artifacts (server.bundle.cjs) - using fast path"
+# Assume pre-built artifacts (server.bundle.cjs) exist in tarball
+log "Using pre-built artifacts (server.bundle.cjs)"
 
 # Create .env file and start application
 create_env_file "${APP_DIR}/dist"

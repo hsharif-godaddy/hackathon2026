@@ -320,7 +320,6 @@ export class DockerContainerManager {
 			'--build-arg', `HOST_GID=${gid}`,
 			'--build-context', `dev-ca=${path.join(projectRoot, '.dev-ca')}`,
 			'--build-context', `dev-supervisor=${path.join(projectRoot, 'dev-supervisor')}`,
-			'--build-context', `publish=${path.join(projectRoot, 'publish')}`,
 			'-f', path.join(templatePath, 'Dockerfile.dev'),
 			templatePath
 		]);
@@ -336,6 +335,55 @@ export class DockerContainerManager {
 				error: error instanceof Error ? error.message : String(error),
 			});
 			throw new Error(`Failed to build template image: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	/**
+	 * Ensure the publish image exists by always invoking a Docker build
+	 * Relies on Docker's layer caching so that unchanged layers are reused efficiently
+	 *
+	 * The publish image contains only the runtime environment and publish scripts,
+	 * with NO app template source code, matching production architecture.
+	 *
+	 * @returns Promise that resolves when image is available and ready for use
+	 * @throws {Error} If Docker build fails
+	 */
+	private async ensurePublishImage(): Promise<void> {
+		const imageName = 'aab-publish:latest';
+
+		try {
+			const projectRoot = path.resolve(process.cwd(), '..');
+			const publishPath = path.join(projectRoot, 'app-publish');
+
+			logger.info("publish.image.build.begin", {
+				imageName,
+				publishPath,
+			});
+
+			// Build using docker buildx with layer caching
+			// Use --build-context to mount dev-supervisor separately
+			// This allows app-publish to be the main context with its own .dockerignore
+			const startTime = Date.now();
+			await execa('docker', [
+				'buildx', 'build',
+				'-t', imageName,
+				'--load',
+				'--build-context', `dev-supervisor=${path.join(projectRoot, 'dev-supervisor')}`,
+				'-f', path.join(publishPath, 'Dockerfile.dev'),
+				publishPath
+			]);
+			const duration = Date.now() - startTime;
+
+			logger.info("publish.image.build.success", {
+				imageName,
+				duration,
+			});
+		} catch (error) {
+			logger.error("publish.image.build.failure", {
+				imageName,
+				error: error instanceof Error ? error.message : String(error),
+			});
+			throw new Error(`Failed to build publish image: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
 
@@ -491,6 +539,9 @@ export class DockerContainerManager {
 
 			// Ensure shared template image exists (builds once, reused by all apps)
 			await this.ensureTemplateImage(templateVersion, basePath);
+
+			// Ensure publish image exists (builds once, no source code)
+			await this.ensurePublishImage();
 
 			// Start the compose stack
 			logger.info('docker.compose.stack.start.begin', {

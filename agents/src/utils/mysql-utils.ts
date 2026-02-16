@@ -143,7 +143,8 @@ export class MySQLUtils {
       configPath = join(process.env.NOMAD_ALLOC_DIR, 'config.json');
     } else {
       // Local development: construct path from APPS_BASE_DIR + appId
-      configPath = join(process.env.APPS_BASE_DIR || '/tmp/apps', app.id, 'alloc', 'config.json');
+      const appsBaseDir = process.env.APPS_BASE_DIR || '/tmp/airo-app-builder';
+      configPath = join(appsBaseDir, app.id, 'alloc', 'config.json');
     }
 
     // Check if config.json file exists

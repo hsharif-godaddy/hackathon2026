@@ -9,8 +9,17 @@ Airo Builder: AI-powered app development platform with multi-service architectur
 ## General Rules
 
 <critical_file_safety>
-Files under `/tmp/apps/{appId}/app/**` are generated OUTPUT. Fix generation logic in source, not output files.
-</critical_file_safety>
+Files under `/tmp/airo-app-builder/{appId}/preview/**` are generated OUTPUT. Fix generation logic in source, not output files.
+
+**V4 Directory Structure:**
+
+- `/tmp/airo-app-builder/{appId}/preview/` - Agent workspace (agent writes here)
+- `/tmp/airo-app-builder/{appId}/publish/` - Publish workspace (separate from preview)
+- `/tmp/airo-app-builder/{appId}/git-repo/` - Git repository (.git directory, bind-mounted)
+- `/tmp/airo-app-builder/{appId}/assets/` - Assets directory (public/private, bind-mounted)
+- `/tmp/airo-app-builder/{appId}/dist/` - Distribution tarballs
+- `/tmp/airo-app-builder/{appId}/alloc/` - Configuration and secrets
+  </critical_file_safety>
 
 <code_quality_standards>
 
@@ -152,8 +161,13 @@ _Additional services:_ `website/` (marketing), `app-templates/` (v8 template), `
 
 - Location: `app/src/lib/dev-environment/`
 - Files: `docker-compose-generator.ts`, `docker-compose-manager.ts`, `docker-container-manager.ts`
-- Generated: `/tmp/apps/{appId}/docker-compose.yml`
-- Structure: `/tmp/apps/{appId}/app/` (code), `/tmp/apps/{appId}/alloc/` (config)
+- Generated: `/tmp/airo-app-builder/{appId}/docker-compose.yml`
+- **V4 Structure:** Separate preview/publish workspaces with bind-mounted git/assets
+  - Preview workspace: `/tmp/airo-app-builder/{appId}/preview/` (agent writes here)
+  - Publish workspace: `/tmp/airo-app-builder/{appId}/publish/` (tarball extraction)
+  - Git repository: `/tmp/airo-app-builder/{appId}/git-repo/.git` (bind-mounted to both containers)
+  - Assets: `/tmp/airo-app-builder/{appId}/assets/` (bind-mounted to both containers)
+  - Config/secrets: `/tmp/airo-app-builder/{appId}/alloc/`
 
 **HTTP Proxy (dev-supervisor):**
 
@@ -166,7 +180,7 @@ _Additional services:_ `website/` (marketing), `app-templates/` (v8 template), `
 **App Lifecycle:** `creating` → `created` → `running`/`stopped`/`error`
 
 - Async setup with auto recovery and cleanup
-- **DO NOT edit** `/tmp/apps/{appId}/app/` (generated output)
+- **DO NOT edit** `/tmp/airo-app-builder/{appId}/preview/` or `/tmp/airo-app-builder/{appId}/publish/` (generated output)
 
 ### WebSocket Architecture
 

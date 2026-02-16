@@ -154,13 +154,6 @@ RUN update-ca-certificates
 # Copy application code (FAST - only this changes frequently)
 COPY --chown=agent:agent . .
 
-# Copy publish scripts from repository root publish directory
-COPY --chown=agent:agent --from=publish run-app.sh /publish/run-app.sh
-COPY --chown=agent:agent --from=publish coming-soon.js /publish/coming-soon.js
-
-# Make publish scripts executable
-RUN chmod +x /publish/run-app.sh /publish/coming-soon.js
-
 # Copy healthcheck script (must be available before switching to non-root user)
 COPY scripts/dev-supervisor-healthcheck.sh /usr/local/bin/dev-supervisor-healthcheck.sh
 RUN chmod +x /usr/local/bin/dev-supervisor-healthcheck.sh
@@ -169,8 +162,8 @@ RUN chmod +x /usr/local/bin/dev-supervisor-healthcheck.sh
 RUN mkdir -p logs /tmp/supervisor
 
 # Make sure the agent user owns the app directory initially
-RUN mkdir -p /publish/dist /app/dist \
-    && chown -R agent:agent /app /publish logs /tmp/supervisor
+RUN mkdir -p /app/dist \
+    && chown -R agent:agent /app logs /tmp/supervisor
 
 # Switch to the agent user so we are not running as root
 USER agent

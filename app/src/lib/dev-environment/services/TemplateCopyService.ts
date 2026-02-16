@@ -13,6 +13,7 @@ import { cpSync, existsSync, rmSync } from 'fs';
 import path from 'path';
 
 import { logger } from '../../request-context';
+import { getAppsBaseDir } from '../utils/app-paths';
 import { createSafePathBuilder, isSafePath, safeJoinWithOptions, safeResolve } from '../utils/safe-path';
 
 /** Default template directory when none is specified in environment or parameters */
@@ -146,11 +147,11 @@ export class TemplateCopyService {
    */
   private async forceRemoveDirectory(dirPath: string): Promise<void> {
     // Validate path to prevent directory traversal attacks
-    // dirPath should be an absolute path within /tmp/apps
+    // dirPath should be an absolute path within apps base directory
     const normalizedPath = path.resolve(dirPath);
-    const appsBaseDir = path.resolve('/tmp/apps');
+    const appsBaseDir = path.resolve(getAppsBaseDir());
 
-    // Check if path is safe - must be within /tmp/apps and not contain traversal sequences
+    // Check if path is safe - must be within apps base dir and not contain traversal sequences
     if (!isSafePath(normalizedPath, appsBaseDir, { allowTraversal: false })) {
       const error = new Error(`Invalid directory path: ${dirPath} is outside allowed base directory ${appsBaseDir}`);
       logger.error(`❌ Path validation failed for directory removal: ${error.message}`);

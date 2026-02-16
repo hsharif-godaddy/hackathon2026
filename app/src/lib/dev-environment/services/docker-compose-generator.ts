@@ -8,10 +8,25 @@ import { getAllocPath } from '../utils/app-paths';
 const DEV_SUPERVISOR_CONTAINER_PORT = 8877;
 
 /**
- * Fixed internal port for app container (not exposed externally)
- * Dev-supervisor HTTP proxy forwards to this port internally
+ * Fixed internal ports for app containers (not exposed externally)
+ * Dev-supervisor HTTP proxy forwards to these ports internally
+ * These match production Nomad configuration for consistency
  */
-const APP_INTERNAL_PORT = 8080;
+const PREVIEW_INTERNAL_PORT = 20010;
+const PUBLISH_INTERNAL_PORT = 20011;
+
+/**
+ * Memory configuration for app containers
+ * Matches production Nomad resource allocations for consistency
+ * - CONTAINER_MEMORY_SOFT_MB: Soft limit / reservation (512 MB)
+ * - CONTAINER_MEMORY_MAX_MB: Hard memory limit / OOM kill threshold (2048 MB)
+ * - GO_MEM_LIMIT_MB: Soft limit for Go dev-supervisor process (~6% of max = 128 MB)
+ * This leaves ~94% of memory available for the NodeJS application
+ */
+const CONTAINER_MEMORY_SOFT_MB = 512;
+const CONTAINER_MEMORY_MAX_MB = 2048;
+const SUPERVISOR_MEMORY_PERCENT = 0.0625; // 6.25% of max memory for supervisor
+const GO_MEM_LIMIT_MB = Math.floor(CONTAINER_MEMORY_MAX_MB * SUPERVISOR_MEMORY_PERCENT); // 128 MiB
 
 export interface ComposeServiceConfig {
 	appId: string;
@@ -59,7 +74,7 @@ export class DockerComposeGenerator {
 	 */
 	private generatePreviewEnvironment(config: ComposeServiceConfig): Record<string, string> {
 		const env: Record<string, string> = {
-			HOST: "0.0.0.0",
+			HOST: "127.0.0.1",
 			NODE_ENV: "development",
 		};
 
@@ -74,8 +89,8 @@ export class DockerComposeGenerator {
 		}
 
 		// Template-specific environment variables (v8)
-		env.PORT = APP_INTERNAL_PORT.toString();
-		env.VITE_HOST = "0.0.0.0";
+		env.PORT = PREVIEW_INTERNAL_PORT.toString();
+		env.VITE_HOST = "127.0.0.1";
 
 		env.ALLOWED_ORIGINS = [
 			"https://local.gasket.dev-godaddy.com:8443",
@@ -98,7 +113,7 @@ export class DockerComposeGenerator {
 		env.DEV_SUPERVISOR_ENABLE_PROXY = "true";
 		env.DEV_SUPERVISOR_PROXY_PORT = config.appPort.toString();
 		env.DEV_SUPERVISOR_PROXY_TARGET_HOST = "localhost";
-		env.DEV_SUPERVISOR_PROXY_TARGET_PORT = APP_INTERNAL_PORT.toString();
+		env.DEV_SUPERVISOR_PROXY_TARGET_PORT = PREVIEW_INTERNAL_PORT.toString();
 		env.DEV_SUPERVISOR_PROXY_CERT_PATH = "/app/.ssl/cert.pem";
 		env.DEV_SUPERVISOR_PROXY_KEY_PATH = "/app/.ssl/key.pem";
 		env.DEV_SUPERVISOR_LOG_LEVEL = "debug";
@@ -107,6 +122,9 @@ export class DockerComposeGenerator {
 		env.DEV_SUPERVISOR_PROXY_MAX_RETRIES = "10";
 		env.DEV_SUPERVISOR_PROXY_INITIAL_BACKOFF_MS = "200";
 		env.DEV_SUPERVISOR_PROXY_MAX_BACKOFF_MS = "5000";
+
+		// Go runtime memory limit for dev-supervisor (matches production)
+		env.GOMEMLIMIT = `${GO_MEM_LIMIT_MB}MiB`;
 
 		// JWT Authentication configuration (if enabled)
 		if (config.enableJwtAuth) {
@@ -184,9 +202,9 @@ export class DockerComposeGenerator {
 	 */
 	private generatePublishEnvironment(config: ComposeServiceConfig): Record<string, string> {
 		const env: Record<string, string> = {
-			HOST: "0.0.0.0",
+			HOST: "127.0.0.1",
 			NODE_ENV: "production",
-			PORT: "8081",
+			PORT: PUBLISH_INTERNAL_PORT.toString(),
 			DIST_DIR: "/dist",
 		};
 
@@ -209,12 +227,15 @@ export class DockerComposeGenerator {
 			env.DEV_SUPERVISOR_ENABLE_PROXY = "true";
 			env.DEV_SUPERVISOR_PROXY_PORT = config.publishPort.toString();
 			env.DEV_SUPERVISOR_PROXY_TARGET_HOST = "localhost";
-			env.DEV_SUPERVISOR_PROXY_TARGET_PORT = "8081";
+			env.DEV_SUPERVISOR_PROXY_TARGET_PORT = PUBLISH_INTERNAL_PORT.toString();
 			env.DEV_SUPERVISOR_PROXY_CERT_PATH = "/app/.ssl/cert.pem";
 			env.DEV_SUPERVISOR_PROXY_KEY_PATH = "/app/.ssl/key.pem";
 			env.DEV_SUPERVISOR_PUBLISH_SERVE_STATIC = "false";
-			env.DEV_SUPERVISOR_PUBLISH_INTERNAL_PORT = "8081";
+			env.DEV_SUPERVISOR_PUBLISH_INTERNAL_PORT = PUBLISH_INTERNAL_PORT.toString();
 		}
+
+		// Go runtime memory limit for dev-supervisor (matches production)
+		env.GOMEMLIMIT = `${GO_MEM_LIMIT_MB}MiB`;
 
 		return env;
 	}
@@ -226,7 +247,12 @@ export class DockerComposeGenerator {
 	 */
 	private generatePreviewService(config: ComposeServiceConfig): string {
 		const allocPath = getAllocPath(config.appId);
-		const distPath = config.appPath.replace(/\/app$/, '/dist');
+
+		// V4 aligned volumes with bind mounts
+		const gitRepoPath = config.appPath.replace(/\/preview$/, '/git-repo');
+		const assetsPath = config.appPath.replace(/\/preview$/, '/assets');
+		const distPath = config.appPath.replace(/\/preview$/, '/dist');
+		const tmpPath = config.appPath.replace(/\/preview$/, '/tmp');
 
 		const previewEnv = this.generatePreviewEnvironment(config);
 		const envLines = Object.entries(previewEnv).map(([key, value]) => `      ${key}: "${value}"`).join('\n');
@@ -234,9 +260,13 @@ export class DockerComposeGenerator {
 		// Note: node_modules is at /node_modules in the image (not /app/node_modules)
 		// This allows the /app bind mount without needing a 549MB anonymous volume copy
 		const volumes = [
-			`${config.appPath}:/app`,
-			`${distPath}:/dist`,
-			`${allocPath}:/alloc:ro`,
+			`${config.appPath}:/app`,                           // Preview workspace
+			`${distPath}:/dist`,                                // Dist directory
+			`${allocPath}:/alloc:ro`,                           // Config/secrets
+			`${gitRepoPath}/.git:/app/.git`,                    // Git repo bind mount
+			`${assetsPath}/public:/app/public/assets`,          // Public assets
+			`${assetsPath}/private:/private`,                   // Private assets
+			`${tmpPath}:/tmp`,                                  // Temp directory
 		];
 
 		if (!config.useTcp && config.socketPath) {
@@ -294,8 +324,14 @@ ${envLines}
 ${volumeLines}
     networks:
       - app-network
+    deploy:
+      resources:
+        limits:
+          memory: ${CONTAINER_MEMORY_MAX_MB}M
+        reservations:
+          memory: ${CONTAINER_MEMORY_SOFT_MB}M
     expose:
-      - "${APP_INTERNAL_PORT}"`;
+      - "${PREVIEW_INTERNAL_PORT}"`;
 		}
 
 	/**
@@ -304,7 +340,10 @@ ${volumeLines}
 	 */
 	private generatePublishService(config: ComposeServiceConfig): string {
 		const allocPath = getAllocPath(config.appId);
-		const distPath = config.appPath.replace(/\/app$/, '/dist');
+		const distPath = config.appPath.replace(/\/preview$/, '/dist');
+		const publishPath = config.appPath.replace(/\/preview$/, '/publish');
+		const assetsPath = config.appPath.replace(/\/preview$/, '/assets');
+		const tmpPath = config.appPath.replace(/\/preview$/, '/tmp');
 
 		const publishEnv = this.generatePublishEnvironment(config);
 		const envLines = Object.entries(publishEnv).map(([key, value]) => `      ${key}: "${value}"`).join('\n');
@@ -312,13 +351,16 @@ ${volumeLines}
 		// Publish container volumes - matches production architecture
 		// /dist is mounted READ-WRITE so supervisor can create/update symlinks
 		// Extraction happens in container's /app (not shared /dist)
-		// SSL certs mounted for HTTPS proxy
-		// Note: node_modules is at /node_modules in the image (not /app/node_modules)
-		const sslPath = config.appPath.replace(/\/app$/, '/app/.ssl');
+		// SSL certs mounted for HTTPS proxy from alloc/.ssl
+		const sslPath = allocPath + '/.ssl';
 		const volumes = [
 			`${distPath}:/dist`,
+			`${publishPath}:/app`,
 			`${allocPath}:/alloc:ro`,
 			`${sslPath}:/app/.ssl:ro`,
+			`${assetsPath}/public:/app/public/assets`,
+			`${assetsPath}/private:/private`,
+			`${tmpPath}:/tmp`,
 		];
 
 		const volumeLines = volumes.map(vol => `      - ${vol}`).join('\n');
@@ -335,8 +377,10 @@ ${volumeLines}
 
 			const portLines = ports.map(port => `      - "${port}"`).join('\n');
 
+			// Use dedicated publish image (no source code, production parity)
+			// Pre-built by ensurePublishImage() before compose stack creation
 			return `  publish:
-    image: ${config.imageName}
+    image: aab-publish:latest
     restart: unless-stopped
     container_name: publish-${config.appId}-1
     command: ["exec", "/publish/run-app.sh"]
@@ -348,8 +392,14 @@ ${envLines}
 ${volumeLines}
     networks:
       - app-network
+    deploy:
+      resources:
+        limits:
+          memory: ${CONTAINER_MEMORY_MAX_MB}M
+        reservations:
+          memory: ${CONTAINER_MEMORY_SOFT_MB}M
     expose:
-      - "8081"`;
+      - "${PUBLISH_INTERNAL_PORT}"`;
 		}
 
 	/**
