@@ -6,10 +6,15 @@
  */
 'use client';
 
+import { memo } from 'react';
 import Alert from '@ux/alert';
+import Box from '@ux/box';
 import Button from '@ux/button';
+import Card, { spaceOptions } from '@ux/card';
 import Spinner from '@ux/spinner';
+import Tag from '@ux/tag';
 import text from '@ux/text';
+import TextLockup from '@ux/text-lockup';
 
 import { useTranslations } from '@/hooks/useTranslations';
 import type { TaskStatus } from '../types';
@@ -23,6 +28,20 @@ interface SecurityResultsStepProps {
   onSkip: () => void;
 }
 
+function getSeverityEmphasis(severity: 'critical' | 'high' | 'moderate' | 'low'): 'critical' | 'warning' | 'info' {
+  if (severity === 'critical' || severity === 'high') return 'critical';
+  if (severity === 'moderate') return 'warning';
+  return 'info';
+}
+
+const ButtonToolbar = memo(function ButtonToolbar({ children }: { children: React.ReactNode }) {
+  return (
+    <Box orientation="horizontal" blockAlignChildren="end" gap="md" wrap>
+      {children}
+    </Box>
+  );
+});
+
 export function SecurityResultsStep({
   securityStatus,
   securityScanResults,
@@ -35,62 +54,48 @@ export function SecurityResultsStep({
   // Handle scan still running case
   if (securityStatus === 'running') {
     return (
-      <div>
-        <div className="mb-6 space-y-4">
-          <div>
-            <h3 className="text-lg font-semibold mb-2">{t('golive_security_scanning_title')}</h3>
-            <text.p as="paragraph" size={0}>
-              {t('golive_security_scanning_description')}
-            </text.p>
-          </div>
+      <Box gap="xl">
+        <Box gap="md">
+          <Spinner size="md" />
+          <TextLockup title={t('golive_security_scanning_description')} centered>
+            {t('golive_security_scanning')}
+          </TextLockup>
+        </Box>
 
-          <Alert emphasis="info">
-            <div className="text-sm flex items-center gap-2">
-              <Spinner size="sm" />
-              <span>{t('golive_security_scanning')}</span>
-            </div>
-          </Alert>
-        </div>
-
-        <div className="flex gap-2 justify-end">
+        <ButtonToolbar>
           <Button
             design="primary"
             text={t('golive_security_button_continue')}
             onClick={onSkip}
             disabled={true}
-          />
-        </div>
-      </div>
+            />
+        </ButtonToolbar>
+      </Box>
     );
   }
 
   // Handle scan failure case
   if (securityStatus === 'failed' && securityError) {
     return (
-      <div>
-        <div className="mb-6 space-y-4">
-          <div>
-            <h3 className="text-lg font-semibold mb-2">{t('golive_security_failed_title')}</h3>
-            <text.p as="paragraph" size={0}>
-              {t('golive_security_failed_details')}
-            </text.p>
-          </div>
+      <Box gap="xl">
+        <Alert emphasis="critical" title={t('golive_security_failed_title')}>
+          <text.p>
+            {t('golive_security_failed_details')}
+          </text.p>
+          <strong>{t('golive_security_error_label')}</strong>
+          <text.p emphasis="critical">
+            {securityError}
+          </text.p>
+        </Alert>
 
-          <Alert emphasis="critical">
-            <div className="text-sm">
-              <strong>{t('golive_security_error_label')}</strong> {securityError}
-            </div>
-          </Alert>
-        </div>
-
-        <div className="flex gap-2 justify-end">
+        <ButtonToolbar>
           <Button
             design="primary"
             text={t('golive_security_button_continue_anyway')}
             onClick={onSkip}
           />
-        </div>
-      </div>
+        </ButtonToolbar>
+      </Box>
     );
   }
 
@@ -102,128 +107,125 @@ export function SecurityResultsStep({
   const { vulnerabilities, summary } = securityScanResults;
   const totalIssues = summary.critical + summary.high + summary.moderate + summary.low;
   const hasCriticalOrHigh = summary.critical > 0 || summary.high > 0;
-
+  
   // Handle "all clear" case - no vulnerabilities found
   if (totalIssues === 0) {
     return (
-      <div>
-        <div className="mb-6 space-y-4">
-          <div>
-            <h3 className="text-lg font-semibold mb-2">{t('golive_security_clean_title')}</h3>
-            <text.p as="paragraph" size={0}>
-              {t('golive_security_clean_subtitle')}
-            </text.p>
-          </div>
+      <Box gap="xl">
+        <Alert emphasis="success" title={t('golive_security_clean_subtitle')}>
+          {t('golive_security_clean_description')}
+        </Alert>
 
-          <Alert emphasis="success">
-            <div className="text-sm">
-              <strong>{t('golive_security_clean_label')}</strong> {t('golive_security_clean_description')}
-            </div>
-          </Alert>
-        </div>
-
-        <div className="flex gap-2 justify-end">
+        <ButtonToolbar>
           <Button
             design="primary"
             text={t('golive_security_button_continue')}
             onClick={onSkip}
           />
-        </div>
-      </div>
+        </ButtonToolbar>
+      </Box>
     );
   }
 
+  const summaryCardSpace = { block: spaceOptions.MD, inline: spaceOptions.MD };
+
   // Handle vulnerabilities found case
   return (
-    <div>
+    <Box gap="xl">
 
-      <div className="mb-6 space-y-4">
-        <div>
-          <h3 className="text-lg font-semibold mb-2">{t('golive_security_issues_title')}</h3>
-          <text.p as="paragraph" size={0}>
-            {totalIssues === 1
-              ? t('golive_security_issues_found_singular')
-              : t('golive_security_issues_found_plural', { count: totalIssues })}
-          </text.p>
+      {/* Summary */}
+      <Box gap="md">
+        <text.p>
+          {totalIssues === 1
+            ? t('golive_security_issues_found_singular')
+            : t('golive_security_issues_found_plural', { count: totalIssues })}
+        </text.p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-1 md:gap-2">
+          {summary.critical > 0 && (
+            <Card space={summaryCardSpace}>
+              <TextLockup 
+                eyebrow={
+                  <Tag emphasis={getSeverityEmphasis('critical')}>
+                    {t('golive_security_severity_critical')}
+                  </Tag>
+                }
+                title={summary.critical}
+              />
+            </Card>
+          )}
+          {summary.high > 0 && (
+            <Card space={summaryCardSpace}>
+              <TextLockup 
+                eyebrow={
+                  <Tag emphasis={getSeverityEmphasis('high')}>
+                    {t('golive_security_severity_high')}
+                  </Tag>
+                }
+                title={summary.high}
+              />
+            </Card>
+          )}
+          {summary.moderate > 0 && (
+            <Card space={summaryCardSpace}>
+              <TextLockup 
+                eyebrow={
+                  <Tag emphasis={getSeverityEmphasis('moderate')}>
+                    {t('golive_security_severity_moderate')}
+                  </Tag>
+                }
+                title={summary.moderate}
+              />
+            </Card>
+          )}
+          {summary.low > 0 && (
+            <Card space={summaryCardSpace}>
+              <TextLockup 
+                eyebrow={
+                  <Tag emphasis={getSeverityEmphasis('low')}>
+                    {t('golive_security_severity_low')}
+                  </Tag>
+                }
+                title={summary.low}
+              />
+            </Card>
+          )}
         </div>
+      </Box>
 
-        {/* Summary */}
-        <div className="bg-intents-ux-boxLowContrast-backgroundColor rounded-md p-3">
-          <div className="text-sm font-semibold mb-2">{t('golive_security_summary_label')}</div>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            {summary.critical > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                <span>{t('golive_security_severity_critical')}: {summary.critical}</span>
-              </div>
-            )}
-            {summary.high > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
-                <span>{t('golive_security_severity_high')}: {summary.high}</span>
-              </div>
-            )}
-            {summary.moderate > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
-                <span>{t('golive_security_severity_moderate')}: {summary.moderate}</span>
-              </div>
-            )}
-            {summary.low > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                <span>{t('golive_security_severity_low')}: {summary.low}</span>
-              </div>
-            )}
-          </div>
-        </div>
+      {/* Vulnerabilities List - show first 5 */}
+      {vulnerabilities.length > 0 && (
+        <Box gap="sm" className="max-h-24 overflow-y-auto">
+          {vulnerabilities.slice(0, 5).map((vuln, index) => (
+            <Box
+              key={index}
+              orientation="horizontal"
+              gap="sm"
+              blockAlignChildren="spaceBetween"
+            >
+              <TextLockup size="sm" title={vuln.title} textMaxWidth={false} compact>
+                {vuln.description}
+              </TextLockup>
+              <Tag emphasis={getSeverityEmphasis(vuln.severity)}>
+                {vuln.severity.toUpperCase()}
+              </Tag>
+            </Box>
+          ))}
+          {vulnerabilities.length > 5 && (
+            <text.span size={-1} emphasis="passive">
+              {t('golive_security_more_issues', { count: vulnerabilities.length - 5 })}
+            </text.span>
+          )}
+        </Box>
+      )}
 
-        {/* Vulnerabilities List - show first 5 */}
-        {vulnerabilities.length > 0 && (
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {vulnerabilities.slice(0, 5).map((vuln, index) => (
-              <div key={index} className="bg-intents-ux-boxLowContrast-backgroundColor rounded p-2">
-                <div className="flex items-start gap-2">
-                  <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${
-                    vuln.severity === 'critical' ? 'bg-red-100 text-red-800' :
-                    vuln.severity === 'high' ? 'bg-orange-100 text-orange-800' :
-                    vuln.severity === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-green-100 text-green-800'
-                  }`}>
-                    {vuln.severity.toUpperCase()}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <text.p as="paragraph" size={0} className="font-semibold">
-                      {vuln.title}
-                    </text.p>
-                    {vuln.description && (
-                      <text.p as="paragraph" size={-1} emphasis="passive" className="mt-0.5">
-                        {vuln.description}
-                      </text.p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-            {vulnerabilities.length > 5 && (
-              <text.p as="paragraph" size={-1} emphasis="passive" className="text-center">
-                {t('golive_security_more_issues', { count: vulnerabilities.length - 5 })}
-              </text.p>
-            )}
-          </div>
-        )}
+      {/* Action recommendation */}
+      {hasCriticalOrHigh && (
+        <Alert emphasis="critical" title={t('golive_security_action_required_label')}>
+          {t('golive_security_action_required_description')}
+        </Alert>
+      )}
 
-        {/* Action recommendation */}
-        {hasCriticalOrHigh && (
-          <Alert emphasis="critical">
-            <div className="text-sm">
-              <strong>{t('golive_security_action_required_label')}</strong> {t('golive_security_action_required_description')}
-            </div>
-          </Alert>
-        )}
-      </div>
-
-      <div className="flex gap-2 justify-end">
+      <ButtonToolbar>
         <Button
           design="secondary"
           text={t('golive_security_button_skip')}
@@ -234,7 +236,7 @@ export function SecurityResultsStep({
           text={t('golive_security_button_fix')}
           onClick={onPublishFixes}
         />
-      </div>
-    </div>
+      </ButtonToolbar>
+    </Box>
   );
 }

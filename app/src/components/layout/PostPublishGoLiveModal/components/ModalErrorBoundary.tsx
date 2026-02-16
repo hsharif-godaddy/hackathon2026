@@ -4,9 +4,9 @@
  */
 'use client';
 
-import { AlertCircle } from 'lucide-react';
 import { Component, type ReactNode } from 'react';
 import Alert from '@ux/alert';
+import Box from '@ux/box';
 import Button from '@ux/button';
 import text from '@ux/text';
 
@@ -22,6 +22,7 @@ interface Props {
     title: string;
     description: string;
     tryAgain: string;
+    errorLabel?: string;
   };
 }
 
@@ -65,31 +66,35 @@ export class ModalErrorBoundary extends Component<Props, State> {
       const tryAgain = translations?.tryAgain || 'Try Again';
 
       return (
-        <div className="flex flex-col items-center justify-center py-12 px-4">
-          <AlertCircle style={{ width: '64px', height: '64px', color: '#ef4444', marginBottom: '16px' }} />
-          <div className="text-center max-w-md space-y-4">
-            <text.h4 size={2} className="font-bold" style={{ color: '#dc2626' }}>
-              {title}
-            </text.h4>
-            <Alert emphasis="critical">
-              <div className="text-sm">
-                {description}
-              </div>
-              {this.state.error && (
-                <div className="text-xs mt-2 font-mono" style={{ color: '#991b1b' }}>
+        <Box gap="xl">
+          <Alert
+            emphasis="critical"
+            title={title}
+          >
+            <text.p>
+              {description}
+            </text.p>
+            {this.state.error && (
+              <>
+                {translations?.errorLabel && (
+                  <strong>
+                    {translations.errorLabel}
+                  </strong>
+                )}
+                <text.p emphasis="critical">
                   {this.state.error.message}
-                </div>
-              )}
-            </Alert>
-            <div className="flex gap-2 justify-center">
-              <Button
-                design="secondary"
-                text={tryAgain}
-                onClick={this.handleReset}
-              />
-            </div>
-          </div>
-        </div>
+                </text.p>
+              </>
+            )}
+          </Alert>
+          <Box inlineAlignChildren="end">
+            <Button
+              design="secondary"
+              text={tryAgain}
+              onClick={this.handleReset}
+            />
+          </Box>
+        </Box>
       );
     }
 
@@ -104,7 +109,8 @@ export function ModalErrorBoundaryWithTranslations(props: Omit<Props, 'translati
   const translations = {
     title: t('golive_error_title'),
     description: t('golive_error_description'),
-    tryAgain: t('golive_error_button_try_again')
+    tryAgain: t('golive_error_button_try_again'),
+    errorLabel: t('golive_security_error_label')
   };
 
   return <ModalErrorBoundary {...props} translations={translations} />;
