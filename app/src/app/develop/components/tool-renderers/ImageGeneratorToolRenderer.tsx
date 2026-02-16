@@ -35,6 +35,17 @@ export default function ImageGeneratorToolRenderer({
   // Parse result - expects the MCP response format
   const images: ImageResult[] = []
 
+  // Parse input to get the generation prompt
+  let generationPrompt = 'Image'
+  if (_input) {
+    try {
+      const inputObj = typeof _input === 'string' ? JSON.parse(_input) : _input
+      generationPrompt = inputObj?.prompt || 'Image'
+    } catch {
+      // Keep default
+    }
+  }
+
   if (result) {
     try {
       let resultObj: any = null
@@ -159,14 +170,14 @@ export default function ImageGeneratorToolRenderer({
         <div className="my-2">
           <div className="text-sm text-foreground/70 mb-2 flex items-center gap-1">
             <Sparkles className="w-3 h-3" />
-            <span>Generated {imageCount} image{imageCount !== 1 ? 's' : ''}</span>
+            <span>Generated {imageCount} image{imageCount !== 1 ? 's' : ''}: &quot;{generationPrompt.length > 50 ? generationPrompt.substring(0, 50) + '...' : generationPrompt}&quot;</span>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-1.5">
             {images.map((image, index) => (
               <button
                 key={index}
                 onClick={() => handleImageClick(index)}
-                className="aspect-video group cursor-pointer overflow-hidden rounded-lg border-2 border-border hover:border-primary transition-all bg-intents-ux-boxLowContrast-backgroundColor relative"
+                className="aspect-square group cursor-pointer overflow-hidden rounded-md"
                 title={image.caption || `Image ${index + 1}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}

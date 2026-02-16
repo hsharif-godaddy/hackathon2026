@@ -32,6 +32,17 @@ export default function VideoGeneratorToolRenderer({
   // Parse result - expects the MCP response format
   let video: VideoResult | null = null
 
+  // Parse input to get the generation prompt
+  let generationPrompt = 'Video'
+  if (_input) {
+    try {
+      const inputObj = typeof _input === 'string' ? JSON.parse(_input) : _input
+      generationPrompt = inputObj?.prompt || 'Video'
+    } catch {
+      // Keep default
+    }
+  }
+
   if (result) {
     try {
       let resultObj: any = null
@@ -143,7 +154,7 @@ export default function VideoGeneratorToolRenderer({
         <div className="my-2">
           <div className="text-sm text-foreground/70 mb-2 flex items-center gap-1">
             <Video className="w-3 h-3" />
-            <span>Generated video</span>
+            <span>Generated video: &quot;{generationPrompt.length > 50 ? generationPrompt.substring(0, 50) + '...' : generationPrompt}&quot;</span>
           </div>
           <div className="rounded-lg overflow-hidden bg-intents-ux-boxLowContrast-backgroundColor relative group">
             <video

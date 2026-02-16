@@ -205,9 +205,29 @@ bg-primary text-primary-foreground
 
 **CRITICAL: Only suggest colors AFTER content exists.** Users need to see colors applied to actual UI elements (headers, buttons, cards) to make informed decisions. Don't offer color schemes on empty pages or before building initial content.
 
-### Media
+### Media (Images & Videos)
 
-**For any media generation (logos, AI images, videos), load the `media` skill first:**
+**Default to search** - Use the `media` tool for most image/video requests:
+
+```typescript
+// Search for images (default behavior)
+media({
+  slot: 'pages/home/hero',
+  query: 'modern office workspace',
+  orientations: 'horizontal',
+  compositions: 'wide_shot',
+  count: 3,
+});
+
+// Search for videos
+media({
+  slot: 'pages/home/background-video',
+  query: 'ocean waves',
+  mediaType: 'video',
+});
+```
+
+**Only generate** when user explicitly says "generate", "create", "design", or "AI-generated":
 
 ```typescript
 // 1. Load the media skill
@@ -221,22 +241,16 @@ media__generate_video({ prompt: '...' });
 
 **Decision guide:**
 
-| Need                | Action                                               |
-| ------------------- | ---------------------------------------------------- |
-| Logo generation     | Load `media` skill → `media__generate_logo`          |
-| AI-generated image  | Load `media` skill → `media__generate_image`         |
-| Edit existing image | Load `media` skill → `media__edit_image`             |
-| Video generation    | Load `media` skill → `media__generate_video`         |
-| Stock photo search  | `mediaSearch({ prompt: "..." })`                     |
-| Stock video search  | `mediaSearch({ prompt: "...", mediaType: "video" })` |
+| Need                | Action                                      |
+| ------------------- | ------------------------------------------- |
+| Stock photo search  | `media({ slot: "...", query: "..." })`      |
+| Stock video search  | `media({ ..., mediaType: "video" })`        |
+| Logo generation     | Load `media` skill → `media__generate_logo` |
+| AI-generated image  | Load `media` skill → `media__generate_image`|
+| Edit existing image | Load `media` skill → `media__edit_image`    |
+| Video generation    | Load `media` skill → `media__generate_video`|
 
-**Fallback:** If media skill tools fail after 2 attempts, fall back to `mediaSearch`:
-
-- Logo generation fallback: `mediaSearch({ prompt: "...", mediaType: "generate" })`
-- Image generation fallback: `mediaSearch({ prompt: "...", mediaType: "generate" })`
-- Video search fallback: `mediaSearch({ prompt: "...", mediaType: "video" })`
-
-**Filters for mediaSearch:** `orientations` (horizontal/vertical/square), `compositions` (close_up/wide_shot/portrait), `color` (hex code)
+**Filters**: `orientations` (horizontal/vertical/square), `compositions` (close_up/wide_shot/portrait)
 
 ### Animations
 

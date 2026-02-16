@@ -1,6 +1,6 @@
 ---
 name: media
-description: Generate logos, images, and videos using AI-powered MCP services
+description: AI generation of logos, images, and videos. Only load when user explicitly says "generate", "create", or "design" - for stock photos use the media tool instead.
 ---
 
 # Media Skill
@@ -13,14 +13,26 @@ description: Generate logos, images, and videos using AI-powered MCP services
 
 ## When to Use This Skill
 
-Load this skill when the user mentions:
+**IMPORTANT:** This skill is for AI GENERATION only, not for searching stock photos/videos.
 
-- "logo" or "generate a logo" or "create a logo"
-- "generate an image" or "create an image" (when image search won't suffice)
-- "edit an image" or "modify this image"
-- "generate a video" or "create a video"
-- "branding" or "brand identity"
-- "AI-generated" images or videos
+Load this skill ONLY when the user explicitly requests AI-generated content using words like:
+
+- "generate", "create", "make", "design", "AI-generated"
+- "edit an image", "modify this image" (for image editing)
+
+**Examples that SHOULD load this skill:**
+
+- "Generate a logo for my business"
+- "Create an AI image of a sunset"
+- "Design a custom banner"
+
+**Examples that should NOT load this skill (use media tool for search instead):**
+
+- "Add an image of a sunset" → use `media` tool
+- "Find a photo of a team meeting" → use `media` tool
+- "I need a hero image" → use `media` tool
+
+Default to stock photo search. Only use AI generation when explicitly requested.
 
 ---
 
