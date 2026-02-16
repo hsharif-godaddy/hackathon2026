@@ -602,6 +602,94 @@ export class ProjectImportService {
   }
 
   /**
+   * Maximum depth to search for package.json in nested directories
+   * Handles common zip structures where projects are wrapped in parent folders
+   */
+  private static readonly MAX_PROJECT_DEPTH = 3;
+
+  /**
+   * Directories to ignore when searching for project root
+   * These are common artifacts from zip creation that should not be considered as project directories
+   */
+  private static readonly IGNORED_ZIP_DIRECTORIES = [
+    '__MACOSX',      // macOS resource fork directory created by Finder
+    '.DS_Store',     // macOS metadata file (not a directory, but filter anyway)
+  ];
+
+  /**
+   * Find the project root directory by searching for package.json
+   *
+   * Handles nested zip structures by iteratively descending into single subdirectories
+   * up to MAX_PROJECT_DEPTH levels. This handles common scenarios:
+   * - package.json at root (depth 0)
+   * - Single folder wrapping project (depth 1)
+   * - Double-nested parent/app/ structure (depth 2)
+   * - Up to MAX_PROJECT_DEPTH levels of nesting
+   *
+   * Ignores common zip artifacts like __MACOSX when determining if there's a single subdirectory.
+   *
+   * @param devSupervisor - Client to execute commands in container
+   * @param extractPath - Starting path to search from
+   * @param maxDepth - Maximum depth to search (default: MAX_PROJECT_DEPTH)
+   * @returns Result with found status, project root path, and depth if found
+   */
+  private async findProjectRootInContainer(
+    devSupervisor: DevSupervisorClient,
+    extractPath: string,
+    maxDepth: number = ProjectImportService.MAX_PROJECT_DEPTH
+  ): Promise<{ found: boolean; projectRoot?: string; depth?: number }> {
+    let currentPath = extractPath;
+
+    for (let depth = 0; depth < maxDepth; depth++) {
+      // Check if package.json exists at current level
+      const checkResult = await devSupervisor.exec({
+        command: `test -f "${currentPath}/package.json" && echo "found" || echo "notfound"`,
+        timeout: 5,
+      });
+
+      if (checkResult.stdout?.trim() === 'found') {
+        return { found: true, projectRoot: currentPath, depth };
+      }
+
+      // If not found, check for single subdirectory to descend into
+      const lsResult = await devSupervisor.exec({
+        command: `ls -1 "${currentPath}"`,
+        timeout: 5,
+      });
+
+      const allEntries = (lsResult.stdout || '').trim().split('\n').filter(Boolean);
+
+      // Filter out ignored directories (like __MACOSX)
+      const entries = allEntries.filter(
+        entry => !ProjectImportService.IGNORED_ZIP_DIRECTORIES.includes(entry)
+      );
+
+      if (entries.length !== 1 || !entries[0]) {
+        // Multiple entries or empty - can't descend unambiguously
+        this.logger.debug('project-import.find-root.stop-descent', {
+          currentPath,
+          depth,
+          reason: entries.length === 0 ? 'empty_directory' : 'multiple_entries',
+          allEntries,
+          filteredEntries: entries,
+        });
+        break;
+      }
+
+      // Descend into the single subdirectory
+      currentPath = join(currentPath, entries[0]);
+    }
+
+    this.logger.debug('project-import.find-root.not-found', {
+      extractPath,
+      maxDepth,
+      lastSearchedPath: currentPath,
+    });
+
+    return { found: false };
+  }
+
+  /**
    * Validate the extracted project inside the container
    *
    * Checks for package.json, scripts, and detects package manager
@@ -623,51 +711,26 @@ export class ProjectImportService {
     const errors: ValidationError[] = [];
     const warnings: ValidationError[] = [];
 
-    // Find project root - check if package.json exists at extract path or in single subdirectory
-    let projectRoot = extractPath;
+    // Find project root - search up to MAX_PROJECT_DEPTH levels for package.json
+    const findResult = await this.findProjectRootInContainer(devSupervisor, extractPath);
 
-    // Check for package.json at root
-    const checkRootResult = await devSupervisor.exec({
-      command: `test -f "${extractPath}/package.json" && echo "found" || echo "notfound"`,
-      timeout: 5, // seconds
-    });
-
-    if (checkRootResult.stdout?.trim() !== 'found') {
-      // Check if there's a single subdirectory with package.json (common zip structure)
-      const lsResult = await devSupervisor.exec({
-        command: `ls -1 "${extractPath}"`,
-        timeout: 5, // seconds
-      });
-
-      const entries = (lsResult.stdout || '').trim().split('\n').filter(Boolean);
-
-      if (entries.length === 1 && entries[0]) {
-        const subdir = join(extractPath, entries[0]);
-        const checkSubdirResult = await devSupervisor.exec({
-          command: `test -f "${subdir}/package.json" && echo "found" || echo "notfound"`,
-          timeout: 5, // seconds
-        });
-
-        if (checkSubdirResult.stdout?.trim() === 'found') {
-          projectRoot = subdir;
-        }
-      }
-    }
-
-    // Verify package.json exists at project root
-    const finalCheckResult = await devSupervisor.exec({
-      command: `test -f "${projectRoot}/package.json" && echo "found" || echo "notfound"`,
-      timeout: 5, // seconds
-    });
-
-    if (finalCheckResult.stdout?.trim() !== 'found') {
+    if (!findResult.found || !findResult.projectRoot) {
       errors.push({
         key: ValidationErrorKey.PACKAGE_JSON_NOT_FOUND,
-        message: 'No package.json found in zip root or subdirectory',
-        details: { searchedPath: extractPath },
+        message: `No package.json found in zip (searched up to ${ProjectImportService.MAX_PROJECT_DEPTH} levels deep)`,
+        details: { searchedPath: extractPath, maxDepth: ProjectImportService.MAX_PROJECT_DEPTH },
       });
       return { valid: false, errors };
     }
+
+    const projectRoot = findResult.projectRoot;
+
+    // Log the depth for debugging
+    this.logger.info('project-import.project-root-found', {
+      extractPath,
+      projectRoot,
+      depth: findResult.depth,
+    });
 
     // Read package.json content
     const catResult = await devSupervisor.exec({
