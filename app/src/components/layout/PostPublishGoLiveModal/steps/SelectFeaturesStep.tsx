@@ -94,7 +94,7 @@ export function SelectFeaturesStep({ appId, onConfirm, onCancel }: SelectFeature
       </text.p>
 
       {/* Feature Selection List */}
-      <Box className="-mx-2 px-2 overflow-auto" gap="md">
+      <Box gap="md">
         {/* QA Analysis */}
         <FeatureCard
           id="feature-qa"
@@ -157,7 +157,7 @@ export function SelectFeaturesStep({ appId, onConfirm, onCancel }: SelectFeature
       </Box>
 
       {/* Action Buttons */}
-      <Box orientation="horizontal" gap="md" blockAlignChildren="end">
+      <Box orientation="horizontal" gap="md" blockAlignChildren="end" wrap>
         <Button
           design="secondary"
           text={t('builder_golive_select_button_cancel')}
