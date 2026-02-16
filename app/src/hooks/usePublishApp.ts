@@ -190,27 +190,6 @@ export function usePublishApp() {
         throw new Error('Agent URL not available for this site');
       }
 
-      // Get current commit hash for backward compatibility with old agents services
-      // New agents services ignore this parameter and use current HEAD
-      // Old agents services require commitHash in the request body
-      // TODO: Remove this once all agents services are updated (after migration period)
-      let currentCommitHash: string | undefined;
-      try {
-        const gitHistory = await appService.getGitHistory(appId);
-        currentCommitHash = gitHistory.currentCommit || undefined;
-        logger.debug('publish.current-commit', {
-          appId,
-          commitHash: currentCommitHash?.substring(0, 7)
-        });
-      } catch (error) {
-        // Non-critical - new agents services don't need this
-        logger.warn('publish.get-commit-failed', {
-          appId,
-          error: error instanceof Error ? error.message : String(error),
-          message: 'Failed to get current commit (backward compatibility only)'
-        });
-      }
-
       // Call agent service directly with fresh token
       const publishUrl = `${apiConfig.agentUrl}/apps/${appId}/publish`;
       logger.info('publish.calling-agent', { appId, url: publishUrl });
@@ -221,11 +200,6 @@ export function usePublishApp() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${tokenResult.token}`,
         },
-        body: JSON.stringify({
-          // Send commitHash for backward compatibility with old agents services
-          // New agents services accept but ignore this parameter
-          ...(currentCommitHash && { commitHash: currentCommitHash })
-        }),
       });
 
       if (!response.ok) {

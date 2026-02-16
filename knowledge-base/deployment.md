@@ -33,7 +33,7 @@ Use the `publishClient` tool when users request to:
 ### What Happens When You Publish
 
 1. **Build Verification** - The app is built and verified
-2. **Archive Creation** - A git archive is created with the current code
+2. **Archive Creation** - A production archive is created with only the built artifacts (dist/ folder)
 3. **Deployment** - The site is deployed to production
 4. **Response** - You'll receive deployment ID and status
 

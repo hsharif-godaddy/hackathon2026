@@ -32,7 +32,8 @@ const PIONEER_EVENTS = [
   'route.publish.begin',
   'route.publish.success',
   'route.publish.build.failed',
-  'route.publish.git-archive.failed'
+  'route.publish.archive.failed',
+  'route.publish.git-archive.failed' // Old event name (backward compatibility)
 ];
 
 // Katana client error events
@@ -345,7 +346,8 @@ function processPioneerLog(log: LogEntry): boolean {
       return true;
     }
 
-    case 'route.publish.git-archive.failed': {
+    case 'route.publish.archive.failed':
+    case 'route.publish.git-archive.failed': { // Old event name (backward compatibility)
       const d = log.data as { error?: string };
       insertPublishEvent({
         es_id: log._id,
@@ -662,7 +664,7 @@ const INDEX_TO_EVENTS: Record<BackfillIndexFilter, string[] | 'all' | 'katana'> 
   conversations: ['conversation.history.loader.token_limit_reached', 'websocket.conversation.error', 'conversation.start', 'conversation.continue'],
   summarizations: ['summarization.background.complete', 'summarization.detailed_llm.failure', 'summarization.detailed_llm.token_budget_exceeded'],
   tool_failures: ['tool.file.edit.operation.failure', 'tool.file.edit.batch.failure', 'tool.git.operation.failure', 'tool.image.search.failure', 'tool.ast.edit.failure'],
-  publish_events: ['route.publish.begin', 'route.publish.success', 'route.publish.build.failed', 'route.publish.git-archive.failed'],
+  publish_events: ['route.publish.begin', 'route.publish.success', 'route.publish.build.failed', 'route.publish.archive.failed', 'route.publish.git-archive.failed'],
   client_errors: 'katana'
 };
 

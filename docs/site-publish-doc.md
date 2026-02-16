@@ -26,7 +26,7 @@ sequenceDiagram
         Hosting->>Nomad: Deploy job (env: publish/prod)
         Nomad-->>Hosting: Job deploy initiated
         Nomad->>ProdApp: Start prod job (single Node image)
-        Note over Nomad,ProdApp: Untar git archive, npm i, npm build, npm run
+        Note over Nomad,ProdApp: Untar production archive, run bundled JavaScript
         Hosting-->>StepFunctions: Step 1 complete
     end
     rect rgb(255, 248, 240)
@@ -64,10 +64,10 @@ sequenceDiagram
 ### How It Works
 
 1. **Customer initiates publish** - Clicks publish button in UI
-2. **Agent prepares build** - UI requests commit hash, Agent creates git archive
+2. **Agent prepares build** - UI requests commit hash, Agent builds app and creates production archive (dist/ folder only)
 3. **API starts workflow** - UI calls Airo service with commit hash and payload
 4. **StepFunctions orchestrates deployment**:
-   - **Step 1**: Deploy to Nomad (single Node image, untar archive, npm install, npm build, npm run)
+   - **Step 1**: Deploy to Nomad (single Node image, untar archive, run bundled JavaScript)
    - **Step 2**: Health check with retries on publish domain
    - **Step 3**: Mark prod app as "active"
 5. **UI polls for status** - Continuously checks Airo service for prod status
@@ -101,8 +101,8 @@ sequenceDiagram
 
     Note over Agent: Agent detects trigger<br/>(git push, schedule, etc.)
 
-    Agent->>Agent: Get commit hash and create git archive
-    Agent->>Agent: Build completes
+    Agent->>Agent: Get commit hash and build app
+    Agent->>Agent: Create production archive (dist/ folder only)
     Agent->>SQS: Send message (build ready + commit hash)
 
     Note over UI,Hosting: UI polls Airo service for prod status (if loaded)
@@ -119,7 +119,7 @@ sequenceDiagram
         Hosting->>Nomad: Deploy job (env: publish/prod)
         Nomad-->>Hosting: Job deploy initiated
         Nomad->>ProdApp: Start prod job (single Node image)
-        Note over Nomad,ProdApp: Untar git archive, npm i, npm build, npm run
+        Note over Nomad,ProdApp: Untar production archive, run bundled JavaScript
         Hosting-->>StepFunctions: Step 1 complete
     end
 
@@ -165,7 +165,7 @@ sequenceDiagram
 ### How It Works
 
 1. **Agent detects trigger** - Git push to main, scheduled publish, or other automation
-2. **Agent prepares build** - Gets commit hash, creates git archive, completes build
+2. **Agent prepares build** - Gets commit hash, builds app, creates production archive (dist/ folder only)
 3. **Message sent to SQS** - Agent sends message to `AiroPublishProd` queue with commit hash and payload
 4. **Poller processes queue** - Dedicated poller picks up message and starts StepFunctions workflow
 5. **StepFunctions orchestrates deployment** - Same 3-step process as customer-initiated

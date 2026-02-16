@@ -519,23 +519,24 @@ export class GitUtils {
   }
 
   /**
-   * Create a git archive tarball of the repository at a specific commit
+   * Create a production archive tarball containing only build artifacts
    * Archives are created in {DIST_DIR}/{commitHash}.tar.gz
    * The output directory will be created if it doesn't exist.
    *
-   * This method uses a multi-stage process to include both Git-tracked files
-   * and build artifacts (dist/ folder) in the final archive:
-   * 1. Extract Git-tracked files to temporary directory
-   * 2. Copy dist/ folder (if exists) into temporary directory
-   * 3. Create final tar.gz from complete directory
-   * 4. Clean up temporary directory
+   * This method packages only the dist/ folder (bundled JavaScript) for production deployment.
+   * Source code is excluded to reduce archive size and improve security.
+   *
+   * Process:
+   * 1. Verify dist/ folder exists
+   * 2. Create output directory
+   * 3. Create tar.gz archive directly from dist/ folder
    *
    * @param repoPath - Path to the git repository
    * @param commitHash - The commit hash to archive (short or full)
    * @param outputDir - Directory to store the archive (default: DIST_DIR env var or '/publish/dist'). Will be created if it doesn't exist.
    * @param options - Git command options
    * @returns GitArchiveResult with the archive path and commit hash
-   * @throws Error if dev-supervisor is not available or command fails
+   * @throws Error if dev-supervisor is not available, dist/ folder doesn't exist, or command fails
    */
   async createArchive(
     repoPath: string,
@@ -547,7 +548,7 @@ export class GitUtils {
 
     if (!this.isDevSupervisorAvailable()) {
       throw new Error(
-        'Git archive requires dev-supervisor to be available for command execution.'
+        'Archive creation requires dev-supervisor to be available for command execution.'
       );
     }
 
@@ -562,62 +563,22 @@ export class GitUtils {
     // Create archive filename and path
     const archiveFilename = `${commitHash}.tar.gz`;
     const archivePath = `${outputDir}/${archiveFilename}`;
-    const tempDir = `.publish/archive-${commitHash}`;
 
     // Multi-stage archive creation using sequential commands
     // Dev-supervisor doesn't allow complex shell features (&&, |, if), so we execute each step separately
 
-    // Stage 1: Create temp directory
-    const mkdirResult = await this.devSupervisor!.exec({
-      command: buildShellCommand(['mkdir', '-p', tempDir]),
+    // Stage 1: Verify dist/ folder exists
+    const distCheckResult = await this.devSupervisor!.exec({
+      command: buildShellCommand(['test', '-d', 'dist']),
       working_dir: '/app',
-      timeout: 10,
+      timeout: 5,
       capture_output: true
     });
-    if (!mkdirResult.success) {
-      throw new Error(`Failed to create temp directory: ${mkdirResult.stderr || 'Unknown error'}`);
+    if (!distCheckResult.success) {
+      throw new Error('dist/ folder not found - application must be built before publishing');
     }
 
-    // Stage 2: Extract git-tracked files to temp directory
-    const extractResult = await this.devSupervisor!.exec({
-      command: buildShellCommand(['git', 'archive', commitHash, '-o', `${tempDir}/archive.tar`]),
-      working_dir: '/app',
-      timeout: 30,
-      capture_output: true
-    });
-    if (!extractResult.success) {
-      throw new Error(`Failed to create git archive: ${extractResult.stderr || 'Unknown error'}`);
-    }
-
-    // Stage 3: Extract the tar in temp directory
-    const untarResult = await this.devSupervisor!.exec({
-      command: buildShellCommand(['tar', '-xf', `${tempDir}/archive.tar`, '-C', tempDir]),
-      working_dir: '/app',
-      timeout: 30,
-      capture_output: true
-    });
-    if (!untarResult.success) {
-      throw new Error(`Failed to extract archive: ${untarResult.stderr || 'Unknown error'}`);
-    }
-
-    // Stage 4: Remove intermediate tar file
-    await this.devSupervisor!.exec({
-      command: buildShellCommand(['rm', `${tempDir}/archive.tar`]),
-      working_dir: '/app',
-      timeout: 10,
-      capture_output: true
-    });
-
-    // Stage 5: Copy dist/ folder if it exists (best effort, ignore failures)
-    await this.devSupervisor!.exec({
-      command: buildShellCommand(['cp', '-r', 'dist', `${tempDir}/dist`]),
-      working_dir: '/app',
-      timeout: 30,
-      capture_output: true
-    });
-    // Don't check success - dist/ might not exist, which is OK
-
-    // Stage 6: Create output directory
+    // Stage 2: Create output directory
     const mkdirOutResult = await this.devSupervisor!.exec({
       command: buildShellCommand(['mkdir', '-p', outputDir]),
       working_dir: '/app',
@@ -628,25 +589,16 @@ export class GitUtils {
       throw new Error(`Failed to create output directory: ${mkdirOutResult.stderr || 'Unknown error'}`);
     }
 
-    // Stage 7: Create final tar.gz
+    // Stage 3: Create tar.gz archive directly from dist/ folder
     const tarResult = await this.devSupervisor!.exec({
-      command: buildShellCommand(['tar', '-czf', archivePath, '-C', tempDir, '.']),
+      command: buildShellCommand(['tar', '-czf', archivePath, '-C', '/app', 'dist']),
       working_dir: '/app',
       timeout: Math.floor(timeout / 1000),
       capture_output: true
     });
     if (!tarResult.success) {
-      throw new Error(`Failed to create final archive: ${tarResult.stderr || 'Unknown error'}`);
+      throw new Error(`Failed to create archive: ${tarResult.stderr || 'Unknown error'}`);
     }
-
-    // Stage 8: Clean up temp directory
-    await this.devSupervisor!.exec({
-      command: buildShellCommand(['rm', '-rf', tempDir]),
-      working_dir: '/app',
-      timeout: 10,
-      capture_output: true
-    });
-    // Don't check success - cleanup is best effort
 
     return {
       path: archivePath,

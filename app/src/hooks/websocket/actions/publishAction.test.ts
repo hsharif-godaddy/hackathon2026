@@ -484,7 +484,6 @@ describe('publishAction', () => {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer mock-jwt-token',
           },
-          body: JSON.stringify({ commitHash: 'fetched-hash' }),
         })
       )
     })
@@ -1144,7 +1143,6 @@ describe('publishAction', () => {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer mock-jwt-token',
           },
-          body: JSON.stringify({ commitHash: 'fetched-hash' }),
         })
       )
 

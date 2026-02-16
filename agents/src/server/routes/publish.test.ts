@@ -80,7 +80,7 @@ describe('Publish Route Authorization', () => {
     it('should reject publish when canPublish is false', async () => {
       const response = await request(app)
         .post('/apps/test-app-id/publish')
-        .send({ commitHash: 'abc123' })
+        .send({})
         .expect(403);
 
       expect(response.body).toEqual({
@@ -111,7 +111,7 @@ describe('Publish Route Authorization', () => {
 
       const response = await request(app)
         .post('/apps/test-app-id/publish')
-        .send({ commitHash: 'abc123' })
+        .send({})
         .expect(404);
 
       expect(mockFindById).toHaveBeenCalledWith('test-app-id');
@@ -129,7 +129,7 @@ describe('Publish Route Authorization', () => {
 
       const response = await request(app)
         .post('/apps/test-app-id/publish')
-        .send({ commitHash: 'abc123' })
+        .send({})
         .expect(403);
 
       expect(response.body).toEqual({
@@ -155,7 +155,7 @@ describe('Publish Route Authorization', () => {
 
       const response = await request(app)
         .post('/apps/test-app-id/publish')
-        .send({ commitHash: 'abc123' })
+        .send({})
         .expect(403);
 
       expect(response.body.error).toBe('Publish not allowed');
@@ -180,21 +180,12 @@ describe('Publish Route Authorization', () => {
       app.use('/', publishRouter);
     });
 
-    it('should return 400 when commitHash is missing', async () => {
-      const response = await request(app)
-        .post('/apps/test-app-id/publish')
-        .send({})
-        .expect(400);
-
-      expect(response.body.error).toBe('Commit hash is required');
-    });
-
     it('should return 404 when app does not exist', async () => {
       mockFindById.mockReturnValue(null);
 
       const response = await request(app)
         .post('/apps/test-app-id/publish')
-        .send({ commitHash: 'abc123' })
+        .send({})
         .expect(404);
 
       expect(response.body.error).toBe('App not found');
@@ -220,7 +211,7 @@ describe('Publish Route Authorization', () => {
 
       const response = await request(app)
         .post('/apps/test-app-id/publish')
-        .send({ commitHash: 'abc123' })
+        .send({})
         .expect(403);
 
       expect(response.body.error).toBe('Publish not allowed');
@@ -235,7 +226,7 @@ describe('Publish Route Authorization', () => {
 
       const response = await request(app)
         .post('/apps/test-app-id/publish')
-        .send({ commitHash: 'abc123' })
+        .send({})
         .expect(403);
 
       expect(response.body.error).toBe('Publish not allowed');
@@ -264,7 +255,7 @@ describe('Publish Route Authorization', () => {
 
       const response = await request(app)
         .post('/apps/test-app-id/publish')
-        .send({ commitHash: 'abc123' })
+        .send({})
         .expect(404);
 
       // Should succeed past permission check (404 is from app not found, not permission)

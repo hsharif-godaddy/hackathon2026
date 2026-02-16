@@ -20,25 +20,27 @@ router.use('/apps/:id', validateAppOwnership);
 /**
  * POST /apps/:id/publish
  *
- * Creates a git archive (tar.gz) of the application at a specific commit.
+ * Creates a production archive (tar.gz) containing only build artifacts for deployment.
  * This endpoint performs a five-step workflow:
- * 1. Resolve the commit reference to a full SHA-1 hash (40 characters)
+ * 1. Get current commit hash from HEAD
  * 2. Check git status to verify repository state
  * 3. Get commit details from git log to validate the commit exists
  * 4. Build verification - run `npm run build` to ensure project is buildable
- * 5. Create archive at {DIST_DIR}/{fullCommitHash}.tar.gz using git archive
+ * 5. Create archive at {DIST_DIR}/{fullCommitHash}.tar.gz by tarring dist/ folder directly
  *
  * For local dev with unified job (AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH set):
- * - Performs production-parity publish: archive → extract → npm ci → build → .env.local
+ * - Performs production-parity publish: archive → extract → run bundled JavaScript (dist/ folder) with .env.local
  * - Calls publish supervisor to update symlink and restart app
  *
  * Note: Database migrations are handled during development by the develop agent
  * and are committed to the repository before publish. This step no longer
  * generates migrations as they should already exist in the commit being published.
  *
+ * Security: Source code is excluded from the archive to reduce size and improve security.
+ * Only bundled JavaScript (dist/ folder) is included in the production deployment.
+ *
  * @route POST /apps/:id/publish
  * @param {string} req.params.id - The application ID
- * @param {string} req.body.commitHash - The git commit reference (short hash, full hash, tag, branch)
  *
  * @returns {Object} Response object
  * @returns {boolean} response.success - Whether the operation succeeded
@@ -46,18 +48,15 @@ router.use('/apps/:id', validateAppOwnership);
  * @returns {Object} response.archive - Archive information
  * @returns {string} response.archive.path - Path to the created archive
  *
- * @throws {400} If commit reference is missing, invalid, cannot be resolved, or build fails
+ * @throws {400} If build fails or git operations fail
  * @throws {404} If app is not found
  * @throws {500} If git operations fail
  *
  * @example
- * // Request (with commit hash)
+ * // Request (no body needed)
  * POST /apps/abc123/publish
- * {
- *   "commitHash": "a1b2c3d4e5f6789012345678901234567890abcd"
- * }
  *
- * // Response (returns full hash)
+ * // Response
  * {
  *   "success": true,
  *   "commitHash": "a1b2c3d4e5f6789012345678901234567890abcd",
@@ -359,7 +358,8 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
       });
     }
 
-    // Step 4: Create archive using GitUtils with full commit hash
+    // Step 4: Create production archive with full commit hash
+    // Archive contains only build artifacts (dist/ folder), no source code
     // Detect environment and job type
     const isLocalDev = !process.env.NOMAD_ALLOC_DIR;
     const publishSocketPath = process.env.AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH;
@@ -368,7 +368,7 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
     // For local dev: always unified job (uses TCP for supervisors)
     const isUnifiedJob = isLocalDev || (publishSocketPath && existsSync(publishSocketPath));
 
-    contextLogger.info('route.publish.git-archive.begin', {
+    contextLogger.info('route.publish.archive.begin', {
       commitHash: fullCommitHash.substring(0, 7),
       isUnifiedJob,
       isLocalDev,
@@ -380,7 +380,7 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
       // For local dev with unified job, create archive to /dist directory
       // For production, use default archive location
       const targetDir = isUnifiedJob && isLocalDev ? '/dist' : undefined;
-      
+
       const archiveResult = await gitUtils.createArchive(
         app.path,
         fullCommitHash,
@@ -388,12 +388,12 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
       );
       archivePath = archiveResult.path;
 
-      contextLogger.info('route.publish.git-archive.success', {
+      contextLogger.info('route.publish.archive.success', {
         commitHash: fullCommitHash.substring(0, 7),
         archivePath,
       });
     } catch (error) {
-      contextLogger.error('route.publish.git-archive.failed', {
+      contextLogger.error('route.publish.archive.failed', {
         commitHash: fullCommitHash.substring(0, 7),
         error: error instanceof Error ? error.message : String(error),
       });

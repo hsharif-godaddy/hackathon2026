@@ -108,7 +108,7 @@ export const GET = withAuth(async (request) => {
         eventType = 'build_failed';
         success = false;
         errorMessage = eventData?.stderr as string | undefined;
-      } else if (event === 'route.publish.git-archive.failed') {
+      } else if (event === 'route.publish.archive.failed' || event === 'route.publish.git-archive.failed') {
         eventType = 'archive_failed';
         success = false;
         errorMessage = eventData?.error as string | undefined;

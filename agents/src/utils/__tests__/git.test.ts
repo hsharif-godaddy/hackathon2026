@@ -138,4 +138,155 @@ describe('GitUtils', () => {
       expect(callArgs.command).toContain("'.'");
     });
   });
+
+  describe('createArchive', () => {
+    it('should throw error when dev-supervisor is not available', async () => {
+      mockDevSupervisor.isAvailable.mockReturnValue(false);
+      const gitUtilsUnavailable = new GitUtils(mockDevSupervisor as any);
+
+      await expect(
+        gitUtilsUnavailable.createArchive('/app', 'abc1234')
+      ).rejects.toThrow('Archive creation requires dev-supervisor to be available');
+    });
+
+    it('should throw error when commit hash format is invalid', async () => {
+      await expect(
+        gitUtils.createArchive('/app', 'invalid!hash')
+      ).rejects.toThrow('Invalid commit hash format');
+
+      await expect(
+        gitUtils.createArchive('/app', '123') // too short (< 7 chars)
+      ).rejects.toThrow('Invalid commit hash format');
+
+      await expect(
+        gitUtils.createArchive('/app', 'a'.repeat(41)) // too long (> 40 chars)
+      ).rejects.toThrow('Invalid commit hash format');
+    });
+
+    it('should throw error when dist/ folder does not exist', async () => {
+      // Mock dist/ check to fail
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: false,
+        exit_code: 1,
+        stdout: '',
+        stderr: ''
+      });
+
+      await expect(
+        gitUtils.createArchive('/app', 'abc1234')
+      ).rejects.toThrow('dist/ folder not found - application must be built before publishing');
+
+      // Verify the dist/ check was called
+      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: expect.stringContaining('test'),
+          working_dir: '/app'
+        })
+      );
+    });
+
+    it('should create archive when dist/ folder exists', async () => {
+      const commitHash = 'abc1234';
+
+      // Mock successful responses for all stages
+      mockDevSupervisor.exec
+        .mockResolvedValueOnce({ // Stage 1: dist/ check
+          success: true,
+          exit_code: 0,
+          stdout: '',
+          stderr: ''
+        })
+        .mockResolvedValueOnce({ // Stage 2: mkdir output dir
+          success: true,
+          exit_code: 0,
+          stdout: '',
+          stderr: ''
+        })
+        .mockResolvedValueOnce({ // Stage 3: create tar
+          success: true,
+          exit_code: 0,
+          stdout: '',
+          stderr: ''
+        });
+
+      const result = await gitUtils.createArchive('/app', commitHash);
+
+      expect(result).toEqual({
+        path: expect.stringContaining(`${commitHash}.tar.gz`),
+        commitHash
+      });
+
+      // Verify all 3 stages were called
+      expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(3);
+
+      // Verify Stage 1: dist/ check
+      expect(mockDevSupervisor.exec).toHaveBeenNthCalledWith(1,
+        expect.objectContaining({
+          command: expect.stringContaining('test'),
+          working_dir: '/app'
+        })
+      );
+
+      // Verify Stage 2: mkdir
+      expect(mockDevSupervisor.exec).toHaveBeenNthCalledWith(2,
+        expect.objectContaining({
+          command: expect.stringContaining('mkdir'),
+          working_dir: '/app'
+        })
+      );
+
+      // Verify Stage 3: tar
+      const tarCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
+      expect(tarCallArgs.command).toContain('tar');
+      expect(tarCallArgs.command).toContain('-czf');
+      expect(tarCallArgs.command).toContain('dist');
+      expect(tarCallArgs.working_dir).toBe('/app');
+    });
+
+    it('should throw error when mkdir fails', async () => {
+      mockDevSupervisor.exec
+        .mockResolvedValueOnce({ // Stage 1: dist/ check succeeds
+          success: true,
+          exit_code: 0,
+          stdout: '',
+          stderr: ''
+        })
+        .mockResolvedValueOnce({ // Stage 2: mkdir fails
+          success: false,
+          exit_code: 1,
+          stdout: '',
+          stderr: 'Permission denied'
+        });
+
+      await expect(
+        gitUtils.createArchive('/app', 'abc1234')
+      ).rejects.toThrow('Failed to create output directory');
+    });
+
+    it('should throw error when tar command fails', async () => {
+      mockDevSupervisor.exec
+        .mockResolvedValueOnce({ // Stage 1: dist/ check succeeds
+          success: true,
+          exit_code: 0,
+          stdout: '',
+          stderr: ''
+        })
+        .mockResolvedValueOnce({ // Stage 2: mkdir succeeds
+          success: true,
+          exit_code: 0,
+          stdout: '',
+          stderr: ''
+        })
+        .mockResolvedValueOnce({ // Stage 3: tar fails
+          success: false,
+          exit_code: 1,
+          stdout: '',
+          stderr: 'No space left on device'
+        });
+
+      await expect(
+        gitUtils.createArchive('/app', 'abc1234')
+      ).rejects.toThrow('Failed to create archive');
+    });
+  });
 });
