@@ -1,5 +1,5 @@
+import { getFileMetadataAgent, getFileUploadAgent } from '@/lib/file-agent'
 import { logger } from '@/lib/request-context'
-import { buildDynamicApiUrl } from '../config/dynamic-api'
 import type { UploadError, UploadResult } from '../types/file-upload'
 
 const ALLOWED_IMAGE_TYPES = new Set([
@@ -76,10 +76,14 @@ export async function uploadImages(
   }
 
   try {
-    const apiUrl = await buildDynamicApiUrl('/api/files/upload', appId)
+    // Get agent token and upload URL
+    const { token, uploadUrl } = await getFileUploadAgent(appId)
 
-    const response = await fetch(apiUrl, {
+    const response = await fetch(uploadUrl, {
       method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
       body: formData
     })
 
@@ -113,9 +117,14 @@ export async function getUpload(
   uploadId: string
 ): Promise<UploadResult | null> {
   try {
-    const apiUrl = await buildDynamicApiUrl(`/api/files/${appId}/${uploadId}`, appId)
+    // Get agent token and metadata URL
+    const { token, metadataUrl } = await getFileMetadataAgent(appId, uploadId)
 
-    const response = await fetch(apiUrl)
+    const response = await fetch(metadataUrl, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
 
     if (response.status === 404) {
       return null
@@ -142,10 +151,14 @@ export async function deleteUpload(
   uploadId: string
 ): Promise<boolean> {
   try {
-    const apiUrl = await buildDynamicApiUrl(`/api/files/${appId}/${uploadId}`, appId)
+    // Get agent token and metadata URL
+    const { token, metadataUrl } = await getFileMetadataAgent(appId, uploadId)
 
-    const response = await fetch(apiUrl, {
-      method: 'DELETE'
+    const response = await fetch(metadataUrl, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
     })
 
     if (response.status === 404) {

@@ -259,7 +259,7 @@ describe('StreamingWebSocketController', () => {
       })
 
       // Tier 2 action - controller directly calls this
-      expect(mockActions.startNewStream).toHaveBeenCalledWith('Test')
+      expect(mockActions.startNewStream).toHaveBeenCalledWith('Test', undefined, undefined)
       // Note: Lifecycle state (setIsLoading, setStreamingState) handled by StoreSyncAdapter
     })
 

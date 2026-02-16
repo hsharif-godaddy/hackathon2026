@@ -1,5 +1,5 @@
 import { readFile, writeFile, mkdir, unlink } from 'fs/promises';
-import { dirname, resolve, relative } from 'path';
+import { dirname, resolve, relative, basename } from 'path';
 import { diffLines, createPatch } from 'diff';
 import { existsSync, realpathSync, lstatSync } from 'fs';
 import { AppRepository } from '../database/index.js';
@@ -10,6 +10,9 @@ import { logger } from '../logging/index.js';
 import { toolFileEditEvents, toolServerHealthEvents } from '../logging/events/index.js';
 import { ServerManagementTool } from './server-management-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { fileUploadService } from '../services/FileUploadService.js';
+import { createSafePathBuilder } from '../utils/safe-path.js';
+import { isSourceFile, BINARY_FILE_REGEX } from '../utils/file-types.js';
 
 // Constants for consistent text truncation
 const EDIT_RESULT_TRUNCATION_LENGTH = 50;
@@ -775,6 +778,158 @@ export class FileEditTool {
   }
 
   /**
+   * Attempt to resolve a file from the uploads directory.
+   * Checks if a matching file exists in /tmp/uploads/{appId}/ and copies it to the target location.
+   *
+   * @param appId - Application ID to search uploads for
+   * @param targetPath - Relative target path within the project (e.g., 'public/logo.png')
+   * @param appBasePath - Absolute base path of the application
+   * @returns Promise<boolean> - true if file was resolved and copied, false otherwise
+   */
+  private async resolveSourceFile(
+    appId: string,
+    targetPath: string,
+    appBasePath: string
+  ): Promise<boolean> {
+    try {
+      const filename = basename(targetPath);
+      // SECURITY: Use safe path builder to prevent path traversal attacks
+      const pathBuilder = createSafePathBuilder(appBasePath);
+      const fullTargetPath = pathBuilder.join(targetPath);
+
+      // Check if file already exists in project
+      if (existsSync(fullTargetPath)) {
+        logger.debug('file-edit.auto-resolve.target-exists', {
+          appId,
+          filename,
+          targetPath: fullTargetPath
+        });
+        return false; // Don't auto-resolve, use existing project file
+      }
+
+      // List all uploaded files for this app
+      const uploadedFiles = await fileUploadService.listUploadedFiles(appId);
+
+      if (uploadedFiles.length === 0) {
+        logger.debug('file-edit.auto-resolve.no-uploads', {
+          appId,
+          filename
+        });
+        return false; // No uploads available
+      }
+
+      // Extract file extension from target filename
+      const targetExt = filename.includes('.') ? filename.substring(filename.lastIndexOf('.')).toLowerCase() : '';
+
+      // Strategy 1: Try exact match by originalName or filename
+      let matchingFile = uploadedFiles.find(
+        f => f.originalName === filename || f.filename === filename
+      );
+
+      // Strategy 2: If no exact match, try matching by file extension
+      if (!matchingFile && targetExt) {
+        const filesWithSameExt = uploadedFiles.filter(f => {
+          const uploadExt = f.originalName.includes('.')
+            ? f.originalName.substring(f.originalName.lastIndexOf('.')).toLowerCase()
+            : '';
+          return uploadExt === targetExt;
+        });
+
+        if (filesWithSameExt.length === 1) {
+          // Only one file with this extension - use it
+          const matched = filesWithSameExt[0]!;
+          matchingFile = matched;
+          logger.info('file-edit.auto-resolve.extension-match', {
+            appId,
+            requestedFilename: filename,
+            matchedOriginalName: matched.originalName,
+            matchingStrategy: 'single-extension-match'
+          });
+        } else if (filesWithSameExt.length > 1) {
+          // Multiple files with same extension - use most recent
+          const matched = filesWithSameExt.sort((a, b) =>
+            new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+          )[0]!;
+          matchingFile = matched;
+          logger.info('file-edit.auto-resolve.extension-match', {
+            appId,
+            requestedFilename: filename,
+            matchedOriginalName: matched.originalName,
+            candidateCount: filesWithSameExt.length,
+            matchingStrategy: 'most-recent-by-extension'
+          });
+        }
+      }
+
+      if (!matchingFile) {
+        logger.debug('file-edit.auto-resolve.no-match', {
+          appId,
+          filename,
+          uploadedFileCount: uploadedFiles.length,
+          availableFiles: uploadedFiles.map(f => f.originalName)
+        });
+        return false; // No matching upload found
+      }
+
+      // Get the full path to the uploaded file
+      // Note: We need to find which uploadId this file belongs to
+      // The metadata.files array doesn't include uploadId, so we need to scan uploads
+      let sourcePath: string | null = null;
+
+      // Re-scan to find the upload directory containing this file
+      const uploadsBaseDir = fileUploadService['uploadsDir'];
+      const appUploadsDir = fileUploadService['pathBuilder'].join(appId);
+
+      if (existsSync(appUploadsDir)) {
+        const { readdirSync } = await import('fs');
+        const uploadDirs = readdirSync(appUploadsDir);
+
+        for (const uploadId of uploadDirs) {
+          const candidatePath = fileUploadService.getFilePath(appId, uploadId, matchingFile.filename);
+          if (existsSync(candidatePath)) {
+            sourcePath = candidatePath;
+            break;
+          }
+        }
+      }
+
+      if (!sourcePath || !existsSync(sourcePath)) {
+        logger.warn('file-edit.auto-resolve.source-missing', {
+          appId,
+          filename,
+          matchingFile: matchingFile.filename
+        });
+        return false;
+      }
+
+      // Ensure target directory exists
+      await mkdir(dirname(fullTargetPath), { recursive: true });
+
+      // Copy file from uploads to project
+      const sourceContent = await readFile(sourcePath);
+      await writeFile(fullTargetPath, sourceContent);
+
+      logger.info('file-edit.auto-resolved', {
+        appId,
+        filename,
+        originalName: matchingFile.originalName,
+        from: sourcePath,
+        to: fullTargetPath,
+        size: matchingFile.size
+      });
+
+      return true;
+    } catch (error) {
+      logger.error('file-edit.auto-resolve.error', {
+        appId,
+        targetPath,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return false;
+    }
+  }
+
+  /**
    * Auto-detect the appropriate edit mode
    */
   private async detectMode(filePath: string, options: FileEditOptions): Promise<'create' | 'edit' | 'rewrite' | 'delete'> {
@@ -796,15 +951,109 @@ export class FileEditTool {
   }
 
   /**
+   * Validate content doesn't contain forbidden upload URLs
+   * CRITICAL: Prevents upload URLs from appearing in generated source code
+   */
+  private validateNoApiPaths(content: string, filePath: string): { valid: boolean; error?: string } {
+    // Check if this is a source code file (not config/data files)
+    if (!isSourceFile(filePath)) {
+      return { valid: true }; // Don't validate non-source files
+    }
+
+    // Check for forbidden upload paths (both old proxy format and new agent format)
+    if (content.includes('/api/files/') || content.includes('/files/uploads/')) {
+      return {
+        valid: false,
+        error: `FORBIDDEN: Cannot write upload URLs to source code. These are temporary URLs that will break in production.
+
+The content you're trying to write contains upload URLs.
+
+REQUIRED WORKFLOW for uploaded files:
+1. FIRST: Copy file to project using file_edit with mode: "create"
+   Example: file_edit({ path: "public/assets/image.png", mode: "create", content: "" })
+
+2. THEN: Reference with project-relative path
+   Example: <img src="/assets/image.png" />
+
+DO NOT use upload URLs in source code - they are temporary and will not work in production.`
+      };
+    }
+
+    return { valid: true };
+  }
+
+  /**
    * Handle creating a new file
    */
   private async handleCreate(filePath: string, options: FileEditOptions, appPath: string, context?: { appId?: string; conversationId?: string }): Promise<FileEditResult> {
-    if (!options.content) {
+    // Try auto-resolution from uploads if appId is available
+    if (context?.appId && !options.dryRun) {
+      const resolved = await this.resolveSourceFile(context.appId, options.path, appPath);
+
+      if (resolved) {
+        // File was auto-resolved from uploads
+        // Check if it's a binary file (images, fonts, etc.)
+        const isBinaryFile = BINARY_FILE_REGEX.test(filePath)
+
+        if (isBinaryFile) {
+          // For binary files, don't try to read as text
+          const stats = await import('fs').then(fs => fs.promises.stat(filePath))
+          return {
+            success: true,
+            path: options.path,
+            mode: 'create' as const,
+            diff: `Binary file auto-resolved from uploads (${stats.size} bytes)`,
+            changes: {
+              additions: 0,
+              deletions: 0,
+              totalLines: 0,
+            },
+          };
+        }
+
+        // For text files, read and create diff
+        const resolvedContent = await readFile(filePath, 'utf-8');
+        const diff = createPatch(
+          options.path,
+          '',
+          resolvedContent,
+          'non-existent',
+          'auto-resolved from uploads'
+        );
+
+        return {
+          success: true,
+          path: options.path,
+          mode: 'create' as const,
+          diff,
+          changes: {
+            additions: resolvedContent.split('\n').length,
+            deletions: 0,
+            totalLines: resolvedContent.split('\n').length,
+          },
+        };
+      }
+    }
+
+    // Allow empty string for creating empty files or auto-resolution
+    // Only reject if content is undefined or null
+    if (options.content === undefined || options.content === null) {
       return {
         success: false,
         path: options.path,
         mode: 'create',
         error: 'Content is required for creating a new file',
+      };
+    }
+
+    // CRITICAL: Validate content doesn't contain forbidden API paths
+    const validation = this.validateNoApiPaths(options.content, options.path);
+    if (!validation.valid) {
+      return {
+        success: false,
+        path: options.path,
+        mode: 'create',
+        error: validation.error,
       };
     }
 
@@ -859,12 +1108,52 @@ export class FileEditTool {
    * Handle rewriting an entire file
    */
   private async handleRewrite(filePath: string, options: FileEditOptions, appPath: string, context?: { appId?: string; conversationId?: string }): Promise<FileEditResult> {
+    // Try auto-resolution from uploads if appId is available and file doesn't exist
+    if (context?.appId && !existsSync(filePath) && !options.dryRun) {
+      const resolved = await this.resolveSourceFile(context.appId, options.path, appPath);
+
+      if (resolved) {
+        // File was auto-resolved from uploads
+        const resolvedContent = await readFile(filePath, 'utf-8');
+        const diff = createPatch(
+          options.path,
+          '',
+          resolvedContent,
+          'non-existent',
+          'auto-resolved from uploads'
+        );
+
+        return {
+          success: true,
+          path: options.path,
+          mode: 'rewrite' as const,
+          diff,
+          changes: {
+            additions: resolvedContent.split('\n').length,
+            deletions: 0,
+            totalLines: resolvedContent.split('\n').length,
+          },
+        };
+      }
+    }
+
     if (!options.content) {
       return {
         success: false,
         path: options.path,
         mode: 'rewrite',
         error: 'Content is required for rewrite mode',
+      };
+    }
+
+    // CRITICAL: Validate content doesn't contain forbidden API paths
+    const validation = this.validateNoApiPaths(options.content, options.path);
+    if (!validation.valid) {
+      return {
+        success: false,
+        path: options.path,
+        mode: 'rewrite',
+        error: validation.error,
       };
     }
 
@@ -1015,6 +1304,17 @@ export class FileEditTool {
         mode: 'edit',
         error: 'No changes were applied. Check that search text exists in the file.',
         ...(failedEdits.length > 0 && { warning: failedEdits.join('\n') }),
+      };
+    }
+
+    // CRITICAL: Validate resulting content doesn't contain forbidden API paths
+    const validation = this.validateNoApiPaths(content, options.path);
+    if (!validation.valid) {
+      return {
+        success: false,
+        path: options.path,
+        mode: 'edit',
+        error: validation.error,
       };
     }
 

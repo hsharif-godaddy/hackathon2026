@@ -2,6 +2,7 @@
 
 import clsx from 'clsx'
 import dynamic from 'next/dynamic'
+import path from 'path-browserify'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -22,7 +23,9 @@ import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useCodeSyncStore } from '@/stores/useCodeSyncStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { useSiteCreationStore } from '@/stores/useSiteCreationStore'
+import { BINARY_FILE_REGEX, IMAGE_FILE_REGEX, VIDEO_FILE_REGEX } from '@/utils/file-types'
 
 // Dynamically import Monaco Editor to avoid SSR issues
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
@@ -133,6 +136,11 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const resolveConflict = useCodeSyncStore((state) => state.resolveConflict)
   const hasConflict = useCodeSyncStore((state) => state.hasConflict)
   const getFileChange = useCodeSyncStore((state) => state.getFileChange)
+
+  // Get preview URL for serving binary files
+  const getServerState = useServerPollingStore((state) => state.getServerState)
+  const serverState = getServerState(appId)
+  const previewUrl = serverState?.url
 
   // Refs to prevent duplicate loads and manage retry
   // Initialize refs in a way that ensures they're properly reset on mount
@@ -315,18 +323,41 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     if (!effectiveAppId) {
       throw new Error('App ID is required to load file content')
     }
+
+    // Check if this is a binary file (image, PDF, video)
+    const isBinary = BINARY_FILE_REGEX.test(filePath)
+
+    // For binary files, return URL to the file in the running app instead of reading content
+    if (isBinary && previewUrl) {
+      // Convert file path to web path (remove public/ prefix if exists)
+      let webPath = filePath.replace(/^public\//, '/')
+      if (!webPath.startsWith('/')) {
+        webPath = '/' + webPath
+      }
+      const fullUrl = `${previewUrl}${webPath}`
+
+      logger.info('code-editor.binary-file.url-generated', {
+        filePath,
+        webPath,
+        previewUrl,
+        fullUrl
+      })
+
+      return fullUrl
+    }
+
     try {
       const result = await appService.readFile(effectiveAppId, filePath)
       return result.content
     } catch (error) {
-      logger.error('code-editor.file.load-error', { 
-        message: 'Error loading file', 
+      logger.error('code-editor.file.load-error', {
+        message: 'Error loading file',
         filePath,
-        error: error instanceof Error ? error.message : String(error) 
+        error: error instanceof Error ? error.message : String(error)
       })
       throw error // Re-throw to allow caller to handle
     }
-  }, [effectiveAppId])
+  }, [effectiveAppId, previewUrl])
 
   // Save file content to backend
   const saveFileContent = useCallback(async (filePath: string, content: string): Promise<boolean> => {
@@ -753,8 +784,9 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   }
 
   return (
-    <div className="h-full w-full flex overflow-hidden relative border rounded-md bg-intents-ux-box-backgroundColor">
-      {/* File Tree - Desktop: sidebar, Mobile: overlay */}
+    <>
+      <div className="h-full w-full flex overflow-hidden relative border rounded-md bg-intents-ux-box-backgroundColor">
+        {/* File Tree - Desktop: sidebar, Mobile: overlay */}
       {isMobile ? (
         // Mobile: Slide-in overlay
         <>
@@ -930,6 +962,36 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                     </ReactMarkdown>
                   </div>
                 </div>
+              ) : IMAGE_FILE_REGEX.test(currentFile.path) ? (
+                // Image preview - content is a URL for binary files
+                <div className="h-full flex items-center justify-center bg-gray-900 p-4">
+                  <img /* eslint-disable-line @next/next/no-img-element */
+                    src={currentFile.content}
+                    alt={currentFile.name}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                </div>
+              ) : currentFile.path.endsWith('.pdf') ? (
+                // PDF preview - content is a URL for binary files
+                <div className="h-full bg-gray-900">
+                  <embed
+                    src={currentFile.content}
+                    type="application/pdf"
+                    width="100%"
+                    height="100%"
+                  />
+                </div>
+              ) : VIDEO_FILE_REGEX.test(currentFile.path) ? (
+                // Video preview - content is a URL for binary files
+                <div className="h-full flex items-center justify-center bg-gray-900 p-4">
+                  <video
+                    src={currentFile.content}
+                    controls
+                    className="max-w-full max-h-full"
+                  >
+                    {t('builder_code_video_unsupported')}
+                  </video>
+                </div>
               ) : (
                 <MonacoEditor
                   height="100%"
@@ -972,5 +1034,6 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
         </div>
       </div>
     </div>
+    </>
   )
 }

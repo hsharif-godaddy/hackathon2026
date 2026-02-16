@@ -388,6 +388,26 @@ export function validateConfiguration(): void {
     errors.push('MYSQL_ROOT_PORT must be a valid port number (1-65535)')
   }
 
+  // SECURITY: Validate production uses JWT authentication
+  if (features.nodeEnv === 'production' && features.authType !== AuthType.JWT) {
+    errors.push(
+      `SECURITY: Production must use JWT authentication. ` +
+      `Current: NODE_ENV=${features.nodeEnv}, AUTH_TYPE=${features.authType}`
+    );
+  }
+
+  // SECURITY: Validate BYPASS_SITE_IDS not in production use
+  if (features.nodeEnv === 'production') {
+    const siteId = features.siteId;
+    if (BYPASS_SITE_IDS.includes(siteId)) {
+      errors.push(
+        `SECURITY: Production SITE_ID cannot be a bypass value. ` +
+        `Current: SITE_ID=${siteId}. ` +
+        `Bypass values are for development/testing only: ${BYPASS_SITE_IDS.join(', ')}`
+      );
+    }
+  }
+
   if (errors.length > 0) {
     throw new Error(`Configuration validation failed:\n${errors.join('\n')}`)
   }

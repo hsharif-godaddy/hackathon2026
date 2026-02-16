@@ -15,6 +15,10 @@ export default defineConfig({
     },
     // Limit concurrent tests within each file
     maxConcurrency: 5,
+    // Set NODE_ENV=test to enable TestHandler (suppresses stderr logging)
+    env: {
+      NODE_ENV: 'test',
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

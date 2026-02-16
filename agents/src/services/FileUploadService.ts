@@ -2,8 +2,10 @@ import { existsSync, readdirSync, statSync } from 'fs'
 import { mkdir, writeFile, readFile, unlink, rm } from 'fs/promises'
 import { extname } from 'path'
 import { nanoid } from 'nanoid'
+import { z } from 'zod'
 import { logger } from '../logging/index.js'
 import { createSafePathBuilder } from '../utils/safe-path.js'
+import { sanitizeSVG, isSVGFile } from '../utils/svg-sanitizer.js'
 import { getAgentConfig } from './features.js'
 import { fileUploadEvents } from '../logging/events/index.js'
 
@@ -23,17 +25,97 @@ export interface UploadResult {
   expiresAt: string
 }
 
-const ALLOWED_IMAGE_TYPES = new Set([
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/gif',
-  'image/webp'
+const BLOCKED_EXTENSIONS = new Set([
+  // Server-side executables
+  '.exe', '.dll', '.so', '.dylib',
+  // Server-side scripts
+  '.php', '.jsp', '.asp', '.aspx',
+  // Shell scripts
+  '.sh', '.bat', '.cmd', '.ps1',
+  // Database files
+  '.sql', '.db',
+  // Archives
+  '.zip', '.tar', '.gz', '.rar', '.7z',
+  // HTML/XML that can execute scripts (SVG is allowed but sanitized)
+  '.html', '.htm', '.xhtml',
+  '.xml', '.xsl', '.xslt',
+  // Other executable formats
+  '.swf', '.jar'
+])
+
+const BLOCKED_MIME_TYPES = new Set([
+  'application/x-executable',
+  'application/x-msdownload',
+  'application/x-sh',
+  'application/x-php',
+  'application/zip',
+  'application/x-tar',
+  'application/gzip',
+  'application/x-rar-compressed',
+  'application/x-7z-compressed',
+  // HTML/XML MIME types
+  'text/html',
+  'application/xhtml+xml',
+  'application/xml',
+  'text/xml',
+  // Other executable formats
+  'application/x-shockwave-flash',
+  'application/java-archive'
 ])
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 const MAX_FILES_PER_UPLOAD = 5
 const UPLOAD_EXPIRY_HOURS = 24
+
+// SECURITY: Zod schemas for metadata validation
+// Prevents type confusion, prototype pollution, and validates structure
+const UploadedFileSchema = z.object({
+  id: z.string(),
+  originalName: z.string().max(1000),  // Prevent extremely long filenames
+  filename: z.string(),
+  size: z.number().int().nonnegative(),
+  mimeType: z.string().nullable(),
+  uploadedAt: z.string()
+})
+
+const MetadataSchema = z.object({
+  uploadId: z.string(),
+  appId: z.string(),
+  uploadedAt: z.string(),
+  expiresAt: z.string(),
+  fileCount: z.number().int().nonnegative(),
+  files: z.array(UploadedFileSchema)
+})
+
+/**
+ * Check for prototype pollution attempts in parsed JSON
+ * Detects dangerous keys that could modify Object.prototype
+ */
+function hasPrototypePollution(obj: unknown): boolean {
+  if (obj === null || typeof obj !== 'object') {
+    return false
+  }
+
+  const dangerous = ['__proto__', 'constructor', 'prototype']
+
+  // Check own properties
+  for (const key of dangerous) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      return true
+    }
+  }
+
+  // Recursively check nested objects
+  for (const value of Object.values(obj)) {
+    if (typeof value === 'object' && value !== null) {
+      if (hasPrototypePollution(value)) {
+        return true
+      }
+    }
+  }
+
+  return false
+}
 
 export class FileUploadService {
   private uploadsDir: string
@@ -92,12 +174,26 @@ export class FileUploadService {
   }
 
   validateFile(file: Express.Multer.File): void {
-    if (!ALLOWED_IMAGE_TYPES.has(file.mimetype)) {
-      throw new Error(`Unsupported file type: ${file.mimetype}. Allowed types: ${Array.from(ALLOWED_IMAGE_TYPES).join(', ')}`)
+    // Check file extension
+    const ext = extname(file.originalname).toLowerCase()
+    if (BLOCKED_EXTENSIONS.has(ext)) {
+      throw new Error(
+        `File type '${ext}' is not allowed for security reasons. Please upload a different file type.`
+      )
     }
 
+    // Check MIME type
+    if (BLOCKED_MIME_TYPES.has(file.mimetype)) {
+      throw new Error(
+        `File type '${file.mimetype}' is not allowed for security reasons. Please upload a different file type.`
+      )
+    }
+
+    // Check file size
     if (file.size > MAX_FILE_SIZE) {
-      throw new Error(`File size ${file.size} bytes exceeds maximum allowed size of ${MAX_FILE_SIZE} bytes`)
+      throw new Error(
+        `File size ${file.size} bytes exceeds maximum allowed size of ${MAX_FILE_SIZE} bytes`
+      )
     }
   }
 
@@ -135,13 +231,57 @@ export class FileUploadService {
       const filename = `${appId}_${Date.now()}_${fileId}${ext}`
       const filepath = this.pathBuilder.join(appId, uploadId, filename)
 
-      await writeFile(filepath, file.buffer)
+      // Sanitize SVG files before saving
+      let fileBuffer = file.buffer
+      let actualSize = file.size
+      let wasSanitized = false
+
+      if (isSVGFile(file.originalname, file.mimetype)) {
+        try {
+          const svgContent = file.buffer.toString('utf-8')
+          const result = sanitizeSVG(svgContent)
+
+          if (result.hadDangerousContent) {
+            logger.warn('file-upload.svg.sanitized', {
+              appId,
+              uploadId,
+              originalName: file.originalname,
+              detectedThreats: result.detectedThreats,
+              message: `SVG contained dangerous content that was removed: ${result.detectedThreats.join(', ')}`
+            }, { tags: ['security', 'svg-sanitization', 'xss-prevention'] })
+          }
+
+          fileBuffer = Buffer.from(result.sanitized, 'utf-8')
+          actualSize = fileBuffer.length
+          wasSanitized = true
+
+          logger.info('file-upload.svg.processed', {
+            appId,
+            uploadId,
+            originalName: file.originalname,
+            originalSize: file.size,
+            sanitizedSize: actualSize,
+            hadThreats: result.hadDangerousContent,
+            threats: result.detectedThreats
+          })
+        } catch (error) {
+          logger.error('file-upload.svg.sanitization-failed', {
+            appId,
+            uploadId,
+            originalName: file.originalname,
+            error: error instanceof Error ? error.message : String(error)
+          })
+          throw new Error(`Failed to sanitize SVG file: ${file.originalname}`)
+        }
+      }
+
+      await writeFile(filepath, fileBuffer)
 
       uploadedFiles.push({
         id: fileId,
         originalName: file.originalname,
         filename,
-        size: file.size,
+        size: actualSize,
         mimeType: file.mimetype,
         uploadedAt
       })
@@ -150,10 +290,10 @@ export class FileUploadService {
         appId,
         uploadId,
         originalName: file.originalname,
-        size: file.size,
+        size: actualSize,
         mimeType: file.mimetype,
         fileCount: 1,
-        totalSize: file.size
+        totalSize: actualSize
       })
     }
 
@@ -205,8 +345,41 @@ export class FileUploadService {
 
     try {
       const metadataContent = await readFile(metadataPath, 'utf-8')
-      const metadata = JSON.parse(metadataContent)
-      
+      const rawMetadata = JSON.parse(metadataContent)
+
+      // SECURITY: Check for prototype pollution attempts
+      if (hasPrototypePollution(rawMetadata)) {
+        fileUploadEvents.retrieveFailure(
+          logger,
+          new Error('Prototype pollution detected in metadata'),
+          { appId, uploadId }
+        )
+        logger.error('file-upload.metadata.prototype-pollution', {
+          appId,
+          uploadId,
+          message: 'SECURITY: Prototype pollution attempt detected in metadata.json'
+        }, { tags: ['security', 'prototype-pollution', 'metadata-validation'] })
+        return null
+      }
+
+      // SECURITY: Validate metadata structure with Zod schema
+      let metadata: z.infer<typeof MetadataSchema>
+      try {
+        metadata = MetadataSchema.parse(rawMetadata)
+      } catch (validationError) {
+        fileUploadEvents.retrieveFailure(
+          logger,
+          validationError instanceof Error ? validationError : new Error(String(validationError)),
+          { appId, uploadId }
+        )
+        logger.error('file-upload.metadata.validation-failed', {
+          appId,
+          uploadId,
+          error: validationError instanceof Error ? validationError.message : String(validationError)
+        }, { tags: ['security', 'metadata-validation', 'schema-validation'] })
+        return null
+      }
+
       if (!metadata.files) {
         const files: UploadedFile[] = []
         const dirFiles = readdirSync(uploadDir)
@@ -239,6 +412,82 @@ export class FileUploadService {
         uploadId
       })
       return null
+    }
+  }
+
+  /**
+   * Get the uploads directory path for an app
+   */
+  getAppUploadsDir(appId: string): string {
+    return this.pathBuilder.join(appId)
+  }
+
+  async listUploadedFiles(appId: string): Promise<UploadedFile[]> {
+    const appDir = this.pathBuilder.join(appId)
+
+    if (!existsSync(appDir)) {
+      return []
+    }
+
+    const allFiles: UploadedFile[] = []
+
+    try {
+      const uploadDirs = readdirSync(appDir)
+
+      for (const uploadId of uploadDirs) {
+        const metadataPath = this.pathBuilder.join(appId, uploadId, 'metadata.json')
+
+        if (!existsSync(metadataPath)) {
+          continue
+        }
+
+        try {
+          const metadataContent = await readFile(metadataPath, 'utf-8')
+          const rawMetadata = JSON.parse(metadataContent)
+
+          // SECURITY: Check for prototype pollution attempts
+          if (hasPrototypePollution(rawMetadata)) {
+            logger.error('file-upload.metadata.prototype-pollution', {
+              appId,
+              uploadId,
+              message: 'SECURITY: Prototype pollution attempt detected in metadata.json'
+            }, { tags: ['security', 'prototype-pollution', 'metadata-validation'] })
+            continue  // Skip this metadata file
+          }
+
+          // SECURITY: Validate metadata structure with Zod schema
+          let metadata: z.infer<typeof MetadataSchema>
+          try {
+            metadata = MetadataSchema.parse(rawMetadata)
+          } catch (validationError) {
+            logger.error('file-upload.metadata.validation-failed', {
+              appId,
+              uploadId,
+              error: validationError instanceof Error ? validationError.message : String(validationError)
+            }, { tags: ['security', 'metadata-validation', 'schema-validation'] })
+            continue  // Skip invalid metadata
+          }
+
+          if (metadata.files && Array.isArray(metadata.files)) {
+            allFiles.push(...metadata.files)
+          }
+        } catch (error) {
+          fileUploadEvents.retrieveFailure(
+            logger,
+            error instanceof Error ? error : new Error(String(error)),
+            { appId, uploadId }
+          )
+        }
+      }
+
+      return allFiles
+    } catch (error) {
+      fileUploadEvents.retrieveFailure(
+        logger,
+        error instanceof Error ? error : new Error(String(error)),
+        { appId, uploadId: 'list-all' }
+      )
+      return []
     }
   }
 

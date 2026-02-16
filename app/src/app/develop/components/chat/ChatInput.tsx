@@ -4,11 +4,11 @@ import { useEffect, useRef } from 'react'
 import { useIntl } from 'react-intl'
 import Button from '@ux/button'
 import MicIcon from '@ux/icon/mic'
-import PlusIcon from '@ux/icon/plus'
 import SendIcon from '@ux/icon/send'
 
 import AssetInline, { AssetInlineList, AssetMode } from '@/app/develop/components/chat/AssetInline'
-import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetManagerModal'
+import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
+import ChatAttachmentMenu, { UploadedFile } from '@/app/develop/components/chat/ChatAttachmentMenu'
 import type { SendMessageOptions } from '@/app/develop/components/chat/ChatContext'
 import UsageGauge from '@/app/develop/components/chat/usage-gauge/UsageGauge'
 import type { AiEditContext } from '@/app/develop/components/types'
@@ -28,6 +28,14 @@ interface ChatInputProps {
   selectedAssets?: AssetManagerItem[]
   maxAssets?: number
   onClearSelectedAsset?: (index: number) => void
+  onFilesUploaded?: (files: UploadedFile[]) => void
+  onScreenshotCaptured?: (dataUrl: string) => void
+  onFileReferencesSelected?: (filePaths: string[]) => void
+  onUploadStart?: (files: File[]) => void
+  onUploadError?: () => void
+  uploadingFiles?: Array<{ id: string; name: string }>
+  referencedFiles?: Array<{ path: string; content: string }>
+  onClearReferencedFile?: (index: number) => void
   aiEditContext?: AiEditContext | null
   onClearAiEditContext?: () => void
   mediaLimitError?: string | null
@@ -42,15 +50,20 @@ export default function ChatInput({
   selectedAssets = [],
   maxAssets = 1,
   onClearSelectedAsset,
+  onFilesUploaded,
+  onScreenshotCaptured,
+  onFileReferencesSelected,
+  onUploadStart,
+  onUploadError,
+  uploadingFiles = [],
+  referencedFiles = [],
+  onClearReferencedFile,
   aiEditContext,
   onClearAiEditContext,
 }: ChatInputProps) {
   const t = useTranslations();
   const { locale } = useIntl();
   const isMobile = useDevelopPageStore((state) => state.isMobile);
-  const isAssetManagerOpen = useDevelopPageStore((state) => state.isAssetManagerOpen);
-  const setIsAssetManagerOpen = useDevelopPageStore((state) => state.setIsAssetManagerOpen);
-  const { data: isAssetManagerEnabled } = useSwitchboard('appbuilder-image-manager');
   const { data: isChatGaugeEnabled } = useSwitchboard('appbuilder-chat-gauge');
   const canAddAsset = selectedAssets.length < maxAssets;
 
@@ -122,14 +135,50 @@ export default function ChatInput({
             </div>
           )}
 
-          {/* Selected Asset - shows when image is selected from Asset Manager */}
-          {onClearSelectedAsset && (
-            <AssetInlineList
-              assets={selectedAssets}
-              onClearAsset={onClearSelectedAsset}
-              className="mb-1"
-              mode={AssetMode.EDIT}
-            />
+          {/* Referenced files */}
+          {referencedFiles.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-1">
+              {referencedFiles.map((file, index) => (
+                <div
+                  key={file.path}
+                  className="flex items-center gap-1 px-2 py-1 bg-intents-ux-box-backgroundColor border border-intents-ux-boxHighContrast-borderColor rounded text-xs"
+                >
+                  <span className="text-intents-ux-box-foregroundColor">{file.path.split('/').pop()}</span>
+                  <button
+                    onClick={() => onClearReferencedFile?.(index)}
+                    className="text-intents-ux-box-foregroundColor/50 hover:text-intents-ux-box-foregroundColor"
+                    aria-label="Remove referenced file"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Selected assets and uploading placeholders - combined in one line */}
+          {(selectedAssets.length > 0 || uploadingFiles.length > 0) && (
+            <div className="flex flex-wrap gap-1 mb-1">
+              {/* Selected assets */}
+              {selectedAssets.map((asset, index) => (
+                <AssetInline
+                  key={asset.imageUrl}
+                  asset={asset}
+                  onClear={() => onClearSelectedAsset?.(index)}
+                  mode={AssetMode.EDIT}
+                />
+              ))}
+
+              {/* Uploading placeholders */}
+              {uploadingFiles.map((file) => (
+                <AssetInline
+                  key={file.id}
+                  isLoading={true}
+                  onClear={() => {}}
+                  mode={AssetMode.EDIT}
+                />
+              ))}
+            </div>
           )}
 
           <div className="flex items-stretch space-x-1">
@@ -153,17 +202,15 @@ export default function ChatInput({
 
           <div className="flex items-center justify-between pt-1">
             <div className="flex items-center gap-0.5">
-              {(!isMobile || (isMobile && isAssetManagerEnabled)) && (
-                <Button
-                  id="chat-media-button"
-                  icon={<PlusIcon />}
-                  data-eid={generateClickEID('develop.chat_toolbar.medias')}
-                  onClick={() => isAssetManagerEnabled && canAddAsset ? setIsAssetManagerOpen(true) : undefined}
-                  aria-label={t('builder_chat_toolbar_button_media')}
-                  active={isAssetManagerOpen}
+              {appId && onFilesUploaded && (
+                <ChatAttachmentMenu
+                  appId={appId}
+                  onFilesUploaded={onFilesUploaded}
+                  onScreenshotCaptured={onScreenshotCaptured}
+                  onFileReferencesSelected={onFileReferencesSelected}
+                  onUploadStart={onUploadStart}
+                  onUploadError={onUploadError}
                   disabled={isDisabled || !canAddAsset}
-                  design="control"
-                  size="sm"
                 />
               )}
               {isChatGaugeEnabled && <UsageGauge appId={appId} />}

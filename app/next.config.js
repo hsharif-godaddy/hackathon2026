@@ -2,7 +2,6 @@ import 'tsx';
 
 const gasket = (await import('./gasket.ts')).default;
 export default gasket.actions.getNextConfig({
-  transpilePackages: ['@wsb/image-manager-loader'],
   experimental: {
     instrumentationHook: true
   },

@@ -772,6 +772,15 @@ export class AppRepository {
   }
 
   /**
+   * Count apps by siteId
+   */
+  countBySiteId(siteId: string): number {
+    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM apps WHERE id = ?');
+    const result = stmt.get(siteId) as { count: number };
+    return result.count;
+  }
+
+  /**
    * Adapter-specific methods (Docker container operations)
    * These methods delegate to the deployment adapter when available
    */

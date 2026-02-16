@@ -76,7 +76,7 @@ router.get('/', (req: Request, res: Response) => {
 
     const totalCount = isBypassSite
       ? appRepo.count()
-      : appRepo.findAll().filter(app => app.id === authenticatedSiteId).length;
+      : appRepo.countBySiteId(authenticatedSiteId);
 
     const totalPages = Math.ceil(totalCount / limit);
 

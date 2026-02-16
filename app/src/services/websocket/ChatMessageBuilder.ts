@@ -36,6 +36,7 @@ export interface CustomContext {
   persistence?: 'save' | 'ephemeral'
   source?: string
   customAttachments?: ContextAttachment[]
+  referencedFiles?: Array<{ path: string; content: string }>
 }
 
 export interface BuildMessageParams {
@@ -171,6 +172,21 @@ export class ChatMessageBuilder {
     }
 
     if (params.customContext) {
+      // Handle referenced files
+      if (params.customContext.referencedFiles && params.customContext.referencedFiles.length > 0) {
+        attachments.push({
+          type: 'referenced_files',
+          data: params.customContext.referencedFiles,
+          persistence: 'ephemeral',
+          renderStrategy: 'before_prompt',
+          metadata: {
+            timestamp,
+            source: 'file-reference'
+          }
+        })
+      }
+
+      // Handle custom attachments
       if (params.customContext.customAttachments && Array.isArray(params.customContext.customAttachments)) {
         attachments.push(...params.customContext.customAttachments)
       } else if (params.customContext.type && params.customContext.data) {

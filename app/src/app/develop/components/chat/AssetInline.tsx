@@ -1,10 +1,12 @@
 'use client'
 
 import AttachmentIcon from '@ux/icon/attachment';
+import VideoIcon from '@ux/icon/video';
 import XThickIcon from '@ux/icon/x-thick';
+import Spinner from '@ux/spinner';
 import text from '@ux/text';
 
-import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetManagerModal'
+import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
 import { useTranslations } from '@/hooks/useTranslations'
 import { cn } from '@/lib/utils'
 
@@ -29,13 +31,15 @@ interface AssetInlineProps {
   customAsset?: CustomAsset
   onClear: () => void
   mode?: AssetMode
+  isLoading?: boolean
 }
 
 export default function AssetInline({
     asset,
     customAsset,
     onClear,
-    mode
+    mode,
+    isLoading = false
   }: AssetInlineProps) {
   const t = useTranslations();
 
@@ -55,13 +59,28 @@ export default function AssetInline({
         // For AssetManagerItem, use filename if available; for CustomAsset, use default
         return 'filename' in item && item.filename ? item.filename : t('builder_chatpane_asset_image')
       case MediaType.VIDEO:
-        return t('builder_chatpane_asset_video')
+        // For AssetManagerItem, use filename if available; for CustomAsset, use default
+        return 'filename' in item && item.filename ? item.filename : t('builder_chatpane_asset_video')
       case MediaType.PDF:
         // For AssetManagerItem, use filename if available; for CustomAsset, use default
         return 'filename' in item && item.filename ? item.filename : t('builder_chatpane_asset_pdf')
+      case MediaType.FILE:
+        // For generic files, use filename if available
+        return 'filename' in item && item.filename ? item.filename : t('builder_chatpane_asset_default')
       default:
         return t('builder_chatpane_asset_default')
     }
+  }
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="relative inline-block">
+        <div className={cn(ASSET_CLASSES, 'justify-center bg-intents-ux-box-backgroundColor')}>
+          <Spinner size="sm" />
+        </div>
+      </div>
+    )
   }
 
   if (!activeAsset) {
@@ -72,13 +91,23 @@ export default function AssetInline({
 
   return (
     <div className="relative inline-block">
-      {activeAsset.mediaType === MediaType.IMAGE || activeAsset.mediaType === MediaType.VIDEO ? (
+      {activeAsset.mediaType === MediaType.IMAGE ? (
+        // Images render as thumbnails
         <img // eslint-disable-line @next/next/no-img-element
           src={getAssetDisplayUrl(activeAsset)}
           alt={customAsset?.imageAlt || label}
           className={cn(ASSET_CLASSES, 'object-cover')}
         />
+      ) : activeAsset.mediaType === MediaType.VIDEO ? (
+        // Videos render as icon with filename
+        <div className={cn(ASSET_CLASSES, 'justify-end gap-0.5 px-1 py-0.5')}>
+          <VideoIcon />
+          <text.div as='caption' size={-2} className='truncate max-w-full'>
+            {label}
+          </text.div>
+        </div>
       ) : (
+        // PDF and FILE types render as attachment icon with filename
         <div className={cn(ASSET_CLASSES, 'justify-end gap-0.5 px-1 py-0.5')}>
           <AttachmentIcon />
           <text.div as='caption' size={-2} className='truncate max-w-full'>

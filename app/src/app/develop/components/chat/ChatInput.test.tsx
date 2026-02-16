@@ -3,7 +3,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
-import { MediaType } from '@/app/develop/components/chat/AssetManagerModal';
+import { MediaType } from '@/app/develop/components/chat/AssetTypes';
 import { renderWithProviders } from '@/tests/test-utils';
 import ChatInput from './ChatInput';
 
@@ -219,35 +219,39 @@ describe('ChatInput', () => {
     expect(sendButton).toHaveAttribute('data-eid', 'develop.prompt.send');
   });
 
-  it('should render media button', () => {
-    renderWithProviders(<ChatInput {...defaultProps} />);
+  it('should render attachment menu when appId and onFilesUploaded provided', () => {
+    const { container } = renderWithProviders(
+      <ChatInput {...defaultProps} appId="test-app-123" onFilesUploaded={vi.fn()} />
+    );
 
-    expect(screen.getByRole('button', { name: 'builder_chat_toolbar_button_media' })).toBeInTheDocument();
+    const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
+    expect(attachmentButton).toBeInTheDocument();
   });
 
-  it('should disable media button when disabled', () => {
-    renderWithProviders(<ChatInput {...defaultProps} isDisabled={true} />);
+  it('should not render attachment menu when appId is not provided', () => {
+    const { container } = renderWithProviders(<ChatInput {...defaultProps} />);
 
-    const mediaButton = screen.getByRole('button', { name: 'builder_chat_toolbar_button_media' });
-    expect(mediaButton).toBeDisabled();
+    const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
+    expect(attachmentButton).not.toBeInTheDocument();
   });
 
-  it('should have correct media button data-eid attribute', () => {
-    renderWithProviders(<ChatInput {...defaultProps} />);
+  it('should not render attachment menu when onFilesUploaded is not provided', () => {
+    const { container } = renderWithProviders(<ChatInput {...defaultProps} appId="test-app-123" />);
 
-    const mediaButton = screen.getByRole('button', { name: 'builder_chat_toolbar_button_media' });
-    expect(mediaButton).toHaveAttribute('data-eid', 'develop.chat_toolbar.medias');
+    const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
+    expect(attachmentButton).not.toBeInTheDocument();
   });
 
-  it('should render media button on desktop even when asset manager disabled', () => {
-    mockDevelopStore.isMobile = false;
+  it('should disable attachment menu button when disabled', () => {
+    const { container } = renderWithProviders(
+      <ChatInput {...defaultProps} appId="test-app-123" onFilesUploaded={vi.fn()} isDisabled={true} />
+    );
 
-    renderWithProviders(<ChatInput {...defaultProps} />);
-
-    expect(screen.getByRole('button', { name: 'builder_chat_toolbar_button_media' })).toBeInTheDocument();
+    const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
+    expect(attachmentButton).toBeDisabled();
   });
 
-  it('should disable media button when selectedAssets length equals maxAssets', function disableAtLimit() {
+  it('should disable attachment menu when selectedAssets length equals maxAssets', function disableAtLimit() {
     const maxAssets = 4;
     const assetsAtLimit = Array(maxAssets).fill({
       imageUrl: 'https://example.com/image.jpg',
@@ -260,20 +264,22 @@ describe('ChatInput', () => {
       thumbnailUrl: 'https://example.com/thumb.jpg',
     });
 
-    renderWithProviders(
+    const { container } = renderWithProviders(
       <ChatInput
         {...defaultProps}
+        appId="test-app-123"
+        onFilesUploaded={vi.fn()}
         selectedAssets={assetsAtLimit}
         maxAssets={maxAssets}
         onClearSelectedAsset={vi.fn()}
       />
     );
 
-    const mediaButton = screen.getByRole('button', { name: 'builder_chat_toolbar_button_media' });
-    expect(mediaButton).toBeDisabled();
+    const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
+    expect(attachmentButton).toBeDisabled();
   });
 
-  it('should enable media button when selectedAssets length is less than maxAssets', function enableBelowLimit() {
+  it('should enable attachment menu when selectedAssets length is less than maxAssets', function enableBelowLimit() {
     const maxAssets = 4;
     const assetsBelowLimit = Array(maxAssets - 1).fill({
       imageUrl: 'https://example.com/image.jpg',
@@ -286,17 +292,19 @@ describe('ChatInput', () => {
       thumbnailUrl: 'https://example.com/thumb.jpg',
     });
 
-    renderWithProviders(
+    const { container } = renderWithProviders(
       <ChatInput
         {...defaultProps}
+        appId="test-app-123"
+        onFilesUploaded={vi.fn()}
         selectedAssets={assetsBelowLimit}
         maxAssets={maxAssets}
         onClearSelectedAsset={vi.fn()}
       />
     );
 
-    const mediaButton = screen.getByRole('button', { name: 'builder_chat_toolbar_button_media' });
-    expect(mediaButton).not.toBeDisabled();
+    const attachmentButton = container.querySelector('[data-eid="develop.chat_input.attachment_menu"]');
+    expect(attachmentButton).not.toBeDisabled();
   });
 
   describe('UsageGauge feature flag', () => {

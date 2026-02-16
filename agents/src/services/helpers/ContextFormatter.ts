@@ -1,4 +1,7 @@
 import { logger } from '../../logging/index.js'
+import { readdir, readFile } from 'node:fs/promises'
+import { join, normalize, resolve } from 'node:path'
+import { getFeatures } from '../features.js'
 
 export interface FormattedContext {
   /** The formatted content string ready for LLM */
@@ -23,12 +26,233 @@ export interface FormattedContext {
 }
 
 /**
+ * Read uploaded file content from disk
+ * @param imageUrl - The image URL from the asset (format: {agentUrl}/files/uploads/{appId}/{filename})
+ * @param filename - The original filename
+ * @returns Promise resolving to file content as string or null if read fails
+ */
+async function readUploadedFileContent(imageUrl: string, filename: string): Promise<string | null> {
+  try {
+    // Extract appId from imageUrl: .../files/uploads/{appId}/{filename}
+    const urlMatch = imageUrl.match(/\/files\/uploads\/([^/]+)\/[^/]+$/)
+    if (!urlMatch || !urlMatch[1]) {
+      logger.warn('context.formatter.file_read.invalid_url', {
+        imageUrl,
+        reason: 'Could not extract appId from URL'
+      })
+      return null
+    }
+
+    const appId = urlMatch[1]
+    const features = getFeatures()
+    const uploadDirConfig = features.uploadDir || 'data/uploads'
+    const uploadDir = uploadDirConfig.startsWith('/')
+      ? uploadDirConfig
+      : join(process.cwd(), uploadDirConfig)
+
+    // Build base path for this app's uploads
+    const appUploadDir = join(uploadDir, appId)
+
+    // Security: Normalize paths and validate we stay within appUploadDir
+    const normalizedAppDir = normalize(resolve(appUploadDir))
+
+    // Find the file by searching subdirectories (uploadId subdirs) and reading metadata
+    try {
+      const uploadIdDirs = await readdir(appUploadDir)
+
+      for (const uploadIdDir of uploadIdDirs) {
+        // Read metadata.json to find the actual filename
+        const metadataPath = join(appUploadDir, uploadIdDir, 'metadata.json')
+
+        try {
+          const metadataContent = await readFile(metadataPath, 'utf-8')
+          const metadata = JSON.parse(metadataContent)
+
+          // Find file by originalName
+          const fileEntry = metadata.files?.find((f: any) => f.originalName === filename)
+
+          if (!fileEntry) {
+            // File not in this upload, try next one
+            continue
+          }
+
+          // Use the actual stored filename
+          const candidatePath = join(appUploadDir, uploadIdDir, fileEntry.filename)
+          const normalizedCandidate = normalize(resolve(candidatePath))
+
+          // Security: Ensure path doesn't escape appUploadDir
+          if (!normalizedCandidate.startsWith(normalizedAppDir)) {
+            logger.error('context.formatter.file_read.path_traversal_attempt', {
+              appId,
+              filename,
+              actualFilename: fileEntry.filename,
+              attemptedPath: candidatePath
+            }, { tags: ['security', 'path-traversal-attempt'] })
+            return null
+          }
+
+          // Read the file
+          const content = await readFile(candidatePath, 'utf-8')
+
+          // Limit content size (100KB for text files)
+          const maxSizeBytes = 100 * 1024
+          if (content.length > maxSizeBytes) {
+            const truncated = content.substring(0, maxSizeBytes)
+            logger.info('context.formatter.file_read.truncated', {
+              appId,
+              filename,
+              originalSize: content.length,
+              truncatedSize: maxSizeBytes
+            })
+            return truncated + '\n\n[Content truncated - file too large]'
+          }
+
+          logger.info('context.formatter.file_read.success', {
+            appId,
+            filename,
+            actualFilename: fileEntry.filename,
+            size: content.length
+          })
+
+          return content
+        } catch (metadataError) {
+          // Metadata doesn't exist or is invalid, try next upload
+          continue
+        }
+      }
+
+      logger.warn('context.formatter.file_read.not_found', {
+        appId,
+        filename,
+        searchedDirs: uploadIdDirs.length
+      })
+      return null
+    } catch (dirError) {
+      logger.error('context.formatter.file_read.directory_error', {
+        appId,
+        filename,
+        error: dirError instanceof Error ? dirError.message : String(dirError)
+      })
+      return null
+    }
+  } catch (error) {
+    logger.error('context.formatter.file_read.error', {
+      imageUrl,
+      filename,
+      error: error instanceof Error ? error.message : String(error)
+    })
+    return null
+  }
+}
+
+/**
+ * Read uploaded image from disk and convert to base64 data URL
+ * Used when the URL points to the agents service /files/uploads endpoint
+ * @param imageUrl - URL in format {agentUrl}/files/uploads/{appId}/{filename}
+ * @returns Promise resolving to data URL or null if read fails
+ */
+async function readAgentUploadAsBase64(imageUrl: string): Promise<string | null> {
+  try {
+    // Extract appId and filename from URL: .../files/uploads/{appId}/{filename}
+    const urlMatch = imageUrl.match(/\/files\/uploads\/([^/]+)\/([^/]+)$/)
+    if (!urlMatch || !urlMatch[1] || !urlMatch[2]) {
+      logger.warn('context.formatter.agent_upload.invalid_url', {
+        imageUrl,
+        reason: 'Could not extract appId and filename from URL'
+      })
+      return null
+    }
+
+    const appId = urlMatch[1]
+    const serverFilename = decodeURIComponent(urlMatch[2])
+
+    // Use fileUploadService to read the file directly
+    const { fileUploadService } = await import('../FileUploadService.js')
+
+    // Find the file in the uploads
+    const uploadedFiles = await fileUploadService.listUploadedFiles(appId)
+    const matchingFile = uploadedFiles.find(f => f.filename === serverFilename)
+
+    if (!matchingFile) {
+      logger.warn('context.formatter.agent_upload.not_found', {
+        appId,
+        serverFilename
+      })
+      return null
+    }
+
+    // Get the file from disk
+    const appDir = fileUploadService.getAppUploadsDir(appId)
+    const { readdirSync, existsSync } = await import('fs')
+    const { readFile: fsReadFile } = await import('fs/promises')
+
+    if (!existsSync(appDir)) {
+      logger.warn('context.formatter.agent_upload.app_dir_missing', { appId, appDir })
+      return null
+    }
+
+    // Search for the file in upload subdirectories
+    const uploadDirs = readdirSync(appDir)
+    for (const uploadId of uploadDirs) {
+      const filePath = fileUploadService.getFilePath(appId, uploadId, serverFilename)
+      if (existsSync(filePath)) {
+        const buffer = await fsReadFile(filePath)
+        const base64 = buffer.toString('base64')
+        const contentType = matchingFile.mimeType || 'image/jpeg'
+        const dataUrl = `data:${contentType};base64,${base64}`
+
+        logger.info('context.formatter.agent_upload.success', {
+          appId,
+          serverFilename,
+          contentType,
+          sizeKB: Math.round(buffer.length / 1024)
+        })
+
+        return dataUrl
+      }
+    }
+
+    logger.warn('context.formatter.agent_upload.file_not_on_disk', {
+      appId,
+      serverFilename
+    })
+    return null
+  } catch (error) {
+    logger.error('context.formatter.agent_upload.error', {
+      imageUrl,
+      error: error instanceof Error ? error.message : String(error)
+    })
+    return null
+  }
+}
+
+/**
  * Fetch image from URL and convert to base64 data URL
- * @param imageUrl - URL of the image to fetch
+ * @param imageUrl - URL of the image to fetch (HTTP URL, data URL, or agent upload URL)
  * @returns Promise resolving to data URL or null if fetch fails
  */
 async function fetchImageAsBase64(imageUrl: string): Promise<string | null> {
   try {
+    // If it's already a data URL (screenshot or base64 image), return it as-is
+    if (imageUrl.startsWith('data:')) {
+      const dataUrlType = imageUrl.substring(5, imageUrl.indexOf(';'))
+      logger.info('context.formatter.image_fetch.data_url_passthrough', {
+        length: imageUrl.length,
+        sizeKB: Math.round(imageUrl.length / 1024),
+        type: dataUrlType,
+        isValid: imageUrl.includes('base64,')
+      })
+      return imageUrl
+    }
+
+    // If it's an agent upload URL, read directly from disk (same process)
+    if (imageUrl.includes('/files/uploads/')) {
+      logger.info('context.formatter.image_fetch.agent_upload_detected', {
+        url: imageUrl
+      })
+      return readAgentUploadAsBase64(imageUrl)
+    }
+
     const response = await fetch(imageUrl, {
       method: 'GET',
       headers: {
@@ -48,7 +272,7 @@ async function fetchImageAsBase64(imageUrl: string): Promise<string | null> {
     const arrayBuffer = await response.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
     const base64 = buffer.toString('base64')
-    
+
     // Get content type from response headers
     const contentType = response.headers.get('content-type') || 'image/jpeg'
     const dataUrl = `data:${contentType};base64,${base64}`
@@ -108,7 +332,7 @@ export class ContextFormatter {
     //     if (screenshot.startsWith('data:image/')) {
     //       const screenshotSizeKB = Math.round(screenshot.length / 1024)
     //       const screenshotSizeMB = (screenshot.length / (1024 * 1024)).toFixed(2)
-          
+
     //       validatedScreenshot = screenshot
     //       logger.info('context.formatter.ai_edit.screenshot_detected', {
     //         screenshotSize: screenshot.length,
@@ -265,7 +489,7 @@ Context Notes: ${contextNotes}`
 
         const imagePromises = imageUrls.map((url) => fetchImageAsBase64(url))
         const results = await Promise.all(imagePromises)
-        
+
         for (const result of results) {
           if (result) {
             assetImages.push(result)
@@ -279,12 +503,15 @@ Context Notes: ${contextNotes}`
         })
       }
 
-      // Build context for each selected asset
-      const assetDescriptions = selectedAssets.map((asset: any, index: number) => {
+      // Build context for each selected asset (async to support file reading)
+      const assetDescriptionPromises = selectedAssets.map(async (asset: any, index: number) => {
         const mediaType = String(asset.mediaType || 'IMAGE')
+        const sourceType = String(asset.sourceType || 'unknown')
+        const isUploadedFile = sourceType === 'upload'
+
         const baseInfo = `${mediaType} ${index + 1}:
 - Media Type: ${mediaType}
-- Source Type: ${String(asset.sourceType || 'unknown')}`
+- Source Type: ${sourceType}`
 
         // Handle different media types
         if (mediaType === 'IMAGE') {
@@ -299,6 +526,37 @@ Context Notes: ${contextNotes}`
               height: typeof asset.dimensions?.height === 'number' ? asset.dimensions.height : 0
             }
           }
+
+          // For uploaded files, DO NOT show API URLs - only show filename and suggested path
+          if (isUploadedFile) {
+            const fileExtension = sanitizedAsset.filename.includes('.')
+              ? sanitizedAsset.filename.substring(sanitizedAsset.filename.lastIndexOf('.'))
+              : ''
+            const suggestedPath = `/assets/${sanitizedAsset.filename}`
+            const projectPath = `public/assets/${sanitizedAsset.filename}`
+
+            return `${baseInfo}
+- Original Filename: ${sanitizedAsset.filename}
+- Content Type: ${sanitizedAsset.contentType}
+- File Size: ${(sanitizedAsset.size / 1024).toFixed(2)} KB
+- Dimensions: ${sanitizedAsset.dimensions.width}x${sanitizedAsset.dimensions.height}px
+
+⚠️ UPLOADED FILE - AUTO-RESOLUTION ENABLED
+
+This image has been uploaded and is ready to use. To copy it to the project:
+
+**CRITICAL**: Use file_edit with mode="create" and content="" (empty string)
+- The empty content is intentional - the system will automatically copy the uploaded file
+- Choose a filename and path based on the user's request or use the suggestion below
+- The system will auto-resolve this file by matching the filename
+
+Suggested: file_edit({ path: "${projectPath}", mode: "create", content: "" })
+Reference: <img src="${suggestedPath}" alt="description" />
+
+Example with custom name: file_edit({ path: "public/images/hero-bg.png", mode: "create", content: "" })`
+          }
+
+          // For non-uploaded files (stock images, etc.), show URLs
           return `${baseInfo}
 - Filename: ${sanitizedAsset.filename}
 - Image URL: ${sanitizedAsset.imageUrl}
@@ -326,18 +584,79 @@ Context Notes: ${contextNotes}`
             contentType: String(asset.contentType || 'unknown'),
             size: typeof asset.size === 'number' ? asset.size : 0
           }
+
+          // For uploaded PDFs, don't show API URL
+          if (isUploadedFile) {
+            const projectPath = `public/data/${sanitizedAsset.filename}`
+            const suggestedPath = `/data/${sanitizedAsset.filename}`
+
+            return `${baseInfo}
+- Original Filename: ${sanitizedAsset.filename}
+- Content Type: ${sanitizedAsset.contentType}
+- File Size: ${(sanitizedAsset.size / 1024).toFixed(2)} KB
+
+⚠️ UPLOADED FILE - AUTO-RESOLUTION ENABLED
+
+This PDF has been uploaded and is ready to use. To copy it to the project:
+
+**CRITICAL**: Use file_edit with mode="create" and content="" (empty string)
+- The empty content is intentional - the system will automatically copy the uploaded file
+- Choose a filename and path based on the user's request or use the suggestion below
+- The system will auto-resolve this file by matching the filename
+
+Suggested: file_edit({ path: "${projectPath}", mode: "create", content: "" })
+Reference: <a href="${suggestedPath}">Download PDF</a>`
+          }
+
           return `${baseInfo}
 - Filename: ${sanitizedAsset.filename}
 - PDF URL: ${sanitizedAsset.imageUrl}
 - Content Type: ${sanitizedAsset.contentType}
 - File Size: ${(sanitizedAsset.size / 1024).toFixed(2)} KB`
+        } else if (mediaType === 'FILE') {
+          const sanitizedAsset = {
+            filename: String(asset.filename || 'unknown').substring(0, 200),
+            imageUrl: String(asset.imageUrl || '').substring(0, 500),
+            contentType: String(asset.contentType || 'unknown'),
+            size: typeof asset.size === 'number' ? asset.size : 0
+          }
+
+          // For uploaded files, read content and include it
+          if (isUploadedFile) {
+            // Read file content
+            const fileContent = await readUploadedFileContent(sanitizedAsset.imageUrl, sanitizedAsset.filename)
+
+            let contentSection = ''
+            if (fileContent) {
+              contentSection = `\n\nFile Content:\n\`\`\`\n${fileContent}\n\`\`\``
+            } else {
+              contentSection = '\n\n⚠️ Could not read file content - file may be missing or unreadable'
+            }
+
+            return `${baseInfo}
+- Original Filename: ${sanitizedAsset.filename}
+- Content Type: ${sanitizedAsset.contentType}
+- File Size: ${(sanitizedAsset.size / 1024).toFixed(2)} KB${contentSection}
+
+This is an uploaded instruction file. The content is provided above - use it as instructions, data, or reference material. No need to copy this file to the project.`
+          }
+
+          return `${baseInfo}
+- Filename: ${sanitizedAsset.filename}
+- Content Type: ${sanitizedAsset.contentType}
+- File Size: ${(sanitizedAsset.size / 1024).toFixed(2)} KB`
         }
         return baseInfo
-      }).join('\n\n')
+      })
+
+      const assetDescriptions = (await Promise.all(assetDescriptionPromises)).join('\n\n')
 
       const assetTypes = selectedAssets.map((a: any) => a.mediaType).join(', ')
       const hasVisualAssets = assetImages.length > 0
-      
+
+      // Check if any assets are uploaded files (have upload sourceType)
+      const hasUploadedFiles = selectedAssets.some((a: any) => a.sourceType === 'upload')
+
       const content = `[Selected Assets from Asset Manager]
 
 The user has selected ${selectedAssets.length} asset${selectedAssets.length > 1 ? 's' : ''} from the Asset Manager (${assetTypes}):
@@ -345,8 +664,49 @@ The user has selected ${selectedAssets.length} asset${selectedAssets.length > 1 
 ${assetDescriptions}
 
 ${hasVisualAssets ? `Visual Context: ${assetImages.length} image${assetImages.length > 1 ? 's are' : ' is'} attached for visual reference.\n` : ''}
-These assets are available for use in the project. You can reference them by their URLs in your code.
-When the user mentions "this asset", "this image", "this video", or "this PDF", they are likely referring to the selected asset${selectedAssets.length > 1 ? 's' : ''} above.${hasVisualAssets ? ' Analyze the attached images to understand their visual appearance, content, and style.' : ''}`
+**CRITICAL: How to Use These Assets**
+
+${hasUploadedFiles ? `⚠️ THESE ARE UPLOADED FILES - NEVER use the API URLs shown above directly in code! ⚠️
+
+MANDATORY WORKFLOW for uploaded files:
+
+1. **FIRST: Copy file to project** using file_edit with mode: "create":
+   - Images: "public/assets/[filename]"
+   - Fonts: "public/fonts/[filename]"
+   - Data: "public/data/[filename]"
+
+2. **System auto-resolves**: Creating a file matching the uploaded filename automatically copies it from uploads.
+
+3. **THEN: Reference with project paths ONLY**: Use "/assets/image.png" in code, NEVER agent upload URLs.
+
+FORBIDDEN (will break in production):
+❌ <img src="https://agent-url.com/files/uploads/{appId}/file.png" />
+❌ Any URL containing "/files/uploads/" - these are temporary upload URLs
+
+REQUIRED (correct approach):
+✅ file_edit({ path: "public/assets/logo.png", mode: "create", content: "" })
+✅ <img src="/assets/logo.png" />
+
+Example complete workflow:
+- User uploads "hero-image.jpg"
+- You: file_edit({ path: "public/assets/hero-image.jpg", mode: "create", content: "" })
+- System: Automatically copies from uploads
+- You: Write code with <img src="/assets/hero-image.jpg" />
+` : `These assets are available for use in the project. You can reference them by their URLs in your code.
+`}When the user mentions "this asset", "this image", "this video", or "this PDF", they are likely referring to the selected asset${selectedAssets.length > 1 ? 's' : ''} above.${hasVisualAssets ? ' Analyze the attached images to understand their visual appearance, content, and style.' : ''}`
+
+      // Log detailed asset image information for debugging
+      logger.info('context.formatter.selected_assets.returning', {
+        assetCount: selectedAssets.length,
+        imageUrlCount: imageUrls.length,
+        assetImagesCount: assetImages.length,
+        assetImages: assetImages.map((img, i) => ({
+          index: i,
+          type: img.substring(5, img.indexOf(';')),
+          length: img.length,
+          isDataUrl: img.startsWith('data:')
+        }))
+      })
 
       return {
         content,

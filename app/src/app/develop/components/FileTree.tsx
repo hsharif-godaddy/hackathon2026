@@ -68,12 +68,17 @@ export default function FileTree({ files, selectedFile, onFileSelect, getFileSta
     }
   }
 
+  const hasBorder = (status: FileStatus): boolean => {
+    return status === 'streaming' || status === 'modified' || status === 'deleted'
+  }
+
   const renderFileItem = (item: FileItem, depth: number = 0): React.ReactNode => {
     const Icon = getFileIcon(item)
     const isExpanded = expandedFolders.has(item.path)
     const isSelected = selectedFile === item.path
     const status = getFileStatus ? getFileStatus(item.path) : 'normal'
     const statusClasses = getStatusClasses(status)
+    const borderWidth = hasBorder(status) ? 2 : 0
 
     return (
       <div key={item.path}>
@@ -86,7 +91,7 @@ export default function FileTree({ files, selectedFile, onFileSelect, getFileSta
             },
             statusClasses
           )}
-          style={{ paddingLeft: getDepthPadding(depth) }}
+          style={{ paddingLeft: `${depth * 12 + 8 - borderWidth}px` }}
           onClick={() => {
             if (item.type === 'folder') {
               toggleFolder(item.path)
@@ -130,9 +135,11 @@ export default function FileTree({ files, selectedFile, onFileSelect, getFileSta
   }
 
   return (
-    <div className="h-full overflow-auto ">
-      <div className="py-1">
-        {sortFileItems(files).map(file => renderFileItem(file))}
+    <div className="h-full flex flex-col">
+      <div className="flex-1 overflow-auto">
+        <div className="py-1">
+          {sortFileItems(files).map(file => renderFileItem(file))}
+        </div>
       </div>
     </div>
   )

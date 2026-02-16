@@ -3,7 +3,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
-import { ImageAsset, MediaType, PDFAsset, VideoAsset } from '@/app/develop/components/chat/AssetManagerModal';
+import { ImageAsset, MediaType, PDFAsset, VideoAsset } from '@/app/develop/components/chat/AssetTypes';
 import { renderWithProviders } from '@/tests/test-utils';
 import AssetInline, { AssetInlineList, AssetMode } from './AssetInline';
 
@@ -134,7 +134,7 @@ describe('AssetInline', () => {
     expect(screen.getByAltText('builder_chatpane_asset_image')).toBeInTheDocument();
   });
 
-  it('should use translation key for VIDEO alt text', function videoAlt() {
+  it('should use translation key for VIDEO text', function videoText() {
     const videoAsset: VideoAsset = {
       imageUrl: 'https://example.com/video.jpg',
       mediaType: MediaType.VIDEO,
@@ -150,7 +150,7 @@ describe('AssetInline', () => {
       <AssetInline asset={videoAsset} onClear={vi.fn()} />
     );
 
-    expect(screen.getByAltText('builder_chatpane_asset_video')).toBeInTheDocument();
+    expect(screen.getByText('builder_chatpane_asset_video')).toBeInTheDocument();
   });
 
   it('should use filename for PDF alt text', function pdfFilename() {
@@ -263,7 +263,7 @@ describe('AssetInline', () => {
       <AssetInline customAsset={customAsset} onClear={vi.fn()} />
     );
 
-    expect(screen.getByAltText('builder_chatpane_asset_video')).toBeInTheDocument();
+    expect(screen.getByText('builder_chatpane_asset_video')).toBeInTheDocument();
   });
 
   it('should render PDF customAsset', function customAssetPdf() {

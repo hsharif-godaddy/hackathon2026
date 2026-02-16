@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import AssetManagerModal, { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
+import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
 import ChatBanners from '@/app/develop/components/chat/ChatBanners'
 import { ChatContext } from '@/app/develop/components/chat/ChatContext'
 import ChatInput from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
+import { UploadedFile } from '@/app/develop/components/chat/FileUploadButton'
 import PersistentTodoList from '@/app/develop/components/PersistentTodoList'
 import PlanTracker from '@/app/develop/components/PlanTracker'
 import SettingsPane from '@/app/develop/components/settings/SettingsPane'
@@ -22,6 +23,7 @@ import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useSiteStore } from '@/stores/useSiteStore'
 import {
   useActiveStream,
   useAiEditContext,
@@ -42,7 +44,7 @@ import { logAiroHQEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
 interface ChatPaneProps {
-  sendMessage: (content: string, aiEditContext?: any, selectedAssets?: AssetManagerItem[] | null, todoListContext?: any, isActionRequest?: boolean) => Promise<void>
+  sendMessage: (content: string, aiEditContext?: any, selectedAssets?: AssetManagerItem[] | null, todoListContext?: any, isActionRequest?: boolean, customContext?: any) => Promise<void>
   isCreateFlowSession?: boolean
 }
 
@@ -78,6 +80,11 @@ export default function ChatPane({
 
   const appId = useAppIdFromParams()
 
+  // Get site data to access agent_url for file URLs
+  const getSite = useSiteStore((state) => state.getSite)
+  const site = appId ? getSite(appId) : null
+  const agentUrl = site?.agent_url
+
   // On desktop, if Preview tab is selected, fall back to Chat
   useEffect(() => {
     if (!isMobile && activeChatTab === ChatTab.PREVIEW) {
@@ -97,6 +104,12 @@ export default function ChatPane({
 
   // State for selected assets from AssetManager
   const [selectedAssets, setSelectedAssets] = useState<AssetManagerItem[]>([])
+
+  // State for uploading files (placeholder assets with loading state)
+  const [uploadingFiles, setUploadingFiles] = useState<Array<{ id: string; name: string }>>([])
+
+  // State for referenced files (file paths with content from file tree)
+  const [referencedFiles, setReferencedFiles] = useState<Array<{ path: string; content: string }>>([])
 
   // Pre-fetch ventureId for AssetManager to avoid loading delay
   const [ventureId, setVentureId] = useState<string | null>(null)
@@ -208,6 +221,50 @@ export default function ChatPane({
     setSelectedAssets((prev) => prev.filter((_, i) => i !== index))
   }, [])
 
+  // Handle file references selected - fetch file contents
+  const handleFileReferencesSelected = useCallback(async (filePaths: string[]) => {
+    logger.info('chat-pane.file-references-selected', {
+      appId,
+      fileCount: filePaths.length,
+      totalReferences: referencedFiles.length + filePaths.length
+    })
+
+    // Fetch contents for all selected files
+    const filesWithContent = await Promise.all(
+      filePaths.map(async (path) => {
+        try {
+          const result = await appService.readFile(appId, path)
+          return {
+            path,
+            content: result.content
+          }
+        } catch (error) {
+          logger.error('chat-pane.file-reference-read-failed', {
+            appId,
+            path,
+            error: error instanceof Error ? error.message : String(error)
+          })
+          return {
+            path,
+            content: `[Error reading file: ${error instanceof Error ? error.message : 'Unknown error'}]`
+          }
+        }
+      })
+    )
+
+    setReferencedFiles((prev) => [...prev, ...filesWithContent])
+  }, [appId, referencedFiles.length])
+
+  // Handle clearing all referenced files
+  const handleClearReferencedFiles = useCallback(() => {
+    setReferencedFiles([])
+  }, [])
+
+  // Handle clearing a single referenced file by index
+  const handleClearSingleReferencedFile = useCallback((index: number) => {
+    setReferencedFiles((prev) => prev.filter((_, i) => i !== index))
+  }, [])
+
   // Handle clearing build error context
   const handleClearBuildErrorContext = useCallback(() => {
     setBuildErrorContext(null)
@@ -236,7 +293,8 @@ export default function ChatPane({
         source: content ? 'suggestion' : 'user-input',
         hasEditContext: !!safeAiEditContext,
         hasSelectedAsset: selectedAssets.length > 0,
-        hasBuildErrorContext: !!safeBuildErrorContext
+        hasBuildErrorContext: !!safeBuildErrorContext,
+        hasReferencedFiles: referencedFiles.length > 0
       });
 
       // Funnel event: Track first user-initiated message after create
@@ -267,15 +325,18 @@ export default function ChatPane({
       // Screenshot is null to avoid agent analyzing it
       if (content) {
         // Programmatic send (e.g., suggestion button click)
-        // Parameters: message, aiEditContext, selectedAssets, todoListContext, isActionRequest
+        // Parameters: message, aiEditContext, selectedAssets, todoListContext, isActionRequest, customContext
         // - aiEditContext: minimal (no screenshot) since this isn't a user edit request
         // - selectedAssets: undefined since programmatic sends don't have asset selections
         // - todoListContext: undefined since todo context is managed separately
-        // - isActionRequest: signals agent to execute request immediately.
-        sendMessage(messageToSend, { screenshot: null }, undefined, undefined, options?.isActionRequest)
+        // - isActionRequest: signals agent to execute request immediately
+        // - customContext: pass file references if any
+        const customContext = referencedFiles.length > 0 ? { referencedFiles } : undefined
+        sendMessage(messageToSend, { screenshot: null }, undefined, undefined, options?.isActionRequest, customContext)
       } else {
         // User input send - include all context
-        sendMessage(messageToSend, { ...safeAiEditContext, screenshot: null }, selectedAssets.length > 0 ? selectedAssets : undefined)
+        const customContext = referencedFiles.length > 0 ? { referencedFiles } : undefined
+        sendMessage(messageToSend, { ...safeAiEditContext, screenshot: null }, selectedAssets.length > 0 ? selectedAssets : undefined, undefined, undefined, customContext)
 
         // Clear contexts only for user input sends
       if (safeAiEditContext) {
@@ -284,12 +345,15 @@ export default function ChatPane({
       if (selectedAssets.length > 0) {
         handleClearSelectedAsset()
       }
+      if (referencedFiles.length > 0) {
+        handleClearReferencedFiles()
+      }
       if (safeBuildErrorContext) {
         handleClearBuildErrorContext()
       }
     }
   }
-  }, [inputValue, sendMessage, currentAppId, appId, setCurrentAppId, safeAiEditContext, selectedAssets, safeBuildErrorContext, handleClearAiEditContext, handleClearSelectedAsset, handleClearBuildErrorContext, isCreateFlowSession, messages])
+  }, [inputValue, sendMessage, currentAppId, appId, setCurrentAppId, safeAiEditContext, selectedAssets, referencedFiles, safeBuildErrorContext, handleClearAiEditContext, handleClearSelectedAsset, handleClearReferencedFiles, handleClearBuildErrorContext, isCreateFlowSession, messages])
 
   // Create stable context value - reuses handleSendMessage
   const chatContextValue = useMemo(() => ({
@@ -390,6 +454,131 @@ export default function ChatPane({
     }
   }, [appId, sendMessage, handleClearAiEditContext])
 
+  // Handle upload start - show placeholders immediately
+  const handleUploadStart = useCallback((files: File[]) => {
+    logger.debug('chat-pane.upload-start', { fileCount: files.length })
+
+    const uploadingPlaceholders = files.map(file => ({
+      id: `temp-${Date.now()}-${Math.random()}`,
+      name: file.name
+    }))
+
+    setUploadingFiles(uploadingPlaceholders)
+  }, [])
+
+  // Handle upload error - clear placeholders
+  const handleUploadError = useCallback(() => {
+    logger.error('chat-pane.upload-error', {})
+    setUploadingFiles([])
+  }, [])
+
+  // Handle screenshot capture from chat input
+  const handleScreenshotCaptured = useCallback((dataUrl: string) => {
+    logger.debug('chat-pane.screenshot-captured', { appId })
+
+    // Generate timestamp for unique filename
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
+
+    // Create asset item from screenshot data URL
+    const screenshotAsset: AssetManagerItem = {
+      mediaType: MediaType.IMAGE,
+      sourceType: 'screenshot',
+      imageUrl: dataUrl,
+      filename: `screenshot-${timestamp}.jpg`,
+      contentType: 'image/jpeg',
+      size: dataUrl.length, // Approximate size
+      thumbnailUrl: dataUrl,
+      dimensions: { width: 1024, height: 0 } // Width is 1024 from resize
+    }
+
+    // Add to selected assets (or replace if at max)
+    setSelectedAssets(prev => {
+      if (prev.length >= maxAssets) {
+        // Replace last asset if at max
+        return [...prev.slice(0, maxAssets - 1), screenshotAsset]
+      }
+      return [...prev, screenshotAsset]
+    })
+
+    logger.info('chat-pane.screenshot-added', { appId, assetsCount: selectedAssets.length + 1 })
+  }, [appId, maxAssets, selectedAssets.length])
+
+  // Handle file uploads from chat input
+  const handleFilesUploaded = useCallback((files: UploadedFile[]) => {
+    logger.debug('chat-pane.files-uploaded', { fileCount: files.length })
+
+    // Clear uploading placeholders
+    setUploadingFiles([])
+
+    // Agent URL is required to construct file URLs
+    if (!agentUrl) {
+      logger.error('chat-pane.files-uploaded.no-agent-url', { appId })
+      return
+    }
+
+    // Convert UploadedFile to AssetManagerItem
+    const assetItems: AssetManagerItem[] = files.map(file => {
+      // Determine media type from MIME type
+      let mediaType: MediaType
+      if (file.mimeType?.startsWith('image/')) {
+        mediaType = MediaType.IMAGE
+      } else if (file.mimeType?.startsWith('video/')) {
+        mediaType = MediaType.VIDEO
+      } else if (file.mimeType === 'application/pdf') {
+        mediaType = MediaType.PDF
+      } else {
+        // All other files (markdown, JSON, text, etc.)
+        mediaType = MediaType.FILE
+      }
+
+      // Construct URL for uploaded file - use agent URL directly
+      const fileUrl = `${agentUrl}/files/uploads/${appId}/${file.filename}`
+
+      // Create base asset structure
+      const baseAsset = {
+        mediaType,
+        sourceType: 'upload',
+        imageUrl: fileUrl,
+        filename: file.originalName,
+        contentType: file.mimeType || 'application/octet-stream',
+        size: file.size,
+        thumbnailUrl: fileUrl
+      }
+
+      // Return appropriate asset type based on media type
+      if (mediaType === MediaType.IMAGE) {
+        return {
+          ...baseAsset,
+          mediaType: MediaType.IMAGE,
+          dimensions: { width: 0, height: 0 } // Dimensions unknown for now
+        } as AssetManagerItem
+      } else if (mediaType === MediaType.VIDEO) {
+        return {
+          ...baseAsset,
+          mediaType: MediaType.VIDEO,
+          videoUrl: fileUrl,
+          id: file.id,
+          urlHash: file.id,
+          width: 0,
+          height: 0
+        } as AssetManagerItem
+      } else if (mediaType === MediaType.PDF) {
+        return {
+          ...baseAsset,
+          mediaType: MediaType.PDF
+        } as AssetManagerItem
+      } else {
+        return {
+          ...baseAsset,
+          mediaType: MediaType.FILE
+        } as AssetManagerItem
+      }
+    })
+
+    // Use existing handleAssetSelect logic
+    handleAssetSelect(assetItems)
+  }, [appId, agentUrl, handleAssetSelect])
+
   // Listen for error fix requests from PreviewPaneSimple
   useEffect(() => {
     const handleErrorFixEvent = (event: CustomEvent) => {
@@ -443,20 +632,17 @@ export default function ChatPane({
             selectedAssets={selectedAssets}
             maxAssets={maxAssets}
             onClearSelectedAsset={handleClearSingleAsset}
+            onFilesUploaded={handleFilesUploaded}
+            onScreenshotCaptured={handleScreenshotCaptured}
+            onFileReferencesSelected={handleFileReferencesSelected}
+            onUploadStart={handleUploadStart}
+            onUploadError={handleUploadError}
+            uploadingFiles={uploadingFiles}
+            referencedFiles={referencedFiles}
+            onClearReferencedFile={handleClearSingleReferencedFile}
             aiEditContext={safeAiEditContext}
             onClearAiEditContext={handleClearAiEditContext}
           />
-
-          {isAssetManagerEnabled && (
-            <AssetManagerModal
-              isOpen={isAssetManagerOpen}
-              onClose={() => setIsAssetManagerOpen(false)}
-              onItemsSelected={handleAssetSelect}
-              ventureId={ventureId}
-              currentAssetCount={selectedAssets.length}
-              maxAssets={maxAssets}
-            />
-          )}
         </div>
       </ChatContext.Provider>
     )
@@ -520,6 +706,14 @@ export default function ChatPane({
               selectedAssets={selectedAssets}
               maxAssets={maxAssets}
               onClearSelectedAsset={handleClearSingleAsset}
+              onFilesUploaded={handleFilesUploaded}
+              onScreenshotCaptured={handleScreenshotCaptured}
+              onFileReferencesSelected={handleFileReferencesSelected}
+              onUploadStart={handleUploadStart}
+              onUploadError={handleUploadError}
+              uploadingFiles={uploadingFiles}
+              referencedFiles={referencedFiles}
+              onClearReferencedFile={handleClearSingleReferencedFile}
               aiEditContext={safeAiEditContext}
               onClearAiEditContext={handleClearAiEditContext}
             />
@@ -538,16 +732,6 @@ export default function ChatPane({
       <ChatToolbar
         isProcessing={isProcessing}
       />
-      {isAssetManagerEnabled && (
-        <AssetManagerModal
-          isOpen={isAssetManagerOpen}
-          onClose={() => setIsAssetManagerOpen(false)}
-          onItemsSelected={handleAssetSelect}
-          ventureId={ventureId}
-          currentAssetCount={selectedAssets.length}
-          maxAssets={maxAssets}
-        />
-      )}
     </div>
     </ChatContext.Provider>
   )

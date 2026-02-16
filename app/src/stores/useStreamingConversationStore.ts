@@ -83,6 +83,8 @@ export interface StreamingMessage {
   errorCode?: number               // HTTP status code
   retryAttempts?: number           // Number of retry attempts for retry errors
   retryReason?: string             // Reason for retry failure (e.g., 'maxRetriesExceeded', 'errorNotRetryable')
+  selectedAssets?: any[]           // Attached files/assets (only for user messages, kept for type compatibility)
+  referencedFiles?: Array<{ path: string; content: string }> // Referenced code files (only for user messages, kept for type compatibility)
   metadata?: {
     usage?: {
       inputTokens: number
@@ -110,6 +112,8 @@ export interface ChatMessage {
   errorCode?: number               // HTTP status code
   retryAttempts?: number           // Number of retry attempts for retry errors
   retryReason?: string             // Reason for retry failure (e.g., 'maxRetriesExceeded', 'errorNotRetryable')
+  selectedAssets?: any[]           // Attached files/assets for user messages
+  referencedFiles?: Array<{ path: string; content: string }> // Referenced code files for user messages
   metadata?: {
     usage?: {
       inputTokens: number
@@ -198,7 +202,7 @@ export interface StreamingConversationState {
   // === CORE STREAMING ACTIONS ===
 
   // Stream lifecycle
-  startNewStream: (userMessage: string) => void
+  startNewStream: (userMessage: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>) => void
   appendToStream: (content: string) => void
   addToolToStream: (toolCall: ToolCall) => void
   updateToolInStream: (toolId: string, updates: Partial<ToolCall>) => void
@@ -413,12 +417,12 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   // === CORE STREAMING ACTIONS ===
 
-  startNewStream: (userMessage: string) => {
+  startNewStream: (userMessage: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>) => {
     const userMsgId = generateId()
     const assistantMsgId = generateId()
 
     if (process.env.NODE_ENV === 'development') {
-      logger.debug('streaming-store.start-stream', { userMessage, userMsgId, assistantMsgId })
+      logger.debug('streaming-store.start-stream', { userMessage, userMsgId, assistantMsgId, hasAssets: !!selectedAssets?.length, hasReferencedFiles: !!referencedFiles?.length })
     }
 
     // Add user message to completed messages
@@ -426,7 +430,9 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       id: userMsgId,
       role: 'user',
       content: userMessage,
-      timestamp: new Date()
+      timestamp: new Date(),
+      ...(selectedAssets && selectedAssets.length > 0 && { selectedAssets }),
+      ...(referencedFiles && referencedFiles.length > 0 && { referencedFiles })
     }
 
     // Create new streaming message for assistant

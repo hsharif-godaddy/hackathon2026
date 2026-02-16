@@ -5,6 +5,8 @@ import { Check, ClipboardCopy, Expand, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import Button from '@ux/button'
 
+import { AttachmentList } from '@/app/develop/components/chat/AttachmentBadge'
+import { FileReferenceList } from '@/app/develop/components/chat/FileReferenceBadge'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
@@ -130,7 +132,7 @@ function FullMessageModal({ content, isOpen, onClose }: { content: string; isOpe
  */
 const MAX_MESSAGE_HEIGHT = 250 // pixels
 
-function UserMessage({ content }: { content: string }) {
+function UserMessage({ content, selectedAssets, referencedFiles }: { content: string; selectedAssets?: any[]; referencedFiles?: Array<{ path: string; content: string }> }) {
   const t = useTranslations()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isTruncated, setIsTruncated] = useState(false)
@@ -144,7 +146,7 @@ function UserMessage({ content }: { content: string }) {
 
   return (
     <>
-      <div className="flex">
+      <div className="flex flex-col">
         <div className="relative group max-w-full">
           <div
             ref={contentRef}
@@ -173,6 +175,12 @@ function UserMessage({ content }: { content: string }) {
             </div>
           )}
         </div>
+        {selectedAssets && selectedAssets.length > 0 && (
+          <AttachmentList assets={selectedAssets} />
+        )}
+        {referencedFiles && referencedFiles.length > 0 && (
+          <FileReferenceList files={referencedFiles} />
+        )}
         <FullMessageModal
           content={content}
           isOpen={isModalOpen}
@@ -192,7 +200,7 @@ function renderMessageContent(message: ChatMessage | StreamingMessageType, isAct
 
   // User messages with copy functionality
   if (message.role === 'user') {
-    return <UserMessage content={message.content} />
+    return <UserMessage content={message.content} selectedAssets={message.selectedAssets} referencedFiles={message.referencedFiles} />
   }
 
   // Other message types

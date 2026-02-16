@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction, IRouter } from 'express'
+import rateLimit from 'express-rate-limit'
 import multer from 'multer'
 import { fileUploadService } from '../../services/FileUploadService.js'
 import { logger, log } from '../../logging/index.js'
@@ -12,6 +13,37 @@ const upload = multer({
   limits: {
     fileSize: 10 * 1024 * 1024,
     files: 5
+  }
+})
+
+// SECURITY: Rate limiting for file uploads to prevent abuse
+// Limits: 20 uploads per 2 minutes per IP
+const UPLOAD_RATE_LIMIT_WINDOW_MS = 2 * 60 * 1000 // 2 minutes
+const uploadRateLimiter = rateLimit({
+  windowMs: UPLOAD_RATE_LIMIT_WINDOW_MS,
+  max: 20,                    // 20 requests per window
+  message: 'Too many upload requests from this IP, please try again later',
+  standardHeaders: true,      // Return rate limit info in `RateLimit-*` headers
+  legacyHeaders: false,       // Disable `X-RateLimit-*` headers
+  // Key generator: Use IP address for rate limiting
+  keyGenerator: (req: Request) => {
+    return req.ip || req.socket.remoteAddress || 'unknown'
+  },
+  // Handler called when rate limit is exceeded
+  handler: (req: Request, res: Response) => {
+    logger.warn('file-upload.rate-limit-exceeded', {
+      ip: req.ip,
+      appId: req.body?.appId,
+      message: 'File upload rate limit exceeded'
+    }, { tags: ['security', 'rate-limiting', 'abuse-prevention'] })
+
+    // Calculate retry-after in seconds (2 minute window)
+    const retryAfter = Math.ceil(UPLOAD_RATE_LIMIT_WINDOW_MS / 1000)
+
+    res.status(429).json({
+      error: 'Too many upload requests from this IP, please try again later',
+      retryAfter
+    })
   }
 })
 
@@ -48,7 +80,8 @@ const validateAppIdParam = (req: Request, res: Response, next: NextFunction): vo
 
 // SECURITY: Apply ownership validation AFTER multer parses multipart body
 // Multer must run first to populate req.body from multipart/form-data
-router.post('/upload', upload.array('files', 5), validateAppOwnershipFromBody('appId'), async (req: Request, res: Response) => {
+// Rate limiter applied first to prevent abuse before processing
+router.post('/upload', uploadRateLimiter, upload.array('files', 5), validateAppOwnershipFromBody('appId'), async (req: Request, res: Response) => {
   try {
     const { appId } = req.body
 
@@ -201,6 +234,112 @@ router.delete('/:appId/:uploadId', validateAppIdParam, async (req: Request, res:
     return res.status(500).json({
       error: 'Internal server error'
     })
+  }
+})
+
+// Serve uploaded files
+router.get('/uploads/:appId/:filename', async (req: Request, res: Response) => {
+  try {
+    const { appId, filename } = req.params
+
+    if (!appId || !filename) {
+      return res.status(400).json({ error: 'appId and filename are required' })
+    }
+
+    // Authenticate request
+    const authReq = req as AuthenticatedRequest
+    const authenticatedSiteId = authReq.agentContext?.siteId
+
+    if (!authenticatedSiteId) {
+      return res.status(401).json({ error: 'Authentication required', requiresAuth: true })
+    }
+
+    // Import BYPASS_SITE_IDS for development/testing
+    const { BYPASS_SITE_IDS } = await import('../../services/features.js')
+    const isBypassSite = BYPASS_SITE_IDS.includes(authenticatedSiteId)
+
+    logger.debug('route.files.serve.auth-check', {
+      authenticatedSiteId,
+      requestedAppId: appId,
+      isBypassSite,
+      filename
+    })
+
+    if (!isBypassSite && authenticatedSiteId !== appId) {
+      logger.error('route.files.serve.ownership-denied', {
+        message: 'SECURITY VIOLATION: Cross-tenant file access attempt',
+        authenticatedSiteId,
+        requestedAppId: appId,
+        filename
+      }, { tags: ['security', 'authorization-failure', 'cross-tenant-attempt'] })
+      return res.status(403).json({ error: 'Access denied' })
+    }
+
+    // Find the file across all uploads for this app
+    const uploadedFiles = await fileUploadService.listUploadedFiles(appId)
+    const matchingFile = uploadedFiles.find(f => f.filename === filename)
+
+    if (!matchingFile) {
+      logger.warn('route.files.serve.not-found', { appId, filename })
+      return res.status(404).json({ error: 'File not found' })
+    }
+
+    // Get the file path - need to find which uploadId directory it's in
+    const appDir = fileUploadService.getAppUploadsDir(appId)
+    const { readdirSync, existsSync } = await import('fs')
+    const { readFile } = await import('fs/promises')
+
+    let filePath: string | null = null
+    if (existsSync(appDir)) {
+      const uploadDirs = readdirSync(appDir)
+      for (const uploadId of uploadDirs) {
+        const candidatePath = fileUploadService.getFilePath(appId, uploadId, filename)
+        if (existsSync(candidatePath)) {
+          filePath = candidatePath
+          break
+        }
+      }
+    }
+
+    if (!filePath) {
+      logger.warn('route.files.serve.file-missing', { appId, filename })
+      return res.status(404).json({ error: 'File not found on disk' })
+    }
+
+    // Read and serve the file
+    const fileBuffer = await readFile(filePath)
+
+    // Set appropriate content-type and security headers
+    res.setHeader('Content-Type', matchingFile.mimeType || 'application/octet-stream')
+    res.setHeader('Content-Length', fileBuffer.length)
+    res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
+    // SECURITY: Prevent MIME-sniffing to avoid XSS if HTML content is uploaded
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    // Allow cross-origin embedding of uploaded files (images, videos, etc.)
+    // This overrides helmet's default same-origin policy for this endpoint
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+
+    // SECURITY: Additional defense-in-depth for SVG files (sanitized at upload, restricted at serving)
+    if (matchingFile.mimeType === 'image/svg+xml' || matchingFile.filename.endsWith('.svg')) {
+      // Strict CSP: No scripts, no external resources, only inline styles for SVG rendering
+      res.setHeader('Content-Security-Policy',
+        "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'none'; object-src 'none'"
+      )
+      logger.debug('route.files.serve.svg-csp-applied', {
+        appId,
+        filename,
+        message: 'Applied strict CSP to SVG file'
+      }, { tags: ['security', 'svg', 'csp'] })
+    }
+
+    return res.send(fileBuffer)
+  } catch (error) {
+    logger.error('route.files.serve.error', {
+      appId: req.params.appId,
+      filename: req.params.filename,
+      error: error instanceof Error ? error.message : String(error)
+    })
+    return res.status(500).json({ error: 'Failed to serve file' })
   }
 })
 

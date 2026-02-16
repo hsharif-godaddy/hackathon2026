@@ -389,6 +389,12 @@ async function initialize() {
       port,
     });
 
+    // Validate configuration (security checks)
+    logger.info('server.config.validate.begin', {});
+    const { validateConfiguration } = await import('../services/features.js');
+    validateConfiguration();
+    logger.info('server.config.validate.success', {});
+
     // Initialize database
     logger.info('server.database.init.begin', {});
     getDatabase();

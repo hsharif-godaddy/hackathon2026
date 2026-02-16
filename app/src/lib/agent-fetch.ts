@@ -22,7 +22,7 @@ const pendingTokenRequests = new Map<string, Promise<string>>();
 /**
  * Get JWT token for agent communication (with caching and deduplication)
  */
-async function getAgentToken(siteId: string): Promise<string> {
+export async function getAgentToken(siteId: string): Promise<string> {
   // Check cache first - token is valid if it expires more than 5 minutes from now
   const cached = tokenCache.get(siteId);
   const fiveMinutesFromNow = Date.now() + 5 * 60 * 1000;

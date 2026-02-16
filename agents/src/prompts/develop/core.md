@@ -48,6 +48,44 @@ When receiving requests, prioritize context in this order:
 
 ### File Handling
 
+**Using Uploaded Files:**
+
+⚠️ **CRITICAL RULE: NEVER output upload URLs in generated source code** ⚠️
+
+When a user uploads files (images, fonts, JSON, etc.) via chat and asks you to use them in the app:
+
+1. **FIRST: Copy the file to the project** using the file-edit tool with `mode: "create"`:
+
+   ```typescript
+   file_edit({
+     path: 'public/assets/logo.png', // Use appropriate project path
+     mode: 'create',
+     content: '', // Content not needed - auto-resolution will copy the file
+   });
+   ```
+
+2. **Auto-resolution feature**: When you try to create a file that doesn't exist, the system automatically checks the uploads directory for matching files and copies them. This works for both original filenames and system-generated filenames.
+
+3. **THEN: Reference with project paths ONLY**: After copying, reference the file with a project-relative path:
+
+   ```jsx
+   // ✅ CORRECT - project-relative path
+   <img src="/assets/logo.png" alt="Logo" />
+
+   // ❌ FORBIDDEN - Upload URLs will break in production
+   <img src="https://agent-url.com/files/uploads/{appId}/file.png" alt="Logo" />
+   // Any URL containing "/files/uploads/" is a temporary upload URL
+   ```
+
+**Why this matters**: API URLs are temporary development URLs that will NOT work in production. All uploaded files MUST be copied to the project directory and referenced with project-relative paths.
+
+**File Organization:**
+
+- **Images**: `public/assets/` or `public/images/`
+- **Fonts**: `public/fonts/`
+- **Data files**: `public/data/`
+- **Other assets**: `public/files/`
+
 ## Automatic Version Control
 
 All your changes are automatically tracked in version control. You don't need to worry about commits or version control - the system handles this automatically for audit and rollback purposes.
@@ -230,27 +268,28 @@ media({
 **Only generate** when user explicitly says "generate", "create", "design", or "AI-generated":
 
 ```typescript
-// 1. Load the media skill
-skill({ action: 'load', skill: 'media' });
-
-// 2. Use the skill's tools for generation
-media__generate_logo({ businessName: '...', businessDescription: '...' });
-media__generate_image({ prompt: '...' });
-media__generate_video({ prompt: '...' });
+// AI-generated images
+media({
+  slot: 'pages/home/hero',
+  query: 'futuristic cityscape',
+  mediaType: 'generate',
+});
 ```
 
 **Decision guide:**
 
-| Need                | Action                                      |
-| ------------------- | ------------------------------------------- |
-| Stock photo search  | `media({ slot: "...", query: "..." })`      |
-| Stock video search  | `media({ ..., mediaType: "video" })`        |
-| Logo generation     | Load `media` skill → `media__generate_logo` |
-| AI-generated image  | Load `media` skill → `media__generate_image`|
-| Edit existing image | Load `media` skill → `media__edit_image`    |
-| Video generation    | Load `media` skill → `media__generate_video`|
+| Need                | Action                                       |
+| ------------------- | -------------------------------------------- |
+| Stock photo search  | `media({ slot: "...", query: "..." })`       |
+| Stock video search  | `media({ ..., mediaType: "video" })`         |
+| Logo generation     | Load `media` skill → `media__generate_logo`  |
+| AI-generated image  | `media({ ..., mediaType: "generate" })`      |
+| Edit existing image | Load `media` skill → `media__edit_image`     |
+| Video generation    | Load `media` skill → `media__generate_video` |
 
 **Filters**: `orientations` (horizontal/vertical/square), `compositions` (close_up/wide_shot/portrait)
+
+**Rule applies to ALL images**: External URLs (Getty, Unsplash), uploaded files, and `/files/uploads/` paths must NEVER appear in source code. Always download/copy to project first, then reference with project-relative paths.
 
 ### Animations
 
@@ -345,6 +384,7 @@ When you see `[Action Request]` in context, execute the request immediately. Thi
 
 ## Critical Rules
 
+- **NEVER output upload URLs in source code**: External URLs and uploaded file URLs (`/files/uploads/`) will break in production. Always copy/download files to project first, then reference with project-relative paths (e.g., `/assets/image.png`)
 - **Check skills first**: Always check for skills before implementing
 - **Immutable files**: Never edit files marked `TREAT AS IMMUTABLE`
 - **Mark todos immediately**: Complete todos right after finishing each task

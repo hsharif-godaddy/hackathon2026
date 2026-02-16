@@ -370,7 +370,9 @@ export class StreamingWebSocketController extends EventEmitter {
       }
 
       // Create user message in store (Tier 2 - transcript data)
-      this.deps.actions.startNewStream(content)
+      // Extract referencedFiles from customContext if present
+      const referencedFiles = params.customContext?.referencedFiles as Array<{ path: string; content: string }> | undefined
+      this.deps.actions.startNewStream(content, params.selectedAssets, referencedFiles)
 
       const store = this.deps.getStoreState()
       const { buildErrorContext } = store

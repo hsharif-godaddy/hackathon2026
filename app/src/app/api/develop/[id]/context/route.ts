@@ -39,9 +39,9 @@ export async function GET(
     const injectFakeAiEdit = searchParams.get('injectFakeAiEdit') === 'true'
     const userInput = searchParams.get('userInput') || ''
 
-    // Forward request to agents service
-    const agentsUrl = process.env.NEXT_PUBLIC_AGENTS_URL || 'http://localhost:4000'
-    const agentsResponse = await agentFetch(`${agentsUrl}/debug/context/${appId}?` + new URLSearchParams({
+    // Forward request to agents service (use private env var for server-to-server communication)
+    const agentsBaseUrl = process.env.AGENTS_SERVICE_URL || 'http://localhost:4000'
+    const agentsResponse = await agentFetch(`${agentsBaseUrl}/debug/context/${appId}?` + new URLSearchParams({
       injectFakeVisual: injectFakeVisual.toString(),
       injectFakeAiEdit: injectFakeAiEdit.toString(),
       userInput
