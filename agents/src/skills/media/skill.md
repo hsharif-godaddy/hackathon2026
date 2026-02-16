@@ -197,9 +197,9 @@ The returned URLs are production-ready CDN links. Use them directly in component
 
 If MCP servers are unavailable, fall back to existing tools:
 
-1. **For image generation**: Use `mediaSearch` with `mediaType: 'generate'`
+1. **For image generation**: Use `media` tool (stock photos as alternative)
 2. **For image editing**: Use `imageEditor` tool
-3. **For video search**: Use `mediaSearch` with `mediaType: 'video'`
+3. **For video search**: Use `media` tool with `mediaType: 'video'`
 
 ---
 

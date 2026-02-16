@@ -55,7 +55,7 @@ describe('marketing-agent', function marketingAgentTests() {
       expect(config.tools).toHaveProperty('todoList');
       expect(config.tools).toHaveProperty('directoryListing');
       expect(config.tools).toHaveProperty('grepSearch');
-      expect(config.tools).toHaveProperty('mediaSearch');
+      expect(config.tools).toHaveProperty('media');
       expect(config.tools).toHaveProperty('suggestedResponse');
     });
 

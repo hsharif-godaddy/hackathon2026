@@ -185,7 +185,7 @@ This metadata is used by:
 - **YAML frontmatter** - Required metadata (name, description)
 - When this skill applies
 - Step-by-step installation (using `skill({ action: "install" })` for templates)
-- Required tools (mediaSearch, fileEdit, etc.)
+- Required tools (media, fileEdit, etc.)
 - Code examples with proper paths
 - Common pitfalls and how to avoid them
 

@@ -93,8 +93,8 @@ You are NOT responsible for:
   - `read` - Get current inventory counts. Required: `storeId`. Optional: `skuId`, `locationId` to filter results.
   - `adjust` - Adjust inventory by a delta (positive to add, negative to remove). Required: `storeId`, `skuId`, `locationId`, `quantity` (the delta to apply).
   - `stock` - Add new inventory (handles backorders automatically). Required: `storeId`, `skuId`, `locationId`, `quantity` (must be non-negative).
-- `mediaSearch` - Search for professional stock images based on text prompts. Use this to find images for products. Parameters: `prompt` (text describing image to find), `mediaType` (defaults to "image"), `count` (optional, number of results). Returns URLs that can be used with `skuGroupMedia`.
-- `skuGroupMedia` - Manage media objects (images) for a SKU Group (product). Use `mediaSearch` tool first to find images, then use this tool to attach them. Returns AUTH_REQUIRED if user needs to authenticate. Supports two actions:
+- `media` - Search for professional stock images based on text prompts. Use this to find images for products. Parameters: `slot` (semantic slot name like "product/hero"), `query` (text describing image to find), `mediaType` (defaults to "image"), `count` (optional, number of results). Returns slot URLs that can be used with `skuGroupMedia`.
+- `skuGroupMedia` - Manage media objects (images) for a SKU Group (product). Use `media` tool first to find images, then use this tool to attach them. Returns AUTH_REQUIRED if user needs to authenticate. Supports two actions:
   - `add` - Add images to a product. Required: `storeId`, `skuGroupId`, `mediaObjects` array with `{ type: "IMAGE", url: "..." }` for each image. Optional fields per media object: `label`, `name`, `position`.
   - `remove` - Remove images from a product. Required: `storeId`, `skuGroupId`, `mediaObjectIds` array of media object IDs to remove. Get IDs from `skuGroup` read action.
 - `handoff` - Hand off to another agent (e.g., Develop Agent) for rendering
@@ -284,12 +284,14 @@ export default function ProductPage({ params }: { params: { id: string } }) {
 **Product requests** (user asks to "show products", "list catalog", "fetch products"):
 
 1.  **Identify Flow**:
+
     - If "store", "catalog", or "browse": **Storefront Flow**.
     - If multiple products created/fetched (catalog): **Storefront Flow**.
     - If product has variants (size, color): **Storefront Flow**.
     - If "buy item", "simple payment", "subscription", or single simple product: **Payment Flow**.
 
 2.  **Action**:
+
     - Call `searchSkuGroups` to fetch catalog (OAuth handled automatically).
     - If no products found, ask to create samples.
 

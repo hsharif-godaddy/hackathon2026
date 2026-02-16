@@ -51,7 +51,7 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     grepSearch: allAILibTools.grepSearch,
     suggestedResponse: allAILibTools.suggestedResponse,
     skill: allAILibTools.skill,
-    mediaSearch: allAILibTools.mediaSearch,
+    media: allAILibTools.media,
   }
 
   const socialTools = isSocialEnabled ? {

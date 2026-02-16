@@ -31,9 +31,6 @@ export function getToolDisplayName(toolName: string): string {
     case 'run_terminal_cmd':
     case 'runTerminalCmd':
       return 'Terminal'
-    case 'media_search':
-    case 'mediaSearch':
-      return 'Media'
     case 'image_search':
     case 'imageSearch':
       return 'Image Search'

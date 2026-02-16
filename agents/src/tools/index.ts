@@ -5,7 +5,8 @@ export { GitTool } from './git-tool.js';
 export { ReadFileTool } from './read-file.js';
 export { GrepTool } from './grep-tool.js';
 export { MySQLTool } from './mysql-tool.js';
-export { MediaSearchTool, findMedia } from './media-search-tool.js';
+// MediaSearchTool kept as internal implementation for MediaSlotTool
+// Do not export - agents should use MediaSlotTool via media AI tool
 export { VideoGenerationTool, generateVideo } from './video-generation-tool.js';
 export { ImageEditorTool, imageEditorAITool } from './image-editor-tool.js';
 export { GettyMediaDriver } from './ai-lib-tools/drivers/getty-media-driver.js';

@@ -114,12 +114,14 @@ describe('getToolDisplayName', () => {
   });
 
   describe('media search variants', () => {
-    it('should map "media_search" to "Media Search"', () => {
-      expect(getToolDisplayName('media_search')).toBe('Media');
+    // media_search and mediaSearch now fall through to default formatting
+    // since the explicit mapping was removed (agents now use 'media' tool)
+    it('should format "media_search" using default formatting', () => {
+      expect(getToolDisplayName('media_search')).toBe('Media Search');
     });
 
-    it('should map "mediaSearch" to "Media Search"', () => {
-      expect(getToolDisplayName('mediaSearch')).toBe('Media');
+    it('should format "mediaSearch" using default formatting', () => {
+      expect(getToolDisplayName('mediaSearch')).toBe('MediaSearch');
     });
 
     it('should map "image_search" to "Image Search"', () => {
@@ -299,7 +301,8 @@ describe('getToolDisplayName', () => {
         ['code_search', 'Code Search'],
         ['grep_search', 'Text Search'],
         ['terminal', 'Terminal'],
-        ['media_search', 'Media'],
+        // media_search now falls through to default formatting (agents use 'media' tool)
+        ['media_search', 'Media Search'],
         ['image_search', 'Image Search'],
         ['video_search', 'Video Search'],
         ['view_logs', 'View Logs'],

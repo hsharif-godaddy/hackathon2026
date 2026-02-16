@@ -1117,7 +1117,7 @@ export const commerceInventory = createTool(
 );
 
 export const commerceSkuGroupMedia = createTool(
-  'Manage media objects (images) for a SKU Group (product) in GoDaddy Commerce store. Supports add and remove operations via "action" parameter. Use the mediaSearch tool first to find images, then use this tool to attach them to products.',
+  'Manage media objects (images) for a SKU Group (product) in GoDaddy Commerce store. Supports add and remove operations via "action" parameter. Use the media tool first to find images, then use this tool to attach them to products.',
   z.object({
     action: z.enum(['add', 'remove']).describe('Action to perform: "add" to add new images, "remove" to remove existing images'),
     storeId: z.string().describe('The store ID'),
@@ -1136,7 +1136,7 @@ export const commerceSkuGroupMedia = createTool(
         })
       )
       .optional()
-      .describe('Array of media objects to add (required for "add" action). Get URLs from mediaSearch tool.'),
+      .describe('Array of media objects to add (required for "add" action). Get URLs from media tool.'),
     mediaObjectIds: z
       .array(z.string())
       .optional()
@@ -1162,7 +1162,7 @@ export const commerceSkuGroupMedia = createTool(
           return fail({
             code: ErrorCodes.INVALID_INPUT,
             message: 'mediaObjects array is required for add action',
-            hint: 'Use the mediaSearch tool to find image URLs first',
+            hint: 'Use the media tool to find image URLs first',
           });
         }
 

@@ -67,6 +67,7 @@ All publish dates must be in UTC (ISO 8601 format with 'Z' suffix). When handlin
 The system prompt may include `User's timezone: [IANA timezone]` (e.g., "America/Phoenix", "America/New_York", "Europe/London"). If the timezone is present, use it automatically for conversions. Only ask for timezone if not present in the system prompt.
 
 1. **If user specifies a specific TIME** (e.g., "8 PM", "3:00 PM tomorrow", "noon on Friday"):
+
    - **CHECK system prompt for timezone**: Look for `User's timezone:` in the system prompt
    - **If timezone IS present**: Use it automatically to convert to UTC
    - **If timezone NOT present**: Ask contextually: "8 PM in what timezone?" or "3:00 PM in which timezone?"
@@ -79,6 +80,7 @@ The system prompt may include `User's timezone: [IANA timezone]` (e.g., "America
      - MST/MDT (UTC-7/-6): Add 7/6 hours
 
 2. **If user specifies only a DATE** (e.g., "next Monday", "December 20"):
+
    - **Use midnight UTC**: `2024-12-20T00:00:00Z`
    - **No need to ask timezone**: Date-only scheduling uses start of day UTC
 
@@ -111,10 +113,11 @@ publishedAt: '2025-01-15T00:00:00Z' # Future date - post won't appear until this
 
 ### Step 1: Find Featured Image (REQUIRED)
 
-**You MUST call mediaSearch FIRST:**
+**You MUST call media FIRST:**
 
 ```
-mediaSearch({
+media({
+  slot: "blog/featured-image",
   query: "specific search terms related to blog topic",
   count: 3
 })
@@ -203,28 +206,33 @@ Wrap up with key takeaways and call-to-action...
 **Every blog post should have:**
 
 1. **Compelling Title** (H1)
+
    - Clear, specific, benefit-driven
    - Include target keyword
    - 60 characters or less
 
 2. **Opening Hook** (First paragraph)
+
    - Grab attention immediately
    - State the problem or opportunity
    - Promise value
 
 3. **Main Sections** (H2)
+
    - Break content into scannable sections
    - Use descriptive headings
    - 3-7 main sections
 
 4. **Subsections** (H3, H4)
+
    - Further break down complex topics
    - Use numbered or bulleted lists
    - Include examples
 
 5. **Visuals** (Optional inline images)
+
    - Use markdown image syntax: `![Alt text](url)`
-   - Get images via mediaSearch
+   - Get images via media tool
    - Place strategically throughout content
 
 6. **Conclusion**
@@ -281,7 +289,7 @@ publishedAt: 'December 8, 2024'     # Not ISO 8601
 
 ### Missing Featured Image
 
-Every post MUST have a featured image. Always call `mediaSearch` first.
+Every post MUST have a featured image. Always call `media` first.
 
 ### No Media Search
 
@@ -290,9 +298,8 @@ Every post MUST have a featured image. Always call `mediaSearch` first.
 Using Unsplash URLs or random images
 
 # RIGHT:
-1. Call mediaSearch({ query: "...", count: 3 })
-2. Pick best Getty Images URL
-3. Use in featuredImage field
+1. Call media({ slot: "blog/featured", query: "...", count: 3 })
+2. Use the returned slot URL in featuredImage field
 ```
 
 ### Poor Title/Excerpt
@@ -313,7 +320,7 @@ excerpt: "Discover science-backed techniques to transform your mornings and acco
 
 When user asks for multiple posts:
 
-1. **Call mediaSearch for EACH post** (different query per topic)
+1. **Call media for EACH post** (different query per topic)
 2. **Create separate .md files** with unique slugs
 3. **Vary the structure** (don't make them all identical)
 4. **Use different categories/tags** appropriately
@@ -344,7 +351,7 @@ User: "Create 3 blog posts for the next 3 weeks"
 ```
 User: "Write a blog post about morning workouts"
 
-1. mediaSearch({ query: "woman morning workout sunrise fitness", count: 3 })
+1. media({ slot: "blog/morning-workout", query: "woman morning workout sunrise fitness", count: 3 })
    → Returns Getty URLs, pick best one
 
 2. Create /src/content/blog/morning-workout-benefits.md:
@@ -375,7 +382,7 @@ Before creating each blog post, verify:
 
 - [ ] Checked system prompt for today's actual date
 - [ ] Checked system prompt for user's timezone (if user specified a time)
-- [ ] Called `mediaSearch` and got Getty Images URL
+- [ ] Called `media` and got the slot URL
 - [ ] Using `publishedAt` (NOT `date`)
 - [ ] Date is ISO 8601 format with time: `'2024-12-08T10:00:00Z'`
 - [ ] Set appropriate publish date (current for immediate, future for scheduled)

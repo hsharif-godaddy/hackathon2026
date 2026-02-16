@@ -20,7 +20,7 @@ import { getModularPromptPaths } from '../utils/prompt-utils.js';
 import { Logger } from '../logging/index.js';
 import { oauthConnect } from '../tools/ai-lib-tools/oauth-tool.js';
 import { suggestedResponseAITool } from '../tools/ai-lib-tools/suggested-response.js';
-import { mediaSearchAITool } from '../tools/ai-lib-tools/media-tools.js';
+import { mediaSlotAITool } from '../tools/ai-lib-tools/media-slot.js';
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js';
 
 const logger = Logger.create({ service: 'commerce-agent' });
@@ -111,7 +111,7 @@ export async function createCommerceAgent(_options?: { appPath?: string }): Prom
       inventory: commerceInventory,
       skuGroupMedia: commerceSkuGroupMedia,
       orders: commerceOrders,
-      mediaSearch: mediaSearchAITool,
+      media: mediaSlotAITool,
       suggestedResponse: suggestedResponseAITool,
     },
 

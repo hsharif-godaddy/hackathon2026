@@ -20,7 +20,6 @@ import HandoffToolRenderer from './HandoffToolRenderer'
 import ImageGeneratorToolRenderer from './ImageGeneratorToolRenderer'
 import ImageSearchToolRenderer from './ImageSearchToolRenderer'
 import LogoGeneratorToolRenderer from './LogoGeneratorToolRenderer'
-import MediaSearchToolRenderer from './MediaSearchToolRenderer'
 import MediaSlotToolRenderer from './MediaSlotToolRenderer'
 import OAuthToolRenderer from './OAuthToolRenderer'
 import PublishClientToolRenderer from './PublishClientToolRenderer'
@@ -67,7 +66,6 @@ export const toolRendererRegistry = {
   fileEdit: FileEditToolRenderer,
   terminalCommand: TerminalCommandToolRenderer,
   media: MediaSlotToolRenderer,
-  mediaSearch: MediaSearchToolRenderer,
   imageSearch: ImageSearchToolRenderer,
   todoList: TodoListToolRenderer,
   suggestedResponse: SuggestedResponseToolRenderer,
@@ -130,7 +128,6 @@ export {
   ImageGeneratorToolRenderer,
   ImageSearchToolRenderer,
   LogoGeneratorToolRenderer,
-  MediaSearchToolRenderer,
   MediaSlotToolRenderer,
   OAuthToolRenderer,
   PublishClientToolRenderer,

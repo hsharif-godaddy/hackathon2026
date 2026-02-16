@@ -69,7 +69,6 @@ interface FeatureConfig {
   enabledFeatures: {
     sessionFeedback: boolean
     imageAnalysisEnabled: boolean
-    mediaSlots: boolean
   }
 }
 
@@ -230,8 +229,7 @@ function parseEnvironmentFeatures(): FeatureConfig {
     // Widget/Feature enablement configuration
     enabledFeatures: {
       sessionFeedback: process.env.ENABLE_SESSION_FEEDBACK === 'true',
-      imageAnalysisEnabled: process.env.IMAGE_ANALYSIS_ENABLED === 'true',
-      mediaSlots: process.env.ENABLE_MEDIA_SLOTS === 'true'
+      imageAnalysisEnabled: process.env.IMAGE_ANALYSIS_ENABLED === 'true'
     }
   }
 }

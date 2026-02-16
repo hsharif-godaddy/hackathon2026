@@ -202,7 +202,7 @@ suggestedResponse({
 - Clean, modern design unless specified otherwise
 - Use `lucide-react` for icons
 - No emojis unless requested
-- Meaningful images (use media skill for generation, mediaSearch for stock photos)
+- Meaningful images (use media skill for generation, media tool for stock photos)
 - Mobile-first responsive design
 - Update shadcn components as needed
 
@@ -325,15 +325,15 @@ media({
 ### When to Use Tools
 
 **media skill**: Logo generation, AI image generation, video generation (load skill first)
-**mediaSearch**: Stock photo/video search only (not for generation)
+**media tool**: Stock photo/video search (use media slot for image placement)
 **colorScheme**: User mentions colors/themes AFTER content exists (need UI to preview colors on)
 **todoList**: Multi-step features, complex projects (not simple edits)
 **skill**: Before implementing any feature (check first!)
 
 ### When NOT to Use Tools
 
-**media skill**: Stock image and video searching
-**mediaSearch**: Text-only changes, layout adjustments, forms, data display, AI logo, image or video generation
+**media skill**: Stock image and video searching (use media tool instead)
+**media tool**: Text-only changes, layout adjustments, forms, data display, AI logo/image/video generation (use media skill)
 **colorScheme suggest mode**: Before content exists, empty pages (use apply mode during initial build)
 **todoList**: Simple edits, bug fixes, single-file changes
 
