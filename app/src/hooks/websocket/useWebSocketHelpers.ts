@@ -14,6 +14,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { logger } from '@/lib/request-context'
 import { useGitStore } from '@/stores/useGitStore'
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import { logImpressionEvent } from '@/utils/instrumentation'
 
 /**
@@ -106,37 +107,33 @@ export function useWebSocketHelpers(currentAppId: string | null): UseWebSocketHe
   }, [currentAppId])
 
   /**
-   * Handle commit completion: invalidate git history, select commit, trigger preview refresh
+   * Handle commit completion: invalidate git history, update selected commit state, trigger preview refresh
+   *
+   * Note: We only update the UI state here, not call the checkout API. The backend already has
+   * the working directory in the correct state after committing. Calling checkout would be
+   * redundant and can cause race conditions with ongoing file operations.
+   *
+   * Preview refresh is only triggered when the agent isn't actively streaming, to avoid
+   * refreshing while changes are still in progress.
    */
   const handleCommitComplete = useCallback(
     async (commitHash?: string) => {
       if (commitHash && currentAppId) {
-        try {
-          // Invalidate to get fresh commit list
-          await queryClient.invalidateQueries({
-            queryKey: ['git-history', currentAppId],
-            refetchType: 'active',
-          })
+        // Invalidate to get fresh commit list
+        await queryClient.invalidateQueries({
+          queryKey: ['git-history', currentAppId],
+          refetchType: 'active',
+        })
 
-          // Select the new commit
-          await useGitStore.getState().selectCommit(currentAppId, commitHash)
+        // Update UI state to reflect the new commit (no API call needed - backend is already there)
+        useGitStore.getState().setSelectedCommitHash(currentAppId, commitHash)
 
-          // Now trigger preview refresh - files are synced
-          window.postMessage(
-            {
-              type: 'MESSAGE_COMPLETE',
-              source: 'websocket',
-            },
-            window.location.origin
-          )
-        } catch (error) {
-          logger.error('websocket.commit_selection_error', {
-            appId: currentAppId,
-            commitHash: commitHash.substring(0, 7),
-            error: error instanceof Error ? error.message : String(error),
-          })
+        // Only trigger preview refresh if agent isn't actively streaming
+        // This prevents premature refreshes while changes are still in progress
+        const { streamingState, activeStream } = useStreamingConversationStore.getState()
+        const isAgentRunning = streamingState === 'streaming' && !!activeStream
 
-          // Still trigger preview refresh on error
+        if (!isAgentRunning) {
           window.postMessage(
             {
               type: 'MESSAGE_COMPLETE',
@@ -145,15 +142,6 @@ export function useWebSocketHelpers(currentAppId: string | null): UseWebSocketHe
             window.location.origin
           )
         }
-      } else {
-        // No commit or no appId - trigger preview refresh immediately
-        window.postMessage(
-          {
-            type: 'MESSAGE_COMPLETE',
-            source: 'websocket',
-          },
-          window.location.origin
-        )
       }
     },
     [currentAppId, queryClient]

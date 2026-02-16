@@ -32,6 +32,55 @@ interface StreamingIntegratedResponseProps {
 /**
  * Calculate the next budget reset time (00:10:00 UTC) and whether it's tomorrow
  */
+/**
+ * Check if a tool call is a media slot tool that should be grouped
+ */
+function isMediaSlotTool(name?: string): boolean {
+  return name === 'media'
+}
+
+/**
+ * Group consecutive media slot tool calls into tool-group blocks
+ * Single media tool calls are left as individual tool blocks
+ */
+function groupConsecutiveMediaTools(blocks: ContentBlock[]): ContentBlock[] {
+  const result: ContentBlock[] = []
+  let mediaGroup: ContentBlock[] = []
+
+  const flushMediaGroup = () => {
+    if (mediaGroup.length > 1) {
+      // Multiple consecutive media tools - create a group
+      result.push({
+        type: 'tool-group',
+        toolCalls: mediaGroup.map((b) => b.toolCall!),
+        order: mediaGroup[0]!.order,
+      })
+    } else if (mediaGroup.length === 1) {
+      // Single media tool - keep as individual
+      result.push(mediaGroup[0]!)
+    }
+    mediaGroup = []
+  }
+
+  blocks.forEach((block) => {
+    if (block.type === 'tool' && isMediaSlotTool(block.toolCall?.name)) {
+      mediaGroup.push(block)
+    } else {
+      // Non-media block - flush any accumulated media group first
+      flushMediaGroup()
+      result.push(block)
+    }
+  })
+
+  // Flush any remaining media group at end
+  flushMediaGroup()
+
+  return result
+}
+
+/**
+ * Calculate the next budget reset time (00:10:00 UTC) and whether it's tomorrow
+ */
 function getNextResetInfo(): { date: Date; isTomorrow: boolean } {
   const now = new Date();
   const resetTime = new Date(now);
@@ -242,7 +291,9 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
       })
     }
 
-    return blocks.sort((a, b) => a.order - b.order)
+    // Sort blocks by order, then group consecutive media tools
+    const sortedBlocks = blocks.sort((a, b) => a.order - b.order)
+    return groupConsecutiveMediaTools(sortedBlocks)
   }, [hasSegments, message.segments])
 
   const getFullResponseText = () => {

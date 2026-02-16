@@ -4,12 +4,14 @@ import React, { useRef } from 'react'
 
 import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
 import MessageToolCallsRenderer from '@/app/develop/components/MessageToolCallsRenderer'
+import MediaGroupRenderer from '@/app/develop/components/tool-renderers/MediaGroupRenderer'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 
 export interface ContentBlock {
-  type: 'text' | 'tool'
+  type: 'text' | 'tool' | 'tool-group'
   content?: string
   toolCall?: ToolCall
+  toolCalls?: ToolCall[]
   order: number
 }
 
@@ -49,8 +51,8 @@ function MessageContentRenderer({ blocks, isActiveStream = false, isLastAssistan
   return (
     <div className="space-y-1">
       {blocks.map((block, index) => {
-        const toolCallArray = block.type === 'tool' && block.toolCall 
-          ? toolCallArraysCacheRef.current.get(block.toolCall.id) 
+        const toolCallArray = block.type === 'tool' && block.toolCall
+          ? toolCallArraysCacheRef.current.get(block.toolCall.id)
           : null
 
         return (
@@ -64,6 +66,10 @@ function MessageContentRenderer({ blocks, isActiveStream = false, isLastAssistan
 
             {block.type === 'tool' && block.toolCall && toolCallArray && (
               <MessageToolCallsRenderer toolCalls={toolCallArray} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} />
+            )}
+
+            {block.type === 'tool-group' && block.toolCalls && (
+              <MediaGroupRenderer toolCalls={block.toolCalls} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} />
             )}
           </div>
         )

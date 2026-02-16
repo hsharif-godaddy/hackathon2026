@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook } from '@testing-library/react'
 
 import { useGitStore } from '@/stores/useGitStore'
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import {
   clearConversationIdCookie,
   getConversationIdFromCookie,
@@ -17,6 +18,12 @@ import {
 
 vi.mock('@/stores/useGitStore', () => ({
   useGitStore: {
+    getState: vi.fn(),
+  },
+}))
+
+vi.mock('@/stores/useStreamingConversationStore', () => ({
+  useStreamingConversationStore: {
     getState: vi.fn(),
   },
 }))
@@ -42,12 +49,22 @@ const mockGitStore = useGitStore as unknown as {
   getState: ReturnType<typeof vi.fn>
 }
 
+const mockStreamingStore = useStreamingConversationStore as unknown as {
+  getState: ReturnType<typeof vi.fn>
+}
+
 describe('useWebSocketHelpers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
     mockGitStore.getState.mockReturnValue({
-      selectCommit: vi.fn().mockResolvedValue(undefined),
+      setSelectedCommitHash: vi.fn(),
+    })
+
+    // Default: agent is idle (not streaming)
+    mockStreamingStore.getState.mockReturnValue({
+      streamingState: 'idle',
+      activeStream: null,
     })
 
     // Reset cookies
@@ -102,15 +119,19 @@ describe('useWebSocketHelpers', () => {
   })
 
   describe('handleCommitComplete', () => {
-    it('invalidates queries, selects commit, and triggers preview refresh', async () => {
-      const selectCommit = vi.fn().mockResolvedValue(undefined)
-      mockGitStore.getState.mockReturnValue({ selectCommit })
+    it('invalidates queries, updates commit state, and triggers preview refresh when agent is idle', async () => {
+      const setSelectedCommitHash = vi.fn()
+      mockGitStore.getState.mockReturnValue({ setSelectedCommitHash })
+      mockStreamingStore.getState.mockReturnValue({ streamingState: 'idle', activeStream: null })
 
       const { result } = renderHook(() => useWebSocketHelpers('app-123'), { wrapper: createWrapper() })
 
       await result.current.handleCommitComplete('abcdef123456')
 
-      // Verify postMessage was called
+      // Verify state update was called (no API call, just UI state)
+      expect(setSelectedCommitHash).toHaveBeenCalledWith('app-123', 'abcdef123456')
+
+      // Verify postMessage was called since agent is idle
       expect(window.postMessage).toHaveBeenCalledWith(
         {
           type: 'MESSAGE_COMPLETE',
@@ -120,50 +141,46 @@ describe('useWebSocketHelpers', () => {
       )
     })
 
-    it('triggers preview refresh even without commit hash', async () => {
+    it('does NOT trigger preview refresh when agent is actively streaming', async () => {
+      const setSelectedCommitHash = vi.fn()
+      mockGitStore.getState.mockReturnValue({ setSelectedCommitHash })
+      mockStreamingStore.getState.mockReturnValue({ streamingState: 'streaming', activeStream: { id: 'test' } })
+
+      const { result } = renderHook(() => useWebSocketHelpers('app-123'), { wrapper: createWrapper() })
+
+      await result.current.handleCommitComplete('abcdef123456')
+
+      // Verify state update was still called
+      expect(setSelectedCommitHash).toHaveBeenCalledWith('app-123', 'abcdef123456')
+
+      // Verify postMessage was NOT called since agent is streaming
+      expect(window.postMessage).not.toHaveBeenCalled()
+    })
+
+    it('does nothing without commit hash', async () => {
+      const setSelectedCommitHash = vi.fn()
+      mockGitStore.getState.mockReturnValue({ setSelectedCommitHash })
+
       const { result } = renderHook(() => useWebSocketHelpers('app-123'), { wrapper: createWrapper() })
 
       await result.current.handleCommitComplete()
 
-      expect(window.postMessage).toHaveBeenCalledWith(
-        {
-          type: 'MESSAGE_COMPLETE',
-          source: 'websocket',
-        },
-        window.location.origin
-      )
+      // Should not update state or trigger refresh without commit hash
+      expect(setSelectedCommitHash).not.toHaveBeenCalled()
+      expect(window.postMessage).not.toHaveBeenCalled()
     })
 
-    it('triggers preview refresh even if commit selection fails', async () => {
-      const selectCommit = vi.fn().mockRejectedValue(new Error('Selection failed'))
-      mockGitStore.getState.mockReturnValue({ selectCommit })
+    it('does nothing if no appId', async () => {
+      const setSelectedCommitHash = vi.fn()
+      mockGitStore.getState.mockReturnValue({ setSelectedCommitHash })
 
-      const { result } = renderHook(() => useWebSocketHelpers('app-123'), { wrapper: createWrapper() })
-
-      await result.current.handleCommitComplete('abcdef123456')
-
-      // Should still trigger preview refresh
-      expect(window.postMessage).toHaveBeenCalledWith(
-        {
-          type: 'MESSAGE_COMPLETE',
-          source: 'websocket',
-        },
-        window.location.origin
-      )
-    })
-
-    it('triggers preview refresh immediately if no appId', async () => {
       const { result } = renderHook(() => useWebSocketHelpers(null), { wrapper: createWrapper() })
 
       await result.current.handleCommitComplete('abcdef123456')
 
-      expect(window.postMessage).toHaveBeenCalledWith(
-        {
-          type: 'MESSAGE_COMPLETE',
-          source: 'websocket',
-        },
-        window.location.origin
-      )
+      // Should not update state or trigger refresh without appId
+      expect(setSelectedCommitHash).not.toHaveBeenCalled()
+      expect(window.postMessage).not.toHaveBeenCalled()
     })
   })
 

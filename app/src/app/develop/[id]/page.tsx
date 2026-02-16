@@ -26,6 +26,7 @@ import Header from '@/components/layout/Header'
 import PostPublishGoLiveModal from '@/components/layout/PostPublishGoLiveModal'
 import PublishLimitModal from '@/components/layout/PublishLimitModal'
 import PublishStatusAlert from '@/components/layout/PublishStatusAlert'
+import { MediaSlotDialog } from '@/components/media'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { WebSocketProvider } from '@/contexts/WebSocketContext'
@@ -48,6 +49,7 @@ import { logger } from '@/lib/request-context'
 import { cn } from '@/lib/utils'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import {
   useActiveStream,
@@ -670,6 +672,12 @@ function DevelopPageContent() {
             handleScreenshotUpload(event.data.screenshot)
           }
           break
+        case 'OPEN_MEDIA_SLOT_DIALOG':
+          // Handle request to open media slot dialog from dev-tools
+          if (event.data.slotName && appId) {
+            useMediaSlotDialogStore.getState().openDialog(appId, event.data.slotName)
+          }
+          break
       }
     }
 
@@ -906,6 +914,7 @@ function DevelopPageContent() {
               <div className="flex-1 relative min-h-0">
                 {/* Preview/Code View */}
                 <div
+                  id="preview-pane-container"
                   className="absolute inset-0 flex flex-col transition-opacity duration-150"
                   style={{
                     opacity: activeChatTab !== ChatTab.SETTINGS ? 1 : 0,
@@ -1054,6 +1063,8 @@ function DevelopPageContent() {
 
         {/* Polling overlay while waiting for new grant after credit purchase */}
         {isCreditPolling && <GrantPollingModal />}
+
+        <MediaSlotDialog />
 
         {showUpgradeModal && (
           <SinglePlanUpgradeContainer

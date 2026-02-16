@@ -100,6 +100,7 @@ export const mediaSlotAITool: Tool = createTool(
       mediaType: result.mediaType,
       searchQuery: result.searchQuery,
       ...(result.resolvedUrl && { resolvedUrl: result.resolvedUrl }),
+      ...(result.alternatives && { alternatives: result.alternatives }),
       ...(result.alternativeCount !== undefined && { alternativeCount: result.alternativeCount }),
     };
 

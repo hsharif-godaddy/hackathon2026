@@ -411,6 +411,25 @@ export default function ElementEditor({
         }
       }
 
+      // Check if a sibling element has a background image (common pattern for bg-image + overlay)
+      // This handles cases like: <div class="relative"><div style="background-image: url(...)"/><div class="overlay" /></div>
+      const siblings = Array.from(element.parentElement.children)
+      for (const sibling of siblings) {
+        if (sibling === element) continue
+        const siblingStyle = window.getComputedStyle(sibling as HTMLElement)
+        const siblingBgImage = siblingStyle.backgroundImage
+        if (siblingBgImage && siblingBgImage !== 'none') {
+          const urlMatch = siblingBgImage.match(/url\(["']?([^"')]+)["']?\)/)
+          if (urlMatch && urlMatch[1]) {
+            return {
+              isImage: true,
+              imageUrl: urlMatch[1],
+              type: 'background'
+            }
+          }
+        }
+      }
+
       // Check if parent element has a background image (overlay on top of bg-image container)
       // This handles cases like: <div style="background-image: url(...)"><div class="overlay" /></div>
       const parentStyle = window.getComputedStyle(element.parentElement)
@@ -428,6 +447,16 @@ export default function ElementEditor({
     }
 
     return { isImage: false, imageUrl: null, type: null }
+  }, [])
+
+  /**
+   * Check if a URL is a media slot image and extract the slot path
+   * Media slot URLs follow the pattern: /airo-assets/images/{slotPath}
+   */
+  const getMediaSlotPath = useCallback((url: string | null): string | null => {
+    if (!url) return null
+    const match = url.match(/\/airo-assets\/images\/(.+?)(?:\?|$)/)
+    return match ? match[1] : null
   }, [])
 
   // Capture screenshot of the selected element with background context using html-to-image
@@ -1301,10 +1330,56 @@ export default function ElementEditor({
           {isCapturingScreenshot ? 'Capturing...' : 'Edit with AI'}
         </button>
 
-        {/* Replace Image Button - Show only for image elements or elements with background images */}
+        {/* Image Action Button - "Swap Media" for media slots, "Replace Image" for other images */}
         {selectedElement && (() => {
           if (!element) return null
-          return imageInfo.isImage && (
+          if (!imageInfo.isImage) return null
+
+          const mediaSlotPath = getMediaSlotPath(imageInfo.imageUrl)
+
+          // Media slot image - show "Swap Media" button
+          if (mediaSlotPath) {
+            return (
+              <button
+                onClick={() => {
+                  if (window.parent !== window) {
+                    safePostMessage(window.parent, {
+                      type: 'OPEN_MEDIA_SLOT_DIALOG',
+                      slotName: mediaSlotPath
+                    })
+                    setHideToolbar(true)
+                  }
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  color: '#059669',
+                  backgroundColor: '#ecfdf5',
+                  border: '1px solid #a7f3d0',
+                  borderRadius: '6px',
+                  cursor: 'pointer'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#d1fae5'
+                  e.currentTarget.style.borderColor = '#6ee7b7'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#ecfdf5'
+                  e.currentTarget.style.borderColor = '#a7f3d0'
+                }}
+              >
+                <Image style={{ width: '14px', height: '14px' }} />
+                Swap Media
+              </button>
+            )
+          }
+
+          // Non-media-slot image - show "Replace Image" button
+          return (
             <button
               onClick={async () => {
                 if (selectedElement?.devContext && window.parent !== window && !isCapturingScreenshot) {

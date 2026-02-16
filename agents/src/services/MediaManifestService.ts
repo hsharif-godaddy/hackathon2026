@@ -1,0 +1,458 @@
+/**
+ * Media Manifest Service
+ *
+ * Centralized service for all media manifest (airo-media.json) operations.
+ * Provides:
+ * - Atomic read-modify-write operations with locking
+ * - Automatic git commits on changes
+ * - Compare-and-swap semantics to prevent data loss from concurrent updates
+ */
+
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { AppRepository } from '../database/repositories/AppRepository.js';
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { GitUtils } from '../utils/git.js';
+import { logger } from '../logging/index.js';
+
+export const MANIFEST_FILENAME = 'airo-media.json';
+
+/**
+ * Size configuration for media slots
+ */
+export interface MediaSize {
+  width: number;
+  height: number;
+  fit: 'cover' | 'contain' | 'crop';
+}
+
+/**
+ * A single slot entry in the manifest
+ */
+export interface MediaSlot {
+  mediaType: 'image' | 'video' | 'generated';
+  currentUrl: string;
+  searchQuery: string;
+  requestedSize?: MediaSize;
+  orientations?: string;
+  compositions?: string;
+  alternatives: string[];
+  userModified: boolean;
+  createdAt: string;
+  lastUpdated: string;
+}
+
+/**
+ * The complete manifest mapping slot paths to slot data
+ */
+export type MediaManifest = Record<string, MediaSlot>;
+
+/**
+ * Options for updating a slot
+ */
+export interface UpdateSlotOptions {
+  /** The new URL to use for this slot */
+  newUrl: string;
+  /** Index in alternatives array (0 = current, 1+ = alternatives) */
+  alternativeIndex?: number;
+  /** Mark as user-modified (prevents AI from overwriting) */
+  markUserModified?: boolean;
+}
+
+/**
+ * Result of a manifest operation
+ */
+export interface ManifestOperationResult {
+  success: boolean;
+  error?: string;
+  manifest?: MediaManifest;
+  slot?: MediaSlot;
+  commitHash?: string;
+}
+
+// In-memory locks per app to prevent concurrent modifications
+const appLocks = new Map<string, Promise<void>>();
+
+/**
+ * Acquire a lock for an app's manifest
+ * Uses a simple promise-based mutex pattern
+ */
+async function acquireLock(appId: string): Promise<() => void> {
+  // Wait for any existing lock to be released
+  while (appLocks.has(appId)) {
+    await appLocks.get(appId);
+  }
+
+  // Create a new lock
+  let releaseLock: () => void;
+  const lockPromise = new Promise<void>((resolve) => {
+    releaseLock = resolve;
+  });
+
+  appLocks.set(appId, lockPromise);
+
+  return () => {
+    appLocks.delete(appId);
+    releaseLock!();
+  };
+}
+
+/**
+ * Service for managing the media manifest file with proper locking and git integration
+ */
+export class MediaManifestService {
+  private appRepository: AppRepository;
+
+  constructor() {
+    this.appRepository = new AppRepository();
+  }
+
+  /**
+   * Get the manifest path for an app
+   */
+  private getManifestPath(appPath: string): string {
+    return path.join(appPath, MANIFEST_FILENAME);
+  }
+
+  /**
+   * Read the current manifest for an app (does not acquire lock)
+   */
+  async getManifest(appId: string): Promise<ManifestOperationResult> {
+    const app = this.appRepository.findById(appId);
+    if (!app) {
+      return {
+        success: false,
+        error: `App not found: ${appId}`,
+      };
+    }
+
+    const manifestPath = this.getManifestPath(app.path);
+
+    try {
+      const content = await fs.readFile(manifestPath, 'utf-8');
+      const manifest = JSON.parse(content) as MediaManifest;
+      return {
+        success: true,
+        manifest,
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        // File doesn't exist - return empty manifest
+        return {
+          success: true,
+          manifest: {},
+        };
+      }
+      return {
+        success: false,
+        error: `Failed to read manifest: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
+
+  /**
+   * Get a specific slot from the manifest
+   */
+  async getSlot(appId: string, slotName: string): Promise<ManifestOperationResult> {
+    const result = await this.getManifest(appId);
+    if (!result.success || !result.manifest) {
+      return result;
+    }
+
+    const slot = result.manifest[slotName];
+    if (!slot) {
+      return {
+        success: false,
+        error: `Slot not found: ${slotName}`,
+      };
+    }
+
+    return {
+      success: true,
+      slot,
+      manifest: result.manifest,
+    };
+  }
+
+  /**
+   * Update a slot in the manifest with proper locking and git commit
+   *
+   * This is the main method for making changes to the manifest.
+   * It acquires a lock, reads the current state, applies the update,
+   * writes the file atomically, and commits to git.
+   */
+  async updateSlot(
+    appId: string,
+    slotName: string,
+    options: UpdateSlotOptions
+  ): Promise<ManifestOperationResult> {
+    const app = this.appRepository.findById(appId);
+    if (!app) {
+      return {
+        success: false,
+        error: `App not found: ${appId}`,
+      };
+    }
+
+    const logContext = { appId, slotName };
+    logger.info('media_manifest.update_slot.begin', logContext);
+
+    // Acquire lock for this app
+    const releaseLock = await acquireLock(appId);
+
+    try {
+      const manifestPath = this.getManifestPath(app.path);
+
+      // Read current manifest
+      let manifest: MediaManifest = {};
+      try {
+        const content = await fs.readFile(manifestPath, 'utf-8');
+        manifest = JSON.parse(content);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          logger.warn('media_manifest.update_slot.read_error', {
+            ...logContext,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        // File doesn't exist or is corrupt - start fresh
+        manifest = {};
+      }
+
+      // Get the existing slot
+      const existingSlot = manifest[slotName];
+      if (!existingSlot) {
+        return {
+          success: false,
+          error: `Slot not found: ${slotName}`,
+        };
+      }
+
+      // Build all URLs list (current + alternatives)
+      const allUrls = [existingSlot.currentUrl, ...existingSlot.alternatives];
+
+      // Validate the new URL is in the list
+      const urlIndex = options.alternativeIndex ?? allUrls.indexOf(options.newUrl);
+      if (urlIndex === -1 || urlIndex >= allUrls.length) {
+        return {
+          success: false,
+          error: 'Invalid URL or alternative index',
+        };
+      }
+
+      // Swap: new URL becomes current, old current goes to alternatives
+      const newCurrentUrl = allUrls[urlIndex]!;
+      const newAlternatives = allUrls.filter((_, i) => i !== urlIndex);
+
+      // Update the slot
+      const updatedSlot: MediaSlot = {
+        ...existingSlot,
+        currentUrl: newCurrentUrl,
+        alternatives: newAlternatives,
+        userModified: options.markUserModified ?? true,
+        lastUpdated: new Date().toISOString(),
+      };
+
+      manifest[slotName] = updatedSlot;
+
+      // Write atomically (temp file + rename)
+      const tempPath = `${manifestPath}.tmp`;
+      const content = JSON.stringify(manifest, null, 2);
+      await fs.writeFile(tempPath, content, 'utf-8');
+      await fs.rename(tempPath, manifestPath);
+
+      logger.info('media_manifest.update_slot.written', {
+        ...logContext,
+        newUrl: newCurrentUrl,
+      });
+
+      // Commit to git
+      let commitHash: string | undefined;
+      try {
+        commitHash = await this.commitManifestChange(appId, slotName, 'update');
+      } catch (gitError) {
+        // Log but don't fail - the file change was successful
+        logger.warn('media_manifest.update_slot.git_commit_failed', {
+          ...logContext,
+          error: gitError instanceof Error ? gitError.message : String(gitError),
+        });
+      }
+
+      logger.info('media_manifest.update_slot.success', {
+        ...logContext,
+        commitHash,
+      });
+
+      return {
+        success: true,
+        slot: updatedSlot,
+        manifest,
+        commitHash,
+      };
+    } finally {
+      releaseLock();
+    }
+  }
+
+  /**
+   * Create or update a slot (used by the media slot tool during selection)
+   */
+  async setSlot(
+    appId: string,
+    slotName: string,
+    slot: MediaSlot,
+    skipGitCommit: boolean = false
+  ): Promise<ManifestOperationResult> {
+    const app = this.appRepository.findById(appId);
+    if (!app) {
+      return {
+        success: false,
+        error: `App not found: ${appId}`,
+      };
+    }
+
+    const logContext = { appId, slotName };
+    logger.info('media_manifest.set_slot.begin', logContext);
+
+    // Acquire lock for this app
+    const releaseLock = await acquireLock(appId);
+
+    try {
+      const manifestPath = this.getManifestPath(app.path);
+
+      // Read current manifest
+      let manifest: MediaManifest = {};
+      try {
+        const content = await fs.readFile(manifestPath, 'utf-8');
+        manifest = JSON.parse(content);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          logger.warn('media_manifest.set_slot.read_error', {
+            ...logContext,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        manifest = {};
+      }
+
+      // Preserve createdAt and userModified from existing slot
+      const existing = manifest[slotName];
+      if (existing) {
+        slot.createdAt = existing.createdAt;
+        if (existing.userModified) {
+          slot.userModified = true;
+        }
+      }
+
+      // Update the slot
+      manifest[slotName] = slot;
+
+      // Write atomically
+      const tempPath = `${manifestPath}.tmp`;
+      const content = JSON.stringify(manifest, null, 2);
+      await fs.writeFile(tempPath, content, 'utf-8');
+      await fs.rename(tempPath, manifestPath);
+
+      logger.info('media_manifest.set_slot.written', logContext);
+
+      // Commit to git (unless skipped, e.g., during batch operations)
+      let commitHash: string | undefined;
+      if (!skipGitCommit) {
+        try {
+          const operation = existing ? 'update' : 'create';
+          commitHash = await this.commitManifestChange(appId, slotName, operation);
+        } catch (gitError) {
+          logger.warn('media_manifest.set_slot.git_commit_failed', {
+            ...logContext,
+            error: gitError instanceof Error ? gitError.message : String(gitError),
+          });
+        }
+      }
+
+      logger.info('media_manifest.set_slot.success', {
+        ...logContext,
+        commitHash,
+      });
+
+      return {
+        success: true,
+        slot,
+        manifest,
+        commitHash,
+      };
+    } finally {
+      releaseLock();
+    }
+  }
+
+  /**
+   * Commit manifest changes to git
+   */
+  private async commitManifestChange(
+    appId: string,
+    slotName: string,
+    operation: 'create' | 'update' | 'delete'
+  ): Promise<string | undefined> {
+    try {
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      if (!devSupervisor || !devSupervisor.isAvailable()) {
+        logger.debug('media_manifest.git_commit.no_supervisor', { appId });
+        return undefined;
+      }
+
+      const gitUtils = new GitUtils(devSupervisor);
+      const app = this.appRepository.findById(appId);
+      if (!app) {
+        return undefined;
+      }
+
+      // Stage the manifest file
+      const addResult = await gitUtils.addFiles(app.path, [MANIFEST_FILENAME]);
+      if (!addResult.success) {
+        logger.warn('media_manifest.git_commit.add_failed', {
+          appId,
+          stderr: addResult.stderr,
+        });
+        return undefined;
+      }
+
+      // Check if there are changes to commit
+      const status = await gitUtils.getStatus(app.path);
+      if (status.stagedFiles === 0) {
+        logger.debug('media_manifest.git_commit.no_changes', { appId });
+        return undefined;
+      }
+
+      // Create commit message
+      const messages: Record<string, string> = {
+        create: `Add media slot: ${slotName}`,
+        update: `Update media slot: ${slotName}`,
+        delete: `Remove media slot: ${slotName}`,
+      };
+      const message = messages[operation] || `Update media manifest`;
+
+      // Commit
+      const commitResult = await gitUtils.commit(app.path, message);
+      if (!commitResult.success) {
+        logger.warn('media_manifest.git_commit.commit_failed', {
+          appId,
+          stderr: commitResult.stderr,
+        });
+        return undefined;
+      }
+
+      // Get the commit hash
+      const lastCommit = await gitUtils.getLastCommit(app.path);
+      return lastCommit?.hash;
+    } catch (error) {
+      logger.warn('media_manifest.git_commit.error', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  }
+}
+
+// Export singleton instance
+export const mediaManifestService = new MediaManifestService();

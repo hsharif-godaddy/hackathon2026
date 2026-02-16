@@ -60,6 +60,34 @@ export default function DevelopmentMode() {
       }
     }
 
+    // Reload images for a specific media slot by adding cache-busting timestamp
+    function reloadMediaSlot(slotPath: string) {
+      const timestamp = Date.now()
+      const slotUrlPattern = `/airo-assets/images/${slotPath}`
+
+      // Reload <img> elements
+      document.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
+        if (img.src.includes(slotUrlPattern)) {
+          const url = new URL(img.src)
+          url.searchParams.set('_t', String(timestamp))
+          img.src = url.toString()
+        }
+      })
+
+      // Reload CSS background images
+      document.querySelectorAll<HTMLElement>('[style*="background"]').forEach((el) => {
+        const bgImage = window.getComputedStyle(el).backgroundImage
+        if (bgImage?.includes(slotUrlPattern)) {
+          const urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/)
+          if (urlMatch?.[1]) {
+            const url = new URL(urlMatch[1], window.location.origin)
+            url.searchParams.set('_t', String(timestamp))
+            el.style.backgroundImage = `url("${url.toString()}")`
+          }
+        }
+      })
+    }
+
     // Set up intersection observer for section detection
     function setupSectionObserver() {
       try {
@@ -222,6 +250,8 @@ export default function DevelopmentMode() {
           }).catch((error) => {
             console.error('Screenshot: Error capturing:', error)
           })
+        } else if (event.data?.type === 'RELOAD_MEDIA_SLOT' && event.data.slotPath) {
+          reloadMediaSlot(event.data.slotPath)
         }
       } catch (error) {
 

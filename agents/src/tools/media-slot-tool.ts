@@ -12,39 +12,18 @@
  * - Re-searching with original query context
  */
 
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { MediaSearchTool, type MediaSearchResult } from './media-search-tool.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { logger } from '../logging/index.js';
+import {
+  mediaManifestService,
+  type MediaSlot,
+  type MediaManifest,
+  type MediaSize,
+} from '../services/MediaManifestService.js';
 
-/**
- * Size configuration for media slots
- */
-export interface MediaSize {
-  width: number;
-  height: number;
-  fit: 'cover' | 'contain' | 'crop';
-}
-
-/**
- * A single slot entry in the manifest
- */
-export interface MediaSlot {
-  mediaType: 'image' | 'video' | 'generated';
-  currentUrl: string;
-  searchQuery: string;
-  requestedSize?: MediaSize;
-  alternatives: string[];
-  userModified: boolean;
-  createdAt: string;
-  lastUpdated: string;
-}
-
-/**
- * The complete manifest mapping slot paths to slot data
- */
-export type MediaManifest = Record<string, MediaSlot>;
+// Re-export types for backwards compatibility
+export type { MediaSize, MediaSlot, MediaManifest };
 
 /**
  * Input options for selecting media into a slot
@@ -77,11 +56,10 @@ export interface MediaSlotResult {
   mediaType: 'image' | 'video';
   searchQuery: string;
   resolvedUrl?: string;
+  alternatives?: string[];
   alternativeCount?: number;
   error?: string;
 }
-
-const MANIFEST_FILENAME = 'airo-media.json';
 
 /**
  * Service for managing media slots and the manifest file
@@ -215,9 +193,20 @@ export class MediaSlotTool {
         };
       }
 
-      // Update the manifest
-      const manifestPath = path.join(app.path, MANIFEST_FILENAME);
-      await this.updateManifest(manifestPath, normalizedSlot, slotEntry);
+      // Add search filters if provided
+      if (orientations) {
+        slotEntry.orientations = orientations;
+      }
+      if (compositions) {
+        slotEntry.compositions = compositions;
+      }
+
+      // Update the manifest using the centralized service
+      // Skip git commit here since AI selections are auto-committed in batches
+      const manifestResult = await mediaManifestService.setSlot(appId, normalizedSlot, slotEntry, true);
+      if (!manifestResult.success) {
+        throw new Error(manifestResult.error || 'Failed to update manifest');
+      }
 
       // Build the slot URL
       const slotUrl = mediaType === 'video'
@@ -238,6 +227,7 @@ export class MediaSlotTool {
         mediaType,
         searchQuery: query,
         resolvedUrl: primaryUrl,
+        alternatives,
         alternativeCount: alternatives.length,
       };
     } catch (error) {
@@ -273,91 +263,26 @@ export class MediaSlotTool {
   }
 
   /**
-   * Read the manifest file, update with new slot, and write back
-   * Note: Atomic write (temp file + rename) prevents partial writes.
-   * Race condition between concurrent writes is acceptable since slots
-   * are typically unique per agent conversation.
-   */
-  private async updateManifest(
-    manifestPath: string,
-    slot: string,
-    entry: MediaSlot
-  ): Promise<void> {
-    // Read existing manifest or create empty
-    let manifest: MediaManifest = {};
-
-    try {
-      const content = await fs.readFile(manifestPath, 'utf-8');
-      manifest = JSON.parse(content);
-    } catch (error) {
-      // File doesn't exist or is corrupt - start fresh
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        logger.warn('media_slot.manifest.read_error', {
-          manifestPath,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-      manifest = {};
-    }
-
-    // Check if slot already exists and preserve createdAt
-    const existing = manifest[slot];
-    if (existing) {
-      entry.createdAt = existing.createdAt;
-      // Preserve userModified if user had modified it
-      if (existing.userModified) {
-        entry.userModified = true;
-      }
-    }
-
-    // Update the slot
-    manifest[slot] = entry;
-
-    // Write atomically (write to temp, then rename)
-    const tempPath = `${manifestPath}.tmp`;
-    const content = JSON.stringify(manifest, null, 2);
-
-    await fs.writeFile(tempPath, content, 'utf-8');
-    await fs.rename(tempPath, manifestPath);
-
-    logger.debug('media_slot.manifest.updated', {
-      manifestPath,
-      slot,
-      totalSlots: Object.keys(manifest).length,
-    });
-  }
-
-  /**
    * Read the current manifest for an app
+   * Delegates to MediaManifestService for centralized access
    */
   async getManifest(appId: string): Promise<MediaManifest | null> {
-    const app = this.appRepository.findById(appId);
-    if (!app) {
+    const result = await mediaManifestService.getManifest(appId);
+    if (!result.success) {
       return null;
     }
-
-    const manifestPath = path.join(app.path, MANIFEST_FILENAME);
-
-    try {
-      const content = await fs.readFile(manifestPath, 'utf-8');
-      return JSON.parse(content);
-    } catch (error) {
-      // File doesn't exist - return empty manifest
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return {};
-      }
-      return null;
-    }
+    return result.manifest || null;
   }
 
   /**
    * Get a specific slot from the manifest
+   * Delegates to MediaManifestService for centralized access
    */
   async getSlot(appId: string, slot: string): Promise<MediaSlot | null> {
-    const manifest = await this.getManifest(appId);
-    if (!manifest) {
+    const result = await mediaManifestService.getSlot(appId, slot);
+    if (!result.success) {
       return null;
     }
-    return manifest[slot] || null;
+    return result.slot || null;
   }
 }

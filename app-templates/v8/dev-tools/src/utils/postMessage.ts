@@ -46,7 +46,8 @@ export function isOriginAllowed(event: MessageEvent): boolean {
   }
 
   // In production or when specific origin is set, only allow that exact origin
-  return event.origin === allowedOrigin
+  // Normalize by removing trailing slash since event.origin never has one
+  return event.origin === allowedOrigin.replace(/\/$/, '')
 }
 
 /**
