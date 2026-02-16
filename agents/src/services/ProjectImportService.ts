@@ -479,9 +479,14 @@ export class ProjectImportService {
         return;
       }
 
-      // Phase 12: Restart dev server with npm start (or custom command)
+      // Phase 12: Restart dev server with start command (or custom command)
+      // Priority: user-provided command > start script > dev script > default
       await this.updateStatus(jobId, ImportJobStatus.RESTARTING);
-      const startCommand = params.commands?.start || DEFAULT_START_COMMAND;
+      const pm = validation.packageManager || 'npm';
+      const startCommand = params.commands?.start
+        || (validation.hasStartScript ? `${pm} start` : null)
+        || (validation.hasDevScript ? `${pm} run dev` : null)
+        || DEFAULT_START_COMMAND;
       const restartResult = await appRestartService.restartDevServer(appId, startCommand);
 
       if (!restartResult.success) {
@@ -703,6 +708,7 @@ export class ProjectImportService {
     packageManager?: 'npm' | 'yarn' | 'pnpm';
     hasBuildScript?: boolean;
     hasDevScript?: boolean;
+    hasStartScript?: boolean;
     hasGitignoreFile?: boolean;
     matchedTool?: string;
     errors?: ValidationError[];
@@ -801,7 +807,8 @@ export class ProjectImportService {
     // Check for scripts
     const scripts = packageJson.scripts || {};
     const hasBuildScript = 'build' in scripts;
-    const hasDevScript = 'dev' in scripts || 'start' in scripts;
+    const hasStartScript = 'start' in scripts;
+    const hasDevScript = 'dev' in scripts || hasStartScript;
 
     if (!hasDevScript) {
       warnings.push({
@@ -830,6 +837,7 @@ export class ProjectImportService {
       packageManager?: 'npm' | 'yarn' | 'pnpm';
       hasBuildScript?: boolean;
       hasDevScript?: boolean;
+      hasStartScript?: boolean;
       hasGitignoreFile?: boolean;
       matchedTool?: string;
       errors?: ValidationError[];
@@ -840,6 +848,7 @@ export class ProjectImportService {
       packageManager,
       hasBuildScript,
       hasDevScript,
+      hasStartScript,
       hasGitignoreFile,
       matchedTool: buildToolCheck.matchedTool,
     };

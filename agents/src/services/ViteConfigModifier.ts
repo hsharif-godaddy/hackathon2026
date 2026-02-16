@@ -129,12 +129,16 @@ export function createAllowedHostsProperty(): t.ObjectProperty {
 }
 
 /**
- * Create a server property with allowedHosts: true
+ * Create a server property with allowedHosts: true and port using env var
  */
-export function createServerProperty(): t.ObjectProperty {
+export function createServerProperty(options?: ViteConfigModifyOptions): t.ObjectProperty {
+  const fallbackPort = options?.port || DEFAULT_VITE_PORT;
   return t.objectProperty(
     t.identifier('server'),
-    t.objectExpression([createAllowedHostsProperty()])
+    t.objectExpression([
+      createPortProperty(fallbackPort),
+      createAllowedHostsProperty(),
+    ])
   );
 }
 
@@ -145,17 +149,193 @@ export function isAllowedHostsTrue(value: t.Expression | t.PatternLike): boolean
   return t.isBooleanLiteral(value) && value.value === true;
 }
 
+// =====================================================
+// Port Injection Helpers
+// =====================================================
+
+/** Default Vite port if none specified */
+const DEFAULT_VITE_PORT = '5173';
+
 /**
- * Modify an object expression to ensure server.allowedHosts: true
+ * Create: parseInt(process.env.PORT || 'fallback', 10)
+ */
+export function createPortExpression(fallbackPort: string): t.CallExpression {
+  return t.callExpression(
+    t.identifier('parseInt'),
+    [
+      t.logicalExpression(
+        '||',
+        t.memberExpression(
+          t.memberExpression(
+            t.identifier('process'),
+            t.identifier('env')
+          ),
+          t.identifier('PORT')
+        ),
+        t.stringLiteral(fallbackPort)
+      ),
+      t.numericLiteral(10)
+    ]
+  );
+}
+
+/**
+ * Create an object property with port: parseInt(process.env.PORT || 'fallback')
+ */
+export function createPortProperty(fallbackPort: string): t.ObjectProperty {
+  return t.objectProperty(
+    t.identifier('port'),
+    createPortExpression(fallbackPort)
+  );
+}
+
+/**
+ * Check if an expression already uses process.env.PORT
+ * Detects patterns like:
+ * - process.env.PORT
+ * - parseInt(process.env.PORT)
+ * - parseInt(process.env.PORT || '...')
+ * - Number(process.env.PORT)
+ */
+export function isEnvPortExpression(node: t.Expression | t.PatternLike): boolean {
+  // Direct: process.env.PORT
+  if (t.isMemberExpression(node)) {
+    return isProcessEnvPort(node);
+  }
+
+  // Wrapped: parseInt(...) or Number(...)
+  if (t.isCallExpression(node)) {
+    const callee = node.callee;
+    if (t.isIdentifier(callee) && (callee.name === 'parseInt' || callee.name === 'Number')) {
+      const arg = node.arguments[0];
+      if (!arg) return false;
+
+      // parseInt(process.env.PORT)
+      if (t.isMemberExpression(arg) && isProcessEnvPort(arg)) {
+        return true;
+      }
+
+      // parseInt(process.env.PORT || '...')
+      if (t.isLogicalExpression(arg) && arg.operator === '||') {
+        if (t.isMemberExpression(arg.left) && isProcessEnvPort(arg.left)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Check if a MemberExpression is process.env.PORT
+ */
+function isProcessEnvPort(node: t.MemberExpression): boolean {
+  // Check for process.env.PORT
+  if (!t.isIdentifier(node.property) || node.property.name !== 'PORT') {
+    return false;
+  }
+
+  // Check for process.env
+  if (!t.isMemberExpression(node.object)) {
+    return false;
+  }
+
+  const envObj = node.object;
+  return (
+    t.isIdentifier(envObj.object) && envObj.object.name === 'process' &&
+    t.isIdentifier(envObj.property) && envObj.property.name === 'env'
+  );
+}
+
+/**
+ * Extract fallback port value from existing port config
+ * Returns the string representation of a numeric literal, or null if not extractable
+ */
+export function extractPortFallback(node: t.Expression | t.PatternLike): string | null {
+  if (t.isNumericLiteral(node)) {
+    return String(node.value);
+  }
+  return null;
+}
+
+/**
+ * Options for modifying vite config
+ */
+export interface ViteConfigModifyOptions {
+  /** User-provided fallback port */
+  port?: string;
+}
+
+/**
+ * Modify server.port to use process.env.PORT
+ * Returns true if modifications were made
+ */
+function modifyPort(serverObj: t.ObjectExpression, userPort?: string): boolean {
+  const portProp = findProperty(serverObj.properties, 'port');
+
+  if (!portProp) {
+    // No port - add with default fallback
+    const fallback = userPort || DEFAULT_VITE_PORT;
+    serverObj.properties.push(createPortProperty(fallback));
+    return true;
+  }
+
+  // Port exists - check if already using env var
+  if (isEnvPortExpression(portProp.value)) {
+    // Already uses process.env.PORT - skip
+    return false;
+  }
+
+  // Determine fallback: user-provided > existing > default
+  const existingFallback = extractPortFallback(portProp.value);
+  const fallback = userPort || existingFallback || DEFAULT_VITE_PORT;
+
+  // Replace with env-aware expression
+  portProp.value = createPortExpression(fallback);
+  return true;
+}
+
+/**
+ * Modify server.allowedHosts to be true
+ * Returns true if modifications were made
+ */
+function modifyAllowedHosts(serverObj: t.ObjectExpression): boolean {
+  const allowedHostsProp = findProperty(serverObj.properties, 'allowedHosts');
+
+  if (!allowedHostsProp) {
+    // allowedHosts doesn't exist - add it
+    serverObj.properties.push(createAllowedHostsProperty());
+    return true;
+  }
+
+  // allowedHosts exists - check if it's already true
+  if (isAllowedHostsTrue(allowedHostsProp.value)) {
+    return false;
+  }
+
+  // Overwrite to true
+  allowedHostsProp.value = t.booleanLiteral(true);
+  return true;
+}
+
+/**
+ * Modify an object expression to ensure:
+ * - server.port uses process.env.PORT
+ * - server.allowedHosts is true
+ *
  * Returns true if modifications were made, false if no changes needed or
  * modification was not possible (e.g., server is a variable/function call)
  */
-export function modifyConfigObject(objExpr: t.ObjectExpression): boolean {
+export function modifyConfigObject(
+  objExpr: t.ObjectExpression,
+  options?: ViteConfigModifyOptions
+): boolean {
   const serverProp = findProperty(objExpr.properties, 'server');
 
   if (!serverProp) {
-    // No server property - add it with allowedHosts: true
-    objExpr.properties.push(createServerProperty());
+    // No server property - add it with port and allowedHosts
+    objExpr.properties.push(createServerProperty(options));
     return true;
   }
 
@@ -170,30 +350,25 @@ export function modifyConfigObject(objExpr: t.ObjectExpression): boolean {
   }
 
   const serverObj = serverProp.value;
-  const allowedHostsProp = findProperty(serverObj.properties, 'allowedHosts');
+  let modified = false;
 
-  if (!allowedHostsProp) {
-    // allowedHosts doesn't exist - add it
-    serverObj.properties.push(createAllowedHostsProperty());
-    return true;
-  }
+  // Handle port
+  modified = modifyPort(serverObj, options?.port) || modified;
 
-  // allowedHosts exists - check if it's already true
-  if (isAllowedHostsTrue(allowedHostsProp.value)) {
-    // Already set to true, no modification needed
-    return false;
-  }
+  // Handle allowedHosts
+  modified = modifyAllowedHosts(serverObj) || modified;
 
-  // Overwrite to true
-  allowedHostsProp.value = t.booleanLiteral(true);
-  return true;
+  return modified;
 }
 
 /**
  * Process the AST to find and modify the vite config
  * Handles both direct object export and defineConfig wrapper
  */
-export function processViteConfigAST(ast: t.File): { modified: boolean; error?: string } {
+export function processViteConfigAST(
+  ast: t.File,
+  options?: ViteConfigModifyOptions
+): { modified: boolean; error?: string } {
   let modified = false;
   let foundConfig = false;
 
@@ -205,7 +380,7 @@ export function processViteConfigAST(ast: t.File): { modified: boolean; error?: 
       // Direct object expression: export default { server: ... }
       if (t.isObjectExpression(declaration)) {
         foundConfig = true;
-        modified = modifyConfigObject(declaration);
+        modified = modifyConfigObject(declaration, options);
         return;
       }
 
@@ -220,7 +395,7 @@ export function processViteConfigAST(ast: t.File): { modified: boolean; error?: 
           // defineConfig({ ... })
           if (t.isObjectExpression(arg)) {
             foundConfig = true;
-            modified = modifyConfigObject(arg);
+            modified = modifyConfigObject(arg, options);
             return;
           }
 
@@ -231,7 +406,7 @@ export function processViteConfigAST(ast: t.File): { modified: boolean; error?: 
             // Arrow function with parenthesized object: () => ({ ... })
             if (t.isObjectExpression(body)) {
               foundConfig = true;
-              modified = modifyConfigObject(body);
+              modified = modifyConfigObject(body, options);
               return;
             }
 
@@ -241,7 +416,7 @@ export function processViteConfigAST(ast: t.File): { modified: boolean; error?: 
               for (const stmt of body.body) {
                 if (t.isReturnStatement(stmt) && t.isObjectExpression(stmt.argument)) {
                   foundConfig = true;
-                  modified = modifyConfigObject(stmt.argument);
+                  modified = modifyConfigObject(stmt.argument, options);
                   return;
                 }
               }
@@ -268,18 +443,20 @@ export function processViteConfigAST(ast: t.File): { modified: boolean; error?: 
  *
  * @param content - The vite config file content
  * @param isTypeScript - Whether the config is TypeScript
+ * @param options - Modification options (e.g., custom port)
  * @returns Object with modified code and status
  */
 export function processAndGenerateViteConfig(
   content: string,
-  isTypeScript = false
+  isTypeScript = false,
+  options?: ViteConfigModifyOptions
 ): { code: string; modified: boolean; error?: string } {
   const ast = parse(content, {
     sourceType: 'module',
     plugins: isTypeScript ? ['typescript'] : [],
   });
 
-  const result = processViteConfigAST(ast);
+  const result = processViteConfigAST(ast, options);
 
   const { code } = generate(ast, {
     retainLines: true,
@@ -290,21 +467,25 @@ export function processAndGenerateViteConfig(
 }
 
 /**
- * Modify vite.config to ensure server.allowedHosts is set to true
+ * Modify vite.config to ensure:
+ * - server.port uses process.env.PORT
+ * - server.allowedHosts is set to true
  *
  * @param devSupervisor - Client to execute commands in container
  * @param containerPath - Path to app directory in container (e.g., /app)
+ * @param options - Modification options (e.g., custom fallback port)
  * @returns Result of the modification
  *
  * @remarks
  * Limitation: If the `server` property is set to a variable or function call
  * (e.g., `server: getServerConfig()` or `server: serverOptions`), this function
  * cannot safely modify it and will skip modification. In such cases, the app may
- * need manual configuration to add `allowedHosts: true` to the server settings.
+ * need manual configuration.
  */
 export async function modifyViteConfig(
   devSupervisor: DevSupervisorClient,
-  containerPath: string
+  containerPath: string,
+  options?: ViteConfigModifyOptions
 ): Promise<ViteConfigModifyResult> {
   try {
     // Find vite config file
@@ -340,7 +521,7 @@ export async function modifyViteConfig(
     });
 
     // Process and modify the AST
-    const result = processViteConfigAST(ast);
+    const result = processViteConfigAST(ast, options);
 
     if (result.error) {
       logger.warn('vite-config.process-error', { configFile, error: result.error });

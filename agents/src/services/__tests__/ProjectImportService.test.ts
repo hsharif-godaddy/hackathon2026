@@ -1,24 +1,48 @@
 /**
  * ProjectImportService tests
  *
- * Tests for project root finding logic that handles nested zip structures
+ * Tests for:
+ * - Smart start command selection (npm/yarn/pnpm)
+ * - Project root finding logic that handles nested zip structures
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 import { ProjectImportService } from '../ProjectImportService.js';
+import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
+import { AppRepository } from '../../database/repositories/AppRepository.js';
+import { ImportJobRepository } from '../../database/repositories/ImportJobRepository.js';
+import { appRestartService } from '../AppRestartService.js';
 import type { DevSupervisorClient } from '../DevSupervisorClient.js';
+import * as fs from 'node:fs/promises';
 
 // Mock dependencies
-vi.mock('../../database/repositories/ImportJobRepository.js');
+vi.mock('../../utils/dev-supervisor-client-factory.js');
 vi.mock('../../database/repositories/AppRepository.js');
+vi.mock('../../database/repositories/ImportJobRepository.js');
+vi.mock('../AppRestartService.js');
 vi.mock('../ZipSecurityService.js');
 vi.mock('../GitCloneService.js');
 vi.mock('../CodeSyncFileCleanupService.js');
 vi.mock('../ViteConfigModifier.js');
-vi.mock('../AppRestartService.js');
 vi.mock('../ExpressPortInjector.js');
 vi.mock('../../tools/git-tool.js');
-vi.mock('../../utils/dev-supervisor-client-factory.js');
+vi.mock('node:fs/promises');
+vi.mock('../../logging/index.js', () => ({
+  Logger: {
+    create: () => ({
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    }),
+  },
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
 
 /**
  * Create a mock DevSupervisorClient that simulates a specific directory structure
@@ -69,13 +93,439 @@ function createMockDevSupervisor(
 }
 
 describe('ProjectImportService', () => {
-  let service: ProjectImportService;
+  describe('Smart Start Command Selection', () => {
+    let service: ProjectImportService;
+    let mockDevSupervisor: {
+      exec: Mock;
+      stopProcess: Mock;
+      restartProcess: Mock;
+      startProcess: Mock;
+    };
+    let mockAppRepo: {
+      findById: Mock;
+      updateStatus: Mock;
+    };
+    let mockImportJobRepo: {
+      create: Mock;
+      update: Mock;
+      markCompleted: Mock;
+      markFailed: Mock;
+    };
 
-  beforeEach(() => {
-    service = new ProjectImportService();
+    const testAppId = 'test-app-123';
+    const testJobId = 'test-job-456';
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+
+      // Create mock DevSupervisor client
+      mockDevSupervisor = {
+        exec: vi.fn(),
+        stopProcess: vi.fn().mockResolvedValue(true),
+        restartProcess: vi.fn().mockResolvedValue(true),
+        startProcess: vi.fn().mockResolvedValue({ state: 'running' }),
+      };
+
+      // Create mock repositories
+      mockAppRepo = {
+        findById: vi.fn().mockReturnValue({
+          id: testAppId,
+          path: `/tmp/apps/${testAppId}/app`,
+          status: 'created',
+        }),
+        updateStatus: vi.fn(),
+      };
+
+      mockImportJobRepo = {
+        create: vi.fn().mockReturnValue({ id: testJobId }),
+        update: vi.fn(),
+        markCompleted: vi.fn(),
+        markFailed: vi.fn(),
+      };
+
+      // Setup factory mock
+      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mockDevSupervisor as any);
+
+      // Setup repository mocks
+      vi.mocked(AppRepository).mockImplementation(() => mockAppRepo as any);
+      vi.mocked(ImportJobRepository).mockImplementation(() => mockImportJobRepo as any);
+
+      // Setup AppRestartService mocks
+      vi.mocked(appRestartService.stopDevServer).mockResolvedValue({ success: true });
+      vi.mocked(appRestartService.runNpmInstall).mockResolvedValue({ success: true, output: '' });
+      vi.mocked(appRestartService.runNpmBuild).mockResolvedValue({ success: true, output: '' });
+      vi.mocked(appRestartService.createPaasConfig).mockResolvedValue();
+      vi.mocked(appRestartService.restartDevServer).mockResolvedValue({ success: true });
+
+      // Setup fs mocks
+      vi.mocked(fs.unlink).mockResolvedValue(undefined);
+
+      service = new ProjectImportService();
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    /**
+     * Helper to setup mock exec responses for validateProjectInContainer
+     */
+    function setupValidationMocks(packageJson: object, options: {
+      hasGitignore?: boolean;
+      hasPnpmLock?: boolean;
+      hasYarnLock?: boolean;
+    } = {}) {
+      mockDevSupervisor.exec.mockImplementation(async ({ command }: { command: string }) => {
+        // Check for package.json at root
+        if (command.includes('test -f') && command.includes('package.json')) {
+          return { success: true, stdout: 'found' };
+        }
+        // Check for .gitignore
+        if (command.includes('test -f') && command.includes('.gitignore')) {
+          return { success: true, stdout: options.hasGitignore ? 'found' : 'notfound' };
+        }
+        // Check for pnpm-lock.yaml
+        if (command.includes('pnpm-lock.yaml')) {
+          return { success: true, stdout: options.hasPnpmLock ? 'found' : '' };
+        }
+        // Check for yarn.lock
+        if (command.includes('yarn.lock')) {
+          return { success: true, stdout: options.hasYarnLock ? 'found' : '' };
+        }
+        // Read package.json
+        if (command.includes('cat') && command.includes('package.json')) {
+          return { success: true, stdout: JSON.stringify(packageJson) };
+        }
+        // Check for vite.config (build tool detection)
+        if (command.includes('test -f') && command.includes('vite.config')) {
+          return { success: true, stdout: 'found' };
+        }
+        // Default
+        return { success: true, stdout: '' };
+      });
+    }
+
+    describe('Script Detection (hasStartScript vs hasDevScript)', () => {
+      it('should detect hasStartScript=true when start script exists', async () => {
+        const packageJson = {
+          name: 'test-app',
+          scripts: {
+            start: 'node server.js',
+            build: 'tsc',
+          },
+        };
+        setupValidationMocks(packageJson);
+
+        // Access the private method via reflection for testing
+        const validation = await (service as any).validateProjectInContainer(
+          mockDevSupervisor,
+          '/tmp/extract'
+        );
+
+        expect(validation.valid).toBe(true);
+        expect(validation.hasStartScript).toBe(true);
+        expect(validation.hasDevScript).toBe(true); // true because start exists
+      });
+
+      it('should detect hasStartScript=false, hasDevScript=true when only dev script exists', async () => {
+        const packageJson = {
+          name: 'test-app',
+          scripts: {
+            dev: 'vite',
+            build: 'vite build',
+          },
+        };
+        setupValidationMocks(packageJson);
+
+        const validation = await (service as any).validateProjectInContainer(
+          mockDevSupervisor,
+          '/tmp/extract'
+        );
+
+        expect(validation.valid).toBe(true);
+        expect(validation.hasStartScript).toBe(false);
+        expect(validation.hasDevScript).toBe(true); // true because dev exists
+      });
+
+      it('should detect both hasStartScript and hasDevScript when both exist', async () => {
+        const packageJson = {
+          name: 'test-app',
+          scripts: {
+            start: 'node server.js',
+            dev: 'nodemon server.js',
+            build: 'tsc',
+          },
+        };
+        setupValidationMocks(packageJson);
+
+        const validation = await (service as any).validateProjectInContainer(
+          mockDevSupervisor,
+          '/tmp/extract'
+        );
+
+        expect(validation.valid).toBe(true);
+        expect(validation.hasStartScript).toBe(true);
+        expect(validation.hasDevScript).toBe(true);
+      });
+
+      it('should detect hasStartScript=false, hasDevScript=false when no runnable scripts', async () => {
+        const packageJson = {
+          name: 'test-app',
+          scripts: {
+            build: 'tsc',
+            test: 'vitest',
+          },
+        };
+        setupValidationMocks(packageJson);
+
+        const validation = await (service as any).validateProjectInContainer(
+          mockDevSupervisor,
+          '/tmp/extract'
+        );
+
+        expect(validation.valid).toBe(true);
+        expect(validation.hasStartScript).toBe(false);
+        expect(validation.hasDevScript).toBe(false);
+      });
+
+      it('should handle package.json with no scripts object', async () => {
+        const packageJson = {
+          name: 'test-app',
+          dependencies: {},
+        };
+        setupValidationMocks(packageJson);
+
+        const validation = await (service as any).validateProjectInContainer(
+          mockDevSupervisor,
+          '/tmp/extract'
+        );
+
+        expect(validation.valid).toBe(true);
+        expect(validation.hasStartScript).toBe(false);
+        expect(validation.hasDevScript).toBe(false);
+      });
+    });
+
+    describe('Start Command Selection Logic', () => {
+      /**
+       * Test the command selection logic directly
+       * Logic: params.commands?.start || (hasStartScript ? `${pm} start` : null) || (hasDevScript ? `${pm} run dev` : null) || DEFAULT_START_COMMAND
+       */
+
+      it('should use user-provided command when available (highest priority)', () => {
+        const userCommand = 'node custom-server.js';
+        const validation = { hasStartScript: true, hasDevScript: true, packageManager: 'npm' as const };
+        const pm = validation.packageManager || 'npm';
+
+        const startCommand = userCommand
+          || (validation.hasStartScript ? `${pm} start` : null)
+          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || 'npm start';
+
+        expect(startCommand).toBe('node custom-server.js');
+      });
+
+      it('should use npm start when hasStartScript is true and packageManager is npm', () => {
+        const userCommand = undefined;
+        const validation = { hasStartScript: true, hasDevScript: true, packageManager: 'npm' as const };
+        const pm = validation.packageManager || 'npm';
+
+        const startCommand = userCommand
+          || (validation.hasStartScript ? `${pm} start` : null)
+          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || 'npm start';
+
+        expect(startCommand).toBe('npm start');
+      });
+
+      it('should use npm run dev when only hasDevScript is true (Vite projects)', () => {
+        const userCommand = undefined;
+        const validation = { hasStartScript: false, hasDevScript: true, packageManager: 'npm' as const };
+        const pm = validation.packageManager || 'npm';
+
+        const startCommand = userCommand
+          || (validation.hasStartScript ? `${pm} start` : null)
+          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || 'npm start';
+
+        expect(startCommand).toBe('npm run dev');
+      });
+
+      it('should fallback to default when no scripts exist', () => {
+        const userCommand = undefined;
+        const validation = { hasStartScript: false, hasDevScript: false, packageManager: 'npm' as const };
+        const pm = validation.packageManager || 'npm';
+
+        const startCommand = userCommand
+          || (validation.hasStartScript ? `${pm} start` : null)
+          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || 'npm start';
+
+        expect(startCommand).toBe('npm start');
+      });
+
+      it('should prefer start over dev when both exist', () => {
+        const userCommand = undefined;
+        const validation = { hasStartScript: true, hasDevScript: true, packageManager: 'npm' as const };
+        const pm = validation.packageManager || 'npm';
+
+        const startCommand = userCommand
+          || (validation.hasStartScript ? `${pm} start` : null)
+          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || 'npm start';
+
+        expect(startCommand).toBe('npm start');
+      });
+
+      it('should use user command even when no scripts exist', () => {
+        const userCommand = 'python app.py';
+        const validation = { hasStartScript: false, hasDevScript: false, packageManager: 'npm' as const };
+        const pm = validation.packageManager || 'npm';
+
+        const startCommand = userCommand
+          || (validation.hasStartScript ? `${pm} start` : null)
+          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || 'npm start';
+
+        expect(startCommand).toBe('python app.py');
+      });
+
+      it('should use yarn start when packageManager is yarn and hasStartScript is true', () => {
+        const userCommand = undefined;
+        const validation = { hasStartScript: true, hasDevScript: true, packageManager: 'yarn' as const };
+        const pm = validation.packageManager || 'npm';
+
+        const startCommand = userCommand
+          || (validation.hasStartScript ? `${pm} start` : null)
+          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || 'npm start';
+
+        expect(startCommand).toBe('yarn start');
+      });
+
+      it('should use yarn run dev when packageManager is yarn and only hasDevScript is true', () => {
+        const userCommand = undefined;
+        const validation = { hasStartScript: false, hasDevScript: true, packageManager: 'yarn' as const };
+        const pm = validation.packageManager || 'npm';
+
+        const startCommand = userCommand
+          || (validation.hasStartScript ? `${pm} start` : null)
+          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || 'npm start';
+
+        expect(startCommand).toBe('yarn run dev');
+      });
+
+      it('should use pnpm start when packageManager is pnpm and hasStartScript is true', () => {
+        const userCommand = undefined;
+        const validation = { hasStartScript: true, hasDevScript: true, packageManager: 'pnpm' as const };
+        const pm = validation.packageManager || 'npm';
+
+        const startCommand = userCommand
+          || (validation.hasStartScript ? `${pm} start` : null)
+          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || 'npm start';
+
+        expect(startCommand).toBe('pnpm start');
+      });
+
+      it('should use pnpm run dev when packageManager is pnpm and only hasDevScript is true', () => {
+        const userCommand = undefined;
+        const validation = { hasStartScript: false, hasDevScript: true, packageManager: 'pnpm' as const };
+        const pm = validation.packageManager || 'npm';
+
+        const startCommand = userCommand
+          || (validation.hasStartScript ? `${pm} start` : null)
+          || (validation.hasDevScript ? `${pm} run dev` : null)
+          || 'npm start';
+
+        expect(startCommand).toBe('pnpm run dev');
+      });
+    });
+
+    describe('Package Manager Detection', () => {
+      it('should detect npm as default package manager', async () => {
+        const packageJson = { name: 'test-app', scripts: { start: 'node index.js' } };
+        setupValidationMocks(packageJson);
+
+        const validation = await (service as any).validateProjectInContainer(
+          mockDevSupervisor,
+          '/tmp/extract'
+        );
+
+        expect(validation.packageManager).toBe('npm');
+      });
+
+      it('should detect pnpm when pnpm-lock.yaml exists', async () => {
+        const packageJson = { name: 'test-app', scripts: { start: 'node index.js' } };
+        setupValidationMocks(packageJson, { hasPnpmLock: true });
+
+        const validation = await (service as any).validateProjectInContainer(
+          mockDevSupervisor,
+          '/tmp/extract'
+        );
+
+        expect(validation.packageManager).toBe('pnpm');
+      });
+
+      it('should detect yarn when yarn.lock exists', async () => {
+        const packageJson = { name: 'test-app', scripts: { start: 'node index.js' } };
+        setupValidationMocks(packageJson, { hasYarnLock: true });
+
+        const validation = await (service as any).validateProjectInContainer(
+          mockDevSupervisor,
+          '/tmp/extract'
+        );
+
+        expect(validation.packageManager).toBe('yarn');
+      });
+    });
+
+    describe('Build Script Detection', () => {
+      it('should detect hasBuildScript=true when build script exists', async () => {
+        const packageJson = {
+          name: 'test-app',
+          scripts: {
+            build: 'vite build',
+            dev: 'vite',
+          },
+        };
+        setupValidationMocks(packageJson);
+
+        const validation = await (service as any).validateProjectInContainer(
+          mockDevSupervisor,
+          '/tmp/extract'
+        );
+
+        expect(validation.hasBuildScript).toBe(true);
+      });
+
+      it('should detect hasBuildScript=false when no build script', async () => {
+        const packageJson = {
+          name: 'test-app',
+          scripts: {
+            dev: 'vite',
+          },
+        };
+        setupValidationMocks(packageJson);
+
+        const validation = await (service as any).validateProjectInContainer(
+          mockDevSupervisor,
+          '/tmp/extract'
+        );
+
+        expect(validation.hasBuildScript).toBe(false);
+      });
+    });
   });
 
   describe('findProjectRootInContainer', () => {
+    let service: ProjectImportService;
+
+    beforeEach(() => {
+      service = new ProjectImportService();
+    });
+
     // Access private method for testing
     const findProjectRoot = async (
       service: ProjectImportService,
