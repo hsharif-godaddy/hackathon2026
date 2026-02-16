@@ -18,6 +18,8 @@ interface Observation {
   model?: string;
   input?: unknown;
   output?: unknown;
+  statusMessage?: string;
+  level?: string;
   startTime?: string;
   endTime?: string;
   promptTokens?: number;
@@ -159,6 +161,8 @@ export const GET = withAuth<{ userId: string }>(async (request, _auth, context) 
           model: obs.model,
           input: obs.input,
           output: obs.output,
+          statusMessage: obs.statusMessage,
+          level: obs.level,
           startTime: obs.startTime,
           endTime: obs.endTime,
           promptTokens: obs.promptTokens,

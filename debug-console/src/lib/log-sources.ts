@@ -1,8 +1,10 @@
 export interface FieldMapping {
   // Field used to filter by app ID (e.g., 'app_id', 'labels.app_id', 'site_id')
   appIdField: string | null;
-  // Query type: 'match' for analyzed fields, 'term' for exact match
-  appIdQueryType: 'match' | 'term';
+  // Query type:
+  //   'term' - exact match on keyword field (fastest, recommended for exact IDs)
+  //   'prefix' - prefix match, no leading wildcard (efficient for prefix patterns)
+  appIdQueryType: 'term' | 'prefix';
   // Field for timestamp
   timestampField: string;
   // Field for log level
@@ -25,6 +27,7 @@ export interface FieldMapping {
     label: string;
     path: string; // JSONPath-like accessor e.g., 'data.userId' or 'kubernetes.pod.name'
   }>;
+  logLevelFieldMap?: Record<string, string>;
 }
 
 export interface LogSourceConfig {
@@ -43,12 +46,13 @@ export interface LogSourceRegistry {
 }
 
 // Field mapping for Airo Agents (has app_id directly)
+// Nomad job names follow patterns: 'app-{appId}-preview/publish' (legacy) or 'airo-{appId}' (unified)
 const airoAgentsFieldMapping: FieldMapping = {
-  appIdField: 'app_id',
-  appIdQueryType: 'match',
+  appIdField: 'com.hashicorp.nomad.job_name',
+  appIdQueryType: 'prefix',
   timestampField: '@timestamp',
   levelField: 'level',
-  levelKeywordField: 'level.keyword',
+  levelKeywordField: 'level',
   messageField: 'message',
   eventField: 'event',
   eventKeywordField: 'event.keyword',
@@ -57,13 +61,20 @@ const airoAgentsFieldMapping: FieldMapping = {
   displayFields: [
     { key: 'conversationId', label: 'Conversation', path: 'conversationId' },
     { key: 'threadId', label: 'Thread', path: 'threadId' }
-  ]
+  ],
+  logLevelFieldMap: {
+    'debug': 'debug',
+    'info': 'info',
+    'warn': 'warn',
+    'error': 'error',
+    'fatal': 'fatal'
+  }
 };
 
 // Field mapping for Airo App Builder
 const airoAppFieldMapping: FieldMapping = {
   appIdField: 'data.appId',
-  appIdQueryType: 'match',
+  appIdQueryType: 'term',
   timestampField: '@timestamp',
   levelField: 'level',
   levelKeywordField: 'level',
@@ -76,16 +87,23 @@ const airoAppFieldMapping: FieldMapping = {
     { key: 'traceId', label: 'Trace ID', path: 'trace.id' },
     { key: 'customerId', label: 'Customer ID', path: 'data.customerId' },
     { key: 'appId', label: 'App ID', path: 'data.appId' }
-  ]
+  ],
+  logLevelFieldMap: {
+    'debug': 'debug',
+    'info': 'info',
+    'warn': 'warn',
+    'error': 'error',
+    'fatal': 'fatal'
+  }
 };
 
 // Field mapping for Control Plane (filters by app_id)
 const controlPlaneFieldMapping: FieldMapping = {
   appIdField: 'app_id', // Apply app ID filter
-  appIdQueryType: 'match',
+  appIdQueryType: 'term',
   timestampField: '@timestamp',
   levelField: 'level',
-  levelKeywordField: 'level.keyword',
+  levelKeywordField: 'log.level.keyword',
   messageField: 'message',
   eventField: 'event',
   eventKeywordField: 'event.keyword',
@@ -94,7 +112,14 @@ const controlPlaneFieldMapping: FieldMapping = {
   displayFields: [
     { key: 'hostname', label: 'Host', path: 'hostname' },
     { key: 'region', label: 'Region', path: 'region' }
-  ]
+  ],
+  logLevelFieldMap: {
+    'debug': 'DEBUG',
+    'info': 'INFO',
+    'warn': 'WARN',
+    'error': 'ERROR',
+    'fatal': 'FATAL'
+  }
 };
 
 function getESConfigForSource(sourceId: string): LogSourceConfig | null {
@@ -129,7 +154,7 @@ function getESConfigForSource(sourceId: string): LogSourceConfig | null {
       description: 'Logs from the hosting service',
       endpoint: env.CONTROL_PLANE_ES_ENDPOINT || '',
       apiKey: env.CONTROL_PLANE_ES_API_KEY || '',
-      index: 'pagely-mgmt-worker-hosting-*',
+      index: isTestEnv ? 'pagely-mgmt-worker-hosting-activity-dev' : 'pagely-mgmt-worker-hosting-activity-prod',
       environment: isTestEnv ? 'dev' : 'prod',
       fieldMapping: controlPlaneFieldMapping
     }
@@ -174,7 +199,7 @@ export function getAllLogSources(): LogSourceConfig[] {
       description: 'Logs from the hosting service',
       endpoint: env.CONTROL_PLANE_ES_ENDPOINT || '',
       apiKey: env.CONTROL_PLANE_ES_API_KEY || '',
-      index: 'pagely-mgmt-worker-hosting-*',
+      index: isTestEnv ? 'pagely-mgmt-worker-hosting-activity-dev' : 'pagely-mgmt-worker-hosting-activity-prod',
       environment: isTestEnv ? 'dev' : 'prod',
       fieldMapping: controlPlaneFieldMapping
     }
@@ -204,5 +229,24 @@ export function buildAppIdQuery(
     return { term: { [fieldMapping.appIdField]: appId } };
   }
 
-  return { match: { [fieldMapping.appIdField]: appId } };
+  if (fieldMapping.appIdQueryType === 'prefix') {
+    if (fieldMapping.appIdField === 'com.hashicorp.nomad.job_name') {
+      return {
+        bool: {
+          should: [
+            { prefix: { [fieldMapping.appIdField]: `app-${appId}-` } },
+            { prefix: { [fieldMapping.appIdField]: `airo-${appId}` } }
+          ],
+          minimum_should_match: 1
+        }
+      };
+    }
+    // For other fields using prefix, use simple prefix query
+    return { prefix: { [fieldMapping.appIdField]: appId } };
+  }
+
+  throw new Error(
+    `Unsupported appIdQueryType '${fieldMapping.appIdQueryType}' for field '${fieldMapping.appIdField}'. ` +
+    `Supported types are 'term' (exact match) or 'prefix' (prefix match).`
+  );
 }

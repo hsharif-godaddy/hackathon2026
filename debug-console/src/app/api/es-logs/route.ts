@@ -69,16 +69,17 @@ export const GET = withAuth(async (request) => {
     }
 
     const mustClauses: Array<Record<string, unknown>> = [];
-    const levelField = sourceConfig.fieldMapping.levelField;
+    const levelKeywordField = sourceConfig.fieldMapping.levelKeywordField;
 
     if (levels) {
-      const levelList = levels.split(',').map(l => l.toLowerCase());
+      const levelList = levels.split(',').map(l => sourceConfig.fieldMapping.logLevelFieldMap?.[l.trim().toLowerCase()] || l.trim().toUpperCase());
       mustClauses.push({
-        terms: { [levelField]: levelList }
+        terms: { [levelKeywordField]: levelList }
       });
     } else if (level && level !== 'all') {
+      const mappedLevel = sourceConfig.fieldMapping.logLevelFieldMap?.[level.toLowerCase()] || level.toUpperCase();
       mustClauses.push({
-        match: { [levelField]: level.toLowerCase() }
+        term: { [levelKeywordField]: mappedLevel }
       });
     }
 
@@ -126,7 +127,7 @@ export const GET = withAuth(async (request) => {
     };
 
     const response = await fetch(
-      `${sourceConfig.endpoint}/${sourceConfig.index}/_search`,
+      `${sourceConfig.endpoint}/${sourceConfig.index}/_search?ignore_unavailable=true&expand_wildcards=open`,
       {
         method: 'POST',
         headers: {

@@ -68,6 +68,8 @@ interface Observation {
   model?: string;
   input?: unknown;
   output?: unknown;
+  statusMessage?: string;
+  level?: string;
   startTime?: string;
   endTime?: string;
   promptTokens?: number;
@@ -132,6 +134,7 @@ interface ESErrorsResponse {
 interface ToolCallInfo {
   name: string;
   args?: string;
+  toolCallId?: string;
 }
 
 interface ConversationItem {
@@ -157,6 +160,11 @@ interface ConversationItem {
   rawOutput?: unknown;
   isAgentHandoff?: boolean;
   sourceAgent?: string;
+  msToFirstChunk?: number;
+  msToFinish?: number;
+  cacheCreationTokens?: number;
+  cacheReadTokens?: number;
+  toolObservations?: Observation[];
 }
 
 interface LangfusePanelProps {
@@ -226,16 +234,71 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
       const inputTokens = generationObs?.promptTokens;
       const outputTokens = generationObs?.completionTokens;
       const totalTokens = generationObs?.totalTokens;
-      const cachedTokens = obsAttrs?.['ai.usage.cachedInputTokens'] ? parseInt(String(obsAttrs['ai.usage.cachedInputTokens'])) : undefined;
+
+      // Parse ai.usage.cachedInputTokens (can be JSON string like '{"intValue":0}' or plain number)
+      let cachedTokens: number | undefined;
+      const cachedTokensRaw = obsAttrs?.['ai.usage.cachedInputTokens'];
+      if (cachedTokensRaw) {
+        if (typeof cachedTokensRaw === 'number') {
+          cachedTokens = cachedTokensRaw;
+        } else if (typeof cachedTokensRaw === 'string') {
+          try {
+            const parsed = JSON.parse(cachedTokensRaw);
+            cachedTokens = parsed.intValue ?? parsed;
+          } catch {
+            const num = parseInt(cachedTokensRaw, 10);
+            cachedTokens = isNaN(num) ? undefined : num;
+          }
+        }
+      }
+
       const cost = generationObs?.calculatedTotalCost;
       const model = obsAttrs?.['ai.model.id'] || generationObs?.model;
       const provider = obsAttrs?.['ai.model.provider'];
       const temperature = obsAttrs?.['ai.settings.temperature'] ? parseFloat(obsAttrs['ai.settings.temperature']) : undefined;
       const finishReason = obsAttrs?.['ai.response.finishReason'];
 
+      // Extract streaming performance metrics
+      const msToFirstChunkStr = obsAttrs?.['ai.response.msToFirstChunk'];
+      const msToFirstChunk = typeof msToFirstChunkStr === 'string'
+        ? parseInt(msToFirstChunkStr, 10)
+        : undefined;
+      const msToFinishStr = obsAttrs?.['ai.response.msToFinish'];
+      const msToFinish = typeof msToFinishStr === 'string'
+        ? parseInt(msToFinishStr, 10)
+        : undefined;
+
+      // Parse providerMetadata for cache metrics
+      let providerMetadata: Record<string, unknown> | undefined;
+      const providerMetaStr = obsAttrs?.['ai.response.providerMetadata'];
+      if (typeof providerMetaStr === 'string') {
+        try {
+          const parsed = JSON.parse(providerMetaStr);
+          providerMetadata = parsed.anthropic || parsed; // Handle nested structure
+        } catch { /* ignore parse errors */ }
+      }
+
+      // Extract cache metrics from providerMetadata
+      const cacheCreationTokens = providerMetadata?.cache_creation_input_tokens as number | undefined;
+      const cacheReadTokens = providerMetadata?.cache_read_input_tokens as number | undefined;
+
       const toolCalls: ToolCallInfo[] = [];
 
-      // Source 1: SPAN observations with tool-related names (sorted by startTime ascending - execution order)
+      // Source 1: TOOL observations (NEW in latest Langfuse - separate observations for each tool call)
+      const toolTypeObservations = (trace.observations?.filter(obs =>
+        obs.type === 'TOOL'
+      ) || []).sort((a, b) => new Date(a.startTime || 0).getTime() - new Date(b.startTime || 0).getTime());
+      for (const toolObs of toolTypeObservations) {
+        const toolName = toolObs.name;
+        const argsStr = toolObs.input ? JSON.stringify(toolObs.input, null, 2) : undefined;
+        const toolCallId = toolObs.metadata?.attributes?.['ai.toolCall.id'] as string | undefined;
+        const isDuplicate = toolCalls.some(t => t.name === toolName && t.args === argsStr);
+        if (!isDuplicate && toolName && toolName.length > 0) {
+          toolCalls.push({ name: toolName, args: argsStr, toolCallId });
+        }
+      }
+
+      // Source 2: SPAN observations with tool-related names (OLD format - fallback)
       const toolObservations = (trace.observations?.filter(obs =>
         obs.type === 'SPAN' && (obs.name?.includes('ai.toolCall.') || obs.name?.startsWith('tool-'))
       ) || []).sort((a, b) => new Date(a.startTime || 0).getTime() - new Date(b.startTime || 0).getTime());
@@ -260,11 +323,11 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
         }
       }
 
-      // Source 2 & 3: Check ALL generation observations for tool calls
+      // Source 3 & 4: Check ALL generation observations for tool calls
       for (const genObs of generationObservations) {
         const genAttrs = genObs?.metadata?.attributes;
 
-        // Source 2: ai.response.toolCalls in metadata attributes
+        // Source 3: ai.response.toolCalls in metadata attributes
         if (genAttrs?.['ai.response.toolCalls']) {
           try {
             const parsedToolCalls = JSON.parse(genAttrs['ai.response.toolCalls']);
@@ -282,18 +345,41 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
           } catch { /* ignore parse errors */ }
         }
 
-        // Source 3: toolCalls in generation output (Vercel AI SDK format)
+        // Source 4: tool_calls in generation output (NEW Langfuse format - JSON string with snake_case)
         const genOutput = genObs?.output;
         if (genOutput && typeof genOutput === 'object') {
-          const outputToolCalls = (genOutput as { toolCalls?: Array<{ toolName?: string; name?: string; args?: unknown; input?: unknown }> }).toolCalls;
+          // Try NEW format: snake_case tool_calls as JSON string
+          const outputToolCallsString = (genOutput as { tool_calls?: string }).tool_calls;
+          if (typeof outputToolCallsString === 'string') {
+            try {
+              const parsedToolCalls = JSON.parse(outputToolCallsString);
+              if (Array.isArray(parsedToolCalls)) {
+                for (const tc of parsedToolCalls) {
+                  const toolName = tc.toolName || tc.name;
+                  if (toolName) {
+                    const argsStr = (tc.input || tc.args) ? JSON.stringify(tc.input || tc.args, null, 2) : undefined;
+                    const toolCallId = tc.toolCallId;
+                    const isDuplicate = toolCalls.some(t => t.name === toolName && t.args === argsStr);
+                    if (!isDuplicate) {
+                      toolCalls.push({ name: toolName, args: argsStr, toolCallId });
+                    }
+                  }
+                }
+              }
+            } catch { /* ignore parse errors */ }
+          }
+
+          // Fallback: Try OLD format: camelCase toolCalls as array
+          const outputToolCalls = (genOutput as { toolCalls?: Array<{ toolName?: string; name?: string; args?: unknown; input?: unknown; toolCallId?: string }> }).toolCalls;
           if (Array.isArray(outputToolCalls)) {
             for (const tc of outputToolCalls) {
               const toolName = tc.toolName || tc.name;
               if (toolName) {
                 const argsStr = (tc.args || tc.input) ? JSON.stringify(tc.args || tc.input, null, 2) : undefined;
+                const toolCallId = tc.toolCallId;
                 const isDuplicate = toolCalls.some(t => t.name === toolName && t.args === argsStr);
                 if (!isDuplicate) {
-                  toolCalls.push({ name: toolName, args: argsStr });
+                  toolCalls.push({ name: toolName, args: argsStr, toolCallId });
                 }
               }
             }
@@ -352,23 +438,32 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
 
       let responseText: string | undefined;
 
-      if (obsAttrs?.['ai.response.text'] && typeof obsAttrs['ai.response.text'] === 'string' && obsAttrs['ai.response.text'].length > 0) {
+      // Priority 1: output.content in GENERATION observation (NEW Langfuse format)
+      if (generationObs?.output) {
+        const genOutput = generationObs.output;
+        if (typeof genOutput === 'object' && 'content' in genOutput) {
+          const content = (genOutput as { content?: string }).content;
+          if (typeof content === 'string' && content.length > 0) {
+            responseText = content;
+          }
+        } else if (typeof genOutput === 'string' && genOutput.length > 0) {
+          responseText = genOutput;
+        }
+      }
+
+      // Priority 2: ai.response.text in metadata attributes (OLD format - fallback)
+      if (!responseText && obsAttrs?.['ai.response.text'] && typeof obsAttrs['ai.response.text'] === 'string' && obsAttrs['ai.response.text'].length > 0) {
         responseText = obsAttrs['ai.response.text'];
       }
 
+      // Priority 3: trace.output (fallback)
       if (!responseText) {
         const output = trace.output;
         if (typeof output === 'string' && output.length > 0) {
           responseText = output;
         } else if (output && typeof output === 'object') {
-          const outputObj = output as { text?: string; 'ai.response.text'?: string };
-          responseText = outputObj.text || outputObj['ai.response.text'];
-        }
-      }
-
-      if (!responseText && generationObs?.output) {
-        if (typeof generationObs.output === 'string' && generationObs.output.length > 0) {
-          responseText = generationObs.output;
+          const outputObj = output as { text?: string; content?: string; 'ai.response.text'?: string };
+          responseText = outputObj.content || outputObj.text || outputObj['ai.response.text'];
         }
       }
 
@@ -392,6 +487,11 @@ function extractConversationItems(sessions: Session[]): ConversationItem[] {
           finishReason,
           tools: toolCalls.length > 0 ? toolCalls : undefined,
           rawOutput: trace.output,
+          msToFirstChunk,
+          msToFinish,
+          cacheCreationTokens,
+          cacheReadTokens,
+          toolObservations: toolTypeObservations,
         });
       }
     }
@@ -427,7 +527,7 @@ function CostBadge({ value }: { value?: number }) {
   );
 }
 
-function ToolsSection({ tools, expanded: initialExpanded = false }: { tools: ToolCallInfo[]; expanded?: boolean }) {
+function ToolsSection({ tools, item, expanded: initialExpanded = false }: { tools: ToolCallInfo[]; item: ConversationItem; expanded?: boolean }) {
   const [expanded, setExpanded] = useState(initialExpanded);
 
   if (!tools || tools.length === 0) return null;
@@ -444,14 +544,98 @@ function ToolsSection({ tools, expanded: initialExpanded = false }: { tools: Too
       </div>
       {expanded && (
         <div style={{ marginTop: '0.35rem', paddingLeft: '0.5rem', borderLeft: '2px solid #d1fae5' }}>
-          {tools.map((tool, idx) => (
-            <details key={idx} style={{ marginBottom: '0.2rem' }}>
-              <summary style={{ cursor: 'pointer', fontSize: '0.6rem', color: '#065f46', fontFamily: 'monospace' }}>{tool.name}</summary>
-              {tool.args && (
-                <pre style={{ fontSize: '0.55rem', backgroundColor: '#ecfdf5', padding: '0.3rem', borderRadius: '3px', overflow: 'auto', maxHeight: '80px', margin: '0.15rem 0 0 0', border: '1px solid #d1fae5' }}>{tool.args}</pre>
-              )}
-            </details>
-          ))}
+          {tools.map((tool, idx) => {
+            // Find matching TOOL observation for this tool call
+            // Match by toolCallId first (handles duplicate tool names), then fall back to name
+            const toolObs = item.toolObservations?.find(obs => {
+              if (obs.type !== 'TOOL') return false;
+              // If both have toolCallId, match by ID (most reliable)
+              if (tool.toolCallId && obs.metadata?.attributes?.['ai.toolCall.id']) {
+                return obs.metadata.attributes['ai.toolCall.id'] === tool.toolCallId;
+              }
+              // Fall back to name matching
+              return obs.name === tool.name;
+            });
+
+            // Check if has output or statusMessage (error info when output is null)
+            const hasOutput = toolObs?.output != null || toolObs?.statusMessage != null;
+
+            // Determine success/failure - simply use the level field
+            // Langfuse sets level='ERROR' for failed tools, otherwise 'DEFAULT' or success
+            const isSuccess = hasOutput && toolObs?.level !== 'ERROR';
+
+            return (
+              <details key={idx} style={{ marginBottom: '0.2rem' }}>
+                <summary style={{
+                  cursor: 'pointer',
+                  fontSize: '0.6rem',
+                  color: '#065f46',
+                  fontFamily: 'monospace',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.3rem'
+                }}>
+                  {/* Success indicator */}
+                  <span
+                    style={{
+                      fontSize: '0.7rem',
+                      color: isSuccess ? '#10b981' : hasOutput ? '#dc2626' : '#94a3b8'
+                    }}
+                    title={isSuccess ? 'Tool executed successfully' : hasOutput ? 'Tool execution failed' : 'No output data available (older trace format)'}
+                  >
+                    {isSuccess ? '✓' : hasOutput ? '✗' : '⏳'}
+                  </span>
+                  {tool.name}
+                </summary>
+
+                {/* Tool input (args) */}
+                {tool.args && (
+                  <div style={{ marginTop: '0.25rem' }}>
+                    <div style={{ fontSize: '0.55rem', color: '#64748b', fontWeight: 600, marginBottom: '0.1rem' }}>
+                      Input:
+                    </div>
+                    <pre style={{
+                      fontSize: '0.55rem',
+                      backgroundColor: '#ecfdf5',
+                      padding: '0.3rem',
+                      borderRadius: '3px',
+                      overflow: 'auto',
+                      maxHeight: '80px',
+                      margin: 0,
+                      border: '1px solid #d1fae5'
+                    }}>
+                      {tool.args}
+                    </pre>
+                  </div>
+                )}
+
+                {/* Tool output (NEW) */}
+                {hasOutput && (
+                  <div style={{ marginTop: '0.25rem' }}>
+                    <div style={{ fontSize: '0.55rem', color: '#64748b', fontWeight: 600, marginBottom: '0.1rem' }}>
+                      Output:
+                    </div>
+                    <pre style={{
+                      fontSize: '0.55rem',
+                      backgroundColor: isSuccess ? '#f0fdf4' : '#fef2f2',
+                      padding: '0.3rem',
+                      borderRadius: '3px',
+                      overflow: 'auto',
+                      maxHeight: '120px',
+                      margin: 0,
+                      border: `1px solid ${isSuccess ? '#bbf7d0' : '#fecaca'}`
+                    }}>
+                      {toolObs?.output != null
+                        ? (typeof toolObs.output === 'string'
+                            ? toolObs.output
+                            : JSON.stringify(toolObs.output, null, 2))
+                        : toolObs?.statusMessage || ''}
+                    </pre>
+                  </div>
+                )}
+              </details>
+            );
+          })}
         </div>
       )}
     </div>
@@ -696,8 +880,35 @@ function AssistantMessage({ item, langfuseBaseUrl }: { item: ConversationItem; l
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <TokenBadge label="in" value={item.inputTokens} color="#64748b" />
             <TokenBadge label="out" value={item.outputTokens} color="#10b981" />
-            {item.cachedTokens && <TokenBadge label="cached" value={item.cachedTokens} color="#8b5cf6" />}
+            {item.cachedTokens !== undefined && <TokenBadge label="cached" value={item.cachedTokens} color="#8b5cf6" />}
             <CostBadge value={item.cost} />
+            {/* Streaming performance badges */}
+            {item.msToFirstChunk && (
+              <span style={{
+                fontSize: '0.65rem',
+                fontWeight: 600,
+                color: '#8b5cf6',
+                backgroundColor: '#ede9fe',
+                padding: '0.15rem 0.4rem',
+                borderRadius: '4px',
+                fontFamily: 'monospace'
+              }}>
+                ⚡ {Math.round(item.msToFirstChunk)}ms TTFB
+              </span>
+            )}
+            {item.msToFinish && (
+              <span style={{
+                fontSize: '0.65rem',
+                fontWeight: 600,
+                color: '#6366f1',
+                backgroundColor: '#e0e7ff',
+                padding: '0.15rem 0.4rem',
+                borderRadius: '4px',
+                fontFamily: 'monospace'
+              }}>
+                ⏱️ {(item.msToFinish / 1000).toFixed(1)}s total
+              </span>
+            )}
             {item.finishReason && !['stop', 'tool-calls', 'tool_calls'].includes(item.finishReason) && (
               <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#f59e0b', backgroundColor: '#fef3c7', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>{item.finishReason}</span>
             )}
@@ -715,13 +926,30 @@ function AssistantMessage({ item, langfuseBaseUrl }: { item: ConversationItem; l
           ) : (
             <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.7rem' }}>Processing...</span>
           )}
-          <ToolsSection tools={item.tools || []} />
+          <ToolsSection tools={item.tools || []} item={item} />
         </div>
         {showDetails && (
           <div style={{ marginTop: '0.35rem', padding: '0.5rem', backgroundColor: '#f8fafc', borderRadius: '6px', fontSize: '0.6rem', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.15rem 0.5rem' }}>
             {item.model && <><span style={{ color: '#64748b' }}>Model:</span><span style={{ fontFamily: 'monospace', color: '#1f2937' }}>{item.model}</span></>}
             {item.provider && <><span style={{ color: '#64748b' }}>Provider:</span><span style={{ color: '#1f2937' }}>{item.provider}</span></>}
             {item.temperature !== undefined && <><span style={{ color: '#64748b' }}>Temp:</span><span style={{ color: '#1f2937' }}>{item.temperature}</span></>}
+            {/* Cache metrics */}
+            {item.cacheCreationTokens !== undefined && item.cacheCreationTokens > 0 && (
+              <>
+                <span style={{ color: '#64748b' }}>Cache Created:</span>
+                <span style={{ color: '#8b5cf6', fontWeight: 600 }}>
+                  {formatNumber(item.cacheCreationTokens)} tokens
+                </span>
+              </>
+            )}
+            {item.cacheReadTokens !== undefined && item.cacheReadTokens > 0 && (
+              <>
+                <span style={{ color: '#64748b' }}>Cache Hit:</span>
+                <span style={{ color: '#10b981', fontWeight: 600 }}>
+                  {formatNumber(item.cacheReadTokens)} tokens
+                </span>
+              </>
+            )}
             {item.totalTokens && <><span style={{ color: '#64748b' }}>Total:</span><span style={{ color: '#1f2937' }}>{formatNumber(item.totalTokens)} tokens</span></>}
             {item.cost && <><span style={{ color: '#64748b' }}>Cost:</span><span style={{ color: '#059669', fontWeight: 600 }}>${item.cost.toFixed(4)}</span></>}
             <span style={{ color: '#64748b' }}>Trace:</span><span style={{ fontFamily: 'monospace', color: '#1f2937' }}>{item.traceId?.substring(0, 16)}...</span>
