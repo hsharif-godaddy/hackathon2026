@@ -86,7 +86,7 @@ export default function VersionHistory() {
 
   // Auto-select current commit when currentCommit changes
   // Uses lightweight state sync (no checkout) when server provides currentCommit
-  // IMPORTANT: Only auto-updates when currentCommit changes - respects manual selections otherwise
+  // IMPORTANT: Only auto-updates when currentCommit changes - respects selections that differ from last auto-sync
   useEffect(() => {
     if (commits.length === 0 || !appId || isSelectingCommit || commitSelectionError) return
 
@@ -95,7 +95,8 @@ export default function VersionHistory() {
     // Auto-select in these cases:
     // 1. No commit selected at all (initial load)
     // 2. currentCommit has changed since we last synced (new commit was made)
-    const shouldAutoSelect = !selectedCommitHash || (currentCommit && currentCommit !== lastSyncedCommit)
+    // Only auto-select if we haven't moved selection beyond the last auto-sync
+    const shouldAutoSelect = !selectedCommitHash || selectedCommitHash === lastSyncedCommit
 
     if (shouldAutoSelect && currentCommit && commits.some(c => c.hash === currentCommit)) {
       // Use lightweight setter - just sync UI state, don't trigger checkout

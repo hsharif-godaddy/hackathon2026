@@ -861,6 +861,28 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       const gitTool = new GitTool(devSupervisor || undefined);
       const gitUtils = new GitUtils(devSupervisor || undefined);
 
+      // Best-effort: keep fallback commits on main to match squash-merge path
+      try {
+        const currentBranch = await gitUtils.getCurrentBranch(app.path);
+        if (currentBranch && currentBranch !== 'main') {
+          const switchResult = await gitUtils.switchBranch(app.path, 'main');
+          if (!switchResult.success) {
+            contextLogger.warn('git.auto_commit.switch_to_main.failed', {
+              reason,
+              currentBranch,
+              commitMayBeOffMain: true,
+              error: switchResult.stderr
+            });
+          }
+        }
+      } catch (error) {
+        contextLogger.warn('git.auto_commit.switch_to_main.error', {
+          reason,
+          commitMayBeOffMain: true,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+
       const status = await gitTool.executeGitOperation(app.path, { operation: 'status' });
 
       if (status.success && status.status && !status.status.isClean) {

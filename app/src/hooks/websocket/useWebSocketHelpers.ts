@@ -73,7 +73,7 @@ export interface UseWebSocketHelpersReturn {
   clearStoredSocketId: () => void
 
   /**
-   * Handle commit completion: invalidate git queries, select commit, trigger preview refresh
+   * Handle commit completion: invalidate git queries, sync selection, trigger preview refresh
    */
   handleCommitComplete: (commitHash?: string) => Promise<void>
 
