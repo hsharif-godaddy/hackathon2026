@@ -4,6 +4,8 @@ Use **Nodemailer** with SMTP for sending emails:
 
 The from address should never be from user input. It should either be `noreply@airoapp.ai` or an address that is explicitly specified.
 
+Never guess or fabricate a recipient (to) address. If the user has not specified a recipient email address, ask them to provide one before proceeding.
+
 ```typescript
 import nodemailer from 'nodemailer';
 
