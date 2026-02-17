@@ -1,5 +1,6 @@
 import { getModel, llmMetadataContext, type LitellmMetadata, buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-lib'
 import { generateText } from 'ai'
+import { propagateAttributes } from '@langfuse/tracing'
 
 import { AppRepository } from '../database/repositories/AppRepository.js'
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
@@ -136,10 +137,15 @@ export class VideoPromptGenerationService {
         };
       }
 
-      const generateVideoPromptFn = async () => {
-        return await generateText({
-          model,
-          system: `You are an expert video production and creative director. Your task is to generate a detailed, professional video prompt that can be used to create promotional videos for businesses.
+      const attributes: { userId: string; sessionId?: string; metadata?: Record<string, string> } = { userId: appId }
+      if (socketId) attributes.sessionId = socketId
+      if (customerId) attributes.metadata = { customerId }
+
+      const generateVideoPromptWithAttributes = async () =>
+        propagateAttributes(attributes, async () =>
+          generateText({
+            model,
+            system: `You are an expert video production and creative director. Your task is to generate a detailed, professional video prompt that can be used to create promotional videos for businesses.
           
 [CRITICAL: The video prompt should be in the same language as the business/app summary. Do not use any random data which is not available in summary.]
 
@@ -184,17 +190,19 @@ IMPORTANT GUIDELINES:
 - Make it suitable for social media platforms (Instagram Reels, YouTube Shorts, TikTok)
 - The video will be 12 seconds in PORTRAIT format (720x1280 - vertical mobile format), so plan the pacing accordingly
 - Frame subjects vertically and use vertical compositions suitable for mobile viewing`,
-          prompt: `Business/App Summary:
+            prompt: `Business/App Summary:
 ${contentText}
 
 Generate a detailed 12-second video prompt following the exact structure provided in the system prompt.`,
-          temperature: 0.7,
-          maxOutputTokens: 1500,
-          experimental_telemetry: { isEnabled: true, functionId: 'video-prompt-generation' },
-        })
-      }
+            temperature: 0.7,
+            maxOutputTokens: 1500,
+            experimental_telemetry: { isEnabled: true, functionId: 'video-prompt-generation' },
+          })
+        )
 
-      const result = await llmMetadataContext.run(metadata, generateVideoPromptFn);
+      const result = metadata
+        ? await llmMetadataContext.run(metadata, generateVideoPromptWithAttributes)
+        : await generateVideoPromptWithAttributes()
 
       const videoPrompt = result.text?.trim()
 
