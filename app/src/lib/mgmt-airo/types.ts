@@ -197,6 +197,7 @@ export interface AiroCreateAppPayload {
   environments?: string[];
   variants?: string[];
   variables: Record<string, any>;
+  datacenter?: string;
 }
 
 /**

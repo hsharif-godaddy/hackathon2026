@@ -153,7 +153,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
             initialPrompt: params.prompt,
             title: generatedTitle,
             airoSubscriptionId: selectedSubscription.id
-          }
+          },
+          datacenter: process.env.MGMT_AIRO_DATACENTER || getDatacenterFromMarketId(params.marketId)
         });
 
         const createdAt = new Date();

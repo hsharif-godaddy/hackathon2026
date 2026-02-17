@@ -145,6 +145,49 @@ describe('V2ControlPlaneAdapter', () => {
       delete process.env.ALWAYS_NEW_SUBSCRIPTION;
     });
 
+    it('should pass datacenter in createApp call for existing subscription', async () => {
+      process.env.ALWAYS_NEW_SUBSCRIPTION = 'false';
+      process.env.MGMT_AIRO_DATACENTER = 'p3';
+
+      // Mock getActiveSubscription (existing subscription)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ id: 'existing-sub-123', status: 'active' }]
+      });
+
+      // Mock getSystems
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ systemId: 'sys-456', subscriptionId: 'existing-sub-123' }]
+      });
+
+      // Mock createApp response
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          statusJobId: MOCK_JOB_ID,
+          appId: MOCK_APP_ID
+        })
+      });
+
+      await adapter.createSite({
+        accountId: MOCK_ACCOUNT_ID,
+        prompt: MOCK_PROMPT,
+        jwt: MOCK_JWT
+      });
+
+      // Get the createApp call (third call after getActiveSubscription and getSystems)
+      const createAppCall = mockFetch.mock.calls[2];
+      const requestBody = JSON.parse(createAppCall[1].body);
+
+      // Verify datacenter is included in the request body
+      expect(requestBody.datacenter).toBe('p3');
+
+      // Clean up
+      delete process.env.ALWAYS_NEW_SUBSCRIPTION;
+      delete process.env.MGMT_AIRO_DATACENTER;
+    });
+
     it('should force new subscription when ALWAYS_NEW_SUBSCRIPTION is true', async () => {
       // Set environment variable
       process.env.ALWAYS_NEW_SUBSCRIPTION = 'true';
