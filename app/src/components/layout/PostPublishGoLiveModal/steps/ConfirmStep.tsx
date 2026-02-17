@@ -8,6 +8,7 @@ import Box from '@ux/box';
 import Button from '@ux/button';
 import TextLockup from '@ux/text-lockup';
 
+import { ButtonBar } from '@/components/layout/PostPublishGoLiveModal/components/ButtonBar';
 import { useTranslations } from '@/hooks/useTranslations';
 
 interface ConfirmStepProps {
@@ -34,7 +35,7 @@ export function ConfirmStep({ onConfirm, onCancel }: ConfirmStepProps) {
         {t('builder_golive_confirm_description')}
       </TextLockup>
 
-      <Box orientation="horizontal" blockAlignChildren="center" gap="md" wrap>
+      <ButtonBar>
         <Button
           design="secondary"
           text={t('builder_golive_confirm_button_later')}
@@ -49,7 +50,7 @@ export function ConfirmStep({ onConfirm, onCancel }: ConfirmStepProps) {
           onClick={onConfirm}
           data-testid="go-live-modal-continue"
         />
-      </Box>
+      </ButtonBar>
     </Box>
   );
 }

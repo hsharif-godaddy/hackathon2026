@@ -6,16 +6,16 @@
  */
 'use client';
 
-import { memo } from 'react';
 import Alert from '@ux/alert';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import Card, { spaceOptions } from '@ux/card';
-import Spinner from '@ux/spinner';
 import Tag from '@ux/tag';
 import text from '@ux/text';
 import TextLockup from '@ux/text-lockup';
 
+import { ButtonBar } from '@/components/layout/PostPublishGoLiveModal/components/ButtonBar';
+import { Loader } from '@/components/layout/PostPublishGoLiveModal/components/Loader';
 import { useTranslations } from '@/hooks/useTranslations';
 import type { TaskStatus } from '../types';
 import type { SecurityScanResult } from '../types';
@@ -34,14 +34,6 @@ function getSeverityEmphasis(severity: 'critical' | 'high' | 'moderate' | 'low')
   return 'info';
 }
 
-const ButtonToolbar = memo(function ButtonToolbar({ children }: { children: React.ReactNode }) {
-  return (
-    <Box orientation="horizontal" blockAlignChildren="end" gap="md" wrap>
-      {children}
-    </Box>
-  );
-});
-
 export function SecurityResultsStep({
   securityStatus,
   securityScanResults,
@@ -55,21 +47,19 @@ export function SecurityResultsStep({
   if (securityStatus === 'running') {
     return (
       <Box gap="xl">
-        <Box gap="md">
-          <Spinner size="md" />
-          <TextLockup title={t('golive_security_scanning_description')} centered>
-            {t('golive_security_scanning')}
-          </TextLockup>
-        </Box>
+        <Loader
+          title={t('golive_security_scanning_description')}
+          description={t('golive_security_scanning')}
+        />
 
-        <ButtonToolbar>
+        <ButtonBar>
           <Button
             design="primary"
             text={t('golive_security_button_continue')}
             onClick={onSkip}
             disabled={true}
             />
-        </ButtonToolbar>
+        </ButtonBar>
       </Box>
     );
   }
@@ -88,13 +78,13 @@ export function SecurityResultsStep({
           </text.p>
         </Alert>
 
-        <ButtonToolbar>
+        <ButtonBar>
           <Button
             design="primary"
             text={t('golive_security_button_continue_anyway')}
             onClick={onSkip}
           />
-        </ButtonToolbar>
+        </ButtonBar>
       </Box>
     );
   }
@@ -116,13 +106,13 @@ export function SecurityResultsStep({
           {t('golive_security_clean_description')}
         </Alert>
 
-        <ButtonToolbar>
+        <ButtonBar>
           <Button
             design="primary"
             text={t('golive_security_button_continue')}
             onClick={onSkip}
           />
-        </ButtonToolbar>
+        </ButtonBar>
       </Box>
     );
   }
@@ -225,7 +215,7 @@ export function SecurityResultsStep({
         </Alert>
       )}
 
-      <ButtonToolbar>
+      <ButtonBar>
         <Button
           design="secondary"
           text={t('golive_security_button_skip')}
@@ -236,7 +226,7 @@ export function SecurityResultsStep({
           text={t('golive_security_button_fix')}
           onClick={onPublishFixes}
         />
-      </ButtonToolbar>
+      </ButtonBar>
     </Box>
   );
 }

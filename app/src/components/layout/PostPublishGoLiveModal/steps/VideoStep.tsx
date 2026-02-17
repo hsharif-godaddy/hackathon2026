@@ -10,10 +10,11 @@ import Button from '@ux/button';
 import DownloadIcon from '@ux/icon/download';
 import MuteIcon from '@ux/icon/volume-mute';
 import UnmuteIcon from '@ux/icon/volume-up';
-import Spinner from '@ux/spinner';
 import text from '@ux/text';
 import TextLockup from '@ux/text-lockup';
 
+import { ButtonBar } from '@/components/layout/PostPublishGoLiveModal/components/ButtonBar';
+import { Loader } from '@/components/layout/PostPublishGoLiveModal/components/Loader';
 import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
@@ -79,15 +80,10 @@ export function VideoStep({
     <Box gap="xl">
       {/* Generating State */}
       {(isGeneratingVideo || (!launchVideoUrl && !videoError)) && (
-        <Box gap="md">
-          <Spinner size="md" />
-          <TextLockup
-            title={t('golive_video_generating_title')}
-            centered
-          >
-            {t('golive_video_generating_description')}
-          </TextLockup>
-        </Box>
+        <Loader
+          title={t('golive_video_generating_title')}
+          description={t('golive_video_generating_description')}
+        />
       )}
 
       {/* Error State */}
@@ -175,7 +171,7 @@ export function VideoStep({
       )}
 
       {/* Action Buttons */}
-      <Box orientation="horizontal" blockAlignChildren="end" gap="md" wrap>
+      <ButtonBar>
         <Button
           design="secondary"
           text={t('golive_video_button_skip')}
@@ -189,7 +185,7 @@ export function VideoStep({
           onClick={onContinue}
           disabled={isGeneratingVideo}
         />
-      </Box>
+      </ButtonBar>
     </Box>
   );
 }

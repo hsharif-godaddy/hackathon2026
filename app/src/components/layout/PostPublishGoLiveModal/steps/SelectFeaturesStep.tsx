@@ -13,6 +13,7 @@ import ShieldIcon from '@ux/icon/shield-check';
 import SocialIcon from '@ux/icon/social';
 import text from '@ux/text';
 
+import { ButtonBar } from '@/components/layout/PostPublishGoLiveModal/components/ButtonBar';
 import { FeatureCard } from '@/components/layout/PostPublishGoLiveModal/components/FeatureCard';
 import { TokenBadge, TokenCostLevel } from '@/components/layout/PostPublishGoLiveModal/components/TokenBadge';
 import { useDailyUsage } from '@/hooks/useDailyUsage';
@@ -157,7 +158,7 @@ export function SelectFeaturesStep({ appId, onConfirm, onCancel }: SelectFeature
       </Box>
 
       {/* Action Buttons */}
-      <Box orientation="horizontal" gap="md" blockAlignChildren="end" wrap>
+      <ButtonBar>
         <Button
           design="secondary"
           text={t('builder_golive_select_button_cancel')}
@@ -171,7 +172,7 @@ export function SelectFeaturesStep({ appId, onConfirm, onCancel }: SelectFeature
           onClick={() => onConfirm(selections)}
           disabled={!hasAnySelection}
         />
-      </Box>
+      </ButtonBar>
     </Box>
   );
 }

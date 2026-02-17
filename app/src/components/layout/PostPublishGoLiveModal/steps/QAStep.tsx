@@ -7,10 +7,13 @@
 'use client';
 
 import { useState } from 'react';
+import Box from '@ux/box';
 import Button from '@ux/button';
 import text from '@ux/text';
 
+import { ButtonBar } from '@/components/layout/PostPublishGoLiveModal/components/ButtonBar';
 import { useWebSocketContext } from '@/contexts/WebSocketContext';
+import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
@@ -36,6 +39,7 @@ export function QAStep({ appId, isAnalyzing, analysisError, analysisResults, upd
   const [selectedIssues, setSelectedIssues] = useState<Set<string>>(new Set());
   const [isMarkingFixed, setIsMarkingFixed] = useState(false);
   const { sendMessage } = useWebSocketContext();
+  const { isMdBreakpoint } = useBreakpoints();
 
   const hasErrors = (analysisResults?.report?.summary?.errors || 0) > 0;
   const hasWarnings = (analysisResults?.report?.summary?.warnings || 0) > 0;
@@ -185,10 +189,11 @@ export function QAStep({ appId, isAnalyzing, analysisError, analysisResults, upd
 
   const totalFixedCount = fixedIssueIds.length;
   const showResults = !isAnalyzing && !analysisError && analysisResults;
+  const showSelectedIssueCount = !isAnalyzing && selectedIssues.size > 0;
 
   return (
-    <div>
-      <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+    <Box gap="xl">
+      <div className="max-h-[400px] overflow-y-auto">
         <QAStateViews
           isAnalyzing={isAnalyzing}
           analysisError={analysisError}
@@ -213,15 +218,21 @@ export function QAStep({ appId, isAnalyzing, analysisError, analysisResults, upd
       </div>
 
       {/* Footer with selection info */}
-      <div className="flex items-center justify-between gap-3 pt-4">
-        {!isAnalyzing && selectedIssues.size > 0 ? (
+      <Box
+        orientation="horizontal"
+        blockAlignChildren={(showSelectedIssueCount && isMdBreakpoint) ? "spaceBetween" : "end"}
+        inlineAlignChildren="center"
+        gap="md"
+        wrap
+      >
+        {showSelectedIssueCount ? (
           <text.span as="caption" emphasis="passive">
             {selectedIssues.size === 1
               ? t('golive_qa_selected_count_singular')
               : t('golive_qa_selected_count_plural', { count: selectedIssues.size })}
           </text.span>
         ) : null}
-        <div className="flex flex-grow justify-end gap-2">
+        <ButtonBar>
           <Button
             design="secondary"
             text={t('golive_qa_button_skip')}
@@ -247,8 +258,8 @@ export function QAStep({ appId, isAnalyzing, analysisError, analysisResults, upd
               disabled={isAnalyzing}
             />
           )}
-        </div>
-      </div>
-    </div>
+        </ButtonBar>
+      </Box>
+    </Box>
   );
 }

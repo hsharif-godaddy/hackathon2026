@@ -3,11 +3,8 @@
  * Displays different states: analyzing, error, or success (clean)
  */
 import Alert from '@ux/alert';
-import AlertIcon from '@ux/icon/alert';
-import OkIcon from '@ux/icon/ok';
-import Spinner from '@ux/spinner';
-import TextLockup from '@ux/text-lockup';
 
+import { Loader } from '@/components/layout/PostPublishGoLiveModal/components/Loader';
 import { useTranslations } from '@/hooks/useTranslations';
 
 interface QAStateViewsProps {
@@ -23,39 +20,37 @@ export function QAStateViews({ isAnalyzing, analysisError, isClean, totalFixedCo
   // Analyzing State
   if (isAnalyzing) {
     return (
-      <div className="flex flex-col items-center justify-center py-4 gap-4">
-        <Spinner size="lg" />
-        <TextLockup title={t('golive_qa_analyzing_title')} centered>
-          <div className="text-intents-ux-feedbackHighContrastPassive-feedbackColor">{t('golive_qa_analyzing_description')}</div>
-        </TextLockup>
-      </div>
+      <Loader
+        title={t('golive_qa_analyzing_title')}
+        description={t('golive_qa_analyzing_description')}
+      />
     );
   }
 
   // Error State
   if (analysisError) {
     return (
-      <div className="flex flex-col items-center justify-center py-4 gap-2">
-        <AlertIcon className="text-intents-ux-feedbackHighContrastCritical-feedbackColor size-8" />
-        <TextLockup title={t('golive_qa_error_title')} centered titleLevel={4} />
-        <Alert emphasis="critical" className="w-full mt-2">
-          {analysisError}
-        </Alert>
-      </div>
+      <Alert
+        emphasis="critical"
+        title={t('golive_qa_error_title')}
+      >
+        {analysisError}
+      </Alert>
     );
   }
 
   // Clean State
   if (isClean) {
     return (
-      <div className="flex flex-col items-center justify-center py-4 gap-2">
-        <OkIcon className="text-intents-ux-feedbackHighContrastSuccess-feedbackColor size-8" />
-        <TextLockup title={t('golive_qa_clean_title')} centered titleLevel={4}>
-          {totalFixedCount > 0
-            ? t('golive_qa_clean_description_with_fixes', { count: totalFixedCount })
-            : t('golive_qa_clean_description')}
-        </TextLockup>
-      </div>
+      <Alert
+        emphasis="success"
+        title={t('golive_qa_clean_title')}
+      >
+        {totalFixedCount > 0
+          ? t('golive_qa_clean_description_with_fixes', { count: totalFixedCount })
+          : t('golive_qa_clean_description')
+        }
+      </Alert>
     );
   }
 

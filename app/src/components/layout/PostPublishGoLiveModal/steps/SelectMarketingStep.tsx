@@ -11,6 +11,7 @@ import PageIcon from '@ux/icon/page';
 import SocialIcon from '@ux/icon/social';
 import text from '@ux/text';
 
+import { ButtonBar } from '@/components/layout/PostPublishGoLiveModal/components/ButtonBar';
 import { FeatureCard } from '@/components/layout/PostPublishGoLiveModal/components/FeatureCard';
 import { TokenBadge, TokenCostLevel } from '@/components/layout/PostPublishGoLiveModal/components/TokenBadge';
 import { useTranslations } from '@/hooks/useTranslations';
@@ -107,7 +108,7 @@ export function SelectMarketingStep({ onConfirm, onSkip }: SelectMarketingStepPr
       </Box>
 
       {/* Action Buttons */}
-      <Box orientation="horizontal" gap="md" blockAlignChildren="end" wrap>
+      <ButtonBar>
         <Button
           design="secondary"
           text={t('builder_golive_marketing_button_skip')}
@@ -121,7 +122,7 @@ export function SelectMarketingStep({ onConfirm, onSkip }: SelectMarketingStepPr
           onClick={() => onConfirm(selections)}
           disabled={!hasAnySelection}
         />
-      </Box>
+      </ButtonBar>
     </Box>
   );
 }
