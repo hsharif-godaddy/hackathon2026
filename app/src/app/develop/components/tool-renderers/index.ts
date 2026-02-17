@@ -18,7 +18,6 @@ import FontThemeToolRenderer from './FontThemeToolRenderer'
 import GrepSearchToolRenderer from './GrepSearchToolRenderer'
 import HandoffToolRenderer from './HandoffToolRenderer'
 import ImageGeneratorToolRenderer from './ImageGeneratorToolRenderer'
-import ImageSearchToolRenderer from './ImageSearchToolRenderer'
 import LogoGeneratorToolRenderer from './LogoGeneratorToolRenderer'
 import MediaSlotToolRenderer from './MediaSlotToolRenderer'
 import OAuthToolRenderer from './OAuthToolRenderer'
@@ -66,7 +65,6 @@ export const toolRendererRegistry = {
   fileEdit: FileEditToolRenderer,
   terminalCommand: TerminalCommandToolRenderer,
   media: MediaSlotToolRenderer,
-  imageSearch: ImageSearchToolRenderer,
   todoList: TodoListToolRenderer,
   suggestedResponse: SuggestedResponseToolRenderer,
   oauthConnect: OAuthToolRenderer,
@@ -126,7 +124,6 @@ export {
   GrepSearchToolRenderer,
   HandoffToolRenderer,
   ImageGeneratorToolRenderer,
-  ImageSearchToolRenderer,
   LogoGeneratorToolRenderer,
   MediaSlotToolRenderer,
   OAuthToolRenderer,

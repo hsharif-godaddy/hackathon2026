@@ -113,31 +113,18 @@ describe('getToolDisplayName', () => {
     });
   });
 
-  describe('media search variants', () => {
-    // media_search and mediaSearch now fall through to default formatting
-    // since the explicit mapping was removed (agents now use 'media' tool)
-    it('should format "media_search" using default formatting', () => {
-      expect(getToolDisplayName('media_search')).toBe('Media Search');
+  describe('media tool', () => {
+    it('should map "media" to "Media"', () => {
+      expect(getToolDisplayName('media')).toBe('Media');
     });
 
-    it('should format "mediaSearch" using default formatting', () => {
-      expect(getToolDisplayName('mediaSearch')).toBe('MediaSearch');
-    });
-
-    it('should map "image_search" to "Image Search"', () => {
+    // Legacy tool names fall through to default formatting
+    it('should format "image_search" using default formatting', () => {
       expect(getToolDisplayName('image_search')).toBe('Image Search');
     });
 
-    it('should map "imageSearch" to "Image Search"', () => {
-      expect(getToolDisplayName('imageSearch')).toBe('Image Search');
-    });
-
-    it('should map "video_search" to "Video Search"', () => {
+    it('should format "video_search" using default formatting', () => {
       expect(getToolDisplayName('video_search')).toBe('Video Search');
-    });
-
-    it('should map "videoSearch" to "Video Search"', () => {
-      expect(getToolDisplayName('videoSearch')).toBe('Video Search');
     });
   });
 
@@ -301,10 +288,7 @@ describe('getToolDisplayName', () => {
         ['code_search', 'Code Search'],
         ['grep_search', 'Text Search'],
         ['terminal', 'Terminal'],
-        // media_search now falls through to default formatting (agents use 'media' tool)
-        ['media_search', 'Media Search'],
-        ['image_search', 'Image Search'],
-        ['video_search', 'Video Search'],
+        ['media', 'Media'],
         ['view_logs', 'View Logs'],
         ['app_plan', 'App Plan'],
         ['server_restart', 'Server Restart'],

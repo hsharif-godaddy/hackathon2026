@@ -255,9 +255,12 @@ func (h *mediaSlotHandler) serveLocalUpload(w http.ResponseWriter, r *http.Reque
 		contentType = "application/octet-stream"
 	}
 
-	// Set cache headers (1 year, immutable since filename includes hash)
+	// Set cache headers - use no-cache to force revalidation on each request.
+	// http.ServeFile automatically handles ETag (based on mtime) and If-None-Match,
+	// returning 304 Not Modified if the file hasn't changed. This gives equivalent
+	// performance to Getty redirects (always a round-trip, but no body if unchanged).
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
 	slog.Debug(h.mediaType+"_slot.serve_upload", "slot", slotPath, "path", cleanPath, "content_type", contentType)
