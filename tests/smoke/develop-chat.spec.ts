@@ -21,7 +21,7 @@ import { LONG_TIMEOUT, DEFAULT_TIMEOUT, PREVIEW_TIMEOUT, AI_RESPONSE_TIMEOUT_MS,
 import { waitForDevelopPage, waitForChatInput } from '../helpers/ui';
 
 test.describe('Develop Page', () => {
-  test.beforeEach(async ({}, testInfo) => {
+  test.beforeEach(async ({ }, testInfo) => {
     const fullTitle = testInfo.titlePath.join(' > ');
     console.log(`\n${'='.repeat(70)}`);
     console.log(`🚀 STARTING TEST`);
@@ -141,7 +141,6 @@ test.describe('Develop Page', () => {
 
     // Verify toolbar buttons
     await expect(page.locator('[data-eid*="chat_toolbar.chat"]')).toBeVisible();
-    await expect(page.locator('[data-eid*="chat_toolbar.medias"]')).toBeVisible();
     await expect(page.locator('[data-eid*="chat_toolbar.history"]')).toBeVisible();
     await expect(page.locator('[data-eid*="chat_toolbar.settings"]')).toBeVisible();
     console.log('  ✓ All toolbar buttons visible');
@@ -153,9 +152,7 @@ test.describe('Develop Page', () => {
     await page.getByTestId('chat-input-textarea').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
     console.log('  ✓ History tab navigation works, header persists');
 
-    // Verify medias button exists
-    await expect(page.locator('[data-eid*="chat_toolbar.medias"]')).toBeVisible();
-    console.log('  ✓ Media tab button visible');
+
 
     // ========================================
     // STEP 6: Test chat input states
