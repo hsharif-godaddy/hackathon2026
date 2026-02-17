@@ -3,7 +3,7 @@ import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
 import { DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/develop/components/preview/devicePresets'
-import { PreviewViewMode, ViewMode } from '@/app/develop/components/types'
+import { ChatTab, PreviewViewMode, SettingsSection, ViewMode } from '@/app/develop/components/types'
 import { logger } from '@/lib/request-context'
 import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
 import { type App, appService } from '@/services/AppService'
@@ -141,6 +141,10 @@ interface DevelopPageStore {
   isMobile: boolean
   isPreviewVisible: boolean
 
+  // Tab state (stored in memory, synced to URL)
+  activeChatTab: ChatTab
+  activeSettingsSection: SettingsSection
+
   // UI loading indicators
   isRestarting: boolean
   hasUnsavedChanges: boolean
@@ -213,6 +217,10 @@ interface DevelopPageStore {
   setIsVersionHistoryOpen: (open: boolean) => void
   setIsPreviewVisible: (visible: boolean) => void
   setIsPollingEntitlements: (isPolling: boolean) => void
+
+  // Tab setters
+  setActiveChatTab: (tab: ChatTab) => void
+  setActiveSettingsSection: (section: SettingsSection) => void
 
   // Feedback modal actions
   openFeedbackModal: (feedbackId: string) => void
@@ -310,6 +318,10 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     isPollingEntitlements: false,
     isVersionHistoryOpen: false,
 
+    // Tab state (initialized from URL in useChatTabs)
+    activeChatTab: ChatTab.CHAT,
+    activeSettingsSection: SettingsSection.DOMAIN,
+
     // Feedback modal state
     openFeedbackId: null,
 
@@ -369,6 +381,10 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     }),
     setIsVersionHistoryOpen: (open) => set((state) => { state.isVersionHistoryOpen = open }),
     setIsPreviewVisible: (visible) => set((state) => { state.isPreviewVisible = visible }),
+
+    // Tab setters
+    setActiveChatTab: (tab) => set((state) => { state.activeChatTab = tab }),
+    setActiveSettingsSection: (section) => set((state) => { state.activeSettingsSection = section }),
 
     // Feedback modal actions
     openFeedbackModal: (feedbackId: string) => {

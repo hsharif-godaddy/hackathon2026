@@ -28,10 +28,11 @@ export default function SettingsMenu() {
     setOpen(false);
   };
 
-  const items = useSettingsNavItems();
-
   // Only show an item as active when we're actually on the Settings tab
   const isOnSettingsTab = activeChatTab === ChatTab.SETTINGS;
+
+  // Fetch settings nav items when menu is open or we're on Settings tab
+  const items = useSettingsNavItems(open || isOnSettingsTab);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

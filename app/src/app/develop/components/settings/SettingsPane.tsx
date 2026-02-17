@@ -3,18 +3,18 @@
 import Button from '@ux/button';
 
 import { useSettingsNavItems } from '@/app/develop/components/settings/useSettingsNavItems';
-import { SettingsSection } from '@/app/develop/components/types';
+import { ChatTab, SettingsSection } from '@/app/develop/components/types';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { generateClickEID } from '@/utils/instrumentation';
 
 export default function SettingsPane() {
-  const { activeSettingsSection, setActiveSettingsSection } = useChatTabs()
+  const { activeChatTab, activeSettingsSection, setActiveSettingsSection } = useChatTabs()
 
   const handleNavigate = (id: SettingsSection) => {
     setActiveSettingsSection(id)
   }
 
-  const items = useSettingsNavItems()
+  const items = useSettingsNavItems(activeChatTab === ChatTab.SETTINGS)
 
   return (
     <div className="flex grow flex-col overflow-y-auto">

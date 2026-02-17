@@ -7,6 +7,7 @@ import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
 import Spinner from '@ux/spinner'
 import Tag from '@ux/tag'
 
+import { useChatTabs } from '@/hooks/useChatTabs'
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -15,6 +16,7 @@ import { logger } from '@/lib/request-context'
 import { useGitStore } from '@/stores/useGitStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { formatDate } from '@/utils/common'
+import { ChatTab } from './types'
 import { useAppIdFromParams } from './utils'
 
 interface Commit {
@@ -28,6 +30,7 @@ export default function VersionHistory() {
   const commitsListRef = useRef<HTMLUListElement>(null)
   const appId = useAppIdFromParams()
   const queryClient = useQueryClient()
+  const { activeChatTab } = useChatTabs()
 
   const selectedCommitHash = useGitStore((state) => appId ? state.getSelectedCommitHash(appId) : null)
   const isSelectingCommit = useGitStore((state) => state.isSelectingCommit)
@@ -41,13 +44,15 @@ export default function VersionHistory() {
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button')
   const isPublishButtonEnabledFlag = isPublishButtonEnabled === true
 
+  const isHistoryTabActive = activeChatTab === ChatTab.HISTORY
+
   const {
     data,
     isLoading: loading,
     error: queryError
   } = useGitHistoryQuery({
     appId: appId || '',
-    enabled: !!appId
+    enabled: !!appId && isHistoryTabActive
   })
 
   const commits = data?.commits || [] // eslint-disable-line react-hooks/exhaustive-deps
@@ -67,7 +72,7 @@ export default function VersionHistory() {
 
   const { data: deployments = [] } = useDeploymentsQuery({
     appId: appId || '',
-    enabled: isPublishButtonEnabledFlag && !!appId && !!site?.agent_url && commits.length > 0,
+    enabled: isPublishButtonEnabledFlag && !!appId && !!site?.agent_url && commits.length > 0 && isHistoryTabActive,
     includeJobData: true,
     limit: commits.length > 150 ? 150 : commits.length,
   })

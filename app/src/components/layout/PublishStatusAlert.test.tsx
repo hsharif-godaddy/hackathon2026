@@ -52,6 +52,14 @@ vi.mock('@/lib/request-context', () => ({
     error: vi.fn(),
   },
 }));
+vi.mock('@/hooks/useChatTabs', () => ({
+  useChatTabs: () => ({
+    activeChatTab: 'chat',
+    setActiveChatTab: vi.fn(),
+    activeSettingsSection: 'domain',
+    setActiveSettingsSection: vi.fn(),
+  }),
+}));
 
 describe('PublishStatusAlert', () => {
   beforeEach(() => {

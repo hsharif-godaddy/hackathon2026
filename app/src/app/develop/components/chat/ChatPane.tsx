@@ -653,77 +653,87 @@ export default function ChatPane({
         onToggleExpandedPlan={toggleExpandedPlan}
       />
 
-      {activeChatTab === ChatTab.CHAT && <PersistentTodoList />}
+      {/* Chat Tab - Keep mounted, hide with CSS */}
+      <div
+        className="flex flex-col flex-1 min-h-0"
+        style={{ display: activeChatTab === ChatTab.CHAT ? 'flex' : 'none' }}
+      >
+        <PersistentTodoList />
 
-      {activeChatTab === ChatTab.CHAT && (
-        <>
-          <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
+        <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
 
-          {safeBuildErrorContext && (
-            <div className="mx-2 rounded-md overflow-hidden border">
-              <div className="p-1.5">
-                <div className="flex items-start justify-between gap-1">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-1 mb-0.5">
-                      <svg className="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span className="font-semibold text-sm">{t('builder_chatpane_build_error')}</span>
-                    </div>
-                    <div className="text-xs break-words">
-                      {safeBuildErrorContext.error}
-                    </div>
-                    {safeBuildErrorContext.exitCode && (
-                      <div className="text-xs mt-0.5">
-                        {t('builder_chatpane_exit_code')}: {safeBuildErrorContext.exitCode}
-                      </div>
-                    )}
+        {safeBuildErrorContext && (
+          <div className="mx-2 rounded-md overflow-hidden border">
+            <div className="p-1.5">
+              <div className="flex items-start justify-between gap-1">
+                <div className="flex-1">
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <svg className="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="font-semibold text-sm">{t('builder_chatpane_build_error')}</span>
                   </div>
-                  <button
-                    onClick={handleClearBuildErrorContext}
-                    className="flex-shrink-0 w-3 h-3 flex items-center justify-center bg-white rounded-full shadow-sm hover:shadow-md font-bold text-lg text-red-600"
-                    title={t('builder_chatpane_build_exit_code')}
-                  >
-                    ×
-                  </button>
+                  <div className="text-xs break-words">
+                    {safeBuildErrorContext.error}
+                  </div>
+                  {safeBuildErrorContext.exitCode && (
+                    <div className="text-xs mt-0.5">
+                      {t('builder_chatpane_exit_code')}: {safeBuildErrorContext.exitCode}
+                    </div>
+                  )}
                 </div>
+                <button
+                  onClick={handleClearBuildErrorContext}
+                  className="flex-shrink-0 w-3 h-3 flex items-center justify-center bg-white rounded-full shadow-sm hover:shadow-md font-bold text-lg text-red-600"
+                  title={t('builder_chatpane_build_exit_code')}
+                >
+                  ×
+                </button>
               </div>
             </div>
-          )}
-
-          <div className="px-2 sm:px-3 md:px-0">
-            <ChatBanners appId={appId} />
-            <ChatInput
-              appId={appId}
-              inputValue={safeInputValue}
-              isDisabled={isProcessing}
-              onInputChange={setInputValue}
-              onSendMessage={handleSendMessage}
-              selectedAssets={selectedAssets}
-              maxAssets={maxAssets}
-              onClearSelectedAsset={handleClearSingleAsset}
-              onFilesUploaded={handleFilesUploaded}
-              onScreenshotCaptured={handleScreenshotCaptured}
-              onFileReferencesSelected={handleFileReferencesSelected}
-              onUploadStart={handleUploadStart}
-              onUploadError={handleUploadError}
-              uploadingFiles={uploadingFiles}
-              referencedFiles={referencedFiles}
-              onClearReferencedFile={handleClearSingleReferencedFile}
-              aiEditContext={safeAiEditContext}
-              onClearAiEditContext={handleClearAiEditContext}
-            />
           </div>
-        </>
-      )}
+        )}
 
-      {activeChatTab === ChatTab.HISTORY && (
+        <div className="px-2 sm:px-3 md:px-0">
+          <ChatBanners appId={appId} />
+          <ChatInput
+            appId={appId}
+            inputValue={safeInputValue}
+            isDisabled={isProcessing}
+            onInputChange={setInputValue}
+            onSendMessage={handleSendMessage}
+            selectedAssets={selectedAssets}
+            maxAssets={maxAssets}
+            onClearSelectedAsset={handleClearSingleAsset}
+            onFilesUploaded={handleFilesUploaded}
+            onScreenshotCaptured={handleScreenshotCaptured}
+            onFileReferencesSelected={handleFileReferencesSelected}
+            onUploadStart={handleUploadStart}
+            onUploadError={handleUploadError}
+            uploadingFiles={uploadingFiles}
+            referencedFiles={referencedFiles}
+            onClearReferencedFile={handleClearSingleReferencedFile}
+            aiEditContext={safeAiEditContext}
+            onClearAiEditContext={handleClearAiEditContext}
+          />
+        </div>
+      </div>
+
+      {/* History Tab - Keep mounted, hide with CSS */}
+      <div
+        className="flex flex-col flex-1 min-h-0"
+        style={{ display: activeChatTab === ChatTab.HISTORY ? 'flex' : 'none' }}
+      >
         <VersionHistory />
-      )}
+      </div>
 
-      {activeChatTab === ChatTab.SETTINGS && (
+      {/* Settings Tab - Keep mounted, hide with CSS */}
+      <div
+        className="flex flex-col flex-1 min-h-0"
+        style={{ display: activeChatTab === ChatTab.SETTINGS ? 'flex' : 'none' }}
+      >
         <SettingsPane />
-      )}
+      </div>
 
       <ChatToolbar
         isProcessing={isProcessing}

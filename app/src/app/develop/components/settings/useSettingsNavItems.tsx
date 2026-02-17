@@ -34,25 +34,26 @@ export interface SettingsNavItem {
  * Hook that provides the settings navigation items with their current state
  * Used by both SettingsPane (desktop sidebar) and SettingsMenu (mobile popover)
  *
+ * @param enabled - Whether to fetch feature flags (defer until tab is visible)
  * @returns Array of settings navigation items with current enabled/disabled state
  */
-export function useSettingsNavItems(): SettingsNavItem[] {
+export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] {
   const t = useTranslations();
   const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal);
   const isMobile = useDevelopPageStore((state) => state.isMobile);
 
-  const { data: isProjectEnabled } = useSwitchboard('appbuilder-settings-project');
-  const { data: isDomainEnabled } = useSwitchboard('appbuilder-settings-domain');
-  const { data: isBackupsEnabled } = useSwitchboard('appbuilder-settings-backups');
-  const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security');
-  const { data: isShareLinksEnabled } = useSwitchboard('appbuilder-share-links');
-  const { data: isTeamEnabled } = useSwitchboard('appbuilder-settings-team');
-  const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
-  const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
-  const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
-  const { data: isSocialEnabled } = useSwitchboard('appbuilder-settings-social');
-  const { data: isAnalyticsEnabled } = useSwitchboard('appbuilder-settings-analytics');
-  const { data: isMarketingEnabled } = useSwitchboard('appbuilder-settings-marketing');
+  const { data: isProjectEnabled } = useSwitchboard('appbuilder-settings-project', { enabled });
+  const { data: isDomainEnabled } = useSwitchboard('appbuilder-settings-domain', { enabled });
+  const { data: isBackupsEnabled } = useSwitchboard('appbuilder-settings-backups', { enabled });
+  const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security', { enabled });
+  const { data: isShareLinksEnabled } = useSwitchboard('appbuilder-share-links', { enabled });
+  const { data: isTeamEnabled } = useSwitchboard('appbuilder-settings-team', { enabled });
+  const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database', { enabled });
+  const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan', { enabled });
+  const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets', { enabled });
+  const { data: isSocialEnabled } = useSwitchboard('appbuilder-settings-social', { enabled });
+  const { data: isAnalyticsEnabled } = useSwitchboard('appbuilder-settings-analytics', { enabled });
+  const { data: isMarketingEnabled } = useSwitchboard('appbuilder-settings-marketing', { enabled });
 
   const handleFeedbackClick = () => {
     localStorage.removeItem('airo-feedback-shown:airo#app-builder');
