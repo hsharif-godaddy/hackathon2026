@@ -94,12 +94,64 @@ if (!allowedCommands.includes(command)) {
 }
 
 // Spawn without shell for better security
+// Use detached on POSIX to create process group for proper signal forwarding
 const child = spawn(command, commandArgs, {
   stdio: 'inherit',
   env: process.env,
-  shell: false
+  shell: false,
+  ...(process.platform !== 'win32' && { detached: true })
 });
 
-child.on('exit', (code) => {
+// Guard to prevent double-exit from error and exit events
+let finished = false;
+
+function finalizeExit(code) {
+  if (finished) return;
+  finished = true;
   process.exit(code);
+}
+
+// Forward signals to child process (or process group on POSIX)
+function forwardSignal(sig) {
+  if (!child || child.killed || child.exitCode !== null) return;
+  try {
+    // On POSIX systems, forward to process group to catch grandchildren
+    // On Windows, only direct child kill is supported
+    if (process.platform !== 'win32') {
+      process.kill(-child.pid, sig);
+    } else {
+      child.kill(sig);
+    }
+  } catch (err) {
+    // Only ignore ESRCH (process doesn't exist) - log other errors
+    if (err.code !== 'ESRCH') {
+      console.error(`Warning: Failed to forward signal ${sig}: ${err.message}`);
+    }
+  }
+}
+
+// Forward common signals to child
+// SIGINT (Ctrl+C), SIGTERM (kill), SIGHUP (terminal disconnect), SIGQUIT (Ctrl+\)
+['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'].forEach((sig) => {
+  process.on(sig, () => forwardSignal(sig));
+});
+
+// Handle child process exit
+child.on('exit', (code, signal) => {
+  if (signal) {
+    // Child was killed by signal - exit with 128 + signal number
+    // This follows standard Unix convention for signal-based termination
+    const os = require('os');
+    const sigNum = os.constants.signals[signal] || 0;
+    finalizeExit(128 + (sigNum || 1));
+  } else {
+    // Exit with child's exit code (default to 0 if null/undefined)
+    finalizeExit(code ?? 0);
+  }
+});
+
+// Handle spawn errors (e.g., command not found)
+child.on('error', (error) => {
+  console.error(`Failed to start command '${command}': ${error.message}`);
+  finalizeExit(1);
 });
