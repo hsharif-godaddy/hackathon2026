@@ -24,8 +24,8 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   }),
 }));
 
-vi.mock('@/hooks/useResponsive', () => ({
-  useResponsive: vi.fn(() => ({ isMobile: false })),
+vi.mock('@/hooks/useBreakpoints', () => ({
+  useBreakpoints: vi.fn(() => ({ isBelowSmBreakpoint: false, isSmBreakpoint: false, isMdBreakpoint: false, isLgBreakpoint: false })),
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
@@ -139,7 +139,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
     it('should show text on desktop', async function showTextOnDesktop() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      const { useResponsive } = await import('@/hooks/useResponsive');
+      const { useBreakpoints } = await import('@/hooks/useBreakpoints');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
@@ -147,7 +147,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
         if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
-      vi.mocked(useResponsive).mockReturnValue({ isMobile: false } as ReturnType<typeof useResponsive>);
+      vi.mocked(useBreakpoints).mockReturnValue({ isBelowSmBreakpoint: false } as ReturnType<typeof useBreakpoints>);
 
       renderWithProviders(<HeaderUpgradeButton location="test" />);
 
@@ -159,7 +159,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
     it('should not show text on mobile', async function noTextOnMobile() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      const { useResponsive } = await import('@/hooks/useResponsive');
+      const { useBreakpoints } = await import('@/hooks/useBreakpoints');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
@@ -167,7 +167,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
         if (flag === 'app-builder-grants') return { data: true, isLoading: false } as ReturnType<typeof useSwitchboard>;
         return { data: false, isLoading: false } as ReturnType<typeof useSwitchboard>;
       });
-      vi.mocked(useResponsive).mockReturnValue({ isMobile: true } as ReturnType<typeof useResponsive>);
+      vi.mocked(useBreakpoints).mockReturnValue({ isBelowSmBreakpoint: true } as ReturnType<typeof useBreakpoints>);
 
       renderWithProviders(<HeaderUpgradeButton location="test" />);
 

@@ -5,7 +5,7 @@ import { PanelLeftIcon } from "lucide-react"
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 
-import { useResponsive } from "@/hooks/useResponsive"
+import { useBreakpoints } from "@/hooks/useBreakpoints"
 import { Button } from "@/lib/shadcn/button"
 import { Input } from "@/lib/shadcn/input"
 import { Separator } from "@/lib/shadcn/separator"
@@ -38,7 +38,7 @@ type SidebarContextProps = {
   setOpen: (open: boolean) => void
   openMobile: boolean
   setOpenMobile: (open: boolean) => void
-  isMobile: boolean
+  isBelowSmBreakpoint: boolean
   toggleSidebar: () => void
 }
 
@@ -66,7 +66,7 @@ function SidebarProvider({
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }) {
-  const { isMobile } = useResponsive()
+  const { isBelowSmBreakpoint } = useBreakpoints()
   const [openMobile, setOpenMobile] = React.useState(false)
 
   // This is the internal state of the sidebar.
@@ -90,8 +90,8 @@ function SidebarProvider({
 
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {
-    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
-  }, [isMobile, setOpen, setOpenMobile])
+    return isBelowSmBreakpoint ? setOpenMobile((open) => !open) : setOpen((open) => !open)
+  }, [isBelowSmBreakpoint, setOpen, setOpenMobile])
 
   // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
@@ -118,12 +118,12 @@ function SidebarProvider({
       state,
       open,
       setOpen,
-      isMobile,
+      isBelowSmBreakpoint,
       openMobile,
       setOpenMobile,
       toggleSidebar,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+    [state, open, setOpen, isBelowSmBreakpoint, openMobile, setOpenMobile, toggleSidebar]
   )
 
   return (
@@ -163,7 +163,7 @@ function Sidebar({
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const { isBelowSmBreakpoint, state, openMobile, setOpenMobile } = useSidebar()
 
   if (collapsible === "none") {
     return (
@@ -180,7 +180,7 @@ function Sidebar({
     )
   }
 
-  if (isMobile) {
+  if (isBelowSmBreakpoint) {
     return (
       <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
         <SheetContent
@@ -509,7 +509,7 @@ function SidebarMenuButton({
   tooltip?: string | React.ComponentProps<typeof TooltipContent>
 } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const Comp = asChild ? Slot : "button"
-  const { isMobile, state } = useSidebar()
+  const { isBelowSmBreakpoint, state } = useSidebar()
 
   const button = (
     <Comp
@@ -538,7 +538,7 @@ function SidebarMenuButton({
       <TooltipContent
         side="right"
         align="center"
-        hidden={state !== "collapsed" || isMobile}
+        hidden={state !== "collapsed" || isBelowSmBreakpoint}
         {...tooltip}
       />
     </Tooltip>

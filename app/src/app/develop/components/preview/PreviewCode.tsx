@@ -16,7 +16,7 @@ import Text from '@ux/text'
 import CodeSearch from '@/app/develop/components/CodeSearch'
 import FileTree, { FileItem, FileStatus } from '@/app/develop/components/FileTree'
 import { markdownComponents } from '@/app/develop/components/preview/markdownComponents'
-import { useResponsive } from '@/hooks/useResponsive'
+import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
@@ -112,9 +112,9 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const [recentlySaved, setRecentlySaved] = useState<string | null>(null)
   const [showMarkdownPreview, setShowMarkdownPreview] = useState(false)
 
-  const { isMobile } = useResponsive()
+  const { isBelowSmBreakpoint } = useBreakpoints()
   // On mobile, start with file tree open so users know it exists
-  const [showFileTree, setShowFileTree] = useState(isMobile)
+  const [showFileTree, setShowFileTree] = useState(isBelowSmBreakpoint)
   const setHasUnsavedChanges = useDevelopPageStore((state) => state.setHasUnsavedChanges)
 
   // Subscribe to page initialization state - only load files when page is ready
@@ -637,7 +637,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       setShowMarkdownPreview(false)
 
       // On mobile, close file tree after selection
-      if (isMobile) {
+      if (isBelowSmBreakpoint) {
         setShowFileTree(false)
       }
       return
@@ -672,7 +672,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       }
 
       // On mobile, close file tree after selection
-      if (isMobile) {
+      if (isBelowSmBreakpoint) {
         setShowFileTree(false)
       }
     } catch (error) {
@@ -685,7 +685,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     } finally {
       loadingFilesRef.current.delete(path)
     }
-  }, [openFiles, loadFileContent, isMobile])
+  }, [openFiles, loadFileContent, isBelowSmBreakpoint])
 
   const handleCloseFile = useCallback((path: string) => {
     setOpenFiles(prev => prev.filter(f => f.path !== path))
@@ -794,7 +794,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     <>
       <div className="h-full w-full flex overflow-hidden relative border rounded-md bg-intents-ux-box-backgroundColor">
         {/* File Tree - Desktop: sidebar, Mobile: overlay */}
-      {isMobile ? (
+      {isBelowSmBreakpoint ? (
         // Mobile: Slide-in overlay
         <>
           {showFileTree && (
@@ -848,7 +848,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
         {/* Tabs */}
         <div className="flex items-center border-b overflow-x-auto">
           {/* Mobile: File tree toggle button */}
-          {isMobile && (
+          {isBelowSmBreakpoint && (
             <Button
               onClick={() => setShowFileTree(true)}
               className="!px-2 !py-0.5 flex-shrink-0"
@@ -872,7 +872,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                   onClick={() => setActiveFile(file.path)}
                 >
                   <PageIcon />
-                  <span className={clsx(isMobile ? "max-w-[80px] truncate" : "")}>{file.name}</span>
+                  <span className={clsx(isBelowSmBreakpoint ? "max-w-[80px] truncate" : "")}>{file.name}</span>
 
                   {/* Save status indicators */}
                   {(saving === file.path || recentlySaved === file.path || file.isDirty) && (
@@ -899,7 +899,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
               ))}
 
               {/* Save all button - hide on mobile if space is tight */}
-              {openFiles.some(f => f.isDirty) && !isMobile && (
+              {openFiles.some(f => f.isDirty) && !isBelowSmBreakpoint && (
                 <Button
                   onClick={() => {
                     openFiles.forEach(file => {

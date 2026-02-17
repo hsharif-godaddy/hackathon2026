@@ -41,8 +41,8 @@ vi.mock('@/stores/useSiteCreationStore', () => ({
   ),
 }));
 
-vi.mock('@/hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false }),
+vi.mock('@/hooks/useBreakpoints', () => ({
+  useBreakpoints: () => ({ isBelowSmBreakpoint: false }),
 }));
 
 // Mock logger

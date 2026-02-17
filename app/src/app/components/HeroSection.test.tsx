@@ -14,8 +14,8 @@ vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string) => key,
 }));
 
-vi.mock('@/hooks/useResponsive', () => ({
-  useResponsive: () => ({ isMobile: false, isTablet: false }),
+vi.mock('@/hooks/useBreakpoints', () => ({
+  useBreakpoints: () => ({ isBelowSmBreakpoint: false, isMdBreakpoint: false }),
 }));
 
 vi.mock('@/app/components/HeroExamples', () => ({

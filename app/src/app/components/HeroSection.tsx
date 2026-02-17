@@ -10,7 +10,7 @@ import Spinner from '@ux/spinner'
 import { text } from '@ux/text'
 
 import ExamplesSection from '@/app/components/HeroExamples'
-import { useResponsive } from '@/hooks/useResponsive'
+import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useTranslations } from '@/hooks/useTranslations'
 import { MAX_PROMPT_LENGTH } from '@/lib/features'
@@ -89,12 +89,12 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     return /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
   }, [])
 
-  const { isMobile, isTablet } = useResponsive()
+  const { isBelowSmBreakpoint, isMdBreakpoint } = useBreakpoints()
 
   // Memoize and shuffle placeholders once on mount
   // Use mobile-specific placeholders on mobile to prevent truncation
   const placeholders = useMemo(() => {
-    if (isMobile) {
+    if (isBelowSmBreakpoint) {
       return [
         t('builder_homepage_placeholder_mobile_1'),
         t('builder_homepage_placeholder_mobile_2'),
@@ -108,7 +108,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       t('builder_homepage_placeholder_4'),
       t('builder_homepage_placeholder_5')
     ].sort(() => Math.random() - 0.5)
-  }, [isMobile]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isBelowSmBreakpoint]) // eslint-disable-line react-hooks/exhaustive-deps
   const isUserTypingRef = useRef(false)
 
   useEffect(() => {
@@ -284,7 +284,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     <Box className="flex flex-col gap-2 md:gap-3 px-2 sm:px-3 lg:px-4 pt-6 md:pt-12 min-h-[calc(100vh-3rem)] items-center justify-center">
       <text.h1
         as='heading'
-        size={isMobile ? 2 : isTablet ? 3 : 4}
+        size={isBelowSmBreakpoint ? 2 : isMdBreakpoint ? 3 : 4}
         className="text-center max-w-screen-md"
       >
         {t('builder_homepage_hero_title')}
@@ -311,7 +311,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       )}
 
       <div className="w-full max-w-2xl mx-auto my-2 md:my-4">
-        <Box gap={isTablet ? 'md' : 'lg'}>
+        <Box gap={isMdBreakpoint ? 'md' : 'lg'}>
           <div className={clsx('relative transition-all duration-300 ease-out glowing-input', {
             'glowing-input--disabled': isLoading
           })}>
@@ -374,7 +374,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                     })}
                     icon={<MicIcon />}
                     aria-label={microphoneAriaLabel}
-                    size={isMobile ? 'sm' : 'md'}
+                    size={isBelowSmBreakpoint ? 'sm' : 'md'}
                   />
                 )}
                 <Button
@@ -386,7 +386,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   className='cursor-pointer !rounded-full aspect-square !border-none'
                   icon={isLoading ? <Spinner size='sm' /> : <SendIcon />}
                   aria-label={isLoading ? t('builder_homepage_hero_prompt_button_loading') : t('builder_homepage_hero_prompt_button')}
-                  size={isMobile ? 'sm' : 'md'}
+                  size={isBelowSmBreakpoint ? 'sm' : 'md'}
                 />
               </div>
             </Box>

@@ -19,7 +19,7 @@ import Modal from '@ux/modal';
 
 import { Confetti } from '@/components/icons/Confetti';
 import { useWebSocketContext } from '@/contexts/WebSocketContext';
-import { useResponsive } from '@/hooks/useResponsive';
+import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
@@ -64,7 +64,7 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
     featureSelections,
   } = publishState;
 
-  const { isMobile, isTablet } = useResponsive();
+  const { isLgBreakpoint } = useBreakpoints();
 
   // Custom hooks
   const { isScanning, scanError, runScan } = useSecurityScan(appId);
@@ -455,10 +455,10 @@ Create a todo list to track these ${taskCount} specific task${taskCount === 1 ? 
       title={modalTitle}
       id="go-live-modal"
       className="relative"
-      stretch={isMobile || isTablet}
+      stretch={!isLgBreakpoint}
     >
-      {/* Confetti decoration at top of modal (on confirm and marketing steps only) */}
-      {(goLiveModalStep === 'confirm' || goLiveModalStep === 'select-marketing') && (
+      {/* Confetti decoration at top of modal (on confirm step only) */}
+      {goLiveModalStep === 'confirm' && (
         <div className="absolute top-0 left-0 right-0 h-20 overflow-hidden pointer-events-none z-10">
           <Confetti />
         </div>

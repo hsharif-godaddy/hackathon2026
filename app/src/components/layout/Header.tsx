@@ -13,7 +13,7 @@ import DiscordLink from '@/components/layout/DiscordLink';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import InviteFriends from '@/components/layout/InviteFriends';
 import { useAuthContext } from '@/components/providers/AuthProvider';
-import { useResponsive } from '@/hooks/useResponsive';
+import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useTranslations } from '@/hooks/useTranslations';
 import { generateClickEID } from '@/utils/instrumentation';
 import { AiroLogo } from './AiroLogo';
@@ -22,7 +22,7 @@ import { HeaderProps } from './types';
 export default function Header({ actions, onShowMockLogin, location = 'unknown' }: HeaderProps) {
   const t = useTranslations();
   const { isAuthenticated, isAuthDisabled, isLoading } = useAuthContext();
-  const { isMobile } = useResponsive();
+  const { isBelowSmBreakpoint } = useBreakpoints();
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop');
 
@@ -51,9 +51,9 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
             </Link>
             <Tag emphasis="highlight" highcontrast>{t('builder_beta', undefined, 'beta')}</Tag>
           </div>
-          <Box orientation="horizontal" className={isMobile ? 'gap-1 ml-2' : 'gap-2'}>
+          <Box orientation="horizontal" className={isBelowSmBreakpoint ? 'gap-1 ml-2' : 'gap-2'}>
             {actions && actions}
-            <Box orientation="horizontal" className={isMobile ? 'gap-0.5' : 'gap-1'}>
+            <Box orientation="horizontal" className={isBelowSmBreakpoint ? 'gap-0.5' : 'gap-1'}>
               {showAuthenticatedUI && !isDevelopPage && <InviteFriends location={location} />}
               {!isDevelopPage && <DiscordLink location={location} />}
               <UserMenu

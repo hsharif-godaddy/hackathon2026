@@ -8,8 +8,8 @@ import CheckIcon from '@ux/icon/checkmark';
 import DiamondIcon from '@ux/icon/diamond';
 import text from '@ux/text';
 
+import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
-import { useResponsive } from '@/hooks/useResponsive';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
@@ -25,7 +25,7 @@ interface HeaderUpgradeButtonProps {
 export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgradeButtonProps) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
-  const { isMobile } = useResponsive();
+  const { isBelowSmBreakpoint } = useBreakpoints();
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop/');
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
@@ -59,14 +59,14 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
       <PopoverTrigger
         className={clsx(
           'inline-flex items-center gap-1 text-sm font-medium rounded-md px-1 sm:px-2 text-intents-ux-boxHighContrast-foregroundColor active:bg-ai-light transition-all hover:cursor-pointer',
-          isMobile ? 'h-[39.33px]' : 'h-[37.56px]', // since we need a custom button matching the height of uxcore buttons
+          isBelowSmBreakpoint ? 'h-[39.33px]' : 'h-[37.56px]', // since we need a custom button matching the height of uxcore buttons
           open ? 'bg-ai-light hover:bg-ring-ai' : 'hover:bg-ai-dark-transparent'
         )}
         data-eid={generateClickEID(`${location}.header.upgrade`)}
-        aria-label={isMobile ? t('builder_upgrade_button') : undefined}
+        aria-label={isBelowSmBreakpoint ? t('builder_upgrade_button') : undefined}
       >
         <DiamondIcon className='size-2.5' />
-        {!isMobile && t('builder_upgrade_button')}
+        {!isBelowSmBreakpoint && t('builder_upgrade_button')}
       </PopoverTrigger>
       <PopoverContent
         align='end'

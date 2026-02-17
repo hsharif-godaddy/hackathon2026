@@ -10,11 +10,11 @@ import CloudUploadIcon from '@ux/icon/cloud-upload';
 import Tag from '@ux/tag';
 import text from '@ux/text';
 
+import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishApp } from '@/hooks/usePublishApp';
-import { useResponsive } from '@/hooks/useResponsive';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
@@ -31,7 +31,7 @@ import { hasBeenPublished } from '@/utils/site';
 export default function AppPublish({ location }: { location?: string }) {
   const intl = useIntl();
   const t = useTranslations();
-  const { isMobile } = useResponsive();
+  const { isBelowSmBreakpoint } = useBreakpoints();
   const [open, setOpen] = useState(false);
   const [entitlementsPollingFailed, setEntitlementsPollingFailed] = useState(false);
   const pathname = usePathname();
@@ -367,8 +367,8 @@ export default function AppPublish({ location }: { location?: string }) {
             data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
             disabled={isButtonDisabled}
             icon={<CloudUploadIcon />}
-            text={isMobile ? undefined : getPublishButtonText()}
-            aria-label={isMobile ? getPublishButtonText() : undefined}
+            text={isBelowSmBreakpoint ? undefined : getPublishButtonText()}
+            aria-label={isBelowSmBreakpoint ? getPublishButtonText() : undefined}
           />
         </PopoverTrigger>
         <PopoverContent align='end' className='w-[400px] p-3'>
