@@ -26,7 +26,7 @@ describe('DiscordLink', function discordLinkTests() {
       const button = screen.getByRole('button');
       expect(button).toBeInTheDocument();
       // Should not have text visible (icon-only)
-      expect(screen.queryByText('Join our Discord')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_usermenu_discord')).not.toBeInTheDocument();
     });
 
     it('should open Discord link when clicked', async function clickOpensDiscord() {
@@ -56,7 +56,7 @@ describe('DiscordLink', function discordLinkTests() {
       );
 
       // Default message is shown when translation key is not found
-      expect(screen.getByText('Join our Discord')).toBeInTheDocument();
+      expect(screen.getByText('builder_usermenu_discord')).toBeInTheDocument();
     });
 
     it('should open Discord link when clicked', async function clickOpensDiscord() {

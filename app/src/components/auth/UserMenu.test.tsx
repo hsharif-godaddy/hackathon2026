@@ -117,7 +117,7 @@ describe('UserMenu', function userMenuTests() {
 
       await waitFor(function checkDiscord() {
         // Discord uses default fallback text
-        expect(screen.getByText('Join our Discord')).toBeInTheDocument();
+        expect(screen.getByText('builder_usermenu_discord')).toBeInTheDocument();
       });
     });
 

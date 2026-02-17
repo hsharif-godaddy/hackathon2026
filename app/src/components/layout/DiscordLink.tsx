@@ -47,7 +47,7 @@ export default function DiscordLink({ location = 'unknown', variant = DiscordLin
         data-eid={generateClickEID(`${location}.user_menu.discord`)}
       >
         <DiscordIcon className='size-2' />
-        {t('builder_usermenu_discord', undefined, 'Join our Discord')}
+        {t('builder_usermenu_discord')}
       </ShadcnButton>
     );
   }
@@ -62,7 +62,7 @@ export default function DiscordLink({ location = 'unknown', variant = DiscordLin
       onClick={open}
       data-partial='componentAiro'
       data-eid={generateClickEID(`${location}.header.discord`)}
-      aria-label={t('builder_usermenu_discord', undefined, 'Join our Discord')}
+      aria-label={t('builder_usermenu_discord')}
     />
   );
 }

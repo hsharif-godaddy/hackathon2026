@@ -6,22 +6,28 @@ import Box from '@ux/box'
 import Spinner from '@ux/spinner'
 
 import HelpSection from '@/app/components/HelpSection'
+import HeroSection from '@/app/components/HeroSection'
 import InfraSection from '@/app/components/InfraSection'
 import StartSection from '@/app/components/StartSection'
+import { HeroSectionRef } from '@/app/components/types'
+import { SinglePlanUpgradeContainer } from '@/app/develop/components/paywall'
 import { MockLoginDialog } from '@/components/auth/MockLogin'
+import FAQSection from '@/components/layout/FAQSection'
 import FeaturesSection from '@/components/layout/Features'
 import Header from '@/components/layout/Header'
+import PricingSection from '@/components/layout/PricingSection'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { useSafariClass } from '@/hooks/useSafariClass'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { getErrorMessage } from '@/lib/errors'
 import { isFeatureEnabled } from '@/lib/features'
 import { appFetch } from '@/lib/gasket-config'
+import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
-import HeroSection from './components/HeroSection'
-import { HeroSectionRef } from './components/types'
 
 function HomeContent() {
   const t = useTranslations();
@@ -39,6 +45,13 @@ function HomeContent() {
 
   const { isAuthenticated, isAuthDisabled, isLoading: authIsLoading } = useAuthContext()
   const { signIn } = useSsoSignIn();
+  const showUpgradeModal = useDevelopPageStore((state) => state.showUpgradeModal)
+  const upgradeModalSource = useDevelopPageStore((state) => state.upgradeModalSource)
+  const upgradeModalItc = useDevelopPageStore((state) => state.upgradeModalItc)
+  const closeUpgradeModal = useDevelopPageStore((state) => state.closeUpgradeModal)
+
+  const { data: isPricingSectionEnabled } = useSwitchboard('appbuilder-homepage-pricing');
+  const { data: isFAQSectionEnabled } = useSwitchboard('appbuilder-homepage-faq');
 
   useSafariClass()
 
@@ -242,13 +255,15 @@ function HomeContent() {
   }
 
   return (
+    <>
       <div className="relative w-full overflow-hidden bg-gradient bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
-        <div className="w-full h-full relative z-10">
+        <div className="w-full h-full relative">
           <Header
-            className="absolute top-0 left-0 w-full border-0! z-20"
+            className="absolute top-0 left-0 w-full border-0!"
             onShowMockLogin={() => setShowMockLogin(true)}
             location='homepage'
           />
+
           <HeroSection
             ref={heroSectionRef}
             promptText={promptText}
@@ -260,55 +275,85 @@ function HomeContent() {
             onExampleClick={handleExampleClick}
           />
 
-        <InfraSection />
+          <InfraSection />
 
-        <FeaturesSection
-          features={[
-            {
-              title: t('builder_homepage_feature_prograde_title'),
-              description: t('builder_homepage_feature_prograde_description'),
-            },
-            {
-              title: t('builder_homepage_feature_security_title'),
-              description: t('builder_homepage_feature_security_description'),
-            },
-            {
-              title: t('builder_homepage_feature_future_title'),
-              description: t('builder_homepage_feature_future_description'),
-            }
-          ]}
-        />
+          <FeaturesSection
+            features={[
+              {
+                title: t('builder_homepage_feature_prograde_title'),
+                description: t('builder_homepage_feature_prograde_description'),
+              },
+              {
+                title: t('builder_homepage_feature_security_title'),
+                description: t('builder_homepage_feature_security_description'),
+              },
+              {
+                title: t('builder_homepage_feature_future_title'),
+                description: t('builder_homepage_feature_future_description'),
+              }
+            ]}
+          />
 
           <StartSection />
 
-        <FeaturesSection
-          features={[
-            {
-              title: t('builder_homepage_feature_idea_title'),
-              description: t('builder_homepage_feature_idea_description'),
-            },
-            {
-              title: t('builder_homepage_feature_editing_title'),
-              description: t('builder_homepage_feature_editing_description'),
-            },
-            {
-              title: t('builder_homepage_feature_publish_title'),
-              description: t('builder_homepage_feature_publish_description'),
-            }
-          ]}
-        />
+          <FeaturesSection
+            features={[
+              {
+                title: t('builder_homepage_feature_idea_title'),
+                description: t('builder_homepage_feature_idea_description'),
+              },
+              {
+                title: t('builder_homepage_feature_editing_title'),
+                description: t('builder_homepage_feature_editing_description'),
+              },
+              {
+                title: t('builder_homepage_feature_publish_title'),
+                description: t('builder_homepage_feature_publish_description'),
+              }
+            ]}
+          />
 
-        <HelpSection />
+          {isPricingSectionEnabled && (
+            <PricingSection />
+          )}
 
-        {/* Mock Login Modal - available throughout the entire page */}
-      {isFeatureEnabled.mockLogin() && (
-        <MockLoginDialog
-          isOpen={showMockLogin}
-          onClose={() => setShowMockLogin(false)}
+          {isFAQSectionEnabled && (
+            <FAQSection />
+          )}
+
+          <HelpSection />
+
+          {/* Mock Login Modal - available throughout the entire page */}
+          {isFeatureEnabled.mockLogin() && (
+            <MockLoginDialog
+              isOpen={showMockLogin}
+              onClose={() => setShowMockLogin(false)}
+            />
+          )}
+
+        </div>
+      </div>
+
+      {showUpgradeModal && (
+        <SinglePlanUpgradeContainer
+          source={upgradeModalSource ?? 'unknown'}
+          itc={upgradeModalItc ?? undefined}
+          onSuccessClick={() => {
+            closeUpgradeModal()
+          }}
+          onClose={() => {
+            const source = upgradeModalSource ?? 'unknown'
+            closeUpgradeModal()
+            shipAnalyticsLog(`${source}.dismissed`, {})
+          }}
+          onErrorClick={() => {
+            const source = upgradeModalSource ?? 'unknown'
+            closeUpgradeModal()
+            shipAnalyticsLog(`${source}.error`, {})
+          }}
         />
       )}
-      </div>
-    </div>
+    </>
   )
 }
 
