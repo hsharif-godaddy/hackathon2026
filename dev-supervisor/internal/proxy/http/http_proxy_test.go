@@ -2275,7 +2275,7 @@ func TestHTTPProxy_ImageSlotRoute(t *testing.T) {
 
 	// Add image slot handler
 	cache := NewManifestCache(manifestPath)
-	mux.Handle("/airo-assets/images/", NewImageSlotHandler(cache))
+	mux.Handle("/airo-assets/images/", NewImageSlotHandler(cache, tmpDir))
 
 	// Add health check
 	mux.HandleFunc("/airo/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -2306,7 +2306,7 @@ func TestHTTPProxy_ImageSlotRoute_NoManifest(t *testing.T) {
 	mux := http.NewServeMux()
 
 	cache := NewManifestCache(filepath.Join(tmpDir, "airo-media.json"))
-	mux.Handle("/airo-assets/images/", NewImageSlotHandler(cache))
+	mux.Handle("/airo-assets/images/", NewImageSlotHandler(cache, tmpDir))
 
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/home/hero", nil)
 	rec := httptest.NewRecorder()

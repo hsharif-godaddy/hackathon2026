@@ -297,6 +297,108 @@ export class MediaManifestService {
   }
 
   /**
+   * Update a slot with an uploaded image URL
+   * The uploaded URL becomes current, old current moves to alternatives
+   */
+  async updateSlotWithUpload(
+    appId: string,
+    slotName: string,
+    uploadedUrl: string
+  ): Promise<ManifestOperationResult> {
+    const app = this.appRepository.findById(appId);
+    if (!app) {
+      return {
+        success: false,
+        error: `App not found: ${appId}`,
+      };
+    }
+
+    const logContext = { appId, slotName, uploadedUrl };
+    logger.info('media_manifest.upload_slot.begin', logContext);
+
+    const releaseLock = await acquireLock(appId);
+
+    try {
+      const manifestPath = this.getManifestPath(app.path);
+
+      // Read current manifest
+      let manifest: MediaManifest = {};
+      try {
+        const content = await fs.readFile(manifestPath, 'utf-8');
+        manifest = JSON.parse(content);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          logger.warn('media_manifest.upload_slot.read_error', {
+            ...logContext,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        manifest = {};
+      }
+
+      // Get existing slot
+      const existingSlot = manifest[slotName];
+      if (!existingSlot) {
+        return {
+          success: false,
+          error: `Slot not found: ${slotName}`,
+        };
+      }
+
+      // Move current URL to alternatives (if it's not already the uploaded URL)
+      const newAlternatives =
+        existingSlot.currentUrl !== uploadedUrl
+          ? [existingSlot.currentUrl, ...existingSlot.alternatives]
+          : existingSlot.alternatives;
+
+      // Update slot with uploaded URL as current
+      const updatedSlot: MediaSlot = {
+        ...existingSlot,
+        currentUrl: uploadedUrl,
+        alternatives: newAlternatives,
+        userModified: true,
+        lastUpdated: new Date().toISOString(),
+      };
+
+      manifest[slotName] = updatedSlot;
+
+      // Write atomically
+      const tempPath = `${manifestPath}.tmp`;
+      const content = JSON.stringify(manifest, null, 2);
+      await fs.writeFile(tempPath, content, 'utf-8');
+      await fs.rename(tempPath, manifestPath);
+
+      // Commit to git (including the uploaded media file)
+      let commitHash: string | undefined;
+      try {
+        // Extract filename from uploadedUrl (e.g., "/airo-assets/uploads/image.jpg" -> "image.jpg")
+        const uploadedFilename = uploadedUrl.replace('/airo-assets/uploads/', '');
+        const mediaFilePath = path.join('public', 'media', uploadedFilename);
+        commitHash = await this.commitManifestChange(appId, slotName, 'update', [mediaFilePath]);
+      } catch (gitError) {
+        logger.warn('media_manifest.upload_slot.git_commit_failed', {
+          ...logContext,
+          error: gitError instanceof Error ? gitError.message : String(gitError),
+        });
+      }
+
+      logger.info('media_manifest.upload_slot.success', {
+        ...logContext,
+        commitHash,
+      });
+
+      return {
+        success: true,
+        slot: updatedSlot,
+        manifest,
+        commitHash,
+      };
+    } finally {
+      releaseLock();
+    }
+  }
+
+  /**
    * Create or update a slot (used by the media slot tool during selection)
    */
   async setSlot(
@@ -389,11 +491,13 @@ export class MediaManifestService {
 
   /**
    * Commit manifest changes to git
+   * @param additionalFiles - Optional array of additional files to stage (relative to app.path)
    */
   private async commitManifestChange(
     appId: string,
     slotName: string,
-    operation: 'create' | 'update' | 'delete'
+    operation: 'create' | 'update' | 'delete',
+    additionalFiles?: string[]
   ): Promise<string | undefined> {
     try {
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
@@ -408,8 +512,9 @@ export class MediaManifestService {
         return undefined;
       }
 
-      // Stage the manifest file
-      const addResult = await gitUtils.addFiles(app.path, [MANIFEST_FILENAME]);
+      // Stage the manifest file and any additional files
+      const filesToStage = [MANIFEST_FILENAME, ...(additionalFiles || [])];
+      const addResult = await gitUtils.addFiles(app.path, filesToStage);
       if (!addResult.success) {
         logger.warn('media_manifest.git_commit.add_failed', {
           appId,

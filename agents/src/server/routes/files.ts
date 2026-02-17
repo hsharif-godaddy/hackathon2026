@@ -142,6 +142,43 @@ router.post('/upload', uploadRateLimiter, upload.array('files', 5), validateAppO
   }
 })
 
+// List all uploaded files for an app
+// NOTE: Must be defined BEFORE /:appId/:uploadId to avoid route shadowing
+router.get('/:appId/list', validateAppIdParam, async (req: Request, res: Response) => {
+  try {
+    const { appId } = req.params
+
+    if (!appId) {
+      return res.status(400).json({
+        error: 'appId is required'
+      })
+    }
+
+    const contextLogger = log.forApp(appId)
+
+    const files = await fileUploadService.listUploadedFiles(appId)
+
+    contextLogger.debug('file-upload.list.success', {
+      message: 'Listed uploaded files',
+      fileCount: files.length
+    })
+
+    return res.status(200).json({ files })
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const contextLogger = req.params.appId ? log.forApp(req.params.appId) : logger
+
+    contextLogger.error('file-upload.list.failed', {
+      message: 'Failed to list uploads',
+      error: errorMessage
+    })
+
+    return res.status(500).json({
+      error: 'Internal server error'
+    })
+  }
+})
+
 // SECURITY: Apply ownership validation to get/delete routes (params.appId)
 router.get('/:appId/:uploadId', validateAppIdParam, async (req: Request, res: Response) => {
   try {

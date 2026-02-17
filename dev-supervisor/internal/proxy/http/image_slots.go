@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -118,9 +121,11 @@ type mediaSlotHandler struct {
 	prefix       string
 	allowedHosts map[string]struct{}
 	mediaType    string // "image" or "video" for logging
+	appRoot      string // app root directory for serving local uploads
 }
 
 // serveSlot handles the common logic for serving media slots.
+// Supports optional ?src= query parameter to serve a specific URL from the slot's alternatives.
 func (h *mediaSlotHandler) serveSlot(w http.ResponseWriter, r *http.Request) {
 	// Only GET and HEAD allowed
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -149,24 +154,116 @@ func (h *mediaSlotHandler) serveSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Determine which URL to serve: ?src= parameter or currentUrl
+	targetURL := slot.CurrentURL
+	if srcParam := r.URL.Query().Get("src"); srcParam != "" {
+		// Validate that the requested URL is associated with this slot
+		if !h.isValidSlotURL(slot, srcParam) {
+			slog.Warn(h.mediaType+"_slot.invalid_src_param",
+				"slot", slotPath, "src", srcParam, "reason", "not_in_slot")
+			h.respondError(w, "invalid src parameter", http.StatusBadRequest)
+			return
+		}
+		targetURL = srcParam
+		slog.Debug(h.mediaType+"_slot.using_src_param", "slot", slotPath, "src", srcParam)
+	}
+
+	// Handle local uploads (serve directly instead of redirecting)
+	if strings.HasPrefix(targetURL, "/airo-assets/uploads/") {
+		h.serveLocalUpload(w, r, slotPath, targetURL)
+		return
+	}
+
 	// Validate redirect URL against allowlist to prevent open redirect
 	// Must be HTTPS with a trusted host to prevent javascript:, data:, or other scheme attacks
-	redirectURL, err := url.Parse(slot.CurrentURL)
+	redirectURL, err := url.Parse(targetURL)
 	if err != nil || redirectURL.Scheme != "https" {
 		slog.Error(h.mediaType+"_slot.invalid_redirect_url",
-			"slot", slotPath, "url", slot.CurrentURL, "reason", "invalid_scheme")
+			"slot", slotPath, "url", targetURL, "reason", "invalid_scheme")
 		h.respondError(w, "invalid "+h.mediaType+" URL", http.StatusInternalServerError)
 		return
 	}
 	if _, ok := h.allowedHosts[redirectURL.Host]; !ok {
 		slog.Error(h.mediaType+"_slot.invalid_redirect_url",
-			"slot", slotPath, "url", slot.CurrentURL, "reason", "untrusted_host")
+			"slot", slotPath, "url", targetURL, "reason", "untrusted_host")
 		h.respondError(w, "invalid "+h.mediaType+" URL", http.StatusInternalServerError)
 		return
 	}
 
-	slog.Debug(h.mediaType+"_slot.redirect", "slot", slotPath, "url", slot.CurrentURL)
-	http.Redirect(w, r, slot.CurrentURL, http.StatusFound)
+	slog.Debug(h.mediaType+"_slot.redirect", "slot", slotPath, "url", targetURL)
+	http.Redirect(w, r, targetURL, http.StatusFound)
+}
+
+// isValidSlotURL checks if the given URL is associated with the slot (currentUrl or in alternatives).
+func (h *mediaSlotHandler) isValidSlotURL(slot *ImageSlot, targetURL string) bool {
+	// Check if it matches currentUrl or is in alternatives
+	return slot.CurrentURL == targetURL || slices.Contains(slot.Alternatives, targetURL)
+}
+
+// serveLocalUpload serves an uploaded file from the local filesystem.
+func (h *mediaSlotHandler) serveLocalUpload(w http.ResponseWriter, r *http.Request, slotPath, uploadURL string) {
+	// Extract filename from /airo-assets/uploads/filename.jpg
+	filename := strings.TrimPrefix(uploadURL, "/airo-assets/uploads/")
+	if filename == "" || filename == uploadURL {
+		slog.Error(h.mediaType+"_slot.invalid_upload_url", "slot", slotPath, "url", uploadURL)
+		h.respondError(w, "invalid upload URL", http.StatusInternalServerError)
+		return
+	}
+
+	// Security: Block path traversal attempts
+	if strings.Contains(filename, "..") || strings.Contains(filename, "/") {
+		slog.Warn(h.mediaType+"_slot.path_traversal_attempt", "slot", slotPath, "filename", filename)
+		h.respondError(w, "invalid filename", http.StatusBadRequest)
+		return
+	}
+
+	// Build full path to file
+	filePath := filepath.Join(h.appRoot, "public", "media", filename)
+
+	// Clean the path and verify it's still under media directory
+	cleanPath := filepath.Clean(filePath)
+	mediaDir := filepath.Join(h.appRoot, "public", "media")
+	if !strings.HasPrefix(cleanPath, mediaDir+string(filepath.Separator)) {
+		slog.Warn(h.mediaType+"_slot.path_escape_attempt", "slot", slotPath, "resolved", cleanPath)
+		h.respondError(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	// Check if file exists
+	info, err := os.Stat(cleanPath)
+	if os.IsNotExist(err) {
+		slog.Debug(h.mediaType+"_slot.upload_not_found", "slot", slotPath, "path", cleanPath)
+		h.respondError(w, "file not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		slog.Error(h.mediaType+"_slot.stat_error", "slot", slotPath, "path", cleanPath, "error", err.Error())
+		h.respondError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// Don't serve directories
+	if info.IsDir() {
+		h.respondError(w, "not a file", http.StatusBadRequest)
+		return
+	}
+
+	// Determine content type from extension
+	ext := filepath.Ext(filename)
+	contentType := mime.TypeByExtension(ext)
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	// Set cache headers (1 year, immutable since filename includes hash)
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+
+	slog.Debug(h.mediaType+"_slot.serve_upload", "slot", slotPath, "path", cleanPath, "content_type", contentType)
+
+	// Serve the file
+	http.ServeFile(w, r, cleanPath)
 }
 
 // respondError writes a JSON error response using proper JSON encoding.
@@ -192,14 +289,15 @@ type ImageSlotHandler struct {
 	mediaSlotHandler
 }
 
-// NewImageSlotHandler creates a new handler with the given manifest cache.
-func NewImageSlotHandler(cache *ManifestCache) *ImageSlotHandler {
+// NewImageSlotHandler creates a new handler with the given manifest cache and app root.
+func NewImageSlotHandler(cache *ManifestCache, appRoot string) *ImageSlotHandler {
 	return &ImageSlotHandler{
 		mediaSlotHandler: mediaSlotHandler{
 			cache:        cache,
 			prefix:       imageSlotPrefix,
 			allowedHosts: allowedImageRedirectHosts,
 			mediaType:    "image",
+			appRoot:      appRoot,
 		},
 	}
 }
@@ -227,14 +325,15 @@ type VideoSlotHandler struct {
 	mediaSlotHandler
 }
 
-// NewVideoSlotHandler creates a new handler with the given manifest cache.
-func NewVideoSlotHandler(cache *ManifestCache) *VideoSlotHandler {
+// NewVideoSlotHandler creates a new handler with the given manifest cache and app root.
+func NewVideoSlotHandler(cache *ManifestCache, appRoot string) *VideoSlotHandler {
 	return &VideoSlotHandler{
 		mediaSlotHandler: mediaSlotHandler{
 			cache:        cache,
 			prefix:       videoSlotPrefix,
 			allowedHosts: allowedVideoRedirectHosts,
 			mediaType:    "video",
+			appRoot:      appRoot,
 		},
 	}
 }

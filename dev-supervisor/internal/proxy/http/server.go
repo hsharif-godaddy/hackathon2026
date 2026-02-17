@@ -139,9 +139,16 @@ func (p *HTTPProxy) Start() error {
 	}
 	manifestPath := filepath.Join(appDir, "airo-media.json")
 	mediaSlotCache := NewManifestCache(manifestPath)
-	mux.Handle("/airo-assets/images/", NewImageSlotHandler(mediaSlotCache))
-	mux.Handle("/airo-assets/videos/", NewVideoSlotHandler(mediaSlotCache))
+	mux.Handle("/airo-assets/images/", NewImageSlotHandler(mediaSlotCache, appDir))
+	mux.Handle("/airo-assets/videos/", NewVideoSlotHandler(mediaSlotCache, appDir))
 	slog.Debug("media_slot.handlers_registered", "manifest_path", manifestPath)
+
+	// Add uploaded media handler (serves files from /public/media/)
+	uploadedMediaHandler := NewUploadedMediaHandler(appDir)
+	mux.Handle(uploadedMediaPrefix, uploadedMediaHandler)
+	slog.Debug("uploaded_media.handler_registered",
+		"prefix", uploadedMediaPrefix,
+		"app_root", appDir)
 
 	// Add catch-all for /airo/* that returns 404 for unmatched paths
 	// This MUST come after specific /airo/* handlers but before the / catch-all

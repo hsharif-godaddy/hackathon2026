@@ -1,7 +1,7 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw, Upload } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Button from '@ux/button'
@@ -13,7 +13,9 @@ import { useMediaSlot } from '@/hooks/useMediaSlot'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { logger } from '@/lib/request-context'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
+import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { postMessageToIframe } from '@/utils/postMessage'
+import { UploadedImagesSection } from './UploadedImagesSection'
 
 /**
  * Format slot name for display
@@ -31,22 +33,32 @@ function formatSlotName(slot: string): string {
 }
 
 /**
- * Ensure URLs have proper protocol
- * Handles http/https URLs, protocol-relative URLs, and other URI schemes
+ * Constructs a URL for loading an image through the media slot proxy.
+ * Uses the /airo-assets/images/{slotName}?src={url} endpoint which:
+ * - Validates the URL is associated with the slot (currentUrl or in alternatives)
+ * - Handles both external URLs (redirect) and local uploads (serve directly)
+ * - Is excluded from JWT auth so <img> tags can load without Authorization headers
+ *
+ * @param slotName - The slot name (e.g., "pages/home/hero")
+ * @param imageUrl - The image URL to serve (currentUrl or alternative)
+ * @param previewBaseUrl - The preview site URL where dev-supervisor proxy runs
  */
-function ensureHttps(url: string): string {
-  if (!url) return url
-  // Already has a URI scheme (http:, https:, data:, blob:, etc.)
-  if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(url)) {
-    return url
+function getSlotImageUrl(
+  slotName: string | null,
+  imageUrl: string,
+  previewBaseUrl: string | null
+): string {
+  if (!imageUrl || !slotName || !previewBaseUrl) {
+    return imageUrl || ''
   }
-  // Protocol-relative URL (//example.com)
-  if (url.startsWith('//')) {
-    return `https:${url}`
-  }
-  // No scheme - add https://
-  return `https://${url}`
+  // Use the proxy endpoint with src parameter
+  const encodedSrc = encodeURIComponent(imageUrl)
+  return `${previewBaseUrl}/airo-assets/images/${slotName}?src=${encodedSrc}`
 }
+
+// Upload validation constants
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
 /**
  * MediaSlotDialog - Standalone dialog for browsing and swapping media slot images
@@ -71,8 +83,16 @@ export function MediaSlotDialog() {
   const [modalStyle, setModalStyle] = useState<React.CSSProperties>({})
   const [imageHeight, setImageHeight] = useState(120)
   const [isMobileLayout, setIsMobileLayout] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const modalRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Get preview URL from server polling store (where dev-supervisor proxy runs)
+  const getServerState = useServerPollingStore((state) => state.getServerState)
+  const serverState = appId ? getServerState(appId) : null
+  const previewBaseUrl = serverState?.url || null
 
   // Reset selection when slot changes
   useEffect(() => {
@@ -241,6 +261,182 @@ export function MediaSlotDialog() {
     }
   }, [appId, slotName, slot, selectedImageIndex, closeDialog])
 
+  const handleFileSelect = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      if (!file) return
+
+      // Guard against null appId/slotName (should not happen in practice)
+      if (!appId || !slotName) {
+        setUploadError('Missing app or slot context')
+        return
+      }
+
+      // Reset input for re-selection
+      event.target.value = ''
+
+      // Client-side validation
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        setUploadError('Only JPEG, PNG, WebP, and GIF images are supported')
+        return
+      }
+
+      if (file.size > MAX_FILE_SIZE) {
+        setUploadError('Image exceeds 10MB limit')
+        return
+      }
+
+      setUploadError(null)
+      setIsUploading(true)
+
+      try {
+        const tokenResult = await regenerateToken({ siteId: appId, force: true })
+        const apiConfig = await dynamicApiConfigService.getConfigForSite(appId)
+
+        if (!apiConfig.agentUrl) {
+          throw new Error('Agent URL not available')
+        }
+
+        const formData = new FormData()
+        formData.append('image', file)
+
+        const response = await fetch(
+          `${apiConfig.agentUrl}/media/${appId}/slots/${slotName}/upload`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${tokenResult.token}`,
+            },
+            body: formData,
+          }
+        )
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Upload failed' }))
+          throw new Error(errorData.error || `Upload failed: ${response.status}`)
+        }
+
+        const result = await response.json()
+
+        logger.info('media_slot_dialog.upload_success', {
+          appId,
+          slotName,
+          uploadedUrl: result.uploadedUrl,
+        })
+
+        // Reload the slot in the preview iframe
+        const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+        if (iframe) {
+          postMessageToIframe(iframe, {
+            type: 'RELOAD_MEDIA_SLOT',
+            slotPath: slotName,
+          })
+        }
+
+        // Close dialog on success (slot data will refresh when reopened)
+        closeDialog()
+      } catch (error) {
+        logger.error('media_slot_dialog.upload_failed', {
+          appId,
+          slotName,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        setUploadError(error instanceof Error ? error.message : 'Upload failed')
+      } finally {
+        setIsUploading(false)
+      }
+    },
+    [appId, slotName, closeDialog]
+  )
+
+  const handleSelectFromUploads = useCallback(
+    async (file: { filename: string }) => {
+      if (!appId || !slotName) return
+
+      setIsUploading(true)
+      setUploadError(null)
+
+      try {
+        const tokenResult = await regenerateToken({ siteId: appId, force: true })
+        const apiConfig = await dynamicApiConfigService.getConfigForSite(appId)
+
+        if (!apiConfig.agentUrl) {
+          throw new Error('Agent URL not available')
+        }
+
+        // Get base agent URL (remove app-specific path if present)
+        const baseAgentUrl = apiConfig.agentUrl.replace(`/apps/${appId}`, '')
+
+        // Fetch the file from uploads
+        const fileResponse = await fetch(
+          `${baseAgentUrl}/files/uploads/${appId}/${file.filename}`,
+          {
+            headers: {
+              Authorization: `Bearer ${tokenResult.token}`,
+            },
+          }
+        )
+
+        if (!fileResponse.ok) {
+          throw new Error('Failed to fetch uploaded file')
+        }
+
+        const blob = await fileResponse.blob()
+        const formData = new FormData()
+        formData.append('image', blob, file.filename)
+
+        // Upload to media slot
+        const uploadResponse = await fetch(
+          `${apiConfig.agentUrl}/media/${appId}/slots/${slotName}/upload`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${tokenResult.token}`,
+            },
+            body: formData,
+          }
+        )
+
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse
+            .json()
+            .catch(() => ({ error: 'Upload failed' }))
+          throw new Error(errorData.error || 'Upload failed')
+        }
+
+        logger.info('media_slot_dialog.upload_from_chat_success', {
+          appId,
+          slotName,
+          filename: file.filename,
+        })
+
+        // Reload the slot in the preview iframe
+        const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+        if (iframe) {
+          postMessageToIframe(iframe, {
+            type: 'RELOAD_MEDIA_SLOT',
+            slotPath: slotName,
+          })
+        }
+
+        // Close dialog on success
+        closeDialog()
+      } catch (error) {
+        logger.error('media_slot_dialog.upload_from_chat_failed', {
+          appId,
+          slotName,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        setUploadError(
+          error instanceof Error ? error.message : 'Failed to use uploaded image'
+        )
+      } finally {
+        setIsUploading(false)
+      }
+    },
+    [appId, slotName, closeDialog]
+  )
+
   // Build images list
   const allImages = slot ? [slot.currentUrl, ...slot.alternatives] : []
 
@@ -361,7 +557,7 @@ export function MediaSlotDialog() {
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={ensureHttps(allImages[selectedImageIndex] || allImages[0] || '')}
+                          src={getSlotImageUrl(slotName, allImages[selectedImageIndex] || allImages[0] || '', previewBaseUrl)}
                           alt="Selected image"
                           className="max-w-full max-h-full object-contain rounded-lg"
                         />
@@ -388,7 +584,7 @@ export function MediaSlotDialog() {
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
-                                src={ensureHttps(url)}
+                                src={getSlotImageUrl(slotName, url, previewBaseUrl)}
                                 alt={index === 0 ? 'Current' : `Option ${index + 1}`}
                                 className="max-w-full max-h-full object-contain rounded-md"
                               />
@@ -398,17 +594,42 @@ export function MediaSlotDialog() {
                       </div>
                     </div>
 
-                    {/* Bottom action button */}
+                    {/* Chat uploads section */}
+                    {appId && (
+                      <div className="px-4">
+                        <UploadedImagesSection
+                          appId={appId}
+                          onSelectImage={handleSelectFromUploads}
+                          isDisabled={isUploading}
+                        />
+                      </div>
+                    )}
+
+                    {/* Bottom action buttons */}
                     <div className="px-4 pb-4 pt-2 border-t border-intents-ux-boxLowContrast-backgroundColor">
-                      <Button
-                        onClick={handleSwapImage}
-                        design="primary"
-                        icon={<RefreshCw className={`w-4 h-4 ${isSwapping ? 'animate-spin' : ''}`} />}
-                        disabled={selectedImageIndex === 0 || isSwapping}
-                        className="w-full"
-                      >
-                        {isSwapping ? 'Swapping...' : 'Use this image'}
-                      </Button>
+                      {uploadError && (
+                        <p className="text-sm text-intents-ux-error-textColor mb-2">{uploadError}</p>
+                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={() => fileInputRef.current?.click()}
+                          design="secondary"
+                          icon={<Upload className={`w-4 h-4 ${isUploading ? 'animate-pulse' : ''}`} />}
+                          disabled={isUploading}
+                          className="flex-1"
+                        >
+                          {isUploading ? 'Uploading...' : 'Upload'}
+                        </Button>
+                        <Button
+                          onClick={handleSwapImage}
+                          design="primary"
+                          icon={<RefreshCw className={`w-4 h-4 ${isSwapping ? 'animate-spin' : ''}`} />}
+                          disabled={selectedImageIndex === 0 || isSwapping}
+                          className="flex-1"
+                        >
+                          {isSwapping ? 'Swapping...' : 'Use this image'}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -449,16 +670,28 @@ export function MediaSlotDialog() {
                           </p>
                         )}
                       </div>
-                      <Button
-                        onClick={handleSwapImage}
-                        design="primary"
-                        icon={<RefreshCw className={`w-4 h-4 ${isSwapping ? 'animate-spin' : ''}`} />}
-                        disabled={selectedImageIndex === 0 || isSwapping}
-                        className="flex-shrink-0 ml-4"
-                      >
-                        {isSwapping ? 'Swapping...' : 'Use this image'}
-                      </Button>
+                      <div className="flex gap-2 flex-shrink-0 ml-4">
+                        <Button
+                          onClick={() => fileInputRef.current?.click()}
+                          design="secondary"
+                          icon={<Upload className={`w-4 h-4 ${isUploading ? 'animate-pulse' : ''}`} />}
+                          disabled={isUploading}
+                        >
+                          {isUploading ? 'Uploading...' : 'Upload'}
+                        </Button>
+                        <Button
+                          onClick={handleSwapImage}
+                          design="primary"
+                          icon={<RefreshCw className={`w-4 h-4 ${isSwapping ? 'animate-spin' : ''}`} />}
+                          disabled={selectedImageIndex === 0 || isSwapping}
+                        >
+                          {isSwapping ? 'Swapping...' : 'Use this image'}
+                        </Button>
+                      </div>
                     </div>
+                    {uploadError && (
+                      <p className="text-sm text-intents-ux-error-textColor mb-4">{uploadError}</p>
+                    )}
 
                     {/* Images */}
                     <div className="flex gap-3">
@@ -478,7 +711,7 @@ export function MediaSlotDialog() {
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={ensureHttps(allImages[0] || '')}
+                            src={getSlotImageUrl(slotName, allImages[0] || '', previewBaseUrl)}
                             alt="Current selection"
                             className="max-w-full max-h-full object-contain rounded-md"
                           />
@@ -507,7 +740,7 @@ export function MediaSlotDialog() {
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
-                                src={ensureHttps(url)}
+                                src={getSlotImageUrl(slotName, url, previewBaseUrl)}
                                 alt={`Option ${actualIndex + 1}`}
                                 className="max-w-full max-h-full object-contain rounded-md"
                               />
@@ -516,6 +749,15 @@ export function MediaSlotDialog() {
                         })}
                       </div>
                     </div>
+
+                    {/* Chat uploads section */}
+                    {appId && (
+                      <UploadedImagesSection
+                        appId={appId}
+                        onSelectImage={handleSelectFromUploads}
+                        isDisabled={isUploading}
+                      />
+                    )}
                   </Card>
                 )
               ) : (
@@ -532,5 +774,18 @@ export function MediaSlotDialog() {
     </AnimatePresence>
   )
 
-  return createPortal(modalContent, document.body)
+  return createPortal(
+    <>
+      {modalContent}
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        onChange={handleFileSelect}
+        style={{ display: 'none' }}
+        aria-hidden="true"
+      />
+    </>,
+    document.body
+  )
 }

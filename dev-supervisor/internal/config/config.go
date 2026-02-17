@@ -108,16 +108,19 @@ func LoadConfig() *Config {
 	// Parse excluded paths (comma-separated)
 	config.JWTExcludedPaths = parseJWTExcludedPaths()
 
-	// Add /airo/health and /airo/canary_checks to excluded paths when proxy mode is enabled
-	// These endpoints are used for deployment health checks and must be unauthenticated
+	// Add system paths to excluded paths when proxy mode is enabled
+	// These endpoints must be unauthenticated for various reasons
 	if config.ProxyEnabled {
-		// Check if /airo/health is already excluded
+		// Health check endpoints - used for deployment health checks
 		if !slices.Contains(config.JWTExcludedPaths, "/airo/health") {
 			config.JWTExcludedPaths = append(config.JWTExcludedPaths, "/airo/health")
 		}
-		// Check if /airo/canary_checks is already excluded
 		if !slices.Contains(config.JWTExcludedPaths, "/airo/canary_checks") {
 			config.JWTExcludedPaths = append(config.JWTExcludedPaths, "/airo/canary_checks")
+		}
+		// Media asset endpoints - must be unauthenticated because <img>/<video> tags cannot send Authorization headers
+		if !slices.Contains(config.JWTExcludedPaths, "/airo-assets/") {
+			config.JWTExcludedPaths = append(config.JWTExcludedPaths, "/airo-assets/")
 		}
 	}
 
