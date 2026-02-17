@@ -29,6 +29,35 @@ import { postMessageToIframe } from '@/utils/postMessage'
 const REFRESH_DEBOUNCE_MS = 500 // Debounce rapid refresh requests
 const STATE_RESTORE_FALLBACK_MS = 3000 // Fallback timeout if iframe doesn't send ready signal
 
+/**
+ * Restore iframe state (URL and scroll position) via postMessage.
+ * The preview iframe is always cross-origin, so direct contentWindow access is not possible.
+ *
+ * @param iframe - The iframe element to restore state on
+ * @param state - The state to restore containing url and scrollPosition
+ */
+export function restoreIframeState(
+  iframe: HTMLIFrameElement,
+  state: { url?: string; scrollPosition?: { x: number; y: number } }
+) {
+  if (!state.url && !state.scrollPosition) {
+    return
+  }
+
+  try {
+    postMessageToIframe(iframe, {
+      type: 'RESTORE_STATE_AFTER_REFRESH',
+      url: state.url,
+      scrollPosition: state.scrollPosition
+    })
+  } catch (error) {
+    logger.error('preview-pane.state-restore.failure', {
+      message: 'Failed to restore state',
+      error: error instanceof Error ? error.message : String(error)
+    })
+  }
+}
+
 interface PreviewPaneProps {
   onPreviewRefresh: () => void
   isMobile?: boolean
@@ -288,29 +317,7 @@ export default function PreviewPane({
       return
     }
 
-    try {
-      // Try to access iframe content and restore scroll position
-      const contentWindow = iframeRef.current.contentWindow
-
-      if (contentWindow && pendingStateRestore.scrollPosition) {
-        contentWindow.scrollTo(
-          pendingStateRestore.scrollPosition.x,
-          pendingStateRestore.scrollPosition.y
-        )
-      }
-    } catch (error) {
-      // If direct access fails (cross-origin), try postMessage as fallback
-      try {
-        const restoreMessage = {
-          type: 'RESTORE_STATE_AFTER_REFRESH',
-          url: pendingStateRestore.url,
-          scrollPosition: pendingStateRestore.scrollPosition
-        }
-        postMessageToIframe(iframeRef.current, restoreMessage)
-      } catch (postMessageError) {
-        logger.error('preview-pane.state-restore.failure', { message: 'Failed to restore state', error: postMessageError instanceof Error ? postMessageError.message : String(postMessageError) })
-      }
-    }
+    restoreIframeState(iframeRef.current, pendingStateRestore)
 
     // Clear pending state and waiting flag
     setPendingStateRestore(null)
@@ -355,25 +362,11 @@ export default function PreviewPane({
           if (iframeRef.current) {
             iframeRef.current.src = iframeRef.current.src
 
-            // If we have scroll position to restore, do it after iframe loads
-            if (event.data.preserveState?.scrollPosition) {
+            // If we have state to restore, do it after iframe loads
+            if (event.data.preserveState) {
               scrollRestoreTimerRef.current = setTimeout(() => {
-                try {
-                  const contentWindow = iframeRef.current?.contentWindow
-                  if (contentWindow) {
-                    contentWindow.scrollTo(
-                      event.data.preserveState.scrollPosition.x,
-                      event.data.preserveState.scrollPosition.y
-                    )
-                  }
-                } catch (error) {
-                  // Cross-origin, try postMessage
-                  if (iframeRef.current) {
-                    postMessageToIframe(iframeRef.current, {
-                      type: 'RESTORE_STATE_AFTER_REFRESH',
-                      scrollPosition: event.data.preserveState.scrollPosition
-                    })
-                  }
+                if (iframeRef.current) {
+                  restoreIframeState(iframeRef.current, event.data.preserveState)
                 }
                 scrollRestoreTimerRef.current = null
               }, 500) // Wait for iframe to load

@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
-import PreviewPane from './PreviewPane';
+import { postMessageToIframe } from '@/utils/postMessage';
+import PreviewPane, { restoreIframeState } from './PreviewPane';
 import { PreviewViewMode, ViewMode } from '../types';
 
 // Mock child components
@@ -203,6 +204,84 @@ describe('PreviewPane', () => {
     await waitFor(() => {
       // The component may show an error or loading state
       expect(mockServerPollingStore.getServerState).toHaveBeenCalled();
+    });
+  });
+});
+
+describe('restoreIframeState', function restoreTests() {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should send postMessage with url and scrollPosition', function postMessageWithBoth() {
+    const mockIframe = {
+      contentWindow: { postMessage: vi.fn() }
+    } as unknown as HTMLIFrameElement;
+
+    restoreIframeState(mockIframe, {
+      url: '/menu',
+      scrollPosition: { x: 0, y: 300 }
+    });
+
+    expect(postMessageToIframe).toHaveBeenCalledWith(mockIframe, {
+      type: 'RESTORE_STATE_AFTER_REFRESH',
+      url: '/menu',
+      scrollPosition: { x: 0, y: 300 }
+    });
+  });
+
+  it('should send postMessage with scrollPosition only when url is absent', function scrollOnly() {
+    const mockIframe = {
+      contentWindow: { postMessage: vi.fn() }
+    } as unknown as HTMLIFrameElement;
+
+    restoreIframeState(mockIframe, { scrollPosition: { x: 10, y: 800 } });
+
+    expect(postMessageToIframe).toHaveBeenCalledWith(mockIframe, {
+      type: 'RESTORE_STATE_AFTER_REFRESH',
+      url: undefined,
+      scrollPosition: { x: 10, y: 800 }
+    });
+  });
+
+  it('should send postMessage with url only when scrollPosition is absent', function urlOnly() {
+    const mockIframe = {
+      contentWindow: { postMessage: vi.fn() }
+    } as unknown as HTMLIFrameElement;
+
+    restoreIframeState(mockIframe, { url: '/about' });
+
+    expect(postMessageToIframe).toHaveBeenCalledWith(mockIframe, {
+      type: 'RESTORE_STATE_AFTER_REFRESH',
+      url: '/about',
+      scrollPosition: undefined
+    });
+  });
+
+  it('should not send postMessage when both url and scrollPosition are absent', function noOpEmptyState() {
+    const mockIframe = {
+      contentWindow: { postMessage: vi.fn() }
+    } as unknown as HTMLIFrameElement;
+
+    restoreIframeState(mockIframe, {});
+
+    expect(postMessageToIframe).not.toHaveBeenCalled();
+  });
+
+  it('should preserve url with query params in postMessage', function queryParams() {
+    const mockIframe = {
+      contentWindow: { postMessage: vi.fn() }
+    } as unknown as HTMLIFrameElement;
+
+    restoreIframeState(mockIframe, {
+      url: '/products?category=bakery&sort=price',
+      scrollPosition: { x: 0, y: 200 }
+    });
+
+    expect(postMessageToIframe).toHaveBeenCalledWith(mockIframe, {
+      type: 'RESTORE_STATE_AFTER_REFRESH',
+      url: '/products?category=bakery&sort=price',
+      scrollPosition: { x: 0, y: 200 }
     });
   });
 });
