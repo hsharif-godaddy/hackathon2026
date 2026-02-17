@@ -245,6 +245,36 @@ bg-primary text-primary-foreground
 
 ### Media (Images & Videos)
 
+**IMPORTANT: Check existing slots first!** Before creating a new slot, check the "EXISTING MEDIA SLOTS" section in the project context. If a slot already exists for the location you're working with, UPDATE that slot instead of creating a new one.
+
+**Slot Naming - Use Semantic, Descriptive Names:**
+
+Slot names should identify the CONTENT, not just the location. This makes it easy to find and update specific images later.
+
+| Scenario                  | Good Name                       | Bad Name             |
+| ------------------------- | ------------------------------- | -------------------- |
+| Menu item (tacos)         | `menu/carne-asada-taco`         | `menu/item-1`        |
+| Menu item (burger)        | `menu/classic-burger`           | `menu/item-2`        |
+| Team member photo         | `team/sarah-chen-founder`       | `team/member-1`      |
+| Product image             | `products/sunrise-blend-coffee` | `products/product-1` |
+| Hero background           | `pages/home/hero`               | `home/image-1`       |
+| Gallery (interchangeable) | `gallery/slide-1`               | `misc/image-1`       |
+
+**Rule:** Only use numbered slots for truly interchangeable items (gallery slides, carousel images). For these, numeric names like `gallery/slide-1` are fine. For distinct items like products, menu items, or team members, use descriptive names based on the item's identity.
+
+**Using existing slots (preferred):**
+
+```typescript
+// When the user wants to change the hero image and "pages/home/hero" already exists
+// DON'T create a new slot - use the existing one with a new search
+media({
+  slot: 'pages/home/hero', // Reuse existing slot name
+  query: 'new search query', // New search terms
+  orientations: 'horizontal',
+  count: 3,
+});
+```
+
 **Default to search** - Use the `media` tool for most image/video requests:
 
 ```typescript
@@ -276,20 +306,34 @@ media({
 });
 ```
 
+**Handling uploaded files:**
+
+When a user uploads an image and wants to use it for a specific location:
+
+1. **If a slot exists for that location**: The UI will handle updating the slot with the uploaded file automatically. You do NOT need to modify any code - just acknowledge the upload was successful.
+
+2. **If no slot exists yet**: First create the slot using the `media` tool with a search query, which registers the slot in the manifest. Once the slot exists, the user can upload/replace the file through the UI. The slot URL pattern (`/airo-assets/images/{slot}`) only works for slots defined in the manifest.
+
 **Decision guide:**
 
-| Need                | Action                                       |
-| ------------------- | -------------------------------------------- |
-| Stock photo search  | `media({ slot: "...", query: "..." })`       |
-| Stock video search  | `media({ ..., mediaType: "video" })`         |
-| Logo generation     | Load `media` skill → `media__generate_logo`  |
-| AI-generated image  | `media({ ..., mediaType: "generate" })`      |
-| Edit existing image | Load `media` skill → `media__edit_image`     |
-| Video generation    | Load `media` skill → `media__generate_video` |
+| Need                  | Action                                       |
+| --------------------- | -------------------------------------------- |
+| Change existing image | Use `media` with the existing slot name      |
+| Stock photo search    | `media({ slot: "...", query: "..." })`       |
+| Stock video search    | `media({ ..., mediaType: "video" })`         |
+| Logo generation       | Load `media` skill → `media__generate_logo`  |
+| AI-generated image    | `media({ ..., mediaType: "generate" })`      |
+| Edit existing image   | Load `media` skill → `media__edit_image`     |
+| Video generation      | Load `media` skill → `media__generate_video` |
+| User uploaded file    | The UI handles slot updates automatically    |
 
 **Filters**: `orientations` (horizontal/vertical/square), `compositions` (close_up/wide_shot/portrait)
 
-**Rule applies to ALL images**: External URLs (Getty, Unsplash), uploaded files, and `/files/uploads/` paths must NEVER appear in source code. Always download/copy to project first, then reference with project-relative paths.
+**Critical rules for media:**
+
+- **Keep HTML `src`/`poster` attributes pointing to slot URLs** (e.g., `/airo-assets/images/{slot}`). Never change them to external/resolved URLs - let the slot system handle URL resolution.
+- **NEVER embed Getty/external URLs directly in code** - always use the slot URL pattern (`/airo-assets/images/{slot}`)
+- **When changing an image, UPDATE the existing slot via the `media` tool** - don't create a new slot or change HTML to a different URL
 
 ### Animations
 

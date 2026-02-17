@@ -6,6 +6,7 @@ import { logger } from '../logging/index.js';
 import { appContextEvents } from '../logging/events/index.js';
 import { SecretsManagementTool } from '../tools/secrets-management-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { mediaManifestService, type MediaSlot } from './MediaManifestService.js';
 
 /**
  * Service for managing app context information that should be injected into LLM conversations
@@ -78,8 +79,17 @@ export class AppContextManager {
       // Get secrets information
       const secretsInfo = await this.getSecretsInfo(appId);
 
+      // Get media slots information
+      const mediaSlotsInfo = await this.getMediaSlotsInfo(appId);
+
       // Format directory listing and package info into context message
-      const formattedContext = this.formatAppContext(directoryListing, packageInfo, colorSchemeInfo, secretsInfo);
+      const formattedContext = this.formatAppContext(
+        directoryListing,
+        packageInfo,
+        colorSchemeInfo,
+        secretsInfo,
+        mediaSlotsInfo
+      );
 
       // Log successful generation
       const generateData: any = {
@@ -322,18 +332,66 @@ export class AppContextManager {
   }
 
   /**
+   * Get media slots information for the app
+   * Returns a map of slot names to their media type for context
+   * @param appId - The app ID
+   * @returns Map of slot names to media types, or null if no slots
+   */
+  private async getMediaSlotsInfo(appId: string): Promise<Map<string, string> | null> {
+    try {
+      const result = await mediaManifestService.getManifest(appId);
+
+      if (!result.success || !result.manifest) {
+        return null;
+      }
+
+      const slots = Object.entries(result.manifest);
+      if (slots.length === 0) {
+        return null;
+      }
+
+      // Return a map of slot name to media type
+      const slotMap = new Map<string, string>();
+      for (const [slotName, slot] of slots) {
+        slotMap.set(slotName, (slot as MediaSlot).mediaType || 'image');
+      }
+
+      logger.debug('app.context.media_slots.success', {
+        appId,
+        slotCount: slotMap.size
+      });
+
+      return slotMap;
+    } catch (error) {
+      logger.warn('app.context.media_slots.failure', {
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
+  }
+
+  /**
    * Format directory listing and package info into a comprehensive context message
    * @param directoryListing - Raw directory listing output
    * @param packageInfo - Package information from package.json
    * @param colorSchemeInfo - Color scheme information from app plan
    * @param secretsInfo - Secrets information from secrets management
+   * @param mediaSlotsInfo - Media slots information from manifest
    * @returns Formatted context message
    */
-  private formatAppContext(directoryListing: string, packageInfo: any, colorSchemeInfo: any, secretsInfo: any): string {
+  private formatAppContext(
+    directoryListing: string,
+    packageInfo: any,
+    colorSchemeInfo: any,
+    secretsInfo: any,
+    mediaSlotsInfo: Map<string, string> | null
+  ): string {
     const directorySection = this.formatDirectorySection(directoryListing);
     const packageSection = this.formatPackageSection(packageInfo);
     const colorSchemeSection = this.formatColorSchemeSection(colorSchemeInfo);
     const secretsSection = this.formatSecretsSection(secretsInfo);
+    const mediaSlotsSection = this.formatMediaSlotsSection(mediaSlotsInfo);
 
     return `[Current Project Context]
 
@@ -343,9 +401,11 @@ ${colorSchemeSection}
 
 ${secretsSection}
 
+${mediaSlotsSection}
+
 ${directorySection}
 
-Note: This is the current project context including dependencies, color scheme, secrets, and directory structure. You don't need to run additional directory listings unless you need to explore specific subdirectories in detail.`;
+Note: This is the current project context including dependencies, color scheme, secrets, media slots, and directory structure. You don't need to run additional directory listings unless you need to explore specific subdirectories in detail.`;
   }
 
   /**
@@ -409,6 +469,32 @@ Note: This is the current project context including dependencies, color scheme, 
     secretsContext += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
 
     return secretsContext;
+  }
+
+  /**
+   * Format media slots information into a compact section
+   * Lists existing slots so the agent knows what's already configured
+   * @param mediaSlotsInfo - Map of slot names to media types, or null
+   * @returns Formatted media slots section
+   */
+  private formatMediaSlotsSection(mediaSlotsInfo: Map<string, string> | null): string {
+    let slotsContext = `\n[Media Slots]\n`;
+    slotsContext += "When changing images/videos, UPDATE existing slots - don't create new ones.\n\n";
+
+    if (!mediaSlotsInfo || mediaSlotsInfo.size === 0) {
+      slotsContext += "No media slots configured yet.\n";
+    } else {
+      slotsContext += `Existing slots (${mediaSlotsInfo.size}):\n`;
+      // Sort slots alphabetically for stable, scannable output
+      const sortedSlots = Array.from(mediaSlotsInfo.entries()).sort(
+        ([aName], [bName]) => aName.localeCompare(bName)
+      );
+      for (const [slotName, mediaType] of sortedSlots) {
+        slotsContext += `  - ${slotName} (${mediaType})\n`;
+      }
+    }
+
+    return slotsContext;
   }
 
   /**

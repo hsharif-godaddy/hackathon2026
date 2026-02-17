@@ -19,7 +19,23 @@ export const mediaSlotAITool: Tool = createTool(
   'Select an image or video for a specific location in the app. Returns a slot URL (like "/airo-assets/images/pages/home/hero") that you should use in the code. The actual image is resolved at runtime, allowing users to easily swap images without code changes. Use descriptive slot names that reflect the image location and purpose.',
   z.object({
     slot: z.string().describe(
-      'Semantic path identifying where this media is used. Use hierarchical naming: "pages/{page}/{section}" or "components/{component}/{element}". Examples: "pages/home/hero", "pages/about/team-photo", "components/footer/logo", "sections/testimonials/background"'
+      `Semantic path identifying this media's PURPOSE and CONTENT. Format: "{location}/{descriptive-name}"
+
+NAMING RULES:
+1. Use DESCRIPTIVE names that identify the CONTENT, not generic numbers
+2. For distinct items (products, team members, menu items): use the item's identity
+   - ✅ "menu/carne-asada-taco", "menu/fish-tacos", "team/john-smith-ceo"
+   - ❌ "menu/item-1", "menu/item-2", "team/member-1"
+3. Only use numbers for truly interchangeable items (gallery images, carousel slides)
+   - ✅ "gallery/slide-1", "testimonials/quote-3" (interchangeable)
+4. Include location prefix: "pages/{page}/", "components/", "products/"
+
+EXAMPLES:
+- Product images: "products/sunrise-blend-coffee", "products/classic-burger"
+- Menu items: "menu/fish-tacos", "menu/veggie-burrito"
+- Team photos: "team/sarah-chen-founder", "team/mike-jones-chef"
+- Hero images: "pages/home/hero", "pages/about/hero"
+- Generic galleries: "pages/home/gallery-1" (ok - interchangeable)`
     ),
     query: z.string().describe(
       'Search terms describing the desired media. Be specific about subject, style, mood. Examples: "modern office team collaboration", "sunset beach vacation", "professional headshot business woman"'
