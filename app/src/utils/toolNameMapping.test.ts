@@ -118,6 +118,15 @@ describe('getToolDisplayName', () => {
       expect(getToolDisplayName('media')).toBe('Media');
     });
 
+    // Legacy mediaSearch tool names (backwards compatibility)
+    it('should map "media_search" to "Media"', () => {
+      expect(getToolDisplayName('media_search')).toBe('Media');
+    });
+
+    it('should map "mediaSearch" to "Media"', () => {
+      expect(getToolDisplayName('mediaSearch')).toBe('Media');
+    });
+
     // Legacy tool names fall through to default formatting
     it('should format "image_search" using default formatting', () => {
       expect(getToolDisplayName('image_search')).toBe('Image Search');
