@@ -84,6 +84,7 @@ describe('mcpCallAction', () => {
           headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json, text/event-stream',
+            'X-App-Key': 'airo-builder',
           },
         })
       )

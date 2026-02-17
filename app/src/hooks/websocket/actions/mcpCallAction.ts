@@ -68,6 +68,7 @@ export const mcpCallAction: ClientActionExecutor = async (params) => {
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json, text/event-stream',
+        'X-App-Key': 'airo-builder',
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
