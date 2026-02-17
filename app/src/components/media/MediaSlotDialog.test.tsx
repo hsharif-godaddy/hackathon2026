@@ -72,6 +72,7 @@ vi.mock('@/config/dynamic-api', () => ({
 }))
 
 // Mock postMessage
+import { postMessageToIframe } from '@/utils/postMessage'
 vi.mock('@/utils/postMessage', () => ({
   postMessageToIframe: vi.fn(),
 }))
@@ -211,6 +212,41 @@ describe('MediaSlotDialog', () => {
     await waitFor(() => {
       expect(mockCloseDialog).toHaveBeenCalled()
     })
+  })
+
+  it('sends RELOAD_MEDIA_SLOT and CLEAR_SELECTION postMessages on successful upload', async () => {
+    // Create a mock iframe element
+    const mockIframe = document.createElement('iframe')
+    mockIframe.id = 'preview-iframe'
+    document.body.appendChild(mockIframe)
+
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, uploadedUrl: 'http://example.com/uploaded.jpg' }),
+    } as Response)
+
+    const { user } = renderWithProviders(<MediaSlotDialog />)
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
+
+    await user.upload(fileInput, file)
+
+    await waitFor(() => {
+      // Verify RELOAD_MEDIA_SLOT is sent
+      expect(postMessageToIframe).toHaveBeenCalledWith(
+        expect.any(HTMLIFrameElement),
+        { type: 'RELOAD_MEDIA_SLOT', slotPath: 'pages/home/hero' }
+      )
+      // Verify CLEAR_SELECTION is sent to dismiss the selection indicator
+      expect(postMessageToIframe).toHaveBeenCalledWith(
+        expect.any(HTMLIFrameElement),
+        { type: 'CLEAR_SELECTION' }
+      )
+    })
+
+    // Cleanup
+    document.body.removeChild(mockIframe)
   })
 
   it('shows error message on upload failure', async () => {

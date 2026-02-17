@@ -324,12 +324,16 @@ export function MediaSlotDialog() {
           uploadedUrl: result.uploadedUrl,
         })
 
-        // Reload the slot in the preview iframe
+        // Reload the slot in the preview iframe and clear selection
         const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
         if (iframe) {
           postMessageToIframe(iframe, {
             type: 'RELOAD_MEDIA_SLOT',
             slotPath: slotName,
+          })
+          // Clear the ElementEditor selection so the overlay goes away
+          postMessageToIframe(iframe, {
+            type: 'CLEAR_SELECTION',
           })
         }
 
@@ -410,12 +414,16 @@ export function MediaSlotDialog() {
           filename: file.filename,
         })
 
-        // Reload the slot in the preview iframe
+        // Reload the slot in the preview iframe and clear selection
         const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
         if (iframe) {
           postMessageToIframe(iframe, {
             type: 'RELOAD_MEDIA_SLOT',
             slotPath: slotName,
+          })
+          // Clear the ElementEditor selection so the overlay goes away
+          postMessageToIframe(iframe, {
+            type: 'CLEAR_SELECTION',
           })
         }
 
