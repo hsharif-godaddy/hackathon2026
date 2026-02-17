@@ -690,7 +690,7 @@ export class DockerContainerManager {
 				try {
 					await execa('docker', ['rmi', containerInfo.imageName]);
 					logger.info('docker.image.remove.success', { imageName: containerInfo.imageName });
-				} catch (imageError) {
+				} catch (error) {
 					logger.info('docker.image.remove.skipped', { imageName: containerInfo.imageName, message: 'Docker image may be in use, skipping removal' });
 				}
 			} else if (containerInfo?.imageName) {
@@ -1048,7 +1048,7 @@ export class DockerContainerManager {
 							logger.warn('docker.recovery.cleanup.failure', { appId: record.appId, error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError), message: 'Failed to clean up stopped compose stack' });
 						}
 					}
-				} catch (inspectError) {
+				} catch (error) {
 					// Compose stack doesn't exist - clean up database record
 					this.removeContainerFromDb(record.appId);
 					cleanedCount++;

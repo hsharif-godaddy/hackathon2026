@@ -63,7 +63,7 @@ export function openMgmtAiroSSOLogin(): Promise<void> {
       try {
         if (popup.closed) {
           clearInterval(pollTimer);
-          
+
           // Check if token was stored
           const token = getMgmtAiroToken();
           if (token) {

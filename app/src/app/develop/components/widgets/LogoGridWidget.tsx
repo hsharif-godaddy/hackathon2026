@@ -34,7 +34,6 @@ export interface LogoData {
  */
 export interface LogoGridWidgetProps {
   logos: LogoData[]
-  businessName?: string
   className?: string
 }
 
@@ -44,7 +43,7 @@ export interface LogoGridWidgetProps {
  * Displays generated logos in a 2x2 grid with selection controls.
  * Users can click to select a logo, then save or request more options.
  */
-export default function LogoGridWidget({ logos, businessName = 'your business', className = '' }: LogoGridWidgetProps) {
+export default function LogoGridWidget({ logos, className = '' }: LogoGridWidgetProps) {
   const t = useTranslations()
   const [selectedLogo, setSelectedLogo] = useState<LogoData | null>(null)
   const sendUserMessage = useSendUserMessage()

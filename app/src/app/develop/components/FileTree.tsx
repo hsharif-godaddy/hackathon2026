@@ -44,8 +44,6 @@ export default function FileTree({ files, selectedFile, onFileSelect, getFileSta
     return PageIcon
   }
 
-  const getDepthPadding = (depth: number) => `${depth * 12 + 8}px`
-
   const sortFileItems = (items: FileItem[]): FileItem[] => {
     return items.sort((a, b) => {
       if (a.type !== b.type) {

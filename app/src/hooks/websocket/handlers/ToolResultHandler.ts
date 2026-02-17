@@ -37,7 +37,7 @@ export class ToolResultHandler implements MessageHandler {
       context.actions.addToolResultSegment(toolCall)
 
       // Track file operations for Code view synchronization
-      await fileOperationHandler.handle(data, context)
+      await fileOperationHandler.handle(data)
 
       // Update persistent todo list if this is a todoList tool
       if (tool.name === 'todoList' && !hasError) {

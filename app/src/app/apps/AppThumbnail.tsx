@@ -57,7 +57,7 @@ export default function AppThumbnail({ siteId, siteName, size }: AppThumbnailPro
         } else {
           setError(true)
         }
-      } catch (err) {
+      } catch (error) {
         if (!isMounted) return
         setError(true)
       } finally {

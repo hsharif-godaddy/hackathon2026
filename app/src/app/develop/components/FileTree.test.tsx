@@ -1,15 +1,11 @@
 import '@testing-library/jest-dom';
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import FileTree from './FileTree';
 
 describe('FileTree', () => {
-  const mockFiles = [
-    { name: 'src', type: 'folder' as const, path: '/src', children: [] }
-  ];
-
   it('should render files in tree view', () => {
     const filesWithContent = [
       {

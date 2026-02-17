@@ -16,7 +16,6 @@ import { ChatTab } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import { useChatTabs } from '@/hooks/useChatTabs'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -73,10 +72,7 @@ export default function ChatPane({
   const toggleExpandedPlan = useDevelopPageStore((state) => state.toggleExpandedPlan)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
   const setIsVersionHistoryOpen = useDevelopPageStore((state) => state.setIsVersionHistoryOpen)
-  const isAssetManagerOpen = useDevelopPageStore((state) => state.isAssetManagerOpen)
-  const setIsAssetManagerOpen = useDevelopPageStore((state) => state.setIsAssetManagerOpen)
   const { activeChatTab, setActiveChatTab } = useChatTabs()
-  const { data: isAssetManagerEnabled } = useSwitchboard('appbuilder-image-manager')
 
   const appId = useAppIdFromParams()
 
@@ -112,7 +108,7 @@ export default function ChatPane({
   const [referencedFiles, setReferencedFiles] = useState<Array<{ path: string; content: string }>>([])
 
   // Pre-fetch ventureId for AssetManager to avoid loading delay
-  const [ventureId, setVentureId] = useState<string | null>(null)
+  const [ventureId, setVentureId] = useState<string | null>(null) // eslint-disable-line @typescript-eslint/no-unused-vars
 
   // Fetch ventureId on component mount
   useEffect(function fetchVentureId() {

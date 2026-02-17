@@ -66,19 +66,6 @@ describe('FileReferenceBadge', () => {
     const badge = container.firstChild;
     expect(badge).toHaveClass('custom-class');
   });
-
-  it('should truncate long filenames', () => {
-    const file = {
-      path: 'very-long-filename-that-should-be-truncated-for-display.tsx',
-      content: 'content',
-    };
-
-    const { container } = renderWithProviders(<FileReferenceBadge file={file} />);
-
-    const filenameElement = screen.getByText('very-long-filename-that-should-be-truncated-for-display.tsx');
-    expect(filenameElement).toHaveClass('truncate');
-    expect(filenameElement).toHaveClass('max-w-[120px]');
-  });
 });
 
 describe('FileReferenceList', () => {

@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react'
 import Box from '@ux/box'
 import AlertIcon from '@ux/icon/alert'
 import Select from '@ux/select'
-import Spinner from '@ux/spinner'
 
 import { SettingsLoadingState } from '@/app/develop/components/settings/components/SettingsLoadingState';
 import { useAppIdFromParams } from '@/app/develop/components/utils'

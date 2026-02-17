@@ -88,12 +88,11 @@ export function QACategoryItem({
       {/* Issues */}
       {isExpanded && (
         <div className="border-t border-intents-ux-boxLowContrast-borderColor">
-          {issues.map((issue, idx) => (
+          {issues.map((issue) => (
             <QAIssueItem
               key={issue.id}
               issue={issue}
               isSelected={selectedIssues.has(issue.id)}
-              isLastItem={idx === issues.length - 1}
               onToggle={onToggleIssue}
             />
           ))}

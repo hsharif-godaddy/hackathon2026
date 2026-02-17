@@ -5,7 +5,6 @@ import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { appFetch } from '@/lib/gasket-config';
 import { regenerateToken } from '@/lib/jwt-regeneration';
 import { logger } from '@/lib/request-context';
-import { appService } from '@/services/AppService';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { useSiteStore } from '@/stores/useSiteStore';

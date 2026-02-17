@@ -3,8 +3,11 @@
   "plugins": ["simple-import-sort"],
   "rules": {
     "@typescript-eslint/no-unused-vars": [
-      "warn",
-      { "argsIgnorePattern": "^_" }
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_|^error$|^e$"
+      }
     ],
     "@next/next/no-assign-module-variable": "warn",
     "@typescript-eslint/no-explicit-any": "off",

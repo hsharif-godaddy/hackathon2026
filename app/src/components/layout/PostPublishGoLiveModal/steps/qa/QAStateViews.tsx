@@ -6,7 +6,6 @@ import Alert from '@ux/alert';
 import AlertIcon from '@ux/icon/alert';
 import OkIcon from '@ux/icon/ok';
 import Spinner from '@ux/spinner';
-import text from '@ux/text';
 import TextLockup from '@ux/text-lockup';
 
 import { useTranslations } from '@/hooks/useTranslations';

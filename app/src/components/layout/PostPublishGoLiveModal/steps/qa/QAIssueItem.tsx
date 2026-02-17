@@ -14,11 +14,10 @@ import { QASeverityIcon } from './QASeverityIcon';
 interface QAIssueItemProps {
   issue: QAIssue;
   isSelected: boolean;
-  isLastItem: boolean;
   onToggle: (issueId: string) => void;
 }
 
-export function QAIssueItem({ issue, isSelected, isLastItem, onToggle }: QAIssueItemProps) {
+export function QAIssueItem({ issue, isSelected, onToggle }: QAIssueItemProps) {
   const t = useTranslations();
   return (
     <div

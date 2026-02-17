@@ -146,7 +146,7 @@ export class DevEnvironmentManager {
         // Allocate supervisor port if using Docker mode
         if (!this.adapter?.getCapabilities().supportsProcessOperations) {
           supervisorPort = await this.portManager.getNextAvailableSupervisorPort();
-          
+
           // Allocate publish supervisor and HTTP ports for V4 unified job architecture
           publishSupervisorPort = await this.portManager.getNextAvailablePublishSupervisorPort();
           publishPort = await this.portManager.getNextAvailablePublishPort();
@@ -1052,7 +1052,7 @@ export class DevEnvironmentManager {
             // Try native fs.rmSync first
             try {
               fs.rmSync(basePath, { recursive: true, force: true });
-            } catch (nativeError) {
+            } catch (error) {
               // Fall back to shell commands for stubborn files
               if (process.platform === 'win32') {
                 await execa('rmdir', ['/s', '/q', basePath], { reject: false });

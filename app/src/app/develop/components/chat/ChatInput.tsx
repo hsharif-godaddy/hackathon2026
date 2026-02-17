@@ -6,7 +6,7 @@ import Button from '@ux/button'
 import MicIcon from '@ux/icon/mic'
 import SendIcon from '@ux/icon/send'
 
-import AssetInline, { AssetInlineList, AssetMode } from '@/app/develop/components/chat/AssetInline'
+import AssetInline, { AssetMode } from '@/app/develop/components/chat/AssetInline'
 import { AssetManagerItem, MediaType } from '@/app/develop/components/chat/AssetTypes'
 import ChatAttachmentMenu, { UploadedFile } from '@/app/develop/components/chat/ChatAttachmentMenu'
 import type { SendMessageOptions } from '@/app/develop/components/chat/ChatContext'
@@ -15,7 +15,6 @@ import type { AiEditContext } from '@/app/develop/components/types'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { generateClickEID } from '@/utils/instrumentation'
 
 interface ChatInputProps {
@@ -63,7 +62,6 @@ export default function ChatInput({
 }: ChatInputProps) {
   const t = useTranslations();
   const { locale } = useIntl();
-  const isMobile = useDevelopPageStore((state) => state.isMobile);
   const { data: isChatGaugeEnabled } = useSwitchboard('appbuilder-chat-gauge');
   const canAddAsset = selectedAssets.length < maxAssets;
 

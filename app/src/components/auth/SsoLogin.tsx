@@ -268,7 +268,7 @@ export default function SsoLogin() {
       message: 'No redirect available, reloading page to pick up new auth cookie',
     });
     window.location.reload();
-  }, [closeSsoLogin, clearRequiresAuth, applyRedirect]);
+  }, [closeSsoLogin, clearRequiresAuth, applyRedirect, isValidRedirectUrl]);
 
   // Don't render if not open
   if (!isSsoLoginOpen) {

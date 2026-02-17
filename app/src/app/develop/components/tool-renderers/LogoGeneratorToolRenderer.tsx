@@ -96,11 +96,6 @@ export default function LogoGeneratorToolRenderer({
   const hasLogos = logoCount > 0
   const hasDetails = hasLogos
 
-  const handleLogoClick = (index: number) => {
-    setSelectedLogoIndex(index)
-    setIsModalOpen(true)
-  }
-
   const handleModalClose = () => {
     setIsModalOpen(false)
   }
@@ -154,7 +149,7 @@ export default function LogoGeneratorToolRenderer({
       {/* Logo selection grid with action buttons */}
       {toolStatus === 'completed' && hasLogos && (
         <div className="mt-2 mb-2">
-          <LogoGridWidget logos={logos} businessName={businessName} />
+          <LogoGridWidget logos={logos} />
         </div>
       )}
 

@@ -7,7 +7,7 @@
 
 import { logger } from '@/lib/request-context'
 import { type FileOperationType, useCodeSyncStore } from '@/stores/useCodeSyncStore'
-import type { MessageContext, MessageHandler, WebSocketMessage } from './types'
+import type { MessageHandler, WebSocketMessage } from './types'
 
 // File operation tool names
 const FILE_OPERATION_TOOLS = new Set([
@@ -57,7 +57,7 @@ export class FileOperationHandler implements MessageHandler {
    * This handler is manually called by ToolCallHandler and ToolResultHandler
    * It's not registered in the registry since it piggybacks on existing handlers
    */
-  async handle(data: WebSocketMessage, context: MessageContext): Promise<void> {
+  async handle(data: WebSocketMessage): Promise<void> {
     const tool = data.data?.tool as any
     if (!tool) return
 

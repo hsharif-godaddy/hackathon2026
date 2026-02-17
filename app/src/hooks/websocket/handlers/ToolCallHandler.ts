@@ -28,7 +28,7 @@ export class ToolCallHandler implements MessageHandler {
       context.actions.addToolCallSegment(toolCall)
 
       // Track file operations for Code view synchronization
-      await fileOperationHandler.handle(data, context)
+      await fileOperationHandler.handle(data)
     }
   }
 }

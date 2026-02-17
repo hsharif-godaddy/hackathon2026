@@ -1,7 +1,7 @@
 'use client'
 
 import { Type } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import FontThemeModal from '@/app/develop/components/tool-renderers/FontThemeModal'
@@ -44,17 +44,33 @@ export default function FontThemeToolRenderer({
   } | undefined
 
   // Support new headerFont/bodyFont structure or fall back to legacy fontName
-  const headerFont = appliedFont?.headerFont || (appliedFont?.fontName ? {
-    name: appliedFont.fontName,
-    weights: appliedFont.weights || ['400', '700'],
-    category: 'sans-serif'
-  } : undefined) || (resultObj.headerFont as { name: string; weights: string[] } | undefined)
+  const headerFont = useMemo(
+    () =>
+      appliedFont?.headerFont ||
+      (appliedFont?.fontName
+        ? {
+            name: appliedFont.fontName,
+            weights: appliedFont.weights || ['400', '700'],
+            category: 'sans-serif'
+          }
+        : undefined) ||
+      (resultObj.headerFont as { name: string; weights: string[] } | undefined),
+    [appliedFont?.headerFont, appliedFont?.fontName, appliedFont?.weights, resultObj.headerFont]
+  )
 
-  const bodyFont = appliedFont?.bodyFont || (appliedFont?.fontName ? {
-    name: appliedFont.fontName,
-    weights: appliedFont.weights || ['400', '700'],
-    category: 'sans-serif'
-  } : undefined) || (resultObj.bodyFont as { name: string; weights: string[] } | undefined)
+  const bodyFont = useMemo(
+    () =>
+      appliedFont?.bodyFont ||
+      (appliedFont?.fontName
+        ? {
+            name: appliedFont.fontName,
+            weights: appliedFont.weights || ['400', '700'],
+            category: 'sans-serif'
+          }
+        : undefined) ||
+      (resultObj.bodyFont as { name: string; weights: string[] } | undefined),
+    [appliedFont?.bodyFont, appliedFont?.fontName, appliedFont?.weights, resultObj.bodyFont]
+  )
 
   // Legacy fallback for fontName
   const legacyFontName = resultObj.fontName as string | undefined

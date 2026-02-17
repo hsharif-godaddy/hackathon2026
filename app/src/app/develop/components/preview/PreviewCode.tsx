@@ -2,7 +2,6 @@
 
 import clsx from 'clsx'
 import dynamic from 'next/dynamic'
-import path from 'path-browserify'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -368,10 +367,10 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       const result = await appService.writeFile(effectiveAppId, filePath, content, 'rewrite')
       return typeof result.success === 'boolean' ? result.success : true
     } catch (error) {
-      logger.error('code-editor.file.save-error', { 
-        message: 'Error saving file', 
+      logger.error('code-editor.file.save-error', {
+        message: 'Error saving file',
         filePath,
-        error: error instanceof Error ? error.message : String(error) 
+        error: error instanceof Error ? error.message : String(error)
       })
       return false // Return false for save errors (UI can continue)
     }
@@ -380,10 +379,13 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   // Master cleanup effect - ensures refs are reset on unmount
   useEffect(() => {
     isMountedRef.current = true
-    
+    const changeTimeouts = changeTimeoutsRef.current
+    const loadingFiles = loadingFilesRef.current
+    const processedChanges = processedChangesRef.current
+
     return () => {
       isMountedRef.current = false
-      
+
       // Clear retry timeout
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current)
@@ -391,13 +393,13 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       }
 
       // Clear all change timeouts
-      changeTimeoutsRef.current.forEach(timeout => clearTimeout(timeout))
-      changeTimeoutsRef.current.clear()
+      changeTimeouts.forEach(timeout => clearTimeout(timeout))
+      changeTimeouts.clear()
 
       // Reset all refs to initial state
       isLoadingRef.current = false
-      loadingFilesRef.current.clear()
-      processedChangesRef.current.clear()
+      loadingFiles.clear()
+      processedChanges.clear()
     }
   }, [])
 
@@ -405,6 +407,10 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     // Clear processed changes when effectiveAppId changes (including temp→real ID transitions)
     // to prevent stale state across different apps
     processedChangesRef.current.clear()
+
+    const changeTimeouts = changeTimeoutsRef.current
+    const loadingFiles = loadingFilesRef.current
+    const processedChanges = processedChangesRef.current
 
     // Only load files when the page initialization is complete
     // The initialization state machine ensures the app is registered and running
@@ -422,14 +428,14 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       }
 
       // Clear all change timeouts
-      changeTimeoutsRef.current.forEach(timeout => clearTimeout(timeout))
-      changeTimeoutsRef.current.clear()
+      changeTimeouts.forEach(timeout => clearTimeout(timeout))
+      changeTimeouts.clear()
 
       // Clear loading state refs (only if still mounted, otherwise master cleanup handles it)
       if (isMountedRef.current) {
         isLoadingRef.current = false
-        loadingFilesRef.current.clear()
-        processedChangesRef.current.clear()
+        loadingFiles.clear()
+        processedChanges.clear()
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadFiles identity changes due to t(), but we only want to reload when effectiveAppId or loadingPhase changes
@@ -524,10 +530,11 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
 
     processFileChanges()
 
+    const changeTimeouts = changeTimeoutsRef.current
     // Cleanup: clear all pending change timeouts
     return () => {
-      changeTimeoutsRef.current.forEach(timeout => clearTimeout(timeout))
-      changeTimeoutsRef.current.clear()
+      changeTimeouts.forEach(timeout => clearTimeout(timeout))
+      changeTimeouts.clear()
     }
   }, [changeVersion, openFiles, activeFile, addFileToTree, removeFileFromTree, loadFileContent, addConflict, clearFileChange])
 

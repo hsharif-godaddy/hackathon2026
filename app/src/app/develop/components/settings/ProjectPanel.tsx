@@ -25,7 +25,7 @@ export default function ProjectPanel() {
       // Trigger download after successful purchase
       try {
         await download()
-      } catch (err) {
+      } catch (error) {
         // Error already logged in hook
       }
     },
@@ -45,7 +45,7 @@ export default function ProjectPanel() {
     await checkAndShowPaywall(async () => {
       try {
         await download()
-      } catch (err) {
+      } catch (error) {
         // Error already logged in hook
       }
     })

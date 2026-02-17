@@ -12,7 +12,6 @@ import { useToolResultSync } from '@/hooks/useToolResultSync'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { SocialPostData } from '@/types/social-posts'
-import { SocialPostState } from '@/types/social-posts'
 import { onPostPublished } from '@/utils/social/events'
 
 /**
@@ -26,7 +25,6 @@ export default function SocialPostCreateToolRenderer({
   result,
   toolId,
   conversationId,
-  isLastAssistantMessage = false,
   ...rest
 }: DefaultToolRendererProps) {
   const t = useTranslations()
