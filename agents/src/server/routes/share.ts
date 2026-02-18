@@ -64,16 +64,29 @@ router.post('/apps/:id/share', async (req: Request, res: Response) => {
       siteId: authReq.agentContext?.siteId,
     });
 
-    // Create token
+    // Validate PREVIEW_URL is configured before creating token
+    // This prevents orphaned tokens in database if URL is not available
+    // Note: PREVIEW_URL is app-specific hostname (set via Nomad job template)
+    const previewUrl = process.env.PREVIEW_URL;
+    if (!previewUrl) {
+      logger.error('share.create.missing_preview_url', {
+        appId,
+        message: 'PREVIEW_URL environment variable is not set',
+      });
+      return res.status(500).json({ error: 'Preview URL not configured' });
+    }
+
+    // Ensure URL has https:// protocol (Nomad templates provide hostname only)
+    const baseUrl = previewUrl.startsWith('http://') || previewUrl.startsWith('https://')
+      ? previewUrl
+      : `https://${previewUrl}`;
+
+    // Create token after validating PREVIEW_URL is available
     const shareToken = shareTokenRepository.create({
       appId,
       expiresIn,
     });
 
-    // Build share URL
-    // Format: https://preview-{appId}.airo-builder.com?airoShareToken={token}
-    // Note: Actual domain will come from environment/config in production
-    const baseUrl = process.env.PREVIEW_BASE_URL || `https://preview-${appId}.airo-builder.com`;
     const shareUrl = `${baseUrl}?airoShareToken=${shareToken.token}`;
 
     logger.info('share.create.success', {
@@ -105,7 +118,6 @@ router.post('/apps/:id/share', async (req: Request, res: Response) => {
  * Response: { tokens: Array<{ token, appId, shareUrl, createdAt, expiresAt, firstUsedAt }> }
  */
 router.get('/apps/:id/share', async (req: Request, res: Response) => {
-  const authReq = req as AuthenticatedRequest;
   const appId = req.params.id!; // Type assertion: route param is always defined
 
   // Ownership already validated by middleware
@@ -115,8 +127,22 @@ router.get('/apps/:id/share', async (req: Request, res: Response) => {
 
     const tokens = shareTokenRepository.findByAppId(appId);
 
-    // Build response with share URLs
-    const baseUrl = process.env.PREVIEW_BASE_URL || `https://preview-${appId}.airo-builder.com`;
+    // Build response with share URLs using PREVIEW_URL from agent environment
+    // Note: PREVIEW_URL should always be set in production via Nomad job template
+    const previewUrl = process.env.PREVIEW_URL;
+    if (!previewUrl) {
+      logger.error('share.list.missing_preview_url', {
+        appId,
+        message: 'PREVIEW_URL environment variable is not set',
+      });
+      return res.status(500).json({ error: 'Preview URL not configured' });
+    }
+
+    // Ensure URL has https:// protocol (Nomad templates provide hostname only)
+    const baseUrl = previewUrl.startsWith('http://') || previewUrl.startsWith('https://')
+      ? previewUrl
+      : `https://${previewUrl}`;
+
     const tokensList = tokens.map((token) => ({
       token: token.token,
       appId: token.appId,

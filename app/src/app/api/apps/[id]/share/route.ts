@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { agentFetch } from '@/lib/agent-fetch';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
-
-const AGENTS_BASE_URL = process.env.AGENTS_BASE_URL || 'http://localhost:4000';
 
 /**
  * GET /api/apps/[id]/share - List share tokens for an app
@@ -70,11 +69,10 @@ export const GET = withCustomerAuth(async (
     });
 
     // Call agents API to list share tokens
-    const url = `${AGENTS_BASE_URL}/apps/${appId}/share`;
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${authContext.jwt}`,
-      },
+    const agentsBaseUrl = process.env.AGENTS_SERVICE_URL || 'http://localhost:4000';
+    const url = `${agentsBaseUrl}/apps/${appId}/share`;
+    const response = await agentFetch(url, {
+      siteId: appId,
     });
 
     if (!response.ok) {
@@ -199,13 +197,11 @@ export const POST = withCustomerAuth(async (
     });
 
     // Call agents API to create share token (API accepts seconds)
-    const url = `${AGENTS_BASE_URL}/apps/${appId}/share`;
-    const response = await fetch(url, {
+    const agentsBaseUrl = process.env.AGENTS_SERVICE_URL || 'http://localhost:4000';
+    const url = `${agentsBaseUrl}/apps/${appId}/share`;
+    const response = await agentFetch(url, {
+      siteId: appId,
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${authContext.jwt}`,
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ expiresIn }),
     });
 
