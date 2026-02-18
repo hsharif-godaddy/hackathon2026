@@ -93,65 +93,212 @@ if (!allowedCommands.includes(command)) {
   process.exit(1);
 }
 
-// Spawn without shell for better security
-// Use detached on POSIX to create process group for proper signal forwarding
-const child = spawn(command, commandArgs, {
-  stdio: 'inherit',
-  env: process.env,
-  shell: false,
-  ...(process.platform !== 'win32' && { detached: true })
-});
-
-// Guard to prevent double-exit from error and exit events
-let finished = false;
-
-function finalizeExit(code) {
-  if (finished) return;
-  finished = true;
-  process.exit(code);
-}
-
-// Forward signals to child process (or process group on POSIX)
-function forwardSignal(sig) {
-  if (!child || child.killed || child.exitCode !== null) return;
-  try {
-    // On POSIX systems, forward to process group to catch grandchildren
-    // On Windows, only direct child kill is supported
-    if (process.platform !== 'win32') {
-      process.kill(-child.pid, sig);
-    } else {
-      child.kill(sig);
-    }
-  } catch (err) {
-    // Only ignore ESRCH (process doesn't exist) - log other errors
-    if (err.code !== 'ESRCH') {
-      console.error(`Warning: Failed to forward signal ${sig}: ${err.message}`);
-    }
+/**
+ * Validate environment configuration
+ */
+async function validateEnvironment() {
+  // Check for AWS_PROFILE (should not be set for agents)
+  if (process.env.AWS_PROFILE) {
+    console.error('\n❌ AWS_PROFILE is set in your environment');
+    console.error('   Please remove it before running the agents service\n');
+    process.exit(1);
   }
 }
 
-// Forward common signals to child
-// SIGINT (Ctrl+C), SIGTERM (kill), SIGHUP (terminal disconnect), SIGQUIT (Ctrl+\)
-['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'].forEach((sig) => {
-  process.on(sig, () => forwardSignal(sig));
-});
+/**
+ * Validate GoCode API key for local development (not S2S)
+ */
+async function validateGoCodeKey() {
+  const useS2S = process.env.GOCODE_USE_S2S_AUTH === 'true';
 
-// Handle child process exit
-child.on('exit', (code, signal) => {
-  if (signal) {
-    // Child was killed by signal - exit with 128 + signal number
-    // This follows standard Unix convention for signal-based termination
-    const os = require('os');
-    const sigNum = os.constants.signals[signal] || 0;
-    finalizeExit(128 + (sigNum || 1));
+  // Skip validation if using S2S auth
+  if (useS2S) {
+    return;
+  }
+
+  // Detect which provider will be used (priority: Bedrock > Anthropic > OpenAI)
+  let provider, apiKey, baseUrl;
+
+  // Skip GoCode validation when AWS credentials indicate Bedrock usage
+  // Do not infer Bedrock from AWS_REGION alone, as it's often set globally
+  if (process.env.AWS_ACCESS_KEY_ID) {
+    // Using Bedrock - no validation needed
+    return;
+  } else if (process.env.ANTHROPIC_API_KEY) {
+    provider = 'anthropic';
+    apiKey = process.env.ANTHROPIC_API_KEY;
+    baseUrl = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
+  } else if (process.env.OPENAI_API_KEY || process.env.OPENAI_BASE_URL) {
+    provider = 'openai';
+    apiKey = process.env.OPENAI_API_KEY;
+    baseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
   } else {
-    // Exit with child's exit code (default to 0 if null/undefined)
-    finalizeExit(code ?? 0);
+    // No provider configured
+    return;
   }
-});
 
-// Handle spawn errors (e.g., command not found)
-child.on('error', (error) => {
-  console.error(`Failed to start command '${command}': ${error.message}`);
-  finalizeExit(1);
-});
+  // Only validate if using GoCode proxy (not direct Anthropic/OpenAI)
+  const isGoCode = baseUrl && (baseUrl.includes('gocode') || baseUrl.includes('localhost:8080'));
+  if (!isGoCode) {
+    return;
+  }
+
+  if (!apiKey) {
+    const skipValidation = process.env.SKIP_GOCODE_KEY_VALIDATION === 'true';
+    if (skipValidation) {
+      console.warn(`\n⚠️  ${provider.toUpperCase()} base URL points to GoCode but no API key configured (SKIP_GOCODE_KEY_VALIDATION=true, skipping validation)\n`);
+      return;
+    }
+
+    console.error(`\n❌ ${provider.toUpperCase()} base URL points to GoCode but no API key is configured`);
+    console.error('   Please set the appropriate API key in your .env files or');
+    console.error('   set SKIP_GOCODE_KEY_VALIDATION=true if you intentionally want to skip validation.\n');
+    process.exit(1);
+  }
+
+  console.log(`🔍 Validating GoCode API key (using ${provider.toUpperCase()} compatibility layer)...`);
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(`${baseUrl}/key/info`, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.error(`\n❌ GoCode API key is invalid (${response.status})`);
+      console.error(`   Provider: ${provider.toUpperCase()}`);
+      console.error(`   Please check your ${provider.toUpperCase()}_API_KEY in .env files\n`);
+      process.exit(1);
+    }
+
+    const data = await response.json();
+    const info = data.info || {};
+    const maxBudget = parseFloat(info.max_budget || 0);
+    const spend = parseFloat(info.spend || 0);
+    const remaining = maxBudget - spend;
+    const percentUsed = maxBudget > 0 ? ((spend / maxBudget) * 100).toFixed(1) : 0;
+
+    if (remaining <= 0) {
+      console.error('\n❌ GoCode API key has no remaining budget');
+      console.error(`   Provider: ${provider.toUpperCase()}`);
+      console.error(`   Key: ${info.key_alias || info.key_name || 'N/A'}`);
+      console.error(`   Max Budget: $${maxBudget.toFixed(2)}`);
+      console.error(`   Spent: $${spend.toFixed(2)}`);
+      console.error(`   Budget Duration: ${info.budget_duration || 'N/A'}`);
+      if (info.budget_reset_at) {
+        console.error(`   Resets: ${info.budget_reset_at}`);
+      }
+      console.error('');
+      process.exit(1);
+    }
+
+    console.log(`✅ GoCode API key valid (${provider.toUpperCase()} compatibility layer)`);
+    console.log(`   Key: ${info.key_alias || info.key_name || 'N/A'}`);
+    console.log(`   Budget: $${remaining.toFixed(2)} remaining (${percentUsed}% used)\n`);
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.error('\n❌ GoCode API key validation timed out (5s)');
+      console.error(`   The GoCode proxy at ${baseUrl} is not responding`);
+      console.error('   Check if the proxy is running and accessible\n');
+    } else if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      console.error('\n❌ Cannot connect to GoCode proxy');
+      console.error(`   URL: ${baseUrl}`);
+      console.error(`   Error: ${error.message}`);
+      console.error('   Check if the proxy is running and the URL is correct\n');
+    } else if (error.message.includes('JSON')) {
+      console.error('\n❌ Invalid response from GoCode proxy');
+      console.error(`   Expected JSON but got: ${error.message}`);
+      console.error('   The proxy may be misconfigured or returning errors\n');
+    } else {
+      console.error(`\n❌ Failed to validate GoCode API key: ${error.message}`);
+      console.error(`   Provider: ${provider.toUpperCase()}`);
+      console.error(`   Check your ${provider.toUpperCase()}_BASE_URL and ${provider.toUpperCase()}_API_KEY configuration\n`);
+    }
+    process.exit(1);
+  }
+}
+
+/**
+ * Spawn the child process with signal handling
+ */
+function spawnChildProcess() {
+  // Spawn without shell for better security
+  // Use detached on POSIX to create process group for proper signal forwarding
+  const child = spawn(command, commandArgs, {
+    stdio: 'inherit',
+    env: process.env,
+    shell: false,
+    ...(process.platform !== 'win32' && { detached: true })
+  });
+
+  // Guard to prevent double-exit from error and exit events
+  let finished = false;
+
+  function finalizeExit(code) {
+    if (finished) return;
+    finished = true;
+    process.exit(code);
+  }
+
+  // Forward signals to child process (or process group on POSIX)
+  function forwardSignal(sig) {
+    if (!child || child.killed || child.exitCode !== null) return;
+    try {
+      // On POSIX systems, forward to process group to catch grandchildren
+      // On Windows, only direct child kill is supported
+      if (process.platform !== 'win32') {
+        process.kill(-child.pid, sig);
+      } else {
+        child.kill(sig);
+      }
+    } catch (err) {
+      // Only ignore ESRCH (process doesn't exist) - log other errors
+      if (err.code !== 'ESRCH') {
+        console.error(`Warning: Failed to forward signal ${sig}: ${err.message}`);
+      }
+    }
+  }
+
+  // Forward common signals to child
+  // SIGINT (Ctrl+C), SIGTERM (kill), SIGHUP (terminal disconnect), SIGQUIT (Ctrl+\)
+  ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'].forEach((sig) => {
+    process.on(sig, () => forwardSignal(sig));
+  });
+
+  // Handle child process exit
+  child.on('exit', (code, signal) => {
+    if (signal) {
+      // Child was killed by signal - exit with 128 + signal number
+      // This follows standard Unix convention for signal-based termination
+      const os = require('os');
+      const sigNum = os.constants.signals[signal] || 0;
+      finalizeExit(128 + (sigNum || 1));
+    } else {
+      // Exit with child's exit code (default to 0 if null/undefined)
+      finalizeExit(code ?? 0);
+    }
+  });
+
+  // Handle spawn errors (e.g., command not found)
+  child.on('error', (error) => {
+    console.error(`Failed to start command '${command}': ${error.message}`);
+    finalizeExit(1);
+  });
+}
+
+// Run validation chain, then spawn child process
+validateEnvironment()
+  .then(validateGoCodeKey)
+  .then(spawnChildProcess)
+  .catch((error) => {
+    console.error(`\n❌ Validation failed: ${error.message}`);
+    process.exit(1);
+  });
