@@ -12,8 +12,8 @@ import text from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import type { SiteAssociation } from '@/types/social'
-import { SocialPostData, SocialPostState } from '@/types/social-posts'
-import { SocialPostModal } from './SocialPostModal'
+import { PublishTiming, SocialPostData, SocialPostState } from '@/types/social-posts'
+import { PostModal } from './PostModal'
 
 interface PostImageThumbnailProps {
   post: SocialPostData
@@ -128,6 +128,8 @@ interface SocialPostListProps {
   onPublish?: (post: SocialPostData) => void
   onPostUpdate?: (updatedPost: SocialPostData) => void
   associations?: SiteAssociation[]
+  initialScheduledDate?: string
+  initialScheduledTime?: string
 }
 
 /**
@@ -140,12 +142,14 @@ interface SocialPostListProps {
  * @param onPublish - Callback when post is published
  * @returns List widget component with post management interface
  */
-export function SocialPostList({
+export function PostList({
   posts: propsPosts = [],
   appId,
   onPublish,
   onPostUpdate,
-  associations = []
+  associations = [],
+  initialScheduledDate,
+  initialScheduledTime
 }: SocialPostListProps = {}) {
 
   const [localPosts, setLocalPosts] = useState<SocialPostData[]>([])
@@ -197,13 +201,16 @@ export function SocialPostList({
       </div>
 
       {selectedPost && appId && (
-        <SocialPostModal
+        <PostModal
           post={selectedPost}
           appId={appId}
           onClose={() => setSelectedPost(null)}
           onSave={handleSaveEdit}
           onPublish={onPublish}
           associations={associations}
+          initialTiming={initialScheduledDate || initialScheduledTime ? PublishTiming.LATER : undefined}
+          initialDate={initialScheduledDate}
+          initialTime={initialScheduledTime}
         />
       )}
     </>

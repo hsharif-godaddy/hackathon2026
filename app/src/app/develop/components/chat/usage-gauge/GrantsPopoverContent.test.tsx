@@ -260,7 +260,7 @@ describe('GrantsPopoverContent', function grantsPopoverContentTests() {
     });
 
     it('should handle null appId', function handleNullAppId() {
-      renderWithProviders(<GrantsPopoverContent {...defaultProps} appId={null} />);
+      renderWithProviders(<GrantsPopoverContent {...defaultProps} />);
 
       expect(screen.getByText('builder_usage_gauge_total_title')).toBeInTheDocument();
     });

@@ -5,22 +5,16 @@
  * Maps widget types to their React components.
  */
 
-import type { SocialPostData } from '@/types/social-posts'
 import ColorPaletteGridWidget, { type ColorPaletteGridWidgetProps } from './ColorPaletteGridWidget'
 import ColorPaletteWidget, { type ColorPaletteWidgetProps } from './ColorPaletteWidget'
 import FeedbackWidget, { type FeedbackWidgetProps } from './FeedbackWidget'
 import FontPaletteWidget, { type FontPaletteWidgetProps } from './FontPaletteWidget'
 import FontThemeGridWidget, { type FontThemeGridWidgetProps } from './FontThemeGridWidget'
-import { SocialPostList } from './SocialPostList'
-
-export interface SocialPostListProps {
-  posts?: SocialPostData[];
-}
 
 /**
  * Widget component props union type
  */
-export type WidgetProps = ColorPaletteWidgetProps | ColorPaletteGridWidgetProps | FontPaletteWidgetProps | FontThemeGridWidgetProps | SocialPostListProps | FeedbackWidgetProps
+export type WidgetProps = ColorPaletteWidgetProps | ColorPaletteGridWidgetProps | FontPaletteWidgetProps | FontThemeGridWidgetProps | FeedbackWidgetProps
 
 /**
  * Widget registry mapping widget types to components
@@ -30,7 +24,6 @@ export const widgetRegistry = {
   'color-palette-grid': ColorPaletteGridWidget,
   'feedback': FeedbackWidget,
   'font-theme-grid': FontThemeGridWidget,
-  'social-post-list': SocialPostList,
 } as const
 
 /**
@@ -63,8 +56,7 @@ export {
   ColorPaletteWidget,
   FeedbackWidget,
   FontPaletteWidget,
-  FontThemeGridWidget,
-  SocialPostList
+  FontThemeGridWidget
 }
 
 export type {

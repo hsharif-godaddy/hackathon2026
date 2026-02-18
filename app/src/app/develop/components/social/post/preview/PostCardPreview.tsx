@@ -68,7 +68,7 @@ interface PostImageProps {
  * @param imagesRequested - Whether images were requested for this post
  * @returns Image element or placeholder
  */
-const PostImage = memo(({ postImage, imagesRequested, platform }: PostImageProps) => {
+const PostImage = memo(({ postImage, imageAspectRatio: _imageAspectRatio, imagesRequested, platform }: PostImageProps) => {
   const t = useTranslations();
   const imageUrl = useAppImageUrl(postImage?.url);
 

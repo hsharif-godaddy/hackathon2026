@@ -32,9 +32,21 @@ vi.mock('@/hooks/useSocial', () => ({
   useSiteAssociations: () => ({ data: { associations: [] }, isLoading: false })
 }))
 
-vi.mock('@/app/develop/components/widgets/SocialPostList', () => ({
-  SocialPostList: ({ posts }: { posts: Array<{ id: string; publishedState?: string }> }) => (
-    <div data-testid="social-post-list">
+vi.mock('@/app/develop/components/social/post/PostList', () => ({
+  PostList: ({
+    posts,
+    initialScheduledDate,
+    initialScheduledTime
+  }: {
+    posts: Array<{ id: string; publishedState?: string }>;
+    initialScheduledDate?: string;
+    initialScheduledTime?: string;
+  }) => (
+    <div
+      data-testid="social-post-list"
+      {...(initialScheduledDate ? { 'data-scheduled-date': initialScheduledDate } : {})}
+      {...(initialScheduledTime ? { 'data-scheduled-time': initialScheduledTime } : {})}
+    >
       {posts.map(post => (
         <div
           key={post.id}
@@ -294,6 +306,73 @@ describe('SocialPostCreateToolRenderer', () => {
       )
 
       expect(screen.queryByTestId('social-post-list')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('scheduling data handling', () => {
+    it('should extract and pass scheduling data from widget.widgetData', async () => {
+      const result = {
+        widget: {
+          widgetData: {
+            posts: [createMockPost('post-1')],
+            scheduledDate: '2026-03-25',
+            scheduledTime: '15:00'
+          }
+        }
+      }
+
+      render(
+        <SocialPostCreateToolRenderer
+          {...defaultProps}
+          result={result}
+        />
+      )
+
+      await waitFor(() => {
+        const postList = screen.getByTestId('social-post-list')
+        expect(postList).toHaveAttribute('data-scheduled-date', '2026-03-25')
+        expect(postList).toHaveAttribute('data-scheduled-time', '15:00')
+      })
+    })
+
+    it('should extract and pass scheduling data from top-level result', async () => {
+      const result = {
+        posts: [createMockPost('post-1')],
+        scheduledDate: '2026-02-23',
+        scheduledTime: '16:00'
+      }
+
+      render(
+        <SocialPostCreateToolRenderer
+          {...defaultProps}
+          result={result}
+        />
+      )
+
+      await waitFor(() => {
+        const postList = screen.getByTestId('social-post-list')
+        expect(postList).toHaveAttribute('data-scheduled-date', '2026-02-23')
+        expect(postList).toHaveAttribute('data-scheduled-time', '16:00')
+      })
+    })
+
+    it('should handle posts without scheduling data', async () => {
+      const result = {
+        posts: [createMockPost('post-1')]
+      }
+
+      render(
+        <SocialPostCreateToolRenderer
+          {...defaultProps}
+          result={result}
+        />
+      )
+
+      await waitFor(() => {
+        const postList = screen.getByTestId('social-post-list')
+        expect(postList).not.toHaveAttribute('data-scheduled-date')
+        expect(postList).not.toHaveAttribute('data-scheduled-time')
+      })
     })
   })
 })

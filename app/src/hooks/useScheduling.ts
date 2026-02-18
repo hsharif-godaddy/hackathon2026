@@ -14,25 +14,48 @@ interface UseSchedulingReturn {
     setTime: (time: string) => void
 }
 
+interface UseSchedulingOptions {
+    initialTiming?: PublishTiming
+    initialDate?: string
+    initialTime?: string
+}
+
 /**
  * Custom hook for managing social post scheduling state and validation
  * Handles date/time selection and validates scheduling requirements
  */
-export function useScheduling(): UseSchedulingReturn {
-    const [timing, setTiming] = useState<PublishTiming>(PublishTiming.NOW)
-    const [date, setDate] = useState<string[]>(() => [getInitialScheduleDate()])
-    const [time, setTime] = useState<string>(() => getInitialScheduleTime(getUserLocale()))
+export function useScheduling(options?: UseSchedulingOptions): UseSchedulingReturn {
+    const [timing, setTiming] = useState<PublishTiming>(options?.initialTiming || PublishTiming.NOW)
+    const [date, setDate] = useState<string[]>(() =>
+        options?.initialDate ? [options.initialDate] : [getInitialScheduleDate()]
+    )
+    const [time, setTime] = useState<string>(() =>
+        options?.initialTime || getInitialScheduleTime(getUserLocale())
+    )
     const [validationTick, setValidationTick] = useState(0)
 
-    // Periodically revalidate scheduled time to ensure it stays valid
+    // Revalidate scheduled time when it approaches the 15-minute minimum threshold
     useEffect(() => {
-        if (timing === PublishTiming.LATER) {
-            const interval = setInterval(() => {
+        if (timing === PublishTiming.LATER && date[0] && time) {
+            // Calculate when scheduled time gets too close (within 15 min + 1 min buffer)
+            const scheduledDateTime = new Date(`${date[0]}T${time}`)
+            const minimumFutureTime = 15 * 60 * 1000 // 15 minutes in ms
+            const buffer = 60 * 1000 // 1 minute buffer to catch it slightly early
+            const timeUntilInvalid = scheduledDateTime.getTime() - Date.now() - minimumFutureTime - buffer
+
+            if (timeUntilInvalid > 0) {
+                // Set timeout to trigger validation when time becomes too close
+                const timeout = setTimeout(() => {
+                    setValidationTick((prev) => prev + 1)
+                }, timeUntilInvalid)
+
+                return () => clearTimeout(timeout)
+            } else {
+                // Already invalid, trigger validation immediately
                 setValidationTick((prev) => prev + 1)
-            }, 30000) // Revalidate every 30 seconds
-            return () => clearInterval(interval)
+            }
         }
-    }, [timing])
+    }, [timing, date, time])
 
     // Force validation check by using validationTick as part of the computation
     const isValid =

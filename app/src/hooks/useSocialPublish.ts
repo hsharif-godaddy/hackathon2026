@@ -68,15 +68,23 @@ export function useSocialPublish({
                 }
 
                 // Prepare publish payload
+                const message = [post.content, post.callToAction, formatHashtags(post.hashtags)]
+                    .filter(Boolean)
+                    .join('\n\n')
+                const imageUrls = post.images?.map((img) => img.url) || []
+                const platform = PLATFORM_TRANSFORMS.toDisplay(post.platform)
+
                 const pendingPublish = {
-                    platform: PLATFORM_TRANSFORMS.toDisplay(post.platform),
-                    message: [post.content, post.callToAction, formatHashtags(post.hashtags)]
-                        .filter(Boolean)
-                        .join('\n\n'),
-                    imageUrls: post.images?.map((img) => img.url) || [],
-                    ...(timing === PublishTiming.LATER && scheduledAt
-                        ? { scheduledAt: scheduledAt.toISOString() }
-                        : {}),
+                    platforms: [platform],
+                    platformData: [{
+                        platform,
+                        message,
+                        imageUrls,
+                        scheduledAt
+                    }],
+                    message,
+                    imageUrls,
+                    scheduledAt
                 }
 
                 if (hasConnection) {

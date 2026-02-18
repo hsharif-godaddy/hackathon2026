@@ -65,7 +65,7 @@ export interface SocialPostData {
   styleDescription?: string
   content: string
   hashtags: string[]
-  platform: PublishablePlatform
+  platform?: PublishablePlatform  // Optional - for backwards compatibility and display
   callToAction?: string
   images?: PostImageData[]
   hasImages?: boolean       // Flag indicating if post has images
@@ -84,7 +84,13 @@ export type PublishStatus = `${PublishFlowState}`
 
 export interface PendingPublish {
   publishId?: string
-  platform: PublishablePlatform
+  platforms: PublishablePlatform[]  // Changed from single platform to array
+  platformData: Array<{
+    platform: PublishablePlatform
+    message: string
+    imageUrls: string[]
+    scheduledAt?: Date
+  }>
   message: string
   imageUrls: string[]
   scheduledAt?: Date
@@ -93,6 +99,14 @@ export interface PendingPublish {
 export type PublishResult = SocialPublishResult | { error: string }
 
 export interface PublishFlowCallbacks {
-  onStatusChange: (status: PublishStatus) => void
-  onResultChange: (result: PublishResult) => void
+  onPlatformStatusChange: (platform: PublishablePlatform, status: PublishStatus) => void
+  onPlatformResultChange: (platform: PublishablePlatform, result: PublishResult) => void
+  onOverallStatusChange: (status: PublishStatus) => void
 }
+
+export type PublishAction =
+  | { type: 'PLATFORM_STATUS_CHANGE'; platform: PublishablePlatform; status: PublishFlowState }
+  | { type: 'PLATFORM_RESULT_CHANGE'; platform: PublishablePlatform; result: PublishResult }
+  | { type: 'OVERALL_STATUS_CHANGE'; status: PublishFlowState }
+  | { type: 'PUBLISH_STARTED' }
+  | { type: 'BATCH_PLATFORM_UPDATE'; platform: PublishablePlatform; status: PublishFlowState; result?: PublishResult }

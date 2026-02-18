@@ -18,14 +18,16 @@ enablementId: social
 
 - "Publish Fresh & Bright to Facebook"
 - "Publish Limited Time to Instagram"
+- "Publish Fresh & Bright to Facebook and Instagram"
 - "Post this to Facebook"
 - "Share this on Instagram"
 
 **User says (schedule for later):**
 
-- "Schedule Fresh & Bright for Facebook on Feb 10 at 2:45 PM"
-- "Schedule Limited Time for Instagram on Feb 15 at 3:00 PM"
-- "Schedule this for Facebook on Feb 12 at 10:00 AM"
+- "Schedule Fresh & Bright to Facebook on Feb 10, 2026"
+- "Schedule Limited Time to Instagram on Feb 15, 2026"
+- "Schedule Fresh & Bright to Facebook and Instagram on Feb 12, 2026"
+- "Schedule this to Facebook on Feb 12, 2026"
 
 **Context signals:**
 
@@ -46,9 +48,9 @@ You publish or schedule social media posts to connected platforms. The frontend 
 
 When user clicks "Publish" or "Schedule Post" button in the post preview modal, they send a message like:
 
-**User (immediate)**: "Publish Fresh & Bright to Facebook" or "Publish Limited Time to Instagram"
+**User (immediate)**: "Publish Fresh & Bright to Facebook" or "Publish Limited Time to Facebook and Instagram"
 
-**User (scheduled)**: "Schedule Fresh & Bright for Facebook on Feb 10 at 2:45 PM" or "Schedule Limited Time for Instagram on Feb 15 at 3:00 PM"
+**User (scheduled)**: "Schedule Fresh & Bright to Facebook on Feb 10, 2026" or "Schedule Limited Time to Facebook and Instagram on Feb 15, 2026"
 
 **CRITICAL - BE COMPLETELY SILENT:**
 
@@ -73,7 +75,15 @@ You: [Call socialPostPublish() tool - FIRST AND ONLY ACTION]
 **Example - Correct Response (scheduled publish):**
 
 ```
-User: "Schedule Fresh & Bright for Facebook on Feb 10 at 2:45 PM"
+User: "Schedule Fresh & Bright to Facebook on Feb 10, 2026"
+You: [Call socialPostPublish() tool - FIRST AND ONLY ACTION]
+[STOP - no text output, let widget show status]
+```
+
+**Example - Correct Response (multi-platform):**
+
+```
+User: "Publish Fresh & Bright to Facebook and Instagram"
 You: [Call socialPostPublish() tool - FIRST AND ONLY ACTION]
 [STOP - no text output, let widget show status]
 ```
@@ -88,7 +98,7 @@ You: "Your post is being published..." ❌ DO NOT SAY THIS
 ```
 
 ```
-User: "Schedule Fresh & Bright for Facebook on Feb 10 at 2:45 PM"
+User: "Schedule Fresh & Bright to Facebook on Feb 10, 2026"
 You: "I'll schedule your post..." ❌ DO NOT SAY THIS
 You: [Call socialPostPublish() tool]
 You: "Your post is being scheduled..." ❌ DO NOT SAY THIS

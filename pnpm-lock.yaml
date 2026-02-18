@@ -616,6 +616,9 @@ importers:
       '@ux/table':
         specifier: 2500.7.2
         version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/tabs':
+        specifier: ^2500.9.1
+        version: 2500.9.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/tag':
         specifier: 2500.7.2
         version: 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -6441,6 +6444,14 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
+  '@ux/component-utilities@2500.9.1':
+    resolution: {integrity: sha512-lwtMxO1mBBEqGAorNdtKacoAKu6Q8J3T/XrU4khNotOoUW7oAHAgzOuUiqgXUkmH57Ma0ATEZe//oBHQD6TDFA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/component-utilities/-/@ux/component-utilities-2500.9.1.tgz}
+    engines: {node: '>= 18'}
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
   '@ux/corner-actions@2500.8.1':
     resolution: {integrity: sha512-bKw/Yng91ujzfbQK9B8WIZdtCSu8tZJQ93FcGZTBjJUbmDzSsUHyGvBAayoVTtLPEEt7QO0ZgfJKL8vCL142cg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/corner-actions/-/@ux/corner-actions-2500.8.1.tgz}
     engines: {node: '>= 18'}
@@ -6690,6 +6701,14 @@ packages:
 
   '@ux/table@2500.7.2':
     resolution: {integrity: sha512-zXQoxxQTl2v4+s0U4zvWucBsUdNTB7y+LJXnw8WJrQBULwm1u8p3L9Xy916zExH7uhTNCkNlxrb8YJlwznNW/w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/table/-/@ux/table-2500.7.2.tgz}
+    engines: {node: '>= 18'}
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
+  '@ux/tabs@2500.9.1':
+    resolution: {integrity: sha512-1A1RhXlOLTIe4x3l39YFgeEyydaYSRmAtbkiVpaZMR9+LRCJ0jf2jzuv+yWkffgQDSiIqkd8WSO/MlZxCJAWVA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/tabs/-/@ux/tabs-2500.9.1.tgz}
     engines: {node: '>= 18'}
     peerDependencies:
       prop-types: ^15.7.2
@@ -7475,6 +7494,11 @@ packages:
 
   breakdancer@4.2.0:
     resolution: {integrity: sha512-+lvic5n77XVMgfxEcMHFvalE8FGmD8HeTSdcT9RD54QMViSToeScUPuTfPvt1kNnipfdxF8ER68H9UwjBtgsrA==}
+    peerDependencies:
+      react: 19.1.0
+
+  breakdancer@4.2.1:
+    resolution: {integrity: sha512-YdN8GYIJpNIBYLIYq/iBSiSLLIsOrfehQC5f+ZYib7BevxaAx4qNGAjWYkszDj6H3/OzDxdDBqAwENwrgcsqLA==}
     peerDependencies:
       react: 19.1.0
 
@@ -20547,6 +20571,16 @@ snapshots:
       react-dom: 19.1.0(react@19.1.0)
       safe-stable-stringify: 2.5.0
 
+  '@ux/component-utilities@2500.9.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      breakdancer: 4.2.1(react@19.1.0)
+      diagnostics: 2.0.2
+      fn.name: 1.1.0
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+      safe-stable-stringify: 2.5.0
+
   '@ux/corner-actions@2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/box': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -20913,6 +20947,19 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
+  '@ux/tabs@2500.9.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@ux/card': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.9.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/flyout': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/intents': 2500.7.1
+      '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
   '@ux/tag@2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@ux/icon': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -20941,7 +20988,7 @@ snapshots:
 
   '@ux/text-entry@2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@ux/component-utilities': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/component-utilities': 2500.9.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/intents': 2500.7.1
       '@ux/label': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text': 2500.7.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -21918,6 +21965,11 @@ snapshots:
       object.entries: 1.1.9
 
   breakdancer@4.2.0(react@19.1.0):
+    dependencies:
+      propget: 1.1.0
+      react: 19.1.0
+
+  breakdancer@4.2.1(react@19.1.0):
     dependencies:
       propget: 1.1.0
       react: 19.1.0

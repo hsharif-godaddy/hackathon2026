@@ -89,7 +89,7 @@ export function useSocialPanelActions({
         siteId,
         associationId: association.id
       })
-    } catch (error) {
+    } catch (_error) {
       // Error is handled by mutation
     } finally {
       setUnlinkingConnectionId(null)

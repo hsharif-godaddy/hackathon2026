@@ -69,7 +69,7 @@ export interface SocialPost {
   styleDescription?: string
   content: string
   hashtags: string[]
-  platform: 'facebook' | 'instagram'
+  platform?: 'facebook' | 'instagram'  // Optional - posts are now platform-agnostic
   callToAction?: string
   images?: PostImageData[]
   validation?: ValidationDetails
@@ -86,7 +86,7 @@ export const SocialPostSchema = z.object({
   styleDescription: z.string().optional(),
   content: z.string(),
   hashtags: z.array(z.string()),
-  platform: z.enum(['facebook', 'instagram']),
+  platform: z.enum(['facebook', 'instagram']).optional(),
   callToAction: z.string().optional(),
   images: z.array(PostImageDataSchema).optional(),
   validation: ValidationDetailsSchema.optional(),

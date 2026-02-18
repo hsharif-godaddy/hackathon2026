@@ -13,83 +13,64 @@ export function generatePostId(): string {
 }
 
 /**
- * Platform-specific validation details
- * @deprecated - Use ValidationDetails instead
+ * Normalize time format to 24-hour format for TimePicker
+ * TimePicker expects 24-hour format internally (e.g., "16:00") regardless of hour12 display setting
+ * Also rounds up to nearest 15-minute interval since TimePicker only accepts 15-minute increments
+ * @param timeString The time string to normalize (e.g., "4:12 PM", "16:07")
+ * @returns Normalized 24-hour time string rounded to 15-min interval (e.g., "16:15") or undefined if invalid
  */
-export interface PlatformValidation {
-  isValid: boolean
-  characterCount: number
-  maxCharacters: number
-  maxImages: number
-  errorMessages?: string[]
-}
+function normalizeTimeFormat(timeString: string | undefined): string | undefined {
+  if (!timeString) return undefined
 
-/**
- * Platform-specific character and image limits
- */
-const PLATFORM_LIMITS = {
-  facebook: { maxChars: 63206, maxImages: 9, minImages: 0},
-  instagram: { maxChars: 2200, maxImages: 1, minImages: 1 },
-} as const
+  // Match time pattern and extract components
+  const timeMatch = timeString.match(/^(\d{1,2}):?(\d{2})?\s*(AM|PM|am|pm|a\.m\.|p\.m\.)?$/i)
+  if (!timeMatch) return undefined
 
-/**
- * Calculate the full content length including hashtags and call-to-action
- * @param post The post to calculate length for
- * @returns Object with full content string and its length
- */
-function calculateContentLength(post: SocialPost): { fullContent: string; contentLength: number } {
-  const hashtagsString = post.hashtags.map(tag => `#${tag}`).join(' ')
-  const callToActionString = post.callToAction ? ` ${post.callToAction}` : ''
-  const fullContent = `${post.content} ${hashtagsString}${callToActionString}`
+  let hours = parseInt(timeMatch[1]!, 10)
+  let minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0
+  const period = timeMatch[3]?.toUpperCase().replace(/\./g, '')
 
-  return {
-    fullContent,
-    contentLength: fullContent.length
-  }
-}
-
-/**
- * Validates a post against platform-specific requirements
- * @param post The post to validate
- * @returns Post with validation data
- */
-export const validatePost = (post: SocialPost): SocialPost => {
-  const { contentLength } = calculateContentLength(post)
-  const limits = PLATFORM_LIMITS[post.platform]
-  const errors: string[] = []
-
-  // Check if content exceeds character limit
-  if (contentLength > limits.maxChars) {
-    errors.push(`Total content (including hashtags and call-to-action) exceeds ${post.platform} ${limits.maxChars} character limit`)
+  // If AM/PM is present, convert to 24-hour format
+  if (period === 'PM' && hours !== 12) {
+    hours += 12
+  } else if (period === 'AM' && hours === 12) {
+    hours = 0
+  } else if (!period) {
+    // Already in 24-hour format, just validate
+    if (hours < 0 || hours > 23) {
+      return undefined
+    }
+  } else if (period && period !== 'AM' && period !== 'PM') {
+    return undefined
   }
 
-  // Check if Instagram posts have at least one image
-  const imageCount = post.images?.length || 0
-  if (post.platform === 'instagram' && imageCount < limits.minImages) {
-    errors.push(`Instagram posts require at least ${limits.minImages} image`)
+  // Validate minutes
+  if (minutes > 59) {
+    return undefined
   }
 
-  // Extract individual length components
-  const hashtagsString = post.hashtags.map(tag => `#${tag}`).join(' ')
-  const callToActionString = post.callToAction ? ` ${post.callToAction}` : ''
+  // Round up to nearest 15-minute interval
+  // If minutes are not already on a 15-min interval, round up
+  const remainder = minutes % 15
+  if (remainder !== 0) {
+    minutes = minutes + (15 - remainder)
 
-  // Create validation result with detailed breakdown
-  const validation = {
-    isValid: errors.length === 0,
-    characterCount: contentLength,
-    contentLength: post.content.length,
-    hashtagsLength: hashtagsString.length,
-    callToActionLength: callToActionString.length,
-    maxCharacters: limits.maxChars,
-    maxImages: limits.maxImages,
-    imageCount,
-    ...(errors.length > 0 && { errorMessages: errors })
+    // Handle hour overflow (e.g., 8:58 rounds to 9:00)
+    if (minutes >= 60) {
+      hours += 1
+      minutes = 0
+
+      // Handle day overflow (e.g., 23:58 rounds to 00:00)
+      if (hours >= 24) {
+        hours = 0
+      }
+    }
   }
 
-  return {
-    ...post,
-    validation
-  }
+  // Format: "HH:MM" (24-hour format with leading zeros)
+  const hoursStr = String(hours).padStart(2, '0')
+  const minutesStr = String(minutes).padStart(2, '0')
+  return `${hoursStr}:${minutesStr}`
 }
 
 /**
@@ -170,13 +151,16 @@ function assignPostMetadata(posts: SocialPost[], topic: string): SocialPost[] {
 
 /**
  * Calculate platform distribution for posts
+ * Note: Posts are now platform-agnostic, so this returns empty for backward compatibility
  * @param posts The posts to analyze
- * @returns Record of platform counts
+ * @returns Record of platform counts (empty for platform-agnostic posts)
  */
 function calculatePlatformDistribution(posts: SocialPost[]): Record<string, number> {
   const platformCounts: Record<string, number> = {}
   posts.forEach(post => {
-    platformCounts[post.platform] = (platformCounts[post.platform] || 0) + 1
+    if (post.platform) {
+      platformCounts[post.platform] = (platformCounts[post.platform] || 0) + 1
+    }
   })
   return platformCounts
 }
@@ -504,29 +488,40 @@ This tool uses YOUR intelligence as the LLM to create social posts for connected
 4. **Set Hashtag Count**: Choose optimal number of hashtags (typically 3-7 for FB, 10-20 for IG)
 5. **Create Posts**: Generate either a single optimized post or 3-5 variations based on the selected mode
 6. **Generate Images**: If includeImages is true, provide image prompts for each post
+7. **Extract Scheduling Info & Smart Date Handling**:
+   - If the user mentions a specific date/time to publish (e.g., "schedule for February 23rd at 4:00 PM"), extract it into scheduledDate and scheduledTime fields
+   - CRITICAL: If the post is scheduled to go out AT the time of an event/launch, DO NOT mention the specific date/time in the content. Instead use "today", "now", "it's here", "launching today" language since the post will be live WHEN the event happens
+   - Example: "schedule post for March 25th at 3PM to announce our launch on March 25th at 3PM" → scheduledDate="2026-03-25", scheduledTime="15:00", content should say "THE BIG DAY IS HERE!" or "LAUNCHING NOW!" (NOT "March 25th at 3:00 PM")
+   - Only include future dates in content if the post is meant to promote an event happening AFTER the scheduled post time
+   - When in doubt, use present-tense "now/today" language if scheduling info is provided
 
 Each post in the "posts" array should have:
 - styleLabel: A descriptive title for this post variation (e.g., "Fresh & Bright", "Behind the Scenes")
 - styleDescription: Brief explanation of the style approach (will be shown in UI)
 - content: The actual post text (with emojis if appropriate)
 - hashtags: Array of relevant hashtags without the # symbol
-- platform: "facebook" or "instagram" - IMPORTANT: Each post must target one specific platform
+- platform: OPTIONAL - Posts are platform-agnostic. User selects which platforms to publish to in the UI.
 - callToAction: Optional CTA text (e.g., "Book your table today!")
 - imagePrompt: If includeImages is true, include a specific image prompt for this post
 
 MODE HANDLING:
-- "single": Generate one optimized post for the specified platform (requires specific platform selection)
+- "single": Generate one optimized post
 - "multiple": Generate 3-5 variations (default behavior) for selection
 
-IMPORTANT PLATFORM HANDLING:
-- platform="all" is an INPUT parameter that tells you to generate posts for ALL supported platforms
-- When you receive platform="all", create a mix of posts: some for Facebook, some for Instagram
-- CRITICAL: Each individual post in the "posts" array MUST have a specific platform value (facebook or instagram)
-- NEVER set an individual post's platform field to "all" - that's only used as the input parameter
-- Example: If user asks for platform="all" with count=4, you might create: 2 Facebook posts, 2 Instagram post
-- When creating for "all" platforms, aim for a balanced mix across the requested platforms
-- Each post should be optimized for its specific platform (length, hashtag count, style)
-- In single mode, a specific platform MUST be selected (not "all") since you're only creating one post
+IMPORTANT PLATFORM-SPECIFIC GENERATION:
+- The "platform" parameter determines which character limits and requirements to use
+- ALWAYS ask the user which platform(s) they want to target if unclear from context
+- Consider platform restrictions when generating content:
+  * Facebook: 63,206 character limit, images optional but recommended
+  * Instagram: 2,200 character limit, ALWAYS requires at least 1 image
+- Do NOT set the platform field in posts - it's optional and user-selected at publish time
+- Users will select which platform(s) to publish to in the UI (can select both)
+- IMPORTANT: Generate content based on the "platform" parameter:
+  * "facebook": Optimize for Facebook - use up to ~63,000 characters, images optional
+  * "instagram": Optimize for Instagram - keep under ~2,000 characters, ALWAYS include images
+  * "all": Conservative approach - keep under ~2,000 characters and ALWAYS include images (works on both platforms)
+- NOTE: If user wants Facebook-optimized content, use platform="facebook" for longer posts
+- NOTE: If user wants Instagram-optimized content, use platform="instagram" for image-focused posts
 
 IMAGE HANDLING:
 - If includeImages is true, the tool will add images to posts (uses stock image search by default)
@@ -541,7 +536,9 @@ IMAGE HANDLING:
 
 IMPORTANT: Generate posts that feel natural and authentic to the business, not generic templates..`,
   z.object({
-    topic: z.string().describe('What the post is about (e.g., "weekend brunch special", "new spring menu")'),
+    topic: z.string().describe('What the post is about, excluding scheduling details (e.g., "website launch celebration", "weekend brunch special"). If the user mentions a date for scheduling, do NOT include it here - that goes in scheduledDate/scheduledTime fields.'),
+    scheduledDate: z.string().optional().describe('If user specified a date to publish, provide in YYYY-MM-DD format (e.g., "2026-02-23"). Use the current year 2026 unless user specifies otherwise. Leave empty if no specific date mentioned. IMPORTANT: If the post should go out ON this date (e.g., "post on March 25th to announce March 25th launch"), the content should use present tense ("launching now", "today") NOT future dates.'),
+    scheduledTime: z.string().optional().describe('If user specified a time to publish, provide in format: "H:MM AM" or "H:MM PM" (e.g., "4:12 PM", "11:37 AM"). Must include AM or PM. The time will be automatically rounded UP to the nearest 15-minute interval (e.g., "8:12 PM" becomes "8:15 PM", "3:07 AM" becomes "3:15 AM"). Examples: "4:00 PM" ✓, "8:12 PM" ✓, "4:00 pm" ✓. The time should be at least 20 minutes in the future. If the requested time would be in the past or too soon, leave this field empty. Leave empty if no specific time mentioned.'),
     contentApproach: z.enum([
       'product-focused',
       'story-telling',
@@ -574,7 +571,7 @@ IMPORTANT: Generate posts that feel natural and authentic to the business, not g
       styleDescription: z.string().optional().describe('Brief explanation of this style approach (displayed in UI)'),
       content: z.string().describe('The actual post text with appropriate formatting'),
       hashtags: z.array(z.string()).describe('Array of hashtags WITHOUT # symbol'),
-      platform: z.enum(['facebook', 'instagram']).describe('The specific platform this post is optimized for'),
+      platform: z.enum(['facebook', 'instagram']).optional().describe('Optional - posts are platform-agnostic. User selects platforms at publish time.'),
       callToAction: z.string().optional().describe('Optional call-to-action text'),
       imagePrompt: z.string().optional().describe('Optional custom prompt for generating/searching for an image specific to this post')
     })).describe('Array of post variations (1 for single mode, 1-5 for multiple mode)'),
@@ -630,24 +627,30 @@ IMPORTANT: Generate posts that feel natural and authentic to the business, not g
       }
     }
 
-    const validatedPosts = posts.map(post => validatePost(post))
-    const finalPosts = validatedPosts.filter(post => post.validation?.isValid)
+    const platformCounts = calculatePlatformDistribution(posts)
 
-    if (finalPosts.length === 0) {
-      throw new Error('None of the provided posts are valid for their platforms. Please adjust the content to fit platform limits.')
+    // Normalize scheduled time to 24-hour format for TimePicker
+    const normalizedTime = normalizeTimeFormat(input.scheduledTime)
+
+    // Log if time was rounded
+    if (input.scheduledTime && normalizedTime && input.scheduledTime !== normalizedTime) {
+      logger.info('socialPostCreate.time.rounded', {
+        originalTime: input.scheduledTime,
+        roundedTime: normalizedTime
+      })
     }
 
-    const platformCounts = calculatePlatformDistribution(finalPosts)
-
     logger.info('socialPostCreate.generate.complete', {
-      totalPostCount: posts.length,
-      validPostCount: finalPosts.length,
+      postCount: posts.length,
       platformDistribution: platformCounts,
       requestedPlatform: input.platform,
       mode,
       topic: input.topic,
       includeImages,
-      postsWithImages: finalPosts.filter(post => post.images && post.images.length > 0).length
+      postsWithImages: posts.filter(post => post.images && post.images.length > 0).length,
+      hasScheduling: !!(input.scheduledDate || input.scheduledTime),
+      scheduledTime: input.scheduledTime,
+      normalizedTime
     })
 
     return {
@@ -655,16 +658,19 @@ IMPORTANT: Generate posts that feel natural and authentic to the business, not g
       widget: {
         widgetType: 'social-post-list',
         widgetData: {
-          posts: finalPosts,
+          posts,
           topic: input.topic,
-          mode
+          mode,
+          scheduledDate: input.scheduledDate,
+          scheduledTime: normalizedTime
         }
       },
-      posts: finalPosts,
-      filteredCount: posts.length - finalPosts.length,
+      posts,
       platformCounts,
       mode,
-      includeImages
+      includeImages,
+      scheduledDate: input.scheduledDate,
+      scheduledTime: normalizedTime
     }
   }
 )

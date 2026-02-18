@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';

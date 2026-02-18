@@ -116,6 +116,7 @@
     "@ux/skeleton": "^2500.7.2",
     "@ux/spinner": "^2500.7.1",
     "@ux/table": "^2500.7.2",
+    "@ux/tabs": "^2500.9.1",
     "@ux/tag": "^2500.7.2",
     "@ux/tailwind-intents": "^2500.7.1",
     "@ux/text": "^2500.7.1",

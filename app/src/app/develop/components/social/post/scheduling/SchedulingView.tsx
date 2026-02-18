@@ -103,10 +103,7 @@ export const SchedulingView = memo(({
   }, [isToday]);
 
   return (
-    <Box orientation="vertical" gap="lg">
-      <text.h2 as="title" size={0}>{t('builder_social_schedule_title')}</text.h2>
-
-      <Box orientation="vertical" gap="md">
+    <Box orientation="vertical" gap="md">
         <Box orientation="vertical" gap="sm">
           <Radio
             id="publish-now"
@@ -180,7 +177,6 @@ export const SchedulingView = memo(({
             </text.p>
           </Box>
         )}
-      </Box>
     </Box>
   );
 });

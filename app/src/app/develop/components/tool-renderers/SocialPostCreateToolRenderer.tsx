@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Chat from '@ux/icon/chat'
 
+import { PostList } from '@/app/develop/components/social/post/PostList'
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import DefaultToolRenderer from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
-import { SocialPostList } from '@/app/develop/components/widgets/SocialPostList'
 import { useSiteAssociations } from '@/hooks/useSocial'
 import { useToolResultSync } from '@/hooks/useToolResultSync'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -33,6 +33,8 @@ export default function SocialPostCreateToolRenderer({
   const [isVisible] = useState(true)
 
   const [posts, setPosts] = useState<SocialPostData[]>([])
+  const [scheduledDate, setScheduledDate] = useState<string | undefined>()
+  const [scheduledTime, setScheduledTime] = useState<string | undefined>()
   const initializedRef = useRef(false)
 
   // Fetch site associations to detect existing connections for publishing
@@ -57,8 +59,24 @@ export default function SocialPostCreateToolRenderer({
 
     if (resultObj.widget?.widgetData?.posts && Array.isArray(resultObj.widget.widgetData.posts)) {
       postsFromResult = resultObj.widget.widgetData.posts
+
+      // Extract scheduling information from widget data
+      if (resultObj.widget.widgetData.scheduledDate) {
+        setScheduledDate(resultObj.widget.widgetData.scheduledDate)
+      }
+      if (resultObj.widget.widgetData.scheduledTime) {
+        setScheduledTime(resultObj.widget.widgetData.scheduledTime)
+      }
     } else if (resultObj.posts && Array.isArray(resultObj.posts)) {
       postsFromResult = resultObj.posts
+
+      // Extract scheduling information from top-level result
+      if (resultObj.scheduledDate) {
+        setScheduledDate(resultObj.scheduledDate)
+      }
+      if (resultObj.scheduledTime) {
+        setScheduledTime(resultObj.scheduledTime)
+      }
     }
 
     if (postsFromResult.length > 0) {
@@ -133,11 +151,13 @@ export default function SocialPostCreateToolRenderer({
             </svg>
             <span className="text-sm"> {t('builder_tools_social_create_svg_text')}</span>
           </div>
-          <SocialPostList
+          <PostList
             posts={posts}
             appId={currentAppId || undefined}
             onPostUpdate={handlePostUpdate}
             associations={associationsData?.associations || []}
+            initialScheduledDate={scheduledDate}
+            initialScheduledTime={scheduledTime}
           />
         </div>
       )}

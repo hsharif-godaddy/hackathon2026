@@ -1,3 +1,5 @@
+import { describe, expect, it } from 'vitest'
+
 import type { FacebookPage, GoogleLocation } from '@/lib/social'
 import type { EnrichedSocialConnection } from '@/types/social'
 import { getSocialConnectionDisplayInfo } from './social-utils'

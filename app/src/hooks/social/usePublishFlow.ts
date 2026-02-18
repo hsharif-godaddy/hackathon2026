@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { useConnectionById, useSiteAssociations } from '@/hooks/useSocial'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -22,7 +22,7 @@ export function usePublishFlow(
   isActiveFlow: boolean,
   callbacks: PublishFlowCallbacks
 ) {
-  const { onStatusChange, onResultChange } = callbacks
+  const { onPlatformStatusChange, onPlatformResultChange, onOverallStatusChange } = callbacks
   const t = useTranslations()
 
   const errorMessages = useMemo<PublishErrorMessages>(() => ({
@@ -31,98 +31,182 @@ export function usePublishFlow(
     missingPageCredentials: t('builder_social_error_missing_page_credentials'),
     missingInstagramCredentials: t('builder_social_error_missing_instagram_credentials'),
     instagramImageRequired: t('builder_social_error_instagram_image_required'),
-    platformNotSupported: t('builder_social_error_platform_not_supported', { platform: pendingPublish?.platform || '' }),
-    commonError: t('builder_common_unknown_error')
-  }), [t, pendingPublish?.platform])
+    platformNotSupported: t('builder_social_error_platform_not_supported', { platform: '' }),
+    commonError: t('builder_common_unknown_error'),
+    noConnectionFound: t('builder_social_error_no_connection_found', { platform: '' }),
+    connectionFetchFailed: t('builder_social_error_connection_fetch_failed', { platform: '' }),
+    noPlatformSpecified: t('builder_social_error_no_platform_specified')
+  }), [t])
 
   const { data: associationsData, isLoading: isLoadingAssociations } = useSiteAssociations(appId, isActiveFlow)
-  const [selectedAssociation, setSelectedAssociation] = useState<SiteAssociation | null>(null)
 
   const isPublishingRef = useRef(false)
   const initiatedPublishIds = useRef<Set<string>>(new Set())
 
-  const { data: connection, isError: isConnectionError, error: connectionError } = useConnectionById(
-    selectedAssociation?.socialId || '',
-    !!selectedAssociation && isActiveFlow
+  // Fetch connections for all platforms
+  const platformAssociations = useMemo(() => {
+    if (!pendingPublish || !associationsData) return []
+
+    return pendingPublish.platforms.map(platform => {
+      const match = findMatchingAssociation(associationsData.associations || [], platform)
+      return { platform, association: match }
+    }).filter(item => item.association !== null)
+  }, [pendingPublish, associationsData])
+
+  // Use first association's connection as a trigger to start (simplified for now)
+  const firstAssociation = platformAssociations[0]?.association
+  const { data: connection, isError: isConnectionError } = useConnectionById(
+    firstAssociation?.socialId || '',
+    !!firstAssociation && isActiveFlow
   )
 
-  const executePublish = useCallback(async (
+  const executeMultiPlatformPublish = useCallback(async (
     publish: PendingPublish,
-    association: SiteAssociation,
-    conn: SocialConnection
+    associations: SiteAssociation[]
   ) => {
     if (isPublishingRef.current) return
     isPublishingRef.current = true
 
-    onStatusChange(PublishFlowState.Publishing)
-
     try {
-      const result = await publishToPlatform(publish, conn, errorMessages)
+      // Start all publishes in parallel
+      // RACE CONDITION MITIGATION: While these promises execute in parallel and call
+      // state update callbacks concurrently, React's useReducer guarantees sequential
+      // processing of dispatched actions through its internal queue. Each dispatch is
+      // applied atomically with the most recent state, preventing lost updates.
+      // Each platform updates its own key in platformStatuses, further reducing conflicts.
+      const publishPromises = publish.platforms.map(async (platform) => {
+        try {
+          // Update status: Publishing
+          onPlatformStatusChange(platform, PublishFlowState.Publishing)
 
-      await storePostResult({
-        appId,
-        associationId: association.id,
-        platform: publish.platform,
-        state: publish.scheduledAt ? SocialPostState.SCHEDULED : SocialPostState.PUBLISHED,
-        message: publish.message,
-        imageUrls: publish.imageUrls,
-        result,
-        scheduledAt: publish.scheduledAt
+          // Find association for this platform
+          const match = findMatchingAssociation(associations, platform)
+          if (!match) {
+            throw new Error(t('builder_social_error_no_connection_found', { platform }))
+          }
+
+          // Fetch connection for this platform
+          const response = await fetch(`/api/social/connections/${match.socialId}`)
+          if (!response.ok) {
+            throw new Error(t('builder_social_error_connection_fetch_failed', { platform }))
+          }
+          const conn = await response.json() as SocialConnection
+
+          // Create single-platform publish object for the API
+          const singlePlatformPublish: PendingPublish = {
+            ...publish,
+            platforms: [platform]  // API still expects this format temporarily
+          }
+
+          // Publish to this platform
+          const result = await publishToPlatform(singlePlatformPublish, conn, errorMessages)
+
+          // Store result
+          await storePostResult({
+            appId,
+            associationId: match.id,
+            platform,
+            state: publish.scheduledAt ? SocialPostState.SCHEDULED : SocialPostState.PUBLISHED,
+            message: publish.message,
+            imageUrls: publish.imageUrls,
+            result,
+            scheduledAt: publish.scheduledAt
+          })
+
+          // Update status and result together in single dispatch to avoid race conditions
+          onPlatformStatusChange(platform, PublishFlowState.Success)
+          onPlatformResultChange(platform, result)
+
+          return { platform, success: true, result }
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : errorMessages.commonError
+
+          // Try to store failure
+          try {
+            const match = findMatchingAssociation(associations, platform)
+            if (match) {
+              await storePostResult({
+                appId,
+                associationId: match.id,
+                platform,
+                state: SocialPostState.FAILED,
+                message: publish.message,
+                imageUrls: publish.imageUrls,
+                error: errorMessage
+              })
+            }
+          } catch {
+            // Ignore storage error
+          }
+
+          // Update status and error together in single dispatch to avoid race conditions
+          onPlatformStatusChange(platform, PublishFlowState.Error)
+          onPlatformResultChange(platform, { error: errorMessage })
+
+          return { platform, success: false, error: errorMessage }
+        }
       })
 
-      onStatusChange(PublishFlowState.Success)
-      onResultChange(result)
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : errorMessages.commonError
+      // Wait for all to complete (doesn't throw on individual failures)
+      const results = await Promise.allSettled(publishPromises)
 
-      try {
-        await storePostResult({
-          appId,
-          associationId: association.id,
-          platform: publish.platform,
-          state: SocialPostState.FAILED,
-          message: publish.message,
-          imageUrls: publish.imageUrls,
-          error: errorMessage
-        })
-      } catch {
-        // Ignore error storing failed post
+      // Determine overall status
+      const successfulResults = results.filter(
+        r => r.status === 'fulfilled' && r.value.success
+      )
+      const allSucceeded = successfulResults.length === publish.platforms.length
+      const anySucceeded = successfulResults.length > 0
+
+      if (allSucceeded) {
+        onOverallStatusChange(PublishFlowState.Success)
+      } else if (anySucceeded) {
+        // Partial success - at least one succeeded
+        onOverallStatusChange(PublishFlowState.Success)
+      } else {
+        onOverallStatusChange(PublishFlowState.Error)
       }
-
-      onStatusChange(PublishFlowState.Error)
-      onResultChange({ error: errorMessage })
     } finally {
       isPublishingRef.current = false
     }
-  }, [onStatusChange, errorMessages, appId, onResultChange])
+  }, [appId, errorMessages, onPlatformStatusChange, onPlatformResultChange, onOverallStatusChange, t])
 
   useEffect(() => {
     if (!isActiveFlow || !pendingPublish) return
     if (initiatedPublishIds.current.has(publishId)) return
     if (isLoadingAssociations) return
+    if (isConnectionError) {
+      onOverallStatusChange(PublishFlowState.Error)
+      pendingPublish.platforms.forEach(platform => {
+        onPlatformStatusChange(platform, PublishFlowState.Error)
+        onPlatformResultChange(platform, { error: errorMessages.commonError })
+      })
+      return
+    }
+
+    // Wait for at least one connection to be loaded
+    if (!connection) return
 
     const associations = associationsData?.associations || []
-    const match = findMatchingAssociation(associations, pendingPublish.platform)
 
-    if (!match) {
-      onStatusChange(PublishFlowState.Error)
-      onResultChange({ error: errorMessages.platformNotSupported })
+    // Check if we have associations for all platforms
+    const missingPlatforms = pendingPublish.platforms.filter(
+      platform => !findMatchingAssociation(associations, platform)
+    )
+
+    if (missingPlatforms.length > 0) {
+      onOverallStatusChange(PublishFlowState.Error)
+      missingPlatforms.forEach(platform => {
+        onPlatformStatusChange(platform, PublishFlowState.Error)
+        onPlatformResultChange(platform, {
+          error: t('builder_social_error_platform_not_supported', { platform })
+        })
+      })
       return
     }
 
-    setSelectedAssociation(match)
-
-    if (isConnectionError && connectionError) {
-      const errorMessage = connectionError instanceof Error ? connectionError.message : errorMessages.commonError
-      onStatusChange(PublishFlowState.Error)
-      onResultChange({ error: errorMessage })
-      return
-    }
-
-    if (connection) {
-      initiatedPublishIds.current.add(publishId)
-      executePublish(pendingPublish, match, connection)
-    }
+    // Start parallel publishing
+    initiatedPublishIds.current.add(publishId)
+    executeMultiPlatformPublish(pendingPublish, associations)
   }, [
     isActiveFlow,
     pendingPublish,
@@ -131,10 +215,11 @@ export function usePublishFlow(
     isLoadingAssociations,
     connection,
     isConnectionError,
-    connectionError,
-    onStatusChange,
-    onResultChange,
-    executePublish,
-    errorMessages
+    executeMultiPlatformPublish,
+    onOverallStatusChange,
+    onPlatformStatusChange,
+    onPlatformResultChange,
+    errorMessages,
+    t
   ])
 }

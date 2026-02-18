@@ -3,10 +3,10 @@
 import { memo } from 'react'
 import SendIcon from '@ux/icon/send'
 
+import { PublishWidget } from '@/app/develop/components/social/post/PublishWidget'
 import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import DefaultToolRenderer from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
-import { SocialPublishWidget } from '@/app/develop/components/widgets/SocialPublishWidget'
 import { useTranslations } from '@/hooks/useTranslations'
 
 function SocialPublishToolRenderer({
@@ -32,7 +32,7 @@ function SocialPublishToolRenderer({
             toolStatus={toolStatus}
             onOpenModal={undefined}
           />
-          <SocialPublishWidget
+          <PublishWidget
             appId={r.appId as string}
             publishId={r.publishId as string}
             toolId={toolId}

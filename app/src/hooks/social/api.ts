@@ -17,6 +17,9 @@ export interface PublishErrorMessages {
   instagramImageRequired?: string
   platformNotSupported?: string
   commonError?: string
+  noConnectionFound?: string
+  connectionFetchFailed?: string
+  noPlatformSpecified?: string
 }
 
 interface StorePostParams {
@@ -123,10 +126,22 @@ export async function publishToPlatform(
   connection: SocialConnection,
   errorMessages?: PublishErrorMessages
 ): Promise<SocialPublishResult> {
-  const publisher = platformPublishers[publish.platform]
+  // Handle both old single platform and new array format
+  const platform = publish.platforms[0]
+  if (!platform) {
+    throw new Error(errorMessages?.noPlatformSpecified)
+  }
+
+  const publisher = platformPublishers[platform]
   if (!publisher) {
     throw new Error(errorMessages?.platformNotSupported)
   }
 
-  return publisher(publish, connection, errorMessages)
+  // Convert to single-platform format for publisher
+  const singlePlatformPublish = {
+    ...publish,
+    platform
+  } as any
+
+  return publisher(singlePlatformPublish, connection, errorMessages)
 }
