@@ -3,28 +3,33 @@ import type { IAccountAdapter } from './interfaces/IAccountAdapter';
 import { ProdAccountAdapter } from './ProdAccountAdapter';
 import { logger } from '../request-context';
 
+// Use globalThis to survive Next.js hot module reloading in development
+declare global {
+  interface GlobalThis {
+    __accountAdapter?: IAccountAdapter;
+  }
+}
+
 /**
  * Account Adapter Factory
- * 
+ *
  * Selects the appropriate account adapter based on environment
  * Similar to SiteAdapterFactory but for account management
  */
 export class AccountAdapterFactory {
-  private static instance: IAccountAdapter | null = null;
-
   /**
    * Get account adapter singleton based on environment
    */
   public static getInstance(): IAccountAdapter {
-    if (!AccountAdapterFactory.instance) {
+    if (!globalThis.__accountAdapter) {
       const isProduction = AccountAdapterFactory.isProductionMode();
-      
+
       // DOUBLE SAFETY CHECK: Additional validation before creating dev adapter
       if (!isProduction) {
         AccountAdapterFactory.validateDevEnvironment();
       }
-      
-      AccountAdapterFactory.instance = isProduction
+
+      globalThis.__accountAdapter = isProduction
         ? new ProdAccountAdapter()
         : new DevAccountAdapter();
 
@@ -32,14 +37,14 @@ export class AccountAdapterFactory {
         adapterType: isProduction ? 'production' : 'development'
       });
     }
-    return AccountAdapterFactory.instance;
+    return globalThis.__accountAdapter;
   }
 
   /**
    * Force reset singleton (useful for testing)
    */
   public static reset(): void {
-    AccountAdapterFactory.instance = null;
+    globalThis.__accountAdapter = undefined;
   }
 
   /**
@@ -49,7 +54,7 @@ export class AccountAdapterFactory {
     // Check for MySQL via DATABASE_URL or individual env vars (matches DatabaseManager logic)
     const hasDatabaseUrl = process.env.DATABASE_URL?.startsWith('mysql://');
     const hasIndividualMysqlVars = !!process.env.MYSQL_DB_USERNAME;
-    
+
     return process.env.NODE_ENV === 'production' ||
            hasDatabaseUrl ||                         // DATABASE_URL with MySQL indicates production
            hasIndividualMysqlVars ||                // Individual MySQL vars indicate production

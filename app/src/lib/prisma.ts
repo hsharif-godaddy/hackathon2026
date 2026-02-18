@@ -1,17 +1,17 @@
 /**
  * Shared Prisma Client
- * Single instance shared across all services to properly pool connections
+ * Single instance shared across all services to properly pool connections.
+ * Uses globalThis to survive Next.js hot module reloading in development,
+ * preventing connection pool exhaustion from orphaned PrismaClient instances.
  */
 
 import { PrismaClient } from '@/generated/prisma';
 
-/**
- * Singleton Prisma client instance
- * Connection pool configuration:
- * - connection_limit=10: Maximum 10 concurrent connections
- * - pool_timeout=20: 20 second timeout when waiting for a connection
- */
-let prisma: PrismaClient | undefined;
+declare global {
+  interface GlobalThis {
+    __prisma?: PrismaClient;
+  }
+}
 
 /**
  * Get the shared Prisma client instance
@@ -20,12 +20,12 @@ let prisma: PrismaClient | undefined;
  * @returns Shared PrismaClient instance
  */
 export function getPrismaClient(): PrismaClient {
-  if (!prisma) {
+  if (!globalThis.__prisma) {
     const baseUrl = process.env.DATABASE_URL || '';
     const separator = baseUrl.includes('?') ? '&' : '?';
     const urlWithPooling = `${baseUrl}${separator}connection_limit=10&pool_timeout=20`;
 
-    prisma = new PrismaClient({
+    globalThis.__prisma = new PrismaClient({
       datasources: {
         db: {
           url: urlWithPooling,
@@ -33,7 +33,7 @@ export function getPrismaClient(): PrismaClient {
       },
     });
   }
-  return prisma;
+  return globalThis.__prisma;
 }
 
 /**
@@ -41,8 +41,8 @@ export function getPrismaClient(): PrismaClient {
  * Should be called during graceful shutdown
  */
 export async function disconnectPrisma(): Promise<void> {
-  if (prisma) {
-    await prisma.$disconnect();
-    prisma = undefined;
+  if (globalThis.__prisma) {
+    await globalThis.__prisma.$disconnect();
+    globalThis.__prisma = undefined;
   }
 }

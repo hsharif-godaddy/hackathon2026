@@ -141,21 +141,24 @@ export class GdAuthService {
   }
 }
 
-// Lazy singleton - only create when first accessed at runtime
-let _gdAuthService: GdAuthService | null = null;
+// Lazy singleton using globalThis to survive Next.js hot module reloading
+declare global {
+  interface GlobalThis {
+    __gdAuthService?: GdAuthService;
+  }
+}
 
 export const gdAuthService = {
   get instance(): GdAuthService {
-    if (!_gdAuthService) {
+    if (!globalThis.__gdAuthService) {
       logger.info('gd-auth-service.singleton.create', {
         message: 'Creating gdAuthService singleton (lazy)',
         authType: process.env.AUTH_TYPE,
         nodeEnv: process.env.NODE_ENV,
-        stack: new Error().stack?.split('\n').slice(1, 6).join('\n')
       });
-      _gdAuthService = new GdAuthService();
+      globalThis.__gdAuthService = new GdAuthService();
     }
-    return _gdAuthService;
+    return globalThis.__gdAuthService;
   },
 
   // Delegate methods for backward compatibility
