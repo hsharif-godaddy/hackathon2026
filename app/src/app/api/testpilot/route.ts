@@ -10,6 +10,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { agentFetch } from '@/lib/agent-fetch';
 import { logger } from '@/lib/request-context';
 import { testPilotClient } from '@/lib/testpilot';
+import { VulnerabilityScannerResult } from '@/types/vulnerability-scanner';
+import { transformVulnerabilityScanResult } from './transform-scan-result';
 
 /**
  * POST /api/testpilot
@@ -73,26 +75,42 @@ export async function POST(request: NextRequest) {
           });
           return { key: 'security', result };
         } else if (testType === 'code') {
-          // Call agents service for code security scan
+          // Call agents service for comprehensive security scan (vulnerability + secrets)
           const agentUrl = process.env.AGENTS_SERVICE_URL || 'http://localhost:4000';
-          const response = await agentFetch(`${agentUrl}/security-scan`, {
+          const response = await agentFetch(`${agentUrl}/apps/${appId}/vulnerability-scan`, {
             siteId: appId,
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              appId,
               production: false,
+              skipSecretsScan: false, // Include secrets scan
             }),
           });
 
           if (!response.ok) {
-            throw new Error('Code security scan failed');
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Code security scan failed');
           }
 
-          const result = await response.json();
+          const scanResult = await response.json() as VulnerabilityScannerResult;
           const elapsed = Date.now() - testStartTime;
-          logger.info('testpilot.api.test-complete', { testType, elapsed });
-          return { key: 'code', result };
+
+          // Transform using helper function
+          const transformedResult = transformVulnerabilityScanResult(scanResult);
+
+          logger.info('testpilot.api.test-complete', {
+            testType,
+            elapsed,
+            vulnerabilitiesFound: transformedResult.aiInsights.securityReport.vulnerabilities.length,
+          });
+          return {
+            key: 'code',
+            result: {
+              results: transformedResult,
+              timedOut: false,
+              taskId: '',
+            },
+          };
         }
         return { key: testType, result: null };
       } catch (error) {

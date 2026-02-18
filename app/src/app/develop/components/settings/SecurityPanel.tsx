@@ -101,7 +101,7 @@ export default function SecurityPanel() {
         body: JSON.stringify({
           appId,
           url: serverState.url,
-          runTests: ['security']
+          runTests: ['code'] // Use local vulnerability + secrets scanner tools
         }),
       });
 
@@ -111,12 +111,24 @@ export default function SecurityPanel() {
       }
 
       const data = await response.json();
-      if (data?.security?.timedOut) {
-        // Start retry process
-        retryTimedOutTask(data?.security?.taskId, 0);
+      const codeResult = data?.code;
+      if (!codeResult) {
+        setError(t('builder_settings_security_error_analysis_failed'));
+        setIsLoading(false);
+      } else if (codeResult.error || codeResult.status === 'failed') {
+        setError(codeResult.error || t('builder_settings_security_error_analysis_failed'));
+        setIsLoading(false);
+      } else if (codeResult.timedOut) {
+        if (codeResult.taskId) {
+          // Start retry process
+          retryTimedOutTask(codeResult.taskId, 0);
+        } else {
+          setError(t('builder_settings_security_error_analysis_failed'));
+          setIsLoading(false);
+        }
       } else {
-        // Success
-        setResults(data);
+        // Success - rename 'code' to 'security' for backwards compatibility with SecurityResults
+        setResults({ security: codeResult });
         setIsLoading(false);
       }
     } catch (err) {
