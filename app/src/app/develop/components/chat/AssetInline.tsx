@@ -1,6 +1,7 @@
 'use client'
 
 import AttachmentIcon from '@ux/icon/attachment';
+import ImageIcon from '@ux/icon/image';
 import VideoIcon from '@ux/icon/video';
 import XThickIcon from '@ux/icon/x-thick';
 import Spinner from '@ux/spinner';
@@ -47,9 +48,11 @@ export default function AssetInline({
   const activeAsset = asset || customAsset
 
   // Helper function to get the display URL for an asset
-  const getAssetDisplayUrl = (item: AssetManagerItem | CustomAsset): string => {
-    const url = item.imageUrl.startsWith('//') ? `https:${item.imageUrl}` : item.imageUrl
-    return url
+  const getAssetDisplayUrl = (item: AssetManagerItem | CustomAsset): string | undefined => {
+    if (!item.imageUrl) {
+      return undefined
+    }
+    return item.imageUrl.startsWith('//') ? `https:${item.imageUrl}` : item.imageUrl
   }
 
   // Helper function to get the asset label
@@ -91,13 +94,21 @@ export default function AssetInline({
 
   return (
     <div className="relative inline-block">
-      {activeAsset.mediaType === MediaType.IMAGE ? (
-        // Images render as thumbnails
+      {activeAsset.mediaType === MediaType.IMAGE && activeAsset.imageUrl ? (
+        // Images with URL render as thumbnails
         <img // eslint-disable-line @next/next/no-img-element
           src={getAssetDisplayUrl(activeAsset)}
           alt={customAsset?.imageAlt || label}
           className={cn(ASSET_CLASSES, 'object-cover')}
         />
+      ) : activeAsset.mediaType === MediaType.IMAGE ? (
+        // Images WITHOUT URL render as icon with filename (fallback)
+        <div className={cn(ASSET_CLASSES, 'justify-end gap-0.5 px-1 py-0.5')}>
+          <ImageIcon />
+          <text.div as='caption' size={-2} className='truncate max-w-full'>
+            {label}
+          </text.div>
+        </div>
       ) : activeAsset.mediaType === MediaType.VIDEO ? (
         // Videos render as icon with filename
         <div className={cn(ASSET_CLASSES, 'justify-end gap-0.5 px-1 py-0.5')}>
@@ -152,7 +163,7 @@ export function AssetInlineList({
         <div className="flex flex-wrap gap-1 max-h-[160px] overflow-y-auto">
           {assets.map((asset, index) => (
             <AssetInline
-              key={asset.imageUrl}
+              key={asset.filename || asset.imageUrl || index}
               asset={asset}
               onClear={() => onClearAsset(index)}
               mode={mode}

@@ -21,8 +21,8 @@ interface BaseAsset {
   mediaType: MediaType
   /** The source type (e.g., 'gc', 'vimeo') */
   sourceType: string
-  /** The URL to the thumbnail or preview image (protocol-relative) */
-  imageUrl: string
+  /** The URL to the thumbnail or preview image (protocol-relative). May be undefined for uploads without signed URLs. */
+  imageUrl?: string
 }
 
 /**

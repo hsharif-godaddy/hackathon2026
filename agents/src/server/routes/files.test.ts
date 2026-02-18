@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express, { Application } from 'express';
-import { filesRouter } from './files.js';
+import { filesRouter, filesPublicRouter } from './files.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { existsSync } from 'fs';
 import { rm, mkdir } from 'fs/promises';
@@ -50,6 +50,22 @@ vi.mock('../../services/FileUploadService.js', () => {
   };
 });
 
+// Mock file URL signer for signed URL tests
+vi.mock('../../utils/file-url-signer.js', () => ({
+  signFileUrl: (appId: string, filename: string) => {
+    const exp = Math.floor(Date.now() / 1000) + 86400; // 24 hours from now
+    return `/files/uploads/${appId}/${filename}?sig=mock-sig&exp=${exp}`;
+  },
+  verifyFileSignature: (appId: string, filename: string, sig: string, exp: number) => {
+    // Check expiration first
+    if (exp < Math.floor(Date.now() / 1000)) {
+      return false;
+    }
+    // Only accept a specific valid signature for testing
+    return sig === 'valid-test-signature';
+  }
+}));
+
 describe('Files Router - Path Traversal Security', () => {
   let app: Application;
   const testUploadDir = '/tmp/test-uploads-security';
@@ -72,6 +88,9 @@ describe('Files Router - Path Traversal Security', () => {
       next();
     });
 
+    // Public router for signed URL file serving (no auth required)
+    app.use('/files', filesPublicRouter);
+    // Protected router for file operations
     app.use('/files', filesRouter);
 
     // Reset mocks
@@ -247,6 +266,72 @@ describe('Files Router - Path Traversal Security', () => {
 
       // Should succeed
       expect(response.status).toBe(200);
+    });
+  });
+
+  describe('GET /files/uploads/:appId/:filename - Signed URL Authentication', () => {
+    it('should reject expired signed URL', async () => {
+      const expiredExp = Math.floor(Date.now() / 1000) - 3600; // 1 hour ago
+
+      const response = await request(app)
+        .get(`/files/uploads/test-app/test.jpg?sig=fake-sig&exp=${expiredExp}`);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toContain('Invalid or expired');
+    });
+
+    it('should reject invalid signature', async () => {
+      const futureExp = Math.floor(Date.now() / 1000) + 3600;
+
+      const response = await request(app)
+        .get(`/files/uploads/test-app/test.jpg?sig=invalid-signature&exp=${futureExp}`);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toContain('Invalid or expired');
+    });
+
+    it('should accept valid signed URL without JWT and serve file', async () => {
+      const futureExp = Math.floor(Date.now() / 1000) + 3600;
+      const { fileUploadService } = await import('../../services/FileUploadService.js');
+
+      // Mock file exists in listing
+      vi.mocked(fileUploadService.listUploadedFiles).mockResolvedValue([
+        {
+          id: 'file_abc123',
+          originalName: 'test.jpg',
+          filename: 'test.jpg',
+          size: 100,
+          mimeType: 'image/jpeg',
+          uploadedAt: new Date().toISOString()
+        }
+      ]);
+
+      // Mock file path resolution
+      vi.mocked(fileUploadService.getAppUploadsDir).mockReturnValue(testUploadDir);
+      vi.mocked(fileUploadService.getFilePath).mockReturnValue(`${testUploadDir}/upload_123/test.jpg`);
+
+      // Create the test file on disk
+      const { writeFile } = await import('fs/promises');
+      await mkdir(`${testUploadDir}/upload_123`, { recursive: true });
+      await writeFile(`${testUploadDir}/upload_123/test.jpg`, Buffer.from('test image data'));
+
+      // Request WITHOUT JWT but WITH valid signature
+      const response = await request(app)
+        .get(`/files/uploads/test-app/test.jpg?sig=valid-test-signature&exp=${futureExp}`);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toBe('image/jpeg');
+      expect(response.headers['cache-control']).toMatch(/^private, max-age=\d+$/);
+    });
+
+    it('should reject array values for sig parameter', async () => {
+      const futureExp = Math.floor(Date.now() / 1000) + 3600;
+
+      const response = await request(app)
+        .get(`/files/uploads/test-app/test.jpg?sig=sig1&sig=sig2&exp=${futureExp}`);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toContain('Invalid signature');
     });
   });
 });

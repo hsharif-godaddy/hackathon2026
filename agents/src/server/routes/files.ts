@@ -5,8 +5,12 @@ import { fileUploadService } from '../../services/FileUploadService.js'
 import { logger, log } from '../../logging/index.js'
 import { validateAppOwnershipFromBody } from '../middleware/app-ownership.js'
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js'
+import { signFileUrl, verifyFileSignature } from '../../utils/file-url-signer.js'
 
 const router: IRouter = Router()
+
+// Public router for file serving with signed URLs (no JWT required)
+const publicRouter: IRouter = Router()
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -114,13 +118,36 @@ router.post('/upload', uploadRateLimiter, upload.array('files', 5), validateAppO
 
     const result = await fileUploadService.processUpload(appId, files)
 
+    // Add signed URLs to response for browser access
+    // Wrap in try-catch to handle missing encryption key gracefully
+    const filesWithSignedUrls = result.files.map(file => {
+      try {
+        return {
+          ...file,
+          signedUrl: signFileUrl(appId, file.filename)
+        }
+      } catch (signError) {
+        contextLogger.warn('file-upload.signing.failed', {
+          message: 'Failed to generate signed URL for file',
+          filename: file.filename,
+          error: signError instanceof Error ? signError.message : String(signError)
+        })
+        // Return file without signedUrl - frontend will use fallback UI
+        return file
+      }
+    })
+
     contextLogger.info('file-upload.request.success', {
       message: 'File upload completed successfully',
       uploadId: result.uploadId,
       fileCount: result.files.length
     })
 
-    return res.status(200).json(result)
+    // Return full result with augmented files (preserves appId, expiresAt for backwards compatibility)
+    return res.status(200).json({
+      ...result,
+      files: filesWithSignedUrls
+    })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
 
@@ -274,42 +301,96 @@ router.delete('/:appId/:uploadId', validateAppIdParam, async (req: Request, res:
   }
 })
 
-// Serve uploaded files
-router.get('/uploads/:appId/:filename', async (req: Request, res: Response) => {
+// Serve uploaded files - on public router (supports signed URLs without JWT)
+publicRouter.get('/uploads/:appId/:filename', async (req: Request, res: Response) => {
+  // CORS: Set Cross-Origin-Resource-Policy early so error responses can be read by browser
+  // Without this, browsers block access to error response bodies on cross-origin requests
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+
   try {
     const { appId, filename } = req.params
+    const { sig, exp } = req.query
 
     if (!appId || !filename) {
       return res.status(400).json({ error: 'appId and filename are required' })
     }
 
-    // Authenticate request
-    const authReq = req as AuthenticatedRequest
-    const authenticatedSiteId = authReq.agentContext?.siteId
-
-    if (!authenticatedSiteId) {
-      return res.status(401).json({ error: 'Authentication required', requiresAuth: true })
+    // Path 1: Signed URL authentication (no JWT needed)
+    // Track if we're using signed URL auth for cache-control
+    let signedUrlExpiry: number | null = null
+    if (sig && exp) {
+      // Validate query params are strings (not arrays)
+      if (typeof sig !== 'string' || typeof exp !== 'string') {
+        logger.warn('route.files.serve.signature-invalid', {
+          appId,
+          filename,
+          reason: 'invalid-params'
+        })
+        return res.status(401).json({ error: 'Invalid signature parameters' })
+      }
+      const expNum = parseInt(exp, 10)
+      const nowSeconds = Math.floor(Date.now() / 1000)
+      if (isNaN(expNum)) {
+        logger.warn('route.files.serve.signature-invalid', {
+          appId,
+          filename,
+          exp,
+          reason: 'invalid-exp-format'
+        })
+        return res.status(401).json({ error: 'Invalid or expired signature' })
+      }
+      if (expNum < nowSeconds) {
+        logger.warn('route.files.serve.signature-invalid', {
+          appId,
+          filename,
+          expNum,
+          nowSeconds,
+          reason: 'expired'
+        })
+        return res.status(401).json({ error: 'Invalid or expired signature' })
+      }
+      if (!verifyFileSignature(appId, filename, sig, expNum)) {
+        logger.warn('route.files.serve.signature-invalid', {
+          appId,
+          filename,
+          sigLength: sig.length,
+          reason: 'signature-mismatch'
+        })
+        return res.status(401).json({ error: 'Invalid or expired signature' })
+      }
+      // Signature valid - proceed to serve file
+      signedUrlExpiry = expNum
+      logger.debug('route.files.serve.signature-valid', { appId, filename })
     }
+    // Path 2: JWT authentication (existing behavior)
+    else {
+      const authReq = req as AuthenticatedRequest
+      const authenticatedSiteId = authReq.agentContext?.siteId
 
-    // Import BYPASS_SITE_IDS for development/testing
-    const { BYPASS_SITE_IDS } = await import('../../services/features.js')
-    const isBypassSite = BYPASS_SITE_IDS.includes(authenticatedSiteId)
+      if (!authenticatedSiteId) {
+        return res.status(401).json({ error: 'Authentication required', requiresAuth: true })
+      }
 
-    logger.debug('route.files.serve.auth-check', {
-      authenticatedSiteId,
-      requestedAppId: appId,
-      isBypassSite,
-      filename
-    })
+      // Import BYPASS_SITE_IDS for development/testing
+      const { BYPASS_SITE_IDS } = await import('../../services/features.js')
+      const isBypassSite = BYPASS_SITE_IDS.includes(authenticatedSiteId)
 
-    if (!isBypassSite && authenticatedSiteId !== appId) {
-      logger.error('route.files.serve.ownership-denied', {
-        message: 'SECURITY VIOLATION: Cross-tenant file access attempt',
+      logger.debug('route.files.serve.auth-check', {
         authenticatedSiteId,
         requestedAppId: appId,
+        isBypassSite,
         filename
-      }, { tags: ['security', 'authorization-failure', 'cross-tenant-attempt'] })
-      return res.status(403).json({ error: 'Access denied' })
+      })
+
+      if (!isBypassSite && authenticatedSiteId !== appId) {
+        logger.error('route.files.serve.ownership-denied', {
+          message: 'SECURITY VIOLATION: Cross-tenant file access attempt',
+          authenticatedSiteId,
+          requestedAppId: appId,
+          filename
+        }, { tags: ['security', 'authorization-failure', 'cross-tenant-attempt'] })
+        return res.status(403).json({ error: 'Access denied' })
+      }
     }
 
     // Find the file across all uploads for this app
@@ -349,12 +430,20 @@ router.get('/uploads/:appId/:filename', async (req: Request, res: Response) => {
     // Set appropriate content-type and security headers
     res.setHeader('Content-Type', matchingFile.mimeType || 'application/octet-stream')
     res.setHeader('Content-Length', fileBuffer.length)
-    res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
+
+    // Set Cache-Control based on auth method
+    // Signed URLs: cache until expiry (private to avoid proxy caching after expiry)
+    // JWT auth: cache for 1 year (public, revalidation handled by JWT)
+    if (signedUrlExpiry !== null) {
+      const nowSeconds = Math.floor(Date.now() / 1000)
+      const remainingLifetimeSeconds = Math.max(signedUrlExpiry - nowSeconds, 0)
+      res.setHeader('Cache-Control', `private, max-age=${remainingLifetimeSeconds}`)
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
+    }
     // SECURITY: Prevent MIME-sniffing to avoid XSS if HTML content is uploaded
     res.setHeader('X-Content-Type-Options', 'nosniff')
-    // Allow cross-origin embedding of uploaded files (images, videos, etc.)
-    // This overrides helmet's default same-origin policy for this endpoint
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+    // Note: Cross-Origin-Resource-Policy is set at the start of the handler
 
     // SECURITY: Additional defense-in-depth for SVG files (sanitized at upload, restricted at serving)
     if (matchingFile.mimeType === 'image/svg+xml' || matchingFile.filename.endsWith('.svg')) {
@@ -380,4 +469,4 @@ router.get('/uploads/:appId/:filename', async (req: Request, res: Response) => {
   }
 })
 
-export { router as filesRouter }
+export { router as filesRouter, publicRouter as filesPublicRouter }

@@ -527,8 +527,10 @@ export default function ChatPane({
         mediaType = MediaType.FILE
       }
 
-      // Construct URL for uploaded file - use agent URL directly
-      const fileUrl = `${agentUrl}/files/uploads/${appId}/${file.filename}`
+      // Use signed URL if available, otherwise undefined (triggers fallback UI)
+      const fileUrl = file.signedUrl
+        ? `${agentUrl}${file.signedUrl}`
+        : undefined
 
       // Create base asset structure
       const baseAsset = {

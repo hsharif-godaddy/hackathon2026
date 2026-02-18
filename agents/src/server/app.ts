@@ -174,7 +174,7 @@ import compression from 'compression';
 import { createServer } from 'http';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, publishRouter, downloadRouter, dbRouter, todoListRouter, securityScanRouter, vulnerabilityScanRouter, secretsScanRouter,oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, zipImportRouter, shareRouter, mediaRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, todoListRouter, securityScanRouter, vulnerabilityScanRouter, secretsScanRouter,oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, zipImportRouter, shareRouter, mediaRouter } from './routes/index.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
 import { getDatabase } from '../database/index.js';
@@ -196,7 +196,11 @@ if (isApmEnabled) {
 }
 
 // Security middleware
-app.use(helmet());
+// Configure helmet with cross-origin resource policy for file serving endpoints
+// Files endpoint needs cross-origin for browser image loading (protected by signed URLs)
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
 app.use(compression());
 
 // CORS
@@ -276,6 +280,10 @@ app.get('/', (req, res) => {
   });
 });
 
+// Public routes (no JWT required)
+// File serving with signed URLs - must be before JWT-protected routes
+app.use('/files', filesPublicRouter);
+
 // Protected routes requiring authentication
 app.use('/agents', jwtAuthMiddleware.authenticate, agentsRouter);
 app.use('/apps', jwtAuthMiddleware.authenticate, appsRouter);
@@ -284,6 +292,7 @@ app.use('/apps', jwtAuthMiddleware.authenticate, customerLogsRouter);
 app.use('/', jwtAuthMiddleware.authenticate, dbRouter);
 app.use('/agent', jwtAuthMiddleware.authenticate, chatRouter);
 app.use('/agent', jwtAuthMiddleware.authenticate, todoListRouter);
+// Protected file operations (upload, list, delete) require JWT
 app.use('/files', jwtAuthMiddleware.authenticate, filesRouter);
 app.use('/debug', jwtAuthMiddleware.authenticate, debugRouter);
 app.use('/', jwtAuthMiddleware.authenticate, securityScanRouter);

@@ -15,6 +15,7 @@ export interface UploadedFile {
   size: number;
   mimeType: string | null;
   uploadedAt: string;
+  signedUrl?: string;
 }
 
 interface FileUploadButtonProps {
