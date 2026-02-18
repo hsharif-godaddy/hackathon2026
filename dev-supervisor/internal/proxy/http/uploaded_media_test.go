@@ -25,7 +25,7 @@ func TestUploadedMediaHandler(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	handler := httpproxy.NewUploadedMediaHandler(tmpDir)
+	handler := httpproxy.NewUploadedMediaHandler([]string{filepath.Join(tmpDir, "public", "media")})
 
 	t.Run("serves existing file", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/airo-assets/uploads/hero-abc123.jpg", nil)
@@ -87,7 +87,7 @@ func TestUploadedMediaHandler_HeadRequest(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	handler := httpproxy.NewUploadedMediaHandler(tmpDir)
+	handler := httpproxy.NewUploadedMediaHandler([]string{filepath.Join(tmpDir, "public", "media")})
 
 	req := httptest.NewRequest(http.MethodHead, "/airo-assets/uploads/test-image.png", nil)
 	rec := httptest.NewRecorder()
@@ -114,7 +114,7 @@ func TestUploadedMediaHandler_CacheHeaders(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	handler := httpproxy.NewUploadedMediaHandler(tmpDir)
+	handler := httpproxy.NewUploadedMediaHandler([]string{filepath.Join(tmpDir, "public", "media")})
 
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/uploads/cached-image.webp", nil)
 	rec := httptest.NewRecorder()
@@ -141,7 +141,7 @@ func TestUploadedMediaHandler_CacheHeaders(t *testing.T) {
 
 func TestUploadedMediaHandler_EmptyPath(t *testing.T) {
 	tmpDir := t.TempDir()
-	handler := httpproxy.NewUploadedMediaHandler(tmpDir)
+	handler := httpproxy.NewUploadedMediaHandler([]string{filepath.Join(tmpDir, "public", "media")})
 
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/uploads/", nil)
 	rec := httptest.NewRecorder()
@@ -166,7 +166,7 @@ func TestUploadedMediaHandler_SubdirectoryBlocked(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	handler := httpproxy.NewUploadedMediaHandler(tmpDir)
+	handler := httpproxy.NewUploadedMediaHandler([]string{filepath.Join(tmpDir, "public", "media")})
 
 	// Request with subdirectory path - should be blocked
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/uploads/subdir/test.jpg", nil)
@@ -188,7 +188,7 @@ func TestUploadedMediaHandler_DirectoryNotServed(t *testing.T) {
 		t.Fatalf("failed to create subdirectory: %v", err)
 	}
 
-	handler := httpproxy.NewUploadedMediaHandler(tmpDir)
+	handler := httpproxy.NewUploadedMediaHandler([]string{filepath.Join(tmpDir, "public", "media")})
 
 	// Request the directory name without any subdirectory traversal
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/uploads/testdir", nil)
@@ -215,7 +215,7 @@ func TestUploadedMediaHandler_UnknownMimeType(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	handler := httpproxy.NewUploadedMediaHandler(tmpDir)
+	handler := httpproxy.NewUploadedMediaHandler([]string{filepath.Join(tmpDir, "public", "media")})
 
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/uploads/file.unknownext", nil)
 	rec := httptest.NewRecorder()

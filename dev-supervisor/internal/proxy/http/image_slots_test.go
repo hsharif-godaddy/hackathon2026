@@ -191,7 +191,7 @@ func TestHandleImageSlot_Success(t *testing.T) {
 	_ = os.WriteFile(manifestPath, data, 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
-	handler := httpproxy.NewImageSlotHandler(cache, tmpDir)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
 
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/home/hero", nil)
 	rec := httptest.NewRecorder()
@@ -216,7 +216,7 @@ func TestHandleImageSlot_NotFound(t *testing.T) {
 	_ = os.WriteFile(manifestPath, data, 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
-	handler := httpproxy.NewImageSlotHandler(cache, tmpDir)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
 
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/missing/slot", nil)
 	rec := httptest.NewRecorder()
@@ -239,7 +239,7 @@ func TestHandleImageSlot_EmptySlotPath(t *testing.T) {
 	_ = os.WriteFile(manifestPath, []byte("{}"), 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
-	handler := httpproxy.NewImageSlotHandler(cache, tmpDir)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
 
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/", nil)
 	rec := httptest.NewRecorder()
@@ -257,7 +257,7 @@ func TestHandleImageSlot_MethodNotAllowed(t *testing.T) {
 	_ = os.WriteFile(manifestPath, []byte("{}"), 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
-	handler := httpproxy.NewImageSlotHandler(cache, tmpDir)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
 
 	req := httptest.NewRequest(http.MethodPost, "/airo-assets/images/pages/home/hero", nil)
 	rec := httptest.NewRecorder()
@@ -280,7 +280,7 @@ func TestHandleImageSlot_HeadRequest(t *testing.T) {
 	_ = os.WriteFile(manifestPath, data, 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
-	handler := httpproxy.NewImageSlotHandler(cache, tmpDir)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
 
 	req := httptest.NewRequest(http.MethodHead, "/airo-assets/images/pages/home/hero", nil)
 	rec := httptest.NewRecorder()
@@ -294,7 +294,7 @@ func TestHandleImageSlot_HeadRequest(t *testing.T) {
 
 func TestHandleImageSlot_ManifestReadError(t *testing.T) {
 	cache := httpproxy.NewManifestCache("/nonexistent/airo-media.json")
-	handler := httpproxy.NewImageSlotHandler(cache, "/nonexistent")
+	handler := httpproxy.NewImageSlotHandler(cache, []string{"/nonexistent"})
 
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/home/hero", nil)
 	rec := httptest.NewRecorder()
@@ -318,7 +318,7 @@ func TestHandleImageSlot_InvalidRedirectURL(t *testing.T) {
 	_ = os.WriteFile(manifestPath, data, 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
-	handler := httpproxy.NewImageSlotHandler(cache, tmpDir)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
 
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/home/hero", nil)
 	rec := httptest.NewRecorder()
@@ -336,7 +336,7 @@ func TestHandleImageSlot_MalformedPath(t *testing.T) {
 	_ = os.WriteFile(manifestPath, []byte("{}"), 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
-	handler := httpproxy.NewImageSlotHandler(cache, tmpDir)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
 
 	// Path that doesn't match prefix at all - TrimPrefix won't remove anything
 	// so slotPath == r.URL.Path, triggering the invalid path check
@@ -363,7 +363,7 @@ func TestHandleImageSlot_InvalidScheme(t *testing.T) {
 	_ = os.WriteFile(manifestPath, data, 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
-	handler := httpproxy.NewImageSlotHandler(cache, tmpDir)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
 
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/home/hero", nil)
 	rec := httptest.NewRecorder()
@@ -387,7 +387,7 @@ func TestHandleImageSlot_DataScheme(t *testing.T) {
 	_ = os.WriteFile(manifestPath, data, 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
-	handler := httpproxy.NewImageSlotHandler(cache, tmpDir)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
 
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/home/hero", nil)
 	rec := httptest.NewRecorder()
@@ -413,7 +413,7 @@ func TestHandleImageSlot_SrcParam_CurrentURL(t *testing.T) {
 	_ = os.WriteFile(manifestPath, data, 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
-	handler := httpproxy.NewImageSlotHandler(cache, tmpDir)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
 
 	// Request with src param matching currentUrl
 	srcURL := "https://media.gettyimages.com/id/abc123/photo.jpg"
@@ -447,7 +447,7 @@ func TestHandleImageSlot_SrcParam_Alternative(t *testing.T) {
 	_ = os.WriteFile(manifestPath, data, 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
-	handler := httpproxy.NewImageSlotHandler(cache, tmpDir)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
 
 	// Request with src param matching an alternative
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/home/hero?src="+altURL2, nil)
@@ -478,7 +478,7 @@ func TestHandleImageSlot_SrcParam_InvalidURL(t *testing.T) {
 	_ = os.WriteFile(manifestPath, data, 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
-	handler := httpproxy.NewImageSlotHandler(cache, tmpDir)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
 
 	// Request with src param NOT in slot - should be rejected
 	badURL := "https://malicious.example.com/evil.jpg"
@@ -512,7 +512,7 @@ func TestHandleImageSlot_SrcParam_LocalUpload(t *testing.T) {
 	_ = os.WriteFile(manifestPath, data, 0600)
 
 	cache := httpproxy.NewManifestCache(manifestPath)
-	handler := httpproxy.NewImageSlotHandler(cache, tmpDir)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
 
 	// Request with src param pointing to local upload
 	uploadPath := "/airo-assets/uploads/test-image.jpg"

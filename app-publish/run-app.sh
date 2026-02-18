@@ -44,9 +44,8 @@ EOF
 # DIST_DIR is where archives are stored (set by docker-compose)
 DIST_DIR="${DIST_DIR:-/dist}"
 
-# APP_DIR is where we extract and run the archive
-# Extract to /app instead of /dist to keep /dist clean (only archives)
-readonly APP_DIR_BASE="/app"
+# APP_DIR is where we extract and run the archive (matches production)
+readonly APP_DIR="/app"
 
 # =================================================================
 # Main Execution Flow
@@ -82,32 +81,13 @@ log "Starting application deployment process"
 log "Archive path: $ARCHIVE_PATH"
 log "Archive size: $(du -h "$ARCHIVE_PATH" | cut -f1)"
 
-# Extract archive hash from filename (e.g., abc123.tar.gz -> abc123)
-# Resolve symlink to get actual filename
-ARCHIVE_TARGET=$(readlink "$ARCHIVE_PATH" || echo "$ARCHIVE_PATH")
-ARCHIVE_FILENAME=$(basename "$ARCHIVE_TARGET")
-ARCHIVE_HASH="${ARCHIVE_FILENAME%.tar.gz}"
-readonly APP_DIR="${APP_DIR_BASE}/${ARCHIVE_HASH}"
-
-log "Extraction target: $APP_DIR"
-
-# Create extraction directory if it doesn't exist
-if [[ ! -d "$APP_DIR" ]]; then
-    log "Creating extraction directory: $APP_DIR"
-    mkdir -p "$APP_DIR" || error_exit "Failed to create extraction directory: $APP_DIR"
-fi
-
 # Verify app directory is writable
 [[ ! -w "$APP_DIR" ]] && error_exit "App directory is not writable: $APP_DIR"
 
-# Extract archive
+# Extract archive directly to /app (matches production behavior)
 log "Extracting archive to: $APP_DIR"
 tar zxf "$ARCHIVE_PATH" -C "$APP_DIR" || error_exit "Failed to extract archive"
 log "Archive extracted successfully"
-
-# Change to app directory
-cd "$APP_DIR" || error_exit "Failed to change directory to $APP_DIR"
-log "Changed to app directory: $APP_DIR"
 
 # =================================================================
 # Use Pre-built Artifacts

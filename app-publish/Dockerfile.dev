@@ -32,14 +32,39 @@ FROM node:${UPSTREAM_VERSION}-alpine
 
 USER root
 
+# Accept build arguments for dynamic UID/GID mapping (same as preview Dockerfile)
+ARG HOST_UID=790
+ARG HOST_GID=790
+
 # Install runtime dependencies
 # Publish image only extracts pre-built tarballs - no compilation needed
 RUN apk add --no-cache curl git ca-certificates tzdata bash jq yq ripgrep
 
-# Create the agent user and group
-# Hardcoded GID/UID 790 to match production
-RUN addgroup -S -g 790 agent && \
-    adduser -S -G agent -u 790 agent
+# Create the group and user with dynamic UID/GID
+# This allows the container user to match the host user for proper file permissions
+# Validate and adjust GID if it's outside Alpine's supported range (0-256000)
+RUN CONTAINER_GID=${HOST_GID}; \
+    if [ ${HOST_GID} -gt 256000 ]; then \
+        echo "Host GID ${HOST_GID} exceeds Alpine limit, using fallback GID 1000"; \
+        CONTAINER_GID=1000; \
+    fi; \
+    if getent group $CONTAINER_GID >/dev/null 2>&1; then \
+        echo "GID $CONTAINER_GID is already in use, reassigning to GID 9999"; \
+        sed -i "/^[^:]*:[^:]*:$CONTAINER_GID:/s/:$CONTAINER_GID:/:9999:/" /etc/group; \
+    fi; \
+    addgroup -g $CONTAINER_GID agent
+
+# Validate and adjust UID if it's outside Alpine's supported range
+RUN CONTAINER_UID=${HOST_UID}; \
+    if [ ${HOST_UID} -gt 256000 ]; then \
+        echo "Host UID ${HOST_UID} exceeds Alpine limit, using fallback UID 1000"; \
+        CONTAINER_UID=1000; \
+    fi; \
+    if getent passwd $CONTAINER_UID >/dev/null 2>&1; then \
+        echo "UID $CONTAINER_UID is already in use, reassigning to UID 9999"; \
+        sed -i "/^[^:]*:[^:]*:$CONTAINER_UID:/s/:$CONTAINER_UID:/:9999:/" /etc/passwd; \
+    fi; \
+    adduser -D -G agent -u $CONTAINER_UID agent
 
 # Copy dev-supervisor binary from builder stage
 COPY --chown=agent:agent --from=dev-supervisor-builder /build/dev-supervisor /usr/local/bin/dev-supervisor

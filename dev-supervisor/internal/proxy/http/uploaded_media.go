@@ -12,16 +12,17 @@ import (
 
 const uploadedMediaPrefix = "/airo-assets/uploads/"
 
-// UploadedMediaHandler serves user-uploaded media files from /public/media/.
+// UploadedMediaHandler serves user-uploaded media files.
+// Searches through configured paths to find media files.
 type UploadedMediaHandler struct {
-	appRoot string
+	searchPaths []string // Directories to search for media files (in order)
 }
 
 // NewUploadedMediaHandler creates a new handler for serving uploaded media.
-// appRoot is the base path where the app is located (e.g., /app).
-func NewUploadedMediaHandler(appRoot string) *UploadedMediaHandler {
+// searchPaths are the directories to search for media files, in order of priority.
+func NewUploadedMediaHandler(searchPaths []string) *UploadedMediaHandler {
 	return &UploadedMediaHandler{
-		appRoot: appRoot,
+		searchPaths: searchPaths,
 	}
 }
 
@@ -50,30 +51,15 @@ func (h *UploadedMediaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Build full path to file
-	filePath := filepath.Join(h.appRoot, "public", "media", filename)
-
-	// Clean the path and verify it's still under media directory
-	// Note: We add path separator to prevent matching sibling directories like "media-other"
-	cleanPath := filepath.Clean(filePath)
-	mediaDir := filepath.Join(h.appRoot, "public", "media")
-	if !strings.HasPrefix(cleanPath, mediaDir+string(filepath.Separator)) {
-		slog.Warn("uploaded_media.path_escape_attempt",
-			"url", r.URL.Path,
-			"resolved", cleanPath)
-		h.respondError(w, "invalid path", http.StatusBadRequest)
-		return
-	}
-
-	// Check if file exists
-	info, err := os.Stat(cleanPath)
-	if os.IsNotExist(err) {
-		slog.Debug("uploaded_media.not_found", "path", cleanPath)
-		h.respondError(w, "file not found", http.StatusNotFound)
-		return
-	}
+	// Find the file, checking primary path and fallbacks
+	cleanPath, info, err := h.findMediaFile(filename)
 	if err != nil {
-		slog.Error("uploaded_media.stat_error", "path", cleanPath, "error", err.Error())
+		if os.IsNotExist(err) {
+			slog.Debug("uploaded_media.not_found", "filename", filename)
+			h.respondError(w, "file not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("uploaded_media.stat_error", "filename", filename, "error", err.Error())
 		h.respondError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -106,4 +92,38 @@ func (h *UploadedMediaHandler) respondError(w http.ResponseWriter, msg string, s
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+// findMediaFile searches for the media file in configured search paths.
+// Returns the cleaned path, file info, and any error.
+func (h *UploadedMediaHandler) findMediaFile(filename string) (string, os.FileInfo, error) {
+	var lastErr error
+	for i, dir := range h.searchPaths {
+		filePath := filepath.Join(dir, filename)
+		cleanPath := filepath.Clean(filePath)
+
+		// Validate path is still under the directory (prevent path traversal)
+		if !strings.HasPrefix(cleanPath, dir+string(filepath.Separator)) &&
+			cleanPath != filepath.Join(dir, filename) {
+			continue // Skip this directory, path escape attempt
+		}
+
+		slog.Debug("uploaded_media.checking_path", "path", cleanPath)
+		info, err := os.Stat(cleanPath)
+		if err == nil {
+			if i > 0 {
+				slog.Debug("uploaded_media.found_in_fallback",
+					"primary_path", h.searchPaths[0],
+					"found_in", dir)
+			}
+			return cleanPath, info, nil
+		}
+		lastErr = err
+	}
+
+	// Return the last error (typically "file not found")
+	if lastErr != nil {
+		return "", nil, lastErr
+	}
+	return "", nil, os.ErrNotExist
 }

@@ -519,17 +519,22 @@ export class GitUtils {
   }
 
   /**
-   * Create a production archive tarball containing only build artifacts
+   * Create a production archive tarball containing build artifacts and media assets
    * Archives are created in {DIST_DIR}/{commitHash}.tar.gz
    * The output directory will be created if it doesn't exist.
    *
-   * This method packages only the dist/ folder (bundled JavaScript) for production deployment.
+   * This method packages production assets for deployment:
+   * - dist/ folder (bundled JavaScript) - required
+   * - airo-media.json (media manifest) - optional, included if exists
+   * - public/media/ (user uploads) - optional, included if exists
+   *
    * Source code is excluded to reduce archive size and improve security.
    *
    * Process:
    * 1. Verify dist/ folder exists
-   * 2. Create output directory
-   * 3. Create tar.gz archive directly from dist/ folder
+   * 2. Check for optional media files (airo-media.json, public/media/)
+   * 3. Create output directory
+   * 4. Create tar.gz archive with all required and optional files
    *
    * @param repoPath - Path to the git repository
    * @param commitHash - The commit hash to archive (short or full)
@@ -578,7 +583,30 @@ export class GitUtils {
       throw new Error('dist/ folder not found - application must be built before publishing');
     }
 
-    // Stage 2: Create output directory
+    // Stage 2: Copy airo-media.json INTO dist/ so it's available after extraction
+    // The publish container extracts to /app/{hash}/ and runs from /app/{hash}/dist/
+    // By placing media manifest in dist/, it'll be accessible at runtime
+    //
+    // Note: public/media/ (user uploads) is already handled by Vite build process
+    // which copies public/* to dist/* (so public/media/foo.jpg → dist/media/foo.jpg)
+
+    // Copy airo-media.json into dist/ if it exists (media manifest for image slots)
+    const manifestCheckResult = await this.devSupervisor!.exec({
+      command: buildShellCommand(['test', '-f', 'airo-media.json']),
+      working_dir: '/app',
+      timeout: 5,
+      capture_output: true
+    });
+    if (manifestCheckResult.success) {
+      await this.devSupervisor!.exec({
+        command: buildShellCommand(['cp', 'airo-media.json', 'dist/airo-media.json']),
+        working_dir: '/app',
+        timeout: 5,
+        capture_output: true
+      });
+    }
+
+    // Stage 3: Create output directory
     const mkdirOutResult = await this.devSupervisor!.exec({
       command: buildShellCommand(['mkdir', '-p', outputDir]),
       working_dir: '/app',
@@ -589,7 +617,7 @@ export class GitUtils {
       throw new Error(`Failed to create output directory: ${mkdirOutResult.stderr || 'Unknown error'}`);
     }
 
-    // Stage 3: Create tar.gz archive directly from dist/ folder
+    // Stage 4: Create tar.gz archive (dist/ now contains all needed files)
     const tarResult = await this.devSupervisor!.exec({
       command: buildShellCommand(['tar', '-czf', archivePath, '-C', '/app', 'dist']),
       working_dir: '/app',

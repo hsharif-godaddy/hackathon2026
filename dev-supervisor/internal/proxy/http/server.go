@@ -137,18 +137,36 @@ func (p *HTTPProxy) Start() error {
 	if appDir == "" {
 		appDir = "/app" // Default app directory in container
 	}
-	manifestPath := filepath.Join(appDir, "airo-media.json")
-	mediaSlotCache := NewManifestCache(manifestPath)
-	mux.Handle("/airo-assets/images/", NewImageSlotHandler(mediaSlotCache, appDir))
-	mux.Handle("/airo-assets/videos/", NewVideoSlotHandler(mediaSlotCache, appDir))
-	slog.Debug("media_slot.handlers_registered", "manifest_path", manifestPath)
 
-	// Add uploaded media handler (serves files from /public/media/)
-	uploadedMediaHandler := NewUploadedMediaHandler(appDir)
+	// Define media search paths for all handlers - single source of truth
+	// Search order for uploaded media files:
+	// 1. {appDir}/public/media/ - Preview mode (uploads stored here by agents)
+	// 2. {appDir}/dist/media/ - Publish mode SPA (Vite copies public/* to dist/*)
+	// 3. {appDir}/dist/client/media/ - Publish mode SSR (Vite copies public/* to dist/client/*)
+	mediaSearchPaths := []string{
+		filepath.Join(appDir, "public", "media"),
+		filepath.Join(appDir, "dist", "media"),
+		filepath.Join(appDir, "dist", "client", "media"),
+	}
+
+	// Manifest paths - check multiple locations for different deployment modes:
+	// - Preview mode: {appDir}/airo-media.json (agents write here directly)
+	// - Publish mode: {appDir}/dist/airo-media.json (copied into dist/ during archive creation)
+	manifestPath := filepath.Join(appDir, "airo-media.json")
+	manifestFallbackPath := filepath.Join(appDir, "dist", "airo-media.json")
+	mediaSlotCache := NewManifestCache(manifestPath, manifestFallbackPath)
+	mux.Handle("/airo-assets/images/", NewImageSlotHandler(mediaSlotCache, mediaSearchPaths))
+	mux.Handle("/airo-assets/videos/", NewVideoSlotHandler(mediaSlotCache, mediaSearchPaths))
+	slog.Debug("media_slot.handlers_registered",
+		"manifest_path", manifestPath,
+		"manifest_fallback", manifestFallbackPath)
+
+	// Add uploaded media handler - uses same search paths
+	uploadedMediaHandler := NewUploadedMediaHandler(mediaSearchPaths)
 	mux.Handle(uploadedMediaPrefix, uploadedMediaHandler)
 	slog.Debug("uploaded_media.handler_registered",
 		"prefix", uploadedMediaPrefix,
-		"app_root", appDir)
+		"search_paths", mediaSearchPaths)
 
 	// Add catch-all for /airo/* that returns 404 for unmatched paths
 	// This MUST come after specific /airo/* handlers but before the / catch-all

@@ -360,6 +360,9 @@ export class DockerContainerManager {
 				publishPath,
 			});
 
+			// Get host user info for build args (same as preview image)
+			const { uid, gid } = this.getHostUserInfo();
+
 			// Build using docker buildx with layer caching
 			// Use --build-context to mount dev-supervisor separately
 			// This allows app-publish to be the main context with its own .dockerignore
@@ -368,6 +371,8 @@ export class DockerContainerManager {
 				'buildx', 'build',
 				'-t', imageName,
 				'--load',
+				'--build-arg', `HOST_UID=${uid}`,
+				'--build-arg', `HOST_GID=${gid}`,
 				'--build-context', `dev-supervisor=${path.join(projectRoot, 'dev-supervisor')}`,
 				'-f', path.join(publishPath, 'Dockerfile.dev'),
 				publishPath

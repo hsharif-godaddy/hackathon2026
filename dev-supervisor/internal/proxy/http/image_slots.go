@@ -42,17 +42,22 @@ type ImageManifest map[string]ImageSlot
 
 // ManifestCache provides thread-safe access to the image slots manifest
 // with automatic reload when the file is modified.
+// Supports multiple fallback paths for different deployment modes (preview vs publish).
 type ManifestCache struct {
-	mu          sync.RWMutex
-	manifest    ImageManifest
-	lastModTime time.Time
-	filePath    string
+	mu            sync.RWMutex
+	manifest      ImageManifest
+	lastModTime   time.Time
+	filePath      string
+	fallbackPaths []string
+	resolvedPath  string // The actual path that was successfully loaded
 }
 
 // NewManifestCache creates a new ManifestCache for the given file path.
-func NewManifestCache(filePath string) *ManifestCache {
+// Additional fallback paths can be provided for different deployment modes.
+func NewManifestCache(filePath string, fallbackPaths ...string) *ManifestCache {
 	return &ManifestCache{
-		filePath: filePath,
+		filePath:      filePath,
+		fallbackPaths: fallbackPaths,
 	}
 }
 
@@ -73,33 +78,68 @@ func (c *ManifestCache) Get(slotPath string) (*ImageSlot, error) {
 }
 
 // ensureLoaded checks if the manifest needs to be reloaded and loads it if necessary.
+// Tries the primary path first, then falls back to alternate paths if not found.
 func (c *ManifestCache) ensureLoaded() error {
-	info, err := os.Stat(c.filePath)
+	// Try to find the manifest file, checking primary path first then fallbacks
+	pathToUse, info, err := c.findManifestFile()
 	if err != nil {
 		return err
 	}
 
 	c.mu.RLock()
-	needsReload := c.manifest == nil || info.ModTime().After(c.lastModTime)
+	needsReload := c.manifest == nil || info.ModTime().After(c.lastModTime) || c.resolvedPath != pathToUse
 	c.mu.RUnlock()
 
 	if needsReload {
-		return c.reload(info.ModTime())
+		return c.reload(pathToUse, info.ModTime())
 	}
 	return nil
 }
 
-// reload reads and parses the manifest file.
-func (c *ManifestCache) reload(modTime time.Time) error {
+// findManifestFile tries the primary path and fallbacks to find the manifest file.
+func (c *ManifestCache) findManifestFile() (string, os.FileInfo, error) {
+	// If we've already resolved a path and it still exists, use it
+	c.mu.RLock()
+	resolvedPath := c.resolvedPath
+	c.mu.RUnlock()
+
+	if resolvedPath != "" {
+		if info, err := os.Stat(resolvedPath); err == nil {
+			return resolvedPath, info, nil
+		}
+	}
+
+	// Try primary path
+	if info, err := os.Stat(c.filePath); err == nil {
+		return c.filePath, info, nil
+	}
+
+	// Try fallback paths
+	for _, fallbackPath := range c.fallbackPaths {
+		if info, err := os.Stat(fallbackPath); err == nil {
+			slog.Debug("manifest.using_fallback_path",
+				"primary_path", c.filePath,
+				"fallback_path", fallbackPath)
+			return fallbackPath, info, nil
+		}
+	}
+
+	// Return error for primary path if no path found
+	_, err := os.Stat(c.filePath)
+	return "", nil, err
+}
+
+// reload reads and parses the manifest file from the given path.
+func (c *ManifestCache) reload(filePath string, modTime time.Time) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	// Double-check after acquiring write lock
-	if c.manifest != nil && !modTime.After(c.lastModTime) {
+	if c.manifest != nil && !modTime.After(c.lastModTime) && c.resolvedPath == filePath {
 		return nil
 	}
 
-	data, err := os.ReadFile(c.filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
 	}
@@ -111,17 +151,18 @@ func (c *ManifestCache) reload(modTime time.Time) error {
 
 	c.manifest = manifest
 	c.lastModTime = modTime
-	slog.Debug("image_slot.manifest_loaded", "path", c.filePath, "slot_count", len(manifest))
+	c.resolvedPath = filePath
+	slog.Debug("image_slot.manifest_loaded", "path", filePath, "slot_count", len(manifest))
 	return nil
 }
 
 // mediaSlotHandler provides shared logic for image and video slot handlers.
 type mediaSlotHandler struct {
-	cache        *ManifestCache
-	prefix       string
-	allowedHosts map[string]struct{}
-	mediaType    string // "image" or "video" for logging
-	appRoot      string // app root directory for serving local uploads
+	cache            *ManifestCache
+	prefix           string
+	allowedHosts     map[string]struct{}
+	mediaType        string   // "image" or "video" for logging
+	mediaSearchPaths []string // directories to search for local uploads
 }
 
 // serveSlot handles the common logic for serving media slots.
@@ -200,6 +241,39 @@ func (h *mediaSlotHandler) isValidSlotURL(slot *ImageSlot, targetURL string) boo
 	return slot.CurrentURL == targetURL || slices.Contains(slot.Alternatives, targetURL)
 }
 
+// findMediaFile searches for a media file in configured search paths.
+func (h *mediaSlotHandler) findMediaFile(filename string) (string, os.FileInfo, error) {
+	var lastErr error
+	for i, dir := range h.mediaSearchPaths {
+		filePath := filepath.Join(dir, filename)
+		cleanPath := filepath.Clean(filePath)
+
+		// Validate path is still under the directory (prevent path traversal)
+		if !strings.HasPrefix(cleanPath, dir+string(filepath.Separator)) &&
+			cleanPath != filepath.Join(dir, filename) {
+			continue // Skip this directory, path escape attempt
+		}
+
+		slog.Debug(h.mediaType+"_slot.checking_path", "path", cleanPath)
+		info, err := os.Stat(cleanPath)
+		if err == nil {
+			if i > 0 {
+				slog.Debug(h.mediaType+"_slot.found_in_fallback",
+					"primary_path", h.mediaSearchPaths[0],
+					"found_in", dir)
+			}
+			return cleanPath, info, nil
+		}
+		lastErr = err
+	}
+
+	// Return the last error (typically "file not found")
+	if lastErr != nil {
+		return "", nil, lastErr
+	}
+	return "", nil, os.ErrNotExist
+}
+
 // serveLocalUpload serves an uploaded file from the local filesystem.
 func (h *mediaSlotHandler) serveLocalUpload(w http.ResponseWriter, r *http.Request, slotPath, uploadURL string) {
 	// Extract filename from /airo-assets/uploads/filename.jpg
@@ -217,27 +291,15 @@ func (h *mediaSlotHandler) serveLocalUpload(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Build full path to file
-	filePath := filepath.Join(h.appRoot, "public", "media", filename)
-
-	// Clean the path and verify it's still under media directory
-	cleanPath := filepath.Clean(filePath)
-	mediaDir := filepath.Join(h.appRoot, "public", "media")
-	if !strings.HasPrefix(cleanPath, mediaDir+string(filepath.Separator)) {
-		slog.Warn(h.mediaType+"_slot.path_escape_attempt", "slot", slotPath, "resolved", cleanPath)
-		h.respondError(w, "invalid path", http.StatusBadRequest)
-		return
-	}
-
-	// Check if file exists
-	info, err := os.Stat(cleanPath)
-	if os.IsNotExist(err) {
-		slog.Debug(h.mediaType+"_slot.upload_not_found", "slot", slotPath, "path", cleanPath)
-		h.respondError(w, "file not found", http.StatusNotFound)
-		return
-	}
+	// Find the file, checking primary path and fallbacks
+	cleanPath, info, err := h.findMediaFile(filename)
 	if err != nil {
-		slog.Error(h.mediaType+"_slot.stat_error", "slot", slotPath, "path", cleanPath, "error", err.Error())
+		if os.IsNotExist(err) {
+			slog.Debug(h.mediaType+"_slot.upload_not_found", "slot", slotPath, "filename", filename)
+			h.respondError(w, "file not found", http.StatusNotFound)
+			return
+		}
+		slog.Error(h.mediaType+"_slot.stat_error", "slot", slotPath, "filename", filename, "error", err.Error())
 		h.respondError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -292,15 +354,15 @@ type ImageSlotHandler struct {
 	mediaSlotHandler
 }
 
-// NewImageSlotHandler creates a new handler with the given manifest cache and app root.
-func NewImageSlotHandler(cache *ManifestCache, appRoot string) *ImageSlotHandler {
+// NewImageSlotHandler creates a new handler with the given manifest cache and media search paths.
+func NewImageSlotHandler(cache *ManifestCache, mediaSearchPaths []string) *ImageSlotHandler {
 	return &ImageSlotHandler{
 		mediaSlotHandler: mediaSlotHandler{
-			cache:        cache,
-			prefix:       imageSlotPrefix,
-			allowedHosts: allowedImageRedirectHosts,
-			mediaType:    "image",
-			appRoot:      appRoot,
+			cache:            cache,
+			prefix:           imageSlotPrefix,
+			allowedHosts:     allowedImageRedirectHosts,
+			mediaType:        "image",
+			mediaSearchPaths: mediaSearchPaths,
 		},
 	}
 }
@@ -328,15 +390,15 @@ type VideoSlotHandler struct {
 	mediaSlotHandler
 }
 
-// NewVideoSlotHandler creates a new handler with the given manifest cache and app root.
-func NewVideoSlotHandler(cache *ManifestCache, appRoot string) *VideoSlotHandler {
+// NewVideoSlotHandler creates a new handler with the given manifest cache and media search paths.
+func NewVideoSlotHandler(cache *ManifestCache, mediaSearchPaths []string) *VideoSlotHandler {
 	return &VideoSlotHandler{
 		mediaSlotHandler: mediaSlotHandler{
-			cache:        cache,
-			prefix:       videoSlotPrefix,
-			allowedHosts: allowedVideoRedirectHosts,
-			mediaType:    "video",
-			appRoot:      appRoot,
+			cache:            cache,
+			prefix:           videoSlotPrefix,
+			allowedHosts:     allowedVideoRedirectHosts,
+			mediaType:        "video",
+			mediaSearchPaths: mediaSearchPaths,
 		},
 	}
 }

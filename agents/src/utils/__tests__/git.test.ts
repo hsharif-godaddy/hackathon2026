@@ -185,29 +185,15 @@ describe('GitUtils', () => {
       );
     });
 
-    it('should create archive when dist/ folder exists', async () => {
+    it('should create archive when dist/ folder exists (no manifest)', async () => {
       const commitHash = 'abc1234';
 
-      // Mock successful responses for all stages
+      // Flow: dist check -> manifest check (not found) -> mkdir -> tar
       mockDevSupervisor.exec
-        .mockResolvedValueOnce({ // Stage 1: dist/ check
-          success: true,
-          exit_code: 0,
-          stdout: '',
-          stderr: ''
-        })
-        .mockResolvedValueOnce({ // Stage 2: mkdir output dir
-          success: true,
-          exit_code: 0,
-          stdout: '',
-          stderr: ''
-        })
-        .mockResolvedValueOnce({ // Stage 3: create tar
-          success: true,
-          exit_code: 0,
-          stdout: '',
-          stderr: ''
-        });
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+        .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // airo-media.json check (not found)
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
       const result = await gitUtils.createArchive('/app', commitHash);
 
@@ -216,47 +202,54 @@ describe('GitUtils', () => {
         commitHash
       });
 
-      // Verify all 3 stages were called
-      expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(3);
+      // Verify 4 calls: dist check, manifest check, mkdir, tar
+      expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(4);
 
-      // Verify Stage 1: dist/ check
-      expect(mockDevSupervisor.exec).toHaveBeenNthCalledWith(1,
-        expect.objectContaining({
-          command: expect.stringContaining('test'),
-          working_dir: '/app'
-        })
-      );
-
-      // Verify Stage 2: mkdir
-      expect(mockDevSupervisor.exec).toHaveBeenNthCalledWith(2,
-        expect.objectContaining({
-          command: expect.stringContaining('mkdir'),
-          working_dir: '/app'
-        })
-      );
-
-      // Verify Stage 3: tar
-      const tarCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
+      // Verify tar archives dist/
+      const tarCallArgs = mockDevSupervisor.exec.mock.calls[3][0];
       expect(tarCallArgs.command).toContain('tar');
-      expect(tarCallArgs.command).toContain('-czf');
       expect(tarCallArgs.command).toContain('dist');
-      expect(tarCallArgs.working_dir).toBe('/app');
+    });
+
+    it('should copy airo-media.json into dist/ when it exists', async () => {
+      const commitHash = 'abc1234';
+
+      // Flow: dist check -> manifest check (found) -> copy manifest -> mkdir -> tar
+      mockDevSupervisor.exec
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // airo-media.json check (found)
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // cp airo-media.json dist/
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
+
+      const result = await gitUtils.createArchive('/app', commitHash);
+
+      expect(result).toEqual({
+        path: expect.stringContaining(`${commitHash}.tar.gz`),
+        commitHash
+      });
+
+      // Verify 5 calls including the copy
+      expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(5);
+
+      // Verify manifest was copied to dist/
+      const copyCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
+      expect(copyCallArgs.command).toContain('cp');
+      expect(copyCallArgs.command).toContain('airo-media.json');
+      expect(copyCallArgs.command).toContain('dist/airo-media.json');
+
+      // Verify final tar only archives dist/
+      const tarCallArgs = mockDevSupervisor.exec.mock.calls[4][0];
+      expect(tarCallArgs.command).toContain('tar');
+      expect(tarCallArgs.command).toContain('dist');
     });
 
     it('should throw error when mkdir fails', async () => {
+      // Flow: dist check -> manifest check (not found) -> mkdir fails
       mockDevSupervisor.exec
-        .mockResolvedValueOnce({ // Stage 1: dist/ check succeeds
-          success: true,
-          exit_code: 0,
-          stdout: '',
-          stderr: ''
-        })
-        .mockResolvedValueOnce({ // Stage 2: mkdir fails
-          success: false,
-          exit_code: 1,
-          stdout: '',
-          stderr: 'Permission denied'
-        });
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+        .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // airo-media.json check
+        .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: 'Permission denied' }); // mkdir fails
 
       await expect(
         gitUtils.createArchive('/app', 'abc1234')
@@ -264,25 +257,12 @@ describe('GitUtils', () => {
     });
 
     it('should throw error when tar command fails', async () => {
+      // Flow: dist check -> manifest check (not found) -> mkdir -> tar fails
       mockDevSupervisor.exec
-        .mockResolvedValueOnce({ // Stage 1: dist/ check succeeds
-          success: true,
-          exit_code: 0,
-          stdout: '',
-          stderr: ''
-        })
-        .mockResolvedValueOnce({ // Stage 2: mkdir succeeds
-          success: true,
-          exit_code: 0,
-          stdout: '',
-          stderr: ''
-        })
-        .mockResolvedValueOnce({ // Stage 3: tar fails
-          success: false,
-          exit_code: 1,
-          stdout: '',
-          stderr: 'No space left on device'
-        });
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+        .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // airo-media.json check
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir succeeds
+        .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: 'No space left on device' }); // tar fails
 
       await expect(
         gitUtils.createArchive('/app', 'abc1234')
