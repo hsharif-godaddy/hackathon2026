@@ -8,74 +8,186 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import type { Express } from 'express';
-import type { AuthenticatedRequest } from '../../middleware/jwt-auth.js';
+import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 
 // Mock dependencies BEFORE imports
 const mockFindById = vi.fn();
 
-vi.mock('../../../database/index.js', () => ({
+vi.mock('../../database/index.js', () => ({
   AppRepository: vi.fn().mockImplementation(() => ({
     findById: mockFindById
   }))
 }));
 
-vi.mock('../../../logging/index.js', () => ({
-  Logger: {
-    create: vi.fn(() => ({
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn()
-    }))
-  },
+const mockLogger = () => ({
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+});
+
+vi.mock('../../logging/index.js', () => ({
+  Logger: { create: vi.fn(mockLogger) },
   log: {
-    forApp: vi.fn(() => ({
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn()
-    })),
-    error: vi.fn()
-  }
+    forApp: vi.fn(mockLogger),
+    forAgent: vi.fn(mockLogger),
+    error: vi.fn(),
+  },
+  logger: mockLogger(),
 }));
 
-vi.mock('../../../config/app-download.js', () => ({
+vi.mock('../../config/app-download.js', () => ({
   ALLOWED_DIRECTORIES: ['src', 'public'],
   ALLOWED_CONFIG_FILES: ['package.json', '.env.example']
 }));
 
 // Import after mocks
 const downloadRouter = await import('./download.js').then(m => m.default);
+const { BYPASS_SITE_IDS } = await import('../../services/features.js');
 
 describe('Download Route Authorization', () => {
   let app: Express;
+  const appId = 'test-app-id';
+
+  function createApp(agentContext?: Record<string, unknown>): Express {
+    const testApp = express();
+    testApp.use(express.json());
+    testApp.use((req, res, next) => {
+      if (agentContext) {
+        (req as AuthenticatedRequest).agentContext = agentContext as any;
+      }
+      next();
+    });
+    testApp.use('/', downloadRouter);
+    return testApp;
+  }
 
   beforeEach(() => {
-    // Clear all mocks before each test
     vi.clearAllMocks();
 
-    // Setup Express app with download router
-    app = express();
-    app.use(express.json());
+    app = createApp({
+      siteId: appId,
+      canDownload: false,
+      canPublish: false,
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      iat: Math.floor(Date.now() / 1000)
+    });
+  });
 
-    // Mock auth middleware - we'll set agentContext in tests
-    app.use((req, res, next) => {
-      // Default to no permissions unless set in test
-      (req as AuthenticatedRequest).agentContext = {
-        siteId: 'test-site',
+  describe('App Ownership Validation', () => {
+    it('should reject cross-tenant download attempts', async function rejectCrossTenant() {
+      app = createApp({
+        siteId: 'site-a',
+        canDownload: true,
+        canPublish: false,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000)
+      });
+
+      const response = await request(app)
+        .get(`/apps/site-b/zip`)
+        .expect(403);
+
+      expect(response.body).toHaveProperty('error', 'Access denied');
+      expect(mockFindById).not.toHaveBeenCalled();
+    });
+
+    it('should allow same-tenant download when ownership matches', async function allowSameTenant() {
+      app = createApp({
+        siteId: appId,
+        canDownload: true,
+        canPublish: false,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000)
+      });
+
+      mockFindById.mockReturnValue(null);
+
+      const response = await request(app)
+        .get(`/apps/${appId}/zip`)
+        .expect(404);
+
+      expect(response.body).toEqual({ error: 'App not found' });
+      expect(mockFindById).toHaveBeenCalledWith(appId);
+    });
+
+    it('should reject when agentContext is missing', async function rejectNoContext() {
+      app = createApp();
+
+      const response = await request(app)
+        .get(`/apps/${appId}/zip`)
+        .expect(401);
+
+      expect(response.body).toHaveProperty('error', 'Authentication required');
+      expect(mockFindById).not.toHaveBeenCalled();
+    });
+
+    it('should check ownership before permission', async function ownershipFirst() {
+      app = createApp({
+        siteId: 'site-a',
+        canDownload: true,
+        canPublish: false,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000)
+      });
+
+      mockFindById.mockImplementation(() => {
+        throw new Error('Should not reach here');
+      });
+
+      const response = await request(app)
+        .get(`/apps/site-b/zip`)
+        .expect(403);
+
+      expect(response.body).toHaveProperty('error', 'Access denied');
+      expect(mockFindById).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('BYPASS_SITE_IDS', () => {
+    BYPASS_SITE_IDS.forEach(function iterate(bypassSite) {
+      it(`should allow ${bypassSite} to download any app`, async function allowBypass() {
+        app = createApp({
+          siteId: bypassSite,
+          canDownload: true,
+          canPublish: false,
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000)
+        });
+
+        mockFindById.mockReturnValue(null);
+
+        const response = await request(app)
+          .get('/apps/any-other-app-123/zip')
+          .expect(404);
+
+        expect(response.body).toEqual({ error: 'App not found' });
+        expect(mockFindById).toHaveBeenCalledWith('any-other-app-123');
+      });
+    });
+
+    it('should still require canDownload permission for bypass sites', async function bypassNeedsPermission() {
+      app = createApp({
+        siteId: BYPASS_SITE_IDS[0],
         canDownload: false,
         canPublish: false,
         exp: Math.floor(Date.now() / 1000) + 3600,
         iat: Math.floor(Date.now() / 1000)
-      };
-      next();
-    });
+      });
 
-    app.use('/', downloadRouter);
+      const response = await request(app)
+        .get('/apps/any-other-app-123/zip')
+        .expect(403);
+
+      expect(response.body.error).toBe('Download not allowed');
+      expect(mockFindById).not.toHaveBeenCalled();
+    });
   });
 
   describe('JWT Permission Checks', () => {
-    it('should reject download when canDownload is false', async () => {
+    it('should reject download when canDownload is false', async function rejectNoPermission() {
       const response = await request(app)
-        .get('/apps/test-app-id/zip')
+        .get(`/apps/${appId}/zip`)
         .expect(403);
 
       expect(response.body).toEqual({
@@ -85,117 +197,100 @@ describe('Download Route Authorization', () => {
       expect(mockFindById).not.toHaveBeenCalled();
     });
 
-    it.skip('should allow download when canDownload is true', async () => {
-      // Override middleware to grant permission
-      app = express();
-      app.use((req, res, next) => {
-        (req as AuthenticatedRequest).agentContext = {
-          siteId: 'test-site',
-          canDownload: true,
-          canPublish: false,
-          exp: Math.floor(Date.now() / 1000) + 3600,
-          iat: Math.floor(Date.now() / 1000)
-        };
-        next();
+    it('should reject download when canDownload is undefined', async function rejectUndefined() {
+      app = createApp({
+        siteId: appId,
+        canDownload: undefined,
+        canPublish: false,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000)
       });
-      app.use('/', downloadRouter);
-
-      // Mock app not found to avoid file system operations
-      mockFindById.mockReturnValue(null);
 
       const response = await request(app)
-        .get('/apps/test-app-id/zip')
-        .expect(404);
-
-      expect(mockFindById).toHaveBeenCalledWith('test-app-id');
-      expect(response.body).toEqual({ error: 'App not found' });
-    });
-
-    it('should reject download when agentContext is missing', async () => {
-      app = express();
-      app.use((req, res, next) => {
-        // No agentContext set
-        next();
-      });
-      app.use('/', downloadRouter);
-
-      const response = await request(app)
-        .get('/apps/test-app-id/zip')
-        .expect(403);
-
-      expect(response.body).toEqual({
-        error: 'Download not allowed',
-        details: 'Airo Plus subscription required to download app files'
-      });
-    });
-
-    it('should reject download when canDownload is undefined', async () => {
-      app = express();
-      app.use((req, res, next) => {
-        (req as AuthenticatedRequest).agentContext = {
-          siteId: 'test-site',
-          canDownload: undefined as any,
-          canPublish: false,
-          exp: Math.floor(Date.now() / 1000) + 3600,
-          iat: Math.floor(Date.now() / 1000)
-        };
-        next();
-      });
-      app.use('/', downloadRouter);
-
-      const response = await request(app)
-        .get('/apps/test-app-id/zip')
+        .get(`/apps/${appId}/zip`)
         .expect(403);
 
       expect(response.body.error).toBe('Download not allowed');
+    });
+
+    it('should not allow download with only canPublish permission', async function rejectPublishOnly() {
+      app = createApp({
+        siteId: appId,
+        canDownload: false,
+        canPublish: true,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000)
+      });
+
+      const response = await request(app)
+        .get(`/apps/${appId}/zip`)
+        .expect(403);
+
+      expect(response.body.error).toBe('Download not allowed');
+      expect(mockFindById).not.toHaveBeenCalled();
+    });
+
+    it.skip('should allow download when canDownload is true', async function allowWithPermission() {
+      // Skip reason: requires filesystem mocking for archiver
+      app = createApp({
+        siteId: appId,
+        canDownload: true,
+        canPublish: false,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000)
+      });
+
+      mockFindById.mockReturnValue(null);
+
+      const response = await request(app)
+        .get(`/apps/${appId}/zip`)
+        .expect(404);
+
+      expect(mockFindById).toHaveBeenCalledWith(appId);
+      expect(response.body).toEqual({ error: 'App not found' });
     });
   });
 
   describe('App Validation', () => {
     beforeEach(() => {
-      // Grant permission for these tests
-      app = express();
-      app.use((req, res, next) => {
-        (req as AuthenticatedRequest).agentContext = {
-          siteId: 'test-site',
-          canDownload: true,
-          canPublish: false,
-          exp: Math.floor(Date.now() / 1000) + 3600,
-          iat: Math.floor(Date.now() / 1000)
-        };
-        next();
+      app = createApp({
+        siteId: appId,
+        canDownload: true,
+        canPublish: false,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000)
       });
-      app.use('/', downloadRouter);
     });
 
-    it('should return 400 when app ID is missing', async () => {
+    it('should return 404 when app ID segment is empty (Express routing)', async function rejectEmptyId() {
       await request(app)
         .get('/apps//zip')
-        .expect(404); // Express treats this as not found
+        .expect(404);
 
       expect(mockFindById).not.toHaveBeenCalled();
     });
 
-    it.skip('should return 404 when app does not exist', async () => {
+    it('should return 404 when app does not exist', async function rejectNotFound() {
       mockFindById.mockReturnValue(null);
 
       const response = await request(app)
-        .get('/apps/nonexistent-app/zip')
+        .get(`/apps/${appId}/zip`)
         .expect(404);
 
       expect(response.body).toEqual({ error: 'App not found' });
-      expect(mockFindById).toHaveBeenCalledWith('nonexistent-app');
+      expect(mockFindById).toHaveBeenCalledWith(appId);
     });
 
-    it.skip('should return 400 when app has no path', async () => {
+    it.skip('should return 400 when app has no path', async function rejectNoPath() {
+      // Skip reason: requires filesystem mocking
       mockFindById.mockReturnValue({
-        id: 'test-app',
+        id: appId,
         name: 'Test App',
         path: null
       });
 
       const response = await request(app)
-        .get('/apps/test-app/zip')
+        .get(`/apps/${appId}/zip`)
         .expect(400);
 
       expect(response.body).toEqual({
@@ -205,37 +300,14 @@ describe('Download Route Authorization', () => {
     });
   });
 
-  describe('Security - Permission Bypass Prevention', () => {
-    it('should not allow download with only canPublish permission', async () => {
-      app = express();
-      app.use((req, res, next) => {
-        (req as AuthenticatedRequest).agentContext = {
-          siteId: 'test-site',
-          canDownload: false,
-          canPublish: true, // Has publish but not download
-          exp: Math.floor(Date.now() / 1000) + 3600,
-          iat: Math.floor(Date.now() / 1000)
-        };
-        next();
-      });
-      app.use('/', downloadRouter);
-
-      const response = await request(app)
-        .get('/apps/test-app-id/zip')
-        .expect(403);
-
-      expect(response.body.error).toBe('Download not allowed');
-      expect(mockFindById).not.toHaveBeenCalled();
-    });
-
-    it('should check permission before any app operations', async () => {
-      // Ensure permission check happens first, even if repo throws
+  describe('Security - Middleware Ordering', () => {
+    it('should check permission before any app operations', async function permissionBeforeDb() {
       mockFindById.mockImplementation(() => {
         throw new Error('Should not reach here');
       });
 
       const response = await request(app)
-        .get('/apps/test-app-id/zip')
+        .get(`/apps/${appId}/zip`)
         .expect(403);
 
       expect(response.body.error).toBe('Download not allowed');

@@ -12,6 +12,7 @@ import archiver from 'archiver';
 import { AppRepository } from '../../database/index.js';
 import { Logger, log } from '../../logging/index.js';
 import { ALLOWED_DIRECTORIES, ALLOWED_CONFIG_FILES } from '../../config/app-download.js';
+import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { requirePermission } from '../middleware/require-permission.js';
 
 const router: Router = Router();
@@ -58,25 +59,22 @@ function safePath(base: string, segment: string): string {
  *
  * Security:
  * - JWT authentication (middleware)
+ * - App ownership validation (tenant isolation)
  * - canDownload permission check
  * - Allowlist-based file filtering (only user-facing files)
  *
  * Process:
- * 1. Validate JWT and check canDownload permission
+ * 1. Validate JWT, app ownership, and canDownload permission
  * 2. Lookup app and validate path exists
  * 3. Create zip archive with allowed directories/files
  * 4. Stream zip to client
  * 5. Cleanup temporary file
  */
-router.get('/apps/:id/zip', requirePermission('canDownload'), async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const contextLogger = id ? log.forApp(id) : logger;
+router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload'), async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const contextLogger = log.forApp(id);
 
   try {
-    if (!id) {
-      return res.status(400).json({ error: 'App ID is required' });
-    }
-
     const app = appRepo.findById(id);
     if (!app) {
       return res.status(404).json({ error: 'App not found' });
