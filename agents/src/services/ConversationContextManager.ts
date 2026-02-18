@@ -11,6 +11,7 @@ import {
   AppContextRemovalStrategy,
   TodoListRemovalStrategy,
   SecretOperationCompressionStrategy,
+  MediaSearchSummaryStrategy,
 } from './compression/strategies/index.js';
 import { CssSuggestCompressionStrategy } from './compression/strategies/CssSuggestCompressionStrategy.js';
 import { ContextFormatter } from './helpers/ContextFormatter.js';
@@ -54,6 +55,8 @@ export class ConversationContextManager {
     this.historyLoader.registerCompressionStrategy(new SecretOperationCompressionStrategy());
     // Compress verbose cssSuggest results to just palette names
     this.historyLoader.registerCompressionStrategy(new CssSuggestCompressionStrategy());
+    // Transform deprecated mediaSearch tool calls to summary text (tool was replaced by media slot tool)
+    this.historyLoader.registerCompressionStrategy(new MediaSearchSummaryStrategy());
   }
 
   /**
