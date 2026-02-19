@@ -40,6 +40,7 @@ import {
   type TodoContext,
 } from './ChatMessageBuilder'
 import { ConnectionManager } from './ConnectionManager'
+import { NetworkQualityMonitor } from './NetworkQualityMonitor'
 import { StoreSyncAdapter } from './StoreSyncAdapter'
 import { TransportSupervisor } from './TransportSupervisor'
 import { type WebSocketMachine, webSocketMachine } from './webSocketMachine'
@@ -97,6 +98,7 @@ export class StreamingWebSocketController extends EventEmitter {
   private machine: Actor<WebSocketMachine>
   private adapter: StoreSyncAdapter
   private supervisor: TransportSupervisor
+  private qualityMonitor: NetworkQualityMonitor
 
   // Refs for handler-specific state management
   // Note: These refs manage implementation-specific state (recovery ACK protocol, APP_NOT_FOUND retry, server config)
@@ -123,9 +125,12 @@ export class StreamingWebSocketController extends EventEmitter {
     this.machine = createActor(webSocketMachine)
     this.machine.start()
 
+    // Initialize network quality monitor
+    this.qualityMonitor = new NetworkQualityMonitor()
+
     // Initialize adapter to sync machine → store
     // Pass full store state for adapter to access application-level actions
-    this.adapter = new StoreSyncAdapter(this.machine, this, this.deps.getStoreState)
+    this.adapter = new StoreSyncAdapter(this.machine, this, this.deps.getStoreState, this.qualityMonitor)
 
     // Initialize supervisor for connection lifecycle
     this.supervisor = new TransportSupervisor({
@@ -133,6 +138,7 @@ export class StreamingWebSocketController extends EventEmitter {
       machine: this.machine,
       actions: this.deps.actions,
       getHelpers: this.deps.getHelpers,
+      qualityMonitor: this.qualityMonitor,
       refs: {
         serverConfig: this.serverConfigRef,
         pendingRecoveryAck: this.pendingRecoveryAckRef,
@@ -203,6 +209,9 @@ export class StreamingWebSocketController extends EventEmitter {
   async connect(appId: string): Promise<void> {
     this.currentAppId = appId
 
+    // Record connect start for quality monitoring (pass appId so slow_connect warnings include it)
+    this.qualityMonitor.markConnectStart(appId)
+
     // Send CONNECT event to machine
     this.machine.send({ type: 'CONNECT', appId })
 
@@ -247,10 +256,13 @@ export class StreamingWebSocketController extends EventEmitter {
     // 1. Disconnect transport first - stops event sources
     this.disconnect()
 
-    // 2. Clean up adapter subscriptions
+    // 2. Clean up quality monitor
+    this.qualityMonitor.destroy()
+
+    // 3. Clean up adapter subscriptions
     this.adapter.destroy()
 
-    // 3. Stop machine last - safe because no more events can arrive
+    // 4. Stop machine last - safe because no more events can arrive
     this.machine.stop()
   }
 
@@ -426,7 +438,10 @@ export class StreamingWebSocketController extends EventEmitter {
         messageLength: content.length
       })
 
+      const sentAt = this.qualityMonitor.markMessageSent()
+
       socket.emit('chat_message', chatMessage, (response: any) => {
+        this.qualityMonitor.markMessageAcked(sentAt, socket.id)
         logger.info('websocket.message.ack_received', {
           socketId: socket.id,
           hasError: !!response?.error,

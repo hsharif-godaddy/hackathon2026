@@ -143,6 +143,18 @@ const gitHookService = new GitHookService()
 const activeWebSocketTransactions = new Map<string, any>()
 
 /**
+ * Map to track connection start times for quality monitoring.
+ * Key: socketId, Value: Date.now() at connection.
+ * Socket.IO guarantees `disconnect` fires for established connections, so entries
+ * are always cleaned up in onDisconnection. As a safety net against edge cases
+ * (e.g., framework bugs), entries older than MAX_CONNECTION_TRACKING_AGE_MS are
+ * pruned when the map exceeds PRUNE_THRESHOLD_SIZE.
+ */
+const connectionStartTimes = new Map<string, number>()
+const MAX_CONNECTION_TRACKING_AGE_MS = 24 * 60 * 60 * 1000 // 24 hours
+const PRUNE_THRESHOLD_SIZE = 1000
+
+/**
  * Socket.IO server instance for emitting events
  * Exported for use in other services (e.g., OAuth result notifications)
  */
@@ -1148,6 +1160,18 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
       // Connection handler
       onConnection: async (socketId: string) => {
+        connectionStartTimes.set(socketId, Date.now())
+
+        // Defensive pruning: if map grows unexpectedly large, remove stale entries
+        if (connectionStartTimes.size > PRUNE_THRESHOLD_SIZE) {
+          const now = Date.now()
+          for (const [id, startTime] of connectionStartTimes) {
+            if (now - startTime > MAX_CONNECTION_TRACKING_AGE_MS) {
+              connectionStartTimes.delete(id)
+            }
+          }
+        }
+
         logger.info('websocket.connection.connected', {
           message: 'WebSocket client connected',
           socketId
@@ -1481,6 +1505,18 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       },
 
       onDisconnection: async (socketId: string) => {
+        // Log connection duration for quality monitoring
+        const connectTime = connectionStartTimes.get(socketId)
+        if (connectTime) {
+          const connectionDurationMs = Date.now() - connectTime
+          logger.info('websocket.quality.connection_ended', {
+            socketId,
+            connectionDurationMs,
+            connectionDurationMinutes: Math.round(connectionDurationMs / 60_000 * 10) / 10,
+          })
+          connectionStartTimes.delete(socketId)
+        }
+
         logger.info('websocket.connection.disconnected', {
           message: 'WebSocket client disconnected',
           socketId

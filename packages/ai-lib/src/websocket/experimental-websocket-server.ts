@@ -441,6 +441,12 @@ export class WebSocketServer {
       })
 
       socket.on('disconnect', async (reason) => {
+        if (reason === 'ping timeout') {
+          this.logger.warn('websocket.quality.ping_timeout_disconnect', {
+            socketId,
+            reason,
+          })
+        }
         this.logger.info('Socket disconnected', { socketId, reason })
 
         // Check if there's an active stream for this socket via state manager

@@ -24,6 +24,7 @@ import type {
   WebSocketState,
 } from '@/stores/useStreamingConversationStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+import type { NetworkQualityMonitor } from './NetworkQualityMonitor'
 import type { WebSocketMachine, WebSocketSnapshot } from './webSocketMachine'
 
 /**
@@ -109,12 +110,14 @@ const TRANSPORT_STATE_RESETS: Record<string, () => void> = {
 export class StoreSyncAdapter {
   private machineSubscription: { unsubscribe: () => void } | null = null
   private previousStreamState: string | null = null
+  private previousTransportState: string | null = null
   private escalationTimeoutId: NodeJS.Timeout | null = null
 
   constructor(
     private machine: Actor<WebSocketMachine>,
     private controller: ControllerLike,
-    private getStore: () => StoreSyncStore & Partial<ApplicationStore>
+    private getStore: () => StoreSyncStore & Partial<ApplicationStore>,
+    private qualityMonitor?: NetworkQualityMonitor
   ) {
     // Subscribe to all machine state transitions
     this.machineSubscription = this.machine.subscribe((snapshot) => {
@@ -311,6 +314,9 @@ export class StoreSyncAdapter {
 
     // ============ TABLE-DRIVEN TRANSPORT STATE MAPPING ============
     const transportKey = this.getTransportStateKey(snapshot)
+    const previousTransportKey = this.previousTransportState
+    this.previousTransportState = transportKey
+
     if (transportKey && TRANSPORT_STATE_MAP[transportKey]) {
       this.store.setWebSocketState(TRANSPORT_STATE_MAP[transportKey])
 
@@ -328,6 +334,12 @@ export class StoreSyncAdapter {
         receivedEvents: context.receivedReplayEvents,
       })
     } else if (snapshot.matches({ transport: { connected: 'idle' } }) && context.recoveryId === null) {
+      // Log recovery duration when transitioning from recovering → idle
+      if (previousTransportKey?.startsWith('transport.connected.recovering') && this.store.connectionRetry?.retryStartedAt && context.socketId) {
+        const durationMs = Date.now() - this.store.connectionRetry.retryStartedAt
+        this.qualityMonitor?.logRecoveryDuration(durationMs, context.socketId)
+      }
+
       // Clear recovery state when back to idle
       this.store.setRecoveryState({
         isRecovering: false,
@@ -338,6 +350,10 @@ export class StoreSyncAdapter {
 
     // ============ RETRY STATE MAPPING ============
     if (snapshot.matches({ transport: { reconnecting: 'retrying' } })) {
+      if (context.socketId) {
+        this.qualityMonitor?.logRetryCount(context.retryCount, context.socketId)
+      }
+
       this.store.setRetryState({
         isRetrying: true,
         retryCount: context.retryCount,

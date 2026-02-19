@@ -49,6 +49,7 @@ import {
 } from '@/hooks/websocket/useWebSocketHelpers'
 import { logger } from '@/lib/request-context'
 import type { ConnectionCallbacks, ConnectionManager } from './ConnectionManager'
+import type { NetworkQualityMonitor } from './NetworkQualityMonitor'
 import type { WebSocketActor } from './stateMachineTypes'
 
 /**
@@ -76,6 +77,7 @@ export interface TransportSupervisorDeps {
   machine: WebSocketActor
   actions: MessageHandlerActions
   getHelpers: () => Omit<MessageHandlerHelpers, 'maybeSendRecoveryAck' | 'trackReplayEventReceipt' | 'clearRetryState'>
+  qualityMonitor?: NetworkQualityMonitor
   refs: {
     serverConfig: { current: ServerConfig | null }
     pendingRecoveryAck: { current: RecoveryAck | null }
@@ -158,6 +160,9 @@ export class TransportSupervisor extends EventEmitter {
    */
   disconnect(): void {
     this.clearEscalationTimeout()
+    if (this.socket) {
+      this.deps.qualityMonitor?.detachFromSocket(this.socket)
+    }
     this.deps.connectionManager.disconnect()
     this.socket = null
     this.deps.refs.pendingRecoveryAck.current = null
@@ -205,6 +210,12 @@ export class TransportSupervisor extends EventEmitter {
   private handleConnectionEstablished({ socket, recovered }: { socket: Socket; recovered: boolean }): void {
     // Send CONNECTION_ESTABLISHED event to machine
     this.deps.machine.send({ type: 'CONNECTION_ESTABLISHED', socketId: socket.id })
+
+    // Quality monitoring: log slow connects and attach engine listeners
+    this.deps.qualityMonitor?.markConnectEstablished(socket.id)
+    if (this.currentAppId) {
+      this.deps.qualityMonitor?.attachToSocket(socket, this.currentAppId)
+    }
 
     this.emit('connection:established', { socket, recovered })
   }
