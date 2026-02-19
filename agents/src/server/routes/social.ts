@@ -6,6 +6,7 @@ import {
 } from '../../database/index.js';
 import { SocialPlatform, PostState, getAllPlatforms, getAllPostStates } from '../../types/social.js';
 import { Logger, log } from '../../logging/index.js';
+import { validateAppOwnership } from '../middleware/app-ownership.js';
 
 const router: IRouter = Router();
 const appRepo = new AppRepository();
@@ -110,6 +111,18 @@ function errorHandler(err: Error, req: Request, res: Response, _next: NextFuncti
     error: 'Internal server error',
   });
 }
+
+// ============================================================================
+// Authorization Middleware - MUST be before route definitions
+// ============================================================================
+
+/**
+ * Validate app ownership for all /apps/:id routes
+ *
+ * This middleware ensures tenant isolation by verifying that the authenticated
+ * siteId matches the requested appId. See agents/CLAUDE.md for security patterns.
+ */
+router.use('/apps/:id', validateAppOwnership);
 
 // ============================================================================
 // Association Routes

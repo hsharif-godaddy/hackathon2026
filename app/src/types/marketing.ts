@@ -30,6 +30,12 @@ export interface ScheduledPost {
   publishedAt: string; // ISO date string
   status: 'scheduled' | 'published';
   type: 'blog' | 'social';
+
+  // Social-specific fields (optional, only when type='social')
+  platform?: 'facebook' | 'instagram';
+  postId?: string;        // Agents DB post ID
+  message?: string;       // Preview of post content (truncated)
+  imageUrls?: string[];   // Post images
 }
 
 export interface MarketingEventRequest {

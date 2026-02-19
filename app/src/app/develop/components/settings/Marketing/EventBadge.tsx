@@ -3,6 +3,9 @@
 import CalendarIcon from '@ux/icon/calendar';
 import CheckmarkIcon from '@ux/icon/checkmark';
 import ClockIcon from '@ux/icon/clock';
+import FacebookIcon from '@ux/icon/facebook';
+import InstagramIcon from '@ux/icon/instagram';
+import ShareIcon from '@ux/icon/share';
 
 import { useTranslations } from '@/hooks/useTranslations';
 import { cn } from '@/lib/utils';
@@ -43,35 +46,86 @@ export default function EventBadge({ event, scheduledPost }: EventBadgeProps) {
   if (scheduledPost) {
     const isScheduled = scheduledPost.status === 'scheduled';
 
-    return (
-      <div
-        className={cn(
-          'flex flex-col items-center gap-1 px-1.5 py-1 rounded-md border-2 w-full min-w-0',
-          'transition-all duration-150 group/badge',
-          isScheduled && 'border-intents-ux-warning-borderColor bg-intents-ux-warning-backgroundColor border-dashed',
-          !isScheduled && 'border-intents-ux-feedbackSuccess-borderColor bg-intents-ux-feedbackSuccess-backgroundColor'
-        )}
-        title={scheduledPost.title}
-      >
-        <div className={cn(
-          'flex-shrink-0 transition-transform duration-150 group-hover/badge:scale-110',
-          isScheduled ? 'text-intents-ux-warning-textColor' : 'text-intents-ux-feedbackSuccess-textColor'
-        )}>
-          {isScheduled ? (
-            <ClockIcon className="w-3 h-3" />
-          ) : (
-            <CheckmarkIcon className="w-3 h-3" />
-          )}
-        </div>
+    // Render social posts with platform icons
+    if (scheduledPost.type === 'social') {
+      // Handle platform icon and label with fallback for unknown/missing platforms
+      // This ensures posts remain visible even if validation fails or new platforms are added
+      let PlatformIcon: typeof FacebookIcon;
+      let platformLabelKey: string;
 
-        <span className={cn(
-          'text-xs font-semibold leading-tight text-center min-w-0',
-          isScheduled ? 'text-intents-ux-warning-textColor' : 'text-intents-ux-feedbackSuccess-textColor'
-        )}>
-          {t('builder_marketing_blog_prefix')}: {scheduledPost.title}
-        </span>
-      </div>
-    );
+      if (scheduledPost.platform === 'facebook') {
+        PlatformIcon = FacebookIcon;
+        platformLabelKey = 'builder_marketing_facebook';
+      } else if (scheduledPost.platform === 'instagram') {
+        PlatformIcon = InstagramIcon;
+        platformLabelKey = 'builder_marketing_instagram';
+      } else {
+        // Fallback for unknown/missing platforms
+        PlatformIcon = ShareIcon;
+        platformLabelKey = 'builder_marketing_social'; // Generic "Social" label
+      }
+
+      return (
+        <div
+          className={cn(
+            'flex flex-col items-center gap-1 px-1.5 py-1 rounded-md border-2 w-full min-w-0',
+            'transition-all duration-150 group/badge',
+            // Solid border for social posts
+            isScheduled && 'border-intents-ux-warning-borderColor bg-intents-ux-warning-backgroundColor',
+            !isScheduled && 'border-intents-ux-feedbackSuccess-borderColor bg-intents-ux-feedbackSuccess-backgroundColor'
+          )}
+          title={scheduledPost.message || scheduledPost.title}
+        >
+          <div className={cn(
+            'flex-shrink-0 transition-transform duration-150 group-hover/badge:scale-110',
+            isScheduled ? 'text-intents-ux-warning-textColor' : 'text-intents-ux-feedbackSuccess-textColor'
+          )}>
+            <PlatformIcon className="w-3 h-3" />
+          </div>
+
+          <span className={cn(
+            'text-xs font-semibold leading-tight text-center min-w-0',
+            isScheduled ? 'text-intents-ux-warning-textColor' : 'text-intents-ux-feedbackSuccess-textColor'
+          )}>
+            {t(platformLabelKey)}
+          </span>
+        </div>
+      );
+    }
+
+    // Render blog posts with clock/checkmark icons and dashed border
+    if (scheduledPost.type === 'blog') {
+      return (
+        <div
+          className={cn(
+            'flex flex-col items-center gap-1 px-1.5 py-1 rounded-md border-2 w-full min-w-0',
+            'transition-all duration-150 group/badge',
+            // Dashed border for blog posts
+            isScheduled && 'border-intents-ux-warning-borderColor bg-intents-ux-warning-backgroundColor border-dashed',
+            !isScheduled && 'border-intents-ux-feedbackSuccess-borderColor bg-intents-ux-feedbackSuccess-backgroundColor'
+          )}
+          title={scheduledPost.title}
+        >
+          <div className={cn(
+            'flex-shrink-0 transition-transform duration-150 group-hover/badge:scale-110',
+            isScheduled ? 'text-intents-ux-warning-textColor' : 'text-intents-ux-feedbackSuccess-textColor'
+          )}>
+            {isScheduled ? (
+              <ClockIcon className="w-3 h-3" />
+            ) : (
+              <CheckmarkIcon className="w-3 h-3" />
+            )}
+          </div>
+
+          <span className={cn(
+            'text-xs font-semibold leading-tight text-center min-w-0',
+            isScheduled ? 'text-intents-ux-warning-textColor' : 'text-intents-ux-feedbackSuccess-textColor'
+          )}>
+            {t('builder_marketing_blog_prefix')}: {scheduledPost.title}
+          </span>
+        </div>
+      );
+    }
   }
 
   return null;
