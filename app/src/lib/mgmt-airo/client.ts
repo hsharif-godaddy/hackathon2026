@@ -45,6 +45,10 @@ import {
 /**
  * Authorization scheme used by mgmt-airo API
  * mgmt-airo expects 'sso-jwt' instead of standard 'Bearer' scheme
+ *
+ * Note: This client does NOT use gasket-config's appFetch because it uses
+ * server-to-server 'sso-jwt' auth scheme (not cookie-based SSO) and has
+ * its own retry/timeout logic. No 401-retry: auth failures require user action.
  */
 const MGMT_AIRO_AUTH_SCHEME = 'sso-jwt';
 

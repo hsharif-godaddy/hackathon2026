@@ -32,6 +32,9 @@ vi.mock('@/lib/features', () => ({
   },
   MAX_PROMPT_LENGTH: 40000,
   auth: { enabled: false },
+  authUtils: {
+    getSupportedAuthTypes: vi.fn(() => ['sso']),
+  },
 }));
 vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: () => mockAuthContext(),

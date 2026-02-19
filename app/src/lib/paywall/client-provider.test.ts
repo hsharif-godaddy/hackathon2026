@@ -9,6 +9,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { appFetch } from '@/lib/gasket-config';
 import { ClientPaywallProvider } from './client-provider';
 
 // Mock logger
@@ -33,7 +34,6 @@ vi.mock('@/lib/gasket-config', () => ({
 describe('ClientPaywallProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    global.fetch = vi.fn();
   });
 
   describe('checkSwitchboardFlags', () => {
@@ -50,11 +50,11 @@ describe('ClientPaywallProvider', () => {
         json: opt?.json ?? (async () => (opt?.setting !== undefined ? { setting: opt.setting } : {})),
       });
 
-      global.fetch = vi.fn()
-        .mockResolvedValueOnce(createResponse(options.paywall))
-        .mockResolvedValueOnce(createResponse(options.markets))
-        .mockResolvedValueOnce(createResponse(options.grants))
-        .mockResolvedValueOnce(createResponse(options.bypass));
+      vi.mocked(appFetch)
+        .mockResolvedValueOnce(createResponse(options.paywall) as any)
+        .mockResolvedValueOnce(createResponse(options.markets) as any)
+        .mockResolvedValueOnce(createResponse(options.grants) as any)
+        .mockResolvedValueOnce(createResponse(options.bypass) as any);
     }
 
     it('should return flags when API calls succeed', async () => {
@@ -69,14 +69,16 @@ describe('ClientPaywallProvider', () => {
       const result = await provider.checkSwitchboardFlags('godaddy.com');
 
       expect(result).toEqual({ paywall: true, markets: true, grants: false, bypassPublishLimit: false });
-      expect(global.fetch).toHaveBeenCalledTimes(4);
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(appFetch).toHaveBeenCalledTimes(4);
+      expect(appFetch).toHaveBeenCalledWith(
         'https://bff.pcx.godaddy.com/api/config/feature/appbuilder-airoplus-paywall?app=airo-app-builder',
-        { credentials: 'include' }
+        {},
+        { setAuthState: false }
       );
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(appFetch).toHaveBeenCalledWith(
         'https://bff.pcx.godaddy.com/api/config/feature/appbuilder-airoplus-markets?app=airo-app-builder',
-        { credentials: 'include' }
+        {},
+        { setAuthState: false }
       );
     });
 
@@ -125,25 +127,25 @@ describe('ClientPaywallProvider', () => {
     });
 
     it('should throw error when paywall flag JSON parsing fails', async () => {
-      global.fetch = vi.fn()
+      vi.mocked(appFetch)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => {
             throw new Error('Invalid JSON');
           },
-        })
+        } as any)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ setting: true }),
-        })
+        } as any)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ setting: false }),
-        })
+        } as any)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ setting: false }),
-        });
+        } as any);
 
       const provider = new ClientPaywallProvider();
 
@@ -153,25 +155,25 @@ describe('ClientPaywallProvider', () => {
     });
 
     it('should throw error when markets flag JSON parsing fails', async () => {
-      global.fetch = vi.fn()
+      vi.mocked(appFetch)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ setting: true }),
-        })
+        } as any)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => {
             throw new Error('Invalid JSON');
           },
-        })
+        } as any)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ setting: false }),
-        })
+        } as any)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ setting: false }),
-        });
+        } as any);
 
       const provider = new ClientPaywallProvider();
 
@@ -181,23 +183,23 @@ describe('ClientPaywallProvider', () => {
     });
 
     it('should default to false when flag setting is missing', async () => {
-      global.fetch = vi.fn()
+      vi.mocked(appFetch)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({}), // No setting field
-        })
+        } as any)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ setting: null }), // Null setting
-        })
+        } as any)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({}),
-        })
+        } as any)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({}),
-        });
+        } as any);
 
       const provider = new ClientPaywallProvider();
       const result = await provider.checkSwitchboardFlags('godaddy.com');
@@ -206,20 +208,20 @@ describe('ClientPaywallProvider', () => {
     });
 
     it('should throw error on network failure', async () => {
-      global.fetch = vi.fn()
+      vi.mocked(appFetch)
         .mockRejectedValueOnce(new Error('Network error'))
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ setting: true }),
-        })
+        } as any)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ setting: false }),
-        })
+        } as any)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ setting: false }),
-        });
+        } as any);
 
       const provider = new ClientPaywallProvider();
 
@@ -258,15 +260,15 @@ describe('ClientPaywallProvider', () => {
 
     it('should handle grants/bypass flag fetch failures gracefully (defaults to false)', async () => {
       // grants and bypass use .catch(() => null) so failures are handled gracefully
-      global.fetch = vi.fn()
+      vi.mocked(appFetch)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ setting: true }),
-        })
+        } as any)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ setting: true }),
-        })
+        } as any)
         .mockRejectedValueOnce(new Error('Network error')) // grants fails
         .mockRejectedValueOnce(new Error('Network error')); // bypass fails
 

@@ -58,10 +58,10 @@ export class ClientPaywallProvider implements PaywallDataProvider {
     const bypassFlagUrl = `https://${BFF_HOST_PREFIX}.${rootDomain}/api/config/feature/app-builder-bypass-publish-limit?app=${SWITCHBOARD_APP}`;
 
     const [paywallResponse, marketsResponse, grantsResponse, bypassResponse] = await Promise.all([
-      fetch(paywallFlagUrl, { credentials: 'include' }),
-      fetch(marketsFlagUrl, { credentials: 'include' }),
-      fetch(grantsFlagUrl, { credentials: 'include' }).catch(() => null),
-      fetch(bypassFlagUrl, { credentials: 'include' }).catch(() => null),
+      appFetch(paywallFlagUrl, {}, { setAuthState: false }),
+      appFetch(marketsFlagUrl, {}, { setAuthState: false }),
+      appFetch(grantsFlagUrl, {}, { setAuthState: false }).catch(() => null),
+      appFetch(bypassFlagUrl, {}, { setAuthState: false }).catch(() => null),
     ]);
 
     // Fail closed: Throw error if flag fetch fails

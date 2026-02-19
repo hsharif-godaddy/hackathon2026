@@ -3,6 +3,7 @@
  * Logs all service configurations once at application startup
  */
 
+import { getSsoHostSync } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
 let hasInitialized = false;
@@ -36,7 +37,7 @@ export function logStartupConfiguration() {
   });
 
   // GdAuth Service Configuration
-  const ssoHost = process.env.SSO_HOST || 'sso.test-godaddy.com';
+  const ssoHost = getSsoHostSync();
   logger.info('startup.config.gdauth', {
     message: '🔐 GdAuth Service Configuration',
     ssoHost,

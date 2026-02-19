@@ -147,8 +147,8 @@ export class DockerComposeGenerator {
 			env.DEV_SUPERVISOR_JWT_AUDIENCE = 'agents-service'; // Must match builder's audience
 
 			// GoDaddy SSO Configuration for smart redirects
-			// Extract SSO host from login URL (e.g., "sso.dev-godaddy.com")
-			const ssoLoginUrl = process.env.SSO_LOGIN_URL || 'https://sso.dev-godaddy.com/login';
+			// Use same default as gasket-config for consistency
+			const ssoLoginUrl = process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
 
 			// Smart redirect configuration:
 			// When users access preview apps directly (not via builder iframe), redirect them

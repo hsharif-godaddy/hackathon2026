@@ -3,6 +3,10 @@
  *
  * Uses client certificate authentication to obtain service tokens from SSO.
  * Implements caching and thread-safe token refresh similar to s2s-auth.ts.
+ *
+ * Note: This does NOT use gasket-config's SSO helpers because it uses a
+ * completely different SSO endpoint (/v1/secure/api/token for cert-based auth)
+ * that is unrelated to the login/logout URL configuration.
  */
 
 import { existsSync } from 'node:fs';

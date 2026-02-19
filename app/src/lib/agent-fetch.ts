@@ -1,6 +1,10 @@
 /**
  * Agent Fetch Utility
  * Simple client-side utility for making authenticated requests to agents
+ *
+ * Uses appFetch for token acquisition (SSO cookies → JWT), but agent requests
+ * themselves use Bearer token auth with retry-on-401 logic — a different auth
+ * mechanism from appFetch's cookie-based SSO flow.
  */
 
 import { appFetch } from '@/lib/gasket-config'

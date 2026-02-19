@@ -59,13 +59,6 @@ vi.mock('@/stores/useSubscriptionCacheStore', () => ({
 }));
 
 /**
- * Mock mgmt-airo auth utils
- */
-vi.mock('@/lib/utils/mgmt-airo-auth', () => ({
-  getMgmtAiroToken: vi.fn(() => null)
-}));
-
-/**
  * Test fixtures
  */
 const MOCK_JWT = 'fake-jwt-for-testing-only';

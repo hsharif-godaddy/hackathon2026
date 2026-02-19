@@ -3,7 +3,7 @@
  * Handles JWT validation and automatic heartbeat for IDP tokens
  */
 
-import { authUtils } from '@/lib/features';
+import { authConfigs, getSsoHostSync } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
 export class GdAuthService {
@@ -18,13 +18,7 @@ export class GdAuthService {
       nodeEnv: process.env.NODE_ENV
     });
 
-    // parse the domain from SSO_LOGIN_URL environment variable using robust URL parsing
-    try {
-      const ssoUrl = process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
-      this.ssoHost = new URL(ssoUrl).hostname;
-    } catch {
-      this.ssoHost = 'sso.test-godaddy.com';
-    }
+    this.ssoHost = getSsoHostSync();
 
     // Only initialize gd-auth if we're using JWT authentication
     const authType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
@@ -40,13 +34,13 @@ export class GdAuthService {
   private initializeGdAuth() {
     const { GdAuth } = require('gd-auth'); // eslint-disable-line
 
-    // Initialize gd-auth with support for multiple auth types including impersonation
+    // Initialize gd-auth using centralized auth config
     this.gdAuth = new GdAuth({
-      app: 'airo-builder',           // Our application name
-      type: 'idp',                   // IDP token type
-      auths: authUtils.getSupportedAuthTypes(), // Support both basic and e2s (impersonation)
-      allowHeartbeat: true,          // Enable automatic heartbeat
-      use12HourExpiration: true,     // Use 12-hour expiration for per=true tokens (matches gateway requirements)
+      app: 'airo-builder',
+      type: authConfigs.user.realm,
+      auths: authConfigs.user.type,
+      allowHeartbeat: authConfigs.user.allowHeartbeat,
+      use12HourExpiration: authConfigs.user.use12HourExpiration,
       fetchKey: require('gd-auth/src/fetch-key') // eslint-disable-line @typescript-eslint/no-require-imports
     });
   }

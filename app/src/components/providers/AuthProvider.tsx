@@ -7,7 +7,7 @@ import AccessDisabledComponent from '@/components/auth/AccessDisabledComponent'
 import LoadingComponent from '@/components/auth/LoadingComponent';
 import { useAuth } from '@/hooks/useAuth'
 import { useSwitchboard } from '@/hooks/useSwitchboard';
-import { auth } from '@/lib/features';
+import { getGasketConfig, isAuthJWTSync } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
 // Create auth context
@@ -60,27 +60,27 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthProviderLoading, setIsAuthProviderLoading] = useState(true);
   const [serverAuthConfig, setServerAuthConfig] = useState<any>(null);
 
-  // Load server-side auth configuration
+  // Load server-side auth configuration via centralized getGasketConfig()
   useEffect(() => {
     async function loadServerAuthConfig() {
       try {
-        const response = await fetch('/api/config');
-        if (response.ok) {
-          const config = await response.json();
-          setServerAuthConfig(config.auth);
-        }
+        const config = await getGasketConfig();
+        setServerAuthConfig(config.auth);
       } catch (error) {
         logger.error('auth.provider.config-error', {
           message: 'Failed to load server auth config',
           error: error as Error
         });
+        // Set to undefined (not null) so the provider-loading effect can proceed
+        // using the isAuthJWTSync() fallback instead of waiting indefinitely
+        setServerAuthConfig(undefined);
       }
     }
     loadServerAuthConfig();
   }, []);
 
   // Use server config if available, fallback to client-side detection
-  const isJWTMode = serverAuthConfig?.isJWT || auth.isJWT();
+  const isJWTMode = serverAuthConfig?.isJWT || isAuthJWTSync();
 
   // Load auth provider conditionally (wait for server config)
   useEffect(() => {
@@ -132,11 +132,11 @@ export function useAuthContext() {
   const context = useContext(AuthContext);
   if (!context) {
     // During logout/unmounting, create a minimal auth hook to avoid errors
-    // Import auth directly to get the actual auth configuration
-    const { auth } = require('@/lib/features'); // eslint-disable-line
-    const actualIsMock = auth.isMock();
-    const actualIsDisabled = auth.isDisabled();
-    const actualAuthType = auth.getType();
+    // Use sync gasket-config helpers to get auth state without async
+    const { isAuthMockSync, isAuthDisabledSync, getAuthTypeSync } = require('@/lib/gasket-config'); // eslint-disable-line
+    const actualIsMock = isAuthMockSync();
+    const actualIsDisabled = isAuthDisabledSync();
+    const actualAuthType = getAuthTypeSync();
 
     return {
       isAuthenticated: false,

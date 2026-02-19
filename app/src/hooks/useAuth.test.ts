@@ -38,6 +38,55 @@ vi.mock('@/lib/features', () => ({
   },
 }));
 
+// Default test config returned by getGasketConfig
+const defaultTestConfig = {
+  auth: {
+    realm: 'idp',
+    risk: 'low',
+    type: ['sso'],
+    authType: 'MOCK',
+    isDisabled: false,
+    isMock: true,
+    isJWT: false,
+  },
+  sso: {
+    loginUrl: 'https://sso.example.com/login',
+    logoutUrl: 'https://sso.example.com/logout',
+  },
+  redirects: {
+    loginRedirectUrl: 'https://app.example.com',
+    logoutRedirectUrl: 'https://app.example.com/logout',
+  },
+};
+
+// Mutable reference so tests can swap the config
+let mockGasketConfig = { ...defaultTestConfig };
+
+vi.mock('@/lib/gasket-config', () => ({
+  getGasketConfig: vi.fn(() => Promise.resolve(mockGasketConfig)),
+  getLoginUrl: vi.fn((returnUrl?: string) => {
+    const redirect = returnUrl || mockGasketConfig.redirects.loginRedirectUrl;
+    return Promise.resolve(`${mockGasketConfig.sso.loginUrl}?app=airo-builder&redirect=${encodeURIComponent(redirect)}`);
+  }),
+  getLogoutUrl: vi.fn(() => {
+    return Promise.resolve(`${mockGasketConfig.sso.logoutUrl}?app=airo-builder&redirect=${encodeURIComponent(mockGasketConfig.redirects.logoutRedirectUrl)}`);
+  }),
+  authConfigs: {
+    user: {
+      realm: 'idp',
+      risk: 'low',
+      type: ['sso'],
+      allowHeartbeat: true,
+      use12HourExpiration: true,
+    },
+  },
+  isAuthDisabledSync: vi.fn(() => false),
+  isAuthMockSync: vi.fn(() => true),
+  isAuthJWTSync: vi.fn(() => false),
+  getAuthTypeSync: vi.fn(() => 'MOCK'),
+  GasketConfig: {},
+}));
+
 vi.mock('@/lib/request-context', () => ({
   logger: {
     info: vi.fn(),
@@ -83,39 +132,22 @@ vi.mock('@/stores/useAuthUIStore', () => ({
 }));
 
 describe('useAuth', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     // Reset mock store to initial state
     mockStore.needsReauthSeq = 0;
     mockStore.needsReauth = false;
 
-    global.fetch = vi.fn((url) => {
-      if (url === '/api/config') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            auth: {
-              realm: 'idp',
-              risk: 'low',
-              type: ['sso'],
-              authType: 'MOCK',
-              isDisabled: false,
-              isMock: true,
-              isJWT: false,
-            },
-            sso: {
-              loginUrl: 'https://sso.example.com/login',
-              logoutUrl: 'https://sso.example.com/logout',
-            },
-            redirects: {
-              loginRedirectUrl: 'https://app.example.com',
-              logoutRedirectUrl: 'https://app.example.com/logout',
-            },
-          }),
-        } as Response);
-      }
-      return Promise.resolve({ ok: false } as Response);
-    }) as any;
+    // Reset gasket config mock to default
+    mockGasketConfig = { ...defaultTestConfig };
+
+    // Reset getGasketConfig mock implementation
+    const gasketConfigModule = await import('@/lib/gasket-config');
+    vi.mocked(gasketConfigModule.getGasketConfig).mockImplementation(() => Promise.resolve(mockGasketConfig));
+    vi.mocked(gasketConfigModule.isAuthDisabledSync).mockReturnValue(false);
+    vi.mocked(gasketConfigModule.isAuthMockSync).mockReturnValue(true);
+    vi.mocked(gasketConfigModule.isAuthJWTSync).mockReturnValue(false);
+    vi.mocked(gasketConfigModule.getAuthTypeSync).mockReturnValue('MOCK');
   });
 
   it('should load configuration on mount', async () => {
@@ -163,9 +195,8 @@ describe('useAuth', () => {
   });
 
   it('should handle config load error', async () => {
-    global.fetch = vi.fn(() =>
-      Promise.resolve({ ok: false, status: 500, statusText: 'Error' } as Response)
-    ) as any;
+    const gasketConfigModule = await import('@/lib/gasket-config');
+    vi.mocked(gasketConfigModule.getGasketConfig).mockRejectedValue(new Error('Config API error: 500'));
 
     const { result } = renderHook(() => useAuth());
 
@@ -197,11 +228,19 @@ describe('useAuth', () => {
     // 3. Validation completes with valid=true
     // 4. needsReauth should be cleared
 
-    const { auth } = await import('@/lib/features');
     const { useAuthState } = await import('@godaddy/gasket-auth');
+    const gasketConfigModule = await import('@/lib/gasket-config');
 
-    vi.mocked(auth.isJWT).mockReturnValue(true);
-    vi.mocked(auth.isMock).mockReturnValue(false);
+    // Configure gasket-config mocks for JWT mode
+    vi.mocked(gasketConfigModule.isAuthJWTSync).mockReturnValue(true);
+    vi.mocked(gasketConfigModule.isAuthMockSync).mockReturnValue(false);
+
+    // Set JWT config
+    mockGasketConfig = {
+      ...defaultTestConfig,
+      auth: { ...defaultTestConfig.auth, authType: 'JWT', isMock: false, isJWT: true },
+    };
+    vi.mocked(gasketConfigModule.getGasketConfig).mockResolvedValue(mockGasketConfig);
 
     // Mock Gasket Auth to simulate validation cycle
     let authStateValue = {
@@ -211,39 +250,11 @@ describe('useAuth', () => {
     };
     vi.mocked(useAuthState).mockImplementation(() => authStateValue);
 
-    global.fetch = vi.fn((url) => {
-      if (url === '/api/config') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            auth: {
-              realm: 'idp',
-              risk: 'low',
-              type: ['sso'],
-              authType: 'JWT',
-              isDisabled: false,
-              isMock: false,
-              isJWT: true,
-            },
-            sso: {
-              loginUrl: 'https://sso.example.com/login',
-              logoutUrl: 'https://sso.example.com/logout',
-            },
-            redirects: {
-              loginRedirectUrl: 'https://app.example.com',
-              logoutRedirectUrl: 'https://app.example.com/logout',
-            },
-          }),
-        } as Response);
-      }
-      return Promise.resolve({ ok: false } as Response);
-    }) as any;
-
     const { rerender } = renderHook(() => useAuth());
 
     // Wait for config to load
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith('/api/config');
+      expect(gasketConfigModule.getGasketConfig).toHaveBeenCalled();
     });
 
     // Simulate a 401 error that sets needsReauth
@@ -281,11 +292,19 @@ describe('useAuth', () => {
     // 3. Validation completes with valid=false
     // 4. needsReauth should NOT be cleared (user still needs to reauth)
 
-    const { auth } = await import('@/lib/features');
     const { useAuthState } = await import('@godaddy/gasket-auth');
+    const gasketConfigModule = await import('@/lib/gasket-config');
 
-    vi.mocked(auth.isJWT).mockReturnValue(true);
-    vi.mocked(auth.isMock).mockReturnValue(false);
+    // Configure gasket-config mocks for JWT mode
+    vi.mocked(gasketConfigModule.isAuthJWTSync).mockReturnValue(true);
+    vi.mocked(gasketConfigModule.isAuthMockSync).mockReturnValue(false);
+
+    // Set JWT config
+    mockGasketConfig = {
+      ...defaultTestConfig,
+      auth: { ...defaultTestConfig.auth, authType: 'JWT', isMock: false, isJWT: true },
+    };
+    vi.mocked(gasketConfigModule.getGasketConfig).mockResolvedValue(mockGasketConfig);
 
     // Mock Gasket Auth with invalid token
     let authStateValue = {
@@ -295,39 +314,11 @@ describe('useAuth', () => {
     };
     vi.mocked(useAuthState).mockImplementation(() => authStateValue);
 
-    global.fetch = vi.fn((url) => {
-      if (url === '/api/config') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            auth: {
-              realm: 'idp',
-              risk: 'low',
-              type: ['sso'],
-              authType: 'JWT',
-              isDisabled: false,
-              isMock: false,
-              isJWT: true,
-            },
-            sso: {
-              loginUrl: 'https://sso.example.com/login',
-              logoutUrl: 'https://sso.example.com/logout',
-            },
-            redirects: {
-              loginRedirectUrl: 'https://app.example.com',
-              logoutRedirectUrl: 'https://app.example.com/logout',
-            },
-          }),
-        } as Response);
-      }
-      return Promise.resolve({ ok: false } as Response);
-    }) as any;
-
     const { rerender } = renderHook(() => useAuth());
 
     // Wait for config to load
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith('/api/config');
+      expect(gasketConfigModule.getGasketConfig).toHaveBeenCalled();
     });
 
     // Simulate a 401 error that sets needsReauth
@@ -358,11 +349,19 @@ describe('useAuth', () => {
     // 4. First validation completes with valid=true
     // 5. needsReauth should NOT be cleared because sequence doesn't match (captured seq=1, current seq=2)
 
-    const { auth } = await import('@/lib/features');
     const { useAuthState } = await import('@godaddy/gasket-auth');
+    const gasketConfigModule = await import('@/lib/gasket-config');
 
-    vi.mocked(auth.isJWT).mockReturnValue(true);
-    vi.mocked(auth.isMock).mockReturnValue(false);
+    // Configure gasket-config mocks for JWT mode
+    vi.mocked(gasketConfigModule.isAuthJWTSync).mockReturnValue(true);
+    vi.mocked(gasketConfigModule.isAuthMockSync).mockReturnValue(false);
+
+    // Set JWT config
+    mockGasketConfig = {
+      ...defaultTestConfig,
+      auth: { ...defaultTestConfig.auth, authType: 'JWT', isMock: false, isJWT: true },
+    };
+    vi.mocked(gasketConfigModule.getGasketConfig).mockResolvedValue(mockGasketConfig);
 
     let authStateValue = {
       status: 'authenticated' as const,
@@ -371,39 +370,11 @@ describe('useAuth', () => {
     };
     vi.mocked(useAuthState).mockImplementation(() => authStateValue);
 
-    global.fetch = vi.fn((url) => {
-      if (url === '/api/config') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            auth: {
-              realm: 'idp',
-              risk: 'low',
-              type: ['sso'],
-              authType: 'JWT',
-              isDisabled: false,
-              isMock: false,
-              isJWT: true,
-            },
-            sso: {
-              loginUrl: 'https://sso.example.com/login',
-              logoutUrl: 'https://sso.example.com/logout',
-            },
-            redirects: {
-              loginRedirectUrl: 'https://app.example.com',
-              logoutRedirectUrl: 'https://app.example.com/logout',
-            },
-          }),
-        } as Response);
-      }
-      return Promise.resolve({ ok: false } as Response);
-    }) as any;
-
     const { rerender } = renderHook(() => useAuth());
 
     // Wait for config to load
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith('/api/config');
+      expect(gasketConfigModule.getGasketConfig).toHaveBeenCalled();
     });
 
     // Simulate first 401 error (seq=1)

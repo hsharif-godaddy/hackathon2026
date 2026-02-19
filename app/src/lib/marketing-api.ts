@@ -1,3 +1,4 @@
+import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { getRootDomain } from '@/utils/getRootDomain'
 
@@ -29,21 +30,24 @@ export async function scheduleInstagramPost(params: {
     imageCount: params.images.length
   })
 
-  const response = await fetch(`${MARKETING_API_BASE_URL}/v1/instagram/createPost`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json'
+  const response = await appFetch(
+    `${MARKETING_API_BASE_URL}/v1/instagram/createPost`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        socialId: params.socialId,
+        payload: {
+          images: params.images.map(src => ({ src })),
+          message: params.message,
+          scheduleTime: params.scheduleTime
+        }
+      })
     },
-    body: JSON.stringify({
-      socialId: params.socialId,
-      payload: {
-        images: params.images.map(src => ({ src })),
-        message: params.message,
-        scheduleTime: params.scheduleTime
-      }
-    })
-  })
+    { setAuthState: false }
+  )
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))

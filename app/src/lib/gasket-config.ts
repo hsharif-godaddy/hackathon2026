@@ -1,6 +1,6 @@
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { SHOPPER_AUTH_FAILURE_MESSAGE } from './customer-auth';
-import { auth } from './features';
+import { auth, authUtils } from './features';
 import { logger } from './request-context';
 // Gasket configuration for Airo Builder authentication
 
@@ -41,7 +41,7 @@ async function loadRuntimeConfig(): Promise<GasketConfig> {
       auth: {
         realm: 'idp',
         risk: 'low',
-        type: ['basic'],
+        type: authUtils.getSupportedAuthTypes(),
         authType: auth.getType(),
         isDisabled: auth.isDisabled(),
         isMock: auth.isMock(),
@@ -124,7 +124,7 @@ export const authConfigs = {
   user: {
     realm: 'idp',
     risk: 'low',
-    type: ['basic'],
+    type: authUtils.getSupportedAuthTypes(),
     allowHeartbeat: true,        // Enable automatic token refresh
     use12HourExpiration: true    // Use longer token expiration
   },
@@ -140,7 +140,7 @@ export const authConfigs = {
   sensitive: {
     realm: 'idp',
     risk: 'high',
-    type: ['basic'],
+    type: authUtils.getSupportedAuthTypes(),
     allowHeartbeat: true         // Keep heartbeat, but shorter expiration for security
   }
 };
@@ -177,6 +177,31 @@ export async function isAuthDisabled(): Promise<boolean> {
     globalThis.__authDisabledLogged = true;
   }
   return disabled;
+}
+
+// Sync auth helpers for contexts that can't await (useMemo, useCallback, constructors)
+export function isAuthDisabledSync(): boolean { return auth.isDisabled(); }
+export function isAuthMockSync(): boolean { return auth.isMock(); }
+export function isAuthJWTSync(): boolean { return auth.isJWT(); }
+export function getAuthTypeSync(): string { return auth.getType(); }
+
+// SSO host helpers
+export function getSsoHostSync(): string {
+  try {
+    const ssoUrl = process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
+    return new URL(ssoUrl).hostname;
+  } catch {
+    return 'sso.test-godaddy.com';
+  }
+}
+
+export async function getSsoHost(): Promise<string> {
+  const config = await getGasketConfig();
+  try {
+    return new URL(config.sso.loginUrl).hostname;
+  } catch {
+    return 'sso.test-godaddy.com';
+  }
 }
 
 /**

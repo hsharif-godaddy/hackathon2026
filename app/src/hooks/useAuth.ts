@@ -2,29 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AuthIdpType, AuthRealmType, AuthRiskType, useAuthState } from '@godaddy/gasket-auth';
 
 import { useMockAuth } from '@/hooks/useMockAuth';
-import { auth, authUtils } from '@/lib/features';
+import {
+  authConfigs,
+  type GasketConfig,
+  getAuthTypeSync,
+  getGasketConfig,
+  getLoginUrl,
+  getLogoutUrl,
+  isAuthDisabledSync,
+  isAuthJWTSync,
+  isAuthMockSync,
+} from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
-
-interface AppConfig {
-  auth: {
-    realm: string;
-    risk: string;
-    type: string[];
-    authType: string;
-    isDisabled: boolean;
-    isMock: boolean;
-    isJWT: boolean;
-  };
-  sso: {
-    loginUrl: string;
-    logoutUrl: string;
-  };
-  redirects: {
-    loginRedirectUrl: string;
-    logoutRedirectUrl: string;
-  };
-}
 
 interface UseAuthOptions {
   onShowMockLogin?: () => void;
@@ -44,7 +34,7 @@ export function useAuth(options: UseAuthOptions = {}) {
     ? { onShowMockLogin: options }
     : options;
 
-  const [config, setConfig] = useState<AppConfig | null>(null);
+  const [config, setConfig] = useState<GasketConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
   const needsReauth = useAuthUIStore((state) => state.needsReauth);
@@ -57,10 +47,10 @@ export function useAuth(options: UseAuthOptions = {}) {
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Memoize auth configuration to prevent unnecessary re-renders
-  const authType = useMemo(() => config?.auth?.authType || auth.getType(), [config?.auth?.authType]);
-  const isMockAuth = useMemo(() => config?.auth?.isMock ?? auth.isMock(), [config?.auth?.isMock]);
-  const isAuthDisabled = useMemo(() => config?.auth?.isDisabled ?? auth.isDisabled(), [config?.auth?.isDisabled]);
-  const shouldUseJWT = useMemo(() => config?.auth?.isJWT ?? auth.isJWT(), [config?.auth?.isJWT]);
+  const authType = useMemo(() => config?.auth?.authType || getAuthTypeSync(), [config?.auth?.authType]);
+  const isMockAuth = useMemo(() => config?.auth?.isMock ?? isAuthMockSync(), [config?.auth?.isMock]);
+  const isAuthDisabled = useMemo(() => config?.auth?.isDisabled ?? isAuthDisabledSync(), [config?.auth?.isDisabled]);
+  const shouldUseJWT = useMemo(() => config?.auth?.isJWT ?? isAuthJWTSync(), [config?.auth?.isJWT]);
 
   // Mock auth integration
   const mockAuth = useMockAuth();
@@ -68,36 +58,26 @@ export function useAuth(options: UseAuthOptions = {}) {
   // Always call useAuthState to maintain hook order, but only use result for JWT mode
   // Heartbeat is always enabled - on pages that allow unauthenticated access, we don't use
   // withAuthProvider so 401s from heartbeat won't trigger redirects
-  const supportedAuthTypes = useMemo(() => config?.auth?.type || authUtils.getSupportedAuthTypes(), [config?.auth?.type]);
+  const supportedAuthTypes = useMemo(() => config?.auth?.type || authConfigs.user.type, [config?.auth?.type]);
 
   const authState = useAuthState({
-    realm: (config?.auth?.realm || 'idp') as AuthRealmType,
-    risk: (config?.auth?.risk || 'low') as AuthRiskType,
+    realm: (config?.auth?.realm || authConfigs.user.realm) as AuthRealmType,
+    risk: (config?.auth?.risk || authConfigs.user.risk) as AuthRiskType,
     type: supportedAuthTypes as AuthIdpType[],
-    allowHeartbeat: true,
-    use12HourExpiration: true,
+    allowHeartbeat: authConfigs.user.allowHeartbeat,
+    use12HourExpiration: authConfigs.user.use12HourExpiration,
   });
 
-  // Load configuration from API
+  // Load configuration via centralized getGasketConfig()
   useEffect(() => {
     let cancelled = false;
 
     async function loadConfig() {
       try {
-        const response = await fetch('/api/config');
-
-        // Check if component unmounted during fetch
-        if (cancelled) return;
-
-        if (response.ok) {
-          const appConfig = await response.json();
-          // Check again after JSON parsing (async operation) - component could unmount during parsing
-          if (!cancelled) {
-            setConfig(appConfig);
-            setConfigError(null);
-          }
-        } else {
-          throw new Error(`Config API returned ${response.status}: ${response.statusText}`);
+        const appConfig = await getGasketConfig();
+        if (!cancelled) {
+          setConfig(appConfig);
+          setConfigError(null);
         }
       } catch (error) {
         if (cancelled) return;
@@ -215,7 +195,7 @@ export function useAuth(options: UseAuthOptions = {}) {
     if (isMockAuth && mockAuth.isAuthenticated) {
       return mockAuth.user?.email || 'mock@example.com';
     }
-    if (auth.isJWT()) {
+    if (shouldUseJWT) {
       return authState.details?.email || authState.details?.cid || 'user@example.com';
     }
     return 'dev@example.com'; // No auth mode
@@ -231,7 +211,7 @@ export function useAuth(options: UseAuthOptions = {}) {
         email: mockAuth.user?.email || 'mock@example.com',
       };
     }
-    if (auth.isJWT()) {
+    if (shouldUseJWT) {
       return {
         customerId: authState.details?.cid,
         shopperId: authState.details?.shopperId,
@@ -249,7 +229,7 @@ export function useAuth(options: UseAuthOptions = {}) {
   };
 
   // Handle sign out - different behavior per auth mode
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     // Clear needsReauth flag on logout
     if (needsReauth) {
       useAuthUIStore.getState().clearNeedsReauth(needsReauthSeq);
@@ -276,20 +256,18 @@ export function useAuth(options: UseAuthOptions = {}) {
       return;
     }
 
-    if (!config) {
-      logger.error('auth.signout.no_config', 'Cannot sign out: configuration not available');
-      return;
+    try {
+      window.location.href = await getLogoutUrl();
+    } catch (error) {
+      logger.error('auth.signout.url_error', {
+        message: 'Failed to get logout URL',
+        error: error as Error,
+      });
     }
-
-    const params = new URLSearchParams({
-      app: 'airo-builder',
-      redirect: config.redirects.logoutRedirectUrl
-    });
-    window.location.href = `${config.sso.logoutUrl}?${params.toString()}`;
   };
 
   // Handle sign in - different behavior per auth mode
-  const handleSignIn = (redirectUrl?: string) => {
+  const handleSignIn = async (redirectUrl?: string) => {
     if (configError) {
       logger.error('auth.signin.config_error', 'Cannot sign in: configuration not loaded');
       return { showModal: false };
@@ -309,17 +287,14 @@ export function useAuth(options: UseAuthOptions = {}) {
       return { showModal: false };
     }
 
-    if (!config) {
-      logger.error('auth.signin.no_config', 'Cannot sign in: configuration not available');
-      return { showModal: false };
+    try {
+      window.location.href = await getLoginUrl(redirectUrl);
+    } catch (error) {
+      logger.error('auth.signin.url_error', {
+        message: 'Failed to get login URL',
+        error: error as Error,
+      });
     }
-
-    const returnUrl = redirectUrl || config.redirects.loginRedirectUrl;
-    const params = new URLSearchParams({
-      app: 'airo-builder',
-      redirect: returnUrl
-    });
-    window.location.href = `${config.sso.loginUrl}?${params.toString()}`;
     return { showModal: false };
   };
 

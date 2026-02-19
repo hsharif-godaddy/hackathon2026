@@ -1,6 +1,7 @@
 import { type QueryClient, useQuery } from '@tanstack/react-query';
 
 import { isFeatureEnabled } from '@/lib/features';
+import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { getRootDomain } from '@/utils/getRootDomain';
 
@@ -48,9 +49,7 @@ export async function fetchFeatureFlag(featureName: string): Promise<boolean> {
 
   const url = `https://bff.pcx.${rootDomain}/api/config/feature/${featureName}?app=airo-app-builder`;
 
-  const response = await fetch(url, {
-    credentials: 'include',
-  });
+  const response = await appFetch(url, {}, { setAuthState: false });
 
   if (!response.ok) {
     logger.error('switchboard.fetch.failure', {

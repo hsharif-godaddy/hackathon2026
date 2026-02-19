@@ -103,6 +103,10 @@ export async function getInsightsAuthToken(hostname?: string | null): Promise<st
       return tokenCache.token
     }
 
+    // SSO host is derived from hostname-based environment detection rather than
+    // gasket-config's getSsoHost() because insights-auth needs to match the SSO
+    // environment to the actual request hostname (not just the SSO_LOGIN_URL env var).
+    // This handles cases like localhost always being test, regardless of env config.
     const ssoHost = isProduction ? 'sso.godaddy.com' : 'sso.test-godaddy.com'
 
     // Create IAM token client with AWS credential provider
