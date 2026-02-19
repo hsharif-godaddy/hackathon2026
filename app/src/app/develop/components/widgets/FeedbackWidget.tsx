@@ -5,6 +5,7 @@ import Button from '@ux/button'
 import text from '@ux/text'
 import TextInput from '@ux/text-input'
 
+import { getFullStorySessionUrl } from '@/components/feedback/utils'
 import { useTranslations } from '@/hooks/useTranslations'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
@@ -67,6 +68,12 @@ export default function FeedbackWidget({ conversationId, appId }: FeedbackWidget
 
       if (conversationId) {
         feedbackLines.push(`*Conversation ID*: ${conversationId}`)
+      }
+
+      // Get FullStory session URL
+      const fullStoryUrl = await getFullStorySessionUrl(true)
+      if (fullStoryUrl) {
+        feedbackLines.push(`*FullStory Session*: ${fullStoryUrl}`)
       }
 
       const message = feedbackLines.join('\n')

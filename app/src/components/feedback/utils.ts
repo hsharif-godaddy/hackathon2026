@@ -1,7 +1,37 @@
+// Declare FullStory global type
+declare global {
+  interface Window {
+    FS?: {
+      (method: 'getSession', options?: { format?: string }): string | null;
+      (method: 'getSessionAsync', options?: { format?: string }): Promise<string | null>;
+    };
+  }
+}
+
 export const getBaseUrl = () => {
   const hostname = window.location.hostname;
   const envPrefix = hostname.includes('dev-') ? 'dev-' : hostname.includes('test-') ? 'test-' : '';
   return `https://api.companion.hub.${envPrefix}godaddy.com/v1/`;
+};
+
+/**
+ * Get the current FullStory session URL
+ * @param now - If true, returns URL pointing to current moment in session
+ * @returns Promise that resolves to FullStory session URL or null if not available
+ */
+export const getFullStorySessionUrl = async (now = true): Promise<string | null> => {
+  try {
+    if (typeof window === 'undefined' || !window.FS) {
+      return null;
+    }
+    // Use async version to ensure session is initialized
+    const format = now ? 'url.now' : 'url';
+    const sessionUrl = await window.FS('getSessionAsync', { format });
+    return sessionUrl || null;
+  } catch (error) {
+    // FullStory may not be initialized yet or is disabled
+    return null;
+  }
 };
 
 export const isLocalhost = () => {
@@ -73,6 +103,9 @@ export const formatSlackFeedbackMessage = (data: Record<string, any>): string =>
       // Only show comment field if it has content
       if (key === 'improvemets-free-text') { // expected typo, from the DB, don't fix it
         return value && String(value).trim().length > 0;
+      }
+      if (key === 'customer-consent') {
+        return value;
       }
       return true;
     })

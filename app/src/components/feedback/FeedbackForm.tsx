@@ -12,7 +12,7 @@ import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSitesStore } from '@/stores/useSitesStore';
 import type { FeedbackFormProps } from "./types";
-import { formatSlackFeedbackMessage, getBaseUrl, isLocalhost } from "./utils";
+import { formatSlackFeedbackMessage, getBaseUrl, getFullStorySessionUrl, isLocalhost } from "./utils";
 
 export function FeedbackForm({
   config,
@@ -33,18 +33,25 @@ export function FeedbackForm({
       const site = currentAppId ? getSite(currentAppId) : null;
       const previewUrl = site?.preview_url;
       const publishedUrl = site?.published_url;
-      const isPublished = !!publishedUrl;
+      // Filter out test URLs (they don't work)
+      const isValidPublishedUrl = publishedUrl && !publishedUrl.includes('test-');
+
+      // Get FullStory session URL
+      const fullStoryUrl = await getFullStorySessionUrl(true);
 
       const title = `New Feedback Submitted${currentAppId ? ` for App ID: ${currentAppId}` : ''}`;
       const message = formatSlackFeedbackMessage(data);
 
-      // Build URL information
+      // Build URL information (grouped together)
       const urlLines: string[] = [];
       if (previewUrl) {
         urlLines.push(`*Preview URL*: ${previewUrl}`);
       }
-      if (isPublished && publishedUrl) {
+      if (isValidPublishedUrl) {
         urlLines.push(`*Published URL*: ${publishedUrl}`);
+      }
+      if (fullStoryUrl) {
+        urlLines.push(`*FullStory Session*: ${fullStoryUrl}`);
       }
 
       // Combine form data with URL info
@@ -65,6 +72,7 @@ export function FeedbackForm({
         appId: currentAppId,
         previewUrl,
         publishedUrl,
+        fullStoryUrl,
       });
     } catch (err) {
       logger.warn('feedback.slack.send_failed', {
