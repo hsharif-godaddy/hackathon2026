@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react';
 import AttachmentIcon from '@ux/icon/attachment';
 import ImageIcon from '@ux/icon/image';
 import VideoIcon from '@ux/icon/video';
@@ -43,6 +44,14 @@ export default function AssetInline({
     isLoading = false
   }: AssetInlineProps) {
   const t = useTranslations();
+  // Track image load failures so we degrade to icon+filename instead of broken image
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
+
+  // Reset failure state when the asset URL changes (e.g. component reused for different asset)
+  const currentImageUrl = asset?.imageUrl || customAsset?.imageUrl;
+  useEffect(() => {
+    setImageLoadFailed(false);
+  }, [currentImageUrl]);
 
   // Get the active asset (prefer asset, fallback to customAsset)
   const activeAsset = asset || customAsset
@@ -94,11 +103,12 @@ export default function AssetInline({
 
   return (
     <div className="relative inline-block">
-      {activeAsset.mediaType === MediaType.IMAGE && activeAsset.imageUrl ? (
+      {activeAsset.mediaType === MediaType.IMAGE && activeAsset.imageUrl && !imageLoadFailed ? (
         // Images with URL render as thumbnails
         <img // eslint-disable-line @next/next/no-img-element
           src={getAssetDisplayUrl(activeAsset)}
           alt={customAsset?.imageAlt || label}
+          onError={() => setImageLoadFailed(true)}
           className={cn(ASSET_CLASSES, 'object-cover')}
         />
       ) : activeAsset.mediaType === MediaType.IMAGE ? (

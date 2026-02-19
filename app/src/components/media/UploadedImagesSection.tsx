@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { dynamicApiConfigService } from "@/config/dynamic-api";
 import { regenerateToken } from "@/lib/jwt-regeneration";
@@ -39,54 +39,75 @@ export function UploadedImagesSection({
   const [error, setError] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  useEffect(() => {
-    async function fetchUploads() {
-      try {
-        const tokenResult = await regenerateToken({ siteId: appId, force: true });
-        const apiConfig = await dynamicApiConfigService.getConfigForSite(appId);
+  // Track whether we've already attempted a refetch after image errors
+  // to avoid infinite refetch loops when files are genuinely missing.
+  const hasRefetchedForErrorRef = useRef(false);
 
-        if (!apiConfig.agentUrl) {
-          throw new Error("Agent URL not available");
-        }
+  const fetchUploads = useCallback(async () => {
+    try {
+      const tokenResult = await regenerateToken({ siteId: appId, force: true });
+      const apiConfig = await dynamicApiConfigService.getConfigForSite(appId);
 
-        // Get base agent URL (remove app-specific path if present)
-        const baseAgentUrl = apiConfig.agentUrl.replace(`/apps/${appId}`, "");
-
-        const response = await fetch(`${baseAgentUrl}/files/${appId}/list`, {
-          headers: {
-            Authorization: `Bearer ${tokenResult.token}`,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch uploads");
-        }
-
-        const data = await response.json();
-
-        // Filter to only image files and compute full signed URLs
-        const imageFiles = (data.files || [])
-          .filter((file: UploadedFile) => file.mimeType?.startsWith("image/"))
-          .map((file: UploadedFile) => ({
-            ...file,
-            // Combine base agent URL with signed URL path for browser access
-            fullSignedUrl: file.signedUrl ? `${baseAgentUrl}${file.signedUrl}` : undefined,
-          }));
-
-        setUploads(imageFiles);
-      } catch (err) {
-        logger.error("uploaded_images_section.fetch_failed", {
-          appId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        setError("Failed to load uploads");
-      } finally {
-        setIsLoading(false);
+      if (!apiConfig.agentUrl) {
+        throw new Error("Agent URL not available");
       }
+
+      // Get base agent URL (remove app-specific path if present)
+      const baseAgentUrl = apiConfig.agentUrl.replace(`/apps/${appId}`, "");
+
+      const response = await fetch(`${baseAgentUrl}/files/${appId}/list`, {
+        headers: {
+          Authorization: `Bearer ${tokenResult.token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch uploads");
+      }
+
+      const data = await response.json();
+
+      // Filter to only image files and compute full signed URLs
+      const imageFiles = (data.files || [])
+        .filter((file: UploadedFile) => file.mimeType?.startsWith("image/"))
+        .map((file: UploadedFile) => ({
+          ...file,
+          // Combine base agent URL with signed URL path for browser access
+          fullSignedUrl: file.signedUrl ? `${baseAgentUrl}${file.signedUrl}` : undefined,
+        }));
+
+      setUploads(imageFiles);
+      setError(null);
+    } catch (err) {
+      logger.error("uploaded_images_section.fetch_failed", {
+        appId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      setError("Failed to load uploads");
+    } finally {
+      setIsLoading(false);
     }
+  }, [appId]);
+
+  // Reset refetch guard when appId changes
+  useEffect(() => {
+    hasRefetchedForErrorRef.current = false;
+    fetchUploads();
+  }, [fetchUploads]);
+
+  // When a thumbnail fails to load (e.g. expired signed URL returning 404),
+  // refetch the file list once to get fresh signed URLs.
+  const handleImageError = useCallback(() => {
+    if (hasRefetchedForErrorRef.current) return;
+    hasRefetchedForErrorRef.current = true;
+
+    logger.info("uploaded_images_section.signed_url_expired", {
+      appId,
+      message: "Image failed to load, refetching signed URLs",
+    });
 
     fetchUploads();
-  }, [appId]);
+  }, [fetchUploads]);
 
   if (isLoading) {
     return (
@@ -123,6 +144,7 @@ export function UploadedImagesSection({
               <img
                 src={file.fullSignedUrl}
                 alt={file.originalName}
+                onError={handleImageError}
                 className="w-full object-contain rounded-md bg-intents-ux-boxLowContrast-backgroundColor p-2"
               />
             ) : (
@@ -170,6 +192,7 @@ export function UploadedImagesSection({
                 <img
                   src={file.fullSignedUrl}
                   alt={file.originalName}
+                  onError={handleImageError}
                   className="max-w-full max-h-full object-contain rounded-md"
                 />
               ) : (

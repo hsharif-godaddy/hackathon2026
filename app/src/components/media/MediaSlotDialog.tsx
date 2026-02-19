@@ -363,22 +363,33 @@ export function MediaSlotDialog() {
         // Get base agent URL (remove app-specific path if present)
         const baseAgentUrl = apiConfig.agentUrl.replace(`/apps/${appId}`, '')
 
-        // Fetch the file from uploads using signed URL (no JWT needed for public endpoint)
-        // If signedUrl is missing, fall back to JWT-protected endpoint
-        const fileUrl = file.signedUrl
-          ? `${baseAgentUrl}${file.signedUrl}`
-          : `${baseAgentUrl}/files/uploads/${appId}/${file.filename}`
+        // Fetch the file from uploads using signed URL (no JWT needed for public endpoint).
+        // If the signed URL fails (e.g. expired → 404), fall back to JWT-protected endpoint.
+        let fileResponse: Response | undefined
 
-        const fileResponse = await fetch(
-          fileUrl,
-          file.signedUrl
-            ? undefined
-            : {
-                headers: {
-                  Authorization: `Bearer ${tokenResult.token}`,
-                },
-              }
-        )
+        if (file.signedUrl) {
+          const signedFileUrl = `${baseAgentUrl}${file.signedUrl}`
+          fileResponse = await fetch(signedFileUrl)
+
+          if (!fileResponse.ok) {
+            logger.debug('media_slot_dialog.signed_url_fallback', {
+              appId,
+              filename: file.filename,
+              status: fileResponse.status,
+              message: 'Signed URL failed, falling back to JWT auth',
+            })
+            fileResponse = undefined
+          }
+        }
+
+        if (!fileResponse) {
+          const jwtFileUrl = `${baseAgentUrl}/files/uploads/${appId}/${file.filename}`
+          fileResponse = await fetch(jwtFileUrl, {
+            headers: {
+              Authorization: `Bearer ${tokenResult.token}`,
+            },
+          })
+        }
 
         if (!fileResponse.ok) {
           throw new Error('Failed to fetch uploaded file')
