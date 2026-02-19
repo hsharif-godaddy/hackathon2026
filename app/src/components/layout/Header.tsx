@@ -4,20 +4,21 @@ import clsx from 'clsx';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import Box from '@ux/box';
+import ChevronLeftIcon from '@ux/icon/chevron-left';
 import Tag from '@ux/tag';
 
 import { UserMenu } from '@/components/auth';
+import { AiroLogo } from '@/components/layout/AiroLogo';
 import AppPublish from '@/components/layout/AppPublish';
 import AppSelector from '@/components/layout/AppSelector';
 import DiscordLink from '@/components/layout/DiscordLink';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import InviteFriends from '@/components/layout/InviteFriends';
+import { HeaderProps } from '@/components/layout/types';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useTranslations } from '@/hooks/useTranslations';
 import { generateClickEID } from '@/utils/instrumentation';
-import { AiroLogo } from './AiroLogo';
-import { HeaderProps } from './types';
 
 export default function Header({ actions, onShowMockLogin, location = 'unknown' }: HeaderProps) {
   const t = useTranslations();
@@ -30,18 +31,31 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
   // This prevents authenticated API calls from being made
   const showAuthenticatedUI = !isLoading && (isAuthenticated || isAuthDisabled);
 
+  const isHomepage = location === 'homepage';
+  const godaddyUrl = 'https://www.godaddy.com';
+
   return (
     <header data-testid="airo-header" className={clsx(
       "text-intents-ux-boxHighContrast-foregroundColor",
       {
-        "bg-gradient bg-intents-ux-boxHighContrast-backgroundColor": location !== 'homepage',
+        "bg-gradient bg-intents-ux-boxHighContrast-backgroundColor": !isHomepage,
       }
     )}>
       <div className="mx-auto px-2 sm:px-3 lg:px-4">
         <div className="flex justify-between items-center h-8">
           <div className="flex items-center space-x-1.5" data-partial="componentAiro">
+            {isHomepage && (
+              <Link
+                href={godaddyUrl}
+                className="flex items-center mr-2"
+                data-eid={ generateClickEID(`${location}.header.godaddy_link`) }
+                aria-label="Back to GoDaddy"
+              >
+                <ChevronLeftIcon className="w-4 h-4" />
+              </Link>
+            )}
             <Link
-              href="/"
+              href={isHomepage ? godaddyUrl : '/'}
               className="flex items-center"
               data-eid={ generateClickEID(`${location}.header.airo_ai_link`) }
             >
