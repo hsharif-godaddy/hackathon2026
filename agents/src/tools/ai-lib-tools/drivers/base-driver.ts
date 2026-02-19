@@ -149,6 +149,26 @@ export abstract class BaseDriver {
   }
 
   /**
+   * Make authenticated PUT request
+   */
+  protected async put(
+    endpoint: string,
+    body: unknown,
+    additionalHeaders?: Record<string, string>
+  ): Promise<Response> {
+    const url = `${this.apiBaseUrl}${endpoint}`;
+
+    return fetch(url, {
+      method: 'PUT',
+      headers: this.getHeaders({
+        'Content-Type': 'application/json',
+        ...additionalHeaders,
+      }),
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
    * Check if authentication is configured
    */
   protected hasAuth(): boolean {

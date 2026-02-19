@@ -324,7 +324,7 @@ export class GettyMediaDriver extends BaseDriver {
     try {
       this.logger.info('getty-media.video-upload.begin', { videoId });
 
-      const response = await this.post('/v1/videos/upload', { id: videoId });
+      const response = await this.post('/v1/videos/upload?reportUsage=true', { id: videoId });
 
       if (!response.ok) {
         const errorText = await response.text();

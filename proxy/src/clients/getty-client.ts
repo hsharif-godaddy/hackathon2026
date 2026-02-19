@@ -35,11 +35,57 @@ class GettyClient extends BaseClient {
     });
   }
 
-  async videoUpload(videoId: string, requestId: string = 'unknown'): Promise<GettyAPIResponse> {
+  async videoUpload(videoId: string, requestId: string = 'unknown', reportUsage: boolean = false): Promise<GettyAPIResponse> {
     return this.executeWithTiming(async () => {
-      const gettyUrl = `${config.getty.upstream}/v1/videos/upload`;
+      const params = new URLSearchParams();
+      if (reportUsage) {
+        params.set('reportUsage', 'true');
+      }
+      const queryString = params.toString();
+      const gettyUrl = queryString
+        ? `${config.getty.upstream}/v1/videos/upload?${queryString}`
+        : `${config.getty.upstream}/v1/videos/upload`;
 
       return this.makeRequest(gettyUrl, requestId, 'POST', JSON.stringify({ id: videoId }), {
+        'x-app-key': config.getty.appKey,
+        'User-Agent': config.getty.userAgent
+      });
+    });
+  }
+
+  async upload(ids: string[], reportUsage: boolean = false, requestId: string = 'unknown'): Promise<GettyAPIResponse> {
+    return this.executeWithTiming(async () => {
+      const params = new URLSearchParams();
+      if (reportUsage) {
+        params.set('reportUsage', 'true');
+      }
+      const queryString = params.toString();
+      const gettyUrl = queryString
+        ? `${config.getty.upstream}/v1/upload?${queryString}`
+        : `${config.getty.upstream}/v1/upload`;
+
+      return this.makeRequest(gettyUrl, requestId, 'POST', JSON.stringify({ ids }), {
+        'x-app-key': config.getty.appKey,
+        'User-Agent': config.getty.userAgent
+      });
+    });
+  }
+
+  async reportUsage(ids: string[], options?: { skipTagging?: boolean; mediaType?: string }, requestId: string = 'unknown'): Promise<GettyAPIResponse> {
+    return this.executeWithTiming(async () => {
+      const params = new URLSearchParams();
+      if (options?.skipTagging) {
+        params.set('skipTagging', 'true');
+      }
+      if (options?.mediaType) {
+        params.set('mediaType', options.mediaType);
+      }
+      const queryString = params.toString();
+      const gettyUrl = queryString
+        ? `${config.getty.upstream}/v1/usage?${queryString}`
+        : `${config.getty.upstream}/v1/usage`;
+
+      return this.makeRequest(gettyUrl, requestId, 'PUT', JSON.stringify({ ids }), {
         'x-app-key': config.getty.appKey,
         'User-Agent': config.getty.userAgent
       });

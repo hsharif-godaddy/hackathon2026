@@ -58,7 +58,7 @@ export abstract class BaseClient {
   protected async makeRequest(
     url: string,
     requestId: string = 'unknown',
-    method: 'GET' | 'POST' = 'GET',
+    method: 'GET' | 'POST' | 'PUT' = 'GET',
     body?: string,
     additionalHeaders?: Record<string, string>,
     retries: number = this.defaultRetries
@@ -72,7 +72,7 @@ export abstract class BaseClient {
       ...additionalHeaders
     };
 
-    if (body && method === 'POST') {
+    if (body && (method === 'POST' || method === 'PUT')) {
       headers['Content-Type'] = 'application/json';
     }
 
@@ -87,7 +87,7 @@ export abstract class BaseClient {
       const response = await fetch(url, {
         method,
         headers,
-        ...(body && method === 'POST' && { body })
+        ...(body && (method === 'POST' || method === 'PUT') && { body })
       });
 
       const data = await response.text();

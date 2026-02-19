@@ -44,7 +44,7 @@ const config: AppConfig = {
 
   getty: {
     upstream: env.GETTY_IMAGES_UPSTREAM ?? 'https://getty-images-proxy.api.godaddy.com',
-    appKey: env.GETTY_APP_KEY ?? 'hosting-dev',
+    appKey: env.GETTY_APP_KEY ?? 'airo-app-builder',
     userAgent: env.USER_AGENT ?? 'airo-proxy/2.0',
     certs: {
       certPath: path.join(__dirname, '../../certs/getty-client.crt'),

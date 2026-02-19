@@ -172,6 +172,13 @@ export interface HealthStatus {
   version: string;
 }
 
+// Getty Upload types
+export interface GettyUploadResult {
+  id: string;
+  url: string;
+  dimensions?: { height: number; width: number };
+}
+
 // Error types
 export interface APIError {
   message: string;

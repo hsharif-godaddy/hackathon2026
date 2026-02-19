@@ -72,6 +72,8 @@ export interface MediaSearchResult {
     url?: string;
     urls?: string[];
     error?: string;
+    gettyId?: string;
+    gettyIds?: string[];
   }>;
   // For video results - thumbnail image for preview
   thumbnailUrl?: string;
@@ -79,6 +81,10 @@ export interface MediaSearchResult {
   filepath?: string;
   publicPath?: string;
   base64Data?: string;
+  /** Getty image ID corresponding to url field */
+  gettyId?: string;
+  /** Getty image IDs corresponding to urls array (same order) */
+  gettyIds?: string[];
 }
 
 /**
@@ -259,10 +265,12 @@ export class MediaSearchTool {
       }
 
       const mediaUrls: string[] = [];
+      const gettyIds: string[] = [];
       for (const item of result.items.slice(0, count)) {
         const mediaUrl = item?.urls?.highRes || item?.urls?.standard || item?.urls?.preview || item?.urls?.thumbnail;
         if (mediaUrl) {
           mediaUrls.push(mediaUrl);
+          gettyIds.push(item.id);
         }
       }
 
@@ -309,12 +317,14 @@ export class MediaSearchTool {
         return {
           success: true,
           url: mediaUrls[0]!,
+          ...(gettyIds[0] && { gettyId: gettyIds[0] }),
           ...(thumbnailUrl && { thumbnailUrl })
         };
       } else {
         return {
           success: true,
           urls: mediaUrls,
+          gettyIds,
           ...(thumbnailUrl && { thumbnailUrl })
         };
       }
@@ -368,6 +378,8 @@ export class MediaSearchTool {
           url?: string;
           urls?: string[];
           error?: string;
+          gettyId?: string;
+          gettyIds?: string[];
         } = {
           prompt: prompts[index] || '',
           success: result.success,
@@ -375,6 +387,8 @@ export class MediaSearchTool {
         if (result.url) combined.url = result.url;
         if (result.urls) combined.urls = result.urls;
         if (result.error) combined.error = result.error;
+        if (result.gettyId) combined.gettyId = result.gettyId;
+        if (result.gettyIds) combined.gettyIds = result.gettyIds;
         return combined;
       });
 

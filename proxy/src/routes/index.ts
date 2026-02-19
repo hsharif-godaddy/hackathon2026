@@ -338,8 +338,9 @@ router.post('/v1/videos/upload',
       }
 
       const videoId = req.body.id as string;
+      const reportUsage = req.query.reportUsage === 'true';
 
-      const response = await gettyClient.videoUpload(videoId, requestId);
+      const response = await gettyClient.videoUpload(videoId, requestId, reportUsage);
       const totalDuration = Date.now() - startTime;
 
       // Single comprehensive log statement
@@ -384,6 +385,152 @@ router.post('/v1/videos/upload',
       res.status(statusCode).json({
         error: {
           message: 'Getty Video upload failed',
+          type: 'upstream_error',
+          requestId
+        }
+      });
+    }
+  }
+);
+
+// Getty Image upload endpoint (downloads licensed images to CDN)
+router.post('/v1/upload',
+  validateGdToken,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const requestId = String(req.id ?? 'unknown');
+    const startTime = req.startTime ?? Date.now();
+
+    try {
+      if (!req.body?.ids || !Array.isArray(req.body.ids) || req.body.ids.length === 0) {
+        res.status(400).json({
+          error: {
+            message: 'Missing required parameter: ids (non-empty array of Getty image IDs)',
+            type: 'invalid_request_error'
+          }
+        });
+        return;
+      }
+
+      const ids = req.body.ids as string[];
+      const reportUsage = req.query.reportUsage === 'true';
+
+      const response = await gettyClient.upload(ids, reportUsage, requestId);
+      const totalDuration = Date.now() - startTime;
+
+      logger.info('[INFO] Getty Image upload completed', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        imageCount: ids.length,
+        reportUsage,
+        userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
+        statusCode: response.statusCode,
+        gettyDuration: response.duration ? `${response.duration}ms` : 'unknown',
+        totalDuration: `${totalDuration}ms`,
+        userAgent: req.get('User-Agent'),
+        ip: req.ip
+      });
+
+      res.set('Content-Type', response.headers['content-type'] as string || 'application/json');
+      res.status(response.statusCode);
+      res.send(response.data);
+
+    } catch (error) {
+      const err = error as { message: string; statusCode?: number; duration?: number };
+      const totalDuration = Date.now() - startTime;
+
+      logger.error('[ERROR] Getty Image upload failed', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        body: req.body,
+        userToken: req.userToken ? req.userToken.substring(0, 10) + '...' : 'unknown',
+        error: err.message,
+        statusCode: err.statusCode,
+        gettyDuration: err.duration ? `${err.duration}ms` : 'unknown',
+        totalDuration: `${totalDuration}ms`,
+        userAgent: req.get('User-Agent'),
+        ip: req.ip
+      });
+
+      const statusCode = err.statusCode ?? 503;
+      res.status(statusCode).json({
+        error: {
+          message: 'Getty Image upload failed',
+          type: 'upstream_error',
+          requestId
+        }
+      });
+    }
+  }
+);
+
+// Getty usage reporting endpoint
+router.put('/v1/usage',
+  validateGdToken,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const requestId = String(req.id ?? 'unknown');
+    const startTime = req.startTime ?? Date.now();
+
+    try {
+      if (!req.body?.ids || !Array.isArray(req.body.ids) || req.body.ids.length === 0) {
+        res.status(400).json({
+          error: {
+            message: 'Missing required parameter: ids (non-empty array of Getty image/video IDs)',
+            type: 'invalid_request_error'
+          }
+        });
+        return;
+      }
+
+      const ids = req.body.ids as string[];
+      const skipTagging = req.query.skipTagging === 'true';
+      const mediaType = req.query.mediaType as string | undefined;
+
+      const response = await gettyClient.reportUsage(ids, { skipTagging, ...(mediaType && { mediaType }) }, requestId);
+      const totalDuration = Date.now() - startTime;
+
+      logger.info('[INFO] Getty usage report completed', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        imageCount: ids.length,
+        skipTagging,
+        mediaType,
+        userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
+        statusCode: response.statusCode,
+        gettyDuration: response.duration ? `${response.duration}ms` : 'unknown',
+        totalDuration: `${totalDuration}ms`,
+        userAgent: req.get('User-Agent'),
+        ip: req.ip
+      });
+
+      res.set('Content-Type', response.headers['content-type'] as string || 'application/json');
+      res.status(response.statusCode);
+      res.send(response.data);
+
+    } catch (error) {
+      const err = error as { message: string; statusCode?: number; duration?: number };
+      const totalDuration = Date.now() - startTime;
+
+      logger.error('[ERROR] Getty usage report failed', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        body: req.body,
+        userToken: req.userToken ? req.userToken.substring(0, 10) + '...' : 'unknown',
+        error: err.message,
+        statusCode: err.statusCode,
+        gettyDuration: err.duration ? `${err.duration}ms` : 'unknown',
+        totalDuration: `${totalDuration}ms`,
+        userAgent: req.get('User-Agent'),
+        ip: req.ip
+      });
+
+      const statusCode = err.statusCode ?? 503;
+      res.status(statusCode).json({
+        error: {
+          message: 'Getty usage report failed',
           type: 'upstream_error',
           requestId
         }

@@ -28,13 +28,15 @@ type ImageSize struct {
 
 // ImageSlot represents a single image slot entry in the manifest.
 type ImageSlot struct {
-	CurrentURL    string     `json:"currentUrl"`
-	SearchQuery   string     `json:"searchQuery"`
-	RequestedSize *ImageSize `json:"requestedSize,omitempty"`
-	Alternatives  []string   `json:"alternatives,omitempty"`
-	UserModified  bool       `json:"userModified"`
-	CreatedAt     string     `json:"createdAt"`
-	LastUpdated   string     `json:"lastUpdated"`
+	CurrentURL          string     `json:"currentUrl"`
+	SearchQuery         string     `json:"searchQuery"`
+	RequestedSize       *ImageSize `json:"requestedSize,omitempty"`
+	Alternatives        []string   `json:"alternatives,omitempty"`
+	UserModified        bool       `json:"userModified"`
+	CreatedAt           string     `json:"createdAt"`
+	LastUpdated         string     `json:"lastUpdated"`
+	GettyID             string     `json:"gettyId,omitempty"`
+	AlternativeGettyIDs []string   `json:"alternativeGettyIds,omitempty"`
 }
 
 // ImageManifest maps slot paths to their slot data.
@@ -347,6 +349,7 @@ var allowedImageRedirectHosts = map[string]struct{}{
 	"media.istockphoto.com":                     {},
 	"oaidalleapiprodscus.blob.core.windows.net": {}, // DALL-E
 	"blobby.wsimg.com":                          {}, // GoDaddy image hosting
+	"img1.wsimg.com":                            {}, // isteam CDN (Getty licensed images)
 }
 
 // ImageSlotHandler handles requests for image slots.

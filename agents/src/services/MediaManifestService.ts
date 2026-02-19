@@ -14,6 +14,7 @@ import { AppRepository } from '../database/repositories/AppRepository.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { GitUtils } from '../utils/git.js';
 import { logger } from '../logging/index.js';
+import { gettyUploadService } from './GettyUploadService.js';
 
 export const MANIFEST_FILENAME = 'airo-media.json';
 
@@ -42,6 +43,10 @@ export interface MediaSlot {
   userModified: boolean;
   createdAt: string;
   lastUpdated: string;
+  /** Getty image ID for the current image (undefined for generated/uploaded images) */
+  gettyId?: string;
+  /** Getty image IDs for alternative images (parallel to alternatives array) */
+  alternativeGettyIds?: string[];
 }
 
 /**
@@ -243,8 +248,34 @@ export class MediaManifestService {
       }
 
       // Swap: new URL becomes current, old current goes to alternatives
-      const newCurrentUrl = allUrls[urlIndex]!;
+      let newCurrentUrl = allUrls[urlIndex]!;
       const newAlternatives = allUrls.filter((_, i) => i !== urlIndex);
+
+      // Build Getty ID arrays (current + alternatives, same order as allUrls)
+      // Pad alternativeGettyIds to match alternatives length to prevent misalignment
+      const altGettyIds = existingSlot.alternativeGettyIds || [];
+      const paddedAltGettyIds = altGettyIds.length >= existingSlot.alternatives.length
+        ? altGettyIds
+        : [...altGettyIds, ...Array<string>(existingSlot.alternatives.length - altGettyIds.length).fill('')];
+      const allGettyIds = [
+        existingSlot.gettyId || '',
+        ...paddedAltGettyIds,
+      ];
+      const newCurrentGettyId = allGettyIds[urlIndex] || undefined;
+      const newAlternativeGettyIds = allGettyIds.filter((_, i) => i !== urlIndex);
+
+      // If the newly-active image has a Getty ID, upload it to CDN and report usage
+      if (newCurrentGettyId) {
+        const uploadResults = await gettyUploadService.uploadAndReport([newCurrentGettyId]);
+        if (uploadResults.length > 0 && uploadResults[0]?.url) {
+          newCurrentUrl = uploadResults[0].url;
+          logger.info('media_manifest.update_slot.getty_upload_complete', {
+            ...logContext,
+            gettyId: newCurrentGettyId,
+            cdnUrl: newCurrentUrl,
+          });
+        }
+      }
 
       // Update the slot
       const updatedSlot: MediaSlot = {
@@ -253,6 +284,10 @@ export class MediaManifestService {
         alternatives: newAlternatives,
         userModified: options.markUserModified ?? true,
         lastUpdated: new Date().toISOString(),
+        gettyId: newCurrentGettyId,
+        alternativeGettyIds: newAlternativeGettyIds.filter(Boolean).length > 0
+          ? newAlternativeGettyIds.filter(Boolean)
+          : undefined,
       };
 
       manifest[slotName] = updatedSlot;
@@ -445,6 +480,39 @@ export class MediaManifestService {
         slot.createdAt = existing.createdAt;
         if (existing.userModified) {
           slot.userModified = true;
+        }
+      }
+
+      // Upload Getty images to CDN and replace preview URLs
+      if (slot.gettyId) {
+        const allGettyIds = [slot.gettyId, ...(slot.alternativeGettyIds || [])];
+        const uploadResults = await gettyUploadService.uploadAndReport(allGettyIds);
+
+        if (uploadResults.length > 0) {
+          const resultMap = new Map(uploadResults.map(r => [r.id, r.url]));
+
+          // Replace current URL if we got a CDN URL for it
+          const cdnUrl = resultMap.get(slot.gettyId);
+          if (cdnUrl) {
+            slot.currentUrl = cdnUrl;
+          }
+
+          // Replace alternative URLs where we got CDN URLs
+          if (slot.alternativeGettyIds && slot.alternativeGettyIds.length > 0) {
+            slot.alternatives = slot.alternatives.map((altUrl, i) => {
+              const altId = slot.alternativeGettyIds?.[i];
+              if (altId) {
+                return resultMap.get(altId) || altUrl;
+              }
+              return altUrl;
+            });
+          }
+
+          logger.info('media_manifest.set_slot.getty_upload_complete', {
+            ...logContext,
+            uploadedCount: uploadResults.length,
+            requestedCount: allGettyIds.length,
+          });
         }
       }
 

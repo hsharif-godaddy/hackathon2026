@@ -157,8 +157,8 @@ export class MediaSlotTool {
         };
       }
 
-      // Extract URLs from search result
-      const urls = this.extractUrls(searchResult);
+      // Extract URLs and Getty IDs from search result
+      const { urls, gettyIds } = this.extractUrlsAndGettyIds(searchResult);
       if (urls.length === 0) {
         logger.warn('media_slot.select.no_results', logContext);
         return {
@@ -173,6 +173,8 @@ export class MediaSlotTool {
 
       const primaryUrl = urls[0]!;
       const alternatives = urls.slice(1);
+      const primaryGettyId = gettyIds[0];
+      const alternativeGettyIds = gettyIds.slice(1);
 
       // Extract thumbnail URL for videos (from Getty's display_sizes)
       const thumbnailUrl = mediaType === 'video' ? searchResult.thumbnailUrl : undefined;
@@ -188,6 +190,8 @@ export class MediaSlotTool {
         userModified: false,
         createdAt: now,
         lastUpdated: now,
+        ...(primaryGettyId && { gettyId: primaryGettyId }),
+        ...(alternativeGettyIds.length > 0 && { alternativeGettyIds }),
       };
 
       // Add size if provided (mainly for images)
@@ -254,19 +258,25 @@ export class MediaSlotTool {
   }
 
   /**
-   * Extract URLs from MediaSearchResult
+   * Extract URLs and Getty IDs from MediaSearchResult
    */
-  private extractUrls(result: MediaSearchResult): string[] {
+  private extractUrlsAndGettyIds(result: MediaSearchResult): { urls: string[]; gettyIds: string[] } {
     const urls: string[] = [];
+    const gettyIds: string[] = [];
 
-    // Fallback to direct URLs from MediaSearchResult
     if (result.urls && Array.isArray(result.urls)) {
       urls.push(...result.urls);
+      // Pad gettyIds to match urls length to maintain alignment
+      const idsArray = Array.isArray(result.gettyIds) ? result.gettyIds : [];
+      for (let i = 0; i < result.urls.length; i++) {
+        gettyIds.push(idsArray[i] ?? '');
+      }
     } else if (result.url) {
       urls.push(result.url);
+      gettyIds.push(result.gettyId ?? '');
     }
 
-    return urls;
+    return { urls, gettyIds };
   }
 
   /**
