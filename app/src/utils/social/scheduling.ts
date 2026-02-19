@@ -118,13 +118,25 @@ export function getInitialScheduleDate(): string {
 }
 
 /**
+ * Create a Date object from date/time strings using local timezone
+ * Avoids UTC parsing issues with new Date("YYYY-MM-DD") in negative UTC offset timezones
+ * @param dateString - Date in YYYY-MM-DD format
+ * @param timeString - Time in 12-hour format (e.g., "2:30 PM")
+ */
+export function createLocalDateTime(dateString: string, timeString: string): Date {
+    const [year, month, day] = dateString.split('-').map(Number)
+    const date = new Date(year, month - 1, day)
+    parseTimeToDate(date, timeString)
+    return date
+}
+
+/**
  * Validate if a scheduled date/time is valid (within 20 min to 80 days in the future)
  * @param dateString - Date in YYYY-MM-DD format
  * @param timeString - Time in 12-hour format (e.g., "2:30 PM")
  */
 export function isValidScheduleTime(dateString: string, timeString: string): boolean {
-    const scheduledDateTime = new Date(dateString)
-    parseTimeToDate(scheduledDateTime, timeString)
+    const scheduledDateTime = createLocalDateTime(dateString, timeString)
     const minTime = getMinimumScheduleTime()
     const maxTime = getMaximumScheduleTime()
     return scheduledDateTime > minTime && scheduledDateTime <= maxTime

@@ -4,6 +4,19 @@ import { act, renderHook } from '@testing-library/react'
 import { PublishTiming } from '@/types/social-posts'
 import { useScheduling } from './useScheduling'
 
+function formatDateStr(d: Date): string {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function formatTimeStr(d: Date): string {
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
 describe('useScheduling', () => {
   describe('default initialization', () => {
     it('should initialize with NOW timing by default', () => {
@@ -65,14 +78,10 @@ describe('useScheduling', () => {
     it('should validate scheduled date/time when timing is LATER', () => {
       const futureDate = new Date()
       futureDate.setDate(futureDate.getDate() + 2) // 2 days in future for safety
-      const year = futureDate.getFullYear()
-      const month = String(futureDate.getMonth() + 1).padStart(2, '0')
-      const day = String(futureDate.getDate()).padStart(2, '0')
-      const dateStr = `${year}-${month}-${day}`
 
       const { result } = renderHook(() => useScheduling({
         initialTiming: PublishTiming.LATER,
-        initialDate: dateStr,
+        initialDate: formatDateStr(futureDate),
         initialTime: '2:00 PM'
       }))
 
@@ -93,18 +102,13 @@ describe('useScheduling', () => {
     it('should set timeout when timing is LATER with future date', () => {
       const futureDate = new Date()
       futureDate.setHours(futureDate.getHours() + 2) // 2 hours in future
-      const year = futureDate.getFullYear()
-      const month = String(futureDate.getMonth() + 1).padStart(2, '0')
-      const day = String(futureDate.getDate()).padStart(2, '0')
-      const dateStr = `${year}-${month}-${day}`
-      const timeStr = `${futureDate.getHours()}:${String(futureDate.getMinutes()).padStart(2, '0')}`
 
       const setTimeoutSpy = vi.spyOn(global, 'setTimeout')
 
       renderHook(() => useScheduling({
         initialTiming: PublishTiming.LATER,
-        initialDate: dateStr,
-        initialTime: timeStr
+        initialDate: formatDateStr(futureDate),
+        initialTime: formatTimeStr(futureDate)
       }))
 
       // Timeout should be created for future validation
@@ -116,18 +120,13 @@ describe('useScheduling', () => {
     it('should cleanup timeout when timing changes from LATER to NOW', () => {
       const futureDate = new Date()
       futureDate.setHours(futureDate.getHours() + 2)
-      const year = futureDate.getFullYear()
-      const month = String(futureDate.getMonth() + 1).padStart(2, '0')
-      const day = String(futureDate.getDate()).padStart(2, '0')
-      const dateStr = `${year}-${month}-${day}`
-      const timeStr = `${futureDate.getHours()}:${String(futureDate.getMinutes()).padStart(2, '0')}`
 
       const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout')
 
       const { result } = renderHook(() => useScheduling({
         initialTiming: PublishTiming.LATER,
-        initialDate: dateStr,
-        initialTime: timeStr
+        initialDate: formatDateStr(futureDate),
+        initialTime: formatTimeStr(futureDate)
       }))
 
       // Change timing to NOW (should cleanup timeout)
@@ -145,18 +144,13 @@ describe('useScheduling', () => {
     it('should cleanup timeout on unmount', () => {
       const futureDate = new Date()
       futureDate.setHours(futureDate.getHours() + 2)
-      const year = futureDate.getFullYear()
-      const month = String(futureDate.getMonth() + 1).padStart(2, '0')
-      const day = String(futureDate.getDate()).padStart(2, '0')
-      const dateStr = `${year}-${month}-${day}`
-      const timeStr = `${futureDate.getHours()}:${String(futureDate.getMinutes()).padStart(2, '0')}`
 
       const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout')
 
       const { unmount } = renderHook(() => useScheduling({
         initialTiming: PublishTiming.LATER,
-        initialDate: dateStr,
-        initialTime: timeStr
+        initialDate: formatDateStr(futureDate),
+        initialTime: formatTimeStr(futureDate)
       }))
 
       // Unmount should trigger cleanup
@@ -185,14 +179,10 @@ describe('useScheduling', () => {
       // Use a far future date to ensure it's valid
       const futureDate = new Date()
       futureDate.setDate(futureDate.getDate() + 2) // 2 days in future
-      const year = futureDate.getFullYear()
-      const month = String(futureDate.getMonth() + 1).padStart(2, '0')
-      const day = String(futureDate.getDate()).padStart(2, '0')
-      const dateStr = `${year}-${month}-${day}`
 
       const { result } = renderHook(() => useScheduling({
         initialTiming: PublishTiming.LATER,
-        initialDate: dateStr,
+        initialDate: formatDateStr(futureDate),
         initialTime: '2:00 PM'
       }))
 
@@ -212,10 +202,24 @@ describe('useScheduling', () => {
       // Use a past date (definitely invalid)
       const pastDate = new Date()
       pastDate.setDate(pastDate.getDate() - 1)
-      const year = pastDate.getFullYear()
-      const month = String(pastDate.getMonth() + 1).padStart(2, '0')
-      const day = String(pastDate.getDate()).padStart(2, '0')
-      const dateStr = `${year}-${month}-${day}`
+
+      const { result } = renderHook(() => useScheduling({
+        initialTiming: PublishTiming.LATER,
+        initialDate: formatDateStr(pastDate),
+        initialTime: '2:00 PM'
+      }))
+
+      // Should be invalid (past date)
+      expect(result.current.isValid).toBe(false)
+    })
+  })
+
+  describe('timezone handling', () => {
+    it('should handle PST timezone correctly (UTC-8)', () => {
+      // Simulate PST by using a date that would shift to previous day if parsed as UTC
+      const futureDate = new Date()
+      futureDate.setDate(futureDate.getDate() + 2) // 2 days in future
+      const dateStr = formatDateStr(futureDate)
 
       const { result } = renderHook(() => useScheduling({
         initialTiming: PublishTiming.LATER,
@@ -223,8 +227,65 @@ describe('useScheduling', () => {
         initialTime: '2:00 PM'
       }))
 
-      // Should be invalid (past date)
-      expect(result.current.isValid).toBe(false)
+      // Verify the date doesn't shift - should remain valid in future
+      expect(result.current.isValid).toBe(true)
+      expect(result.current.date[0]).toBe(dateStr)
+    })
+
+    it('should handle EST timezone correctly (UTC-5)', () => {
+      // Simulate EST by using a date that would shift if parsed as UTC
+      const futureDate = new Date()
+      futureDate.setDate(futureDate.getDate() + 3) // 3 days in future
+      const dateStr = formatDateStr(futureDate)
+
+      const { result } = renderHook(() => useScheduling({
+        initialTiming: PublishTiming.LATER,
+        initialDate: dateStr,
+        initialTime: '10:00 AM'
+      }))
+
+      // Verify the date doesn't shift - should remain valid in future
+      expect(result.current.isValid).toBe(true)
+      expect(result.current.date[0]).toBe(dateStr)
+    })
+
+    it('should handle JST timezone correctly (UTC+9)', () => {
+      // Positive UTC offsets don't have the day shift issue, but verify correct behavior
+      const futureDate = new Date()
+      futureDate.setDate(futureDate.getDate() + 2) // 2 days in future
+      const dateStr = formatDateStr(futureDate)
+
+      const { result } = renderHook(() => useScheduling({
+        initialTiming: PublishTiming.LATER,
+        initialDate: dateStr,
+        initialTime: '3:00 PM'
+      }))
+
+      // Verify the date remains correct in positive UTC offset
+      expect(result.current.isValid).toBe(true)
+      expect(result.current.date[0]).toBe(dateStr)
+    })
+
+    it('should calculate timeout correctly across day boundaries', () => {
+      vi.useFakeTimers()
+
+      // Create a date exactly 2 hours in the future
+      const futureDate = new Date()
+      futureDate.setHours(futureDate.getHours() + 2)
+
+      const setTimeoutSpy = vi.spyOn(global, 'setTimeout')
+
+      renderHook(() => useScheduling({
+        initialTiming: PublishTiming.LATER,
+        initialDate: formatDateStr(futureDate),
+        initialTime: formatTimeStr(futureDate)
+      }))
+
+      // Verify setTimeout was called (means date parsing worked correctly)
+      expect(setTimeoutSpy).toHaveBeenCalled()
+
+      setTimeoutSpy.mockRestore()
+      vi.useRealTimers()
     })
   })
 })

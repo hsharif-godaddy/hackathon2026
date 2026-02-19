@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { PublishTiming } from '@/types/social-posts'
 import { getUserLocale } from '@/utils/common'
-import { getInitialScheduleDate, getInitialScheduleTime, isValidScheduleTime } from '@/utils/social/scheduling'
+import { createLocalDateTime, getInitialScheduleDate, getInitialScheduleTime, isValidScheduleTime } from '@/utils/social/scheduling'
 
 interface UseSchedulingReturn {
     timing: PublishTiming
@@ -38,7 +38,7 @@ export function useScheduling(options?: UseSchedulingOptions): UseSchedulingRetu
     useEffect(() => {
         if (timing === PublishTiming.LATER && date[0] && time) {
             // Calculate when scheduled time gets too close (within 15 min + 1 min buffer)
-            const scheduledDateTime = new Date(`${date[0]}T${time}`)
+            const scheduledDateTime = createLocalDateTime(date[0], time)
             const minimumFutureTime = 15 * 60 * 1000 // 15 minutes in ms
             const buffer = 60 * 1000 // 1 minute buffer to catch it slightly early
             const timeUntilInvalid = scheduledDateTime.getTime() - Date.now() - minimumFutureTime - buffer
