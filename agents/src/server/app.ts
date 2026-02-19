@@ -257,6 +257,7 @@ if (isApmEnabled) {
 
 // Public routes (no authentication required)
 app.use('/health', healthRouter);
+app.use('/airo/health', healthRouter); // Nomad health check probe uses this path
 app.use('/diagnostics', diagnosticsRouter);
 app.use('/oauth', oauthRouter);
 

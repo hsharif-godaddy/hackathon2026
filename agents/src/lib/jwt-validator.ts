@@ -29,10 +29,16 @@ function isLocalDevUrl(url: string): boolean {
 /**
  * Fetch JSON from a URL, with support for self-signed certs in development
  */
-async function fetchJson<T>(url: string, timeoutMs: number = 10000): Promise<T> {
+async function fetchJson<T>(url: string, timeoutMs: number = 10000, noCache: boolean = false): Promise<T> {
   const features = getFeatures();
   const isDev = features.nodeEnv === 'development';
   const isLocalUrl = isLocalDevUrl(url);
+
+  const headers: Record<string, string> = { 'Accept': 'application/json' };
+  if (noCache) {
+    headers['Cache-Control'] = 'no-cache, no-store';
+    headers['Pragma'] = 'no-cache';
+  }
 
   // For local dev URLs in development mode, accept self-signed certificates
   if (isDev && isLocalUrl) {
@@ -43,7 +49,7 @@ async function fetchJson<T>(url: string, timeoutMs: number = 10000): Promise<T> 
         port: parsed.port || 443,
         path: parsed.pathname + parsed.search,
         method: 'GET',
-        headers: { 'Accept': 'application/json' },
+        headers,
         rejectUnauthorized: false, // Accept self-signed certs for local dev
         timeout: timeoutMs
       };
@@ -76,7 +82,7 @@ async function fetchJson<T>(url: string, timeoutMs: number = 10000): Promise<T> 
 
   // For production or non-local URLs, use standard fetch with full SSL verification
   const response = await fetch(url, {
-    headers: { 'Accept': 'application/json' },
+    headers,
     signal: AbortSignal.timeout(timeoutMs)
   });
 
@@ -215,8 +221,23 @@ export class JWTValidator {
 
     try {
       // Use fetchJson which handles self-signed certs for local development
-      const jwks = await fetchJson<{ keys: JWK[] }>(this.config.jwksUrl, 10000);
-      const jwk = jwks.keys?.find((key) => key.kid === kid);
+      let jwks = await fetchJson<{ keys: JWK[] }>(this.config.jwksUrl, 10000);
+      let jwk = jwks.keys?.find((key) => key.kid === kid);
+
+      // On kid miss, re-fetch once with cache-busting to handle key rotation.
+      // Intermediate caches (CDN, proxies) may serve stale JWKS after rotation.
+      // A single retry is sufficient: if the JWKS origin doesn't have the key, more retries won't help.
+      if (!jwk) {
+        logger.info('jwks.key.miss', {
+          message: 'Key not found in JWKS, retrying with cache-bust',
+          kid,
+          jwksUrl: this.config.jwksUrl,
+          availableKids: jwks.keys?.map(k => k.kid) ?? []
+        });
+
+        jwks = await fetchJson<{ keys: JWK[] }>(this.config.jwksUrl, 10000, true);
+        jwk = jwks.keys?.find((key) => key.kid === kid);
+      }
 
       if (!jwk) {
         throw new Error(`Key with kid '${kid}' not found in JWKS`);

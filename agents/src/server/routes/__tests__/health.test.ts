@@ -40,6 +40,7 @@ describe('Health Router', () => {
     app = express();
     app.use(express.json());
     app.use('/health', healthRouter);
+    app.use('/airo/health', healthRouter);
     vi.clearAllMocks();
   });
 
@@ -145,6 +146,18 @@ describe('Health Router', () => {
       // Verify it's a valid ISO 8601 timestamp
       const timestamp = new Date(response.body.timestamp);
       expect(timestamp.toISOString()).toBe(response.body.timestamp);
+    });
+  });
+
+  describe('GET /airo/health', () => {
+    it('should return health status at the Nomad probe path', async () => {
+      const response = await request(app).get('/airo/health');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('status', 'healthy');
+      expect(response.body).toHaveProperty('timestamp');
+      expect(response.body).toHaveProperty('uptime');
+      expect(response.body).toHaveProperty('memory');
     });
   });
 
