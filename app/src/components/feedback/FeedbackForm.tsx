@@ -6,6 +6,7 @@ import Radio from "@ux/radio";
 import text from "@ux/text";
 import TextInput from "@ux/text-input";
 
+import { useAuthContext } from "@/components/providers/AuthProvider";
 import { useTranslations } from "@/hooks/useTranslations";
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
@@ -22,6 +23,7 @@ export function FeedbackForm({
 }: FeedbackFormProps) {
   const t = useTranslations();
   const { control, handleSubmit, formState } = useForm();
+  const { getUserInfo } = useAuthContext();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const getSite = useSitesStore((state) => state.getSite);
 
@@ -98,6 +100,12 @@ export function FeedbackForm({
     }
 
     // Production: submit to API in background
+    const customerId = getUserInfo()?.customerId ?? '';
+    if (!customerId) {
+      logger.warn('feedback.submit.missing_customer_id', { feedbackId: config.pk });
+    }
+    const keys = [...Object.keys(data), 'customerId'];
+    const values = [...Object.values(data), customerId];
     const baseUrl = getBaseUrl();
     fetch(baseUrl + "feedbacks/" + encodeURIComponent(config.pk), {
       mode: "cors",
@@ -109,8 +117,8 @@ export function FeedbackForm({
       },
       body: JSON.stringify({
         url: window?.location?.href,
-        keys: Object.keys(data),
-        values: Object.values(data),
+        keys,
+        values,
       }),
     })
       .then((res) => res.json())
@@ -119,6 +127,7 @@ export function FeedbackForm({
         await sendToSlack(data);
         logger.info('feedback.submit.success', {
           feedbackId: config.pk,
+          customerId,
         });
       })
       .catch((err) => {
@@ -127,6 +136,7 @@ export function FeedbackForm({
         } else {
           logger.error('feedback.submit.failed', {
             feedbackId: config.pk,
+            customerId,
             error: err instanceof Error ? err.message : String(err)
           });
         }
