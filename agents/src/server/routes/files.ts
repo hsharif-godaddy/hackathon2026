@@ -185,12 +185,30 @@ router.get('/:appId/list', validateAppIdParam, async (req: Request, res: Respons
 
     const files = await fileUploadService.listUploadedFiles(appId)
 
+    // Add signed URLs to each file for browser access
+    const filesWithSignedUrls = files.map(file => {
+      try {
+        return {
+          ...file,
+          signedUrl: signFileUrl(appId, file.filename)
+        }
+      } catch (signError) {
+        contextLogger.warn('file-upload.list.signing.failed', {
+          message: 'Failed to generate signed URL for file',
+          filename: file.filename,
+          error: signError instanceof Error ? signError.message : String(signError)
+        })
+        // Return file without signedUrl - frontend will use fallback UI
+        return file
+      }
+    })
+
     contextLogger.debug('file-upload.list.success', {
       message: 'Listed uploaded files',
       fileCount: files.length
     })
 
-    return res.status(200).json({ files })
+    return res.status(200).json({ files: filesWithSignedUrls })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     const contextLogger = req.params.appId ? log.forApp(req.params.appId) : logger

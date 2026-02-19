@@ -334,4 +334,55 @@ describe('Files Router - Path Traversal Security', () => {
       expect(response.body.error).toContain('Invalid signature');
     });
   });
+
+  describe('GET /files/:appId/list - Signed URLs in Response', () => {
+    it('should include signedUrl for each file in list response', async () => {
+      const { fileUploadService } = await import('../../services/FileUploadService.js');
+
+      vi.mocked(fileUploadService.listUploadedFiles).mockResolvedValue([
+        {
+          id: 'file_abc123',
+          originalName: 'test1.jpg',
+          filename: 'test1.jpg',
+          size: 100,
+          mimeType: 'image/jpeg',
+          uploadedAt: new Date().toISOString()
+        },
+        {
+          id: 'file_def456',
+          originalName: 'test2.png',
+          filename: 'test2.png',
+          size: 200,
+          mimeType: 'image/png',
+          uploadedAt: new Date().toISOString()
+        }
+      ]);
+
+      const response = await request(app)
+        .get('/files/test-app/list')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body.files).toHaveLength(2);
+
+      // Each file should have a signedUrl
+      for (const file of response.body.files) {
+        expect(file.signedUrl).toBeDefined();
+        expect(file.signedUrl).toMatch(/^\/files\/uploads\/test-app\/.+\?sig=.+&exp=\d+$/);
+      }
+    });
+
+    it('should return empty list when no files exist', async () => {
+      const { fileUploadService } = await import('../../services/FileUploadService.js');
+
+      vi.mocked(fileUploadService.listUploadedFiles).mockResolvedValue([]);
+
+      const response = await request(app)
+        .get('/files/test-app/list')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body.files).toHaveLength(0);
+    });
+  });
 });

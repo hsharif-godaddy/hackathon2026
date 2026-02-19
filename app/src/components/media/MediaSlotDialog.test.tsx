@@ -92,7 +92,8 @@ describe('MediaSlotDialog', () => {
   it('renders upload button', () => {
     renderWithProviders(<MediaSlotDialog />)
 
-    expect(screen.getByRole('button', { name: /upload/i })).toBeInTheDocument()
+    // Use exact match to avoid matching "Your Uploads" tab
+    expect(screen.getByRole('button', { name: /^Upload$/i })).toBeInTheDocument()
   })
 
   it('has file input with correct accept attribute', () => {

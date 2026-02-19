@@ -5,7 +5,6 @@ import { Loader2, RefreshCw, Upload } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Button from '@ux/button'
-import Card from '@ux/card'
 import XThickIcon from '@ux/icon/x-thick'
 
 import { dynamicApiConfigService } from '@/config/dynamic-api'
@@ -81,10 +80,10 @@ export function MediaSlotDialog() {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [isSwapping, setIsSwapping] = useState(false)
   const [modalStyle, setModalStyle] = useState<React.CSSProperties>({})
-  const [imageHeight, setImageHeight] = useState(120)
   const [isMobileLayout, setIsMobileLayout] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [activeRightTab, setActiveRightTab] = useState<'alternatives' | 'uploads'>('alternatives')
   const modalRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -134,19 +133,6 @@ export function MediaSlotDialog() {
       const isMobile = width < 700
 
       setIsMobileLayout(isMobile)
-
-      // Set image height based on screen width
-      if (width >= 2560) {
-        setImageHeight(360)
-      } else if (width >= 1920) {
-        setImageHeight(240)
-      } else if (width >= 1280) {
-        setImageHeight(180)
-      } else if (width >= 768) {
-        setImageHeight(150)
-      } else {
-        setImageHeight(120)
-      }
 
       if (previewContainer && !isMobile) {
         // Desktop: align to preview pane
@@ -212,8 +198,11 @@ export function MediaSlotDialog() {
         throw new Error('Agent URL not available')
       }
 
+      // Get base agent URL (remove app-specific path if present) since /media is not under /apps
+      const baseAgentUrl = apiConfig.agentUrl.replace(`/apps/${appId}`, '')
+
       const response = await fetch(
-        `${apiConfig.agentUrl}/media/${appId}/slots/${slotName}`,
+        `${baseAgentUrl}/media/${appId}/slots/${slotName}`,
         {
           method: 'PUT',
           headers: {
@@ -297,11 +286,14 @@ export function MediaSlotDialog() {
           throw new Error('Agent URL not available')
         }
 
+        // Get base agent URL (remove app-specific path if present) since /media is not under /apps
+        const baseAgentUrl = apiConfig.agentUrl.replace(`/apps/${appId}`, '')
+
         const formData = new FormData()
         formData.append('image', file)
 
         const response = await fetch(
-          `${apiConfig.agentUrl}/media/${appId}/slots/${slotName}/upload`,
+          `${baseAgentUrl}/media/${appId}/slots/${slotName}/upload`,
           {
             method: 'POST',
             headers: {
@@ -354,7 +346,7 @@ export function MediaSlotDialog() {
   )
 
   const handleSelectFromUploads = useCallback(
-    async (file: { filename: string }) => {
+    async (file: { filename: string; signedUrl?: string }) => {
       if (!appId || !slotName) return
 
       setIsUploading(true)
@@ -371,14 +363,21 @@ export function MediaSlotDialog() {
         // Get base agent URL (remove app-specific path if present)
         const baseAgentUrl = apiConfig.agentUrl.replace(`/apps/${appId}`, '')
 
-        // Fetch the file from uploads
+        // Fetch the file from uploads using signed URL (no JWT needed for public endpoint)
+        // If signedUrl is missing, fall back to JWT-protected endpoint
+        const fileUrl = file.signedUrl
+          ? `${baseAgentUrl}${file.signedUrl}`
+          : `${baseAgentUrl}/files/uploads/${appId}/${file.filename}`
+
         const fileResponse = await fetch(
-          `${baseAgentUrl}/files/uploads/${appId}/${file.filename}`,
-          {
-            headers: {
-              Authorization: `Bearer ${tokenResult.token}`,
-            },
-          }
+          fileUrl,
+          file.signedUrl
+            ? undefined
+            : {
+                headers: {
+                  Authorization: `Bearer ${tokenResult.token}`,
+                },
+              }
         )
 
         if (!fileResponse.ok) {
@@ -389,9 +388,9 @@ export function MediaSlotDialog() {
         const formData = new FormData()
         formData.append('image', blob, file.filename)
 
-        // Upload to media slot
+        // Upload to media slot (use baseAgentUrl since /media is not under /apps)
         const uploadResponse = await fetch(
-          `${apiConfig.agentUrl}/media/${appId}/slots/${slotName}/upload`,
+          `${baseAgentUrl}/media/${appId}/slots/${slotName}/upload`,
           {
             method: 'POST',
             headers: {
@@ -572,8 +571,9 @@ export function MediaSlotDialog() {
                       </button>
                     </div>
 
-                    {/* Alternatives - horizontal scroll */}
-                    <div className="px-4 py-3">
+                    {/* Scrollable area for alternatives and uploads */}
+                    <div className="flex-shrink-0 overflow-y-auto max-h-48 px-4 py-3">
+                      {/* Alternatives - horizontal scroll */}
                       <div className="flex gap-2 overflow-x-auto pb-1">
                         {allImages.map((url, index) => {
                           const isSelected = selectedImageIndex === index
@@ -600,18 +600,16 @@ export function MediaSlotDialog() {
                           )
                         })}
                       </div>
-                    </div>
 
-                    {/* Chat uploads section */}
-                    {appId && (
-                      <div className="px-4">
+                      {/* Chat uploads section */}
+                      {appId && (
                         <UploadedImagesSection
                           appId={appId}
                           onSelectImage={handleSelectFromUploads}
                           isDisabled={isUploading}
                         />
-                      </div>
-                    )}
+                      )}
+                    </div>
 
                     {/* Bottom action buttons */}
                     <div className="px-4 pb-4 pt-2 border-t border-intents-ux-boxLowContrast-backgroundColor">
@@ -642,131 +640,164 @@ export function MediaSlotDialog() {
                   </div>
                 ) : (
                   /* Desktop Layout: Side by side with button in header */
-                  <Card className="p-4 overflow-y-auto">
-                    {/* Slot title, search query, pills, and action button */}
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-semibold text-base">
-                            {slotName ? formatSlotName(slotName) : 'Loading...'}
-                          </h3>
-                          {/* Attribute pills */}
-                          {slot?.mediaType && slot.mediaType !== 'image' && (
-                            <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-textSubtle-textColor">
-                              {slot.mediaType}
-                            </span>
-                          )}
-                          {slot?.orientations && (
-                            <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-textSubtle-textColor">
-                              {slot.orientations}
-                            </span>
-                          )}
-                          {slot?.compositions && (
-                            <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-textSubtle-textColor">
-                              {slot.compositions}
-                            </span>
-                          )}
-                          {slot?.requestedSize && (
-                            <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-textSubtle-textColor">
-                              {slot.requestedSize.width}x{slot.requestedSize.height}
-                            </span>
+                  <div className="h-full flex flex-col overflow-hidden">
+                    <div className="p-4 h-full flex flex-col overflow-hidden bg-intents-ux-box-backgroundColor rounded-lg border border-intents-ux-box-borderColor">
+                      {/* Slot title, search query, pills, and action button */}
+                      <div className="flex items-start justify-between mb-4 flex-shrink-0">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-semibold text-base">
+                              {slotName ? formatSlotName(slotName) : 'Loading...'}
+                            </h3>
+                            {/* Attribute pills */}
+                            {slot?.mediaType && slot.mediaType !== 'image' && (
+                              <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-textSubtle-textColor">
+                                {slot.mediaType}
+                              </span>
+                            )}
+                            {slot?.orientations && (
+                              <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-textSubtle-textColor">
+                                {slot.orientations}
+                              </span>
+                            )}
+                            {slot?.compositions && (
+                              <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-textSubtle-textColor">
+                                {slot.compositions}
+                              </span>
+                            )}
+                            {slot?.requestedSize && (
+                              <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-textSubtle-textColor">
+                                {slot.requestedSize.width}x{slot.requestedSize.height}
+                              </span>
+                            )}
+                          </div>
+                          {slot?.searchQuery && (
+                            <p className="text-sm text-intents-ux-textSubtle-textColor mt-1">
+                              &ldquo;{slot.searchQuery}&rdquo;
+                            </p>
                           )}
                         </div>
-                        {slot?.searchQuery && (
-                          <p className="text-sm text-intents-ux-textSubtle-textColor mt-1">
-                            &ldquo;{slot.searchQuery}&rdquo;
-                          </p>
-                        )}
+                        <div className="flex gap-2 flex-shrink-0 ml-4">
+                          <Button
+                            onClick={() => fileInputRef.current?.click()}
+                            design="secondary"
+                            icon={<Upload className={`w-4 h-4 ${isUploading ? 'animate-pulse' : ''}`} />}
+                            disabled={isUploading}
+                          >
+                            {isUploading ? 'Uploading...' : 'Upload'}
+                          </Button>
+                          <Button
+                            onClick={handleSwapImage}
+                            design="primary"
+                            icon={<RefreshCw className={`w-4 h-4 ${isSwapping ? 'animate-spin' : ''}`} />}
+                            disabled={selectedImageIndex === 0 || isSwapping}
+                          >
+                            {isSwapping ? 'Swapping...' : 'Use this image'}
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex gap-2 flex-shrink-0 ml-4">
-                        <Button
-                          onClick={() => fileInputRef.current?.click()}
-                          design="secondary"
-                          icon={<Upload className={`w-4 h-4 ${isUploading ? 'animate-pulse' : ''}`} />}
-                          disabled={isUploading}
-                        >
-                          {isUploading ? 'Uploading...' : 'Upload'}
-                        </Button>
-                        <Button
-                          onClick={handleSwapImage}
-                          design="primary"
-                          icon={<RefreshCw className={`w-4 h-4 ${isSwapping ? 'animate-spin' : ''}`} />}
-                          disabled={selectedImageIndex === 0 || isSwapping}
-                        >
-                          {isSwapping ? 'Swapping...' : 'Use this image'}
-                        </Button>
-                      </div>
-                    </div>
-                    {uploadError && (
-                      <p className="text-sm text-intents-ux-error-textColor mb-4">{uploadError}</p>
-                    )}
+                      {uploadError && (
+                        <p className="text-sm text-intents-ux-error-textColor mb-4 flex-shrink-0">{uploadError}</p>
+                      )}
 
-                    {/* Images */}
-                    <div className="flex gap-3">
-                      {/* Left: Current/selected image (large) */}
-                      <div className="flex-shrink-0" style={{ width: '50%' }}>
+                      {/* Two-column layout: Left preview, Right tabs */}
+                      <div className="flex-1 h-0 flex gap-4">
+                        {/* Left: Current/selected image (large) - clickable to reset to original */}
                         <button
                           type="button"
                           onClick={() => setSelectedImageIndex(0)}
-                          aria-pressed={selectedImageIndex === 0}
-                          aria-label="Current image selection"
-                          className={`flex items-center justify-center w-full rounded-md transition-all bg-intents-ux-boxLowContrast-backgroundColor ${
+                          className={`w-1/2 max-h-full overflow-hidden rounded-md transition-all ${
                             selectedImageIndex === 0
                               ? 'ring-2 ring-intents-ux-ring-borderColor'
-                              : 'hover:opacity-80'
+                              : 'hover:opacity-80 cursor-pointer'
                           }`}
-                          style={{ height: imageHeight * 2 }}
+                          aria-label="Current image - click to select"
+                          aria-pressed={selectedImageIndex === 0}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={getSlotImageUrl(slotName, allImages[0] || '', previewBaseUrl)}
+                            src={getSlotImageUrl(slotName, allImages[selectedImageIndex] || allImages[0] || '', previewBaseUrl)}
                             alt="Current selection"
-                            className="max-w-full max-h-full object-contain rounded-md"
+                            className="w-full max-h-full object-contain rounded-md bg-intents-ux-boxLowContrast-backgroundColor p-2"
                           />
                         </button>
-                      </div>
 
-                      {/* Right: Alternatives grid (2 columns) */}
-                      <div className="flex-1 grid grid-cols-2 gap-2 content-start">
-                        {allImages.slice(1).map((url, index) => {
-                          const actualIndex = index + 1
-                          const isSelected = selectedImageIndex === actualIndex
-
-                          return (
+                        {/* Right: Tabbed view */}
+                        <div className="w-1/2 h-full overflow-hidden">
+                          <div className="max-h-full flex flex-col">
+                            {/* Tab buttons */}
+                            <div className="flex gap-1 mb-3 flex-shrink-0">
                             <button
                               type="button"
-                              key={actualIndex}
-                              onClick={() => setSelectedImageIndex(actualIndex)}
-                              aria-pressed={isSelected}
-                              aria-label={`Alternative image ${actualIndex}`}
-                              className={`flex items-center justify-center rounded-md transition-all bg-intents-ux-boxLowContrast-backgroundColor ${
-                                isSelected
-                                  ? 'ring-2 ring-intents-ux-ring-borderColor'
-                                  : 'hover:opacity-80'
+                              onClick={() => setActiveRightTab('alternatives')}
+                              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                                activeRightTab === 'alternatives'
+                                  ? 'bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-text-textColor'
+                                  : 'text-intents-ux-textSubtle-textColor hover:text-intents-ux-text-textColor'
                               }`}
-                              style={{ height: imageHeight }}
                             >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={getSlotImageUrl(slotName, url, previewBaseUrl)}
-                                alt={`Option ${actualIndex + 1}`}
-                                className="max-w-full max-h-full object-contain rounded-md"
-                              />
+                              Alternatives ({allImages.length - 1})
                             </button>
-                          )
-                        })}
+                            {appId && (
+                              <button
+                                type="button"
+                                onClick={() => setActiveRightTab('uploads')}
+                                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                                  activeRightTab === 'uploads'
+                                    ? 'bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-text-textColor'
+                                    : 'text-intents-ux-textSubtle-textColor hover:text-intents-ux-text-textColor'
+                                }`}
+                              >
+                                Your Uploads
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Tab content with scroll */}
+                          <div className="flex-1 h-0 overflow-y-auto">
+                            {activeRightTab === 'alternatives' ? (
+                              <div className="grid grid-cols-2 gap-2 content-start">
+                                {allImages.slice(1).map((url, index) => {
+                                  const actualIndex = index + 1
+                                  const isSelected = selectedImageIndex === actualIndex
+
+                                  return (
+                                    <button
+                                      type="button"
+                                      key={actualIndex}
+                                      onClick={() => setSelectedImageIndex(actualIndex)}
+                                      aria-pressed={isSelected}
+                                      aria-label={`Alternative image ${actualIndex}`}
+                                      className={`rounded-md transition-all ${
+                                        isSelected
+                                          ? 'ring-2 ring-intents-ux-ring-borderColor'
+                                          : 'hover:opacity-80'
+                                      }`}
+                                    >
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img
+                                        src={getSlotImageUrl(slotName, url, previewBaseUrl)}
+                                        alt={`Option ${actualIndex + 1}`}
+                                        className="w-full object-contain rounded-md bg-intents-ux-boxLowContrast-backgroundColor p-2"
+                                      />
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            ) : (
+                              <UploadedImagesSection
+                                appId={appId!}
+                                onSelectImage={handleSelectFromUploads}
+                                isDisabled={isUploading}
+                                layout="grid"
+                              />
+                            )}
+                          </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
-
-                    {/* Chat uploads section */}
-                    {appId && (
-                      <UploadedImagesSection
-                        appId={appId}
-                        onSelectImage={handleSelectFromUploads}
-                        isDisabled={isUploading}
-                      />
-                    )}
-                  </Card>
+                  </div>
                 )
               ) : (
                 <div className="flex items-center justify-center h-48">
