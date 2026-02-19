@@ -1,5 +1,5 @@
 import { config } from '../config';
-import { BaseClient } from './base-client';
+import { BaseClient, BinaryAPIResponse } from './base-client';
 import { WebScraperParams, WebScraperAPIResponse } from '../types';
 
 /**
@@ -27,30 +27,28 @@ class WebScraperClient extends BaseClient {
       const queryString = new URLSearchParams(params as Record<string, string>).toString();
       const scraperUrl = `${config.webScraper.upstream}/v1/scrape-website?${queryString}`;
 
-      return this.makeRequest(scraperUrl, requestId, 'GET', undefined, {
+      return (await this.makeRequest(scraperUrl, requestId, 'GET', undefined, {
         'x-app-key': config.webScraper.appKey,
         'User-Agent': config.webScraper.userAgent
-      });
+      })) as WebScraperAPIResponse;
     });
   }
 
   /**
-   * Capture website screenshot
-   * 
-   * @param params - Query parameters including URL
+   * Capture website screenshot as raw binary buffer.
+   *
+   * @param params - Query parameters including URL, width, height
    * @param requestId - Request ID for logging
-   * @returns Promise resolving to API response with screenshot URL
+   * @returns Raw image buffer and headers
    */
-  async screenshot(params: WebScraperParams, requestId: string = 'unknown'): Promise<WebScraperAPIResponse> {
-    return this.executeWithTiming(async () => {
-      const queryString = new URLSearchParams(params as Record<string, string>).toString();
-      const scraperUrl = `${config.webScraper.upstream}/v1/screenshot-website?${queryString}`;
+  async screenshot(params: WebScraperParams, requestId: string = 'unknown'): Promise<BinaryAPIResponse> {
+    const queryString = new URLSearchParams(params as Record<string, string>).toString();
+    const scraperUrl = `${config.webScraper.upstream}/v1/screenshot-website?${queryString}`;
 
-      return this.makeRequest(scraperUrl, requestId, 'GET', undefined, {
-        'x-app-key': config.webScraper.appKey,
-        'User-Agent': config.webScraper.userAgent
-      });
-    });
+    return this.makeRequest(scraperUrl, requestId, 'GET', undefined, {
+      'x-app-key': config.webScraper.appKey,
+      'User-Agent': config.webScraper.userAgent
+    }, undefined, 'binary') as Promise<BinaryAPIResponse>;
   }
 
 }

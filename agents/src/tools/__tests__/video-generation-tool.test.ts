@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { VideoGenerationTool } from '../video-generation-tool.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
+import { WebsiteScraperDriver } from '../ai-lib-tools/drivers/website-scraper-driver.js';
 
 vi.mock('execa', () => ({
   execa: vi.fn()
@@ -39,6 +40,15 @@ vi.mock('../../logging/index.js', () => ({
     error: vi.fn(),
     debug: vi.fn()
   }
+}));
+
+vi.mock('../ai-lib-tools/drivers/website-scraper-driver.js', () => ({
+  WebsiteScraperDriver: vi.fn().mockImplementation(() => ({
+    fetchScreenshotBuffer: vi.fn().mockResolvedValue({
+      buffer: Buffer.from('fake-png-bytes'),
+      contentType: 'image/png'
+    })
+  }))
 }));
 
 import { execa } from 'execa';
@@ -105,6 +115,102 @@ describe('video-generation-tool', function packageTests() {
       const result = await tool.startGeneration({ appId: 'test-app-123' });
 
       expect(result.status).toBe('failed');
+      expect(fs.existsSync(path.join(airoDir, 'video.json'))).toBe(false);
+    });
+
+    it('should return queued when video.json exists with pending state', async function pendingState() {
+      fs.writeFileSync(
+        path.join(airoDir, 'video.json'),
+        JSON.stringify({ video: false, videoId: null, pending: true })
+      );
+
+      const tool = new VideoGenerationTool();
+      const result = await tool.startGeneration({ appId: 'test-app-123' });
+
+      expect(result.status).toBe('queued');
+    });
+  });
+
+  describe('#initiateGeneration', function initiateTests() {
+    function callInitiate(tool: VideoGenerationTool, options = {}) {
+      return (tool as any).initiateGeneration({
+        appId: 'test-app-123',
+        duration: 12,
+        resolution: '720x1280' as const,
+        ...options
+      });
+    }
+
+    it('should write pending state immediately before async work', async function writePending() {
+      vi.mocked(videoApiFetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'vid-new-123' })
+      } as any);
+
+      const tool = new VideoGenerationTool();
+      const promise = callInitiate(tool);
+
+      await Promise.resolve();
+
+      expect(fs.existsSync(path.join(airoDir, 'video.json'))).toBe(true);
+      const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
+      expect(metadata.pending).toBe(true);
+
+      await promise;
+    });
+
+    it('should attach screenshot blob when publishedUrl is provided', async function withPublishedUrl() {
+      vi.mocked(videoApiFetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'vid-screenshot-123' })
+      } as any);
+
+      const tool = new VideoGenerationTool();
+      await callInitiate(tool, { publishedUrl: 'https://my-app.airo.dev' });
+
+      const scraperInstance = vi.mocked(WebsiteScraperDriver).mock.results[0].value;
+      expect(scraperInstance.fetchScreenshotBuffer).toHaveBeenCalledWith(
+        'https://my-app.airo.dev',
+        { width: '720', height: '1280' }
+      );
+
+      const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
+      expect(metadata.videoId).toBe('vid-screenshot-123');
+      expect(metadata.pending).toBeUndefined();
+    });
+
+    it('should proceed without input_reference when screenshot capture fails', async function screenshotFails() {
+      vi.mocked(WebsiteScraperDriver).mockImplementationOnce(() => ({
+        fetchScreenshotBuffer: vi.fn().mockRejectedValue(new Error('screenshot service unavailable'))
+      } as any));
+
+      vi.mocked(videoApiFetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'vid-no-screenshot' })
+      } as any);
+
+      const tool = new VideoGenerationTool();
+      await callInitiate(tool, { publishedUrl: 'https://my-app.airo.dev' });
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'video-generation.screenshot-error',
+        expect.objectContaining({ publishedUrl: 'https://my-app.airo.dev' })
+      );
+
+      const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
+      expect(metadata.videoId).toBe('vid-no-screenshot');
+    });
+
+    it('should clean up pending file when generation fails before getting videoId', async function cleanupOnFailure() {
+      vi.mocked(videoApiFetch).mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => 'Internal Server Error'
+      } as any);
+
+      const tool = new VideoGenerationTool();
+      await callInitiate(tool);
+
       expect(fs.existsSync(path.join(airoDir, 'video.json'))).toBe(false);
     });
   });

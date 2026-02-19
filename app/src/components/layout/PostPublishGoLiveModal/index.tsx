@@ -68,7 +68,8 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
 
   // Custom hooks
   const { isScanning, scanError, runScan } = useSecurityScan(appId);
-  const { isGeneratingVideo, videoError, generateVideo } = useVideoGeneration(appId);
+  const site = getSite(appId);
+  const { isGeneratingVideo, videoError, generateVideo } = useVideoGeneration(appId, site?.published_url);
   const { isAnalyzing, analysisError, analysisResults, runAnalysis, updateFixedIssues } = useQAAnalysis(appId);
 
   // Local state for background task status
@@ -222,7 +223,6 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
     setMarketingSelections(appId, selections);
     shipAnalyticsLog('go_live.marketing_actions_selected', { appId, selections });
 
-    const site = getSite(appId);
     if (!site) {
       logger.error('go-live.marketing.no-site', { appId });
       return;

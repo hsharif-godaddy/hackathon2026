@@ -632,10 +632,32 @@ router.get('/v1/screenshot-website',
         return;
       }
 
+      const rawWidth = req.query.width as string | undefined;
+      const rawHeight = req.query.height as string | undefined;
+
+      if (rawWidth !== undefined) {
+        const w = parseInt(rawWidth, 10);
+        if (isNaN(w) || w < 100 || w > 4096 || String(w) !== rawWidth) {
+          res.status(400).json({ error: { message: 'width must be an integer between 100 and 4096', type: 'invalid_request_error' } });
+          return;
+        }
+      }
+
+      if (rawHeight !== undefined) {
+        const h = parseInt(rawHeight, 10);
+        if (isNaN(h) || h < 100 || h > 4096 || String(h) !== rawHeight) {
+          res.status(400).json({ error: { message: 'height must be an integer between 100 and 4096', type: 'invalid_request_error' } });
+          return;
+        }
+      }
+
       const params: WebScraperParams = {
-        url: req.query.url as string
+        url: req.query.url as string,
+        ...(rawWidth && { width: rawWidth }),
+        ...(rawHeight && { height: rawHeight })
       };
 
+      // Use binary request to avoid UTF-8 decoding corruption of PNG bytes
       const response = await webScraperClient.screenshot(params, requestId);
       const totalDuration = Date.now() - startTime;
 
@@ -643,19 +665,34 @@ router.get('/v1/screenshot-website',
         requestId,
         method: req.method,
         path: req.path,
-        query: { url: params.url },
+        query: { url: params.url, width: params.width, height: params.height },
         userToken: req.userToken ? req.userToken.substring(0, 5) + '...' : 'unknown',
         statusCode: response.statusCode,
+        sizeBytes: response.buffer.length,
         screenshotDuration: response.duration ? `${response.duration}ms` : 'unknown',
         totalDuration: `${totalDuration}ms`,
         userAgent: req.get('User-Agent'),
         ip: req.ip
       });
 
-      res.set('Content-Type', response.headers['content-type'] as string || 'application/json');
-      res.set('Cache-Control', 'no-cache'); // Don't cache screenshots
+      const rawContentType = response.headers['content-type'] as string || 'image/png';
+      const mimeType = (rawContentType.split(';')[0] ?? 'image/png').trim();
+      const allowedMimeTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+      if (!allowedMimeTypes.includes(mimeType)) {
+        res.status(502).json({
+          error: {
+            message: 'Unexpected content type received from screenshot service',
+            type: 'invalid_response_error'
+          }
+        });
+        return;
+      }
+
+      res.set('Content-Type', mimeType);
+      res.set('Cache-Control', 'no-cache');
       res.status(response.statusCode);
-      res.send(response.data);
+      res.send(response.buffer);
 
     } catch (error) {
       const err = error as { message: string; statusCode?: number; duration?: number };

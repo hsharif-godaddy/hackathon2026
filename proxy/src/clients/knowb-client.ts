@@ -2,7 +2,7 @@ import { KnowBSearchParams, KnowBAPIResponse, KnowBUploadParams } from '../types
 import ssoClient from '../auth/sso-client';
 import logger from '../utils/logger';
 import { config } from '../config';
-import { BaseClient } from './base-client';
+import { BaseClient, BaseAPIResponse } from './base-client';
 
 /**
  * Decode JWT token payload (without verification)
@@ -86,7 +86,7 @@ class KnowBClient extends BaseClient {
         requestBody: JSON.stringify(requestBody)
       });
 
-      return this.makeRequest(knowbUrl, requestId, 'POST', JSON.stringify(requestBody));
+      return (await this.makeRequest(knowbUrl, requestId, 'POST', JSON.stringify(requestBody))) as BaseAPIResponse;
     });
   }
 

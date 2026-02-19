@@ -1,5 +1,5 @@
 import { config } from '../config';
-import { BaseClient } from './base-client';
+import { BaseClient, BaseAPIResponse } from './base-client';
 import { GettySearchParams, GettyAPIResponse } from '../types';
 
 class GettyClient extends BaseClient {
@@ -16,10 +16,10 @@ class GettyClient extends BaseClient {
       const queryString = new URLSearchParams(params as Record<string, string>).toString();
       const gettyUrl = `${config.getty.upstream}/v1/search?${queryString}`;
 
-      return this.makeRequest(gettyUrl, requestId, 'GET', undefined, {
+      return (await this.makeRequest(gettyUrl, requestId, 'GET', undefined, {
         'x-app-key': config.getty.appKey,
         'User-Agent': config.getty.userAgent
-      });
+      })) as BaseAPIResponse;
     });
   }
 
@@ -28,10 +28,10 @@ class GettyClient extends BaseClient {
       const queryString = new URLSearchParams(params as Record<string, string>).toString();
       const gettyUrl = `${config.getty.upstream}/v1/videos/search?${queryString}`;
 
-      return this.makeRequest(gettyUrl, requestId, 'GET', undefined, {
+      return (await this.makeRequest(gettyUrl, requestId, 'GET', undefined, {
         'x-app-key': config.getty.appKey,
         'User-Agent': config.getty.userAgent
-      });
+      })) as BaseAPIResponse;
     });
   }
 
@@ -46,10 +46,10 @@ class GettyClient extends BaseClient {
         ? `${config.getty.upstream}/v1/videos/upload?${queryString}`
         : `${config.getty.upstream}/v1/videos/upload`;
 
-      return this.makeRequest(gettyUrl, requestId, 'POST', JSON.stringify({ id: videoId }), {
+      return (await this.makeRequest(gettyUrl, requestId, 'POST', JSON.stringify({ id: videoId }), {
         'x-app-key': config.getty.appKey,
         'User-Agent': config.getty.userAgent
-      });
+      })) as BaseAPIResponse;
     });
   }
 

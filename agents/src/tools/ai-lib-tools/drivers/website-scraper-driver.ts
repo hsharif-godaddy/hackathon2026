@@ -442,99 +442,26 @@ export class WebsiteScraperDriver extends BaseDriver {
     }
   }
 
-  /**
-   * Capture website screenshot
-   *
-   * @param url - Target website URL
-   * @returns Promise resolving to screenshot result
-   */
   private async screenshotWebsite(url: string): Promise<ScreenshotResult> {
     try {
-      const queryParams = new URLSearchParams({ url });
+      this.logger.info('website-scraper.screenshot.request', { url });
 
-      this.logger.info('website-scraper.screenshot.request', {
+      const result = await this.fetchScreenshotBuffer(url);
+
+      if (!result) {
+        return { success: false, error: 'Failed to capture screenshot' };
+      }
+
+      const base64 = result.buffer.toString('base64');
+      const dataUri = `data:${result.contentType};base64,${base64}`;
+
+      this.logger.info('website-scraper.screenshot.success', {
         url,
-        endpoint: '/v1/screenshot-website'
+        contentType: result.contentType,
+        base64Length: base64.length
       });
 
-      // Screenshot endpoint requires Bearer token format, not sso-jwt format
-      const screenshotUrl = `${this.apiBaseUrl}/v1/screenshot-website?${queryParams.toString()}`;
-      const response = await fetch(screenshotUrl, {
-        method: 'GET',
-        headers: this.getHeaders(),
-      });
-
-      if (!response.ok) {
-        // Check content type to avoid logging binary data
-        const contentType = response.headers.get('content-type') || '';
-        let errorText = '';
-        
-        if (contentType.includes('application/json')) {
-          try {
-            const errorJson = await response.json();
-            errorText = JSON.stringify(errorJson);
-          } catch {
-            errorText = await response.text();
-          }
-        } else if (contentType.includes('text/')) {
-          errorText = await response.text();
-        } else {
-          // Binary response - don't log the content
-          errorText = `[Binary response: ${contentType}]`;
-        }
-        
-        throw new Error(`Screenshot API request failed: ${response.status} ${errorText}`);
-      }
-
-      // Check if response is the image URL or the actual image
-      const contentType = response.headers.get('content-type') || '';
-      
-      if (contentType.includes('image/')) {
-        // Response is the actual image data - convert to base64 data URI directly
-        this.logger.info('website-scraper.screenshot.direct-image', {
-          url,
-          contentType,
-          message: 'Screenshot endpoint returned image data directly'
-        });
-        
-        // Get the image as array buffer
-        const arrayBuffer = await response.arrayBuffer();
-        
-        // Convert to base64
-        const buffer = Buffer.from(arrayBuffer);
-        const base64 = buffer.toString('base64');
-        
-        // Create data URI
-        const dataUri = `data:${contentType};base64,${base64}`;
-        
-        this.logger.info('website-scraper.screenshot.direct-conversion-success', {
-          url,
-          contentType,
-          base64Length: base64.length
-        });
-        
-        // Return the data URI as the screenshotUrl so it can be used directly
-        return {
-          success: true,
-          screenshotUrl: dataUri
-        };
-      }
-      
-      // Response should be image URL as string
-      const screenshotUrlResult = await response.text();
-
-      if (!screenshotUrlResult || typeof screenshotUrlResult !== 'string' || screenshotUrlResult.trim().length === 0) {
-        return {
-          success: false,
-          error: 'No screenshot URL returned from API'
-        };
-      }
-
-      return {
-        success: true,
-        screenshotUrl: screenshotUrlResult.trim()
-      };
-
+      return { success: true, screenshotUrl: dataUri };
     } catch (error) {
       log.error(this.logger, 'website-scraper.screenshot.error', error as Error, { url });
       return {
@@ -542,6 +469,47 @@ export class WebsiteScraperDriver extends BaseDriver {
         error: `Screenshot capture failed: ${error instanceof Error ? error.message : String(error)}`
       };
     }
+  }
+
+  /**
+   * Fetch screenshot as raw binary bytes, bypassing the base64/data-URI pipeline.
+   *
+   * @param url - Target website URL
+   * @param extraParams - Optional query params (e.g. `{ width: '720', height: '1280' }`)
+   * @returns Raw image bytes and content-type, or null on failure
+   */
+  async fetchScreenshotBuffer(
+    url: string,
+    extraParams?: Record<string, string>
+  ): Promise<{ buffer: Buffer; contentType: string } | null> {
+    const params = new URLSearchParams({ url, ...extraParams });
+    const screenshotUrl = `${this.apiBaseUrl}/v1/screenshot-website?${params.toString()}`;
+
+    const response = await fetch(screenshotUrl, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type') || '';
+      let errorText = '';
+      if (contentType.includes('application/json')) {
+        try {
+          errorText = JSON.stringify(await response.json());
+        } catch {
+          errorText = await response.text();
+        }
+      } else if (contentType.includes('text/')) {
+        errorText = await response.text();
+      }
+      throw new Error(`Screenshot API request failed: ${response.status} ${errorText}`.trim());
+    }
+
+    const rawContentType = response.headers.get('content-type') || 'image/png';
+    const contentType = (rawContentType.split(';')[0] ?? 'image/png').trim();
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    return { buffer, contentType };
   }
 
   /**

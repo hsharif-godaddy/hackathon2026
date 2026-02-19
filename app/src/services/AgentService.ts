@@ -138,12 +138,16 @@ export class AgentService {
   /**
    * Start or poll video generation for an app (non-blocking, idempotent)
    */
-  async generateLaunchVideo(appId: string): Promise<VideoGenerationResponse> {
+  async generateLaunchVideo(appId: string, publishedUrl?: string): Promise<VideoGenerationResponse> {
     const apiUrl = await buildDynamicApiUrl(`/generate-video`, appId);
+
+    logger.info('generateLaunchVideo', { apiUrl, publishedUrl });
 
     const response = await agentFetch(apiUrl, {
       siteId: appId,
-      method: 'POST'
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ publishedUrl })
     })
 
     if (!response.ok) {

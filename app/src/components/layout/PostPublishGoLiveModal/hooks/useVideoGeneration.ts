@@ -24,7 +24,7 @@ function normalizeVideoUrl(url: string): string {
   return url;
 }
 
-export function useVideoGeneration(appId: string) {
+export function useVideoGeneration(appId: string, publishedUrl?: string) {
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -41,12 +41,12 @@ export function useVideoGeneration(appId: string) {
   }, []);
 
   const generateVideo = useCallback(async () => {
-    logger.info('go-live.video-generation.start', { appId });
+    logger.info('go-live.video-generation.start', { appId, publishedUrl });
     setIsGeneratingVideo(true);
     setVideoError(null);
 
     try {
-      const result = await agentService.generateLaunchVideo(appId);
+      const result = await agentService.generateLaunchVideo(appId, publishedUrl);
 
       logger.info('go-live.video-generation.response', { appId, status: result.status });
 
@@ -108,7 +108,7 @@ export function useVideoGeneration(appId: string) {
       setVideoError(error instanceof Error ? error.message : 'Unknown error');
       setIsGeneratingVideo(false);
     }
-  }, [appId, setLaunchVideoUrl, stopPolling]);
+  }, [appId, publishedUrl, setLaunchVideoUrl, stopPolling]);
 
   // Stop polling when modal closes
   useEffect(() => {

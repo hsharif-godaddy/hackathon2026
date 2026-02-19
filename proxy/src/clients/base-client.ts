@@ -22,6 +22,16 @@ export interface BaseAPIResponse {
 }
 
 /**
+ * Binary API response structure (for image/file endpoints)
+ */
+export interface BinaryAPIResponse {
+  statusCode: number;
+  headers: Record<string, string | string[]>;
+  buffer: Buffer;
+  duration?: number;
+}
+
+/**
  * Configuration for base client
  */
 export interface BaseClientConfig {
@@ -52,8 +62,15 @@ export abstract class BaseClient {
     return ssoClient.getToken(this.ssoHost);
   }
 
+  // Method overloads for type safety
+  protected makeRequest(url: string, requestId?: string, method?: 'GET' | 'POST' | 'PUT', body?: string, additionalHeaders?: Record<string, string>, retries?: number, responseType?: 'text'): Promise<BaseAPIResponse>;
+  protected makeRequest(url: string, requestId?: string, method?: 'GET' | 'POST' | 'PUT', body?: string, additionalHeaders?: Record<string, string>, retries?: number, responseType?: 'binary'): Promise<BinaryAPIResponse>;
+  protected makeRequest(url: string, requestId?: string, method?: 'GET' | 'POST' | 'PUT', body?: string, additionalHeaders?: Record<string, string>, retries?: number, responseType?: 'text' | 'binary'): Promise<BaseAPIResponse | BinaryAPIResponse>;
+
   /**
-   * Make HTTP request with automatic retries and token refresh
+   * Make HTTP request with automatic retries and token refresh.
+   * Pass responseType='binary' to receive raw buffer instead of text
+   * (avoids UTF-8 decoding corruption of binary responses like PNG).
    */
   protected async makeRequest(
     url: string,
@@ -61,14 +78,16 @@ export abstract class BaseClient {
     method: 'GET' | 'POST' | 'PUT' = 'GET',
     body?: string,
     additionalHeaders?: Record<string, string>,
-    retries: number = this.defaultRetries
-  ): Promise<BaseAPIResponse> {
+    retries: number = this.defaultRetries,
+    responseType: 'text' | 'binary' = 'text'
+  ): Promise<BaseAPIResponse | BinaryAPIResponse> {
+    const startTime = Date.now();
     const jwtToken = await this.getToken();
     const urlObj = new URL(url);
 
     const headers: Record<string, string> = {
       'Authorization': `sso-jwt ${jwtToken}`,
-      'Accept': 'application/json',
+      ...(responseType === 'text' && { 'Accept': 'application/json' }),
       ...additionalHeaders
     };
 
@@ -79,6 +98,7 @@ export abstract class BaseClient {
     logger.debug(`[${this.serviceName}] Making API request`, {
       requestId,
       method,
+      responseType,
       url: urlObj.pathname + urlObj.search,
       headers: this.sanitizeHeaders(headers)
     });
@@ -90,6 +110,34 @@ export abstract class BaseClient {
         ...(body && (method === 'POST' || method === 'PUT') && { body })
       });
 
+      if (response.status === 401 && retries > 0) {
+        logger.warn(`[${this.serviceName}] API returned 401, clearing SSO cache and retrying`, {
+          requestId,
+          retriesLeft: retries
+        });
+        ssoClient.clearCache(this.ssoHost);
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, this.defaultRetries - retries + 1) * 1000));
+        return this.makeRequest(url, requestId, method, body, additionalHeaders, retries - 1, responseType);
+      }
+
+      if (responseType === 'binary') {
+        const buffer = Buffer.from(await response.arrayBuffer());
+
+        logger.debug(`[${this.serviceName}] Binary request completed`, {
+          requestId,
+          url: urlObj.pathname,
+          statusCode: response.status,
+          sizeBytes: buffer.length
+        });
+
+        return {
+          statusCode: response.status,
+          headers: Object.fromEntries(response.headers.entries()) as Record<string, string | string[]>,
+          buffer,
+          duration: Date.now() - startTime
+        };
+      }
+
       const data = await response.text();
 
       if (response.ok) {
@@ -98,33 +146,22 @@ export abstract class BaseClient {
           headers: Object.fromEntries(response.headers.entries()) as Record<string, string | string[]>,
           data
         };
-      } else if (response.status === 401 && retries > 0) {
-        // Token might be expired, clear cache and retry
-        logger.warn(`[${this.serviceName}] API returned 401, clearing SSO cache and retrying`, {
-          requestId,
-          retriesLeft: retries
-        });
-        ssoClient.clearCache(this.ssoHost);
-
-        // Retry with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, this.defaultRetries - retries + 1) * 1000));
-        return this.makeRequest(url, requestId, method, body, additionalHeaders, retries - 1);
-      } else {
-        logger.error(`[${this.serviceName}] API request failed`, {
-          requestId,
-          statusCode: response.status,
-          responseBody: data,
-          url: urlObj.pathname
-        });
-
-        const error = new Error(`${this.serviceName} API request failed with status ${response.status}`) as Error & {
-          statusCode?: number;
-          response?: string;
-        };
-        error.statusCode = response.status;
-        error.response = data;
-        throw error;
       }
+
+      logger.error(`[${this.serviceName}] API request failed`, {
+        requestId,
+        statusCode: response.status,
+        responseBody: data,
+        url: urlObj.pathname
+      });
+
+      const error = new Error(`${this.serviceName} API request failed with status ${response.status}`) as Error & {
+        statusCode?: number;
+        response?: string;
+      };
+      error.statusCode = response.status;
+      error.response = data;
+      throw error;
     } catch (error) {
       logger.error(`[${this.serviceName}] API request error`, {
         requestId,
@@ -134,7 +171,7 @@ export abstract class BaseClient {
       if (retries > 0) {
         logger.info(`[${this.serviceName}] Retrying API request`, { requestId, retriesLeft: retries });
         await new Promise(resolve => setTimeout(resolve, 1000));
-        return this.makeRequest(url, requestId, method, body, additionalHeaders, retries - 1);
+        return this.makeRequest(url, requestId, method, body, additionalHeaders, retries - 1, responseType);
       } else {
         throw error;
       }

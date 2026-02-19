@@ -31,6 +31,7 @@ import { videoApiFetch } from '../helper/video-api-helper.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { logger } from '../logging/index.js';
 import { getVideoPromptGenerationService } from '../services/video-prompt-generation.js';
+import { WebsiteScraperDriver } from './ai-lib-tools/drivers/website-scraper-driver.js';
 
 /**
  * Video resolution options (OpenAI Sora-2 supported resolutions)
@@ -54,6 +55,7 @@ export interface VideoGenerationOptions {
   duration?: VideoDuration;
   resolution?: VideoResolution;
   filename?: string;
+  publishedUrl?: string;
 }
 
 /**
@@ -324,6 +326,11 @@ export class VideoGenerationTool {
           }
         }
 
+        // Generation started but videoId not yet received — still initializing
+        if (videoMetadata.pending === true) {
+          return { status: 'queued' };
+        }
+
         // Metadata exists with videoId - poll OpenAI once
         if (videoMetadata.videoId) {
           const openaiClient = await createOpenAIClient();
@@ -405,9 +412,45 @@ export class VideoGenerationTool {
   /**
    * Initiate video generation - creates prompt, submits to OpenAI, saves metadata
    * Does NOT poll - just initiates and saves videoId to metadata
+   *
+   * Returns null on any failure so generation can proceed without input_reference.
    */
+  private async screenshotToBlob(publishedUrl: string, appId: string, resolution: VideoResolution): Promise<Blob | null> {
+    const parts = resolution.split('x');
+    const width = Number(parts[0]);
+    const height = Number(parts[1]);
+
+    try {
+      const raw = await new WebsiteScraperDriver().fetchScreenshotBuffer(
+        publishedUrl,
+        { width: String(width), height: String(height) }
+      );
+
+      if (!raw) {
+        logger.warn('video-generation.screenshot-failed', { appId, publishedUrl });
+        return null;
+      }
+
+      logger.info('video-generation.screenshot-captured', {
+        appId,
+        publishedUrl,
+        resolution,
+        sizeBytes: raw.buffer.length
+      });
+
+      return new Blob([raw.buffer as unknown as ArrayBuffer], { type: raw.contentType });
+    } catch (error) {
+      logger.warn('video-generation.screenshot-error', {
+        appId,
+        publishedUrl,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
+  }
+
   private async initiateGeneration(options: VideoGenerationOptions): Promise<void> {
-    const { appId, duration = 12, resolution = '720x1280' } = options;
+    const { appId, duration = 12, resolution = '720x1280', publishedUrl } = options;
 
     const appRepository = new AppRepository();
     const app = appRepository?.findById(appId);
@@ -417,47 +460,77 @@ export class VideoGenerationTool {
     const airoDir = path.join(appPath, '.airo');
     const videoMetadataPath = path.join(airoDir, 'video.json');
 
-    // Generate prompt from app summary
-    const videoPromptService = getVideoPromptGenerationService();
-    const generatedPrompt = await videoPromptService.generateVideoPrompt(appId);
+    // Write pending state immediately so concurrent poll requests see the file
+    // and return 'queued' instead of triggering a duplicate generation.
+    fs.mkdirSync(airoDir, { recursive: true });
+    fs.writeFileSync(videoMetadataPath, JSON.stringify({ video: false, videoId: null, pending: true }, null, 2));
 
-    if (!generatedPrompt) {
-      logger.error('video-generation.no-prompt', { appId });
-      return;
-    }
+    let metadataSaved = false;
 
-    const openaiClient = await createOpenAIClient();
-    if (!openaiClient) return;
+    try {
+      const videoPromptService = getVideoPromptGenerationService();
+      const generatedPrompt = await videoPromptService.generateVideoPrompt(appId);
 
-    // Submit to OpenAI
-    const requestBody = {
-      model: 'sora-2',
-      prompt: generatedPrompt.trim(),
-      size: resolution,
-      seconds: String(duration)
-    };
-
-    const createResponse = await videoApiFetch(
-      openaiClient,
-      '/videos',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
+      if (!generatedPrompt) {
+        logger.error('video-generation.no-prompt', { appId });
+        return;
       }
-    );
 
-    if (!createResponse.ok) {
-      logger.error('video-generation.submit-failed', { appId, status: createResponse.status });
-      return;
+      const openaiClient = await createOpenAIClient();
+      if (!openaiClient) return;
+
+      const formData = new FormData();
+      formData.append('model', 'sora-2');
+      formData.append('prompt', generatedPrompt.trim());
+      formData.append('size', resolution);
+      formData.append('seconds', String(duration));
+
+      if (publishedUrl) {
+        const screenshotBlob = await this.screenshotToBlob(publishedUrl, appId, resolution);
+        if (screenshotBlob) {
+          formData.append('input_reference', screenshotBlob, 'screenshot.png');
+          logger.info('video-generation.screenshot-attached', {
+            appId,
+            publishedUrl,
+            blobSize: screenshotBlob.size,
+            blobType: screenshotBlob.type
+          });
+        }
+      } else {
+        logger.warn('video-generation.no-published-url', { appId });
+      }
+
+      const createResponse = await videoApiFetch(openaiClient, '/videos', { method: 'POST', body: formData });
+
+      if (!createResponse.ok) {
+        logger.error('video-generation.submit-failed', { appId, status: createResponse.status });
+        return;
+      }
+
+      const createData = await createResponse.json();
+      if (!createData?.id) return;
+
+      const videoId = createData.id as string;
+      this.saveVideoMetadata(airoDir, videoMetadataPath, videoId, false, appId);
+      // Only mark saved after the write succeeds — if saveVideoMetadata throws,
+      // the finally block will still clean up the pending file.
+      metadataSaved = true;
+      logger.info('video-generation.submitted', { appId, videoId });
+    } finally {
+      // Clean up the pending file on any path where metadata wasn't successfully written,
+      // so the next request can start a fresh generation instead of staying stuck.
+      if (!metadataSaved) {
+        try {
+          if (fs.existsSync(videoMetadataPath)) {
+            const current = JSON.parse(fs.readFileSync(videoMetadataPath, 'utf-8'));
+            if (current.pending === true) {
+              fs.unlinkSync(videoMetadataPath);
+              logger.info('video-generation.pending-cleared', { appId });
+            }
+          }
+        } catch { /* ignore cleanup errors */ }
+      }
     }
-
-    const createData = await createResponse.json();
-    if (!createData?.id) return;
-
-    // Save metadata with videoId
-    this.saveVideoMetadata(airoDir, videoMetadataPath, createData.id, false, appId);
-    logger.info('video-generation.submitted', { appId, videoId: createData.id });
   }
 
   /**

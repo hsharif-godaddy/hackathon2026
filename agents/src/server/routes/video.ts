@@ -30,16 +30,30 @@ router.post('/:id/generate-video', requirePermission('canPublish'), async (req: 
       return res.status(404).json({ error: 'App not found', status: 'failed' });
     }
 
+    const { publishedUrl } = req.body as { publishedUrl?: string };
+
+    if (publishedUrl !== undefined) {
+      try {
+        const parsed = new URL(publishedUrl);
+        if (parsed.protocol !== 'https:') {
+          return res.status(400).json({ error: 'publishedUrl must use https protocol', status: 'failed' });
+        }
+      } catch {
+        return res.status(400).json({ error: 'publishedUrl must be a valid URL', status: 'failed' });
+      }
+    }
+
     // Fixed parameters for video generation
     const duration = 12;
     const resolution = '720x1280'; // Portrait format (9:16) for mobile/social media
 
-    contextLogger.info('route.video.generate.request', { duration, resolution });
+    contextLogger.info('route.video.generate.request', { duration, resolution, publishedUrl });
 
     const result = await startVideoGeneration({
       appId: id,
       duration,
-      resolution
+      resolution,
+      publishedUrl
     });
 
     contextLogger.info('route.video.generate.response', { status: result.status, url: result.url });
