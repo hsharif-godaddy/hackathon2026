@@ -3,9 +3,10 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
+import { useChatTabs } from '@/hooks/useChatTabs';
 import { renderWithProviders } from '@/tests/test-utils';
 import PreviewHeader from './PreviewHeader';
-import { PreviewViewMode, ViewMode } from '../types';
+import { ChatTab, PreviewViewMode, SettingsSection, ViewMode } from '../types';
 
 const mockDevelopStore = {
   viewMode: ViewMode.PREVIEW,
@@ -16,7 +17,7 @@ const mockDevelopStore = {
   isSelectMode: false,
   isChatPaneCollapsed: false,
   isVersionHistoryOpen: false,
-  site: { name: 'Test App' },
+  site: { name: 'Test App', domains: [{ fqdn: 'testapp.com', domainType: 'custom' }] },
   handleViewModeChange: vi.fn(),
   setPreviewViewMode: vi.fn(),
   setSelectedDeviceId: vi.fn(),
@@ -31,6 +32,7 @@ const mockServerState = {
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => '/develop/app-123',
 }));
 vi.mock('@/app/develop/components/utils', () => ({
   useAppIdFromParams: () => 'app-123',
@@ -45,6 +47,14 @@ vi.mock('@/stores/useServerPollingStore', () => ({
     };
     return selector(state);
   },
+}));
+vi.mock('@/hooks/useChatTabs', () => ({
+  useChatTabs: vi.fn(() => ({
+    activeChatTab: ChatTab.CHAT,
+    setActiveChatTab: vi.fn(),
+    activeSettingsSection: SettingsSection.DOMAIN,
+    setActiveSettingsSection: vi.fn(),
+  })),
 }));
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: () => ({ data: true }),
@@ -137,10 +147,10 @@ describe('PreviewHeader', () => {
     expect(screen.getByLabelText('builder_common_open_new_tab')).toBeInTheDocument();
   });
 
-  it('should display site name in domain button', () => {
+  it('should display fqdn in domain button', () => {
     renderWithProviders(<PreviewHeader {...defaultProps} />);
 
-    expect(screen.getByText('Test App')).toBeInTheDocument();
+    expect(screen.getByText('https://testapp.com')).toBeInTheDocument();
   });
 
   it('should disable refresh button when in code mode', () => {
@@ -205,5 +215,40 @@ describe('PreviewHeader', () => {
 
     const selectButton = screen.getByLabelText('builder_preview_button_select');
     expect(selectButton).toBeDisabled();
+  });
+
+  it('should show custom domain button for airoapp.ai subdomain', () => {
+    mockDevelopStore.site = { 
+      name: 'Test App',
+      domains: [{ fqdn: 'test.airoapp.ai', domainType: 'prefix' }]
+    };
+    renderWithProviders(<PreviewHeader {...defaultProps} />);
+    expect(screen.getByText('builder_custom_domain_button_add')).toBeInTheDocument();
+  });
+  
+  it('should hide custom domain button when custom domain is attached', () => {
+    mockDevelopStore.site = { 
+      name: 'Test App',
+      domains: [{ fqdn: 'custom.example.com', domainType: 'custom' }]
+    };
+    renderWithProviders(<PreviewHeader {...defaultProps} />);
+    expect(screen.queryByText('builder_custom_domain_button_add')).not.toBeInTheDocument();
+  });
+  
+  it('should call setActiveSettingsSection when custom domain button is clicked', async () => {
+    const mockSetActiveSettingsSection = vi.fn();
+    vi.mocked(useChatTabs).mockReturnValue({
+      activeChatTab: ChatTab.CHAT,
+      setActiveChatTab: vi.fn(),
+      activeSettingsSection: SettingsSection.DOMAIN,
+      setActiveSettingsSection: mockSetActiveSettingsSection,
+    });
+    mockDevelopStore.site = {
+      name: 'Test App',
+      domains: [{ fqdn: 'test.airoapp.ai', domainType: 'prefix' }]
+    };
+    const { user } = renderWithProviders(<PreviewHeader {...defaultProps} />);
+    await user.click(screen.getByText('builder_custom_domain_button_add'));
+    expect(mockSetActiveSettingsSection).toHaveBeenCalledWith(SettingsSection.DOMAIN);
   });
 });

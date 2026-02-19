@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   getDnsRecords,
+  isAiroSubdomain,
   isCustomerDomain,
   parseDomain,
+  resolveSiteFqdn,
   sanitizeDomainInput,
   validateDomain,
 } from './domain';
@@ -463,5 +465,108 @@ describe('getDnsRecords', () => {
       expect(result.aRecord.type).toBe('A');
       expect(result.cnameRecord?.type).toBe('CNAME');
     });
+  });
+});
+
+describe('isAiroSubdomain', () => {
+  it('should return true for .airoapp.ai subdomain', () => {
+    expect(isAiroSubdomain('https://myapp.airoapp.ai')).toBe(true);
+  });
+
+  it('should return true for .test-airoapp.ai subdomain', () => {
+    expect(isAiroSubdomain('https://myapp.preview.c4.test-airoapp.ai')).toBe(true);
+  });
+
+  it('should return true for .dev-airoapp.ai subdomain', () => {
+    expect(isAiroSubdomain('https://myapp.dev-airoapp.ai')).toBe(true);
+  });
+
+  it('should return false for custom domain', () => {
+    expect(isAiroSubdomain('https://custom.example.com')).toBe(false);
+  });
+
+  it('should return false for empty string', () => {
+    expect(isAiroSubdomain('')).toBe(false);
+  });
+
+  it('should return false for invalid URL', () => {
+    expect(isAiroSubdomain('not-a-url')).toBe(false);
+  });
+});
+
+describe('resolveSiteFqdn', () => {
+  it('should prefer custom domain over prefix domain', () => {
+    expect(resolveSiteFqdn({
+      domains: [
+        { fqdn: 'prefix.airoapp.ai', domainType: 'prefix' },
+        { fqdn: 'custom.example.com', domainType: 'custom' },
+      ],
+      published_url: 'https://fallback.com',
+    })).toBe('https://custom.example.com');
+  });
+
+  it('should treat domain without domainType as custom and prefer it over prefix domain', () => {
+    expect(resolveSiteFqdn({
+      domains: [
+        { fqdn: 'prefix.airoapp.ai', domainType: 'prefix' },
+        { fqdn: 'custom-no-type.example.com' },
+      ],
+      published_url: 'https://fallback.com',
+    })).toBe('https://custom-no-type.example.com');
+  });
+  it('should fall back to prefix domain when no custom domain', () => {
+    expect(resolveSiteFqdn({
+      domains: [
+        { fqdn: 'prefix.airoapp.ai', domainType: 'prefix' },
+      ],
+      published_url: 'https://fallback.com',
+    })).toBe('https://prefix.airoapp.ai');
+  });
+
+  it('should fall back to published_url when no domains', () => {
+    expect(resolveSiteFqdn({
+      domains: [],
+      published_url: 'https://published.example.com',
+    })).toBe('https://published.example.com');
+  });
+
+  it('should prepend https:// when protocol is missing', () => {
+    expect(resolveSiteFqdn({
+      published_url: 'myapp.airoapp.ai',
+    })).toBe('https://myapp.airoapp.ai');
+  });
+
+  it('should preserve existing https:// protocol', () => {
+    expect(resolveSiteFqdn({
+      published_url: 'https://myapp.airoapp.ai',
+    })).toBe('https://myapp.airoapp.ai');
+  });
+
+  it('should preserve existing http:// protocol', () => {
+    expect(resolveSiteFqdn({
+      published_url: 'http://myapp.airoapp.ai',
+    })).toBe('http://myapp.airoapp.ai');
+  });
+
+  it('should return empty string for null site', () => {
+    expect(resolveSiteFqdn(null)).toBe('');
+  });
+
+  it('should return empty string for undefined site', () => {
+    expect(resolveSiteFqdn(undefined)).toBe('');
+  });
+
+  it('should return empty string when all fields are empty', () => {
+    expect(resolveSiteFqdn({
+      domains: [],
+      published_url: '',
+    })).toBe('');
+  });
+
+  it('should return empty string when domains and published_url are undefined', () => {
+    expect(resolveSiteFqdn({
+      domains: undefined,
+      published_url: undefined,
+    })).toBe('');
   });
 });

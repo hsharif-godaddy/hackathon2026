@@ -2,6 +2,41 @@
  * Domain parsing and validation utilities
  */
 
+const AIRO_SUBDOMAINS = ['.airoapp.ai', '.test-airoapp.ai', '.dev-airoapp.ai'];
+
+/**
+ * Whether a URL belongs to an airoapp.ai subdomain (including test/dev variants).
+ * Used to determine if features like "Custom Domain" buttons should be shown.
+ */
+export function isAiroSubdomain(url: string): boolean {
+  if (!url) return false;
+  try {
+    const { hostname } = new URL(url);
+    return AIRO_SUBDOMAINS.some(suffix => hostname.endsWith(suffix));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve the public FQDN for a site with fallback priority:
+ *  1. Custom domain (domainType !== 'prefix')
+ *  2. Prefix domain (domainType === 'prefix')
+ *  3. published_url
+ *
+ * Always returns a full URL with https:// protocol, or empty string.
+ */
+export function resolveSiteFqdn(site: {
+  domains?: { fqdn: string; domainType?: string }[];
+  published_url?: string | null;
+} | null | undefined): string {
+  const customDomain = site?.domains?.find(d => d.domainType !== 'prefix');
+  const prefixDomain = site?.domains?.find(d => d.domainType === 'prefix');
+  const raw = customDomain?.fqdn || prefixDomain?.fqdn || site?.published_url || '';
+  if (!raw) return '';
+  return raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`;
+}
+
 /**
  * Parsed domain information
  */

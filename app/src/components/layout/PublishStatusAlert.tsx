@@ -1,19 +1,19 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useCallback, useEffect } from 'react';
 import { FormattedMessage } from 'react-intl';
 import Alert from '@ux/alert';
 import Button from '@ux/button';
 import text from '@ux/text';
 
-import { ChatTab } from '@/app/develop/components/types';
+import { ChatTab, SettingsSection } from '@/app/develop/components/types';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { usePublishApp } from '@/hooks/usePublishApp';
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
+import { isAiroSubdomain, resolveSiteFqdn } from '@/utils/domain';
 import { generateClickEID } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
 
@@ -35,8 +35,7 @@ import { hasBeenPublished } from '@/utils/site';
  */
 export default function PublishStatusAlert() {
   const t = useTranslations();
-  const router = useRouter();
-  const { setActiveChatTab } = useChatTabs();
+  const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
@@ -148,8 +147,8 @@ export default function PublishStatusAlert() {
       appId: currentAppId,
     });
 
-    router.push(`/develop/${currentAppId}?tab=settings&settings=domain`);
-  }, [currentAppId, router]);
+    setActiveSettingsSection(SettingsSection.DOMAIN);
+  }, [currentAppId, setActiveSettingsSection]);
 
   // Automatically show Go Live modal on successful publish if user hasn't gone live yet
   useEffect(() => {
@@ -171,33 +170,8 @@ export default function PublishStatusAlert() {
 
   // Show success alert when deployment completes
   if (showSuccessAlert && currentAppId && hasBeenPublished(site)) {
-    // Get the FQDN with fallback priority:
-    // 1. Custom domain where domainType != 'prefix'
-    // 2. Prefix domain where domainType = 'prefix'
-    // 3. Published URL from site.published_url
-    const customDomain = site?.domains?.find(d => d.domainType && d.domainType !== 'prefix');
-    const prefixDomain = site?.domains?.find(d => d.domainType === 'prefix');
-    const publishedFqdn = site?.published_url;
-
-    const rawFqdn = customDomain?.fqdn || prefixDomain?.fqdn || publishedFqdn || '';
-
-    // Ensure FQDN has https:// protocol for external link
-    // Handle empty string to avoid creating invalid 'https://' URL
-    const fqdn = !rawFqdn
-      ? ''
-      : (rawFqdn.startsWith('http://') || rawFqdn.startsWith('https://')
-          ? rawFqdn
-          : `https://${rawFqdn}`);
-
-    // Only show "Custom Domain" button for airoapp.ai subdomains
-    const showDomainButton = (() => {
-      if (!fqdn) return false;
-      const { hostname } = new URL(fqdn);
-      return hostname.endsWith('.airoapp.ai') || 
-        hostname.endsWith('.test-airoapp.ai') || 
-        hostname.endsWith('.dev-airoapp.ai')
-      ;
-    })();
+    const fqdn = resolveSiteFqdn(site);
+    const showDomainButton = isAiroSubdomain(fqdn);
 
     return (
       <div className='px-2 py-1'>

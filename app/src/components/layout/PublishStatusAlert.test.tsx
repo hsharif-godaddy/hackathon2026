@@ -52,12 +52,13 @@ vi.mock('@/lib/request-context', () => ({
     error: vi.fn(),
   },
 }));
+const mockSetActiveSettingsSection = vi.fn();
 vi.mock('@/hooks/useChatTabs', () => ({
   useChatTabs: () => ({
     activeChatTab: 'chat',
     setActiveChatTab: vi.fn(),
     activeSettingsSection: 'domain',
-    setActiveSettingsSection: vi.fn(),
+    setActiveSettingsSection: mockSetActiveSettingsSection,
   }),
 }));
 
@@ -220,7 +221,7 @@ describe('PublishStatusAlert', () => {
     await user.click(settingsButton);
 
     await waitFor(() => {
-      expect(mockRouter.push).toHaveBeenCalledWith('/develop/app-123?tab=settings&settings=domain');
+      expect(mockSetActiveSettingsSection).toHaveBeenCalledWith('domain');
     });
   });
 

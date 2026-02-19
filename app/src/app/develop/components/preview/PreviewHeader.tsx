@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import Button from '@ux/button'
 import CodeIcon from '@ux/icon/code'
 import EditIcon from '@ux/icon/edit'
 import RefreshIcon from '@ux/icon/refresh'
@@ -6,14 +7,17 @@ import SidebarCollapseIcon from '@ux/icon/sidebar-collapse'
 import SidebarExpandIcon from '@ux/icon/sidebar-expand'
 import WebsiteFilledIcon from '@ux/icon/website-filled'
 import WindowNewIcon from '@ux/icon/window-new'
+import text from "@ux/text";
 
 import IconButton from '@/app/develop/components/IconButton'
 import DeviceSelector from '@/app/develop/components/preview/DeviceSelector'
-import { ViewMode } from '@/app/develop/components/types'
+import { SettingsSection, ViewMode } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
+import { useChatTabs } from '@/hooks/useChatTabs'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import { isAiroSubdomain, resolveSiteFqdn } from '@/utils/domain'
 import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation'
 
 export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
@@ -32,18 +36,39 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
   const toggleSelectMode = useDevelopPageStore((state) => state.toggleSelectMode)
   const toggleChatPaneCollapse = useDevelopPageStore((state) => state.toggleChatPaneCollapse)
   const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal)
-
+  const { setActiveSettingsSection } = useChatTabs()
   const getServerState = useServerPollingStore((state) => state.getServerState)
   const serverState = getServerState(appId)
   const actualPort = serverState?.port
   const serverUrl = serverState?.url
 
+  const fqdn = resolveSiteFqdn(site);
+  const isAiroSubdomainCheck = isAiroSubdomain(fqdn);
+
   const DomainButton = () => {
     return (
       <div
-        className="grow mx-3 pl-2 flex justify-between items-center border rounded-xl h-full leading-none text-left bg-intents-ux-box-backgroundColor"
+        className="grow mx-3 px-2 gap-1 flex justify-between items-center border rounded-xl h-full leading-none text-left bg-intents-ux-box-backgroundColor"
       >
-        {site?.name && <span className="truncate max-w-[200px]">{site.name}</span>}
+        {(fqdn || site?.name) && (
+          <text.span
+            size={-1}
+            emphasis={isAiroSubdomainCheck ? "passive" : null}
+            className="truncate max-w-100"
+          >
+            {fqdn || site?.name}
+          </text.span>
+        )}
+        {isAiroSubdomainCheck && (
+          <Button
+            design="inline"
+            size="sm"
+            text={t('builder_custom_domain_button_add')}
+            onClick={() => setActiveSettingsSection(SettingsSection.DOMAIN)}
+            data-eid={generateClickEID('develop.preview.buy_domain')}
+            className='shrink-0'
+          />
+        )}
       </div>
     )
   }
