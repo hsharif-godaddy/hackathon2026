@@ -182,6 +182,7 @@ func (p *HTTPProxy) Start() error {
 		allowedOrigins:        p.config.AllowedOrigins,
 		procMgr:               p.procMgr,
 		startOnRequestEnabled: p.startOnRequestEnabled,
+		backendAddr:           targetURL.Host, // host:port for TCP readiness probes
 	}
 
 	// Route all other requests to the router

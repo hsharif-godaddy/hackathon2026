@@ -3,8 +3,18 @@ package httpproxy
 import (
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
+)
+
+const (
+	// TCP readiness probe configuration.
+	// After the process reports "running", we probe the backend port to confirm
+	// it's actually accepting connections before forwarding queued requests.
+	tcpProbeInterval = 100 * time.Millisecond
+	tcpProbeTimeout  = 500 * time.Millisecond
+	tcpProbeDeadline = 30 * time.Second
 )
 
 // handleAutoStart handles requests when the app is stopped.
@@ -59,6 +69,14 @@ func (rr *RequestRouter) handleAutoStart(w http.ResponseWriter, r *http.Request)
 			return
 
 		case ProcessStateRunning:
+			// Process is alive, but the server inside may not be listening yet.
+			// Probe the backend port before forwarding to avoid "connection refused" bursts.
+			if rr.backendAddr != "" {
+				if !rr.waitForBackendReady(w, r, startTime) {
+					return // waitForBackendReady already wrote the HTTP response
+				}
+			}
+
 			duration := time.Since(startTime)
 			slog.Info("autostart.process_ready",
 				"pid", status.PID,
@@ -107,6 +125,58 @@ func (rr *RequestRouter) handleAutoStart(w http.ResponseWriter, r *http.Request)
 				slog.Debug("autostart.state_changed", "path", r.URL.Path)
 				continue
 			}
+		}
+	}
+}
+
+// waitForBackendReady probes the backend port until it accepts TCP connections.
+// Returns true when ready, false if the probe failed (HTTP response already written).
+func (rr *RequestRouter) waitForBackendReady(w http.ResponseWriter, r *http.Request, startTime time.Time) bool {
+	deadline := time.After(tcpProbeDeadline)
+	dialer := &net.Dialer{Timeout: tcpProbeTimeout}
+	ticker := time.NewTicker(tcpProbeInterval)
+	defer ticker.Stop()
+
+	for {
+		conn, err := dialer.DialContext(r.Context(), "tcp", rr.backendAddr)
+		if err == nil {
+			_ = conn.Close()
+			return true
+		}
+
+		// Check if process died while we were probing.
+		status := rr.procMgr.GetStatus()
+		if status.State != ProcessStateRunning {
+			slog.Error("autostart.process_died_during_probe",
+				"state", status.State,
+				"backend_addr", rr.backendAddr,
+				"path", r.URL.Path)
+			http.Error(w, "Service startup failed", http.StatusBadGateway)
+			return false
+		}
+
+		select {
+		case <-r.Context().Done():
+			slog.Info("autostart.client_canceled_during_probe",
+				"path", r.URL.Path,
+				"method", r.Method,
+				"reason", r.Context().Err())
+			return false
+
+		case <-deadline:
+			duration := time.Since(startTime)
+			slog.Error("autostart.backend_not_ready",
+				"backend_addr", rr.backendAddr,
+				"probe_deadline", tcpProbeDeadline,
+				"total_duration_ms", duration.Milliseconds(),
+				"path", r.URL.Path)
+			http.Error(w, "Service startup timeout", http.StatusGatewayTimeout)
+			return false
+
+		case <-ticker.C:
+			// Retry probe.
+			slog.Debug("autostart.tcp_probe_retry",
+				"backend_addr", rr.backendAddr)
 		}
 	}
 }

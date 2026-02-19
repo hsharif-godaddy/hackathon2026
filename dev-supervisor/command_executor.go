@@ -138,7 +138,8 @@ func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResul
 	}
 
 	switch {
-	case err != nil:
+	case result.ExitCode == -1:
+		// Supervisor failure: couldn't execute the command at all
 		slog.Error("command_executor.execute.failed",
 			"command_preview", commandPreview,
 			"exit_code", result.ExitCode,
@@ -146,6 +147,17 @@ func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResul
 			"stderr_length", len(result.Stderr),
 			"stdout_length", len(result.Stdout),
 			"error", err,
+		)
+	case err != nil:
+		// Command ran but returned non-zero exit code.
+		// This is not a supervisor error - the caller decides whether
+		// the exit code is meaningful (e.g. git rev-parse returns 1 for missing refs).
+		slog.Debug("command_executor.execute.non_zero_exit",
+			"command_preview", commandPreview,
+			"exit_code", result.ExitCode,
+			"duration_ms", result.Duration,
+			"stderr_length", len(result.Stderr),
+			"stdout_length", len(result.Stdout),
 		)
 	default:
 		slog.Debug("command_executor.execute.success",

@@ -17,6 +17,7 @@ type RequestRouter struct {
 	allowedOrigins        []string
 	procMgr               ProcessController
 	startOnRequestEnabled bool
+	backendAddr           string // host:port of backend for TCP readiness probes
 }
 
 // ServeHTTP implements http.Handler interface for RequestRouter.
