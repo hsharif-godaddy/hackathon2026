@@ -29,6 +29,7 @@ export async function checkSwitchboardFlag(
       'appbuilder-publish-button': true,
       'appbuilder-manage-plan': true,
       'appbuilder-settings-team': true,
+      'appbuilder-domain-purchase': true,
       'appbuilder-share-links': true,
     };
 

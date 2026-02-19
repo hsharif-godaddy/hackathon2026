@@ -107,6 +107,7 @@ export interface JWTClaims {
   siteId: string;          // Site ID
   canDownload?: boolean;   // Permission to download app files (optional for backward compatibility)
   canPublish?: boolean;    // Permission to publish app (optional for backward compatibility)
+  canPurchaseDomain?: boolean; // Permission to purchase custom domains (optional for backward compatibility)
   isE2S?: boolean; // true if auth type is 'e2s' (employee-to-shopper), optional for backward compatibility
 }
 

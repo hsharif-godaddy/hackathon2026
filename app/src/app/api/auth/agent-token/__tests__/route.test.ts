@@ -1,6 +1,6 @@
 /**
  * Agent Token Endpoint Tests
- * 
+ *
  * Tests the /api/auth/agent-token endpoint to ensure proper authentication,
  * authorization, and site ownership validation.
  */
@@ -13,7 +13,7 @@ import { POST } from '../route';
 /**
  * Mock dependencies using vi.hoisted to avoid hoisting issues
  */
-const { mockJWTService, mockSiteAdapter, mockAuthenticateCustomer, mockControlPlaneAdapter, mockIsV2ControlPlaneEnabled } = vi.hoisted(function setup() {
+const { mockJWTService, mockSiteAdapter, mockAuthenticateCustomer, mockControlPlaneAdapter, mockIsV2ControlPlaneEnabled, mockCheckSwitchboardFlag } = vi.hoisted(function setup() {
   return {
     mockJWTService: {
       getToken: vi.fn(),
@@ -27,7 +27,8 @@ const { mockJWTService, mockSiteAdapter, mockAuthenticateCustomer, mockControlPl
       getSite: vi.fn()
     },
     mockIsV2ControlPlaneEnabled: vi.fn(),
-    mockAuthenticateCustomer: vi.fn()
+    mockAuthenticateCustomer: vi.fn(),
+    mockCheckSwitchboardFlag: vi.fn()
   };
 });
 
@@ -62,6 +63,44 @@ vi.mock('@/lib/control-plane', function mockControlPlaneModule() {
 });
 
 /**
+ * Mock paywall
+ */
+vi.mock('@/lib/paywall/core', function mockPaywallModule() {
+  return {
+    checkPaywallEligibility: vi.fn().mockResolvedValue({
+      hasAccess: false,
+      reason: 'no_subscription',
+      details: { hasSubscription: false, hasEntitlements: false, hasMatchingProject: false }
+    }),
+    PaywallAction: { Publish: 'publish' }
+  };
+});
+
+vi.mock('@/lib/paywall/server-provider', function mockPaywallProviderModule() {
+  return {
+    ServerPaywallProvider: vi.fn()
+  };
+});
+
+/**
+ * Mock switchboard
+ */
+vi.mock('@/lib/switchboard/server', function mockSwitchboardModule() {
+  return {
+    checkSwitchboardFlag: mockCheckSwitchboardFlag
+  };
+});
+
+/**
+ * Mock logger
+ */
+vi.mock('@/lib/request-context', function mockRequestContextModule() {
+  return {
+    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+  };
+});
+
+/**
  * Mock customer auth
  */
 vi.mock('@/lib/customer-auth', async function mockCustomerAuthModule() {
@@ -71,7 +110,7 @@ vi.mock('@/lib/customer-auth', async function mockCustomerAuthModule() {
     withCustomerAuth: vi.fn(function withCustomerAuth(handler) {
       return async function wrappedHandler(request: NextRequest, ...args: any[]) {
         const authContext = await mockAuthenticateCustomer(request);
-        
+
         if (!authContext.isAuthenticated) {
           return new Response(
             JSON.stringify({
@@ -82,7 +121,7 @@ vi.mock('@/lib/customer-auth', async function mockCustomerAuthModule() {
             { status: 401, headers: { 'Content-Type': 'application/json' } }
           );
         }
-        
+
         return handler(request, authContext, ...args);
       };
     }),
@@ -141,9 +180,10 @@ describe('agent-token', function packageTests() {
   describe('#POST', function postTests() {
     beforeEach(function resetMocks() {
       vi.clearAllMocks();
-      
+
       // Default mock implementations - use legacy mode by default
       mockIsV2ControlPlaneEnabled.mockReturnValue(false);
+      mockCheckSwitchboardFlag.mockResolvedValue(false);
       mockSiteAdapter.requiresAuth.mockReturnValue(true);
       mockJWTService.getToken.mockResolvedValue({
         token: MOCK_JWT_TOKEN,
@@ -161,7 +201,7 @@ describe('agent-token', function packageTests() {
         user: MOCK_USER,
         jwt: 'user-jwt-token'
       });
-      
+
       mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
 
       const request = createMockRequest({ siteId: MOCK_SITE_ID });
@@ -179,6 +219,7 @@ describe('agent-token', function packageTests() {
         siteId: MOCK_SITE_ID,
         canDownload: false,
         canPublish: false,
+        canPurchaseDomain: false,
         authType: 'basic',
         isE2S: false
       });
@@ -249,7 +290,7 @@ describe('agent-token', function packageTests() {
         user: MOCK_USER,
         jwt: 'user-jwt-token'
       });
-      
+
       mockSiteAdapter.getSiteById.mockResolvedValue(null);
 
       const request = createMockRequest({ siteId: MOCK_SITE_ID });
@@ -269,7 +310,7 @@ describe('agent-token', function packageTests() {
         user: MOCK_USER,
         jwt: 'user-jwt-token'
       });
-      
+
       mockSiteAdapter.getSiteById.mockResolvedValue({
         ...MOCK_SITE,
         account_id: 'different-account-id'
@@ -295,7 +336,7 @@ describe('agent-token', function packageTests() {
         },
         jwt: 'user-jwt-token'
       });
-      
+
       mockSiteAdapter.requiresAuth.mockReturnValue(false);
       mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
 
@@ -313,7 +354,7 @@ describe('agent-token', function packageTests() {
         user: MOCK_USER,
         jwt: 'user-jwt-token'
       });
-      
+
       mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
       mockJWTService.getToken.mockRejectedValue(new Error('JWT generation failed'));
 
@@ -334,7 +375,7 @@ describe('agent-token', function packageTests() {
         user: MOCK_USER,
         jwt: 'user-jwt-token'
       });
-      
+
       mockSiteAdapter.getSiteById.mockRejectedValue(new Error('Database connection failed'));
 
       const request = createMockRequest({ siteId: MOCK_SITE_ID });
@@ -394,7 +435,7 @@ describe('agent-token', function packageTests() {
         user: MOCK_USER,
         jwt: 'user-jwt-token'
       });
-      
+
       mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
 
       const customExpires = new Date('2025-12-31T23:59:59Z');
@@ -417,13 +458,13 @@ describe('agent-token', function packageTests() {
           user: MOCK_USER,
           jwt: 'user-jwt-token'
         });
-        
+
         mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
 
         const expiresInSeconds = 300;
-        const request = createMockRequest({ 
+        const request = createMockRequest({
           siteId: MOCK_SITE_ID,
-          expiresInSeconds 
+          expiresInSeconds
         });
         const response = await POST(request);
         const data = await response.json();
@@ -437,7 +478,7 @@ describe('agent-token', function packageTests() {
           expiresInSeconds
         });
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, authType: 'basic', isE2S: false },
+          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();
@@ -449,7 +490,7 @@ describe('agent-token', function packageTests() {
           user: MOCK_USER,
           jwt: 'user-jwt-token'
         });
-        
+
         mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
@@ -462,6 +503,7 @@ describe('agent-token', function packageTests() {
           siteId: MOCK_SITE_ID,
           canDownload: false,
           canPublish: false,
+          canPurchaseDomain: false,
           authType: 'basic',
           isE2S: false
         });
@@ -475,9 +517,9 @@ describe('agent-token', function packageTests() {
           jwt: 'user-jwt-token'
         });
 
-        const request = createMockRequest({ 
+        const request = createMockRequest({
           siteId: MOCK_SITE_ID,
-          expiresInSeconds: 0 
+          expiresInSeconds: 0
         });
         const response = await POST(request);
         const data = await response.json();
@@ -497,9 +539,9 @@ describe('agent-token', function packageTests() {
           jwt: 'user-jwt-token'
         });
 
-        const request = createMockRequest({ 
+        const request = createMockRequest({
           siteId: MOCK_SITE_ID,
-          expiresInSeconds: -100 
+          expiresInSeconds: -100
         });
         const response = await POST(request);
         const data = await response.json();
@@ -518,7 +560,7 @@ describe('agent-token', function packageTests() {
           jwt: 'user-jwt-token'
         });
 
-        const request = createMockRequest({ 
+        const request = createMockRequest({
           siteId: MOCK_SITE_ID,
           expiresInSeconds: 50000
         });
@@ -538,13 +580,13 @@ describe('agent-token', function packageTests() {
           user: MOCK_USER,
           jwt: 'user-jwt-token'
         });
-        
+
         mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
 
         const expiresInSeconds = 43200;
-        const request = createMockRequest({ 
+        const request = createMockRequest({
           siteId: MOCK_SITE_ID,
-          expiresInSeconds 
+          expiresInSeconds
         });
         const response = await POST(request);
         const data = await response.json();
@@ -552,7 +594,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, authType: 'basic', isE2S: false },
+          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false },
           expiresInSeconds
         );
       });
@@ -563,13 +605,13 @@ describe('agent-token', function packageTests() {
           user: MOCK_USER,
           jwt: 'user-jwt-token'
         });
-        
+
         mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
 
         const expiresInSeconds = 300;
-        const request = createMockRequest({ 
+        const request = createMockRequest({
           siteId: MOCK_SITE_ID,
-          expiresInSeconds 
+          expiresInSeconds
         });
         const response = await POST(request);
         const data = await response.json();
@@ -577,7 +619,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(300);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, authType: 'basic', isE2S: false },
+          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false },
           300
         );
       });
@@ -594,7 +636,7 @@ describe('agent-token', function packageTests() {
           user: MOCK_USER,
           jwt: 'user-jwt-token'
         });
-        
+
         mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_SITE);
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
@@ -613,6 +655,7 @@ describe('agent-token', function packageTests() {
           siteId: MOCK_SITE_ID,
           canDownload: false,
           canPublish: false,
+          canPurchaseDomain: false,
           authType: 'basic',
           isE2S: false
         });
@@ -645,7 +688,7 @@ describe('agent-token', function packageTests() {
           user: MOCK_USER,
           jwt: 'user-jwt-token'
         });
-        
+
         mockControlPlaneAdapter.getSite.mockResolvedValue(null);
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
@@ -664,7 +707,7 @@ describe('agent-token', function packageTests() {
           user: MOCK_USER,
           jwt: 'user-jwt-token'
         });
-        
+
         mockControlPlaneAdapter.getSite.mockRejectedValue(new Error('Control plane connection failed'));
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
@@ -684,7 +727,7 @@ describe('agent-token', function packageTests() {
           user: MOCK_USER,
           jwt: 'user-jwt-token'
         });
-        
+
         mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_SITE);
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
@@ -701,13 +744,13 @@ describe('agent-token', function packageTests() {
           user: MOCK_USER,
           jwt: 'user-jwt-token'
         });
-        
+
         mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_SITE);
 
         const expiresInSeconds = 600;
-        const request = createMockRequest({ 
+        const request = createMockRequest({
           siteId: MOCK_SITE_ID,
-          expiresInSeconds 
+          expiresInSeconds
         });
         const response = await POST(request);
         const data = await response.json();
@@ -715,7 +758,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, authType: 'basic', isE2S: false },
+          { siteId: MOCK_SITE_ID, canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();
@@ -728,7 +771,7 @@ describe('agent-token', function packageTests() {
           jwt: 'user-jwt-token'
         });
 
-        const request = createMockRequest({ 
+        const request = createMockRequest({
           siteId: MOCK_SITE_ID,
           expiresInSeconds: 50000
         });
@@ -744,4 +787,3 @@ describe('agent-token', function packageTests() {
     });
   });
 });
-

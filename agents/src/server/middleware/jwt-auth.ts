@@ -13,6 +13,7 @@ export interface AgentContext {
   siteId: string;          // Custom claim
   canDownload: boolean;    // Permission to download app files
   canPublish: boolean;     // Permission to publish app
+  canPurchaseDomain?: boolean; // Permission to purchase custom domains
   isE2S: boolean; // true if auth type is 'e2s' (employee-to-shopper)
   exp: number;
   iat: number;
@@ -93,6 +94,7 @@ export class JWTAuthMiddleware {
           siteId: auth.getSiteId(AuthType.NONE),
           canDownload: true,
           canPublish: true,
+          canPurchaseDomain: true,
           isE2S: false,
           exp: now + 3600,
           iat: now
@@ -109,6 +111,7 @@ export class JWTAuthMiddleware {
           siteId: auth.getSiteId(AuthType.MOCK),
           canDownload: true,
           canPublish: true,
+          canPurchaseDomain: true,
           isE2S: false,
           exp: now + 3600,
           iat: now
@@ -164,9 +167,10 @@ export class JWTAuthMiddleware {
         const claims = validationResult.claims;
         (req as AuthenticatedRequest).agentContext = {
           siteId: claims.siteId,
-          canDownload: claims.canDownload ?? false,  // Default to false for backward compatibility
-          canPublish: claims.canPublish ?? false,    // Default to false for backward compatibility
-          isE2S: claims.isE2S ?? false, // Default to false for backward compatibility
+          canDownload: claims.canDownload ?? false,
+          canPublish: claims.canPublish ?? false,
+          canPurchaseDomain: claims.canPurchaseDomain ?? false,
+          isE2S: claims.isE2S ?? false,
           exp: claims.exp,
           iat: claims.iat
         };

@@ -16,6 +16,7 @@ export interface CreateTokenOptions {
   siteId: string;
   canDownload: boolean;
   canPublish: boolean;
+  canPurchaseDomain?: boolean;
   authType?: 'basic' | 'e2s' | 's2s';
   isE2S: boolean; // Backward compatibility
 }
@@ -161,6 +162,7 @@ export class JWTService {
       siteId: options.siteId,
       canDownload: options.canDownload,
       canPublish: options.canPublish,
+      canPurchaseDomain: options.canPurchaseDomain ?? false,
       authType: options.authType || 'basic',
       isE2S: options.isE2S
     };
@@ -224,7 +226,7 @@ export class JWTService {
    */
   private getCacheKey(options: CreateTokenOptions): string {
     const authType = options.authType || 'basic';
-    return `${options.siteId}:${options.canDownload}:${options.canPublish}:${authType}`;
+    return `${options.siteId}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}`;
   }
 
   /**

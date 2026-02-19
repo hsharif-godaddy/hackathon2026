@@ -19,6 +19,7 @@ import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
 import { PaywallDenialReason } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
 import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
+import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 
 export interface CreateAgentTokenRequest {
   siteId: string;
@@ -120,6 +121,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Check paywall eligibility to determine permissions
     let canDownload = false;
     let canPublish = false;
+    let canPurchaseDomain = false;
     let eligibilityDetails: Record<string, unknown> = {};
 
     try {
@@ -175,11 +177,33 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       canPublish = false;
     }
 
+    // Check domain purchase feature flag (fail closed - deny if check fails)
+    try {
+      canPurchaseDomain = await checkSwitchboardFlag(
+        'appbuilder-domain-purchase',
+        authContext.jwt || '',
+        request.headers
+      );
+      logger.info('agent-token.domain-purchase-flag', {
+        siteId: body.siteId,
+        customerId: user.customerId,
+        canPurchaseDomain,
+      });
+    } catch (error) {
+      logger.warn('agent-token.domain-purchase-flag-check-failed', {
+        siteId: body.siteId,
+        customerId: user.customerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      canPurchaseDomain = false;
+    }
+
     const jwtService = getJWTService();
     const tokenOptions = {
       siteId: body.siteId,
       canDownload,
       canPublish,
+      canPurchaseDomain,
       authType: user.authType || 'basic',
       isE2S: user.isE2S ?? false
     };
