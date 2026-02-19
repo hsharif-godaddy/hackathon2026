@@ -33,12 +33,11 @@ type Config struct {
 	AllowedOrigins     []string // CORS allowed origins (comma-separated in env)
 
 	// JWT authentication configuration
-	// Auth failure handling uses hybrid mode: redirects browsers, returns 401 for APIs
+	// Auth failure handling uses hybrid mode: redirects browsers to builder, returns 401 for APIs
 	JWTEnabled        bool     // Enable JWT authentication (default: false)
 	JWKSUrl           string   // JWKS endpoint URL
 	JWKSSkipTLSVerify bool     // Skip TLS certificate verification for JWKS endpoint (local dev only)
-	JWTRedirectURL    string   // Redirect URL on auth failure (supports {url} placeholder)
-	JWTBuilderBaseURL string   // Builder app base URL for smart redirects (e.g., https://airo-builder.test-godaddy.com)
+	JWTBuilderBaseURL string   // Builder app base URL for redirects (e.g., https://airo-builder.test-godaddy.com)
 	SiteID            string   // Site ID for smart redirects (from SITE_ID env var)
 	JWTExcludedPaths  []string // Paths to exclude from JWT validation
 
@@ -99,7 +98,6 @@ func LoadConfig() *Config {
 	config.JWTEnabled = GetEnvBoolWithDefault("DEV_SUPERVISOR_ENABLE_JWT_AUTH", false)
 	config.JWKSUrl = GetEnvStringWithDefault("DEV_SUPERVISOR_JWKS_URL", "")
 	config.JWKSSkipTLSVerify = GetEnvBoolWithDefault("DEV_SUPERVISOR_JWKS_SKIP_TLS_VERIFY", false)
-	config.JWTRedirectURL = GetEnvStringWithDefault("DEV_SUPERVISOR_JWT_REDIRECT_URL", "")
 	config.JWTBuilderBaseURL = GetEnvStringWithDefault("DEV_SUPERVISOR_JWT_BUILDER_BASE_URL", "")
 
 	// SITE_ID is required (no default) - must be set by docker-compose or production deployment

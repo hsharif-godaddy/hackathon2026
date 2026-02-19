@@ -98,12 +98,11 @@ type Config struct {
 	AllowedOrigins      []string // CORS allowed origins (whitelist)
 
 	// JWT authentication configuration
-	// Auth failure handling uses hybrid mode: redirects browsers, returns 401 for APIs
+	// Auth failure handling uses hybrid mode: redirects browsers to builder, returns 401 for APIs
 	JWTEnabled        bool     // Enable JWT authentication (default: false)
 	JWKSUrl           string   // JWKS endpoint URL
 	JWKSSkipTLSVerify bool     // Skip TLS certificate verification (local dev only)
-	JWTRedirectURL    string   // Redirect URL on auth failure (supports {url} placeholder)
-	JWTBuilderBaseURL string   // Builder app base URL for smart redirects
+	JWTBuilderBaseURL string   // Builder app base URL for redirects
 	SiteID            string   // Site ID for smart redirects (from SITE_ID env var)
 	JWTExcludedPaths  []string // Paths to exclude from JWT validation
 

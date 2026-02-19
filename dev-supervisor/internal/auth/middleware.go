@@ -16,14 +16,13 @@ var siteIDPattern = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 
 // JWTMiddlewareConfig defines configuration for JWT middleware
 // Authentication failure handling uses hybrid mode:
-// - Browser requests (text/html): Redirect to SSO login page
+// - Browser requests (text/html): Redirect to builder develop page
 // - API/JSON requests: Return 401 Unauthorized with JSON error
 type JWTMiddlewareConfig struct {
 	Enabled        bool // Enable JWT validation
 	Validator      *JWTValidator
 	ShareValidator *ShareValidator // Share token validator (optional, for public preview links)
-	RedirectURL    string          // URL to redirect to on auth failure (supports {url} placeholder)
-	BuilderBaseURL string          // Builder app base URL for smart redirects (e.g., https://airo-builder.test-godaddy.com)
+	BuilderBaseURL string          // Builder app base URL for redirects (e.g., https://airo-builder.test-godaddy.com)
 	SiteID         string          // Site ID for smart redirects (from SITE_ID env var, e.g., "41gb5nrnyl" or UUID)
 	ExcludedPaths  []string        // Paths to exclude from JWT validation (e.g., /health, /api/health)
 	APIPrefix      string          // API route prefix for hybrid mode (default: /api)
@@ -251,7 +250,7 @@ func (m *JWTMiddleware) handleShareToken(
 
 // handleAuthFailure handles authentication failures using hybrid mode
 // Hybrid mode behavior:
-// - Browser requests (Accept: text/html): Redirect to SSO login page
+// - Browser requests (Accept: text/html): Redirect to builder develop page
 // - API/JSON requests: Return 401 Unauthorized with JSON error
 func (m *JWTMiddleware) handleAuthFailure(w http.ResponseWriter, r *http.Request, reason string) {
 	// Hybrid mode: redirect browsers, return 401 for APIs
@@ -273,45 +272,25 @@ func (m *JWTMiddleware) returnError(w http.ResponseWriter, r *http.Request, reas
 	http.Error(w, "Unauthorized", http.StatusUnauthorized)
 }
 
-// redirect redirects to configured login page
+// redirect redirects to builder develop page
 func (m *JWTMiddleware) redirect(w http.ResponseWriter, r *http.Request, reason string) {
-	redirectURL := m.config.RedirectURL
-
-	// Fallback to 401 if no redirect URL configured
+	// Build redirect URL to builder with specific app
+	// This gives the builder control over the auth flow (shows SSO entry page first)
+	// Works for both localhost:5001 and 41gb5nrnyl.preview.c4.test-airoapp.ai
+	// Builder URL format: https://airo-builder.{env}-godaddy.com/develop/{appId}?siteId={appId}
+	redirectURL := m.buildSmartRedirectURL()
 	if redirectURL == "" {
-		slog.Warn("jwt.middleware.no_redirect_url",
+		// No builder URL configured - return 401
+		slog.Warn("jwt.middleware.no_builder_url",
 			"path", r.URL.Path,
 			"reason", reason)
 		m.returnError(w, r, reason)
 		return
 	}
 
-	// Build the current URL (for return_to parameter)
-	currentURL := r.URL.String()
-	if r.TLS != nil {
-		currentURL = "https://" + r.Host + currentURL
-	} else {
-		// Check X-Forwarded-Proto header
-		if proto := r.Header.Get("X-Forwarded-Proto"); proto == "https" {
-			currentURL = "https://" + r.Host + currentURL
-		} else {
-			currentURL = "http://" + r.Host + currentURL
-		}
-	}
-
-	// Smart redirect: If this is a preview app, redirect to builder with specific app
-	// Works for both localhost:5001 and 41gb5nrnyl.preview.c4.test-airoapp.ai
-	// Builder URL format: https://airo-builder.{env}-godaddy.com/develop/{appId}?siteId={appId}
-	smartURL := m.buildSmartRedirectURL()
-	if smartURL != "" {
-		currentURL = smartURL
-		slog.Info("jwt.middleware.smart_redirect",
-			"originalHost", r.Host,
-			"smartURL", smartURL)
-	}
-
-	// Replace {url} placeholder with URL-encoded current URL (or smart URL)
-	redirectURL = strings.ReplaceAll(redirectURL, "{url}", url.QueryEscape(currentURL))
+	slog.Info("jwt.middleware.redirecting_to_builder",
+		"originalHost", r.Host,
+		"redirectURL", redirectURL)
 
 	// Validate redirect URL to prevent open redirect vulnerability
 	parsedURL, err := url.Parse(redirectURL)
@@ -356,8 +335,8 @@ func (m *JWTMiddleware) redirect(w http.ResponseWriter, r *http.Request, reason 
 // Works for both:
 // - localhost:5001 (local development) - SITE_ID from docker-compose
 // - 41gb5nrnyl.c4.test-airoapp.ai (production) - SITE_ID from deployment config
-// Builder URL format (root with redirect query so SSO allowlists the origin):
-// - https://airo-builder.{env}-godaddy.com/?redirect=%2Fdevelop%2F{siteId}%3FsiteId%3D{siteId}
+// Builder URL format (direct to develop page):
+// - https://airo-builder.{env}-godaddy.com/develop/{siteId}?siteId={siteId}
 func (m *JWTMiddleware) buildSmartRedirectURL() string {
 	// Use SITE_ID from environment (set by docker-compose or production deployment)
 	siteID := m.config.SiteID
@@ -388,55 +367,46 @@ func (m *JWTMiddleware) buildSmartRedirectURL() string {
 		return ""
 	}
 
-	// Build the smart redirect URL with URL-encoded siteID
-	// Format: https://airo-builder.{env}-godaddy.com/?redirect=%2Fdevelop%2F{siteId}%3FsiteId%3D{siteId}
-	escapedSiteID := url.QueryEscape(siteID)
-
-	basePath := builderBaseURL.Path
-	if basePath == "" {
-		basePath = "/"
-	}
-	if !strings.HasSuffix(basePath, "/") {
-		basePath += "/"
-	}
-
-	redirectPath := fmt.Sprintf("/develop/%s?siteId=%s", escapedSiteID, escapedSiteID)
-	smartURL := fmt.Sprintf("%s://%s%s?redirect=%s",
+	// Build the smart redirect URL directly to the develop page
+	// Format: https://airo-builder.{env}-godaddy.com/develop/{siteId}?siteId={siteId}
+	// This shows the SSO entry page within the builder app, giving more control over the auth flow
+	// Use PathEscape for path segment, QueryEscape for query parameter (defensive, regex ensures URL-safe chars)
+	smartURL := fmt.Sprintf("%s://%s/develop/%s?siteId=%s",
 		builderBaseURL.Scheme,
 		builderBaseURL.Host,
-		basePath,
-		url.QueryEscape(redirectPath))
+		url.PathEscape(siteID),
+		url.QueryEscape(siteID))
 
 	return smartURL
 }
 
 // isAllowedRedirectHost validates if a host is allowed for redirects
-// Prevents open redirect vulnerabilities by checking against configured redirect URL
+// Prevents open redirect vulnerabilities by checking against configured builder base URL
 func (m *JWTMiddleware) isAllowedRedirectHost(host string) bool {
-	// Parse the configured redirect URL to get the base host
-	configuredURL, err := url.Parse(m.config.RedirectURL)
-	if err != nil {
-		return false
-	}
-
 	// Extract host without port for comparison
-	configuredHost := configuredURL.Hostname()
 	testHost := host
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		testHost = h
 	}
 
-	// Allow exact match
-	if testHost == configuredHost {
-		return true
+	// Check against builder base URL host
+	if m.config.BuilderBaseURL == "" {
+		return false
 	}
 
-	// Allow subdomains of the configured host (e.g., app.airo.ai allows *.airo.ai)
-	if strings.HasSuffix(testHost, "."+configuredHost) {
-		return true
+	builderURL, err := url.Parse(m.config.BuilderBaseURL)
+	if err != nil {
+		return false
 	}
 
-	return false
+	builderHost := builderURL.Hostname()
+
+	// Only allow exact match - we always redirect to specific builder URLs:
+	// - https://airo-builder.dev-godaddy.com/
+	// - https://airo-builder.test-godaddy.com/
+	// - https://airo-builder.godaddy.com/
+	// - https://local.gasket.dev-godaddy.com:8443/
+	return testHost == builderHost
 }
 
 // isAPIOrJSONRequest checks if the request is an API or JSON request

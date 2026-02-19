@@ -257,12 +257,11 @@ func (p *HTTPProxy) Start() error {
 				"agents_base_url", p.config.AgentsBaseURL)
 		}
 
-		// Create JWT middleware (uses hybrid mode: redirects browsers, 401 for APIs)
+		// Create JWT middleware (uses hybrid mode: redirects browsers to builder, 401 for APIs)
 		jwtMiddleware := auth.NewJWTMiddleware(auth.JWTMiddlewareConfig{
 			Enabled:        true,
 			Validator:      validator,
 			ShareValidator: shareValidator,
-			RedirectURL:    p.config.JWTRedirectURL,
 			BuilderBaseURL: p.config.JWTBuilderBaseURL,
 			SiteID:         p.config.SiteID,
 			ExcludedPaths:  p.config.JWTExcludedPaths,

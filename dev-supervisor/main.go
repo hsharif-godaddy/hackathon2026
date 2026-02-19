@@ -278,11 +278,10 @@ func (s *Server) startHTTPProxyIfEnabled() error {
 		ConfigPath:          s.config.ProxyRoutingConfig,
 		AllowedOrigins:      s.config.AllowedOrigins,
 
-		// JWT authentication configuration (hybrid mode: redirects browsers, 401 for APIs)
+		// JWT authentication configuration (hybrid mode: redirects browsers to builder, 401 for APIs)
 		JWTEnabled:        s.config.JWTEnabled,
 		JWKSUrl:           s.config.JWKSUrl,
 		JWKSSkipTLSVerify: s.config.JWKSSkipTLSVerify,
-		JWTRedirectURL:    s.config.JWTRedirectURL,
 		JWTBuilderBaseURL: s.config.JWTBuilderBaseURL,
 		SiteID:            s.config.SiteID,
 		JWTExcludedPaths:  s.config.JWTExcludedPaths,
