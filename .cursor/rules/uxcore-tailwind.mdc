@@ -1,0 +1,18 @@
+---
+description: UXCore Tailwind intent class reference for the Builder UI
+globs: app/src/**/*.{tsx,scss}
+alwaysApply: false
+---
+
+# UXCore Tailwind Intents
+
+Before writing or modifying any `intents-ux-` Tailwind classes, read `app/uxcore-tailwind.md` for the complete reference of valid intent names, properties, and prefixes.
+
+Common mistakes to avoid:
+
+❌ `text-intents-ux-error-textColor` → ✅ `text-intents-ux-feedbackHighContrastCritical-feedbackColor`
+❌ `text-intents-ux-textSubtle-textColor` → ✅ `text-intents-ux-feedbackHighContrastPassive-feedbackColor`
+❌ `text-intents-ux-text-textColor` → ✅ `text-intents-ux-box-foregroundColor`
+❌ `bg-intents-ux-success-backgroundColor` → ✅ `bg-intents-ux-feedbackSuccess-feedbackColor`
+❌ `bg-intents-ux-feedbackSuccess-backgroundColor` → ✅ `bg-intents-ux-feedbackSuccess-feedbackColor`
+❌ `border-intents-ux-border-borderColor` → ✅ `border-intents-ux-box-borderColor`

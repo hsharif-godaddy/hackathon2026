@@ -82,7 +82,8 @@ if (options.token && options.repoUrl) {
 **Design System Boundaries:**
 
 - **`/app` (Builder UI)**: Use UXCore design system (@ux/\*) exclusively
-  - See `app/uxcore-llm.txt` and `app/design-guidance.md`
+  - See `app/uxcore-llm.txt` (components), `app/uxcore-tailwind.md` (intent classes), and `app/design-guidance.md`
+  - Read `app/uxcore-tailwind.md` before using any `intents-ux-` Tailwind classes
   - NO default Tailwind colors (`bg-white`, `text-blue-600`)
   - Prioritize accessibility and usability
 - **`/app-templates` (Generated Apps)**: Use Shadcn/ui + Radix + Tailwind
