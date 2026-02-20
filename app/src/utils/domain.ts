@@ -255,11 +255,13 @@ export function isCustomerDomain(
  *
  * @param domain - Domain to get DNS records for
  * @param anycastIp - The anycast IP address to point to
+ * @param certificateValidationCname - The certificate validation CNAME value to use for the CNAME record
  * @returns DNS record recommendations
  */
-export function getDnsRecords(domain: string, anycastIp: string): {
+export function getDnsRecords(domain: string, anycastIp: string, certificateValidationCname?: string): {
   aRecord: { type: 'A'; name: string; value: string; ttl: number };
   cnameRecord: { type: 'CNAME'; name: string; value: string; ttl: number } | null;
+  dcvRecord: { type: 'CNAME'; name: string; value: string; ttl: number } | null;
 } {
   const parsed = parseDomain(domain);
 
@@ -273,8 +275,16 @@ export function getDnsRecords(domain: string, anycastIp: string): {
         ttl: 3600,
       },
       cnameRecord: null,
+      dcvRecord: null,
     };
   }
+
+  const dcvRecord = certificateValidationCname ? {
+    type: 'CNAME' as const,
+    name: '_acme-challenge',
+    value: certificateValidationCname,
+    ttl: 3600,
+  } : null;
 
   if (parsed.isSubdomain) {
     // For subdomains (e.g., blog.example.com), only show A record
@@ -287,6 +297,7 @@ export function getDnsRecords(domain: string, anycastIp: string): {
         ttl: 3600,
       },
       cnameRecord: null, // No www CNAME needed for subdomains
+      dcvRecord,
     };
   } else {
     // For root domains (e.g., example.com), show A record + www CNAME
@@ -303,6 +314,7 @@ export function getDnsRecords(domain: string, anycastIp: string): {
         value: parsed.fqdn,
         ttl: 3600,
       },
+      dcvRecord,
     };
   }
 }

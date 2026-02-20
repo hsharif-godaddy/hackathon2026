@@ -17,6 +17,7 @@ import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
 import { useModifyDomains } from '@/hooks/useModifyDomains';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { CdnStatus, DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
@@ -60,6 +61,8 @@ export default function DomainAttach() {
   const [debouncedDomain, setDebouncedDomain] = useState('');
   const [showAddConfirmation, setShowAddConfirmation] = useState(false);
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const { data: isWildcardDomain } = useSwitchboard('appbuilder-www-wildcard');
 
   const site = useSiteStore((state) => {
     if (!currentAppId) return null;
@@ -216,6 +219,7 @@ export default function DomainAttach() {
         payload: {
           domainsToCreate: [{ fqdn: domainName, primary: false }],
           createCdn: true,
+          isWildcardDomain,
         },
       });
       shipAnalyticsLog('domain.custom.connect.success', {
@@ -481,29 +485,30 @@ export default function DomainAttach() {
           />
         </div>
       ) }
-        {showAddConfirmation && (
-          <Modal onClose={() => setShowAddConfirmation(false)} title={t('builder_custom_domain_modal_title')} centered>
-            <Box className='text-center max-w-2xl mx-auto' gap='md' inlineAlignChildren='center'>
-               <text.span as="paragraph">
-                {t('builder_custom_domain_modal_description')}
-               </text.span>
-             <Box orientation="horizontal" gap="md" className="justify-center">
-               <Button
-                 design="primary"
-                 onClick={handleConfirmAdd}
-                 text={t('builder_custom_domain_modal_button_continue')}
-                 data-eid={generateClickEID(`settings.domains.connect_continue`)}
-               />
-               <Button
-                 design="secondary"
-                 onClick={() => setShowAddConfirmation(false)}
-                 text={t('builder_custom_domain_modal_button_cancel')}
-                 data-eid={generateClickEID(`settings.domains.connect_cancel`)}
-               />
-             </Box>
-           </Box>
-          </Modal>
-        )}
+
+      {showAddConfirmation && (
+        <Modal onClose={() => setShowAddConfirmation(false)} title={t('builder_custom_domain_modal_title')} centered>
+          <Box className='text-center max-w-2xl mx-auto' gap='md' inlineAlignChildren='center'>
+            <text.span as="paragraph">
+              {t('builder_custom_domain_modal_description')}
+            </text.span>
+            <Box orientation="horizontal" gap="md" className="justify-center">
+              <Button
+                design="primary"
+                onClick={handleConfirmAdd}
+                text={t('builder_custom_domain_modal_button_continue')}
+                data-eid={generateClickEID(`settings.domains.connect_continue`)}
+              />
+              <Button
+                design="secondary"
+                onClick={() => setShowAddConfirmation(false)}
+                text={t('builder_custom_domain_modal_button_cancel')}
+                data-eid={generateClickEID(`settings.domains.connect_cancel`)}
+              />
+            </Box>
+          </Box>
+        </Modal>
+      )}
 
       {/* Custom Domains Added Section */}
       {customDomains.length > 0 && (

@@ -134,6 +134,7 @@ export interface AiroDomain {
   status: DomainStatus;
   cdnStatus?: CdnStatus;
   anycastIp?: string;
+  certificateValidationCname?: string;
   domainType: string;
   prefix: string;
   createdAt: string;
@@ -386,6 +387,7 @@ export interface AiroModifyDomainsPayload {
   domainsToCreate?: DomainToCreate[];
   domainsToDelete?: DomainToDelete[];
   createCdn?: boolean;
+  isWildcardDomain?: boolean;
 }
 
 /**

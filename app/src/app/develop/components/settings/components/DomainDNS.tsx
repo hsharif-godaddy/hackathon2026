@@ -16,7 +16,7 @@ import { getDnsRecords } from '@/utils/domain';
  */
 export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain }) {
   const t = useTranslations();
-  const { fqdn, anycastIp } = domainDetails;
+  const { fqdn, anycastIp, certificateValidationCname } = domainDetails;
 
   // Show provisioning message if anycast IP is not ready yet
   if (!anycastIp) {
@@ -38,7 +38,7 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
   }
 
   // Get DNS records based on domain type (root domain vs subdomain)
-  const dnsRecords = getDnsRecords(fqdn, anycastIp);
+  const dnsRecords = getDnsRecords(fqdn, anycastIp, certificateValidationCname);
 
   return (
     <Box
@@ -58,7 +58,7 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
           className="font-semibold text-sm border-b border-intents-ux-border-subtle pb-1"
         >
           <div className="w-10">{t('builder_domain_dns_table_type')}</div>
-          <div className="w-12">{t('builder_domain_dns_table_name')}</div>
+          <div className="w-16">{t('builder_domain_dns_table_name')}</div>
           <div className="flex-1">{t('builder_domain_dns_table_value')}</div>
           <div className="w-10">{t('builder_domain_dns_table_ttl')}</div>
         </Box>
@@ -70,7 +70,7 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
           className={dnsRecords.cnameRecord ? "text-sm py-1 border-b border-intents-ux-border-subtle" : "text-sm py-1"}
         >
           <div className="w-10">{dnsRecords.aRecord.type}</div>
-          <div className="w-12">{dnsRecords.aRecord.name}</div>
+          <div className="w-16">{dnsRecords.aRecord.name}</div>
           <div className="flex-1">
             <code className="bg-intents-ux-box-subtle rounded px-1 py-0.5 text-xs font-mono">
               {dnsRecords.aRecord.value}
@@ -78,6 +78,42 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
           </div>
           <div className="w-10">{dnsRecords.aRecord.ttl}</div>
         </Box>
+
+        {/* CNAME Record */}
+        {dnsRecords.cnameRecord && (
+          <Box
+            orientation="horizontal"
+            gap="md"
+            className={dnsRecords.dcvRecord ? "text-sm py-1 border-b border-intents-ux-border-subtle" : "text-sm py-1"}
+          >
+            <div className="w-10">{dnsRecords.cnameRecord.type}</div>
+            <div className="w-16">{dnsRecords.cnameRecord.name}</div>
+            <div className="flex-1">
+              <code className="bg-intents-ux-box-subtle rounded px-1 py-0.5 text-xs font-mono">
+                {dnsRecords.cnameRecord.value}
+              </code>
+            </div>
+            <div className="w-10">{dnsRecords.cnameRecord.ttl}</div>
+          </Box>
+        )}
+
+        {/* DCV Record */}
+        {dnsRecords.dcvRecord && (
+          <Box
+            orientation="horizontal"
+            gap="md"
+            className="text-sm py-1"
+          >
+            <div className="w-10">{dnsRecords.dcvRecord.type}</div>
+            <div className="w-16">{dnsRecords.dcvRecord.name}</div>
+            <div className="flex-1">
+              <code className="bg-intents-ux-box-subtle rounded px-1 py-0.5 text-xs font-mono">
+                {dnsRecords.dcvRecord.value}
+              </code>
+            </div>
+            <div className="w-10">{dnsRecords.dcvRecord.ttl}</div>
+          </Box>
+        )}
       </Box>
     </Box>
   );

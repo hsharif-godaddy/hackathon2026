@@ -17,6 +17,7 @@ export const dynamic = 'force-dynamic';
  *   - domainsToCreate: Array of domains to create [{ fqdn: string, primary?: boolean }]
  *   - domainsToDelete: Array of domains to delete [{ fqdn: string }]
  *   - createCdn: Whether to create CDN for the domains (boolean, optional)
+ *   - isWildcardDomain: Whether to create a wildcard domain (boolean, optional)
  * @param authContext - Customer authentication context
  * @param params - Route parameters with site ID
  * @returns Domain modification job response with statusJobId
@@ -66,7 +67,7 @@ export const POST = withCustomerAuth(async (
 
     // Parse request body
     const body = await request.json();
-    const { domainsToCreate = [], domainsToDelete = [], createCdn = false } = body;
+    const { domainsToCreate = [], domainsToDelete = [], createCdn = false, isWildcardDomain = false } = body;
 
     // Validate at least one operation is requested
     if (domainsToCreate.length === 0 && domainsToDelete.length === 0) {
@@ -103,6 +104,7 @@ export const POST = withCustomerAuth(async (
       domainsToCreateCount: domainsToCreate.length,
       domainsToDeleteCount: domainsToDelete.length,
       createCdn,
+      isWildcardDomain,
     });
 
     // Create mgmt-airo client and trigger domain modification
@@ -116,7 +118,8 @@ export const POST = withCustomerAuth(async (
         domainsToCreate,
         domainsToDelete,
         createCdn,
-      }
+        isWildcardDomain,
+      },
     );
 
     logger.info('sites.domains.modify.success', {

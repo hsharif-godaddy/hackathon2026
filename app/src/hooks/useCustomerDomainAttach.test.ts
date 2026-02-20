@@ -40,6 +40,7 @@ describe('useCustomerDomainAttach', () => {
           isPrimary: true,
           status: 'pending',
           anycastIp: '192.168.1.1',
+          certificateValidationCname: 'dcv.customer.com',
         },
       ],
     };

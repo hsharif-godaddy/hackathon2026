@@ -25,6 +25,7 @@ export interface ModifyDomainsPayload {
   domainsToCreate?: DomainToCreate[];
   domainsToDelete?: DomainToDelete[];
   createCdn?: boolean;
+  isWildcardDomain?: boolean;
 }
 
 /**
@@ -55,7 +56,8 @@ export interface ModifyDomainsResponse {
  *   siteId: 'app-123',
  *   payload: {
  *     domainsToCreate: [{ fqdn: 'example.com', primary: true }],
- *     createCdn: true
+ *     createCdn: true,
+ *     isWildcardDomain: true,
  *   }
  * });
  * ```

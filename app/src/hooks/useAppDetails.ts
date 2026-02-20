@@ -12,6 +12,7 @@ export interface AppDomain {
   status: string;
   cdnStatus?: string | number;
   anycastIp?: string;
+  certificateValidationCname?: string;
   domainType?: string;
   prefix?: string;
   createdAt?: string;

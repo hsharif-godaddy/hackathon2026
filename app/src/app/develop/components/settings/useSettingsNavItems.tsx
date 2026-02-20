@@ -87,7 +87,7 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
     },
     ...(isShareLinksEnabled ? [{
       id: SettingsSection.SHARE,
-      label: t('builder_settings_nav_share', undefined, 'Share'),
+      label: t('builder_settings_nav_share'),
       icon: <ShareIcon />,
       disabled: false,
     }] : []),
