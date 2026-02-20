@@ -26,6 +26,15 @@ import { WebSocketSubscriber } from './subscribers/websocket-subscriber.js'
 import { PersistenceSubscriber } from './subscribers/persistence-subscriber.js'
 import { ConnectionStateManager, type ConnectionStateData } from './connection-state-manager.js'
 import { ConnectionRecoveryManager } from './connection-recovery-manager.js'
+import { context as otelContext } from '@opentelemetry/api'
+import { createError, createHandoff } from '@godaddy/agent-observability-events'
+import {
+  createAgentContext,
+  createAgentInvocationSpan,
+  emitError,
+  emitHandoff
+} from '@godaddy/agent-otel-sdk'
+import { createTraceContext } from '@signals/otel-sdk'
 
 /**
  * APM agent type for tool execution tracking
@@ -1003,6 +1012,14 @@ export class WebSocketServer {
     // This ensures llm_end events capture the full streamed text
     if (type === 'chunk' || type === 'text_chunk') {
       if (content) {
+        // Insert a newline when text resumes after non-text events (tool_start,
+        // tool_result, etc.) so the accumulated string has readable separation
+        // between the agent's text segments instead of smashing them together.
+        // Uses length - 2 because the current event was already pushed above.
+        const lastEvent = conversation.streamingEvents[conversation.streamingEvents.length - 2]
+        if (conversation.accumulatedContent && lastEvent && lastEvent.type !== 'chunk' && lastEvent.type !== 'text_chunk') {
+          conversation.accumulatedContent += '\n'
+        }
         conversation.accumulatedContent += content
       }
     }
@@ -1673,13 +1690,22 @@ export class WebSocketServer {
       conversationId: (data.context as any)?.conversation?.conversationId
     })
 
-    // Queue this message to prevent concurrent handleChatMessage races
-    // StateManager handles the queue chain, cleanup, and error isolation
-    return this.stateManager.queueMessage(socketId, () => this.handleChatMessageInternal(socket, data))
+    // Create trace context early so all events (including conversation_start) share the same trace ID.
+    // Handshake headers are passed for extracting common Event Bus metadata like visitor ID, customer ID, etc.
+    const traceCtx = createTraceContext({
+      headers: socket.handshake?.headers,
+    })
+
+    return otelContext.with(traceCtx, () =>
+      // Queue this message to prevent concurrent handleChatMessage races
+      // StateManager handles the queue chain, cleanup, and error isolation
+      this.stateManager.queueMessage(socketId, () => this.handleChatMessageInternal(socket, data))
+    )
   }
 
   /**
    * Internal message handler - executes serially per socket via queue
+   * Runs within the trace context established by handleChatMessage
    */
   private async handleChatMessageInternal(socket: any, data: ChatMessage): Promise<void> {
     const socketId = socket.id
@@ -1914,6 +1940,19 @@ export class WebSocketServer {
         // Prepare for next iteration
         this.logger.info(`Handoff detected: ${agentName} -> ${handoffDetails.newAgentName}`)
 
+        emitHandoff({
+          conversationId: conversationIdForCleanup,
+          agentId: this.getAgentId(agentName),
+          eventData: createHandoff({
+            fromAgentId: this.getAgentId(agentName),
+            fromAgentName: agentName,
+            toAgentId: this.getAgentId(handoffDetails.newAgentName),
+            toAgentName: handoffDetails.newAgentName,
+            reason: 'Agent handoff',
+            routingMethod: 'llm'
+          })
+        })
+
         // Notify about agent change (for updating conversation.agent_id)
         const conversation = this.getConversation(socketId)
         if (conversation && this.config.onAgentChanged) {
@@ -2008,6 +2047,18 @@ export class WebSocketServer {
         } as WebSocketMessage)
       }
 
+      emitError({
+        conversationId: conversationIdForCleanup,
+        agentId: this.getAgentId(agentName),
+        eventData: createError({
+          errorType: errorType || error?.constructor?.name || 'Error',
+          errorMessage,
+          errorPhase: 'execution',
+          isRetryable: errorType === 'RETRY_ERROR' || statusCode === 503 || statusCode === 429,
+          ...(error instanceof Error ? { errorStack: error.stack } : {})
+        })
+      })
+
       await this.config.onError?.(socketId, error instanceof Error ? error : new Error(String(error)), data.message, processedContext)
 
       // Handle persistence error
@@ -2063,6 +2114,10 @@ export class WebSocketServer {
       // - On disconnect: cleanupConversation() removes entries when client disconnects
       // This keeps state available between turns while ensuring eventual cleanup.
     }
+  }
+
+  private getAgentId(name?: string): string {
+    return `airo-app-builder-${name || this.config.defaultAgent || 'unknown'}`
   }
 
   /**
@@ -2654,16 +2709,35 @@ export class WebSocketServer {
 
     const llmStartTime = Date.now()
 
+    // Build OTel context with agent-specific data.
+    // Signals context is already set by createTraceContext in handleChatMessage.
+    const agentOtelContext = createAgentContext({
+      conversationId,
+      agentId: this.getAgentId(agentName),
+    })
+
+    // Create invocation span within the agent context.
+    const invocation = otelContext.with(agentOtelContext, () =>
+      createAgentInvocationSpan({
+        prompt: originalPrompt,
+        model: modelName,
+        provider: providerName,
+      })
+    )
+
     try {
-      streamResult = await agent.streamGenerate(originalPrompt, {
-        // Add context messages with cache points intact
-        ...(contextMessages.length > 0 && { context: contextMessages }),
-        // Add conversation history messages
-        ...(messages.length > 0 && { messages }),
-        // Pass execution context for tools
-        ...(context && { executionContext: context }),
-        // Pass screenshots as files for vision processing
-        ...(processedFiles && processedFiles.length > 0 && { files: processedFiles })
+      // Run agent.streamGenerate within the invocation context
+      streamResult = await otelContext.with(invocation.context, async () => {
+        return await agent.streamGenerate(originalPrompt, {
+          // Add context messages with cache points intact
+          ...(contextMessages.length > 0 && { context: contextMessages }),
+          // Add conversation history messages
+          ...(messages.length > 0 && { messages }),
+          // Pass execution context for tools
+          ...(context && { executionContext: context }),
+          // Pass screenshots as files for vision processing
+          ...(processedFiles && processedFiles.length > 0 && { files: processedFiles })
+        })
       })
 
       // Check if this is a tool validation error with mock stream
@@ -2687,6 +2761,8 @@ export class WebSocketServer {
           message: error.message
         })
 
+        // End invocation span with error before throwing
+        invocation.end({ error, success: false })
         throw new BudgetExceededError(
           'Your AI usage budget has been reached.',
           error.statusCode,
@@ -2776,16 +2852,20 @@ Please try again with corrected formatting.`
             { role: 'user' as const, content: retryPrompt }
           ]
 
-          streamResult = await agent.streamGenerate(retryPrompt, {
-            ...(contextMessages.length > 0 && { context: contextMessages }),
-            messages: retryMessages,
-            ...(context && { executionContext: context }),
-            // Include screenshots in retry as well
-            ...(processedFiles && processedFiles.length > 0 && { files: processedFiles })
-          })
+          streamResult = await otelContext.with(invocation.context, () =>
+            agent.streamGenerate(retryPrompt, {
+              ...(contextMessages.length > 0 && { context: contextMessages }),
+              messages: retryMessages,
+              ...(context && { executionContext: context }),
+              // Include screenshots in retry as well
+              ...(processedFiles && processedFiles.length > 0 && { files: processedFiles })
+            })
+          )
         } catch (retryError: any) {
           // If retry also fails, fall back to error handling
           this.logger.error('Retry also failed', { message: retryError.message })
+          // End invocation span with error before throwing
+          invocation.end({ error: retryError, success: false })
           throw retryError
         }
       } else {
@@ -2814,220 +2894,249 @@ Please try again with corrected formatting.`
           });
         }
 
+        // End invocation span with error before throwing
+        invocation.end({ error, success: false })
         // Re-throw to be handled by outer catch block or AI SDK retry mechanism
         throw error;
       }
     }
 
-    // Publish step start - subscribers handle delivery and persistence
-    const stepStartData = {
-      step: currentStep,
-      stepType: 'reasoning',
-      agentId: agentName,
-      agentName: String(this.config.agents.get(agentName)?.getName() || agentName),
-      messageId: activeConversation?.context?.agentMessageId  // NEW: Include message ID for pending message tracking
-    }
-    await this.publishToEventChannel(socket.id, 'step_start', '', stepStartData, agentName)
+    try {
+      // Publish step start - subscribers handle delivery and persistence
+      const stepStartData = {
+        step: currentStep,
+        stepType: 'reasoning',
+        agentId: agentName,
+        agentName: String(this.config.agents.get(agentName)?.getName() || agentName),
+        messageId: activeConversation?.context?.agentMessageId  // NEW: Include message ID for pending message tracking
+      }
+      await this.publishToEventChannel(socket.id, 'step_start', '', stepStartData, agentName)
 
-    // Reset accumulated content and tool calls for this new LLM call
-    // This ensures each LLM call captures only its own streamed output and tool calls, not from previous calls
-    if (activeConversation) {
-      activeConversation.accumulatedContent = ''
-      activeConversation.pendingToolCalls?.clear()
-    }
+      // Reset accumulated content and tool calls for this new LLM call
+      // This ensures each LLM call captures only its own streamed output and tool calls, not from previous calls
+      if (activeConversation) {
+        activeConversation.accumulatedContent = ''
+        activeConversation.pendingToolCalls?.clear()
+      }
 
-    // Process both text chunks and tool events from baseStream
-    await this.processStreamWithToolEvents(socket, streamResult, currentStep, agentName)
+      // Process both text chunks and tool events from baseStream
+      await this.processStreamWithToolEvents(socket, streamResult, currentStep, agentName)
 
-    // Get accumulated content from the active conversation (streamed text before/between tool calls)
-    // Refresh reference after streaming - the conversation object may have been updated during streaming
-    // Use getConversation to handle socket ID migration during reconnection
-    const conversationAfterStream = this.getConversation(socket.id)
-    const fullContent = conversationAfterStream?.accumulatedContent || ''
+      // Get accumulated content from the active conversation (streamed text before/between tool calls)
+      // Refresh reference after streaming - the conversation object may have been updated during streaming
+      // Use getConversation to handle socket ID migration during reconnection
+      const conversationAfterStream = this.getConversation(socket.id)
+      const fullContent = conversationAfterStream?.accumulatedContent || ''
 
-    // Debug log for accumulated content and tool calls
-    const toolCallCount = conversationAfterStream?.pendingToolCalls?.size || 0
-    if (fullContent.length > 0 || toolCallCount > 0) {
-      this.logger.debug('LLM response accumulated', {
-        fullContentLength: fullContent.length,
-        toolCallCount,
-        toolNames: toolCallCount > 0 ? Array.from(conversationAfterStream!.pendingToolCalls!.values()).map((tc: any) => tc.name) : [],
-        hasActiveConversation: !!conversationAfterStream,
-        preview: fullContent.substring(0, 100) + (fullContent.length > 100 ? '...' : '')
-      })
-    }
-
-    // Get final result with usage and tool calls
-    const finalResult = await streamResult.getFinalResult() as AgentExecutionResult
-
-    // Log token and cache usage information
-    // Use totalUsage for accurate multi-step token tracking (sums all steps)
-    const usageToTrack = finalResult.totalUsage || finalResult.usage
-    if (usageToTrack) {
-      // Merge usage data with caching information
-      const usage: TokenUsage = {
-        ...usageToTrack,
-        // Include cache metrics from the caching object if available
-        ...(finalResult.caching && {
-          cachedInputTokensRead: finalResult.caching.cachedInputTokens,
-          cachedInputTokensWrite: finalResult.caching.cacheWriteInputTokens
+      // Debug log for accumulated content and tool calls
+      const toolCallCount = conversationAfterStream?.pendingToolCalls?.size || 0
+      if (fullContent.length > 0 || toolCallCount > 0) {
+        this.logger.debug('LLM response accumulated', {
+          fullContentLength: fullContent.length,
+          toolCallCount,
+          toolNames: toolCallCount > 0 ? Array.from(conversationAfterStream!.pendingToolCalls!.values()).map((tc: any) => tc.name) : [],
+          hasActiveConversation: !!conversationAfterStream,
+          preview: fullContent.substring(0, 100) + (fullContent.length > 100 ? '...' : '')
         })
       }
 
-      // Get model information from agent config
-      // Get model name from agent configuration
-      let modelName = 'unknown'
-      try {
-        const agentConfig = agent.getConfig()
-        modelName = agentConfig.modelName || agentName || 'unknown'
-      } catch (error) {
-        this.logger.warn(`Failed to get model name from agent config: ${error}`)
-        modelName = agentName || 'unknown'
-      }
+      // Get final result with usage and tool calls
+      const finalResult = await streamResult.getFinalResult() as AgentExecutionResult
 
-      this.logger.info('Token Usage Statistics', {
-        inputTokens: usage.inputTokens || 0,
-        outputTokens: usage.outputTokens || 0,
-        totalTokens: usage.totalTokens || 0
-      })
-
-      // Log cache usage if available
-      const totalCachedTokens = (usage.cachedInputTokensRead || 0) + (usage.cachedInputTokensWrite || 0)
-      if (totalCachedTokens > 0) {
-        const cacheHitRate = getCacheHitRate(usage)
-        const cacheDetails: any = {
-          totalCachedTokens,
-          cacheHitRate: cacheHitRate.toFixed(1) + '%'
+      // Log token and cache usage information
+      // Use totalUsage for accurate multi-step token tracking (sums all steps)
+      const usageToTrack = finalResult.totalUsage || finalResult.usage
+      let costEstimateTotalCost: number | undefined
+      if (usageToTrack) {
+        // Merge usage data with caching information
+        const usage: TokenUsage = {
+          ...usageToTrack,
+          // Include cache metrics from the caching object if available
+          ...(finalResult.caching && {
+            cachedInputTokensRead: finalResult.caching.cachedInputTokens,
+            cachedInputTokensWrite: finalResult.caching.cacheWriteInputTokens
+          })
         }
-        if (usage.cachedInputTokensRead && usage.cachedInputTokensWrite) {
-          cacheDetails.read = usage.cachedInputTokensRead
-          cacheDetails.write = usage.cachedInputTokensWrite
-        } else if (usage.cachedInputTokensRead) {
-          cacheDetails.read = usage.cachedInputTokensRead
-        } else if (usage.cachedInputTokensWrite) {
-          cacheDetails.write = usage.cachedInputTokensWrite
-        }
-        this.logger.info('Cache usage', cacheDetails)
-      } else {
-        this.logger.info('No cache usage detected')
-      }
 
-      // Calculate and log cost estimate using accurate model pricing
-      const costEstimate = calculateCostEstimate(usage, modelName)
-      const costLines = formatCostEstimate(costEstimate, usage)
-      this.logger.info(costLines.join('\n'))
-
-      // Call onTokenUsage callback with accurate multi-step usage
-      if (this.config.onTokenUsage) {
+        // Get model information from agent config
+        // Get model name from agent configuration
+        let modelName = 'unknown'
         try {
-          const processedContext = context as ProcessedContext
-          const contextAppId = processedContext?.appId || (processedContext?.metadata as MetadataRecord)?.appId
-          await this.config.onTokenUsage(
-            {
-              inputTokens: usage.inputTokens || 0,
-              outputTokens: usage.outputTokens || 0,
-              totalTokens: usage.totalTokens || 0,
-              ...(usage.cachedInputTokensRead !== undefined && { cachedInputTokens: usage.cachedInputTokensRead }),
-              ...(usage.cachedInputTokensWrite !== undefined && { cacheWriteInputTokens: usage.cachedInputTokensWrite })
-            },
-            {
-              agentName,
-              modelName,
-              ...(conversationAfterStream?.conversationId && { conversationId: conversationAfterStream.conversationId }),
-              ...(contextAppId && { appId: contextAppId })
-            }
-          )
+          const agentConfig = agent.getConfig()
+          modelName = agentConfig.modelName || agentName || 'unknown'
         } catch (error) {
-          this.logger.error('Error in onTokenUsage callback', { error })
+          this.logger.warn(`Failed to get model name from agent config: ${error}`)
+          modelName = agentName || 'unknown'
+        }
+
+        this.logger.info('Token Usage Statistics', {
+          inputTokens: usage.inputTokens || 0,
+          outputTokens: usage.outputTokens || 0,
+          totalTokens: usage.totalTokens || 0
+        })
+
+        // Log cache usage if available
+        const totalCachedTokens = (usage.cachedInputTokensRead || 0) + (usage.cachedInputTokensWrite || 0)
+        if (totalCachedTokens > 0) {
+          const cacheHitRate = getCacheHitRate(usage)
+          const cacheDetails: any = {
+            totalCachedTokens,
+            cacheHitRate: cacheHitRate.toFixed(1) + '%'
+          }
+          if (usage.cachedInputTokensRead && usage.cachedInputTokensWrite) {
+            cacheDetails.read = usage.cachedInputTokensRead
+            cacheDetails.write = usage.cachedInputTokensWrite
+          } else if (usage.cachedInputTokensRead) {
+            cacheDetails.read = usage.cachedInputTokensRead
+          } else if (usage.cachedInputTokensWrite) {
+            cacheDetails.write = usage.cachedInputTokensWrite
+          }
+          this.logger.info('Cache usage', cacheDetails)
+        } else {
+          this.logger.info('No cache usage detected')
+        }
+
+        // Calculate and log cost estimate using accurate model pricing
+        const costEstimate = calculateCostEstimate(usage, modelName)
+        costEstimateTotalCost = costEstimate.totalCost
+        const costLines = formatCostEstimate(costEstimate, usage)
+        this.logger.info(costLines.join('\n'))
+
+        // Call onTokenUsage callback with accurate multi-step usage
+        if (this.config.onTokenUsage) {
+          try {
+            const processedContext = context as ProcessedContext
+            const contextAppId = processedContext?.appId || (processedContext?.metadata as MetadataRecord)?.appId
+            await this.config.onTokenUsage(
+              {
+                inputTokens: usage.inputTokens || 0,
+                outputTokens: usage.outputTokens || 0,
+                totalTokens: usage.totalTokens || 0,
+                ...(usage.cachedInputTokensRead !== undefined && { cachedInputTokens: usage.cachedInputTokensRead }),
+                ...(usage.cachedInputTokensWrite !== undefined && { cacheWriteInputTokens: usage.cachedInputTokensWrite })
+              },
+              {
+                agentName,
+                modelName,
+                ...(conversationAfterStream?.conversationId && { conversationId: conversationAfterStream.conversationId }),
+                ...(contextAppId && { appId: contextAppId })
+              }
+            )
+          } catch (error) {
+            this.logger.error('Error in onTokenUsage callback', { error })
+          }
         }
       }
-    }
 
-    // Call LLM end hook for observability
-    if (this.config.onLlmEnd) {
-      try {
-        // Build params object, only including defined values
-        const llmEndParams: Parameters<NonNullable<typeof this.config.onLlmEnd>>[0] = {
-          socketId: socket.id,
-          startTime: llmSpanInfo?.startTime || llmStartTime,
-          model: modelName,
-          provider: providerName,
-          success: true
+      // Call LLM end hook for observability
+      if (this.config.onLlmEnd) {
+        try {
+          // Build params object, only including defined values
+          const llmEndParams: Parameters<NonNullable<typeof this.config.onLlmEnd>>[0] = {
+            socketId: socket.id,
+            startTime: llmSpanInfo?.startTime || llmStartTime,
+            model: modelName,
+            provider: providerName,
+            success: true
+          }
+          if (llmSpanInfo?.spanId !== undefined) llmEndParams.spanId = llmSpanInfo.spanId
+          if (conversationId !== undefined) llmEndParams.conversationId = conversationId
+          if (appId !== undefined) llmEndParams.appId = appId
+          if (context !== undefined) llmEndParams.context = context
+          if (finalResult.finishReason !== undefined) llmEndParams.finishReason = finalResult.finishReason
+          if (usageToTrack) {
+            const usageObj: NonNullable<typeof llmEndParams.usage> = {}
+            if (usageToTrack.inputTokens !== undefined) usageObj.inputTokens = usageToTrack.inputTokens
+            if (usageToTrack.outputTokens !== undefined) usageObj.outputTokens = usageToTrack.outputTokens
+            if (usageToTrack.totalTokens !== undefined) usageObj.totalTokens = usageToTrack.totalTokens
+            if (usageToTrack.cachedInputTokensRead !== undefined) usageObj.cachedTokens = usageToTrack.cachedInputTokensRead
+            llmEndParams.usage = usageObj
+          }
+
+          // Add output message (assistant's response)
+          // Always provide at least an empty assistant message - required for llm_end events
+          // When finishReason is 'tool-calls', fullContent may be empty but we still need output
+          llmEndParams.output = [{ role: 'assistant', content: fullContent || '' }]
+
+          // Add tool calls if any - use accumulated tool calls from conversation for complete list
+          // pendingToolCalls captures ALL tool calls made during streaming, not just the final batch
+          const allToolCalls = conversationAfterStream?.pendingToolCalls
+          if (allToolCalls && allToolCalls.size > 0) {
+            llmEndParams.toolCalls = Array.from(allToolCalls.values()).map((tc: any) => ({
+              id: tc.id || 'unknown',
+              name: tc.name || 'unknown',
+              ...(tc.input && { arguments: tc.input })
+            }))
+          } else if (finalResult.toolCalls && Array.isArray(finalResult.toolCalls) && finalResult.toolCalls.length > 0) {
+            // Fallback to finalResult.toolCalls if pendingToolCalls is not available
+            llmEndParams.toolCalls = finalResult.toolCalls.map((tc: any) => ({
+              id: tc.toolCallId || tc.id || 'unknown',
+              name: tc.toolName || tc.name || 'unknown',
+              ...(tc.args && { arguments: tc.args }),
+              ...(tc.arguments && { arguments: tc.arguments }),
+              ...(tc.input && { arguments: tc.input })
+            }))
+          }
+
+          // Add reasoning summary if available (for models that support extended thinking)
+          if (finalResult.reasoningSummary) {
+            llmEndParams.reasoningSummary = finalResult.reasoningSummary
+          }
+
+          await this.config.onLlmEnd(llmEndParams)
+        } catch (hookError) {
+          this.logger.warn('LLM end hook failed', hookError)
         }
-        if (llmSpanInfo?.spanId !== undefined) llmEndParams.spanId = llmSpanInfo.spanId
-        if (conversationId !== undefined) llmEndParams.conversationId = conversationId
-        if (appId !== undefined) llmEndParams.appId = appId
-        if (context !== undefined) llmEndParams.context = context
-        if (finalResult.finishReason !== undefined) llmEndParams.finishReason = finalResult.finishReason
-        if (usageToTrack) {
-          const usageObj: NonNullable<typeof llmEndParams.usage> = {}
-          if (usageToTrack.inputTokens !== undefined) usageObj.inputTokens = usageToTrack.inputTokens
-          if (usageToTrack.outputTokens !== undefined) usageObj.outputTokens = usageToTrack.outputTokens
-          if (usageToTrack.totalTokens !== undefined) usageObj.totalTokens = usageToTrack.totalTokens
-          if (usageToTrack.cachedInputTokensRead !== undefined) usageObj.cachedTokens = usageToTrack.cachedInputTokensRead
-          llmEndParams.usage = usageObj
-        }
-
-        // Add output message (assistant's response)
-        // Always provide at least an empty assistant message - required for llm_end events
-        // When finishReason is 'tool-calls', fullContent may be empty but we still need output
-        llmEndParams.output = [{ role: 'assistant', content: fullContent || '' }]
-
-        // Add tool calls if any - use accumulated tool calls from conversation for complete list
-        // pendingToolCalls captures ALL tool calls made during streaming, not just the final batch
-        const allToolCalls = conversationAfterStream?.pendingToolCalls
-        if (allToolCalls && allToolCalls.size > 0) {
-          llmEndParams.toolCalls = Array.from(allToolCalls.values()).map((tc: any) => ({
-            id: tc.id || 'unknown',
-            name: tc.name || 'unknown',
-            ...(tc.input && { arguments: tc.input })
-          }))
-        } else if (finalResult.toolCalls && Array.isArray(finalResult.toolCalls) && finalResult.toolCalls.length > 0) {
-          // Fallback to finalResult.toolCalls if pendingToolCalls is not available
-          llmEndParams.toolCalls = finalResult.toolCalls.map((tc: any) => ({
-            id: tc.toolCallId || tc.id || 'unknown',
-            name: tc.toolName || tc.name || 'unknown',
-            ...(tc.args && { arguments: tc.args }),
-            ...(tc.arguments && { arguments: tc.arguments }),
-            ...(tc.input && { arguments: tc.input })
-          }))
-        }
-
-        // Add reasoning summary if available (for models that support extended thinking)
-        if (finalResult.reasoningSummary) {
-          llmEndParams.reasoningSummary = finalResult.reasoningSummary
-        }
-
-        await this.config.onLlmEnd(llmEndParams)
-      } catch (hookError) {
-        this.logger.warn('LLM end hook failed', hookError)
       }
-    }
 
-    // Calculate duration
-    const duration = `${Date.now() - startTime}ms`
+      // Calculate duration
+      const duration = `${Date.now() - startTime}ms`
 
-    // Publish step complete - subscribers handle delivery and persistence
-    await this.publishToEventChannel(socket.id, 'step_complete', fullContent, {
-      step: currentStep,
-      isFinal: true,
-      toolCalls: finalResult.toolCalls || [],
-      usage: this.config.includeUsageData ? usageToTrack : undefined,
-      agentId: agentName,
-      messageId: activeConversation?.context?.agentMessageId  // NEW: Include message ID for pending message tracking
-    }, agentName)
-
-    // Only emit completion events if this is the final agent (no handoff pending)
-    if (shouldComplete) {
-      // Publish final completion event - subscribers handle delivery and persistence
-      await this.publishToEventChannel(socket.id, 'complete', fullContent, {
-        totalSteps: currentStep,
-        usage: this.config.includeUsageData ? usageToTrack : undefined,
+      // Publish step complete - subscribers handle delivery and persistence
+      await this.publishToEventChannel(socket.id, 'step_complete', fullContent, {
+        step: currentStep,
+        isFinal: true,
         toolCalls: finalResult.toolCalls || [],
+        usage: this.config.includeUsageData ? usageToTrack : undefined,
         agentId: agentName,
-        duration,
         messageId: activeConversation?.context?.agentMessageId  // NEW: Include message ID for pending message tracking
       }, agentName)
+
+      // Only emit completion events if this is the final agent (no handoff pending)
+      if (shouldComplete) {
+        // Publish final completion event - subscribers handle delivery and persistence
+        await this.publishToEventChannel(socket.id, 'complete', fullContent, {
+          totalSteps: currentStep,
+          usage: this.config.includeUsageData ? usageToTrack : undefined,
+          toolCalls: finalResult.toolCalls || [],
+          agentId: agentName,
+          duration,
+          messageId: activeConversation?.context?.agentMessageId  // NEW: Include message ID for pending message tracking
+        }, agentName)
+      }
+
+      // End the invocation span with the final output and aggregated usage
+      const toolResults = conversationAfterStream?.pendingToolCalls
+      const hasToolResults = toolResults && toolResults.size > 0
+
+      invocation.end({
+        outputText: fullContent,
+        responseType: fullContent ? 'llm_reply' : 'tool_call',
+        ...(hasToolResults && {
+          responseData: Array.from(toolResults.values()).map(t => ({
+            name: t.name,
+            status: t.status,
+            output: t.result,
+          }))
+        }),
+        usage: usageToTrack,
+        totalCost: costEstimateTotalCost,
+        finishReason: finalResult.finishReason,
+        success: true,
+      })
+    } catch (postStreamError: unknown) {
+      invocation.end({ error: postStreamError instanceof Error ? postStreamError : String(postStreamError), success: false })
+      throw postStreamError
     }
 
     // Note: Conversation completion is now handled by completeConversation()

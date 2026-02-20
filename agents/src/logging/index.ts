@@ -3,7 +3,7 @@
  */
 
 // Core logger and types
-export { Logger, logger, createTimer, generateRequestId } from './Logger.js';
+export { Logger, logger, createTimer, generateRequestId, toPinoLogger } from './Logger.js';
 export type { 
   ILogger, 
   LogLevel, 

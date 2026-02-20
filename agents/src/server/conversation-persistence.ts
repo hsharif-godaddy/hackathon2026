@@ -11,6 +11,7 @@ import type {
   ConversationContext
 } from '@airo/ai-lib'
 import { calculateCostEstimate } from '@airo/ai-lib'
+import { emitConversationStart } from '@godaddy/agent-otel-sdk'
 import { conversationRepository, appRepository, tokenUsageRepository } from '../database/repositories/index.js'
 import type { ConversationRepository } from '../database/repositories/index.js'
 import type { AppRepository } from '../database/repositories/index.js'
@@ -360,6 +361,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     }
 
     let conversationId: string
+    let isNewConversation = false
 
     // Check if conversationId is provided in context
     const providedConversationId = context.conversation?.conversationId
@@ -382,6 +384,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           providedConversationId
         )
         conversationId = conversation.id
+        isNewConversation = true
         contextLogger.info('conversation.created_with_id', { conversationId })
       }
     } else {
@@ -392,7 +395,15 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         `Chat with ${context.agentName} - ${new Date().toLocaleString()}`
       )
       conversationId = conversation.id
+      isNewConversation = isNew
       contextLogger.info(isNew ? 'conversation.created' : 'conversation.reused_latest', { conversationId })
+    }
+
+    if (isNewConversation) {
+      emitConversationStart({
+        conversationId,
+        agentId: `airo-app-builder-${context.agentName}`,
+      })
     }
 
     // Extract contextAttachments if present (they're passed through agent context)

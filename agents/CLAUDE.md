@@ -890,6 +890,68 @@ LOG_OPT_IN_DOMAINS=compression.file_edit
 
 **See root `LOGGING-GUIDE.md` for complete documentation.**
 
+## Observability
+
+Agent interactions are instrumented via OpenTelemetry span processing and explicit event emission, sending structured events to the Event Bus for downstream analytics (Langfuse, dashboards, etc.).
+
+### Key Files
+
+| File                                                   | Purpose                                                                            |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `src/server/instrumentation.ts`                        | Initializes `createAgentSpanProcessor` and OTel `NodeSDK` with Langfuse            |
+| `src/server/conversation-persistence.ts`               | Calls `emitConversationStart` when a new conversation is created                   |
+| `packages/ai-lib/.../experimental-websocket-server.ts` | Sets up trace context, agent context, invocation spans; emits handoff/error events |
+
+### Context Flow
+
+Context is layered via OTel's `AsyncLocalStorageContextManager`. Each layer enriches spans with additional metadata that the span processor reads automatically:
+
+```
+createTraceContext({ headers })       -- Signals metadata (visitor, customer, session)
+  -> createAgentContext(...)          -- Agent metadata (conversationId, agentId)
+    -> createAgentInvocationSpan()    -- OTel GenAI invocation span
+      -> AI SDK streamGenerate()      -- Vercel AI spans inherit context
+```
+
+In `experimental-websocket-server.ts`:
+
+```typescript
+// Trace context wraps entire message handling (enriches with Signals metadata)
+const traceCtx = createTraceContext({ headers: socket.handshake?.headers })
+return otelContext.with(traceCtx, () => handleChatMessageInternal(...))
+
+// Agent context + invocation span created before LLM call
+const agentOtelContext = createAgentContext({ conversationId, agentId })
+const invocation = otelContext.with(agentOtelContext, () =>
+  createAgentInvocationSpan({ prompt, model, provider })
+)
+```
+
+### Event Helpers
+
+Three event types are emitted explicitly (the span processor handles LLM/tool events automatically):
+
+- `emitConversationStart({ conversationId, agentId })` -- called in `conversation-persistence.ts`
+- `emitHandoff({ conversationId, agentId, eventData: createHandoff(...) })` -- called on agent handoff
+- `emitError({ conversationId, agentId, eventData: createError(...) })` -- called in error handler
+
+`createHandoff` and `createError` come from `@godaddy/agent-observability-events`.
+
+### Environment Variables
+
+| Variable                      | Purpose                                                          |
+| ----------------------------- | ---------------------------------------------------------------- |
+| `ENABLE_OBSERVABILITY_EVENTS` | Set to `true` to enable Event Bus integration                    |
+| `ENVIRONMENT_NAME`            | Maps to `GDEnvEnum` (production -> prod, test -> test, else dev) |
+
+### SDKs
+
+| SDK                                   | Purpose                                                                                   |
+| ------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `@signals/otel-sdk`                   | `createTraceContext` -- enriches spans with Signals metadata (visitor, customer, session) |
+| `@godaddy/agent-otel-sdk`             | Span processor, `createAgentContext`, `createAgentInvocationSpan`, emit helpers           |
+| `@godaddy/agent-observability-events` | Event Bus client, `createHandoff`, `createError` data constructors                        |
+
 ## Related Documentation
 
 - Root CLAUDE.md: General architecture and patterns

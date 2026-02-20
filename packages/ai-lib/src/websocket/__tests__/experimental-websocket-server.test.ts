@@ -2048,3 +2048,55 @@ describe('WebSocketServer - Error Handling', () => {
     })
   })
 })
+
+describe('WebSocketServer - Accumulated Content Newline Separation', () => {
+  let server: WebSocketServer
+  let httpServer: HTTPServer
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    httpServer = new HTTPServer()
+    server = new WebSocketServer(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
+    })
+  })
+
+  afterEach(() => {
+    server.close()
+  })
+
+  it('should insert newline when text chunk follows a non-text event', async function newlineSeparation() {
+    const conversation = {
+      conversationId: 'test-conv',
+      context: { socketId: 'test-socket', agentName: 'test-agent' },
+      streamingEvents: [] as any[],
+      accumulatedContent: undefined as string | undefined
+    }
+
+    const track = (server as any).trackEventForConversation.bind(server)
+
+    await track(conversation, 'chunk', 'Hello', {})
+    await track(conversation, 'tool_result', '', { toolName: 'search' })
+    await track(conversation, 'chunk', 'World', {})
+
+    expect(conversation.accumulatedContent).toBe('Hello\nWorld')
+  })
+
+  it('should not insert newline between consecutive text chunks', async function noNewline() {
+    const conversation = {
+      conversationId: 'test-conv',
+      context: { socketId: 'test-socket', agentName: 'test-agent' },
+      streamingEvents: [] as any[],
+      accumulatedContent: undefined as string | undefined
+    }
+
+    const track = (server as any).trackEventForConversation.bind(server)
+
+    await track(conversation, 'chunk', 'Hello ', {})
+    await track(conversation, 'chunk', 'World', {})
+
+    expect(conversation.accumulatedContent).toBe('Hello World')
+  })
+})

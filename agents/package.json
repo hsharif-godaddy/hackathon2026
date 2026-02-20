@@ -62,10 +62,13 @@
     "@babel/parser": "^7.28.0",
     "@babel/traverse": "^7.28.0",
     "@babel/types": "^7.28.0",
+    "@godaddy/agent-observability-events": "^1.4.0",
+    "@godaddy/agent-otel-sdk": "^1.0.1",
     "@godaddy/goknowb-client": "^1.0.8",
     "@langfuse/otel": "^4.5.1",
     "@langfuse/tracing": "^4.5.1",
     "@openai/agents": "^0.0.17",
+    "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/sdk-node": "^0.208.0",
     "@qdrant/js-client-rest": "^1.15.1",
     "@types/jsonwebtoken": "^9.0.10",
@@ -106,6 +109,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@opentelemetry/sdk-trace-node": "^2.5.0",
     "@types/archiver": "^6.0.2",
     "@types/babel__generator": "^7.6.8",
     "@types/babel__traverse": "^7.20.6",

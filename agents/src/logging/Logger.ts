@@ -315,3 +315,22 @@ export function createTimer() {
 export function generateRequestId(): string {
   return nanoid(8);
 }
+
+/**
+ * Wrap an airo Logger as a pino-compatible logger.
+ * Adapts pino-style (meta, message) calls to airo's (event, data) convention.
+ */
+export function toPinoLogger(airoLogger: Logger) {
+  function normalize(...args: any[]): [string, any] {
+    if (typeof args[0] === 'string') return [args[0], args[1]];
+    return [typeof args[1] === 'string' ? args[1] : 'log', args[0]];
+  }
+
+  return {
+    debug: (...args: any[]) => airoLogger.debug(...normalize(...args)),
+    info: (...args: any[]) => airoLogger.info(...normalize(...args)),
+    warn: (...args: any[]) => airoLogger.warn(...normalize(...args)),
+    error: (...args: any[]) => airoLogger.error(...normalize(...args)),
+    child: (metadata: Record<string, any>) => toPinoLogger(airoLogger.child(metadata)),
+  };
+}
