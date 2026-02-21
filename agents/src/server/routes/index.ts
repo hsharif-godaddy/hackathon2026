@@ -12,6 +12,7 @@ export { default as downloadRouter } from './download.js';
 export { default as dbRouter } from './db.js';
 export { default as todoListRouter } from './todo-list.js';
 export { default as securityScanRouter } from './security-scan.js';
+export { default as securityMisconfigScanRouter } from './security-misconfig-scan.js';
 export { default as qaAnalyzeRouter } from './qa-analyze.js';
 export { default as vulnerabilityScanRouter } from './vulnerability-scan.js';
 export { default as secretsScanRouter } from './secrets-scan.js';

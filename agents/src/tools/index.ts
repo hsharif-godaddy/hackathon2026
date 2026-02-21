@@ -26,6 +26,7 @@ export { MemoryTool } from './memory-tool.js';
 export { SkillLoaderTool } from './skill-loader-tool.js';
 export { VulnerabilityScannerTool } from './vulnerability-scanner-tool.js';
 export { SecretsScannerTool } from './secrets-scanner-tool.js';
+export { SecurityMisconfigurationScannerTool } from './security-misconfiguration-scanner-tool.js';
 // Tool definitions and execution now handled by ai-lib agents
 export type {
   DirectoryListingOptions,
@@ -164,3 +165,11 @@ export type {
   SecretsScannerResult,
   SecretFinding
 } from './secrets-scanner-tool.js';
+
+export type {
+  SecurityMisconfigurationScannerOptions,
+  SecurityMisconfigurationScannerResult,
+  MisconfigurationFinding,
+  MisconfigurationCategory,
+  MisconfigurationSeverity
+} from './security-misconfiguration-scanner-tool.js';

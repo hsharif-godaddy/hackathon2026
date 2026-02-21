@@ -174,7 +174,7 @@ import compression from 'compression';
 import { createServer } from 'http';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, todoListRouter, securityScanRouter, vulnerabilityScanRouter, secretsScanRouter,oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, zipImportRouter, shareRouter, mediaRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, todoListRouter, securityScanRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, secretsScanRouter,oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, zipImportRouter, shareRouter, mediaRouter } from './routes/index.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
 import { getDatabase } from '../database/index.js';
@@ -297,6 +297,7 @@ app.use('/agent', jwtAuthMiddleware.authenticate, todoListRouter);
 app.use('/files', jwtAuthMiddleware.authenticate, filesRouter);
 app.use('/debug', jwtAuthMiddleware.authenticate, debugRouter);
 app.use('/', jwtAuthMiddleware.authenticate, securityScanRouter);
+app.use('/', jwtAuthMiddleware.authenticate, securityMisconfigScanRouter);
 app.use('/', jwtAuthMiddleware.authenticate, qaAnalyzeRouter);
 app.use('/', jwtAuthMiddleware.authenticate, vulnerabilityScanRouter);
 app.use('/', jwtAuthMiddleware.authenticate, secretsScanRouter);
