@@ -13,7 +13,7 @@ import ExamplesSection from '@/app/components/HeroExamples'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useTranslations } from '@/hooks/useTranslations'
-import { validateAndClampPrompt } from '@/lib/waf-validation'
+import { getByteLength, MAX_PROMPT_BYTES, validateAndClampPrompt } from '@/lib/waf-validation'
 import { generateClickEID } from '@/utils/instrumentation'
 import { HeroSectionProps, HeroSectionRef } from './types'
 
@@ -68,6 +68,12 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   }, [isListening]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleStartBuilding() {
+    // Flush any pending debounced promptText update so the parent has the latest value
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+      debounceTimerRef.current = null
+      setPromptText(displayText)
+    }
     if (isListening) {
       // Clear ref before stopping to prevent race condition with captureTextOnListeningStart effect
       textBeforeListeningRef.current = ''
@@ -285,10 +291,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       : intl.formatMessage({ id: 'builder_homepage_hero_start_listening', defaultMessage: 'Start voice input' })
   }, [isListening, intl])
 
-  // Track validation state for character counter
-  const validationInfo = useMemo(() => {
-    return validateAndClampPrompt(promptText)
-  }, [promptText])
+  const bytesRemaining = MAX_PROMPT_BYTES - getByteLength(displayText)
+  const isOverLimit = bytesRemaining < 0
+  const showCharCount = isExpanded && bytesRemaining <= 20
 
   return (
     <Box className="flex flex-col gap-2 md:gap-3 px-2 sm:px-3 lg:px-4 pt-6 md:pt-12 min-h-[calc(100vh-3rem)] items-center justify-center">
@@ -334,19 +339,18 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
             >
               <textarea
                 data-testid="homepage-prompt-input"
+                aria-describedby="prompt-char-count"
                 value={displayText}
                 onChange={(e) => {
                   // Block input during typing animation or speech recognition to prevent
                   // conflicts between manual typing, animated text, and voice transcript.
                   // Users can stop listening to edit the transcript.
                   if (isTyping || isListening) return
-                  const validated = validateAndClampPrompt(e.target.value)
                   isUserTypingRef.current = true
-                  setDisplayText(validated.text)
-                  debouncedSetPromptText(validated.text)
-                  // Clear error when user starts typing (avoid unnecessary calls)
-                  if (error && lastErrorClearRef.current !== validated.text) {
-                    lastErrorClearRef.current = validated.text
+                  setDisplayText(e.target.value)
+                  debouncedSetPromptText(e.target.value)
+                  if (error && lastErrorClearRef.current !== e.target.value) {
+                    lastErrorClearRef.current = e.target.value
                     setError(null)
                   }
                 }}
@@ -357,7 +361,6 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 }}
                 rows={5}
                 disabled={isLoading || isListening}
-                maxLength={10000}
                 className={clsx('!bg-intents-ux-box-backgroundColor relative pl-3 sm:pl-4 pr-8 sm:pr-12 py-2.5 sm:py-3 w-full text-md sm:text-xl leading-[1.5] font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
                   'h-24 md:h-32 rounded-2xl': isExpanded,
                   'h-8 sm:h-10 rounded-[3rem]': !isExpanded
@@ -365,6 +368,32 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 placeholder={isTyping ? "" : animatedPlaceholder}
               />
 
+
+              <div
+                id="prompt-char-count"
+                role="status"
+                aria-live="polite"
+                className="absolute top-2.5 right-2 sm:top-3 sm:right-3 md:right-3.5 z-10"
+              >
+                {showCharCount && (
+                  <text.p
+                    size={0}
+                    className={clsx('font-medium', { 'opacity-50': !isOverLimit })}
+                    emphasis={isOverLimit ? 'critical' : undefined}
+                  >
+                    <span aria-hidden="true">
+                      {isOverLimit ? `-${Math.abs(bytesRemaining)}` : bytesRemaining}
+                    </span>
+                    <span className="sr-only">
+                      {isOverLimit
+                        ? t('builder_homepage_hero_chars_over_limit', { count: Math.abs(bytesRemaining) },
+                          `${Math.abs(bytesRemaining)} characters over limit`)
+                        : t('builder_homepage_hero_chars_remaining', { count: bytesRemaining },
+                          `${bytesRemaining} characters remaining`)}
+                    </span>
+                  </text.p>
+                )}
+              </div>
 
               {/* Action Buttons Container */}
               <div className={clsx('absolute flex items-center right-1.5 transition-all duration-300', {
@@ -391,7 +420,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   onClick={handleStartBuilding}
                   data-partial="componentAiro"
                   data-eid={generateClickEID('homepage.prompt.submit')}
-                  disabled={!promptText.trim() || isLoading || isTyping || !validationInfo.isValid}
+                  disabled={!displayText.trim() || isLoading || isTyping || isOverLimit}
                   design='primary'
                   className='cursor-pointer !rounded-full aspect-square !border-none'
                   icon={isLoading ? <Spinner size='sm' /> : <SendIcon />}
@@ -401,19 +430,6 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               </div>
             </Box>
           </div>
-          {validationInfo.remainingChars < 500 && isExpanded && (
-            <div className="mt-0.5 px-4 text-left">
-              <text.p
-                size={0}
-                className="font-medium"
-                emphasis={validationInfo.remainingChars === 0 ? "critical" : undefined}
-              >
-                {t('builder_homepage_hero_chars_remaining', { count: validationInfo.remainingChars },
-                  `${validationInfo.remainingChars} characters remaining`)}
-              </text.p>
-            </div>
-          )}
-
           <text.p size={-1} className='max-w-lg mx-auto opacity-40 mb-2 md:mb-4 text-center'>
             <FormattedMessage
               id='builder_homepage_hero_disclaimer'
