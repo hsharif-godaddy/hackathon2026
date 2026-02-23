@@ -32,7 +32,12 @@ interface FeatureConfig {
 /**
  * Application constants
  */
-export const MAX_PROMPT_LENGTH = 40000
+// UI-enforced character limit for prompt input.
+// This value is used for textarea `maxLength` (e.g. in HeroSection) to provide a simple UX cap,
+// while the backend still enforces the true byte-based limit (~7.4KB) in waf-validation.ts.
+// 6000 characters is a conservative estimate assuming ~1.2 bytes per character on average, so
+// typical inputs remain safely under the byte cap even for multi-byte characters.
+export const MAX_PROMPT_LENGTH = 6000
 
 /**
  * Determine authentication type based on environment

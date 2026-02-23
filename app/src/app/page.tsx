@@ -26,6 +26,7 @@ import { isFeatureEnabled } from '@/lib/features'
 import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
+import { validateAndClampPrompt } from '@/lib/waf-validation'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 
@@ -68,8 +69,18 @@ function HomeContent() {
   useEffect(() => {
     const initialPromptParam = searchParams.get('initialPrompt')
     if (initialPromptParam && !promptText) {
-      // URL decode and set the prompt text
-      setPromptText(decodeURIComponent(initialPromptParam))
+      // URL decode, validate, and set the prompt text
+      const decoded = decodeURIComponent(initialPromptParam)
+      const validated = validateAndClampPrompt(decoded)
+      setPromptText(validated.text)
+
+      if (validated.wasClipped) {
+        logger.warn('homepage.url-param.clipped', {
+          originalLength: decoded.length,
+          clippedLength: validated.charLength,
+          byteLength: validated.byteLength
+        })
+      }
     }
     // Intentionally excluding promptText from the dependency array to prevent clearing the input when typing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -105,6 +116,18 @@ function HomeContent() {
     promptToUse = promptToUse.replace(/https?:\/\/example\.com\s*/gi, '').trim()
 
     if (!promptToUse || isRedirecting || isLoading) return
+
+    // Validate byte limit before sending (defense-in-depth on client)
+    const validated = validateAndClampPrompt(promptToUse)
+    promptToUse = validated.text
+
+    if (validated.wasClipped) {
+      logger.warn('homepage.submit.clipped', {
+        originalLength: promptToUse.length,
+        clippedLength: validated.charLength,
+        byteLength: validated.byteLength
+      })
+    }
 
     // Short-circuit if auth state is still loading.
     // Wait for auth to resolve before deciding whether to show SSO login or proceed.
@@ -242,19 +265,40 @@ function HomeContent() {
 
     if (savedPrompt && !promptText) {
       logger.info('homepage.prompt.restore', { message: 'Restoring saved prompt after login' })
-      setPromptText(savedPrompt)
+
+      // Validate before restoring
+      const validated = validateAndClampPrompt(savedPrompt)
+      setPromptText(validated.text)
       localStorage.removeItem('airo-pending-prompt')
 
-      handleStartBuilding(savedPrompt)
+      if (validated.wasClipped) {
+        logger.warn('homepage.restore.clipped', {
+          originalLength: savedPrompt.length,
+          clippedLength: validated.charLength,
+          byteLength: validated.byteLength
+        })
+      }
+
+      handleStartBuilding(validated.text)
     }
   }, [isAuthenticated, authIsLoading, promptText, handleStartBuilding])
 
   const handleExampleClick = (examplePrompt: string) => {
     if (heroSectionRef.current) {
+      // typeText already validates inside HeroSection
       heroSectionRef.current.typeText(examplePrompt)
     } else {
-      // Fallback if ref is not available
-      setPromptText(examplePrompt)
+      // Fallback if ref is not available - validate before setting
+      const validated = validateAndClampPrompt(examplePrompt)
+      setPromptText(validated.text)
+
+      if (validated.wasClipped) {
+        logger.warn('homepage.example.clipped', {
+          originalLength: examplePrompt.length,
+          clippedLength: validated.charLength,
+          byteLength: validated.byteLength
+        })
+      }
     }
   }
 

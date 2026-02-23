@@ -13,7 +13,7 @@ import ExamplesSection from '@/app/components/HeroExamples'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useTranslations } from '@/hooks/useTranslations'
-import { MAX_PROMPT_LENGTH } from '@/lib/features'
+import { validateAndClampPrompt } from '@/lib/waf-validation'
 import { generateClickEID } from '@/utils/instrumentation'
 import { HeroSectionProps, HeroSectionRef } from './types'
 
@@ -51,8 +51,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       const baseText = textBeforeListeningRef.current
       const separator = baseText && !baseText.endsWith(' ') ? ' ' : ''
       const newText = baseText + separator + speechTranscript
-      setDisplayText(newText)
-      setPromptText(newText)
+      const validated = validateAndClampPrompt(newText)
+      setDisplayText(validated.text)
+      setPromptText(validated.text)
     }
   }, [isListening, speechTranscript, setPromptText])
 
@@ -194,36 +195,40 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   const typeText = useCallback(async (targetText: string) => {
     if (isLoading) return
 
+    // Validate and clamp to byte limit
+    const validated = validateAndClampPrompt(targetText)
+    const validatedText = validated.text
+
     // Prevent animation if text is already the same
-    if (displayText === targetText) return
+    if (displayText === validatedText) return
 
     // Skip animation on Safari for better performance
     if (isSafari) {
-      setDisplayText(targetText)
-      setPromptText(targetText)
+      setDisplayText(validatedText)
+      setPromptText(validatedText)
       return
     }
 
     const typingSpeed = 2
 
     setIsTyping(true)
-    animationQueueRef.current = [targetText]
+    animationQueueRef.current = [validatedText]
 
     // First, clear existing text with backspace effect
     const currentText = displayText
     for (let i = currentText.length; i >= 0; i--) {
-      if (animationQueueRef.current[0] !== targetText) return // Animation was interrupted
+      if (animationQueueRef.current[0] !== validatedText) return // Animation was interrupted
       setDisplayText(currentText.slice(0, i))
       await new Promise(resolve => setTimeout(resolve, typingSpeed))
     }
 
     // Then type the new text
-    for (let i = 0; i <= targetText.length; i++) {
-      if (animationQueueRef.current[0] !== targetText) return // Animation was interrupted
-      const newText = targetText.slice(0, i)
+    for (let i = 0; i <= validatedText.length; i++) {
+      if (animationQueueRef.current[0] !== validatedText) return // Animation was interrupted
+      const newText = validatedText.slice(0, i)
       setDisplayText(newText)
       // Only update parent state at the end to reduce re-renders
-      if (i === targetText.length) {
+      if (i === validatedText.length) {
         setPromptText(newText)
       }
       await new Promise(resolve => setTimeout(resolve, typingSpeed))
@@ -280,6 +285,11 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       : intl.formatMessage({ id: 'builder_homepage_hero_start_listening', defaultMessage: 'Start voice input' })
   }, [isListening, intl])
 
+  // Track validation state for character counter
+  const validationInfo = useMemo(() => {
+    return validateAndClampPrompt(promptText)
+  }, [promptText])
+
   return (
     <Box className="flex flex-col gap-2 md:gap-3 px-2 sm:px-3 lg:px-4 pt-6 md:pt-12 min-h-[calc(100vh-3rem)] items-center justify-center">
       <text.h1
@@ -330,13 +340,13 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   // conflicts between manual typing, animated text, and voice transcript.
                   // Users can stop listening to edit the transcript.
                   if (isTyping || isListening) return
-                  const newValue = e.target.value
+                  const validated = validateAndClampPrompt(e.target.value)
                   isUserTypingRef.current = true
-                  setDisplayText(newValue)
-                  debouncedSetPromptText(newValue)
+                  setDisplayText(validated.text)
+                  debouncedSetPromptText(validated.text)
                   // Clear error when user starts typing (avoid unnecessary calls)
-                  if (error && lastErrorClearRef.current !== newValue) {
-                    lastErrorClearRef.current = newValue
+                  if (error && lastErrorClearRef.current !== validated.text) {
+                    lastErrorClearRef.current = validated.text
                     setError(null)
                   }
                 }}
@@ -347,7 +357,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 }}
                 rows={5}
                 disabled={isLoading || isListening}
-                maxLength={MAX_PROMPT_LENGTH + 1}
+                maxLength={10000}
                 className={clsx('!bg-intents-ux-box-backgroundColor relative pl-3 sm:pl-4 pr-8 sm:pr-12 py-2.5 sm:py-3 w-full text-md sm:text-xl leading-[1.5] font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
                   'h-24 md:h-32 rounded-2xl': isExpanded,
                   'h-8 sm:h-10 rounded-[3rem]': !isExpanded
@@ -381,7 +391,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   onClick={handleStartBuilding}
                   data-partial="componentAiro"
                   data-eid={generateClickEID('homepage.prompt.submit')}
-                  disabled={!promptText.trim() || isLoading || isTyping || promptText.length >= MAX_PROMPT_LENGTH}
+                  disabled={!promptText.trim() || isLoading || isTyping || !validationInfo.isValid}
                   design='primary'
                   className='cursor-pointer !rounded-full aspect-square !border-none'
                   icon={isLoading ? <Spinner size='sm' /> : <SendIcon />}
@@ -391,14 +401,15 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               </div>
             </Box>
           </div>
-          {promptText.length >= MAX_PROMPT_LENGTH && isExpanded && (
+          {validationInfo.remainingChars < 500 && isExpanded && (
             <div className="mt-0.5 px-4 text-left">
               <text.p
                 size={0}
                 className="font-medium"
-                emphasis="critical"
+                emphasis={validationInfo.remainingChars === 0 ? "critical" : undefined}
               >
-                {t('builder_homepage_hero_limit')} ({MAX_PROMPT_LENGTH.toLocaleString()})
+                {t('builder_homepage_hero_chars_remaining', { count: validationInfo.remainingChars },
+                  `${validationInfo.remainingChars} characters remaining`)}
               </text.p>
             </div>
           )}

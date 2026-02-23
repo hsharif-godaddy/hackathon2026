@@ -12,6 +12,7 @@ import {
 import { AIRO_PRODUCT_IDS } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { detectLocale } from '@/lib/translations/server-intl';
+import { getByteLength, MAX_PROMPT_BYTES } from '@/lib/waf-validation';
 
 // POST /api/sites/quick-create - Fast site creation
 // Uses control plane adapter (V2 or Legacy)
@@ -46,6 +47,27 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       );
     }
 
+    // Normalize and validate prompt size (WAF has 8KB limit, we enforce 7.4KB for safety)
+    // Validate the same normalized value that will be sent downstream
+    const normalizedPrompt = projectPrompt.trim();
+    const promptByteLength = getByteLength(normalizedPrompt);
+    if (promptByteLength > MAX_PROMPT_BYTES) {
+      logger.warn('sites.quick-create.prompt-too-large', {
+        promptByteLength,
+        maxBytes: MAX_PROMPT_BYTES,
+        promptCharLength: normalizedPrompt.length,
+        accountId: user.accountId,
+        customerId: user.customerId,
+      });
+      return NextResponse.json(
+        {
+          error: 'Prompt is too large',
+          details: `Prompt must be less than ${MAX_PROMPT_BYTES} bytes (current: ${promptByteLength} bytes)`,
+        },
+        { status: 400 }
+      );
+    }
+
     // JWT required for authentication
     if (!authContext.jwt) {
       return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
@@ -64,7 +86,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     const createSiteParams: CreateSiteParams = {
       accountId: account_id,
-      prompt: projectPrompt.trim(),
+      prompt: normalizedPrompt,
       jwt: authContext.jwt,
       productId,
       marketId
