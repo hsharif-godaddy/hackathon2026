@@ -1,0 +1,443 @@
+'use client'
+
+import clsx from 'clsx'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { FormattedMessage, useIntl } from 'react-intl'
+import Alert from '@ux/alert'
+import Box from '@ux/box'
+import Button from '@ux/button'
+import MicIcon from '@ux/icon/mic'
+import SendIcon from '@ux/icon/send'
+import Spinner from '@ux/spinner'
+import { text } from '@ux/text'
+
+import { useBreakpoints } from '@/hooks/useBreakpoints'
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
+import { useTranslations } from '@/hooks/useTranslations'
+import { MAX_PROMPT_LENGTH } from '@/lib/features'
+import { generateClickEID } from '@/utils/instrumentation'
+import LandingExamples from './LandingExamples'
+import { LandingHeroData } from './types'
+
+interface LandingHeroRef {
+  typeText: (text: string) => void
+}
+
+interface LandingHeroProps {
+  hero: LandingHeroData
+  promptText: string
+  setPromptText: (text: string) => void
+  onStartBuilding: () => void
+  isLoading: boolean
+  error: string | null
+  setError: (error: string | null) => void
+  onExampleClick?: (prompt: string) => void
+  slug: string
+}
+
+const LandingHero = forwardRef<LandingHeroRef, LandingHeroProps>(({
+  hero,
+  promptText,
+  setPromptText,
+  onStartBuilding,
+  isLoading,
+  error,
+  setError,
+  onExampleClick,
+  slug
+}, ref) => {
+  const t = useTranslations();
+  const intl = useIntl();
+  const [isTyping, setIsTyping] = useState(false)
+  const [displayText, setDisplayText] = useState(promptText)
+  const [isFocused, setIsFocused] = useState(false)
+  const [animatedPlaceholder, setAnimatedPlaceholder] = useState('')
+
+  const textBeforeListeningRef = useRef('')
+
+  const {
+    isListening,
+    isSupported: isSpeechSupported,
+    toggle: toggleSpeech,
+    transcript: speechTranscript,
+    stop: stopSpeech,
+    resetTranscript,
+  } = useSpeechRecognition({ language: intl.locale })
+
+  useEffect(function syncSpeechTranscript() {
+    if (isListening && speechTranscript) {
+      const baseText = textBeforeListeningRef.current
+      const separator = baseText && !baseText.endsWith(' ') ? ' ' : ''
+      const newText = baseText + separator + speechTranscript
+      setDisplayText(newText)
+      setPromptText(newText)
+    }
+  }, [isListening, speechTranscript, setPromptText])
+
+  useEffect(function captureTextOnListeningStart() {
+    if (isListening) {
+      textBeforeListeningRef.current = displayText
+    }
+  }, [isListening]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleStartBuilding() {
+    if (isListening) {
+      textBeforeListeningRef.current = ''
+      stopSpeech()
+      resetTranscript()
+    }
+    onStartBuilding()
+  }
+
+  const isExpanded = isFocused || displayText.trim().length > 0 || isListening
+  const animationQueueRef = useRef<string[]>([])
+  const lastErrorClearRef = useRef<string>('')
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const placeholderTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const isSafari = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    return /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+  }, [])
+
+  const { isBelowSmBreakpoint: isMobile, isLgBreakpoint } = useBreakpoints()
+  const isTablet = !isMobile && !isLgBreakpoint
+
+  const placeholders = useMemo(() => {
+    if (isMobile && hero.placeholdersMobile?.length) {
+      return hero.placeholdersMobile
+    }
+    return [...hero.placeholders].sort(() => Math.random() - 0.5)
+  }, [isMobile, hero.placeholders, hero.placeholdersMobile])
+
+  const isUserTypingRef = useRef(false)
+
+  useEffect(() => {
+    if (!isUserTypingRef.current) {
+      setDisplayText(promptText)
+    }
+  }, [promptText])
+
+  const debouncedSetPromptText = useCallback((value: string) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      setPromptText(value)
+    }, 50)
+  }, [setPromptText])
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isFocused || displayText.trim().length > 0) {
+      setAnimatedPlaceholder('')
+      return
+    }
+
+    if (isSafari) {
+      setAnimatedPlaceholder(placeholders[0])
+      return
+    }
+
+    let currentIndex = 0
+    let currentCharIndex = 0
+    let isDeleting = false
+
+    const animate = () => {
+      const currentText = placeholders[currentIndex]
+
+      if (!isDeleting) {
+        if (currentCharIndex <= currentText.length) {
+          setAnimatedPlaceholder(currentText.slice(0, currentCharIndex))
+          currentCharIndex++
+          placeholderTimerRef.current = setTimeout(animate, 50)
+        } else {
+          placeholderTimerRef.current = setTimeout(() => {
+            isDeleting = true
+            animate()
+          }, 2000)
+        }
+      } else {
+        if (currentCharIndex > 0) {
+          currentCharIndex--
+          setAnimatedPlaceholder(currentText.slice(0, currentCharIndex))
+          placeholderTimerRef.current = setTimeout(animate, 30)
+        } else {
+          isDeleting = false
+          currentIndex = (currentIndex + 1) % placeholders.length
+          currentCharIndex = 0
+          placeholderTimerRef.current = setTimeout(animate, 500)
+        }
+      }
+    }
+
+    animate()
+
+    return () => {
+      if (placeholderTimerRef.current) {
+        clearTimeout(placeholderTimerRef.current)
+      }
+    }
+  }, [isFocused, displayText, isSafari, placeholders])
+
+  const typeText = useCallback(async (targetText: string) => {
+    if (isLoading) return
+    if (displayText === targetText) return
+
+    if (isSafari) {
+      setDisplayText(targetText)
+      setPromptText(targetText)
+      return
+    }
+
+    const typingSpeed = 2
+
+    setIsTyping(true)
+    animationQueueRef.current = [targetText]
+
+    const currentText = displayText
+    for (let i = currentText.length; i >= 0; i--) {
+      if (animationQueueRef.current[0] !== targetText) return
+      setDisplayText(currentText.slice(0, i))
+      await new Promise(resolve => setTimeout(resolve, typingSpeed))
+    }
+
+    for (let i = 0; i <= targetText.length; i++) {
+      if (animationQueueRef.current[0] !== targetText) return
+      const newText = targetText.slice(0, i)
+      setDisplayText(newText)
+      if (i === targetText.length) {
+        setPromptText(newText)
+      }
+      await new Promise(resolve => setTimeout(resolve, typingSpeed))
+    }
+
+    setIsTyping(false)
+    animationQueueRef.current = []
+  }, [isLoading, displayText, setPromptText, isSafari])
+
+  useImperativeHandle(ref, () => ({
+    typeText
+  }), [typeText])
+
+  const scrollToNextSection = useCallback(() => {
+    const nextSection = document.getElementById('infra-section');
+
+    let targetPosition: number;
+    if (nextSection) {
+      const rect = nextSection.getBoundingClientRect();
+      targetPosition = window.pageYOffset + rect.top;
+    } else {
+      targetPosition = window.pageYOffset + window.innerHeight;
+    }
+
+    const startPosition = window.pageYOffset;
+    const duration = 1000;
+    const startTime = Date.now();
+
+    const animateScroll = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easeInOutQuad = (t: number) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      const currentPosition = startPosition + (targetPosition - startPosition) * easeInOutQuad(progress);
+      window.scrollTo(0, currentPosition);
+
+      if (progress < 1) {
+        requestAnimationFrame(animateScroll);
+      }
+    };
+
+    requestAnimationFrame(animateScroll);
+  }, [])
+
+  const microphoneAriaLabel = useMemo(() => {
+    return isListening
+      ? intl.formatMessage({ id: 'builder_homepage_hero_stop_listening', defaultMessage: 'Stop listening' })
+      : intl.formatMessage({ id: 'builder_homepage_hero_start_listening', defaultMessage: 'Start voice input' })
+  }, [isListening, intl])
+
+  return (
+    <Box className="flex flex-col gap-2 md:gap-3 px-2 sm:px-3 lg:px-4 pt-6 md:pt-12 min-h-[calc(100vh-3rem)] items-center justify-center">
+      <text.h1
+        as='heading'
+        size={isMobile ? 2 : isTablet ? 3 : 4}
+        className="text-center max-w-screen-md"
+      >
+        {hero.title}
+      </text.h1>
+
+      <text.p
+        size={2}
+        className='max-w-xl mx-auto !font-thin text-center text-pretty'
+      >
+        {hero.subtitle}
+      </text.p>
+
+      {error && (
+        <div className="w-full max-w-2xl mx-auto mt-6">
+          <Alert
+            emphasis="critical"
+            title={t('builder_status_error')}
+            actions={<Button text={t('builder_common_dismiss')} onClick={() => setError(null)} />}
+          >
+            {error}
+          </Alert>
+        </div>
+      )}
+
+      <div className="w-full max-w-2xl mx-auto my-2 md:my-4">
+        <Box gap={isTablet ? 'md' : 'lg'}>
+          <div className={clsx('relative transition-all duration-300 ease-out glowing-input', {
+            'glowing-input--disabled': isLoading
+          })}>
+            <Box
+              className={clsx('relative transition-all duration-300 ease-out !bg-transparent outline-4 outline-solid outline-[rgba(0,0,0,0.15)]', {
+                'rounded-2xl!': isExpanded,
+                'rounded-[3rem]!': !isExpanded
+              })}
+              elevation="float"
+            >
+              <textarea
+                data-testid="landing-prompt-input"
+                value={displayText}
+                onChange={(e) => {
+                  if (isTyping || isListening) return
+                  const newValue = e.target.value
+                  isUserTypingRef.current = true
+                  setDisplayText(newValue)
+                  debouncedSetPromptText(newValue)
+                  if (error && lastErrorClearRef.current !== newValue) {
+                    lastErrorClearRef.current = newValue
+                    setError(null)
+                  }
+                }}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => {
+                  setIsFocused(false)
+                  isUserTypingRef.current = false
+                }}
+                rows={5}
+                disabled={isLoading || isListening}
+                maxLength={MAX_PROMPT_LENGTH + 1}
+                className={clsx('!bg-intents-ux-box-backgroundColor relative pl-3 sm:pl-4 pr-8 sm:pr-12 py-2.5 sm:py-3 w-full text-md sm:text-xl leading-[1.5] font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
+                  'h-24 md:h-32 rounded-2xl': isExpanded,
+                  'h-8 sm:h-10 rounded-[3rem]': !isExpanded
+                })}
+                placeholder={isTyping ? '' : animatedPlaceholder}
+              />
+
+              <div className={clsx('absolute flex items-center right-1.5 transition-all duration-300', {
+                'bottom-1/2 translate-y-1/2 -space-x-1': !isExpanded,
+                'bottom-1.5 gap-1': isExpanded
+              })}>
+                {isSpeechSupported && (
+                  <Button
+                    onClick={toggleSpeech}
+                    onMouseDown={(e) => e.preventDefault()}
+                    data-eid={generateClickEID(`landing.${slug}.prompt.speech`)}
+                    disabled={isLoading || isTyping}
+                    design={isListening ? 'primary' : 'control'}
+                    className={clsx('cursor-pointer !rounded-full aspect-square !border-none', {
+                      '!bg-intents-ux-feedbackHighContrastCritical-feedbackColor': isListening,
+                      '!bg-transparent': !isListening,
+                    })}
+                    icon={<MicIcon />}
+                    aria-label={microphoneAriaLabel}
+                    size={isMobile ? 'sm' : 'md'}
+                  />
+                )}
+                <Button
+                  onClick={handleStartBuilding}
+                  data-partial="componentAiro"
+                  data-eid={generateClickEID(`landing.${slug}.prompt.submit`)}
+                  disabled={!promptText.trim() || isLoading || isTyping || promptText.length >= MAX_PROMPT_LENGTH}
+                  design='primary'
+                  className='cursor-pointer !rounded-full aspect-square !border-none'
+                  icon={isLoading ? <Spinner size='sm' /> : <SendIcon />}
+                  aria-label={isLoading ? t('builder_homepage_hero_prompt_button_loading') : t('builder_homepage_hero_prompt_button')}
+                  size={isMobile ? 'sm' : 'md'}
+                />
+              </div>
+            </Box>
+          </div>
+
+          {promptText.length >= MAX_PROMPT_LENGTH && isExpanded && (
+            <div className="mt-0.5 px-4 text-left">
+              <text.p
+                size={0}
+                className="font-medium"
+                emphasis="critical"
+              >
+                {t('builder_homepage_hero_limit')} ({MAX_PROMPT_LENGTH.toLocaleString()})
+              </text.p>
+            </div>
+          )}
+
+          {hero.disclaimer && (
+            <text.p size={-1} className='max-w-lg mx-auto opacity-40 mb-2 md:mb-4 text-center'>
+              <FormattedMessage
+                id='builder_homepage_hero_disclaimer'
+                values={{
+                  terms: (
+                    <Button
+                      design="inline"
+                      size="sm"
+                      external
+                      href="https://www.godaddy.com/legal/agreements/ai-terms-of-use"
+                      className="!text-intents-ux-boxHighContrast-foregroundColor"
+                      text={t('builder_homepage_hero_disclaimer_terms')}
+                    />
+                  ),
+                  privacy_policy: (
+                    <Button
+                      design="inline"
+                      size="sm"
+                      external
+                      href="https://www.godaddy.com/legal/agreements/privacy-policy"
+                      className="!text-intents-ux-boxHighContrast-foregroundColor"
+                      text={t('builder_homepage_hero_disclaimer_privacy')}
+                    />
+                  )
+                }}
+              />
+            </text.p>
+          )}
+
+          {onExampleClick && (
+            <LandingExamples
+              examples={hero.examples}
+              onExampleClick={onExampleClick}
+              slug={slug}
+            />
+          )}
+
+          {hero.scrollLabel && (
+            <button
+              onClick={scrollToNextSection}
+              className="mx-auto mt-2 flex items-center gap-1 text-sm opacity-60 hover:opacity-100 hover:cursor-pointer transition-opacity group"
+              data-eid={generateClickEID(`landing.${slug}.hero.see_how_it_works`)}
+            >
+              <Box blockAlignChildren='center' inlineAlignChildren='center' gap="md">
+                <text.p size={0} className='font-medium'>{hero.scrollLabel}</text.p>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 8 37" className="w-1 group-hover:translate-y-1 transition-all duration-500">
+                  <path fill="var(--landing-accent, #d3c1f7)" d="M3.646 36.789a.5.5 0 0 0 .708 0l3.182-3.182a.5.5 0 1 0-.708-.707L4 35.728 1.172 32.9a.5.5 0 0 0-.708.707zM4 0h-.5v36.435h1V0z" opacity=".5" />
+                </svg>
+              </Box>
+            </button>
+          )}
+        </Box>
+      </div>
+    </Box>
+  )
+})
+
+LandingHero.displayName = 'LandingHero'
+
+export default LandingHero

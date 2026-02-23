@@ -29,6 +29,7 @@
     "lint": "next lint --max-warnings 400",
     "lint:fix": "next lint --fix",
     "typecheck": "tsc --noEmit",
+    "generate:landing-lookup": "tsx src/data/landing-pages/generate-lookup.ts",
     "install-gd-packages": "pnpm --registry https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ install @godaddy/gasket-plugin-auth"
   },
   "dependencies": {
@@ -169,6 +170,7 @@
     "tailwind-merge": "^3.3.1",
     "uuid": "^11.1.0",
     "xstate": "^5.25.0",
+    "yaml": "^2.7.1",
     "zustand": "^5.0.8"
   },
   "devDependencies": {

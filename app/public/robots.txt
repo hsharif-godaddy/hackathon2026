@@ -1,0 +1,7 @@
+User-agent: *
+Disallow: /api/
+Disallow: /apps/
+Disallow: /develop/
+Disallow: /manage-plan/
+Allow: /explore/games
+Allow: /explore/games/hi

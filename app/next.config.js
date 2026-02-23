@@ -3,7 +3,10 @@ import 'tsx';
 const gasket = (await import('./gasket.ts')).default;
 export default gasket.actions.getNextConfig({
   experimental: {
-    instrumentationHook: true
+    instrumentationHook: true,
+    outputFileTracingIncludes: {
+      '/explore/[name]/[[...lang]]': ['./src/data/landing-pages/**/*.yaml'],
+    },
   },
   eslint: {
     ignoreDuringBuilds: true,

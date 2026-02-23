@@ -20,7 +20,7 @@ import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useTranslations } from '@/hooks/useTranslations';
 import { generateClickEID } from '@/utils/instrumentation';
 
-export default function Header({ actions, onShowMockLogin, location = 'unknown' }: HeaderProps) {
+export default function Header({ actions, onShowMockLogin, location = 'unknown', className }: HeaderProps) {
   const t = useTranslations();
   const { isAuthenticated, isAuthDisabled, isLoading } = useAuthContext();
   const { isBelowSmBreakpoint } = useBreakpoints();
@@ -38,8 +38,9 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
     <header data-testid="airo-header" className={clsx(
       "text-intents-ux-boxHighContrast-foregroundColor",
       {
-        "bg-gradient bg-intents-ux-boxHighContrast-backgroundColor": !isHomepage,
-      }
+        "bg-gradient bg-intents-ux-boxHighContrast-backgroundColor": location !== 'homepage' && !location.startsWith('landing'),
+      },
+      className
     )}>
       <div className="mx-auto px-2 sm:px-3 lg:px-4">
         <div className="flex justify-between items-center h-8">

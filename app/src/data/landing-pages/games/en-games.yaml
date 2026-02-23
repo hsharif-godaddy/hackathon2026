@@ -1,0 +1,130 @@
+route:
+  language: en
+  name: games
+  label: Games
+  useCase: games
+
+meta:
+  title: "GoDaddy Airo AI Builder | Create Games with AI"
+  description: "Build fun, interactive browser games in minutes. No game engine or coding skills required — describe your game idea and AI brings it to life."
+
+theme:
+  backgroundGradient: >-
+    linear-gradient(0deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.55) 100%),
+    radial-gradient(87% 100% at 100% 66%, rgba(230,60,50,0.90) 0%, rgba(200,50,40,0.73) 31%, rgba(180,40,30,0.00) 100%),
+    radial-gradient(97% 95% at 10% 92%, #B53030 0%, rgba(181,48,48,0.93) 12%, rgba(181,48,48,0.00) 100%),
+    radial-gradient(96% 113% at 35% -8%, #4A1020 0%, rgba(74,16,32,0.96) 22%, rgba(200,40,40,0.00) 100%),
+    #3B0E1A
+  glowColors:
+    - "#DC3545"
+    - "#FFB347"
+    - "#FFF176"
+    - "#C62828"
+    - "#DC3545"
+  featureColors:
+    - "#DC3545"
+    - "#FFB347"
+    - "#FFF176"
+  accentColor: "#FFB347"
+
+header:
+  showLogo: true
+  location: landing-games
+
+hero:
+  title: "Build Games with AI — No Code Required"
+  subtitle: "Describe your game idea and watch it come to life in your browser."
+  placeholders:
+    - "A retro-style space shooter with power-ups and high scores..."
+    - "A word puzzle game like Wordle with daily challenges..."
+    - "A multiplayer trivia quiz with different categories..."
+    - "A platformer game with pixel art characters..."
+    - "A card matching memory game with animations..."
+  placeholdersMobile:
+    - "A retro space shooter game..."
+    - "A word puzzle game..."
+    - "A trivia quiz game..."
+  examples:
+    - title: "Memory card game"
+      prompt: "Build a card matching memory game with a timer, score tracking, and multiple difficulty levels. Use smooth flip animations and a clean, colorful design."
+      slug: memory_game
+    - title: "Trivia quiz"
+      prompt: "Create a trivia quiz game with multiple categories like science, history, and pop culture. Include a scoring system, timer per question, and a final results screen."
+      slug: trivia_quiz
+    - title: "Idle clicker"
+      prompt: "Build an idle clicker game where you click to earn coins, buy upgrades that generate passive income, and unlock achievements. Include satisfying animations and sound effects."
+      slug: idle_clicker
+      featured: true
+    - title: "Word puzzle"
+      prompt: "Create a Wordle-style word guessing game. Give players 6 attempts to guess a 5-letter word, with color-coded hints showing correct letters and positions."
+      slug: word_puzzle
+    - title: "Snake game"
+      prompt: "Build a classic Snake game with smooth controls, increasing speed as the snake grows, a high score leaderboard, and retro pixel-art styling."
+      slug: snake_game
+    - title: "Drawing app"
+      prompt: "Create a collaborative drawing app with different brush sizes, colors, an eraser tool, undo/redo, and the ability to save and share drawings."
+      slug: drawing_app
+    - title: "Platformer game"
+      prompt: "Build a simple side-scrolling platformer game with a character that can jump and run, collectible coins, obstacles to avoid, and at least 3 levels."
+      slug: platformer
+    - title: "Rock Paper Scissors"
+      prompt: "Create a Rock Paper Scissors game against a computer opponent with best-of-5 rounds, score tracking, animated hand gestures, and win/lose celebrations."
+      slug: rock_paper_scissors
+  scrollLabel: "See how it works"
+  disclaimer: true
+
+sections:
+  - type: explainer
+    id: infra-section
+    preTitle: "Game development, simplified"
+    title: "From Game Idea to Playable in Minutes"
+    text: "Forget complex game engines and months of development. Describe your game concept — the mechanics, the look, the feel — and our AI builds a fully playable browser game. Iterate in real time until it's perfect."
+    image: /images/block-1-big.png
+    imageSmall: /images/block-1-small.png
+    imagePosition: left
+
+  - type: features
+    items:
+      - title: "Describe, Don't Code"
+        description: "Tell the AI what kind of game you want — the mechanics, style, and features. It handles the JavaScript, HTML5 Canvas, and CSS."
+      - title: "Instant Play Testing"
+        description: "See your game running live as it's being built. Test it immediately and ask the AI for changes in real time."
+      - title: "Share With Anyone"
+        description: "Publish your game with one click and share the link. Friends, classmates, or the whole internet can play."
+
+  - type: explainer
+    preTitle: "Endless possibilities"
+    title: "Puzzles, Arcade, Strategy — You Name It"
+    text: "Whether you want a casual word game, an action-packed shooter, a brain-teasing puzzle, or a relaxing idle clicker — the AI can build it. Mix and match mechanics to create something truly unique."
+    image: /images/block-2-big.jpg
+    imageSmall: /images/block-2-small.png
+    imagePosition: right
+
+  - type: features
+    items:
+      - title: "Describe Your Game"
+        description: "Start with a concept — a quiz, a platformer, a card game. The more detail, the better the result."
+      - title: "Refine Gameplay"
+        description: "Chat with the AI to adjust mechanics, add features, tweak difficulty, and polish the experience."
+      - title: "Publish and Play"
+        description: "Deploy your game live with one click. Share a link and let others play — no downloads or installs needed."
+
+  - type: faq
+    title: "Frequently Asked Questions"
+    items:
+      - question: "What types of games can I build?"
+        answer: "Browser-based games using HTML5, CSS, and JavaScript — think puzzle games, arcade games, card games, quiz games, idle clickers, simple platformers, and more. If it runs in a browser, the AI can likely build it."
+      - question: "Do I need game development experience?"
+        answer: "No. You describe what you want in plain English and the AI builds it. If you do have coding skills, you can view and edit the source code directly."
+      - question: "Can I add graphics and sound effects?"
+        answer: "Yes. You can describe the visual style you want, and the AI will generate CSS animations, canvas graphics, and even suggest where to add audio. You can also upload your own assets."
+      - question: "Are the games mobile-friendly?"
+        answer: "The AI builds responsive games that work on both desktop and mobile browsers. You can specify touch controls if you want mobile-first gameplay."
+      - question: "Can I monetize my games?"
+        answer: "You own all the code generated. You're free to publish, share, or monetize your games however you like."
+
+  - type: help
+    title: "Stuck on a Game Idea?"
+    text: "Our support team can help you get started or troubleshoot your creation."
+    ctaText: "Get help"
+    ctaUrl: "https://www.godaddy.com/help/contact-us"

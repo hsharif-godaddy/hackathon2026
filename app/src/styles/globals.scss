@@ -180,20 +180,20 @@
 
   .feature:nth-child(1) {
     .feature-icon {
-      color: #FF75BC;
-      background-color: #FF75BC33;
+      color: var(--landing-feature-1, #FF75BC);
+      background-color: color-mix(in srgb, var(--landing-feature-1, #FF75BC) 20%, transparent);
     }
   }
   .feature:nth-child(2) {
     .feature-icon {
-      color: #C290FF;
-      background-color: #C290FF33;
+      color: var(--landing-feature-2, #C290FF);
+      background-color: color-mix(in srgb, var(--landing-feature-2, #C290FF) 20%, transparent);
     }
   }
   .feature:nth-child(3) {
     .feature-icon {
-      color: #8EF9FF;
-      background-color: #8EF9FF33;
+      color: var(--landing-feature-3, #8EF9FF);
+      background-color: color-mix(in srgb, var(--landing-feature-3, #8EF9FF) 20%, transparent);
     }
   }
 
@@ -203,7 +203,14 @@
     position: absolute;
     inset: -4px;
     border-radius: 3rem; // matches !isExpanded
-    background: linear-gradient(45deg, #FF75BC, #C290FF, #8EF9FF, #B375FF, #FF75BC);
+    background: linear-gradient(
+      45deg,
+      var(--landing-glow-1, #FF75BC),
+      var(--landing-glow-2, #C290FF),
+      var(--landing-glow-3, #8EF9FF),
+      var(--landing-glow-4, #B375FF),
+      var(--landing-glow-5, #FF75BC)
+    );
     background-size: 400% 400%;
     animation: gradientShift 5s ease infinite;
     filter: blur(12px);

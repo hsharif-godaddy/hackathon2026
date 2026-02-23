@@ -1,0 +1,33 @@
+{
+  "routes": {
+    "games": {
+      "file": "games/en-games.yaml",
+      "language": "en",
+      "useCase": "games"
+    },
+    "games/hi": {
+      "file": "games/hi-games.yaml",
+      "language": "hi",
+      "useCase": "games"
+    }
+  },
+  "alternates": {
+    "games": [
+      {
+        "name": "games",
+        "hreflang": "en"
+      },
+      {
+        "name": "games",
+        "hreflang": "hi",
+        "lang": "hi"
+      }
+    ]
+  },
+  "pages": [
+    {
+      "label": "Games",
+      "href": "/explore/games"
+    }
+  ]
+}
