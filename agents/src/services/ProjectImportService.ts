@@ -288,11 +288,28 @@ export class ProjectImportService {
         this.logger.info('project-import.stop-server.success', { appId });
       }
 
+      // Phase 6a: Clean up junk/security-sensitive files BEFORE copy
+      // Delete all configured patterns from extracted directory so they never overwrite existing app files
+      const extractedProjectPath = validation.projectRoot || containerProjectPath!;
+      const cleanupResult = await codeSyncFileCleanupService.deleteCleanablePatterns(
+        devSupervisor,
+        extractedProjectPath
+      );
+
+      if (!cleanupResult.success) {
+        this.logger.warn('project-import.pre-copy-cleanup.warning', {
+          jobId,
+          appId,
+          error: cleanupResult.error,
+        });
+        // Continue anyway - cleanup failure shouldn't block import
+      }
+
       // Phase 6: Copy files to app directory (inside container)
       await this.updateStatus(jobId, ImportJobStatus.COPYING);
       const copyResult = await this.copyFilesInContainer(
         devSupervisor,
-        validation.projectRoot || containerProjectPath!,
+        extractedProjectPath,
         app.path
       );
 
@@ -306,10 +323,6 @@ export class ProjectImportService {
         if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
         return;
       }
-
-      // Phase 6b: Clean up junk/security-sensitive files after copy
-      // Delete all configured patterns (single command, no scanning needed)
-      await codeSyncFileCleanupService.deleteCleanablePatterns(devSupervisor, '/app');
 
       // Add warnings for files detected during zip validation
       const cleanableFiles = securityValidation.cleanableFiles;

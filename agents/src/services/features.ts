@@ -94,7 +94,7 @@ const DEFAULT_MAX_PATH_LENGTH = 260;
 
 // Cleanable file patterns defaults
 const DEFAULT_CLEANABLE_OS_JUNK = ['.DS_Store', 'Thumbs.db', '__MACOSX/', 'desktop.ini'];
-const DEFAULT_CLEANABLE_SECURITY = ['.env', '.git/hooks/', '.pem', '.key', '.npmrc', '.yarnrc'];
+const DEFAULT_CLEANABLE_SECURITY = ['.env', '.git/', '.pem', '.key', '.npmrc', '.yarnrc'];
 const DEFAULT_CLEANABLE_IDE = ['.idea/', '.vscode/'];
 
 /**

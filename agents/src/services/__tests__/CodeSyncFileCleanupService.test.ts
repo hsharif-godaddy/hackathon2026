@@ -19,6 +19,8 @@ describe('CodeSyncFileCleanupService', () => {
       expect(codeSyncFileCleanupService.isCleanableFile('.env.local')).toBe(true);
       expect(codeSyncFileCleanupService.isCleanableFile('.env.production')).toBe(true);
       expect(codeSyncFileCleanupService.isCleanableFile('.git/hooks/pre-commit')).toBe(true);
+      expect(codeSyncFileCleanupService.isCleanableFile('.git/config')).toBe(true);
+      expect(codeSyncFileCleanupService.isCleanableFile('.git/HEAD')).toBe(true);
       expect(codeSyncFileCleanupService.isCleanableFile('certs/private.pem')).toBe(true);
       expect(codeSyncFileCleanupService.isCleanableFile('server.key')).toBe(true);
       expect(codeSyncFileCleanupService.isCleanableFile('.npmrc')).toBe(true);
@@ -133,7 +135,7 @@ describe('CodeSyncFileCleanupService', () => {
       const execCall = (mockDevSupervisor.exec as ReturnType<typeof vi.fn>).mock.calls[0][0];
       const command = execCall.command as string;
 
-      // Should have rm command for directories (e.g., __MACOSX/, .idea/, .vscode/, .git/hooks/)
+      // Should have rm command for directories (e.g., __MACOSX/, .idea/, .vscode/, .git/)
       expect(command).toContain('rm -rf');
       // Should have find command for files
       expect(command).toContain('find');
@@ -254,7 +256,7 @@ describe('CodeSyncFileCleanupService', () => {
         dangerousExtensions: [],
         cleanablePatterns: {
           osJunk: ['.DS_Store', 'Thumbs.db', '__MACOSX/'],
-          securitySensitive: ['.env', '.git/hooks/', '.pem', '.key'],
+          securitySensitive: ['.env', '.git/', '.pem', '.key'],
           ideConfig: ['.idea/', '.vscode/'],
         },
       });

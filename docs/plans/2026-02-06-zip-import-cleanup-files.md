@@ -19,7 +19,8 @@
 
 - Shared `CodeSyncFileCleanupService` handles all cleanup logic (DRY)
 - Categorize files as "cleanable" (auto-remove) vs "dangerous" (still reject)
-- Zip import: Track cleanable files during validation, delete patterns after copy
+- **Zip import: Track cleanable files during validation, delete patterns BEFORE copy from extracted directory**
+  - This ensures cleanable files (`.git/`, `.vscode/`, etc.) never overwrite existing app configs
 - Git pull: Delete configured patterns after pull (no scanning needed)
 - Zip import: Return `cleanedFiles` in warnings array, log for audit trail
 
@@ -31,7 +32,7 @@
 
 **Category B: Security-Sensitive**
 
-- `.env*`, `.git/hooks/*`, `*.pem`, `*.key`, `.npmrc`, `.yarnrc`
+- `.env*`, `.git/` (entire directory), `*.pem`, `*.key`, `.npmrc`, `.yarnrc`
 
 **Category C: IDE/Editor**
 
@@ -63,7 +64,7 @@
 **No scanning needed.** Delete configured patterns directly with a single command:
 
 ```bash
-rm -rf /app/__MACOSX /app/.idea /app/.vscode /app/.git/hooks 2>/dev/null; \
+rm -rf /app/__MACOSX /app/.idea /app/.vscode /app/.git 2>/dev/null; \
 find /app \( -name ".DS_Store" -o -name "Thumbs.db" -o -name "desktop.ini" \
   -o -name ".env*" -o -name "*.pem" -o -name "*.key" \
   -o -name ".npmrc" -o -name ".yarnrc" \) -type f -delete 2>/dev/null || true
@@ -93,7 +94,7 @@ const DEFAULT_CLEANABLE_OS_JUNK = [
 ];
 const DEFAULT_CLEANABLE_SECURITY = [
   ".env",
-  ".git/hooks/",
+  ".git/",
   ".pem",
   ".key",
   ".npmrc",
@@ -531,16 +532,19 @@ git commit -m "feat(file-cleanup): complete implementation for zip and git pull
 ## Verification
 
 1. **Zip Import Test:**
+
    - Upload a zip containing `.DS_Store`, `.env`, `.idea/` files
    - Should complete successfully
    - Status API should return warnings listing cleaned files
 
 2. **Git Pull Test:**
+
    - Pull from a repo containing `.DS_Store`, `.env` files
    - Should complete successfully
    - Files should be cleaned (no warnings needed for git pull)
 
 3. **Dangerous Files Still Rejected:**
+
    - Upload zip with `.exe` file
    - Should fail validation (dangerous extension)
 
