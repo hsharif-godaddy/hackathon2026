@@ -2,7 +2,7 @@
  * Agent Token Endpoint
  * Creates JWT tokens for agent communication with configurable TTL
  * POST /api/auth/agent-token
- * 
+ *
  * @param request.body.siteId - Site ID for the token
  * @param request.body.expiresInSeconds - Optional expiration time in seconds (must be > 0 and <= 43200, default: 12 hours)
  * @param request.body.owningProduct - Optional owner product to filter by (defaults to AiroAppBuilder)
@@ -41,17 +41,17 @@ async function getSiteV2(siteId: string, user: CustomerUser, jwt: string, owning
   if (!customerHasAccount(user)) {
     return createCustomerAuthError('You must have an account to create agent tokens', 403);
   }
-  
+
   const adapter = getControlPlaneAdapter();
   const productFilter = owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER;
   const site = await adapter.getSite(siteId, jwt, productFilter);
-  
+
   if (!site) {
-    return NextResponse.json({ 
-      error: 'Site not found' 
+    return NextResponse.json({
+      error: 'Site not found'
     }, { status: 404 });
   }
-  
+
   return null;
 }
 
@@ -60,23 +60,23 @@ async function getSiteV2(siteId: string, user: CustomerUser, jwt: string, owning
  */
 async function getSiteLegacy(siteId: string, user: CustomerUser): Promise<NextResponse | null> {
   const siteAdapter = SiteAdapterFactory.getInstance();
-  
+
   if (siteAdapter.requiresAuth() && !customerHasAccount(user)) {
     return createCustomerAuthError('You must have an account to create agent tokens', 403);
   }
 
   const site = await siteAdapter.getSiteById(siteId);
-  
+
   if (!site) {
-    return NextResponse.json({ 
-      error: 'Site not found' 
+    return NextResponse.json({
+      error: 'Site not found'
     }, { status: 404 });
   }
 
   if (siteAdapter.requiresAuth() && site.account_id !== user.accountId) {
     return createCustomerAuthError('You can only create tokens for your own sites', 403);
   }
-  
+
   return null;
 }
 
@@ -92,23 +92,23 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
   try {
     const body: CreateAgentTokenRequest = await request.json();
     const { user } = authContext;
-    
+
     if (!body.siteId) {
-      return NextResponse.json({ 
-        error: 'siteId is required' 
+      return NextResponse.json({
+        error: 'siteId is required'
       }, { status: 400 });
     }
 
     if (body.expiresInSeconds !== undefined) {
       if (body.expiresInSeconds <= 0) {
-        return NextResponse.json({ 
-          error: 'expiresInSeconds must be greater than 0' 
+        return NextResponse.json({
+          error: 'expiresInSeconds must be greater than 0'
         }, { status: 400 });
       }
-      
+
       if (body.expiresInSeconds > MAX_EXPIRATION_SECONDS) {
-        return NextResponse.json({ 
-          error: `expiresInSeconds cannot exceed ${MAX_EXPIRATION_SECONDS} seconds (12 hours)` 
+        return NextResponse.json({
+          error: `expiresInSeconds cannot exceed ${MAX_EXPIRATION_SECONDS} seconds (12 hours)`
         }, { status: 400 });
       }
     }
@@ -184,11 +184,6 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         authContext.jwt || '',
         request.headers
       );
-      logger.info('agent-token.domain-purchase-flag', {
-        siteId: body.siteId,
-        customerId: user.customerId,
-        canPurchaseDomain,
-      });
     } catch (error) {
       logger.warn('agent-token.domain-purchase-flag-check-failed', {
         siteId: body.siteId,
@@ -226,7 +221,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     return NextResponse.json(response);
 
   } catch (error) {
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Token creation failed',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });

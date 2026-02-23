@@ -87,7 +87,7 @@ export interface WebSocketConfig {
   stateManager?: HandoffStateManager
 
   /** Context extractor function for processing custom context */
-  contextExtractor?: (rawContext: Record<string, unknown>) => Record<string, unknown>
+  contextExtractor?: (rawContext: Record<string, unknown>, socketId?: string) => Record<string, unknown>
 
   /** File path resolver for uploaded files */
   filePathResolver?: (appId: string, uploadId: string, filename: string) => string
@@ -2192,7 +2192,8 @@ export class WebSocketServer {
 
     if (data.context && this.config.contextExtractor) {
       // contextExtractor may be async, so await it
-      context = await Promise.resolve(this.config.contextExtractor(data.context))
+      // Pass socketId to contextExtractor so it can access socket-specific data
+      context = await Promise.resolve(this.config.contextExtractor(data.context, socketId))
     } else {
       context = data.context || {}
     }
