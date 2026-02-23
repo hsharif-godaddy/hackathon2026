@@ -73,6 +73,7 @@ function safePath(base: string, segment: string): string {
 router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload'), async (req: Request, res: Response) => {
   const id = req.params.id as string;
   const contextLogger = log.forApp(id);
+  let zipPath: string | undefined;
 
   try {
     const app = appRepo.findById(id);
@@ -108,7 +109,7 @@ router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload
       });
     }
 
-    const zipPath = safePath(DOWNLOAD_TEMP_DIR, `${id}-${Date.now()}.zip`);
+    zipPath = safePath(DOWNLOAD_TEMP_DIR, `${id}-${Date.now()}.zip`);
     const output = createWriteStream(zipPath);
     const archive = archiver('zip', {
       zlib: { level: 9 } // Maximum compression
@@ -130,54 +131,55 @@ router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload
       includedDirs: ALLOWED_DIRECTORIES,
     });
 
-    // Handle archive errors - close output stream on error
-    archive.on('error', (err) => {
-      log.error(contextLogger, 'route.apps.zip.failure', err, {
-        appId: id,
-        reason: 'archive_error',
-      });
-      output.destroy();
-      throw err;
-    });
-
-    archive.on('warning', (err) => {
-      if (err.code === 'ENOENT') {
-        logger.warn('route.apps.zip.warning', {
-          appId: id,
-          code: err.code,
-          message: err.message,
-        });
-      } else {
-        output.destroy();
-        throw err;
-      }
-    });
-
-    // Pipe archive data to the file
-    archive.pipe(output);
-
-    // Only include user-facing files (allowlist approach from config/app-download.ts)
-    // Add directories that contain user code
-    for (const dir of ALLOWED_DIRECTORIES) {
-      archive.directory(safePath(appPath, dir), dir);
-    }
-
-    // Add config files that were checked above
-    for (const file of includedFiles) {
-      const filePath = safePath(appPath, file);
-      archive.file(filePath, { name: file });
-    }
-
-    // Finalize the archive (this is async)
-    await archive.finalize();
-
-    // Wait for the output stream to close
+    // All archiving work is inside a single Promise so that event listener
+    // errors can reject() instead of throw. A throw inside an event callback
+    // becomes an unhandled exception and crashes the process.
     await new Promise<void>((resolve, reject) => {
+      // Handle archive errors - destroy output stream and reject
+      archive.on('error', (err) => {
+        log.error(contextLogger, 'route.apps.zip.failure', err, {
+          appId: id,
+          reason: 'archive_error',
+        });
+        output.destroy();
+        reject(err);
+      });
+
+      archive.on('warning', (err) => {
+        if (err.code === 'ENOENT') {
+          logger.warn('route.apps.zip.warning', {
+            appId: id,
+            code: err.code,
+            message: err.message,
+          });
+        } else {
+          output.destroy();
+          reject(err);
+        }
+      });
+
       output.on('close', () => resolve());
       output.on('error', (err) => {
         output.destroy();
         reject(err);
       });
+
+      // Pipe archive data to the file
+      archive.pipe(output);
+
+      // Only include user-facing files (allowlist approach from config/app-download.ts)
+      // Add directories that contain user code
+      for (const dir of ALLOWED_DIRECTORIES) {
+        archive.directory(safePath(appPath, dir), dir);
+      }
+
+      // Add config files that were checked above
+      for (const file of includedFiles) {
+        archive.file(safePath(appPath, file), { name: file });
+      }
+
+      // Finalize the archive - triggers compression and eventual output.close
+      archive.finalize();
     });
 
     logger.info('route.apps.zip.success', {
@@ -197,7 +199,7 @@ router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload
     // Clean up zip file after streaming completes or on error
     let cleanupDone = false;
     const cleanup = () => {
-      if (cleanupDone) return;
+      if (cleanupDone || !zipPath) return;
       cleanupDone = true;
 
       try {
@@ -233,6 +235,19 @@ router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload
     // Return after setting up the stream (streaming happens asynchronously)
     return;
   } catch (error) {
+    // Clean up partially written zip file if it was created
+    if (zipPath && existsSync(zipPath)) {
+      try {
+        unlinkSync(zipPath);
+      } catch (cleanupError) {
+        logger.warn('route.apps.zip.cleanup.failure', {
+          appId: id,
+          zipPath,
+          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+        });
+      }
+    }
+
     log.error(contextLogger, 'route.apps.zip.failure', error as Error, {
       appId: id,
       errorMessage: error instanceof Error ? error.message : String(error),

@@ -1,9 +1,11 @@
 /**
  * Download Route Tests
  *
- * Tests JWT-based authorization for app download operations
+ * Tests JWT-based authorization and archive error handling for app download operations
  */
 
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
@@ -12,6 +14,12 @@ import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 
 // Mock dependencies BEFORE imports
 const mockFindById = vi.fn();
+const mockExistsSync = vi.fn(() => true);
+const mockCreateWriteStream = vi.fn();
+const mockCreateReadStream = vi.fn();
+const mockUnlinkSync = vi.fn();
+const mockMkdirSync = vi.fn();
+const mockArchiverFn = vi.fn();
 
 vi.mock('../../database/index.js', () => ({
   AppRepository: vi.fn().mockImplementation(() => ({
@@ -39,6 +47,18 @@ vi.mock('../../logging/index.js', () => ({
 vi.mock('../../config/app-download.js', () => ({
   ALLOWED_DIRECTORIES: ['src', 'public'],
   ALLOWED_CONFIG_FILES: ['package.json', '.env.example']
+}));
+
+vi.mock('fs', () => ({
+  existsSync: mockExistsSync,
+  createWriteStream: mockCreateWriteStream,
+  createReadStream: mockCreateReadStream,
+  unlinkSync: mockUnlinkSync,
+  mkdirSync: mockMkdirSync,
+}));
+
+vi.mock('archiver', () => ({
+  default: mockArchiverFn,
 }));
 
 // Import after mocks
@@ -171,6 +191,7 @@ describe('Download Route Authorization', () => {
         siteId: BYPASS_SITE_IDS[0],
         canDownload: false,
         canPublish: false,
+        isE2S: false,
         exp: Math.floor(Date.now() / 1000) + 3600,
         iat: Math.floor(Date.now() / 1000)
       });
@@ -313,5 +334,128 @@ describe('Download Route Authorization', () => {
       expect(response.body.error).toBe('Download not allowed');
       expect(mockFindById).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('Archive Error Handling', () => {
+  let app: Express;
+  let mockArchive: EventEmitter & Record<string, any>;
+  let mockOutput: EventEmitter & Record<string, any>;
+  const appId = 'test-app';
+
+  function createPermittedApp(): Express {
+    const testApp = express();
+    testApp.use(express.json());
+    testApp.use((req, _res, next) => {
+      (req as AuthenticatedRequest).agentContext = {
+        siteId: appId,
+        canDownload: true,
+        canPublish: false,
+        isE2S: false,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000)
+      };
+      next();
+    });
+    testApp.use('/', downloadRouter);
+    return testApp;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mockArchive = Object.assign(new EventEmitter(), {
+      pipe: vi.fn(),
+      directory: vi.fn(),
+      file: vi.fn(),
+      finalize: vi.fn(),
+      pointer: vi.fn(() => 1234),
+    });
+
+    mockOutput = Object.assign(new EventEmitter(), {
+      destroy: vi.fn(),
+    });
+
+    mockFindById.mockReturnValue({
+      id: appId,
+      name: 'Test App',
+      path: `/tmp/apps/${appId}/app`
+    });
+
+    mockExistsSync.mockReturnValue(true);
+    mockCreateWriteStream.mockReturnValue(mockOutput);
+    mockArchiverFn.mockReturnValue(mockArchive);
+
+    app = createPermittedApp();
+  });
+
+  it('should return 500 when archive emits error instead of crashing', async function archiveError() {
+    mockArchive.finalize.mockImplementation(() => {
+      process.nextTick(() => {
+        mockArchive.emit('error', new Error('disk corruption'));
+      });
+    });
+
+    const response = await request(app)
+      .get(`/apps/${appId}/zip`)
+      .expect(500);
+
+    expect(response.body.error).toBe('Failed to create zip archive');
+    expect(response.body.details).toBe('disk corruption');
+    expect(mockOutput.destroy).toHaveBeenCalled();
+  });
+
+  it('should return 500 when archive emits non-ENOENT warning instead of crashing', async function nonEnoentWarning() {
+    mockArchive.finalize.mockImplementation(() => {
+      process.nextTick(() => {
+        mockArchive.emit('warning', Object.assign(new Error('permission denied'), { code: 'EPERM' }));
+      });
+    });
+
+    const response = await request(app)
+      .get(`/apps/${appId}/zip`)
+      .expect(500);
+
+    expect(response.body.error).toBe('Failed to create zip archive');
+    expect(response.body.details).toBe('permission denied');
+    expect(mockOutput.destroy).toHaveBeenCalled();
+  });
+
+  it('should return 500 when output stream emits error instead of crashing', async function outputError() {
+    mockArchive.finalize.mockImplementation(() => {
+      process.nextTick(() => {
+        mockOutput.emit('error', new Error('disk full'));
+      });
+    });
+
+    const response = await request(app)
+      .get(`/apps/${appId}/zip`)
+      .expect(500);
+
+    expect(response.body.error).toBe('Failed to create zip archive');
+    expect(response.body.details).toBe('disk full');
+    expect(mockOutput.destroy).toHaveBeenCalled();
+  });
+
+  it('should continue successfully when archive emits ENOENT warning', async function enoentWarning() {
+    mockCreateReadStream.mockImplementation(() => {
+      const stream = new PassThrough();
+      process.nextTick(() => stream.end(Buffer.from('fake-zip-data')));
+      return stream;
+    });
+
+    mockArchive.finalize.mockImplementation(() => {
+      process.nextTick(() => {
+        mockArchive.emit('warning', Object.assign(new Error('file not found'), { code: 'ENOENT' }));
+        process.nextTick(() => mockOutput.emit('close'));
+      });
+    });
+
+    const response = await request(app)
+      .get(`/apps/${appId}/zip`)
+      .buffer(true);
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toBe('application/zip');
   });
 });
