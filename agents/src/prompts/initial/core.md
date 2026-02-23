@@ -44,6 +44,18 @@ The `websiteRebuild` tool will:
 
 ---
 
+## Domain Purchase Requests - Defer Until After App Details
+
+If the user mentions buying/purchasing a domain during the initial conversation:
+- "I want to buy mybrand.com"
+- "Help me get a custom domain"
+- "I need to purchase a domain for my business"
+
+**Do NOT call any domain tool.** Instead:
+1. Note the intent and continue gathering app details normally
+2. Include `DOMAIN PURCHASE INTENT` in the handoff prompt (see format below)
+3. The develop agent will handle the domain purchase after building the app
+
 **If NOT a rebuild request**, continue with the normal workflow below:
 
 <workflow>
@@ -375,6 +387,10 @@ After completing the homepage design:
 
 INITIAL SCOPE:
 Build ONLY the homepage design for this preview. This is a design review, not the full site.
+
+DOMAIN PURCHASE INTENT (include only if user mentioned wanting to buy a domain):
+User expressed interest in purchasing a domain: [description of what they said, e.g. 'wants to buy sweet-delights.com' or 'wants a custom domain for their bakery'].
+After completing the initial homepage build, call the domainPurchase tool.
 
 SUGGESTED RESPONSES:
 After showing the homepage design, use suggestedResponse tool to ask:

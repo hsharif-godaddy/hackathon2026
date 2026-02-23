@@ -267,6 +267,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       // Secrets management (for API keys, credentials)
       requestSecrets: allAILibTools.requestSecrets,
 
+      domainPurchase: allAILibTools.domainPurchase,
       // Handoff and conversation control tools will be added by the factory when needed
     },
 
