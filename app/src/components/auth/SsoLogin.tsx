@@ -304,7 +304,37 @@ export default function SsoLogin() {
               consumingPath='/'
               {...(consumingPort && { consumingPort })}
               pageToLoad='/login'
-              pageToLoadParams={currentOrigin ? { redirect_url: currentOrigin } : {}}
+              pageToLoadParams={(() => {
+                if (!currentOrigin) return {};
+
+                // Build full redirect URL including path from store (captured by AuthBoundary)
+                // This ensures SSO redirects back to the specific page (e.g., /develop/abc123)
+                // instead of just the homepage
+                let fullUrl = currentOrigin;
+
+                if (redirectUrl) {
+                  try {
+                    // Validate redirect URL before building full URL (security check)
+                    if (!isValidRedirectUrl(redirectUrl)) {
+                      logger.warn('sso-login.pageToLoadParams.invalid-redirect', {
+                        message: 'redirectUrl failed validation, falling back to currentOrigin',
+                        redirectUrl
+                      });
+                    } else {
+                      // Convert relative paths to absolute URLs using current origin as base
+                      fullUrl = new URL(redirectUrl, currentOrigin).href;
+                    }
+                  } catch (error) {
+                    logger.warn('sso-login.pageToLoadParams.url-construction-error', {
+                      message: 'Failed to construct URL from redirectUrl, falling back to currentOrigin',
+                      redirectUrl,
+                      error: error instanceof Error ? error.message : String(error)
+                    });
+                  }
+                }
+
+                return { redirect_url: fullUrl };
+              })()}
               onAuth={handleAuth}
               onLoad={handleLoad}
               autoResize

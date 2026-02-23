@@ -14,6 +14,7 @@ const mockLogger = vi.hoisted(() => ({
 const originalLocation = window.location;
 
 let latestOnAuth: ((data?: unknown) => void) | null = null;
+let latestPageToLoadParams: Record<string, unknown> | null = null;
 
 function overrideWindowLocation(urlString: string) {
   const url = new URL(urlString);
@@ -42,6 +43,7 @@ function overrideWindowLocation(urlString: string) {
 vi.mock('next/dynamic', () => ({
   default: () => function MockSsoDeck(props: any) {
     latestOnAuth = props.onAuth;
+    latestPageToLoadParams = props.pageToLoadParams;
     return <div data-testid="sso-deck" />;
   },
 }));
@@ -65,17 +67,19 @@ vi.mock('@/lib/request-context', () => ({
   logger: mockLogger,
 }));
 
-vi.mock('@/stores/useAuthUIStore', () => {
-  const state = {
-    isSsoLoginOpen: true,
-    isSsoLoading: false,
-    closeSsoLogin: vi.fn(),
-    setSsoLoaded: vi.fn(),
-  };
-  return {
-    useAuthUIStore: (selector?: any) => (typeof selector === 'function' ? selector(state) : state),
-  };
-});
+// Mock store state that can be modified per test
+const mockAuthUIState = {
+  isSsoLoginOpen: true,
+  isSsoLoading: false,
+  closeSsoLogin: vi.fn(),
+  setSsoLoaded: vi.fn(),
+  redirectUrl: null as string | null,
+  setRedirectUrl: vi.fn(),
+};
+
+vi.mock('@/stores/useAuthUIStore', () => ({
+  useAuthUIStore: (selector?: any) => (typeof selector === 'function' ? selector(mockAuthUIState) : mockAuthUIState),
+}));
 
 vi.mock('@/stores/useSitesStore', () => {
   const state = {
@@ -122,6 +126,8 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
   beforeEach(function resetMocks() {
     vi.clearAllMocks();
     latestOnAuth = null;
+    latestPageToLoadParams = null;
+    mockAuthUIState.redirectUrl = null;
   });
 
   it('navigates to same-origin redirect path', async function redirectsToSameOrigin() {
@@ -157,5 +163,64 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
     expect(assignSpy).not.toHaveBeenCalled();
     expect(mockLogger.warn).toHaveBeenCalledWith('sso-login.auth.redirect.rejected', expect.any(Object));
     assignSpy.mockRestore();
+  });
+
+  it('passes full URL with path to SsoDeck when redirectUrl is set', async function passesFullUrl() {
+    mockAuthUIState.redirectUrl = '/develop/abc123?foo=bar';
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(() => {
+      expect(latestPageToLoadParams).toBeTruthy();
+    });
+
+    expect(latestPageToLoadParams).toEqual({
+      redirect_url: 'https://airo-builder.test/develop/abc123?foo=bar'
+    });
+  });
+
+  it('falls back to currentOrigin when redirectUrl validation fails', async function fallsBackOnValidationFailure() {
+    mockAuthUIState.redirectUrl = '/login';  // Auth path - should be rejected
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(() => {
+      expect(latestPageToLoadParams).toBeTruthy();
+    });
+
+    expect(latestPageToLoadParams).toEqual({
+      redirect_url: 'https://airo-builder.test'
+    });
+    expect(mockLogger.warn).toHaveBeenCalledWith('sso-login.pageToLoadParams.invalid-redirect', expect.any(Object));
+  });
+
+  it('handles malformed redirectUrl gracefully', async function handlesMalformedUrl() {
+    // Use a protocol-relative URL that will fail origin check
+    mockAuthUIState.redirectUrl = '//evil.com/phish';
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(() => {
+      expect(latestPageToLoadParams).toBeTruthy();
+    });
+
+    expect(latestPageToLoadParams).toEqual({
+      redirect_url: 'https://airo-builder.test'
+    });
+    expect(mockLogger.warn).toHaveBeenCalledWith('sso-login.pageToLoadParams.invalid-redirect', expect.any(Object));
+  });
+
+  it('passes only currentOrigin when redirectUrl is null', async function passesOriginOnly() {
+    mockAuthUIState.redirectUrl = null;
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(() => {
+      expect(latestPageToLoadParams).toBeTruthy();
+    });
+
+    expect(latestPageToLoadParams).toEqual({
+      redirect_url: 'https://airo-builder.test'
+    });
   });
 });

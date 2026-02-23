@@ -288,7 +288,15 @@ export function useAuth(options: UseAuthOptions = {}) {
     }
 
     try {
-      window.location.href = await getLoginUrl(redirectUrl);
+      // If no redirect URL provided, capture current page to preserve path after SSO
+      // This ensures direct SSO redirects (non-modal flow) return to the same page
+      const finalRedirectUrl = redirectUrl || (
+        typeof window !== 'undefined'
+          ? window.location.href  // Full current URL with path
+          : undefined
+      );
+
+      window.location.href = await getLoginUrl(finalRedirectUrl);
     } catch (error) {
       logger.error('auth.signin.url_error', {
         message: 'Failed to get login URL',
