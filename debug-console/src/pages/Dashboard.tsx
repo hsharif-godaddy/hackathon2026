@@ -252,22 +252,39 @@ export default function Dashboard() {
                 Enter an App ID to view logs and conversation history
               </p>
             </div>
-            <a
-              href="/analytics"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                color: '#3b82f6',
-                textDecoration: 'none',
-                fontSize: '0.875rem',
-                fontWeight: 500,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.25rem'
-              }}
-            >
-              📊 Analytics
-            </a>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <a
+                href="/analytics"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: '#3b82f6',
+                  textDecoration: 'none',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem'
+                }}
+              >
+                📊 Analytics
+              </a>
+              <a
+                href="/image-search"
+                style={{
+                  color: '#3b82f6',
+                  textDecoration: 'none',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  marginLeft: '1rem',
+                }}
+              >
+                Image Search
+              </a>
+            </div>
           </div>
 
           {/* App ID and Time Range inputs */}

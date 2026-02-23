@@ -3,8 +3,10 @@ package auth
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -323,4 +325,38 @@ func containsError(err, target error) bool {
 	}
 	// Check if the error message contains the target error message
 	return err != nil && target != nil && strings.Contains(err.Error(), target.Error())
+}
+
+// createMockSSOServer creates a test server that returns PEM-encoded RSA public keys.
+// The server responds to requests at /v1/api/key/{kid}.
+//
+//nolint:unparam // kid parameter is intentionally parameterized for test flexibility
+func createMockSSOServer(t *testing.T, publicKey *rsa.PublicKey, kid string) *httptest.Server {
+	t.Helper()
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		expectedPath := "/v1/api/key/" + kid
+		if r.URL.Path != expectedPath {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		// Encode the public key to PEM format
+		pubKeyBytes, err := x509.MarshalPKIXPublicKey(publicKey)
+		if err != nil {
+			t.Errorf("failed to marshal public key: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		pemBlock := &pem.Block{
+			Type:  "PUBLIC KEY",
+			Bytes: pubKeyBytes,
+		}
+
+		w.Header().Set("Content-Type", "application/x-pem-file")
+		if err := pem.Encode(w, pemBlock); err != nil {
+			t.Errorf("failed to encode PEM: %v", err)
+		}
+	}))
 }

@@ -49,8 +49,8 @@ func NewServer(cfg *config.Config, version string) *Server {
 		version: version,
 	}
 
-	// Initialize auth middleware
-	s.authMiddleware = auth.NewMiddleware(cfg.AuthType, cfg.JWKSURL, "airo-app", "agents-service")
+	// Initialize auth middleware with dual auth support (airo-app + JOMAX)
+	s.authMiddleware = auth.NewMiddleware(cfg.AuthType, cfg.JWKSURL, "airo-app", "agents-service", cfg.SSOHost)
 
 	// Apply logging middleware to all routes
 	s.router.Use(loggingMiddleware)
