@@ -892,8 +892,9 @@ export class ProjectImportService {
       // Delete all files except .git, .gitignore, node_modules, .is_ready, dev_setup_and_serve.sh, and public/assets
       // Preserve .gitignore so it's not lost when imported project doesn't have one
       // Preserve public/assets as it contains persistent user data, refer this doc for more detail -> docs/persistent-storage-architecture.md
+      // Note: The public directory cleanup only runs if /app/public exists (it may not exist in fresh apps)
       const deleteResult = await devSupervisor.exec({
-        command: `find "${containerAppPath}" -mindepth 1 -maxdepth 1 ! -name ".git" ! -name ".gitignore" ! -name "node_modules" ! -name ".is_ready" ! -name ".import-*" ! -name "dev_setup_and_serve.sh" ! -name "public" -exec rm -rf {} + && find "${containerAppPath}/public" -mindepth 1 -maxdepth 1 ! -name "assets" -exec rm -rf {} +`,
+        command: `find "${containerAppPath}" -mindepth 1 -maxdepth 1 ! -name ".git" ! -name ".gitignore" ! -name "node_modules" ! -name ".is_ready" ! -name ".import-*" ! -name "dev_setup_and_serve.sh" ! -name "public" -exec rm -rf {} + && { [ -d "${containerAppPath}/public" ] && find "${containerAppPath}/public" -mindepth 1 -maxdepth 1 ! -name "assets" -exec rm -rf {} + || true; }`,
         timeout: 30, // seconds
       });
 

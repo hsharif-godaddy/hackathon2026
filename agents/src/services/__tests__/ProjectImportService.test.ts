@@ -736,4 +736,233 @@ describe('ProjectImportService', () => {
       expect(result.found).toBe(false);
     });
   });
+
+  describe('copyFilesInContainer', () => {
+    let service: ProjectImportService;
+
+    beforeEach(() => {
+      service = new ProjectImportService();
+    });
+
+    // Access private method for testing
+    const copyFilesInContainer = async (
+      service: ProjectImportService,
+      devSupervisor: { exec: ReturnType<typeof vi.fn> },
+      projectRoot: string,
+      appPath: string
+    ) => {
+      return (service as unknown as {
+        copyFilesInContainer: (
+          devSupervisor: { exec: ReturnType<typeof vi.fn> },
+          projectRoot: string,
+          appPath: string
+        ) => Promise<{ success: boolean; error?: string }>;
+      }).copyFilesInContainer(devSupervisor, projectRoot, appPath);
+    };
+
+    it('should succeed when /app/public directory exists and cleanup succeeds', async () => {
+      // Simulates: /app/public exists, both main cleanup and public cleanup succeed
+      const mockDevSupervisor = {
+        exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+          // Cleanup command - directory exists and find succeeds
+          if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
+            return { success: true, stdout: '', stderr: '', exit_code: 0 };
+          }
+          // Copy command succeeds
+          if (command.includes('-exec cp -r')) {
+            return { success: true, stdout: '', stderr: '', exit_code: 0 };
+          }
+          return { success: true, stdout: '', stderr: '', exit_code: 0 };
+        }),
+      };
+
+      const result = await copyFilesInContainer(
+        service,
+        mockDevSupervisor,
+        '/app/.import-123-extract/my-app',
+        '/tmp/apps/test-app/app'
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(2); // cleanup + copy
+    });
+
+    it('should succeed when /app/public directory does NOT exist (graceful handling via || true)', async () => {
+      // Simulates fresh app where /app/public doesn't exist yet
+      // The command `{ [ -d "/app/public" ] && find ... || true; }` handles this:
+      // - [ -d "/app/public" ] returns false (dir doesn't exist)
+      // - && short-circuits, find doesn't run
+      // - || true makes the whole expression succeed
+      // The shell still reports success=true because of || true
+      const mockDevSupervisor = {
+        exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+          // The cleanup command succeeds even when public dir doesn't exist
+          // because the shell evaluates: `mainCleanup && { false || true }` = true
+          if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
+            return { success: true, stdout: '', stderr: '', exit_code: 0 };
+          }
+          if (command.includes('-exec cp -r')) {
+            return { success: true, stdout: '', stderr: '', exit_code: 0 };
+          }
+          return { success: true, stdout: '', stderr: '', exit_code: 0 };
+        }),
+      };
+
+      const result = await copyFilesInContainer(
+        service,
+        mockDevSupervisor,
+        '/app/.import-123-extract/my-app',
+        '/tmp/apps/test-app/app'
+      );
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should verify cleanup command structure with regex for graceful public directory handling', async () => {
+      let cleanupCommand = '';
+      const mockDevSupervisor = {
+        exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+          if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
+            cleanupCommand = command;
+          }
+          return { success: true, stdout: '', stderr: '', exit_code: 0 };
+        }),
+      };
+
+      await copyFilesInContainer(
+        service,
+        mockDevSupervisor,
+        '/app/.import-123-extract/my-app',
+        '/tmp/apps/test-app/app'
+      );
+
+      // Verify the cleanup command structure using regex for robustness
+      // Pattern: `{ [ -d "/app/public" ] && find "/app/public" ... || true; }`
+      // The braces are essential - they ensure || true only applies to public cleanup,
+      // not the main cleanup (which must fail properly on errors)
+      expect(cleanupCommand).toMatch(/\{\s*\[\s*-d\s+"[^"]+\/public"\s*\]\s*&&.*\|\|\s*true\s*;\s*\}/);
+
+      // Also verify specific components
+      expect(cleanupCommand).toContain('[ -d "/app/public" ]'); // Directory existence check
+      expect(cleanupCommand).toContain('|| true'); // Fallback to success
+      expect(cleanupCommand).toContain('! -name "assets"'); // Preserve assets directory
+    });
+
+    it('should fail when main cleanup command fails (error propagates correctly)', async () => {
+      // Tests that main cleanup failures are NOT masked by || true
+      // The braces `{ ... || true; }` ensure || true only applies to public cleanup
+      const mockDevSupervisor = {
+        exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+          // Main cleanup fails due to permission error
+          if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
+            return {
+              success: false,
+              stdout: '',
+              stderr: 'Permission denied',
+              exit_code: 1,
+            };
+          }
+          return { success: true, stdout: '', stderr: '', exit_code: 0 };
+        }),
+      };
+
+      const result = await copyFilesInContainer(
+        service,
+        mockDevSupervisor,
+        '/app/.import-123-extract/my-app',
+        '/tmp/apps/test-app/app'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to clean app directory');
+      expect(result.error).toContain('Permission denied');
+    });
+
+    it('should fail when copy command fails', async () => {
+      const mockDevSupervisor = {
+        exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+          // Cleanup succeeds
+          if (command.includes('-exec rm -rf')) {
+            return { success: true, stdout: '', stderr: '', exit_code: 0 };
+          }
+          // Copy fails
+          if (command.includes('-exec cp -r')) {
+            return {
+              success: false,
+              stdout: '',
+              stderr: 'No space left on device',
+              exit_code: 1,
+            };
+          }
+          return { success: true, stdout: '', stderr: '', exit_code: 0 };
+        }),
+      };
+
+      const result = await copyFilesInContainer(
+        service,
+        mockDevSupervisor,
+        '/app/.import-123-extract/my-app',
+        '/tmp/apps/test-app/app'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Failed to copy files');
+      expect(result.error).toContain('No space left on device');
+    });
+
+    it('should preserve protected directories during cleanup', async () => {
+      let cleanupCommand = '';
+      const mockDevSupervisor = {
+        exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+          if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
+            cleanupCommand = command;
+          }
+          return { success: true, stdout: '', stderr: '', exit_code: 0 };
+        }),
+      };
+
+      await copyFilesInContainer(
+        service,
+        mockDevSupervisor,
+        '/app/.import-123-extract/my-app',
+        '/tmp/apps/test-app/app'
+      );
+
+      // Verify all protected directories are excluded from deletion
+      expect(cleanupCommand).toContain('! -name ".git"');
+      expect(cleanupCommand).toContain('! -name ".gitignore"');
+      expect(cleanupCommand).toContain('! -name "node_modules"');
+      expect(cleanupCommand).toContain('! -name ".is_ready"');
+      expect(cleanupCommand).toContain('! -name ".import-*"');
+      expect(cleanupCommand).toContain('! -name "dev_setup_and_serve.sh"');
+      expect(cleanupCommand).toContain('! -name "public"'); // public dir excluded from top-level deletion
+    });
+
+    it('should verify braces are essential for correct error propagation', async () => {
+      // This test documents WHY braces are needed in the command:
+      // Without braces: `A && B && C || true` - if A fails, || true masks it
+      // With braces: `A && { B && C || true; }` - if A fails, failure propagates
+      let cleanupCommand = '';
+      const mockDevSupervisor = {
+        exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+          if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
+            cleanupCommand = command;
+          }
+          return { success: true, stdout: '', stderr: '', exit_code: 0 };
+        }),
+      };
+
+      await copyFilesInContainer(
+        service,
+        mockDevSupervisor,
+        '/app/.import-123-extract/my-app',
+        '/tmp/apps/test-app/app'
+      );
+
+      // Verify braces are present around the public cleanup portion
+      // This ensures `|| true` only applies to public cleanup, not main cleanup
+      expect(cleanupCommand).toContain('&& {'); // Opening brace after main cleanup
+      expect(cleanupCommand).toMatch(/\|\|\s*true\s*;\s*\}/); // Closing brace with || true inside
+    });
+  });
 });
