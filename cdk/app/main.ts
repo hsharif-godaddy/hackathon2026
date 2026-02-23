@@ -6,6 +6,8 @@ import { AiroJWTKeyStack } from "../lib/airo-jwt-key-stack";
 import { MonitoringStack } from '../lib/monitoring-stack';
 import { GocaasSpendLambdaStack } from "../lib/gocaas-spend-lambda-stack";
 import { ImageSearchStack } from "../lib/image-search-stack";
+import { QdrantStack } from "../lib/qdrant-stack";
+import { QdrantEcrStack } from "../lib/qdrant-ecr-stack";
 
 /**
  * Main function to execute the CDK app
@@ -42,6 +44,14 @@ async function main() {
 
   // Create Image Search Service infrastructure (S3 bucket for analysis cache)
   new ImageSearchStack(app, 'ImageSearchStack', { env });
+
+  // Create Qdrant ECR repository (dev and prod only)
+  // Deploy this first to allow pre-populating Docker images
+  new QdrantEcrStack(app, "QdrantEcrStack", { env });
+
+  // Create Qdrant vector database cluster (dev and prod only)
+  // Requires QdrantEcrStack to be deployed first with Docker image
+  new QdrantStack(app, "QdrantVectorDbStack", { env });
 
   app.synth();
 }

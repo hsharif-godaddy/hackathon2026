@@ -30,6 +30,22 @@ interface MonitoringConfig {
 }
 
 /**
+ * Qdrant cluster configuration
+ */
+interface QdrantConfig {
+  /** Number of Qdrant nodes (3 minimum for Raft quorum) */
+  nodeCount: number;
+  /** Fargate CPU units per task (1024 = 1 vCPU) */
+  cpu: number;
+  /** Fargate memory in MiB per task */
+  memory: number;
+  /** Ephemeral storage in GiB (for Qdrant data) */
+  ephemeralStorageGiB: number;
+  /** Docker image tag to deploy */
+  imageTag: string;
+}
+
+/**
  * Main configuration interface for Airo Builder CDK stacks
  */
 interface Config {
@@ -52,6 +68,7 @@ interface Config {
     keyExpiryDays: number;
     gracePeriodDays: number;
   };
+  qdrant: QdrantConfig;
 }
 
 const devConfig: Config = {
@@ -103,7 +120,14 @@ const devConfig: Config = {
     rotationIntervalDays: 7,    // Rotate keys weekly
     keyExpiryDays: 60,          // Keys expire after 60 days
     gracePeriodDays: 30         // Keep old keys for 30 days during rotation
-  }
+  },
+  qdrant: {
+    nodeCount: 3,
+    cpu: 1024,
+    memory: 2048,
+    ephemeralStorageGiB: 30,
+    imageTag: 'latest',
+  },
 };
 
 const testConfig: Config = {
@@ -142,7 +166,15 @@ const testConfig: Config = {
     rotationIntervalDays: 14,   // Rotate keys bi-weekly in test
     keyExpiryDays: 90,          // Keys expire after 90 days
     gracePeriodDays: 30         // Keep old keys for 30 days during rotation
-  }
+  },
+  // Qdrant not deployed to test environment (only dev/prod) - see QdrantStack
+  qdrant: {
+    nodeCount: 0,
+    cpu: 0,
+    memory: 0,
+    ephemeralStorageGiB: 0,
+    imageTag: 'none',
+  },
 };
 
 const prodConfig: Config = {
@@ -182,7 +214,14 @@ const prodConfig: Config = {
     rotationIntervalDays: 30,   // Rotate keys monthly in production
     keyExpiryDays: 120,         // Keys expire after 120 days
     gracePeriodDays: 30         // Keep old keys for 30 days during rotation
-  }
+  },
+  qdrant: {
+    nodeCount: 3,
+    cpu: 2048,
+    memory: 4096,
+    ephemeralStorageGiB: 50,
+    imageTag: 'latest',
+  },
 };
 
 

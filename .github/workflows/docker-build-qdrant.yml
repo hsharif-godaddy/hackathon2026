@@ -1,0 +1,151 @@
+name: Docker Build - Qdrant
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - "cdk/docker/qdrant/**"
+      - ".github/workflows/docker-build-qdrant.yml"
+  push:
+    branches: [main]
+    paths:
+      - "cdk/docker/qdrant/**"
+      - ".github/workflows/docker-build-qdrant.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy to"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - prod
+      image_tag:
+        description: "Image tag (default: latest)"
+        required: false
+        default: "latest"
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  # GoDaddy Golden Container Image registry
+  GCI_ACCOUNT: "764525110978"
+  GCI_REGION: "us-west-2"
+  # Environment-specific accounts
+  DEV_ACCOUNT: "694282668781"
+  PROD_ACCOUNT: "644094189644"
+
+jobs:
+  docker-build-qdrant:
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU for ARM64
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Determine target environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            ENV="${{ inputs.environment }}"
+            TAG="${{ inputs.image_tag }}"
+          elif [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            ENV="dev"
+            TAG="latest"
+          else
+            ENV="dev"
+            TAG="pr-${{ github.event.pull_request.number }}"
+          fi
+
+          if [ "$ENV" == "prod" ]; then
+            ACCOUNT="${{ env.PROD_ACCOUNT }}"
+          else
+            ACCOUNT="${{ env.DEV_ACCOUNT }}"
+          fi
+
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "account=$ACCOUNT" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Building for environment: $ENV, account: $ACCOUNT, tag: $TAG"
+
+      - name: Login to GCI ECR (for base image)
+        run: |
+          set -e
+          assume_role_and_login() {
+            local role_arn=arn:aws:iam::$1:role/GD-AWS-SSG-Deploy-Role
+            local account_id=$1
+            echo "Assuming role for account: $account_id"
+            unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+            export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+            $(aws sts assume-role --role-arn $role_arn --role-session-name GHASession --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
+            echo "Logging in to ECR for account: $account_id"
+            aws ecr get-login-password --region ${{ env.GCI_REGION }} | docker login --username AWS --password-stdin $account_id.dkr.ecr.${{ env.GCI_REGION }}.amazonaws.com
+          }
+          assume_role_and_login ${{ env.GCI_ACCOUNT }}
+
+      - name: Login to Target ECR (for push)
+        run: |
+          set -e
+          assume_role_and_login() {
+            local role_arn=arn:aws:iam::$1:role/GD-AWS-SSG-Deploy-Role
+            local account_id=$1
+            echo "Assuming role for account: $account_id"
+            unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+            export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+            $(aws sts assume-role --role-arn $role_arn --role-session-name GHASession --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
+            echo "Logging in to ECR for account: $account_id"
+            aws ecr get-login-password --region ${{ env.GCI_REGION }} | docker login --username AWS --password-stdin $account_id.dkr.ecr.${{ env.GCI_REGION }}.amazonaws.com
+          }
+          assume_role_and_login ${{ steps.env.outputs.account }}
+
+      - name: Build Docker Image (Qdrant)
+        run: |
+          echo "Building Qdrant Docker image for ARM64..."
+          docker build \
+            --platform linux/arm64 \
+            -t qdrant:${{ steps.env.outputs.tag }} \
+            -f cdk/docker/qdrant/Dockerfile \
+            cdk/docker/qdrant/
+          echo "Qdrant Docker image built successfully"
+
+      - name: Tag and Push Docker Image
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          REPO_URI="${{ steps.env.outputs.account }}.dkr.ecr.${{ env.GCI_REGION }}.amazonaws.com/${{ steps.env.outputs.environment }}-qdrant"
+          TAG="${{ steps.env.outputs.tag }}"
+
+          echo "Tagging image as $REPO_URI:$TAG"
+          docker tag qdrant:$TAG $REPO_URI:$TAG
+
+          echo "Pushing image to ECR..."
+          docker push $REPO_URI:$TAG
+
+          # Also tag as latest if this is a versioned tag
+          if [ "$TAG" != "latest" ]; then
+            echo "Also tagging as latest..."
+            docker tag qdrant:$TAG $REPO_URI:latest
+            docker push $REPO_URI:latest
+          fi
+
+          echo "Image pushed successfully: $REPO_URI:$TAG"
+
+      - name: Clean up Docker images
+        if: always()
+        run: |
+          docker rmi qdrant:${{ steps.env.outputs.tag }} || true

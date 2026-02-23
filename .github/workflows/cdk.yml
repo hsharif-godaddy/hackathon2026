@@ -23,6 +23,8 @@ on:
           - "MySQLV2Stack"
           - "AiroJWTKeyStack"
           - "GocaasSpendLambdaStack"
+          - "QdrantEcrStack"
+          - "QdrantVectorDbStack"
         default: "--all"
       DEFAULT_ACTION:
         description: "Default action to take"
@@ -48,17 +50,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Get Artifactory Token # This action retrieves the Artifactory token
+      - name: Get Artifactory Token
         id: jfrog
         uses: jfrog/setup-jfrog-cli@f748a0599171a192a2668afee8d0497f7c1069df # v4.5.6
         env:
-          JF_URL: ${{ vars.JF_URL }} # Stored at the org level so you don't have to worry about it
+          JF_URL: ${{ vars.JF_URL }}
         with:
           oidc-provider-name: github
 
       - name: Setup Artifactory Creds
         env:
-          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }} # Use the token as you'd normally use a token or password
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
         run: |
           echo "::add-mask::$OIDC_TOKEN"
           echo "ARTIFACTORY_NPM_TOKEN=${OIDC_TOKEN}" >> $GITHUB_ENV
@@ -67,6 +69,21 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22.7
+
+      - name: Install pnpm
+        run: npm install -g pnpm@10.17.0+sha512.fce8a3dd29a4ed2ec566fb53efbb04d8c44a0f05bc6f24a73046910fb9c3ce7afa35a0980500668fa3573345bd644644fa98338fa168235c80f4aa17aa17fbef
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
 
       - name: Set environment variables
         run: |
@@ -87,7 +104,21 @@ jobs:
           echo "STACK_NAME=${{ env.STACK_NAME }}"
           echo "DEFAULT_ACTION=${{ env.DEFAULT_ACTION }}"
 
-      - name: Run Build & Deploy
+      - name: Setup Artifactory .npmrc
+        working-directory: ./cdk
+        run: |
+          # Create .npmrc file for workspace
+          echo "always-auth=true" > .npmrc
+          echo "progress=false" >> .npmrc
+          echo @godaddy:registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ >> .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
+          cp .npmrc lambda/gocode-spend-essp-exporter/.npmrc
+
+      - name: Install dependencies
+        working-directory: ./cdk
+        run: pnpm --filter airo-builder-cdk install --frozen-lockfile
+
+      - name: Run CDK
         working-directory: ./cdk
         env:
           ENV_NAME: ${{ env.ENV_NAME }}
@@ -95,20 +126,8 @@ jobs:
           STACK_NAME: ${{ env.STACK_NAME }}
           DEFAULT_ACTION: ${{ env.DEFAULT_ACTION }}
         run: |
-          # Create .npmrc file for workspace
-          echo "always-auth=true" > .npmrc
-          echo "progress=false" >> .npmrc
-          echo @godaddy:registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ >> .npmrc
-          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
-
-          cp .npmrc lambda/gocode-spend-essp-exporter/.npmrc
-
-          npm install -g pnpm@10.17.0+sha512.fce8a3dd29a4ed2ec566fb53efbb04d8c44a0f05bc6f24a73046910fb9c3ce7afa35a0980500668fa3573345bd644644fa98338fa168235c80f4aa17aa17fbef
-
-          # Install workspace dependencies (includes CDK)
-          pnpm --filter airo-builder-cdk install --frozen-lockfile
-
-          # npx --verbose cdk synth
+          # Ensure pipeline failures are detected (grep was swallowing exit codes)
+          set -o pipefail
 
           # CICD runner needs to assume role
           export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" $(aws sts assume-role \
