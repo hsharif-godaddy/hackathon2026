@@ -10,7 +10,7 @@ import type { ContextAttachment } from '@/types/context-attachment'
 import type { AgentsAppChatMessage, AgentsAppContext } from '@/types/websocket-context'
 
 export interface Asset {
-  imageUrl: string
+  imageUrl?: string
   thumbnailUrl?: string
   videoUrl?: string
   [key: string]: unknown
@@ -65,9 +65,11 @@ export class ChatMessageBuilder {
 
     return assets.map(asset => ({
       ...asset,
-      imageUrl: asset.imageUrl.startsWith('//')
-        ? `https:${asset.imageUrl}`
-        : asset.imageUrl,
+      ...(asset.imageUrl && {
+        imageUrl: asset.imageUrl.startsWith('//')
+          ? `https:${asset.imageUrl}`
+          : asset.imageUrl
+      }),
       ...(asset.thumbnailUrl && {
         thumbnailUrl: asset.thumbnailUrl.startsWith('//')
           ? `https:${asset.thumbnailUrl}`

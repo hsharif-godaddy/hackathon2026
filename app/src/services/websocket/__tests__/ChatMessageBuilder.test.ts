@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { type BuildMessageParams, ChatMessageBuilder } from '../ChatMessageBuilder'
+import { type Asset, type BuildMessageParams, ChatMessageBuilder } from '../ChatMessageBuilder'
 
 describe('ChatMessageBuilder', () => {
   let builder: ChatMessageBuilder
@@ -178,6 +178,28 @@ describe('ChatMessageBuilder', () => {
           thumbnailUrl: 'https://example.com/thumb2.jpg',
         },
       ])
+    })
+
+    it('should handle assets with undefined imageUrl', () => {
+      const params: BuildMessageParams = {
+        content: 'Test',
+        appId: 'app-123',
+        sessionId: 'session-456',
+        selectedAssets: [{
+          mediaType: 'IMAGE',
+          sourceType: 'upload',
+          filename: 'photo.png',
+          contentType: 'image/png',
+          size: 1024,
+        }],
+      }
+
+      const result = builder.build(params)
+
+      const attachment = result.context?.contextAttachments?.[0]
+      expect(attachment?.type).toBe('selected_assets')
+      const assets = attachment?.data as Asset[]
+      expect(assets[0].imageUrl).toBeUndefined()
     })
 
     it('should not add attachment when selectedAssets is empty', () => {
