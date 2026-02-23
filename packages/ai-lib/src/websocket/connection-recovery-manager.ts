@@ -64,7 +64,7 @@ export interface RecoveryContext {
   oldSocketId: string
   conversationId: string
   lastDeliveredSequence: number
-  abortController: AbortController
+  abortController: AbortController | null
   agentName?: string
 }
 
@@ -241,7 +241,7 @@ export class ConnectionRecoveryManager {
       oldSocketId: socketId, // Same for automatic recovery
       conversationId: stateData.conversationId,
       lastDeliveredSequence: stateData.lastDeliveredSequence,
-      abortController: stateData.abortController!
+      abortController: stateData.abortController
     }
 
     await this.executeRecoveryFlow(socket, context, stateData, callbacks)
@@ -288,7 +288,7 @@ export class ConnectionRecoveryManager {
       oldSocketId: previousSocketId,
       conversationId: stateData.conversationId,
       lastDeliveredSequence: stateData.lastDeliveredSequence,
-      abortController: stateData.abortController!
+      abortController: stateData.abortController
     }
 
     await this.executeRecoveryFlow(socket, context, stateData, callbacks)
@@ -355,7 +355,7 @@ export class ConnectionRecoveryManager {
       oldSocketId,
       conversationId,
       lastDeliveredSequence: stateData.lastDeliveredSequence,
-      abortController: stateData.abortController!
+      abortController: stateData.abortController
     }
 
     await this.executeRecoveryFlow(socket, context, stateData, callbacks)
@@ -1018,8 +1018,16 @@ export class ConnectionRecoveryManager {
    * Clean up after recovery failure
    */
   private cleanupAfterRecoveryFailure(context: RecoveryContext): void {
-    // Abort the stream
-    context.abortController.abort()
+    // Abort the stream (only if abortController exists)
+    if (context.abortController) {
+      context.abortController.abort()
+    } else {
+      this.logger.warn('recovery.cleanup.missing_abort_controller', {
+        socketId: context.oldSocketId,
+        conversationId: context.conversationId,
+        recoveryMode: context.mode
+      })
+    }
 
     // Clean up event channel subscribers
     this.cleanupEventChannelSubscribers(context.oldSocketId, context.conversationId)
