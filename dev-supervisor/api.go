@@ -161,6 +161,12 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 
 	// Validate request
 	if err := validation.ValidateCommandRequest(req); err != nil {
+		slog.Warn("exec.command.validation.failed",
+			"error", err,
+			"command_preview", commandLogPreview(req.Command),
+			"working_dir", req.WorkingDir,
+			"requested_timeout_seconds", req.Timeout,
+		)
 		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
 		return
 	}

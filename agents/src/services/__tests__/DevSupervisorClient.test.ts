@@ -109,6 +109,35 @@ describe('DevSupervisorClient', () => {
       await expect(client.exec(options)).rejects.toThrow('HTTP 500: Command failed');
     });
 
+    it('should combine error type and message in validation failures', async () => {
+      const mockRequest = createMockRequest(400, {
+        error: 'validation_failed',
+        message: 'command cannot be empty'
+      });
+      vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+      await expect(client.exec({ command: '' }))
+        .rejects.toThrow('HTTP 400: validation_failed: command cannot be empty');
+    });
+
+    it('should use message field when error field is absent', async () => {
+      const mockRequest = createMockRequest(400, {
+        message: 'Invalid JSON payload'
+      });
+      vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+      await expect(client.exec({ command: 'test' }))
+        .rejects.toThrow('HTTP 400: Invalid JSON payload');
+    });
+
+    it('should fall back to default text when no error details provided', async () => {
+      const mockRequest = createMockRequest(400, {});
+      vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+      await expect(client.exec({ command: 'test' }))
+        .rejects.toThrow('HTTP 400: Request failed');
+    });
+
     it('should capture timed_out field from response', async () => {
       const mockResponse = {
         command: 'long-running-command',

@@ -746,7 +746,8 @@ export class DevSupervisorClient {
             if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
               resolve(response);
             } else {
-              reject(new Error(`HTTP ${res.statusCode}: ${response.error || response.message || 'Request failed'}`));
+              const errorDetail = [response.error, response.message].filter(Boolean).join(': ');
+              reject(new Error(`HTTP ${res.statusCode}: ${errorDetail || 'Request failed'}`));
             }
           } catch (error) {
             reject(new Error(`Failed to parse response: ${body}`));
