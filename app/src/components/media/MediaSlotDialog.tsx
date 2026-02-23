@@ -585,7 +585,7 @@ export function MediaSlotDialog() {
                     {/* Scrollable area for alternatives and uploads */}
                     <div className="flex-shrink-0 overflow-y-auto max-h-48 px-4 py-3">
                       {/* Alternatives - horizontal scroll */}
-                      <div className="flex gap-2 overflow-x-auto pb-1">
+                      <div className="flex gap-2 overflow-x-auto p-1">
                         {allImages.map((url, index) => {
                           const isSelected = selectedImageIndex === index
                           return (
@@ -717,7 +717,7 @@ export function MediaSlotDialog() {
                         <button
                           type="button"
                           onClick={() => setSelectedImageIndex(0)}
-                          className={`w-1/2 max-h-full overflow-hidden rounded-md transition-all ${
+                          className={`w-1/2 max-h-full rounded-md transition-all ${
                             selectedImageIndex === 0
                               ? 'ring-2 ring-intents-ux-ring-borderColor'
                               : 'hover:opacity-80 cursor-pointer'
@@ -734,7 +734,7 @@ export function MediaSlotDialog() {
                         </button>
 
                         {/* Right: Tabbed view */}
-                        <div className="w-1/2 h-full overflow-hidden">
+                        <div className="w-1/2 h-full overflow-visible">
                           <div className="max-h-full flex flex-col">
                             {/* Tab buttons */}
                             <div className="flex gap-1 mb-3 flex-shrink-0">
@@ -765,7 +765,7 @@ export function MediaSlotDialog() {
                           </div>
 
                           {/* Tab content with scroll */}
-                          <div className="flex-1 h-0 overflow-y-auto">
+                          <div className="flex-1 h-0 overflow-y-auto p-1">
                             {activeRightTab === 'alternatives' ? (
                               <div className="grid grid-cols-2 gap-2 content-start">
                                 {allImages.slice(1).map((url, index) => {
