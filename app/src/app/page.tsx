@@ -149,13 +149,12 @@ function HomeContent() {
         body: JSON.stringify({
           initialPrompt: promptToUse
         })
-      })
+      }, { setAuthState: false })
 
       if (!createSiteResponse.ok) {
-        // Check if this is a session stale/expired error (401 with requiresRefresh)
-        // In this case, trigger SSO login to refresh the session instead of showing error
-        if (createSiteResponse.status === 401 && createSiteResponse.requiresRefresh) {
-          logger.info('homepage.session-stale', {
+        // 401 means unauthenticated — trigger SSO login to refresh the session
+        if (createSiteResponse.status === 401) {
+          logger.info('homepage.auth-required', {
             action: 'triggering-sso-login',
             phase: 'quick-create'
           });
@@ -171,7 +170,11 @@ function HomeContent() {
 
         // For other errors, extract and throw
         const errorData = await createSiteResponse.json().catch(() => ({}))
-        throw new Error(errorData.message || errorData.error || 'Failed to create site')
+        const apiError = new Error(errorData.message || errorData.error || 'Failed to create site')
+        if (errorData.details) {
+          (apiError as any).details = errorData.details
+        }
+        throw apiError
       }
 
       const siteData = await createSiteResponse.json()
@@ -200,7 +203,8 @@ function HomeContent() {
       router.push(redirectUrl)
     } catch (error) {
       logger.error('homepage.start_building.failed', {
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error ? (error as any).details : undefined
       })
 
       // Set user-friendly error message
