@@ -50,6 +50,9 @@ const DEFAULT_MAX_RETRY_ATTEMPTS = 5
  */
 const MAX_GRANT_RETRIES = 3;
 
+/** User-facing message when all credit grants are exhausted */
+const GRANTS_EXHAUSTED_MESSAGE = 'All credit grants have been exhausted. Please purchase more credits.';
+
 /**
  * Extract LiteLLM metadata from execution context for per-request cost tracking
  * Uses the new grant-aware buildLitellmMetadataFromContext helper.
@@ -978,15 +981,6 @@ export class AgentWrapper {
     // Get socketId for grant session management
     const socketId = (options?.executionContext as any)?.socketId as string | undefined
 
-    // Check if grants are already exhausted before starting
-    if (isGrantsExhausted(options?.executionContext)) {
-      throw new BudgetExceededError(
-        'All credit grants have been exhausted. Please purchase more credits.',
-        400,
-        GrantErrorCode.AllGrantsExhausted
-      )
-    }
-
     return this._executeStreamWithGrantFallback(prompt, options, socketId, 0)
   }
 
@@ -1040,6 +1034,31 @@ export class AgentWrapper {
             socketId,
             message: 'Grants provisioning timeout - will proceed with customerId fallback',
           })
+        }
+      } else if (featureEnabled && hasGrants && isGrantsExhausted(options?.executionContext)) {
+        // All cached grants exhausted - request refresh before giving up
+        // User may have purchased a credit pack since grants were last synced
+        logger.info('grants.exhausted_refreshing', {
+          socketId,
+          message: 'All cached grants exhausted - requesting refresh for possible new credit packs',
+        })
+
+        // Using 10s timeout for both provisioning and refresh to handle network latency variations
+        const gotNewGrants = await grantSessionManager.requestGrantRefreshAndWait(socketId, 10000)
+
+        // Query the session manager directly for usability - consistent with the
+        // mid-stream BudgetExceededError fallback at the bottom of this method.
+        if (gotNewGrants && grantSessionManager.getCurrentUserId(socketId) !== undefined) {
+          logger.info('grants.exhausted_refresh_success', {
+            socketId,
+            message: 'Grant refresh found usable grants - proceeding',
+          })
+        } else {
+          throw new BudgetExceededError(
+            GRANTS_EXHAUSTED_MESSAGE,
+            400,
+            GrantErrorCode.AllGrantsExhausted
+          )
         }
       }
     }
@@ -1106,7 +1125,7 @@ export class AgentWrapper {
         if (retryCount >= MAX_GRANT_RETRIES) {
           logger.error('grants.fallback.max_retries', { socketId, retryCount })
           throw new BudgetExceededError(
-            'All credit grants have been exhausted.',
+            GRANTS_EXHAUSTED_MESSAGE,
             400,
             GrantErrorCode.AllGrantsExhausted
           )
@@ -1136,7 +1155,7 @@ export class AgentWrapper {
                   retryCount: nextRetryCount,
                 })
                 throw new BudgetExceededError(
-                  'All credit grants have been exhausted.',
+                  GRANTS_EXHAUSTED_MESSAGE,
                   400,
                   GrantErrorCode.AllGrantsExhausted
                 )
@@ -1166,7 +1185,7 @@ export class AgentWrapper {
 
           // Still no usable grants after refresh - surface error to user
           throw new BudgetExceededError(
-            'All credit grants have been exhausted. Please purchase more credits.',
+            GRANTS_EXHAUSTED_MESSAGE,
             400,
             GrantErrorCode.AllGrantsExhausted
           )
