@@ -100,6 +100,7 @@ describe('publishAction', () => {
       setIsPublishing: vi.fn(),
       setLastPublishedCommitHash: vi.fn(),
       setPublishError: vi.fn(),
+      setPublishSuccess: vi.fn(),
       setBuildErrorDetails: vi.fn(),
       setDeploymentInProgressId: vi.fn(),
       setShowPaywallModal: vi.fn(),
@@ -917,7 +918,7 @@ describe('publishAction', () => {
       await expect(publishAction(params, context)).resolves.toBeDefined()
     })
 
-    it('should skip deployment tracking if no deploymentId', async () => {
+    it('should show success immediately if no deploymentId', async () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
@@ -930,6 +931,8 @@ describe('publishAction', () => {
 
       expect(mockStoreActions.setDeploymentInProgressId).not.toHaveBeenCalled()
       expect(mockQueryClient.invalidateQueries).not.toHaveBeenCalled()
+      expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', false)
+      expect(mockStoreActions.setPublishSuccess).toHaveBeenCalledWith('app-123', true)
     })
 
     it('should continue if deployment ID store update fails', async () => {

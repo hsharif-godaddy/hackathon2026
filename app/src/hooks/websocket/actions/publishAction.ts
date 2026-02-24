@@ -367,6 +367,19 @@ export const publishAction: ClientActionExecutor = async (params) => {
         appId,
         deploymentId: result.deployment.deploymentId,
       })
+    } else {
+      // No deployment tracking available (local dev or deployment creation failure),
+      // show success immediately instead of polling
+      try {
+        const store = useDevelopPageStore.getState()
+        store.setIsPublishing(appId, false)
+        store.setPublishSuccess(appId, true)
+      } catch (storeError) {
+        logger.warn('websocket.client-action.publish.publish-success-store-failed', {
+          appId,
+          error: storeError instanceof Error ? storeError.message : String(storeError),
+        })
+      }
     }
 
     // Return minimal result data
