@@ -407,52 +407,6 @@ export class QdrantStack extends GDStack {
       exportName: `${config.envName}-qdrant-efs-id`,
     });
 
-    // Bastion instance for testing Qdrant connectivity
-    // Access via SSM Session Manager: aws ssm start-session --target <instance-id>
-    const bastionSg = new ec2.SecurityGroup(this, "BastionSecurityGroup", {
-      vpc,
-      securityGroupName: `${config.envName}-qdrant-bastion-sg`,
-      description: "Bastion host for Qdrant testing",
-      allowAllOutbound: true,
-    });
-
-    const bastionRole = new iam.Role(this, "BastionRole", {
-      assumedBy: new iam.ServicePrincipal("ec2.amazonaws.com"),
-      managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonSSMManagedInstanceCore"),
-      ],
-    });
-
-    const bastion = new ec2.Instance(this, "BastionInstance", {
-      vpc,
-      vpcSubnets: this.gdTrustedLandingZone.networking.dxAppSubnets,
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.NANO),
-      machineImage: ec2.MachineImage.latestAmazonLinux2023({
-        cpuType: ec2.AmazonLinuxCpuType.ARM_64,
-      }),
-      securityGroup: bastionSg,
-      role: bastionRole,
-      instanceName: `${config.envName}-qdrant-bastion`,
-    });
-
-    // Allow bastion to connect to Qdrant
-    securityGroup.addIngressRule(
-      bastionSg,
-      ec2.Port.tcp(6333),
-      "Allow Qdrant REST API from bastion",
-    );
-    securityGroup.addIngressRule(
-      bastionSg,
-      ec2.Port.tcp(6334),
-      "Allow Qdrant gRPC API from bastion",
-    );
-
-    new cdk.CfnOutput(this, "BastionInstanceId", {
-      value: bastion.instanceId,
-      description: "Bastion instance ID - connect via: aws ssm start-session --target <id>",
-      exportName: `${config.envName}-qdrant-bastion-id`,
-    });
-
     // Tags
     cdk.Tags.of(this).add("component", "qdrant");
     cdk.Tags.of(this).add("allowShutdownForCostOptimization", "false");
