@@ -84,24 +84,15 @@ describe('AppContextManager Integration', () => {
     });
 
     it('should handle package.json parsing correctly', async () => {
-      // Test the read file tool directly first
-      console.log('\n🔍 Testing ReadFileTool directly...');
-      const readFileTool = new (await import('../../tools/read-file.js')).ReadFileTool();
-      const directResult = await readFileTool.readFile({ path: 'package.json' }, testAppPath);
-      console.log('Direct ReadFileTool result:');
-      console.log('- Success:', directResult.success);
-      console.log('- Content type:', typeof directResult.content);
-      console.log('- Content length:', directResult.content.length);
-      console.log('- First 100 chars:', directResult.content.substring(0, 100));
-      
-      // Test the package info method directly
       const packageInfo = await appContextManager['getPackageInfo'](mockContext);
-      
+
       expect(packageInfo).not.toBeNull();
       expect(packageInfo).toBeDefined();
       expect(packageInfo).toHaveProperty('name');
       expect(packageInfo).toHaveProperty('version');
-      
+      expect(packageInfo).toHaveProperty('dependencies');
+      expect(packageInfo).toHaveProperty('scripts');
+
       console.log('\n📦 Package info extracted:');
       console.log('Name:', packageInfo?.name);
       console.log('Version:', packageInfo?.version);

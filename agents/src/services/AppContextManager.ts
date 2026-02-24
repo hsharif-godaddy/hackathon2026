@@ -1,6 +1,7 @@
+import { readFile } from 'fs/promises';
+import { resolve, join } from 'path';
 import type { AgentExecutionContext } from '../base/agent.interface.js';
 import { DirectoryListingTool } from '../tools/directory-listing.js';
-import { ReadFileTool } from '../tools/read-file.js';
 import { appPlanTool } from '../tools/app-plan-tool.js';
 import { logger } from '../logging/index.js';
 import { appContextEvents } from '../logging/events/index.js';
@@ -17,11 +18,9 @@ import { mediaManifestService, type MediaSlot } from './MediaManifestService.js'
  */
 export class AppContextManager {
   private directoryTool: DirectoryListingTool;
-  private readFileTool: ReadFileTool;
 
   constructor() {
     this.directoryTool = new DirectoryListingTool();
-    this.readFileTool = new ReadFileTool();
   }
 
   /**
@@ -139,7 +138,6 @@ export class AppContextManager {
   } | null> {
     const appId = context.metadata?.appId as string;
     const appPath = context.metadata?.appPath as string;
-    let packageContent: unknown = null;
 
     if (!appPath || !appId) {
       return null;
@@ -148,30 +146,9 @@ export class AppContextManager {
     appContextEvents.packageBegin(logger, { appId });
 
     try {
-      // Try to read package.json using the read_file tool
-      const readResult = await this.readFileTool.readFile({ path: 'package.json' }, appPath);
-      packageContent = readResult.success ? readResult.content : null;
-
-      if (!packageContent || typeof packageContent !== 'string') {
-        appContextEvents.packageFailure(logger, new Error(`package.json read returned unexpected type: ${typeof packageContent}`), {
-          appId,
-          packageJsonFound: false
-        });
-        return null;
-      }
-
-      // The ReadFileTool returns the raw JSON content directly (no headers)
-      const jsonContent = packageContent.trim();
-
-      if (!jsonContent) {
-        appContextEvents.packageFailure(logger, new Error('No JSON content found in package.json'), {
-          appId,
-          packageJsonFound: true
-        });
-        return null;
-      }
-
-      const packageJson = JSON.parse(jsonContent);
+      const packageJsonPath = resolve(join(appPath, 'package.json'));
+      const packageContent = await readFile(packageJsonPath, 'utf-8');
+      const packageJson = JSON.parse(packageContent);
 
       // Check if dependencies are installed by comparing lock file modification time
       const dependenciesInstalled = await this.checkDependenciesInstalled(context);
@@ -201,10 +178,7 @@ export class AppContextManager {
       return result;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      appContextEvents.packageFailure(logger, err, {
-        appId,
-        packageJsonFound: typeof packageContent === 'string'
-      });
+      appContextEvents.packageFailure(logger, err, { appId, packageJsonFound: false });
       return null;
     }
   }
