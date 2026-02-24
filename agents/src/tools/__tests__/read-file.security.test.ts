@@ -209,9 +209,31 @@ describe('ReadFileTool - Security Tests', () => {
         startLine: 1,
         numLines: 1
       }, testAppDir);
-      
+
       expect(result.success).toBe(true);
       expect(result.linesRead).toEqual({ start: 1, end: 1 });
+    });
+  });
+
+  describe('Raw option', () => {
+    it('should include line number prefixes by default', async () => {
+      const result = await readFileTool.readFile({
+        path: 'config.txt',
+      }, testAppDir);
+
+      expect(result.success).toBe(true);
+      expect(result.content).toMatch(/^\s+1\|debug=true/);
+      expect(result.content).toMatch(/\s+2\|port=3000/);
+    });
+
+    it('should return raw content without line numbers when raw is true', async () => {
+      const result = await readFileTool.readFile({
+        path: 'config.txt',
+        raw: true,
+      }, testAppDir);
+
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('debug=true\nport=3000');
     });
   });
 });

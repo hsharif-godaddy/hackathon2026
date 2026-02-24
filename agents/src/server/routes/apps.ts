@@ -583,7 +583,7 @@ router.get('/:id/files/read', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'App ID is required' });
     }
 
-    if (!filePath) {
+    if (!filePath || typeof filePath !== 'string') {
       return res.status(400).json({ error: 'File path is required' });
     }
 
@@ -592,7 +592,7 @@ router.get('/:id/files/read', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'App not found' });
     }
 
-    const result = await readFileTool.readFile({ path: filePath as string }, app.path);
+    const result = await readFileTool.readFile({ path: filePath, raw: true }, app.path);
 
     if (!result.success) {
       return res.status(404).json({ error: result.error });

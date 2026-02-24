@@ -10,6 +10,8 @@ export interface ReadFileOptions {
   startLine?: number;
   /** Number of lines to read from start line (optional, reads to end if not specified) */
   numLines?: number;
+  /** Return raw content without line number prefixes (default: false) */
+  raw?: boolean;
 }
 
 export interface ReadFileResult {
@@ -17,7 +19,7 @@ export interface ReadFileResult {
   success: boolean;
   /** Path that was read */
   path: string;
-  /** File content (with line numbers if partial read) */
+  /** File content (line-numbered by default, raw when raw option is used) */
   content: string;
   /** Total number of lines in the file */
   totalLines: number;
@@ -287,15 +289,18 @@ export class ReadFileTool {
       const endIndex = endLine;
       const selectedLines = lines.slice(startIndex, endIndex);
 
-      // ALWAYS format content with line numbers for better code editing workflow
-      const formattedContent = selectedLines
-        .map((line, index) => `${String(startLine + index).padStart(6)}|${line}`)
-        .join('\n');
+      // Format content with line numbers for AI code editing workflow (default)
+      // Use raw option for programmatic consumers (UI file editor, JSON parsing)
+      const content = options.raw
+        ? selectedLines.join('\n')
+        : selectedLines
+            .map((line, index) => `${String(startLine + index).padStart(6)}|${line}`)
+            .join('\n');
 
       return {
         success: true,
         path: options.path,
-        content: formattedContent,
+        content,
         totalLines,
         // Only include linesRead if a range was explicitly requested
         ...(options.startLine || options.numLines ? {
