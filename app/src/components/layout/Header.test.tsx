@@ -32,6 +32,10 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
         deploymentInProgressId: null,
         isPollingActive: false,
       })),
+      activeChatTab: 'chat',
+      activeSettingsSection: 'domain',
+      setActiveChatTab: vi.fn(),
+      setActiveSettingsSection: vi.fn(),
     };
     return selector ? selector(state) : false;
   },

@@ -90,9 +90,13 @@ async function handleLocalDevPublishSuccess(
     setPublishSuccess(appId, true);
   }
 
-  // Invalidate git history to refresh commit list
+  // Invalidate git history and secrets diff to reflect the completed sync
   await queryClient.invalidateQueries({
     queryKey: ['git-history', appId],
+    refetchType: 'active'
+  });
+  await queryClient.invalidateQueries({
+    queryKey: ['secretsDiff', appId],
     refetchType: 'active'
   });
 }

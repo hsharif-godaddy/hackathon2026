@@ -125,6 +125,12 @@ export function useWebSocketHelpers(currentAppId: string | null): UseWebSocketHe
           refetchType: 'active',
         })
 
+        // Invalidate secrets diff — agent may have added/removed secrets during this turn
+        await queryClient.invalidateQueries({
+          queryKey: ['secretsDiff', currentAppId],
+          refetchType: 'active',
+        })
+
         // Update UI state to reflect the new commit (no API call needed - backend is already there)
         useGitStore.getState().setSelectedCommitHash(currentAppId, commitHash)
 

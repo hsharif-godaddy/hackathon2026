@@ -1,6 +1,6 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
 import Alert from '@ux/alert';
@@ -10,11 +10,14 @@ import CloudUploadIcon from '@ux/icon/cloud-upload';
 import Tag from '@ux/tag';
 import text from '@ux/text';
 
+import { ChatTab, SettingsSection } from '@/app/develop/components/types';
 import { useBreakpoints } from '@/hooks/useBreakpoints';
+import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishApp } from '@/hooks/usePublishApp';
+import { useSecretsDiff } from '@/hooks/useSecretsDiff';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
@@ -35,7 +38,7 @@ export default function AppPublish({ location }: { location?: string }) {
   const [open, setOpen] = useState(false);
   const [entitlementsPollingFailed, setEntitlementsPollingFailed] = useState(false);
   const pathname = usePathname();
-  const router = useRouter();
+  const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
@@ -47,6 +50,7 @@ export default function AppPublish({ location }: { location?: string }) {
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
   const isPublishButtonEnabledFlag = isPublishButtonEnabled === true;
   const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall');
+  const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
 
   // Use shared paywall modal hook (includes publish limit check)
   const { checkAndShowPaywall, PaywallModal, isPolling, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({
@@ -204,9 +208,17 @@ export default function AppPublish({ location }: { location?: string }) {
    * Navigate to version history tab
    */
   const handleViewHistory = useCallback(() => {
-    if (!currentAppId) return;
-    router.push(`/develop/${currentAppId}?tab=history`, { scroll: false });
-  }, [currentAppId, router]);
+    setOpen(false);
+    setActiveChatTab(ChatTab.HISTORY);
+  }, [setOpen, setActiveChatTab]);
+
+  /**
+   * Navigate to secrets settings tab
+   */
+  const handleViewSecrets = useCallback(() => {
+    setOpen(false);
+    setActiveSettingsSection(SettingsSection.SECRETS);
+  }, [setOpen, setActiveSettingsSection]);
 
   // Register deployments refetch function in store for retry functionality
   useEffect(() => {
@@ -251,6 +263,21 @@ export default function AppPublish({ location }: { location?: string }) {
 
   const lastDeployedDate = lastDeployedCommit?.updatedAt ? new Date(lastDeployedCommit.updatedAt) : null;
 
+  const { data: secretsDiff, refetch: refetchSecretsDiff } = useSecretsDiff({
+    appId: currentAppId || '',
+    enabled: queryEnabled && isSecretsEnabled === true,
+  });
+
+  const unsyncedSecretsCount = (secretsDiff?.added.length ?? 0)
+    + (secretsDiff?.updated.length ?? 0)
+    + (secretsDiff?.deleted.length ?? 0);
+
+  /** True when there are no code changes and no secret changes to publish (show Republish, "no changes" info). */
+  const hasNoChangesToPublish = isCurrentCommitDeployed && unsyncedSecretsCount === 0;
+
+  /** Combined count for summary line so "X changes since last publish" matches the Unpublished section. */
+  const totalChangesToPublish = unpublishedCount + unsyncedSecretsCount;
+
   if (!isPublishButtonEnabled || !isDevelopPage || !currentAppId || !site?.agent_url) {
     return null;
   }
@@ -280,7 +307,7 @@ export default function AppPublish({ location }: { location?: string }) {
       <text.h3 size={1}>{t('builder_publish_changes_title')}</text.h3>
       {lastDeployedDate && (
         <text.p size={0} emphasis='passive'>
-          {t('builder_publish_changes_since', { count: unpublishedCount, date: formattedDate })}
+          {t('builder_publish_changes_since', { count: totalChangesToPublish, date: formattedDate })}
         </text.p>
       )}
     </>
@@ -312,7 +339,7 @@ export default function AppPublish({ location }: { location?: string }) {
       );
     }
 
-    if (isCurrentCommitDeployed) {
+    if (hasNoChangesToPublish) {
       return (
         <Alert emphasis="info">
           {t('builder_publish_no_changes_info')}
@@ -323,13 +350,13 @@ export default function AppPublish({ location }: { location?: string }) {
     return null;
   };
 
-  // Determine button text based on current state
+  // Determine button text: "Publish" when there are code or secret changes to publish; "Republish" only when neither.
   const getPublishButtonText = () => {
     if (isPublishing || isDeploymentInProgress) {
       return t('builder_publish_button_publishing');
     }
 
-    if (isCurrentCommitDeployed) {
+    if (hasNoChangesToPublish) {
       return t('builder_publish_button_republish');
     }
 
@@ -345,8 +372,9 @@ export default function AppPublish({ location }: { location?: string }) {
 
     // Reset polling failure state when attempting to publish
     setEntitlementsPollingFailed(false);
-    // Refetch git history to ensure commit count is accurate
+    // Refetch git history and secrets diff to ensure counts are accurate
     refetchGitHistory();
+    void refetchSecretsDiff();
 
     // Check paywall and either show modal or open popover
     await checkAndShowPaywall(async () => {
@@ -379,20 +407,35 @@ export default function AppPublish({ location }: { location?: string }) {
               title={changesTitle}
             >
               <div className='mt-1 space-y-1'>
-                {unpublishedCount > 0 && (
+                {(unpublishedCount > 0 || unsyncedSecretsCount > 0) && (
                   <>
                     <text.h5 size={0}>{t('builder_publish_unpublished_title')}</text.h5>
-                    <div className='flex items-center gap-0.5'>
-                      <Button design='inline' onClick={handleViewHistory}>
-                        {t('builder_publish_changes_count', { count: unpublishedCount })}
-                      </Button>
-                      <text.p>
-                        {deployments.length > 0
-                          ? t('builder_publish_since_current')
-                          : t('builder_publish_first_publish')
-                        }
-                      </text.p>
-                    </div>
+                    {unpublishedCount > 0 && (
+                      <div className='flex items-center gap-0.5'>
+                        <Button design='inline' onClick={handleViewHistory}>
+                          {t('builder_publish_changes_count', { count: unpublishedCount })}
+                        </Button>
+                        <text.p>
+                          {deployments.length > 0
+                            ? t('builder_publish_since_current')
+                            : t('builder_publish_first_publish')
+                          }
+                        </text.p>
+                      </div>
+                    )}
+                    {unsyncedSecretsCount > 0 && (
+                      <div className='flex items-center gap-0.5'>
+                        <Button design='inline' onClick={handleViewSecrets}>
+                          {t('builder_publish_secrets_changes_count', { count: unsyncedSecretsCount })}
+                        </Button>
+                        <text.p>
+                          {deployments.length > 0
+                            ? t('builder_publish_secrets_since_current')
+                            : t('builder_publish_first_publish')
+                          }
+                        </text.p>
+                      </div>
+                    )}
                   </>
                 )}
 

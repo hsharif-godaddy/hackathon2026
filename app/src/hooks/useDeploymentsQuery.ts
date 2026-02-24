@@ -247,6 +247,9 @@ export function useDeploymentsQuery({
         // Invalidate git history cache to refresh commit list with deployment tag
         queryClient.invalidateQueries({ queryKey: ['git-history', appId] });
 
+        // Invalidate secrets diff — workflow-based secrets sync (V2) completes by deployment time
+        queryClient.invalidateQueries({ queryKey: ['secretsDiff', appId] });
+
         // Refetch git history and select the published commit
         void (async function handleGitHistoryRefetch() {
           try {
