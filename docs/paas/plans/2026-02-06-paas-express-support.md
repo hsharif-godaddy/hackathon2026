@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript, Express detection, AST manipulation for PORT injection, existing DevSupervisor infrastructure
 
-> **Code Snippets:** See [2026-02-06-paas-express-support-code-snippets.md](./2026-02-06-paas-express-support-code-snippets.md) for implementation code
+> **Code Snippets:** See [2026-02-06-paas-express-support-code-snippets.md](2026-02-06-paas-express-support-code-snippets.md) for implementation code
 
 ---
 
