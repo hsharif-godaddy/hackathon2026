@@ -9,24 +9,11 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/airo-ai-builder/image-search-service/internal/config"
 	"github.com/airo-ai-builder/image-search-service/internal/ratelimit"
 )
-
-// SearchResult represents a single image result from Getty API.
-type SearchResult struct {
-	GettyID   string
-	Title     string
-	Caption   string
-	Width     int
-	Height    int
-	Thumbnail string
-	Preview   string
-}
 
 // Client provides methods for searching and retrieving images from Getty API.
 type Client struct {
@@ -71,14 +58,18 @@ func NewWithAuth(cfg *config.Config, auth AuthProvider) *Client {
 	}
 }
 
-// Search searches for images matching the query and returns up to count results.
-func (c *Client) Search(ctx context.Context, query string, count int) ([]SearchResult, error) {
-	if err := c.limiter.Acquire(ctx); err != nil {
-		return nil, fmt.Errorf("failed to acquire rate limit: %w", err)
+// SearchWithOptions searches for images using the full set of SearchOptions.
+// Returns a SearchResponse containing results, facets, and related searches.
+func (c *Client) SearchWithOptions(ctx context.Context, opts *SearchOptions) (*SearchResponse, error) {
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx); err != nil {
+			return nil, fmt.Errorf("failed to acquire rate limit: %w", err)
+		}
+		defer c.limiter.Release()
 	}
-	defer c.limiter.Release()
 
-	searchURL := buildSearchURL(c.baseURL, query, count)
+	searchURL := BuildSearchURL(c.baseURL, opts)
+	slog.Debug("getty.search.request", "url", searchURL, "phrase", opts.Phrase)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, nil)
 	if err != nil {
@@ -100,6 +91,7 @@ func (c *Client) Search(ctx context.Context, query string, count int) ([]SearchR
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		slog.Error("getty.search.error", "status", resp.StatusCode, "body", string(body))
 		return nil, fmt.Errorf("getty API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -108,20 +100,50 @@ func (c *Client) Search(ctx context.Context, query string, count int) ([]SearchR
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	return parseSearchResponse(body)
+	var response SearchResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	slog.Debug("getty.search.response", "resultCount", response.ResultCount, "imagesReturned", len(response.Images))
+	return &response, nil
+}
+
+// Search searches for images matching the query and returns up to count results.
+// This is a simplified wrapper around SearchWithOptions for backward compatibility.
+func (c *Client) Search(ctx context.Context, query string, count int) ([]ImageResult, error) {
+	opts := &SearchOptions{
+		Phrase:   query,
+		PageSize: count,
+	}
+
+	resp, err := c.SearchWithOptions(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Images, nil
 }
 
 // GetByID retrieves a single image by its Getty ID.
 // Note: This uses the proxy's search endpoint with an ID filter since
 // the proxy doesn't expose the direct image endpoint.
-func (c *Client) GetByID(ctx context.Context, gettyID string) (*SearchResult, error) {
-	if err := c.limiter.Acquire(ctx); err != nil {
-		return nil, fmt.Errorf("failed to acquire rate limit: %w", err)
+func (c *Client) GetByID(ctx context.Context, gettyID string) (*ImageResult, error) {
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx); err != nil {
+			return nil, fmt.Errorf("failed to acquire rate limit: %w", err)
+		}
+		defer c.limiter.Release()
 	}
-	defer c.limiter.Release()
 
-	// Use search endpoint with ID since proxy doesn't expose direct image endpoint
-	imageURL := fmt.Sprintf("%s/v1/search?phrase=%s&pageSize=1", c.baseURL, url.QueryEscape(gettyID))
+	// Use search endpoint with ID since proxy doesn't expose direct image endpoint.
+	// Build URL via SearchOptions/BuildSearchURL to ensure safety defaults are applied.
+	searchOpts := &SearchOptions{
+		Phrase:   gettyID,
+		PageSize: 1,
+	}
+	imageURL := BuildSearchURL(c.baseURL, searchOpts)
+	slog.Debug("getty.getbyid.request", "gettyID", gettyID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
 	if err != nil {
@@ -147,6 +169,7 @@ func (c *Client) GetByID(ctx context.Context, gettyID string) (*SearchResult, er
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		slog.Error("getty.getbyid.error", "status", resp.StatusCode, "body", string(body))
 		return nil, fmt.Errorf("getty API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -155,83 +178,8 @@ func (c *Client) GetByID(ctx context.Context, gettyID string) (*SearchResult, er
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	return parseSingleImageResponse(body)
-}
-
-// Stats returns the current rate limiter statistics.
-// busy is the number of currently active requests.
-// available is the number of slots available for new requests.
-func (c *Client) Stats() (busy int, available int) {
-	return c.limiter.Stats()
-}
-
-// buildSearchURL constructs the Getty proxy search URL with query parameters.
-// Note: Uses /v1/search endpoint which is the proxy's endpoint, not direct Getty API.
-func buildSearchURL(baseURL, query string, count int) string {
-	u, err := url.Parse(baseURL)
-	if err != nil {
-		return ""
-	}
-
-	// Use the proxy's /v1/search endpoint (not Getty's /v3/search/images/creative)
-	u.Path = "/v1/search"
-
-	q := u.Query()
-	q.Set("phrase", query)
-	q.Set("pageSize", strconv.Itoa(count))
-	u.RawQuery = q.Encode()
-
-	return u.String()
-}
-
-// Getty API response structures
-
-type gettySearchResponse struct {
-	ResultCount int          `json:"result_count"`
-	Images      []gettyImage `json:"images"`
-}
-
-type gettyImage struct {
-	ID            string             `json:"id"`
-	Title         string             `json:"title"`
-	Caption       string             `json:"caption"`
-	DisplaySizes  []gettyDisplaySize `json:"display_sizes"`
-	MaxDimensions gettyDimensions    `json:"max_dimensions"`
-}
-
-type gettyDisplaySize struct {
-	Name string `json:"name"`
-	URI  string `json:"uri"`
-}
-
-type gettyDimensions struct {
-	Width  int `json:"width"`
-	Height int `json:"height"`
-}
-
-// parseSearchResponse parses a Getty API search response into SearchResults.
-func parseSearchResponse(data []byte) ([]SearchResult, error) {
-	var response gettySearchResponse
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	results := make([]SearchResult, 0, len(response.Images))
-	for _, img := range response.Images {
-		result := convertGettyImage(img)
-		results = append(results, result)
-	}
-
-	return results, nil
-}
-
-// parseSingleImageResponse parses a Getty API single image response.
-func parseSingleImageResponse(data []byte) (*SearchResult, error) {
-	// Getty's single image endpoint returns the image directly in an "images" array
-	var response struct {
-		Images []gettyImage `json:"images"`
-	}
-	if err := json.Unmarshal(data, &response); err != nil {
+	var response SearchResponse
+	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
@@ -239,34 +187,16 @@ func parseSingleImageResponse(data []byte) (*SearchResult, error) {
 		return nil, nil
 	}
 
-	result := convertGettyImage(response.Images[0])
-	return &result, nil
+	slog.Debug("getty.getbyid.response", "found", true, "id", response.Images[0].ID)
+	return &response.Images[0], nil
 }
 
-// convertGettyImage converts a Getty API image to a SearchResult.
-func convertGettyImage(img gettyImage) SearchResult {
-	result := SearchResult{
-		GettyID: img.ID,
-		Title:   img.Title,
-		Caption: img.Caption,
-		Width:   img.MaxDimensions.Width,
-		Height:  img.MaxDimensions.Height,
+// Stats returns the current rate limiter statistics.
+// busy is the number of currently active requests.
+// available is the number of slots available for new requests.
+func (c *Client) Stats() (busy int, available int) {
+	if c.limiter == nil {
+		return 0, 0
 	}
-
-	// Extract thumbnail and preview URLs from display sizes
-	for _, ds := range img.DisplaySizes {
-		switch ds.Name {
-		case "thumb":
-			result.Thumbnail = ds.URI
-		case "preview":
-			result.Preview = ds.URI
-		case "comp":
-			// Use comp as preview if preview not available
-			if result.Preview == "" {
-				result.Preview = ds.URI
-			}
-		}
-	}
-
-	return result
+	return c.limiter.Stats()
 }

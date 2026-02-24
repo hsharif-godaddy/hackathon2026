@@ -72,8 +72,8 @@ func TestIntegration_GettySearch(t *testing.T) {
 	// We might get 0 results for a nonsense query, that's OK
 	// But verify we didn't get an error
 	for i, r := range results {
-		t.Logf("  Result %d: ID=%s, Title=%s", i+1, r.GettyID, r.Title)
-		if r.GettyID == "" {
+		t.Logf("  Result %d: ID=%s, Title=%s", i+1, r.ID, r.Title)
+		if r.ID == "" {
 			t.Errorf("Result %d has empty GettyID", i+1)
 		}
 	}
@@ -105,11 +105,11 @@ func TestIntegration_GettySearchWithResults(t *testing.T) {
 
 	t.Logf("Getty returned %d results", len(results))
 	for i, r := range results {
-		t.Logf("  Result %d: ID=%s, Title=%s", i+1, r.GettyID, r.Title)
-		t.Logf("    Preview: %s", r.Preview)
-		t.Logf("    Thumbnail: %s", r.Thumbnail)
+		t.Logf("  Result %d: ID=%s, Title=%s", i+1, r.ID, r.Title)
+		t.Logf("    Preview: %s", r.Preview())
+		t.Logf("    Thumbnail: %s", r.Thumbnail())
 
-		if r.Preview == "" && r.Thumbnail == "" {
+		if r.Preview() == "" && r.Thumbnail() == "" {
 			t.Errorf("Result %d has no preview or thumbnail URL", i+1)
 		}
 	}
@@ -136,16 +136,16 @@ func TestIntegration_HaikuAnalysis(t *testing.T) {
 	}
 
 	// Get the preview URL
-	imageURL := results[0].Preview
+	imageURL := results[0].Preview()
 	if imageURL == "" {
-		imageURL = results[0].Thumbnail
+		imageURL = results[0].Thumbnail()
 	}
 	if imageURL == "" {
 		t.Fatal("No image URL available for analysis")
 	}
 
 	t.Logf("Analyzing image: %s", imageURL)
-	t.Logf("Getty ID: %s, Title: %s", results[0].GettyID, results[0].Title)
+	t.Logf("Getty ID: %s, Title: %s", results[0].ID, results[0].Title)
 
 	// Analyze the image
 	analysisClient := analysis.New(cfg)
@@ -210,20 +210,20 @@ func TestIntegration_FullSearchFlow(t *testing.T) {
 	// Step 2: Analyze each image
 	t.Log("Step 2: Analyzing images with Haiku")
 	for i, r := range results {
-		imageURL := r.Preview
+		imageURL := r.Preview()
 		if imageURL == "" {
-			imageURL = r.Thumbnail
+			imageURL = r.Thumbnail()
 		}
 		if imageURL == "" {
 			t.Logf("  Skipping result %d: no image URL", i+1)
 			continue
 		}
 
-		t.Logf("  Analyzing result %d: %s", i+1, r.GettyID)
+		t.Logf("  Analyzing result %d: %s", i+1, r.ID)
 
 		analysisResult, err := analysisClient.Analyze(ctx, imageURL)
 		if err != nil {
-			t.Errorf("  Analysis failed for %s: %v", r.GettyID, err)
+			t.Errorf("  Analysis failed for %s: %v", r.ID, err)
 			continue
 		}
 
@@ -233,7 +233,7 @@ func TestIntegration_FullSearchFlow(t *testing.T) {
 
 		// Validate the analysis makes sense for an office image
 		if analysisResult.PrimarySubject == "" {
-			t.Errorf("    Empty PrimarySubject for %s", r.GettyID)
+			t.Errorf("    Empty PrimarySubject for %s", r.ID)
 		}
 	}
 

@@ -110,6 +110,64 @@ Environment variables:
 | `/api/v1/images/{gettyId}` | GET    | Get single image   |
 | `/api/v1/images/batch`     | POST   | Batch lookup       |
 
+## Getty Client
+
+The Getty client supports all proxy API parameters for precise image filtering.
+
+### Basic Usage
+
+```go
+// Simple search (backward compatible)
+results, err := client.Search(ctx, "business meeting", 10)
+
+// Advanced search with filters
+opts := getty.NewSearchOptions("business meeting")
+opts.PageSize = 20
+opts.Orientations = []getty.Orientation{getty.OrientationHorizontal}
+opts.Compositions = []getty.Composition{getty.CompositionCopySpace}
+opts.NumberOfPeople = []getty.NumberOfPeople{getty.NumberOfPeopleTwo}
+
+resp, err := client.SearchWithOptions(ctx, opts)
+```
+
+### Available Filters
+
+| Filter          | Options                                                                   |
+| --------------- | ------------------------------------------------------------------------- |
+| Orientations    | horizontal, vertical, square, panoramic_horizontal, panoramic_vertical    |
+| Compositions    | copy_space, headshot, full_length, close_up, wide_shot, etc. (18 options) |
+| Moods           | dramatic, bold, vivid, warm, cool, natural, black_and_white               |
+| NumberOfPeople  | none, one, two, group                                                     |
+| GraphicalStyles | photography, illustration, fine_art, vector                               |
+| AgeOfPeople     | categorical (child, adult, senior) or specific ranges (20-24_years)       |
+| Ethnicity       | 12 options for diverse representation                                     |
+
+### Response Fields
+
+The Getty API supports 36+ response fields. The proxy returns all available fields by default.
+
+| Category  | Fields                                         |
+| --------- | ---------------------------------------------- |
+| Basic     | display_sizes, max_dimensions, title, caption  |
+| Metadata  | keywords, graphical_style, orientation, artist |
+| Licensing | license_model, allowed_use, product_types      |
+
+See `internal/getty/types.go` for the complete list of available fields.
+
+> **Note**: The `fields` parameter for filtering response fields is not supported by all Getty proxies. The proxy returns all fields by default.
+
+### Running Integration Tests
+
+```bash
+# Set credentials
+export GETTY_TOKEN="your-token"
+export GETTY_UPSTREAM="https://proxy-url"
+export INTEGRATION_TEST=1
+
+# Run tests
+go test -v -tags=integration ./internal/getty/...
+```
+
 ## Development
 
 ```bash

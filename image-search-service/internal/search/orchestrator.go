@@ -156,10 +156,10 @@ func (o *Orchestrator) Search(ctx context.Context, params SearchParams) (*Search
 
 	// Build Getty result map and check which are already cached
 	gettyIDs := make([]string, len(gettyResults))
-	gettyResultMap := make(map[string]getty.SearchResult, len(gettyResults))
+	gettyResultMap := make(map[string]getty.ImageResult, len(gettyResults))
 	for i, result := range gettyResults {
-		gettyIDs[i] = result.GettyID
-		gettyResultMap[result.GettyID] = result
+		gettyIDs[i] = result.ID
+		gettyResultMap[result.ID] = result
 	}
 
 	// Check which Getty results are already in Qdrant
@@ -240,21 +240,21 @@ func (o *Orchestrator) warmCacheInBackground(ctx context.Context, query string, 
 
 	// Analyze uncached
 	for _, result := range gettyResults {
-		if cachedIDs[result.GettyID] {
+		if cachedIDs[result.ID] {
 			continue
 		}
 
 		_, err := o.analyzeAndStore(ctx, result)
 		if err != nil {
-			slog.Warn("search.background.analysis.failed", "gettyId", result.GettyID, "error", err)
+			slog.Warn("search.background.analysis.failed", "gettyId", result.ID, "error", err)
 			continue
 		}
-		slog.Info("search.background.analysis.complete", "gettyId", result.GettyID)
+		slog.Info("search.background.analysis.complete", "gettyId", result.ID)
 	}
 }
 
 // analyzeWithTimeout analyzes images until timeout, returning what completed.
-func (o *Orchestrator) analyzeWithTimeout(ctx context.Context, ids []string, gettyResults map[string]getty.SearchResult) map[string]*models.ImageAnalysis {
+func (o *Orchestrator) analyzeWithTimeout(ctx context.Context, ids []string, gettyResults map[string]getty.ImageResult) map[string]*models.ImageAnalysis {
 	results := make(map[string]*models.ImageAnalysis)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -266,13 +266,13 @@ func (o *Orchestrator) analyzeWithTimeout(ctx context.Context, ids []string, get
 		}
 
 		wg.Add(1)
-		go func(result getty.SearchResult) {
+		go func(result getty.ImageResult) {
 			defer wg.Done()
 
 			analyzed, err := o.analyzeAndStore(ctx, result)
 			if err != nil {
 				if ctx.Err() == nil { // Only log if not cancelled
-					slog.Warn("search.analysis.failed", "gettyId", result.GettyID, "error", err)
+					slog.Warn("search.analysis.failed", "gettyId", result.ID, "error", err)
 				}
 				return
 			}
@@ -301,11 +301,11 @@ func (o *Orchestrator) analyzeWithTimeout(ctx context.Context, ids []string, get
 }
 
 // analyzeAndStore analyzes a single image, generates embedding, and stores in Qdrant/S3.
-func (o *Orchestrator) analyzeAndStore(ctx context.Context, gettyResult getty.SearchResult) (*models.ImageAnalysis, error) {
+func (o *Orchestrator) analyzeAndStore(ctx context.Context, gettyResult getty.ImageResult) (*models.ImageAnalysis, error) {
 	// Use preview URL for analysis
-	imageURL := gettyResult.Preview
+	imageURL := gettyResult.Preview()
 	if imageURL == "" {
-		imageURL = gettyResult.Thumbnail
+		imageURL = gettyResult.Thumbnail()
 	}
 
 	// Analyze with Haiku
@@ -318,22 +318,22 @@ func (o *Orchestrator) analyzeAndStore(ctx context.Context, gettyResult getty.Se
 	imgAnalysis := analysis.ToImageAnalysis(analysisResult)
 
 	// Populate metadata from Getty
-	imgAnalysis.GettyID = gettyResult.GettyID
+	imgAnalysis.GettyID = gettyResult.ID
 	imgAnalysis.Title = gettyResult.Title
 	imgAnalysis.Caption = gettyResult.Caption
 	imgAnalysis.Dimensions = models.ImageDimensions{
-		Width:  gettyResult.Width,
-		Height: gettyResult.Height,
+		Width:  gettyResult.Width(),
+		Height: gettyResult.Height(),
 	}
 	imgAnalysis.URLs = models.ImageURLs{
-		Thumbnail: gettyResult.Thumbnail,
-		Preview:   gettyResult.Preview,
+		Thumbnail: gettyResult.Thumbnail(),
+		Preview:   gettyResult.Preview(),
 	}
 	imgAnalysis.AnalyzedAt = time.Now()
 	imgAnalysis.AnalysisVersion = "1"
 
 	// Calculate aspect ratio category
-	imgAnalysis.AspectRatioCategory = calculateAspectRatio(gettyResult.Width, gettyResult.Height)
+	imgAnalysis.AspectRatioCategory = calculateAspectRatio(gettyResult.Width(), gettyResult.Height())
 
 	// Generate embedding from analysis text
 	embedding, err := o.embeddings.Generate(ctx, imgAnalysis.EmbeddingText())
@@ -344,15 +344,15 @@ func (o *Orchestrator) analyzeAndStore(ctx context.Context, gettyResult getty.Se
 
 	// Store in Qdrant
 	if err := o.qdrant.Upsert(ctx, imgAnalysis); err != nil {
-		slog.Warn("search.qdrant.upsert.failed", "gettyId", gettyResult.GettyID, "error", err)
+		slog.Warn("search.qdrant.upsert.failed", "gettyId", gettyResult.ID, "error", err)
 	} else {
-		slog.Debug("search.qdrant.upsert.success", "gettyId", gettyResult.GettyID)
+		slog.Debug("search.qdrant.upsert.success", "gettyId", gettyResult.ID)
 	}
 
 	// Store in S3 (if configured)
 	if o.s3 != nil {
 		if err := o.s3.Store(ctx, imgAnalysis); err != nil {
-			slog.Warn("search.s3.store.failed", "gettyId", gettyResult.GettyID, "error", err)
+			slog.Warn("search.s3.store.failed", "gettyId", gettyResult.ID, "error", err)
 		}
 	}
 
