@@ -224,6 +224,10 @@ vi.mock('@/app/develop/components/visualContextCapture', () => ({
   captureVisualContext: vi.fn(() => Promise.resolve(null))
 }));
 
+vi.mock('@/hooks/useTranslations', () => ({
+  useTranslations: vi.fn(() => (id: string) => id)
+}));
+
 vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: vi.fn(() => vi.fn())
 }));

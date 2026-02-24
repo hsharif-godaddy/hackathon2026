@@ -69,6 +69,7 @@ export interface StreamingWebSocketControllerDeps {
   messageBuilder: ChatMessageBuilder
   actions: MessageHandlerActions
   getHelpers: () => Omit<MessageHandlerHelpers, 'maybeSendRecoveryAck' | 'trackReplayEventReceipt' | 'clearRetryState'>
+  t?: (id: string, values?: Record<string, any>) => string
   toolDeltaBufferRef: { current: Map<string, { name: string; delta: string; hasExplicitName: boolean }> }
   getStoreState: () => {
     streamingState: string
@@ -138,6 +139,7 @@ export class StreamingWebSocketController extends EventEmitter {
       machine: this.machine,
       actions: this.deps.actions,
       getHelpers: this.deps.getHelpers,
+      t: this.deps.t,
       qualityMonitor: this.qualityMonitor,
       refs: {
         serverConfig: this.serverConfigRef,

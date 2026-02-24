@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Growl from '@ux/growl'
 
 import AppNotFound from '@/app/develop/components/AppNotFound'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
@@ -1065,6 +1066,7 @@ function DevelopPageContent() {
         {isCreditPolling && <GrantPollingModal />}
 
         <MediaSlotDialog />
+        <Growl />
 
         {showUpgradeModal && (
           <SinglePlanUpgradeContainer

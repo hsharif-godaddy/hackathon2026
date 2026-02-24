@@ -1,34 +1,20 @@
 /**
  * Video Generation Tool - AI Video Generation using OpenAI Sora
- * 
- * This tool provides AI video generation using OpenAI's Sora model.
- * It automatically generates a detailed video prompt from the app's conversation summary,
- * then creates a video based on that prompt.
+ *
+ * Single-request async pipeline: the client makes one HTTP request, the backend
+ * runs prompt → screenshot → job → poll → download → stitch in the background,
+ * then pushes the result to the client via WebSocket (eventType "video").
+ *
  * Generated videos are saved to the app's /public/images directory.
- * 
- * Configuration:
- * - Uses OpenAI Sora via ai-lib unified provider
- * - Requires S2S authentication or OpenAI API key
- * - Requires app conversation history for prompt generation
- * 
- * Usage:
- * ```typescript
- * // Generate a video from app summary
- * const result = await generateVideo({ 
- *   appId: "app123",
- *   duration: 12,
- *   resolution: "720x1280"
- * });
- * // Returns the generated prompt and video details
- * ```
+ * State is tracked in .airo/video.json; if the file already exists with a
+ * completed video, the cached result is returned immediately.
  */
 import { execa } from 'execa';
-import fs from 'node:fs';
+import { access, mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { nanoid } from 'nanoid';
 import { createOpenAIClient } from '@airo/ai-lib';
 import { videoApiFetch } from '../helper/video-api-helper.js';
-import { AppRepository } from '../database/repositories/AppRepository.js';
 import { logger } from '../logging/index.js';
 import { getVideoPromptGenerationService } from '../services/video-prompt-generation.js';
 import { WebsiteScraperDriver } from './ai-lib-tools/drivers/website-scraper-driver.js';
@@ -51,10 +37,8 @@ export type VideoDuration = 4 | 8 | 12;
  * Options for video generation
  */
 export interface VideoGenerationOptions {
-  appId: string;
   duration?: VideoDuration;
   resolution?: VideoResolution;
-  filename?: string;
   publishedUrl?: string;
 }
 
@@ -64,21 +48,7 @@ export interface VideoGenerationOptions {
 export type VideoStatus = 'pending' | 'queued' | 'in_progress' | 'completed' | 'failed';
 
 /**
- * Result from video generation
- */
-export interface VideoGenerationResult {
-  success: boolean;
-  url?: string;
-  filepath?: string;
-  publicPath?: string;
-  error?: string;
-  jobId?: string;
-  generatedPrompt?: string;  // The AI-generated prompt used for video creation
-  status?: VideoStatus;
-}
-
-/**
- * Result from video status check
+ * Result returned to the HTTP caller from startGeneration
  */
 export interface VideoStatusResult {
   status: VideoStatus;
@@ -86,10 +56,40 @@ export interface VideoStatusResult {
   error?: string;
 }
 
+export interface VideoAppContext {
+  appId: string;
+  appPath: string;
+  previewUrl?: string;
+  pollIntervalMs?: number;
+  maxPollAttempts?: number;
+}
+
 /**
  * Service for generating videos using OpenAI Sora API
  */
 export class VideoGenerationTool {
+  private io: { emit: (event: string, data: unknown) => void } | null = null;
+  private readonly appId: string;
+  private readonly appPath: string;
+  private readonly previewUrl?: string;
+  private readonly airoDir: string;
+  private readonly videoMetadataPath: string;
+  private readonly pollIntervalMs: number;
+  private readonly maxPollAttempts: number;
+
+  constructor(ctx: VideoAppContext) {
+    this.appId = ctx.appId;
+    this.appPath = ctx.appPath;
+    this.previewUrl = ctx.previewUrl;
+    this.airoDir = path.join(ctx.appPath, '.airo');
+    this.videoMetadataPath = path.join(ctx.appPath, '.airo', 'video.json');
+    this.pollIntervalMs = ctx.pollIntervalMs ?? 10000;
+    this.maxPollAttempts = ctx.maxPollAttempts ?? 100;
+  }
+
+  setSocketIO(io: { emit: (event: string, data: unknown) => void }): void {
+    this.io = io;
+  }
 
   /**
    * Check if ffmpeg is available on the system
@@ -117,17 +117,7 @@ export class VideoGenerationTool {
     const concatList = videoPath.replace('.mp4', '-concat.txt');
 
     try {
-      logger.info('Stitching outro image to video', {
-        videoPath,
-        outroImagePath,
-        resolution
-      });
-
-      // Verify source video exists and has size
-      if (!fs.existsSync(videoPath)) {
-        throw new Error(`Source video not found: ${videoPath}`);
-      }
-      const videoStats = fs.statSync(videoPath);
+      const videoStats = await stat(videoPath);
       if (!videoStats.isFile()) {
         throw new Error(`Source video path is not a regular file: ${videoPath}`);
       }
@@ -135,12 +125,6 @@ export class VideoGenerationTool {
         throw new Error(`Source video is empty: ${videoPath}`);
       }
 
-      logger.debug('Source video validated', {
-        videoPath,
-        size: videoStats.size
-      });
-
-      // Step 1: Convert image to 1-second video
       await execa('ffmpeg', [
         '-loop', '1',
         '-i', outroImagePath,
@@ -153,96 +137,68 @@ export class VideoGenerationTool {
         tempOutroVideo
       ], { timeout: 60000 });
 
-      logger.debug('Outro video created', { tempOutroVideo });
-
-      // Step 2: Create concat demuxer file — escape \ and ' per ffmpeg concat syntax
       const escapeForConcat = (p: string) => p.replace(/\\/g, '\\\\').replace(/'/g, "'\\''");
-      const concatContent = `file '${escapeForConcat(videoPath)}'\nfile '${escapeForConcat(tempOutroVideo)}'`;
-      fs.writeFileSync(concatList, concatContent);
+      await writeFile(concatList, `file '${escapeForConcat(videoPath)}'\nfile '${escapeForConcat(tempOutroVideo)}'`);
 
-      logger.debug('Concat file created', {
-        concatList,
-        content: concatContent
-      });
+      await execa('ffmpeg', [
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', concatList,
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-threads', '4',
+        '-c:a', 'aac',
+        '-pix_fmt', 'yuv420p',
+        '-y',
+        finalVideo
+      ], { timeout: 120000 });
 
-      // Step 3: Concatenate videos
-      try {
-        await execa('ffmpeg', [
-          '-f', 'concat',
-          '-safe', '0',
-          '-i', concatList,
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',
-          '-threads', '4',
-          '-c:a', 'aac',
-          '-pix_fmt', 'yuv420p',
-          '-y',
-          finalVideo
-        ], { timeout: 120000 });
-      } catch (concatError) {
-        logger.error('FFmpeg concat failed', {
-          videoPath,
-          tempOutroVideo,
-          concatList,
-          error: concatError instanceof Error ? concatError.message : String(concatError)
-        });
-        throw concatError;
-      }
-
-      logger.debug('Videos concatenated', { finalVideo });
-
-      // Step 4: Replace original with final video
-      fs.renameSync(finalVideo, videoPath);
-
-      logger.info('Outro stitched successfully', { videoPath });
+      await rename(finalVideo, videoPath);
     } finally {
-      // Cleanup temp files
-      try {
-        if (fs.existsSync(tempOutroVideo)) fs.unlinkSync(tempOutroVideo);
-        if (fs.existsSync(concatList)) fs.unlinkSync(concatList);
-        if (fs.existsSync(finalVideo)) fs.unlinkSync(finalVideo);
-      } catch (error) {
-        logger.warn('Failed to cleanup temp files', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-      }
+      await Promise.all([
+        unlink(tempOutroVideo).catch(() => {}),
+        unlink(concatList).catch(() => {}),
+        unlink(finalVideo).catch(() => {})
+      ]);
     }
   }
 
-  /**
-   * Save video metadata to .airo/video.json
-   */
-  private saveVideoMetadata(
-    airoDir: string,
-    videoMetadataPath: string,
+  private async saveVideoMetadata(
     videoId: string,
-    isComplete: boolean,
-    appId: string,
-    filename: string = ''
-  ): void {
+    status: VideoStatus,
+    url?: string,
+    error?: string | null
+  ): Promise<void> {
     try {
-      fs.mkdirSync(airoDir, { recursive: true });
+      await mkdir(this.airoDir, { recursive: true });
 
+      let existingMetadata: Record<string, unknown> = {};
+      try {
+        existingMetadata = JSON.parse(await readFile(this.videoMetadataPath, 'utf-8'));
+      } catch { /* file may not exist yet */ }
+
+      const now = new Date().toISOString();
       const videoMetadata = {
-        video: isComplete,
-        videoId,
-        filename
+        jobId: videoId || existingMetadata.jobId || null,
+        status,
+        createdAt: existingMetadata.createdAt || now,
+        updatedAt: now,
+        url: url || null,
+        error: error ?? null
       };
 
-      fs.writeFileSync(videoMetadataPath, JSON.stringify(videoMetadata, null, 2));
+      await writeFile(this.videoMetadataPath, JSON.stringify(videoMetadata, null, 2));
 
-      logger.info(`${isComplete ? 'Final' : 'Initial'} video metadata saved`, {
-        appId,
+      logger.info('video-generation.metadata-saved', {
+        appId: this.appId,
         videoId,
-        videoMetadataPath,
-        ...(filename && { filename })
+        status
       });
-    } catch (error) {
-      logger.error('Failed to save video metadata', {
-        appId,
+    } catch (saveError) {
+      logger.error('video-generation.metadata-save-failed', {
+        appId: this.appId,
         videoId,
-        videoMetadataPath,
-        error: error instanceof Error ? error.message : String(error)
+        error: saveError instanceof Error ? saveError.message : String(saveError)
       });
     }
   }
@@ -252,156 +208,61 @@ export class VideoGenerationTool {
    */
   private async processOutroStitching(
     filePath: string,
-    resolution: VideoResolution,
-    appId: string,
-    videoId: string
+    resolution: VideoResolution
   ): Promise<void> {
     const outroImagePath = path.join(process.cwd(), 'images', 'Built_with_Airo_Builder_720x1280.jpeg');
 
-    if (!fs.existsSync(outroImagePath)) {
-      logger.error('Outro image not found', {
-        appId,
-        videoId,
-        outroImagePath
-      });
+    try {
+      await access(outroImagePath);
+    } catch {
       throw new Error(`Required outro image not found: ${outroImagePath}`);
     }
 
-    const ffmpegAvailable = await this.checkFfmpegAvailable();
-    if (!ffmpegAvailable) {
-      logger.error('ffmpeg not available on system', {
-        appId,
-        videoId
-      });
+    if (!await this.checkFfmpegAvailable()) {
       throw new Error('ffmpeg is required for outro stitching but is not available on the system');
     }
 
-    logger.info('video.outro.stitch.begin', {
-      appId,
-      videoId,
-      outroImagePath
-    });
-
     await this.stitchOutroImage(filePath, outroImagePath, resolution);
-
-    logger.info('Outro stitched successfully', {
-      appId,
-      videoId
-    });
   }
 
   /**
-   * Start or poll video generation (non-blocking)
-   *
-   * Frontend should call this repeatedly until status is 'completed' or 'failed'
+   * Start video generation (single request, non-blocking).
    */
   async startGeneration(options: VideoGenerationOptions): Promise<VideoStatusResult> {
-    const { appId, duration = 12, resolution = '720x1280' } = options;
+    const { duration = 12, resolution = '720x1280' } = options;
 
-    const appRepository = new AppRepository();
-    const app = appRepository?.findById(appId);
+    try {
+      const videoMetadata = JSON.parse(await readFile(this.videoMetadataPath, 'utf-8'));
 
-    if (!app) {
-      return { status: 'failed', error: `App not found: ${appId}` };
-    }
+      if (videoMetadata.status === 'completed' && videoMetadata.url) {
+        try {
+          await access(path.join(this.appPath, videoMetadata.url));
+          return {
+            status: 'completed',
+            url: this.previewUrl
+              ? `${this.previewUrl.replace(/\/+$/, '')}${videoMetadata.url}`
+              : videoMetadata.url
+          };
+        } catch { /* video file missing, regenerate */ }
+      }
 
-    const appPath = app.path;
-    const airoDir = path.join(appPath, '.airo');
-    const videoMetadataPath = path.join(airoDir, 'video.json');
-
-    // Check if video already exists or generation is in progress
-    if (fs.existsSync(videoMetadataPath)) {
-      try {
-        const videoMetadata = JSON.parse(fs.readFileSync(videoMetadataPath, 'utf-8'));
-
-        // Video is complete - return immediately
-        if (videoMetadata.video === true && videoMetadata.filename) {
-          const videoFilePath = path.join(appPath, 'public', 'images', videoMetadata.filename);
-          if (fs.existsSync(videoFilePath)) {
-            const publicPath = `/public/images/${videoMetadata.filename}`;
-            return {
-              status: 'completed',
-              url: app.previewUrl ? `${app.previewUrl.replace(/\/+$/, '')}${publicPath}` : publicPath
-            };
-          }
-        }
-
-        // Generation started but videoId not yet received — still initializing
-        if (videoMetadata.pending === true) {
-          return { status: 'queued' };
-        }
-
-        // Metadata exists with videoId - poll OpenAI once
-        if (videoMetadata.videoId) {
-          const openaiClient = await createOpenAIClient();
-          if (!openaiClient) {
-            return { status: 'failed', error: 'OpenAI client not available' };
-          }
-
-          try {
-            const statusResponse = await videoApiFetch(
-              openaiClient,
-              `/videos/${videoMetadata.videoId}`,
-              { headers: { 'Content-Type': 'application/json' } }
-            );
-
-            if (!statusResponse.ok) {
-              // HTTP error from OpenAI - log and return in_progress to allow retry
-              logger.warn('video-generation.poll.http-error', {
-                appId,
-                videoId: videoMetadata.videoId,
-                status: statusResponse.status
-              });
-              return { status: 'in_progress' };
-            }
-
-            const statusData = await statusResponse.json();
-
-            logger.info('video-generation.poll', { appId, videoId: videoMetadata.videoId, openaiStatus: statusData.status });
-
-            // If OpenAI says completed, start download/processing in background
-            if (statusData.status === 'completed') {
-              this.downloadAndProcessVideo(options, videoMetadata.videoId, openaiClient).catch(error => {
-                logger.error('video-generation.download-error', {
-                  appId,
-                  videoId: videoMetadata.videoId,
-                  error: error instanceof Error ? error.message : String(error)
-                });
-              });
-              return { status: 'in_progress' }; // Return in_progress, next poll will see completed file
-            }
-
-            if (statusData.status === 'failed') {
-              this.deleteMetadata(videoMetadataPath, appId, videoMetadata.videoId);
-              return { status: 'failed', error: 'Video generation failed' };
-            }
-
-            // Return current status (queued or in_progress)
-            return { status: statusData.status === 'queued' ? 'queued' : 'in_progress' };
-          } catch (networkError) {
-            // Network error during polling - log and return in_progress to allow retry
-            logger.warn('video-generation.poll.network-error', {
-              appId,
-              videoId: videoMetadata.videoId,
-              error: networkError instanceof Error ? networkError.message : String(networkError)
-            });
-            return { status: 'in_progress' };
-          }
-        }
-      } catch (error) {
+      if (videoMetadata.status !== 'failed' && (videoMetadata.jobId || videoMetadata.status === 'pending')) {
+        return { status: videoMetadata.status || 'pending' };
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
         logger.warn('video-generation.start.metadata-read-failed', {
-          appId,
+          appId: this.appId,
           error: error instanceof Error ? error.message : String(error)
         });
       }
     }
 
-    // Start new generation in background (fire and forget)
-    logger.info('video-generation.start.initiating', { appId, duration, resolution });
+    logger.info('video-generation.start.initiating', { appId: this.appId, duration, resolution });
 
     this.initiateGeneration(options).catch(error => {
       logger.error('video-generation.initiate-error', {
-        appId,
+        appId: this.appId,
         error: error instanceof Error ? error.message : String(error)
       });
     });
@@ -409,13 +270,7 @@ export class VideoGenerationTool {
     return { status: 'queued' };
   }
 
-  /**
-   * Initiate video generation - creates prompt, submits to OpenAI, saves metadata
-   * Does NOT poll - just initiates and saves videoId to metadata
-   *
-   * Returns null on any failure so generation can proceed without input_reference.
-   */
-  private async screenshotToBlob(publishedUrl: string, appId: string, resolution: VideoResolution): Promise<Blob | null> {
+  private async screenshotToBlob(publishedUrl: string, resolution: VideoResolution): Promise<Blob | null> {
     const parts = resolution.split('x');
     const width = Number(parts[0]);
     const height = Number(parts[1]);
@@ -427,21 +282,14 @@ export class VideoGenerationTool {
       );
 
       if (!raw) {
-        logger.warn('video-generation.screenshot-failed', { appId, publishedUrl });
+        logger.warn('video-generation.screenshot-failed', { appId: this.appId, publishedUrl });
         return null;
       }
-
-      logger.info('video-generation.screenshot-captured', {
-        appId,
-        publishedUrl,
-        resolution,
-        sizeBytes: raw.buffer.length
-      });
 
       return new Blob([raw.buffer as unknown as ArrayBuffer], { type: raw.contentType });
     } catch (error) {
       logger.warn('video-generation.screenshot-error', {
-        appId,
+        appId: this.appId,
         publishedUrl,
         error: error instanceof Error ? error.message : String(error)
       });
@@ -450,34 +298,37 @@ export class VideoGenerationTool {
   }
 
   private async initiateGeneration(options: VideoGenerationOptions): Promise<void> {
-    const { appId, duration = 12, resolution = '720x1280', publishedUrl } = options;
+    const { duration = 12, resolution = '720x1280', publishedUrl } = options;
 
-    const appRepository = new AppRepository();
-    const app = appRepository?.findById(appId);
-    if (!app) return;
-
-    const appPath = app.path;
-    const airoDir = path.join(appPath, '.airo');
-    const videoMetadataPath = path.join(airoDir, 'video.json');
-
-    // Write pending state immediately so concurrent poll requests see the file
-    // and return 'queued' instead of triggering a duplicate generation.
-    fs.mkdirSync(airoDir, { recursive: true });
-    fs.writeFileSync(videoMetadataPath, JSON.stringify({ video: false, videoId: null, pending: true }, null, 2));
+    await mkdir(this.airoDir, { recursive: true });
+    const now = new Date().toISOString();
+    await writeFile(this.videoMetadataPath, JSON.stringify({
+      jobId: null,
+      status: 'pending',
+      createdAt: now,
+      updatedAt: now,
+      url: null,
+      error: null
+    }, null, 2));
 
     let metadataSaved = false;
+    let failureReason = 'Video generation failed';
 
     try {
-      const videoPromptService = getVideoPromptGenerationService();
-      const generatedPrompt = await videoPromptService.generateVideoPrompt(appId);
+      const generatedPrompt = await getVideoPromptGenerationService().generateVideoPrompt(this.appId);
 
       if (!generatedPrompt) {
-        logger.error('video-generation.no-prompt', { appId });
+        logger.error('video-generation.no-prompt', { appId: this.appId });
+        failureReason = 'Failed to generate video prompt';
         return;
       }
 
       const openaiClient = await createOpenAIClient();
-      if (!openaiClient) return;
+      if (!openaiClient) {
+        logger.error('video-generation.no-openai-client', { appId: this.appId });
+        failureReason = 'OpenAI client unavailable';
+        return;
+      }
 
       const formData = new FormData();
       formData.append('model', 'sora-2');
@@ -486,51 +337,163 @@ export class VideoGenerationTool {
       formData.append('seconds', String(duration));
 
       if (publishedUrl) {
-        const screenshotBlob = await this.screenshotToBlob(publishedUrl, appId, resolution);
+        const screenshotBlob = await this.screenshotToBlob(publishedUrl, resolution);
         if (screenshotBlob) {
           formData.append('input_reference', screenshotBlob, 'screenshot.png');
           logger.info('video-generation.screenshot-attached', {
-            appId,
+            appId: this.appId,
             publishedUrl,
             blobSize: screenshotBlob.size,
             blobType: screenshotBlob.type
           });
         }
       } else {
-        logger.warn('video-generation.no-published-url', { appId });
+        logger.warn('video-generation.no-published-url', { appId: this.appId });
       }
 
       const createResponse = await videoApiFetch(openaiClient, '/videos', { method: 'POST', body: formData });
 
       if (!createResponse.ok) {
-        logger.error('video-generation.submit-failed', { appId, status: createResponse.status });
+        logger.error('video-generation.submit-failed', { appId: this.appId, status: createResponse.status });
+        failureReason = 'Failed to submit video job to OpenAI';
         return;
       }
 
       const createData = await createResponse.json();
-      if (!createData?.id) return;
+      if (!createData?.id) {
+        logger.error('video-generation.no-job-id', { appId: this.appId });
+        failureReason = 'Video job creation returned no ID';
+        return;
+      }
 
       const videoId = createData.id as string;
-      this.saveVideoMetadata(airoDir, videoMetadataPath, videoId, false, appId);
-      // Only mark saved after the write succeeds — if saveVideoMetadata throws,
-      // the finally block will still clean up the pending file.
+      await this.saveVideoMetadata(videoId, 'pending');
       metadataSaved = true;
-      logger.info('video-generation.submitted', { appId, videoId });
+      logger.info('video-generation.submitted', { appId: this.appId, videoId });
+
+      this.startBackgroundPolling(options, videoId, openaiClient).catch(error => {
+        logger.error('video-generation.background-polling-error', {
+          appId: this.appId,
+          videoId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      });
     } finally {
-      // Clean up the pending file on any path where metadata wasn't successfully written,
-      // so the next request can start a fresh generation instead of staying stuck.
       if (!metadataSaved) {
-        try {
-          if (fs.existsSync(videoMetadataPath)) {
-            const current = JSON.parse(fs.readFileSync(videoMetadataPath, 'utf-8'));
-            if (current.pending === true) {
-              fs.unlinkSync(videoMetadataPath);
-              logger.info('video-generation.pending-cleared', { appId });
-            }
-          }
-        } catch { /* ignore cleanup errors */ }
+        await this.deleteMetadata('', failureReason);
       }
     }
+  }
+
+  /**
+   * Background polling loop - polls OpenAI every 10 seconds up to 100 times
+   * Downloads and processes video on completion, emits WebSocket events
+   */
+  private async startBackgroundPolling(
+    options: VideoGenerationOptions,
+    videoId: string,
+    openaiClient: any
+  ): Promise<void> {
+    logger.info('video-generation.polling.start', {
+      appId: this.appId,
+      videoId,
+      intervalMs: this.pollIntervalMs,
+      maxAttempts: this.maxPollAttempts
+    });
+
+    for (let attempt = 1; attempt <= this.maxPollAttempts; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, this.pollIntervalMs));
+
+      try {
+        const statusResponse = await videoApiFetch(
+          openaiClient,
+          `/videos/${videoId}`,
+          { headers: { 'Content-Type': 'application/json' } }
+        );
+
+        if (!statusResponse.ok) {
+          logger.warn('video-generation.polling.http-error', {
+            appId: this.appId,
+            videoId,
+            attempt,
+            status: statusResponse.status
+          });
+          continue;
+        }
+
+        const statusData = await statusResponse.json();
+        const openaiStatus = statusData.status;
+
+        logger.info('video-generation.polling.status', {
+          appId: this.appId,
+          videoId,
+          attempt,
+          openaiStatus
+        });
+
+        try {
+          const currentMetadata = JSON.parse(await readFile(this.videoMetadataPath, 'utf-8'));
+          currentMetadata.status = openaiStatus === 'queued' ? 'pending' : openaiStatus;
+          currentMetadata.updatedAt = new Date().toISOString();
+          await writeFile(this.videoMetadataPath, JSON.stringify(currentMetadata, null, 2));
+        } catch (metadataError) {
+          // ENOENT means the file was externally deleted — treat as cancellation
+          if ((metadataError as NodeJS.ErrnoException).code === 'ENOENT') throw metadataError;
+          logger.warn('video-generation.polling.metadata-update-failed', {
+            appId: this.appId,
+            videoId,
+            attempt,
+            error: metadataError instanceof Error ? metadataError.message : String(metadataError)
+          });
+        }
+
+        if (openaiStatus === 'completed') {
+          logger.info('video-generation.polling.completed', {
+            appId: this.appId,
+            videoId,
+            attempt
+          });
+          await this.downloadAndProcessVideo(options, videoId, openaiClient);
+          return;
+        }
+
+        if (openaiStatus === 'failed') {
+          logger.error('video-generation.polling.failed', {
+            appId: this.appId,
+            videoId,
+            attempt,
+            reason: 'OpenAI reported failure'
+          });
+          await this.deleteMetadata(videoId, 'Video generation failed');
+          return;
+        }
+      } catch (pollError) {
+        // ENOENT from any read/write means video.json was deleted — treat as cancellation
+        if ((pollError as NodeJS.ErrnoException).code === 'ENOENT') {
+          logger.info('video-generation.polling.cancelled', {
+            appId: this.appId,
+            videoId,
+            attempt,
+            reason: 'metadata file deleted'
+          });
+          return;
+        }
+        logger.warn('video-generation.polling.error', {
+          appId: this.appId,
+          videoId,
+          attempt,
+          error: pollError instanceof Error ? pollError.message : String(pollError)
+        });
+      }
+    }
+
+    logger.error('video-generation.polling.max-attempts', {
+      appId: this.appId,
+      videoId,
+      attempts: this.maxPollAttempts,
+      reason: 'Maximum polling attempts exceeded'
+    });
+    await this.deleteMetadata(videoId, 'Video generation timed out after maximum polling attempts');
   }
 
   /**
@@ -552,129 +515,121 @@ export class VideoGenerationTool {
   }
 
   /**
-   * Delete metadata file so the frontend stops polling and a fresh generation can start
+   * Delete metadata file and emit WebSocket failure event
    */
-  private deleteMetadata(videoMetadataPath: string, appId: string, videoId: string): void {
-    try {
-      if (fs.existsSync(videoMetadataPath)) {
-        fs.unlinkSync(videoMetadataPath);
-        logger.info('video-generation.metadata-deleted', { appId, videoId });
-      }
-    } catch (error) {
-      logger.warn('video-generation.metadata-delete-failed', {
-        appId,
-        videoId,
-        videoMetadataPath,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
+  private async deleteMetadata(videoId: string = '', errorMessage?: string): Promise<void> {
+    await this.saveVideoMetadata(
+      videoId,
+      'failed',
+      undefined,
+      errorMessage || 'Video generation failed'
+    );
+
+    this.emitVideoEvent(this.appId, {
+      status: 'failed',
+      jobId: videoId,
+      error: errorMessage || 'Video generation failed'
+    });
   }
 
   /**
-   * Download completed video from OpenAI and process (stitch outro)
-   *
-   * On download/validation failure: clears metadata so frontend stops polling and can retry.
-   * On ffmpeg failure: marks video as completed without the outro (non-blocking).
+   * Emit a video event on the 'message' channel so it flows through the
+   * client's existing handler pipeline (socket.on('message') → registry → VideoHandler).
+   */
+  private emitVideoEvent(appId: string, data: Record<string, unknown>): void {
+    if (!this.io) {
+      logger.warn('video-generation.websocket.no-io', {
+        appId,
+        status: data.status,
+        jobId: data.jobId,
+        reason: 'Socket.IO instance not set — client will not receive this event'
+      });
+      return;
+    }
+
+    const payload = { type: 'video', content: '', data: { ...data, appId } };
+
+    logger.info('video-generation.websocket.emit', {
+      appId,
+      status: data.status,
+      jobId: data.jobId
+    });
+
+    this.io.emit('message', payload);
+  }
+
+  /**
+   * Download completed video from OpenAI, validate, stitch outro, and emit WebSocket event.
+   * On failure: deletes video.json and emits WebSocket failure event.
    */
   private async downloadAndProcessVideo(
     options: VideoGenerationOptions,
     videoId: string,
     openaiClient: any
   ): Promise<void> {
-    const { appId, resolution = '720x1280', filename } = options;
+    const { resolution = '720x1280' } = options;
+    const imagesDir = path.join(this.appPath, 'public', 'images');
 
-    const appRepository = new AppRepository();
-    const app = appRepository?.findById(appId);
-    if (!app) return;
+    await mkdir(imagesDir, { recursive: true });
 
-    const appPath = app.path;
-    const airoDir = path.join(appPath, '.airo');
-    const videoMetadataPath = path.join(airoDir, 'video.json');
-    const imagesDir = path.join(appPath, 'public', 'images');
-
-    fs.mkdirSync(imagesDir, { recursive: true });
-
-    // Download video content — clear metadata on failure so frontend stops polling
     const contentResponse = await videoApiFetch(openaiClient, `/videos/${videoId}/content`);
     if (!contentResponse.ok) {
-      logger.error('video-generation.download-failed', { appId, videoId, status: contentResponse.status });
-      this.deleteMetadata(videoMetadataPath, appId, videoId);
+      logger.error('video-generation.download-failed', { appId: this.appId, videoId, status: contentResponse.status });
+      await this.deleteMetadata(videoId, 'Failed to download video from OpenAI');
       return;
     }
 
-    const content = await contentResponse.arrayBuffer();
-    const videoBuffer = Buffer.from(content);
+    const videoBuffer = Buffer.from(await contentResponse.arrayBuffer());
 
     if (videoBuffer.length === 0) {
-      logger.error('video-generation.empty-buffer', { appId, videoId });
-      this.deleteMetadata(videoMetadataPath, appId, videoId);
+      logger.error('video-generation.empty-buffer', { appId: this.appId, videoId });
+      await this.deleteMetadata(videoId, 'Downloaded video file is empty');
       return;
     }
 
-    // Save video file
-    const safeFilename = filename || 'video';
-    const fullFilename = `go_live-${safeFilename}-${nanoid(6)}.mp4`;
+    const fullFilename = `go_live-video-${nanoid(6)}.mp4`;
     const filePath = path.join(imagesDir, fullFilename);
 
-    fs.writeFileSync(filePath, videoBuffer);
+    await writeFile(filePath, videoBuffer);
 
     logger.info('video-generation.downloaded', {
-      appId,
+      appId: this.appId,
       videoId,
       filename: fullFilename,
       size: videoBuffer.length
     });
 
-    // Validate the downloaded video — clear metadata on failure
     const validationError = await this.validateVideoFile(filePath);
     if (validationError) {
-      logger.error('video-generation.invalid-file', { appId, videoId, filePath, reason: validationError });
-      try { fs.unlinkSync(filePath); } catch { /* ignore */ }
-      this.deleteMetadata(videoMetadataPath, appId, videoId);
+      logger.error('video-generation.invalid-file', { appId: this.appId, videoId, filePath, reason: validationError });
+      await unlink(filePath).catch(() => {});
+      await this.deleteMetadata(videoId, `Invalid video file: ${validationError}`);
       return;
     }
 
-    // Stitch outro — if ffmpeg fails, still mark video as completed without outro
     try {
-      await this.processOutroStitching(filePath, resolution, appId, videoId);
+      await this.processOutroStitching(filePath, resolution);
     } catch (outroError) {
       logger.warn('video-generation.outro-stitch-failed', {
-        appId,
+        appId: this.appId,
         videoId,
         error: outroError instanceof Error ? outroError.message : String(outroError)
       });
     }
 
-    // Mark as complete — video is usable with or without outro
-    this.saveVideoMetadata(airoDir, videoMetadataPath, videoId, true, appId, fullFilename);
-    logger.info('video-generation.completed', { appId, videoId, filename: fullFilename });
+    const publicPath = `/public/images/${fullFilename}`;
+    await this.saveVideoMetadata(videoId, 'completed', publicPath);
+    logger.info('video-generation.completed', { appId: this.appId, videoId, filename: fullFilename });
+
+    const videoUrl = this.previewUrl ? `${this.previewUrl.replace(/\/+$/, '')}${publicPath}` : publicPath;
+
+    if (this.io) {
+      this.emitVideoEvent(this.appId, {
+        status: 'completed',
+        jobId: videoId,
+        videoUrl
+      });
+    }
   }
 
-}
-
-/**
- * Start or poll video generation (non-blocking)
- */
-export async function startVideoGeneration(options: VideoGenerationOptions): Promise<VideoStatusResult> {
-  const { appId } = options;
-
-  if (!appId || typeof appId !== 'string') {
-    return { status: 'failed', error: 'A valid appId is required for video generation' };
-  }
-
-  const tool = new VideoGenerationTool();
-  return tool.startGeneration(options);
-}
-
-/**
- * @deprecated Use startVideoGeneration instead
- */
-export async function generateVideo(options: VideoGenerationOptions): Promise<VideoGenerationResult> {
-  const result = await startVideoGeneration(options);
-  return {
-    success: result.status === 'completed',
-    url: result.url,
-    error: result.error,
-    status: result.status
-  };
 }

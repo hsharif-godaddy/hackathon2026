@@ -7,7 +7,7 @@ export { GrepTool } from './grep-tool.js';
 export { MySQLTool } from './mysql-tool.js';
 // MediaSearchTool kept as internal implementation for MediaSlotTool
 // Do not export - agents should use MediaSlotTool via media AI tool
-export { VideoGenerationTool, generateVideo } from './video-generation-tool.js';
+export { VideoGenerationTool } from './video-generation-tool.js';
 export { ImageEditorTool, imageEditorAITool } from './image-editor-tool.js';
 export { GettyMediaDriver } from './ai-lib-tools/drivers/getty-media-driver.js';
 export { WebsiteScraperDriver } from './ai-lib-tools/drivers/website-scraper-driver.js';
@@ -62,8 +62,9 @@ export type {
 } from './media-search-tool.js';
 
 export type {
+  VideoAppContext,
   VideoGenerationOptions,
-  VideoGenerationResult,
+  VideoStatusResult,
   VideoResolution,
   VideoDuration
 } from './video-generation-tool.js';

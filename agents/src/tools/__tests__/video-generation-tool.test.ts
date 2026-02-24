@@ -2,21 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { VideoGenerationTool } from '../video-generation-tool.js';
-import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { WebsiteScraperDriver } from '../ai-lib-tools/drivers/website-scraper-driver.js';
 
 vi.mock('execa', () => ({
   execa: vi.fn()
-}));
-
-vi.mock('../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
-    findById: vi.fn().mockReturnValue({
-      id: 'test-app-123',
-      previewUrl: 'https://test-app.preview.airo.dev',
-      path: '/tmp/test-video-gen'
-    })
-  }))
 }));
 
 vi.mock('@airo/ai-lib', () => ({
@@ -59,6 +48,11 @@ describe('video-generation-tool', function packageTests() {
   const testAppPath = '/tmp/test-video-gen';
   const airoDir = path.join(testAppPath, '.airo');
   const imagesDir = path.join(testAppPath, 'public', 'images');
+  const defaultCtx = { appId: 'test-app-123', appPath: testAppPath, previewUrl: 'https://test-app.preview.airo.dev' };
+
+  function createTool(overrides = {}) {
+    return new VideoGenerationTool({ ...defaultCtx, ...overrides });
+  }
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -73,90 +67,72 @@ describe('video-generation-tool', function packageTests() {
   });
 
   describe('#startGeneration', function startTests() {
-    it('should return failed when app is not found', async function appNotFound() {
-      vi.mocked(AppRepository).mockImplementationOnce(() => ({
-        findById: vi.fn().mockReturnValue(null)
-      } as any));
-
-      const tool = new VideoGenerationTool();
-      const result = await tool.startGeneration({ appId: 'nonexistent' });
-
-      expect(result.status).toBe('failed');
-      expect(result.error).toContain('App not found');
-    });
-
     it('should return completed when video file already exists', async function alreadyComplete() {
-      const filename = 'go_live-video-abc123.mp4';
-      fs.writeFileSync(path.join(imagesDir, filename), Buffer.from('fake-video'));
+      const url = '/public/images/go_live-video-abc123.mp4';
+      fs.writeFileSync(path.join(imagesDir, 'go_live-video-abc123.mp4'), Buffer.from('fake-video'));
       fs.writeFileSync(
         path.join(airoDir, 'video.json'),
-        JSON.stringify({ video: true, videoId: 'vid-1', filename })
+        JSON.stringify({
+          jobId: 'vid-1',
+          status: 'completed',
+          url
+        })
       );
 
-      const tool = new VideoGenerationTool();
-      const result = await tool.startGeneration({ appId: 'test-app-123' });
+      const tool = createTool();
+      const result = await tool.startGeneration({});
 
       expect(result.status).toBe('completed');
-      expect(result.url).toContain(filename);
+      expect(result.url).toContain(url);
     });
 
-    it('should delete metadata and return failed when OpenAI reports failed', async function openaiFailure() {
+    it('should return current status when generation is in progress', async function inProgress() {
       fs.writeFileSync(
         path.join(airoDir, 'video.json'),
-        JSON.stringify({ video: false, videoId: 'vid-fail' })
+        JSON.stringify({ jobId: 'vid-in-progress', status: 'in_progress' })
       );
 
-      vi.mocked(videoApiFetch).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ status: 'failed' })
-      } as any);
+      const tool = createTool();
+      const result = await tool.startGeneration({});
 
-      const tool = new VideoGenerationTool();
-      const result = await tool.startGeneration({ appId: 'test-app-123' });
-
-      expect(result.status).toBe('failed');
-      expect(fs.existsSync(path.join(airoDir, 'video.json'))).toBe(false);
+      expect(result.status).toBe('in_progress');
     });
 
-    it('should return queued when video.json exists with pending state', async function pendingState() {
+    it('should return pending when video.json exists with pending status', async function pendingState() {
       fs.writeFileSync(
         path.join(airoDir, 'video.json'),
-        JSON.stringify({ video: false, videoId: null, pending: true })
+        JSON.stringify({ jobId: null, status: 'pending' })
       );
 
-      const tool = new VideoGenerationTool();
-      const result = await tool.startGeneration({ appId: 'test-app-123' });
+      const tool = createTool();
+      const result = await tool.startGeneration({});
 
-      expect(result.status).toBe('queued');
+      expect(result.status).toBe('pending');
     });
   });
 
   describe('#initiateGeneration', function initiateTests() {
     function callInitiate(tool: VideoGenerationTool, options = {}) {
       return (tool as any).initiateGeneration({
-        appId: 'test-app-123',
         duration: 12,
         resolution: '720x1280' as const,
         ...options
       });
     }
 
-    it('should write pending state immediately before async work', async function writePending() {
+    it('should write pending metadata before job creation', async function writePending() {
       vi.mocked(videoApiFetch).mockResolvedValueOnce({
         ok: true,
         json: async () => ({ id: 'vid-new-123' })
       } as any);
 
-      const tool = new VideoGenerationTool();
-      const promise = callInitiate(tool);
-
-      await Promise.resolve();
+      const tool = createTool();
+      await callInitiate(tool);
 
       expect(fs.existsSync(path.join(airoDir, 'video.json'))).toBe(true);
       const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
-      expect(metadata.pending).toBe(true);
-
-      await promise;
+      expect(metadata.status).toBe('pending');
+      expect(metadata.jobId).toBe('vid-new-123');
     });
 
     it('should attach screenshot blob when publishedUrl is provided', async function withPublishedUrl() {
@@ -165,7 +141,7 @@ describe('video-generation-tool', function packageTests() {
         json: async () => ({ id: 'vid-screenshot-123' })
       } as any);
 
-      const tool = new VideoGenerationTool();
+      const tool = createTool();
       await callInitiate(tool, { publishedUrl: 'https://my-app.airo.dev' });
 
       const scraperInstance = vi.mocked(WebsiteScraperDriver).mock.results[0].value;
@@ -175,8 +151,8 @@ describe('video-generation-tool', function packageTests() {
       );
 
       const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
-      expect(metadata.videoId).toBe('vid-screenshot-123');
-      expect(metadata.pending).toBeUndefined();
+      expect(metadata.jobId).toBe('vid-screenshot-123');
+      expect(metadata.status).toBe('pending');
     });
 
     it('should proceed without input_reference when screenshot capture fails', async function screenshotFails() {
@@ -189,7 +165,7 @@ describe('video-generation-tool', function packageTests() {
         json: async () => ({ id: 'vid-no-screenshot' })
       } as any);
 
-      const tool = new VideoGenerationTool();
+      const tool = createTool();
       await callInitiate(tool, { publishedUrl: 'https://my-app.airo.dev' });
 
       expect(logger.warn).toHaveBeenCalledWith(
@@ -198,36 +174,245 @@ describe('video-generation-tool', function packageTests() {
       );
 
       const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
-      expect(metadata.videoId).toBe('vid-no-screenshot');
+      expect(metadata.jobId).toBe('vid-no-screenshot');
     });
 
-    it('should clean up pending file when generation fails before getting videoId', async function cleanupOnFailure() {
+    it('should write failed metadata and emit WebSocket failure when generation fails before getting videoId', async function cleanupOnFailure() {
       vi.mocked(videoApiFetch).mockResolvedValueOnce({
         ok: false,
         status: 500,
         text: async () => 'Internal Server Error'
       } as any);
 
-      const tool = new VideoGenerationTool();
+      const mockIo = { emit: vi.fn() };
+      const tool = createTool();
+      tool.setSocketIO(mockIo);
       await callInitiate(tool);
 
-      expect(fs.existsSync(path.join(airoDir, 'video.json'))).toBe(false);
+      const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
+      expect(metadata.status).toBe('failed');
+      expect(metadata.error).toBe('Failed to submit video job to OpenAI');
+      expect(mockIo.emit).toHaveBeenCalledWith('message', expect.objectContaining({
+        type: 'video',
+        data: expect.objectContaining({
+          status: 'failed',
+          error: 'Failed to submit video job to OpenAI',
+          appId: 'test-app-123'
+        })
+      }));
+    });
+  });
+
+  describe('#startBackgroundPolling', function pollingTests() {
+    function callPolling(tool: VideoGenerationTool, videoId: string, options = {}) {
+      return (tool as any).startBackgroundPolling(
+        { resolution: '720x1280' as const, ...options },
+        videoId,
+        {}
+      );
+    }
+
+    function createPollingTool(maxPollAttempts = 10) {
+      return createTool({ pollIntervalMs: 0, maxPollAttempts });
+    }
+
+    it('should trigger downloadAndProcessVideo when status is completed', async function completedStatus() {
+      fs.writeFileSync(
+        path.join(airoDir, 'video.json'),
+        JSON.stringify({ jobId: 'vid-poll', status: 'in_progress' })
+      );
+
+      vi.mocked(videoApiFetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'completed' })
+      } as any);
+
+      const tool = createPollingTool();
+      const downloadSpy = vi.spyOn(tool as any, 'downloadAndProcessVideo').mockResolvedValue(undefined);
+
+      await callPolling(tool, 'vid-poll');
+
+      expect(downloadSpy).toHaveBeenCalledOnce();
+      expect(logger.info).toHaveBeenCalledWith(
+        'video-generation.polling.completed',
+        expect.objectContaining({ videoId: 'vid-poll', attempt: 1 })
+      );
+    });
+
+    it('should write failed metadata and emit WebSocket failure when status is failed', async function failedStatus() {
+      fs.writeFileSync(
+        path.join(airoDir, 'video.json'),
+        JSON.stringify({ jobId: 'vid-failed', status: 'in_progress' })
+      );
+
+      vi.mocked(videoApiFetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'failed' })
+      } as any);
+
+      const mockIo = { emit: vi.fn() };
+      const tool = createPollingTool();
+      tool.setSocketIO(mockIo);
+
+      await callPolling(tool, 'vid-failed');
+
+      const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
+      expect(metadata.status).toBe('failed');
+      expect(metadata.error).toBeTruthy();
+      expect(mockIo.emit).toHaveBeenCalledWith('message', expect.objectContaining({
+        type: 'video',
+        data: expect.objectContaining({ status: 'failed', jobId: 'vid-failed' })
+      }));
+      expect(logger.error).toHaveBeenCalledWith(
+        'video-generation.polling.failed',
+        expect.objectContaining({ videoId: 'vid-failed', attempt: 1 })
+      );
+    });
+
+    it('should continue polling after a transient HTTP error', async function transientHttpError() {
+      fs.writeFileSync(
+        path.join(airoDir, 'video.json'),
+        JSON.stringify({ jobId: 'vid-transient', status: 'in_progress' })
+      );
+
+      vi.mocked(videoApiFetch)
+        .mockResolvedValueOnce({ ok: false, status: 503 } as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ status: 'completed' })
+        } as any);
+
+      const tool = createPollingTool();
+      const downloadSpy = vi.spyOn(tool as any, 'downloadAndProcessVideo').mockResolvedValue(undefined);
+
+      await callPolling(tool, 'vid-transient');
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'video-generation.polling.http-error',
+        expect.objectContaining({ videoId: 'vid-transient', attempt: 1, status: 503 })
+      );
+      expect(downloadSpy).toHaveBeenCalledOnce();
+    });
+
+    it('should normalize queued status to pending in metadata', async function queuedNormalization() {
+      fs.writeFileSync(
+        path.join(airoDir, 'video.json'),
+        JSON.stringify({ jobId: 'vid-queued', status: 'in_progress' })
+      );
+
+      let capturedMetadata: any = null;
+      vi.mocked(videoApiFetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ status: 'queued' })
+        } as any)
+        .mockImplementationOnce(async () => {
+          capturedMetadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
+          return { ok: true, json: async () => ({ status: 'completed' }) } as any;
+        });
+
+      const tool = createPollingTool();
+      vi.spyOn(tool as any, 'downloadAndProcessVideo').mockResolvedValue(undefined);
+
+      await callPolling(tool, 'vid-queued');
+
+      expect(capturedMetadata?.status).toBe('pending');
+    });
+
+    it('should stop polling gracefully when metadata file is deleted between polls', async function cancellation() {
+      fs.writeFileSync(
+        path.join(airoDir, 'video.json'),
+        JSON.stringify({ jobId: 'vid-cancel', status: 'in_progress' })
+      );
+
+      vi.mocked(videoApiFetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ status: 'in_progress' })
+        } as any)
+        .mockImplementationOnce(async () => {
+          fs.unlinkSync(path.join(airoDir, 'video.json'));
+          return { ok: true, json: async () => ({ status: 'in_progress' }) } as any;
+        });
+
+      const tool = createPollingTool(5);
+      await callPolling(tool, 'vid-cancel');
+
+      expect(logger.info).toHaveBeenCalledWith(
+        'video-generation.polling.cancelled',
+        expect.objectContaining({ videoId: 'vid-cancel', reason: 'metadata file deleted' })
+      );
+    });
+
+    it('should write failed metadata and emit timeout failure when max attempts exceeded', async function maxAttempts() {
+      fs.writeFileSync(
+        path.join(airoDir, 'video.json'),
+        JSON.stringify({ jobId: 'vid-timeout', status: 'in_progress' })
+      );
+
+      vi.mocked(videoApiFetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ status: 'in_progress' })
+      } as any);
+
+      const mockIo = { emit: vi.fn() };
+      const tool = createTool({ pollIntervalMs: 0, maxPollAttempts: 3 });
+      tool.setSocketIO(mockIo);
+
+      await callPolling(tool, 'vid-timeout');
+
+      expect(logger.error).toHaveBeenCalledWith(
+        'video-generation.polling.max-attempts',
+        expect.objectContaining({ videoId: 'vid-timeout', attempts: 3 })
+      );
+      const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
+      expect(metadata.status).toBe('failed');
+      expect(metadata.error).toBeTruthy();
+      expect(mockIo.emit).toHaveBeenCalledWith('message', expect.objectContaining({
+        type: 'video',
+        data: expect.objectContaining({ status: 'failed', jobId: 'vid-timeout' })
+      }));
+    });
+
+    it('should continue polling after a transient network exception', async function networkException() {
+      fs.writeFileSync(
+        path.join(airoDir, 'video.json'),
+        JSON.stringify({ jobId: 'vid-network', status: 'in_progress' })
+      );
+
+      vi.mocked(videoApiFetch)
+        .mockRejectedValueOnce(new Error('Network timeout'))
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ status: 'completed' })
+        } as any);
+
+      const tool = createPollingTool();
+      const downloadSpy = vi.spyOn(tool as any, 'downloadAndProcessVideo').mockResolvedValue(undefined);
+
+      await callPolling(tool, 'vid-network');
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'video-generation.polling.error',
+        expect.objectContaining({ videoId: 'vid-network', attempt: 1 })
+      );
+      expect(downloadSpy).toHaveBeenCalledOnce();
     });
   });
 
   describe('#downloadAndProcessVideo', function downloadTests() {
     function callDownload(tool: VideoGenerationTool, videoId: string, options = {}) {
       return (tool as any).downloadAndProcessVideo(
-        { appId: 'test-app-123', resolution: '720x1280', ...options },
+        { resolution: '720x1280', ...options },
         videoId,
         {}
       );
     }
 
-    it('should delete metadata when download returns non-ok response', async function downloadFailed() {
+    it('should write failed metadata when download returns non-ok response', async function downloadFailed() {
       fs.writeFileSync(
         path.join(airoDir, 'video.json'),
-        JSON.stringify({ video: false, videoId: 'vid-dl-fail' })
+        JSON.stringify({ jobId: 'vid-dl-fail', status: 'pending' })
       );
 
       vi.mocked(videoApiFetch).mockResolvedValueOnce({
@@ -235,20 +420,22 @@ describe('video-generation-tool', function packageTests() {
         status: 500
       } as any);
 
-      const tool = new VideoGenerationTool();
+      const tool = createTool();
       await callDownload(tool, 'vid-dl-fail');
 
       expect(logger.error).toHaveBeenCalledWith(
         'video-generation.download-failed',
         expect.objectContaining({ videoId: 'vid-dl-fail', status: 500 })
       );
-      expect(fs.existsSync(path.join(airoDir, 'video.json'))).toBe(false);
+      const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
+      expect(metadata.status).toBe('failed');
+      expect(metadata.error).toBeTruthy();
     });
 
-    it('should delete metadata when download returns empty buffer', async function emptyBuffer() {
+    it('should write failed metadata when download returns empty buffer', async function emptyBuffer() {
       fs.writeFileSync(
         path.join(airoDir, 'video.json'),
-        JSON.stringify({ video: false, videoId: 'vid-empty' })
+        JSON.stringify({ jobId: 'vid-empty', status: 'pending' })
       );
 
       vi.mocked(videoApiFetch).mockResolvedValueOnce({
@@ -256,20 +443,22 @@ describe('video-generation-tool', function packageTests() {
         arrayBuffer: async () => new ArrayBuffer(0)
       } as any);
 
-      const tool = new VideoGenerationTool();
+      const tool = createTool();
       await callDownload(tool, 'vid-empty');
 
       expect(logger.error).toHaveBeenCalledWith(
         'video-generation.empty-buffer',
         expect.objectContaining({ videoId: 'vid-empty' })
       );
-      expect(fs.existsSync(path.join(airoDir, 'video.json'))).toBe(false);
+      const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
+      expect(metadata.status).toBe('failed');
+      expect(metadata.error).toBeTruthy();
     });
 
-    it('should delete file and metadata when validation fails', async function invalidFile() {
+    it('should write failed metadata when validation fails', async function invalidFile() {
       fs.writeFileSync(
         path.join(airoDir, 'video.json'),
-        JSON.stringify({ video: false, videoId: 'vid-invalid' })
+        JSON.stringify({ jobId: 'vid-invalid', status: 'pending' })
       );
 
       const fakeVideo = Buffer.from('not-a-real-video');
@@ -280,7 +469,7 @@ describe('video-generation-tool', function packageTests() {
 
       vi.mocked(execa).mockRejectedValueOnce(new Error('moov atom not found'));
 
-      const tool = new VideoGenerationTool();
+      const tool = createTool();
       await callDownload(tool, 'vid-invalid');
 
       expect(logger.error).toHaveBeenCalledWith(
@@ -290,13 +479,15 @@ describe('video-generation-tool', function packageTests() {
           reason: 'moov atom not found'
         })
       );
-      expect(fs.existsSync(path.join(airoDir, 'video.json'))).toBe(false);
+      const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
+      expect(metadata.status).toBe('failed');
+      expect(metadata.error).toContain('moov atom not found');
     });
 
     it('should mark video completed even when outro stitching fails', async function outroFailed() {
       fs.writeFileSync(
         path.join(airoDir, 'video.json'),
-        JSON.stringify({ video: false, videoId: 'vid-outro-fail' })
+        JSON.stringify({ jobId: 'vid-outro-fail', status: 'pending' })
       );
 
       const fakeVideo = Buffer.from('fake-valid-video-content');
@@ -319,7 +510,9 @@ describe('video-generation-tool', function packageTests() {
       }
 
       try {
-        const tool = new VideoGenerationTool();
+        const mockIo = { emit: vi.fn() };
+        const tool = createTool();
+        tool.setSocketIO(mockIo);
         await callDownload(tool, 'vid-outro-fail');
 
         expect(logger.warn).toHaveBeenCalledWith(
@@ -328,8 +521,75 @@ describe('video-generation-tool', function packageTests() {
         );
 
         const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
-        expect(metadata.video).toBe(true);
-        expect(metadata.filename).toBeTruthy();
+        expect(metadata.status).toBe('completed');
+        expect(metadata.url).toBeTruthy();
+
+        expect(mockIo.emit).toHaveBeenCalledWith('message', expect.objectContaining({
+          type: 'video',
+          data: expect.objectContaining({
+            status: 'completed',
+            jobId: 'vid-outro-fail',
+            appId: 'test-app-123'
+          })
+        }));
+      } finally {
+        if (!outroExisted) {
+          try { fs.unlinkSync(outroPath); } catch { /* ignore */ }
+        }
+      }
+    });
+
+    it('should emit WebSocket success event when video completes successfully', async function successWebSocket() {
+      fs.writeFileSync(
+        path.join(airoDir, 'video.json'),
+        JSON.stringify({ jobId: 'vid-success', status: 'pending' })
+      );
+
+      const fakeVideo = Buffer.from('fake-valid-video-content');
+      vi.mocked(videoApiFetch).mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: async () => fakeVideo.buffer.slice(fakeVideo.byteOffset, fakeVideo.byteOffset + fakeVideo.byteLength)
+      } as any);
+
+      // Mock ffmpeg validation and outro stitching as successful
+      vi.mocked(execa)
+        .mockResolvedValueOnce({} as any)  // validation
+        .mockResolvedValueOnce({} as any)  // ffmpeg check
+        .mockResolvedValueOnce({} as any)  // image to video
+        .mockResolvedValueOnce({} as any); // concat
+
+      const outroDir = path.join(process.cwd(), 'images');
+      fs.mkdirSync(outroDir, { recursive: true });
+      const outroPath = path.join(outroDir, 'Built_with_Airo_Builder_720x1280.jpeg');
+      const outroExisted = fs.existsSync(outroPath);
+      if (!outroExisted) {
+        fs.writeFileSync(outroPath, Buffer.from('fake-image'));
+      }
+
+      try {
+        const mockIo = { emit: vi.fn() };
+        const tool = createTool();
+        tool.setSocketIO(mockIo);
+        await callDownload(tool, 'vid-success');
+
+        const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
+        expect(metadata.status).toBe('completed');
+        expect(metadata.url).toBeTruthy();
+
+        expect(mockIo.emit).toHaveBeenCalledWith('message', {
+          type: 'video',
+          content: '',
+          data: {
+            status: 'completed',
+            jobId: 'vid-success',
+            videoUrl: expect.stringContaining('/public/images/'),
+            appId: 'test-app-123'
+          }
+        });
+        expect(logger.info).toHaveBeenCalledWith(
+          'video-generation.websocket.emit',
+          expect.objectContaining({ appId: 'test-app-123', jobId: 'vid-success' })
+        );
       } finally {
         if (!outroExisted) {
           try { fs.unlinkSync(outroPath); } catch { /* ignore */ }
@@ -346,7 +606,7 @@ describe('video-generation-tool', function packageTests() {
     it('should return null when ffmpeg validation succeeds', async function validFile() {
       vi.mocked(execa).mockResolvedValueOnce({} as any);
 
-      const tool = new VideoGenerationTool();
+      const tool = createTool();
       const result = await callValidate(tool, '/tmp/valid.mp4');
 
       expect(result).toBeNull();
@@ -355,7 +615,7 @@ describe('video-generation-tool', function packageTests() {
     it('should return error message when ffmpeg validation fails', async function invalidFile() {
       vi.mocked(execa).mockRejectedValueOnce(new Error('moov atom not found'));
 
-      const tool = new VideoGenerationTool();
+      const tool = createTool();
       const result = await callValidate(tool, '/tmp/invalid.mp4');
 
       expect(result).toBe('moov atom not found');
@@ -363,38 +623,62 @@ describe('video-generation-tool', function packageTests() {
   });
 
   describe('#deleteMetadata', function deleteTests() {
-    function callDelete(tool: VideoGenerationTool, metadataPath: string, appId: string, videoId: string) {
-      return (tool as any).deleteMetadata(metadataPath, appId, videoId);
+    function callDelete(tool: VideoGenerationTool, videoId: string, errorMessage?: string) {
+      return (tool as any).deleteMetadata(videoId, errorMessage);
     }
 
-    it('should delete metadata file and log success', function deleteExisting() {
-      const metadataPath = path.join(airoDir, 'video.json');
-      fs.writeFileSync(metadataPath, JSON.stringify({ video: false, videoId: 'vid-1' }));
-
-      const tool = new VideoGenerationTool();
-      callDelete(tool, metadataPath, 'test-app-123', 'vid-1');
-
-      expect(fs.existsSync(metadataPath)).toBe(false);
-      expect(logger.info).toHaveBeenCalledWith(
-        'video-generation.metadata-deleted',
-        expect.objectContaining({ appId: 'test-app-123', videoId: 'vid-1' })
+    it('should write failed status to metadata and emit WebSocket failure event', async function writeFailedStatus() {
+      fs.writeFileSync(
+        path.join(airoDir, 'video.json'),
+        JSON.stringify({ jobId: 'vid-1', status: 'pending', createdAt: '2024-01-01T00:00:00.000Z' })
       );
+
+      const mockIo = { emit: vi.fn() };
+      const tool = createTool();
+      tool.setSocketIO(mockIo);
+      await callDelete(tool, 'vid-1', 'Test error message');
+
+      const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
+      expect(metadata.status).toBe('failed');
+      expect(metadata.error).toBe('Test error message');
+      expect(metadata.jobId).toBe('vid-1');
+      expect(metadata.createdAt).toBe('2024-01-01T00:00:00.000Z');
+      expect(mockIo.emit).toHaveBeenCalledWith('message', {
+        type: 'video',
+        content: '',
+        data: {
+          status: 'failed',
+          jobId: 'vid-1',
+          error: 'Test error message',
+          appId: 'test-app-123'
+        }
+      });
     });
 
-    it('should not throw when metadata file does not exist', function deleteNonexistent() {
-      const tool = new VideoGenerationTool();
-      expect(() => callDelete(tool, '/tmp/nonexistent/video.json', 'app-1', 'vid-1')).not.toThrow();
+    it('should create metadata with failed status when file does not exist', async function writeFailedStatusNonexistent() {
+      const mockIo = { emit: vi.fn() };
+      const tool = createTool();
+      tool.setSocketIO(mockIo);
+      await callDelete(tool, 'vid-1', 'Test error');
+
+      const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
+      expect(metadata.status).toBe('failed');
+      expect(metadata.error).toBe('Test error');
+      expect(mockIo.emit).toHaveBeenCalledWith('message', expect.objectContaining({
+        type: 'video',
+        data: expect.objectContaining({ status: 'failed' })
+      }));
     });
 
-    it('should log warning when deletion fails', function deleteFails() {
+    it('should log error when metadata write fails', async function writeFails() {
       const metadataPath = path.join(airoDir, 'video.json');
       fs.mkdirSync(metadataPath, { recursive: true });
 
-      const tool = new VideoGenerationTool();
-      callDelete(tool, metadataPath, 'test-app-123', 'vid-1');
+      const tool = createTool();
+      await callDelete(tool, 'vid-1');
 
-      expect(logger.warn).toHaveBeenCalledWith(
-        'video-generation.metadata-delete-failed',
+      expect(logger.error).toHaveBeenCalledWith(
+        'video-generation.metadata-save-failed',
         expect.objectContaining({ appId: 'test-app-123', videoId: 'vid-1' })
       );
     });

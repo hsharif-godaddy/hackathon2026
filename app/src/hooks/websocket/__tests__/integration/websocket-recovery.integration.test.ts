@@ -9,8 +9,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, renderHook } from '@testing-library/react'
+import { act } from '@testing-library/react'
 
+import { renderHookWithProviders } from '@/tests/test-utils'
 import {
   advanceToEscalationTimeout,
   createInitialStoreState,
@@ -65,16 +66,20 @@ vi.mock('uuid', () => ({
   validate: vi.fn(() => true),
 }))
 
-vi.mock('@tanstack/react-query', () => ({
-  useQueryClient: vi.fn(() => ({
-    invalidateQueries: vi.fn(),
-  })),
-  useQuery: vi.fn(() => ({
-    data: false,
-    isLoading: false,
-    error: null,
-  })),
-}))
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>()
+  return {
+    ...actual,
+    useQueryClient: vi.fn(() => ({
+      invalidateQueries: vi.fn(),
+    })),
+    useQuery: vi.fn(() => ({
+      data: false,
+      isLoading: false,
+      error: null,
+    })),
+  }
+})
 
 // Create getState mock separately so we can control its implementation
 const mockGetState = vi.fn()
@@ -223,7 +228,7 @@ describe('WebSocket Recovery Integration', () => {
 
   async function setupConnectedHook() {
     const { useStreamingWebSocket } = await import('../../../useStreamingWebSocket')
-    const hook = renderHook(() => useStreamingWebSocket())
+    const hook = renderHookWithProviders(() => useStreamingWebSocket())
 
     // First, flush microtasks to let useEffect run
     await act(async () => {

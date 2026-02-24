@@ -2,19 +2,18 @@ import { Router, Request, Response, IRouter } from 'express';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { errorToLogError, log } from '../../logging/index.js';
 import { requirePermission } from '../middleware/require-permission.js';
-import { startVideoGeneration } from '../../tools/video-generation-tool.js';
+import { VideoGenerationTool } from '../../tools/video-generation-tool.js';
+import { getSocketIO } from '../ai-lib-websocket-server.js';
 
 const router: IRouter = Router();
 const appRepo = new AppRepository();
 
 /**
- * POST /:id/generate-video - Start or poll AI video generation (non-blocking)
+ * POST /:id/generate-video - Start AI video generation (single request)
  *
  * Requires JWT with canPublish=true permission (Airo Plus subscription).
- *
- * This endpoint is idempotent and can be used for both starting generation and polling:
- * Portrait format (9:16) is optimized for mobile viewing and social media platforms
- * (Instagram Reels, YouTube Shorts, TikTok).
+ * Returns 200 with cached video if already generated, or 202 to indicate
+ * the async pipeline has started. Result delivered via WebSocket (eventType "video").
  */
 router.post('/:id/generate-video', requirePermission('canPublish'), async (req: Request, res: Response) => {
   try {
@@ -43,22 +42,23 @@ router.post('/:id/generate-video', requirePermission('canPublish'), async (req: 
       }
     }
 
-    // Fixed parameters for video generation
     const duration = 12;
-    const resolution = '720x1280'; // Portrait format (9:16) for mobile/social media
+    const resolution = '720x1280';
 
     contextLogger.info('route.video.generate.request', { duration, resolution, publishedUrl });
 
-    const result = await startVideoGeneration({
-      appId: id,
-      duration,
-      resolution,
-      publishedUrl
-    });
+    const tool = new VideoGenerationTool({ appId: id, appPath: app.path, previewUrl: app.previewUrl });
+    const io = getSocketIO();
+    if (io) {
+      tool.setSocketIO(io);
+    }
+
+    const result = await tool.startGeneration({ duration, resolution, publishedUrl });
 
     contextLogger.info('route.video.generate.response', { status: result.status, url: result.url });
 
-    return res.json({
+    const statusCode = result.status === 'completed' ? 200 : result.status === 'failed' ? 500 : 202;
+    return res.status(statusCode).json({
       success: result.status !== 'failed',
       status: result.status,
       url: result.url || null,

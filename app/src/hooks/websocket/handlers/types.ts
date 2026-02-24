@@ -158,6 +158,7 @@ export interface MessageContext {
   refs: MessageHandlerRefs
   // XState machine actor for sending lifecycle events (Tier 1)
   machine: WebSocketActor
+  t: (id: string, values?: Record<string, any>) => string
 }
 
 /**

@@ -103,6 +103,10 @@ interface PublishLimitData {
   publishedApps: SiteInfo[];
 }
 
+export type LaunchVideoResult =
+  | { type: 'success'; url: string }
+  | { type: 'error'; message: string }
+
 // Helper to create default publish state
 const createDefaultPublishState = () => {
   const goLiveStatus = loadGoLiveStatus();
@@ -122,7 +126,7 @@ const createDefaultPublishState = () => {
     showGoLiveModal: false,
     goLiveModalStep: null as 'confirm' | 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null,
     securityScanResults: null,
-    launchVideoUrl: null,
+    launchVideoResult: null,
     // Feature selections
     featureSelections: null as { qa: boolean; security: boolean; video: boolean; marketing: boolean } | null,
     marketingSelections: null as { seo: boolean; socialPosts: boolean; blogPost: boolean } | null,
@@ -191,7 +195,7 @@ interface DevelopPageStore {
     showGoLiveModal: boolean
     goLiveModalStep: 'confirm' | 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null
     securityScanResults: any | null
-    launchVideoUrl: string | null
+    launchVideoResult: LaunchVideoResult | null
     featureSelections: { qa: boolean; security: boolean; video: boolean; marketing: boolean } | null
     marketingSelections: { seo: boolean; socialPosts: boolean; blogPost: boolean } | null
   }>
@@ -268,7 +272,7 @@ interface DevelopPageStore {
     showGoLiveModal: boolean
     goLiveModalStep: 'confirm' | 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null
     securityScanResults: any | null
-    launchVideoUrl: string | null
+    launchVideoResult: LaunchVideoResult | null
     featureSelections: { qa: boolean; security: boolean; video: boolean; marketing: boolean } | null
     marketingSelections: { seo: boolean; socialPosts: boolean; blogPost: boolean } | null
   }
@@ -277,7 +281,7 @@ interface DevelopPageStore {
   setShowGoLiveModal: (appId: string, show: boolean) => void
   setGoLiveModalStep: (appId: string, step: 'confirm' | 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null) => void
   setSecurityScanResults: (appId: string, results: any | null) => void
-  setLaunchVideoUrl: (appId: string, url: string | null) => void
+  setLaunchVideoResult: (appId: string, result: LaunchVideoResult | null) => void
   setFeatureSelections: (appId: string, selections: { qa: boolean; security: boolean; video: boolean; marketing: boolean }) => void
   setMarketingSelections: (appId: string, selections: { seo: boolean; socialPosts: boolean; blogPost: boolean }) => void
   markAsGoneLive: (appId: string) => Promise<void>
@@ -755,7 +759,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         // Reset modal state when closing
         state.publishStates[appId].goLiveModalStep = null;
         state.publishStates[appId].securityScanResults = null;
-        state.publishStates[appId].launchVideoUrl = null;
+        state.publishStates[appId].launchVideoResult = null;
         state.publishStates[appId].featureSelections = null;
         state.publishStates[appId].marketingSelections = null;
       }
@@ -775,11 +779,11 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       state.publishStates[appId].securityScanResults = results;
     }),
 
-    setLaunchVideoUrl: (appId: string, url: string | null) => set((state) => {
+    setLaunchVideoResult: (appId: string, result: LaunchVideoResult | null) => set((state) => {
       if (!state.publishStates[appId]) {
         state.publishStates[appId] = createDefaultPublishState();
       }
-      state.publishStates[appId].launchVideoUrl = url;
+      state.publishStates[appId].launchVideoResult = result;
     }),
 
     setFeatureSelections: (appId: string, selections: { qa: boolean; security: boolean; video: boolean; marketing: boolean }) => set((state) => {

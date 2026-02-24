@@ -60,9 +60,10 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
     showGoLiveModal,
     goLiveModalStep,
     securityScanResults,
-    launchVideoUrl,
+    launchVideoResult,
     featureSelections,
   } = publishState;
+  const launchVideoUrl = launchVideoResult?.type === 'success' ? launchVideoResult.url : null;
 
   const { isLgBreakpoint } = useBreakpoints();
 

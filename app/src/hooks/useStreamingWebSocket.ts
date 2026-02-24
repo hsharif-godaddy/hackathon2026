@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 
+import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { ChatMessageBuilder } from '@/services/websocket/ChatMessageBuilder'
 import { ConnectionManager } from '@/services/websocket/ConnectionManager'
@@ -71,6 +72,8 @@ export function useStreamingWebSocket() {
   const setStreamingState = useSetStreamingState()
   const setIsLoading = useSetIsLoading()
 
+  const t = useTranslations()
+
   // Sub-hooks for focused concerns
   const { toolDeltaBufferRef, scheduleToolDeltaFlush, flushToolDeltaBufferImmediate } = useToolDeltaBuffer()
   const { clearStoredSocketId, handleCommitComplete, sendToolImpression } = useWebSocketHelpers(currentAppId)
@@ -129,6 +132,7 @@ export function useStreamingWebSocket() {
         scheduleToolDeltaFlush,
       },
       getHelpers: () => helpersRef.current,
+      t,
       toolDeltaBufferRef,
       getStoreState: () => {
         const state = useStreamingConversationStore.getState()

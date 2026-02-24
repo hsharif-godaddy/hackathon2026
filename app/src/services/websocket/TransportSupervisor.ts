@@ -35,6 +35,7 @@ import {
   ToolInputDeltaHandler,
   ToolResultHandler,
   ToolStartHandler,
+  VideoHandler,
 } from '@/hooks/websocket/handlers'
 import {
   type MessageContext,
@@ -77,6 +78,7 @@ export interface TransportSupervisorDeps {
   machine: WebSocketActor
   actions: MessageHandlerActions
   getHelpers: () => Omit<MessageHandlerHelpers, 'maybeSendRecoveryAck' | 'trackReplayEventReceipt' | 'clearRetryState'>
+  t?: (id: string, values?: Record<string, any>) => string
   qualityMonitor?: NetworkQualityMonitor
   refs: {
     serverConfig: { current: ServerConfig | null }
@@ -320,6 +322,7 @@ export class TransportSupervisor extends EventEmitter {
     registry.register(new CompleteHandler())
     registry.register(new ErrorHandler())
     registry.register(new ClientActionHandler())
+    registry.register(new VideoHandler())
 
     const messageContext: MessageContext = {
       socket,
@@ -333,6 +336,7 @@ export class TransportSupervisor extends EventEmitter {
       },
       refs: this.deps.refs,
       machine: this.deps.machine,
+      t: this.deps.t ?? ((id: string) => id),
     };
 
     socket.on('status', (data) => {

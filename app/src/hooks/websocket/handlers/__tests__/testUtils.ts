@@ -52,5 +52,6 @@ export const createMockMessageContext = (
       }),
     })),
   } as any,
+  t: (id: string) => id,
   ...overrides,
 })
