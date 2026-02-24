@@ -6,6 +6,7 @@ import Alert from '@ux/alert';
 import Modal from '@ux/modal';
 import Spinner from '@ux/spinner';
 
+import { SsoExpirationCode } from '@/lib/features';
 import { logger } from '@/lib/request-context';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { useSitesStore } from '@/stores/useSitesStore';
@@ -66,7 +67,7 @@ export default function SsoLogin() {
   const [ssoHost, setSsoHost] = useState<string | null>(null);
   const [currentOrigin, setCurrentOrigin] = useState<string>('');
 
-  const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, redirectUrl, setRedirectUrl } = useAuthUIStore();
+  const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, redirectUrl, setRedirectUrl, authReason } = useAuthUIStore();
   const clearRequiresAuth = useSitesStore((state) => state.clearRequiresAuth);
 
   // Determine consuming port on client-side only using lazy initializer to avoid SSR hydration issues
@@ -275,6 +276,17 @@ export default function SsoLogin() {
     return null;
   }
 
+  // Route to the correct SSO page based on auth failure type:
+  // HBI = 2FA challenge page (not password re-entry)
+  // LOGIN and VAT both route to /login, which is the correct default
+  const pageToLoad = authReason === SsoExpirationCode.HBI ? '/hbi' : '/login';
+
+  logger.info('sso-login.auth-reason', {
+    message: `SSO routing to ${pageToLoad}`,
+    authReason,
+    pageToLoad
+  });
+
   // Min dimensions sized to fit SsoDeck iframe content and prevent layout shift when loading
   return (
     <Modal
@@ -303,7 +315,7 @@ export default function SsoLogin() {
               consumingApp='airo-builder'
               consumingPath='/'
               {...(consumingPort && { consumingPort })}
-              pageToLoad='/login'
+              pageToLoad={pageToLoad}
               pageToLoadParams={(() => {
                 if (!currentOrigin) return {};
 
@@ -333,7 +345,10 @@ export default function SsoLogin() {
                   }
                 }
 
-                return { redirect_url: fullUrl };
+                return {
+                  redirect_url: fullUrl,
+                  ...(authReason != null ? { auth_reason: String(authReason) } : {})
+                };
               })()}
               onAuth={handleAuth}
               onLoad={handleLoad}

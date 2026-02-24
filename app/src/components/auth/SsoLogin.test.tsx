@@ -3,6 +3,7 @@ import '@testing-library/jest-dom';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { waitFor } from '@testing-library/react';
 
+import { SsoExpirationCode } from '@/lib/features';
 import { renderWithProviders } from '@/tests/test-utils';
 import SsoLogin from './SsoLogin';
 
@@ -15,6 +16,7 @@ const originalLocation = window.location;
 
 let latestOnAuth: ((data?: unknown) => void) | null = null;
 let latestPageToLoadParams: Record<string, unknown> | null = null;
+let latestPageToLoad: string | null = null;
 
 function overrideWindowLocation(urlString: string) {
   const url = new URL(urlString);
@@ -44,6 +46,7 @@ vi.mock('next/dynamic', () => ({
   default: () => function MockSsoDeck(props: any) {
     latestOnAuth = props.onAuth;
     latestPageToLoadParams = props.pageToLoadParams;
+    latestPageToLoad = props.pageToLoad;
     return <div data-testid="sso-deck" />;
   },
 }));
@@ -75,6 +78,7 @@ const mockAuthUIState = {
   setSsoLoaded: vi.fn(),
   redirectUrl: null as string | null,
   setRedirectUrl: vi.fn(),
+  authReason: null as number | null,
 };
 
 vi.mock('@/stores/useAuthUIStore', () => ({
@@ -127,7 +131,9 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
     vi.clearAllMocks();
     latestOnAuth = null;
     latestPageToLoadParams = null;
+    latestPageToLoad = null;
     mockAuthUIState.redirectUrl = null;
+    mockAuthUIState.authReason = null;
   });
 
   it('navigates to same-origin redirect path', async function redirectsToSameOrigin() {
@@ -221,6 +227,89 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
 
     expect(latestPageToLoadParams).toEqual({
       redirect_url: 'https://airo-builder.test'
+    });
+  });
+});
+
+describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
+  beforeAll(function stubLocation() {
+    overrideWindowLocation('https://airo-builder.test/');
+  });
+
+  afterAll(function restoreLocation() {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: originalLocation,
+    });
+  });
+
+  beforeEach(function resetMocks() {
+    vi.clearAllMocks();
+    latestOnAuth = null;
+    latestPageToLoadParams = null;
+    latestPageToLoad = null;
+    mockAuthUIState.redirectUrl = null;
+    mockAuthUIState.authReason = null;
+  });
+
+  it('routes to /login by default when authReason is null', async function defaultsToLogin() {
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(() => {
+      expect(latestPageToLoad).toBeTruthy();
+    });
+
+    expect(latestPageToLoad).toBe('/login');
+    expect(latestPageToLoadParams).toEqual({
+      redirect_url: 'https://airo-builder.test'
+    });
+  });
+
+  it('routes to /hbi when authReason is HBI', async function routesToHbi() {
+    mockAuthUIState.authReason = SsoExpirationCode.HBI;
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(() => {
+      expect(latestPageToLoad).toBeTruthy();
+    });
+
+    expect(latestPageToLoad).toBe('/hbi');
+    expect(latestPageToLoadParams).toEqual({
+      redirect_url: 'https://airo-builder.test',
+      auth_reason: '2'
+    });
+  });
+
+  it('routes to /login when authReason is LOGIN', async function routesToLoginForCode1() {
+    mockAuthUIState.authReason = SsoExpirationCode.LOGIN;
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(() => {
+      expect(latestPageToLoad).toBeTruthy();
+    });
+
+    expect(latestPageToLoad).toBe('/login');
+    expect(latestPageToLoadParams).toEqual({
+      redirect_url: 'https://airo-builder.test',
+      auth_reason: '1'
+    });
+  });
+
+  it('routes to /login when authReason is VAT', async function routesToLoginForCode3() {
+    mockAuthUIState.authReason = SsoExpirationCode.VAT;
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(() => {
+      expect(latestPageToLoad).toBeTruthy();
+    });
+
+    expect(latestPageToLoad).toBe('/login');
+    expect(latestPageToLoadParams).toEqual({
+      redirect_url: 'https://airo-builder.test',
+      auth_reason: '3'
     });
   });
 });

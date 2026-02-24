@@ -8,6 +8,19 @@ import { decodeJWT } from '@/lib/utils/jwt-utils';
 /**
  * Authentication types supported by the application
  */
+/**
+ * SSO expiration codes from gd-auth (mirrors gd-auth/src/expiration-codes.js)
+ * Used by TokenExpiredError.ssoCode to indicate why a token was rejected.
+ */
+export const SsoExpirationCode = {
+  NOT_EXPIRED: 0,
+  LOGIN: 1,
+  HBI: 2,
+  VAT: 3,
+} as const;
+
+export type SsoExpirationCode = (typeof SsoExpirationCode)[keyof typeof SsoExpirationCode];
+
 export enum AuthType {
   /** Full JWT authentication with SSO (production) */
   JWT = 'jwt',

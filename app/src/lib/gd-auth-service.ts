@@ -48,7 +48,7 @@ export class GdAuthService {
   /**
    * Authenticate token using gd-auth (handles heartbeat automatically)
    */
-  async authenticate(token: string): Promise<{ valid: boolean; payload?: any; reason?: string }> {
+  async authenticate(token: string): Promise<{ valid: boolean; payload?: any; reason?: string; authReason?: number }> {
     try {
       // If auth is disabled or not JWT mode, return mock success
       const envAuthType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
@@ -108,7 +108,9 @@ export class GdAuthService {
 
       return {
         valid: false,
-        reason: error.message || 'Authentication failed'
+        reason: error.message || 'Authentication failed',
+        // ssoCode values: 1=login, 2=hbi, 3=vat (0 is not a valid value)
+        ...(error.ssoCode !== undefined ? { authReason: error.ssoCode } : {})
       };
     }
   }

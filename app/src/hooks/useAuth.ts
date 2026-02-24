@@ -120,6 +120,22 @@ export function useAuth(options: UseAuthOptions = {}) {
       });
     }
 
+    // Propagate authReason from Gasket Auth's authState to the UI store.
+    // Gasket Auth's fetchAuthState spreads the full /api/auth/validate response via { ...data },
+    // so authReason is available on authState when the validate endpoint returns it.
+    // This handles the case where the validate endpoint (not an API call) detects the HBI requirement.
+    if (!authState.valid && (authState as any).authReason != null) {
+      const store = useAuthUIStore.getState();
+      const newAuthReason = (authState as any).authReason;
+      if (store.authReason !== newAuthReason) {
+        useAuthUIStore.getState().setNeedsReauth(
+          store.reauthReason || 'session_expired',
+          store.requiresRefresh,
+          newAuthReason
+        );
+      }
+    }
+
     // Track when Gasket Auth runs a validation cycle (status becomes loading)
     // Store the seq number so we know which 401 this validation applies to
     if (needsReauth && authState.status === 'loading' && sawValidationAfterReauthSeqRef.current !== needsReauthSeq) {

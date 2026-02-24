@@ -69,7 +69,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       valid: result.valid,
       payload: result.payload,
-      reason: result.reason
+      reason: result.reason,
+      ...(result.authReason !== undefined ? { authReason: result.authReason } : {})
     }, {
       status: result.valid ? 200 : 401
     });

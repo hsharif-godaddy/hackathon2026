@@ -22,6 +22,8 @@ interface AuthUIStore {
   reauthReason: AuthRequiredReason | null;
   /** Whether the session requires refresh (token is stale but valid) */
   requiresRefresh: boolean;
+  /** SSO expiration code from gd-auth indicating why the token was rejected (see SsoExpirationCode) */
+  authReason: number | null;
   /** Sequence incremented every time needsReauth is set */
   needsReauthSeq: number;
   /**
@@ -43,7 +45,7 @@ interface AuthUIStore {
    * Set auth required state (called automatically by appFetch on 401)
    * Components can subscribe to needsReauth to show "login required" UI via AuthBoundary
    */
-  setNeedsReauth: (reason: AuthRequiredReason, requiresRefresh?: boolean) => void;
+  setNeedsReauth: (reason: AuthRequiredReason, requiresRefresh?: boolean, authReason?: number) => void;
   /** Clear the auth required state (called after successful login or user dismisses) */
   clearNeedsReauth: (expectedSeq?: number) => void;
   /** Set URL to redirect to after successful authentication */
@@ -85,6 +87,7 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
   needsReauth: false,
   reauthReason: null,
   requiresRefresh: false,
+  authReason: null,
   needsReauthSeq: 0,
   redirectUrl: null,
 
@@ -98,10 +101,11 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
   setSsoLoaded: () => set({ isSsoLoading: false }),
 
   // Auth Boundary Actions
-  setNeedsReauth: (reason, requiresRefresh = false) => set((state) => ({
+  setNeedsReauth: (reason, requiresRefresh = false, authReason) => set((state) => ({
     needsReauth: true,
     reauthReason: reason,
     requiresRefresh,
+    authReason: authReason ?? null,
     needsReauthSeq: state.needsReauthSeq + 1
   })),
 
@@ -113,6 +117,7 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
       needsReauth: false,
       reauthReason: null,
       requiresRefresh: false,
+      authReason: null,
       redirectUrl: null  // Clear redirect URL when clearing auth state
     };
   }),

@@ -275,8 +275,9 @@ export async function appFetch(
   // Handle 401 responses at the UI layer
   if (response.status === 401) {
     let requiresRefresh = false;
+    let authReason: number | undefined;
 
-    // Extract requiresRefresh flag from response body
+    // Extract requiresRefresh and authReason from response body
     try {
       const contentType = response.headers.get('content-type');
       if (contentType?.includes('application/json')) {
@@ -284,10 +285,12 @@ export async function appFetch(
         const data = await response.clone().json();
         requiresRefresh = data.requiresRefresh ?? false;
         response.requiresRefresh = requiresRefresh;
+        authReason = data.authReason ?? undefined;
 
         logger.debug('app-fetch.auth-required', {
           message: '401 response - authentication required',
           requiresRefresh,
+          authReason,
           url: resolvedUrl
         });
       }
@@ -301,7 +304,7 @@ export async function appFetch(
     // Set auth state in UI store (client-side only)
     if (setAuthState && typeof window !== 'undefined') {
       const reason = requiresRefresh ? 'session_stale' : 'not_authenticated';
-      useAuthUIStore.getState().setNeedsReauth(reason, requiresRefresh);
+      useAuthUIStore.getState().setNeedsReauth(reason, requiresRefresh, authReason);
     }
   }
 

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { act } from '@testing-library/react';
 
+import { SsoExpirationCode } from '@/lib/features';
 import { useAuthUIStore } from './useAuthUIStore';
 
 describe('useAuthUIStore', () => {
@@ -13,6 +14,7 @@ describe('useAuthUIStore', () => {
         needsReauth: false,
         reauthReason: null,
         requiresRefresh: false,
+        authReason: null,
         needsReauthSeq: 0,
       });
     });
@@ -171,6 +173,42 @@ describe('useAuthUIStore', () => {
       expect(state.reauthReason).toBeNull();
       // Note: seq is not reset on clear, it continues to increment
       expect(state.needsReauthSeq).toBe(1);
+    });
+
+    it('should store authReason when provided to setNeedsReauth', () => {
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('session_expired', false, SsoExpirationCode.HBI);
+      });
+
+      const state = useAuthUIStore.getState();
+      expect(state.authReason).toBe(SsoExpirationCode.HBI);
+      expect(state.needsReauth).toBe(true);
+    });
+
+    it('should set authReason to null when omitted from setNeedsReauth', () => {
+      // First set with authReason
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('session_expired', false, SsoExpirationCode.HBI);
+      });
+      expect(useAuthUIStore.getState().authReason).toBe(SsoExpirationCode.HBI);
+
+      // Then set without authReason - should reset to null
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('not_authenticated');
+      });
+      expect(useAuthUIStore.getState().authReason).toBeNull();
+    });
+
+    it('should clear authReason when clearNeedsReauth is called', () => {
+      act(() => {
+        useAuthUIStore.getState().setNeedsReauth('session_expired', false, SsoExpirationCode.HBI);
+      });
+      expect(useAuthUIStore.getState().authReason).toBe(SsoExpirationCode.HBI);
+
+      act(() => {
+        useAuthUIStore.getState().clearNeedsReauth();
+      });
+      expect(useAuthUIStore.getState().authReason).toBeNull();
     });
 
     it('should clear when expectedSeq is undefined (unconditional clear)', () => {
