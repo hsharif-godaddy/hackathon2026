@@ -48,6 +48,7 @@ make lint
    images that have already been processed.
 
 3. **Fill in required API keys in `.env`:**
+
    - `ANTHROPIC_API_KEY` - For Haiku image analysis
    - `OPENAI_API_KEY` - For embeddings
    - `GETTY_APP_KEY` - For Getty Images API (optional for testing)
@@ -84,6 +85,8 @@ Environment variables:
 | `QDRANT_HOST`          | localhost                   | Qdrant server host                   |
 | `QDRANT_PORT`          | 6334                        | Qdrant gRPC port                     |
 | `QDRANT_COLLECTION`    | image_analyses              | Collection name                      |
+| `QDRANT_API_KEY`       | -                           | Qdrant API key (optional)            |
+| `QDRANT_USE_TLS`       | false                       | Enable TLS for Qdrant connection     |
 | `GETTY_UPSTREAM`       | https://api.gettyimages.com | Getty API base URL                   |
 | `GETTY_APP_KEY`        | -                           | Getty API key                        |
 | `GETTY_RATE_LIMIT_RPS` | 50                          | Getty requests per second            |

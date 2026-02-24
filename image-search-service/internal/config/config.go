@@ -36,6 +36,7 @@ type Config struct {
 	QdrantPort       int
 	QdrantCollection string
 	QdrantAPIKey     string
+	QdrantUseTLS     bool
 
 	// S3
 	S3Bucket string
@@ -90,6 +91,7 @@ func LoadConfig() *Config {
 		QdrantPort:       getEnvInt("QDRANT_PORT", 6334),
 		QdrantCollection: getEnvString("QDRANT_COLLECTION", "image_analyses"),
 		QdrantAPIKey:     getEnvString("QDRANT_API_KEY", ""),
+		QdrantUseTLS:     getEnvBool("QDRANT_USE_TLS", false),
 
 		// S3
 		S3Bucket: getEnvString("S3_BUCKET", ""),
@@ -140,6 +142,17 @@ func getEnvFloat32(key string, defaultValue float32) float32 {
 	if value := os.Getenv(key); value != "" {
 		if floatVal, err := strconv.ParseFloat(value, 32); err == nil {
 			return float32(floatVal)
+		}
+	}
+	return defaultValue
+}
+
+// getEnvBool returns the boolean value of the environment variable key, or defaultValue if not set,
+// empty, or not a valid boolean. Accepts "true", "1", "yes" as true (case-insensitive).
+func getEnvBool(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		if boolVal, err := strconv.ParseBool(value); err == nil {
+			return boolVal
 		}
 	}
 	return defaultValue

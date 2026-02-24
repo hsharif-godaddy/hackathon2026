@@ -54,18 +54,44 @@ export class QdrantStack extends GDStack {
       allowAllOutbound: false,
     });
 
-    // REST API access from VPC
+    // REST API access from VPC primary CIDR
     securityGroup.addIngressRule(
       ec2.Peer.ipv4(vpc.vpcCidrBlock),
       ec2.Port.tcp(6333),
       "Allow Qdrant REST API from VPC",
     );
-
-    // gRPC API access from VPC
     securityGroup.addIngressRule(
       ec2.Peer.ipv4(vpc.vpcCidrBlock),
       ec2.Port.tcp(6334),
       "Allow Qdrant gRPC API from VPC",
+    );
+
+    // REST/gRPC API access from DX subnets (secondary CIDR blocks)
+    this.gdTrustedLandingZone.networking.dxAppSubnets?.subnets?.forEach(
+      (subnet) => {
+        securityGroup.addIngressRule(
+          ec2.Peer.ipv4(subnet.ipv4CidrBlock),
+          ec2.Port.tcp(6333),
+          `Allow Qdrant REST API from DX subnet ${subnet.availabilityZone}`,
+        );
+        securityGroup.addIngressRule(
+          ec2.Peer.ipv4(subnet.ipv4CidrBlock),
+          ec2.Port.tcp(6334),
+          `Allow Qdrant gRPC API from DX subnet ${subnet.availabilityZone}`,
+        );
+      },
+    );
+
+    // VPN access for REST API (debugging/dashboard access)
+    const vpnPrefixList = ec2.PrefixList.fromLookup(
+      this,
+      "PrismaNatInternal",
+      { prefixListName: "com.godaddy.global.vpn.prisma-nat-internal" },
+    );
+    securityGroup.addIngressRule(
+      ec2.Peer.prefixList(vpnPrefixList.prefixListId),
+      ec2.Port.tcp(6333),
+      "Allow Qdrant REST API from VPN",
     );
 
     // Intra-cluster gRPC replication (port 6334)
@@ -91,12 +117,26 @@ export class QdrantStack extends GDStack {
     securityGroup.addEgressRule(
       ec2.Peer.ipv4(vpc.vpcCidrBlock),
       ec2.Port.udp(53),
-      "Allow DNS (UDP) to VPC CIDR",
+      "Allow DNS (UDP) to VPC",
     );
     securityGroup.addEgressRule(
       ec2.Peer.ipv4(vpc.vpcCidrBlock),
       ec2.Port.tcp(53),
-      "Allow DNS (TCP) to VPC CIDR",
+      "Allow DNS (TCP) to VPC",
+    );
+    this.gdTrustedLandingZone.networking.dxAppSubnets?.subnets?.forEach(
+      (subnet) => {
+        securityGroup.addEgressRule(
+          ec2.Peer.ipv4(subnet.ipv4CidrBlock),
+          ec2.Port.udp(53),
+          `Allow DNS (UDP) to DX subnet ${subnet.availabilityZone}`,
+        );
+        securityGroup.addEgressRule(
+          ec2.Peer.ipv4(subnet.ipv4CidrBlock),
+          ec2.Port.tcp(53),
+          `Allow DNS (TCP) to DX subnet ${subnet.availabilityZone}`,
+        );
+      },
     );
 
     // EFS for snapshots
@@ -125,6 +165,15 @@ export class QdrantStack extends GDStack {
       ec2.Peer.ipv4(vpc.vpcCidrBlock),
       ec2.Port.tcp(2049),
       "Allow NFS to EFS",
+    );
+    this.gdTrustedLandingZone.networking.dxAppSubnets?.subnets?.forEach(
+      (subnet) => {
+        securityGroup.addEgressRule(
+          ec2.Peer.ipv4(subnet.ipv4CidrBlock),
+          ec2.Port.tcp(2049),
+          `Allow NFS to EFS in DX subnet ${subnet.availabilityZone}`,
+        );
+      },
     );
 
     // EFS Access Point for Qdrant snapshots
@@ -273,6 +322,9 @@ export class QdrantStack extends GDStack {
       environment: useNoopContainer || debugSleepMode
         ? {}
         : {
+            // Bind to all interfaces (not localhost) for external access
+            QDRANT__SERVICE__HOST: "0.0.0.0",
+            QDRANT__SERVICE__GRPC_PORT: "6334",
             QDRANT__CLUSTER__ENABLED: "true",
             QDRANT_CLUSTER_FQDN: qdrantFqdn,
           },

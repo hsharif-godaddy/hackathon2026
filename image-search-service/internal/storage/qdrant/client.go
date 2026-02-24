@@ -31,8 +31,8 @@ func New(cfg *config.Config) (*Client, error) {
 
 	if cfg.QdrantAPIKey != "" {
 		qdrantConfig.APIKey = cfg.QdrantAPIKey
-		qdrantConfig.UseTLS = true
 	}
+	qdrantConfig.UseTLS = cfg.QdrantUseTLS
 
 	client, err := qdrant.NewClient(qdrantConfig)
 	if err != nil {
