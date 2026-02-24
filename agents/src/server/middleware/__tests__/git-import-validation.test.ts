@@ -267,7 +267,7 @@ describe('validateGitImport middleware', () => {
         gitToken: 'ghp_validtoken123',
       },
       params: { id: 'test-app-id' },
-      path: '/apps/test-app-id/git/replace',
+      path: '/apps/test-app-id/zip/upload',
       method: 'POST',
     };
 

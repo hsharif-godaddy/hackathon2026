@@ -10,8 +10,8 @@ Import code into **existing apps** by uploading a zip file. The app must be crea
 flowchart TB
     subgraph Consumer["External Consumer"]
         C0[POST mgmt-airo/sites]
-        C1[POST agent/git/:appId/replace]
-        C2[Poll GET agent/git/:appId/replace/status]
+        C1[POST agent/apps/:appId/zip/upload]
+        C2[Poll GET agent/apps/:appId/zip/upload/status]
     end
 
     subgraph Mgmt["mgmt-airo API"]
@@ -77,7 +77,7 @@ sequenceDiagram
     Mgmt-->>Consumer: { siteId, agent_url, ... }
     Note over Consumer: App now exists with container
 
-    Consumer->>Agent: POST /git/{appId}/replace
+    Consumer->>Agent: POST /apps/{appId}/zip/upload
     Note over Consumer,Agent: Headers: Authorization (JWT), Body: zipFile
 
     Agent->>Agent: Check ENABLE_ZIP_IMPORT=true
@@ -104,7 +104,7 @@ sequenceDiagram
         Agent->>DB: status = failed
     end
 
-    Consumer->>Agent: GET /git/{appId}/replace/status
+    Consumer->>Agent: GET /apps/{appId}/zip/upload/status
     Agent->>DB: Query job
     Agent-->>Consumer: { status, progress, previewUrl }
 ```
@@ -150,14 +150,14 @@ curl -X POST https://{app-builder-url}/api/auth/agent-token \
 # Response: { "token": "eyJhbG...", "expires": "...", "siteId": "abc123" }
 
 # Step 3: Replace codebase directly via agent (using agent token)
-curl -X POST https://agent.abc123.com/git/abc123/replace \
+curl -X POST https://agent.abc123.com/apps/abc123/zip/upload \
   -H "Authorization: Bearer ${AGENT_TOKEN}" \
   -F "zipFile=@project.zip"
 
 # Response: { "success": true, "appId": "abc123", "jobId": "job456", "status": "pending" }
 
 # Step 4: Poll for status directly from agent
-curl https://agent.abc123.com/git/abc123/replace/status \
+curl https://agent.abc123.com/apps/abc123/zip/upload/status \
   -H "Authorization: Bearer ${AGENT_TOKEN}"
 
 # Response: { "status": "completed", "previewUrl": "https://abc123.preview.com" }
@@ -209,8 +209,8 @@ curl https://agent.abc123.com/git/abc123/replace/status \
 **No App Builder proxy layer** - Consumers call the agent directly:
 
 - App creation: Consumer → mgmt-airo
-- Codebase replacement: Consumer → Agent (`/git/:appId/replace`)
-- Status polling: Consumer → Agent (`/git/:appId/replace/status`)
+- Codebase replacement: Consumer → Agent (`/apps/:appId/zip/upload`)
+- Status polling: Consumer → Agent (`/apps/:appId/zip/upload/status`)
 
 ## Security Measures
 
@@ -229,9 +229,9 @@ curl https://agent.abc123.com/git/abc123/replace/status \
 
 **Capability-Based (Primary):**
 
-| Capability | Required For | Description |
-|------------|-------------|-------------|
-| `CODE_SYNC_ZIP_UPLOAD` | `/git/:appId/replace` | Upload zip to replace codebase |
+| Capability             | Required For              | Description                    |
+| ---------------------- | ------------------------- | ------------------------------ |
+| `CODE_SYNC_ZIP_UPLOAD` | `/apps/:appId/zip/upload` | Upload zip to replace codebase |
 
 **Config Structure (`/alloc/config.json`):**
 
@@ -246,10 +246,10 @@ curl https://agent.abc123.com/git/abc123/replace/status \
 
 **Backward Compatibility:**
 
-| Check        | Layer | Implementation                   |
-| ------------ | ----- | -------------------------------- |
+| Check        | Layer | Implementation                                |
+| ------------ | ----- | --------------------------------------------- |
 | Feature flag | Agent | `ENABLE_ZIP_IMPORT=true` env var (DEPRECATED) |
-| JWT auth     | Agent | Standard JWT middleware          |
+| JWT auth     | Agent | Standard JWT middleware                       |
 
 > **⚠️ DEPRECATED**: `ENABLE_ZIP_IMPORT` is a temporary flag for backward compatibility.
 > Once capability config is fully deployed, this flag will be removed and access control
@@ -340,10 +340,10 @@ export type ValidationErrorKey =
 
 ### Agent Endpoints (Built ✅)
 
-| Endpoint                     | Method | Description                           |
-| ---------------------------- | ------ | ------------------------------------- |
-| `/git/:appId/replace`        | POST   | Replace entire codebase from zip file |
-| `/git/:appId/replace/status` | GET    | Poll replacement job status           |
+| Endpoint                         | Method | Description                           |
+| -------------------------------- | ------ | ------------------------------------- |
+| `/apps/:appId/zip/upload`        | POST   | Replace entire codebase from zip file |
+| `/apps/:appId/zip/upload/status` | GET    | Poll replacement job status           |
 
 ## Process Flow Detail
 
@@ -359,7 +359,7 @@ POST mgmt-airo/api/sites
 ### Phase 2: Codebase Replacement (Consumer → Agent)
 
 ```
-POST /git/:appId/replace (multipart: zipFile)
+POST /apps/:appId/zip/upload (multipart: zipFile)
 ├── Check ENABLE_ZIP_IMPORT feature flag
 ├── Validate zip file (size, security, structure)
 └── Return { appId, jobId, status: 'pending' }
@@ -399,7 +399,7 @@ Agent-side (cleanup):
 
 ## Response Formats
 
-**POST /git/:appId/replace**
+**POST /apps/:appId/zip/upload**
 
 ```json
 {
@@ -410,7 +410,7 @@ Agent-side (cleanup):
 }
 ```
 
-**GET /git/:appId/replace/status (in progress)**
+**GET /apps/:appId/zip/upload/status (in progress)**
 
 ```json
 {
@@ -427,7 +427,7 @@ Agent-side (cleanup):
 }
 ```
 
-**GET /git/:appId/replace/status (completed)**
+**GET /apps/:appId/zip/upload/status (completed)**
 
 ```json
 {
@@ -448,7 +448,7 @@ Agent-side (cleanup):
 }
 ```
 
-**GET /git/:appId/replace/status (failed)**
+**GET /apps/:appId/zip/upload/status (failed)**
 
 ```json
 {
@@ -493,10 +493,10 @@ IMPORT_TEMP_DIR=/tmp/airo-imports  # Default: /tmp/airo-imports
 1. Create app via mgmt-airo to get `siteId` and `agent_url`
 2. Start agent with `ENABLE_ZIP_IMPORT=true`
 3. Create test zip with valid Node.js project
-4. Call `POST {agent_url}/git/{appId}/replace` with:
+4. Call `POST {agent_url}/apps/{appId}/zip/upload` with:
    - Header: `Authorization: Bearer {JWT}`
    - Form data: `zipFile`
-5. Poll `GET {agent_url}/git/{appId}/replace/status` until completed
+5. Poll `GET {agent_url}/apps/{appId}/zip/upload/status` until completed
 6. Visit preview URL
 
 ### Test Cases

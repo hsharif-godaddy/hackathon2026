@@ -23,7 +23,7 @@ describe('validateAppOwnership middleware', () => {
     // Setup request mock
     mockReq = {
       params: {},
-      path: '/apps/test-app/git/replace',
+      path: '/apps/test-app/zip/upload',
       method: 'POST',
       agentContext: {
         siteId: 'authenticated-site',
@@ -232,7 +232,7 @@ describe('validateAppOwnership middleware', () => {
         get params() {
           throw new Error('Unexpected error');
         },
-        path: '/apps/test-app/git/replace',
+        path: '/apps/test-app/zip/upload',
         method: 'POST',
         agentContext: {
           siteId: 'authenticated-site',

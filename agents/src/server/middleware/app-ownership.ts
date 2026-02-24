@@ -11,7 +11,7 @@
  *
  * @example
  * // For route params (:id)
- * router.post('/apps/:id/git/replace', validateAppOwnership, async (req, res) => {
+ * router.post('/apps/:id/zip/upload', validateAppOwnership, async (req, res) => {
  *   // Handler only executes if ownership validation passes
  * });
  *

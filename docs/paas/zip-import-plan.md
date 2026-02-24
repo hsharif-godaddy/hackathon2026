@@ -112,8 +112,8 @@ agent before the zip enters the container.
 
 The zip import feature uses **capability-based access control** via `/alloc/config.json`:
 
-| Capability | Description |
-|------------|-------------|
+| Capability             | Description                                       |
+| ---------------------- | ------------------------------------------------- |
 | `CODE_SYNC_ZIP_UPLOAD` | Required to upload zip files and replace codebase |
 
 **Config Structure:**
@@ -129,10 +129,10 @@ The zip import feature uses **capability-based access control** via `/alloc/conf
 
 ### Environment Variables (Backward Compatibility)
 
-| Variable            | Default             | Description                                        |
-| ------------------- | ------------------- | -------------------------------------------------- |
+| Variable            | Default             | Description                                            |
+| ------------------- | ------------------- | ------------------------------------------------------ |
 | `ENABLE_ZIP_IMPORT` | `false`             | **DEPRECATED** - Temporary backward compatibility flag |
-| `IMPORT_TEMP_DIR`   | `/tmp/airo-imports` | Temp directory for uploaded zips before validation |
+| `IMPORT_TEMP_DIR`   | `/tmp/airo-imports` | Temp directory for uploaded zips before validation     |
 
 > **⚠️ DEPRECATED**: `ENABLE_ZIP_IMPORT` is temporary for backward compatibility.
 > Once capability config is fully deployed, this flag will be removed and access control
@@ -206,12 +206,12 @@ curl -X POST "https://{app-builder-url}/api/auth/agent-token" \
 
 ```bash
 # Replace codebase
-curl -X POST "https://{agent_url}/git/{app_id}/replace" \
+curl -X POST "https://{agent_url}/apps/{app_id}/zip/upload" \
   -H "Authorization: Bearer ${AGENT_TOKEN}" \
   -F "zipFile=@project.zip"
 
 # Check status
-curl "https://{agent_url}/git/{app_id}/replace/status" \
+curl "https://{agent_url}/apps/{app_id}/zip/upload/status" \
   -H "Authorization: Bearer ${AGENT_TOKEN}"
 ```
 

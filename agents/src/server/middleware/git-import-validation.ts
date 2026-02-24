@@ -11,7 +11,7 @@
  * been prevented with upfront validation.
  *
  * @example
- * router.post('/apps/:id/git/replace',
+ * router.post('/apps/:id/zip/upload',
  *   requireZipImportFeature,
  *   validateAppOwnership,
  *   validateGitImport,  // Validates before DB entry
