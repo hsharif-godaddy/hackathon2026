@@ -67,7 +67,7 @@ describe('PublishWidget', () => {
       expect(screen.getByText('builder_widgets_socialpublish_live_on')).toBeInTheDocument()
     })
 
-    it('shows "View on" button for first successful platform', () => {
+    it('shows "View on" buttons for all successful platforms with URLs', () => {
       const initialResult = {
         pendingPublish: {
           platforms: ['facebook', 'instagram'],
@@ -89,7 +89,10 @@ describe('PublishWidget', () => {
 
       renderWithProviders(<PublishWidget {...defaultProps} initialResult={initialResult} />)
 
-      expect(screen.getByRole('link', { name: 'builder_widgets_socialpublish_view_on' })).toBeInTheDocument()
+      const viewButtons = screen.getAllByRole('link', { name: /builder_widgets_socialpublish_view/ })
+      expect(viewButtons).toHaveLength(2)
+      expect(viewButtons[0]).toHaveAttribute('href', 'https://facebook.com/post/123')
+      expect(viewButtons[1]).toHaveAttribute('href', 'https://instagram.com/p/123')
     })
 
     it('handles partial success (one platform succeeds, one fails)', () => {
@@ -115,7 +118,9 @@ describe('PublishWidget', () => {
       renderWithProviders(<PublishWidget {...defaultProps} initialResult={initialResult} />)
 
       expect(screen.getByText('builder_widgets_socialpublish_success')).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: 'builder_widgets_socialpublish_view_on' })).toBeInTheDocument()
+      const viewButtons = screen.getAllByRole('link', { name: /builder_widgets_socialpublish_view/ })
+      expect(viewButtons).toHaveLength(1)
+      expect(viewButtons[0]).toHaveAttribute('href', 'https://facebook.com/post/123')
     })
   })
 

@@ -14,8 +14,9 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+import { CONNECT_REQUEST_FROM_PUBLISH, isMultiPlatformPublish, type MultiPlatformPendingPublish, type PendingPublishData } from '@/types/social'
 import type { SocialPostData } from '@/types/social-posts'
-import { formatHashtags, formatPlatformName } from '@/utils/social/format'
+import { formatPlatformName } from '@/utils/social/format'
 
 type ConnectStatus = 'pending' | 'connected' | 'error'
 
@@ -51,7 +52,7 @@ function SocialConnectToolRenderer({
 
   // Get pending post data from tool result (if user tried to publish without connection)
   const postData = r?.postData as SocialPostData | undefined
-  const pendingPublish = r?.pendingPublish as { platform: string; message: string; imageUrls: string[] } | undefined
+  const pendingPublish = r?.pendingPublish as PendingPublishData | undefined
 
   // Sync to conversation history once when reaching terminal state (not from history)
   const syncResult = useToolResultSync({
@@ -73,33 +74,106 @@ function SocialConnectToolRenderer({
   const handleConnectSuccess = useCallback(() => {
     setConnectStatus('connected')
 
-    if (postData && r?.platform && postData.platform.toLowerCase() === (r.platform as string).toLowerCase()) {
-      const platformName = formatPlatformName(postData.platform)
+    // Auto-publish after successful connection if there's pending publish data
+    if (pendingPublish && r?.platform) {
+      const platform = r.platform as string
+      const requestedPlatforms = (r.platforms as string[]) || [platform]  // Platforms that need connecting
 
-      // Re-transform post data in case it was edited, or use the existing pendingPublish
-      const publishData = pendingPublish || {
-        platform: PLATFORM_TRANSFORMS.toDisplay(postData.platform),
-        message: [postData.content, postData.callToAction, formatHashtags(postData.hashtags)].filter(Boolean).join('\n\n'),
-        imageUrls: postData.images?.map(img => img.url) || [],
+      // Normalize pendingPublish to handle both old and new formats
+      // Old format: { platform, message, imageUrls }
+      // New format: { platforms: [...], platformData: [...] }
+      const normalizedPendingPublish: MultiPlatformPendingPublish = isMultiPlatformPublish(pendingPublish)
+        ? pendingPublish  // Already in new format
+        : {  // Convert legacy format to new format
+            platforms: [PLATFORM_TRANSFORMS.toDisplay(platform)],
+            platformData: [{
+              platform: PLATFORM_TRANSFORMS.toDisplay(platform),
+              message: pendingPublish.message || '',
+              imageUrls: pendingPublish.imageUrls || [],
+              scheduledAt: pendingPublish.scheduledAt
+            }],
+            message: pendingPublish.message,
+            imageUrls: pendingPublish.imageUrls,
+            scheduledAt: pendingPublish.scheduledAt
+          }
+
+      // For sequential flow: Check if there are more platforms to connect
+      if (requestedPlatforms.length > 1) {
+        // Find platforms that still need connecting (exclude the one we just connected)
+        const stillNeedConnecting = requestedPlatforms.filter((plt: string) =>
+          plt.toLowerCase() !== platform.toLowerCase()
+        )
+
+        if (stillNeedConnecting.length > 0) {
+          // More platforms to connect - send next connect message
+          const nextPlatform = stillNeedConnecting[0]
+          const nextPlatformName = formatPlatformName(nextPlatform)
+
+          logger.info('social-connect.sequential-next', {
+            justConnected: platform,
+            nextPlatform,
+            remaining: stillNeedConnecting
+          })
+
+          sendMessage(
+            `Connect to ${nextPlatformName}`,
+            undefined,
+            undefined,
+            undefined,
+            false,
+            {
+              type: CONNECT_REQUEST_FROM_PUBLISH,
+              data: {
+                platforms: stillNeedConnecting,  // Pass only remaining platforms
+                pendingPublish: normalizedPendingPublish,
+                postData
+              }
+            }
+          )
+          return
+        }
       }
 
-      sendMessage(
-        `Publish ${postData.styleLabel} to ${platformName}`,
-        undefined,
-        undefined,
-        undefined,
-        false,
-        {
-          type: 'social_publish_ready',
-          data: {
-            platform: postData.platform,
-            connectionVerified: true,
-            pendingPublish: publishData,
-            postData
-          },
-          persistence: 'ephemeral'
-        }
-      )
+      // All platforms connected - auto-publish!
+      const platforms = normalizedPendingPublish.platforms
+
+      // Defensive guard: if no platforms are present, skip auto-publish to avoid errors
+      if (!platforms || platforms.length === 0) {
+        logger.warn('social-connect.auto-publish-skipped', {
+          reason: 'no-platforms',
+          pendingPublish: normalizedPendingPublish
+        })
+        return
+      }
+
+      const platformNames = platforms.length === 1
+        ? formatPlatformName(platforms[0])
+        : platforms.slice(0, -1).map(formatPlatformName).join(', ') + ' and ' + formatPlatformName(platforms[platforms.length - 1])
+
+      logger.info('social-connect.auto-publish', {
+        platforms,
+        platformNames
+      })
+
+      // Brief delay to let user see the success state before auto-publishing
+      setTimeout(() => {
+        sendMessage(
+          `Publish ${postData?.styleLabel || 'post'} to ${platformNames}`,
+          undefined,
+          undefined,
+          undefined,
+          false,
+          {
+            type: 'social_publish_ready',
+            data: {
+              platforms: normalizedPendingPublish.platforms,
+              connectionVerified: true,
+              pendingPublish: normalizedPendingPublish,
+              postData
+            }
+          }
+        )
+      }, 1500) // 1.5 second delay
     }
   }, [postData, pendingPublish, r, sendMessage])
 

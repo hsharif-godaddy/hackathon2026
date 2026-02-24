@@ -232,3 +232,36 @@ export enum SocialFlowAction {
   Retry = 'RETRY',
   Reset = 'RESET',
 }
+
+/**
+ * Pending publish data types for sequential connect flow
+ */
+
+// Legacy format (single platform) - for backwards compatibility
+export interface LegacyPendingPublish {
+  platform: string
+  message: string
+  imageUrls: string[]
+  scheduledAt?: Date
+}
+
+// New format (multi-platform support)
+export interface MultiPlatformPendingPublish {
+  platforms: string[]
+  platformData: Array<{
+    platform: string
+    message: string
+    imageUrls: string[]
+    scheduledAt?: Date
+  }>
+  message: string
+  imageUrls: string[]
+  scheduledAt?: Date
+}
+
+export type PendingPublishData = LegacyPendingPublish | MultiPlatformPendingPublish
+
+// Type guard for multi-platform format
+export function isMultiPlatformPublish(data: PendingPublishData): data is MultiPlatformPendingPublish {
+  return 'platforms' in data && Array.isArray(data.platforms)
+}

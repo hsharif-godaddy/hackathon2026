@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { useConnectionById, useSiteAssociations } from '@/hooks/useSocial'
 import { useTranslations } from '@/hooks/useTranslations'
-import type { SiteAssociation, SocialConnection } from '@/types/social'
+import { socialV2Client } from '@/lib/social'
+import type { SiteAssociation } from '@/types/social'
 import { type PendingPublish, type PublishFlowCallbacks, PublishFlowState, SocialPostState } from '@/types/social-posts'
 import { type PublishErrorMessages, publishToPlatform, storePostResult } from './api'
 
@@ -86,16 +87,27 @@ export function usePublishFlow(
           }
 
           // Fetch connection for this platform
-          const response = await fetch(`/api/social/connections/${match.socialId}`)
-          if (!response.ok) {
-            throw new Error(t('builder_social_error_connection_fetch_failed', { platform }))
-          }
-          const conn = await response.json() as SocialConnection
+          const conn = await socialV2Client.getConnectionById(match.socialId)
+
+          // Extract platform-specific data (with backwards compatibility)
+          const platformData = publish.platformData?.find(p => p.platform === platform)
+          const message = platformData?.message ?? publish.message ?? ''
+          const imageUrls = platformData?.imageUrls ?? publish.imageUrls ?? []
+          const scheduledAt = platformData?.scheduledAt ?? publish.scheduledAt
 
           // Create single-platform publish object for the API
           const singlePlatformPublish: PendingPublish = {
             ...publish,
-            platforms: [platform]  // API still expects this format temporarily
+            platforms: [platform],
+            platformData: [{
+              platform,
+              message,
+              imageUrls,
+              scheduledAt
+            }],
+            message,
+            imageUrls,
+            scheduledAt
           }
 
           // Publish to this platform
@@ -106,11 +118,11 @@ export function usePublishFlow(
             appId,
             associationId: match.id,
             platform,
-            state: publish.scheduledAt ? SocialPostState.SCHEDULED : SocialPostState.PUBLISHED,
-            message: publish.message,
-            imageUrls: publish.imageUrls,
+            state: scheduledAt ? SocialPostState.SCHEDULED : SocialPostState.PUBLISHED,
+            message,
+            imageUrls,
             result,
-            scheduledAt: publish.scheduledAt
+            scheduledAt
           })
 
           // Update status and result together in single dispatch to avoid race conditions
@@ -125,13 +137,18 @@ export function usePublishFlow(
           try {
             const match = findMatchingAssociation(associations, platform)
             if (match) {
+              // Extract platform-specific data (with backwards compatibility)
+              const platformData = publish.platformData?.find(p => p.platform === platform)
+              const message = platformData?.message ?? publish.message ?? ''
+              const imageUrls = platformData?.imageUrls ?? publish.imageUrls ?? []
+
               await storePostResult({
                 appId,
                 associationId: match.id,
                 platform,
                 state: SocialPostState.FAILED,
-                message: publish.message,
-                imageUrls: publish.imageUrls,
+                message,
+                imageUrls,
                 error: errorMessage
               })
             }

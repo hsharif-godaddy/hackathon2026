@@ -286,12 +286,14 @@ export function PublishWidget({ appId, publishId, toolId, conversationId, initia
     return t('builder_common_unknown_error')
   }
 
-  const getSuccessfulPlatformUrl = () => {
-    for (const platform of platforms) {
-      const result = platformStatuses[platform]?.result
-      if (result?.platformUrl) return { platform, url: result.platformUrl }
-    }
-    return null
+  const getSuccessfulPlatformUrls = () => {
+    return platforms
+      .map(platform => ({
+        platform,
+        url: platformStatuses[platform]?.result?.platformUrl,
+        status: platformStatuses[platform]?.status
+      }))
+      .filter(item => item.url)
   }
 
   const renderStatusHeading = () => {
@@ -309,7 +311,7 @@ export function PublishWidget({ appId, publishId, toolId, conversationId, initia
     }
   }
 
-  const successUrl = getSuccessfulPlatformUrl()
+  const successUrls = getSuccessfulPlatformUrls()
 
   return (
     <div className="rounded-md border border-intents-ux-info-borderColor bg-intents-ux-info-backgroundColor p-2 mt-2">
@@ -324,20 +326,25 @@ export function PublishWidget({ appId, publishId, toolId, conversationId, initia
         </div>
       )}
 
-      {overallStatus === PublishFlowState.Success && successUrl && (
-        <Button
-          design="primary"
-          as="external"
-          size="sm"
-          text={isMultiPlatform
-            ? t('builder_widgets_socialpublish_view_on', { platform: formatPlatformName(successUrl.platform) })
-            : t('builder_widgets_socialpublish_view_post')
-          }
-          href={successUrl.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          data-eid={generateClickEID(`social.publish.view_post.${successUrl.platform}`)}
-        />
+      {overallStatus === PublishFlowState.Success && successUrls.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {successUrls.map(({ platform, url }) => (
+            <Button
+              key={platform}
+              design="primary"
+              as="external"
+              size="sm"
+              text={isMultiPlatform
+                ? t('builder_widgets_socialpublish_view_on', { platform: formatPlatformName(platform) })
+                : t('builder_widgets_socialpublish_view_post')
+              }
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-eid={generateClickEID(`social.publish.view_post.${platform}`)}
+            />
+          ))}
+        </div>
       )}
 
       {overallStatus === PublishFlowState.Error && (

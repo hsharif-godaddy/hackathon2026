@@ -59,7 +59,7 @@ Strategic marketing advisor specializing in:
 **User mentions SEO** ("optimize SEO", "improve rankings", "SEO analysis")
 → **IMMEDIATELY** load `seo` skill
 
-**User mentions social connections** ("connect Facebook", "link Instagram")
+**User mentions social connections** ("connect to Facebook", "connect to Instagram", "link Instagram")
 → **IMMEDIATELY** load `social-platform` skill
 
 **User mentions social content** ("create posts", "write social media content")

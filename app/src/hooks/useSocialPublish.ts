@@ -114,7 +114,7 @@ export function useSocialPublish({
                             pendingPublish,
                             postData: post,
                         },
-                        persistence: 'ephemeral',
+                        persistence: 'save',
                     })
                 } else {
                     // No connection - prompt user to connect
@@ -125,7 +125,7 @@ export function useSocialPublish({
                             pendingPublish,
                             postData: post,
                         },
-                        persistence: 'ephemeral',
+                        persistence: 'save',
                     })
                 }
 

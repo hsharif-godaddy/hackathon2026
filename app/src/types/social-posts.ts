@@ -85,15 +85,15 @@ export type PublishStatus = `${PublishFlowState}`
 export interface PendingPublish {
   publishId?: string
   platforms: PublishablePlatform[]  // Changed from single platform to array
-  platformData: Array<{
+  platformData?: Array<{  // Optional for backwards compatibility
     platform: PublishablePlatform
     message: string
     imageUrls: string[]
     scheduledAt?: Date
   }>
-  message: string
-  imageUrls: string[]
-  scheduledAt?: Date
+  message: string  // Fallback for single platform or backwards compatibility
+  imageUrls: string[]  // Fallback for single platform or backwards compatibility
+  scheduledAt?: Date  // Fallback for single platform or backwards compatibility
 }
 
 export type PublishResult = SocialPublishResult | { error: string }

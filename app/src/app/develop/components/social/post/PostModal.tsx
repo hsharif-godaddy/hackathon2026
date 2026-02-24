@@ -157,6 +157,11 @@ export const PostModal = memo(({
       const associations = associationsData?.associations || []
       const selectedPlatformsArray = Array.from(selectedPlatforms)
 
+      // Guard: Ensure at least one platform is selected
+      if (selectedPlatformsArray.length === 0) {
+        return
+      }
+
       // Format platform names with "and" for 2 platforms
       const formatPlatformsList = (platforms: PublishablePlatform[]) => {
         const names = platforms.map(p => formatPlatformName(p))
@@ -191,52 +196,41 @@ export const PostModal = memo(({
         onSave({ ...post, ...content, images })
       }
 
-      // Process each platform sequentially: connect → publish
-      for (let i = 0; i < selectedPlatformsArray.length; i++) {
-        const platform = selectedPlatformsArray[i]!
-        const isFirstPlatform = i === 0
-        const isConnected = associations.some(a => a.platform.toLowerCase() === platform.toLowerCase())
+      // Check connection status for all platforms
+      const notConnectedPlatforms = selectedPlatformsArray.filter(platform =>
+        !associations.some(a => a.platform.toLowerCase() === platform.toLowerCase())
+      )
 
+      // Build multi-platform pendingPublish (used by both cases)
+      const platformData = selectedPlatformsArray.map(platform => {
         const content = platformContent[platform]
         const message = [content.content, content.callToAction, formatHashtags(content.hashtags)]
           .filter(Boolean)
           .join('\n\n')
 
-        const platformPublishData = {
+        return {
           platform: PLATFORM_TRANSFORMS.toDisplay(platform) as PublishablePlatform,
           message,
           imageUrls: images?.map(img => img.url) || [],
           scheduledAt
         }
+      })
 
-        const pendingPublish = {
-          platforms: [PLATFORM_TRANSFORMS.toDisplay(platform) as PublishablePlatform],
-          platformData: [platformPublishData]
-        }
+      const firstPlatformData = platformData[0]
+      const pendingPublish = {
+        platforms: selectedPlatformsArray.map(p => PLATFORM_TRANSFORMS.toDisplay(p) as PublishablePlatform),
+        platformData,
+        // Top-level fields for backwards compatibility (use first platform's data)
+        message: firstPlatformData?.message ?? '',
+        imageUrls: firstPlatformData?.imageUrls ?? [],
+        scheduledAt: firstPlatformData?.scheduledAt
+      }
 
-        if (!isConnected) {
-          // Connect first
-          await sendMessage(
-            `Connect to ${formatPlatformName(platform)}`,
-            undefined,
-            undefined,
-            undefined,
-            false,
-            {
-              type: CONNECT_REQUEST_FROM_PUBLISH,
-              data: {
-                platforms: [platform],
-                pendingPublish
-              },
-              persistence: 'ephemeral'
-            }
-          )
-        }
-
-        // Send display message only for first platform to avoid duplication
-        // For subsequent platforms, send minimal message to ensure context attachment is delivered
+      // Case 1: All platforms connected - publish to all in one message
+      if (notConnectedPlatforms.length === 0) {
+        // Send ONE message for all platforms
         await sendMessage(
-          isFirstPlatform ? displayMessage : '.',
+          displayMessage,
           undefined,
           undefined,
           undefined,
@@ -244,11 +238,42 @@ export const PostModal = memo(({
           {
             type: 'social_publish_ready',
             data: {
-              platforms: [platform],
-              connectionVerified: isConnected,
+              platforms: selectedPlatformsArray,
+              connectionVerified: true,
               pendingPublish
             },
-            persistence: 'ephemeral'
+            persistence: 'save'
+          }
+        )
+      } else {
+        // Case 2/3: Some or all platforms not connected
+        // Send connect for FIRST platform only (sequential flow)
+        const firstPlatform = notConnectedPlatforms[0]
+        if (!firstPlatform) {
+          // Safety guard: if no platform is available, abort the connect flow
+          return
+        }
+        const platformName = formatPlatformName(firstPlatform)
+
+        // Send connect request with full context (all platforms + pending publish)
+        await sendMessage(
+          `Connect to ${platformName}`,
+          undefined,
+          undefined,
+          undefined,
+          false,
+          {
+            type: CONNECT_REQUEST_FROM_PUBLISH,
+            data: {
+              platforms: notConnectedPlatforms,  // Full list of platforms that need connecting
+              pendingPublish,  // Publish data for all platforms
+              postData: {
+                ...post,
+                ...platformContent[selectedPlatformsArray[0]],
+                images
+              }
+            },
+            persistence: 'save'
           }
         )
       }

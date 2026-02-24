@@ -2,8 +2,16 @@ import { createTool, type Tool } from '@airo/ai-lib';
 import { z } from 'zod';
 import { SocialPlatform, CONNECT_REQUEST_FROM_PUBLISH } from '../../types/social.js';
 import { Logger } from '../../logging/index.js';
+import type { AgentsAppContext } from '../../types/websocket-context.js';
+import type { ContextAttachment } from '../../types/context-attachment.js';
 
 const logger = Logger.create({ service: 'social-connect' });
+
+interface SocialConnectData {
+  platforms: string[];
+  pendingPublish?: unknown;
+  postData?: unknown;
+}
 
 export const socialConnect: Tool = createTool(
   `Connect social media platforms via OAuth authentication flow.
@@ -32,7 +40,8 @@ export const socialConnect: Tool = createTool(
   }),
   async (input, context) => {
     const { platform } = input;
-    const appId = context?.metadata?.appId as string;
+    const agentContext = context as AgentsAppContext;
+    const appId = agentContext?.metadata?.appId as string;
 
     if (!appId) {
       logger.error('social-connect.missing-app-id', {
@@ -49,22 +58,27 @@ export const socialConnect: Tool = createTool(
     const state = `${platform}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
 
     // Check for pending post data (user tried to publish without connection)
-    const contextAttachments = (context as any)?.contextAttachments;
-    const connectWithPost = contextAttachments?.find((att: any) => att.type === CONNECT_REQUEST_FROM_PUBLISH);
+    const contextAttachments = agentContext?.contextAttachments;
+    const connectWithPost = contextAttachments?.find(
+      (att): att is ContextAttachment<SocialConnectData> => att.type === CONNECT_REQUEST_FROM_PUBLISH
+    );
     const pendingPublish = connectWithPost?.data?.pendingPublish;
     const postData = connectWithPost?.data?.postData;
+    const platforms = connectWithPost?.data?.platforms;  // Array of all platforms that need connecting
 
     logger.info('social-connect.signal', {
       appId,
       platform,
       state,
       hasPendingPost: !!postData,
+      platforms,
     });
 
     return {
       action: 'connect',
       success: true,
       platform,
+      platforms,  // Include full list for sequential flow
       appId,
       state,
       pendingPublish,

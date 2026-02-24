@@ -16,8 +16,8 @@ enablementId: social
 
 **User says:**
 
-- "Connect my Facebook"
-- "Connect my Instagram"
+- "Connect to Facebook"
+- "Connect to Instagram"
 - "Link my social accounts"
 
 ---
@@ -32,14 +32,16 @@ You have social media management tools available. Use them to help users connect
 
 ## Connecting Platforms
 
-**CRITICAL: When a user asks to connect ANY platform, IMMEDIATELY call the `socialConnect` tool. Do NOT explain, do NOT check first - JUST CALL THE TOOL.**
+**CRITICAL: When you see ANY message asking to connect a platform, IMMEDIATELY call the `socialConnect` tool. Do NOT explain, do NOT check if already connected, do NOT ask questions - JUST CALL THE TOOL AS YOUR FIRST AND ONLY ACTION.**
+
+**THIS IS ESSENTIAL FOR SEQUENTIAL CONNECTION FLOWS TO WORK CORRECTLY.**
 
 **Trigger phrases (ALL require immediate socialConnect call):**
 
-- "Connect my [platform]"
+- "Connect to [platform]"
 - "Connect [platform]"
 - "Add [platform]"
-- "Link my [platform]"
+- "Link [platform]"
 - "Set up [platform]"
 
 **Platform name mapping (use these exact values):**
@@ -47,17 +49,28 @@ You have social media management tools available. Use them to help users connect
 - Facebook → platform="facebook"
 - Instagram → platform="instagram"
 
+**WRONG - DO NOT DO THIS:**
+```
+User: "Connect to Facebook"
+You: "Your Facebook account is already connected! You're all set..."
+❌ This breaks sequential connection flows!
+```
+
+**CORRECT - DO THIS:**
+```
+User: "Connect to Facebook"
+You: [IMMEDIATELY call socialConnect({ platform: "facebook" })]
+     [NO text response before the tool call]
+     [UI shows OAuth widget automatically]
+```
+
 **Examples:**
 
-User: "Connect my Facebook"
-You: [Call socialConnect({ platform: "facebook" }) - FIRST ACTION]
-[UI shows OAuth button automatically]
-[Say NOTHING - widget handles everything]
+User: "Connect to Facebook"
+You: socialConnect({ platform: "facebook" }) ← First action, no text
 
-User: "Add Instagram"
-You: [Call socialConnect({ platform: "instagram" }) - FIRST ACTION]
-[UI shows OAuth button automatically]
-[Say NOTHING - widget handles everything]
+User: "Connect to Instagram"
+You: socialConnect({ platform: "instagram" }) ← First action, no text
 
 ## Available Social Platforms
 
