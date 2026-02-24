@@ -69,13 +69,13 @@ RUN CONTAINER_UID=${HOST_UID}; \
 # Copy dev-supervisor binary from builder stage
 COPY --chown=agent:agent --from=dev-supervisor-builder /build/dev-supervisor /usr/local/bin/dev-supervisor
 
-# Copy publish scripts from main build context (app-publish/)
-COPY --chown=agent:agent run-app.sh /publish/run-app.sh
-COPY --chown=agent:agent coming-soon.js /publish/coming-soon.js
+# Copy publish scripts from container-scripts build context (already executable)
+COPY --from=container-scripts --chown=agent:agent publish/run-app.sh /publish/run-app.sh
+COPY --from=container-scripts --chown=agent:agent publish/coming-soon.js /publish/coming-soon.js
 
 # Enable corepack (for pnpm), create directories, and set permissions
 # Pin versions to match project (pnpm@10.17.0) and Node 22 (corepack@0.34.0) for reproducible builds
-RUN chmod +x /usr/local/bin/dev-supervisor /publish/run-app.sh && \
+RUN chmod +x /usr/local/bin/dev-supervisor && \
     npm install --yes --global corepack@0.34.0 && \
     corepack enable && \
     corepack install --global pnpm@10.17.0 && \

@@ -2,7 +2,7 @@
 set -e
 
 # Conditional Startup Integration Tests
-# These tests verify the detection and setup script functionality
+# These tests verify the internal Go-based detection and setup script functionality
 # Run from dev-supervisor root: ./test/conditional-startup-tests.sh
 
 echo "=== Conditional Startup Integration Tests ==="
@@ -12,18 +12,6 @@ TEST_DIR="/tmp/dev-supervisor-conditional-tests-$$"
 mkdir -p "$TEST_DIR/scripts"
 mkdir -p "$TEST_DIR/app-fresh"
 mkdir -p "$TEST_DIR/app-restart"
-
-# Create detection script (checks for .git/config)
-cat > "$TEST_DIR/scripts/detect.sh" <<'EOF'
-#!/bin/sh
-if [ ! -f "$CUSTOMER_APP_DIR/.git/config" ]; then
-    echo "Fresh creation: no .git/config"
-    exit 1  # Start immediately
-fi
-echo "Restart: .git/config exists"
-exit 0  # Defer start
-EOF
-chmod +x "$TEST_DIR/scripts/detect.sh"
 
 # Create setup script
 cat > "$TEST_DIR/scripts/setup.sh" <<'EOF'
@@ -43,11 +31,12 @@ exit 1
 EOF
 chmod +x "$TEST_DIR/scripts/setup-fail.sh"
 
-# Test 1: Detection Script Returns Exit 1 (Fresh Creation - Start Immediately)
+# Test 1: First-Start Detection (No .git/config - Start Immediately)
 echo ""
-echo "Test 1: Detection Script Exit 1 (Start Immediately)"
+echo "Test 1: First-Start Detection (Start Immediately)"
+# app-fresh has no .git/config, so detectStartupMode() returns "first-start"
 CUSTOMER_APP_DIR="$TEST_DIR/app-fresh" \
-DEV_SUPERVISOR_DETECTION_SCRIPT="$TEST_DIR/scripts/detect.sh" \
+DEV_SUPERVISOR_SETUP_SCRIPT="$TEST_DIR/scripts/setup.sh" \
 DEV_SUPERVISOR_SOCKET_PATH="$TEST_DIR/test1.sock" \
 ./dist/dev-supervisor sleep 10 > /dev/null 2>&1 &
 SUPERVISOR_PID=$!
@@ -80,18 +69,18 @@ fi
 kill $SUPERVISOR_PID 2>/dev/null || true
 wait $SUPERVISOR_PID 2>/dev/null || true
 
-echo "✓ PASS: Fresh creation detected, process started immediately"
+echo "✓ PASS: First-start detected, process started immediately"
 
-# Test 2: Detection Script Returns Exit 0 (Restart - Defer Start)
+# Test 2: Restart Detection (.git/config exists - Defer Start)
 echo ""
-echo "Test 2: Detection Script Exit 0 (Defer Start)"
+echo "Test 2: Restart Detection (Defer Start)"
 
 # Create .git/config to simulate restart scenario
 mkdir -p "$TEST_DIR/app-restart/.git"
 touch "$TEST_DIR/app-restart/.git/config"
 
 CUSTOMER_APP_DIR="$TEST_DIR/app-restart" \
-DEV_SUPERVISOR_DETECTION_SCRIPT="$TEST_DIR/scripts/detect.sh" \
+DEV_SUPERVISOR_SETUP_SCRIPT="$TEST_DIR/scripts/setup.sh" \
 DEV_SUPERVISOR_SOCKET_PATH="$TEST_DIR/test2.sock" \
 DEV_SUPERVISOR_ENABLE_START_ON_REQUEST=true \
 DEV_SUPERVISOR_ENABLE_PROXY=true \
@@ -175,14 +164,14 @@ fi
 
 echo "✓ PASS: Setup script failure handled correctly"
 
-# Test 5: Both Detection and Setup Scripts
+# Test 5: Full Flow (Internal Detection + Setup)
 echo ""
 echo "Test 5: Full Flow (Detection + Setup)"
 
-# Fresh app scenario
+# Fresh app scenario (no .git/config)
 rm -f "$TEST_DIR/app-fresh/.setup-complete"
+rm -rf "$TEST_DIR/app-fresh/.git"
 CUSTOMER_APP_DIR="$TEST_DIR/app-fresh" \
-DEV_SUPERVISOR_DETECTION_SCRIPT="$TEST_DIR/scripts/detect.sh" \
 DEV_SUPERVISOR_SETUP_SCRIPT="$TEST_DIR/scripts/setup.sh" \
 DEV_SUPERVISOR_SOCKET_PATH="$TEST_DIR/test5.sock" \
 ./dist/dev-supervisor sleep 10 > /dev/null 2>&1 &
@@ -190,14 +179,14 @@ SUPERVISOR_PID=$!
 
 sleep 2
 
-# Verify both detection and setup ran
+# Verify setup ran (first-start mode)
 if [ ! -f "$TEST_DIR/app-fresh/.setup-complete" ]; then
     echo "❌ FAIL: Setup did not run in full flow"
     kill $SUPERVISOR_PID 2>/dev/null || true
     exit 1
 fi
 
-# Process should have started immediately (fresh creation) - verify via API
+# Process should have started immediately (first-start) - verify via API
 if [ -S "$TEST_DIR/test5.sock" ]; then
     STATUS=$(curl -s --unix-socket "$TEST_DIR/test5.sock" http://dev-supervisor/process/status)
     STATE=$(echo "$STATUS" | grep -o '"state":"[^"]*"' | cut -d'"' -f4)

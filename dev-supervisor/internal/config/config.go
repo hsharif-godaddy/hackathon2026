@@ -49,11 +49,36 @@ type Config struct {
 	IdleTimeout           time.Duration // Duration of inactivity before auto-stopping (default: 30m)
 	IdleCheckInterval     time.Duration // How often to check for idle timeout (default: 30s)
 
-	// Script execution configuration
-	DetectionScript        string        // Path to detection script
-	SetupScript            string        // Path to setup script
-	DetectionScriptTimeout time.Duration // Timeout for detection script (default: 30s)
-	SetupScriptTimeout     time.Duration // Timeout for setup script (default: 10m)
+	// Mode-based conditional startup configuration
+	// Enables smart startup behavior based on deployment scenario:
+	// - First-start: New apps run setup immediately (user is waiting)
+	// - Restart: Existing apps can defer setup to first HTTP request (resource optimization)
+	//
+	// Mode detection (internal):
+	// - Checks if .git/config exists in AppDir
+	// - first-start: .git/config does NOT exist (fresh app)
+	// - restart: .git/config EXISTS (existing app)
+	//
+	// Setup script:
+	// - Single script that handles both first-start and restart paths internally
+	// - Script detects mode by checking .git/config existence
+	// - First-start: git init + template copy + npm ci
+	// - Restart: file restoration + template sync + npm install
+	//
+	// Setup timeout: 10 minutes (generous for npm install, file syncing, git operations)
+	//
+	// Deferred behavior (preview only):
+	// - If DeferRestartSetup=true and mode=restart, setup defers to first HTTP request
+	// - Deferred setup runs once, idempotently, before starting the process
+	// - First-start apps NEVER defer (user is actively waiting for app creation)
+	//
+	// Required environment variables for setup script:
+	// - CUSTOMER_APP_DIR: Path to app directory (e.g., /app)
+	// - BASE_APP_DIR: Path to template directory (e.g., /app-template)
+	AppDir             string        // Path to app directory for mode detection (e.g., /app)
+	SetupScript        string        // Path to unified setup script (handles first-start and restart)
+	SetupScriptTimeout time.Duration // Timeout for setup script execution (default: 10m)
+	DeferRestartSetup  bool          // Defer restart setup to first HTTP request (default: false; docker-compose sets true for preview)
 }
 
 // LoadConfig loads configuration from environment variables with defaults
@@ -138,11 +163,11 @@ func LoadConfig() *Config {
 		config.StartOnRequestEnabled = false
 	}
 
-	// Script execution configuration
-	config.DetectionScript = GetEnvStringWithDefault("DEV_SUPERVISOR_DETECTION_SCRIPT", "")
+	// Mode-based conditional startup configuration
+	config.AppDir = GetEnvStringWithDefault("CUSTOMER_APP_DIR", "/app")
 	config.SetupScript = GetEnvStringWithDefault("DEV_SUPERVISOR_SETUP_SCRIPT", "")
-	config.DetectionScriptTimeout = GetEnvDurationWithDefault("DEV_SUPERVISOR_DETECTION_TIMEOUT", 30*time.Second)
 	config.SetupScriptTimeout = GetEnvDurationWithDefault("DEV_SUPERVISOR_SETUP_TIMEOUT", 10*time.Minute)
+	config.DeferRestartSetup = GetEnvBoolWithDefault("DEV_SUPERVISOR_DEFER_RESTART_SETUP", false)
 
 	return config
 }

@@ -38,10 +38,13 @@ func (p *HTTPProxy) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if process is stopped but will autostart on request
-	// If backend is not running but start-on-request is enabled, the system is ready to serve requests
-	if p.procMgr != nil && p.startOnRequestEnabled {
+	// If backend is not running but autostart is configured, the system is ready to serve requests
+	if p.procMgr != nil {
 		status := p.procMgr.GetStatus()
-		if status.State == ProcessStateStopped {
+		// Determine if autostart is capable (deferred setup or start-on-request)
+		hasAutostart := p.procMgr.HasDeferredSetup() || p.startOnRequestEnabled
+
+		if status.State == ProcessStateStopped && hasAutostart {
 			slog.Debug("proxy.health.autostart_ready",
 				"remote_addr", r.RemoteAddr,
 				"state", status.State)

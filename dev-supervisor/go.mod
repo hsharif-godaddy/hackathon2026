@@ -2,6 +2,8 @@ module github.com/airo-ai-builder/dev-supervisor
 
 go 1.25
 
+toolchain go1.25.7
+
 require (
 	github.com/emersion/go-smtp v0.24.0
 	github.com/go-sql-driver/mysql v1.9.3

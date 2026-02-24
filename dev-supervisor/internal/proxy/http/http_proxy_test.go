@@ -2189,7 +2189,7 @@ func TestHTTPProxy_HealthCheck_StartOnRequestColdStart(t *testing.T) {
 
 	proxy.handleHealthCheck(rec, req)
 
-	// Should return 200 with healthy status and reason "start_on_request"
+	// Should return 200 with healthy status and reason "autostart"
 	assert.Equal(t, http.StatusOK, rec.Code,
 		"health check should return 200 for start-on-request cold start")
 
@@ -2348,6 +2348,220 @@ func TestHTTPProxy_HealthCheck_NoStartOnRequest(t *testing.T) {
 	require.NoError(t, err, "should parse JSON response")
 
 	assert.Equal(t, "unhealthy", resp.Status, "status should be 'unhealthy'")
+}
+
+// TestHTTPProxy_HealthCheck_DeferredSetupPending tests that health check returns 200
+// when deferred setup is pending (app not started yet but will start on first request)
+func TestHTTPProxy_HealthCheck_DeferredSetupPending(t *testing.T) {
+	procMgr := &fakeProcessController{
+		status: ProcessStatus{
+			State: ProcessStateStopped,
+		},
+		hasDeferredSetup:          true,
+		deferredSetupExecutedOnce: false,
+	}
+
+	// Create HTTP proxy with deferred setup
+	proxy := &HTTPProxy{
+		config: Config{
+			Enabled:    true,
+			ListenPort: 8080,
+			TargetHost: "localhost",
+			TargetPort: 9999, // Non-existent port (backend not running)
+		},
+		procMgr:               procMgr,
+		startOnRequestEnabled: false, // Not needed for deferred setup
+	}
+
+	// Call handleHealthCheck directly
+	req := httptest.NewRequest(http.MethodGet, "/airo/health", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.handleHealthCheck(rec, req)
+
+	// Should return 200 with healthy status and reason "deferred_setup"
+	assert.Equal(t, http.StatusOK, rec.Code, "health check should return 200 when deferred setup is pending")
+
+	var resp ProxyHealthResponse
+	err := json.Unmarshal(rec.Body.Bytes(), &resp)
+	require.NoError(t, err, "should parse JSON response")
+
+	assert.Equal(t, "healthy", resp.Status, "status should be 'healthy'")
+	assert.Equal(t, "autostart", resp.Reason, "reason should be 'autostart'")
+
+	// Verify cache headers are set
+	assert.Contains(t, rec.Header().Get("Cache-Control"), "no-cache",
+		"should have no-cache in Cache-Control")
+	assert.Contains(t, rec.Header().Get("Cache-Control"), "no-store",
+		"should have no-store in Cache-Control")
+	assert.Equal(t, "no-cache", rec.Header().Get("Pragma"), "should have Pragma: no-cache")
+	assert.Equal(t, "0", rec.Header().Get("Expires"), "should have Expires: 0")
+}
+
+// TestHTTPProxy_HealthCheck_ProxyDisabled tests that health check returns 503
+// when proxy is disabled (shouldn't happen in practice as handler isn't registered)
+func TestHTTPProxy_HealthCheck_ProxyDisabled(t *testing.T) {
+	// Create HTTP proxy with proxy DISABLED
+	proxy := &HTTPProxy{
+		config: Config{
+			Enabled:    false, // Proxy disabled
+			ListenPort: 8080,
+			TargetHost: "localhost",
+			TargetPort: 9999,
+		},
+		procMgr:               nil,
+		startOnRequestEnabled: false,
+	}
+
+	// Call handleHealthCheck directly
+	req := httptest.NewRequest(http.MethodGet, "/airo/health", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.handleHealthCheck(rec, req)
+
+	// Should return 503 with unhealthy status
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code,
+		"health check should return 503 when proxy is disabled")
+
+	var resp ProxyHealthResponse
+	err := json.Unmarshal(rec.Body.Bytes(), &resp)
+	require.NoError(t, err, "should parse JSON response")
+
+	assert.Equal(t, "unhealthy", resp.Status, "status should be 'unhealthy'")
+	assert.Equal(t, "proxy not enabled", resp.Reason, "reason should be 'proxy not enabled'")
+}
+
+// TestHTTPProxy_HealthCheck_BackendReturns500 tests that health check returns 503
+// when backend is running but returns a 5xx error
+func TestHTTPProxy_HealthCheck_BackendReturns500(t *testing.T) {
+	// Create a backend that returns 500 Internal Server Error
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Internal Server Error"))
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	// Create HTTP proxy pointing to the test backend
+	proxy := &HTTPProxy{
+		config: Config{
+			Enabled:    true,
+			ListenPort: 8080,
+			TargetHost: backendURL.Hostname(),
+			TargetPort: mustParsePort(t, backendURL.Port()),
+		},
+		procMgr:               nil,
+		startOnRequestEnabled: false,
+	}
+
+	// Call handleHealthCheck directly
+	req := httptest.NewRequest(http.MethodGet, "/airo/health", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.handleHealthCheck(rec, req)
+
+	// Should return 503 with unhealthy status
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code,
+		"health check should return 503 when backend returns 500")
+
+	var resp ProxyHealthResponse
+	err = json.Unmarshal(rec.Body.Bytes(), &resp)
+	require.NoError(t, err, "should parse JSON response")
+
+	assert.Equal(t, "unhealthy", resp.Status, "status should be 'unhealthy'")
+	assert.Equal(t, "target returned status 500", resp.Reason,
+		"reason should indicate backend returned 500")
+}
+
+// TestHTTPProxy_HealthCheck_BackendReturns404 tests that health check returns 503
+// when backend is running but returns a 404 Not Found
+func TestHTTPProxy_HealthCheck_BackendReturns404(t *testing.T) {
+	// Create a backend that returns 404 Not Found
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("Not Found"))
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	// Create HTTP proxy pointing to the test backend
+	proxy := &HTTPProxy{
+		config: Config{
+			Enabled:    true,
+			ListenPort: 8080,
+			TargetHost: backendURL.Hostname(),
+			TargetPort: mustParsePort(t, backendURL.Port()),
+		},
+		procMgr:               nil,
+		startOnRequestEnabled: false,
+	}
+
+	// Call handleHealthCheck directly
+	req := httptest.NewRequest(http.MethodGet, "/airo/health", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.handleHealthCheck(rec, req)
+
+	// Should return 503 with unhealthy status
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code,
+		"health check should return 503 when backend returns 404")
+
+	var resp ProxyHealthResponse
+	err = json.Unmarshal(rec.Body.Bytes(), &resp)
+	require.NoError(t, err, "should parse JSON response")
+
+	assert.Equal(t, "unhealthy", resp.Status, "status should be 'unhealthy'")
+	assert.Equal(t, "target returned status 404", resp.Reason,
+		"reason should indicate backend returned 404")
+}
+
+// TestHTTPProxy_HealthCheck_BackendReturns302 tests that health check returns 503
+// when backend returns a redirect (3xx) - redirects are NOT considered healthy
+func TestHTTPProxy_HealthCheck_BackendReturns302(t *testing.T) {
+	// Create a backend that returns 302 Found (redirect)
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Location", "https://example.com/redirect")
+		w.WriteHeader(http.StatusFound)
+		w.Write([]byte("Redirecting..."))
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	// Create HTTP proxy pointing to the test backend
+	proxy := &HTTPProxy{
+		config: Config{
+			Enabled:    true,
+			ListenPort: 8080,
+			TargetHost: backendURL.Hostname(),
+			TargetPort: mustParsePort(t, backendURL.Port()),
+		},
+		procMgr:               nil,
+		startOnRequestEnabled: false,
+	}
+
+	// Call handleHealthCheck directly
+	req := httptest.NewRequest(http.MethodGet, "/airo/health", nil)
+	rec := httptest.NewRecorder()
+
+	proxy.handleHealthCheck(rec, req)
+
+	// Should return 503 with unhealthy status (redirects are NOT healthy)
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code,
+		"health check should return 503 when backend returns redirect (3xx)")
+
+	var resp ProxyHealthResponse
+	err = json.Unmarshal(rec.Body.Bytes(), &resp)
+	require.NoError(t, err, "should parse JSON response")
+
+	assert.Equal(t, "unhealthy", resp.Status, "status should be 'unhealthy'")
+	assert.Equal(t, "target returned status 302", resp.Reason,
+		"reason should indicate backend returned 302")
 }
 
 // TestReverseProxy_ErrorHandler_CORSHeaders tests that error responses

@@ -2,11 +2,10 @@ package main
 
 import (
 	"os"
-	"runtime"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 )
@@ -235,247 +234,73 @@ func setOrUnsetEnv(key, value string) {
 
 // Tests for conditional startup helper functions
 
-// TestShouldDeferStart_NoScript tests that when no script is configured,
-// it returns false (start immediately) for backward compatibility
-func TestShouldDeferStart_NoScript(t *testing.T) {
-	shouldDefer, err := shouldDeferStart("", 30*time.Second)
+// TestDetectStartupMode_NoAppDir tests that when no app dir is configured,
+// it returns "first-start" (default mode)
+func TestDetectStartupMode_NoAppDir(t *testing.T) {
+	mode, err := detectStartupMode("")
 	if err != nil {
-		t.Fatalf("should not error when no script configured: %v", err)
+		t.Fatalf("should not error when no app dir configured: %v", err)
 	}
-	if shouldDefer {
-		t.Error("should return false (start immediately) when no script configured")
+	if mode != startupModeFirstStart {
+		t.Errorf("expected mode %q when no app dir configured, got: %s", startupModeFirstStart, mode)
 	}
 }
 
-// TestShouldDeferStart_Exit0 tests that exit code 0 means defer start
-func TestShouldDeferStart_Exit0(t *testing.T) {
-	// Create a temporary script that exits 0
+// TestDetectStartupMode_FirstStart tests detecting first-start mode (.git/config missing)
+func TestDetectStartupMode_FirstStart(t *testing.T) {
+	// Create a temporary directory without .git/config
 	tmpDir := t.TempDir()
-	scriptPath := tmpDir + "/test-script.sh"
-	scriptContent := "#!/bin/sh\necho 'Restart detected'\nexit 0\n"
-	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
-	if err != nil {
-		t.Fatalf("should write test script: %v", err)
-	}
 
-	shouldDefer, err := shouldDeferStart(scriptPath, 30*time.Second)
+	mode, err := detectStartupMode(tmpDir)
 	if err != nil {
-		t.Fatalf("should not error on exit 0: %v", err)
+		t.Fatalf("should not error when .git/config missing: %v", err)
 	}
-	if !shouldDefer {
-		t.Error("exit 0 should mean defer start")
+	if mode != startupModeFirstStart {
+		t.Errorf("expected mode %q, got: %s", startupModeFirstStart, mode)
 	}
 }
 
-// TestShouldDeferStart_Exit1 tests that exit code 1 means start immediately
-func TestShouldDeferStart_Exit1(t *testing.T) {
-	// Create a temporary script that exits 1
+// TestDetectStartupMode_Restart tests detecting restart mode (.git/config exists)
+func TestDetectStartupMode_Restart(t *testing.T) {
+	// Create a temporary directory with .git/config
 	tmpDir := t.TempDir()
-	scriptPath := tmpDir + "/test-script.sh"
-	scriptContent := "#!/bin/sh\necho 'Fresh creation'\nexit 1\n"
-	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
-	if err != nil {
-		t.Fatalf("should write test script: %v", err)
+	gitDir := filepath.Join(tmpDir, ".git")
+	if err := os.Mkdir(gitDir, 0755); err != nil {
+		t.Fatalf("should create .git directory: %v", err)
+	}
+	gitConfigPath := filepath.Join(gitDir, "config")
+	if err := os.WriteFile(gitConfigPath, []byte("[core]\n"), 0644); err != nil {
+		t.Fatalf("should create .git/config: %v", err)
 	}
 
-	shouldDefer, err := shouldDeferStart(scriptPath, 30*time.Second)
+	mode, err := detectStartupMode(tmpDir)
 	if err != nil {
-		t.Fatalf("should not error on exit 1: %v", err)
+		t.Fatalf("should not error when .git/config exists: %v", err)
 	}
-	if shouldDefer {
-		t.Error("exit 1 should mean start immediately")
+	if mode != startupModeRestart {
+		t.Errorf("expected mode %q, got: %s", startupModeRestart, mode)
 	}
 }
 
-// TestShouldDeferStart_NonZeroExit tests that any non-zero exit means start immediately
-func TestShouldDeferStart_NonZeroExit(t *testing.T) {
-	// Create a temporary script that exits 2
-	tmpDir := t.TempDir()
-	scriptPath := tmpDir + "/test-script.sh"
-	scriptContent := "#!/bin/sh\nexit 2\n"
-	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+// TestDetectStartupMode_ErrorAccess tests handling of I/O errors
+func TestDetectStartupMode_ErrorAccess(t *testing.T) {
+	// Test with a path that's guaranteed not to exist and can't be created
+	// This tests the error handling path when os.Stat fails
+	mode, err := detectStartupMode("/nonexistent/path/that/does/not/exist")
 	if err != nil {
-		t.Fatalf("should write test script: %v", err)
+		// Error is expected when the app dir doesn't exist
+		// In practice, CUSTOMER_APP_DIR will always exist in the container
+		// but we test error handling for robustness
+		if mode != "" {
+			t.Errorf("mode should be empty on error, got: %s", mode)
+		}
+		// This is the expected behavior - error when app dir doesn't exist
+		return
 	}
-
-	shouldDefer, err := shouldDeferStart(scriptPath, 30*time.Second)
-	if err != nil {
-		t.Fatalf("should not error on non-zero exit: %v", err)
-	}
-	if shouldDefer {
-		t.Error("non-zero exit should mean start immediately")
-	}
-}
-
-// TestShouldDeferStart_ScriptNotFound tests handling of missing script
-func TestShouldDeferStart_ScriptNotFound(t *testing.T) {
-	shouldDefer, err := shouldDeferStart("/nonexistent/script.sh", 30*time.Second)
-	if err == nil {
-		t.Fatal("should error on missing script")
-	}
-	if shouldDefer {
-		t.Error("missing script should default to start immediately")
-	}
-}
-
-// TestShouldDeferStart_Timeout tests that script timeout is treated as fatal error
-func TestShouldDeferStart_Timeout(t *testing.T) {
-	// Create a script that sleeps longer than the timeout
-	tmpDir := t.TempDir()
-	scriptPath := tmpDir + "/test-script.sh"
-	scriptContent := "#!/bin/sh\nsleep 10\nexit 0\n"
-	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
-	if err != nil {
-		t.Fatalf("should write test script: %v", err)
-	}
-
-	// Use a very short timeout (500ms)
-	shouldDefer, err := shouldDeferStart(scriptPath, 500*time.Millisecond)
-	if err == nil {
-		t.Fatal("should error on timeout")
-	}
-	if !strings.Contains(err.Error(), "timed out") {
-		t.Errorf("error should mention timeout, got: %v", err)
-	}
-	if shouldDefer {
-		t.Error("timeout should not result in defer")
-	}
-}
-
-// TestShouldDeferStart_Exit126 tests that exit 126 (permission denied) is fatal
-// This test only works reliably on Linux where execute permissions are strictly enforced
-func TestShouldDeferStart_Exit126(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("Skipping: permission denied (exit 126) is only reliably testable on Linux")
-	}
-
-	t.Skip("Skipping: No longer using /bin/sh wrapper, scripts must have execute bit set before calling")
-
-	// Note: After removing the /bin/sh wrapper (scripts now execute directly),
-	// Go's exec.Command returns "permission denied" error instead of exit code 126.
-	// Exit code 126 is a shell convention that only applies when using a shell wrapper.
-	// The executable bit requirement is now enforced at the deployment/setup level,
-	// not at runtime. This test is kept for historical reference but skipped.
-}
-
-// TestRunSetupScript_NoScript tests that when no script is configured, it returns success
-func TestRunSetupScript_NoScript(t *testing.T) {
-	err := runSetupScript("", 10*time.Minute)
-	if err != nil {
-		t.Fatalf("should not error when no script configured: %v", err)
-	}
-}
-
-// TestRunSetupScript_Success tests successful script execution
-func TestRunSetupScript_Success(t *testing.T) {
-	// Create a temporary script that succeeds
-	tmpDir := t.TempDir()
-	scriptPath := tmpDir + "/test-setup.sh"
-	scriptContent := "#!/bin/sh\necho 'Setup complete'\nexit 0\n"
-	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
-	if err != nil {
-		t.Fatalf("should write test script: %v", err)
-	}
-
-	err = runSetupScript(scriptPath, 10*time.Minute)
-	if err != nil {
-		t.Fatalf("should not error on successful script: %v", err)
-	}
-}
-
-// TestRunSetupScript_Failure tests handling of failing script
-func TestRunSetupScript_Failure(t *testing.T) {
-	// Create a temporary script that fails
-	tmpDir := t.TempDir()
-	scriptPath := tmpDir + "/test-setup.sh"
-	scriptContent := "#!/bin/sh\necho 'Setup failed'\nexit 1\n"
-	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
-	if err != nil {
-		t.Fatalf("should write test script: %v", err)
-	}
-
-	err = runSetupScript(scriptPath, 10*time.Minute)
-	if err == nil {
-		t.Fatal("should error on failing script")
-	}
-	if !strings.Contains(err.Error(), "setup script failed") {
-		t.Errorf("error should mention setup script failure, got: %v", err)
-	}
-}
-
-// TestRunSetupScript_OutputStreaming tests that script output is captured
-func TestRunSetupScript_OutputStreaming(t *testing.T) {
-	// Create a temporary script that outputs to stdout and stderr
-	tmpDir := t.TempDir()
-	scriptPath := tmpDir + "/test-setup.sh"
-	scriptContent := `#!/bin/sh
-echo 'stdout message'
-echo 'stderr message' >&2
-exit 0
-`
-	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
-	if err != nil {
-		t.Fatalf("should write test script: %v", err)
-	}
-
-	// Run the script - output will be logged via slog
-	err = runSetupScript(scriptPath, 10*time.Minute)
-	if err != nil {
-		t.Fatalf("should not error on successful script with output: %v", err)
-	}
-
-	// Note: We can't easily capture slog output in tests, but we verify the script runs
-	// In practice, the streamScriptOutput function logs each line with slog.Info()
-}
-
-// TestRunSetupScript_ScriptNotFound tests handling of missing script
-func TestRunSetupScript_ScriptNotFound(t *testing.T) {
-	err := runSetupScript("/nonexistent/setup.sh", 10*time.Minute)
-	if err == nil {
-		t.Fatal("should error on missing script")
-	}
-}
-
-// TestRunSetupScript_Timeout tests that setup script timeout is handled correctly
-func TestRunSetupScript_Timeout(t *testing.T) {
-	// Create a script that sleeps longer than the timeout
-	tmpDir := t.TempDir()
-	scriptPath := tmpDir + "/test-setup.sh"
-	scriptContent := "#!/bin/sh\necho 'Starting setup'\nsleep 10\necho 'Done'\nexit 0\n"
-	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
-	if err != nil {
-		t.Fatalf("should write test script: %v", err)
-	}
-
-	// Use a very short timeout (500ms)
-	err = runSetupScript(scriptPath, 500*time.Millisecond)
-	if err == nil {
-		t.Fatal("should error on timeout")
-	}
-	if !strings.Contains(err.Error(), "timed out") {
-		t.Errorf("error should mention timeout, got: %v", err)
-	}
-}
-
-// TestRunSetupScript_PermissionDenied tests handling of non-executable script
-// This test only works reliably on Linux where execute permissions are strictly enforced
-func TestRunSetupScript_PermissionDenied(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("Skipping: permission denied is only reliably testable on Linux")
-	}
-
-	// Create a script that's not executable
-	tmpDir := t.TempDir()
-	scriptPath := tmpDir + "/test-setup.sh"
-	scriptContent := "#!/bin/sh\necho 'Setup'\nexit 0\n"
-	err := os.WriteFile(scriptPath, []byte(scriptContent), 0644) // Not executable
-	if err != nil {
-		t.Fatalf("should write test script: %v", err)
-	}
-
-	err = runSetupScript(scriptPath, 10*time.Minute)
-	if err == nil {
-		t.Fatal("should error on permission denied")
+	// If no error, the function should still return a valid mode
+	// (This can happen on some filesystems where stat succeeds even for non-existent paths)
+	if mode != startupModeFirstStart {
+		t.Errorf("expected %q mode when .git/config can't be found, got: %s", startupModeFirstStart, mode)
 	}
 }
 

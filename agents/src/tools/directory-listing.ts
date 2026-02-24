@@ -131,8 +131,6 @@ export class DirectoryListingTool {
     'airo-secrets',
     'source-mapper',
     'fullstory-plugin.ts',
-    'nomad_setup_and_serve.sh',
-    'dev_setup_and_serve.sh',
   ];
 
   /**

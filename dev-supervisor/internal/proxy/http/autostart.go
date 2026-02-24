@@ -18,14 +18,28 @@ const (
 )
 
 // handleAutoStart handles requests when the app is stopped.
-// Holds the request open, starts the process, and forwards when ready.
+// Executes deferred setup if configured, starts the process, and forwards when ready.
 func (rr *RequestRouter) handleAutoStart(w http.ResponseWriter, r *http.Request) {
 	slog.Info("autostart.triggered",
 		"path", r.URL.Path,
 		"method", r.Method,
 		"remote_addr", r.RemoteAddr)
 
-	// Get current process start request.
+	// Step 1: Execute deferred setup if configured (idempotent, thread-safe)
+	if rr.procMgr.HasDeferredSetup() {
+		slog.Info("autostart.executing_deferred_setup")
+		setupStartTime := time.Now()
+		if err := rr.procMgr.ExecuteDeferredSetup(); err != nil {
+			slog.Error("autostart.deferred_setup_failed", "error", err)
+			http.Error(w, "Service setup failed", http.StatusInternalServerError)
+			return
+		}
+		setupDuration := time.Since(setupStartTime)
+		slog.Info("autostart.deferred_setup_completed",
+			"duration_ms", setupDuration.Milliseconds())
+	}
+
+	// Step 2: Get current process start request (after deferred setup)
 	startReq := rr.procMgr.GetStartRequest()
 	if startReq == nil {
 		slog.Error("autostart.no_config")
@@ -33,7 +47,7 @@ func (rr *RequestRouter) handleAutoStart(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Start the process.
+	// Step 3: Start the process
 	startTime := time.Now()
 	err := rr.procMgr.Start(*startReq)
 	// Accept benign race conditions (already starting, already running).

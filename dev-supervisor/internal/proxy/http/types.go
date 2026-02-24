@@ -169,6 +169,9 @@ type ProcessController interface {
 	EnableStartOnRequest(idleTimeout, checkInterval time.Duration)
 	WasHealthyBeforeIdle() bool
 	GetStateChangeChan() <-chan struct{}
+	// Deferred setup methods (mode-based conditional startup)
+	HasDeferredSetup() bool
+	ExecuteDeferredSetup() error
 }
 
 // Sentinel errors for start-on-request handling.

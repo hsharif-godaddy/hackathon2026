@@ -320,6 +320,7 @@ export class DockerContainerManager {
 			'--build-arg', `HOST_GID=${gid}`,
 			'--build-context', `dev-ca=${path.join(projectRoot, '.dev-ca')}`,
 			'--build-context', `dev-supervisor=${path.join(projectRoot, 'dev-supervisor')}`,
+			'--build-context', `container-scripts=${path.join(projectRoot, 'container-scripts')}`,
 			'-f', path.join(templatePath, 'Dockerfile.dev'),
 			templatePath
 		]);
@@ -374,6 +375,7 @@ export class DockerContainerManager {
 				'--build-arg', `HOST_UID=${uid}`,
 				'--build-arg', `HOST_GID=${gid}`,
 				'--build-context', `dev-supervisor=${path.join(projectRoot, 'dev-supervisor')}`,
+				'--build-context', `container-scripts=${path.join(projectRoot, 'container-scripts')}`,
 				'-f', path.join(publishPath, 'Dockerfile.dev'),
 				publishPath
 			]);

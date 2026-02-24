@@ -6,3 +6,6 @@ node_modules
 .env.local
 .env.development
 .env.test
+
+# Container management scripts are provided via --build-context container-scripts
+# (no longer needed in this directory)

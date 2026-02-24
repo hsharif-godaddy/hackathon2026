@@ -1,18 +1,14 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -38,6 +34,10 @@ const (
 	AppName            = "airo-supervisor"
 	defaultTimeout     = 120 * time.Second
 	serverReadyTimeout = 5 * time.Second
+
+	// Startup mode constants
+	startupModeFirstStart = "first-start"
+	startupModeRestart    = "restart"
 )
 
 // Config is an alias for config.Config
@@ -559,68 +559,6 @@ func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) erro
 	return nil
 }
 
-// StartCommandOnStartup starts a command when dev-supervisor starts
-func (s *Server) StartCommandOnStartup(args []string) error {
-	if len(args) == 0 {
-		return errors.New("no command provided")
-	}
-
-	// Build the full command with proper argument handling
-	fullCommand := strings.Join(args, " ")
-
-	// Validate command is not empty after joining
-	if strings.TrimSpace(fullCommand) == "" {
-		return errors.New("command cannot be empty")
-	}
-
-	// Convert environment slice to map
-	envMap := make(map[string]string)
-	for _, env := range os.Environ() {
-		if parts := strings.SplitN(env, "=", 2); len(parts) == 2 {
-			envMap[parts[0]] = parts[1]
-		}
-	}
-
-	// Set working directory - use /app if it exists, otherwise current directory
-	workingDir := "/app"
-	if _, err := os.Stat("/app"); os.IsNotExist(err) {
-		if cwd, err := os.Getwd(); err == nil {
-			workingDir = cwd
-		} else {
-			workingDir = defaultTmpDir
-		}
-	}
-
-	// Use the ProcessManager to start the command
-	startReq := validation.ProcessStartRequest{
-		Command:    fullCommand,
-		Env:        envMap,
-		WorkingDir: workingDir,
-	}
-
-	// Check for custom command in .airo/config.json
-	if customCmd := readAiroConfigCommand(); customCmd != "" {
-		slog.Info("startup.using_custom_command",
-			"custom_command", customCmd,
-			"default_command", startReq.Command)
-		startReq.Command = customCmd
-	}
-
-	if err := s.procMgr.Start(startReq); err != nil {
-		slog.Error("failed to start initial command",
-			"command", startReq.Command,
-			"cli_args", args,
-			"error", err)
-		return fmt.Errorf("failed to start command: %w", err)
-	}
-
-	status := s.procMgr.GetStatus()
-	slog.Info("initial command started",
-		"pid", status.PID,
-		"command", startReq.Command)
-	return nil
-}
-
 // WaitForShutdown waits for shutdown signals
 func (s *Server) WaitForShutdown() {
 	sigChan := make(chan os.Signal, 1)
@@ -778,174 +716,127 @@ func showVersion() {
 	fmt.Fprintf(os.Stdout, "%s version %s\n", AppName, Version)
 }
 
-// shouldDeferStart runs the detection script and returns true if process start should be deferred.
-// If no detection script is configured, returns false (start immediately - backward compatible).
-// Returns error on script execution failures (not exit codes) - timeouts, missing scripts, etc.
-func shouldDeferStart(scriptPath string, timeout time.Duration) (bool, error) {
-	if scriptPath == "" {
+// detectStartupMode detects whether this is a first-start (fresh app) or restart (existing app)
+// by checking if .git/config exists in the app directory.
+//
+// Valid modes: startupModeFirstStart, startupModeRestart
+//
+// Detection logic:
+// - first-start: .git/config does NOT exist (git repository not initialized)
+// - restart: .git/config EXISTS (git repository already initialized)
+//
+// This determines WHEN to run the setup script (immediately vs deferred to first HTTP request).
+// The setup script (nomad_setup.sh) performs its own finer-grained detection to decide WHAT
+// work to do:
+// - first-start: git init + template copy + npm ci (always immediate)
+// - corrupted restart: .git/config exists but package.json missing → restore files + npm ci
+// - clean restart: both .git/config and package.json exist → no-op (workspace intact)
+//
+// If appDir is not configured, returns startupModeFirstStart (default).
+// Returns error on filesystem errors when checking .git/config existence.
+func detectStartupMode(appDir string) (string, error) {
+	if appDir == "" {
 		slog.Info("startup.detection.not_configured",
-			"behavior", "start_immediately",
-			"hint", "set DEV_SUPERVISOR_DETECTION_SCRIPT to enable conditional startup")
-		return false, nil
+			"mode", startupModeFirstStart,
+			"hint", "set CUSTOMER_APP_DIR to enable mode detection")
+		return startupModeFirstStart, nil
 	}
 
-	slog.Info("startup.detection.running", "script", scriptPath, "timeout", timeout)
+	// Check if .git/config exists
+	gitConfigPath := filepath.Join(appDir, ".git", "config")
+	_, err := os.Stat(gitConfigPath)
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	// Security note: scriptPath comes from deployment-controlled environment variable
-	// (DEV_SUPERVISOR_DETECTION_SCRIPT), not user input. This is set by the deployment
-	// system (Nomad/Docker), making command injection impossible. Semgrep finding is
-	// a false positive.
-	cmd := exec.CommandContext(ctx, scriptPath)
-	cmd.Env = os.Environ()
-
-	output, err := cmd.CombinedOutput()
-	outputStr := strings.TrimSpace(string(output))
-
-	exitCode := 0
-	shouldDefer := true // Exit 0 = defer
-
-	if err == nil {
-		// Success - use exit code to determine behavior
-		slog.Info("startup.detection.result",
-			"script", scriptPath,
-			"exit_code", exitCode,
-			"defer_start", shouldDefer,
-			"output", outputStr)
-		return shouldDefer, nil
+	if os.IsNotExist(err) {
+		// .git/config does not exist - this is a first-start (fresh app)
+		slog.Info("startup.detection.first_start",
+			"app_dir", appDir,
+			"git_config", gitConfigPath,
+			"exists", false)
+		return startupModeFirstStart, nil
 	}
 
-	// Check context first for timeout (more reliable across platforms)
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		// Timeout is a fatal error - script should complete within timeout
-		slog.Error("startup.detection.timeout",
-			"script", scriptPath,
-			"timeout", timeout,
-			"output", outputStr)
-		return false, fmt.Errorf("detection script timed out after %v: %s", timeout, scriptPath)
+	if err != nil {
+		// Unexpected error accessing .git/config (permissions, I/O error, etc.)
+		slog.Error("startup.detection.error",
+			"app_dir", appDir,
+			"git_config", gitConfigPath,
+			"error", err)
+		return "", fmt.Errorf("failed to check .git/config: %w", err)
 	}
 
-	// Handle exit errors
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		exitCode = exitErr.ExitCode()
-		// Exit codes 126-127 indicate execution failures (permission denied, not found)
-		// These are fatal errors, not normal non-zero exits
-		if exitCode == 126 || exitCode == 127 {
-			slog.Error("startup.detection.execution_error",
-				"script", scriptPath,
-				"exit_code", exitCode,
-				"output", outputStr)
-			return false, fmt.Errorf("failed to execute detection script (exit %d): %s", exitCode, scriptPath)
-		}
-		// Other non-zero exits are normal behavior (fresh vs restart decision)
-		shouldDefer = false // Non-zero = start immediately
-		slog.Info("startup.detection.result",
-			"script", scriptPath,
-			"exit_code", exitCode,
-			"defer_start", shouldDefer,
-			"output", outputStr)
-		return shouldDefer, nil
-	}
-
-	// Other errors (script not found, permission denied, etc.) are fatal
-	slog.Error("startup.detection.error",
-		"script", scriptPath,
-		"error", err,
-		"output", outputStr)
-	return false, fmt.Errorf("failed to execute detection script: %w", err)
+	// .git/config exists - this is a restart (existing app)
+	slog.Info("startup.detection.restart",
+		"app_dir", appDir,
+		"git_config", gitConfigPath,
+		"exists", true)
+	return startupModeRestart, nil
 }
 
-// runSetupScript executes a setup script with structured logging, timeout, and signal cancellation
-func runSetupScript(scriptPath string, timeout time.Duration) error {
-	if scriptPath == "" {
-		slog.Info("startup.setup.not_configured", "behavior", "skip_setup")
-		return nil
+// handleConditionalSetup handles mode-based conditional startup when a setup script is configured.
+// Returns true if setup was deferred to first HTTP request, false if setup ran immediately or
+// no setup script was configured.
+func handleConditionalSetup(server *Server, cfg *Config, startReq validation.ProcessStartRequest) bool {
+	if cfg.SetupScript == "" {
+		return false
 	}
 
-	slog.Info("startup.setup.start", "script", scriptPath, "timeout", timeout)
-
-	// Create context with timeout and signal cancellation
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	// Also cancel on SIGTERM/SIGINT
-	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
-	defer stop()
-
-	// Security note: scriptPath comes from deployment-controlled environment variable
-	// (DEV_SUPERVISOR_SETUP_SCRIPT), not user input. This is set by the deployment
-	// system (Nomad/Docker), making command injection impossible. Semgrep finding is
-	// a false positive.
-	cmd := exec.CommandContext(ctx, scriptPath)
-	cmd.Env = os.Environ()
-	// Run from root directory - setup scripts use CUSTOMER_APP_DIR environment variable
-	// to find the app directory, not the current working directory. This ensures
-	// scripts work consistently regardless of where dev-supervisor was invoked from.
-	cmd.Dir = "/"
-
-	// Stream stdout and stderr to structured logs
-	stdout, err := cmd.StdoutPipe()
+	// Detect startup mode (first-start vs restart)
+	mode, err := detectStartupMode(cfg.AppDir)
 	if err != nil {
-		return fmt.Errorf("failed to create stdout pipe: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("failed to create stderr pipe: %w", err)
+		slog.Error("startup.detection.failed", "error", err)
+		os.Exit(1)
 	}
 
-	// Start the command first, then start streaming goroutines
-	// This prevents goroutine leaks if cmd.Start() fails
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start setup script: %w", err)
+	var deferSetup bool
+
+	switch mode {
+	case startupModeFirstStart:
+		// First-start: always run setup immediately (user is actively waiting)
+		slog.Info("startup.mode.first_start",
+			"setup_script", cfg.SetupScript,
+			"defer_setup", false)
+
+	case startupModeRestart:
+		// Restart: defer behavior configured via DeferRestartSetup
+		deferSetup = cfg.DeferRestartSetup
+		slog.Info("startup.mode.restart",
+			"setup_script", cfg.SetupScript,
+			"defer_setup", deferSetup)
+
+	default:
+		slog.Error("startup.mode.invalid", "mode", mode)
+		os.Exit(1)
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		streamScriptOutput(stdout, "setup")
-	}()
-
-	go func() {
-		defer wg.Done()
-		streamScriptOutput(stderr, "setup")
-	}()
-
-	wg.Wait()
-
-	if err := cmd.Wait(); err != nil {
-		// Check if it was canceled due to timeout or signal
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			slog.Error("startup.setup.timeout", "script", scriptPath, "timeout", timeout)
-			return fmt.Errorf("setup script timed out after %v: %s", timeout, scriptPath)
-		}
-		if errors.Is(ctx.Err(), context.Canceled) {
-			slog.Error("startup.setup.canceled", "script", scriptPath, "reason", "signal received")
-			return fmt.Errorf("setup script canceled due to signal: %s", scriptPath)
-		}
-
-		slog.Error("startup.setup.failed", "script", scriptPath, "error", err)
-		return fmt.Errorf("setup script failed: %w", err)
+	// Validate configuration if deferring setup
+	if deferSetup && !cfg.StartOnRequestEnabled {
+		slog.Error("startup.configuration_error",
+			"error", "deferred setup requested, but DEV_SUPERVISOR_ENABLE_START_ON_REQUEST is not enabled",
+			"hint", "set DEV_SUPERVISOR_ENABLE_START_ON_REQUEST=true for preview deployments")
+		os.Exit(1)
+	}
+	if deferSetup && !cfg.ProxyEnabled {
+		slog.Error("startup.configuration_error",
+			"error", "deferred setup requested, but DEV_SUPERVISOR_ENABLE_PROXY is not enabled",
+			"hint", "deferred setup requires HTTP proxy to detect first request")
+		os.Exit(1)
 	}
 
-	slog.Info("startup.setup.complete", "script", scriptPath)
-	return nil
-}
+	// Execute setup or defer it
+	if deferSetup {
+		slog.Info("startup.setup.deferred",
+			"setup_script", cfg.SetupScript,
+			"command", startReq.Command,
+			"trigger", "first_http_request")
+		server.procMgr.SetDeferredSetup(cfg.SetupScript, cfg.SetupScriptTimeout, startReq)
+		return true
+	}
 
-// streamScriptOutput reads lines from a reader and logs them with structured logging
-func streamScriptOutput(r io.Reader, source string) {
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		line := scanner.Text()
-		slog.Info(source, "message", line)
+	if err := processmanager.RunSetupScriptInternal(cfg.SetupScript, cfg.SetupScriptTimeout); err != nil {
+		slog.Error("startup.setup.failed", "error", err)
+		os.Exit(1)
 	}
-	if err := scanner.Err(); err != nil {
-		slog.Error("script.stream.error", "source", source, "error", err)
-	}
+	return false
 }
 
 // buildStartRequestFromArgs creates a ProcessStartRequest from command arguments
@@ -1043,49 +934,20 @@ func readAiroConfigFile() (string, []byte) {
 	return "", nil
 }
 
-// startServerWithConditionalCommand starts the server and conditionally starts a command
-// based on detection script result. This enables deferred start for preview tasks.
-func startServerWithConditionalCommand(server *Server, cfg *Config, args []string) {
-	slog.Info("startup.conditional.begin", "command", args)
+// startServerWithCommand starts the server in the background, optionally runs setup based on
+// mode detection, and starts the specified command.
+//
+// When a setup script is configured (cfg.SetupScript != ""), mode-based conditional startup is used:
+// - First-start: run setup immediately, then start process
+// - Restart: defer setup to first HTTP request (if DeferRestartSetup is true)
+// When no setup script is configured, the process starts immediately (backward compat).
+func startServerWithCommand(server *Server, cfg *Config, args []string) {
+	slog.Info("startup.begin", "command", args)
 
-	// Step 1: Run detection script BEFORE setup (to detect pre-setup state)
-	deferStart, err := shouldDeferStart(cfg.DetectionScript, cfg.DetectionScriptTimeout)
-	if err != nil {
-		slog.Error("startup.detection.failed", "error", err)
-		os.Exit(1)
-	}
-
-	// Step 2: Validate configuration if deferring
-	if deferStart {
-		if !cfg.StartOnRequestEnabled {
-			slog.Error("startup.configuration_error",
-				"error",
-				"detection script requested deferred start, but DEV_SUPERVISOR_ENABLE_START_ON_REQUEST is not enabled",
-				"hint",
-				"set DEV_SUPERVISOR_ENABLE_START_ON_REQUEST=true for preview deployments")
-			os.Exit(1)
-		}
-		if !cfg.ProxyEnabled {
-			slog.Error("startup.configuration_error",
-				"error",
-				"detection script requested deferred start, but DEV_SUPERVISOR_ENABLE_PROXY is not enabled",
-				"hint",
-				"deferred start requires HTTP proxy to detect first request")
-			os.Exit(1)
-		}
-	}
-
-	// Step 3: Run setup script (git init, npm install, etc.)
-	if err := runSetupScript(cfg.SetupScript, cfg.SetupScriptTimeout); err != nil {
-		slog.Error("startup.setup.failed", "error", err)
-		os.Exit(1)
-	}
-
-	// Step 4: Build start request from args (before starting server to avoid race)
+	// Build start request from args
 	startReq := buildStartRequestFromArgs(args)
 
-	// Step 4.5: Check for custom command in .airo/config.json (AAB preview containers)
-	// This allows applications to override the default command from Dockerfile CMD
+	// Check for custom command in .airo/config.json
 	if customCmd := readAiroConfigCommand(); customCmd != "" {
 		slog.Info("startup.using_custom_command",
 			"custom_command", customCmd,
@@ -1093,16 +955,10 @@ func startServerWithConditionalCommand(server *Server, cfg *Config, args []strin
 		startReq.Command = customCmd
 	}
 
-	// Step 5: If deferring, save start request BEFORE starting server
-	// This prevents race condition where first HTTP request arrives before SetStartRequest is called
-	if deferStart {
-		slog.Info("startup.deferred",
-			"command", startReq.Command,
-			"trigger", "first_http_request")
-		server.procMgr.SetStartRequest(startReq)
-	}
+	// Handle conditional startup if setup script is configured
+	deferSetup := handleConditionalSetup(server, cfg, startReq)
 
-	// Step 6: Start server in background
+	// Start server in background
 	go func() {
 		if err := server.StartWithConfig(cfg); err != nil {
 			slog.Error("failed to start server", "error", err)
@@ -1110,7 +966,7 @@ func startServerWithConditionalCommand(server *Server, cfg *Config, args []strin
 		}
 	}()
 
-	// Step 7: Wait for server ready
+	// Wait for server ready
 	address := cfg.SocketPath
 	if cfg.UseTCP {
 		address = cfg.TCPPort
@@ -1120,8 +976,8 @@ func startServerWithConditionalCommand(server *Server, cfg *Config, args []strin
 		os.Exit(1)
 	}
 
-	// Step 8: If starting immediately, do it now (after server is ready)
-	if !deferStart {
+	// Start process immediately if not deferred
+	if !deferSetup {
 		slog.Info("startup.immediate", "command", startReq.Command)
 		if err := server.procMgr.Start(startReq); err != nil {
 			slog.Error("failed to start initial command",
@@ -1133,38 +989,6 @@ func startServerWithConditionalCommand(server *Server, cfg *Config, args []strin
 
 		status := server.procMgr.GetStatus()
 		slog.Info("initial.command.started", "pid", status.PID, "command", startReq.Command)
-	}
-
-	// Wait for shutdown signals
-	server.WaitForShutdown()
-}
-
-// startServerWithCommand starts the server in the background and then starts the specified command
-func startServerWithCommand(server *Server, cfg *config.Config, args []string) {
-	slog.Info("auto-starting command", "command", args)
-
-	// Start the server in a goroutine so we can also start the command
-	go func() {
-		if err := server.StartWithConfig(cfg); err != nil {
-			slog.Error("failed to start server", "error", err)
-			os.Exit(1)
-		}
-	}()
-
-	// Wait for server to be ready
-	address := cfg.SocketPath
-	if cfg.UseTCP {
-		address = cfg.TCPPort
-	}
-	if err := server.waitForServerReady(address, cfg.UseTCP); err != nil {
-		slog.Error("server failed to start", "error", err)
-		os.Exit(1)
-	}
-
-	// Start the specified command
-	if err := server.StartCommandOnStartup(args); err != nil {
-		slog.Error("failed to start initial command", "error", err, "command", args)
-		os.Exit(1)
 	}
 
 	// Wait for shutdown signals
@@ -1209,13 +1033,7 @@ func main() {
 	// Check for additional command arguments to auto-start
 	args := flag.Args()
 	if len(args) > 0 {
-		// Use conditional startup if detection/setup scripts configured
-		if cfg.DetectionScript != "" || cfg.SetupScript != "" {
-			startServerWithConditionalCommand(server, cfg, args)
-		} else {
-			// Backward compat: use original immediate startup
-			startServerWithCommand(server, cfg, args)
-		}
+		startServerWithCommand(server, cfg, args)
 	} else {
 		// No command specified, just start the server normally
 		if err := server.StartWithConfig(cfg); err != nil {

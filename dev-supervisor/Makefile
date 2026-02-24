@@ -8,6 +8,9 @@ BUILD_DIR := dist
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -ldflags="-w -s -X main.Version=${VERSION}"
 
+# Force Go 1.25.7 toolchain (matches go.mod)
+export GOTOOLCHAIN := go1.25.7
+
 # Default target
 .DEFAULT_GOAL := help
 

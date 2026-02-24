@@ -3,7 +3,7 @@ package processmanager
 
 import (
 	"net"
-	"strconv"
+	"os"
 	"testing"
 	"time"
 
@@ -838,50 +838,8 @@ func TestProcessManager_WasHealthyBeforeIdle_NotSetOnStopFailure(t *testing.T) {
 	assert.False(t, pm.WasHealthyBeforeIdle(), "wasHealthyBeforeIdle should remain false after failed stop")
 }
 
-// TestProcessManager_SetStartRequest tests that SetStartRequest properly stores a deep copy
-// of the start request for deferred startup
-func TestProcessManager_SetStartRequest(t *testing.T) {
-	logMgr := logs.NewManager(100)
-	pid1Mgr := process.NewPID1Manager()
-	pm := NewProcessManager(logMgr, pid1Mgr)
-
-	// Create a start request with environment variables
-	originalReq := validation.ProcessStartRequest{
-		Command:    "npm run dev",
-		WorkingDir: "/app",
-		Env: map[string]string{
-			"PORT":     "3000",
-			"NODE_ENV": "development",
-		},
-		Ports: []int{3000, 3001},
-	}
-
-	// Save the request
-	pm.SetStartRequest(originalReq)
-
-	// Retrieve the saved request
-	saved := pm.GetStartRequest()
-	require.NotNil(t, saved, "saved request should not be nil")
-
-	// Verify fields match
-	assert.Equal(t, originalReq.Command, saved.Command)
-	assert.Equal(t, originalReq.WorkingDir, saved.WorkingDir)
-	assert.Equal(t, originalReq.Env, saved.Env)
-	assert.Equal(t, originalReq.Ports, saved.Ports)
-
-	// Verify deep copy by mutating original and checking saved request is unchanged
-	originalReq.Command = "changed"
-	originalReq.Env["PORT"] = "4000"
-	originalReq.Ports[0] = 9999
-
-	saved = pm.GetStartRequest()
-	assert.Equal(t, "npm run dev", saved.Command, "command should not be affected by original mutation")
-	assert.Equal(t, "3000", saved.Env["PORT"], "env should not be affected by original mutation")
-	assert.Equal(t, 3000, saved.Ports[0], "ports should not be affected by original mutation")
-}
-
 // TestProcessManager_GetStartRequest_Priority tests the priority logic:
-// 1) Running process config, 2) Saved start request, 3) nil
+// 1) Running process config, 2) Saved start request (via deferred setup), 3) nil
 func TestProcessManager_GetStartRequest_Priority(t *testing.T) {
 	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
@@ -891,20 +849,20 @@ func TestProcessManager_GetStartRequest_Priority(t *testing.T) {
 	req := pm.GetStartRequest()
 	assert.Nil(t, req, "should return nil when no process and no saved request")
 
-	// Save a start request (deferred mode)
-	savedReq := validation.ProcessStartRequest{
+	// Set up deferred setup (which internally saves a start request)
+	deferredReq := validation.ProcessStartRequest{
 		Command:    "npm run dev",
 		WorkingDir: "/app",
 		Env:        map[string]string{"PORT": "3000"},
 	}
-	pm.SetStartRequest(savedReq)
+	pm.SetDeferredSetup("/nonexistent/setup.sh", 10*time.Minute, deferredReq)
 
-	// Should now return the saved request
+	// Before deferred setup executes, GetStartRequest should return nil
+	// (deferred request is stored separately, not in savedStartRequest)
 	req = pm.GetStartRequest()
-	require.NotNil(t, req, "should return saved request")
-	assert.Equal(t, "npm run dev", req.Command)
+	assert.Nil(t, req, "should return nil before deferred setup executes")
 
-	// Start a process (which should take priority over saved request)
+	// Start a process (which should provide a start request)
 	runningReq := validation.ProcessStartRequest{
 		Command:    "sleep 10",
 		WorkingDir: "/tmp",
@@ -914,45 +872,217 @@ func TestProcessManager_GetStartRequest_Priority(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Should now return the running process config (priority 1)
-	// Note: currentProcess takes precedence even after stop until it's nil
 	req = pm.GetStartRequest()
 	require.NotNil(t, req, "should return running process config")
-	assert.Equal(t, "sleep 10", req.Command, "should prioritize running process over saved request")
+	assert.Equal(t, "sleep 10", req.Command, "should prioritize running process")
 
 	// Clean up
 	require.NoError(t, pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 1}))
 	time.Sleep(100 * time.Millisecond)
 }
 
-// TestProcessManager_SetStartRequest_Concurrent tests that SetStartRequest is thread-safe
-func TestProcessManager_SetStartRequest_Concurrent(t *testing.T) {
+// TestProcessManager_SetDeferredSetup tests SetDeferredSetup saves configuration correctly
+func TestProcessManager_SetDeferredSetup(t *testing.T) {
 	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
 	pm := NewProcessManager(logMgr, pid1Mgr)
 
-	// Run concurrent SetStartRequest and GetStartRequest calls
-	done := make(chan bool)
-	for i := range 10 {
-		go func(id int) {
-			defer func() { done <- true }()
-			for range 100 {
-				req := validation.ProcessStartRequest{
-					Command:    "test",
-					WorkingDir: "/tmp",
-					Env:        map[string]string{"ID": strconv.Itoa(id)},
-				}
-				pm.SetStartRequest(req)
-				pm.GetStartRequest()
+	setupScript := "/app/scripts/setup.sh"
+	timeout := 5 * time.Minute
+	startReq := validation.ProcessStartRequest{
+		Command:    "npm start",
+		WorkingDir: "/app",
+	}
+
+	// Set deferred setup
+	pm.SetDeferredSetup(setupScript, timeout, startReq)
+
+	// Verify configuration saved
+	assert.True(t, pm.HasDeferredSetup(), "should have deferred setup configured")
+	assert.Equal(t, setupScript, pm.deferredSetupScript, "setup script should match")
+	assert.Equal(t, timeout, pm.deferredSetupTimeout, "timeout should match")
+	require.NotNil(t, pm.deferredSetupRequest, "start request should be stored")
+	assert.Equal(t, startReq.Command, pm.deferredSetupRequest.Command, "command should match")
+	assert.Equal(t, startReq.WorkingDir, pm.deferredSetupRequest.WorkingDir, "working dir should match")
+	assert.False(t, pm.deferredSetupExecuted.Load(), "should not be marked as executed yet")
+}
+
+// TestProcessManager_HasDeferredSetup tests HasDeferredSetup returns correct state
+func TestProcessManager_HasDeferredSetup(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+
+	tests := []struct {
+		name           string
+		setupScript    string
+		expectHas      bool
+		expectExecuted bool
+	}{
+		{
+			name:           "no setup configured",
+			setupScript:    "",
+			expectHas:      false,
+			expectExecuted: false,
+		},
+		{
+			name:           "setup configured",
+			setupScript:    "/app/scripts/setup.sh",
+			expectHas:      true,
+			expectExecuted: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pm := NewProcessManager(logMgr, pid1Mgr)
+
+			if tt.setupScript != "" {
+				pm.SetDeferredSetup(tt.setupScript, 5*time.Minute, validation.ProcessStartRequest{})
 			}
-		}(i)
+
+			assert.Equal(t, tt.expectHas, pm.HasDeferredSetup(), "HasDeferredSetup should match expected")
+			assert.Equal(t, tt.expectExecuted, pm.deferredSetupExecuted.Load(), "executed flag should match")
+		})
+	}
+}
+
+// TestProcessManager_ExecuteDeferredSetup_NoConfiguration tests error when not configured
+func TestProcessManager_ExecuteDeferredSetup_NoConfiguration(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Attempt to execute without configuration
+	err := pm.ExecuteDeferredSetup()
+
+	require.Error(t, err, "should return error when no setup configured")
+	assert.Contains(t, err.Error(), "no deferred setup configured", "error message should be clear")
+}
+
+// TestProcessManager_ExecuteDeferredSetup_Idempotency tests idempotent execution
+func TestProcessManager_ExecuteDeferredSetup_Idempotency(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Create a test script that succeeds
+	tmpScript := t.TempDir() + "/test-setup.sh"
+	scriptContent := `#!/bin/sh
+echo "Setup executed"
+exit 0
+`
+	require.NoError(t, os.WriteFile(tmpScript, []byte(scriptContent), 0755), "should write test script")
+
+	pm.SetDeferredSetup(tmpScript, 10*time.Second, validation.ProcessStartRequest{})
+
+	// Execute first time
+	err := pm.ExecuteDeferredSetup()
+	require.NoError(t, err, "first execution should succeed")
+	assert.True(t, pm.deferredSetupExecuted.Load(), "should be marked as executed")
+
+	// Execute second time (idempotent)
+	err = pm.ExecuteDeferredSetup()
+	require.NoError(t, err, "second execution should succeed (idempotent)")
+	assert.True(t, pm.deferredSetupExecuted.Load(), "should still be marked as executed")
+}
+
+// TestProcessManager_ExecuteDeferredSetup_Concurrent tests thread safety
+func TestProcessManager_ExecuteDeferredSetup_Concurrent(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Create a test script that succeeds
+	tmpScript := t.TempDir() + "/test-setup.sh"
+	scriptContent := `#!/bin/sh
+sleep 0.1
+echo "Setup executed"
+exit 0
+`
+	require.NoError(t, os.WriteFile(tmpScript, []byte(scriptContent), 0755), "should write test script")
+
+	pm.SetDeferredSetup(tmpScript, 10*time.Second, validation.ProcessStartRequest{})
+
+	// Execute concurrently from multiple goroutines
+	const numGoroutines = 10
+	done := make(chan error, numGoroutines)
+
+	for range numGoroutines {
+		go func() {
+			done <- pm.ExecuteDeferredSetup()
+		}()
 	}
 
-	// Wait for all goroutines
-	for range 10 {
-		<-done
+	// Collect results
+	var errors []error
+	for range numGoroutines {
+		if err := <-done; err != nil {
+			errors = append(errors, err)
+		}
 	}
 
-	// Should not panic and should have a valid saved request
-	req := pm.GetStartRequest()
-	require.NotNil(t, req, "should have saved request after concurrent operations")
+	// All should succeed (idempotent)
+	assert.Empty(t, errors, "all concurrent executions should succeed")
+	assert.True(t, pm.deferredSetupExecuted.Load(), "should be marked as executed")
+}
+
+// TestProcessManager_ExecuteDeferredSetup_ScriptFailure tests error propagation
+func TestProcessManager_ExecuteDeferredSetup_ScriptFailure(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Create a test script that fails
+	tmpScript := t.TempDir() + "/test-setup-fail.sh"
+	scriptContent := `#!/bin/sh
+echo "Setup failed"
+exit 1
+`
+	require.NoError(t, os.WriteFile(tmpScript, []byte(scriptContent), 0755), "should write test script")
+
+	pm.SetDeferredSetup(tmpScript, 10*time.Second, validation.ProcessStartRequest{})
+
+	// Execute
+	err := pm.ExecuteDeferredSetup()
+
+	require.Error(t, err, "should return error when script fails")
+	assert.Contains(t, err.Error(), "deferred setup failed", "error should mention deferred setup")
+	assert.False(t, pm.deferredSetupExecuted.Load(), "should not be marked as executed on failure")
+}
+
+// TestProcessManager_ExecuteDeferredSetup_StartRequestSaved tests start request saving
+func TestProcessManager_ExecuteDeferredSetup_StartRequestSaved(t *testing.T) {
+	logMgr := logs.NewManager(100)
+	pid1Mgr := process.NewPID1Manager()
+	pm := NewProcessManager(logMgr, pid1Mgr)
+
+	// Create a test script that succeeds
+	tmpScript := t.TempDir() + "/test-setup.sh"
+	scriptContent := `#!/bin/sh
+echo "Setup executed"
+exit 0
+`
+	require.NoError(t, os.WriteFile(tmpScript, []byte(scriptContent), 0755), "should write test script")
+
+	startReq := validation.ProcessStartRequest{
+		Command:    "npm start",
+		WorkingDir: "/app",
+		Env:        map[string]string{"NODE_ENV": "production"},
+	}
+
+	pm.SetDeferredSetup(tmpScript, 10*time.Second, startReq)
+
+	// Verify start request not yet saved
+	assert.Nil(t, pm.GetStartRequest(), "start request should not be saved yet")
+
+	// Execute deferred setup
+	err := pm.ExecuteDeferredSetup()
+	require.NoError(t, err, "execution should succeed")
+
+	// Verify start request now saved
+	savedReq := pm.GetStartRequest()
+	assert.NotNil(t, savedReq, "start request should be saved after execution")
+	assert.Equal(t, startReq.Command, savedReq.Command, "command should match")
+	assert.Equal(t, startReq.WorkingDir, savedReq.WorkingDir, "working dir should match")
+	assert.Equal(t, startReq.Env, savedReq.Env, "env should match")
 }

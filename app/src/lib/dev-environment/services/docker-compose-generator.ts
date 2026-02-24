@@ -181,6 +181,18 @@ export class DockerComposeGenerator {
 		env.DEV_SUPERVISOR_IDLE_TIMEOUT = "5m";           // Stop after 5 minutes of inactivity
 		env.DEV_SUPERVISOR_IDLE_CHECK_INTERVAL = "30s";   // Check for idle timeout every 30 seconds
 
+		// Mode-based conditional startup (preview only)
+		// Enables smart startup behavior: first-start apps run setup immediately (user is waiting),
+		// restarted apps defer setup (file restoration + npm install) to first HTTP request
+		// Template files are stored at /app-template in the image (matching production layout)
+		// Customer app directory /app is bind-mounted from host
+		// Setup script is at /management-scripts/nomad_setup.sh (infrastructure utility, not part of template)
+		// The script handles both first-start and restart paths internally by checking .git/config existence.
+		env.CUSTOMER_APP_DIR = "/app"; // App directory for mode detection and customer code
+		env.BASE_APP_DIR = "/app-template"; // Base template directory in image
+		env.DEV_SUPERVISOR_SETUP_SCRIPT = "/management-scripts/nomad_setup.sh";
+		env.DEV_SUPERVISOR_DEFER_RESTART_SETUP = "true"; // Defer restart setup to first request
+
 		return env;
 	}
 
@@ -205,6 +217,10 @@ export class DockerComposeGenerator {
 
 		// Identify this as the publish variant (always-on, no start-on-request)
 		env.NOMAD_TASK_NAME = "publish";
+
+		// Disable conditional startup for publish - it only serves pre-built dist, no setup needed
+		env.CUSTOMER_APP_DIR = "";
+		env.DEV_SUPERVISOR_SETUP_SCRIPT = "";
 
 		// Publish supervisor configuration
 		if (config.publishSupervisorPort) {
@@ -311,6 +327,7 @@ export class DockerComposeGenerator {
     image: ${config.imageName}
     restart: unless-stopped
     container_name: preview-${config.appId}-1
+    mem_limit: 2g
     ports:
 ${portLines}
 ${extraHostsLines}    environment:
@@ -378,6 +395,7 @@ ${volumeLines}
     image: aab-publish:latest
     restart: unless-stopped
     container_name: publish-${config.appId}-1
+    mem_limit: 2g
     command: ["exec", "/publish/run-app.sh"]
     ports:
 ${portLines}

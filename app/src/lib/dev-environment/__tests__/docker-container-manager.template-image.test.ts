@@ -60,7 +60,7 @@ describe('DockerContainerManager - Template Image Build Logic', () => {
       expect(buildCall?.[1]).toContain('aab-template-v8:latest');
     });
 
-    it('should include build contexts for dev-ca and dev-supervisor', async () => {
+    it('should include build contexts for dev-ca, dev-supervisor, and scripts', async () => {
       // Setup
       mockExeca.mockResolvedValueOnce({ stdout: '', stderr: '' } as any);
 
@@ -82,15 +82,15 @@ describe('DockerContainerManager - Template Image Build Logic', () => {
         }
       });
 
-      expect(buildContextIndices.length).toBe(2);
+      expect(buildContextIndices.length).toBe(3);
 
       // Get all build context values
       const buildContexts = buildContextIndices.map(index => args?.[index + 1]);
 
-      // Check for required build contexts
+      // Check for required build contexts (used by preview Dockerfile.dev)
       expect(buildContexts.some(ctx => ctx?.match(/dev-ca=.*\.dev-ca/))).toBe(true);
       expect(buildContexts.some(ctx => ctx?.match(/dev-supervisor=.*dev-supervisor/))).toBe(true);
-      // Note: publish build context removed - publish image built separately
+      expect(buildContexts.some(ctx => ctx?.match(/container-scripts=.*container-scripts/))).toBe(true);
     });
 
     it('should pass HOST_UID and HOST_GID build arguments', async () => {

@@ -191,7 +191,8 @@ func TestSingleflightErrorPropagation(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fetchCount.Add(1)
-		// Return error status
+		// Simulate realistic fetch delay so all goroutines coalesce on one singleflight call
+		time.Sleep(50 * time.Millisecond)
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()

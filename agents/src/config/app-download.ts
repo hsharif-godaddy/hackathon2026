@@ -104,7 +104,7 @@ export const ALLOWED_CONFIG_FILES = [
  * anything not explicitly listed above is automatically excluded.
  *
  * Examples of what gets excluded:
- * - All .sh files (deploy.sh, dev_setup_and_serve.sh, etc.)
+ * - All .sh files (if any exist in customer code)
  * - airo-secrets/ folder
  * - dev-tools/ folder (Airo visual editor)
  * - Dockerfile and Dockerfile.dev

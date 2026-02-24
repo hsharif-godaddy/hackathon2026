@@ -12,18 +12,21 @@ import (
 type fakeProcessController struct {
 	mu sync.RWMutex
 
-	status                 ProcessStatus
-	startRequest           *validation.ProcessStartRequest
-	startErr               error
-	startCalls             int
-	updateCalls            int
-	trackCalls             int
-	untrackCalls           int
-	lastActivity           time.Time
-	startOnRequestEnabled  bool
-	wasHealthyBeforeIdle   bool
-	registerWebSocketCalls int
-	stateChangeCh          chan struct{} // Lazily initialized in GetStateChangeChan()
+	status                    ProcessStatus
+	startRequest              *validation.ProcessStartRequest
+	startErr                  error
+	startCalls                int
+	updateCalls               int
+	trackCalls                int
+	untrackCalls              int
+	lastActivity              time.Time
+	startOnRequestEnabled     bool
+	wasHealthyBeforeIdle      bool
+	registerWebSocketCalls    int
+	stateChangeCh             chan struct{} // Lazily initialized in GetStateChangeChan()
+	hasDeferredSetup          bool
+	deferredSetupExecutedErr  error
+	deferredSetupExecutedOnce bool
 }
 
 func (f *fakeProcessController) GetStartRequest() *validation.ProcessStartRequest {
@@ -126,4 +129,20 @@ func (f *fakeProcessController) broadcastStateChange() {
 	}
 	close(f.stateChangeCh)
 	f.stateChangeCh = make(chan struct{})
+}
+
+func (f *fakeProcessController) HasDeferredSetup() bool {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.hasDeferredSetup && !f.deferredSetupExecutedOnce
+}
+
+func (f *fakeProcessController) ExecuteDeferredSetup() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.deferredSetupExecutedOnce {
+		return nil // Idempotent - already executed
+	}
+	f.deferredSetupExecutedOnce = true
+	return f.deferredSetupExecutedErr
 }

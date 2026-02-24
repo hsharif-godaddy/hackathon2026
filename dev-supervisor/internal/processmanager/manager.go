@@ -86,6 +86,13 @@ type ProcessManager struct {
 	// This prevents missing notifications: we can't miss a state change because the
 	// channel read in step 1 synchronizes with the channel close in step 4.
 	stateChangeCh chan struct{}
+
+	// Deferred setup fields (mode-based conditional startup)
+	deferredSetupScript   string                          // Path to setup script to run on first request
+	deferredSetupTimeout  time.Duration                   // Timeout for deferred setup script
+	deferredSetupRequest  *validation.ProcessStartRequest // Start request to use after deferred setup
+	deferredSetupExecuted atomic.Bool                     // True if deferred setup has been executed
+	deferredSetupMutex    sync.Mutex                      // Protects deferred setup execution (idempotency)
 }
 
 func NewProcessManager(logMgr logs.Logger, pid1Mgr *process.PID1Manager) *ProcessManager {
@@ -147,6 +154,10 @@ func (pm *ProcessManager) Start(req validation.ProcessStartRequest) error {
 	// Clear the "was healthy before idle" flag on start
 	// It will be re-evaluated on the next idle stop
 	pm.wasHealthyBeforeIdle.Store(false)
+
+	// Copy logging config to avoid data race with SetProcessLogging/SetStructuredLogging
+	enableLogging := pm.enableLogging
+	outputToStructuredLog := pm.outputToStructuredLog
 	pm.mu.Unlock() // UNLOCK pm.mu before blocking
 
 	// Blocking operations (no pm.mu, but lifecycleMu still held)
@@ -159,7 +170,7 @@ func (pm *ProcessManager) Start(req validation.ProcessStartRequest) error {
 	pm.attachStateChangeBroadcast(managedProcess)
 
 	// Start the managed process
-	if err := managedProcess.Start(pm.logMgr, pm.pid1Mgr, pm.enableLogging, pm.outputToStructuredLog); err != nil {
+	if err := managedProcess.Start(pm.logMgr, pm.pid1Mgr, enableLogging, outputToStructuredLog); err != nil {
 		return err
 	}
 
@@ -320,6 +331,10 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 
 	// Get ports using the safest approach: explicit config first, then runtime discovery
 	ports := pm.discoverProcessPorts(config)
+
+	// Copy logging config to avoid data race with SetProcessLogging/SetStructuredLogging
+	enableLogging := pm.enableLogging
+	outputToStructuredLog := pm.outputToStructuredLog
 	pm.mu.Unlock() // UNLOCK pm.mu before blocking
 
 	// Stop current process if running (blocking operation, no pm.mu held)
@@ -340,7 +355,7 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 	// Set state change callback to broadcast state changes
 	pm.attachStateChangeBroadcast(managedProcess)
 
-	if err := managedProcess.Start(pm.logMgr, pm.pid1Mgr, pm.enableLogging, pm.outputToStructuredLog); err != nil {
+	if err := managedProcess.Start(pm.logMgr, pm.pid1Mgr, enableLogging, outputToStructuredLog); err != nil {
 		slog.Error("failed to start new process", "error", err)
 		return err
 	}
@@ -509,25 +524,110 @@ func (pm *ProcessManager) GetStartRequest() *validation.ProcessStartRequest {
 	}
 }
 
-// SetStartRequest saves a start request for deferred startup
-func (pm *ProcessManager) SetStartRequest(req validation.ProcessStartRequest) {
+// SetDeferredSetup saves setup script and start request for deferred execution on first HTTP request.
+// This is used for restart scenarios where setup (file restoration + npm install) should be deferred
+// until the first request arrives to minimize resource usage.
+func (pm *ProcessManager) SetDeferredSetup(
+	setupScript string,
+	timeout time.Duration,
+	req validation.ProcessStartRequest,
+) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	// Deep copy to prevent external mutation
+	// Deep copy start request to prevent external mutation
 	envCopy := make(map[string]string, len(req.Env))
 	maps.Copy(envCopy, req.Env)
 
-	pm.savedStartRequest = &validation.ProcessStartRequest{
+	pm.deferredSetupScript = setupScript
+	pm.deferredSetupTimeout = timeout
+	pm.deferredSetupRequest = &validation.ProcessStartRequest{
 		Command:    req.Command,
 		Env:        envCopy,
 		WorkingDir: req.WorkingDir,
 		Ports:      append([]int{}, req.Ports...),
 	}
+	pm.deferredSetupExecuted.Store(false)
 
-	slog.Info("process.start_request.saved",
-		"command", req.Command,
-		"working_dir", req.WorkingDir)
+	slog.Info("process.deferred_setup.configured",
+		"setup_script", setupScript,
+		"timeout", timeout,
+		"command", req.Command)
+}
+
+// HasDeferredSetup returns true if deferred setup is configured and not yet executed.
+func (pm *ProcessManager) HasDeferredSetup() bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	return pm.deferredSetupScript != "" && !pm.deferredSetupExecuted.Load()
+}
+
+// ExecuteDeferredSetup executes the deferred setup script if configured and not yet executed.
+// This is called by the HTTP proxy on the first request to complete setup before starting the process.
+// Execution is idempotent - concurrent calls will block and only one will execute the setup.
+// If the mutex cannot be acquired within 5 minutes, the request fails to prevent indefinite blocking.
+func (pm *ProcessManager) ExecuteDeferredSetup() error {
+	// Check if deferred setup is configured (without holding lock)
+	pm.mu.RLock()
+	setupScript := pm.deferredSetupScript
+	timeout := pm.deferredSetupTimeout
+	pm.mu.RUnlock()
+
+	if setupScript == "" {
+		return errors.New("no deferred setup configured")
+	}
+
+	// Acquire mutex for idempotent execution with timeout to prevent indefinite blocking.
+	// Use TryLock with timeout instead of goroutine+channel to avoid goroutine leaks.
+	// If another goroutine is running setup and it hangs catastrophically (e.g., unkillable
+	// zombie process), we want subsequent requests to fail gracefully rather than block forever.
+	deadline := time.Now().Add(5 * time.Minute)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if pm.deferredSetupMutex.TryLock() {
+			defer pm.deferredSetupMutex.Unlock()
+			break // Got the lock
+		}
+
+		if time.Now().After(deadline) {
+			slog.Error("process.deferred_setup.mutex_timeout", "setup_script", setupScript, "timeout", "5m")
+			return errors.New("timed out waiting for deferred setup mutex (another request may be stuck)")
+		}
+
+		<-ticker.C // Wait before trying again
+	}
+
+	// Check if already executed (within mutex for proper synchronization)
+	if pm.deferredSetupExecuted.Load() {
+		slog.Debug("process.deferred_setup.already_executed", "setup_script", setupScript)
+		return nil
+	}
+
+	// Execute setup script
+	slog.Info("process.deferred_setup.executing", "setup_script", setupScript, "timeout", timeout)
+	if err := RunSetupScriptInternal(setupScript, timeout); err != nil {
+		slog.Error("process.deferred_setup.failed", "setup_script", setupScript, "error", err)
+		return fmt.Errorf("deferred setup failed: %w", err)
+	}
+
+	// Mark as executed
+	pm.deferredSetupExecuted.Store(true)
+	slog.Info("process.deferred_setup.completed", "setup_script", setupScript)
+
+	// Save start request for process start (move from deferred to saved)
+	pm.mu.Lock()
+	if pm.deferredSetupRequest != nil {
+		pm.savedStartRequest = pm.deferredSetupRequest
+		slog.Info("process.start_request.saved",
+			"command", pm.savedStartRequest.Command,
+			"working_dir", pm.savedStartRequest.WorkingDir)
+	}
+	pm.mu.Unlock()
+
+	return nil
 }
 
 // SetProcessLogging enables or disables child process stdout/stderr logging

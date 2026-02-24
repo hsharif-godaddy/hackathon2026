@@ -80,3 +80,11 @@ func (p *processController) UnregisterWebSocket(conn net.Conn) {
 func (p *processController) GetStateChangeChan() <-chan struct{} {
 	return p.pm.GetStateChangeChan()
 }
+
+func (p *processController) HasDeferredSetup() bool {
+	return p.pm.HasDeferredSetup()
+}
+
+func (p *processController) ExecuteDeferredSetup() error {
+	return p.pm.ExecuteDeferredSetup()
+}

@@ -76,6 +76,7 @@ jobs:
           docker build --platform linux/amd64 \
             --build-context dev-ca=.dev-ca \
             --build-context dev-supervisor=dev-supervisor \
+            --build-context container-scripts=container-scripts \
             -t airo-v8-template:latest \
             -f app-templates/v8/Dockerfile.dev \
             app-templates/v8/
@@ -88,6 +89,7 @@ jobs:
           echo "Building Docker image for publish container (no source code)..."
           docker build --platform linux/amd64 \
             --build-context dev-supervisor=dev-supervisor \
+            --build-context container-scripts=container-scripts \
             -t aab-publish:latest \
             -f app-publish/Dockerfile.dev \
             app-publish/
