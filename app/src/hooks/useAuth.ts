@@ -44,7 +44,6 @@ export function useAuth(options: UseAuthOptions = {}) {
   // This prevents clearing needsReauth based on stale cached authState.valid
   const sawValidationAfterReauthSeqRef = useRef<number | null>(null);
   const previousNeedsReauthRef = useRef(false);
-  const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Memoize auth configuration to prevent unnecessary re-renders
   const authType = useMemo(() => config?.auth?.authType || getAuthTypeSync(), [config?.auth?.authType]);
@@ -102,18 +101,8 @@ export function useAuth(options: UseAuthOptions = {}) {
     };
   }, []);
 
-  // Cleanup validation timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (validationTimeoutRef.current) {
-        clearTimeout(validationTimeoutRef.current);
-        validationTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
   // Clear needsReauth when auth transitions to valid after a fresh validation cycle (JWT mode only)
-  // FIXED: Only clears after seeing a validation cycle, not on cached authState.valid
+  // Only clears after seeing a validation cycle (loading state), not on cached authState.valid
   useEffect(() => {
     if (!shouldUseJWT || isMockAuth || isAuthDisabled) {
       previousAuthValidRef.current = authState.valid;
@@ -129,21 +118,6 @@ export function useAuth(options: UseAuthOptions = {}) {
         message: 'needsReauth became true, waiting for validation cycle',
         needsReauthSeq
       });
-
-      // Set timeout to clear needsReauth if validation cycle doesn't occur within 10 seconds
-      // This prevents indefinite waiting if Gasket Auth doesn't trigger a validation
-      if (validationTimeoutRef.current) {
-        clearTimeout(validationTimeoutRef.current);
-      }
-      validationTimeoutRef.current = setTimeout(() => {
-        if (needsReauth && sawValidationAfterReauthSeqRef.current === null) {
-          logger.warn('auth.validation_timeout', {
-            message: 'Validation cycle not detected within timeout, clearing needsReauth',
-            needsReauthSeq
-          });
-          useAuthUIStore.getState().clearNeedsReauth(needsReauthSeq);
-        }
-      }, 10000);
     }
 
     // Track when Gasket Auth runs a validation cycle (status becomes loading)
@@ -155,12 +129,6 @@ export function useAuth(options: UseAuthOptions = {}) {
         authStateStatus: authState.status,
         needsReauthSeq
       });
-
-      // Clear timeout since we detected the validation cycle
-      if (validationTimeoutRef.current) {
-        clearTimeout(validationTimeoutRef.current);
-        validationTimeoutRef.current = null;
-      }
     }
 
     // Only clear needsReauth after we've seen a validation cycle complete FOR THIS 401
@@ -178,12 +146,6 @@ export function useAuth(options: UseAuthOptions = {}) {
       useAuthUIStore.getState().clearNeedsReauth(needsReauthSeq);
       // Reset tracking state for the next 401 occurrence
       sawValidationAfterReauthSeqRef.current = null;
-
-      // Clear timeout if it's still pending
-      if (validationTimeoutRef.current) {
-        clearTimeout(validationTimeoutRef.current);
-        validationTimeoutRef.current = null;
-      }
     }
 
     previousAuthValidRef.current = authState.valid;
@@ -233,12 +195,6 @@ export function useAuth(options: UseAuthOptions = {}) {
     // Clear needsReauth flag on logout
     if (needsReauth) {
       useAuthUIStore.getState().clearNeedsReauth(needsReauthSeq);
-    }
-
-    // Clear validation timeout if pending
-    if (validationTimeoutRef.current) {
-      clearTimeout(validationTimeoutRef.current);
-      validationTimeoutRef.current = null;
     }
 
     if (configError) {
