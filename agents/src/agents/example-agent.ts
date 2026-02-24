@@ -64,7 +64,7 @@ export async function createExampleAgent(): Promise<AgentConfig> {
     tools: {
       // Example tools - in a real agent, you'd select specific tools
       // For now, we'll just include a few basic ones
-      fileEdit: allAILibTools.fileEdit,
+      textEditor: allAILibTools.textEditor,  // Command-based text editor
       readFile: allAILibTools.readFile,
       directoryListing: allAILibTools.directoryListing,
     },

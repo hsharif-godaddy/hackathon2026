@@ -311,15 +311,15 @@ export class FileEditTool {
     for (const [index, operation] of options.operations.entries()) {
       try {
         // Resolve file path
-        const filePath = this.resolveFilePath(appPath, operation.path);
+        const filePath = resolveFilePath(appPath, operation.path);
 
         // Auto-detect mode if not specified (never auto-detects 'delete')
         const mode = operation.mode || await this.detectMode(filePath, operation);
 
         // Check immutability (skip for create mode)
         if (mode !== 'create') {
-          const isImmutable = await this.isFileImmutable(filePath);
-          if (isImmutable) {
+          const immutable = await isFileImmutable(filePath);
+          if (immutable) {
             const errorResult: FileEditResult = {
               success: false,
               path: operation.path,
@@ -686,95 +686,21 @@ export class FileEditTool {
    * Only reads the first 500 bytes for efficiency
    */
   private async isFileImmutable(filePath: string): Promise<boolean> {
-    try {
-      if (!existsSync(filePath)) {
-        return false; // Non-existent files are not immutable
-      }
-
-      // Only read first 500 bytes to check for marker (efficient for large files)
-      const buffer = Buffer.alloc(500);
-      const fs = await import('fs');
-      const fd = await fs.promises.open(filePath, 'r');
-      try {
-        const { bytesRead } = await fd.read(buffer, 0, 500, 0);
-        const firstBytes = buffer.toString('utf-8', 0, bytesRead);
-        const firstLine = firstBytes.split('\n')[0] || '';
-
-        return firstLine.includes('TREAT AS IMMUTABLE');
-      } finally {
-        await fd.close();
-      }
-    } catch (error) {
-      // If we can't read the file, assume it's not immutable
-      return false;
-    }
+    return isFileImmutable(filePath);
   }
 
   /**
    * Resolve file path safely within the app directory
    */
   private resolveFilePath(appPath: string, relativePath: string): string {
-    const normalizedPath = translateDockerPath(relativePath);
-    const resolved = resolve(appPath, normalizedPath);
-
-    // Ensure the file is within the app directory (before resolving symlinks)
-    // Use relative() to check for escape attempts with '..' - if the relative path
-    // starts with '..' then it's trying to escape the app directory
-    const rel = relative(appPath, resolved);
-    if (rel.startsWith('..') || resolve(appPath) === resolved.slice(0, -1)) {
-      throw new Error(`File path must be within the app directory. Resolved: ${resolved}, App path: ${appPath}`);
-    }
-
-    // Check all components of the path for symlinks that might escape
-    this.validateNoEscapingSymlinks(resolved, appPath);
-
-    return resolved;
+    return resolveFilePath(appPath, relativePath);
   }
 
   /**
    * Validate that no symlinks in the path chain point outside the app directory
    */
   private validateNoEscapingSymlinks(targetPath: string, appPath: string): void {
-    // Build up the path component by component, checking each for symlinks
-    const pathParts = relative(appPath, targetPath).split('/').filter(Boolean);
-    let currentPath = appPath;
-
-    for (const part of pathParts) {
-      currentPath = resolve(currentPath, part);
-
-      // Check if this component exists and is a symlink
-      if (existsSync(currentPath)) {
-        try {
-          const stats = lstatSync(currentPath);
-
-          if (stats.isSymbolicLink()) {
-            // Resolve the symlink to its real path
-            const realPath = realpathSync(currentPath);
-
-            // Ensure the real path is within the app directory
-            // Use relative() to properly check for escape attempts
-            const rel = relative(appPath, realPath);
-            if (rel.startsWith('..')) {
-              throw new Error(
-                `Security violation: symlink points outside the app directory. ` +
-                `Link: ${currentPath}, Target: ${realPath}, App path: ${appPath}`
-              );
-            }
-
-            // NOTE: We do NOT update currentPath here. We continue traversing the original
-            // path structure to ensure we check all components, even those that come after
-            // a symlink. If we updated currentPath to realPath, we would skip checking
-            // subsequent symlinks in the original path chain.
-          }
-        } catch (error) {
-          // Re-throw security violation errors
-          if (error instanceof Error && error.message.includes('Security violation')) {
-            throw error;
-          }
-          // For other errors (like permission denied), continue - they'll be caught later
-        }
-      }
-    }
+    return validateNoEscapingSymlinks(targetPath, appPath);
   }
 
   /**
@@ -955,31 +881,7 @@ export class FileEditTool {
    * CRITICAL: Prevents upload URLs from appearing in generated source code
    */
   private validateNoApiPaths(content: string, filePath: string): { valid: boolean; error?: string } {
-    // Check if this is a source code file (not config/data files)
-    if (!isSourceFile(filePath)) {
-      return { valid: true }; // Don't validate non-source files
-    }
-
-    // Check for forbidden upload paths (both old proxy format and new agent format)
-    if (content.includes('/api/files/') || content.includes('/files/uploads/')) {
-      return {
-        valid: false,
-        error: `FORBIDDEN: Cannot write upload URLs to source code. These are temporary URLs that will break in production.
-
-The content you're trying to write contains upload URLs.
-
-REQUIRED WORKFLOW for uploaded files:
-1. FIRST: Copy file to project using file_edit with mode: "create"
-   Example: file_edit({ path: "public/assets/image.png", mode: "create", content: "" })
-
-2. THEN: Reference with project-relative path
-   Example: <img src="/assets/image.png" />
-
-DO NOT use upload URLs in source code - they are temporary and will not work in production.`
-      };
-    }
-
-    return { valid: true };
+    return validateNoApiPaths(content, filePath);
   }
 
   /**
@@ -1047,7 +949,7 @@ DO NOT use upload URLs in source code - they are temporary and will not work in 
     }
 
     // CRITICAL: Validate content doesn't contain forbidden API paths
-    const validation = this.validateNoApiPaths(options.content, options.path);
+    const validation = validateNoApiPaths(options.content, options.path);
     if (!validation.valid) {
       return {
         success: false,
@@ -1147,7 +1049,7 @@ DO NOT use upload URLs in source code - they are temporary and will not work in 
     }
 
     // CRITICAL: Validate content doesn't contain forbidden API paths
-    const validation = this.validateNoApiPaths(options.content, options.path);
+    const validation = validateNoApiPaths(options.content, options.path);
     if (!validation.valid) {
       return {
         success: false,
@@ -1308,7 +1210,7 @@ DO NOT use upload URLs in source code - they are temporary and will not work in 
     }
 
     // CRITICAL: Validate resulting content doesn't contain forbidden API paths
-    const validation = this.validateNoApiPaths(content, options.path);
+    const validation = validateNoApiPaths(content, options.path);
     if (!validation.valid) {
       return {
         success: false,
@@ -1648,5 +1550,268 @@ DO NOT use upload URLs in source code - they are temporary and will not work in 
       error: singleResult.error,
       warning: singleResult.warning
     }, null, 2);
+  }
+}
+
+/**
+ * Exported Security Utilities (for reuse in text editor tool)
+ */
+
+/**
+ * Check if a file is marked as immutable
+ * Files with "TREAT AS IMMUTABLE" in the first line cannot be edited
+ * Only reads the first 500 bytes for efficiency
+ */
+export async function isFileImmutable(filePath: string): Promise<boolean> {
+  try {
+    if (!existsSync(filePath)) {
+      return false; // Non-existent files are not immutable
+    }
+
+    // Only read first 500 bytes to check for marker (efficient for large files)
+    const buffer = Buffer.alloc(500);
+    const fs = await import('fs');
+    const fd = await fs.promises.open(filePath, 'r');
+    try {
+      const { bytesRead } = await fd.read(buffer, 0, 500, 0);
+      const firstBytes = buffer.toString('utf-8', 0, bytesRead);
+      const firstLine = firstBytes.split('\n')[0] || '';
+
+      return firstLine.includes('TREAT AS IMMUTABLE');
+    } finally {
+      await fd.close();
+    }
+  } catch (error) {
+    // If we can't read the file, assume it's not immutable
+    return false;
+  }
+}
+
+/**
+ * Validate content doesn't contain forbidden upload URLs
+ * CRITICAL: Prevents upload URLs from appearing in generated source code
+ */
+export function validateNoApiPaths(content: string, filePath: string): { valid: boolean; error?: string } {
+  // Check if this is a source code file (not config/data files)
+  if (!isSourceFile(filePath)) {
+    return { valid: true }; // Don't validate non-source files
+  }
+
+  // Check for forbidden upload paths (both old proxy format and new agent format)
+  if (content.includes('/api/files/') || content.includes('/files/uploads/')) {
+    return {
+      valid: false,
+      error: `FORBIDDEN: Cannot write upload URLs to source code. These are temporary URLs that will break in production.
+
+The content you're trying to write contains upload URLs.
+
+REQUIRED WORKFLOW for uploaded files:
+1. FIRST: Copy file to project (e.g., create new file at "public/assets/image.png")
+
+2. THEN: Reference with project-relative path
+   Example: <img src="/assets/image.png" />
+
+DO NOT use upload URLs in source code - they are temporary and will not work in production.`
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Validate that no symlinks in the path chain point outside the app directory
+ */
+export function validateNoEscapingSymlinks(targetPath: string, appPath: string): void {
+  // Build up the path component by component, checking each for symlinks
+  const pathParts = relative(appPath, targetPath).split('/').filter(Boolean);
+  let currentPath = appPath;
+
+  for (const part of pathParts) {
+    currentPath = resolve(currentPath, part);
+
+    // Check if this component exists and is a symlink
+    if (existsSync(currentPath)) {
+      try {
+        const stats = lstatSync(currentPath);
+
+        if (stats.isSymbolicLink()) {
+          // Resolve the symlink to its real path
+          const realPath = realpathSync(currentPath);
+
+          // Ensure the real path is within the app directory
+          // Use relative() to properly check for escape attempts
+          const rel = relative(appPath, realPath);
+          if (rel.startsWith('..')) {
+            throw new Error(
+              `Security violation: symlink points outside the app directory. ` +
+              `Link: ${currentPath}, Target: ${realPath}, App path: ${appPath}`
+            );
+          }
+
+          // NOTE: We do NOT update currentPath here. We continue traversing the original
+          // path structure to ensure we check all components, even those that come after
+          // a symlink. If we updated currentPath to realPath, we would skip checking
+          // subsequent symlinks in the original path chain.
+        }
+      } catch (error) {
+        // Re-throw security violation errors
+        if (error instanceof Error && error.message.includes('Security violation')) {
+          throw error;
+        }
+        // For other errors (like permission denied), continue - they'll be caught later
+      }
+    }
+  }
+}
+
+/**
+ * Resolve file path safely within the app directory
+ */
+export function resolveFilePath(appPath: string, relativePath: string): string {
+  const normalizedPath = translateDockerPath(relativePath);
+  const resolved = resolve(appPath, normalizedPath);
+
+  // Ensure the file is within the app directory (before resolving symlinks)
+  // Use relative() to check for escape attempts with '..' - if the relative path
+  // starts with '..' then it's trying to escape the app directory
+  const rel = relative(appPath, resolved);
+  if (rel.startsWith('..') || resolve(appPath) === resolved.slice(0, -1)) {
+    throw new Error(`File path must be within the app directory. Resolved: ${resolved}, App path: ${appPath}`);
+  }
+
+  // Check all components of the path for symlinks that might escape
+  validateNoEscapingSymlinks(resolved, appPath);
+
+  return resolved;
+}
+
+/**
+ * Attempt to resolve a file from the uploads directory.
+ * Returns the resolved content if successful, null otherwise.
+ */
+export async function resolveSourceFile(
+  appId: string,
+  targetPath: string,
+  content: string
+): Promise<{ content: string } | null> {
+  try {
+    const filename = basename(targetPath);
+
+    // Check if content is empty (signal for auto-resolution)
+    if (content !== '') {
+      return null; // Content provided, no need to resolve
+    }
+
+    // List all uploaded files for this app
+    const uploadedFiles = await fileUploadService.listUploadedFiles(appId);
+
+    if (uploadedFiles.length === 0) {
+      logger.debug('file-edit.auto-resolve.no-uploads', {
+        appId,
+        filename
+      });
+      return null; // No uploads available
+    }
+
+    // Extract file extension from target filename
+    const targetExt = filename.includes('.') ? filename.substring(filename.lastIndexOf('.')).toLowerCase() : '';
+
+    // Strategy 1: Try exact match by originalName or filename
+    let matchingFile = uploadedFiles.find(
+      f => f.originalName === filename || f.filename === filename
+    );
+
+    // Strategy 2: If no exact match, try matching by file extension
+    if (!matchingFile && targetExt) {
+      const filesWithSameExt = uploadedFiles.filter(f => {
+        const uploadExt = f.originalName.includes('.')
+          ? f.originalName.substring(f.originalName.lastIndexOf('.')).toLowerCase()
+          : '';
+        return uploadExt === targetExt;
+      });
+
+      if (filesWithSameExt.length === 1) {
+        // Only one file with this extension - use it
+        const matched = filesWithSameExt[0]!;
+        matchingFile = matched;
+        logger.info('file-edit.auto-resolve.extension-match', {
+          appId,
+          requestedFilename: filename,
+          matchedOriginalName: matched.originalName,
+          matchingStrategy: 'single-extension-match'
+        });
+      } else if (filesWithSameExt.length > 1) {
+        // Multiple files with same extension - use most recent
+        const matched = filesWithSameExt.sort((a, b) =>
+          new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+        )[0]!;
+        matchingFile = matched;
+        logger.info('file-edit.auto-resolve.extension-match', {
+          appId,
+          requestedFilename: filename,
+          matchedOriginalName: matched.originalName,
+          candidateCount: filesWithSameExt.length,
+          matchingStrategy: 'most-recent-by-extension'
+        });
+      }
+    }
+
+    if (!matchingFile) {
+      logger.debug('file-edit.auto-resolve.no-match', {
+        appId,
+        filename,
+        uploadedFileCount: uploadedFiles.length,
+        availableFiles: uploadedFiles.map(f => f.originalName)
+      });
+      return null; // No matching upload found
+    }
+
+    // Get the full path to the uploaded file
+    let sourcePath: string | null = null;
+
+    // Re-scan to find the upload directory containing this file
+    const appUploadsDir = fileUploadService['pathBuilder'].join(appId);
+
+    if (existsSync(appUploadsDir)) {
+      const { readdirSync } = await import('fs');
+      const uploadDirs = readdirSync(appUploadsDir);
+
+      for (const uploadId of uploadDirs) {
+        const candidatePath = fileUploadService.getFilePath(appId, uploadId, matchingFile.filename);
+        if (existsSync(candidatePath)) {
+          sourcePath = candidatePath;
+          break;
+        }
+      }
+    }
+
+    if (!sourcePath || !existsSync(sourcePath)) {
+      logger.warn('file-edit.auto-resolve.source-missing', {
+        appId,
+        filename,
+        matchingFile: matchingFile.filename
+      });
+      return null;
+    }
+
+    // Read and return content
+    const sourceContent = await readFile(sourcePath, 'utf-8');
+
+    logger.info('file-edit.auto-resolved', {
+      appId,
+      filename,
+      originalName: matchingFile.originalName,
+      from: sourcePath,
+      size: matchingFile.size
+    });
+
+    return { content: sourceContent };
+  } catch (error) {
+    logger.error('file-edit.auto-resolve.error', {
+      appId,
+      targetPath,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return null;
   }
 }

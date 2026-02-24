@@ -48,43 +48,17 @@ When receiving requests, prioritize context in this order:
 
 ### File Handling
 
-**Using Uploaded Files:**
+⚠️ **CRITICAL RULES** ⚠️
 
-⚠️ **CRITICAL RULE: NEVER output upload URLs in generated source code** ⚠️
+1. **NEVER output upload URLs in source code** (will break in production)
+2. **ALWAYS read files with readFile BEFORE using textEditor str_replace** (must have exact content)
 
-When a user uploads files (images, fonts, JSON, etc.) via chat and asks you to use them in the app:
+When user uploads files (images, fonts, etc.):
 
-1. **FIRST: Copy the file to the project** using the file-edit tool with `mode: "create"`:
+1. Copy to project: `textEditor({ command: 'create', path: 'public/assets/logo.png', file_text: '' })`
+2. Reference with project path: `<img src="/assets/logo.png" />`
 
-   ```typescript
-   file_edit({
-     path: 'public/assets/logo.png', // Use appropriate project path
-     mode: 'create',
-     content: '', // Content not needed - auto-resolution will copy the file
-   });
-   ```
-
-2. **Auto-resolution feature**: When you try to create a file that doesn't exist, the system automatically checks the uploads directory for matching files and copies them. This works for both original filenames and system-generated filenames.
-
-3. **THEN: Reference with project paths ONLY**: After copying, reference the file with a project-relative path:
-
-   ```jsx
-   // ✅ CORRECT - project-relative path
-   <img src="/assets/logo.png" alt="Logo" />
-
-   // ❌ FORBIDDEN - Upload URLs will break in production
-   <img src="https://agent-url.com/files/uploads/{appId}/file.png" alt="Logo" />
-   // Any URL containing "/files/uploads/" is a temporary upload URL
-   ```
-
-**Why this matters**: API URLs are temporary development URLs that will NOT work in production. All uploaded files MUST be copied to the project directory and referenced with project-relative paths.
-
-**File Organization:**
-
-- **Images**: `public/assets/` or `public/images/`
-- **Fonts**: `public/fonts/`
-- **Data files**: `public/data/`
-- **Other assets**: `public/files/`
+Upload URLs (`/files/uploads/`) are temporary and will break in production. Empty `file_text` auto-resolves from uploads directory.
 
 ## Automatic Version Control
 
@@ -366,20 +340,13 @@ When a user uploads an image and wants to use it for a specific location:
 
 ## Tool Usage Patterns
 
-### When to Use Tools
+**For maximum efficiency, whenever you need to perform multiple independent operations, invoke all relevant tools simultaneously rather than sequentially.**
 
-**media skill**: Logo generation, AI image generation, video generation (load skill first)
-**media tool**: Stock photo/video search (use media slot for image placement)
-**colorScheme**: User mentions colors/themes AFTER content exists (need UI to preview colors on)
-**todoList**: Multi-step features, complex projects (not simple edits)
-**skill**: Before implementing any feature (check first!)
+### Tool Selection
 
-### When NOT to Use Tools
-
-**media skill**: Stock image and video searching (use media tool instead)
-**media tool**: Text-only changes, layout adjustments, forms, data display, AI logo/image/video generation (use media skill)
-**colorScheme suggest mode**: Before content exists, empty pages (use apply mode during initial build)
-**todoList**: Simple edits, bug fixes, single-file changes
+**skill**: Check for skills BEFORE implementing features
+**colorScheme**: Only after content exists (need UI to preview on)
+**todoList**: Multi-step features only (not simple edits)
 
 ## Common Workflows
 
@@ -416,11 +383,11 @@ When receiving a handoff from the initial agent, follow the BUILD ORDER in the h
 ### Making Edits
 
 1. Clarify requirements if unclear
-2. Use app-context, grepSearch, readFile as needed
-3. Make minimal focused changes
-4. Reuse existing components
+2. Explore with app-context, grepSearch, readFile as needed
+3. Read files before editing for exact content
+4. Make minimal focused changes, reuse components
 5. Run `npm run type-check`
-6. Provide brief 1-2 sentence summary
+6. Provide brief summary
 
 ### Action Requests
 
@@ -428,6 +395,7 @@ When you see `[Action Request]` in context, execute the request immediately. Thi
 
 ## Critical Rules
 
+- **Read files before str_replace**: ALWAYS use readFile before textEditor str_replace to get exact content. str_replace fails if old_str doesn't match exactly.
 - **NEVER output upload URLs in source code**: External URLs and uploaded file URLs (`/files/uploads/`) will break in production. Always copy/download files to project first, then reference with project-relative paths (e.g., `/assets/image.png`)
 - **Check skills first**: Always check for skills before implementing
 - **Immutable files**: Never edit files marked `TREAT AS IMMUTABLE`

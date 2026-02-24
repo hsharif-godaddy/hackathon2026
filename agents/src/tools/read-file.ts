@@ -188,16 +188,16 @@ export class ReadFileTool {
 
     const fileName = result.path.split('/').pop() || result.path;
     const sizeInfo = result.fileSize ? this.formatFileSize(result.fileSize) : '';
-    
+
     if (result.linesRead) {
-      // Partial read
-      const lineRange = result.linesRead.start === result.linesRead.end 
+      // Partial read with line range
+      const lineRange = result.linesRead.start === result.linesRead.end
         ? `line ${result.linesRead.start}`
         : `lines ${result.linesRead.start}-${result.linesRead.end}`;
-      return `Read ${fileName} ${lineRange} (${result.totalLines} total lines${sizeInfo ? ', ' + sizeInfo : ''})`;
+      return `Read ${fileName} ${lineRange} (${result.totalLines} total lines${sizeInfo ? ', ' + sizeInfo : ''}) with line numbers`;
     } else {
-      // Full file read
-      return `Read ${fileName} (${result.totalLines} lines${sizeInfo ? ', ' + sizeInfo : ''})`;
+      // Full file read (always includes line numbers)
+      return `Read ${fileName} (${result.totalLines} lines${sizeInfo ? ', ' + sizeInfo : ''}) with line numbers`;
     }
   }
 
@@ -262,20 +262,9 @@ export class ReadFileTool {
       const stats = await import('fs/promises').then(fs => fs.stat(fullPath));
       const fileSize = stats.size;
 
-      // If no line range specified, return the entire file
-      if (!options.startLine && !options.numLines) {
-        return {
-          success: true,
-          path: options.path,
-          content: fileContent,
-          totalLines,
-          fileSize,
-        };
-      }
-
-      // Validate line range parameters
+      // Validate line range parameters (if provided)
       const startLine = Math.max(1, options.startLine || 1);
-      if (startLine > totalLines) {
+      if (options.startLine && startLine > totalLines) {
         return {
           success: false,
           path: options.path,
@@ -298,7 +287,7 @@ export class ReadFileTool {
       const endIndex = endLine;
       const selectedLines = lines.slice(startIndex, endIndex);
 
-      // Format content with line numbers
+      // ALWAYS format content with line numbers for better code editing workflow
       const formattedContent = selectedLines
         .map((line, index) => `${String(startLine + index).padStart(6)}|${line}`)
         .join('\n');
@@ -308,10 +297,13 @@ export class ReadFileTool {
         path: options.path,
         content: formattedContent,
         totalLines,
-        linesRead: {
-          start: startLine,
-          end: endLine,
-        },
+        // Only include linesRead if a range was explicitly requested
+        ...(options.startLine || options.numLines ? {
+          linesRead: {
+            start: startLine,
+            end: endLine,
+          }
+        } : {}),
         fileSize,
       };
     } catch (error) {

@@ -35,6 +35,7 @@ import SocialPostCreateToolRenderer from './SocialPostCreateToolRenderer'
 import SocialPublishToolRenderer from './SocialPublishToolRenderer'
 import SuggestedResponseToolRenderer from './SuggestedResponseToolRenderer'
 import TerminalCommandToolRenderer from './TerminalCommandToolRenderer'
+import TextEditorToolRenderer from './TextEditorToolRenderer'
 import TodoListToolRenderer from './TodoListToolRenderer'
 import VideoGeneratorToolRenderer from './VideoGeneratorToolRenderer'
 import WebsiteRebuildToolRenderer from './WebsiteRebuildToolRenderer'
@@ -66,6 +67,7 @@ export const toolRendererRegistry = {
   handoff: HandoffToolRenderer,
   readFile: ReadFileToolRenderer,
   fileEdit: FileEditToolRenderer,
+  textEditor: TextEditorToolRenderer,
   terminalCommand: TerminalCommandToolRenderer,
   media: MediaSlotToolRenderer,
   mediaSearch: MediaSearchToolRenderer,
@@ -144,6 +146,7 @@ export {
   SocialPublishToolRenderer,
   SuggestedResponseToolRenderer,
   TerminalCommandToolRenderer,
+  TextEditorToolRenderer,
   TodoListToolRenderer,
   VideoGeneratorToolRenderer,
   WebsiteRebuildToolRenderer,

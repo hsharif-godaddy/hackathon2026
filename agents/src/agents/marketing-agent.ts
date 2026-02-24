@@ -45,7 +45,7 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
   const baseTools = {
     seoAnalysis: allAILibTools.seoAnalysis,
     readFile: allAILibTools.readFile,
-    fileEdit: allAILibTools.fileEdit,
+    textEditor: allAILibTools.textEditor,  // Command-based text editor
     todoList: allAILibTools.todoList,
     directoryListing: allAILibTools.directoryListing,
     grepSearch: allAILibTools.grepSearch,

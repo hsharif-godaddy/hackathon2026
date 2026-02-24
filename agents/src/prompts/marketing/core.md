@@ -87,7 +87,7 @@ When you receive a handoff:
 **Important:**
 
 - You strategize, develop agent implements code
-- Use fileEdit ONLY for reports (.md files)
+- Use textEditor ONLY for reports (.md files)
 - NEVER edit code files (.tsx, .ts, .js, etc.)
 
 ## Key Principles
@@ -114,7 +114,7 @@ When you receive a handoff:
 Core tools:
 
 - **skill** - Load specialized marketing knowledge
-- **readFile** / **fileEdit** - Review and update content
+- **readFile** / **textEditor** - Review and update content (readFile returns content with line numbers)
 - **directoryListing** / **grepSearch** - Explore codebase
 - **todoList** - Create implementation tasks
 - **suggestedResponse** - Guide next steps

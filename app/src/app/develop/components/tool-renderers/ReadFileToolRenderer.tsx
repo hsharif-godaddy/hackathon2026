@@ -58,6 +58,8 @@ export default function ReadFileToolRenderer({
   let filename = ''
   let fileContent = ''
   let metadata: Record<string, any> = {}
+  let startLine: number | undefined
+  let numLines: number | undefined
 
   if (input && typeof input === 'object') {
     const inputObj = input as any
@@ -65,10 +67,12 @@ export default function ReadFileToolRenderer({
     filename = getFilename(filePath)
 
     if (inputObj.startLine) {
-      metadata[t('builder_tools_read_file_start_line')] = inputObj.startLine
+      startLine = inputObj.startLine
+      metadata[t('builder_tools_read_file_start_line')] = startLine
     }
     if (inputObj.numLines) {
-      metadata[t('builder_tools_read_file_number_lines')] = inputObj.numLines
+      numLines = inputObj.numLines
+      metadata[t('builder_tools_read_file_number_lines')] = numLines
     }
   }
 
@@ -138,7 +142,15 @@ export default function ReadFileToolRenderer({
     </ToolModal>
   )
 
-  const displayName = filename ? `${t('builder_tools_read_file_title')}: ${filename}` : t('builder_tools_read_file_title')
+  // Build display name with optional range indicator
+  let displayName = filename ? `${t('builder_tools_read_file_title')}: ${filename}` : t('builder_tools_read_file_title')
+
+  // Add range indicator if only a subset was read
+  if (filename && (startLine || numLines)) {
+    const start = startLine || 1
+    const end = numLines ? start + numLines - 1 : '...'
+    displayName += ` (lines ${start}-${end})`
+  }
 
   return (
     <div>

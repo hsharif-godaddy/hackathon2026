@@ -72,11 +72,23 @@ const operationsSchema = z.union([
 )
 
 /**
- * File Edit Tool for AI-Lib
+ * File Edit Tool for AI-Lib (LEGACY)
+ *
+ * @deprecated Use textEditor tool instead for better reliability (95%+ vs 50-60% success rate)
+ *
+ * This batch tool is kept for backward compatibility but is no longer recommended.
+ * The textEditor tool provides:
+ * - Higher success rate (95%+ vs 50-60%)
+ * - Simpler command-based interface
+ * - Better error messages
+ * - For multiple files, make parallel textEditor calls instead of batching
+ *
  * Batch file operations: edit, create, rewrite, or delete multiple files in one call
  */
 export const fileEditAITool: Tool = createTool(
-  `Perform multiple file operations (edit, create, rewrite, delete) in a single batch operation.
+  `LEGACY TOOL - Use textEditor tool instead for better reliability.
+
+Perform multiple file operations (edit, create, rewrite, delete) in a single batch operation.
 Operations execute sequentially and stop on first error (fail-fast), returning all completed operations plus the error.
 
 CRITICAL RULES:

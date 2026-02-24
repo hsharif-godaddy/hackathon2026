@@ -11,7 +11,8 @@ import type { MessageHandler, WebSocketMessage } from './types'
 
 // File operation tool names
 const FILE_OPERATION_TOOLS = new Set([
-  'fileEdit',
+  'textEditor',  // New command-based editor
+  'fileEdit',    // Legacy batch tool
   'write_file',
   'delete_file',
   'create_file'
@@ -24,14 +25,14 @@ const FILE_OPERATION_TOOLS = new Set([
 function extractFilePaths(toolName: string, input: any): string[] {
   if (!input) return []
 
-  // Handle batch operations (fileEdit with operations array)
+  // Handle batch operations (fileEdit legacy tool with operations array)
   if (toolName === 'fileEdit' && Array.isArray(input.operations)) {
     return input.operations
       .map((op: any) => op.path)
       .filter((path: any): path is string => typeof path === 'string')
   }
 
-  // Single file operation
+  // Single file operation (textEditor and other tools use 'path' field)
   const singlePath = input.path || input.file_path || null
   return singlePath ? [singlePath] : []
 }
@@ -40,7 +41,7 @@ function extractFilePaths(toolName: string, input: any): string[] {
  * Determine operation type from tool name
  */
 function getOperationType(toolName: string): FileOperationType | null {
-  if (toolName === 'fileEdit') return 'modify'
+  if (toolName === 'textEditor' || toolName === 'fileEdit') return 'modify'
   if (toolName === 'write_file' || toolName === 'create_file') return 'create'
   if (toolName === 'delete_file') return 'delete'
   return null

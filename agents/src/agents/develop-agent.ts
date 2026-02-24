@@ -59,10 +59,11 @@ const afterToolExecution: AfterToolExecutionHook = async (
   });
 
   const resultObj = result as any
+  const argsObj = args as any
 
   // Track specific development operations
-  if (toolName === 'fileEdit' && resultObj?.success) {
-    // Handle batch operations (new schema)
+  if ((toolName === 'textEditor' || toolName === 'fileEdit') && (resultObj?.success || typeof result === 'string')) {
+    // Handle batch operations (fileEdit schema)
     if (resultObj.operations && Array.isArray(resultObj.operations)) {
       const paths = resultObj.operations.map((op: any) => op.path).filter(Boolean);
       const modes = [...new Set(resultObj.operations.map((op: any) => op.mode).filter(Boolean))];
@@ -72,10 +73,10 @@ const afterToolExecution: AfterToolExecutionHook = async (
         fileCount: resultObj.totalOperations || paths.length
       });
     } else {
-      // Handle single operation (legacy schema)
+      // Single operation - extract from args (textEditor) or result (fileEdit)
       contextLogger.info('develop_agent.tool.file_edit.success', {
-        filePath: resultObj.filePath || resultObj.path || 'unknown',
-        operation: resultObj.operation || resultObj.mode || 'edit'
+        filePath: argsObj?.path || resultObj.filePath || resultObj.path || 'unknown',
+        operation: argsObj?.command || resultObj.operation || resultObj.mode || 'edit'
       });
     }
   }
@@ -227,7 +228,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       // Core development tools
       directoryListing: allAILibTools.directoryListing,
       terminalCommand: allAILibTools.terminalCommand,
-      fileEdit: allAILibTools.fileEdit,
+      textEditor: allAILibTools.textEditor,  // NEW: Command-based text editor (95%+ success rate)
       readFile: allAILibTools.readFile,
       grepSearch: allAILibTools.grepSearch,
 

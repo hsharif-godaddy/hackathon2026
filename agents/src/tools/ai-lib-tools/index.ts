@@ -7,6 +7,7 @@ import type { Tool } from '@airo/ai-lib';
 
 // Import all individual tools
 export { fileEditAITool } from './file-edit.js';
+export { textEditorAITool } from './text-editor.js';
 export { directoryListingAITool } from './directory-listing.js';
 export { terminalCommandAITool } from './terminal-command.js';
 export { readFileAITool } from './read-file.js';
@@ -63,6 +64,7 @@ export { mediaSlotAITool } from './media-slot.js';
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js';
+import { textEditorAITool } from './text-editor.js';
 import { directoryListingAITool } from './directory-listing.js';
 import { terminalCommandAITool } from './terminal-command.js';
 import { readFileAITool } from './read-file.js';
@@ -121,7 +123,8 @@ import { mediaSlotAITool } from './media-slot.js';
  * Use this for agents that need access to all tools
  */
 export const allAILibTools: Record<string, Tool> = {
-  fileEdit: fileEditAITool,
+  textEditor: textEditorAITool,  // NEW: Command-based text editor (replaces fileEdit)
+  fileEdit: fileEditAITool,       // LEGACY: Batch tool (deprecated, use textEditor)
   directoryListing: directoryListingAITool,
   terminalCommand: terminalCommandAITool,
   readFile: readFileAITool,
@@ -179,7 +182,7 @@ export const allAILibTools: Record<string, Tool> = {
 export const toolGroups: Record<string, Record<string, Tool>> = {
   // Core development tools
   core: {
-    fileEdit: fileEditAITool,
+    textEditor: textEditorAITool,
     directoryListing: directoryListingAITool,
     readFile: readFileAITool,
     grepSearch: grepSearchAITool,
