@@ -282,7 +282,6 @@ func (s *Server) startHTTPProxyIfEnabled() error {
 		JWTEnabled:        s.config.JWTEnabled,
 		JWKSUrl:           s.config.JWKSUrl,
 		JWKSSkipTLSVerify: s.config.JWKSSkipTLSVerify,
-		JWTBuilderBaseURL: s.config.JWTBuilderBaseURL,
 		SiteID:            s.config.SiteID,
 		JWTExcludedPaths:  s.config.JWTExcludedPaths,
 

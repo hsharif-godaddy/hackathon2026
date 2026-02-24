@@ -102,7 +102,6 @@ type Config struct {
 	JWTEnabled        bool     // Enable JWT authentication (default: false)
 	JWKSUrl           string   // JWKS endpoint URL
 	JWKSSkipTLSVerify bool     // Skip TLS certificate verification (local dev only)
-	JWTBuilderBaseURL string   // Builder app base URL for redirects
 	SiteID            string   // Site ID for smart redirects (from SITE_ID env var)
 	JWTExcludedPaths  []string // Paths to exclude from JWT validation
 

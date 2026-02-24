@@ -12,35 +12,14 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql" // MySQL driver registration
+
+	"github.com/airo-ai-builder/dev-supervisor/internal/allocconfig"
 )
 
 const (
-	allocConfigPath     = "/alloc/config.json"
 	healthCheckTimeout  = 5 * time.Second
 	healthCheckFileName = ".health-check-%d"
 )
-
-// AllocConfig represents the structure of /alloc/config.json.
-type AllocConfig struct {
-	Database *DatabaseConfig `json:"DATABASE"`
-}
-
-// DatabaseConfig represents the DATABASE section of the alloc config.
-type DatabaseConfig struct {
-	SystemManaged bool          `json:"SYSTEM_MANAGED"`
-	Value         DatabaseValue `json:"VALUE"`
-}
-
-// DatabaseValue contains MySQL connection credentials.
-type DatabaseValue struct {
-	Name     string `json:"NAME"`
-	Host     string `json:"HOST"`
-	IP       string `json:"IP"`
-	Port     int    `json:"PORT"`
-	Username string `json:"USERNAME"`
-	Password string `json:"PASSWORD"`
-	Variant  string `json:"VARIANT"`
-}
 
 // runCanaryChecks executes all canary health checks and returns results.
 func runCanaryChecks() map[string]*CheckResult {
@@ -117,7 +96,9 @@ func checkCephFilesystem() *CheckResult {
 func checkMySQL() *CheckResult {
 	start := time.Now()
 
-	config, err := loadAllocConfig()
+	// Load config using allocconfig package
+	loader := allocconfig.NewLoader("")
+	config, err := loader.Load()
 	if err != nil {
 		slog.Error("canary.mysql.config_failed", "error", err)
 		return &CheckResult{
@@ -127,7 +108,7 @@ func checkMySQL() *CheckResult {
 		}
 	}
 
-	if config.Database == nil {
+	if !config.HasDatabase() {
 		slog.Error("canary.mysql.not_configured")
 		return &CheckResult{
 			Status:  "unhealthy",
@@ -136,7 +117,9 @@ func checkMySQL() *CheckResult {
 		}
 	}
 
-	dbVal := config.Database.Value
+	// GetDatabaseConfig() cannot error here - HasDatabase() guarantees Database is non-nil
+	dbVal, _ := config.GetDatabaseConfig()
+
 	if dbVal.IP == "" || dbVal.Username == "" {
 		slog.Error("canary.mysql.incomplete_credentials")
 		return &CheckResult{
@@ -190,21 +173,6 @@ func checkMySQL() *CheckResult {
 		Status:  "healthy",
 		Latency: time.Since(start).Round(time.Millisecond).String(),
 	}
-}
-
-// loadAllocConfig reads and parses /alloc/config.json.
-func loadAllocConfig() (*AllocConfig, error) {
-	data, err := os.ReadFile(allocConfigPath)
-	if err != nil {
-		return nil, fmt.Errorf("read config: %w", err)
-	}
-
-	var config AllocConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("parse config: %w", err)
-	}
-
-	return &config, nil
 }
 
 // isCanaryDeployment returns true if this is a canary deployment.

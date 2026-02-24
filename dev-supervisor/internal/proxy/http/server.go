@@ -239,9 +239,7 @@ func (p *HTTPProxy) Start() error {
 		if p.config.SiteID == "" {
 			return errors.New("JWT authentication enabled but SITE_ID not configured")
 		}
-		if p.config.JWTBuilderBaseURL == "" {
-			return errors.New("JWT authentication enabled but DEV_SUPERVISOR_JWT_BUILDER_BASE_URL not configured")
-		}
+		// Note: JWT_REDIRECT_URL is read from /alloc/config.json at runtime, not validated at startup
 
 		// Create JWT validator
 		validator := auth.NewJWTValidator(auth.JWTValidatorConfig{
@@ -262,7 +260,6 @@ func (p *HTTPProxy) Start() error {
 			Enabled:        true,
 			Validator:      validator,
 			ShareValidator: shareValidator,
-			BuilderBaseURL: p.config.JWTBuilderBaseURL,
 			SiteID:         p.config.SiteID,
 			ExcludedPaths:  p.config.JWTExcludedPaths,
 			APIPrefix:      routingConfig.APIPrefix,
