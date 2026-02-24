@@ -41,12 +41,15 @@ export interface Conversation {
   messageCount: number
 }
 
+export type ToolStatus = 'running' | 'completed' | 'error' | 'incomplete'
+
 export interface ToolCall {
   id: string
   name: string
   input: Record<string, unknown>
   result?: Record<string, unknown> | string
-  status: 'running' | 'completed' | 'error'
+  /** running = in progress; completed = got result; error = tool failed; incomplete = no result (e.g. stream truncated or timeout) */
+  status: ToolStatus
   error?: string
   startTime?: number
   endTime?: number
@@ -572,8 +575,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   },
 
   addToolResultSegment: (toolCall: ToolCall) => {
-    const { activeStream } = get()
-    if (!activeStream) return
+    const { activeStream, messages } = get()
 
     logger.debug('streaming-store.tool.result', {
       toolId: toolCall.id,
@@ -582,7 +584,60 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       duration: toolCall.duration
     })
 
-    const segment: StreamSegment = {
+    // Apply to active stream only if it has this tool (otherwise treat as late result from a previous stream)
+    if (activeStream?.toolCalls?.some(tc => tc.id === toolCall.id)) {
+      const segment: StreamSegment = {
+        id: generateId(),
+        type: 'tool_result',
+        content: typeof toolCall.result === 'string' ? toolCall.result : JSON.stringify(toolCall.result),
+        timestamp: new Date(),
+        toolCall
+      }
+
+      set({
+        activeStream: {
+          ...activeStream,
+          segments: [...activeStream.segments, segment],
+          toolCalls: activeStream.toolCalls.map(tc =>
+            tc.id === toolCall.id ? toolCall : tc
+          )
+        }
+      })
+      return
+    }
+
+    // Race condition: tool_result arrived after finalizeStream, or belongs to a previous stream.
+    // Apply the result to the most recent assistant message that has a matching tool
+    // (search back in case last message is not assistant).
+    let targetIndex = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]
+      if (msg.role === 'assistant' && msg.toolCalls?.some(tc => tc.id === toolCall.id)) {
+        targetIndex = i
+        break
+      }
+    }
+    if (targetIndex < 0) {
+      const assistantSummary = messages
+        .map((m, i) => m.role === 'assistant' ? { index: i, messageId: m.id, toolIds: m.toolCalls?.map(tc => tc.id) ?? [] } : null)
+        .filter(Boolean)
+      logger.warn('streaming-store.tool.result.dropped', {
+        toolId: toolCall.id,
+        toolName: toolCall.name,
+        reason: 'no_matching_tool_in_messages',
+        assistantMessagesChecked: assistantSummary
+      })
+      return
+    }
+
+    const lastMessage = messages[targetIndex]
+    logger.info('streaming-store.tool.result.late_apply', {
+      toolId: toolCall.id,
+      toolName: toolCall.name,
+      messageId: lastMessage.id
+    })
+
+    const resultSegment: StreamSegment = {
       id: generateId(),
       type: 'tool_result',
       content: typeof toolCall.result === 'string' ? toolCall.result : JSON.stringify(toolCall.result),
@@ -590,15 +645,17 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       toolCall
     }
 
-    const updatedStream = {
-      ...activeStream,
-      segments: [...activeStream.segments, segment],
-      toolCalls: activeStream.toolCalls.map(tc =>
+    const updatedMessage: ChatMessage = {
+      ...lastMessage,
+      segments: [...(lastMessage.segments || []), resultSegment],
+      toolCalls: lastMessage.toolCalls?.map(tc =>
         tc.id === toolCall.id ? toolCall : tc
       )
     }
 
-    set({ activeStream: updatedStream })
+    set({
+      messages: [...messages.slice(0, targetIndex), updatedMessage, ...messages.slice(targetIndex + 1)]
+    })
   },
 
   markMaxStepsReached: () => {
@@ -746,6 +803,38 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     const { activeStream } = get()
     if (!activeStream) return
 
+    // Mark any tools still in 'running' state as 'incomplete'
+    // This happens when the LLM hits maxOutputTokens mid-tool-call,
+    // so tool-input-start fires but tool-call/tool-result never arrive
+    const runningToolIds: string[] = []
+    const finalizedToolCalls = activeStream.toolCalls.map(tc => {
+      if (tc.status === 'running') {
+        runningToolIds.push(tc.id)
+        return { ...tc, status: 'incomplete' as const }
+      }
+      return tc
+    })
+
+    const finalizedSegments = activeStream.segments.map(segment => {
+      const isToolSegment = (segment.type === 'tool_start' || segment.type === 'tool_call') &&
+        segment.toolCall?.status === 'running'
+      if (isToolSegment) {
+        return {
+          ...segment,
+          toolCall: { ...segment.toolCall, status: 'incomplete' as const }
+        }
+      }
+      return segment
+    })
+
+    if (runningToolIds.length > 0) {
+      logger.warn('streaming-store.stream.finalize.incomplete_tools', {
+        messageId: activeStream.id,
+        incompleteToolIds: runningToolIds,
+        incompleteToolCount: runningToolIds.length
+      })
+    }
+
     logger.debug('streaming-store.stream.finalize', {
       messageId: activeStream.id,
       contentLength: activeStream.content.length,
@@ -761,9 +850,9 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       id: activeStream.id,
       role: activeStream.role,
       content: activeStream.content,
-      segments: activeStream.segments,
-      toolCalls: activeStream.toolCalls,
-      timestamp: new Date(), // Update timestamp to completion time
+      segments: finalizedSegments,
+      toolCalls: finalizedToolCalls,
+      timestamp: new Date(),
       maxStepsReached: activeStream.maxStepsReached,
       upstreamError: activeStream.upstreamError,
       budgetExceeded: activeStream.budgetExceeded,

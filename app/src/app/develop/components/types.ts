@@ -5,7 +5,7 @@
  * a single source of truth. Local types are only for UI-specific concerns.
  *
  * Store types (canonical & re-exported):
- *   - ToolCall, StreamSegment, ChatMessage, StreamingMessage
+ *   - ToolCall, ToolStatus, StreamSegment, ChatMessage, StreamingMessage
  *   - Conversation, WebSocketState, PlanItem
  *
  * UI-specific types (local only):
@@ -21,7 +21,9 @@ export type {
   StreamingMessage,
   StreamSegment,
   ToolCall,
-  WebSocketState} from '@/stores/useStreamingConversationStore'
+  ToolStatus,
+  WebSocketState
+} from '@/stores/useStreamingConversationStore'
 
 // All streaming-related types are now exported from the store above
 

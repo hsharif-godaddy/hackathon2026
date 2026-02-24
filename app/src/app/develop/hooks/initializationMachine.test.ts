@@ -170,7 +170,7 @@ describe('initializationMachine', () => {
       expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForWebSocket')
     })
 
-    it('should NOT allow escape from waitingForFirstEdit (overlay stays)', () => {
+    it('should NOT allow escape from waitingForFirstEdit on disconnect (overlay stays)', () => {
       const actor = createActor(initializationMachine, {
         input: { appId: null, isJobId: false, hasInitialPrompt: false },
       })
@@ -187,13 +187,37 @@ describe('initializationMachine', () => {
 
       expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForFirstEdit')
 
-      // WebSocket disconnect should NOT transition (intentional)
+      // WebSocket disconnect should NOT transition (intentional - no escape for errors/disconnects)
       actor.send({ type: 'WEBSOCKET_DISCONNECTED' })
       expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForFirstEdit')
 
-      // Only FIRST_FILE_EDIT_SEEN can escape
+      // FIRST_FILE_EDIT_SEEN escapes to active
       actor.send({ type: 'FIRST_FILE_EDIT_SEEN' })
       expect(getSubPhaseFromState(actor.getSnapshot())).toBe('active')
+    })
+
+    it('should transition to active on STREAM_COMPLETE_WITHOUT_FIRST_EDIT (incomplete tool e.g. token limit)', () => {
+      const actor = createActor(initializationMachine, {
+        input: { appId: null, isJobId: false, hasInitialPrompt: false },
+      })
+      actor.start()
+
+      actor.send({ type: 'START_CHECKING_CREATION', appId: 'job-123', isJobId: true })
+      actor.send({ type: 'START_CREATING', jobId: 'job-123', initialPromptText: 'Test' })
+      actor.send({ type: 'CREATION_SUCCEEDED', realAppId: 'app-456' })
+      actor.send({ type: 'PAGE_DATA_LOADED' })
+      actor.send({ type: 'HISTORY_LOADED', hasHistory: false })
+      actor.send({ type: 'WEBSOCKET_CONNECTED' })
+      actor.send({ type: 'PROMPT_SENT' })
+
+      expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForFirstEdit')
+      expect(actor.getSnapshot().context.hasSeenFirstFileEdit).toBe(false)
+
+      // Stream completed with incomplete tool (e.g. token limit) - hide overlay, show preview
+      actor.send({ type: 'STREAM_COMPLETE_WITHOUT_FIRST_EDIT' })
+      expect(getSubPhaseFromState(actor.getSnapshot())).toBe('active')
+      // Should NOT mark first file edit seen (we only hid overlay for incomplete case)
+      expect(actor.getSnapshot().context.hasSeenFirstFileEdit).toBe(false)
     })
   })
 

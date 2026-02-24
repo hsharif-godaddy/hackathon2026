@@ -1,12 +1,13 @@
 import AlertIcon from '@ux/icon/alert'
 
+import type { ToolStatus } from '@/app/develop/components/types'
 import SpinnerIcon from './SpinnerIcon'
 
 /**
  * Props for StatusIndicator component
  */
 interface StatusIndicatorProps {
-  status: 'running' | 'completed' | 'error'
+  status: ToolStatus
   className?: string
 }
 
@@ -31,6 +32,7 @@ export default function StatusIndicator({ status, className = '' }: StatusIndica
         </span>
       )
     case 'error':
+    case 'incomplete':
       return (
         <span className={`inline-flex text-destructive ${className}`}>
           <AlertIcon className="w-1.5 h-1.5" />

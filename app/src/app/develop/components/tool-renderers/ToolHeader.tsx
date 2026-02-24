@@ -1,3 +1,4 @@
+import type { ToolStatus } from '@/app/develop/components/types'
 import StatusIndicator from './StatusIndicator'
 
 /**
@@ -6,7 +7,7 @@ import StatusIndicator from './StatusIndicator'
 interface ToolHeaderProps {
   icon: React.ReactNode
   displayName: string | React.ReactNode
-  toolStatus: 'running' | 'completed' | 'error'
+  toolStatus: ToolStatus
   hasDetails: boolean
   onOpenModal?: () => void
 }

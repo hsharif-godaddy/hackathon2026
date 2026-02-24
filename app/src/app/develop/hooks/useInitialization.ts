@@ -468,6 +468,8 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
 
   // Timeout for history loading
   const historyLoadingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  // Last assistant message id we sent STREAM_COMPLETE_WITHOUT_FIRST_EDIT for (avoid duplicate sends)
+  const streamCompleteWithoutEditSentForRef = useRef<string | null>(null)
 
   // Site creation (internal) - continued
   const creationPhase = useSiteCreationStore((state) => state.phase)
@@ -996,6 +998,43 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       send({ type: 'FIRST_FILE_EDIT_SEEN' })
     }
   }, [state.context.hasSeenFirstFileEdit, activeStream, send])
+
+  // EFFECT: When stream completes with incomplete tools only (e.g. token limit),
+  // transition to active so the "Building your App" overlay hides and the user sees the preview.
+  // For other cases (error, no tools) we keep old behaviour: overlay stays until 5-min timeout.
+  useEffect(() => {
+    if (!state.matches({ ready: 'waitingForFirstEdit' })) {
+      streamCompleteWithoutEditSentForRef.current = null
+      return
+    }
+    if (state.context.hasSeenFirstFileEdit) return
+    if (!state.context.hasInitialPrompt) return
+    if (activeStream !== null) return
+
+    const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant')
+    if (!lastAssistant) return
+    if (streamCompleteWithoutEditSentForRef.current === lastAssistant.id) return
+
+    const hasCompletedFileEdit = lastAssistant.toolCalls?.some(
+      tc => tc.name === 'fileEdit' && tc.status === 'completed' && !tc.error
+    )
+    if (hasCompletedFileEdit) return
+
+    // Only fileEdit and terminalCommand can indicate "stream done but user may still see a first edit":
+    // they are the tools that modify workspace (files/shell). Other tools (e.g. read_file, list_dir)
+    // don't justify hiding the "waiting for first edit" overlay.
+    const hasIncompleteFileEditOrTerminal = lastAssistant.toolCalls?.some(
+      tc => tc.status === 'incomplete' && (tc.name === 'fileEdit' || tc.name === 'terminalCommand')
+    )
+    if (!hasIncompleteFileEditOrTerminal) return
+
+    streamCompleteWithoutEditSentForRef.current = lastAssistant.id
+    logger.info('initialization.stream_complete_without_first_edit', {
+      messageId: lastAssistant.id,
+      incompleteToolNames: lastAssistant.toolCalls?.filter(tc => tc.status === 'incomplete').map(tc => tc.name) ?? [],
+    })
+    send({ type: 'STREAM_COMPLETE_WITHOUT_FIRST_EDIT' })
+  }, [state, activeStream, messages, send])
 
   // Cleanup on unmount
   useEffect(() => {

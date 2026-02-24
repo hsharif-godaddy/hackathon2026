@@ -8,6 +8,7 @@ import Button from '@ux/button'
 import text from '@ux/text'
 
 import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext'
+import type { ToolStatus } from '@/app/develop/components/types'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
@@ -39,7 +40,7 @@ export default function RebuildPageSelectorToolRenderer({
   size = 'regular'
 }: {
   toolName: string
-  toolStatus: string
+  toolStatus: ToolStatus
   result: any
   size: 'regular' | 'small'
 }) {
@@ -69,7 +70,7 @@ export default function RebuildPageSelectorToolRenderer({
           <ToolHeader
             icon={<Hammer className="w-2 h-2" />}
             displayName={`Building ${pageTitle} page...`}
-            toolStatus={toolStatus as 'running' | 'completed' | 'error'}
+            toolStatus={toolStatus}
             hasDetails={false}
           />
           <Box orientation="horizontal" gap="sm" className="mt-1 pl-4">

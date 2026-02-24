@@ -73,4 +73,19 @@ describe('StatusIndicator', () => {
     rerender(<StatusIndicator status="completed" />);
     expect(container.firstChild).toBeNull();
   });
+
+  it('should render alert icon when status is incomplete', () => {
+    const { container } = renderWithProviders(<StatusIndicator status="incomplete" />);
+
+    const svg = container.querySelector('svg');
+    expect(svg).toBeInTheDocument();
+    expect(svg).not.toHaveClass('animate-spin');
+  });
+
+  it('should apply destructive color for incomplete status', () => {
+    const { container } = renderWithProviders(<StatusIndicator status="incomplete" />);
+
+    const span = container.querySelector('span');
+    expect(span).toHaveClass('text-destructive');
+  });
 });

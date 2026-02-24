@@ -6,6 +6,7 @@ import { useState } from 'react'
 import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
 import ToolModal from '@/app/develop/components/tool-renderers/ToolModal'
+import type { ToolStatus } from '@/app/develop/components/types'
 import { useTranslations } from '@/hooks/useTranslations'
 import { getToolDisplayName } from '@/utils/toolNameMapping'
 
@@ -14,7 +15,7 @@ import { getToolDisplayName } from '@/utils/toolNameMapping'
  */
 export interface DefaultToolRendererProps {
   toolName: string
-  toolStatus: 'running' | 'completed' | 'error'
+  toolStatus: ToolStatus
   toolId?: string
   conversationId?: string | null
   duration?: number

@@ -98,6 +98,8 @@ export type InitializationMachineEvent =
 
   // Agent activity
   | { type: 'FIRST_FILE_EDIT_SEEN' }
+  // Stream finished but no successful file edit (e.g. due to incomplete tool calls like token limit) - hide building overlay
+  | { type: 'STREAM_COMPLETE_WITHOUT_FIRST_EDIT' }
 
   // Error recovery
   | { type: 'FATAL_ERROR'; error: string }
@@ -426,6 +428,8 @@ export const initializationMachine = setup({
         },
 
         // Prompt sent, waiting for agent to make first file edit
+        // INTENTIONAL: No escape hatch for errors/disconnects - overlay stays visible to hide
+        // template app unless FIRST_FILE_EDIT_SEEN, 5-min timeout, or (narrowly) incomplete tool.
         waitingForFirstEdit: {
           // Safety timeout to prevent infinite hang (Issue 4.2)
           // If agent crashes or never responds, transition to active after timeout
@@ -440,8 +444,11 @@ export const initializationMachine = setup({
               target: 'active',
               actions: ['markFirstFileEditSeen', 'logTransition'],
             },
-            // INTENTIONAL: No escape hatch for errors/disconnects
-            // Overlay stays visible to hide template app unless timeout occurs
+            // Only when stream ends with incomplete tool (e.g. token limit). Not for errors/disconnects.
+            STREAM_COMPLETE_WITHOUT_FIRST_EDIT: {
+              target: 'active',
+              actions: ['logTransition'],
+            },
           },
         },
 

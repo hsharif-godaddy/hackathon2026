@@ -225,6 +225,430 @@ describe('useStreamingConversationStore', function packageTests() {
     });
   });
 
+  describe('#finalizeStream', function finalizeStreamTests() {
+    it('should mark running tools as incomplete on finalization', function markIncomplete() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Create a weather app');
+      });
+
+      // Simulate tool_start without a matching tool_result (token truncation scenario)
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'tool-1',
+          name: 'fileEdit',
+          input: {},
+          status: 'running',
+        });
+      });
+
+      // Verify tool is running
+      const streamBefore = useStreamingConversationStore.getState().activeStream;
+      expect(streamBefore?.toolCalls).toHaveLength(1);
+      expect(streamBefore?.toolCalls[0].status).toBe('running');
+
+      // Finalize the stream (simulates "complete" event arriving)
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream();
+      });
+
+      // activeStream should be null
+      expect(useStreamingConversationStore.getState().activeStream).toBeNull();
+
+      // The finalized message should have the tool marked as incomplete, not running
+      const messages = useStreamingConversationStore.getState().messages;
+      const assistantMsg = messages.find(m => m.role === 'assistant');
+      expect(assistantMsg).toBeDefined();
+      expect(assistantMsg?.toolCalls).toHaveLength(1);
+      expect(assistantMsg?.toolCalls?.[0].status).toBe('incomplete');
+
+      // Segments should also reflect incomplete status
+      const toolSegment = assistantMsg?.segments?.find(s => s.type === 'tool_start');
+      expect(toolSegment?.toolCall?.status).toBe('incomplete');
+    });
+
+    it('should not change completed tools during finalization', function preserveCompleted() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Build something');
+      });
+
+      // Add a tool that already completed
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'tool-1',
+          name: 'fileEdit',
+          input: {},
+          status: 'running',
+        });
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().addToolResultSegment({
+          id: 'tool-1',
+          name: 'fileEdit',
+          input: {},
+          result: { success: true },
+          status: 'completed',
+        });
+      });
+
+      // Add another tool that is still running
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'tool-2',
+          name: 'terminalCommand',
+          input: {},
+          status: 'running',
+        });
+      });
+
+      // Finalize
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream();
+      });
+
+      const assistantMsg = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(assistantMsg?.toolCalls).toHaveLength(2);
+      // Completed tool stays completed
+      expect(assistantMsg?.toolCalls?.find(tc => tc.id === 'tool-1')?.status).toBe('completed');
+      // Running tool becomes incomplete
+      expect(assistantMsg?.toolCalls?.find(tc => tc.id === 'tool-2')?.status).toBe('incomplete');
+    });
+  });
+
+  describe('#addToolResultSegment', function addToolResultSegmentTests() {
+    it('should apply tool result to active stream', function applyToActive() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Write some code');
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'tool-1',
+          name: 'fileEdit',
+          input: {},
+          status: 'running',
+        });
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().addToolResultSegment({
+          id: 'tool-1',
+          name: 'fileEdit',
+          input: {},
+          result: { success: true },
+          status: 'completed',
+        });
+      });
+
+      // Tool should be completed in the active stream
+      const stream = useStreamingConversationStore.getState().activeStream;
+      expect(stream?.toolCalls?.[0].status).toBe('completed');
+      expect(stream?.toolCalls?.[0].result).toEqual({ success: true });
+
+      // Should have a tool_result segment
+      const resultSegment = stream?.segments?.find(s => s.type === 'tool_result');
+      expect(resultSegment).toBeDefined();
+      expect(resultSegment?.toolCall?.status).toBe('completed');
+    });
+
+    it('should apply late tool result to finalized message when activeStream is null', function lateApply() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Write some code');
+      });
+
+      // Add a tool in running state
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'tool-1',
+          name: 'fileEdit',
+          input: {},
+          status: 'running',
+        });
+      });
+
+      // Finalize the stream (simulates complete arriving before tool_result)
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream();
+      });
+
+      // At this point tool is marked 'incomplete' in finalized message
+      const msgBefore = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(msgBefore?.toolCalls?.[0].status).toBe('incomplete');
+
+      // Now tool_result arrives late (race condition)
+      act(() => {
+        useStreamingConversationStore.getState().addToolResultSegment({
+          id: 'tool-1',
+          name: 'fileEdit',
+          input: {},
+          result: { success: true, filePath: '/src/App.jsx' },
+          status: 'completed',
+        });
+      });
+
+      // The tool in the finalized message should now be updated to completed
+      const msgAfter = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(msgAfter?.toolCalls?.[0].status).toBe('completed');
+      expect(msgAfter?.toolCalls?.[0].result).toEqual({ success: true, filePath: '/src/App.jsx' });
+
+      // Should have a tool_result segment added
+      const resultSegment = msgAfter?.segments?.find(s => s.type === 'tool_result');
+      expect(resultSegment).toBeDefined();
+    });
+
+    it('should apply multiple late tool results to same finalized message in succession', function multipleLateApply() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Write some code');
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'tool-1',
+          name: 'fileEdit',
+          input: {},
+          status: 'running',
+        });
+      });
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'tool-2',
+          name: 'fileEdit',
+          input: {},
+          status: 'running',
+        });
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream();
+      });
+
+      const msgAfterFinalize = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(msgAfterFinalize?.toolCalls).toHaveLength(2);
+      expect(msgAfterFinalize?.toolCalls?.[0].status).toBe('incomplete');
+      expect(msgAfterFinalize?.toolCalls?.[1].status).toBe('incomplete');
+
+      act(() => {
+        useStreamingConversationStore.getState().addToolResultSegment({
+          id: 'tool-1',
+          name: 'fileEdit',
+          input: {},
+          result: { success: true, path: '/a.ts' },
+          status: 'completed',
+        });
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().addToolResultSegment({
+          id: 'tool-2',
+          name: 'fileEdit',
+          input: {},
+          result: { success: true, path: '/b.ts' },
+          status: 'completed',
+        });
+      });
+
+      const msgAfter = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(msgAfter?.toolCalls?.[0].status).toBe('completed');
+      expect(msgAfter?.toolCalls?.[0].result).toEqual({ success: true, path: '/a.ts' });
+      expect(msgAfter?.toolCalls?.[1].status).toBe('completed');
+      expect(msgAfter?.toolCalls?.[1].result).toEqual({ success: true, path: '/b.ts' });
+      const resultSegments = msgAfter?.segments?.filter(s => s.type === 'tool_result') ?? [];
+      expect(resultSegments).toHaveLength(2);
+    });
+
+    it('should apply late results from stream 1 to stream 1 message when stream 2 is active', function lateResultsDuringNewStream() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('First prompt');
+      });
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'stream1-tool-1',
+          name: 'fileEdit',
+          input: {},
+          status: 'running',
+        });
+      });
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'stream1-tool-2',
+          name: 'fileEdit',
+          input: {},
+          status: 'running',
+        });
+      });
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream();
+      });
+
+      expect(useStreamingConversationStore.getState().messages).toHaveLength(2); // user1, assistant1
+      const stream1Assistant = useStreamingConversationStore.getState().messages[1];
+      expect(stream1Assistant?.role).toBe('assistant');
+      expect(stream1Assistant?.toolCalls?.[0].status).toBe('incomplete');
+      expect(stream1Assistant?.toolCalls?.[1].status).toBe('incomplete');
+
+      act(() => {
+        store.startNewStream('Second prompt');
+      });
+
+      expect(useStreamingConversationStore.getState().messages).toHaveLength(3); // user1, assistant1, user2
+      expect(useStreamingConversationStore.getState().activeStream).not.toBeNull();
+      const activeStream = useStreamingConversationStore.getState().activeStream;
+      expect(activeStream?.toolCalls).toHaveLength(0);
+
+      act(() => {
+        useStreamingConversationStore.getState().addToolResultSegment({
+          id: 'stream1-tool-1',
+          name: 'fileEdit',
+          input: {},
+          result: { success: true, path: '/a.ts' },
+          status: 'completed',
+        });
+      });
+      act(() => {
+        useStreamingConversationStore.getState().addToolResultSegment({
+          id: 'stream1-tool-2',
+          name: 'fileEdit',
+          input: {},
+          result: { success: true, path: '/b.ts' },
+          status: 'completed',
+        });
+      });
+
+      const messages = useStreamingConversationStore.getState().messages;
+      expect(messages).toHaveLength(3);
+      const stream1Msg = messages[1];
+      expect(stream1Msg?.toolCalls?.[0].status).toBe('completed');
+      expect(stream1Msg?.toolCalls?.[1].status).toBe('completed');
+      expect(stream1Msg?.toolCalls?.[0].result).toEqual({ success: true, path: '/a.ts' });
+      expect(stream1Msg?.toolCalls?.[1].result).toEqual({ success: true, path: '/b.ts' });
+      const stillActive = useStreamingConversationStore.getState().activeStream;
+      expect(stillActive).not.toBeNull();
+      expect(stillActive?.toolCalls).toHaveLength(0);
+      expect(stillActive?.segments?.filter(s => s.type === 'tool_result')).toHaveLength(0);
+    });
+
+    it('should not apply late results from stream 1 to stream 2 when stream 2 has different tool IDs', function lateResultNotAppliedToNewStreamWithTools() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('First prompt');
+      });
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'stream1-tool-1',
+          name: 'fileEdit',
+          input: {},
+          status: 'running',
+        });
+      });
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream();
+      });
+
+      act(() => {
+        store.startNewStream('Second prompt');
+      });
+      act(() => {
+        useStreamingConversationStore.getState().addToolStartSegment({
+          id: 'stream2-tool-1',
+          name: 'fileEdit',
+          input: {},
+          status: 'running',
+        });
+      });
+
+      const activeBeforeLate = useStreamingConversationStore.getState().activeStream;
+      expect(activeBeforeLate?.toolCalls).toHaveLength(1);
+      expect(activeBeforeLate?.toolCalls?.[0].id).toBe('stream2-tool-1');
+
+      act(() => {
+        useStreamingConversationStore.getState().addToolResultSegment({
+          id: 'stream1-tool-1',
+          name: 'fileEdit',
+          input: {},
+          result: { success: true, path: '/from-stream1.ts' },
+          status: 'completed',
+        });
+      });
+
+      const messages = useStreamingConversationStore.getState().messages;
+      const stream1Msg = messages[1];
+      expect(stream1Msg?.toolCalls?.[0].id).toBe('stream1-tool-1');
+      expect(stream1Msg?.toolCalls?.[0].status).toBe('completed');
+      expect(stream1Msg?.toolCalls?.[0].result).toEqual({ success: true, path: '/from-stream1.ts' });
+
+      const activeAfter = useStreamingConversationStore.getState().activeStream;
+      expect(activeAfter?.toolCalls).toHaveLength(1);
+      expect(activeAfter?.toolCalls?.[0].id).toBe('stream2-tool-1');
+      expect(activeAfter?.toolCalls?.[0].status).toBe('running');
+      expect(activeAfter?.segments?.filter(s => s.type === 'tool_result')).toHaveLength(0);
+    });
+
+    it('should not crash when no matching tool exists in finalized message', function noMatch() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Write something');
+      });
+
+      // Finalize with no tools
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream();
+      });
+
+      // Try to add a tool result for a tool that doesn't exist
+      act(() => {
+        useStreamingConversationStore.getState().addToolResultSegment({
+          id: 'nonexistent-tool',
+          name: 'fileEdit',
+          input: {},
+          result: { success: true },
+          status: 'completed',
+        });
+      });
+
+      // Should not crash, message should be unchanged
+      const msg = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(msg?.toolCalls).toHaveLength(0);
+    });
+
+    it('should not crash when there are no messages at all', function noMessages() {
+      // No stream started, no messages - just call addToolResultSegment directly
+      act(() => {
+        useStreamingConversationStore.getState().addToolResultSegment({
+          id: 'orphan-tool',
+          name: 'fileEdit',
+          input: {},
+          result: { success: true },
+          status: 'completed',
+        });
+      });
+
+      // Should not crash
+      expect(useStreamingConversationStore.getState().messages).toHaveLength(0);
+    });
+  });
+
   describe('agent name management', function agentNameManagement() {
     it('should set and retrieve currentAgentName', function setAndGet() {
       const store = useStreamingConversationStore.getState();
