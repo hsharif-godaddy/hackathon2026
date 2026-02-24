@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { injectDevToolsStyles } from './utils/injectDevToolsStyles';
 import { safePostMessage } from './utils/postMessage';
 
 /**
@@ -25,8 +26,13 @@ const sendBuildPageRequest = (path: string) => {
  * Development mode 404 - shows "Build this page" option
  */
 function DevelopmentNotFound({ path }: { path: string }) {
+  useEffect(() => {
+    injectDevToolsStyles();
+  }, []);
+
   return (
     <div
+      data-airo-dev-tools
       style={{
         minHeight: '100vh',
         display: 'flex',

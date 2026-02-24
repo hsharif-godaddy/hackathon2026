@@ -1,4 +1,5 @@
 import React, { Component, ReactNode } from 'react';
+import { injectDevToolsStyles } from './utils/injectDevToolsStyles';
 import { safePostMessage } from './utils/postMessage';
 import type { RuntimeErrorData } from './types';
 
@@ -16,6 +17,7 @@ export default class AiroErrorBoundary extends Component<Props, State> {
   private hmrAfterUpdateHandler?: () => void;
 
   componentDidMount() {
+    injectDevToolsStyles();
     // Reset error state on HMR updates so fixed code can render
     if (import.meta.hot) {
       this.hmrAfterUpdateHandler = () => {
@@ -73,6 +75,7 @@ export default class AiroErrorBoundary extends Component<Props, State> {
     if (error) {
       return (
         <div
+          data-airo-dev-tools
           style={{
             minHeight: '100vh',
             display: 'flex',

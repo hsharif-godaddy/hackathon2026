@@ -884,6 +884,7 @@ export default function ElementEditor({
   return (
     <div
       data-dev-tools="element-editor"
+      data-airo-dev-tools
       style={{
         position: 'fixed',
         top: adjustedPosition.top,

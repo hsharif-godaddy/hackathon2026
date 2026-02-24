@@ -1,5 +1,6 @@
 import { ReactNode, useEffect } from 'react'
 import DevelopmentMode from './components/DevelopmentMode'
+import { injectDevToolsStyles } from './utils/injectDevToolsStyles'
 
 interface DevToolsProviderProps {
   children: ReactNode
@@ -11,6 +12,7 @@ interface DevToolsProviderProps {
  */
 export default function DevToolsProvider({ children }: DevToolsProviderProps) {
   useEffect(() => {
+    injectDevToolsStyles();
     // Only in development
     if (import.meta.env.MODE === 'development') {
       console.log('🎨 Airo Dev Tools activated! Press Ctrl/Cmd + Shift + E to start editing.')

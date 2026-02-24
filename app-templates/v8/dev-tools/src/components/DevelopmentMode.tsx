@@ -303,6 +303,7 @@ export default function DevelopmentMode() {
       {showFloatingButton && (
         <button
         data-dev-tools="floating-button"
+        data-airo-dev-tools
         className="fixed bottom-10 left-10 w-7.5 h-7.5 rounded-full backdrop-blur-10px text-white p-1.5 font-semibold text-sm z-999999 box-shadow-md border transition-opacity duration-200 cursor-pointer"
         style={{
           background: isSelectMode
@@ -328,6 +329,7 @@ export default function DevelopmentMode() {
       {(isSelectMode || isInlineEditing) && (
         <div
           data-dev-tools="indicator"
+          data-airo-dev-tools
           onMouseEnter={() => setIsIndicatorHovered(true)}
           onMouseLeave={() => setIsIndicatorHovered(false)}
           className="fixed top-[10px] left-1/2 transform -translate-x-1/2 bg-white text-black px-2 py-0.5 rounded-sm z-999998 shadow-md border border-border transition-opacity duration-200 cursor-pointer"
