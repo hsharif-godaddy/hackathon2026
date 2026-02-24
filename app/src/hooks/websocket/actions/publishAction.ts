@@ -185,10 +185,11 @@ export const publishAction: ClientActionExecutor = async (params) => {
         try {
           const setBuildErrorDetails = useDevelopPageStore.getState().setBuildErrorDetails
 
-          // For errors with logs (e.g., supervisor failures), include them in details
-          const errorDetails = errorData.details || (errorData.logs ?
-            errorData.logs.map((log: any) => log.message || log).join('\n') :
-            'Unknown error');
+          // Combine details and logs so the agent gets the full picture
+          const logText = errorData.logs
+            ? errorData.logs.map((log: any) => log.message || log).join('\n')
+            : '';
+          const errorDetails = [errorData.details, logText].filter(Boolean).join('\n\n') || 'Unknown error';
 
           setBuildErrorDetails(appId, {
             error: errorData.error || 'Publish failed',
@@ -196,8 +197,7 @@ export const publishAction: ClientActionExecutor = async (params) => {
             exitCode: errorData.exitCode,
           })
 
-          // Automatically send error logs to agent for all errors with details/logs
-          logger.info('websocket.client-action.publish.error.auto-send-to-agent', {
+          logger.info('websocket.client-action.publish.error.build-error-stored', {
             appId,
             error: errorData.error,
             status: response.status,
@@ -205,20 +205,6 @@ export const publishAction: ClientActionExecutor = async (params) => {
             hasLogs: !!errorData.logs,
             exitCode: errorData.exitCode
           })
-
-          // Dispatch event to automatically send error to agent
-          // The develop page listens for this event and handles the error fix request
-          if (typeof window !== 'undefined') {
-            window.postMessage({
-              type: 'build-error-fix-request',
-              appId,
-              errorMessage: errorData.error || 'Publish failed',
-              errorDetails: errorDetails,
-              logs: errorData.logs,
-              exitCode: errorData.exitCode,
-              autoSend: true // Flag to indicate this was auto-triggered
-            }, window.location.origin)
-          }
         } catch (storeError) {
           logger.warn('websocket.client-action.publish.error-store-failed', {
             appId,

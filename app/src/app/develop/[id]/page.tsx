@@ -60,7 +60,6 @@ import {
   useIsLoading,
   useMessages,
   useSetAiEditContext,
-  useSetBuildErrorContext,
   useSetInputValue
 } from '@/stores/useStreamingConversationStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
@@ -106,7 +105,6 @@ function DevelopPageContent() {
   const activeStream = useActiveStream()
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
-  const setBuildErrorContext = useSetBuildErrorContext()
   const autoSendInitialMessage = useAutoSendInitialMessage()
   const { sendMessage, webSocketState } = useStreamingWebSocket()
   const isLoading = useIsLoading()
@@ -640,30 +638,29 @@ function DevelopPageContent() {
               errorMessage: event.data.errorMessage,
               hasDetails: !!event.data.errorDetails,
               exitCode: event.data.exitCode,
-              autoSend: event.data.autoSend || false
             })
 
-            // Set build error context to be attached to the message
-            setBuildErrorContext({
-              error: event.data.errorMessage,
-              details: event.data.errorDetails,
-              exitCode: event.data.exitCode
-            });
-
-            // Set a helpful message in the input
-            // If auto-sent, instruct agent to fix and retry publish; otherwise, only request analysis and fix
-            const messageContent = event.data.autoSend
-              ? 'Please analyze this build error, fix the issue, and then retry the publish operation using the publish action.'
-              : 'Please analyze and fix this build error.';
-
+            const messageContent = 'Please analyze and fix this build error.';
             setInputValue(messageContent);
-            // Auto-send the message and clear context
-            // IMPORTANT: Must await sendMessage before clearing context because
-            // sendMessage is async and reads buildErrorContext from the store.
-            // Without await, the context is cleared before it's read.
-            scheduleMicrotask(async () => {
-              await sendMessage(messageContent, null)
-              setBuildErrorContext(null)
+            // Pass build error data directly via customContext (same pattern as runtime error handler)
+            scheduleMicrotask(() => {
+              void sendMessage(
+                messageContent,
+                null, // aiEditContext
+                undefined, // selectedAssets
+                null, // todoListContext
+                false, // isActionRequest
+                {
+                  type: 'build_error',
+                  data: {
+                    error: event.data.errorMessage,
+                    details: event.data.errorDetails,
+                    exitCode: event.data.exitCode
+                  },
+                  persistence: 'ephemeral',
+                  source: 'publish-failure'
+                }
+              )
             })
           }
           break
@@ -684,7 +681,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setBuildErrorContext, setIsSelectMode, sendMessage, setInputValue, handleScreenshotUpload, setIsAssetManagerOpen, appId, scheduleMicrotask])
+  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setIsSelectMode, sendMessage, setInputValue, handleScreenshotUpload, setIsAssetManagerOpen, appId, scheduleMicrotask])
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {

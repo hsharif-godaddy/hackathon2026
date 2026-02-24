@@ -211,10 +211,11 @@ export function usePublishApp() {
         // If this is a build/runtime error with details or logs, store it for the UI to handle
         // This includes both 400 (build errors) and 500 (supervisor/runtime errors)
         if (errorData.details || errorData.logs) {
-          // For errors with logs (e.g., supervisor failures), include them in details
-          const errorDetails = errorData.details || (errorData.logs ?
-            errorData.logs.map((log: any) => log.message || log).join('\n') :
-            'Unknown error');
+          // Combine details and logs so the agent gets the full picture
+          const logText = errorData.logs
+            ? errorData.logs.map((log: any) => log.message || log).join('\n')
+            : '';
+          const errorDetails = [errorData.details, logText].filter(Boolean).join('\n\n') || 'Unknown error';
 
           setBuildErrorDetails(appId, {
             error: errorData.error || 'Publish failed',
@@ -222,8 +223,7 @@ export function usePublishApp() {
             exitCode: errorData.exitCode
           });
 
-          // Automatically send error logs to agent for all errors with details/logs
-          logger.info('publish.error.auto-send-to-agent', {
+          logger.info('publish.error.build-error-stored', {
             appId,
             error: errorData.error,
             status: response.status,
@@ -231,20 +231,6 @@ export function usePublishApp() {
             hasLogs: !!errorData.logs,
             exitCode: errorData.exitCode
           });
-
-          // Dispatch event to automatically send error to agent
-          // The develop page listens for this event and handles the error fix request
-          if (typeof window !== 'undefined') {
-            window.postMessage({
-              type: 'build-error-fix-request',
-              appId,
-              errorMessage: errorData.error || 'Publish failed',
-              errorDetails: errorDetails,
-              logs: errorData.logs,
-              exitCode: errorData.exitCode,
-              autoSend: true // Flag to indicate this was auto-triggered
-            }, window.location.origin);
-          }
         }
 
         throw new Error(errorData.error || `Publish failed: ${response.status}`);

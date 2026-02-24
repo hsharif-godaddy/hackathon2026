@@ -584,7 +584,7 @@ describe('publishAction', () => {
 
       expect(mockStoreActions.setBuildErrorDetails).toHaveBeenCalledWith('app-123', {
         error: 'Publish supervisor failed',
-        details: 'Health check failed after restart',
+        details: 'Health check failed after restart\n\nStarting application\nError: Missing parameter name',
         exitCode: 1,
       })
     })
