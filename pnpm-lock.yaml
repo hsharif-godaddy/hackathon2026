@@ -523,6 +523,9 @@ importers:
       '@prisma/client':
         specifier: ^6.15.0
         version: 6.16.2(prisma@6.16.2(magicast@0.3.5)(typescript@5.9.2))(typescript@5.9.2)
+      '@px/checkouts':
+        specifier: ^1.7.2
+        version: 1.7.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@radix-ui/react-accordion':
         specifier: ^1.2.12
         version: 1.2.12(@types/react-dom@19.1.9(@types/react@19.1.13))(@types/react@19.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -547,6 +550,12 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.2.8
         version: 1.2.8(@types/react-dom@19.1.9(@types/react@19.1.13))(@types/react@19.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@site/buttons':
+        specifier: ^6.3.3
+        version: 6.3.3(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@site/domain-services':
+        specifier: ^4.5.6
+        version: 4.5.6
       '@sso/deck':
         specifier: ^2.1.2
         version: 2.1.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@7.1.14(react@19.1.0)(typescript@5.9.2))(react@19.1.0)
@@ -690,7 +699,7 @@ importers:
         version: 9.6.0
       framer-motion:
         specifier: ^12.23.18
-        version: 12.23.19(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        version: 12.23.19(@emotion/is-prop-valid@0.8.8)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       gd-auth:
         specifier: 1.4.1
         version: 1.4.1
@@ -2572,6 +2581,11 @@ packages:
   '@emnapi/wasi-threads@1.1.0':
     resolution: {integrity: sha512-WI0DdZ8xFSbgMjR1sFsKABJ/C5OnRrjT06JXbZKexJGrDuPTzZdDYfFlsgcCXCyf+suG5QU2e/y1Wo2V/OapLQ==}
 
+  '@emotion/is-prop-valid@0.8.8':
+    resolution: {integrity: sha512-u5WtneEAr5IDG2Wv65yhunPSMLIpuKsbuOktRojfrEiEvRyC85LgPMZI63cr7NUqT8ZIGdSVg8ZKGxIug4lXcA==}
+
+  '@emotion/memoize@0.7.4':
+    resolution: {integrity: sha512-Ja/Vfqe3HpuzRsG1oBtWTHk2PGZ7GR+2Vz5iYGelAw8dx32K0y7PjVuxK6z1nMpZOqAFsRUPCkK1YjJ56qJlgw==}
   '@esbuild/aix-ppc64@0.24.2':
     resolution: {integrity: sha512-thpVCb/rhxE/BnMLQ7GReQLLN8q9qbHmI55F4489/ByVg2aQaQ6kbcLb6FHkocZzQhxc4gx0sCk0tJkKBFzDhA==}
     engines: {node: '>=18'}
@@ -3264,6 +3278,9 @@ packages:
   '@godaddy/gasket-plugin-visitor@3.7.1':
     resolution: {integrity: sha512-e3KJTd2R3C6KHmjB79EVhaFC4vX7NRqIB3duYCr0w59VOaHYtVaM7g97mCXAYDLFTWPJozUuftHV7n1bISAPWQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gasket-plugin-visitor/-/@godaddy/gasket-plugin-visitor-3.7.1.tgz}
 
+  '@godaddy/gasket-private-labels@2.5.1':
+    resolution: {integrity: sha512-NgMBSEVhOmSSqJnOixfImy6K2vLP1FhsDJVzx0LYn+PkqpVN9VyCF9jCGKD3d/9g6caKWgnnBN1w8lnwz42n2Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gasket-private-labels/-/@godaddy/gasket-private-labels-2.5.1.tgz}
+
   '@godaddy/gasket-private-labels@3.4.0':
     resolution: {integrity: sha512-bRKg4hIoKsY8Sncwi5HAxW3qXm6verQDtWRoyqtt5o36SM28gpGKU6RzOvWtDC98y0dJWTO330ZyDrnwBpj5+g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gasket-private-labels/-/@godaddy/gasket-private-labels-3.4.0.tgz}
 
@@ -3275,6 +3292,9 @@ packages:
 
   '@godaddy/internal-ips@2.3.1':
     resolution: {integrity: sha512-MYKXQ20eZBdcKvR7VRD0NM7HxSM+7yFk2ZbBFUanPKs+Ip4Zgfdc5uH9bnisfqDeHWlUEDRY6y27t5sEtDwZJA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/internal-ips/-/@godaddy/internal-ips-2.3.1.tgz}
+
+  '@godaddy/intl-formatter@2.4.2':
+    resolution: {integrity: sha512-YHUaR9YVIPg1glt6gQougR+f/51BZdqf5XtYPqTy8O9hhQmbX9AFPJhc3VYPnxt8yHGe2sKLGoY7uR4hviebXw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/intl-formatter/-/@godaddy/intl-formatter-2.4.2.tgz}
 
   '@godaddy/native-user-agent@1.1.1':
     resolution: {integrity: sha1-jcVrN3p6qLnuHJwtwYPkW8zradU=, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/native-user-agent/-/@godaddy/native-user-agent-1.1.1.tgz}
@@ -3596,6 +3616,14 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       '@opentelemetry/api': ^1.9.0
+
+  '@linaria/core@3.0.0-beta.13':
+    resolution: {integrity: sha512-3zEi5plBCOsEzUneRVuQb+2SAx3qaC1dj0FfFAI6zIJQoDWu0dlSwKijMRack7oO9tUWrchfj3OkKQAd1LBdVg==}
+
+  '@linaria/react@3.0.0-beta.13':
+    resolution: {integrity: sha512-N7+xnWHEPembwyGRKCKZDkN2O2N/WYp96ftScPezQuAacLEYYsDGFXNY0AV0c+38JUkpcj6J2BMn6vpIwPw/1A==}
+    peerDependencies:
+      react: 19.1.0
 
   '@microsoft/fetch-event-source@2.0.1':
     resolution: {integrity: sha512-W6CLUJ2eBMw3Rec70qrsEW0jOm/3twwJv21mrmj2yORiaVmVYGS4sSS5yUwvQc1ZlDLYGPnClVWmUUMagKNsfA==}
@@ -4919,6 +4947,12 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
+  '@px/checkouts@1.7.2':
+    resolution: {integrity: sha512-YfYrJ6ITi9UMlQ2DEwWljgfDTYIztFsAiuZXQ4TZc7H0UjKfIFBs1Djamp2MIYk4CgQ98rpsZuv0FJ3RYeeGRg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@px/checkouts/-/@px/checkouts-1.7.2.tgz}
+    peerDependencies:
+      react: 19.1.0
+      react-dom: 19.1.0
+
   '@qdrant/js-client-rest@1.15.1':
     resolution: {integrity: sha512-FAPMz6Z7RFj9vUun8R9e8SYcX6EkZtdfYfnh5lFXWcjEaat9q/jce1baAJCWAr3k8yHh62HpzCRYOatLVII28g==}
     engines: {node: '>=18.17.0', pnpm: '>=8'}
@@ -5551,6 +5585,29 @@ packages:
 
   '@sinonjs/fake-timers@10.3.0':
     resolution: {integrity: sha512-V4BG07kuYSUkTCSBHG8G8TNhM+F19jXFWnQtzj+we8DrkpSBCee9Z3Ms8yiGer/dlmhe35/Xdgyo3/0rQKg7YA==}
+
+  '@site/buttons@6.3.3':
+    resolution: {integrity: sha512-I6tDJNrPK58LtCebShGukAW51MyUqi9DVDaKeyr4Tskm2zDUieC7d/L2X6ZO+L7fXGJriafx4euOCa0VWIjbgA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@site/buttons/-/@site/buttons-6.3.3.tgz}
+    engines: {node: '>=18.15', npm: '>=9.5'}
+    peerDependencies:
+      prop-types: ^15.x.x
+      react: 19.1.0
+      react-dom: 19.1.0
+
+  '@site/common-styles@2.3.8':
+    resolution: {integrity: sha512-C0TMqTnFx4u4f7zuuGDldqwWmanyP/zvSH3taLfF5FFAXprxcKg2z7VG75IXxkYnzUwIxv0ZWUt0SLSliprXkQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@site/common-styles/-/@site/common-styles-2.3.8.tgz}
+    engines: {node: '>=18.15', npm: '>=9.5'}
+
+  '@site/domain-services@4.5.6':
+    resolution: {integrity: sha512-Be1YM5MALJcl3njX36fPznkASoXF++gqje30sGpc7WZtUIaltHdn9mQd0bt0gbTyLKI5WddJhAJx2OKuybbktA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@site/domain-services/-/@site/domain-services-4.5.6.tgz}
+    engines: {node: '>=18.15', npm: '>=9.5'}
+
+  '@site/multibrand-locales@1.3.3':
+    resolution: {integrity: sha512-fFm6zYTqxMZYJpZGpLV9g8jD3kP7DAZ2R9d/nAikLftRdwkwb2mXelBsHkysG5m1T3ZthOWh78hIjVL1U/p9iA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@site/multibrand-locales/-/@site/multibrand-locales-1.3.3.tgz}
+
+  '@site/utils@5.12.3':
+    resolution: {integrity: sha512-mBQfcinz1mun2QmpvRqCy3gR2HVjqsaTw6rFlZz0d4AOMTzgDsd0ZP69Zba4Ew8gOKNxOHZjM8wbdpkgFMnW7A==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@site/utils/-/@site/utils-5.12.3.tgz}
+    engines: {node: '>=18.15', npm: '>=9.5'}
 
   '@smithy/abort-controller@3.1.9':
     resolution: {integrity: sha512-yiW0WI30zj8ZKoSYNx90no7ugVn3khlyH/z5W8qtKBtVE6awRALbhSG+2SAHA1r6bO/6M9utxYKVZ3PCJ1rWxw==}
@@ -6920,6 +6977,10 @@ packages:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
+
+  '@ux/stylevars@2400.11.0':
+    resolution: {integrity: sha512-7lLi6rRW4xvIe/XIECGvCPwNKVnDX6se1n0gTmWAB3yblKfQP5xrgVcWOhA7VeobYrMRAE7YTRdNy013czq20w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/stylevars/-/@ux/stylevars-2400.11.0.tgz}
+    engines: {node: '>= 18'}
 
   '@ux/summary@2500.8.1':
     resolution: {integrity: sha512-w7D2KP9IGIGChCzegmatpnL8j/Uyugzcij0SqhQgxCSziTZQkUAsq+dmX2EWzedWJHunA8DIK6PCdmRFlcL6kg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/summary/-/@ux/summary-2500.8.1.tgz}
@@ -10174,6 +10235,10 @@ packages:
   js-base64@3.7.8:
     resolution: {integrity: sha512-hNngCeKxIUQiEUN3GPJOkz4wF/YvdUdbNL9hsBcMQTkKzboD7T/q3OYOuuPZLUE6dBxSGpwhk5mwuDud7JVAow==}
 
+  js-cookie@3.0.5:
+    resolution: {integrity: sha512-cEiJEAEoIbWfCZYKWhVwFuvPX1gETRYPw6LlaTKoxD3s2AkXzkCjnp6h0V77ozyqj0jakteJ4YqDJT830+lVGw==}
+    engines: {node: '>=14'}
+
   js-library-detector@6.7.0:
     resolution: {integrity: sha512-c80Qupofp43y4cJ7+8TTDN/AsDwLi5oOm/plBrWI+iQt485vKXCco+yVmOwEgdo9VOdsYTuV0UlTeetVPTriXA==}
     engines: {node: '>=12'}
@@ -11530,6 +11595,14 @@ packages:
   pngjs@5.0.0:
     resolution: {integrity: sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw==}
     engines: {node: '>=10.13.0'}
+
+  polished@3.7.2:
+    resolution: {integrity: sha512-pQKtpZGmsZrW8UUpQMAnR7s3ppHeMQVNyMDKtUyKwuvDmklzcEyM5Kllb3JyE/sE/x7arDmyd35i+4vp99H6sQ==}
+    engines: {node: '>=10'}
+
+  polished@4.3.1:
+    resolution: {integrity: sha512-OBatVyC/N7SCW/FaDHrSd+vn0o5cS855TOmYi4OkdWUMSJCET/xip//ch8xGUvtr3i44X9LVyWwQlRMTN3pwSA==}
+    engines: {node: '>=10'}
 
   possible-typed-array-names@1.1.0:
     resolution: {integrity: sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==}
@@ -16055,6 +16128,11 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+  '@emotion/is-prop-valid@0.8.8':
+    dependencies:
+      '@emotion/memoize': 0.7.4
+
+  '@emotion/memoize@0.7.4': {}
   '@esbuild/aix-ppc64@0.24.2':
     optional: true
 
@@ -16737,6 +16815,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@godaddy/gasket-private-labels@2.5.1': {}
+
   '@godaddy/gasket-private-labels@3.4.0': {}
 
   '@godaddy/goknowb-client@1.0.6':
@@ -16757,6 +16837,8 @@ snapshots:
     dependencies:
       cidr-calc: 1.0.4
       neoip: 3.0.1
+
+  '@godaddy/intl-formatter@2.4.2': {}
 
   '@godaddy/native-user-agent@1.1.1': {}
 
@@ -17165,6 +17247,14 @@ snapshots:
     dependencies:
       '@langfuse/core': 4.5.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/api': 1.9.0
+
+  '@linaria/core@3.0.0-beta.13': {}
+
+  '@linaria/react@3.0.0-beta.13(react@19.1.0)':
+    dependencies:
+      '@emotion/is-prop-valid': 0.8.8
+      '@linaria/core': 3.0.0-beta.13
+      react: 19.1.0
 
   '@microsoft/fetch-event-source@2.0.1': {}
 
@@ -18920,6 +19010,11 @@ snapshots:
       - supports-color
     optional: true
 
+  '@px/checkouts@1.7.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
   '@qdrant/js-client-rest@1.15.1(typescript@5.9.2)':
     dependencies:
       '@qdrant/openapi-typescript-fetch': 1.2.6
@@ -19534,6 +19629,45 @@ snapshots:
   '@sinonjs/fake-timers@10.3.0':
     dependencies:
       '@sinonjs/commons': 3.0.1
+
+  '@site/buttons@6.3.3(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@godaddy/react-mintl': 3.1.2(prop-types@15.8.1)(react@19.1.0)
+      '@linaria/core': 3.0.0-beta.13
+      '@linaria/react': 3.0.0-beta.13(react@19.1.0)
+      '@site/common-styles': 2.3.8
+      '@site/domain-services': 4.5.6
+      '@site/utils': 5.12.3
+      '@ux/button': 2500.7.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      classnames: 2.5.1
+      js-cookie: 3.0.5
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
+  '@site/common-styles@2.3.8':
+    dependencies:
+      '@linaria/core': 3.0.0-beta.13
+      '@ux/intents': 2500.7.1
+      '@ux/stylevars': 2400.11.0
+      polished: 4.3.1
+
+  '@site/domain-services@4.5.6':
+    dependencies:
+      '@site/utils': 5.12.3
+      js-cookie: 3.0.5
+      uuid: 11.1.0
+
+  '@site/multibrand-locales@1.3.3':
+    dependencies:
+      '@godaddy/gasket-private-labels': 2.5.1
+
+  '@site/utils@5.12.3':
+    dependencies:
+      '@godaddy/intl-formatter': 2.4.2
+      '@site/multibrand-locales': 1.3.3
+      dompurify: 3.3.1
+      uuid: 11.1.0
 
   '@smithy/abort-controller@3.1.9':
     dependencies:
@@ -21330,6 +21464,12 @@ snapshots:
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
+
+  '@ux/stylevars@2400.11.0':
+    dependencies:
+      camelcase: 6.3.0
+      lodash.merge: 4.6.2
+      polished: 3.7.2
 
   '@ux/summary@2500.8.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
@@ -24271,12 +24411,13 @@ snapshots:
 
   forwarded@0.2.0: {}
 
-  framer-motion@12.23.19(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
+  framer-motion@12.23.19(@emotion/is-prop-valid@0.8.8)(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
     dependencies:
       motion-dom: 12.23.19
       motion-utils: 12.23.6
       tslib: 2.8.1
     optionalDependencies:
+      '@emotion/is-prop-valid': 0.8.8
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
@@ -25490,6 +25631,8 @@ snapshots:
   jpeg-js@0.4.4: {}
 
   js-base64@3.7.8: {}
+
+  js-cookie@3.0.5: {}
 
   js-library-detector@6.7.0: {}
 
@@ -27146,6 +27289,14 @@ snapshots:
       fsevents: 2.3.2
 
   pngjs@5.0.0: {}
+
+  polished@3.7.2:
+    dependencies:
+      '@babel/runtime': 7.28.4
+
+  polished@4.3.1:
+    dependencies:
+      '@babel/runtime': 7.28.4
 
   possible-typed-array-names@1.1.0: {}
 

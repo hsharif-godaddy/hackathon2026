@@ -12,6 +12,7 @@ import ColorSchemeToolRenderer from './ColorSchemeToolRenderer'
 import CssColorToolRenderer from './CssColorToolRenderer'
 import CssSuggestToolRenderer from './CssSuggestToolRenderer'
 import DefaultToolRenderer, { type DefaultToolRendererProps } from './DefaultToolRenderer'
+import DomainPurchaseToolRenderer from './DomainPurchaseToolRenderer'
 import EndConversationToolRenderer from './EndConversationToolRenderer'
 import FileEditToolRenderer from './FileEditToolRenderer'
 import FontThemeToolRenderer from './FontThemeToolRenderer'
@@ -56,6 +57,7 @@ export const toolRendererRegistry = {
   colorScheme: ColorSchemeToolRenderer,
   cssColor: CssColorToolRenderer,
   cssSuggest: CssSuggestToolRenderer,
+  domainPurchase: DomainPurchaseToolRenderer,
   fontTheme: FontThemeToolRenderer,
   socialPostCreate: SocialPostCreateToolRenderer,
   socialPostPublish: SocialPublishToolRenderer,
@@ -120,6 +122,7 @@ export {
   CssColorToolRenderer,
   CssSuggestToolRenderer,
   DefaultToolRenderer,
+  DomainPurchaseToolRenderer,
   EndConversationToolRenderer,
   FileEditToolRenderer,
   FontThemeToolRenderer,

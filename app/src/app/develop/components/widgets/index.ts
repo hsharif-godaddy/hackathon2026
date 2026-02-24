@@ -5,8 +5,10 @@
  * Maps widget types to their React components.
  */
 
+import type { DomainPurchaseWidgetProps } from '@/types/domain-purchase'
 import ColorPaletteGridWidget, { type ColorPaletteGridWidgetProps } from './ColorPaletteGridWidget'
 import ColorPaletteWidget, { type ColorPaletteWidgetProps } from './ColorPaletteWidget'
+import DomainPurchaseWidget from './DomainPurchaseWidget'
 import FeedbackWidget, { type FeedbackWidgetProps } from './FeedbackWidget'
 import FontPaletteWidget, { type FontPaletteWidgetProps } from './FontPaletteWidget'
 import FontThemeGridWidget, { type FontThemeGridWidgetProps } from './FontThemeGridWidget'
@@ -14,7 +16,7 @@ import FontThemeGridWidget, { type FontThemeGridWidgetProps } from './FontThemeG
 /**
  * Widget component props union type
  */
-export type WidgetProps = ColorPaletteWidgetProps | ColorPaletteGridWidgetProps | FontPaletteWidgetProps | FontThemeGridWidgetProps | FeedbackWidgetProps
+export type WidgetProps = ColorPaletteWidgetProps | ColorPaletteGridWidgetProps | FontPaletteWidgetProps | FontThemeGridWidgetProps | FeedbackWidgetProps | DomainPurchaseWidgetProps;
 
 /**
  * Widget registry mapping widget types to components
@@ -22,6 +24,7 @@ export type WidgetProps = ColorPaletteWidgetProps | ColorPaletteGridWidgetProps 
 export const widgetRegistry = {
   'color-palette': ColorPaletteWidget,
   'color-palette-grid': ColorPaletteGridWidget,
+  'domain-purchase': DomainPurchaseWidget,
   'feedback': FeedbackWidget,
   'font-theme-grid': FontThemeGridWidget,
 } as const
@@ -54,6 +57,7 @@ export function getWidgetComponent(type: string) {
 export {
   ColorPaletteGridWidget,
   ColorPaletteWidget,
+  DomainPurchaseWidget,
   FeedbackWidget,
   FontPaletteWidget,
   FontThemeGridWidget
@@ -62,6 +66,7 @@ export {
 export type {
   ColorPaletteGridWidgetProps,
   ColorPaletteWidgetProps,
+  DomainPurchaseWidgetProps,
   FeedbackWidgetProps,
   FontPaletteWidgetProps,
   FontThemeGridWidgetProps
