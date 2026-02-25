@@ -289,6 +289,21 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
 
     const activeConversation = this.activeConversations.get(context.socketId)
     if (activeConversation) {
+      // Finalize the previous agent message before starting a new turn.
+      // During handoffs, the prior message is left with inProgress: true
+      // because completeConversation only finalizes the LAST agent message.
+      if (activeConversation.agentMessageId) {
+        try {
+          await this.conversationRepo.updateMessageMetadata(activeConversation.agentMessageId, {
+            inProgress: false
+          })
+        } catch (error) {
+          contextLogger.warn('conversation.agent_turn.finalize_previous_failed', {
+            previousMessageId: activeConversation.agentMessageId,
+            error: error instanceof Error ? error.message : String(error)
+          })
+        }
+      }
       activeConversation.agentMessageId = message.id
     }
 
@@ -473,6 +488,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     const toolsMap = new Map()
     let accumulatedContent = ''
 
+    let lastSegmentType = ''
+
     for (const event of optimizedEvents) {
       const timestamp = event.timestamp || new Date()
 
@@ -481,17 +498,22 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         case 'text_chunk':
         case 'collapsed_chunks':
           if (event.content) {
-            accumulatedContent += event.content
+            // When consecutive content segments have no tool_call between them
+            // (e.g., step_start/step_complete events were stripped), preserve
+            // paragraph separation so the text doesn't render as one wall of text.
+            const separator = (lastSegmentType === 'content' && accumulatedContent.length > 0) ? '\n\n' : ''
+            accumulatedContent += separator + event.content
             segments.push({
               id: nanoid(8),
               type: 'content',
-              content: event.content,
+              content: separator + event.content,
               timestamp,
               metadata: event.type === 'collapsed_chunks' ? {
                 originalChunkCount: event.originalChunkCount,
                 isCollapsed: true
               } : undefined
             })
+            lastSegmentType = 'content'
           }
           break
 
@@ -521,6 +543,10 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
                 toolCall: toolData
               })
             }
+            // Always update lastSegmentType, even for a duplicate tool_start.
+            // If a duplicate arrives while lastSegmentType is still 'content',
+            // subsequent content would incorrectly receive a paragraph separator.
+            lastSegmentType = 'tool_call'
           }
           break
 

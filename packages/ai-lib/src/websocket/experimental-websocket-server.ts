@@ -2574,6 +2574,16 @@ export class WebSocketServer {
           activeConversation.context
         )
         activeConversation.context.agentMessageId = messageId
+
+        // Reset streaming events for the new agent turn so that
+        // completeConversation only writes THIS agent's events to its
+        // message. Without this, handoff scenarios accumulate events from
+        // all agents into a single array and the final message ends up
+        // with duplicate tool calls from the previous agent.
+        activeConversation.streamingEvents = []
+        activeConversation.pendingSegments = []
+        activeConversation.pendingToolCalls = new Map()
+        activeConversation.accumulatedContent = ''
       } catch (error) {
         this.logger.warn('Failed to start agent turn', error)
       }

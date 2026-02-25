@@ -7,8 +7,11 @@ import { renderWithProviders } from '@/tests/test-utils';
 import StreamingMessageList from './StreamingMessageList';
 
 vi.mock('./StreamingMessage', () => ({
-  default: ({ message }: any) => (
-    <div data-testid={`message-${message.id}`}>
+  default: ({ message, startTime }: any) => (
+    <div
+      data-testid={`message-${message.id}`}
+      data-start-time={startTime ? 'present' : 'absent'}
+    >
       {message.role}: {message.content}
     </div>
   ),
@@ -352,6 +355,101 @@ describe('StreamingMessageList', function packageTests() {
       expect(scrollContainer).toBeInTheDocument();
     });
   });
+
+  describe('startTime assignment for Completed indicator', function startTimeTests() {
+    it('should pass startTime to a single assistant following a user message', function singleAssistant() {
+      const messages = [
+        { id: 'u1', role: 'user' as const, content: 'Hello', timestamp: new Date('2024-01-01T10:00:00Z') },
+        { id: 'a1', role: 'assistant' as const, content: 'Hi!', timestamp: new Date('2024-01-01T10:00:05Z') },
+      ]
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />)
+
+      expect(screen.getByTestId('message-a1').dataset.startTime).toBe('present')
+    })
+
+    it('should not pass startTime to a user message', function noStartTimeForUser() {
+      const messages = [
+        { id: 'u1', role: 'user' as const, content: 'Hello', timestamp: new Date() },
+      ]
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />)
+
+      expect(screen.getByTestId('message-u1').dataset.startTime).toBe('absent')
+    })
+
+    it('should only pass startTime to the last assistant in a consecutive sequence', function lastInSequence() {
+      const messages = [
+        { id: 'u1', role: 'user' as const, content: 'Build something complex', timestamp: new Date('2024-01-01T10:00:00Z') },
+        { id: 'a1', role: 'assistant' as const, content: 'PM plan and narration', timestamp: new Date() },
+        { id: 'a2', role: 'assistant' as const, content: 'Dev final summary', timestamp: new Date() },
+      ]
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />)
+
+      expect(screen.getByTestId('message-a1').dataset.startTime).toBe('absent')
+      expect(screen.getByTestId('message-a2').dataset.startTime).toBe('present')
+    })
+
+    it('should not pass startTime to any middle assistant in a long sequence', function middleAssistants() {
+      const messages = [
+        { id: 'u1', role: 'user' as const, content: 'Go', timestamp: new Date('2024-01-01T10:00:00Z') },
+        { id: 'a1', role: 'assistant' as const, content: 'Step 1', timestamp: new Date() },
+        { id: 'a2', role: 'assistant' as const, content: 'Step 2', timestamp: new Date() },
+        { id: 'a3', role: 'assistant' as const, content: 'Step 3', timestamp: new Date() },
+      ]
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />)
+
+      expect(screen.getByTestId('message-a1').dataset.startTime).toBe('absent')
+      expect(screen.getByTestId('message-a2').dataset.startTime).toBe('absent')
+      expect(screen.getByTestId('message-a3').dataset.startTime).toBe('present')
+    })
+
+    it('should assign startTime independently to each turn when turns alternate', function separateTurns() {
+      const messages = [
+        { id: 'u1', role: 'user' as const, content: 'First question', timestamp: new Date('2024-01-01T10:00:00Z') },
+        { id: 'a1', role: 'assistant' as const, content: 'First answer', timestamp: new Date() },
+        { id: 'u2', role: 'user' as const, content: 'Second question', timestamp: new Date('2024-01-01T10:01:00Z') },
+        { id: 'a2', role: 'assistant' as const, content: 'Second answer', timestamp: new Date() },
+      ]
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />)
+
+      expect(screen.getByTestId('message-a1').dataset.startTime).toBe('present')
+      expect(screen.getByTestId('message-a2').dataset.startTime).toBe('present')
+    })
+
+    it('should assign startTime to last assistant of each turn when handoff interleaved with a second user turn', function mixedTurns() {
+      const messages = [
+        { id: 'u1', role: 'user' as const, content: 'Build auth', timestamp: new Date('2024-01-01T10:00:00Z') },
+        { id: 'a1', role: 'assistant' as const, content: 'PM: plan', timestamp: new Date() },
+        { id: 'a2', role: 'assistant' as const, content: 'Dev: done', timestamp: new Date() },
+        { id: 'u2', role: 'user' as const, content: 'Remove auth', timestamp: new Date('2024-01-01T10:05:00Z') },
+        { id: 'a3', role: 'assistant' as const, content: 'Removed', timestamp: new Date() },
+      ]
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />)
+
+      expect(screen.getByTestId('message-a1').dataset.startTime).toBe('absent')
+      expect(screen.getByTestId('message-a2').dataset.startTime).toBe('present')
+      expect(screen.getByTestId('message-a3').dataset.startTime).toBe('present')
+    })
+
+    it('should not assign startTime when a non-user non-assistant role blocks the backward search', function unknownRole() {
+      const messages = [
+        { id: 'u1', role: 'user' as const, content: 'Hello', timestamp: new Date('2024-01-01T10:00:00Z') },
+        { id: 's1', role: 'system' as const, content: 'System notice', timestamp: new Date() },
+        { id: 'a1', role: 'assistant' as const, content: 'Response', timestamp: new Date() },
+      ]
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />)
+
+      // The backward loop hits 'system' before reaching the user message, so it breaks
+      // without setting startTime — no "Completed" indicator shown
+      expect(screen.getByTestId('message-a1').dataset.startTime).toBe('absent')
+    })
+  })
 
   describe('app switching', function appSwitching() {
     it('should show spinner during app transition when store appId differs from URL', function showSpinnerDuringTransition() {

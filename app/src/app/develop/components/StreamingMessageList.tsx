@@ -446,11 +446,25 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
       {allMessages.map((message, index) => {
         let startTime: Date | undefined
 
-        // For assistant messages, find the previous user message as the start time
-        if (message.role === 'assistant' && index > 0) {
-          const prevMessage = allMessages[index - 1]
-          if (prevMessage.role === 'user') {
-            startTime = prevMessage.timestamp
+        // Only show "Completed" on the last assistant message in a consecutive sequence.
+        // This prevents "Completed" from appearing mid-turn after refreshing the page when the agent sends
+        // multiple assistant messages (e.g., plan execution + handoff).
+        if (message.role === 'assistant') {
+          const nextMessage = allMessages[index + 1]
+          const isLastInSequence = !nextMessage || nextMessage.role !== 'assistant'
+
+          if (isLastInSequence) {
+            for (let i = index - 1; i >= 0; i--) {
+              if (allMessages[i].role === 'user') {
+                startTime = allMessages[i].timestamp
+                break
+              }
+              // Break on any role that isn't 'assistant'. Today only 'user' and
+              // 'assistant' exist, but if a future role appears between the assistant
+              // turn and its originating user message we intentionally skip the
+              // "Completed" indicator rather than attribute the wrong timestamp.
+              if (allMessages[i].role !== 'assistant') break
+            }
           }
         }
 

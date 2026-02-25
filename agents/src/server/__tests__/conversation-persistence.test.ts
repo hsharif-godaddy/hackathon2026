@@ -1,0 +1,416 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+// ── Module mocks ──────────────────────────────────────────────────────────────
+
+let nanoidCounter = 0
+vi.mock('nanoid', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('nanoid')>()
+  return {
+    ...actual,
+    nanoid: vi.fn().mockImplementation(() => `id-${++nanoidCounter}`)
+  }
+})
+
+const mockUpdateMessage = vi.fn().mockResolvedValue(undefined)
+const mockAddMessage = vi.fn().mockResolvedValue({ id: 'new-msg-id' })
+
+vi.mock('../../database/repositories/index.js', () => ({
+  conversationRepository: {
+    addMessage: mockAddMessage,
+    updateMessage: mockUpdateMessage,
+    getById: vi.fn(),
+    getOrCreateForApp: vi.fn(),
+  },
+  appRepository: { findById: vi.fn().mockReturnValue(null) },
+  tokenUsageRepository: { recordUsage: vi.fn().mockResolvedValue(undefined) },
+}))
+
+const mockLogger = {
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+}
+
+vi.mock('../../logging/index.js', () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+  log: {
+    withContext: vi.fn().mockReturnValue(mockLogger),
+    forApp: vi.fn().mockReturnValue(mockLogger),
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+  },
+}))
+
+vi.mock('elastic-apm-node', () => ({
+  default: { startTransaction: vi.fn().mockReturnValue(null) },
+}))
+
+vi.mock('@godaddy/agent-otel-sdk', () => ({
+  emitConversationStart: vi.fn(),
+  emitHandoff: vi.fn(),
+}))
+
+vi.mock('@airo/ai-lib', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@airo/ai-lib')>()
+  return {
+    ...actual,
+    calculateCostEstimate: vi.fn().mockReturnValue({ totalCost: 0 }),
+  }
+})
+
+vi.mock('../../tools/git-tool.js', () => ({
+  GitTool: vi.fn().mockImplementation(() => ({
+    executeGitOperation: vi.fn().mockResolvedValue({ success: false }),
+  })),
+}))
+
+vi.mock('../../utils/git.js', () => ({
+  GitUtils: vi.fn().mockImplementation(() => ({
+    getCurrentBranch: vi.fn().mockResolvedValue('main'),
+    getStatus: vi.fn().mockResolvedValue({ stagedFiles: 0, modifiedFiles: 0, untrackedFiles: 0 }),
+    getCommitHistory: vi.fn().mockResolvedValue([]),
+  })),
+}))
+
+vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
+  DevSupervisorClientFactory: { createForApp: vi.fn().mockReturnValue(null) },
+}))
+
+vi.mock('../../agents/ai-lib-agents/index.js', () => ({
+  aiLibAgentMetadata: {},
+}))
+
+vi.mock('../errors/app-not-found-error.js', () => ({
+  AppNotFoundError: class AppNotFoundError extends Error {
+    constructor(id: string) { super(`App not found: ${id}`) }
+  },
+}))
+
+vi.mock('../../services/features.js', () => ({
+  MAX_PROMPT_LENGTH: 10000,
+}))
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Returns a minimal ConversationContext that skips all git/token codepaths
+ * (appId is undefined, so those branches are never entered).
+ */
+function makeContext(socketId = 'test-socket') {
+  return {
+    socketId,
+    agentName: 'initial',
+    appId: undefined as string | undefined,
+    userId: 'user-1',
+    sessionId: 'session-1',
+  }
+}
+
+/** Helper to build a chunk event */
+function chunk(content: string, timestamp = new Date()): any {
+  return { type: 'chunk', content, timestamp }
+}
+
+/** Helper to build a step_complete event (signals end of a reasoning step) */
+function stepComplete(timestamp = new Date()): any {
+  return { type: 'step_complete', timestamp }
+}
+
+/** Helper to build a step_start event */
+function stepStart(timestamp = new Date()): any {
+  return { type: 'step_start', timestamp }
+}
+
+/** Helper to build a tool_start + tool_result pair */
+function toolPair(id: string, name: string, ts = new Date()): any[] {
+  return [
+    { type: 'tool_start', data: { tool: { id, name, input: { file: 'index.ts' } } }, timestamp: ts },
+    { type: 'tool_result', data: { tool: { id, name, output: 'ok' } }, timestamp: ts },
+  ]
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+describe('AgentsMessagePersistence', function packageTests() {
+  let persistence: any
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    nanoidCounter = 0
+
+    const { AgentsMessagePersistence } = await import('../conversation-persistence.js')
+    persistence = new AgentsMessagePersistence()
+  })
+
+  /**
+   * Sets up activeConversations so completeConversation will call
+   * updateMessage (not addMessage) with the given agentMessageId.
+   */
+  function seedActiveConversation(socketId: string, agentMessageId: string) {
+    ;(persistence as any).activeConversations.set(socketId, {
+      conversationId: 'conv-123',
+      userMessageId: 'user-msg-id',
+      agentMessageId,
+      context: makeContext(socketId),
+      message: 'test prompt',
+    })
+  }
+
+  /** Runs completeConversation and returns the segments passed to updateMessage */
+  async function getSegmentsFromEvents(events: any[]): Promise<any[]> {
+    seedActiveConversation('test-socket', 'agent-msg-id')
+    await persistence.completeConversation('conv-123', events, {}, makeContext())
+    const [, updates] = mockUpdateMessage.mock.calls[0]
+    return updates.segments as any[]
+  }
+
+  describe('#completeConversation – optimizeStreamingEvents', function optimizeTests() {
+    it('should merge consecutive chunk events into a single content segment', async function mergeChunks() {
+      const events = [
+        chunk('Hello '),
+        chunk('world'),
+        chunk('!'),
+      ]
+
+      const segments = await getSegmentsFromEvents(events)
+
+      expect(segments).toHaveLength(1)
+      expect(segments[0].type).toBe('content')
+      expect(segments[0].content).toBe('Hello world!')
+    })
+
+    it('should flush text and create separate content segments when a tool interrupts', async function flushOnTool() {
+      const events = [
+        chunk('Before tool'),
+        ...toolPair('t1', 'textEditor'),
+        chunk('After tool'),
+      ]
+
+      const segments = await getSegmentsFromEvents(events)
+
+      const contentSegments = segments.filter(s => s.type === 'content')
+      const toolSegments = segments.filter(s => s.type === 'tool_call')
+
+      expect(contentSegments).toHaveLength(2)
+      expect(contentSegments[0].content).toBe('Before tool')
+      expect(contentSegments[1].content).toBe('After tool')
+      expect(toolSegments).toHaveLength(1)
+    })
+
+    it('should flush text when a step event interrupts consecutive chunks', async function flushOnStep() {
+      const events = [
+        chunk('Block A'),
+        stepComplete(),
+        chunk('Block B'),
+      ]
+
+      const segments = await getSegmentsFromEvents(events)
+
+      // step_complete flushes the text group, producing two content segments
+      const contentSegments = segments.filter(s => s.type === 'content')
+      expect(contentSegments).toHaveLength(2)
+    })
+  })
+
+  describe('#completeConversation – paragraph separator', function paragraphTests() {
+    it('should not add separator to the first and only content segment', async function noSeparatorFirstSegment() {
+      const events = [chunk('Only text block')]
+
+      const segments = await getSegmentsFromEvents(events)
+
+      expect(segments[0].content).toBe('Only text block')
+      expect(segments[0].content).not.toMatch(/^\n\n/)
+    })
+
+    it('should add \\n\\n before a content segment that follows another content segment', async function separatorOnConsecutive() {
+      const events = [
+        chunk('Let me start:'),
+        stepComplete(),
+        chunk('Now let me continue:'),
+      ]
+
+      const segments = await getSegmentsFromEvents(events)
+
+      const contentSegments = segments.filter(s => s.type === 'content')
+      expect(contentSegments).toHaveLength(2)
+      expect(contentSegments[0].content).toBe('Let me start:')
+      expect(contentSegments[1].content).toBe('\n\nNow let me continue:')
+    })
+
+    it('should add \\n\\n to every block after the first in a long consecutive sequence', async function separatorOnAll() {
+      const events = [
+        chunk('Block 1'),
+        stepComplete(),
+        chunk('Block 2'),
+        stepStart(),
+        stepComplete(),
+        chunk('Block 3'),
+      ]
+
+      const segments = await getSegmentsFromEvents(events)
+
+      const contentSegments = segments.filter(s => s.type === 'content')
+      expect(contentSegments).toHaveLength(3)
+      expect(contentSegments[0].content).toBe('Block 1')
+      expect(contentSegments[1].content).toBe('\n\nBlock 2')
+      expect(contentSegments[2].content).toBe('\n\nBlock 3')
+    })
+
+    it('should NOT add separator after a duplicate tool_start for the same tool ID', async function noSeparatorAfterDuplicateToolStart() {
+      const events = [
+        chunk('Before tool'),
+        { type: 'tool_start', data: { tool: { id: 't1', name: 'textEditor', input: {} } }, timestamp: new Date() },
+        { type: 'tool_start', data: { tool: { id: 't1', name: 'textEditor', input: {} } }, timestamp: new Date() },
+        chunk('After duplicate tool'),
+      ]
+
+      const segments = await getSegmentsFromEvents(events)
+
+      const contentSegments = segments.filter(s => s.type === 'content')
+      expect(contentSegments[0].content).toBe('Before tool')
+      // Duplicate tool_start must still advance lastSegmentType to 'tool_call',
+      // so the following content does not pick up a paragraph separator.
+      expect(contentSegments[1].content).toBe('After duplicate tool')
+      expect(contentSegments[1].content).not.toMatch(/^\n\n/)
+    })
+
+    it('should NOT add separator when a tool_call segment separates two content segments', async function noSeparatorAfterTool() {
+      const events = [
+        chunk('Before tool'),
+        ...toolPair('t1', 'textEditor'),
+        chunk('After tool'),
+      ]
+
+      const segments = await getSegmentsFromEvents(events)
+
+      const contentSegments = segments.filter(s => s.type === 'content')
+      expect(contentSegments[0].content).toBe('Before tool')
+      // After a real tool_call, lastSegmentType resets to 'tool_call',
+      // so the next content segment should NOT get a separator
+      expect(contentSegments[1].content).toBe('After tool')
+      expect(contentSegments[1].content).not.toMatch(/^\n\n/)
+    })
+
+    it('should reflect the separator in accumulatedContent saved to the message', async function separatorInAccumulatedContent() {
+      const events = [
+        chunk('First sentence:'),
+        stepComplete(),
+        chunk('Second sentence:'),
+      ]
+
+      seedActiveConversation('test-socket', 'agent-msg-id')
+      await persistence.completeConversation('conv-123', events, {}, makeContext())
+      const [, updates] = mockUpdateMessage.mock.calls[0]
+
+      expect(updates.content).toBe('First sentence:\n\nSecond sentence:')
+    })
+
+    it('should skip empty content chunks without creating segments or adding separators', async function emptyChunks() {
+      const events = [
+        chunk('First'),
+        stepComplete(),
+        chunk(''),
+        stepComplete(),
+        chunk('Third'),
+      ]
+
+      const segments = await getSegmentsFromEvents(events)
+
+      const contentSegments = segments.filter(s => s.type === 'content')
+      expect(contentSegments).toHaveLength(2)
+      expect(contentSegments[0].content).toBe('First')
+      expect(contentSegments[1].content).toBe('\n\nThird')
+    })
+
+    it('should produce a mix of separated text and tool segments in correct order', async function mixedOrder() {
+      const events = [
+        chunk('Plan text'),
+        stepComplete(),
+        chunk('Narration continued:'),
+        ...toolPair('t1', 'setProjectName'),
+      ]
+
+      const segments = await getSegmentsFromEvents(events)
+
+      expect(segments[0].type).toBe('content')
+      expect(segments[0].content).toBe('Plan text')
+      expect(segments[1].type).toBe('content')
+      expect(segments[1].content).toBe('\n\nNarration continued:')
+      expect(segments[2].type).toBe('tool_call')
+      expect(segments[2].toolCall.name).toBe('setProjectName')
+    })
+  })
+
+  describe('#completeConversation – tool segments', function toolSegmentTests() {
+    it('should combine tool_start and tool_result into a single completed tool_call segment', async function combineToolEvents() {
+      const events = [
+        ...toolPair('t1', 'textEditor'),
+      ]
+
+      const segments = await getSegmentsFromEvents(events)
+
+      const toolSegments = segments.filter(s => s.type === 'tool_call')
+      expect(toolSegments).toHaveLength(1)
+      expect(toolSegments[0].toolCall.status).toBe('completed')
+      expect(toolSegments[0].toolCall.name).toBe('textEditor')
+    })
+
+    it('should save all tool results to the toolCalls array on the message', async function toolCallsArray() {
+      const events = [
+        ...toolPair('t1', 'textEditor'),
+        ...toolPair('t2', 'setProjectName'),
+      ]
+
+      seedActiveConversation('test-socket', 'agent-msg-id')
+      await persistence.completeConversation('conv-123', events, {}, makeContext())
+      const [, updates] = mockUpdateMessage.mock.calls[0]
+
+      expect(updates.toolCalls).toHaveLength(2)
+      expect(updates.toolCalls.map((t: any) => t.name)).toEqual(
+        expect.arrayContaining(['textEditor', 'setProjectName'])
+      )
+    })
+
+    it('should mark tool as error when tool_result contains an error', async function errorTool() {
+      const events = [
+        { type: 'tool_start', data: { tool: { id: 'bad-tool', name: 'bash', input: {} } }, timestamp: new Date() },
+        { type: 'tool_result', data: { tool: { id: 'bad-tool', name: 'bash', error: 'Command failed', is_error: true } }, timestamp: new Date() },
+      ]
+
+      const segments = await getSegmentsFromEvents(events)
+
+      const toolSegment = segments.find(s => s.type === 'tool_call')
+      expect(toolSegment?.toolCall.status).toBe('error')
+      expect(toolSegment?.toolCall.error).toBe('Command failed')
+    })
+  })
+
+  describe('#completeConversation – persistence', function persistenceTests() {
+    it('should call updateMessage when an agentMessageId exists', async function callsUpdate() {
+      seedActiveConversation('test-socket', 'agent-msg-id')
+      await persistence.completeConversation('conv-123', [chunk('hi')], {}, makeContext())
+
+      expect(mockUpdateMessage).toHaveBeenCalledTimes(1)
+      expect(mockUpdateMessage).toHaveBeenCalledWith('agent-msg-id', expect.objectContaining({
+        content: 'hi',
+        metadata: expect.objectContaining({ inProgress: false }),
+      }))
+    })
+
+    it('should call addMessage as fallback when no agentMessageId exists', async function callsAddAsFallback() {
+      // Do NOT seed activeConversations — no agentMessageId
+      await persistence.completeConversation('conv-123', [chunk('hi')], {}, makeContext())
+
+      expect(mockUpdateMessage).not.toHaveBeenCalled()
+      expect(mockAddMessage).toHaveBeenCalledWith('conv-123', 'agent', 'hi', expect.any(Object))
+    })
+  })
+})
