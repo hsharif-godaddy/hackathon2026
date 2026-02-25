@@ -79,7 +79,7 @@ log "Starting application deployment process"
 
 # Log archive details
 log "Archive path: $ARCHIVE_PATH"
-log "Archive size: $(du -h "$ARCHIVE_PATH" | cut -f1)"
+log "Archive size: $(ls -lhL "$ARCHIVE_PATH" | awk '{print $5}')"
 
 # Verify app directory is writable
 [[ ! -w "$APP_DIR" ]] && error_exit "App directory is not writable: $APP_DIR"
