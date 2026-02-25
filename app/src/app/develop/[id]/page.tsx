@@ -640,7 +640,7 @@ function DevelopPageContent() {
               exitCode: event.data.exitCode,
             })
 
-            const messageContent = 'Please analyze and fix this build error.';
+            const messageContent = 'Please analyze and fix this publish failure.';
             setInputValue(messageContent);
             // Pass build error data directly via customContext (same pattern as runtime error handler)
             scheduleMicrotask(() => {
