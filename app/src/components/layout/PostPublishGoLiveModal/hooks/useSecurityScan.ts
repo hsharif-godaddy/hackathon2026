@@ -9,7 +9,6 @@ import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
 import type { TestPilotRunResult } from '@/lib/testpilot';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { useSiteStore } from '@/stores/useSiteStore';
 import type { SecurityScanResult } from '../types';
 
 interface TestPilotVulnerability {
@@ -27,7 +26,6 @@ export function useSecurityScan(appId: string) {
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const { setSecurityScanResults, setGoLiveModalStep } = useDevelopPageStore();
-  const getSite = useSiteStore((state) => state.getSite);
 
   const skipSecurityScan = useCallback(() => {
     logger.info('go-live.security-scan.skipped', { appId });
@@ -46,39 +44,9 @@ export function useSecurityScan(appId: string) {
     setScanError(null);
 
     try {
-      const site = getSite(appId);
-      const urlToScan = site?.published_url || site?.preview_url;
-
-      if (!urlToScan) {
-        logger.warn('go-live.security-scan.no-url', {
-          appId,
-          message: 'No published or preview URL available, skipping security scan'
-        });
-
-        skipSecurityScan();
-        return;
-      }
-
-      // Check if URL is localhost or not publicly accessible
-      const isLocalhost = urlToScan.includes('localhost') ||
-                          urlToScan.includes('127.0.0.1') ||
-                          urlToScan.includes('0.0.0.0');
-
-      if (isLocalhost) {
-        logger.warn('go-live.security-scan.localhost', {
-          appId,
-          url: urlToScan,
-          message: 'Skipping security scan for localhost URL - TestPilot requires publicly accessible URL'
-        });
-
-        skipSecurityScan();
-        return;
-      }
-
       logger.info('go-live.security-scan.start', {
         appId,
-        url: urlToScan,
-        urlType: site?.published_url ? 'published' : 'preview'
+        message: 'Running internal vulnerability and secrets scan'
       });
 
       const response = await appFetch('/api/testpilot', {
@@ -86,8 +54,7 @@ export function useSecurityScan(appId: string) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           appId,
-          url: urlToScan,
-          runTests: ['security']
+          runTests: ['code']
         })
       });
 
@@ -99,16 +66,16 @@ export function useSecurityScan(appId: string) {
 
       logger.info('go-live.security-scan.response', {
         appId,
-        hasSecurityData: !!data.security,
+        hasSecurityData: !!data.code,
         responseKeys: Object.keys(data)
       });
 
-      if (!data.security) {
+      if (!data.code) {
         throw new Error('Security scan returned no results. The scan may not have completed successfully.');
       }
 
       // Parse the response into our discriminated union
-      const rawResult = data.security;
+      const rawResult = data.code;
       const securityApiResponse: TestPilotApiResponse =
         rawResult.error || rawResult.status === 'failed'
           ? { success: false, error: rawResult.error || 'Security scan failed', status: rawResult.status }
@@ -179,7 +146,7 @@ export function useSecurityScan(appId: string) {
     } finally {
       setIsScanning(false);
     }
-  }, [appId, getSite, setSecurityScanResults, skipSecurityScan]);
+  }, [appId, setSecurityScanResults]);
 
   return {
     isScanning,

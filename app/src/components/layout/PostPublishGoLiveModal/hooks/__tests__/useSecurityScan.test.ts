@@ -15,7 +15,6 @@ const mocks = vi.hoisted(() => ({
     warn: vi.fn(),
     error: vi.fn()
   },
-  getSite: vi.fn(),
   setSecurityScanResults: vi.fn(),
   setGoLiveModalStep: vi.fn()
 }));
@@ -30,15 +29,6 @@ vi.mock('@/lib/logging', () => ({
 
 vi.mock('@/lib/request-context', () => ({
   logger: mocks.logger
-}));
-
-vi.mock('@/stores/useSiteStore', () => ({
-  useSiteStore: (selector: any) => {
-    const state = {
-      getSite: mocks.getSite
-    };
-    return selector ? selector(state) : state;
-  }
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
@@ -56,12 +46,6 @@ describe('useSecurityScan', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    // Reset mocks
-    mocks.getSite.mockReturnValue({
-      id: mockAppId,
-      published_url: 'https://example.com'
-    });
   });
 
   it('should initialize with correct default state', () => {
@@ -73,7 +57,7 @@ describe('useSecurityScan', () => {
 
   it('should handle successful security scan', async () => {
     const mockResponse = {
-      security: {
+      code: {
         results: {
           aiInsights: {
             securityReport: {
@@ -135,10 +119,24 @@ describe('useSecurityScan', () => {
     );
   });
 
-  it('should skip scan for localhost URL', async () => {
-    mocks.getSite.mockReturnValue({
-      id: mockAppId,
-      published_url: 'http://localhost:3000'
+  it('should call internal code scan endpoint', async () => {
+    const mockResponse = {
+      code: {
+        results: {
+          aiInsights: {
+            securityReport: {
+              vulnerabilities: []
+            }
+          }
+        },
+        timedOut: false,
+        taskId: ''
+      }
+    };
+
+    mocks.appFetch.mockResolvedValue({
+      ok: true,
+      json: async () => mockResponse
     });
 
     const { result } = renderHook(() => useSecurityScan(mockAppId));
@@ -146,36 +144,17 @@ describe('useSecurityScan', () => {
     void result.current.runScan();
 
     await waitFor(() => {
-      expect(mocks.setSecurityScanResults).toHaveBeenCalled();
+      expect(mocks.appFetch).toHaveBeenCalledWith(
+        '/api/testpilot',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            appId: mockAppId,
+            runTests: ['code']
+          })
+        })
+      );
     }, { timeout: 3000 });
-
-    expect(mocks.appFetch).not.toHaveBeenCalled();
-    expect(mocks.setSecurityScanResults).toHaveBeenCalledWith(
-      mockAppId,
-      expect.objectContaining({
-        vulnerabilities: [],
-        summary: { critical: 0, high: 0, moderate: 0, low: 0 }
-      })
-    );
-    expect(mocks.setGoLiveModalStep).toHaveBeenCalledWith(mockAppId, 'video');
-  });
-
-  it('should skip scan when no URL available', async () => {
-    mocks.getSite.mockReturnValue({
-      id: mockAppId,
-      published_url: null,
-      preview_url: null
-    });
-
-    const { result } = renderHook(() => useSecurityScan(mockAppId));
-
-    void result.current.runScan();
-
-    await waitFor(() => {
-      expect(result.current.isScanning).toBe(false);
-    }, { timeout: 3000 });
-
-    expect(mocks.appFetch).not.toHaveBeenCalled();
   });
 
   it('should handle API error', async () => {
@@ -198,7 +177,7 @@ describe('useSecurityScan', () => {
 
   it('should handle scan timeout', async () => {
     const mockResponse = {
-      security: {
+      code: {
         timedOut: true,
         taskId: 'task-123'
       }
@@ -222,7 +201,7 @@ describe('useSecurityScan', () => {
 
   it('should handle error response in data', async () => {
     const mockResponse = {
-      security: {
+      code: {
         error: 'Invalid URL provided',
         status: 'failed'
       }
@@ -247,7 +226,7 @@ describe('useSecurityScan', () => {
   it('should handle missing security data in response', async () => {
     mocks.appFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({}) // No security field
+      json: async () => ({}) // No code field
     });
 
     const { result } = renderHook(() => useSecurityScan(mockAppId));
@@ -265,7 +244,7 @@ describe('useSecurityScan', () => {
 
   it('should set results but not auto-advance when no vulnerabilities found', async () => {
     const mockResponse = {
-      security: {
+      code: {
         results: {
           aiInsights: {
             securityReport: {
@@ -319,7 +298,7 @@ describe('useSecurityScan', () => {
 
   it('should map severity levels correctly', async () => {
     const mockResponse = {
-      security: {
+      code: {
         results: {
           aiInsights: {
             securityReport: {

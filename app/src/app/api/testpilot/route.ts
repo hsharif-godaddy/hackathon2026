@@ -8,8 +8,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { agentFetch } from '@/lib/agent-fetch';
+import { getControlPlaneAdapter } from '@/lib/control-plane';
+import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
-import { testPilotClient } from '@/lib/testpilot';
 import { VulnerabilityScannerResult } from '@/types/vulnerability-scanner';
 import { transformVulnerabilityScanResult } from './transform-scan-result';
 
@@ -20,64 +21,65 @@ import { transformVulnerabilityScanResult } from './transform-scan-result';
  *
  * Request body:
  * - appId: string
- * - url: string
- * - runTests: ('visual' | 'accessibility' | 'security' | 'code')[]
+ * - runTests: ('code')[]
  */
-export async function POST(request: NextRequest) {
+export const POST = withCustomerAuth(async (
+  request: NextRequest,
+  authContext: CustomerAuthContext
+) => {
   try {
-    const body = await request.json();
-    const { appId, url, runTests } = body;
-
-    if (!appId || !url || !Array.isArray(runTests)) {
+    if (!authContext.jwt) {
       return NextResponse.json(
-        { error: 'Missing required fields: appId, url, runTests' },
+        { error: 'Authentication token required' },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+    const { appId, runTests } = body;
+
+    if (!appId || !Array.isArray(runTests)) {
+      return NextResponse.json(
+        { error: 'Missing required fields: appId, runTests' },
         { status: 400 }
       );
     }
 
-    logger.info('testpilot.api.start', { appId, url, runTests });
+    const supportedTestTypes = new Set(['code']);
+    const invalidTestTypes = runTests.filter((testType: string) => !supportedTestTypes.has(testType));
+    if (invalidTestTypes.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Unsupported test type(s): ${invalidTestTypes.join(', ')}. Supported values: code.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const adapter = getControlPlaneAdapter();
+    logger.info('testpilot.api.start', { appId, runTests });
 
     const startTime = Date.now();
 
     const promises = runTests.map(async function processTest(testType: string) {
       const testStartTime = Date.now();
+      let scanEndpoint: string | undefined;
       try {
         logger.info('testpilot.api.test-start', { testType });
 
-        if (testType === 'visual') {
-          const result = await testPilotClient.runVisualTest(url);
-          const elapsed = Date.now() - testStartTime;
-          logger.info('testpilot.api.test-complete', { 
-            testType, 
-            elapsed, 
-            timedOut: result.timedOut, 
-            taskId: result.taskId 
-          });
-          return { key: 'visual', result };
-        } else if (testType === 'accessibility') {
-          const result = await testPilotClient.runAccessibilityTest(url);
-          const elapsed = Date.now() - testStartTime;
-          logger.info('testpilot.api.test-complete', { 
-            testType, 
-            elapsed, 
-            timedOut: result.timedOut, 
-            taskId: result.taskId 
-          });
-          return { key: 'accessibility', result };
-        } else if (testType === 'security') {
-          const result = await testPilotClient.runSecurityTest(url);
-          const elapsed = Date.now() - testStartTime;
-          logger.info('testpilot.api.test-complete', { 
-            testType, 
-            elapsed, 
-            timedOut: result.timedOut, 
-            taskId: result.taskId 
-          });
-          return { key: 'security', result };
-        } else if (testType === 'code') {
+        if (testType === 'code') {
+          const site = await adapter.getSite(appId, authContext.jwt);
+          if (!site) {
+            throw new Error(`Site ${appId} not found`);
+          }
+          if (!site.agent_url) {
+            throw new Error(`Site ${appId} does not have agent URL`);
+          }
+
           // Call agents service for comprehensive security scan (vulnerability + secrets)
-          const agentUrl = process.env.AGENTS_SERVICE_URL || 'http://localhost:4000';
-          const response = await agentFetch(`${agentUrl}/apps/${appId}/vulnerability-scan`, {
+          scanEndpoint = `${site.agent_url}/apps/${appId}/vulnerability-scan`;
+
+          const response = await agentFetch(scanEndpoint, {
             siteId: appId,
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -89,6 +91,13 @@ export async function POST(request: NextRequest) {
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
+            logger.error('testpilot.api.agent-fetch-failed', {
+              appId,
+              testType,
+              scanEndpoint,
+              status: response.status,
+              statusText: response.statusText,
+            });
             throw new Error(errorData.error || 'Code security scan failed');
           }
 
@@ -116,10 +125,18 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         const elapsed = Date.now() - testStartTime;
         const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorName = error instanceof Error ? error.name : 'UnknownError';
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        const errorCause = error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined;
+
         logger.error('testpilot.api.test-failed', {
           testType,
           elapsed,
           error: errorMessage,
+          errorName,
+          errorCause: String(errorCause),
+          errorStack,
+          scanEndpoint,
         });
         // Return error information so frontend can display it
         return {
@@ -145,7 +162,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    logger.info('testpilot.api.complete', { appId, url, testTypes: runTests, resultKeys: Object.keys(results) });
+    logger.info('testpilot.api.complete', { appId, testTypes: runTests, resultKeys: Object.keys(results) });
 
     return NextResponse.json(results);
   } catch (error) {
@@ -158,5 +175,5 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 

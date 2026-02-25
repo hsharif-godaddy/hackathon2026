@@ -15,14 +15,14 @@ import { transformVulnerabilityScanResult } from '../transform-scan-result';
 /**
  * Mock dependencies using vi.hoisted
  */
-const { mockAgentFetch, mockTestPilotClient, mockLogger } = vi.hoisted(function setup() {
+const { mockAgentFetch, mockAuthenticateCustomer, mockControlPlaneAdapter, mockTestPilotClient, mockLogger } = vi.hoisted(function setup() {
   return {
     mockAgentFetch: vi.fn(),
-    mockTestPilotClient: {
-      runVisualTest: vi.fn(),
-      runAccessibilityTest: vi.fn(),
-      runSecurityTest: vi.fn(),
+    mockAuthenticateCustomer: vi.fn(),
+    mockControlPlaneAdapter: {
+      getSite: vi.fn(),
     },
+    mockTestPilotClient: {},
     mockLogger: {
       info: vi.fn(),
       error: vi.fn(),
@@ -38,6 +38,37 @@ const { mockAgentFetch, mockTestPilotClient, mockLogger } = vi.hoisted(function 
 vi.mock('@/lib/agent-fetch', function mockAgentFetchModule() {
   return {
     agentFetch: mockAgentFetch,
+  };
+});
+
+vi.mock('@/lib/control-plane', function mockControlPlaneModule() {
+  return {
+    getControlPlaneAdapter: vi.fn().mockReturnValue(mockControlPlaneAdapter),
+  };
+});
+
+vi.mock('@/lib/customer-auth', async function mockCustomerAuthModule() {
+  const actual = await vi.importActual('@/lib/customer-auth');
+  return {
+    ...actual,
+    withCustomerAuth: vi.fn(function withCustomerAuth(handler) {
+      return async function wrappedHandler(request: NextRequest, ...args: any[]) {
+        const authContext = await mockAuthenticateCustomer(request);
+
+        if (!authContext?.isAuthenticated) {
+          return new Response(
+            JSON.stringify({
+              error: 'Unauthorized',
+              message: authContext?.error || 'Unauthorized',
+              requiresAuth: true,
+            }),
+            { status: 401, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        return handler(request, authContext, ...args);
+      };
+    }),
   };
 });
 
@@ -63,6 +94,7 @@ vi.mock('@/lib/request-context', function mockLoggerModule() {
  * Test fixtures
  */
 const MOCK_APP_ID = 'test-app-123';
+const MOCK_AGENT_URL = 'https://agent.example.com';
 const MOCK_URL = 'https://test-app.example.com';
 
 /**
@@ -174,9 +206,18 @@ describe('testpilot', function packageTests() {
   describe('#POST', function postTests() {
     beforeEach(function resetMocks() {
       vi.clearAllMocks();
-
-      // Set default environment
-      process.env.AGENTS_SERVICE_URL = 'http://localhost:4000';
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        jwt: 'test-jwt-token',
+        user: {
+          accountId: 'test-account-id',
+        },
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue({
+        id: MOCK_APP_ID,
+        agent_url: MOCK_AGENT_URL,
+        status: 'running',
+      });
     });
 
     describe('validation', function validationTests() {
@@ -191,14 +232,14 @@ describe('testpilot', function packageTests() {
 
         expect(response.status).toBe(400);
         expect(data).toEqual({
-          error: 'Missing required fields: appId, url, runTests',
+          error: 'Missing required fields: appId, runTests',
         });
       });
 
-      it('should reject request with missing url', async function missingUrl() {
+      it('should reject visual test type (code-only workflow)', async function rejectVisualType() {
         const request = createMockRequest({
           appId: MOCK_APP_ID,
-          runTests: ['code'],
+          runTests: ['visual'],
         });
 
         const response = await POST(request);
@@ -206,7 +247,7 @@ describe('testpilot', function packageTests() {
 
         expect(response.status).toBe(400);
         expect(data).toEqual({
-          error: 'Missing required fields: appId, url, runTests',
+          error: "Unsupported test type(s): visual. Supported values: code.",
         });
       });
 
@@ -221,7 +262,7 @@ describe('testpilot', function packageTests() {
 
         expect(response.status).toBe(400);
         expect(data).toEqual({
-          error: 'Missing required fields: appId, url, runTests',
+          error: 'Missing required fields: appId, runTests',
         });
       });
 
@@ -237,7 +278,23 @@ describe('testpilot', function packageTests() {
 
         expect(response.status).toBe(400);
         expect(data).toEqual({
-          error: 'Missing required fields: appId, url, runTests',
+          error: 'Missing required fields: appId, runTests',
+        });
+      });
+
+      it('should reject security test type and require internal code scan', async function rejectSecurityType() {
+        const request = createMockRequest({
+          appId: MOCK_APP_ID,
+          url: MOCK_URL,
+          runTests: ['security'],
+        });
+
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(data).toEqual({
+          error: "Unsupported test type(s): security. Supported values: code.",
         });
       });
     });
@@ -288,7 +345,29 @@ describe('testpilot', function packageTests() {
         });
 
         expect(mockAgentFetch).toHaveBeenCalledWith(
-          'http://localhost:4000/apps/test-app-123/vulnerability-scan',
+          'https://agent.example.com/apps/test-app-123/vulnerability-scan',
+          expect.objectContaining({
+            method: 'POST',
+            siteId: MOCK_APP_ID,
+          })
+        );
+      });
+
+      it('should allow code scan without url', async function codeWithoutUrl() {
+        mockAgentFetch.mockResolvedValue(createMockResponse(VALID_SCAN_RESULT));
+
+        const request = createMockRequest({
+          appId: MOCK_APP_ID,
+          runTests: ['code'],
+        });
+
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data).toHaveProperty('code');
+        expect(mockAgentFetch).toHaveBeenCalledWith(
+          'https://agent.example.com/apps/test-app-123/vulnerability-scan',
           expect.objectContaining({
             method: 'POST',
             siteId: MOCK_APP_ID,
@@ -598,39 +677,8 @@ describe('testpilot', function packageTests() {
       });
     });
 
-    describe('visual tests', function visualTests() {
-      it('should handle visual test successfully', async function visualSuccess() {
-        const visualResult = {
-          status: 'completed',
-          timedOut: false,
-          taskId: 'task-123',
-        };
-        mockTestPilotClient.runVisualTest.mockResolvedValue(visualResult);
-
-        const request = createMockRequest({
-          appId: MOCK_APP_ID,
-          url: MOCK_URL,
-          runTests: ['visual'],
-        });
-
-        const response = await POST(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(data.visual).toEqual(visualResult);
-        expect(mockTestPilotClient.runVisualTest).toHaveBeenCalledWith(MOCK_URL);
-      });
-    });
-
-    describe('accessibility tests', function accessibilityTests() {
-      it('should handle accessibility test successfully', async function accessibilitySuccess() {
-        const accessibilityResult = {
-          status: 'completed',
-          timedOut: false,
-          taskId: 'task-456',
-        };
-        mockTestPilotClient.runAccessibilityTest.mockResolvedValue(accessibilityResult);
-
+    describe('unsupported external test types', function unsupportedExternalTests() {
+      it('should reject accessibility test type (code-only workflow)', async function rejectAccessibilityType() {
         const request = createMockRequest({
           appId: MOCK_APP_ID,
           url: MOCK_URL,
@@ -640,44 +688,13 @@ describe('testpilot', function packageTests() {
         const response = await POST(request);
         const data = await response.json();
 
-        expect(response.status).toBe(200);
-        expect(data.accessibility).toEqual(accessibilityResult);
-        expect(mockTestPilotClient.runAccessibilityTest).toHaveBeenCalledWith(MOCK_URL);
-      });
-    });
-
-    describe('security tests', function securityTests() {
-      it('should handle security test successfully', async function securitySuccess() {
-        const securityResult = {
-          status: 'completed',
-          timedOut: false,
-          taskId: 'task-789',
-        };
-        mockTestPilotClient.runSecurityTest.mockResolvedValue(securityResult);
-
-        const request = createMockRequest({
-          appId: MOCK_APP_ID,
-          url: MOCK_URL,
-          runTests: ['security'],
+        expect(response.status).toBe(400);
+        expect(data).toEqual({
+          error: "Unsupported test type(s): accessibility. Supported values: code.",
         });
-
-        const response = await POST(request);
-        const data = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(data.security).toEqual(securityResult);
-        expect(mockTestPilotClient.runSecurityTest).toHaveBeenCalledWith(MOCK_URL);
       });
-    });
 
-    describe('multiple tests', function multipleTests() {
-      it('should run multiple tests in parallel', async function parallelTests() {
-        const visualResult = { status: 'completed', timedOut: false, taskId: 'visual-task' };
-        const codeResult = VALID_SCAN_RESULT;
-
-        mockTestPilotClient.runVisualTest.mockResolvedValue(visualResult);
-        mockAgentFetch.mockResolvedValue(createMockResponse(codeResult));
-
+      it('should reject mixed test types including visual', async function rejectMixedTypes() {
         const request = createMockRequest({
           appId: MOCK_APP_ID,
           url: MOCK_URL,
@@ -687,12 +704,10 @@ describe('testpilot', function packageTests() {
         const response = await POST(request);
         const data = await response.json();
 
-        expect(response.status).toBe(200);
-        expect(data).toHaveProperty('visual');
-        expect(data).toHaveProperty('code');
-        expect(data.visual).toEqual(visualResult);
-        expect(data.code.timedOut).toBe(false);
-        expect(data.code.results.success).toBe(true);
+        expect(response.status).toBe(400);
+        expect(data).toEqual({
+          error: "Unsupported test type(s): visual. Supported values: code.",
+        });
       });
     });
 
@@ -842,7 +857,7 @@ describe('testpilot', function packageTests() {
         expect(data).toHaveProperty('error');
       });
 
-      it('should handle unknown test type', async function unknownTestType() {
+      it('should reject unknown test type', async function unknownTestType() {
         const request = createMockRequest({
           appId: MOCK_APP_ID,
           url: MOCK_URL,
@@ -852,8 +867,10 @@ describe('testpilot', function packageTests() {
         const response = await POST(request);
         const data = await response.json();
 
-        expect(response.status).toBe(200);
-        expect(data).toEqual({});
+        expect(response.status).toBe(400);
+        expect(data).toEqual({
+          error: 'Unsupported test type(s): unknown-test. Supported values: code.',
+        });
       });
     });
   });
