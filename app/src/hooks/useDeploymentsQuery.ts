@@ -268,8 +268,9 @@ export function useDeploymentsQuery({
             // Check if this is first publish and user hasn't gone live yet
             const isFirstPublish = !wasAlreadyPublished;
             const userHasGoneLive = hasGoneLive(appId);
+            const wasDismissed = getPublishState(appId).goLiveModalDismissed;
 
-            if (isFirstPublish && !userHasGoneLive) {
+            if (isFirstPublish && !userHasGoneLive && !wasDismissed) {
               // Show go-live modal for first-time publishers
               setShowGoLiveModal(appId, true);
               logger.info('deployments-query.showing-go-live-modal', {

@@ -124,6 +124,7 @@ const createDefaultPublishState = () => {
     hasGoneLive: goLiveStatus.hasGoneLive,
     wentLiveAt: goLiveStatus.wentLiveAt,
     showGoLiveModal: false,
+    goLiveModalDismissed: false,
     goLiveModalStep: null as 'confirm' | 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null,
     securityScanResults: null,
     launchVideoResult: null,
@@ -193,6 +194,7 @@ interface DevelopPageStore {
     hasGoneLive: boolean
     wentLiveAt: string | null
     showGoLiveModal: boolean
+    goLiveModalDismissed: boolean
     goLiveModalStep: 'confirm' | 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null
     securityScanResults: any | null
     launchVideoResult: LaunchVideoResult | null
@@ -270,6 +272,7 @@ interface DevelopPageStore {
     hasGoneLive: boolean
     wentLiveAt: string | null
     showGoLiveModal: boolean
+    goLiveModalDismissed: boolean
     goLiveModalStep: 'confirm' | 'select-features' | 'qa' | 'security-results' | 'republish' | 'video' | 'select-marketing' | null
     securityScanResults: any | null
     launchVideoResult: LaunchVideoResult | null
@@ -756,7 +759,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       }
       state.publishStates[appId].showGoLiveModal = show;
       if (!show) {
-        // Reset modal state when closing
+        state.publishStates[appId].goLiveModalDismissed = true;
         state.publishStates[appId].goLiveModalStep = null;
         state.publishStates[appId].securityScanResults = null;
         state.publishStates[appId].launchVideoResult = null;

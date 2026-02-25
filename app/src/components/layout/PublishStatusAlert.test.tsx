@@ -370,4 +370,18 @@ describe('PublishStatusAlert', () => {
 
     expect(mockDevelopStore.setShowGoLiveModal).not.toHaveBeenCalled();
   });
+
+  it('should NOT show Go Live modal if user previously dismissed it', () => {
+    mockDevelopStore.publishStates = {
+      'app-123': { showSuccessAlert: true, hasGoneLive: false, goLiveModalDismissed: true },
+    };
+    mockSiteStore.getSite.mockReturnValue({
+      id: 'app-123',
+      published_url: 'https://example.com',
+    });
+
+    renderWithProviders(<PublishStatusAlert />);
+
+    expect(mockDevelopStore.setShowGoLiveModal).not.toHaveBeenCalled();
+  });
 });

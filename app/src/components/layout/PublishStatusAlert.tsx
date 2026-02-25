@@ -151,10 +151,11 @@ export default function PublishStatusAlert() {
   }, [currentAppId, setActiveSettingsSection]);
 
   // Automatically show Go Live modal on successful publish if user hasn't gone live yet
+  // and hasn't previously dismissed the modal in this session
   useEffect(() => {
     if (showSuccessAlert && currentAppId && hasBeenPublished(site)) {
       const publishState = getPublishState(currentAppId);
-      if (!publishState?.hasGoneLive) {
+      if (!publishState?.hasGoneLive && !publishState?.goLiveModalDismissed) {
         logger.info('publish-alert.auto-show-go-live-modal', {
           message: 'Automatically showing Go Live modal after successful publish',
           appId: currentAppId,
