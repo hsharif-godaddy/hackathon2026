@@ -7,6 +7,12 @@ import (
 	"time"
 )
 
+// PreviewTaskName is the Nomad task name for preview containers.
+const PreviewTaskName = "preview"
+
+// DefaultPreviewSetupScript is the default setup script path for preview containers.
+const DefaultPreviewSetupScript = "/management-scripts/nomad_setup.sh"
+
 // Config holds all configuration for dev-supervisor
 type Config struct {
 	SocketPath             string
@@ -156,16 +162,22 @@ func LoadConfig() *Config {
 	config.IdleCheckInterval = GetEnvDurationWithDefault("DEV_SUPERVISOR_IDLE_CHECK_INTERVAL", 30*time.Second)
 
 	// Only enable start-on-request for preview variant (safety check)
-	const previewTaskName = "preview"
 	taskName := os.Getenv("NOMAD_TASK_NAME")
-	if config.StartOnRequestEnabled && taskName != previewTaskName {
+	if config.StartOnRequestEnabled && taskName != PreviewTaskName {
 		// Note: This will log after initLogging() is called in main
 		config.StartOnRequestEnabled = false
 	}
 
+	// Set the default setup script.
+	defaultSetupScript := ""
+	if taskName == PreviewTaskName {
+		// Typically this will be set by mhp-core in the job definition, this is just to ensure correct behavior if the variable is missing for the preview container.
+		defaultSetupScript = DefaultPreviewSetupScript
+	}
+
 	// Mode-based conditional startup configuration
 	config.AppDir = GetEnvStringWithDefault("CUSTOMER_APP_DIR", "/app")
-	config.SetupScript = GetEnvStringWithDefault("DEV_SUPERVISOR_SETUP_SCRIPT", "")
+	config.SetupScript = GetEnvStringWithDefault("DEV_SUPERVISOR_SETUP_SCRIPT", defaultSetupScript)
 	config.SetupScriptTimeout = GetEnvDurationWithDefault("DEV_SUPERVISOR_SETUP_TIMEOUT", 10*time.Minute)
 	config.DeferRestartSetup = GetEnvBoolWithDefault("DEV_SUPERVISOR_DEFER_RESTART_SETUP", false)
 

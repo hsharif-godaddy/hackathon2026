@@ -340,9 +340,8 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 		return err
 	}
 
-	const previewTaskName = "preview"
 	// Start SMTP proxy (skip for preview task in unified job)
-	if os.Getenv("NOMAD_TASK_NAME") != previewTaskName {
+	if os.Getenv("NOMAD_TASK_NAME") != config.PreviewTaskName {
 		if err := s.smtpProxy.Start(); err != nil {
 			slog.Warn("failed to start SMTP proxy", "error", err)
 		}
