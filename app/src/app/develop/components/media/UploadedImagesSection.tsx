@@ -107,7 +107,7 @@ export function UploadedImagesSection({
     });
 
     fetchUploads();
-  }, [fetchUploads]);
+  }, [fetchUploads, appId]);
 
   if (isLoading) {
     return (

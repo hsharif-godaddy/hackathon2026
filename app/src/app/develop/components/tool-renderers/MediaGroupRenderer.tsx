@@ -1,12 +1,16 @@
 'use client'
 
-import { Image } from 'lucide-react'
 import { useParams } from 'next/navigation'
+import ChevronRightIcon from '@ux/icon/chevron-right'
+import ImageIcon from '@ux/icon/image'
+import PlusIcon from '@ux/icon/plus'
 
 import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
+import { generateClickEID } from '@/utils/instrumentation'
 
 interface MediaSlotInput {
   slot: string
@@ -58,6 +62,7 @@ export default function MediaGroupRenderer({
   toolCalls,
   isActiveStream: _isActiveStream = false,
 }: MediaGroupRendererProps) {
+  const t = useTranslations()
   const params = useParams()
   const appId = params?.id as string | undefined
   const openDialog = useMediaSlotDialogStore((state) => state.openDialog)
@@ -116,21 +121,13 @@ export default function MediaGroupRenderer({
     return `https://${url}`
   }
 
-  // Format slot name for display
-  const formatSlotName = (slot: string): string => {
-    return slot
-      .split('/')
-      .filter(
-        (part) =>
-          part && part !== 'pages' && part !== 'components' && part !== 'sections'
-      )
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).replace(/-/g, ' '))
-      .join(' ')
-  }
-
   const handleThumbnailClick = (slotName: string) => {
     if (appId && slotName) {
-      openDialog(appId, slotName)
+      // Always pass all slot names for carousel navigation when multiple slots exist
+      const allSlotNames = completedSlots.length > 1
+        ? completedSlots.map((s) => s.result!.slot)
+        : undefined
+      openDialog(appId, slotName, allSlotNames)
     }
   }
 
@@ -138,8 +135,8 @@ export default function MediaGroupRenderer({
   if (runningSlots.length > 0 && completedSlots.length === 0) {
     return (
       <ToolHeader
-        icon={<Image className="w-2 h-2" />} /* eslint-disable-line jsx-a11y/alt-text */
-        displayName="Selecting media..."
+        icon={<ImageIcon className="w-2 h-2" />}
+        displayName={t('builder_medias_selecting')}
         toolStatus="running"
         hasDetails={false}
       />
@@ -151,8 +148,8 @@ export default function MediaGroupRenderer({
     const firstError = failedSlots[0]?.result?.error || 'Failed to load media'
     return (
       <ToolHeader
-        icon={<Image className="w-2 h-2" />} /* eslint-disable-line jsx-a11y/alt-text */
-        displayName={`Media selection failed: ${firstError}`}
+        icon={<ImageIcon className="w-2 h-2" />}
+        displayName={t('builder_medias_selection_failed', { error: firstError })}
         toolStatus="completed"
         hasDetails={false}
       />
@@ -164,11 +161,22 @@ export default function MediaGroupRenderer({
     return null
   }
 
+  const handleSeeAllClick = () => {
+    if (appId && completedSlots.length > 1) {
+      const allSlotNames = completedSlots.map((s) => s.result!.slot)
+      openDialog(appId, completedSlots[0].result!.slot, allSlotNames)
+    }
+  }
+
+  // Show only first 2 thumbnails when there are more than 2 completed slots
+  const visibleSlots = completedSlots.length > 3 ? completedSlots.slice(0, 3) : completedSlots
+  const showSeeAllButton = completedSlots.length > 3
+
   return (
     <div className="my-2">
-      {/* Horizontal scroll container with vertical cards */}
-      <div className="flex gap-3 overflow-x-auto pb-2 -mb-2">
-        {completedSlots.map((slot) => {
+      {/* 2 images + See all button */}
+      <div className="flex gap-1 overflow-x-scroll">
+        {visibleSlots.map((slot) => {
           // For videos, use thumbnailUrl for preview; for images, use resolvedUrl
           const isVideo = slot.result!.mediaType === 'video'
           const previewUrl = isVideo
@@ -176,35 +184,51 @@ export default function MediaGroupRenderer({
             : slot.result!.resolvedUrl
 
           return (
-          <button
-            type="button"
-            key={slot.toolCall.id}
-            onClick={() => handleThumbnailClick(slot.result!.slot)}
-            className="flex-shrink-0 w-12 cursor-pointer group text-left"
-          >
-            {/* Square thumbnail (uses thumbnailUrl for videos, resolvedUrl for images) */}
-            <div className="w-12 h-12 rounded-md overflow-hidden">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={ensureHttps(previewUrl || '')}
-                alt={slot.result!.searchQuery}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-              />
-            </div>
-
-            {/* Slot info below image */}
-            <p className="text-[10px] font-medium mt-1 leading-tight break-words hyphens-auto">
-              {formatSlotName(slot.result!.slot)}
-            </p>
-            {(slot.result!.alternatives?.length ?? 0) > 0 && (
-              <p className="text-[10px] text-intents-ux-textSubtle-textColor">
-                {slot.result!.alternatives!.length} option
-                {slot.result!.alternatives!.length !== 1 ? 's' : ''}
-              </p>
-            )}
-          </button>
+            <button
+              type="button"
+              key={slot.toolCall.id}
+              onClick={() => handleThumbnailClick(slot.result!.slot)}
+              className="flex-shrink-0 w-12 cursor-pointer group text-left"
+              data-eid={generateClickEID("develop.media_group.image")}
+            >
+              {/* Square thumbnail (uses thumbnailUrl for videos, resolvedUrl for images) */}
+              <div className="w-12 h-12 rounded-md overflow-hidden relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={ensureHttps(previewUrl || '')}
+                  alt={slot.result!.searchQuery}
+                  className="w-full h-full object-cover rounded-md transition-transform"
+                />
+                {/* Overlay that expands on hover */}
+                <div className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-md bg-intents-ux-boxLowContrast-backgroundColor shadow-md transition-all duration-300 ease-in-out origin-bottom-right group-hover:w-full group-hover:h-full group-hover:bottom-0 group-hover:right-0 group-hover:rounded-md group-hover:bg-intents-ux-boxLowContrast-backgroundColor group-hover:backdrop-blur-sm flex flex-col items-center justify-center">
+                  <PlusIcon className="size-2 transition-all duration-300 ease-in-out group-hover:-mt-1" />
+                  {/* Show alternatives count on hover */}
+                  {(slot.result!.alternativeCount || slot.result!.alternatives?.length) && (
+                    <span className="absolute top-1/2 scale-0 text-xs text-intents-ux-text-textColor font-medium transition-all duration-300 ease-in-out group-hover:scale-100 group-hover:mt-1">
+                      {t('builder_common_options_count', {
+                        count: slot.result!.alternativeCount || slot.result!.alternatives!.length
+                      })}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </button>
           )
         })}
+
+        {/* See all button when more than 2 slots */}
+        {showSeeAllButton && (
+          <button
+            type="button"
+            onClick={handleSeeAllClick}
+            className="flex-shrink-0 w-8 cursor-pointer group justify-center items-center text-center"
+            data-eid={generateClickEID("develop.media_group.all")}
+          >
+            <div className="w-8 h-12 flex items-center justify-center">
+              <ChevronRightIcon className="w-4 h-4 mx-auto" />
+            </div>
+          </button>
+        )}
 
         {/* Running slots placeholder */}
         {runningSlots.map((slot) => (
@@ -214,7 +238,7 @@ export default function MediaGroupRenderer({
           >
             <div className="w-12 h-12 rounded-md bg-intents-ux-boxLowContrast-backgroundColor animate-pulse" />
             <p className="text-xs text-intents-ux-textSubtle-textColor mt-1">
-              Loading...
+              {t('builder_common_loading')}
             </p>
           </div>
         ))}

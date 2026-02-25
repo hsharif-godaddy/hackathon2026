@@ -11,8 +11,10 @@ interface MediaSlotDialogState {
   slotName: string | null;
   /** The app ID for the current context */
   appId: string | null;
+  /** All slot names for carousel mode (optional) */
+  allSlotNames: string[] | null;
   /** Open the dialog for a specific slot */
-  openDialog: (appId: string, slotName: string) => void;
+  openDialog: (appId: string, slotName: string, allSlotNames?: string[]) => void;
   /** Close the dialog */
   closeDialog: () => void;
 }
@@ -39,12 +41,14 @@ export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
   isOpen: false,
   slotName: null,
   appId: null,
+  allSlotNames: null,
 
-  openDialog: (appId: string, slotName: string) => {
+  openDialog: (appId: string, slotName: string, allSlotNames?: string[]) => {
     set({
       isOpen: true,
       slotName,
       appId,
+      allSlotNames: allSlotNames || null,
     });
   },
 
@@ -53,6 +57,7 @@ export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
       isOpen: false,
       slotName: null,
       appId: null,
+      allSlotNames: null,
     });
   },
 }));

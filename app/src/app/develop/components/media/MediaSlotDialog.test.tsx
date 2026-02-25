@@ -3,12 +3,15 @@ import '@testing-library/jest-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 
-import { mockInstrumentation } from '@/tests/mocks'
+import { MediaSlotDialog } from '@/app/develop/components/media/MediaSlotDialog'
 import { renderWithProviders } from '@/tests/test-utils'
-import { MediaSlotDialog } from './MediaSlotDialog'
 
 // Mock external dependencies
-vi.mock('@/utils/instrumentation', () => mockInstrumentation())
+vi.mock('@/utils/instrumentation', () => ({
+  logImpressionEvent: vi.fn(() => vi.fn()),
+  generateClickEID: vi.fn((event: string) => `${event}.click`),
+  logAiroHQEvent: vi.fn(() => vi.fn()),
+}))
 vi.mock('@/lib/request-context', () => ({
   logger: {
     error: vi.fn(),
@@ -92,8 +95,8 @@ describe('MediaSlotDialog', () => {
   it('renders upload button', () => {
     renderWithProviders(<MediaSlotDialog />)
 
-    // Use exact match to avoid matching "Your Uploads" tab
-    expect(screen.getByRole('button', { name: /^Upload$/i })).toBeInTheDocument()
+    // Translation key is returned since IntlProvider has empty messages
+    expect(screen.getByText('builder_mediaslot_upload')).toBeInTheDocument()
   })
 
   it('has file input with correct accept attribute', () => {
@@ -121,16 +124,17 @@ describe('MediaSlotDialog', () => {
         )
     )
 
-    const { user } = renderWithProviders(<MediaSlotDialog />)
+    renderWithProviders(<MediaSlotDialog />)
 
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
     const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
 
-    await user.upload(fileInput, file)
+    // Use fireEvent because file input is hidden with display: none
+    fireEvent.change(fileInput, { target: { files: [file] } })
 
-    // Should show uploading state
+    // Should show uploading state (translation key)
     await waitFor(() => {
-      expect(screen.getByText(/uploading/i)).toBeInTheDocument()
+      expect(screen.getByText('builder_mediaslot_uploading')).toBeInTheDocument()
     })
   })
 
@@ -144,9 +148,9 @@ describe('MediaSlotDialog', () => {
     // This tests our JavaScript validation layer
     fireEvent.change(fileInput, { target: { files: [invalidFile] } })
 
-    // Should show error
+    // Should show error (translation key since IntlProvider has empty messages)
     await waitFor(() => {
-      expect(screen.getByText(/Only JPEG, PNG, WebP, and GIF images are supported/i)).toBeInTheDocument()
+      expect(screen.getByText('builder_mediaslot_error_type')).toBeInTheDocument()
     })
 
     // Should not call fetch
@@ -154,17 +158,18 @@ describe('MediaSlotDialog', () => {
   })
 
   it('validates file size before upload', async () => {
-    const { user } = renderWithProviders(<MediaSlotDialog />)
+    renderWithProviders(<MediaSlotDialog />)
 
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
     // Create file larger than 10MB
     const largeFile = new File([new ArrayBuffer(11 * 1024 * 1024)], 'large.jpg', { type: 'image/jpeg' })
 
-    await user.upload(fileInput, largeFile)
+    // Use fireEvent because file input is hidden with display: none
+    fireEvent.change(fileInput, { target: { files: [largeFile] } })
 
-    // Should show error
+    // Should show error (translation key since IntlProvider has empty messages)
     await waitFor(() => {
-      expect(screen.getByText(/10MB/i)).toBeInTheDocument()
+      expect(screen.getByText('builder_mediaslot_error_size')).toBeInTheDocument()
     })
 
     // Should not call fetch
@@ -177,12 +182,13 @@ describe('MediaSlotDialog', () => {
       json: () => Promise.resolve({ success: true, uploadedUrl: 'http://example.com/uploaded.jpg' }),
     } as Response)
 
-    const { user } = renderWithProviders(<MediaSlotDialog />)
+    renderWithProviders(<MediaSlotDialog />)
 
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
     const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
 
-    await user.upload(fileInput, file)
+    // Use fireEvent because file input is hidden with display: none
+    fireEvent.change(fileInput, { target: { files: [file] } })
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
@@ -203,12 +209,13 @@ describe('MediaSlotDialog', () => {
       json: () => Promise.resolve({ success: true, uploadedUrl: 'http://example.com/uploaded.jpg' }),
     } as Response)
 
-    const { user } = renderWithProviders(<MediaSlotDialog />)
+    renderWithProviders(<MediaSlotDialog />)
 
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
     const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
 
-    await user.upload(fileInput, file)
+    // Use fireEvent because file input is hidden with display: none
+    fireEvent.change(fileInput, { target: { files: [file] } })
 
     await waitFor(() => {
       expect(mockCloseDialog).toHaveBeenCalled()
@@ -226,12 +233,13 @@ describe('MediaSlotDialog', () => {
       json: () => Promise.resolve({ success: true, uploadedUrl: 'http://example.com/uploaded.jpg' }),
     } as Response)
 
-    const { user } = renderWithProviders(<MediaSlotDialog />)
+    renderWithProviders(<MediaSlotDialog />)
 
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
     const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
 
-    await user.upload(fileInput, file)
+    // Use fireEvent because file input is hidden with display: none
+    fireEvent.change(fileInput, { target: { files: [file] } })
 
     await waitFor(() => {
       // Verify RELOAD_MEDIA_SLOT is sent
@@ -257,15 +265,17 @@ describe('MediaSlotDialog', () => {
       json: () => Promise.resolve({ error: 'Server error' }),
     } as Response)
 
-    const { user } = renderWithProviders(<MediaSlotDialog />)
+    renderWithProviders(<MediaSlotDialog />)
 
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
     const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
 
-    await user.upload(fileInput, file)
+    // Use fireEvent because file input is hidden with display: none
+    fireEvent.change(fileInput, { target: { files: [file] } })
 
     await waitFor(() => {
-      expect(screen.getByText(/server error/i)).toBeInTheDocument()
+      // The error message from the server response
+      expect(screen.getByText('Server error')).toBeInTheDocument()
     })
   })
 })

@@ -102,7 +102,7 @@ export default function PersistentTodoList() {
   function renderHeader() {
     return (
       <div
-        className="px-2 py-1 cursor-pointer hover:bg-intents-ux-boxLowContrast-backgroundColor transition-colors border-b border-border"
+        className="px-2 py-1 cursor-pointer hover:bg-intents-ux-boxLowContrast-backgroundColor transition-colors"
         onClick={toggleViewState}
       >
         <div className="flex items-center justify-between text-sm min-w-0">

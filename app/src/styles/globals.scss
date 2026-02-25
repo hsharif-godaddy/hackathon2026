@@ -381,6 +381,16 @@
     animation-duration: 300ms;
   }
 
+  [data-state="open"].duration-500,
+  .data-\[state\=open\]\:duration-500[data-state="open"] {
+    animation-duration: 500ms;
+  }
+
+  [data-state="closed"].duration-500,
+  .data-\[state\=closed\]\:duration-500[data-state="closed"] {
+    animation-duration: 500ms;
+  }
+
   [data-state="open"].slide-in-from-right,
   .data-\[state\=open\]\:slide-in-from-right[data-state="open"] {
     animation-name: slide-in-from-right;
