@@ -26,6 +26,14 @@ This directory contains prompt sections that are reusable across multiple agents
 - Storage decision matrix
 - Used by: Develop Agent, Design Agent, Example Agent
 
+### `publishing.md` - Preview vs Published Site Guidelines
+
+- Differences between preview and publish containers
+- How the publish workflow operates
+- Common publish failure causes and troubleshooting
+- Environment variable and build behavior differences
+- Used by: Develop Agent
+
 ## Usage
 
 Shared sections are included in agent configurations using:
@@ -34,6 +42,7 @@ Shared sections are included in agent configurations using:
 .file(join(sharedDir, 'communication.md'))
 .file(join(sharedDir, 'security.md'))
 .file(join(sharedDir, 'filesystem.md'))
+.file(join(sharedDir, 'publishing.md'))
 ```
 
 ## Benefits of Shared Sections

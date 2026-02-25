@@ -165,6 +165,7 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     promptBuilder.file(paths.getAgentFile('develop', 'commerce.md'))
   }
 
+  promptBuilder.file(paths.getSharedFile('publishing.md'));
   promptBuilder.file(paths.getSharedFile('security.md'));
 
   // Template descriptions are now dynamically injected during conversation execution
