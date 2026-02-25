@@ -1,8 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import Box from '@ux/box';
 import CalendarIcon from '@ux/icon/calendar';
 
+import { SettingsLoadingState } from '@/app/develop/components/settings/components/SettingsLoadingState';
 import ContentCalendar from '@/app/develop/components/settings/Marketing/ContentCalendar';
 import { useAppIdFromParams } from '@/app/develop/components/utils';
 import BigCard from '@/components/layout/BigCard';
@@ -12,6 +14,7 @@ import { useTranslations } from '@/hooks/useTranslations';
 export default function MarketingPanel() {
   const t = useTranslations();
   const appId = useAppIdFromParams();
+  const [isCalendarLoading, setIsCalendarLoading] = useState(true);
 
   if (!appId) {
     return (
@@ -28,13 +31,21 @@ export default function MarketingPanel() {
   }
 
   return (
-    <Box gap="lg" className="@container">
-      <BigCard
-        title={t('builder_marketing_calendar')}
-        description={t('builder_marketing_calendar_description')}
-      >
-        <ContentCalendar appId={appId} />
-      </BigCard>
-    </Box>
+    <>
+      {isCalendarLoading && (
+        <SettingsLoadingState
+          fullPage
+          title={t('builder_marketing_loading_calendar')}
+        />
+      )}
+      <Box gap="lg" className={isCalendarLoading ? '!hidden' : '@container'}>
+        <BigCard
+          title={t('builder_marketing_calendar')}
+          description={t('builder_marketing_calendar_description')}
+        >
+          <ContentCalendar appId={appId} onLoadingChange={setIsCalendarLoading} />
+        </BigCard>
+      </Box>
+    </>
   );
 }

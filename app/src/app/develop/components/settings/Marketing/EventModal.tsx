@@ -306,8 +306,8 @@ export default function EventModal({
     })} onClose={handleClose}>
       <Box gap="md">
         {isPast && (
-          <Box className="p-3 rounded bg-intents-ux-warning-backgroundColor border border-intents-ux-warning-borderColor">
-            <text.p className="text-intents-ux-warning-textColor">
+          <Box gap="sm" inlinePadding='md' blockPadding='md' className="text-center border-0 intents-ux-boxLowContrast">
+            <text.p>
               {t('builder_marketing_past_date_warning')}
             </text.p>
           </Box>

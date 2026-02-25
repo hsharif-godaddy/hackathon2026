@@ -3,6 +3,8 @@
 import Box from '@ux/box';
 import Button from '@ux/button';
 import text from '@ux/text';
+import TextInput from '@ux/text-input';
+import TextLockup from '@ux/text-lockup';
 import TimePicker from '@ux/time-picker';
 
 import { useTranslations } from '@/hooks/useTranslations';
@@ -37,31 +39,27 @@ export default function BlogInstructionsForm({
   const t = useTranslations();
 
   return (
-    <Box gap="md">
-      {/* Event header */}
-      {selectedEvent && (
-        <Box gap="sm" className="pb-3 border-b border-intents-ux-boxLowContrast-borderColor">
-          <text.h4 size={1} className="font-semibold">
-            {selectedEvent.name}
-          </text.h4>
-          {selectedEvent.description && (
-            <text.p className="text-sm text-intents-ux-textSubdued-textColor">
-              {selectedEvent.description}
-            </text.p>
-          )}
-        </Box>
-      )}
+    <Box gap="xl">
+      {/* Modal Content */}
+      <Box gap="lg">
+        {/* Event header */}
+        {selectedEvent && (
+          <TextLockup
+            title={selectedEvent.name}
+            titleLevel={4}
+            size="sm"
+          >
+            {selectedEvent.description}
+          </TextLockup>
+        )}
 
-      {!selectedEvent && (
-        <Box className="pb-3 border-b border-intents-ux-boxLowContrast-borderColor">
-          <text.h4 size={1} className="font-semibold">
+        {!selectedEvent && (
+          <text.h4 as="title" size={1}>
             {t('builder_marketing_custom_blog_post')}
           </text.h4>
-        </Box>
-      )}
+        )}
 
-      {/* Time picker */}
-      <Box gap="sm">
+        {/* Time picker */}
         <TimePicker
           id="blog-schedule-time"
           label={t('builder_marketing_publish_time')}
@@ -73,39 +71,29 @@ export default function BlogInstructionsForm({
           minuteInterval={15}
           locale={getUserLocale()}
           shouldDisableTime={shouldDisableTime}
+          helpMessage={t('builder_social_schedule_timezone', { timezone: userTimezone })}
+          errorMessage={
+            !timeValidation.isValid && timeValidation.message
+              ? t(timeValidation.message)
+              : undefined
+          }
         />
-        <div className="flex items-center gap-1">
-          <span className="text-xs px-2 py-0.5 rounded bg-intents-ux-actionPrimary-backgroundColor/10 text-intents-ux-actionPrimary-textColor">
-            {t('builder_social_schedule_timezone', { timezone: userTimezone })}
-          </span>
-        </div>
-        {!timeValidation.isValid && timeValidation.message && (
-          <text.p className="text-xs text-intents-ux-feedbackError-textColor">
-            {t(timeValidation.message)}
-          </text.p>
-        )}
-      </Box>
 
-      {/* Instructions */}
-      <Box gap="sm">
-        <label htmlFor="blog-instructions" className="text-sm font-medium text-intents-ux-textStandard-textColor">
-          {t('builder_marketing_additional_instructions')} <span className="text-intents-ux-textSubdued-textColor font-normal">{t('builder_marketing_optional')}</span>
-        </label>
-        <textarea
+        {/* Instructions */}
+        <TextInput
           id="blog-instructions"
+          label={`${t('builder_marketing_additional_instructions')} ${t('builder_marketing_optional')}`}
+          multiline
           value={customInstructions}
-          onChange={(e) => onCustomInstructionsChange(e.target.value)}
+          onChange={onCustomInstructionsChange}
           placeholder={t('builder_marketing_instructions_placeholder')}
-          rows={4}
-          className="w-full p-3 border border-intents-ux-boxLowContrast-borderColor rounded-lg resize-none
-            text-intents-ux-textStandard-textColor placeholder:text-intents-ux-textSubdued-textColor
-            focus:outline-none focus:ring-2 focus:ring-intents-ux-actionPrimary-backgroundColor focus:border-transparent
-            transition-shadow"
+          size={4}
+          resize={false}
         />
       </Box>
 
-      {/* Action buttons */}
-      <Box orientation="horizontal" gap="sm" inlineAlignChildren="end" className="pt-2">
+      {/* Modal Actions */}
+      <Box orientation="horizontal" blockAlignChildren="end" gap="sm">
         <Button
           onClick={onBack}
           design="secondary"

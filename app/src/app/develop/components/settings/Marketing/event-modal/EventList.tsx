@@ -3,7 +3,9 @@
 import Box from '@ux/box';
 import Button from '@ux/button';
 import text from '@ux/text';
+import TextLockup from '@ux/text-lockup';
 
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useTranslations } from '@/hooks/useTranslations';
 import { CalendarEvent } from '@/types/marketing';
 import { ContentType } from './types';
@@ -26,20 +28,24 @@ export default function EventList({
   onBack
 }: EventListProps) {
   const t = useTranslations();
+  const isMobile = useIsMobile();
   const hasEvents = events.length > 0;
 
   if (!hasEvents && !isPast) {
     return (
-      <Box gap="md">
-        <Box gap="sm" className="py-4 text-center">
-          <text.p className="text-intents-ux-textSubdued-textColor">
+      <Box gap="xl">
+        {/* Modal Content */}
+        <Box gap="sm" inlinePadding='md' blockPadding='md' className="text-center border-0 intents-ux-boxLowContrast">
+          <text.p>
             {t('builder_marketing_no_events_for_day')}
           </text.p>
         </Box>
-        <Box orientation="horizontal" gap="sm">
+
+        {/* Modal Actions */}
+        <Box orientation="horizontal" blockAlignChildren="end" gap="sm">
           <Button
             onClick={onBack}
-            design="tertiary"
+            design="secondary"
             size="md"
           >
             {t('builder_marketing_back')}
@@ -48,11 +54,10 @@ export default function EventList({
             onClick={onCreateCustomPost}
             design="primary"
             size="md"
-            className="flex-1"
           >
             {contentType === 'blog'
               ? t('builder_marketing_schedule_blog_post')
-              : t('builder_marketing_schedule_social_post')}
+              : t('builder_marketing_schedule_socialpost')}
           </Button>
         </Box>
       </Box>
@@ -60,34 +65,45 @@ export default function EventList({
   }
 
   return (
-    <Box gap="lg">
-      {events.map((event, idx) => (
-        <Box key={idx} gap="md" className="pb-4 border-b border-intents-ux-boxLowContrast-borderColor last:border-0 last:pb-0">
-          <Box gap="sm">
-            <text.p className="font-semibold text-lg">{event.name}</text.p>
-            {event.description && (
-              <text.p className="text-sm text-intents-ux-textSubdued-textColor">
-                {event.description}
-              </text.p>
-            )}
-          </Box>
-          <Button
-            onClick={() => onSelectEvent(event)}
-            disabled={isPast}
-            design="primary"
-            size="md"
-            className="w-full"
+    <Box gap="xl">
+      <Box gap="md">
+        {events.map((event, idx) => (
+          <Box
+            key={idx}
+            gap="md"
+            inlineAlignChildren='center'
+            orientation={isMobile ? 'vertical' : 'horizontal'}
+            blockPadding='lg'
+            inlinePadding='lg'
+            elevation="card"
           >
-            {isPast ? t('builder_marketing_past_date') : t('builder_marketing_schedule_post')}
-          </Button>
-        </Box>
-      ))}
+            <TextLockup
+              title={event.name}
+              titleLevel={4}
+              size="md"
+              className='grow'
+            >
+              {event.description}
+            </TextLockup>
+            <Box orientation="horizontal" blockAlignChildren="end" gap="sm">
+              <Button
+                onClick={() => onSelectEvent(event)}
+                disabled={isPast}
+                design="secondary"
+                size="sm"
+              >
+                {isPast ? t('builder_marketing_past_date') : t('builder_marketing_schedule_post')}
+              </Button>
+            </Box>
+          </Box>
+        ))}
+      </Box>
 
       {/* Custom post option */}
-      <Box orientation="horizontal" gap="sm">
+      <Box orientation="horizontal" blockAlignChildren="end" gap="sm">
         <Button
           onClick={onBack}
-          design="tertiary"
+          design="secondary"
           size="md"
         >
           {t('builder_marketing_back')}
@@ -95,9 +111,8 @@ export default function EventList({
         <Button
           onClick={onCreateCustomPost}
           disabled={isPast}
-          design="secondary"
+          design="primary"
           size="md"
-          className="flex-1"
         >
           {t('builder_marketing_schedule_custom_post')}
         </Button>

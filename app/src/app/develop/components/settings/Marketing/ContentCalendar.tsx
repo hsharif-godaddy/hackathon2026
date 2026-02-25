@@ -9,7 +9,6 @@ import CheckmarkIcon from '@ux/icon/checkmark';
 import ChevronLeftIcon from '@ux/icon/chevron-left';
 import ChevronRightIcon from '@ux/icon/chevron-right';
 import ClockIcon from '@ux/icon/clock';
-import Spinner from '@ux/spinner';
 import text from '@ux/text';
 
 import { useTranslations } from '@/hooks/useTranslations';
@@ -21,9 +20,10 @@ import EventModal from './EventModal';
 
 interface ContentCalendarProps {
   appId: string;
+  onLoadingChange?: (loading: boolean) => void;
 }
 
-export default function ContentCalendar({ appId }: ContentCalendarProps) {
+export default function ContentCalendar({ appId, onLoadingChange }: ContentCalendarProps) {
   const t = useTranslations();
   const intl = useIntl();
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -52,9 +52,13 @@ export default function ContentCalendar({ appId }: ContentCalendarProps) {
     t('builder_marketing_day_tuesday'),
     t('builder_marketing_day_wednesday'),
     t('builder_marketing_day_thursday'),
-    t('builder_marketing_day_friday'),
+    t('builder_marketing_day_friday2'),
     t('builder_marketing_day_saturday')
   ], [t]);
+
+  useEffect(() => {
+    onLoadingChange?.(isLoading);
+  }, [isLoading, onLoadingChange]);
 
   // Auto-select today on mobile
   useEffect(() => {
@@ -243,16 +247,7 @@ export default function ContentCalendar({ appId }: ContentCalendarProps) {
       </div>
 
       {/* Calendar Grid */}
-      {isLoading ? (
-        <div className="flex items-center justify-center min-h-[400px] xl:min-h-[600px] rounded-2xl border border-intents-ux-boxLowContrast-borderColor bg-intents-ux-boxLowContrast-backgroundColor/30 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-4">
-            <Spinner size="lg" />
-            <text.p className="text-sm text-intents-ux-textSubdued-textColor">{t('builder_marketing_loading_calendar')}</text.p>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="rounded-2xl xl:border border-intents-ux-boxLowContrast-borderColor overflow-hidden xl:bg-intents-ux-boxStandard-backgroundColor xl:shadow-lg">
+      <div className="rounded-2xl xl:border border-intents-ux-boxLowContrast-borderColor overflow-hidden xl:bg-intents-ux-boxStandard-backgroundColor xl:shadow-lg">
             {/* Day names header */}
             <div className="grid grid-cols-7 xl:border-b-2 border-intents-ux-boxLowContrast-borderColor xl:bg-intents-ux-boxLowContrast-backgroundColor">
               {dayNames.map((day, idx) => (
@@ -420,8 +415,6 @@ export default function ContentCalendar({ appId }: ContentCalendarProps) {
               </Box>
             </div>
           )}
-        </>
-      )}
 
       {/* Event Modal */}
       {selectedDate && (

@@ -2,13 +2,13 @@
 
 import Box from '@ux/box';
 import Button from '@ux/button';
+import Card, { spaceOptions } from '@ux/card';
 import EditIcon from '@ux/icon/edit';
 import MailIcon from '@ux/icon/mail';
 import ShareIcon from '@ux/icon/share';
 import text from '@ux/text';
 
 import { useTranslations } from '@/hooks/useTranslations';
-import { cn } from '@/lib/utils';
 import { ContentType, ContentTypeOption } from './types';
 
 interface ContentTypeSelectorProps {
@@ -47,59 +47,55 @@ export default function ContentTypeSelector({
   ];
 
   return (
-    <Box gap="sm">
-      <text.p className="text-sm font-semibold text-intents-ux-textStandard-textColor text-center">
-        {t('builder_marketing_what_to_create')}
-      </text.p>
+    <Box gap="xl">
+      {/* Modal Content */}
+      <Box gap="lg" blockAlignChildren='start'>
+        <text.p as="label" size={1}>
+          {t('builder_marketing_what_to_create')}
+        </text.p>
 
-      <div className="grid grid-cols-3 gap-2">
-        {contentTypeOptions.map((option) => (
-          <button
-            key={option.type}
-            onClick={() => {
-              if (option.enabled) {
-                onSelectType(option.type);
-              }
-            }}
-            disabled={!option.enabled}
-            className={cn(
-              'relative px-2 py-2 rounded-md border text-center transition-all duration-200 flex flex-col items-center gap-1',
-              option.enabled
-                ? 'border-intents-ux-boxLowContrast-borderColor hover:border-intents-ux-actionPrimary-backgroundColor hover:shadow cursor-pointer bg-intents-ux-boxStandard-backgroundColor'
-                : 'border-intents-ux-boxLowContrast-borderColor bg-intents-ux-boxLowContrast-backgroundColor/30 cursor-not-allowed opacity-60'
-            )}
-          >
-            <div className={cn(
-              'flex-shrink-0 w-7 h-7 rounded flex items-center justify-center transition-all duration-200',
-              option.enabled
-                ? 'bg-intents-ux-actionPrimary-backgroundColor/10 text-intents-ux-actionPrimary-textColor'
-                : 'bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-textSubdued-textColor'
-            )}>
-              {option.icon}
-            </div>
+        <div className="grid grid-cols-3 gap-2 w-full">
+          {contentTypeOptions.map((option) => (
+            <Card
+              key={option.type}
+              id={`content-type-${option.type}`}
+              as="button"
+              onClick={() => {
+                if (option.enabled) {
+                  onSelectType(option.type);
+                }
+              }}
+              disabled={!option.enabled}
+              space={{ inline: spaceOptions.MD, block: spaceOptions.MD }}
+            >
+              <Box inlineAlignChildren="center" gap="sm" className="pointer-events-none">
+                {option.icon}
+                <Box className="text-center">
+                  <text.span as="caption">
+                    {option.title}
+                  </text.span>
+                  {option.badge && (
+                    <text.span as="caption" size={-2}>
+                      {option.badge}
+                    </text.span>
+                  )}
+                </Box>
+              </Box>
+            </Card>
+          ))}
+        </div>
+      </Box>
 
-            <div className="flex flex-col items-center">
-              <span className="text-xs font-medium text-intents-ux-textStandard-textColor">
-                {option.title}
-              </span>
-              {option.badge && (
-                <span className="px-1 py-0 text-[10px] font-medium rounded-full bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-textSubdued-textColor mt-0.5">
-                  {option.badge}
-                </span>
-              )}
-            </div>
-          </button>
-        ))}
-      </div>
-
-      <Button
-        onClick={onClose}
-        design="secondary"
-        size="md"
-        className="w-full"
-      >
-        {t('builder_marketing_close')}
-      </Button>
+      {/* Modal Actions */}
+      <Box inlineAlignChildren='end'>
+        <Button
+          onClick={onClose}
+          design="secondary"
+          size="md"
+        >
+          {t('builder_marketing_close')}
+        </Button>
+      </Box>
     </Box>
   );
 }

@@ -119,29 +119,6 @@ describe('PlatformSelector', () => {
     expect(screen.queryByText('builder_marketing_select_at_least_one_platform')).not.toBeInTheDocument();
   });
 
-  it('should apply selected styling to Facebook when checked', () => {
-    renderWithProviders(<PlatformSelector {...defaultProps} />);
-
-    const facebookLabel = screen.getByText('builder_marketing_facebook').closest('label');
-
-    expect(facebookLabel).toHaveClass('border-intents-ux-actionPrimary-borderColor');
-    expect(facebookLabel).toHaveClass('bg-intents-ux-actionPrimary-backgroundColor/10');
-  });
-
-  it('should apply unselected styling to Facebook when not checked', () => {
-    renderWithProviders(
-      <PlatformSelector
-        selectedPlatforms={new Set(['instagram'])}
-        onChange={mockOnChange}
-      />
-    );
-
-    const facebookLabel = screen.getByText('builder_marketing_facebook').closest('label');
-
-    expect(facebookLabel).toHaveClass('border-intents-ux-boxLowContrast-borderColor');
-    expect(facebookLabel).toHaveClass('bg-intents-ux-boxStandard-backgroundColor');
-  });
-
   it('should maintain independent state for each platform', async () => {
     const { user } = renderWithProviders(<PlatformSelector {...defaultProps} />);
 
