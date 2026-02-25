@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import Modal from "@ux/modal"
 import Spinner from "@ux/spinner"
 
+import { FeedbackDescription } from '@/components/feedback/FeedbackDescription';
 import { FeedbackForm } from '@/components/feedback/FeedbackForm';
 import { FeedbackProps } from '@/components/feedback/types';
 import { getBaseUrl, getMockFeedbackConfig, isLocalhost } from '@/components/feedback/utils';
@@ -62,6 +63,7 @@ export function Feedback(props: FeedbackProps) {
       id="feedback-modal"
       onClose={onClose}
     >
+      <FeedbackDescription />
       {isLoading && <Spinner />}
       {config && !isLoading && (
         <FeedbackForm
