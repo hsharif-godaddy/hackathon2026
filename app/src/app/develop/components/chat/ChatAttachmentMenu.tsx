@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, useRef, useState } from 'react';
+import { ChangeEvent, useEffect, useRef, useState } from 'react';
 import Button from '@ux/button';
 import CloudUploadIcon from '@ux/icon/cloud-upload';
 import ImageIcon from '@ux/icon/image';
@@ -48,6 +48,11 @@ export default function ChatAttachmentMenu({
   const [open, setOpen] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [showFileReferenceModal, setShowFileReferenceModal] = useState(false);
+  const [isScreenCaptureSupported, setIsScreenCaptureSupported] = useState(false);
+
+  useEffect(() => {
+    setIsScreenCaptureSupported(typeof navigator?.mediaDevices?.getDisplayMedia === 'function');
+  }, []);
 
   const handleFileButtonClick = () => {
     setOpen(false);
@@ -269,16 +274,18 @@ export default function ChatAttachmentMenu({
               onClick={handleFileReferenceClick}
               data-eid={generateClickEID('develop.attachment_menu.reference')}
             />
-            <Button
-              design="option"
-              size="sm"
-              icon={<ImageIcon />}
-              text={isCapturing ? t('builder_chatfiles_capturing') : t('builder_chatfiles_screenshot')}
-              disabled={isCapturing || disabled}
-              className="!justify-start"
-              onClick={handleScreenshotClick}
-              data-eid={generateClickEID('develop.attachment_menu.screenshot')}
-            />
+            {isScreenCaptureSupported && (
+              <Button
+                design="option"
+                size="sm"
+                icon={<ImageIcon />}
+                text={isCapturing ? t('builder_chatfiles_capturing') : t('builder_chatfiles_screenshot')}
+                disabled={isCapturing || disabled}
+                className="!justify-start"
+                onClick={handleScreenshotClick}
+                data-eid={generateClickEID('develop.attachment_menu.screenshot')}
+              />
+            )}
             <Button
               design="option"
               size="sm"

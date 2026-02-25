@@ -319,6 +319,24 @@ describe('ChatAttachmentMenu', () => {
     });
   });
 
+  it('should hide screenshot button when getDisplayMedia is not available', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      writable: true,
+      value: {},
+    });
+
+    const { user } = renderWithProviders(<ChatAttachmentMenu {...defaultProps} />);
+
+    const button = screen.getByRole('button', { name: '' });
+    await user.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_chatfiles_file')).toBeInTheDocument();
+      expect(screen.getByText('builder_chatfiles_attach')).toBeInTheDocument();
+      expect(screen.queryByText('builder_chatfiles_screenshot')).not.toBeInTheDocument();
+    });
+  });
+
   it('should close popover when option is selected', async () => {
     const { user } = renderWithProviders(<ChatAttachmentMenu {...defaultProps} />);
 
