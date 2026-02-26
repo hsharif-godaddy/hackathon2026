@@ -8,8 +8,8 @@ interface EcommSubscriptionStatus {
   subscriptionId?: string;
 }
 
-const STALE_TIME = 30 * 1000; // 30 seconds
-const GC_TIME = 5 * 60 * 1000; // 5 minutes
+const STALE_TIME = 5 * 1000; // 5 seconds
+const GC_TIME = 30 * 1000; // 30 seconds
 
 /**
  * Hook to fetch the autoRenew status of the ecomm subscription

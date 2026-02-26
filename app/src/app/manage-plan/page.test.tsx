@@ -57,12 +57,9 @@ vi.mock('@/hooks/useCreditGrants', () => ({
   useCreditGrants: () => mockUseCreditGrants(),
 }));
 
+const mockUseEcommSubscriptionAutoRenewStatus = vi.fn();
 vi.mock('@/hooks/useEcommSubscriptionAutoRenewStatus', () => ({
-  useEcommSubscriptionAutoRenewStatus: () => ({
-    data: { autoRenew: true, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
-    isLoading: false,
-    isError: false,
-  }),
+  useEcommSubscriptionAutoRenewStatus: () => mockUseEcommSubscriptionAutoRenewStatus(),
 }));
 
 vi.mock('@/hooks/useEcommSubscriptionAutoRenew', () => ({
@@ -156,6 +153,12 @@ describe('ManagePlan', function managePlanTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
     mockReplace.mockClear();
+    // Default mock for autoRenew status
+    mockUseEcommSubscriptionAutoRenewStatus.mockReturnValue({
+      data: { autoRenew: true, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
+      isLoading: false,
+      isError: false,
+    });
   });
 
   describe('feature flag gating', function featureFlagTests() {
@@ -818,6 +821,124 @@ describe('ManagePlan', function managePlanTests() {
         expect(shipAnalyticsLog).toHaveBeenCalledWith('plan.cancellation.success', {
           fromPlan: SubscriptionPlan.Starter,
         });
+      });
+    });
+  });
+
+  describe('downgrade banner suppression for recent plan changes', function downgradeAlertTests() {
+    beforeEach(function setupDowngradeTests() {
+      mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
+    });
+
+    it('should show downgrade alert when autoRenew is false and updatedAt is old', async function showAlertOldUpdate() {
+      // AutoRenew is false (downgrade scheduled)
+      mockUseEcommSubscriptionAutoRenewStatus.mockReturnValue({
+        data: { autoRenew: false, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
+        isLoading: false,
+        isError: false,
+      });
+
+      // Subscription updatedAt is 30 minutes ago (older than threshold)
+      const oldUpdatedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      mockUseActiveSubscription.mockReturnValue({
+        data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-123', updatedAt: oldUpdatedAt },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: [createMonthlyGrant()],
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithProviders(<ManagePlan />);
+
+      await waitFor(function checkAlertVisible() {
+        expect(screen.getByText('builder_manageplan_downgrade_scheduled_title')).toBeInTheDocument();
+      });
+    });
+
+    it('should NOT show downgrade alert when autoRenew is false but updatedAt is recent', async function hideAlertRecentUpdate() {
+      // AutoRenew is false (would normally trigger alert)
+      mockUseEcommSubscriptionAutoRenewStatus.mockReturnValue({
+        data: { autoRenew: false, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
+        isLoading: false,
+        isError: false,
+      });
+
+      // Subscription updatedAt is 5 minutes ago (within threshold - likely recent upgrade)
+      const recentUpdatedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      mockUseActiveSubscription.mockReturnValue({
+        data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-123', updatedAt: recentUpdatedAt },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: [createMonthlyGrant()],
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithProviders(<ManagePlan />);
+
+      // Alert should be suppressed for recent plan changes (autoRenew not synced yet)
+      await waitFor(function checkNoAlert() {
+        expect(screen.queryByText('builder_manageplan_downgrade_scheduled_title')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should NOT show downgrade alert when autoRenew is true regardless of updatedAt', async function noAlertAutoRenewTrue() {
+      // AutoRenew is true (no downgrade scheduled)
+      mockUseEcommSubscriptionAutoRenewStatus.mockReturnValue({
+        data: { autoRenew: true, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
+        isLoading: false,
+        isError: false,
+      });
+
+      mockUseActiveSubscription.mockReturnValue({
+        data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-123' },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: [createMonthlyGrant()],
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithProviders(<ManagePlan />);
+
+      await waitFor(function checkNoAlert() {
+        expect(screen.queryByText('builder_manageplan_downgrade_scheduled_title')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should NOT show downgrade alert for free plans even with autoRenew false', async function noAlertFreePlan() {
+      // AutoRenew is false
+      mockUseEcommSubscriptionAutoRenewStatus.mockReturnValue({
+        data: { autoRenew: false, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
+        isLoading: false,
+        isError: false,
+      });
+
+      // Old updatedAt but Free plan
+      const oldUpdatedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      mockUseActiveSubscription.mockReturnValue({
+        data: { id: 'sub-1', plan: SubscriptionPlan.Free, updatedAt: oldUpdatedAt },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: [createMonthlyGrant()],
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithProviders(<ManagePlan />);
+
+      // No alert for free plans
+      await waitFor(function checkNoAlert() {
+        expect(screen.queryByText('builder_manageplan_downgrade_scheduled_title')).not.toBeInTheDocument();
       });
     });
   });

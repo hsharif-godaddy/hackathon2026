@@ -17,7 +17,7 @@ describe('publish-limit', () => {
       expect(PLAN_PUBLISH_LIMITS[SubscriptionPlan.Starter]).toBe(1);
       expect(PLAN_PUBLISH_LIMITS[SubscriptionPlan.Professional]).toBe(3);
       expect(PLAN_PUBLISH_LIMITS[SubscriptionPlan.Ultimate]).toBe(10);
-      expect(PLAN_PUBLISH_LIMITS[SubscriptionPlan.AiroPlus]).toBe(null); // unlimited
+      expect(PLAN_PUBLISH_LIMITS[SubscriptionPlan.AiroPlus]).toBe(9);
     });
 
     it('should have entries for all subscription plans', () => {
@@ -35,7 +35,7 @@ describe('publish-limit', () => {
       expect(getPublishLimit(SubscriptionPlan.Starter)).toBe(1);
       expect(getPublishLimit(SubscriptionPlan.Professional)).toBe(3);
       expect(getPublishLimit(SubscriptionPlan.Ultimate)).toBe(10);
-      expect(getPublishLimit(SubscriptionPlan.AiroPlus)).toBe(null);
+      expect(getPublishLimit(SubscriptionPlan.AiroPlus)).toBe(9);
     });
 
     it('should return 0 for undefined plan', () => {
@@ -175,11 +175,40 @@ describe('publish-limit', () => {
   });
 
   describe('canPublishWithPlan', () => {
-    describe('Unlimited plans (AiroPlus)', () => {
-      it('should always allow publishing for AiroPlus plan', () => {
+    describe('AiroPlus plan (limit: 9 apps for legacy users)', () => {
+      it('should allow when under limit', () => {
         expect(canPublishWithPlan(SubscriptionPlan.AiroPlus, 0)).toBe(true);
         expect(canPublishWithPlan(SubscriptionPlan.AiroPlus, 5)).toBe(true);
-        expect(canPublishWithPlan(SubscriptionPlan.AiroPlus, 100)).toBe(true);
+        expect(canPublishWithPlan(SubscriptionPlan.AiroPlus, 8)).toBe(true);
+      });
+
+      it('should deny when at limit (9 published)', () => {
+        expect(canPublishWithPlan(SubscriptionPlan.AiroPlus, 9)).toBe(false);
+      });
+
+      it('should deny when over limit', () => {
+        expect(canPublishWithPlan(SubscriptionPlan.AiroPlus, 10)).toBe(false);
+        expect(canPublishWithPlan(SubscriptionPlan.AiroPlus, 100)).toBe(false);
+      });
+
+      it('should allow re-publishing existing app even at limit', () => {
+        const publishedAppIds = Array.from({ length: 9 }, (_, i) => `app-${i}`);
+        expect(canPublishWithPlan(
+          SubscriptionPlan.AiroPlus,
+          9,
+          'app-5', // Re-publish existing
+          publishedAppIds
+        )).toBe(true);
+      });
+
+      it('should deny new app when at limit', () => {
+        const publishedAppIds = Array.from({ length: 9 }, (_, i) => `app-${i}`);
+        expect(canPublishWithPlan(
+          SubscriptionPlan.AiroPlus,
+          9,
+          'app-new',
+          publishedAppIds
+        )).toBe(false);
       });
     });
 

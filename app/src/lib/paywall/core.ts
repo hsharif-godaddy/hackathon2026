@@ -10,6 +10,7 @@
 
 import { canPublishWithPlan, getPublishLimit } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
+import { SubscriptionPlan } from '@/types/credits';
 import type { PaywallDataProvider, SwitchboardFlagsResult } from './providers';
 import { isMatchingProject, isPaidPlanForGrants, type PaywallCheckResult, PaywallDenialReason } from './shared';
 
@@ -29,8 +30,9 @@ export enum PaywallAction {
  * When app-builder-grants is ENABLED (new grants-based system):
  * 1. Check if paywall is enabled via switchboard flags
  * 2. Get user's account-level subscription and check plan
- *    - Paid plan (Starter only) = access granted
- *    - Non-paid plans (Free, None, AiroPlus) = paywall (no fallbacks)
+ *    - Paid plan (Starter, Professional, Ultimate, AiroPlus) = access granted with plan limits
+ *    - Users with app-builder-bypass-publish-limit enabled get unlimited publishing
+ *    - Non-paid plans (Free, None) = paywall
  *
  * When app-builder-grants is DISABLED (legacy system):
  * 1. Check if paywall is enabled via switchboard flags
@@ -158,34 +160,24 @@ export async function checkPaywallEligibility(
 
     // Check plan level for access using grants-aware function
     const hasAccessByPlan = isPaidPlanForGrants(accountSubscription.plan, grantsEnabled);
-
     if (hasAccessByPlan) {
       result.details.hasSubscription = true;
       result.details.subscriptionId = accountSubscription.id;
 
       // When grants flag is enabled, check publish limits for paid plans (only for publish action)
       if (action === PaywallAction.Publish && flags.grants && !flags.bypassPublishLimit) {
-        // Users with entitlementId get unlimited publishing
-        if (accountSubscription.entitlementId) {
-          result.hasAccess = true;
-          result.details.hasEntitlements = true;
-          result.details.entitlementId = accountSubscription.entitlementId;
-
-          logger.info('paywall.eligibility.access-granted', {
-            appId,
-            reason: 'user-has-entitlement-unlimited',
-            subscriptionId: accountSubscription.id,
-            entitlementId: accountSubscription.entitlementId,
-          });
-
-          return result;
-        }
 
         // Check publish limit for the plan
+        // Legacy AiroPlus users show as Starter plan and have entitlementId (airo plus).
         const publishedApps = await provider.getPublishedApps();
-        const limit = getPublishLimit(accountSubscription.plan);
+        const isLegacyAiroPlus = accountSubscription.plan === SubscriptionPlan.Starter &&
+          !!accountSubscription.entitlementId;
+        const effectivePlan = isLegacyAiroPlus
+          ? SubscriptionPlan.AiroPlus
+          : accountSubscription.plan;
+        const limit = getPublishLimit(effectivePlan);
         const canPublish = canPublishWithPlan(
-          accountSubscription.plan,
+          effectivePlan,
           publishedApps.count,
           appId,
           publishedApps.publishedAppIds
@@ -236,14 +228,7 @@ export async function checkPaywallEligibility(
 
     // User does not have a paid plan - check if we should use legacy fallbacks
     if (grantsEnabled) {
-      // When grants is enabled, non-paid plans require paywall - no legacy fallbacks
-      // This includes Free, None, AND AiroPlus (which is not a paid plan when grants is ON)
-      logger.warn('paywall.eligibility.access-denied', {
-        appId,
-        subscriptionId: accountSubscription.id,
-        plan: accountSubscription.plan,
-        reason: 'grants-enabled-non-paid-plan',
-      });
+      // When grants is enabled, non-paid plans (Free, None) require paywall
       result.reason = 'Subscription upgrade required';
       return result;
     }

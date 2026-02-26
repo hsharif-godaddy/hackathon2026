@@ -12,7 +12,6 @@ import { SubscriptionPlan } from '@/types/credits';
  * Plan publish limits map
  *
  * Defines the maximum number of apps that can be published for each subscription plan.
- * - null = unlimited publishing (legacy airoPlus)
  * - 0 = no publishing allowed (free plan shows paywall)
  * - number = limited publishing (shows limit modal when reached)
  */
@@ -22,7 +21,7 @@ export const PLAN_PUBLISH_LIMITS: Record<SubscriptionPlan, number | null> = {
   [SubscriptionPlan.Starter]: 1,
   [SubscriptionPlan.Professional]: 3,
   [SubscriptionPlan.Ultimate]: 10,
-  [SubscriptionPlan.AiroPlus]: null, // unlimited
+  [SubscriptionPlan.AiroPlus]: 9,
 };
 
 /**

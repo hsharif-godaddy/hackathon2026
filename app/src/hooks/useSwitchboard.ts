@@ -19,6 +19,7 @@ const LOCAL_FEATURE_OVERRIDES: Record<string, boolean> = {
   'appbuilder-settings-marketing': true,
   'appbuilder-share-links': true,
   'app-builder-grants': true,
+  'app-builder-bypass-publish-limit': true, // allows unlimited app publishing
 };
 
 /**

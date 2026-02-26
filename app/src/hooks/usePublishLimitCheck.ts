@@ -37,8 +37,8 @@ interface UsePublishLimitCheckResult extends PublishLimitResult {
  * Hook to check if a user can publish based on their subscription plan and current publish count
  *
  * When app-builder-grants is enabled:
- * - Users with entitlementId (airoPlus legacy) get unlimited publishing
- * - Users with builderEntitlementId (builder plans) are limited by plan:
+ * - Legacy AiroPlus users (Starter plan with entitlementId) = 9 apps
+ * - New users are limited by plan:
  *   - Free = 0 apps (show paywall)
  *   - Starter = 1 app
  *   - Professional = 3 apps
@@ -89,7 +89,6 @@ export function usePublishLimitCheck(
       plan: subscription?.plan,
       publishedApps,
     };
-
     // If grants feature is disabled, allow publishing (legacy behavior)
     if (!isGrantsEnabled) {
       return defaultResult;
@@ -107,22 +106,10 @@ export function usePublishLimitCheck(
       };
     }
 
-    const plan = subscription?.plan;
-
-    // Legacy airoPlus users who were converted to Starter plan keep unlimited publishing.
-    // These users have both:
-    // 1. entitlementId - their original airoPlus entitlement (proves legacy status)
-    // 2. plan === Starter - their current plan after migration
-    // This preserves their grandfathered unlimited access while new Starter users get the 1-app limit.
-    if (subscription?.entitlementId && subscription.plan === SubscriptionPlan.Starter) {
-      return {
-        canPublish: true,
-        currentCount: publishedCount,
-        limit: null,
-        plan,
-        publishedApps,
-      };
-    }
+    // Legacy AiroPlus users show as Starter plan and have entitlementId (airo plus).
+    const isLegacyAiroPlus = subscription?.plan === SubscriptionPlan.Starter &&
+      !!subscription?.entitlementId;
+    const plan = isLegacyAiroPlus ? SubscriptionPlan.AiroPlus : subscription?.plan;
 
     // No plan, None, or Free plan - show paywall (limit: 0)
     if (!plan || plan === SubscriptionPlan.None || plan === SubscriptionPlan.Free) {

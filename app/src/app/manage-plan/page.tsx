@@ -192,9 +192,22 @@ function ManagePlanContent() {
   const paidThroughDate = autoRenewStatus?.paidThroughDate;
   const parsedPaidThroughDate = parseDate(paidThroughDate);
 
+  // Check if subscription was updated within the last 10 minutes (recent plan change).
+  // This handles the race condition where a user upgrades from Free to Paid,
+  // but autoRenew hasn't synced yet (still false). We suppress the downgrade
+  // banner during this window.
+  // Note: updatedAt changes when the subscription plan/tier changes (e.g., upgrade),
+  // but NOT when only autoRenew is toggled in ecomm. So downgrades (autoRenew=false)
+  // won't update updatedAt, allowing the banner to show correctly.
+  const RECENT_PLAN_CHANGE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+  const subscriptionUpdatedAt = subscription?.updatedAt ? parseDate(subscription.updatedAt) : null;
+  const isRecentPlanChange = subscriptionUpdatedAt !== null &&
+    (Date.now() - subscriptionUpdatedAt.getTime()) < RECENT_PLAN_CHANGE_THRESHOLD_MS;
+
   // Show alert when a downgrade is scheduled (autoRenew=false)
+  // but not for recent plan changes (upgrade from free to paid still syncing)
   const isDowngradeScheduled = autoRenewStatus?.autoRenew === false;
-  const showDowngradeAlert = !isAlertDismissed && isPaidPlan && isDowngradeScheduled;
+  const showDowngradeAlert = !isAlertDismissed && isPaidPlan && isDowngradeScheduled && !isRecentPlanChange;
 
   // Track mutation error for page-level display
   const mutationError = setAutoRenew.error;

@@ -45,7 +45,8 @@ export interface AiroSubscription {
   customerId: string;
   status: string;
   isTrial: boolean;
-  entitlementId: string;
+  /** Airo Plus entitlement ID (legacy paid users) */
+  entitlementId?: string;
   /** Airo Builder entitlement ID (new airo builder plans) */
   builderEntitlementId?: string;
   /** Subscription plan type (new airo builder plans) */

@@ -22,7 +22,7 @@ export interface SwitchboardFlagsResult {
   markets: boolean;
   /** Whether app-builder-grants flag is enabled (new plan-based limits) */
   grants?: boolean;
-  /** Whether app-builder-bypass-publish-limit flag is enabled */
+  /** Whether app-builder-bypass-publish-limit flag is enabled allowing unlimited publishing*/
   bypassPublishLimit?: boolean;
 }
 
