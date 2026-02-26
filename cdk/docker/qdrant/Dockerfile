@@ -36,7 +36,9 @@ USER root
 # - dnsutils: provides 'dig' for DNS lookups in cluster entrypoint
 # - libunwind8: required by qdrant binary
 # - ca-certificates: for HTTPS connections
-# - curl: for health checks
+# - curl: for health checks and fetching secrets
+# - jq: for parsing JSON secrets
+# - unzip: for AWS CLI installation
 # Note: GCI base image may be missing apt lists directory, create it first
 RUN mkdir -p /var/lib/apt/lists/partial && \
     apt-get update && apt-get install -y --no-install-recommends \
@@ -44,15 +46,25 @@ RUN mkdir -p /var/lib/apt/lists/partial && \
     libunwind8 \
     ca-certificates \
     curl \
+    jq \
+    unzip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Install AWS CLI v2 for ARM64 (used to fetch TLS certificates from Secrets Manager)
+# We install as root, then the qdrant user can use it via PATH
+RUN curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "/tmp/awscliv2.zip" && \
+    unzip -q /tmp/awscliv2.zip -d /tmp && \
+    /tmp/aws/install && \
+    rm -rf /tmp/awscliv2.zip /tmp/aws && \
+    aws --version
 
 # Create qdrant user (matching upstream UID 1000)
 RUN groupadd -g 1000 qdrant && \
     useradd -u 1000 -g qdrant -m -s /bin/bash qdrant
 
-# Create qdrant directory structure
-RUN mkdir -p /qdrant/storage /qdrant/snapshots && \
+# Create qdrant directory structure (including TLS directory for certificates)
+RUN mkdir -p /qdrant/storage /qdrant/snapshots /qdrant/tls && \
     chown -R qdrant:qdrant /qdrant
 
 WORKDIR /qdrant

@@ -43,6 +43,8 @@ interface QdrantConfig {
   ephemeralStorageGiB: number;
   /** Docker image tag to deploy */
   imageTag: string;
+  /** Enable TLS for Qdrant (requires certificate in Secrets Manager) */
+  enableTls?: boolean;
 }
 
 /**
@@ -127,6 +129,7 @@ const devConfig: Config = {
     memory: 2048,
     ephemeralStorageGiB: 30,
     imageTag: 'latest',
+    enableTls: false, // Set to true after deploying TLS certificate
   },
 };
 
@@ -221,6 +224,7 @@ const prodConfig: Config = {
     memory: 4096,
     ephemeralStorageGiB: 50,
     imageTag: 'latest',
+    enableTls: true, // TLS required in production
   },
 };
 

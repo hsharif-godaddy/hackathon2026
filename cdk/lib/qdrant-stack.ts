@@ -1,13 +1,19 @@
 import * as cdk from "aws-cdk-lib";
+import * as path from "path";
 import { Construct } from "constructs";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as efs from "aws-cdk-lib/aws-efs";
 import * as ecr from "aws-cdk-lib/aws-ecr";
+import * as events from "aws-cdk-lib/aws-events";
+import * as events_targets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as servicediscovery from "aws-cdk-lib/aws-servicediscovery";
+import * as triggers from "aws-cdk-lib/triggers";
+import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import { GDStack, GDStackProps } from "@gd-safeguard/godaddy-constructs";
 import config from "./config";
 
@@ -198,6 +204,117 @@ export class QdrantStack extends GDStack {
     });
     this.apiKeySecret = apiKeySecret;
 
+    // Enable TLS in production, optional in dev
+    const enableTls = config.envName === "prod" || config.qdrant.enableTls;
+
+    // TLS Certificate Secrets (managed by Lambda bootstrap)
+    // CA secret holds the self-signed CA cert/key
+    // Cert secret holds the server certificate signed by the CA
+    // Format: {"crt": "cert", "key": "private key", "chain": "CA cert"}
+    const tlsCaSecretName = `${config.envName}-qdrant-tls-ca`;
+    const tlsCertSecretName = `${config.envName}-qdrant-tls-cert`;
+    const qdrantFqdn = `qdrant.${config.envName}.airo.local`;
+
+    // Create secrets for TLS certificates (Lambda will populate the values)
+    // Using DESTROY in dev for easy cleanup, RETAIN in prod
+    const tlsCaSecret = new secretsmanager.Secret(this, "QdrantTlsCaSecret", {
+      secretName: tlsCaSecretName,
+      description: "Self-signed CA certificate for Qdrant TLS",
+      removalPolicy:
+        config.envName === "dev"
+          ? cdk.RemovalPolicy.DESTROY
+          : cdk.RemovalPolicy.RETAIN,
+    });
+
+    const tlsCertSecret = new secretsmanager.Secret(this, "QdrantTlsCertSecret", {
+      secretName: tlsCertSecretName,
+      description: "Server certificate for Qdrant TLS (signed by internal CA)",
+      removalPolicy:
+        config.envName === "dev"
+          ? cdk.RemovalPolicy.DESTROY
+          : cdk.RemovalPolicy.RETAIN,
+    });
+
+    // TLS Bootstrap Lambda - generates self-signed CA and server certificates
+    // Triggered on deployment and weekly to check for renewal
+    let tlsBootstrapLambda: NodejsFunction | undefined;
+    if (enableTls) {
+      // Lambda execution role
+      const lambdaRole = new iam.Role(this, "QdrantTlsBootstrapRole", {
+        roleName: `${config.envName}-qdrant-tls-bootstrap-role`,
+        assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+        managedPolicies: [
+          iam.ManagedPolicy.fromAwsManagedPolicyName(
+            "service-role/AWSLambdaBasicExecutionRole",
+          ),
+        ],
+      });
+
+      // Grant Lambda access to read/write secrets
+      lambdaRole.addToPolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: [
+            "secretsmanager:GetSecretValue",
+            "secretsmanager:PutSecretValue",
+          ],
+          resources: [tlsCaSecret.secretArn, tlsCertSecret.secretArn],
+        }),
+      );
+      lambdaRole.addToPolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey"],
+          resources: ["*"],
+          conditions: {
+            StringEquals: {
+              "kms:ViaService": `secretsmanager.${cdk.Aws.REGION}.amazonaws.com`,
+            },
+          },
+        }),
+      );
+
+      tlsBootstrapLambda = new NodejsFunction(this, "QdrantTlsBootstrapLambda", {
+        functionName: `${config.envName}-qdrant-tls-bootstrap`,
+        entry: path.join(__dirname, "../lambda/qdrant-tls-bootstrap/qdrant-tls-bootstrap.ts"),
+        depsLockFilePath: path.join(__dirname, "../lambda/qdrant-tls-bootstrap/package-lock.json"),
+        handler: "handler",
+        runtime: lambda.Runtime.NODEJS_22_X,
+        timeout: cdk.Duration.minutes(2),
+        logRetention: logs.RetentionDays.ONE_WEEK,
+        architecture: lambda.Architecture.ARM_64,
+        description: "Bootstraps self-signed TLS certificates for Qdrant cluster",
+        environment: {
+          CA_SECRET_NAME: tlsCaSecretName,
+          CERT_SECRET_NAME: tlsCertSecretName,
+          COMMON_NAME: qdrantFqdn,
+        },
+        bundling: {
+          banner: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+          externalModules: ["@aws-sdk/*", "@aws-lambda-powertools/*"],
+          format: OutputFormat.ESM,
+          mainFields: ["module", "main"],
+          minify: true,
+          tsconfig: path.join(__dirname, "../lambda/qdrant-tls-bootstrap/tsconfig.json"),
+        },
+        role: lambdaRole,
+      });
+
+      // Trigger Lambda on deployment
+      const triggerTlsBootstrap = new triggers.Trigger(this, "TriggerTlsBootstrap", {
+        handler: tlsBootstrapLambda,
+        timeout: cdk.Duration.minutes(2),
+      });
+
+      // Run certificate renewal weekly
+      const tlsRenewalCron = new events.Rule(this, "QdrantTlsRenewalCron", {
+        ruleName: `${config.envName}-qdrant-tls-renewal`,
+        schedule: events.Schedule.rate(cdk.Duration.days(7)),
+        description: "Weekly check for Qdrant TLS certificate renewal",
+      });
+      tlsRenewalCron.addTarget(new events_targets.LambdaFunction(tlsBootstrapLambda));
+    }
+
     // ECR Repository - lookup from QdrantEcrStack
     // The ECR repo is created separately to allow pre-populating images
     // before deploying the ECS service
@@ -226,8 +343,6 @@ export class QdrantStack extends GDStack {
         description: `Qdrant service discovery namespace for ${config.envName}`,
       },
     );
-
-    const qdrantFqdn = `qdrant.${config.envName}.airo.local`;
 
     // Create execution role explicitly to ensure KMS permissions are attached
     // CDK creates execution roles lazily, so we need to create it upfront
@@ -309,6 +424,36 @@ export class QdrantStack extends GDStack {
       );
     }
 
+    // Grant task role access to read TLS certificate secret (fetched at runtime by entrypoint)
+    // Note: Task role (not execution role) because the container fetches this at runtime
+    if (enableTls && !useNoopContainer && !debugSleepMode) {
+      taskDefinition.taskRole.addToPrincipalPolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ["secretsmanager:GetSecretValue"],
+          resources: [tlsCertSecret.secretArn],
+        }),
+      );
+      // KMS decrypt permission for Secrets Manager encrypted secrets
+      // Note: resources: ["*"] is required because Secrets Manager uses service-managed CMKs
+      // and the key ID is not known at deploy time. The policy is scoped by:
+      // - kms:ViaService: Only allows decrypt via Secrets Manager API calls
+      // - kms:CallerAccount: Only allows decrypt for secrets in the same account
+      taskDefinition.taskRole.addToPrincipalPolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ["kms:Decrypt"],
+          resources: ["*"],
+          conditions: {
+            StringEquals: {
+              "kms:ViaService": `secretsmanager.${cdk.Aws.REGION}.amazonaws.com`,
+              "kms:CallerAccount": cdk.Aws.ACCOUNT_ID,
+            },
+          },
+        }),
+      );
+    }
+
     // Container Definition
     const container = taskDefinition.addContainer("qdrant", {
       containerName: "qdrant",
@@ -327,6 +472,11 @@ export class QdrantStack extends GDStack {
             QDRANT__SERVICE__GRPC_PORT: "6334",
             QDRANT__CLUSTER__ENABLED: "true",
             QDRANT_CLUSTER_FQDN: qdrantFqdn,
+            // TLS configuration (entrypoint fetches cert and sets Qdrant TLS vars)
+            // Pass secret name - entrypoint can use name or ARN with Secrets Manager
+            QDRANT_ENABLE_TLS: enableTls ? "true" : "false",
+            ...(enableTls ? { QDRANT_TLS_SECRET_ARN: tlsCertSecretName } : {}),
+            AWS_REGION: cdk.Aws.REGION,
           },
       secrets: useNoopContainer
         ? {}
@@ -346,7 +496,13 @@ export class QdrantStack extends GDStack {
       healthCheck: useNoopContainer || debugSleepMode
         ? undefined // No health check in noop or debug mode
         : {
-            command: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"],
+            // Use HTTPS with -k (insecure) for self-signed certs when TLS is enabled
+            command: [
+              "CMD-SHELL",
+              enableTls
+                ? "curl -fk https://localhost:6333/healthz || exit 1"
+                : "curl -f http://localhost:6333/healthz || exit 1",
+            ],
             interval: cdk.Duration.seconds(10), // Faster checks during testing
             timeout: cdk.Duration.seconds(5),
             retries: 1, // Fail fast during testing (increase for prod)
@@ -405,6 +561,18 @@ export class QdrantStack extends GDStack {
       value: fileSystem.fileSystemId,
       description: "EFS filesystem ID for Qdrant snapshots",
       exportName: `${config.envName}-qdrant-efs-id`,
+    });
+
+    new cdk.CfnOutput(this, "QdrantTlsCaSecretArn", {
+      value: tlsCaSecret.secretArn,
+      description: "ARN of self-signed CA secret for Qdrant TLS",
+      exportName: `${config.envName}-qdrant-tls-ca-arn`,
+    });
+
+    new cdk.CfnOutput(this, "QdrantTlsCertSecretArn", {
+      value: tlsCertSecret.secretArn,
+      description: "ARN of server certificate secret for Qdrant TLS",
+      exportName: `${config.envName}-qdrant-tls-cert-arn`,
     });
 
     // Tags
