@@ -5,6 +5,7 @@ import { GitTool } from '../../tools/git-tool.js';
 import { Logger } from '../../logging/index.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
+import { validateGitSync } from '../middleware/git-import-validation.js';
 import { getErrorMessage } from '../../utils/error.js';
 import { isCapabilityEnabled } from '../../utils/capability-config.js';
 import { gitOpsService } from '../../services/GitOpsService.js';
@@ -191,16 +192,16 @@ router.post(
  *
  * Push to remote repository (async operation)
  *
- * Supports two patterns:
- * - PaaS pattern: Provide both 'token' AND 'repoUrl' together (skips database/config lookup)
- * - AiroAppBuilder pattern: Omit both 'token' and 'repoUrl' (uses database config + secrets API)
+ * Credential options:
+ * - Provide both 'token' AND 'repoUrl' together for direct authentication
+ * - Omit both to use credentials from database config / secrets API
  *
  * Request body:
  * - remoteName: string (optional) - Remote name (default: 'origin')
  * - branch: string (optional) - Branch to push (default: current branch)
  * - forcePush: boolean (optional) - Whether to force push (default: false)
- * - token: string (optional, required with repoUrl for PaaS) - GitHub token for authentication
- * - repoUrl: string (optional, required with token for PaaS) - Repository URL
+ * - token: string (optional, required with repoUrl) - GitHub token for authentication
+ * - repoUrl: string (optional, required with token) - Repository URL
  *
  * Returns 202 Accepted with job ID for tracking
  */
@@ -208,6 +209,7 @@ router.post(
   '/apps/:id/git/push',
   requireGitRemoteSync,
   validateAppOwnership,
+  validateGitSync,
   async (req: Request, res: Response) => {
     const appId = req.params.id;
     const { remoteName, branch, forcePush, token, repoUrl } = req.body;
@@ -248,15 +250,15 @@ router.post(
  *
  * Pull from remote repository (async operation)
  *
- * Supports two patterns:
- * - PaaS pattern: Provide both 'token' AND 'repoUrl' together (skips database/config lookup)
- * - AiroAppBuilder pattern: Omit both 'token' and 'repoUrl' (uses database config + secrets API)
+ * Credential options:
+ * - Provide both 'token' AND 'repoUrl' together for direct authentication
+ * - Omit both to use credentials from database config / secrets API
  *
  * Request body:
  * - remoteName: string (optional) - Remote name (default: 'origin')
  * - branch: string (optional) - Branch to pull (default: configured default branch)
- * - token: string (optional, required with repoUrl for PaaS) - GitHub token for authentication
- * - repoUrl: string (optional, required with token for PaaS) - Repository URL
+ * - token: string (optional, required with repoUrl) - GitHub token for authentication
+ * - repoUrl: string (optional, required with token) - Repository URL
  * - modifyViteConfig: boolean (optional) - Whether to modify vite config to set server.allowedHosts: true.
  *   Use this when pulling external projects that need proxy compatibility (e.g., projects not originally
  *   created in Airo). This is the same modification applied during zip import.
@@ -267,6 +269,7 @@ router.post(
   '/apps/:id/git/pull',
   requireGitRemoteSync,
   validateAppOwnership,
+  validateGitSync,
   async (req: Request, res: Response) => {
     const appId = req.params.id;
     const {

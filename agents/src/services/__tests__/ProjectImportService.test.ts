@@ -931,10 +931,8 @@ describe('ProjectImportService', () => {
       // Verify all protected directories are excluded from deletion
       expect(cleanupCommand).toContain('! -name ".git"');
       expect(cleanupCommand).toContain('! -name ".gitignore"');
-      expect(cleanupCommand).toContain('! -name "node_modules"');
       expect(cleanupCommand).toContain('! -name ".is_ready"');
       expect(cleanupCommand).toContain('! -name ".import-*"');
-      expect(cleanupCommand).toContain('! -name "dev_setup_and_serve.sh"');
       expect(cleanupCommand).toContain('! -name "public"'); // public dir excluded from top-level deletion
     });
 

@@ -181,6 +181,211 @@ https.listen(443);
       };
     });
 
+    describe('path validation (isValidEntryFile)', () => {
+      it('should accept relative paths', async () => {
+        mockDevSupervisor.exec.mockResolvedValueOnce({
+          exit_code: 0,
+          stdout: 'app.listen(3000);',
+        });
+        mockDevSupervisor.exec.mockResolvedValueOnce({
+          exit_code: 0,
+        });
+
+        const result = await injectPortHandling(
+          mockDevSupervisor,
+          '/app',
+          'src/server.js'
+        );
+
+        // Should proceed to read file (not rejected at validation)
+        expect(result.modified).toBe(true);
+        expect(mockDevSupervisor.exec).toHaveBeenCalled();
+      });
+
+      it('should accept simple filename', async () => {
+        mockDevSupervisor.exec.mockResolvedValueOnce({
+          exit_code: 0,
+          stdout: 'app.listen(3000);',
+        });
+        mockDevSupervisor.exec.mockResolvedValueOnce({
+          exit_code: 0,
+        });
+
+        const result = await injectPortHandling(
+          mockDevSupervisor,
+          '/app',
+          'index.js'
+        );
+
+        expect(result.modified).toBe(true);
+        expect(mockDevSupervisor.exec).toHaveBeenCalled();
+      });
+
+      it('should reject absolute paths', async () => {
+        const result = await injectPortHandling(
+          mockDevSupervisor,
+          '/app',
+          '/etc/passwd'
+        );
+
+        expect(result.modified).toBe(false);
+        expect(result.skipped).toBe(false);
+        expect(result.error).toContain('Invalid entry file path');
+        expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+      });
+
+      it('should reject parent directory traversal', async () => {
+        const result = await injectPortHandling(
+          mockDevSupervisor,
+          '/app',
+          '../etc/passwd'
+        );
+
+        expect(result.modified).toBe(false);
+        expect(result.skipped).toBe(false);
+        expect(result.error).toContain('Invalid entry file path');
+        expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+      });
+
+      it('should reject deep parent directory traversal', async () => {
+        const result = await injectPortHandling(
+          mockDevSupervisor,
+          '/app',
+          '../../secrets'
+        );
+
+        expect(result.modified).toBe(false);
+        expect(result.skipped).toBe(false);
+        expect(result.error).toContain('Invalid entry file path');
+        expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+      });
+
+      it('should reject normalized traversal (./../../)', async () => {
+        const result = await injectPortHandling(
+          mockDevSupervisor,
+          '/app',
+          './../../etc/passwd'
+        );
+
+        expect(result.modified).toBe(false);
+        expect(result.skipped).toBe(false);
+        expect(result.error).toContain('Invalid entry file path');
+        expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+      });
+
+      it('should reject null byte injection', async () => {
+        const result = await injectPortHandling(
+          mockDevSupervisor,
+          '/app',
+          'server.js\0/etc/passwd'
+        );
+
+        expect(result.modified).toBe(false);
+        expect(result.skipped).toBe(false);
+        expect(result.error).toContain('Invalid entry file path');
+        expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+      });
+
+      it('should reject URL-encoded traversal (%2e%2e)', async () => {
+        const result = await injectPortHandling(
+          mockDevSupervisor,
+          '/app',
+          '%2e%2e/etc/passwd'
+        );
+
+        expect(result.modified).toBe(false);
+        expect(result.skipped).toBe(false);
+        expect(result.error).toContain('Invalid entry file path');
+        expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+      });
+
+      it('should reject URL-encoded traversal with uppercase (%2E%2E)', async () => {
+        const result = await injectPortHandling(
+          mockDevSupervisor,
+          '/app',
+          '%2E%2E/etc/passwd'
+        );
+
+        expect(result.modified).toBe(false);
+        expect(result.skipped).toBe(false);
+        expect(result.error).toContain('Invalid entry file path');
+        expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+      });
+
+      it('should reject double-encoded traversal (%252e%252e)', async () => {
+        const result = await injectPortHandling(
+          mockDevSupervisor,
+          '/app',
+          '%252e%252e/etc/passwd'
+        );
+
+        expect(result.modified).toBe(false);
+        expect(result.skipped).toBe(false);
+        expect(result.error).toContain('Invalid entry file path');
+        expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+      });
+
+      it('should reject mixed encoded traversal (.%2e/)', async () => {
+        const result = await injectPortHandling(
+          mockDevSupervisor,
+          '/app',
+          '.%2e/etc/passwd'
+        );
+
+        expect(result.modified).toBe(false);
+        expect(result.skipped).toBe(false);
+        expect(result.error).toContain('Invalid entry file path');
+        expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+      });
+
+      it('should reject URL-encoded absolute path (%2fetc%2fpasswd)', async () => {
+        const result = await injectPortHandling(
+          mockDevSupervisor,
+          '/app',
+          '%2fetc%2fpasswd'
+        );
+
+        expect(result.modified).toBe(false);
+        expect(result.skipped).toBe(false);
+        expect(result.error).toContain('Invalid entry file path');
+        expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+      });
+
+      it('should reject invalid URL encoding', async () => {
+        const result = await injectPortHandling(
+          mockDevSupervisor,
+          '/app',
+          '%ZZinvalid'
+        );
+
+        expect(result.modified).toBe(false);
+        expect(result.skipped).toBe(false);
+        expect(result.error).toContain('Invalid entry file path');
+        expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+      });
+
+      it('should accept valid paths with percent in filename', async () => {
+        mockDevSupervisor.exec.mockResolvedValueOnce({
+          exit_code: 0,
+          stdout: 'app.listen(3000);',
+        });
+        mockDevSupervisor.exec.mockResolvedValueOnce({
+          exit_code: 0,
+        });
+
+        // A file named "100%25complete.js" (URL-encoded % is %25)
+        const result = await injectPortHandling(
+          mockDevSupervisor,
+          '/app',
+          '100%25complete.js'
+        );
+
+        // This should be allowed - decodes to "100%complete.js" which is a valid filename
+        expect(result.modified).toBe(true);
+        expect(mockDevSupervisor.exec).toHaveBeenCalled();
+      });
+    });
+
     it('should return error when entry file not found', async () => {
       mockDevSupervisor.exec.mockResolvedValueOnce({
         exit_code: 1,

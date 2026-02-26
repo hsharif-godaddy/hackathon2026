@@ -109,7 +109,7 @@ export class GitOpsService {
     });
 
     try {
-      // Validate PaaS/AAB pattern: both token and repoUrl must be provided together, or neither
+      // Validate credential pattern: both token and repoUrl must be provided together, or neither
       const hasToken = token !== undefined && token !== '';
       const hasRepoUrl = repoUrl !== undefined && repoUrl !== '';
       if (hasToken !== hasRepoUrl) {
@@ -120,7 +120,7 @@ export class GitOpsService {
         });
         return {
           success: false,
-          error: 'Invalid parameters: Provide both token and repoUrl (PaaS) or neither (AAB)',
+          error: 'Both repoUrl and token must be provided together, or neither',
           errorCode: 'INTERNAL_ERROR',
         };
       }
@@ -281,7 +281,7 @@ export class GitOpsService {
     });
 
     try {
-      // Validate PaaS/AAB pattern: both token and repoUrl must be provided together, or neither
+      // Validate credential pattern: both token and repoUrl must be provided together, or neither
       const hasToken = token !== undefined && token !== '';
       const hasRepoUrl = repoUrl !== undefined && repoUrl !== '';
       if (hasToken !== hasRepoUrl) {
@@ -292,7 +292,7 @@ export class GitOpsService {
         });
         return {
           success: false,
-          error: 'Invalid parameters: Provide both token and repoUrl (PaaS) or neither (AAB)',
+          error: 'Both repoUrl and token must be provided together, or neither',
           errorCode: 'INTERNAL_ERROR',
         };
       }

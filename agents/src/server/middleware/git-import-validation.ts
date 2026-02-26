@@ -1,20 +1,25 @@
 /**
- * Git Import Validation Middleware
+ * Git Sync Validation Middleware
  *
- * Validates Git import parameters before creating database entries and starting
- * expensive import operations. Provides fail-fast behavior by checking:
+ * Validates Git sync parameters (repoUrl, token) before creating database entries
+ * and starting expensive git operations. Provides fail-fast behavior by checking:
  * 1. Git URL format and security (SSH blocking, SSRF prevention)
  * 2. Access token validity via provider API
  * 3. Repository accessibility
  *
- * This prevents polluting the database with failed import jobs that could have
+ * Credential validation behavior:
+ * - If both repoUrl AND token are provided: validates credentials before proceeding
+ * - If neither is provided: skips validation (credentials sourced elsewhere)
+ * - If only one is provided: returns error (incomplete credentials)
+ *
+ * This prevents polluting the database with failed sync jobs that could have
  * been prevented with upfront validation.
  *
  * @example
- * router.post('/apps/:id/zip/upload',
- *   requireZipImportFeature,
+ * router.post('/apps/:id/git/pull',
+ *   requireGitRemoteSync,
  *   validateAppOwnership,
- *   validateGitImport,  // Validates before DB entry
+ *   validateGitSync,  // Validates before DB entry
  *   async (req, res) => {
  *     // Handler only executes if all validations pass
  *   }
@@ -28,7 +33,7 @@ import { Logger, log } from '../../logging/index.js';
 import { ValidationErrorKey, type ValidationError } from '../../types/import.js';
 import type { DevSupervisorClient } from '../../services/DevSupervisorClient.js';
 
-const logger = Logger.create({ service: 'git-import-validation-middleware' });
+const logger = Logger.create({ service: 'git-sync-validation-middleware' });
 
 /**
  * Validate Git URL format and security
@@ -265,76 +270,76 @@ export async function validateToken(
 }
 
 /**
- * Middleware to validate Git import parameters before DB entry
+ * Middleware to validate Git sync parameters before DB entry
  *
- * Only validates if content-type is application/json (Git import).
- * For multipart/form-data (zip upload), skips validation and calls next().
+ * Credential validation behavior:
+ * - If both repoUrl AND token are provided: validates credentials before proceeding
+ * - If neither is provided: skips validation (credentials sourced elsewhere)
+ * - If only one is provided: returns error (incomplete credentials)
  *
- * Requirements:
- * - Request body must have gitUrl and gitToken fields
+ * When credentials are provided, validates:
  * - Git URL must be HTTPS from supported providers (GitHub, GitLab, Bitbucket)
  * - Access token must be valid and have repository access
  *
- * @param req - Express request with body containing gitUrl, gitToken, gitBranch
+ * @param req - Express request with body containing optional repoUrl, token
  * @param res - Express response
  * @param next - Express next function
  */
-export async function validateGitImport(
+export async function validateGitSync(
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
   try {
+    const { repoUrl, token } = req.body;
+    const appId = req.params.id;
 
-    // Skip validation for non-Git imports (e.g., zip uploads)
-    if (importType(req) !== 'git') {
+    // Skip validation if neither repoUrl nor token provided
+    // Credentials will be sourced elsewhere (e.g., database config, secrets API)
+    if (!repoUrl && !token) {
       next();
       return;
     }
 
-    const { gitUrl, gitToken, gitBranch } = req.body;
-    const appId = req.params.id;
+    // If one is provided but not the other, that's an error
+    if ((repoUrl && !token) || (!repoUrl && token)) {
+      logger.warn('route.middleware.git-sync.incomplete-params', {
+        appId,
+        hasRepoUrl: !!repoUrl,
+        hasToken: !!token,
+      });
+      res.status(400).json({
+        success: false,
+        error: 'Both repoUrl and token must be provided together, or neither',
+      });
+      return;
+    }
 
-    logger.info('route.middleware.git-import.validation.start', {
+    logger.info('route.middleware.git-sync.validation.start', {
       appId,
-      gitUrl: gitUrl ? sanitizeGitUrl(gitUrl) : undefined,
-      hasToken: !!gitToken,
-      gitBranch: gitBranch || 'default',
+      repoUrl: repoUrl ? sanitizeGitUrl(repoUrl) : undefined,
+      hasToken: !!token,
     });
 
-    // 1. Basic presence checks
-    if (!gitUrl || !gitToken) {
-      logger.warn('route.middleware.git-import.missing-params', {
+    // Token format validation
+    if (typeof token !== 'string' || token.trim().length === 0) {
+      logger.warn('route.middleware.git-sync.invalid-token-format', {
         appId,
-        hasGitUrl: !!gitUrl,
-        hasGitToken: !!gitToken,
+        tokenType: typeof token,
       });
       res.status(400).json({
         success: false,
-        error: 'gitUrl and gitToken are required for git import',
+        error: 'token must be a non-empty string',
       });
       return;
     }
 
-    // 2. Token format validation
-    if (typeof gitToken !== 'string' || gitToken.trim().length === 0) {
-      logger.warn('route.middleware.git-import.invalid-token-format', {
-        appId,
-        tokenType: typeof gitToken,
-      });
-      res.status(400).json({
-        success: false,
-        error: 'gitToken must be a non-empty string',
-      });
-      return;
-    }
-
-    // 3. Git URL validation (format, security, supported providers)
-    const urlValidation = validateGitUrl(gitUrl);
+    // Git URL validation (format, security, supported providers)
+    const urlValidation = validateGitUrl(repoUrl);
     if (urlValidation) {
-      logger.warn('route.middleware.git-import.url-validation.failed', {
+      logger.warn('route.middleware.git-sync.url-validation.failed', {
         appId,
-        gitUrl: sanitizeGitUrl(gitUrl),
+        repoUrl: sanitizeGitUrl(repoUrl),
         errorKey: urlValidation.key,
         errorMessage: urlValidation.message,
       });
@@ -351,13 +356,13 @@ export async function validateGitImport(
       return;
     }
 
-    // 4. Token & repository access validation via provider API
+    // Token & repository access validation via provider API
     // This is the expensive check but still much faster than git clone
-    const tokenValidation = await validateToken(gitUrl, gitToken);
+    const tokenValidation = await validateToken(repoUrl, token);
     if (!tokenValidation.valid) {
-      logger.warn('route.middleware.git-import.token-validation.failed', {
+      logger.warn('route.middleware.git-sync.token-validation.failed', {
         appId,
-        gitUrl: sanitizeGitUrl(gitUrl),
+        repoUrl: sanitizeGitUrl(repoUrl),
         errorKey: tokenValidation.error?.key,
         errorMessage: tokenValidation.error?.message,
       });
@@ -377,15 +382,15 @@ export async function validateGitImport(
     }
 
     // All validations passed
-    logger.info('route.middleware.git-import.validation.success', {
+    logger.info('route.middleware.git-sync.validation.success', {
       appId,
-      gitUrl: sanitizeGitUrl(gitUrl),
+      repoUrl: sanitizeGitUrl(repoUrl),
       hasRepoAccess: tokenValidation.hasRepoAccess,
     });
 
     next();
   } catch (error) {
-    log.error(logger, 'route.middleware.git-import.validation.error', error as Error, {
+    log.error(logger, 'route.middleware.git-sync.validation.error', error as Error, {
       appId: req.params.id,
     });
     res.status(500).json({
@@ -413,16 +418,6 @@ function sanitizeGitUrl(url: string): string {
     // Fallback: mask any credentials in URL
     return url.replace(/\/\/[^@]+@/, '//***@');
   }
-}
-
-export function importType(req: Request): string | null {
-  const contentType = (req.headers['content-type'] || '').toLowerCase();
-
-  return contentType.startsWith('application/json')
-    ? 'git'
-    : contentType.startsWith('multipart/form-data')
-      ? 'zip'
-      : null;
 }
 
 /**

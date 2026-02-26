@@ -2,10 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
 import { ValidationErrorKey } from '../../../types/import.js';
 import {
-  validateGitImport,
+  validateGitSync,
   validateGitUrl,
   validateToken,
-  importType,
   hasDependency,
   hasConfigFileOnHost,
   matchesBuildToolOnHost,
@@ -246,416 +245,6 @@ describe('validateToken', () => {
         }),
       })
     );
-  });
-});
-
-describe('validateGitImport middleware', () => {
-  let mockReq: Partial<Request>;
-  let mockRes: Partial<Response>;
-  let mockNext: NextFunction;
-  let jsonSpy: any;
-  let statusSpy: any;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    (global.fetch as any).mockClear();
-
-    mockReq = {
-      headers: { 'content-type': 'application/json' },
-      body: {
-        gitUrl: 'https://github.com/user/repo.git',
-        gitToken: 'ghp_validtoken123',
-      },
-      params: { id: 'test-app-id' },
-      path: '/apps/test-app-id/zip/upload',
-      method: 'POST',
-    };
-
-    jsonSpy = vi.fn();
-    statusSpy = vi.fn().mockReturnValue({ json: jsonSpy });
-    mockRes = {
-      status: statusSpy,
-      json: jsonSpy,
-    };
-
-    mockNext = vi.fn();
-
-    // Default: mock successful token validation
-    (global.fetch as any).mockResolvedValue({
-      status: 200,
-    });
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  describe('Content-Type validation', () => {
-    it('should skip validation for multipart/form-data (zip upload)', async () => {
-      mockReq.headers = { 'content-type': 'multipart/form-data' };
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockNext).toHaveBeenCalledOnce();
-      expect(statusSpy).not.toHaveBeenCalled();
-      expect(global.fetch).not.toHaveBeenCalled();
-    });
-
-    it('should skip validation for missing content-type', async () => {
-      mockReq.headers = {};
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockNext).toHaveBeenCalledOnce();
-      expect(statusSpy).not.toHaveBeenCalled();
-    });
-
-    it('should process validation for application/json', async () => {
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(global.fetch).toHaveBeenCalled();
-      expect(mockNext).toHaveBeenCalled();
-    });
-
-    it('should handle case-insensitive content-type check', async () => {
-      mockReq.headers = { 'content-type': 'APPLICATION/JSON' };
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(global.fetch).toHaveBeenCalled();
-      expect(mockNext).toHaveBeenCalled();
-    });
-  });
-
-  describe('Missing parameter validation', () => {
-    it('should return 400 when both gitUrl and gitToken are missing', async () => {
-      mockReq.body = {};
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(statusSpy).toHaveBeenCalledWith(400);
-      expect(jsonSpy).toHaveBeenCalledWith({
-        success: false,
-        error: 'gitUrl and gitToken are required for git import',
-      });
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-
-    it('should return 400 when gitUrl is missing', async () => {
-      mockReq.body = { gitToken: 'ghp_token123' };
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(statusSpy).toHaveBeenCalledWith(400);
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-
-    it('should return 400 when gitToken is missing', async () => {
-      mockReq.body = { gitUrl: 'https://github.com/user/repo.git' };
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(statusSpy).toHaveBeenCalledWith(400);
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('Token format validation', () => {
-    it('should return 400 when gitToken is not a string', async () => {
-      mockReq.body = {
-        gitUrl: 'https://github.com/user/repo.git',
-        gitToken: 12345 as any,
-      };
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(statusSpy).toHaveBeenCalledWith(400);
-      expect(jsonSpy).toHaveBeenCalledWith({
-        success: false,
-        error: 'gitToken must be a non-empty string',
-      });
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-
-    it('should return 400 when gitToken is whitespace only', async () => {
-      mockReq.body = {
-        gitUrl: 'https://github.com/user/repo.git',
-        gitToken: '   ',
-      };
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(statusSpy).toHaveBeenCalledWith(400);
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('Git URL validation', () => {
-    it('should return 400 for SSH URL', async () => {
-      mockReq.body.gitUrl = 'git@github.com:user/repo.git';
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(statusSpy).toHaveBeenCalledWith(400);
-      expect(jsonSpy).toHaveBeenCalledWith({
-        success: false,
-        error: expect.stringContaining('SSH URLs are not supported'),
-        validationErrors: expect.arrayContaining([
-          expect.objectContaining({
-            key: ValidationErrorKey.GIT_URL_INVALID,
-          }),
-        ]),
-      });
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-
-    it('should return 400 for localhost URL', async () => {
-      mockReq.body.gitUrl = 'https://localhost/repo.git';
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(statusSpy).toHaveBeenCalledWith(400);
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-
-    it('should return 400 for unsupported provider', async () => {
-      mockReq.body.gitUrl = 'https://example.com/repo.git';
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(statusSpy).toHaveBeenCalledWith(400);
-      expect(jsonSpy).toHaveBeenCalledWith({
-        success: false,
-        error: expect.stringContaining('GitHub, GitLab, and Bitbucket'),
-        validationErrors: expect.arrayContaining([
-          expect.objectContaining({
-            key: ValidationErrorKey.GIT_URL_UNSUPPORTED,
-          }),
-        ]),
-      });
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-
-    it('should accept valid GitHub URL', async () => {
-      mockReq.body.gitUrl = 'https://github.com/user/repo.git';
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockNext).toHaveBeenCalled();
-      expect(statusSpy).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('Token validation', () => {
-    it('should return 400 for invalid token (401)', async () => {
-      (global.fetch as any).mockResolvedValueOnce({
-        status: 401,
-      });
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(statusSpy).toHaveBeenCalledWith(400);
-      expect(jsonSpy).toHaveBeenCalledWith({
-        success: false,
-        error: expect.stringContaining('Invalid or expired access token'),
-        validationErrors: expect.arrayContaining([
-          expect.objectContaining({
-            key: ValidationErrorKey.GIT_AUTH_FAILED,
-          }),
-        ]),
-      });
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-
-    it('should return 400 for repository not found (404)', async () => {
-      (global.fetch as any).mockResolvedValueOnce({
-        status: 404,
-      });
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(statusSpy).toHaveBeenCalledWith(400);
-      expect(jsonSpy).toHaveBeenCalledWith({
-        success: false,
-        error: expect.stringContaining('Repository not found'),
-        validationErrors: expect.arrayContaining([
-          expect.objectContaining({
-            key: ValidationErrorKey.GIT_REPO_NOT_FOUND,
-          }),
-        ]),
-      });
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-
-    it('should call next() for valid token', async () => {
-      (global.fetch as any).mockResolvedValueOnce({
-        status: 200,
-      });
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockNext).toHaveBeenCalledOnce();
-      expect(statusSpy).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('Successful validation flow', () => {
-    it('should complete full validation and call next()', async () => {
-      mockReq.body = {
-        gitUrl: 'https://github.com/user/repo.git',
-        gitToken: 'ghp_validtoken123',
-        gitBranch: 'main',
-      };
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockNext).toHaveBeenCalledOnce();
-      expect(statusSpy).not.toHaveBeenCalled();
-      expect(mockLoggerInfo).toHaveBeenCalledWith(
-        'route.middleware.git-import.validation.success',
-        expect.any(Object)
-      );
-    });
-
-    it('should log gitBranch when provided', async () => {
-      mockReq.body.gitBranch = 'develop';
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockLoggerInfo).toHaveBeenCalledWith(
-        'route.middleware.git-import.validation.start',
-        expect.objectContaining({
-          gitBranch: 'develop',
-        })
-      );
-    });
-  });
-
-  describe('Error handling', () => {
-    it('should gracefully handle fetch errors and continue validation', async () => {
-      // Fetch errors are caught by validateToken and degraded gracefully
-      (global.fetch as any).mockImplementationOnce(() => {
-        throw new Error('Unexpected error');
-      });
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      // Should proceed with validation since token validation gracefully degrades
-      expect(mockNext).toHaveBeenCalledOnce();
-      expect(statusSpy).not.toHaveBeenCalled();
-    });
-
-    it('should return 500 on middleware-level error', async () => {
-      // Force an error at the middleware level, not in validation functions
-      const errorReq = {
-        headers: { 'content-type': 'application/json' },
-        get body() {
-          throw new Error('Body parsing error');
-        },
-        params: { id: 'test-app-id' },
-      };
-
-      await validateGitImport(errorReq as unknown as Request, mockRes as Response, mockNext);
-
-      expect(statusSpy).toHaveBeenCalledWith(500);
-      expect(jsonSpy).toHaveBeenCalledWith({
-        success: false,
-        error: 'Internal server error during validation',
-      });
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('URL sanitization in logs', () => {
-    it('should sanitize URLs with credentials', async () => {
-      mockReq.body.gitUrl = 'https://token:secret@github.com/user/repo.git';
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(mockLoggerInfo).toHaveBeenCalledWith(
-        'route.middleware.git-import.validation.start',
-        expect.objectContaining({
-          gitUrl: expect.stringContaining('***'),
-        })
-      );
-    });
-  });
-
-  describe('Integration scenarios', () => {
-    it('should validate complete happy path', async () => {
-      mockReq.body = {
-        gitUrl: 'https://github.com/user/repo.git',
-        gitToken: 'ghp_validtoken123',
-        gitBranch: 'main',
-      };
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      // Verify fetch was called with correct params
-      expect(global.fetch).toHaveBeenCalledWith(
-        'https://api.github.com/repos/user/repo',
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'Authorization': 'Bearer ghp_validtoken123',
-          }),
-        })
-      );
-
-      expect(mockNext).toHaveBeenCalledOnce();
-      expect(statusSpy).not.toHaveBeenCalled();
-    });
-
-    it('should fail at URL validation before token check', async () => {
-      mockReq.body.gitUrl = 'git@github.com:user/repo.git';
-
-      await validateGitImport(mockReq as Request, mockRes as Response, mockNext);
-
-      expect(statusSpy).toHaveBeenCalledWith(400);
-      expect(global.fetch).not.toHaveBeenCalled(); // Should not reach token validation
-      expect(mockNext).not.toHaveBeenCalled();
-    });
-  });
-});
-
-describe('importType', () => {
-  it('should return "git" for application/json content-type', () => {
-    const req = { headers: { 'content-type': 'application/json' } } as Request;
-    expect(importType(req)).toBe('git');
-  });
-
-  it('should return "git" for application/json with charset', () => {
-    const req = { headers: { 'content-type': 'application/json; charset=utf-8' } } as Request;
-    expect(importType(req)).toBe('git');
-  });
-
-  it('should return "zip" for multipart/form-data content-type', () => {
-    const req = { headers: { 'content-type': 'multipart/form-data' } } as Request;
-    expect(importType(req)).toBe('zip');
-  });
-
-  it('should return "zip" for multipart/form-data with boundary', () => {
-    const req = { headers: { 'content-type': 'multipart/form-data; boundary=----WebKitFormBoundary' } } as Request;
-    expect(importType(req)).toBe('zip');
-  });
-
-  it('should return null for unsupported content-type', () => {
-    const req = { headers: { 'content-type': 'text/plain' } } as Request;
-    expect(importType(req)).toBeNull();
-  });
-
-  it('should return null for missing content-type', () => {
-    const req = { headers: {} } as Request;
-    expect(importType(req)).toBeNull();
-  });
-
-  it('should handle case-insensitive content-type', () => {
-    const req = { headers: { 'content-type': 'APPLICATION/JSON' } } as Request;
-    expect(importType(req)).toBe('git');
-  });
-
-  it('should return null for empty content-type', () => {
-    const req = { headers: { 'content-type': '' } } as Request;
-    expect(importType(req)).toBeNull();
   });
 });
 
@@ -994,6 +583,259 @@ describe('isSupportedProjectInContainer', () => {
 
       expect(result.supported).toBe(true);
       expect(result.matchedTool).toBe('Node.js');
+    });
+  });
+});
+
+describe('validateGitSync middleware', () => {
+  let mockReq: Partial<Request>;
+  let mockRes: Partial<Response>;
+  let mockNext: NextFunction;
+  let jsonSpy: any;
+  let statusSpy: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mockReq = {
+      body: {},
+      params: { id: 'test-app-id' },
+      path: '/apps/test-app-id/git/pull',
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+    };
+
+    jsonSpy = vi.fn();
+    statusSpy = vi.fn().mockReturnValue({ json: jsonSpy });
+    mockRes = {
+      status: statusSpy,
+      json: jsonSpy,
+    };
+
+    mockNext = vi.fn();
+
+    // Default mock for fetch (valid token)
+    vi.mocked(global.fetch).mockResolvedValue({
+      status: 200,
+      json: async () => ({}),
+    } as Response);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('when both repoUrl and token are provided', () => {
+    it('should call next when both repoUrl and token are valid', async () => {
+      mockReq.body = {
+        repoUrl: 'https://github.com/user/repo.git',
+        token: 'ghp_validtoken123',
+      };
+
+      await validateGitSync(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalledOnce();
+      expect(statusSpy).not.toHaveBeenCalled();
+    });
+
+    it('should validate URL format and reject SSH URLs', async () => {
+      mockReq.body = {
+        repoUrl: 'git@github.com:user/repo.git',
+        token: 'ghp_validtoken123',
+      };
+
+      await validateGitSync(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: expect.stringContaining('SSH URLs are not supported'),
+        })
+      );
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should reject unsupported providers', async () => {
+      mockReq.body = {
+        repoUrl: 'https://custom-git.example.com/user/repo.git',
+        token: 'some_token',
+      };
+
+      await validateGitSync(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: expect.stringContaining('GitHub, GitLab, and Bitbucket'),
+        })
+      );
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should reject invalid token (401 from provider)', async () => {
+      mockReq.body = {
+        repoUrl: 'https://github.com/user/repo.git',
+        token: 'invalid_token',
+      };
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        status: 401,
+        json: async () => ({}),
+      } as Response);
+
+      await validateGitSync(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: expect.stringContaining('Invalid or expired'),
+        })
+      );
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should reject when repo not found (404 from provider)', async () => {
+      mockReq.body = {
+        repoUrl: 'https://github.com/user/nonexistent-repo.git',
+        token: 'ghp_validtoken123',
+      };
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        status: 404,
+        json: async () => ({}),
+      } as Response);
+
+      await validateGitSync(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: expect.stringContaining('not found'),
+        })
+      );
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('when neither repoUrl nor token are provided', () => {
+    it('should skip validation and call next when neither repoUrl nor token provided', async () => {
+      mockReq.body = {
+        remoteName: 'origin',
+        branch: 'main',
+      };
+
+      await validateGitSync(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalledOnce();
+      expect(statusSpy).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('should skip validation when body is empty', async () => {
+      mockReq.body = {};
+
+      await validateGitSync(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalledOnce();
+      expect(statusSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Incomplete credentials (only one of repoUrl/token)', () => {
+    it('should reject when only repoUrl is provided without token', async () => {
+      mockReq.body = {
+        repoUrl: 'https://github.com/user/repo.git',
+      };
+
+      await validateGitSync(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: 'Both repoUrl and token must be provided together, or neither',
+        })
+      );
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should reject when only token is provided without repoUrl', async () => {
+      mockReq.body = {
+        token: 'ghp_validtoken123',
+      };
+
+      await validateGitSync(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: 'Both repoUrl and token must be provided together, or neither',
+        })
+      );
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Token format validation', () => {
+    it('should treat empty string token as missing (incomplete credentials)', async () => {
+      mockReq.body = {
+        repoUrl: 'https://github.com/user/repo.git',
+        token: '',
+      };
+
+      await validateGitSync(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: 'Both repoUrl and token must be provided together, or neither',
+        })
+      );
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should reject whitespace-only token', async () => {
+      mockReq.body = {
+        repoUrl: 'https://github.com/user/repo.git',
+        token: '   ',
+      };
+
+      await validateGitSync(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(statusSpy).toHaveBeenCalledWith(400);
+      expect(jsonSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: expect.stringContaining('non-empty string'),
+        })
+      );
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Error handling', () => {
+    it('should return 500 for unexpected errors', async () => {
+      // Force an error by making fetch throw
+      vi.mocked(global.fetch).mockImplementation(() => {
+        throw new Error('Network error');
+      });
+
+      mockReq.body = {
+        repoUrl: 'https://github.com/user/repo.git',
+        token: 'ghp_validtoken123',
+      };
+
+      await validateGitSync(mockReq as Request, mockRes as Response, mockNext);
+
+      // validateToken gracefully handles errors and returns valid: true
+      // So the middleware should call next()
+      expect(mockNext).toHaveBeenCalledOnce();
     });
   });
 });

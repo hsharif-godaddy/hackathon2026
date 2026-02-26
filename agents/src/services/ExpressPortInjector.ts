@@ -16,19 +16,33 @@ const logger = Logger.create({ service: 'express-port-injector' });
 
 /**
  * Validate that entryFile is a safe relative path that doesn't escape the project root.
- * Rejects absolute paths and paths containing parent directory traversal.
+ * Rejects absolute paths, paths containing parent directory traversal, and URL-encoded attacks.
  *
  * @param entryFile - Entry file path to validate
  * @returns true if safe, false if potentially malicious
  */
 function isValidEntryFile(entryFile: string): boolean {
-  // Reject absolute paths
-  if (isAbsolute(entryFile)) {
+  // Decode URL-encoded content to catch encoded traversal attacks like %2e%2e/etc/passwd
+  let decoded = entryFile;
+  try {
+    decoded = decodeURIComponent(entryFile);
+    // Reject paths that still contain percent-encoded sequences after decode
+    // This catches double-encoded attacks like %252e%252e
+    if (decoded.includes('%2e') || decoded.includes('%2E')) {
+      return false;
+    }
+  } catch {
+    // Invalid URL encoding - reject as potentially malicious
     return false;
   }
 
-  // Normalize the path and check for directory traversal
-  const normalized = normalize(entryFile);
+  // Reject absolute paths (check both original and decoded)
+  if (isAbsolute(entryFile) || isAbsolute(decoded)) {
+    return false;
+  }
+
+  // Normalize the decoded path and check for directory traversal
+  const normalized = normalize(decoded);
 
   // Reject if normalized path starts with .. (escapes root)
   if (normalized.startsWith('..')) {
@@ -36,7 +50,7 @@ function isValidEntryFile(entryFile: string): boolean {
   }
 
   // Reject if path contains null bytes (common injection technique)
-  if (entryFile.includes('\0')) {
+  if (entryFile.includes('\0') || decoded.includes('\0')) {
     return false;
   }
 

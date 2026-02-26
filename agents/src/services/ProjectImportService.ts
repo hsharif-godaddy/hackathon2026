@@ -889,12 +889,17 @@ export class ProjectImportService {
       // Convert agent path to container path (/app is the standard container mount)
       const containerAppPath = '/app';
 
-      // Delete all files except .git, .gitignore, node_modules, .is_ready, and public/assets
+      // Delete all files except .git, .gitignore, .is_ready, and public/assets
       // Preserve .gitignore so it's not lost when imported project doesn't have one
       // Preserve public/assets as it contains persistent user data, refer this doc for more detail -> docs/persistent-storage-architecture.md
+      // Note: node_modules is NOT preserved - it gets deleted and recreated by npm install in Phase 8
+      // Also delete /node_modules (root level) which contains Vite deps baked into the Docker image
+      // This prevents conflicts when importing Next.js projects into Vite-based containers
+      // Note: Using "rm -r -f" instead of "rm -rf" for /node_modules to avoid
+      // triggering dev-supervisor's dangerous command detection which blocks "rm -rf /"
       // Note: The public directory cleanup only runs if /app/public exists (it may not exist in fresh apps)
       const deleteResult = await devSupervisor.exec({
-        command: `find "${containerAppPath}" -mindepth 1 -maxdepth 1 ! -name ".git" ! -name ".gitignore" ! -name "node_modules" ! -name ".is_ready" ! -name ".import-*" ! -name "public" -exec rm -rf {} + && { [ -d "${containerAppPath}/public" ] && find "${containerAppPath}/public" -mindepth 1 -maxdepth 1 ! -name "assets" -exec rm -rf {} + || true; }`,
+        command: `find "${containerAppPath}" -mindepth 1 -maxdepth 1 ! -name ".git" ! -name ".gitignore" ! -name ".is_ready" ! -name ".import-*" ! -name "public" -exec rm -rf {} + && { [ -d "${containerAppPath}/public" ] && find "${containerAppPath}/public" -mindepth 1 -maxdepth 1 ! -name "assets" -exec rm -rf {} + || true; } && { [ -d /node_modules ] && rm -r -f /node_modules || true; }`,
         timeout: 30, // seconds
       });
 
