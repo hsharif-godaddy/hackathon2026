@@ -7,13 +7,17 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "build:lambdas": "npx tsx lambda/build.ts --all",
+    "build:lambda": "npx tsx lambda/build.ts",
+    "verify:lambdas": "npx tsx lambda/build.ts --all && npx tsx lambda/verify.ts"
   },
   "devDependencies": {
     "@types/node": "^22.18.12",
     "aws-cdk": "^2.1029.1",
     "esbuild": "^0.24.0",
     "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   },
   "dependencies": {

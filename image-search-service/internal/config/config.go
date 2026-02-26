@@ -32,11 +32,12 @@ type Config struct {
 	OpenAIBaseURL string
 
 	// Qdrant
-	QdrantHost       string
-	QdrantPort       int
-	QdrantCollection string
-	QdrantAPIKey     string
-	QdrantUseTLS     bool
+	QdrantHost          string
+	QdrantPort          int
+	QdrantCollection    string
+	QdrantAPIKey        string
+	QdrantUseTLS        bool
+	QdrantTLSSkipVerify bool // Skip TLS certificate verification (for self-signed certs)
 
 	// S3
 	S3Bucket string
@@ -55,6 +56,10 @@ type Config struct {
 	APMServerURL   string
 	APMServiceName string
 	APMEnvironment string
+
+	// Server TLS (for Katana ELB backend HTTPS)
+	TLSCertPath string
+	TLSKeyPath  string
 
 	// Auth
 	AuthType string
@@ -87,11 +92,12 @@ func LoadConfig() *Config {
 		OpenAIBaseURL: getEnvString("OPENAI_BASE_URL", ""),
 
 		// Qdrant (use 127.0.0.1 to avoid IPv6 timeout when Docker only binds IPv4)
-		QdrantHost:       getEnvString("QDRANT_HOST", "127.0.0.1"),
-		QdrantPort:       getEnvInt("QDRANT_PORT", 6334),
-		QdrantCollection: getEnvString("QDRANT_COLLECTION", "image_analyses"),
-		QdrantAPIKey:     getEnvString("QDRANT_API_KEY", ""),
-		QdrantUseTLS:     getEnvBool("QDRANT_USE_TLS", false),
+		QdrantHost:          getEnvString("QDRANT_HOST", "127.0.0.1"),
+		QdrantPort:          getEnvInt("QDRANT_PORT", 6334),
+		QdrantCollection:    getEnvString("QDRANT_COLLECTION", "image_analyses"),
+		QdrantAPIKey:        getEnvString("QDRANT_API_KEY", ""),
+		QdrantUseTLS:        getEnvBool("QDRANT_USE_TLS", false),
+		QdrantTLSSkipVerify: getEnvBool("QDRANT_TLS_SKIP_VERIFY", false),
 
 		// S3
 		S3Bucket: getEnvString("S3_BUCKET", ""),
@@ -110,6 +116,10 @@ func LoadConfig() *Config {
 		APMServerURL:   getEnvString("ELASTIC_APM_SERVER_URL", ""),
 		APMServiceName: getEnvString("ELASTIC_APM_SERVICE_NAME", "image-search-service"),
 		APMEnvironment: getEnvString("ELASTIC_APM_ENVIRONMENT", "dev"),
+
+		// Server TLS
+		TLSCertPath: getEnvString("SERVER_CERT_PATH", ""),
+		TLSKeyPath:  getEnvString("SERVER_KEY_PATH", ""),
 
 		// Auth
 		AuthType: getEnvString("AUTH_TYPE", "jwt"),

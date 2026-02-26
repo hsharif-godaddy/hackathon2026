@@ -4,10 +4,12 @@ package qdrant
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/qdrant/go-client/qdrant"
@@ -33,6 +35,11 @@ func New(cfg *config.Config) (*Client, error) {
 		qdrantConfig.APIKey = cfg.QdrantAPIKey
 	}
 	qdrantConfig.UseTLS = cfg.QdrantUseTLS
+	if cfg.QdrantUseTLS && cfg.QdrantTLSSkipVerify {
+		qdrantConfig.TLSConfig = &tls.Config{
+			InsecureSkipVerify: true, //nolint:gosec // Self-signed certs in internal network
+		}
+	}
 
 	client, err := qdrant.NewClient(qdrantConfig)
 	if err != nil {
@@ -82,6 +89,11 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 		}),
 	})
 	if err != nil {
+		// Handle race condition: another task may have created the collection concurrently
+		if strings.Contains(err.Error(), "already exists") {
+			slog.Info("qdrant.collection.already.exists", "collection", c.collection)
+			return nil
+		}
 		return fmt.Errorf("failed to create collection: %w", err)
 	}
 

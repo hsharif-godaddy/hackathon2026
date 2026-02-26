@@ -37,6 +37,23 @@ func main() {
 	// Load configuration
 	cfg := config.LoadConfig()
 
+	// Log config for debugging (secrets redacted)
+	slog.Info("service.config",
+		"qdrantHost", cfg.QdrantHost,
+		"qdrantPort", cfg.QdrantPort,
+		"qdrantCollection", cfg.QdrantCollection,
+		"qdrantUseTLS", cfg.QdrantUseTLS,
+		"qdrantTLSSkipVerify", cfg.QdrantTLSSkipVerify,
+		"qdrantAPIKeySet", cfg.QdrantAPIKey != "",
+		"tlsCertPath", cfg.TLSCertPath,
+		"tlsKeyPath", cfg.TLSKeyPath,
+		"port", cfg.Port,
+		"logLevel", cfg.LogLevel,
+		"gettyUpstream", cfg.GettyUpstream,
+		"s3Bucket", cfg.S3Bucket,
+		"authType", cfg.AuthType,
+	)
+
 	// Create server
 	server := api.NewServer(cfg, version)
 

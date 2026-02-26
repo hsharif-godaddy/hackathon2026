@@ -129,7 +129,7 @@ const devConfig: Config = {
     memory: 2048,
     ephemeralStorageGiB: 30,
     imageTag: 'latest',
-    enableTls: false, // Set to true after deploying TLS certificate
+    enableTls: true, // TLS enabled for dev testing
   },
 };
 

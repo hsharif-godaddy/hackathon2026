@@ -118,6 +118,14 @@ jobs:
         working-directory: ./cdk
         run: pnpm --filter airo-builder-cdk install --frozen-lockfile
 
+      - name: Build and verify Lambda functions
+        working-directory: ./cdk
+        run: |
+          # Build Lambda functions before CDK synth
+          npx tsx lambda/build.ts --all
+          # Verify they can be loaded
+          npx tsx lambda/verify.ts
+
       - name: Run CDK
         working-directory: ./cdk
         env:

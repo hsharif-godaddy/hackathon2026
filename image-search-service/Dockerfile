@@ -26,8 +26,17 @@ USER root
 
 WORKDIR /app
 
-# Install CA certificates for HTTPS calls and wget for health checks
-RUN apk --no-cache add ca-certificates wget
+# Install CA certificates for HTTPS calls, wget for health checks, and openssl for cert generation
+RUN apk --no-cache add ca-certificates wget openssl
+
+# Generate self-signed TLS certificate for Katana ELB backend HTTPS
+RUN mkdir -p /app/certs && \
+    openssl req -x509 -newkey rsa:2048 \
+    -keyout /app/certs/server.key -out /app/certs/server.crt \
+    -days 365 -nodes -subj "/CN=image-search-service" \
+    -addext "subjectAltName=DNS:*,IP:127.0.0.1,IP:0.0.0.0" && \
+    chmod 644 /app/certs/server.crt && \
+    chmod 644 /app/certs/server.key
 
 # Copy binary from builder
 COPY --from=builder /app/server /app/server
@@ -38,9 +47,13 @@ USER 1000
 # Expose port
 EXPOSE 8080
 
+# Environment variables for server TLS
+ENV SERVER_CERT_PATH=/app/certs/server.crt
+ENV SERVER_KEY_PATH=/app/certs/server.key
+
 # Health check - start-period aligned with Katana healthcheckGracePeriod (60s)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/v1/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider --no-check-certificate https://localhost:8080/api/v1/health || exit 1
 
 # Run the server
 CMD ["/app/server"]

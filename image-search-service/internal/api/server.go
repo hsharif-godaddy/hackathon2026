@@ -119,7 +119,7 @@ func (s *Server) Initialize(ctx context.Context) error {
 	return nil
 }
 
-// Start starts the HTTP server.
+// Start starts the HTTP server. If TLS cert/key paths are configured, it serves HTTPS.
 func (s *Server) Start() error {
 	s.httpServer = &http.Server{
 		Addr:         fmt.Sprintf(":%d", s.config.Port),
@@ -129,6 +129,12 @@ func (s *Server) Start() error {
 		IdleTimeout:  120 * time.Second,
 	}
 
+	if s.config.TLSCertPath != "" && s.config.TLSKeyPath != "" {
+		slog.Info("server.start.tls", "addr", s.httpServer.Addr, "certPath", s.config.TLSCertPath)
+		return s.httpServer.ListenAndServeTLS(s.config.TLSCertPath, s.config.TLSKeyPath)
+	}
+
+	slog.Info("server.start.http", "addr", s.httpServer.Addr)
 	return s.httpServer.ListenAndServe()
 }
 

@@ -13,7 +13,6 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as servicediscovery from "aws-cdk-lib/aws-servicediscovery";
 import * as triggers from "aws-cdk-lib/triggers";
-import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import { GDStack, GDStackProps } from "@gd-safeguard/godaddy-constructs";
 import config from "./config";
 
@@ -237,7 +236,8 @@ export class QdrantStack extends GDStack {
 
     // TLS Bootstrap Lambda - generates self-signed CA and server certificates
     // Triggered on deployment and weekly to check for renewal
-    let tlsBootstrapLambda: NodejsFunction | undefined;
+    let tlsBootstrapLambda: lambda.Function | undefined;
+    let tlsBootstrapTrigger: triggers.Trigger | undefined;
     if (enableTls) {
       // Lambda execution role
       const lambdaRole = new iam.Role(this, "QdrantTlsBootstrapRole", {
@@ -274,14 +274,15 @@ export class QdrantStack extends GDStack {
         }),
       );
 
-      tlsBootstrapLambda = new NodejsFunction(this, "QdrantTlsBootstrapLambda", {
+      // Use pre-built Lambda artifact (built by lambda/build.ts)
+      tlsBootstrapLambda = new lambda.Function(this, "QdrantTlsBootstrapLambda", {
         functionName: `${config.envName}-qdrant-tls-bootstrap`,
-        entry: path.join(__dirname, "../lambda/qdrant-tls-bootstrap/qdrant-tls-bootstrap.ts"),
-        depsLockFilePath: path.join(__dirname, "../lambda/qdrant-tls-bootstrap/package-lock.json"),
-        handler: "handler",
         runtime: lambda.Runtime.NODEJS_22_X,
+        handler: "index.handler",
+        code: lambda.Code.fromAsset(
+          path.join(__dirname, "../lambda/qdrant-tls-bootstrap/dist"),
+        ),
         timeout: cdk.Duration.minutes(2),
-        logRetention: logs.RetentionDays.ONE_WEEK,
         architecture: lambda.Architecture.ARM_64,
         description: "Bootstraps self-signed TLS certificates for Qdrant cluster",
         environment: {
@@ -289,19 +290,12 @@ export class QdrantStack extends GDStack {
           CERT_SECRET_NAME: tlsCertSecretName,
           COMMON_NAME: qdrantFqdn,
         },
-        bundling: {
-          banner: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
-          externalModules: ["@aws-sdk/*", "@aws-lambda-powertools/*"],
-          format: OutputFormat.ESM,
-          mainFields: ["module", "main"],
-          minify: true,
-          tsconfig: path.join(__dirname, "../lambda/qdrant-tls-bootstrap/tsconfig.json"),
-        },
         role: lambdaRole,
+        logRetention: logs.RetentionDays.ONE_WEEK,
       });
 
-      // Trigger Lambda on deployment
-      const triggerTlsBootstrap = new triggers.Trigger(this, "TriggerTlsBootstrap", {
+      // Trigger Lambda on deployment - ECS service will depend on this
+      tlsBootstrapTrigger = new triggers.Trigger(this, "TriggerTlsBootstrap", {
         handler: tlsBootstrapLambda,
         timeout: cdk.Duration.minutes(2),
       });
@@ -534,6 +528,11 @@ export class QdrantStack extends GDStack {
       circuitBreaker: { enable: true, rollback: true },
     });
     this.service = service;
+
+    // Ensure TLS certificates are created before ECS service starts
+    if (tlsBootstrapTrigger) {
+      service.node.addDependency(tlsBootstrapTrigger);
+    }
 
     // Enable Service Discovery
     service.enableCloudMap({
