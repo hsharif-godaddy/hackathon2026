@@ -63,6 +63,7 @@ export default function DomainAttach() {
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const { data: isWildcardDomain } = useSwitchboard('appbuilder-www-wildcard');
+  const { data: isDCVEnabled } = useSwitchboard('appbuilder-domain-dcv');
 
   const site = useSiteStore((state) => {
     if (!currentAppId) return null;
@@ -121,7 +122,7 @@ export default function DomainAttach() {
 
   // Handle customer domain attachment with automatic DNS configuration
   // Hook receives appDetails from above query and manages auto-attach flow for GoDaddy domains
-  useCustomerDomainAttach(appDetails, domains);
+  useCustomerDomainAttach(appDetails, domains, isDCVEnabled);
 
   /**
    * Find CUSTOM domains (not prefix domains, not customer domains) that are pending

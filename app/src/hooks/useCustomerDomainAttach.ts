@@ -21,11 +21,13 @@ import { useDomainAttach } from './useDomainAttach';
  *
  * @param appDetails - App details including domain list (from parent's useAppDetails)
  * @param customerDomains - List of customer-owned domains
+ * @param isDCVEnabled - Feature flag to enable DCV (Domain Control Validation) support
  * @returns Object with pending domain info and attach state
  */
 export function useCustomerDomainAttach(
   appDetails: { domains?: AppDomain[] } | undefined,
   customerDomains: Domain[],
+  isDCVEnabled?: boolean,
 ) {
   const attachMutation = useDomainAttach();
   const hasCalledAttachRef = useRef<Set<string>>(new Set());
@@ -64,11 +66,12 @@ export function useCustomerDomainAttach(
 
     if (!pendingCustomerDomain) return false;
     if (!pendingCustomerDomain.anycastIp) return false;
+    if (isDCVEnabled && !pendingCustomerDomain.certificateValidationCname) return false;
     if (attachMutation.isPending) return false;
 
     // Check if we've already called attach for this domain
     return !hasCalledAttachRef.current.has(pendingCustomerDomain.fqdn);
-  }, [pendingCustomerDomain, attachMutation.isPending]);
+  }, [pendingCustomerDomain, attachMutation.isPending, isDCVEnabled]);
 
   /**
    * Call attach API when domain is ready
@@ -81,12 +84,23 @@ export function useCustomerDomainAttach(
 
     const domainName = pendingCustomerDomain.fqdn;
     const anycastIp = pendingCustomerDomain.anycastIp!;
+    const dcv = isDCVEnabled && pendingCustomerDomain.certificateValidationCname
+      ? pendingCustomerDomain.certificateValidationCname
+      : undefined;
 
     // Mark as called to prevent duplicate calls
     hasCalledAttachRef.current.add(domainName);
 
+    logger.info('domain-attach.hook.calling-mutation', {
+      message: 'Calling domain attach mutation',
+      domainName,
+      anycastIp,
+      hasDcv: !!dcv,
+      isDCVEnabled,
+    });
+
     attachMutation.mutate(
-      { domainName, ip: anycastIp },
+      { domainName, ip: anycastIp, dcv },
       {
         onError: (error) => {
           // dont remove from set since it has reached a terminal failed state
@@ -98,7 +112,7 @@ export function useCustomerDomainAttach(
         },
       }
     );
-  }, [isReadyForAttach, pendingCustomerDomain, attachMutation]);
+  }, [isReadyForAttach, pendingCustomerDomain, attachMutation, isDCVEnabled]);
 
   /**
    * when domain becomes fully active clean up tracking

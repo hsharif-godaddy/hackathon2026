@@ -45,7 +45,7 @@ export const POST = withCustomerAuth(async (
 
     // Parse request body
     const body = await request.json();
-    const { domainName, ip, dryrun = false, force = true } = body;
+    const { domainName, ip, dcv = null, dryrun = false, force = true } = body;
 
     if (!domainName) {
       return NextResponse.json(
@@ -70,7 +70,7 @@ export const POST = withCustomerAuth(async (
       host: '',
       params: { IP: ip },
       providerId: 'godaddy',
-      serviceId: 'airo'
+      serviceId: dcv ? 'airo-builder-www' : 'airo'
     };
 
     logger.info('domains.attach.start', {
@@ -88,6 +88,34 @@ export const POST = withCustomerAuth(async (
       customerId,
       domainName
     });
+
+    if (dcv) {
+      try {
+        const attachAcmeConfig = {
+          dryrun,
+          force,
+          host: '',
+          params: { target: dcv },
+          providerId: 'godaddy',
+          serviceId: 'acme-cname'
+        };
+
+        await client.attachDomain(customerId, domainName, attachAcmeConfig);
+
+        logger.info('domains.attach.success.acme', {
+          message: 'Acme domain attached successfully',
+          customerId,
+          domainName
+        });
+      } catch (acmeError) {
+        logger.error('domains.attach.error.acme', {
+          message: 'Failed to attach ACME CNAME (primary attach succeeded)',
+          customerId,
+          domainName,
+          error: acmeError instanceof Error ? acmeError.message : 'Unknown error'
+        });
+      }
+    }
 
     return NextResponse.json(response);
 

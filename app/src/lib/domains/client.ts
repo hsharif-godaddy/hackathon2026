@@ -240,7 +240,7 @@ export class DomainsClient {
       dryrun: boolean;
       force: boolean;
       host: string;
-      params: { IP: string };
+      params: { IP: string } | { target: string };
       providerId: string;
       serviceId: string;
     }

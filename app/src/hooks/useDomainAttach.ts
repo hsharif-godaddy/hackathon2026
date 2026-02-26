@@ -9,6 +9,7 @@ import { logger } from '@/lib/request-context';
 export interface DomainAttachPayload {
   domainName: string;
   ip: string;
+  dcv?: string;
   dryrun?: boolean;
   force?: boolean;
 }
