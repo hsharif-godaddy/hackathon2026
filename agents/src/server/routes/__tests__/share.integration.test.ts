@@ -12,13 +12,23 @@
  * - Input validation
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi, MockedFunction } from 'vitest';
-import { Request, Response } from 'express';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { Response } from 'express';
 import type { AuthenticatedRequest } from '../../middleware/jwt-auth.js';
-import { ShareTokenRepository } from '../../../database/repositories/ShareTokenRepository.js';
 
 // Mock dependencies
-vi.mock('../../../database/repositories/ShareTokenRepository.js');
+vi.mock('../../../database/repositories/index.js', () => ({
+  appRepository: {
+    findById: vi.fn(),
+  },
+  shareTokenRepository: {
+    create: vi.fn(),
+    findByAppId: vi.fn(),
+    findByToken: vi.fn(),
+    markFirstUsed: vi.fn(),
+  },
+}));
+
 vi.mock('../../../logging/index.js', () => ({
   Logger: {
     create: () => ({
@@ -30,8 +40,13 @@ vi.mock('../../../logging/index.js', () => ({
   },
 }));
 
+// Import mocked singletons for per-test configuration
+import { appRepository, shareTokenRepository } from '../../../database/repositories/index.js';
+
+const mockAppRepo = vi.mocked(appRepository);
+const mockShareTokenRepo = vi.mocked(shareTokenRepository);
+
 describe('Share Routes Integration Tests', () => {
-  let mockShareTokenRepo: any;
   let mockReq: Partial<AuthenticatedRequest>;
   let mockRes: Partial<Response>;
   let jsonSpy: any;
@@ -40,23 +55,24 @@ describe('Share Routes Integration Tests', () => {
   const testAppId = 'test-app-123';
   const testAuthSiteId = 'test-app-123'; // Same as appId for ownership
   const testToken = 'test-token-12';
+  const testPreviewUrl = 'https://test-app-123.preview.test-godaddy.com';
   const futureExpiry = Date.now() + 7 * 24 * 60 * 60 * 1000;
 
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Mock PREVIEW_URL environment variable
-    process.env.PREVIEW_URL = 'https://test-app-123.preview.test-godaddy.com';
-
-    // Mock ShareTokenRepository
-    mockShareTokenRepo = {
-      create: vi.fn(),
-      findByAppId: vi.fn(),
-      findByToken: vi.fn(),
-      markFirstUsed: vi.fn(),
-    };
-
-    vi.mocked(ShareTokenRepository).mockImplementation(() => mockShareTokenRepo);
+    // Default: app exists with previewUrl
+    mockAppRepo.findById.mockReturnValue({
+      id: testAppId,
+      name: 'Test App',
+      path: '/tmp/test',
+      port: 5000,
+      previewUrl: testPreviewUrl,
+      status: 'running',
+      initialBuildComplete: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as any);
 
     // Setup response mocks
     jsonSpy = vi.fn();
@@ -69,7 +85,6 @@ describe('Share Routes Integration Tests', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    delete process.env.PREVIEW_URL;
   });
 
   describe('POST /apps/:appId/share - Create share token', () => {
@@ -203,19 +218,18 @@ describe('Share Routes Integration Tests', () => {
       }
     });
 
-    it('should add https:// protocol when PREVIEW_URL lacks protocol', async () => {
-      // Set PREVIEW_URL without protocol (as provided by Nomad templates)
-      process.env.PREVIEW_URL = 'test-app-123.preview.test-godaddy.com';
-
-      const mockToken = {
-        token: testToken,
-        appId: testAppId,
-        expiresAt: futureExpiry,
+    it('should return 400 when app has no preview URL', async () => {
+      mockAppRepo.findById.mockReturnValue({
+        id: testAppId,
+        name: 'Test App',
+        path: '/tmp/test',
+        port: 5000,
+        previewUrl: undefined,
+        status: 'running',
+        initialBuildComplete: true,
         createdAt: new Date(),
-        firstUsedAt: null,
-      };
-
-      mockShareTokenRepo.create.mockReturnValue(mockToken);
+        updatedAt: new Date(),
+      } as any);
 
       const { default: router } = await import('../share.js');
       const route = (router.stack || []).find((layer: any) =>
@@ -225,68 +239,74 @@ describe('Share Routes Integration Tests', () => {
       if (route?.route?.stack?.[0]?.handle) {
         await route.route.stack[0].handle(mockReq, mockRes, vi.fn());
 
+        expect(statusSpy).toHaveBeenCalledWith(400);
         expect(jsonSpy).toHaveBeenCalledWith({
-          token: testToken,
-          appId: testAppId,
-          shareUrl: expect.stringContaining('https://test-app-123.preview.test-godaddy.com?airoShareToken='),
-          createdAt: expect.any(String),
-          expiresAt: futureExpiry,
-        });
-      }
-    });
-
-    it('should preserve existing protocol in PREVIEW_URL', async () => {
-      // Set PREVIEW_URL with http:// protocol (edge case)
-      process.env.PREVIEW_URL = 'http://test-app-123.preview.test-godaddy.com';
-
-      const mockToken = {
-        token: testToken,
-        appId: testAppId,
-        expiresAt: futureExpiry,
-        createdAt: new Date(),
-        firstUsedAt: null,
-      };
-
-      mockShareTokenRepo.create.mockReturnValue(mockToken);
-
-      const { default: router } = await import('../share.js');
-      const route = (router.stack || []).find((layer: any) =>
-        layer.route?.path === '/' && layer.route?.methods?.post
-      );
-
-      if (route?.route?.stack?.[0]?.handle) {
-        await route.route.stack[0].handle(mockReq, mockRes, vi.fn());
-
-        expect(jsonSpy).toHaveBeenCalledWith({
-          token: testToken,
-          appId: testAppId,
-          shareUrl: expect.stringContaining('http://test-app-123.preview.test-godaddy.com?airoShareToken='),
-          createdAt: expect.any(String),
-          expiresAt: futureExpiry,
-        });
-      }
-    });
-
-    it('should return 500 when PREVIEW_URL is not configured', async () => {
-      // Clear PREVIEW_URL to simulate missing configuration
-      delete process.env.PREVIEW_URL;
-
-      const { default: router } = await import('../share.js');
-      const route = (router.stack || []).find((layer: any) =>
-        layer.route?.path === '/' && layer.route?.methods?.post
-      );
-
-      if (route?.route?.stack?.[0]?.handle) {
-        await route.route.stack[0].handle(mockReq, mockRes, vi.fn());
-
-        // Should return 500 error
-        expect(statusSpy).toHaveBeenCalledWith(500);
-        expect(jsonSpy).toHaveBeenCalledWith({
-          error: 'Preview URL not configured',
+          error: 'App has no preview URL configured',
         });
 
         // Should NOT create token in database (avoids orphaned tokens)
         expect(mockShareTokenRepo.create).not.toHaveBeenCalled();
+      }
+    });
+
+    it('should return 404 when app is not found', async () => {
+      mockAppRepo.findById.mockReturnValue(null);
+
+      const { default: router } = await import('../share.js');
+      const route = (router.stack || []).find((layer: any) =>
+        layer.route?.path === '/' && layer.route?.methods?.post
+      );
+
+      if (route?.route?.stack?.[0]?.handle) {
+        await route.route.stack[0].handle(mockReq, mockRes, vi.fn());
+
+        expect(statusSpy).toHaveBeenCalledWith(404);
+        expect(jsonSpy).toHaveBeenCalledWith({
+          error: 'App not found',
+        });
+
+        expect(mockShareTokenRepo.create).not.toHaveBeenCalled();
+      }
+    });
+
+    it('should add https:// protocol when previewUrl lacks protocol', async () => {
+      const hostnameOnly = 'test-app-123.preview.test-godaddy.com';
+      mockAppRepo.findById.mockReturnValue({
+        id: testAppId,
+        name: 'Test App',
+        path: '/tmp/test',
+        port: 5000,
+        previewUrl: hostnameOnly,
+        status: 'running',
+        initialBuildComplete: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any);
+
+      const mockToken = {
+        token: testToken,
+        appId: testAppId,
+        expiresAt: futureExpiry,
+        createdAt: new Date(),
+        firstUsedAt: null,
+      };
+
+      mockShareTokenRepo.create.mockReturnValue(mockToken);
+
+      const { default: router } = await import('../share.js');
+      const route = (router.stack || []).find((layer: any) =>
+        layer.route?.path === '/' && layer.route?.methods?.post
+      );
+
+      if (route?.route?.stack?.[0]?.handle) {
+        await route.route.stack[0].handle(mockReq, mockRes, vi.fn());
+
+        expect(statusSpy).toHaveBeenCalledWith(201);
+        expect(jsonSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            shareUrl: `https://${hostnameOnly}?airoShareToken=${testToken}`,
+          }),
+        );
       }
     });
 
@@ -354,9 +374,18 @@ describe('Share Routes Integration Tests', () => {
       }
     });
 
-    it('should return 500 when PREVIEW_URL is not configured', async () => {
-      // Clear PREVIEW_URL to simulate missing configuration
-      delete process.env.PREVIEW_URL;
+    it('should include shareUrl when app has previewUrl', async () => {
+      const mockTokens = [
+        {
+          token: 'token-1',
+          appId: testAppId,
+          expiresAt: futureExpiry,
+          createdAt: new Date('2024-01-01'),
+          firstUsedAt: null,
+        },
+      ];
+
+      mockShareTokenRepo.findByAppId.mockReturnValue(mockTokens);
 
       const { default: router } = await import('../share.js');
       const route = (router.stack || []).find((layer: any) =>
@@ -366,10 +395,58 @@ describe('Share Routes Integration Tests', () => {
       if (route?.route?.stack?.[0]?.handle) {
         await route.route.stack[0].handle(mockReq, mockRes, vi.fn());
 
-        // Should return 500 error
-        expect(statusSpy).toHaveBeenCalledWith(500);
         expect(jsonSpy).toHaveBeenCalledWith({
-          error: 'Preview URL not configured',
+          tokens: [
+            expect.objectContaining({
+              token: 'token-1',
+              shareUrl: `${testPreviewUrl}?airoShareToken=token-1`,
+            }),
+          ],
+        });
+      }
+    });
+
+    it('should omit shareUrl when app has no previewUrl', async () => {
+      mockAppRepo.findById.mockReturnValue({
+        id: testAppId,
+        name: 'Test App',
+        path: '/tmp/test',
+        port: 5000,
+        previewUrl: undefined,
+        status: 'running',
+        initialBuildComplete: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any);
+
+      const mockTokens = [
+        {
+          token: 'token-1',
+          appId: testAppId,
+          expiresAt: futureExpiry,
+          createdAt: new Date('2024-01-01'),
+          firstUsedAt: null,
+        },
+      ];
+
+      mockShareTokenRepo.findByAppId.mockReturnValue(mockTokens);
+
+      const { default: router } = await import('../share.js');
+      const route = (router.stack || []).find((layer: any) =>
+        layer.route?.path === '/' && layer.route?.methods?.get
+      );
+
+      if (route?.route?.stack?.[0]?.handle) {
+        await route.route.stack[0].handle(mockReq, mockRes, vi.fn());
+
+        // Should still return tokens, just without shareUrl
+        expect(jsonSpy).toHaveBeenCalledWith({
+          tokens: [
+            expect.objectContaining({
+              token: 'token-1',
+              shareUrl: undefined,
+            }),
+          ],
         });
       }
     });

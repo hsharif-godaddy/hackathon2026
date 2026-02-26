@@ -2,13 +2,27 @@ import { Router, Request, Response, IRouter } from 'express';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import { jwtAuthMiddleware } from '../middleware/jwt-auth.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
-import { shareTokenRepository } from '../../database/repositories/index.js';
+import { appRepository, shareTokenRepository } from '../../database/repositories/index.js';
 import { isValidShareTokenFormat } from '../../utils/share-token-generator.js';
 import { Logger } from '../../logging/index.js';
 import { getErrorMessage } from '../../utils/error.js';
 
 const router: IRouter = Router();
 const logger = Logger.create({ service: 'share-routes' });
+
+/**
+ * Resolve the preview base URL for an app from the database.
+ * Ensures the URL has a protocol prefix since Nomad templates store hostname-only values.
+ */
+function getPreviewBaseUrl(appId: string): string | null {
+  const app = appRepository.findById(appId);
+  const previewUrl = app?.previewUrl;
+  if (!previewUrl) return null;
+
+  return previewUrl.startsWith('http://') || previewUrl.startsWith('https://')
+    ? previewUrl
+    : `https://${previewUrl}`;
+}
 
 // ==================================================================================
 // Protected Routes (require JWT + app ownership validation)
@@ -64,24 +78,21 @@ router.post('/apps/:id/share', async (req: Request, res: Response) => {
       siteId: authReq.agentContext?.siteId,
     });
 
-    // Validate PREVIEW_URL is configured before creating token
-    // This prevents orphaned tokens in database if URL is not available
-    // Note: PREVIEW_URL is app-specific hostname (set via Nomad job template)
-    const previewUrl = process.env.PREVIEW_URL;
-    if (!previewUrl) {
-      logger.error('share.create.missing_preview_url', {
-        appId,
-        message: 'PREVIEW_URL environment variable is not set',
-      });
-      return res.status(500).json({ error: 'Preview URL not configured' });
+    const app = appRepository.findById(appId);
+    if (!app) {
+      logger.error('share.create.appNotFound', { appId });
+      return res.status(404).json({ error: 'App not found' });
     }
 
-    // Ensure URL has https:// protocol (Nomad templates provide hostname only)
-    const baseUrl = previewUrl.startsWith('http://') || previewUrl.startsWith('https://')
-      ? previewUrl
-      : `https://${previewUrl}`;
+    const baseUrl = getPreviewBaseUrl(appId);
+    if (!baseUrl) {
+      logger.error('share.create.missingPreviewUrl', {
+        appId,
+        message: 'App has no preview URL configured',
+      });
+      return res.status(400).json({ error: 'App has no preview URL configured' });
+    }
 
-    // Create token after validating PREVIEW_URL is available
     const shareToken = shareTokenRepository.create({
       appId,
       expiresIn,
@@ -127,26 +138,12 @@ router.get('/apps/:id/share', async (req: Request, res: Response) => {
 
     const tokens = shareTokenRepository.findByAppId(appId);
 
-    // Build response with share URLs using PREVIEW_URL from agent environment
-    // Note: PREVIEW_URL should always be set in production via Nomad job template
-    const previewUrl = process.env.PREVIEW_URL;
-    if (!previewUrl) {
-      logger.error('share.list.missing_preview_url', {
-        appId,
-        message: 'PREVIEW_URL environment variable is not set',
-      });
-      return res.status(500).json({ error: 'Preview URL not configured' });
-    }
-
-    // Ensure URL has https:// protocol (Nomad templates provide hostname only)
-    const baseUrl = previewUrl.startsWith('http://') || previewUrl.startsWith('https://')
-      ? previewUrl
-      : `https://${previewUrl}`;
+    const baseUrl = getPreviewBaseUrl(appId);
 
     const tokensList = tokens.map((token) => ({
       token: token.token,
       appId: token.appId,
-      shareUrl: `${baseUrl}?airoShareToken=${token.token}`,
+      shareUrl: baseUrl ? `${baseUrl}?airoShareToken=${token.token}` : undefined,
       createdAt: token.createdAt.toISOString(),
       expiresAt: new Date(token.expiresAt).getTime(), // Unix timestamp in ms
       firstUsedAt: token.firstUsedAt ? token.firstUsedAt.toISOString() : null,
