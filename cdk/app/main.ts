@@ -6,6 +6,7 @@ import { AiroJWTKeyStack } from "../lib/airo-jwt-key-stack";
 import { MonitoringStack } from '../lib/monitoring-stack';
 import { GocaasSpendLambdaStack } from "../lib/gocaas-spend-lambda-stack";
 import { ImageSearchStack } from "../lib/image-search-stack";
+import { EvalSnapshotsStack } from "../lib/eval-snapshots-stack";
 import { QdrantStack } from "../lib/qdrant-stack";
 import { QdrantEcrStack } from "../lib/qdrant-ecr-stack";
 
@@ -44,6 +45,9 @@ async function main() {
 
   // Create Image Search Service infrastructure (S3 bucket for analysis cache)
   new ImageSearchStack(app, 'ImageSearchStack', { env });
+
+  // Create Eval Snapshots infrastructure (S3 bucket for evaluation screenshots + data)
+  new EvalSnapshotsStack(app, 'EvalSnapshotsStack', { env });
 
   // Create Qdrant ECR repository (dev and prod only)
   // Deploy this first to allow pre-populating Docker images
