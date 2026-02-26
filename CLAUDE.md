@@ -132,6 +132,17 @@ pnpm --filter website test "pattern"                # App package tests
 
 **Ports:** Agents=4000, App=3000. Kill conflicting processes.
 
+**ESSP / Elasticsearch Logs:**
+
+```bash
+./scripts/essp-creds.sh dev                # Fetch dev ES credentials (profile: airobuild-dev-private-sso)
+./scripts/essp-creds.sh prod               # Fetch prod ES credentials (profile: airobuild-prod-sso)
+/tmp/essp-query-dev.sh /_cat/indices?v     # List indices
+/tmp/essp-query-dev.sh '/<index>/_search' -d '{"query":{"match_all":{}},"sort":[{"@timestamp":"desc"}],"size":5}'
+```
+
+Katana app log indices follow the pattern: `.ds-logs-gdelastic.katana.<app-name>-<environment>-*`
+
 ## Architecture
 
 **pnpm workspace monorepo** - Always use `pnpm`, never `npm`. Corepack enforces pnpm 10.17.0 from `package.json` `packageManager` field.

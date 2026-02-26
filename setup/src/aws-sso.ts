@@ -5,14 +5,18 @@ import path from 'path';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 
+interface SSOProfileConfig {
+  accountId: string;
+  roleName: string;
+  profileName: string;
+}
+
 interface SSOConfig {
   startUrl: string;
   region: string;
   sessionName: string;
-  accountId: string;
-  roleName: string;
   awsRegion: string;
-  profileName: string;
+  profiles: SSOProfileConfig[];
 }
 
 export class AWSSSoSetup {
@@ -20,10 +24,19 @@ export class AWSSSoSetup {
     startUrl: 'https://d-9267a7c4d5.awsapps.com/start/#',
     region: 'us-west-2',
     sessionName: 'airo-sso',
-    accountId: '694282668781',
-    roleName: 'PowerUser',
     awsRegion: 'us-west-2',
-    profileName: 'airobuild-dev-private-sso'
+    profiles: [
+      {
+        accountId: '694282668781',
+        roleName: 'PowerUser',
+        profileName: 'airobuild-dev-private-sso',
+      },
+      {
+        accountId: '644094189644',
+        roleName: 'Ops',
+        profileName: 'airobuild-prod-sso',
+      },
+    ],
   };
 
   private awsConfigPath = path.join(os.homedir(), '.aws', 'config');
@@ -44,7 +57,7 @@ export class AWSSSoSetup {
       // Check AWS CLI version (SSO requires v2)
       const { stdout } = await execa('aws', ['--version']);
       const version = stdout.match(/aws-cli\/(\d+\.\d+\.\d+)/)?.[1];
-      
+
       if (version) {
         const majorVersion = parseInt(version.split('.')[0]);
         if (majorVersion < 2) {
@@ -96,15 +109,15 @@ sso_registration_scopes = sso:account:access
     }
   }
 
-  async setupSSOProfile(): Promise<boolean> {
-    console.log(chalk.blue(`🔧 Setting up SSO profile: ${this.config.profileName}`));
+  private async setupSingleProfile(profile: SSOProfileConfig): Promise<boolean> {
+    console.log(chalk.blue(`🔧 Setting up SSO profile: ${profile.profileName}`));
 
     try {
       // Check if profile already exists
       const { stdout: profiles } = await execa('aws', ['configure', 'list-profiles']);
-      if (profiles.includes(this.config.profileName)) {
-        console.log(chalk.yellow(`⚠️  Profile '${this.config.profileName}' already exists`));
-        
+      if (profiles.includes(profile.profileName)) {
+        console.log(chalk.yellow(`⚠️  Profile '${profile.profileName}' already exists`));
+
         const { overwrite } = await inquirer.prompt([
           {
             type: 'confirm',
@@ -121,26 +134,38 @@ sso_registration_scopes = sso:account:access
       }
 
       // Configure the profile using AWS CLI commands
-      await execa('aws', ['configure', 'set', 'sso_session', this.config.sessionName, '--profile', this.config.profileName]);
-      await execa('aws', ['configure', 'set', 'sso_account_id', this.config.accountId, '--profile', this.config.profileName]);
-      await execa('aws', ['configure', 'set', 'sso_role_name', this.config.roleName, '--profile', this.config.profileName]);
-      await execa('aws', ['configure', 'set', 'region', this.config.awsRegion, '--profile', this.config.profileName]);
-      await execa('aws', ['configure', 'set', 'output', 'json', '--profile', this.config.profileName]);
+      await execa('aws', ['configure', 'set', 'sso_session', this.config.sessionName, '--profile', profile.profileName]);
+      await execa('aws', ['configure', 'set', 'sso_account_id', profile.accountId, '--profile', profile.profileName]);
+      await execa('aws', ['configure', 'set', 'sso_role_name', profile.roleName, '--profile', profile.profileName]);
+      await execa('aws', ['configure', 'set', 'region', this.config.awsRegion, '--profile', profile.profileName]);
+      await execa('aws', ['configure', 'set', 'output', 'json', '--profile', profile.profileName]);
 
-      console.log(chalk.green(`✅ Profile '${this.config.profileName}' configured`));
+      console.log(chalk.green(`✅ Profile '${profile.profileName}' configured`));
       console.log('');
       console.log('Profile details:');
-      console.log(`  Account ID: ${this.config.accountId}`);
-      console.log(`  Role Name: ${this.config.roleName}`);
+      console.log(`  Account ID: ${profile.accountId}`);
+      console.log(`  Role Name: ${profile.roleName}`);
       console.log(`  Region: ${this.config.awsRegion}`);
       console.log(`  SSO Start URL: ${this.config.startUrl}`);
 
       return true;
 
     } catch (error) {
-      console.log(chalk.red('❌ Failed to setup SSO profile:'), error);
+      console.log(chalk.red(`❌ Failed to setup SSO profile '${profile.profileName}':`), error);
       return false;
     }
+  }
+
+  async setupSSOProfiles(): Promise<boolean> {
+    let anySucceeded = false;
+    for (const profile of this.config.profiles) {
+      if (await this.setupSingleProfile(profile)) {
+        anySucceeded = true;
+      } else {
+        console.log(chalk.yellow(`⚠️  Skipping profile '${profile.profileName}' - you may not have access to this account`));
+      }
+    }
+    return anySucceeded;
   }
 
   async performSSOLogin(): Promise<boolean> {
@@ -163,22 +188,30 @@ sso_registration_scopes = sso:account:access
       return false;
     }
 
+    // Login once using the first profile - the SSO session is shared
+    const loginProfile = this.config.profiles[0].profileName;
+
     try {
-      await execa('aws', ['sso', 'login', '--profile', this.config.profileName]);
+      await execa('aws', ['sso', 'login', '--profile', loginProfile]);
 
       console.log(chalk.green('✅ SSO login successful'));
 
-      // Test the credentials
-      console.log(chalk.blue('🧪 Testing credentials...'));
-      const { stdout: identity } = await execa('aws', [
-        'sts', 'get-caller-identity',
-        '--profile', this.config.profileName,
-        '--query', 'Arn',
-        '--output', 'text'
-      ]);
-
-      console.log(chalk.green('✅ Credentials working'));
-      console.log(`   Identity: ${identity.trim()}`);
+      // Test credentials for each profile
+      for (const profile of this.config.profiles) {
+        console.log(chalk.blue(`🧪 Testing credentials for ${profile.profileName}...`));
+        try {
+          const { stdout: identity } = await execa('aws', [
+            'sts', 'get-caller-identity',
+            '--profile', profile.profileName,
+            '--query', 'Arn',
+            '--output', 'text'
+          ]);
+          console.log(chalk.green(`✅ ${profile.profileName} working`));
+          console.log(`   Identity: ${identity.trim()}`);
+        } catch {
+          console.log(chalk.yellow(`⚠️  ${profile.profileName} not accessible (you may not have access to this account)`));
+        }
+      }
 
       return true;
 
@@ -191,52 +224,58 @@ sso_registration_scopes = sso:account:access
   async checkSSOConfig(): Promise<boolean> {
     console.log(chalk.blue('🔍 Checking SSO configuration...'));
 
+    let allGood = true;
+
     try {
-      const { stdout: profiles } = await execa('aws', ['configure', 'list-profiles']);
-      
-      if (!profiles.includes(this.config.profileName)) {
-        console.log(chalk.red(`❌ Profile '${this.config.profileName}' not found`));
-        return false;
-      }
+      const { stdout: existingProfiles } = await execa('aws', ['configure', 'list-profiles']);
 
-      console.log(chalk.green(`✅ Profile '${this.config.profileName}' exists`));
+      for (const profile of this.config.profiles) {
+        if (!existingProfiles.includes(profile.profileName)) {
+          console.log(chalk.red(`❌ Profile '${profile.profileName}' not found`));
+          allGood = false;
+          continue;
+        }
 
-      // Check profile configuration
-      const configCommands: Array<[string, string, string[]]> = [
-        ['SSO Session', 'sso_session', ['configure', 'get', 'sso_session', '--profile', this.config.profileName]],
-        ['Account ID', 'sso_account_id', ['configure', 'get', 'sso_account_id', '--profile', this.config.profileName]],
-        ['Role Name', 'sso_role_name', ['configure', 'get', 'sso_role_name', '--profile', this.config.profileName]],
-        ['Region', 'region', ['configure', 'get', 'region', '--profile', this.config.profileName]]
-      ];
+        console.log(chalk.green(`✅ Profile '${profile.profileName}' exists`));
 
-      console.log('');
-      console.log('Profile configuration:');
-      
-      for (const [label, , args] of configCommands) {
+        // Check profile configuration
+        const configCommands: Array<[string, string[]]> = [
+          ['SSO Session', ['configure', 'get', 'sso_session', '--profile', profile.profileName]],
+          ['Account ID', ['configure', 'get', 'sso_account_id', '--profile', profile.profileName]],
+          ['Role Name', ['configure', 'get', 'sso_role_name', '--profile', profile.profileName]],
+          ['Region', ['configure', 'get', 'region', '--profile', profile.profileName]]
+        ];
+
+        console.log('');
+        console.log(`Profile configuration (${profile.profileName}):`);
+
+        for (const [label, args] of configCommands) {
+          try {
+            const { stdout } = await execa('aws', args);
+            console.log(`  ${label}: ${stdout.trim() || 'Not set'}`);
+          } catch {
+            console.log(`  ${label}: Not set`);
+          }
+        }
+
+        // Check if logged in
         try {
-          const { stdout } = await execa('aws', args);
-          console.log(`  ${label}: ${stdout.trim() || 'Not set'}`);
+          const { stdout: identity } = await execa('aws', [
+            'sts', 'get-caller-identity',
+            '--profile', profile.profileName,
+            '--query', 'Arn',
+            '--output', 'text'
+          ]);
+          console.log(`  Status: ✅ Logged in`);
+          console.log(`  Identity: ${identity.trim()}`);
         } catch {
-          console.log(`  ${label}: Not set`);
+          console.log(`  Status: ❌ Not logged in or expired`);
+          console.log(`  Run: aws sso login --profile ${profile.profileName}`);
+          allGood = false;
         }
       }
 
-      // Check if logged in
-      try {
-        const { stdout: identity } = await execa('aws', [
-          'sts', 'get-caller-identity',
-          '--profile', this.config.profileName,
-          '--query', 'Arn',
-          '--output', 'text'
-        ]);
-        console.log(`  Status: ✅ Logged in`);
-        console.log(`  Identity: ${identity.trim()}`);
-        return true;
-      } catch {
-        console.log(`  Status: ❌ Not logged in or expired`);
-        console.log(`  Run: aws sso login --profile ${this.config.profileName}`);
-        return false;
-      }
+      return allGood;
 
     } catch (error) {
       console.log(chalk.red('❌ Error checking SSO configuration:'), error);
@@ -244,8 +283,10 @@ sso_registration_scopes = sso:account:access
     }
   }
 
+  // Returns the dev profile for backward compatibility with callers in
+  // env-generator.ts, getty-config.ts, commerce-config.ts, cert-config.ts
   async getProfile(): Promise<string> {
-    return this.config.profileName;
+    return this.config.profiles[0].profileName;
   }
 
   async setup(): Promise<boolean> {
@@ -258,13 +299,13 @@ sso_registration_scopes = sso:account:access
       return false;
     }
 
-    // Setup SSO session
+    // Setup SSO session (shared across all profiles)
     if (!(await this.setupSSOSession())) {
       return false;
     }
 
-    // Setup SSO profile
-    if (!(await this.setupSSOProfile())) {
+    // Setup all SSO profiles
+    if (!(await this.setupSSOProfiles())) {
       return false;
     }
 
@@ -276,12 +317,17 @@ sso_registration_scopes = sso:account:access
     console.log('');
     console.log(chalk.green.bold('🎉 AWS SSO setup complete!'));
     console.log('');
-    console.log('To use this profile:');
-    console.log(chalk.gray(`  export AWS_PROFILE=${this.config.profileName}`));
+    console.log('Configured profiles:');
+    for (const profile of this.config.profiles) {
+      console.log(chalk.gray(`  ${profile.profileName} (${profile.accountId}, ${profile.roleName})`));
+    }
+    console.log('');
+    console.log('To use a profile:');
+    console.log(chalk.gray(`  export AWS_PROFILE=airobuild-dev-private-sso`));
     console.log(chalk.gray('  aws sts get-caller-identity'));
     console.log('');
     console.log('To refresh credentials when they expire:');
-    console.log(chalk.gray(`  aws sso login --profile ${this.config.profileName}`));
+    console.log(chalk.gray(`  aws sso login --profile airobuild-dev-private-sso`));
     console.log('');
     console.log('Note: SSO sessions typically last 8-12 hours');
 
