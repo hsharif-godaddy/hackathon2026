@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { fetchFeatureFlag } from '@/hooks/useSwitchboard';
 import { appFetch } from '@/lib/gasket-config';
 import { shipAnalyticsLog } from '@/lib/logging';
 import type { AiroDeployment } from '@/lib/mgmt-airo';
@@ -264,13 +265,16 @@ export function useDeploymentsQuery({
 
         // Refetch site data to get updated domains/URLs/variants, then show success or go-live modal
         fetchSite(appId, true)
-          .then(function handleRefetchSuccess() {
+          .then(async function handleRefetchSuccess() {
+            // Check if go-live feature is enabled
+            const isGoLiveEnabled = await fetchFeatureFlag('appbuilder-go-live');
+
             // Check if this is first publish and user hasn't gone live yet
             const isFirstPublish = !wasAlreadyPublished;
             const userHasGoneLive = hasGoneLive(appId);
             const wasDismissed = getPublishState(appId).goLiveModalDismissed;
 
-            if (isFirstPublish && !userHasGoneLive && !wasDismissed) {
+            if (isGoLiveEnabled && isFirstPublish && !userHasGoneLive && !wasDismissed) {
               // Show go-live modal for first-time publishers
               setShowGoLiveModal(appId, true);
               logger.info('deployments-query.showing-go-live-modal', {

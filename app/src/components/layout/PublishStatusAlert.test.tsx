@@ -20,6 +20,7 @@ const mockDevelopStore = {
 const mockSiteStore = {
   getSite: vi.fn(),
 };
+const mockUseSwitchboard = vi.fn(() => ({ data: true, isLoading: false }));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => mockRouter,
@@ -61,6 +62,9 @@ vi.mock('@/hooks/useChatTabs', () => ({
     setActiveSettingsSection: mockSetActiveSettingsSection,
   }),
 }));
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: () => mockUseSwitchboard(),
+}));
 
 describe('PublishStatusAlert', () => {
   beforeEach(() => {
@@ -68,6 +72,8 @@ describe('PublishStatusAlert', () => {
     mockDevelopStore.publishStates = {};
     mockDevelopStore.currentAppId = 'app-123';
     mockSiteStore.getSite.mockReturnValue(null);
+    // Reset useSwitchboard mock to default (enabled)
+    mockUseSwitchboard.mockReturnValue({ data: true, isLoading: false });
   });
 
   it('should render nothing when no publish status', () => {
@@ -374,6 +380,23 @@ describe('PublishStatusAlert', () => {
   it('should NOT show Go Live modal if user previously dismissed it', () => {
     mockDevelopStore.publishStates = {
       'app-123': { showSuccessAlert: true, hasGoneLive: false, goLiveModalDismissed: true },
+    };
+    mockSiteStore.getSite.mockReturnValue({
+      id: 'app-123',
+      published_url: 'https://example.com',
+    });
+
+    renderWithProviders(<PublishStatusAlert />);
+
+    expect(mockDevelopStore.setShowGoLiveModal).not.toHaveBeenCalled();
+  });
+
+  it('should NOT show Go Live modal if feature flag is disabled', () => {
+    // Override mock for this test to return disabled
+    mockUseSwitchboard.mockReturnValueOnce({ data: false, isLoading: false });
+
+    mockDevelopStore.publishStates = {
+      'app-123': { showSuccessAlert: true, hasGoneLive: false },
     };
     mockSiteStore.getSite.mockReturnValue({
       id: 'app-123',

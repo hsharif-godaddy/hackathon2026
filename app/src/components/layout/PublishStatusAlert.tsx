@@ -9,6 +9,7 @@ import text from '@ux/text';
 import { ChatTab, SettingsSection } from '@/app/develop/components/types';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { usePublishApp } from '@/hooks/usePublishApp';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
@@ -150,10 +151,13 @@ export default function PublishStatusAlert() {
     setActiveSettingsSection(SettingsSection.DOMAIN);
   }, [currentAppId, setActiveSettingsSection]);
 
+  // Check if go-live feature is enabled
+  const { data: isGoLiveEnabled } = useSwitchboard('appbuilder-go-live');
+
   // Automatically show Go Live modal on successful publish if user hasn't gone live yet
   // and hasn't previously dismissed the modal in this session
   useEffect(() => {
-    if (showSuccessAlert && currentAppId && hasBeenPublished(site)) {
+    if (isGoLiveEnabled && showSuccessAlert && currentAppId && hasBeenPublished(site)) {
       const publishState = getPublishState(currentAppId);
       if (!publishState?.hasGoneLive && !publishState?.goLiveModalDismissed) {
         logger.info('publish-alert.auto-show-go-live-modal', {
@@ -163,7 +167,7 @@ export default function PublishStatusAlert() {
         setShowGoLiveModal(currentAppId, true);
       }
     }
-  }, [showSuccessAlert, currentAppId, site, getPublishState, setShowGoLiveModal]);
+  }, [isGoLiveEnabled, showSuccessAlert, currentAppId, site, getPublishState, setShowGoLiveModal]);
 
   if (!isPublishing && !publishError && !showSuccessAlert) {
     return null;

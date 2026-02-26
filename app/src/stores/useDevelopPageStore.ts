@@ -4,6 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 
 import { DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/develop/components/preview/devicePresets'
 import { ChatTab, PreviewViewMode, SettingsSection, ViewMode } from '@/app/develop/components/types'
+import { fetchFeatureFlag } from '@/hooks/useSwitchboard'
 import { logger } from '@/lib/request-context'
 import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
 import { type App, appService } from '@/services/AppService'
@@ -639,15 +640,19 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           state.site = site
         })
 
-        // Load go-live status from .airo/live.json
-        const goLiveStatus = await loadGoLiveStatusAsync(appId);
-        set((state) => {
-          if (!state.publishStates[appId]) {
-            state.publishStates[appId] = createDefaultPublishState();
-          }
-          state.publishStates[appId].hasGoneLive = goLiveStatus.hasGoneLive;
-          state.publishStates[appId].wentLiveAt = goLiveStatus.wentLiveAt;
-        });
+        // Load go-live status from .airo/live.json only if feature is enabled
+        const isGoLiveEnabled = await fetchFeatureFlag('appbuilder-go-live');
+
+        if (isGoLiveEnabled) {
+          const goLiveStatus = await loadGoLiveStatusAsync(appId);
+          set((state) => {
+            if (!state.publishStates[appId]) {
+              state.publishStates[appId] = createDefaultPublishState();
+            }
+            state.publishStates[appId].hasGoneLive = goLiveStatus.hasGoneLive;
+            state.publishStates[appId].wentLiveAt = goLiveStatus.wentLiveAt;
+          });
+        }
 
         // Phase 3: Load conversations with proper context
         set((state) => { state.loadingPhase = 'loading-conversations' })
