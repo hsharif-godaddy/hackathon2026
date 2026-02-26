@@ -467,6 +467,52 @@ describe('AppCard', () => {
       });
     });
 
+    it('should not navigate when delete confirm button is clicked', async () => {
+      const deleteSite = vi.fn().mockResolvedValue(true);
+      useSitesStore.setState({ deleteSite });
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_apps_menu_delete')).toBeInTheDocument();
+      });
+
+      const deleteItem = screen.getByText('builder_apps_menu_delete');
+      await user.click(deleteItem);
+      mockRouterInstance.push.mockClear();
+
+      const confirmButton = screen.getByRole('button', { name: 'builder_common_delete' });
+      await user.click(confirmButton);
+
+      await waitFor(() => {
+        expect(deleteSite).toHaveBeenCalledWith('test-site-123');
+      });
+      expect(mockRouterInstance.push).not.toHaveBeenCalled();
+    });
+
+    it('should not navigate when delete cancel button is clicked', async () => {
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_apps_menu_delete')).toBeInTheDocument();
+      });
+
+      const deleteItem = screen.getByText('builder_apps_menu_delete');
+      await user.click(deleteItem);
+      mockRouterInstance.push.mockClear();
+
+      const cancelButton = screen.getByRole('button', { name: 'builder_common_cancel' });
+      await user.click(cancelButton);
+
+      expect(mockRouterInstance.push).not.toHaveBeenCalled();
+    });
+
     it('should show deleting state while delete is in progress', async () => {
       const deleteSite = vi.fn((): Promise<boolean> => new Promise(() => {}));
       useSitesStore.setState({ deleteSite });

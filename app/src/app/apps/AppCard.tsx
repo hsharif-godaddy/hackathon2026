@@ -156,7 +156,7 @@ export default function AppCard({ site }: { site: SiteInfo }) {
     onConfirm: () => void
     onCancel: () => void
   }) => (
-    <div data-testid="delete-confirmation" className="absolute inset-0 bg-intents-ux-box-backgroundColor rounded-lg flex flex-col items-center justify-center p-2 z-10">
+    <div data-testid="delete-confirmation" onClick={(e) => e.stopPropagation()} className="absolute inset-0 bg-intents-ux-box-backgroundColor rounded-lg flex flex-col items-center justify-center p-2 z-10">
       <p className="mb-2 text-center">{message}</p>
       <Box orientation="horizontal" gap="sm">
         <Button
