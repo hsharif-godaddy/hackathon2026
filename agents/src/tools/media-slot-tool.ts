@@ -12,7 +12,7 @@
  * - Re-searching with original query context
  */
 
-import { MediaSearchTool, type MediaSearchResult } from './media-search-tool.js';
+import { MediaSearchTool, type MediaSearchResult, type MediaSearchOptions } from './media-search-tool.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { logger } from '../logging/index.js';
 import {
@@ -37,8 +37,14 @@ export interface MediaSlotOptions {
     height: number;
     fit?: 'cover' | 'contain' | 'crop';
   };
-  orientations?: string;
-  compositions?: string;
+  orientations?: string | string[];
+  compositions?: string | string[];
+  moods?: string[];
+  graphicalStyles?: string[];
+  sortOrder?: string;
+  color?: string;
+  useService?: boolean;
+  advancedFilters?: MediaSearchOptions['advancedFilters'];
   count?: number;
   // Context
   appId: string;
@@ -86,6 +92,12 @@ export class MediaSlotTool {
       size,
       orientations,
       compositions,
+      moods,
+      graphicalStyles,
+      sortOrder,
+      color,
+      useService,
+      advancedFilters,
       count = 5,
       appId,
       conversationId,
@@ -139,6 +151,12 @@ export class MediaSlotTool {
         {
           ...(orientations && { orientations }),
           ...(compositions && { compositions }),
+          ...(moods && { moods }),
+          ...(graphicalStyles && { graphicalStyles }),
+          ...(sortOrder && { sortOrder }),
+          ...(color && { color }),
+          ...(useService !== undefined && { useService }),
+          ...(advancedFilters && { advancedFilters }),
         }
       );
 
@@ -203,13 +221,22 @@ export class MediaSlotTool {
         };
       }
 
-      // Add search filters if provided
-      if (orientations) {
-        slotEntry.orientations = orientations;
-      }
-      if (compositions) {
-        slotEntry.compositions = compositions;
-      }
+      // Store search filters (convert arrays to comma-separated strings for manifest)
+      const toCommaSeparated = (v: string | string[] | undefined): string | undefined => {
+        if (!v) return undefined;
+        return Array.isArray(v) ? v.join(',') : v;
+      };
+
+      if (orientations) slotEntry.orientations = toCommaSeparated(orientations);
+      if (compositions) slotEntry.compositions = toCommaSeparated(compositions);
+      if (moods) slotEntry.moods = moods.join(',');
+      if (graphicalStyles) slotEntry.graphicalStyles = graphicalStyles.join(',');
+      if (sortOrder) slotEntry.sortOrder = sortOrder;
+      if (color) slotEntry.color = color;
+      if (advancedFilters?.numberOfPeople) slotEntry.numberOfPeople = advancedFilters.numberOfPeople.join(',');
+      if (advancedFilters?.ethnicity) slotEntry.ethnicity = advancedFilters.ethnicity.join(',');
+      if (advancedFilters?.ageOfPeople) slotEntry.ageOfPeople = advancedFilters.ageOfPeople.join(',');
+      if (advancedFilters?.minimumSize) slotEntry.minimumSize = advancedFilters.minimumSize;
 
       // Update the manifest using the centralized service
       // Skip git commit here since AI selections are auto-committed in batches

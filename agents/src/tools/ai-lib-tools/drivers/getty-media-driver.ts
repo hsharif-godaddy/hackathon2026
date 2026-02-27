@@ -1,61 +1,25 @@
 /**
- * Unified Getty Media Driver
- * 
- * Handles both image and video search through Getty Images API
- * Consolidates common functionality to eliminate code duplication
+ * Getty Media Driver
+ *
+ * Handles both image and video search through Getty Images API.
+ * Implements the shared MediaDriver interface for unified access.
  */
 import { log } from '../../../logging/index.js';
 import { toolImageSearchEvents, toolVideoSearchEvents } from '../../../logging/events/index.js';
 
 import { BaseDriver } from './base-driver.js';
+import type { MediaDriver, MediaDriverSearchOptions, MediaResult, MediaItem } from './media-driver.js';
+
+// Re-export shared types under legacy names for backward compatibility
+export type { MediaDriverSearchOptions as GettyMediaOptions };
+export type { MediaResult as GettyMediaResult };
+export type { MediaItem as GettyMediaItem };
+export type { MediaDriverSearchOptions, MediaResult, MediaItem };
 
 /**
  * Media type enumeration
  */
 export type MediaType = 'image' | 'video';
-
-/**
- * Options for Getty media search
- */
-export interface GettyMediaOptions {
-  phrase: string;
-  page?: number;
-  pageSize?: number;
-  sortOrder?: string;
-  graphicalStyles?: string;
-  orientations?: string;
-  compositions?: string;
-  color?: string;
-}
-
-/**
- * Getty media result
- */
-export interface GettyMediaResult {
-  success: boolean;
-  items?: GettyMediaItem[];
-  totalResults?: number;
-  error?: string;
-}
-
-/**
- * Getty media item (image or video)
- */
-export interface GettyMediaItem {
-  id: string;
-  urls: {
-    preview?: string;
-    thumbnail?: string;
-    standard?: string;
-    highRes?: string;
-  };
-  dimensions?: {
-    height?: number;
-    width?: number;
-  };
-  title?: string;
-  caption?: string;
-}
 
 /**
  * Getty API response structure
@@ -90,10 +54,11 @@ interface DisplaySize {
 }
 
 /**
- * Unified Getty Media Tool
- * Handles both image and video search with shared infrastructure
+ * Getty Media Driver
+ * Handles both image and video search with shared infrastructure.
+ * Implements MediaDriver for unified access from MediaSearchTool.
  */
-export class GettyMediaDriver extends BaseDriver {
+export class GettyMediaDriver extends BaseDriver implements MediaDriver {
   constructor() {
     super({
       serviceName: 'getty-media-driver',
@@ -104,111 +69,103 @@ export class GettyMediaDriver extends BaseDriver {
   }
 
   /**
-   * Convert filter values from PascalCase/mixed format to Getty API's expected lowercase snake_case
-   * 
-   * Note: Getty API only supports single values per filter parameter, not comma-separated lists.
-   * This function takes the first value if multiple are provided.
-   * 
-   * @param value - Filter value or comma-separated values (e.g., "Horizontal,Square" or "CopySpace,Candid")
-   * @returns Single lowercase snake_case value (e.g., "horizontal" or "copy_space")
-   */
-  private convertToGettyFormat(value: string): string {
-    // Getty API doesn't support multiple values - take only the first one
-    const firstValue = (value.split(',')[0] || '').trim();
-    
-    // Convert PascalCase to snake_case and lowercase
-    return firstValue
-      .replace(/([A-Z])/g, '_$1') // Add underscore before capitals
-      .toLowerCase()
-      .replace(/^_/, ''); // Remove leading underscore
-  }
-
-  /**
    * Search for media (images or videos) using Getty API
-   * 
-   * @param mediaType - Type of media to search ('image' or 'video')
-   * @param options - Search options
-   * @returns Promise resolving to media search result
    */
-  async search(mediaType: MediaType, options: GettyMediaOptions): Promise<GettyMediaResult> {
-    try {
-      const { phrase, page = 1, pageSize = 1, sortOrder = 'best_match', graphicalStyles, orientations, compositions, color } = options;
+  async search(options: MediaDriverSearchOptions): Promise<MediaResult> {
+    const mediaType = options.mediaType || 'image';
 
-      if (!phrase || typeof phrase !== 'string' || phrase.trim().length === 0) {
+    try {
+      const {
+        query,
+        count = 1,
+        sortOrder = 'best_match',
+        graphicalStyles,
+        orientations,
+        compositions,
+        color,
+        moods,
+        numberOfPeople,
+        ethnicity,
+        ageOfPeople,
+        minimumSize,
+      } = options;
+
+      if (!query || typeof query !== 'string' || query.trim().length === 0) {
         return {
           success: false,
-          error: 'A valid search phrase is required'
+          error: 'A valid search query is required',
         };
       }
 
       if (!this.hasAuth()) {
         return {
           success: false,
-          error: this.getAuthErrorMessage()
+          error: this.getAuthErrorMessage(),
         };
       }
 
       const queryParams = new URLSearchParams({
-        phrase,
-        page: page.toString(),
-        page_size: pageSize.toString(),
-        sort_order: sortOrder
+        phrase: query,
+        page: '1',
+        page_size: count.toString(),
+        sort_order: sortOrder,
       });
 
-      if (graphicalStyles && mediaType === 'image') {
-        queryParams.append('graphical_styles', graphicalStyles);
+      // Array-based Getty filters - append each value as separate query param
+      const arrayFilters: Array<{ param: string; values?: string[]; imageOnly: boolean }> = [
+        { param: 'orientations', values: orientations, imageOnly: true },
+        { param: 'compositions', values: compositions, imageOnly: true },
+        { param: 'graphical_styles', values: graphicalStyles, imageOnly: true },
+        { param: 'moods', values: moods, imageOnly: true },
+        { param: 'number_of_people', values: numberOfPeople, imageOnly: true },
+        { param: 'ethnicity', values: ethnicity, imageOnly: true },
+        { param: 'age_of_people', values: ageOfPeople, imageOnly: true },
+      ];
+
+      for (const { param, values, imageOnly } of arrayFilters) {
+        if (values && values.length > 0 && (!imageOnly || mediaType === 'image')) {
+          for (const value of values) {
+            queryParams.append(param, value);
+          }
+        }
       }
 
-      // Getty API expects lowercase snake_case values for filters
-      if (orientations && mediaType === 'image') {
-        const converted = this.convertToGettyFormat(orientations);
-        this.logger.info('getty-media.filter.conversion', { 
-          filter: 'orientations', 
-          original: orientations, 
-          converted 
-        });
-        queryParams.append('orientations', converted);
-      }
-
-      if (compositions && mediaType === 'image') {
-        const converted = this.convertToGettyFormat(compositions);
-        this.logger.info('getty-media.filter.conversion', { 
-          filter: 'compositions', 
-          original: compositions, 
-          converted 
-        });
-        queryParams.append('compositions', converted);
+      if (minimumSize && mediaType === 'image') {
+        queryParams.append('minimum_size', minimumSize);
       }
 
       if (color && mediaType === 'image') {
-        // Color parameter expects hex format (e.g., #FF0000)
         queryParams.append('color', color);
       }
 
       const endpoint = mediaType === 'image' ? '/v1/search' : '/v1/videos/search';
 
-      // Log the full request with all parameters
       this.logger.info('getty-media.request', {
         mediaType,
         baseUrl: this.apiBaseUrl,
         endpoint,
         params: {
-          phrase,
-          page,
-          pageSize,
+          phrase: query,
+          page: 1,
+          pageSize: count,
           sortOrder,
           ...(graphicalStyles && { graphicalStyles }),
           ...(orientations && { orientations }),
           ...(compositions && { compositions }),
-          ...(color && { color })
-        }
+          ...(color && { color }),
+          ...(moods && { moods }),
+          ...(numberOfPeople && { numberOfPeople }),
+          ...(ethnicity && { ethnicity }),
+          ...(ageOfPeople && { ageOfPeople }),
+          ...(minimumSize && { minimumSize }),
+        },
       });
 
       const eventLogger = mediaType === 'video' ? toolVideoSearchEvents : toolImageSearchEvents;
       eventLogger.begin(this.logger, {
         toolName: 'GettyMediaDriver',
-        prompt: phrase,
-        count: pageSize,
+        prompt: query,
+        count,
         provider: 'getty',
       });
 
@@ -225,28 +182,29 @@ export class GettyMediaDriver extends BaseDriver {
         throw new Error(`Getty API request failed: ${response.status} ${errorText}`);
       }
 
-      const data = await response.json() as GettyAPIResponse;
+      const data = (await response.json()) as GettyAPIResponse;
 
-      // Log the response summary
       this.logger.info('getty-media.response', {
         mediaType,
         resultCount: data.result_count,
-        itemsReturned: mediaType === 'image' 
-          ? (data.images?.length || 0)
-          : (data.videos?.length || 0),
-        hasResults: ((mediaType === 'image' ? data.images?.length : data.videos?.length) || 0) > 0
+        itemsReturned:
+          mediaType === 'image'
+            ? (data.images?.length || 0)
+            : (data.videos?.length || 0),
+        hasResults:
+          ((mediaType === 'image' ? data.images?.length : data.videos?.length) || 0) > 0,
       });
       const items = mediaType === 'image' ? data.images : data.videos;
 
       if (!data || !items || !Array.isArray(items) || items.length === 0) {
         this.logger.warn('getty-media.no-results', {
           mediaType,
-          phrase,
-          resultCount: data?.result_count || 0
+          phrase: query,
+          resultCount: data?.result_count || 0,
         });
         return {
           success: false,
-          error: `No ${mediaType}s found matching your search criteria`
+          error: `No ${mediaType}s found matching your search criteria`,
         };
       }
 
@@ -254,15 +212,15 @@ export class GettyMediaDriver extends BaseDriver {
       if (mediaType === 'video' && items[0]) {
         const videoId = items[0].id;
         const uploadUrl = await this.uploadVideo(videoId);
-        
+
         if (!uploadUrl) {
           this.logger.error('getty-media.video-upload.no-url', {
             videoId,
-            phrase
+            phrase: query,
           });
           return {
             success: false,
-            error: 'Failed to get video URL from upload response'
+            error: 'Failed to get video URL from upload response',
           };
         }
 
@@ -272,53 +230,49 @@ export class GettyMediaDriver extends BaseDriver {
         this.logger.info('getty-media.video.success', {
           videoId,
           videoUrl: uploadUrl,
-          title: processedItem.title
+          title: processedItem.title,
         });
 
         return {
           success: true,
           items: [processedItem],
-          totalResults: data.result_count
+          totalResults: data.result_count,
         };
       }
 
       // For images, process all items
-      const processedItems = items.map(item => this.processItem(item, mediaType));
+      const processedItems = items.map((item) => this.processItem(item, mediaType));
 
       this.logger.info('getty-media.images.success', {
-        phrase,
+        phrase: query,
         itemsProcessed: processedItems.length,
         totalResults: data.result_count,
-        imageIds: processedItems.map(item => item.id)
+        imageIds: processedItems.map((item) => item.id),
       });
 
       return {
         success: true,
         items: processedItems,
-        totalResults: data.result_count
+        totalResults: data.result_count,
       };
-
     } catch (error) {
       const eventLogger = mediaType === 'video' ? toolVideoSearchEvents : toolImageSearchEvents;
       eventLogger.failure(this.logger, error as Error, {
         toolName: 'GettyMediaDriver',
-        prompt: options.phrase,
-        count: options.pageSize || 1,
+        prompt: options.query,
+        count: options.count || 1,
         provider: 'getty',
       });
-      
+
       return {
         success: false,
-        error: `Getty ${mediaType} search failed: ${error instanceof Error ? error.message : String(error)}`
+        error: `Getty ${mediaType} search failed: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   }
 
   /**
    * Upload video to get final URL
-   * 
-   * @param videoId - Video ID from search results
-   * @returns Promise resolving to video URL or null
    */
   private async uploadVideo(videoId: string): Promise<string | null> {
     try {
@@ -331,7 +285,7 @@ export class GettyMediaDriver extends BaseDriver {
         throw new Error(`Getty Video upload request failed: ${response.status} ${errorText}`);
       }
 
-      const uploadData = await response.json() as { id: string; videoUrl: string };
+      const uploadData = (await response.json()) as { id: string; videoUrl: string };
 
       if (!uploadData || !uploadData.videoUrl) {
         return null;
@@ -350,27 +304,23 @@ export class GettyMediaDriver extends BaseDriver {
   }
 
   /**
-   * Process Getty API item into common format
-   * 
-   * @param item - Getty API item
-   * @param mediaType - Type of media
-   * @returns Processed media item
+   * Process Getty API item into common MediaItem format
    */
-  private processItem(item: GettyAPIItem, mediaType: MediaType): GettyMediaItem {
+  private processItem(item: GettyAPIItem, mediaType: string): MediaItem {
     const urls: { preview?: string; thumbnail?: string; standard?: string; highRes?: string } = {};
 
     if (item.display_sizes && Array.isArray(item.display_sizes)) {
-      const preview = item.display_sizes.find(size => size && size.name === 'preview');
-      const thumbnail = item.display_sizes.find(size => size && size.name === 'thumb');
-      const standard = item.display_sizes.find(size => size && size.name === 'comp');
+      const preview = item.display_sizes.find((size) => size && size.name === 'preview');
+      const thumbnail = item.display_sizes.find((size) => size && size.name === 'thumb');
+      const standard = item.display_sizes.find((size) => size && size.name === 'comp');
 
       if (preview && preview.uri) urls.preview = preview.uri;
       if (thumbnail && thumbnail.uri) urls.thumbnail = thumbnail.uri;
       if (standard && standard.uri) urls.standard = standard.uri;
 
       if (mediaType === 'image') {
-        const midRes = item.display_sizes.find(size => size && size.name === 'mid_res_comp');
-        const highRes = item.display_sizes.find(size => size && size.name === 'high_res_comp');
+        const midRes = item.display_sizes.find((size) => size && size.name === 'mid_res_comp');
+        const highRes = item.display_sizes.find((size) => size && size.name === 'high_res_comp');
 
         if (highRes && highRes.uri) {
           urls.highRes = highRes.uri;
@@ -380,9 +330,9 @@ export class GettyMediaDriver extends BaseDriver {
       }
     }
 
-    const result: GettyMediaItem = {
+    const result: MediaItem = {
       id: item.id,
-      urls
+      urls,
     };
 
     if (item.title !== undefined) {
@@ -396,11 +346,10 @@ export class GettyMediaDriver extends BaseDriver {
     if (item.max_dimensions) {
       result.dimensions = {
         height: item.max_dimensions.height,
-        width: item.max_dimensions.width
+        width: item.max_dimensions.width,
       };
     }
 
     return result;
   }
 }
-

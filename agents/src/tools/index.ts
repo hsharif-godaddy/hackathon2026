@@ -80,6 +80,12 @@ export type {
   GettyMediaItem
 } from './ai-lib-tools/drivers/getty-media-driver.js';
 export type {
+  MediaDriver,
+  MediaDriverSearchOptions,
+  MediaResult,
+  MediaItem
+} from './ai-lib-tools/drivers/media-driver.js';
+export type {
   WebsiteScraperOptions,
   WebsiteScraperResult
 } from './ai-lib-tools/drivers/website-scraper-driver.js';

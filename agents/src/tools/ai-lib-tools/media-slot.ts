@@ -52,11 +52,67 @@ EXAMPLES:
     }).optional().describe(
       'Requested dimensions for the media. Helps select appropriately sized images.'
     ),
-    orientations: z.string().optional().describe(
-      'Filter by orientation. Values: "horizontal", "vertical", "square", "panoramic_horizontal", "panoramic_vertical"'
+    orientations: z.array(z.enum([
+      'horizontal', 'vertical', 'square', 'panoramic_horizontal', 'panoramic_vertical'
+    ])).optional().describe(
+      'Filter by image orientation. Use horizontal for banners/heroes, vertical for sidebars, square for thumbnails/profiles.'
     ),
-    compositions: z.string().optional().describe(
-      'Filter by composition style. Values: "abstract", "candid", "close_up", "copy_space", "cut_out", "full_frame", "full_length", "headshot", "looking_at_camera", "macro", "portrait", "wide_shot"'
+    compositions: z.array(z.enum([
+      'abstract', 'candid', 'close_up', 'copy_space', 'cut_out', 'full_frame',
+      'full_length', 'headshot', 'looking_at_camera', 'macro', 'medium_shot',
+      'portrait', 'sparse', 'still_life', 'waist_up', 'wide_shot'
+    ])).optional().describe(
+      'Filter by composition style. Use copy_space for hero images with text overlay, headshot for team photos, close_up for product details, wide_shot for landscapes.'
+    ),
+    moods: z.array(z.enum([
+      'dramatic', 'bold', 'vivid', 'warm', 'cool', 'natural', 'black_and_white'
+    ])).optional().describe(
+      'Filter by mood/tone of image. Use warm for restaurants/hospitality, bold for fitness/sports, cool for tech/corporate, natural for wellness/eco.'
+    ),
+    graphicalStyles: z.array(z.enum([
+      'photography', 'illustration', 'fine_art', 'vector'
+    ])).optional().describe(
+      'Filter by graphical style. Use photography for most real-world sites, illustration for playful/educational, vector for icons/diagrams.'
+    ),
+    sortOrder: z.enum(['best_match', 'most_popular', 'newest', 'random']).optional().describe(
+      'Sort order for results. Default: best_match. Use most_popular for generic content, newest for trendy/current looks.'
+    ),
+    color: z.string().optional().describe(
+      'Filter by dominant color as hex string (e.g., "#FF0000" for red). Use to match brand colors.'
+    ),
+    advancedFilters: z.object({
+      numberOfPeople: z.array(z.enum(['none', 'one', 'two', 'group'])).optional().describe(
+        'Filter by number of people visible. Use none for product/nature shots, one for portraits, group for team/social.'
+      ),
+      ethnicity: z.array(z.enum([
+        'black', 'white', 'east_asian', 'hispanic_latinx', 'japanese',
+        'middle_eastern', 'south_asian', 'southeast_asian'
+      ])).optional().describe(
+        'Filter by ethnicity representation.'
+      ),
+      ageOfPeople: z.array(z.enum([
+        'newborn', 'baby', 'child', 'teenager', 'young_adult',
+        'adult', 'mature_adult', 'senior_adult'
+      ])).optional().describe(
+        'Filter by age group.'
+      ),
+      minimumSize: z.enum(['x_small', 'small', 'medium', 'large', 'x_large', 'xx_large']).optional().describe(
+        'Minimum image size. Use large or x_large for hero/banner images, medium for content images.'
+      ),
+      subjectCategory: z.array(z.enum([
+        'person', 'people', 'animal', 'nature', 'technology', 'food',
+        'architecture', 'vehicle', 'product', 'abstract', 'workspace', 'lifestyle', 'other'
+      ])).optional().describe(
+        'Filter by primary subject category. Use food for restaurant sites, technology for tech companies, architecture for real estate.'
+      ),
+      usageContext: z.array(z.enum([
+        'hero', 'banner', 'background', 'product', 'profile', 'thumbnail',
+        'icon', 'content', 'testimonial', 'gallery', 'general'
+      ])).optional().describe(
+        'Filter by intended usage context. Use hero for main page images, background for section backgrounds, profile for team photos.'
+      ),
+    }).optional().describe(
+      'Advanced filters for fine-tuning image search. Only use when specific criteria are important.'
     ),
     count: z.number().min(1).max(10).default(5).optional().describe(
       'Number of alternative images to store (1-10, default 5). Alternatives are shown to users for easy swapping.'
@@ -70,6 +126,11 @@ EXAMPLES:
       size,
       orientations,
       compositions,
+      moods,
+      graphicalStyles,
+      sortOrder,
+      color,
+      advancedFilters,
       count = 5,
     } = input;
 
@@ -98,6 +159,11 @@ EXAMPLES:
       size,
       orientations,
       compositions,
+      moods,
+      graphicalStyles,
+      sortOrder,
+      color,
+      advancedFilters,
       count,
       appId,
       conversationId,

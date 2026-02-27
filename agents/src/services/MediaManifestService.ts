@@ -37,8 +37,17 @@ export interface MediaSlot {
   thumbnailUrl?: string;
   searchQuery: string;
   requestedSize?: MediaSize;
+  // Search filters used to find this media (stored for re-search context)
   orientations?: string;
   compositions?: string;
+  moods?: string;
+  graphicalStyles?: string;
+  sortOrder?: string;
+  color?: string;
+  numberOfPeople?: string;
+  ethnicity?: string;
+  ageOfPeople?: string;
+  minimumSize?: string;
   alternatives: string[];
   userModified: boolean;
   createdAt: string;

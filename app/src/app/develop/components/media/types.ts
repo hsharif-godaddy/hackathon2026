@@ -10,6 +10,8 @@ export interface MediaSlot {
   mediaType: 'image' | 'video' | 'generated';
   /** Current URL being used */
   currentUrl: string;
+  /** For videos: thumbnail image URL for preview display */
+  thumbnailUrl?: string;
   /** Search query used to find this media */
   searchQuery: string;
   /** Requested size constraints */
@@ -18,10 +20,17 @@ export interface MediaSlot {
     height: number;
     fit: 'cover' | 'contain' | 'crop';
   };
-  /** Image orientations filter (e.g., "horizontal", "vertical", "square") */
+  // Search filters used to find this media (comma-separated strings)
   orientations?: string;
-  /** Image compositions filter (e.g., "close-up", "wide-angle", "overhead") */
   compositions?: string;
+  moods?: string;
+  graphicalStyles?: string;
+  sortOrder?: string;
+  color?: string;
+  numberOfPeople?: string;
+  ethnicity?: string;
+  ageOfPeople?: string;
+  minimumSize?: string;
   /** Alternative URLs that can be swapped in */
   alternatives: string[];
   /** Whether the user has modified this slot */
@@ -30,6 +39,10 @@ export interface MediaSlot {
   createdAt: string;
   /** When the slot was last updated */
   lastUpdated: string;
+  /** Getty image ID for the current image */
+  gettyId?: string;
+  /** Getty image IDs for alternative images (parallel to alternatives array) */
+  alternativeGettyIds?: string[];
 }
 
 /**

@@ -1,33 +1,35 @@
 /**
  * Media Tool - Unified Image Search, Video Search, and Image Generation
- * 
+ *
  * This tool provides image search, video search, and AI image generation.
  * By default, it searches for images. Use mediaType to specify video search or image generation.
- * 
+ *
  * Configuration:
  * - Image/Video Search: Requires SSO_JWT, GETTY_API_URL, and GETTY_APP_KEY environment variables
  * - Image Generation: Uses OpenAI DALL-E via ai-lib unified provider
- * 
+ *
  * Usage:
  * ```typescript
  * // Search for images (default)
  * const result = await findMedia({ prompt: "sunset over mountains" });
- * 
+ *
  * // Search for a video explicitly
  * const videoResult = await findMedia({ prompt: "ocean waves", mediaType: "video" });
- * 
+ *
  * // Generate an image with AI
- * const generateResult = await findMedia({ 
- *   prompt: "sunset over mountains", 
+ * const generateResult = await findMedia({
+ *   prompt: "sunset over mountains",
  *   mediaType: "generate",
  *   appId: "app123"
  * });
- * 
+ *
  * // Search for multiple images
  * const multipleImages = await findMedia({ prompt: "sunset", count: 5 });
  * ```
  */
 import { GettyMediaDriver } from './ai-lib-tools/drivers/getty-media-driver.js';
+import { ImageSearchServiceDriver } from './ai-lib-tools/drivers/image-search-service-driver.js';
+import type { MediaDriver, MediaDriverSearchOptions } from './ai-lib-tools/drivers/media-driver.js';
 import { createOpenAIClient } from '@airo/ai-lib';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { nanoid } from 'nanoid';
@@ -49,9 +51,36 @@ export interface MediaSearchOptions {
   prompt: string | string[];
   mediaType?: MediaType;
   count?: number;
-  orientations?: string;
-  compositions?: string;
+  useService?: boolean; // per-request toggle
+
+  // Core filters (top-level for LLM visibility)
+  orientations?: string | string[];
+  compositions?: string | string[];
+  moods?: string[];
+  graphicalStyles?: string[];
+  sortOrder?: string;
   color?: string;
+
+  // Advanced filters (nested object).
+  // Note: numberOfPeople, ethnicity, ageOfPeople, minimumSize are supported by both Getty and the service.
+  // The remaining fields (subjectCategory, copySpaceAmount, copySpaceLocation, usageContext,
+  // backgroundType, visualComplexity, tone, peopleFocus) are only supported by the image search service
+  // and are silently ignored when useService is false.
+  advancedFilters?: {
+    numberOfPeople?: string[];
+    ethnicity?: string[];
+    ageOfPeople?: string[];
+    minimumSize?: string;
+    subjectCategory?: string[];
+    copySpaceAmount?: string[];
+    copySpaceLocation?: string[];
+    usageContext?: string[];
+    backgroundType?: string[];
+    visualComplexity?: string[];
+    tone?: string[];
+    peopleFocus?: string[];
+  };
+
   // For image generation (mediaType: 'generate')
   appId?: string;
   size?: '1024x1024' | '1024x1536' | '1536x1024' | 'auto';
@@ -90,18 +119,20 @@ export interface MediaSearchResult {
 /**
  * Service for searching media (images or videos) using Getty Images API
  * and generating images using OpenAI DALL-E
- * 
+ *
  * By default searches for images. Set mediaType to 'video' for video search
  * or 'generate' for AI image generation.
  * Video search only supports single prompts (no parallel search or count).
  * Image generation requires appId and only supports single prompts.
  */
 export class MediaSearchTool {
-  private driver: GettyMediaDriver;
+  private gettyDriver: GettyMediaDriver;
+  private serviceDriver: ImageSearchServiceDriver;
   private appsBaseDir: string;
 
   constructor() {
-    this.driver = new GettyMediaDriver();
+    this.gettyDriver = new GettyMediaDriver();
+    this.serviceDriver = new ImageSearchServiceDriver();
     this.appsBaseDir = process.env.APPS_BASE_DIR || '/tmp/airo-app-builder';
   }
 
@@ -125,9 +156,14 @@ export class MediaSearchTool {
     size?: '1024x1024' | '1024x1536' | '1536x1024' | 'auto',
     filename?: string,
     options?: {
-      orientations?: string;
-      compositions?: string;
+      orientations?: string | string[];
+      compositions?: string | string[];
       color?: string;
+      moods?: string[];
+      graphicalStyles?: string[];
+      sortOrder?: string;
+      useService?: boolean;
+      advancedFilters?: MediaSearchOptions['advancedFilters'];
     }
   ): Promise<MediaSearchResult> {
     // Image generation
@@ -213,22 +249,87 @@ export class MediaSearchTool {
   }
 
   /**
-   * Search for single media item (image or video)
-   *
-   * @param prompt - The search prompt
-   * @param mediaType - Type of media to search
-   * @param count - Number of results (only for images)
-   * @param options - Additional search options
-   * @returns Promise resolving to media search result
+   * Get the appropriate driver based on configuration
    */
+  private getDriver(mediaType: string, useService?: boolean): MediaDriver {
+    // Only use image search service for images, never for videos
+    if (mediaType === 'image' && this.shouldUseService(useService)) {
+      return this.serviceDriver;
+    }
+    return this.gettyDriver;
+  }
+
+  /**
+   * Determine whether to route through image search service
+   */
+  private shouldUseService(useService?: boolean): boolean {
+    if (useService !== undefined) return useService;
+    return process.env.IMAGE_SEARCH_USE_SERVICE === 'true';
+  }
+
+  /**
+   * Build unified MediaDriverSearchOptions from the tool's option format
+   */
+  private buildDriverOptions(
+    prompt: string,
+    mediaType: 'image' | 'video',
+    count: number,
+    options?: {
+      orientations?: string | string[];
+      compositions?: string | string[];
+      color?: string;
+      moods?: string[];
+      graphicalStyles?: string[];
+      sortOrder?: string;
+      useService?: boolean;
+      advancedFilters?: MediaSearchOptions['advancedFilters'];
+    }
+  ): MediaDriverSearchOptions {
+    const toArray = (v: string | string[] | undefined): string[] | undefined => {
+      if (!v) return undefined;
+      return Array.isArray(v) ? v : [v];
+    };
+
+    return {
+      query: prompt.trim(),
+      mediaType,
+      count: Math.min(count, mediaType === 'image' ? 20 : 1),
+      orientations: toArray(options?.orientations),
+      compositions: toArray(options?.compositions),
+      moods: options?.moods,
+      graphicalStyles: options?.graphicalStyles || (mediaType === 'image' ? ['photography'] : undefined),
+      sortOrder: options?.sortOrder || 'best_match',
+      color: options?.color,
+      // Advanced filters (shared)
+      numberOfPeople: options?.advancedFilters?.numberOfPeople,
+      ethnicity: options?.advancedFilters?.ethnicity,
+      ageOfPeople: options?.advancedFilters?.ageOfPeople,
+      minimumSize: options?.advancedFilters?.minimumSize,
+      // Advanced filters (service-only, silently ignored by Getty driver)
+      subjectCategory: options?.advancedFilters?.subjectCategory,
+      copySpaceAmount: options?.advancedFilters?.copySpaceAmount,
+      copySpaceLocation: options?.advancedFilters?.copySpaceLocation,
+      usageContext: options?.advancedFilters?.usageContext,
+      backgroundType: options?.advancedFilters?.backgroundType,
+      visualComplexity: options?.advancedFilters?.visualComplexity,
+      tone: options?.advancedFilters?.tone,
+      peopleFocus: options?.advancedFilters?.peopleFocus,
+    };
+  }
+
   private async searchSingle(
     prompt: string,
     mediaType: MediaType,
     count = 1,
     options?: {
-      orientations?: string;
-      compositions?: string;
+      orientations?: string | string[];
+      compositions?: string | string[];
       color?: string;
+      moods?: string[];
+      graphicalStyles?: string[];
+      sortOrder?: string;
+      useService?: boolean;
+      advancedFilters?: MediaSearchOptions['advancedFilters'];
     }
   ): Promise<MediaSearchResult> {
     try {
@@ -240,16 +341,9 @@ export class MediaSearchTool {
         provider: 'getty',
       });
 
-      const result = await this.driver.search(mediaType as 'image' | 'video', {
-        phrase: prompt.trim(),
-        page: 1,
-        pageSize: Math.min(count, mediaType === 'image' ? 20 : 1),
-        ...(mediaType === 'image' && { graphicalStyles: 'photography' }),
-        ...(options?.orientations && { orientations: options.orientations }),
-        ...(options?.compositions && { compositions: options.compositions }),
-        ...(options?.color && { color: options.color }),
-        sortOrder: 'best_match'
-      });
+      const driver = this.getDriver(mediaType, options?.useService);
+      const driverOptions = this.buildDriverOptions(prompt, mediaType as 'image' | 'video', count, options);
+      const result = await driver.search(driverOptions);
 
       if (!result.success || !result.items || result.items.length === 0) {
         eventLogger.failure(logger, new Error(result.error || `No ${mediaType}s found`), {
@@ -283,7 +377,7 @@ export class MediaSearchTool {
         });
         return {
           success: false,
-          error: `No valid ${mediaType} URLs found in Getty response`
+          error: `No valid ${mediaType} URLs found in search response`
         };
       }
 
@@ -305,11 +399,10 @@ export class MediaSearchTool {
         });
       }
 
-      // For videos, extract thumbnail URL from the item's display_sizes
+      // For videos, extract thumbnail URL from the item's urls
       let thumbnailUrl: string | undefined;
       if (mediaType === 'video' && result.items[0]) {
         const item = result.items[0];
-        // Prefer preview > thumbnail > standard for video thumbnails
         thumbnailUrl = item.urls?.preview || item.urls?.thumbnail || item.urls?.standard;
       }
 
@@ -338,26 +431,26 @@ export class MediaSearchTool {
       });
       return {
         success: false,
-        error: `Getty ${mediaType} search failed: ${error instanceof Error ? error.message : String(error)}`
+        error: `Media ${mediaType} search failed: ${error instanceof Error ? error.message : String(error)}`
       };
     }
   }
 
   /**
    * Search for multiple images in parallel
-   *
-   * @param prompts - Array of search prompts
-   * @param count - Number of results per prompt
-   * @param options - Additional search options
-   * @returns Promise resolving to parallel search result
    */
   private async searchParallel(
     prompts: string[],
     count = 1,
     options?: {
-      orientations?: string;
-      compositions?: string;
+      orientations?: string | string[];
+      compositions?: string | string[];
       color?: string;
+      moods?: string[];
+      graphicalStyles?: string[];
+      sortOrder?: string;
+      useService?: boolean;
+      advancedFilters?: MediaSearchOptions['advancedFilters'];
     }
   ): Promise<MediaSearchResult> {
     try {
@@ -424,19 +517,13 @@ export class MediaSearchTool {
       });
       return {
         success: false,
-        error: `Getty parallel image search failed: ${error instanceof Error ? error.message : String(error)}`
+        error: `Parallel image search failed: ${error instanceof Error ? error.message : String(error)}`
       };
     }
   }
 
   /**
    * Generate an image using OpenAI DALL-E
-   * 
-   * @param prompt - The image generation prompt
-   * @param appId - App ID for saving the generated image
-   * @param size - Image size (defaults to '1024x1024')
-   * @param filename - Optional custom filename
-   * @returns Promise resolving to generation result
    */
   private async generateImage(
     prompt: string,
@@ -550,8 +637,8 @@ export class MediaSearchTool {
       });
 
       // Get app's preview URL (app was already fetched earlier)
-      const imageUrl = app.previewUrl 
-        ? `${app.previewUrl.replace(/\/+$/, '')}${publicPath}` 
+      const imageUrl = app.previewUrl
+        ? `${app.previewUrl.replace(/\/+$/, '')}${publicPath}`
         : publicPath;
 
       return {
@@ -573,9 +660,6 @@ export class MediaSearchTool {
 
 /**
  * Tool interface for media search and generation - maintains backward compatibility
- * 
- * @param options - Search/generation options with prompt, optional mediaType, and optional parameters
- * @returns Promise resolving to media search or generation result
  */
 export async function findMedia(options: MediaSearchOptions): Promise<MediaSearchResult> {
   const {
@@ -585,6 +669,11 @@ export async function findMedia(options: MediaSearchOptions): Promise<MediaSearc
     orientations,
     compositions,
     color,
+    moods,
+    graphicalStyles,
+    sortOrder,
+    useService,
+    advancedFilters,
     appId,
     size,
     filename,
@@ -610,7 +699,12 @@ export async function findMedia(options: MediaSearchOptions): Promise<MediaSearc
     const searchOptions = {
       ...(orientations !== undefined && { orientations }),
       ...(compositions !== undefined && { compositions }),
-      ...(color !== undefined && { color })
+      ...(color !== undefined && { color }),
+      ...(moods !== undefined && { moods }),
+      ...(graphicalStyles !== undefined && { graphicalStyles }),
+      ...(sortOrder !== undefined && { sortOrder }),
+      ...(useService !== undefined && { useService }),
+      ...(advancedFilters !== undefined && { advancedFilters }),
     };
     return await mediaSearchTool.searchMedia(
       prompt,
@@ -623,7 +717,7 @@ export async function findMedia(options: MediaSearchOptions): Promise<MediaSearc
     );
   } catch (error) {
     const promptForLog = Array.isArray(prompt) ? prompt.join(', ') : prompt;
-    
+
     if (mediaType === 'generate') {
       toolImageGenerationEvents.failure(logger, error as Error, {
         toolName: 'media-tool',
@@ -651,4 +745,3 @@ export async function findMedia(options: MediaSearchOptions): Promise<MediaSearc
     };
   }
 }
-
