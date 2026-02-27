@@ -27,6 +27,7 @@ const mockStreamingStore = {
   },
   currentAppId: 'test-app-123',
   isLoading: false,
+  historyLoadingComplete: true,
   loadMoreConversations: vi.fn(),
 };
 
@@ -45,6 +46,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: () => mockStreamingStore.isActivelyStreaming,
   useConversationPagination: () => mockStreamingStore.pagination,
   useCurrentAppId: () => mockStreamingStore.currentAppId,
+  useHistoryLoadingComplete: () => mockStreamingStore.historyLoadingComplete,
   useIsLoading: () => mockStreamingStore.isLoading,
   useLoadMoreConversations: () => mockStreamingStore.loadMoreConversations,
 }));
@@ -62,6 +64,7 @@ describe('StreamingMessageList', function packageTests() {
   beforeEach(() => {
     vi.clearAllMocks();
     mockStreamingStore.isLoading = false;
+    mockStreamingStore.historyLoadingComplete = true;
     mockStreamingStore.currentAppId = 'test-app-123';
     mockAppIdFromParams = 'test-app-123';
     mockDevelopPageStore.loadingPhase = 'ready';
@@ -450,6 +453,46 @@ describe('StreamingMessageList', function packageTests() {
       expect(screen.getByTestId('message-a1').dataset.startTime).toBe('absent')
     })
   })
+
+  describe('history loading gate', function historyLoadingGate() {
+    it('should show skeleton loaders when historyLoadingComplete is false even with messages present', function showSkeletonUntilHistoryLoaded() {
+      mockStreamingStore.historyLoadingComplete = false;
+
+      const messages = [
+        { id: 'msg-1', role: 'user' as const, content: 'Hello', timestamp: new Date() },
+        { id: 'msg-2', role: 'assistant' as const, content: 'Hi!', timestamp: new Date() },
+      ];
+
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
+      expect(screen.queryByTestId('message-msg-1')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('message-msg-2')).not.toBeInTheDocument();
+    });
+
+    it('should render messages once historyLoadingComplete becomes true', function renderAfterHistoryLoaded() {
+      mockStreamingStore.historyLoadingComplete = false;
+
+      const messages = [
+        { id: 'msg-1', role: 'user' as const, content: 'Hello', timestamp: new Date() },
+        { id: 'msg-2', role: 'assistant' as const, content: 'Hi!', timestamp: new Date() },
+      ];
+
+      const { container, rerender } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      // Initially shows skeleton
+      expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
+      expect(screen.queryByTestId('message-msg-1')).not.toBeInTheDocument();
+
+      // Simulate history loading completing
+      mockStreamingStore.historyLoadingComplete = true;
+      rerender(<StreamingMessageList allMessages={messages} />);
+
+      expect(container.querySelector('.ux-skeleton')).not.toBeInTheDocument();
+      expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
+      expect(screen.getByTestId('message-msg-2')).toBeInTheDocument();
+    });
+  });
 
   describe('app switching', function appSwitching() {
     it('should show spinner during app transition when store appId differs from URL', function showSpinnerDuringTransition() {

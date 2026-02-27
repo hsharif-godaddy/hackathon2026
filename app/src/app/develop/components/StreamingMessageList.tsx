@@ -13,6 +13,7 @@ import {
   type ChatMessage,
   type StreamingMessage as StreamingMessageType,
   useCurrentAppId,
+  useHistoryLoadingComplete,
   useIsActivelyStreaming,
   useIsLoading,
 } from '@/stores/useStreamingConversationStore'
@@ -45,6 +46,7 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   const currentAppId = useCurrentAppId()
   const appIdFromParams = useAppIdFromParams()
   const isLoadingMessages = useIsLoading()
+  const historyLoadingComplete = useHistoryLoadingComplete()
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
 
   // Sound hook
@@ -196,14 +198,15 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   }, [isStreaming])
 
   // Initial scroll - use useLayoutEffect to prevent flicker
+  // Wait for historyLoadingComplete so all messages render at once with no visible scroll
   useLayoutEffect(() => {
-    if (isInitialLoad && allMessages.length > 0 && containerRef.current) {
+    if (isInitialLoad && historyLoadingComplete && allMessages.length > 0 && containerRef.current) {
       // Set scroll position before browser paints to prevent visible scrolling
       containerRef.current.scrollTop = containerRef.current.scrollHeight
       setIsInitialLoad(false)
       setUserHasScrolledUp(false)
     }
-  }, [isInitialLoad, allMessages.length])
+  }, [isInitialLoad, historyLoadingComplete, allMessages.length])
 
   // Auto-scroll on message changes
   useEffect(() => {
@@ -364,9 +367,9 @@ export default function StreamingMessageList({ allMessages, isCreateFlowSession 
   // Show loading state during app transitions to prevent showing stale messages
   const isAppTransitioning = currentAppId !== appIdFromParams
 
-  if (allMessages.length === 0 || isAppTransitioning) {
+  if (allMessages.length === 0 || isAppTransitioning || !historyLoadingComplete) {
     const isPageLoading = loadingPhase !== 'ready'
-    const showSpinner = isLoadingMessages || isPageLoading || isAppTransitioning
+    const showSpinner = isLoadingMessages || isPageLoading || isAppTransitioning || !historyLoadingComplete
 
     return (
       <div ref={containerRef} data-testid="chat-transcript" className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-2" onScroll={handleScroll}>
