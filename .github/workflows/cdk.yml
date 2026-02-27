@@ -23,6 +23,7 @@ on:
           - "MySQLV2Stack"
           - "AiroJWTKeyStack"
           - "GocaasSpendLambdaStack"
+          - "EvalSnapshotsStack"
           - "QdrantEcrStack"
           - "QdrantVectorDbStack"
         default: "--all"
