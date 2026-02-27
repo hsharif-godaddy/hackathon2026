@@ -4,6 +4,8 @@ import { gdAuthService } from "@/lib/gd-auth-service";
 const IMAGE_SEARCH_SERVICE_URL =
   process.env.IMAGE_SEARCH_SERVICE_URL || "http://localhost:8080";
 
+const isDevMode = process.env.NODE_ENV === "development";
+
 // Basic JWT structure validation - checks format without decoding
 function isValidJWTStructure(token: string): boolean {
   const parts = token.split(".");
@@ -17,12 +19,12 @@ function isValidJWTStructure(token: string): boolean {
 export async function POST(request: NextRequest) {
   const token = gdAuthService.extractTokenFromRequest(request);
 
-  if (!token) {
+  if (!token && !isDevMode) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Validate token structure before forwarding to backend
-  if (!isValidJWTStructure(token)) {
+  // Validate token structure before forwarding to backend (skip in dev mode)
+  if (!isDevMode && token && !isValidJWTStructure(token)) {
     console.warn("[image-search] Invalid token structure");
     return NextResponse.json({ error: "Invalid token format" }, { status: 401 });
   }
@@ -30,12 +32,17 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
+    // In dev mode, don't forward auth header (backend should use AUTH_TYPE=none)
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (!isDevMode && token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${IMAGE_SEARCH_SERVICE_URL}/api/v1/search`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(body),
     });
 

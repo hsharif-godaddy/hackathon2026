@@ -49,17 +49,55 @@ type SearchResult struct {
 	FromCache      bool                   `json:"fromCache"`
 }
 
-// ImageAnalysisResponse is the subset of analysis returned in search results
+// ImageAnalysisResponse is the analysis returned in search results
 type ImageAnalysisResponse struct {
-	PrimarySubject    string   `json:"primarySubject"`
-	SubjectCategory   string   `json:"subjectCategory"`
-	Activity          string   `json:"activity"`
-	Composition       string   `json:"composition"`
-	CopySpaceLocation string   `json:"copySpaceLocation"`
-	CopySpaceAmount   string   `json:"copySpaceAmount"`
+	// Subject & Scene
+	PrimarySubject  string `json:"primarySubject"`
+	SubjectCategory string `json:"subjectCategory"`
+	Activity        string `json:"activity"`
+	SettingType     string `json:"settingType"`
+	Description     string `json:"description,omitempty"`
+
+	// Composition
+	Composition       string `json:"composition"`
+	CopySpaceLocation string `json:"copySpaceLocation"`
+	CopySpaceAmount   string `json:"copySpaceAmount"`
+	VisualComplexity  string `json:"visualComplexity"`
+	BackgroundType    string `json:"backgroundType"`
+
+	// People
+	PeopleCount string `json:"peopleCount"`
+	PeopleFocus string `json:"peopleFocus"`
+
+	// Style & Mood
 	Tone              []string `json:"tone"`
-	PeopleCount       string   `json:"peopleCount"`
-	DominantColors    []string `json:"dominantColors"`
+	ColorMood         string   `json:"colorMood"`
+	TextSafeColors    string   `json:"textSafeColors"`
+	AuthenticityStyle string   `json:"authenticityStyle"`
+	UsageContext      []string `json:"usageContext"`
+
+	// Colors
+	DominantColors []string `json:"dominantColors"`
+
+	// Content
+	Title       string   `json:"title,omitempty"`
+	Caption     string   `json:"caption,omitempty"`
+	SearchTerms []string `json:"searchTerms,omitempty"`
+
+	// Dimensions
+	AspectRatioCategory string           `json:"aspectRatioCategory"`
+	Dimensions          *ImageDimensions `json:"dimensions,omitempty"`
+
+	// Getty metadata
+	Orientation    string   `json:"orientation,omitempty"`
+	GraphicalStyle string   `json:"graphicalStyle,omitempty"`
+	Moods          []string `json:"moods,omitempty"`
+	NumberOfPeople string   `json:"numberOfPeople,omitempty"`
+	Ethnicity      []string `json:"ethnicity,omitempty"`
+	AgeOfPeople    []string `json:"ageOfPeople,omitempty"`
+	CollectionCode string   `json:"collectionCode,omitempty"`
+	Artist         string   `json:"artist,omitempty"`
+	GettyKeywords  []string `json:"gettyKeywords,omitempty"`
 }
 
 // SearchMeta provides metadata about the search operation

@@ -101,15 +101,46 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			RelevanceScore: analysis.RelevanceScore,
 			FromCache:      true,
 			Analysis: &models.ImageAnalysisResponse{
-				PrimarySubject:    analysis.PrimarySubject,
-				SubjectCategory:   string(analysis.SubjectCategory),
-				Activity:          string(analysis.Activity),
+				// Subject & Scene
+				PrimarySubject:  analysis.PrimarySubject,
+				SubjectCategory: string(analysis.SubjectCategory),
+				Activity:        string(analysis.Activity),
+				SettingType:     string(analysis.SettingType),
+				Description:     analysis.Description,
+				// Composition
 				Composition:       string(analysis.Composition),
 				CopySpaceLocation: string(analysis.CopySpaceLocation),
 				CopySpaceAmount:   string(analysis.CopySpaceAmount),
+				VisualComplexity:  string(analysis.VisualComplexity),
+				BackgroundType:    string(analysis.BackgroundType),
+				// People
+				PeopleCount: string(analysis.PeopleCount),
+				PeopleFocus: string(analysis.PeopleFocus),
+				// Style & Mood
 				Tone:              analysis.Tone,
-				PeopleCount:       string(analysis.PeopleCount),
-				DominantColors:    analysis.DominantColors,
+				ColorMood:         string(analysis.ColorMood),
+				TextSafeColors:    string(analysis.TextSafeColors),
+				AuthenticityStyle: string(analysis.AuthenticityStyle),
+				UsageContext:      analysis.UsageContext,
+				// Colors
+				DominantColors: analysis.DominantColors,
+				// Content
+				Title:       analysis.Title,
+				Caption:     analysis.Caption,
+				SearchTerms: analysis.SearchTerms,
+				// Dimensions
+				AspectRatioCategory: string(analysis.AspectRatioCategory),
+				Dimensions:          &analysis.Dimensions,
+				// Getty metadata
+				Orientation:    analysis.Orientation,
+				GraphicalStyle: analysis.GraphicalStyle,
+				Moods:          analysis.Moods,
+				NumberOfPeople: analysis.NumberOfPeople,
+				Ethnicity:      analysis.Ethnicity,
+				AgeOfPeople:    analysis.AgeOfPeople,
+				CollectionCode: analysis.CollectionCode,
+				Artist:         analysis.Artist,
+				GettyKeywords:  analysis.GettyKeywords,
 			},
 		}
 		results = append(results, searchResult)

@@ -92,9 +92,35 @@ func TestSearchResponse_JSONSerialization(t *testing.T) {
 				RelevanceScore: 0.95,
 				FromCache:      true,
 				Analysis: &ImageAnalysisResponse{
-					PrimarySubject:  "business meeting",
-					SubjectCategory: "people",
-					PeopleCount:     "2-3",
+					PrimarySubject:      "business meeting",
+					SubjectCategory:     "people",
+					Activity:            "meeting",
+					SettingType:         "office",
+					Description:         "A group of professionals in a meeting room",
+					Composition:         "center",
+					CopySpaceLocation:   "right",
+					CopySpaceAmount:     "moderate",
+					VisualComplexity:    "moderate",
+					BackgroundType:      "blurred",
+					PeopleCount:         "2-3",
+					PeopleFocus:         "primary",
+					Tone:                []string{"professional", "friendly"},
+					ColorMood:           "warm",
+					TextSafeColors:      "dark-only",
+					AuthenticityStyle:   "candid",
+					UsageContext:        []string{"hero", "content"},
+					DominantColors:      []string{"#3B82F6", "#F3F4F6"},
+					Title:               "Business Team Meeting",
+					Caption:             "Diverse team collaborating in modern office",
+					SearchTerms:         []string{"meeting", "business", "teamwork"},
+					AspectRatioCategory: "landscape",
+					Dimensions:          &ImageDimensions{Width: 1920, Height: 1080},
+					Orientation:         "horizontal",
+					GraphicalStyle:      "photography",
+					Moods:               []string{"warm", "natural"},
+					NumberOfPeople:      "group",
+					CollectionCode:      "OJO",
+					Artist:              "John Doe",
 				},
 			},
 		},
@@ -122,6 +148,28 @@ func TestSearchResponse_JSONSerialization(t *testing.T) {
 	}
 	if decoded.Results[0].GettyID != "12345" {
 		t.Errorf("expected gettyId '12345', got %s", decoded.Results[0].GettyID)
+	}
+	a := decoded.Results[0].Analysis
+	if a.SettingType != "office" {
+		t.Errorf("expected settingType 'office', got %s", a.SettingType)
+	}
+	if a.VisualComplexity != "moderate" {
+		t.Errorf("expected visualComplexity 'moderate', got %s", a.VisualComplexity)
+	}
+	if a.Title != "Business Team Meeting" {
+		t.Errorf("expected title 'Business Team Meeting', got %s", a.Title)
+	}
+	if a.AspectRatioCategory != "landscape" {
+		t.Errorf("expected aspectRatioCategory 'landscape', got %s", a.AspectRatioCategory)
+	}
+	if a.Dimensions == nil || a.Dimensions.Width != 1920 {
+		t.Errorf("expected dimensions width 1920")
+	}
+	if a.Orientation != "horizontal" {
+		t.Errorf("expected orientation 'horizontal', got %s", a.Orientation)
+	}
+	if len(a.SearchTerms) != 3 {
+		t.Errorf("expected 3 searchTerms, got %d", len(a.SearchTerms))
 	}
 	if decoded.Meta.Total != 100 {
 		t.Errorf("expected total 100, got %d", decoded.Meta.Total)
