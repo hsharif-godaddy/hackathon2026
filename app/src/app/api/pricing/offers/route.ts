@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { logger } from '@/lib/request-context';
+import { getApiBaseUrl } from '@/utils/getServerRootDomain';
 
 export const dynamic = 'force-dynamic';
-
-const OFFER_GRAPH_API_URL = process.env.OFFER_GRAPH_API_URL || 'https://og.api.test-godaddy.com/graphql';
 
 const PRICING_QUERY = `
   query {
@@ -71,16 +70,18 @@ function filterCookies(cookieHeader: string): string {
 
 export async function GET(request: NextRequest) {
   try {
+    const offerGraphApiUrl = `${getApiBaseUrl(request, 'og.api')}/graphql`;
+
     // Get cookies and filter to only those needed by Offer Graph API
     const incomingCookies = request.headers.get('cookie') || '';
     const filteredCookies = filterCookies(incomingCookies);
 
     logger.info('pricing.offers.fetch.start', {
-      url: OFFER_GRAPH_API_URL
+      url: offerGraphApiUrl
     });
 
     // Forward only whitelisted cookies to Offer Graph API
-    const response = await fetch(OFFER_GRAPH_API_URL, {
+    const response = await fetch(offerGraphApiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
