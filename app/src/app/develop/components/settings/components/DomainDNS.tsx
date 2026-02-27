@@ -1,10 +1,58 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
 import Box from "@ux/box";
+import CheckmarkIcon from '@ux/icon/checkmark';
+import ClipboardIcon from '@ux/icon/clipboard';
 import Spinner from '@ux/spinner';
 import text from "@ux/text";
 
 import type { AppDomain } from '@/hooks/useAppDetails';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { getDnsRecords } from '@/utils/domain';
+
+export function CopyableValue({ value }: { value: string }) {
+  const t = useTranslations();
+  const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      timeoutRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard write can fail in insecure contexts
+    }
+  };
+
+  return (
+    <Box orientation="horizontal" inlineAlignChildren="center" gap="sm">
+      <code className="bg-intents-ux-box-subtle rounded px-1 py-0.5 text-xs font-mono whitespace-nowrap">
+        {value}
+      </code>
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="inline-flex items-center text-intents-ux-content-subtle hover:text-intents-ux-content-default cursor-pointer"
+        aria-label={copied ? t('builder_common_copied') : t('builder_common_copy_clipboard')}
+      >
+        {copied ? (
+          <CheckmarkIcon className="text-intents-ux-feedbackHighContrastSuccess-feedbackColor" />
+        ) : (
+          <ClipboardIcon />
+        )}
+      </button>
+    </Box>
+  );
+}
 
 /**
  * DNS Configuration Instructions Component
@@ -17,9 +65,10 @@ import { getDnsRecords } from '@/utils/domain';
 export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain }) {
   const t = useTranslations();
   const { fqdn, anycastIp, certificateValidationCname } = domainDetails;
+  const { data: isDCVEnabled, isLoading: isDCVLoading } = useSwitchboard('appbuilder-domain-dcv');
 
-  // Show provisioning message if anycast IP is not ready yet
-  if (!anycastIp) {
+  // Show provisioning message if anycast IP or DCV CNAME is not ready yet
+  if (!anycastIp || isDCVLoading || (isDCVEnabled && !certificateValidationCname)) {
     return (
       <Box
         orientation="vertical"
@@ -51,70 +100,47 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
       </text.p>
 
       {/* DNS Records Table */}
-      <Box orientation="vertical" gap="sm" className="mt-1">
-        <Box
-          orientation="horizontal"
-          gap="md"
-          className="font-semibold text-sm border-b border-intents-ux-border-subtle pb-1"
-        >
-          <div className="w-10">{t('builder_domain_dns_table_type')}</div>
-          <div className="w-16">{t('builder_domain_dns_table_name')}</div>
-          <div className="flex-1">{t('builder_domain_dns_table_value')}</div>
-          <div className="w-10">{t('builder_domain_dns_table_ttl')}</div>
-        </Box>
+      <div className="mt-1 overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="border-b border-intents-ux-border-subtle">
+              <th className="text-left font-semibold pb-1 pr-4 whitespace-nowrap">{t('builder_domain_dns_table_type')}</th>
+              <th className="text-left font-semibold pb-1 pr-4 whitespace-nowrap">{t('builder_domain_dns_table_name')}</th>
+              <th className="text-left font-semibold pb-1 pr-4 whitespace-nowrap">{t('builder_domain_dns_table_value')}</th>
+              <th className="text-left font-semibold pb-1 whitespace-nowrap">{t('builder_domain_dns_table_ttl')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* A Record */}
+            <tr className={dnsRecords.cnameRecord ? "border-b border-intents-ux-border-subtle" : ""}>
+              <td className="py-1 pr-4 whitespace-nowrap">{dnsRecords.aRecord.type}</td>
+              <td className="py-1 pr-4 whitespace-nowrap">{dnsRecords.aRecord.name}</td>
+              <td className="py-1 pr-4"><CopyableValue value={dnsRecords.aRecord.value} /></td>
+              <td className="py-1 whitespace-nowrap">{dnsRecords.aRecord.ttl}</td>
+            </tr>
 
-        {/* A Record */}
-        <Box
-          orientation="horizontal"
-          gap="md"
-          className={dnsRecords.cnameRecord ? "text-sm py-1 border-b border-intents-ux-border-subtle" : "text-sm py-1"}
-        >
-          <div className="w-10">{dnsRecords.aRecord.type}</div>
-          <div className="w-16">{dnsRecords.aRecord.name}</div>
-          <div className="flex-1">
-            <code className="bg-intents-ux-box-subtle rounded px-1 py-0.5 text-xs font-mono">
-              {dnsRecords.aRecord.value}
-            </code>
-          </div>
-          <div className="w-10">{dnsRecords.aRecord.ttl}</div>
-        </Box>
+            {/* CNAME Record */}
+            {dnsRecords.cnameRecord && (
+              <tr className={dnsRecords.dcvRecord ? "border-b border-intents-ux-border-subtle" : ""}>
+                <td className="py-1 pr-4 whitespace-nowrap">{dnsRecords.cnameRecord.type}</td>
+                <td className="py-1 pr-4 whitespace-nowrap">{dnsRecords.cnameRecord.name}</td>
+                <td className="py-1 pr-4"><CopyableValue value={dnsRecords.cnameRecord.value} /></td>
+                <td className="py-1 whitespace-nowrap">{dnsRecords.cnameRecord.ttl}</td>
+              </tr>
+            )}
 
-        {/* CNAME Record */}
-        {dnsRecords.cnameRecord && (
-          <Box
-            orientation="horizontal"
-            gap="md"
-            className={dnsRecords.dcvRecord ? "text-sm py-1 border-b border-intents-ux-border-subtle" : "text-sm py-1"}
-          >
-            <div className="w-10">{dnsRecords.cnameRecord.type}</div>
-            <div className="w-16">{dnsRecords.cnameRecord.name}</div>
-            <div className="flex-1">
-              <code className="bg-intents-ux-box-subtle rounded px-1 py-0.5 text-xs font-mono">
-                {dnsRecords.cnameRecord.value}
-              </code>
-            </div>
-            <div className="w-10">{dnsRecords.cnameRecord.ttl}</div>
-          </Box>
-        )}
-
-        {/* DCV Record */}
-        {dnsRecords.dcvRecord && (
-          <Box
-            orientation="horizontal"
-            gap="md"
-            className="text-sm py-1"
-          >
-            <div className="w-10">{dnsRecords.dcvRecord.type}</div>
-            <div className="w-16">{dnsRecords.dcvRecord.name}</div>
-            <div className="flex-1">
-              <code className="bg-intents-ux-box-subtle rounded px-1 py-0.5 text-xs font-mono">
-                {dnsRecords.dcvRecord.value}
-              </code>
-            </div>
-            <div className="w-10">{dnsRecords.dcvRecord.ttl}</div>
-          </Box>
-        )}
-      </Box>
+            {/* DCV Record */}
+            {dnsRecords.dcvRecord && (
+              <tr>
+                <td className="py-1 pr-4 whitespace-nowrap">{dnsRecords.dcvRecord.type}</td>
+                <td className="py-1 pr-4 whitespace-nowrap">{dnsRecords.dcvRecord.name}</td>
+                <td className="py-1 pr-4"><CopyableValue value={dnsRecords.dcvRecord.value} /></td>
+                <td className="py-1 whitespace-nowrap">{dnsRecords.dcvRecord.ttl}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </Box>
   );
 }
