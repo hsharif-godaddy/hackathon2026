@@ -159,4 +159,29 @@ describe('VersionHistory', () => {
       expect(mockGitStore.setSelectedCommitHash).not.toHaveBeenCalled();
     });
   });
+
+  it('does not trigger auto-select on re-render when commits array has same data', async () => {
+    // Set up initial state where auto-select has already run
+    mockGitStore.getSelectedCommitHash.mockReturnValue('new-hash');
+    selectedCommitHash = 'new-hash';
+
+    const { rerender } = renderWithProviders(<VersionHistory />);
+
+    // Wait for initial render
+    await waitFor(() => {
+      expect(mockGitStore.setSelectedCommitHash).not.toHaveBeenCalled();
+    });
+
+    // Clear any previous calls
+    mockGitStore.setSelectedCommitHash.mockClear();
+
+    // Force re-render (simulating what happens during resize)
+    // The commits data is the same, so auto-select should NOT run again
+    rerender(<VersionHistory />);
+
+    await waitFor(() => {
+      // setSelectedCommitHash should NOT be called because commits haven't changed
+      expect(mockGitStore.setSelectedCommitHash).not.toHaveBeenCalled();
+    });
+  });
 });

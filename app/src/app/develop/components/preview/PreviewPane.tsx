@@ -119,7 +119,8 @@ export default function PreviewPane({
     appId: appId || '',
     enabled: !!appId
   });
-  const commits = data?.commits || [] // eslint-disable-line react-hooks/exhaustive-deps
+  // Memoize commits to prevent unnecessary recalculations from array reference changes
+  const commits = useMemo(() => data?.commits || [], [data?.commits])
 
   // Derive selected commit object from hash
   const selectedCommit = useMemo(() => {
@@ -130,6 +131,8 @@ export default function PreviewPane({
   useEffect(() => {
     if (isMobile) {
       setPreviewViewMode(PreviewViewMode.MOBILE)
+    } else {
+      setPreviewViewMode(PreviewViewMode.DESKTOP)
     }
   }, [isMobile, setPreviewViewMode])
 

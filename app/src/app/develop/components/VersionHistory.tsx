@@ -55,7 +55,8 @@ export default function VersionHistory() {
     enabled: !!appId && isHistoryTabActive
   })
 
-  const commits = data?.commits || [] // eslint-disable-line react-hooks/exhaustive-deps
+  // Memoize commits to prevent unnecessary effect triggers from array reference changes
+  const commits = useMemo(() => data?.commits || [], [data?.commits])
   const currentCommit = data?.currentCommit || null
 
   // NOTE: commits array is ordered from NEWEST to OLDEST (chronologically descending)

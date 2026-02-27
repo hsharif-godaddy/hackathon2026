@@ -196,6 +196,22 @@ describe('PreviewPane', () => {
     expect(mockDevelopPageStore.setPreviewViewMode).toHaveBeenCalledWith(PreviewViewMode.MOBILE);
   });
 
+  it('should set desktop preview mode when isMobile changes from true to false', () => {
+    const { rerender } = renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} isMobile={true} />);
+
+    // First render should set MOBILE mode
+    expect(mockDevelopPageStore.setPreviewViewMode).toHaveBeenCalledWith(PreviewViewMode.MOBILE);
+
+    // Clear the mock to check next call
+    mockDevelopPageStore.setPreviewViewMode.mockClear();
+
+    // Simulate resize by changing isMobile prop
+    rerender(<PreviewPane onPreviewRefresh={vi.fn()} isMobile={false} />);
+
+    // Should now set DESKTOP mode
+    expect(mockDevelopPageStore.setPreviewViewMode).toHaveBeenCalledWith(PreviewViewMode.DESKTOP);
+  });
+
   it('should show error when iframe fails to load', async () => {
     mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: null, error: 'Server failed' }));
 
