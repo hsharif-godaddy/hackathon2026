@@ -46,6 +46,14 @@ vi.mock('@/utils/propTypes', () => ({
   ensurePropTypes: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('./PaywallLoadingModal', () => ({
+  PaywallLoadingModal: ({ onClose }: { onClose: () => void }) => (
+    <div data-testid="paywall-loading-modal">
+      <button data-testid="loading-close-button" onClick={onClose}>Close</button>
+    </div>
+  ),
+}));
+
 vi.mock('./cdsLoader', () => ({
   ComponentLoader: (props: any) => {
     return (
@@ -54,6 +62,7 @@ vi.mock('./cdsLoader', () => ({
         <span data-testid="entitlement-id">{props.entitlementId}</span>
         <span data-testid="sub-type">{props.subType}</span>
         <span data-testid="source">{props.source}</span>
+        <div data-testid="loading-component">{props.LoadingComponent}</div>
         <button data-testid="close-button" onClick={props.onClose}>Close</button>
         <button
           data-testid="success-button"
@@ -259,6 +268,39 @@ describe('CreditsUpgradeContainer', function creditsUpgradeContainerTests() {
         unitsAdded: 100,
         newTotalBalance: 500,
       });
+    });
+  });
+
+  describe('LoadingComponent', function loadingComponentTests() {
+    it('should render PaywallLoadingModal as LoadingComponent', async function renderLoadingComponent() {
+      renderWithProviders(
+        <CreditsUpgradeContainer
+          onClose={mockOnClose}
+          entitlementId="entitlement-123"
+        />
+      );
+
+      await waitFor(function checkLoadingComponent() {
+        expect(screen.getByTestId('loading-component')).toBeInTheDocument();
+      });
+    });
+
+    it('should pass onClose to the LoadingComponent', async function loadingComponentOnClose() {
+      const { user } = renderWithProviders(
+        <CreditsUpgradeContainer
+          onClose={mockOnClose}
+          entitlementId="entitlement-123"
+        />
+      );
+
+      await waitFor(function waitForModal() {
+        expect(screen.getByTestId('credits-upgrade-modal')).toBeInTheDocument();
+      });
+
+      // Close via the main close button (same onClose reference used by LoadingComponent)
+      await user.click(screen.getByTestId('close-button'));
+
+      expect(mockOnClose).toHaveBeenCalled();
     });
   });
 

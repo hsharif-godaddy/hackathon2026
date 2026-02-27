@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { useAuth } from '@/hooks/useAuth'
@@ -94,6 +94,10 @@ const CreditsUpgradeContainer = ({
     onError?.(error)
   }, [source, onError])
 
+  const loadingComponent = useMemo(() => (
+    <PaywallLoadingModal onClose={onClose} />
+  ), [onClose])
+
   // Early return if entitlementId is missing - cannot purchase credits without it
   if (!entitlementId) {
     return null
@@ -124,7 +128,7 @@ const CreditsUpgradeContainer = ({
         onSuccess={handleSuccess}
         onClose={onClose}
         onErrorClick={onErrorClick}
-        LoadingComponent={<PaywallLoadingModal onClose={onClose} />}
+        LoadingComponent={loadingComponent}
       />
     </ErrorBoundary>
   )
