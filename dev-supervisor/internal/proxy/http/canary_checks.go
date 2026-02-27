@@ -96,9 +96,8 @@ func checkCephFilesystem() *CheckResult {
 func checkMySQL() *CheckResult {
 	start := time.Now()
 
-	// Load config using allocconfig package
-	loader := allocconfig.NewLoader("")
-	config, err := loader.Load()
+	// Load config using shared singleton (singleflight + cache deduplication)
+	config, err := allocconfig.Default().Load()
 	if err != nil {
 		slog.Error("canary.mysql.config_failed", "error", err)
 		return &CheckResult{

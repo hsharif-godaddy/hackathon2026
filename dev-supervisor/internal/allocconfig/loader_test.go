@@ -5,9 +5,40 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
+
+func TestDefault(t *testing.T) {
+	t.Run("returns same instance across calls", func(t *testing.T) {
+		a := Default()
+		b := Default()
+		if a != b {
+			t.Error("Default() returned different pointers")
+		}
+	})
+
+	t.Run("returns same instance across goroutines", func(t *testing.T) {
+		const n = 50
+		loaders := make([]*Loader, n)
+		var wg sync.WaitGroup
+		wg.Add(n)
+		for i := range n {
+			go func() {
+				defer wg.Done()
+				loaders[i] = Default()
+			}()
+		}
+		wg.Wait()
+
+		for i := 1; i < n; i++ {
+			if loaders[i] != loaders[0] {
+				t.Fatalf("goroutine %d got different pointer than goroutine 0", i)
+			}
+		}
+	})
+}
 
 func TestNewLoader(t *testing.T) {
 	t.Run("default path when empty", func(t *testing.T) {

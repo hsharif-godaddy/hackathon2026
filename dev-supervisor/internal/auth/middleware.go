@@ -26,8 +26,7 @@ type JWTMiddlewareConfig struct {
 
 // JWTMiddleware wraps HTTP handlers with JWT authentication
 type JWTMiddleware struct {
-	config       JWTMiddlewareConfig
-	configLoader *allocconfig.Loader // Reused loader for caching
+	config JWTMiddlewareConfig
 }
 
 // NewJWTMiddleware creates a new JWT middleware
@@ -38,8 +37,7 @@ func NewJWTMiddleware(config JWTMiddlewareConfig) *JWTMiddleware {
 	}
 
 	return &JWTMiddleware{
-		config:       config,
-		configLoader: allocconfig.NewLoader(""), // Create once, reuse for caching
+		config: config,
 	}
 }
 
@@ -298,7 +296,7 @@ func (m *JWTMiddleware) redirect(w http.ResponseWriter, r *http.Request, reason 
 // Returns empty string if not configured or invalid
 func (m *JWTMiddleware) buildSmartRedirectURL() string {
 	// Read JWT_REDIRECT_URL from alloc config (cached with 5s TTL)
-	config, err := m.configLoader.Load()
+	config, err := allocconfig.Default().Load()
 	if err != nil {
 		slog.Warn("jwt.middleware.config_load_failed", "error", err.Error())
 		return ""

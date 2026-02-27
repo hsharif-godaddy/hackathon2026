@@ -68,6 +68,22 @@ func (c *Config) Copy() *Config {
 	return configCopy
 }
 
+var (
+	defaultLoader     *Loader
+	defaultLoaderOnce sync.Once
+)
+
+// Default returns the process-wide shared Loader for /alloc/config.json.
+// All production consumers should use this instead of creating their own Loader,
+// ensuring singleflight deduplication and cache sharing across the process.
+// Use NewLoader/NewLoaderWithTTL for tests that need custom paths or TTL values.
+func Default() *Loader {
+	defaultLoaderOnce.Do(func() {
+		defaultLoader = NewLoaderWithTTL(DefaultAllocConfigPath, DefaultCacheTTL)
+	})
+	return defaultLoader
+}
+
 // Loader provides file-based config loading with optional TTL caching
 // Caching balances performance (avoid repeated file reads) with responsiveness
 // (pick up config changes within TTL window)
