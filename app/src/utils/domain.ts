@@ -226,14 +226,14 @@ export function validateDomain(domain: string): DomainValidationResult {
  */
 export function isCustomerDomain(
   domainToCheck: string,
-  customerDomains: Array<{ domain?: string; name?: string }>
+  customerDomains: Array<{ domain?: string; name?: string; internationalDisplayName?: string }>
 ): boolean {
   const parsed = parseDomain(domainToCheck);
   if (!parsed) return false;
 
   // Check if the exact domain matches
   const exactMatch = customerDomains.some((customerDomain) => {
-    const customerDomainName = customerDomain.domain || customerDomain.name;
+    const customerDomainName = customerDomain.domain || customerDomain.name || customerDomain.internationalDisplayName;
     return customerDomainName === parsed.fqdn;
   });
 
@@ -242,7 +242,7 @@ export function isCustomerDomain(
   // If it's a subdomain, check if the root domain is owned by the customer
   if (parsed.isSubdomain) {
     return customerDomains.some((customerDomain) => {
-      const customerDomainName = customerDomain.domain || customerDomain.name;
+      const customerDomainName = customerDomain.domain || customerDomain.name || customerDomain.internationalDisplayName;
       return customerDomainName === parsed.rootDomain;
     });
   }

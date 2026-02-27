@@ -1,0 +1,780 @@
+'use client'
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import Box from '@ux/box';
+import Button from '@ux/button';
+import CartIcon from '@ux/icon/cart';
+import Skeleton from '@ux/skeleton';
+import Spinner from '@ux/spinner';
+import Tag from '@ux/tag';
+import text from '@ux/text';
+
+import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext';
+import DomainDNS from '@/app/develop/components/settings/components/DomainDNS';
+import DomainItem from '@/app/develop/components/settings/components/DomainItem';
+import ExternalDomainInput from '@/app/develop/components/settings/components/ExternalDomainInput';
+import { useAppIdFromParams } from '@/app/develop/components/utils';
+import DomainPurchaseWidget from '@/app/develop/components/widgets/DomainPurchaseWidget';
+import { useAppDetails } from '@/hooks/useAppDetails';
+import { useAuth } from '@/hooks/useAuth';
+import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
+import { useDomainsQuery } from '@/hooks/useDomainsQuery';
+import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
+import { useModifyDomains } from '@/hooks/useModifyDomains';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { useTranslations } from '@/hooks/useTranslations';
+import { shipAnalyticsLog } from '@/lib/logging';
+import { CdnStatus, DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
+import { logger } from '@/lib/request-context';
+import { useSiteStore } from '@/stores/useSiteStore';
+import { isCustomerDomain, sanitizeDomainInput, validateDomain } from '@/utils/domain';
+import { getDomainErrorMessage } from '@/utils/domain-validation';
+import { hasBeenPublished } from '@/utils/site';
+
+const DOMAINS_PER_PAGE = 5;
+
+export interface DomainAttachWidgetProps {
+  brandName?: string
+  appId?: string
+  className?: string
+}
+
+/**
+ * Domain Attach Widget
+ *
+ * Displays the user's GoDaddy domains with connect/disconnect options
+ * and allows users to add external custom domains with DNS instructions.
+ *
+ * This is a chat-based version of the DomainPanel settings component.
+ *
+ * Features:
+ * - Shows user's GoDaddy domains with quick connect option
+ * - Custom domain input for external domains
+ * - DNS instructions for pending external domains
+ * - Internal domain detection for automatic DNS configuration
+ */
+export default function DomainAttachWidget({
+  brandName,
+  appId: propAppId,
+  className = ''
+}: DomainAttachWidgetProps) {
+  const t = useTranslations();
+  const sendUserMessage = useSendUserMessage();
+  const paramAppId = useAppIdFromParams();
+  const appId = propAppId || paramAppId;
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+
+  // Feature flag check
+  const { data: isDomainAttachEnabled, isLoading: isLoadingFlag } = useSwitchboard('appbuilder-domain-attach');
+  const { data: isDomainPurchaseEnabled } = useSwitchboard('appbuilder-domain-purchase');
+
+  // Custom domain input state
+  const [customDomain, setCustomDomain] = useState<string | null>(null);
+  const [customDomainError, setCustomDomainError] = useState<string | null>(null);
+  const [debouncedDomain, setDebouncedDomain] = useState('');
+  const [showCustomDomainConfirmation, setShowCustomDomainConfirmation] = useState(false);
+  const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Domain purchase widget state
+  const [showPurchaseWidget, setShowPurchaseWidget] = useState(false);
+  const [purchasedDomain, setPurchasedDomain] = useState<string | null>(null);
+
+  // Pagination for domain list
+  const [visibleDomainCount, setVisibleDomainCount] = useState(5);
+
+  // Confirmation state for attaching owned domain (Case 1)
+  const [showOwnedDomainConfirmation, setShowOwnedDomainConfirmation] = useState(false);
+  const [matchedOwnedDomain, setMatchedOwnedDomain] = useState<string | null>(null);
+
+  const site = useSiteStore((state) => appId ? state.getSite(appId) : null);
+
+  // Validate domain when user has entered a value
+  const shouldValidate = debouncedDomain.length > 0;
+  const { data: validationData, isLoading: isValidatingDomain, isError: hasValidationError } = useDomainValidationQuery(
+    appId,
+    debouncedDomain,
+    {
+      mode: DomainMode.CUSTOM,
+      enabled: shouldValidate,
+      subscriptionId: site?.subscription_id,
+      systemId: site?.system_id
+    }
+  )
+
+  const modifyDomainsMutation = useModifyDomains();
+
+  const {
+    data: domains = [],
+    isLoading: isLoadingDomains,
+    error: domainsError,
+    isFetched: isDomainsFetched,
+  } = useDomainsQuery({
+    enabled: isAuthenticated && !authLoading,
+  });
+
+  // Compute actual loading state
+  const isLoading = authLoading || isLoadingDomains || (!isDomainsFetched && isAuthenticated);
+
+  // Get app details for displaying domain list with polling for pending domains
+  const { data: appDetails, isFetched: isAppDetailsFetched } = useAppDetails(appId, {
+    enabled: !!appId,
+    refetchInterval: (data) => {
+      const hasPendingDomain = data?.domains?.some(d => {
+        if (d.domainType === 'prefix') return false;
+        return (
+          d.status === DomainStatus.PENDING ||
+          d.cdnStatus === CdnStatus.INIT ||
+          d.cdnStatus === CdnStatus.PENDING ||
+          !d.status ||
+          (d.status !== DomainStatus.ACTIVE && d.status !== DomainStatus.DELETING && !d.anycastIp)
+        );
+      });
+      return hasPendingDomain ? 5000 : false;
+    },
+    includeCdn: true,
+  });
+
+  // Handle customer domain attachment with automatic DNS configuration
+  useCustomerDomainAttach(appDetails, domains);
+
+  // Find CUSTOM domains that are pending (not prefix, not customer-owned)
+  const pendingDomain = useMemo(() => {
+    if (!appDetails?.domains) return null;
+
+    const pending = appDetails.domains.find((d) => {
+      if (d.domainType === 'prefix') return false;
+      if (isCustomerDomain(d.fqdn, domains)) return false;
+      return (
+        d.status === DomainStatus.PENDING ||
+        d.cdnStatus === CdnStatus.PENDING ||
+        !d.status ||
+        (d.status && d.status !== DomainStatus.ACTIVE && d.status !== DomainStatus.DELETING && !d.anycastIp)
+      );
+    });
+
+    return pending ? pending.fqdn : null;
+  }, [appDetails, domains]);
+
+  const pendingDomainDetails = pendingDomain
+    ? appDetails?.domains?.find((d) => d.fqdn === pendingDomain)
+    : null;
+
+  // Cleanup validation timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (validationTimeoutRef.current) {
+        clearTimeout(validationTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  /**
+   * Check if brandName is a domain format (contains TLD)
+   */
+  function isDomainFormat(name: string): boolean {
+    return /\.[a-z]{2,}$/i.test(name);
+  }
+
+  /**
+   * Reconstruct full domain from brandName
+   * brandName can be:
+   * - Full domain: "example.com" -> "example.com"
+   * - Domain without TLD: "example" -> try common TLDs
+   */
+  function reconstructDomain(name: string, ownedDomains: any[]): string | null {
+    if (isDomainFormat(name)) {
+      return name;
+    }
+
+    // Try to match with owned domains by checking if any owned domain starts with brandName
+    const matchedDomain = ownedDomains.find(d => {
+      const domainName = d.name || d.internationalDisplayName || '';
+      return domainName.startsWith(`${name}.`) || domainName === name;
+    });
+
+    if (matchedDomain) {
+      return matchedDomain.domain || matchedDomain.name;
+    }
+
+    return null;
+  }
+
+  /**
+   * Determine widget mode based on brandName and owned domains
+   * Case 1 (Happy): brandName matches owned domain -> Show confirmation
+   * Case 2 (Neutral): No brandName or not a domain -> Show full widget
+   * Case 3 (Sad): brandName is domain but doesn't match owned -> Pre-fill external input
+   */
+  useEffect(() => {
+    if (!isDomainsFetched || !brandName || showOwnedDomainConfirmation || matchedOwnedDomain || customDomain) {
+      return;
+    }
+
+    const trimmedBrandName = brandName.trim();
+    if (!trimmedBrandName) return;
+
+    const fullDomain = reconstructDomain(trimmedBrandName, domains);
+
+    if (fullDomain && isCustomerDomain(fullDomain, domains)) {
+      // Case 1: brandName matches owned domain -> Show confirmation
+      setMatchedOwnedDomain(fullDomain);
+      setShowOwnedDomainConfirmation(true);
+
+      shipAnalyticsLog('domain.attach.widget.case1.matched_owned', {
+        appId,
+        brandName,
+        matchedDomain: fullDomain
+      });
+    } else if (isDomainFormat(trimmedBrandName)) {
+      // Case 3: brandName is a domain but doesn't match owned -> Pre-fill external input
+      setCustomDomain(trimmedBrandName);
+      setDebouncedDomain(trimmedBrandName);
+
+      shipAnalyticsLog('domain.attach.widget.case3.prefill_external', {
+        appId,
+        brandName,
+        domain: trimmedBrandName
+      });
+    }
+    // Case 2: brandName is not a domain or empty -> Show full widget (default behavior)
+
+  }, [brandName, domains, isDomainsFetched, appId, showOwnedDomainConfirmation, matchedOwnedDomain, customDomain]);
+
+  function handleCustomDomainChange(value: string) {
+    setCustomDomain(value);
+
+    if (customDomainError) {
+      setCustomDomainError(null);
+    }
+
+    if (validationTimeoutRef.current) {
+      clearTimeout(validationTimeoutRef.current);
+    }
+
+    validationTimeoutRef.current = setTimeout(() => {
+      setDebouncedDomain(value || '');
+    }, 500);
+  }
+
+  function getValidationErrorMessage(): string | undefined {
+    if (validationData && !validationData.available) {
+      return getDomainErrorMessage(validationData.errors, t);
+    }
+    if (modifyDomainsMutation.error) {
+      const errorData = (modifyDomainsMutation.error as any)?.response || (modifyDomainsMutation.error as any);
+      if (errorData.validationErrors && Array.isArray(errorData.validationErrors)) {
+        return getDomainErrorMessage(errorData.validationErrors, t);
+      }
+      return errorData.error || t('builder_custom_domain_error_add_failed');
+    }
+    if (hasValidationError) {
+      return t('builder_custom_domain_error_validation_failed');
+    }
+    return undefined;
+  }
+
+  async function handleConnectDomain(domainName: string) {
+    if (!appId) return;
+
+    const isGoDaddyDomain = isCustomerDomain(domainName, domains);
+
+    try {
+      setCustomDomain(null);
+
+      await modifyDomainsMutation.mutateAsync({
+        siteId: appId,
+        payload: {
+          domainsToCreate: [{ fqdn: domainName, primary: false }],
+          createCdn: true,
+        },
+      });
+      shipAnalyticsLog('domain.attach.widget.connect.success', {
+        appId,
+        domainName,
+        isGoDaddyDomain
+      });
+
+      if (sendUserMessage) {
+        if (isGoDaddyDomain) {
+          sendUserMessage(`Connected ${domainName} (GoDaddy domain - DNS will be auto-configured)`, { isActionRequest: true });
+        } else {
+          sendUserMessage(`Connected ${domainName} (external domain - DNS configuration required)`, { isActionRequest: true });
+        }
+      }
+    } catch (error) {
+      logger.error('domain-attach-widget.connect.failure', {
+        message: 'Failed to connect domain',
+        domainName,
+        isGoDaddyDomain,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      shipAnalyticsLog('domain.attach.widget.connect.failed', {
+        appId,
+        domainName,
+        isGoDaddyDomain,
+        error: error instanceof Error ? error.message : String(error)
+      });
+
+      if (sendUserMessage) {
+        sendUserMessage(`Failed to connect ${domainName}. Please try again.`, { isActionRequest: true });
+      }
+    }
+  }
+
+  async function handleDisconnectDomain(domainName: string) {
+    if (!appId) return;
+
+    try {
+      await modifyDomainsMutation.mutateAsync({
+        siteId: appId,
+        payload: {
+          domainsToDelete: [{ fqdn: domainName }],
+        },
+      });
+      shipAnalyticsLog('domain.attach.widget.disconnect.success', {
+        appId,
+        domainName
+      });
+
+      if (sendUserMessage) {
+        sendUserMessage(`I've disconnected ${domainName} from this project.`, { isActionRequest: true });
+      }
+    } catch (error) {
+      logger.error('domain-attach-widget.disconnect.failure', {
+        message: 'Failed to disconnect domain',
+        domainName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      shipAnalyticsLog('domain.attach.widget.disconnect.failed', {
+        appId,
+        domainName,
+        error: error instanceof Error ? error.message : String(error)
+      });
+
+      if (sendUserMessage) {
+        sendUserMessage(`Failed to disconnect ${domainName}. Please try again.`, { isActionRequest: true });
+      }
+    }
+  }
+
+  function handleAddCustomDomain() {
+    if (!customDomain || !appId) return;
+
+    const validation = validateDomain(customDomain);
+
+    if (!validation.isValid) {
+      setCustomDomainError(validation.error || t('builder_custom_domain_error_invalid'));
+      return;
+    }
+
+    setCustomDomainError(null);
+    setShowCustomDomainConfirmation(true);
+  }
+
+  async function handleConfirmAddCustomDomain() {
+    if (!customDomain || !appId) return;
+
+    setShowCustomDomainConfirmation(false);
+
+    shipAnalyticsLog('domain.attach.widget.custom.submitted', {
+      appId,
+      domain: sanitizeDomainInput(customDomain),
+      brandName,
+    });
+
+    await handleConnectDomain(sanitizeDomainInput(customDomain));
+    setCustomDomain(null);
+    setDebouncedDomain('');
+  }
+
+  function handleCancelAddCustomDomain() {
+    setShowCustomDomainConfirmation(false);
+  }
+
+  function handleCancelPurchase() {
+    setShowPurchaseWidget(false);
+
+    shipAnalyticsLog('domain.attach.widget.purchase.cancelled', {
+      appId,
+      brandName,
+    });
+  }
+
+  function handlePurchaseComplete(domain: string) {
+    setPurchasedDomain(domain);
+    setShowPurchaseWidget(false);
+    setCustomDomain(domain);
+
+    shipAnalyticsLog('domain.attach.widget.purchase.completed', {
+      appId,
+      brandName,
+      domain,
+    });
+  }
+
+  function handleOpenPurchase() {
+    setShowPurchaseWidget(true);
+
+    shipAnalyticsLog('domain.attach.widget.purchase.opened', {
+      appId,
+      brandName,
+    });
+  }
+
+  async function handleConfirmOwnedDomainAttach() {
+    if (!matchedOwnedDomain) return;
+
+    setShowOwnedDomainConfirmation(false);
+
+    shipAnalyticsLog('domain.attach.widget.owned.confirmed', {
+      appId,
+      domain: matchedOwnedDomain,
+      brandName,
+    });
+
+    await handleConnectDomain(matchedOwnedDomain);
+  }
+
+  function handleCancelOwnedDomainAttach() {
+    setShowOwnedDomainConfirmation(false);
+    setMatchedOwnedDomain(null);
+
+    shipAnalyticsLog('domain.attach.widget.owned.cancelled', {
+      appId,
+      domain: matchedOwnedDomain,
+      brandName,
+    });
+  }
+
+  // Get customer domain entries (includes root domains + connected subdomains)
+  const customerDomainEntries = (isDomainsFetched && isAppDetailsFetched) ? domains.map((domain) => {
+    const connectedDomains = appDetails?.domains?.filter(
+      (appDomain) =>
+        appDomain.domainType !== 'prefix' &&
+        isCustomerDomain(appDomain.fqdn, [domain])
+    ) || [];
+
+    return {
+      customerDomain: domain,
+      connectedDomains,
+    };
+  }) : [];
+
+  // Get custom domains (not prefix, not owned by customer)
+  const customDomains = (isDomainsFetched && isAppDetailsFetched && appDetails?.domains) ? appDetails.domains.filter(
+    (appDomain) =>
+      appDomain.domainType !== 'prefix' &&
+      !isCustomerDomain(appDomain.fqdn, domains)
+  ) : [];
+
+  // Check if there's already a domain being added or active
+  const hasActiveOrPendingCustomDomain = customDomains.some(
+    (d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE
+  );
+
+  const hasActiveOrPendingDomain = appDetails?.domains
+    ?.filter((d) => d.domainType !== 'prefix')
+    ?.some((d) => d.cdnStatus === CdnStatus.PENDING || d.status === DomainStatus.ACTIVE);
+
+  const isPublished = hasBeenPublished(site);
+
+  // In local dev (no subscription_id), allow domain operations without requiring publish
+  const isLocalDev = site && !site.subscription_id;
+  const requiresPublish = !isLocalDev && !isPublished;
+
+  const shouldDisableAddingDomain =
+    hasActiveOrPendingCustomDomain ||
+    hasActiveOrPendingDomain ||
+    requiresPublish ||
+    modifyDomainsMutation.isPending;
+
+  // Don't render if feature flag is disabled or still loading
+  if (isLoadingFlag || !isDomainAttachEnabled) {
+    return null;
+  }
+
+  // Show Domain Purchase Widget as a full replacement when opened
+  if (showPurchaseWidget) {
+    return (
+      <DomainPurchaseWidget
+        brandName={brandName}
+        appId={appId}
+        onPurchaseComplete={handlePurchaseComplete}
+        onCancel={handleCancelPurchase}
+        className={className}
+      />
+    );
+  }
+
+  // Case 1: Show owned domain confirmation if brandName matches owned domain
+  if (showOwnedDomainConfirmation && matchedOwnedDomain) {
+    return (
+      <Box
+        className={`rounded-lg border border-intents-ux-boxLowContrast-borderColor bg-intents-ux-box-backgroundColor p-4 ${className}`}
+        orientation="vertical"
+        gap="md"
+      >
+        <text.h4>
+          {t('builder_domain_attach_confirm_title', undefined, 'Attach Domain')}
+        </text.h4>
+
+        <text.p size={0}>
+          {t('builder_domain_attach_confirm_message', { domain: matchedOwnedDomain }, `Are you sure you want to attach ${matchedOwnedDomain}?`)}
+        </text.p>
+
+        <Box orientation="horizontal" gap="sm">
+          <Button
+            design="primary"
+            size="md"
+            text={t('builder_domain_attach_confirm_attach', undefined, 'Attach Domain')}
+            onClick={handleConfirmOwnedDomainAttach}
+            disabled={modifyDomainsMutation.isPending}
+          />
+          <Button
+            design="secondary"
+            size="md"
+            text={t('builder_domain_attach_confirm_cancel', undefined, 'Cancel')}
+            onClick={handleCancelOwnedDomainAttach}
+            disabled={modifyDomainsMutation.isPending}
+          />
+        </Box>
+
+        {modifyDomainsMutation.isPending && (
+          <Box orientation="horizontal" gap="sm" inlineAlignChildren="center">
+            <Spinner size="sm" />
+            <text.span size={-1} className="text-intents-ux-text-secondary">
+              {t('builder_domain_attach_connecting', undefined, 'Connecting domain...')}
+            </text.span>
+          </Box>
+        )}
+      </Box>
+    );
+  }
+
+  const hasGoDaddyDomains = !isLoading && !domainsError && customerDomainEntries.length > 0;
+
+  return (
+    <Box
+      className={`rounded-lg border border-intents-ux-boxLowContrast-borderColor bg-intents-ux-box-backgroundColor p-4 ${className}`}
+      orientation="vertical"
+      gap="md"
+    >
+      {/* Widget description */}
+      <text.span size={-1} className="text-intents-ux-text-secondary">
+        {t('builder_domain_attach_description', undefined, 'Connect a domain you already own or add an external domain to your project.')}
+      </text.span>
+
+      {/* Section 1: Your GoDaddy Domains */}
+      <Box className="rounded-md bg-intents-ux-boxLowContrast-backgroundColor p-3" orientation="vertical" gap="sm">
+        <text.h4>
+          {t('builder_domain_attach_godaddy_title', undefined, 'Your GoDaddy Domains')}
+        </text.h4>
+
+        {isLoading && (
+          <Box gap="sm">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={`skeleton-${i}`}
+                className="bg-intents-ux-box-backgroundColor rounded-lg px-2 py-1 flex gap-1"
+              >
+                <Skeleton rounding="full" size="sm" />
+                <Skeleton size="md" width="30%" />
+              </div>
+            ))}
+          </Box>
+        )}
+
+        {domainsError && (
+          <text.p emphasis="critical">
+            {t('builder_custom_domain_error_fetch_failed')}
+          </text.p>
+        )}
+        {/* Empty state with purchase CTA */}
+        {!isLoading && !domainsError && !hasGoDaddyDomains && (
+          <>
+            <text.span size={-1} className="text-intents-ux-text-secondary">
+              {t('builder_custom_domain_no_domains')}
+            </text.span>
+            {isDomainPurchaseEnabled && (
+              <Button
+                design="primary"
+                size="sm"
+                onClick={handleOpenPurchase}
+                text={t('builder_domain_purchase_button', undefined, 'Purchase a new domain')}
+              >
+                <CartIcon className="w-4 h-4 mr-1" />
+              </Button>
+            )}
+          </>
+        )}
+
+        {/* Domain list */}
+        {hasGoDaddyDomains && customerDomainEntries.slice(0, visibleDomainCount).map((entry, index) => {
+          const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
+
+          return (
+            <Box
+              key={`customer-domain-${index}-${domainName}`}
+              className="rounded-md bg-intents-ux-box-backgroundColor p-2"
+              gap="sm"
+            >
+              {(() => {
+                const rootAppDomain = entry.connectedDomains.find((d) => d.fqdn === domainName);
+                return (
+                  <DomainItem
+                    domain={entry.customerDomain}
+                    appDomain={rootAppDomain}
+                    onConnect={handleConnectDomain}
+                    onDisconnect={handleDisconnectDomain}
+                    isLoading={modifyDomainsMutation.isPending}
+                    disableConnect={shouldDisableAddingDomain}
+                  />
+                )
+              })()}
+
+              {entry.connectedDomains
+                .filter((d) => d.fqdn !== domainName)
+                .map((subdomain, subIndex) => (
+                  <DomainItem
+                    key={`subdomain-${index}-${subIndex}-${subdomain.fqdn}`}
+                    domain={{
+                      domain: subdomain.fqdn,
+                      name: subdomain.fqdn,
+                    }}
+                    appDomain={subdomain}
+                    onConnect={handleConnectDomain}
+                    onDisconnect={handleDisconnectDomain}
+                    isLoading={modifyDomainsMutation.isPending}
+                    disableConnect={shouldDisableAddingDomain}
+                    isCustomDomain={true}
+                  />
+                ))}
+            </Box>
+          )
+        })}
+
+        {hasGoDaddyDomains && customerDomainEntries.length > visibleDomainCount && (
+          <Button
+            design="tertiary"
+            size="sm"
+            text={t(
+              'builder_domain_attach_show_more',
+              { remaining: customerDomainEntries.length - visibleDomainCount }
+            )}
+            onClick={() => setVisibleDomainCount(prev => prev + DOMAINS_PER_PAGE)}
+          />
+        )}
+        {/* Recently purchased domain tag */}
+        {purchasedDomain && (
+          <Tag emphasis="success">
+            {t('builder_domain_purchase_recently', { domain: purchasedDomain }, `Recently purchased: ${purchasedDomain}`)}
+          </Tag>
+        )}
+      </Box>
+
+      {/* Section 2: Connect External Domain */}
+      <Box className="rounded-md bg-intents-ux-boxLowContrast-backgroundColor p-3" orientation="vertical" gap="sm">
+        <text.h4>
+          {t('builder_domain_attach_external_title', undefined, 'Connect an External Domain')}
+        </text.h4>
+
+        {!showCustomDomainConfirmation && (
+          <ExternalDomainInput
+            value={customDomain}
+            onChange={handleCustomDomainChange}
+            disabled={shouldDisableAddingDomain}
+            errorMessage={
+              customDomain === debouncedDomain && !isValidatingDomain
+                ? getValidationErrorMessage()
+                : undefined
+            }
+            isValidating={isValidatingDomain}
+            isValidationComplete={customDomain === debouncedDomain}
+            isAvailable={!hasValidationError && validationData?.available !== false}
+            onAdd={handleAddCustomDomain}
+          />
+        )}
+
+        {showCustomDomainConfirmation && (
+          <Box
+            className="rounded-md bg-intents-ux-box-backgroundColor p-3"
+            orientation="vertical"
+            gap="sm"
+          >
+            <text.strong size={-1}>
+              {t('builder_domain_connect_confirmation_title')}
+            </text.strong>
+            <text.span size={-1}>
+              {t('builder_domain_connect_confirmation_description')}
+            </text.span>
+            <Box orientation="horizontal" gap="sm">
+              <Button
+                design="primary"
+                size="sm"
+                text={t('builder_custom_domain_modal_button_continue')}
+                onClick={handleConfirmAddCustomDomain}
+              />
+              <Button
+                design="secondary"
+                size="sm"
+                text={t('builder_custom_domain_modal_button_cancel')}
+                onClick={handleCancelAddCustomDomain}
+              />
+            </Box>
+          </Box>
+        )}
+      </Box>
+
+      {/* Custom Domains Added Section */}
+      {customDomains.length > 0 && (
+        <Box gap="sm">
+          <text.strong size={-1}>
+            {t('builder_domain_attach_custom_domains')}
+          </text.strong>
+          {customDomains.map((appDomain, index) => (
+            <DomainItem
+              key={`custom-domain-${index}-${appDomain.fqdn}`}
+              domain={{
+                domain: appDomain.fqdn,
+                name: appDomain.fqdn,
+              }}
+              appDomain={appDomain}
+              onConnect={handleConnectDomain}
+              onDisconnect={handleDisconnectDomain}
+              isLoading={modifyDomainsMutation.isPending}
+              disableConnect={shouldDisableAddingDomain}
+              isCustomDomain={true}
+            />
+          ))}
+        </Box>
+      )}
+
+      {/* DNS Instructions for Pending External Domain */}
+      {pendingDomainDetails && (
+        <Box gap="sm">
+          <text.strong size={-1}>
+            {t('builder_domain_attach_dns_title')}
+          </text.strong>
+          <DomainDNS domainDetails={pendingDomainDetails} />
+        </Box>
+      )}
+
+      {/* Purchase option - only shown when user HAS domains (otherwise shown in empty state) */}
+      {isDomainPurchaseEnabled && hasGoDaddyDomains && (
+        <Box orientation="horizontal" gap="sm" inlineAlignChildren="center" className="pt-2 border-t border-intents-ux-boxLowContrast-borderColor">
+          <text.span size={-2} className="text-intents-ux-text-secondary">
+            {t('builder_domain_purchase_cta', undefined, "Need a new domain?")}
+          </text.span>
+          <Button
+            design="tertiary"
+            size="sm"
+            onClick={handleOpenPurchase}
+            text={t('builder_domain_purchase_button', undefined, 'Purchase')}
+          >
+            <CartIcon className="w-4 h-4 mr-1" />
+          </Button>
+        </Box>
+      )}
+    </Box>
+  )
+}

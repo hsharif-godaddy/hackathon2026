@@ -1,99 +1,346 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 
+import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { Logger } from '../../logging/index.js'
+import { getClientActionService } from '../../server/ai-lib-websocket-server.js'
 import { validateDomainName } from '../../utils/domain-validation.js'
+import { MemoryTool } from '../memory-tool.js'
 
-const logger = Logger.create({ service: 'domain-purchase-tool' })
+const logger = Logger.create({ service: 'domain-tool' })
+const memoryTool = new MemoryTool()
+const appRepo = new AppRepository()
 
-const domainPurchaseInputSchema = z.object({
-  brandName: z.string().optional().describe('Human-readable business/project name for domain search suggestions. NOT a domain — no dots or TLDs. Examples: "Sweet Delights Bakery", "Libro Tacos". Omit if user specified an exact domain and no brand context.'),
-  domain: z.string().optional().describe('Exact fully-qualified domain name the user wants to buy, including TLD. Examples: "my-sweet-store.com", "libro-tacos.net". Only set when user explicitly states a domain name with a TLD. Never fabricate — leave empty if user only describes a brand.'),
-  appId: z.string().optional().describe('The app ID for context (optional, uses current session app if not provided)')
+const domainInputSchema = z.object({
+    action: z.enum(['purchase', 'attach']).describe(
+        'Action to perform. "purchase" = user wants to BUY/FIND a new domain. "attach" = user wants to CONNECT a domain they already own.'
+    ),
+    brandName: z.string().optional().describe(
+        'Human-readable business/project name for domain search suggestions. NOT a domain — no dots or TLDs. Examples: "Sweet Delights Bakery", "Libro Tacos". Omit if user specified an exact domain and no brand context.'
+    ),
+    domain: z.string().optional().describe(
+        'Exact fully-qualified domain name, including TLD. Examples: "my-sweet-store.com", "libro-tacos.net". For purchase: the domain user wants to buy. For attach: the domain user wants to connect. Only set when user explicitly states a domain name with a TLD. Never fabricate — leave empty if user only describes a brand.'
+    ),
+    appId: z.string().optional().describe(
+        'The app ID for context (optional, uses current session app if not provided)'
+    )
 })
 
 /**
  * @example
- * domainPurchase({ brandName: "Letter Club" })
- * domainPurchase({ domain: "letter-club.com" })
- * domainPurchase({ brandName: "Letter Club", domain: "letter-club.com" })
+ * domain({ action: 'purchase', brandName: 'Letter Club' })
+ * domain({ action: 'purchase', domain: 'letter-club.com' })
+ * domain({ action: 'attach', domain: 'mydomain.com' })
  */
 export const domainPurchaseAITool: Tool = createTool(
-  `Render in-app domain purchase widget for buying NEW domains. Widget handles search, pricing, and checkout.
+    `Unified domain tool for purchasing new domains or attaching existing ones to a project.
 
-Use for: buy/purchase/find/search domains the user does NOT own yet.
-NOT for: connecting/attaching/linking an existing domain — direct users to Settings instead.
+ACTION = "purchase" — Show the domain PURCHASE widget to help users SEARCH FOR and BUY a NEW domain.
+ACTION = "attach"  — Show the domain ATTACH widget to help users CONNECT an existing domain.
+
+WHEN TO USE action="purchase" (BUY/FIND):
+- User says "buy a domain", "purchase a domain", "get a domain", "find a domain"
+- User says "I need a domain", "search for domains"
+- User wants to see available domains, suggestions, or pricing
+- User doesn't have a domain yet
+
+WHEN TO USE action="attach" (CONNECT/LINK):
+- User says "I purchased <domain>!", "I bought <domain>!"
+- User says "Attach <domain>", "Use <domain>", "Connect <domain>"
+- User says "add my domain to my site", "link my domain"
+- User already owns a domain and wants to point it to their app
+- After publish when user asks about domain connection
+
+PUBLISH HANDLING (attach only):
+- If app is NOT published → Tool returns requiresPublish flag. Ask the user if they want to publish first.
+- If app IS published → Shows widget immediately
 
 Pass domain when user specifies an exact domain (e.g. "I want to buy my-sweet-store.com").
 Pass brandName as the project/app name for general domain suggestions.
-Call immediately without clarifying questions.`,
-  domainPurchaseInputSchema,
-  async (input, context) => {
-    const appId = context?.metadata?.appId as string || input.appId
-    if (!appId) {
-      logger.error('domain-purchase.missing-app-id', {})
-      return {
-        success: false,
-        error: 'App ID is required',
-        message: 'App ID is required to purchase domains. Please ensure you are working within an app context.'
-      }
-    }
 
-    const permissions = (context?.metadata as any)?.permissions ?? {}
+RULES:
+1. Widget was shown before → CALL IT AGAIN if they ask
+2. If user mentions a SPECIFIC DOMAIN, pass it as domain param
+3. NEVER respond with text about domains — ONLY call this tool
+4. NEVER redirect to Settings — use this tool instead
+5. NEVER ask clarifying questions — just show the widget
+
+DO NOT explain domain concepts. DO NOT describe the process. JUST CALL THE TOOL.`,
+    domainInputSchema,
+    async (input, context) => {
+        const appId = context?.metadata?.appId as string || input.appId
+        if (!appId) {
+            logger.error('domain.missing-app-id', {})
+            return {
+                success: false,
+                error: 'App ID is required',
+                message: 'App ID is required for domain operations. Please ensure you are working within an app context.'
+            }
+        }
+
+        return input.action === 'purchase'
+            ? purchase(input, context, appId)
+            : attach(input, context, appId)
+    }
+)
+
+async function purchase(
+    input: z.infer<typeof domainInputSchema>,
+    context: any,
+    appId: string
+) {
+    const permissions = context?.metadata?.permissions ?? {}
     const canPurchaseDomain = permissions?.canPurchaseDomain ?? false
 
-    logger.info('domain-purchase.permission-check', {
-      canPurchaseDomain,
-      permissionsHasPurchaseDomain: Object.hasOwn(permissions, 'canPurchaseDomain'),
+    logger.info('domain.purchase.permission-check', {
+        canPurchaseDomain,
+        permissionsHasPurchaseDomain: Object.hasOwn(permissions, 'canPurchaseDomain'),
     })
 
     if (!canPurchaseDomain) {
-      logger.warn('domain-purchase.no-permission', {
-        message: 'User does not have domain purchase permission',
-      })
-      return {
-        success: false,
-        error: 'Domain purchase permission not granted',
-        message: 'This feature is not enabled for your account.'
-      }
+        logger.warn('domain.purchase.no-permission', {
+            message: 'User does not have domain purchase permission',
+        })
+        return {
+            success: false,
+            error: 'Domain purchase permission not granted',
+            message: 'This feature is not enabled for your account.'
+        }
     }
 
-    const { brandName } = input
     const domain = input.domain?.trim() || undefined
 
     if (domain) {
-      const validation = validateDomainName(domain)
-      if (!validation.valid) {
-        logger.warn('domain-purchase.invalid-domain', {
-          domain,
-          error: validation.error,
-        })
-        return {
-          success: false,
-          error: validation.error,
-          message: `"${domain}" is not a valid domain name. ${validation.error}`
+        const validation = validateDomainName(domain)
+        if (!validation.valid) {
+            logger.warn('domain.purchase.invalid-domain', {
+                domain,
+                error: validation.error,
+            })
+            return {
+                success: false,
+                error: validation.error,
+                message: `"${domain}" is not a valid domain name. ${validation.error}`
+            }
         }
-      }
     }
 
-    const displayLabel = domain || brandName
-
-    logger.info('domain-purchase.render', {
-      brandName: brandName || 'not-provided',
-      domain: domain || 'not-provided',
-      appId
+    logger.info('domain.purchase.render', {
+        brandName: input.brandName || 'not-provided',
+        domain: domain || 'not-provided',
+        appId
     })
 
     return {
-      success: true,
-      widgetType: 'domain-purchase',
-      widgetData: {
-        type: 'domain-purchase',
-        brandName,
-        domain,
-        appId
-      },
-      message: `Domain purchase widget rendered${displayLabel ? ` for ${displayLabel}` : ''}`
+        success: true,
+        widgetType: 'domain-purchase',
+        widgetData: {
+            type: 'domain-purchase',
+            brandName: input.brandName,
+            domain,
+            appId
+        },
+        message: `Domain purchase widget rendered${(domain || input.brandName) ? ` for ${domain || input.brandName}` : ''}`
     }
-  }
-)
+}
+
+async function attach(
+    input: z.infer<typeof domainInputSchema>,
+    context: any,
+    appId: string
+) {
+    const permissions = context?.metadata?.permissions ?? {}
+    const canPurchaseDomain = permissions?.canPurchaseDomain ?? false
+
+    logger.info('domain.attach.permission-check', {
+        canPurchaseDomain,
+        permissionsHasPurchaseDomain: Object.hasOwn(permissions, 'canPurchaseDomain'),
+    })
+
+    if (!canPurchaseDomain) {
+        logger.warn('domain.attach.no-permission', {
+            message: 'User does not have domain purchase permission',
+        })
+        return {
+            success: false,
+            error: 'Domain purchase permission not granted',
+            message: 'This feature is not enabled for your account.'
+        }
+    }
+
+    const socketId = context?.socketId
+    if (!socketId || typeof socketId !== 'string') {
+        logger.error('domain.attach.missing-socket-id', { appId })
+        return {
+            success: false,
+            error: 'Socket ID not available',
+            message: 'Unable to verify app status. Please try again.'
+        }
+    }
+
+    const clientActionService = getClientActionService(socketId)
+    if (!clientActionService) {
+        logger.error('domain.attach.client-action-service-unavailable', { appId })
+        return {
+            success: false,
+            error: 'Client action service not available',
+            message: 'Unable to verify app status. Please try again.'
+        }
+    }
+
+    const domain = input.domain?.trim() || undefined
+
+    // Store domain in memory so the publish tool can auto-attach later
+    if (domain) {
+        await storePurchasedDomain(appId, domain)
+    }
+
+    const published = await checkPublished(clientActionService, appId)
+    if (!published) {
+        logger.info('domain.attach.requires-publish', {
+            appId,
+            domain: domain || 'not-provided',
+        })
+        return {
+            success: false,
+            requiresPublish: true,
+            error: 'App must be published before attaching a domain',
+            message: 'The app needs to be published before a domain can be attached. Ask the user if they would like to publish first.'
+        }
+    }
+
+    // Auto-attach when we have a concrete FQDN and the site is published
+    if (domain) {
+        return autoAttach(clientActionService, appId, domain)
+    }
+
+    logger.info('domain.attach.render', {
+        domain: 'not-provided',
+        appId,
+    })
+
+    return {
+        success: true,
+        widgetType: 'domain-attach',
+        widgetData: {
+            type: 'domain-attach',
+            brandName: domain || input.brandName,
+            appId
+        },
+        message: 'Domain attach widget rendered'
+    }
+}
+
+/**
+ * Auto-attach a domain to a published app via the client action service.
+ * Falls back to the widget when the client-side action fails.
+ */
+async function autoAttach(
+    clientActionService: NonNullable<ReturnType<typeof getClientActionService>>,
+    appId: string,
+    domain: string
+) {
+    try {
+        logger.info('domain.attach.auto', { appId, domain })
+
+        const result = await clientActionService.executeAction({
+            action: 'attachDomain',
+            params: { appId, domainName: domain },
+            timeoutMs: 15000,
+        })
+
+        if (result.success) {
+            logger.info('domain.attach.auto.success', { appId, domain })
+            return {
+                success: true,
+                message: `Domain ${domain} has been attached to your app. DNS propagation may take a few minutes.`
+            }
+        }
+
+        logger.warn('domain.attach.auto.failed', {
+            appId,
+            domain,
+            error: (result as any).error,
+        })
+    } catch (error) {
+        logger.warn('domain.attach.auto.error', {
+            appId,
+            domain,
+            error: error instanceof Error ? error.message : String(error),
+        })
+    }
+
+    // Fall back to widget so the user can retry manually
+    return {
+        success: true,
+        widgetType: 'domain-attach',
+        widgetData: {
+            type: 'domain-attach',
+            brandName: domain,
+            appId
+        },
+        message: `Automatic attachment failed — showing domain attach widget for ${domain}`
+    }
+}
+
+/**
+ * Check if the app has been published.
+ * Returns true if published or if status can't be determined (fail open).
+ */
+async function checkPublished(
+    clientActionService: NonNullable<ReturnType<typeof getClientActionService>>,
+    appId: string
+): Promise<boolean> {
+    try {
+        const siteDataResult = await clientActionService.executeAction({
+            action: 'getSiteData',
+            params: { appId },
+            timeoutMs: 10000,
+        })
+
+        if (siteDataResult.success && siteDataResult.result) {
+            const siteData = siteDataResult.result as { variants?: string[] }
+            return siteData.variants?.includes('publish') ?? false
+        }
+    } catch (error) {
+        logger.warn('domain.attach.publish-check-failed', {
+            appId,
+            error: error instanceof Error ? error.message : String(error),
+        })
+    }
+
+    // Can't determine — allow to proceed
+    return true
+}
+
+/**
+ * Best-effort store of domain.purchased in memory.
+ * The publish tool reads this key to auto-attach purchased domains.
+ * Failures are logged but never block the attach widget from rendering.
+ */
+async function storePurchasedDomain(appId: string, fqdn: string) {
+    try {
+        const app = appRepo.findById(appId)
+        if (!app) return
+
+        await memoryTool.setMemory(
+            {
+                key: 'domain.purchased',
+                value: {
+                    fqdn,
+                    connectedToProject: false,
+                    purchasedAt: new Date().toISOString(),
+                },
+            },
+            app.path,
+            appId
+        )
+        logger.info('domain.attach.memory-stored', { appId, fqdn })
+    } catch (error) {
+        logger.warn('domain.attach.memory-store-failed', {
+            appId,
+            fqdn,
+            error: error instanceof Error ? error.message : String(error),
+        })
+    }
+}

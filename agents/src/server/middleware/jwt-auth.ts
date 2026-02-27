@@ -13,7 +13,7 @@ export interface AgentContext {
   siteId: string;          // Custom claim
   canDownload: boolean;    // Permission to download app files
   canPublish: boolean;     // Permission to publish app
-  canPurchaseDomain?: boolean; // Permission to purchase custom domains
+  canPurchaseDomain?: boolean; // Permission to purchase and attach custom domains
   isE2S: boolean; // true if auth type is 'e2s' (employee-to-shopper)
   exp: number;
   iat: number;

@@ -21,6 +21,7 @@ export interface DomainValidationResult {
  * - Minimum 2 labels (e.g., example.com)
  * - Each label: 1-63 characters
  * - Labels cannot start or end with hyphen
+ * - TLD must be at least 2 characters
  *
  * @param domainName - The domain name to validate
  * @returns Validation result with success status and optional error message
@@ -66,6 +67,12 @@ export function validateDomainName(domainName: string): DomainValidationResult {
     if (label.startsWith('-') || label.endsWith('-')) {
       return { valid: false, error: 'Domain labels cannot start or end with a hyphen' }
     }
+  }
+
+  // TLD must be at least 2 characters (no single-char TLDs exist in practice)
+  const tld = labels[labels.length - 1]
+  if (!tld || tld.length < 2) {
+    return { valid: false, error: 'Top-level domain must be at least 2 characters' }
   }
 
   return { valid: true }

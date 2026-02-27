@@ -46,15 +46,15 @@ The `websiteRebuild` tool will:
 
 ## Domain Purchase Requests - Defer Until After App Details
 
-If the user mentions buying/purchasing a domain during the initial conversation:
-- "I want to buy mybrand.com"
-- "Help me get a custom domain"
-- "I need to purchase a domain for my business"
+If user mentions buying or purchasing a domain alongside app creation:
 
-**Do NOT call any domain tool.** Instead:
-1. Note the intent and continue gathering app details normally
-2. Include `DOMAIN PURCHASE INTENT` in the handoff prompt (see format below)
-3. The develop agent will handle the domain purchase after building the app
+1. **Acknowledge** the domain request briefly
+2. **Gather app details first** — the brand/business name yields much better domain suggestions than generic terms
+3. **Include `DOMAIN PURCHASE INTENT: yes`** in the handoff prompt so the develop agent offers domain purchase after the first preview
+
+Do NOT call any domain tool in the initial agent. Domain purchase is handled by the develop agent after the app is built.
+
+---
 
 **If NOT a rebuild request**, continue with the normal workflow below:
 
@@ -322,6 +322,7 @@ Use the `handoff` tool after creating the todo list. This transfers execution to
 10. **Build Order** - Explicit sequence: structure → images → placeholder colors → color-scheme handoff → show design
 11. **Initial Scope** - Explicitly state building homepage DESIGN ONLY for review
 12. **Suggested Responses** - What questions to ask after showing the design
+13. **Domain Purchase Intent** (if detected) - Flag that user wants to purchase a domain
 
 **Handoff format (Standard Layout - for marketing sites, portfolios, e-commerce, blogs):**
 
@@ -388,16 +389,15 @@ After completing the homepage design:
 INITIAL SCOPE:
 Build ONLY the homepage design for this preview. This is a design review, not the full site.
 
-DOMAIN PURCHASE INTENT (include only if user mentioned wanting to buy a domain):
-User expressed interest in purchasing a domain: [description of what they said, e.g. 'wants to buy sweet-delights.com' or 'wants a custom domain for their bakery'].
-After completing the initial homepage build, call the domainPurchase tool.
-
 SUGGESTED RESPONSES:
 After showing the homepage design, use suggestedResponse tool to ask:
 - Question: \"What do you think of the design?\"
 - Suggestions: [\"Looks great, let's build [next feature from todo list]\", \"Change the color scheme\", \"Change the fonts\", \"I'd like to adjust [specific element]\"]
 
-Make it clear we're seeking design feedback, not asking to build everything at once."
+Make it clear we're seeking design feedback, not asking to build everything at once.
+
+DOMAIN PURCHASE INTENT: [yes/no - include only if user mentioned wanting to buy a domain]
+If yes, offer domain purchase using the project name as brandName after first preview."
 }
 ```
 

@@ -107,5 +107,15 @@ describe('validateDomainName', () => {
       expect(result.valid).toBe(false);
       expect(result.error).toContain('between 1 and 63');
     });
+
+    it('should reject single-char TLD', () => {
+      const result = validateDomainName('example.a');
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Top-level domain must be at least 2 characters');
+    });
+
+    it('should accept two-char TLD', () => {
+      expect(validateDomainName('example.co')).toEqual({ valid: true });
+    });
   });
 });

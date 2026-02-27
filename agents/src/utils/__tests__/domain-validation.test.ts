@@ -42,9 +42,14 @@ describe('domain-validation', function domainValidationTests() {
         expect(validateDomainName('Example.COM')).toEqual({ valid: true })
       })
 
-      it('should accept domain with leading/trailing whitespace (trimmed)', function trimmed() {
-        expect(validateDomainName('  example.com  ')).toEqual({ valid: true })
-        expect(validateDomainName('\texample.com\n')).toEqual({ valid: true })
+      it('should reject domain with leading/trailing whitespace', function whitespace() {
+        const result1 = validateDomainName('  example.com  ')
+        expect(result1.valid).toBe(false)
+        expect(result1.error).toContain('invalid characters')
+
+        const result2 = validateDomainName('\texample.com\n')
+        expect(result2.valid).toBe(false)
+        expect(result2.error).toContain('invalid characters')
       })
     })
 
@@ -52,19 +57,19 @@ describe('domain-validation', function domainValidationTests() {
       it('should reject empty string', function empty() {
         const result = validateDomainName('')
         expect(result.valid).toBe(false)
-        expect(result.error).toContain('cannot be empty')
+        expect(result.error).toContain('invalid characters')
       })
 
       it('should reject whitespace-only string', function whitespaceOnly() {
         const result = validateDomainName('   ')
         expect(result.valid).toBe(false)
-        expect(result.error).toContain('cannot be empty')
+        expect(result.error).toContain('invalid characters')
       })
 
       it('should reject tab/newline-only string', function tabNewline() {
         const result = validateDomainName('\t\n')
         expect(result.valid).toBe(false)
-        expect(result.error).toContain('cannot be empty')
+        expect(result.error).toContain('invalid characters')
       })
 
       it('should reject non-string input', function nonString() {
@@ -147,6 +152,18 @@ describe('domain-validation', function domainValidationTests() {
         const result = validateDomainName(`${'a'.repeat(64)}.com`)
         expect(result.valid).toBe(false)
         expect(result.error).toContain('between 1 and 63')
+      })
+    })
+
+    describe('TLD validation', function tldTests() {
+      it('should reject single-char TLD', function shortTld() {
+        const result = validateDomainName('example.a')
+        expect(result.valid).toBe(false)
+        expect(result.error).toContain('Top-level domain must be at least 2 characters')
+      })
+
+      it('should accept two-char TLD', function twoCharTld() {
+        expect(validateDomainName('example.co')).toEqual({ valid: true })
       })
     })
 

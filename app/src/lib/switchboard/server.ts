@@ -30,6 +30,7 @@ export async function checkSwitchboardFlag(
       'appbuilder-manage-plan': true,
       'appbuilder-settings-team': true,
       'appbuilder-domain-purchase': true,
+      'appbuilder-domain-attach': true,
       'appbuilder-share-links': true,
     };
 

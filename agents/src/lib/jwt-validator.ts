@@ -107,7 +107,7 @@ export interface JWTClaims {
   siteId: string;          // Site ID
   canDownload?: boolean;   // Permission to download app files (optional for backward compatibility)
   canPublish?: boolean;    // Permission to publish app (optional for backward compatibility)
-  canPurchaseDomain?: boolean; // Permission to purchase custom domains (optional for backward compatibility)
+  canPurchaseDomain?: boolean; // Permission to purchase and attach custom domains (optional for backward compatibility)
   isE2S?: boolean; // true if auth type is 'e2s' (employee-to-shopper), optional for backward compatibility
 }
 
@@ -135,7 +135,7 @@ export class JWTValidator {
     if (!configValidation.valid) {
       throw new Error(`JWT configuration invalid: ${configValidation.errors.join(', ')}`);
     }
-    
+
     this.config = getJWTAgentConfig();
   }
 
@@ -204,7 +204,7 @@ export class JWTValidator {
       key: jwk as JsonWebKey,
       format: 'jwk'
     });
-    
+
     return keyObject.export({
       type: 'spki',
       format: 'pem'
@@ -281,7 +281,7 @@ export class JWTValidator {
     // Optional: Check if siteId matches configured site
     const configuredSiteId = auth.getSiteId();
     const bypassValues = ['bypass-site', 'default-site', 'local-dev-site', 'mock-site-id', 'unknown-site'];
-    
+
     if (configuredSiteId && !bypassValues.includes(configuredSiteId) && claims.siteId !== configuredSiteId) {
       return {
         valid: false,
@@ -316,11 +316,11 @@ export class JWTValidator {
       if (err.message?.includes('malformed')) return 'Invalid token format';
       if (err.message?.includes('audience')) return 'Invalid token audience';
       if (err.message?.includes('issuer')) return 'Invalid token issuer';
-      
+
       // Return the actual error message for debugging
       return err.message || `${err.name || 'Unknown error'}: No message available`;
     }
-    
+
     return `JWT validation failed: ${String(error)}`;
   }
 

@@ -7,6 +7,7 @@
 export const CLIENT_ACTIONS = {
   PUBLISH: 'publish',
   GET_SITE_DATA: 'getSiteData',
+  ATTACH_DOMAIN: 'attachDomain',
   MCP_CALL: 'mcp_call',
 } as const
 

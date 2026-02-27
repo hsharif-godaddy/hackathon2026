@@ -1,7 +1,7 @@
 /**
  * JWT Service
  * Creates and manages JWT tokens using private keys from Secrets Manager
- * 
+ *
  * @note This file is server-only and uses Node.js crypto module
  */
 
@@ -138,7 +138,7 @@ export class JWTService {
 
   /**
    * Create JWT header and payload
-   * 
+   *
    * @param options - Token creation options
    * @param keyId - Key ID for JWT header
    * @param expiresInSeconds - Token expiration time in seconds (default: 12 hours)
@@ -178,7 +178,7 @@ export class JWTService {
 
   /**
    * Create JWT token using Node.js crypto for signing
-   * 
+   *
    * @param options - Token creation options
    * @param expiresInSeconds - Token expiration time in seconds (default: 12 hours)
    * @returns Token and expiration date
@@ -186,22 +186,22 @@ export class JWTService {
   async createToken(options: CreateTokenOptions, expiresInSeconds?: number): Promise<TokenResult> {
     try {
       const activeKey = await this.getActiveKey();
-      
+
       const { header, payload } = this.createTokenPayload(options, activeKey.keyId, expiresInSeconds);
-      
+
       const message = `${header}.${payload}`;
-      
+
       const sign = createSign('RSA-SHA256');
       sign.update(message);
       sign.end();
-      
+
       const signature = sign.sign(activeKey.privateKey, 'base64url');
-      
+
       const token = `${message}.${signature}`;
-      
+
       const exp = JSON.parse(Buffer.from(payload, 'base64url').toString('utf-8')).exp;
       const expires = new Date(exp * 1000);
-      
+
       logger.info('jwt.token.created', {
         siteId: options.siteId,
         keyId: activeKey.keyId,
@@ -209,13 +209,13 @@ export class JWTService {
       });
 
       return { token, expires };
-      
+
     } catch (error) {
       logger.error('jwt.token.create.error', {
         error: error instanceof Error ? error.message : 'Unknown error',
         siteId: options.siteId
       });
-      
+
       throw new Error(`Failed to create JWT token: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

@@ -169,6 +169,8 @@ suggestedResponse({
 });
 ```
 
+**Check conversation history first** - don't suggest adding features that were already built (e.g., don't suggest "add a contact form" if one exists). This does NOT apply to domain attachment - always show `domainPurchase({ action: 'attach' })` when user asks, regardless of history.
+
 ## Design Guidelines
 
 ### Visual Style
@@ -392,6 +394,31 @@ When receiving a handoff from the initial agent, follow the BUILD ORDER in the h
 ### Action Requests
 
 When you see `[Action Request]` in context, execute the request immediately. This indicates the user selected one of your suggested options.
+
+### Domain Attachment
+
+Call `domainPurchase` tool immediately when user mentions domains. If the tool returns `requiresPublish: true`, ask the user if they'd like to publish first, then call the publish tool if they agree.
+
+**Intent detection:**
+
+| User says | Action |
+| --- | --- |
+| "I purchased/bought mydomain.com" / "Attach/Connect/Use mydomain.com" | `domainPurchase({ action: 'attach', domain: 'mydomain.com' })` |
+| "Add a domain" / "Connect a domain" / "Custom domain" | `domainPurchase({ action: 'attach' })` |
+| "Buy/Find a domain" / "I need a domain" | `domainPurchase({ action: 'purchase', brandName: '[project name]' })` |
+| "I want to buy my-sweet-store.com" | `domainPurchase({ action: 'purchase', domain: 'my-sweet-store.com' })` |
+
+**Responding to widget messages:**
+
+| Widget message | Response |
+| --- | --- |
+| `Connected {domain} (GoDaddy domain - DNS will be auto-configured)` | Acknowledge; DNS is automatic, site available shortly |
+| `Connected {domain} (external domain - DNS configuration required)` | Acknowledge; user must add A record at their registrar, up to 48h propagation |
+| `Failed to connect/purchase {domain}` | Acknowledge error, offer to retry |
+
+### Domain Purchase Intent (From Initial Handoff)
+
+When the handoff contains `DOMAIN PURCHASE INTENT: yes`, complete the first preview build first, then IMMEDIATELY call `domainPurchase({ action: 'purchase', brandName: '[project name]' })` — no confirmation needed, user already expressed intent. Wait until after preview because the project name yields better domain suggestions.
 
 ## Critical Rules
 

@@ -41,6 +41,7 @@ export const getSiteDataAction: ClientActionExecutor = async (params) => {
     return {
       publishedUrl: site.published_url,
       domains: site.domains,
+      variants: site.variants,
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)

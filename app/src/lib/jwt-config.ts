@@ -19,7 +19,7 @@ export interface JWTClaims {
   siteId: string;          // Site ID
   canDownload: boolean;    // Permission to download app files
   canPublish: boolean;     // Permission to publish app
-  canPurchaseDomain: boolean; // Permission to purchase custom domains
+  canPurchaseDomain: boolean; // Permission to purchase and attach custom domains
   authType?: 'basic' | 'e2s' | 's2s'; // Authentication type: basic (normal), e2s (employee impersonation), s2s (shopper delegation)
   isE2S: boolean; // Backward compatibility: true if authType is 'e2s' or 's2s'
 }

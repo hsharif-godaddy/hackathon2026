@@ -61,7 +61,7 @@ export const POST = withCustomerAuth(async (
       );
     }
 
-    const baseUrl = 'https://domain-attach.api.godaddy.com';
+    const baseUrl = process.env.DOMAIN_ATTACH_API_BASE_URL || 'https://domain-attach.api.godaddy.com';
     const client = new DomainsClient({ baseUrl, jwt: authContext.jwt });
 
     const attachConfig = {

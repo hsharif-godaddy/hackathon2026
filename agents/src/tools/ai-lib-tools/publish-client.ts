@@ -7,8 +7,28 @@
 
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
-import { executePublish } from '../publish-client-tool.js'
+
+import { Logger } from '../../logging/index.js'
 import { getClientActionService } from '../../server/ai-lib-websocket-server.js'
+import { validateDomainName } from '../../utils/domain-validation.js'
+import { executePublish } from '../publish-client-tool.js'
+import { MemoryTool } from '../memory-tool.js'
+import { AppRepository } from '../../database/repositories/AppRepository.js'
+
+const logger = Logger.create({ service: 'publish-client-tool' })
+const memoryTool = new MemoryTool()
+const appRepo = new AppRepository()
+
+interface SiteDomain {
+  fqdn: string
+  domainType: string
+  status: string
+}
+
+function hasCustomDomain(domains?: SiteDomain[]): boolean {
+  if (!domains || !Array.isArray(domains)) return false
+  return domains.some(d => d.domainType !== 'prefix' && d.status === 'active')
+}
 
 /**
  * Publish tool for AI agents
@@ -32,6 +52,11 @@ NEVER USE:
 - When you think the app is "ready"
 - Automatically after completing a feature
 
+AFTER SUCCESSFUL PUBLISH:
+- Check if the site has a custom domain attached
+- If NO custom domain exists and ENABLE_DOMAIN_ATTACH is enabled, offer "Add a custom domain" as a next step using suggestedResponse
+- If custom domain exists, skip domain suggestion and offer other next steps
+
 IMPORTANT: Always call publishStatus after this tool to verify the app started successfully.`,
   z.object({
     commitHash: z
@@ -47,7 +72,6 @@ IMPORTANT: Always call publishStatus after this tool to verify the app started s
     }
 
     // Get socketId from context with validation
-    // Note: ai-lib sets socketId on context during tool execution, but it's not in types
     const socketId = (context as any)?.socketId
     if (!socketId || typeof socketId !== 'string') {
       throw new Error('Socket ID not available in context - tool must be called via WebSocket')
@@ -108,8 +132,162 @@ IMPORTANT: Always call publishStatus after this tool to verify the app started s
       message += `\nArchive path: ${result.archivePath}`
     }
 
+    // Check for custom domain and purchased domains to determine next step suggestion
+    let shouldSuggestDomain = false
+    let purchasedDomain: string | null = null
+    let autoAttachedDomain: string | null = null
+    const domainAttachEnabled = (context?.metadata as any)?.permissions?.canPurchaseDomain ?? false
+
+    if (domainAttachEnabled) {
+      try {
+        const siteDataResult = await clientActionService.executeAction({
+          action: 'getSiteData',
+          params: { appId },
+          timeoutMs: 10000,
+        })
+
+        if (siteDataResult.success && siteDataResult.result) {
+          const siteData = siteDataResult.result as { domains?: SiteDomain[] }
+          const hasCustom = hasCustomDomain(siteData.domains)
+          shouldSuggestDomain = !hasCustom
+
+          // Check memory for mentioned or purchased domains if no custom domain exists
+          if (!hasCustom) {
+            try {
+              const app = appRepo.findById(appId)
+              if (app) {
+                // Check for purchased domain (stored by domain tool)
+                const purchasedResult = await memoryTool.readMemory(
+                  { key: 'domain.purchased' },
+                  app.path,
+                  appId
+                )
+                if (purchasedResult.success && purchasedResult.exists) {
+                  const purchased = purchasedResult.value as { fqdn?: string; connectedToProject?: boolean }
+                  if (purchased?.fqdn && !purchased.connectedToProject) {
+                    purchasedDomain = purchased.fqdn
+                  }
+                }
+
+                // Auto-attach purchased domain if one exists and not yet connected
+                if (purchasedDomain) {
+                  // SECURITY: Validate domain name format before passing to client action
+                  const validation = validateDomainName(purchasedDomain)
+                  if (!validation.valid) {
+                    logger.warn('publish-client.invalid-domain-name', {
+                      appId,
+                      domainName: purchasedDomain,
+                      error: validation.error,
+                    })
+                  } else {
+                    try {
+                      logger.info('publish-client.auto-attach-domain', {
+                        appId,
+                        domainName: purchasedDomain,
+                      })
+
+                      const attachResult = await clientActionService.executeAction({
+                        action: 'attachDomain',
+                        params: {
+                          appId,
+                          domainName: purchasedDomain,
+                        },
+                        timeoutMs: 30000,
+                      })
+
+                      if (attachResult.success) {
+                        autoAttachedDomain = purchasedDomain
+                        shouldSuggestDomain = false
+                        message += `\n\n✅ Automatically connected ${purchasedDomain} to your site!`
+
+                        // Update memory to mark domain as connected (with separate error handling)
+                        try {
+                          await memoryTool.setMemory(
+                            {
+                              key: 'domain.purchased',
+                              value: {
+                                fqdn: purchasedDomain,
+                                connectedToProject: true,
+                                autoAttachedAt: new Date().toISOString(),
+                              },
+                            },
+                            app.path,
+                            appId
+                          )
+                        } catch (memoryError) {
+                          logger.warn('publish-client.memory-update-failed', {
+                            appId,
+                            domainName: purchasedDomain,
+                            error: memoryError instanceof Error ? memoryError.message : String(memoryError),
+                          })
+                        }
+
+                        logger.info('publish-client.auto-attach-success', {
+                          appId,
+                          domainName: purchasedDomain,
+                        })
+                      } else {
+                        logger.warn('publish-client.auto-attach-failed', {
+                          appId,
+                          domainName: purchasedDomain,
+                          error: attachResult.error || 'Unknown error',
+                        })
+                      }
+                    } catch (attachError) {
+                      logger.warn('publish-client.auto-attach-error', {
+                        appId,
+                        domainName: purchasedDomain,
+                        error: attachError instanceof Error ? attachError.message : String(attachError),
+                      })
+                    }
+                  }
+                }
+              }
+            } catch (memoryError) {
+              logger.debug('publish-client.memory-check-failed', {
+                appId,
+                error: memoryError instanceof Error ? memoryError.message : String(memoryError),
+              })
+            }
+          }
+
+          logger.debug('publish-client.domain-check', {
+            appId,
+            hasDomains: !!siteData.domains?.length,
+            hasCustomDomain: hasCustom,
+            shouldSuggestDomain,
+            purchasedDomain,
+            autoAttachedDomain,
+          })
+        }
+      } catch (error) {
+        logger.warn('publish-client.domain-check-failed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    // Add domain suggestion to message if applicable (only if domain wasn't auto-attached)
+    if (shouldSuggestDomain && domainAttachEnabled && !autoAttachedDomain) {
+      if (purchasedDomain) {
+        message += `\n\n[NEXT STEP: User purchased ${purchasedDomain} earlier. Use suggestedResponse to offer "Connect ${purchasedDomain}" option.]`
+      } else {
+        message += '\n\n[NEXT STEP: Site has no custom domain. Use suggestedResponse to offer "Add a custom domain" option.]'
+      }
+    }
+
     message += '\n\nUse publishStatus to verify the app started successfully.'
 
-    return message
+    return {
+      success: true,
+      message,
+      deploymentId: result.deploymentId,
+      commitHash: result.commitHash,
+      shouldSuggestDomain,
+      domainAttachEnabled,
+      purchasedDomain: purchasedDomain || undefined,
+      autoAttachedDomain: autoAttachedDomain || undefined,
+    }
   }
 )
