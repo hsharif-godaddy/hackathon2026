@@ -1,8 +1,18 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
-# Load NVM if available (for VS Code and other GUI git clients)
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+# Load mise or NVM to ensure node/npx are on PATH (for GUI git clients)
+if command -v mise > /dev/null 2>&1; then
+  MISE_NODE_DIR="$(mise where node 2>/dev/null || true)"
+else
+  MISE_NODE_DIR=""
+fi
+if [ -n "$MISE_NODE_DIR" ]; then
+  export PATH="$MISE_NODE_DIR/bin:$PATH"
+else
+  export NVM_DIR="$HOME/.nvm"
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+fi
 
 npx lint-staged
