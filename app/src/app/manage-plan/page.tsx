@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { FormattedMessage } from 'react-intl';
 import Alert from '@ux/alert';
 import Button from '@ux/button';
 import text from '@ux/text';
@@ -35,6 +36,7 @@ import {
   getPlanDisplayLabelKey,
   getPlanFromSubscription,
 } from '@/utils/credits';
+import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation';
 import PlanCreditsCard from './components/PlanCreditsCard';
 
@@ -99,6 +101,7 @@ function ManagePlanContent() {
   const t = useTranslations();
   const gasketData = useGasketData();
   const locale = gasketData?.intl?.locale;
+  const rootDomain = getRootDomain() || 'godaddy.com';
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [paywallSource, setPaywallSource] = useState<string | null>(null);
   const [paywallType, setPaywallType] = useState<PaywallType>('upgrade');
@@ -344,7 +347,33 @@ function ManagePlanContent() {
         )}
         <div className="flex flex-col gap-2">
           <text.h2 as="title" size={3} text={t('builder_manageplan_title')} />
-          <text.p as="paragraph" className="mb-2" text={t('builder_manageplan_description')} />
+          <text.p as="paragraph" className="mb-2">
+            <FormattedMessage
+              id="builder_manageplan_description_help"
+              values={{
+                creditLink: (chunks) => (
+                  <a
+                    href={`https://www.${rootDomain}/help/godaddy-airo-ai-builder-credits-faq-42828`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    {chunks}
+                  </a>
+                ),
+                promptLink: (chunks) => (
+                  <a
+                    href={`https://www.${rootDomain}/help/godaddy-airo-ai-builder-prompt-best-practices-42854`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    {chunks}
+                  </a>
+                ),
+              }}
+            />
+          </text.p>
          
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
               <TotalCreditsCard

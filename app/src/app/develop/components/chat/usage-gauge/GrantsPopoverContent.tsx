@@ -11,6 +11,7 @@ import TextLockup from '@ux/text-lockup'
 import { useTranslations } from '@/hooks/useTranslations'
 import type { CreditGrant } from '@/types/credits'
 import { getCreditPackGrants, getEffectiveCreditsSpent, getMonthlyPlanGrant } from '@/utils/credits'
+import { getRootDomain } from '@/utils/getRootDomain'
 import { generateClickEID } from '@/utils/instrumentation'
 
 interface GrantsPopoverContentProps {
@@ -30,6 +31,7 @@ export function GrantsPopoverContent({
   disabled = false,
 }: GrantsPopoverContentProps) {
   const t = useTranslations()
+  const rootDomain = getRootDomain() || 'godaddy.com'
 
   // Calculate grant-based data
   const planGrant = grants ? getMonthlyPlanGrant(grants) : undefined
@@ -165,6 +167,34 @@ export function GrantsPopoverContent({
           disabled={disabled}
         />
       </Box>
+
+      <text.p as="paragraph" size={-2} emphasis="passive">
+        <FormattedMessage
+          id="builder_usage_gauge_help_links"
+          values={{
+            creditLink: (chunks) => (
+              <a
+                href={`https://www.${rootDomain}/help/godaddy-airo-ai-builder-credits-faq-42828`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                {chunks}
+              </a>
+            ),
+            promptLink: (chunks) => (
+              <a
+                href={`https://www.${rootDomain}/help/godaddy-airo-ai-builder-prompt-best-practices-42854`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                {chunks}
+              </a>
+            ),
+          }}
+        />
+      </text.p>
     </div>
   )
 }

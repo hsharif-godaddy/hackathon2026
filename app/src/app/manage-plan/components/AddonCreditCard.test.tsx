@@ -88,7 +88,9 @@ describe('CreditPacksCard', function creditPacksCardTests() {
       );
 
       // The active tag should be shown for the active grant
-      expect(screen.getByText('builder_manageplan_active')).toBeInTheDocument();
+      // Two ActiveTags are rendered (mobile and desktop versions)
+      const activeTags = screen.getAllByText('builder_manageplan_active');
+      expect(activeTags.length).toBe(2);
     });
   });
 

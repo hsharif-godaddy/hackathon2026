@@ -85,7 +85,9 @@ describe('CreditGrantRow', function creditGrantRowTests() {
     it('should show ActiveTag when isActive is true', function showActiveTag() {
       renderWithProviders(<CreditGrantRow grant={createMockGrant()} isActive={true} />);
 
-      expect(screen.getByText('builder_manageplan_active')).toBeInTheDocument();
+      // Two ActiveTags are rendered (mobile and desktop versions)
+      const activeTags = screen.getAllByText('builder_manageplan_active');
+      expect(activeTags.length).toBe(2);
     });
 
     it('should not show ActiveTag when isActive is false', function hideActiveTag() {

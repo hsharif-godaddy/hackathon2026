@@ -42,7 +42,7 @@ describe('ActiveTag', function activeTagTests() {
     it('should show tooltip on mouse enter when tooltipText is provided', async function showTooltipOnHover() {
       renderWithProviders(<ActiveTag tooltipText="Test tooltip text" />);
 
-      const tagWrapper = screen.getByText('builder_manageplan_active').closest('div[class*="cursor-pointer"]');
+      const tagWrapper = screen.getByText('builder_manageplan_active').closest('span[class*="cursor-pointer"]');
       expect(tagWrapper).toBeInTheDocument();
 
       fireEvent.mouseEnter(tagWrapper!);
@@ -55,7 +55,7 @@ describe('ActiveTag', function activeTagTests() {
     it('should hide tooltip on mouse leave', async function hideTooltipOnLeave() {
       renderWithProviders(<ActiveTag tooltipText="Test tooltip text" />);
 
-      const tagWrapper = screen.getByText('builder_manageplan_active').closest('div[class*="cursor-pointer"]');
+      const tagWrapper = screen.getByText('builder_manageplan_active').closest('span[class*="cursor-pointer"]');
 
       fireEvent.mouseEnter(tagWrapper!);
 
@@ -73,14 +73,16 @@ describe('ActiveTag', function activeTagTests() {
     it('should have cursor-pointer class when tooltipText is provided', function cursorPointer() {
       renderWithProviders(<ActiveTag tooltipText="Test tooltip" />);
 
-      const tagWrapper = screen.getByText('builder_manageplan_active').closest('div');
+      const tag = screen.getByText('builder_manageplan_active').closest('.ux-tag');
+      const tagWrapper = tag?.parentElement;
       expect(tagWrapper?.className).toContain('cursor-pointer');
     });
 
     it('should not have cursor-pointer class when tooltipText is not provided', function noCursorPointer() {
       renderWithProviders(<ActiveTag />);
 
-      const tagWrapper = screen.getByText('builder_manageplan_active').closest('div');
+      const tag = screen.getByText('builder_manageplan_active').closest('.ux-tag');
+      const tagWrapper = tag?.parentElement;
       expect(tagWrapper?.className).not.toContain('cursor-pointer');
     });
   });
