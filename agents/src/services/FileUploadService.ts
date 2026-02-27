@@ -18,10 +18,16 @@ export interface UploadedFile {
   uploadedAt: string
 }
 
+export interface FailedFile {
+  originalName: string
+  error: string
+}
+
 export interface UploadResult {
   uploadId: string
   appId: string
   files: UploadedFile[]
+  failedFiles: FailedFile[]
   expiresAt: string
 }
 
@@ -225,76 +231,95 @@ export class FileUploadService {
     const uploadedAt = new Date().toISOString()
     const expiresAt = new Date(Date.now() + UPLOAD_EXPIRY_HOURS * 60 * 60 * 1000).toISOString()
 
+    const failedFiles: Array<{ originalName: string; error: string }> = []
+
     for (const file of files) {
-      const fileId = `file_${nanoid(10)}`
-      const ext = extname(file.originalname) || '.bin'
-      const filename = `${appId}_${Date.now()}_${fileId}${ext}`
-      const filepath = this.pathBuilder.join(appId, uploadId, filename)
+      try {
+        const fileId = `file_${nanoid(10)}`
+        const ext = extname(file.originalname) || '.bin'
+        const filename = `${appId}_${Date.now()}_${fileId}${ext}`
+        const filepath = this.pathBuilder.join(appId, uploadId, filename)
 
-      // Sanitize SVG files before saving
-      let fileBuffer = file.buffer
-      let actualSize = file.size
-      let wasSanitized = false
+        let fileBuffer = file.buffer
+        let actualSize = file.size
 
-      if (isSVGFile(file.originalname, file.mimetype)) {
-        try {
-          const svgContent = file.buffer.toString('utf-8')
-          const result = sanitizeSVG(svgContent)
+        if (isSVGFile(file.originalname, file.mimetype)) {
+          try {
+            const svgContent = file.buffer.toString('utf-8')
+            const result = sanitizeSVG(svgContent)
 
-          if (result.hadDangerousContent) {
-            logger.warn('file-upload.svg.sanitized', {
+            if (result.hadDangerousContent) {
+              logger.warn('file-upload.svg.sanitized', {
+                appId,
+                uploadId,
+                originalName: file.originalname,
+                detectedThreats: result.detectedThreats,
+                message: `SVG contained dangerous content that was removed: ${result.detectedThreats.join(', ')}`
+              }, { tags: ['security', 'svg-sanitization', 'xss-prevention'] })
+            }
+
+            if (!result.sanitized || !/<svg[\s>]/i.test(result.sanitized)) {
+              throw new Error('File does not contain valid SVG content')
+            }
+
+            fileBuffer = Buffer.from(result.sanitized, 'utf-8')
+            actualSize = fileBuffer.length
+
+            logger.info('file-upload.svg.processed', {
               appId,
               uploadId,
               originalName: file.originalname,
-              detectedThreats: result.detectedThreats,
-              message: `SVG contained dangerous content that was removed: ${result.detectedThreats.join(', ')}`
-            }, { tags: ['security', 'svg-sanitization', 'xss-prevention'] })
+              originalSize: file.size,
+              sanitizedSize: actualSize,
+              hadThreats: result.hadDangerousContent,
+              threats: result.detectedThreats
+            })
+          } catch (error) {
+            logger.error('file-upload.svg.sanitization-failed', {
+              appId,
+              uploadId,
+              originalName: file.originalname,
+              error: error instanceof Error ? error.message : String(error)
+            })
+            failedFiles.push({ originalName: file.originalname, error: `Failed to sanitize SVG file: ${file.originalname}` })
+            continue
           }
-
-          fileBuffer = Buffer.from(result.sanitized, 'utf-8')
-          actualSize = fileBuffer.length
-          wasSanitized = true
-
-          logger.info('file-upload.svg.processed', {
-            appId,
-            uploadId,
-            originalName: file.originalname,
-            originalSize: file.size,
-            sanitizedSize: actualSize,
-            hadThreats: result.hadDangerousContent,
-            threats: result.detectedThreats
-          })
-        } catch (error) {
-          logger.error('file-upload.svg.sanitization-failed', {
-            appId,
-            uploadId,
-            originalName: file.originalname,
-            error: error instanceof Error ? error.message : String(error)
-          })
-          throw new Error(`Failed to sanitize SVG file: ${file.originalname}`)
         }
+
+        await writeFile(filepath, fileBuffer)
+
+        uploadedFiles.push({
+          id: fileId,
+          originalName: file.originalname,
+          filename,
+          size: actualSize,
+          mimeType: file.mimetype,
+          uploadedAt
+        })
+
+        fileUploadEvents.fileSaved(logger, {
+          appId,
+          uploadId,
+          originalName: file.originalname,
+          size: actualSize,
+          mimeType: file.mimetype,
+          fileCount: 1,
+          totalSize: actualSize
+        })
+      } catch (fileError) {
+        logger.error('file-upload.file-processing-failed', {
+          appId,
+          uploadId,
+          originalName: file.originalname,
+          error: fileError instanceof Error ? fileError.message : String(fileError)
+        })
+        failedFiles.push({ originalName: file.originalname, error: fileError instanceof Error ? fileError.message : String(fileError) })
       }
+    }
 
-      await writeFile(filepath, fileBuffer)
-
-      uploadedFiles.push({
-        id: fileId,
-        originalName: file.originalname,
-        filename,
-        size: actualSize,
-        mimeType: file.mimetype,
-        uploadedAt
-      })
-
-      fileUploadEvents.fileSaved(logger, {
-        appId,
-        uploadId,
-        originalName: file.originalname,
-        size: actualSize,
-        mimeType: file.mimetype,
-        fileCount: 1,
-        totalSize: actualSize
-      })
+    if (uploadedFiles.length === 0) {
+      const errorDetails = failedFiles.map(f => f.error).join('; ')
+      throw new Error(`All files failed to upload: ${errorDetails}`)
     }
 
     const metadata = {
@@ -311,6 +336,16 @@ export class FileUploadService {
       JSON.stringify(metadata, null, 2)
     )
 
+    if (failedFiles.length > 0) {
+      logger.warn('file-upload.partial-failure', {
+        appId,
+        uploadId,
+        successCount: uploadedFiles.length,
+        failedCount: failedFiles.length,
+        failedFiles: failedFiles.map(f => f.originalName)
+      })
+    }
+
     fileUploadEvents.processSuccess(logger, {
       appId,
       uploadId,
@@ -322,6 +357,7 @@ export class FileUploadService {
       uploadId,
       appId,
       files: uploadedFiles,
+      failedFiles,
       expiresAt
     }
   }
@@ -404,6 +440,7 @@ export class FileUploadService {
         uploadId: metadata.uploadId,
         appId: metadata.appId,
         files: metadata.files,
+        failedFiles: [],
         expiresAt: metadata.expiresAt
       } as UploadResult
     } catch (error) {

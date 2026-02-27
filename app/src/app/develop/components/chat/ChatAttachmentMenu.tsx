@@ -8,21 +8,16 @@ import PageIcon from '@ux/icon/page';
 import PlusIcon from '@ux/icon/plus';
 
 import FileReferenceModal from '@/app/develop/components/chat/FileReferenceModal';
+import type { UploadedFile } from '@/app/develop/components/chat/FileUploadButton';
 import { useTranslations } from '@/hooks/useTranslations';
 import { getFileUploadAgent } from '@/lib/file-agent';
 import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { ACCEPTED_UPLOAD_FILE_TYPES } from '@/utils/file-types';
+import { UPLOAD_TIMEOUT_MS, validate } from '@/utils/file-upload-validation';
 import { generateClickEID } from '@/utils/instrumentation';
 
-export interface UploadedFile {
-  id: string;
-  originalName: string;
-  filename: string;
-  size: number;
-  mimeType: string | null;
-  uploadedAt: string;
-}
+export type { UploadedFile } from '@/app/develop/components/chat/FileUploadButton';
 
 interface ChatAttachmentMenuProps {
   appId: string;
@@ -30,7 +25,7 @@ interface ChatAttachmentMenuProps {
   onScreenshotCaptured?: (dataUrl: string) => void;
   onFileReferencesSelected?: (filePaths: string[]) => void;
   onUploadStart?: (files: File[]) => void;
-  onUploadError?: () => void;
+  onUploadError?: (errorMessage?: string) => void;
   disabled?: boolean;
 }
 
@@ -78,8 +73,17 @@ export default function ChatAttachmentMenu({
       return;
     }
 
+    const validationError = validate(files, t);
+    if (validationError) {
+      onUploadError?.(validationError);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+
     try {
-      // Notify parent that upload is starting
       onUploadStart?.(files);
 
       logger.debug('file-upload.chat.start', {
@@ -92,19 +96,24 @@ export default function ChatAttachmentMenu({
       formData.append('appId', appId);
       files.forEach(file => formData.append('files', file));
 
-      // Get agent token and upload directly to agents service
       const { token, uploadUrl } = await getFileUploadAgent(appId);
 
       const response = await fetch(uploadUrl, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+        signal: controller.signal
       });
 
       if (!response.ok) {
-        throw new Error(`Upload failed with status ${response.status}`);
+        let errorMessage = `Upload failed (${response.status})`;
+        try {
+          const body = await response.json();
+          if (body.error) {
+            errorMessage = typeof body.error === 'string' ? body.error : body.error.message || errorMessage;
+          }
+        } catch { /* response body not JSON */ }
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
@@ -112,23 +121,37 @@ export default function ChatAttachmentMenu({
       logger.info('file-upload.chat.success', {
         appId,
         uploadId: result.uploadId,
-        fileCount: result.files.length
+        fileCount: result.files.length,
+        failedCount: result.failedFiles?.length ?? 0
       });
 
       onFilesUploaded(result.files);
 
-      // Reset input so same file can be selected again
+      if (result.failedFiles?.length > 0) {
+        const names = result.failedFiles.map((f: { originalName: string }) => f.originalName).join(', ');
+        onUploadError?.(t('builder_chatfiles_error_partial_failure', {
+          success: result.files.length,
+          total: result.files.length + result.failedFiles.length,
+          names
+        }));
+      }
+
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     } catch (error) {
+      const message = error instanceof DOMException && error.name === 'AbortError'
+        ? t('builder_chatfiles_error_timeout')
+        : error instanceof Error ? error.message : t('builder_chatfiles_error_upload_failed');
+
       logger.error('file-upload.chat.failed', {
         appId,
-        error: error instanceof Error ? error.message : String(error)
+        error: message
       });
 
-      console.error('File upload failed:', error);
-      onUploadError?.();
+      onUploadError?.(message);
+    } finally {
+      clearTimeout(timeout);
     }
   };
 
@@ -228,8 +251,7 @@ export default function ChatAttachmentMenu({
           appId,
           error: error instanceof Error ? error.message : String(error)
         });
-        console.error('Screenshot capture failed:', error);
-        onUploadError?.();
+        onUploadError?.(t('builder_chatfiles_error_screenshot_failed'));
       }
     } finally {
       // Stop all tracks to release the capture

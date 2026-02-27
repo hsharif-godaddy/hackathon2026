@@ -288,6 +288,87 @@ describe('DevEnvironmentManager - Bind Mount Setup', () => {
     });
   });
 
+  describe('setupPublicAssetsSymlink', () => {
+    it('should create symlink from preview/public/assets to assets/public', async () => {
+      const appId = 'test-app-symlink';
+      const previewPath = path.join(testDir, 'preview');
+      const assetsPath = path.join(testDir, 'assets');
+
+      await fsPromises.mkdir(path.join(previewPath, 'public'), { recursive: true });
+      await fsPromises.mkdir(path.join(assetsPath, 'public'), { recursive: true });
+
+      // @ts-expect-error - Testing private method
+      await manager.setupPublicAssetsSymlink(appId, previewPath, assetsPath);
+
+      const linkPath = path.join(previewPath, 'public', 'assets');
+      const stat = await fsPromises.lstat(linkPath);
+      expect(stat.isSymbolicLink()).toBe(true);
+
+      const target = await fsPromises.readlink(linkPath);
+      const resolved = path.resolve(path.join(previewPath, 'public'), target);
+      expect(resolved).toBe(path.join(assetsPath, 'public'));
+    });
+
+    it('should be idempotent - running twice should not cause errors', async () => {
+      const appId = 'test-app-symlink-idempotent';
+      const previewPath = path.join(testDir, 'preview');
+      const assetsPath = path.join(testDir, 'assets');
+
+      await fsPromises.mkdir(path.join(previewPath, 'public'), { recursive: true });
+      await fsPromises.mkdir(path.join(assetsPath, 'public'), { recursive: true });
+
+      // @ts-expect-error - Testing private method
+      await manager.setupPublicAssetsSymlink(appId, previewPath, assetsPath);
+      // @ts-expect-error - Testing private method
+      await manager.setupPublicAssetsSymlink(appId, previewPath, assetsPath);
+
+      const linkPath = path.join(previewPath, 'public', 'assets');
+      const stat = await fsPromises.lstat(linkPath);
+      expect(stat.isSymbolicLink()).toBe(true);
+    });
+
+    it('should move existing directory contents to assets/public before symlinking', async () => {
+      const appId = 'test-app-symlink-move';
+      const previewPath = path.join(testDir, 'preview');
+      const assetsPath = path.join(testDir, 'assets');
+      const publicAssetsDir = path.join(previewPath, 'public', 'assets');
+      const assetsPublicDir = path.join(assetsPath, 'public');
+
+      await fsPromises.mkdir(publicAssetsDir, { recursive: true });
+      await fsPromises.mkdir(assetsPublicDir, { recursive: true });
+      await fsPromises.writeFile(path.join(publicAssetsDir, 'heart.svg'), '<svg/>');
+
+      // @ts-expect-error - Testing private method
+      await manager.setupPublicAssetsSymlink(appId, previewPath, assetsPath);
+
+      const stat = await fsPromises.lstat(path.join(previewPath, 'public', 'assets'));
+      expect(stat.isSymbolicLink()).toBe(true);
+
+      const content = await fsPromises.readFile(path.join(assetsPublicDir, 'heart.svg'), 'utf-8');
+      expect(content).toBe('<svg/>');
+    });
+
+    it('should allow writes through symlink to reach assets/public', async () => {
+      const appId = 'test-app-symlink-write';
+      const previewPath = path.join(testDir, 'preview');
+      const assetsPath = path.join(testDir, 'assets');
+
+      await fsPromises.mkdir(path.join(previewPath, 'public'), { recursive: true });
+      await fsPromises.mkdir(path.join(assetsPath, 'public'), { recursive: true });
+
+      // @ts-expect-error - Testing private method
+      await manager.setupPublicAssetsSymlink(appId, previewPath, assetsPath);
+
+      const linkPath = path.join(previewPath, 'public', 'assets');
+      await fsPromises.writeFile(path.join(linkPath, 'test.svg'), '<svg>test</svg>');
+
+      const content = await fsPromises.readFile(
+        path.join(assetsPath, 'public', 'test.svg'), 'utf-8'
+      );
+      expect(content).toBe('<svg>test</svg>');
+    });
+  });
+
   describe('createDirectorySymlink', () => {
     it('should create directory symlink on Unix-like systems', async () => {
       if (os.platform() === 'win32') {

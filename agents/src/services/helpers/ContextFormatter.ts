@@ -151,10 +151,11 @@ async function readUploadedFileContent(imageUrl: string, filename: string): Prom
  * @param imageUrl - URL in format {agentUrl}/files/uploads/{appId}/{filename}
  * @returns Promise resolving to data URL or null if read fails
  */
-async function readAgentUploadAsBase64(imageUrl: string): Promise<string | null> {
+export async function readAgentUploadAsBase64(imageUrl: string): Promise<string | null> {
   try {
-    // Extract appId and filename from URL: .../files/uploads/{appId}/{filename}
-    const urlMatch = imageUrl.match(/\/files\/uploads\/([^/]+)\/([^/]+)$/)
+    // Strip query params (signed URL has ?sig=...&exp=...) before extracting path segments
+    const cleanUrl = imageUrl.split('?')[0] ?? imageUrl
+    const urlMatch = cleanUrl.match(/\/files\/uploads\/([^/]+)\/([^/]+)$/)
     if (!urlMatch || !urlMatch[1] || !urlMatch[2]) {
       logger.warn('context.formatter.agent_upload.invalid_url', {
         imageUrl,
@@ -473,7 +474,9 @@ Context Notes: ${contextNotes}`
 
       for (let i = 0; i < selectedAssets.length; i++) {
         const asset = selectedAssets[i]
-        if (asset.mediaType === 'IMAGE' && asset.imageUrl && typeof asset.imageUrl === 'string') {
+        // SVG is XML code, not a raster image - LLMs cannot process it as vision input
+        const isSvg = asset.contentType === 'image/svg+xml' || String(asset.filename || '').toLowerCase().endsWith('.svg')
+        if (asset.mediaType === 'IMAGE' && asset.imageUrl && typeof asset.imageUrl === 'string' && !isSvg) {
           imageIndices.set(i, imageUrls.length)
           imageUrls.push(asset.imageUrl)
         }

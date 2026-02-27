@@ -385,4 +385,51 @@ describe('Files Router - Path Traversal Security', () => {
       expect(response.body.files).toHaveLength(0);
     });
   });
+
+  describe('POST /files/upload - Multer Error Handling', () => {
+    it('should return 400 when file exceeds 10MB size limit', async () => {
+      const largeBuffer = Buffer.alloc(11 * 1024 * 1024);
+
+      const response = await request(app)
+        .post('/files/upload')
+        .field('appId', 'test-app')
+        .attach('files', largeBuffer, 'huge-file.png')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('10MB');
+    });
+
+    it('should return 400 when more than 5 files are uploaded', async () => {
+      const req = request(app)
+        .post('/files/upload')
+        .field('appId', 'test-app')
+        .set('Authorization', 'Bearer valid-token');
+
+      for (let i = 0; i < 6; i++) {
+        req.attach('files', Buffer.from('content'), `file${i}.png`);
+      }
+
+      const response = await req;
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('5 files');
+    });
+
+    it('should return 400 with descriptive error for sanitization failures', async () => {
+      const { fileUploadService } = await import('../../services/FileUploadService.js');
+      vi.mocked(fileUploadService.processUpload).mockRejectedValue(
+        new Error('Failed to sanitize SVG file: icon.svg')
+      );
+
+      const response = await request(app)
+        .post('/files/upload')
+        .field('appId', 'test-app')
+        .attach('files', Buffer.from('<svg>test</svg>'), 'icon.svg')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('Failed to sanitize');
+    });
+  });
 });

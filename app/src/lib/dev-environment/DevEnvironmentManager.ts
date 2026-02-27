@@ -240,6 +240,9 @@ export class DevEnvironmentManager {
       // Setup assets bind mount structure (after template copy)
       await this.setupAssetsBindMount(siteId, previewPath, assetsPath);
 
+      // Create symlink so agent writes to preview/public/assets land in assets/public
+      await this.setupPublicAssetsSymlink(siteId, previewPath, assetsPath);
+
       // Generate SSL certificates for HTTPS development
       await this.generateSSLCertificates(siteId, previewPath);
 
@@ -859,6 +862,62 @@ export class DevEnvironmentManager {
 
       // Re-throw with context for proper error handling upstream
       throw new Error(`Failed to setup assets bind mount for app ${appId}: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Create a symlink from preview/public/assets → ../../assets/public so that
+   * agent writes to public/assets/ transparently land in the bind-mounted
+   * assets/public/ directory that the Docker container actually serves.
+   */
+  private async setupPublicAssetsSymlink(appId: string, previewPath: string, assetsPath: string): Promise<void> {
+    const publicDir = path.join(previewPath, 'public');
+    const publicAssetsPath = path.join(publicDir, 'assets');
+    const assetsPublicDir = path.join(assetsPath, 'public');
+    const relativeTarget = path.relative(publicDir, assetsPublicDir);
+
+    try {
+      await fsPromises.mkdir(publicDir, { recursive: true });
+      await fsPromises.mkdir(assetsPublicDir, { recursive: true });
+
+      let stat;
+      try {
+        stat = await fsPromises.lstat(publicAssetsPath);
+      } catch (e: any) {
+        if (e.code !== 'ENOENT') throw e;
+      }
+
+      if (stat?.isSymbolicLink()) {
+        const existingTarget = await fsPromises.readlink(publicAssetsPath);
+        if (path.resolve(publicDir, existingTarget) === path.resolve(assetsPublicDir)) {
+          return;
+        }
+        await fsPromises.unlink(publicAssetsPath);
+      } else if (stat?.isDirectory()) {
+        const entries = await fsPromises.readdir(publicAssetsPath);
+        for (const entry of entries) {
+          const src = path.join(publicAssetsPath, entry);
+          const dest = path.join(assetsPublicDir, entry);
+          if (!existsSync(dest)) {
+            await fsPromises.rename(src, dest);
+          }
+        }
+        await fsPromises.rm(publicAssetsPath, { recursive: true, force: true });
+      }
+
+      await fsPromises.symlink(relativeTarget, publicAssetsPath);
+
+      logger.info('dev-environment.public-assets-symlink.created', {
+        appId,
+        link: publicAssetsPath,
+        target: relativeTarget,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn('dev-environment.public-assets-symlink.failure', {
+        appId,
+        error: errorMessage,
+      });
     }
   }
 

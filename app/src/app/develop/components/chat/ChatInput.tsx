@@ -31,7 +31,7 @@ interface ChatInputProps {
   onScreenshotCaptured?: (dataUrl: string) => void
   onFileReferencesSelected?: (filePaths: string[]) => void
   onUploadStart?: (files: File[]) => void
-  onUploadError?: () => void
+  onUploadError?: (errorMessage?: string) => void
   uploadingFiles?: Array<{ id: string; name: string }>
   referencedFiles?: Array<{ path: string; content: string }>
   onClearReferencedFile?: (index: number) => void

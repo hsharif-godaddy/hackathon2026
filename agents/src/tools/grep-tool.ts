@@ -1,12 +1,13 @@
 import { z } from 'zod';
-import * as fs from 'fs/promises';
-import * as path from 'path';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import { existsSync } from 'node:fs';
 import { glob } from 'glob';
 import { minimatch } from 'minimatch';
-import { existsSync, lstatSync, realpathSync } from 'fs';
 
 import { createDevSupervisorClientForApp } from '../utils/dev-supervisor-client-factory.js';
 import { logger } from '../logging/index.js';
+import { deriveAssetsDir, validateNoEscapingSymlinks } from '../utils/path-helper.js';
 import { RipgrepUtil } from '../utils/ripgrep-util.js';
 import { toolCodeSearchEvents, toolGrepEvents } from '../logging/events/index.js';
 
@@ -95,63 +96,24 @@ export class GrepTool {
   }
 
   /**
-   * Validate that a file path is within the working directory
+   * Validate that a file path is within the working directory.
+   * Allows symlinks to the known assets directory for bind mount compatibility.
    */
   private isPathSafe(filePath: string): boolean {
     try {
       const resolved = path.resolve(filePath);
-      
-      // Check using relative() to prevent prefix confusion
+
       const rel = path.relative(this.workingDirectory, resolved);
       if (rel.startsWith('..')) {
         return false;
       }
-      
-      // Check for symlinks that escape
-      this.validateNoEscapingSymlinks(resolved);
-      
+
+      const assetsDir = deriveAssetsDir(this.workingDirectory);
+      validateNoEscapingSymlinks(resolved, this.workingDirectory, assetsDir ? [assetsDir] : []);
+
       return true;
     } catch (error) {
-      // If validation throws, path is not safe
       return false;
-    }
-  }
-
-  /**
-   * Validate that no symlinks in the path chain point outside the working directory
-   */
-  private validateNoEscapingSymlinks(targetPath: string): void {
-    const pathParts = path.relative(this.workingDirectory, targetPath).split('/').filter(Boolean);
-    let currentPath = this.workingDirectory;
-    
-    for (const part of pathParts) {
-      currentPath = path.resolve(currentPath, part);
-      
-      if (existsSync(currentPath)) {
-        try {
-          const stats = lstatSync(currentPath);
-          
-          if (stats.isSymbolicLink()) {
-            const realPath = realpathSync(currentPath);
-            
-            // Ensure the real path is within the working directory
-            const rel = path.relative(this.workingDirectory, realPath);
-            if (rel.startsWith('..')) {
-              throw new Error(
-                `Security violation: symlink points outside the working directory. ` +
-                `Link: ${currentPath}, Target: ${realPath}, Working dir: ${this.workingDirectory}`
-              );
-            }
-            
-            // NOTE: We do NOT update currentPath here to continue checking the original path structure
-          }
-        } catch (error) {
-          if (error instanceof Error && error.message.includes('Security violation')) {
-            throw error;
-          }
-          // For other errors, continue
-        }
-      }
     }
   }
 

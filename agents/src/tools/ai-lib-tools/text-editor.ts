@@ -6,6 +6,8 @@
  * a clearer interface than the batch tool with command-based operations.
  */
 
+import { basename } from 'node:path';
+
 import { createTool, type Tool } from '@airo/ai-lib';
 import { z } from 'zod';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
@@ -132,10 +134,15 @@ For multiple independent files, invoke all textEditor calls simultaneously.`,
 
     // 4. Upload resolution for create
     let resolvedFileText = file_text;
+    let binaryCopied = false;
     if (command === 'create' && file_text !== undefined) {
-      const resolvedFile = await resolveSourceFile(appId, path, file_text);
+      const resolvedFile = await resolveSourceFile(appId, path, file_text, fullPath);
       if (resolvedFile) {
-        resolvedFileText = resolvedFile.content;
+        if (resolvedFile.binaryCopied) {
+          binaryCopied = true;
+        } else {
+          resolvedFileText = resolvedFile.content;
+        }
       }
     }
 
@@ -152,6 +159,9 @@ For multiple independent files, invoke all textEditor calls simultaneously.`,
         return handleStrReplace(fullPath, old_str, new_str);
 
       case 'create':
+        if (binaryCopied) {
+          return `Successfully created ${basename(path)} (binary file auto-resolved from uploads)`;
+        }
         if (!resolvedFileText) {
           throw new Error('create requires file_text');
         }

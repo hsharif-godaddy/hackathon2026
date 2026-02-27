@@ -82,10 +82,39 @@ const validateAppIdParam = (req: Request, res: Response, next: NextFunction): vo
   next();
 };
 
+function handleMulterError(err: Error, req: Request, res: Response, next: NextFunction): void {
+  if (err instanceof multer.MulterError) {
+    logger.warn('file-upload.multer-error', {
+      code: err.code,
+      message: err.message,
+      field: err.field
+    })
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({ error: 'File size exceeds 10MB limit' })
+      return
+    }
+    if (err.code === 'LIMIT_FILE_COUNT') {
+      res.status(400).json({ error: 'Maximum 5 files allowed per upload' })
+      return
+    }
+    res.status(400).json({ error: `Upload error: ${err.message}` })
+    return
+  }
+  next(err)
+}
+
 // SECURITY: Apply ownership validation AFTER multer parses multipart body
 // Multer must run first to populate req.body from multipart/form-data
 // Rate limiter applied first to prevent abuse before processing
-router.post('/upload', uploadRateLimiter, upload.array('files', 5), validateAppOwnershipFromBody('appId'), async (req: Request, res: Response) => {
+router.post('/upload', uploadRateLimiter,
+  (req: Request, res: Response, next: NextFunction) => {
+    upload.array('files', 5)(req, res, (err) => {
+      if (err) return handleMulterError(err as Error, req, res, next)
+      next()
+    })
+  },
+  validateAppOwnershipFromBody('appId'),
+  async (req: Request, res: Response) => {
   try {
     const { appId } = req.body
 
@@ -140,7 +169,8 @@ router.post('/upload', uploadRateLimiter, upload.array('files', 5), validateAppO
     contextLogger.info('file-upload.request.success', {
       message: 'File upload completed successfully',
       uploadId: result.uploadId,
-      fileCount: result.files.length
+      fileCount: result.files.length,
+      failedCount: result.failedFiles.length
     })
 
     // Return full result with augmented files (preserves appId, expiresAt for backwards compatibility)
@@ -157,7 +187,7 @@ router.post('/upload', uploadRateLimiter, upload.array('files', 5), validateAppO
       stack: error instanceof Error ? error.stack : undefined
     })
 
-    if (errorMessage.includes('Invalid') || errorMessage.includes('Unsupported') || errorMessage.includes('Too many') || errorMessage.includes('exceeds maximum')) {
+    if (errorMessage.includes('Invalid') || errorMessage.includes('Unsupported') || errorMessage.includes('Too many') || errorMessage.includes('exceeds maximum') || errorMessage.includes('not allowed') || errorMessage.includes('Failed to sanitize')) {
       return res.status(400).json({
         error: errorMessage
       })

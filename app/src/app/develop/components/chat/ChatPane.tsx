@@ -104,6 +104,10 @@ export default function ChatPane({
   // State for uploading files (placeholder assets with loading state)
   const [uploadingFiles, setUploadingFiles] = useState<Array<{ id: string; name: string }>>([])
 
+  // State for upload error message (auto-dismisses after 8s)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const uploadErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // State for referenced files (file paths with content from file tree)
   const [referencedFiles, setReferencedFiles] = useState<Array<{ path: string; content: string }>>([])
 
@@ -462,10 +466,27 @@ export default function ChatPane({
     setUploadingFiles(uploadingPlaceholders)
   }, [])
 
-  // Handle upload error - clear placeholders
-  const handleUploadError = useCallback(() => {
-    logger.error('chat-pane.upload-error', {})
+  useEffect(function cleanupUploadErrorTimer() {
+    return () => {
+      if (uploadErrorTimeoutRef.current) {
+        clearTimeout(uploadErrorTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  const handleUploadError = useCallback((errorMessage?: string) => {
+    logger.error('chat-pane.upload-error', { errorMessage })
     setUploadingFiles([])
+    if (errorMessage) {
+      setUploadError(errorMessage)
+      if (uploadErrorTimeoutRef.current) {
+        clearTimeout(uploadErrorTimeoutRef.current)
+      }
+      uploadErrorTimeoutRef.current = setTimeout(() => {
+        setUploadError(null)
+        uploadErrorTimeoutRef.current = null
+      }, 8000)
+    }
   }, [])
 
   // Handle screenshot capture from chat input
@@ -621,6 +642,12 @@ export default function ChatPane({
           <StreamingMessageList allMessages={visibleMessages} isCreateFlowSession={isCreateFlowSession} />
 
           <ChatBanners appId={appId} />
+          {uploadError && (
+            <div className="mx-2 sm:mx-3 md:mx-0 mb-1 px-3 py-2 text-sm rounded-md bg-intents-ux-feedbackHighContrastCritical-feedbackColor/10 text-intents-ux-feedbackHighContrastCritical-feedbackColor flex items-center justify-between">
+              <span>{uploadError}</span>
+              <button onClick={() => setUploadError(null)} className="ml-2 font-bold hover:opacity-70" aria-label={t('builder_common_dismiss')}>×</button>
+            </div>
+          )}
           <ChatInput
             appId={appId}
             inputValue={safeInputValue}
@@ -698,6 +725,12 @@ export default function ChatPane({
 
         <div className="px-2 sm:px-3 md:px-0">
           <ChatBanners appId={appId} />
+          {uploadError && (
+            <div className="mb-1 px-3 py-2 text-sm rounded-md bg-intents-ux-feedbackHighContrastCritical-feedbackColor/10 text-intents-ux-feedbackHighContrastCritical-feedbackColor flex items-center justify-between">
+              <span>{uploadError}</span>
+              <button onClick={() => setUploadError(null)} className="ml-2 font-bold hover:opacity-70" aria-label={t('builder_common_dismiss')}>×</button>
+            </div>
+          )}
           <ChatInput
             appId={appId}
             inputValue={safeInputValue}

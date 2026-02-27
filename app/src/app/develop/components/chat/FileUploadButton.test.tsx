@@ -1,9 +1,10 @@
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import FileUploadButton from '@/app/develop/components/chat/FileUploadButton';
+import { renderWithProviders } from '@/tests/test-utils';
 
 // Mock global fetch
 global.fetch = vi.fn();
@@ -22,14 +23,14 @@ describe('FileUploadButton', () => {
   });
 
   it('should render upload button', () => {
-    render(<FileUploadButton appId="test-app" onFilesUploaded={() => {}} />);
+    renderWithProviders(<FileUploadButton appId="test-app" onFilesUploaded={() => {}} />);
 
     const button = screen.getByRole('button');
     expect(button).toBeInTheDocument();
   });
 
   it('should open file picker when clicked', () => {
-    render(<FileUploadButton appId="test-app" onFilesUploaded={() => {}} />);
+    renderWithProviders(<FileUploadButton appId="test-app" onFilesUploaded={() => {}} />);
 
     const button = screen.getByRole('button');
     const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
@@ -57,7 +58,7 @@ describe('FileUploadButton', () => {
 
     vi.mocked(global.fetch).mockResolvedValue(mockResponse);
 
-    render(<FileUploadButton appId="test-app" onFilesUploaded={mockOnFilesUploaded} />);
+    renderWithProviders(<FileUploadButton appId="test-app" onFilesUploaded={mockOnFilesUploaded} />);
 
     const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
     const file = new File(['content'], 'test.png', { type: 'image/png' });
@@ -76,12 +77,11 @@ describe('FileUploadButton', () => {
     expect(mockOnFilesUploaded).toHaveBeenCalledWith(mockData.files);
   });
 
-  it('should handle upload errors', async () => {
-    vi.mocked(global.fetch).mockRejectedValue(new Error('Upload failed'));
+  it('should call onUploadError with message on upload failure', async () => {
+    const mockOnUploadError = vi.fn();
+    vi.mocked(global.fetch).mockRejectedValue(new Error('Network failure'));
 
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    render(<FileUploadButton appId="test-app" onFilesUploaded={() => {}} />);
+    renderWithProviders(<FileUploadButton appId="test-app" onFilesUploaded={() => {}} onUploadError={mockOnUploadError} />);
 
     const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
     const file = new File(['content'], 'test.png', { type: 'image/png' });
@@ -89,10 +89,63 @@ describe('FileUploadButton', () => {
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     await waitFor(() => {
-      expect(consoleSpy).toHaveBeenCalled();
+      expect(mockOnUploadError).toHaveBeenCalledWith('Network failure');
+    });
+  });
+
+  it('should reject files exceeding 10MB with error message', async () => {
+    const mockOnUploadError = vi.fn();
+    renderWithProviders(<FileUploadButton appId="test-app" onFilesUploaded={() => {}} onUploadError={mockOnUploadError} />);
+
+    const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
+    const largeFile = new File(['x'.repeat(100)], 'huge.png', { type: 'image/png' });
+    Object.defineProperty(largeFile, 'size', { value: 11 * 1024 * 1024 });
+
+    fireEvent.change(fileInput, { target: { files: [largeFile] } });
+
+    await waitFor(() => {
+      expect(mockOnUploadError).toHaveBeenCalledWith('builder_chatfiles_error_file_too_large');
     });
 
-    consoleSpy.mockRestore();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('should reject more than 5 files with error message', async () => {
+    const mockOnUploadError = vi.fn();
+    renderWithProviders(<FileUploadButton appId="test-app" onFilesUploaded={() => {}} onUploadError={mockOnUploadError} />);
+
+    const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
+    const files = Array.from({ length: 6 }, (_, i) =>
+      new File(['content'], `file${i}.png`, { type: 'image/png' })
+    );
+
+    fireEvent.change(fileInput, { target: { files } });
+
+    await waitFor(() => {
+      expect(mockOnUploadError).toHaveBeenCalledWith('builder_chatfiles_error_max_files');
+    });
+
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('should parse error response from server', async () => {
+    const mockOnUploadError = vi.fn();
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: 'File size exceeds 10MB limit' })
+    } as Response);
+
+    renderWithProviders(<FileUploadButton appId="test-app" onFilesUploaded={() => {}} onUploadError={mockOnUploadError} />);
+
+    const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
+    const file = new File(['content'], 'test.png', { type: 'image/png' });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(mockOnUploadError).toHaveBeenCalledWith('File size exceeds 10MB limit');
+    });
   });
 
   it('should reset file input after successful upload', async () => {
@@ -110,7 +163,7 @@ describe('FileUploadButton', () => {
 
     vi.mocked(global.fetch).mockResolvedValue(mockResponse);
 
-    render(<FileUploadButton appId="test-app" onFilesUploaded={() => {}} />);
+    renderWithProviders(<FileUploadButton appId="test-app" onFilesUploaded={() => {}} />);
 
     const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
     const file = new File(['content'], 'test.png', { type: 'image/png' });
@@ -126,7 +179,7 @@ describe('FileUploadButton', () => {
   });
 
   it('should be disabled when disabled prop is true', () => {
-    render(<FileUploadButton appId="test-app" onFilesUploaded={() => {}} disabled={true} />);
+    renderWithProviders(<FileUploadButton appId="test-app" onFilesUploaded={() => {}} disabled={true} />);
 
     const button = screen.getByRole('button');
     expect(button).toBeDisabled();

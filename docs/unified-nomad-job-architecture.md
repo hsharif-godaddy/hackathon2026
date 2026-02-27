@@ -249,6 +249,8 @@ fi
 > **Note**: The `-n` flag on `cp` ensures existing files are not overwritten during merge. Preview assets take precedence as they represent the latest state.
 >
 > **Note**: The `current` symlink is created using a relative path (just the filename) so it remains valid regardless of how the dist directory is mounted.
+>
+> **Note**: If this migration moves `preview/assets` to `assets/`, the `deriveAssetsDir()` function in `agents/src/utils/path-helper.ts` must be updated — it currently derives the assets path as `${CEPH_STORAGE_DIR}/preview/assets` and would need to change to `${CEPH_STORAGE_DIR}/assets`.
 
 ### Network Configuration
 

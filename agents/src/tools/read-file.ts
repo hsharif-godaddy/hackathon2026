@@ -1,7 +1,8 @@
-import { readFile } from 'fs/promises';
-import { join, resolve, basename, relative } from 'path';
-import { existsSync, lstatSync, realpathSync } from 'fs';
-import { translateDockerPath } from '../utils/path-helper.js';
+import { readFile } from 'node:fs/promises';
+import { join, resolve, basename, relative } from 'node:path';
+import { existsSync } from 'node:fs';
+
+import { translateDockerPath, deriveAssetsDir, validateNoEscapingSymlinks } from '../utils/path-helper.js';
 
 export interface ReadFileOptions {
   /** Path to the file to read (relative to app root) */
@@ -120,63 +121,24 @@ export function isFileBlocked(filePath: string): { blocked: boolean; reason?: st
  */
 export class ReadFileTool {
   /**
-   * Validate that a file path is within the app directory and check for escaping symlinks
+   * Validate that a file path is within the app directory and check for escaping symlinks.
+   * Allows symlinks to the known assets directory for bind mount compatibility.
    */
   private isPathSafe(filePath: string, appPath: string): boolean {
     try {
       const resolved = resolve(filePath);
-      
-      // Check using relative() to prevent prefix confusion
+
       const rel = relative(appPath, resolved);
       if (rel.startsWith('..')) {
         return false;
       }
-      
-      // Check for symlinks that escape
-      this.validateNoEscapingSymlinks(resolved, appPath);
-      
+
+      const assetsDir = deriveAssetsDir(appPath);
+      validateNoEscapingSymlinks(resolved, appPath, assetsDir ? [assetsDir] : []);
+
       return true;
     } catch (error) {
-      // If validation throws, path is not safe
       return false;
-    }
-  }
-
-  /**
-   * Validate that no symlinks in the path chain point outside the app directory
-   */
-  private validateNoEscapingSymlinks(targetPath: string, appPath: string): void {
-    const pathParts = relative(appPath, targetPath).split('/').filter(Boolean);
-    let currentPath = appPath;
-    
-    for (const part of pathParts) {
-      currentPath = resolve(currentPath, part);
-      
-      if (existsSync(currentPath)) {
-        try {
-          const stats = lstatSync(currentPath);
-          
-          if (stats.isSymbolicLink()) {
-            const realPath = realpathSync(currentPath);
-            
-            // Ensure the real path is within the app directory
-            const rel = relative(appPath, realPath);
-            if (rel.startsWith('..')) {
-              throw new Error(
-                `Security violation: symlink points outside the app directory. ` +
-                `Link: ${currentPath}, Target: ${realPath}, App path: ${appPath}`
-              );
-            }
-            
-            // NOTE: We do NOT update currentPath here to continue checking the original path structure
-          }
-        } catch (error) {
-          if (error instanceof Error && error.message.includes('Security violation')) {
-            throw error;
-          }
-          // For other errors, continue
-        }
-      }
     }
   }
 

@@ -1,6 +1,8 @@
-// agents/src/services/__tests__/FileUploadService.test.ts
-import { FileUploadService } from '../FileUploadService.js';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+
+import { FileUploadService } from './FileUploadService.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 describe('FileUploadService - File Type Validation', () => {
   let service: FileUploadService;
@@ -65,9 +67,91 @@ describe('FileUploadService - File Type Validation', () => {
   });
 });
 
+describe('FileUploadService - Per-File Error Handling', () => {
+  const batchTestDir = '/tmp/test-uploads-batch';
+
+  afterEach(async () => {
+    if (existsSync(batchTestDir)) {
+      await rm(batchTestDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should process valid files and skip failures in the same batch', async () => {
+    const service = new FileUploadService(batchTestDir);
+
+    const validJpeg = {
+      originalname: 'photo.jpg',
+      mimetype: 'image/jpeg',
+      size: 1024,
+      buffer: Buffer.from('fake-jpeg')
+    } as Express.Multer.File;
+
+    const validPng = {
+      originalname: 'image.png',
+      mimetype: 'image/png',
+      size: 512,
+      buffer: Buffer.from('fake-png')
+    } as Express.Multer.File;
+
+    const result = await service.processUpload('test-app-batch', [validJpeg, validPng]);
+
+    expect(result.files).toHaveLength(2);
+    expect(result.files.some(f => f.originalName === 'photo.jpg')).toBe(true);
+    expect(result.files.some(f => f.originalName === 'image.png')).toBe(true);
+  });
+
+  it('should accept valid SVG files through sanitization', async () => {
+    const service = new FileUploadService(batchTestDir);
+
+    const validSvg = {
+      originalname: 'icon.svg',
+      mimetype: 'image/svg+xml',
+      size: 100,
+      buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><circle r="10"/></svg>')
+    } as Express.Multer.File;
+
+    const result = await service.processUpload('test-app-batch', [validSvg]);
+
+    expect(result.files).toHaveLength(1);
+    expect(result.files[0].originalName).toBe('icon.svg');
+  });
+
+  it('should process JPEG alongside SVG in mixed batch', async () => {
+    const service = new FileUploadService(batchTestDir);
+
+    const validJpeg = {
+      originalname: 'photo.jpg',
+      mimetype: 'image/jpeg',
+      size: 1024,
+      buffer: Buffer.from('fake-jpeg')
+    } as Express.Multer.File;
+
+    const validSvg = {
+      originalname: 'icon.svg',
+      mimetype: 'image/svg+xml',
+      size: 100,
+      buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>')
+    } as Express.Multer.File;
+
+    const result = await service.processUpload('test-app-batch', [validJpeg, validSvg]);
+
+    expect(result.files).toHaveLength(2);
+    expect(result.files.some(f => f.originalName === 'photo.jpg')).toBe(true);
+    expect(result.files.some(f => f.originalName === 'icon.svg')).toBe(true);
+  });
+});
+
 describe('FileUploadService - List Files', () => {
+  const listTestDir = '/tmp/test-uploads-list';
+
+  afterEach(async () => {
+    if (existsSync(listTestDir)) {
+      await rm(listTestDir, { recursive: true, force: true });
+    }
+  });
+
   it('should list all uploaded files across upload sessions', async () => {
-    const service = new FileUploadService('/tmp/test-uploads');
+    const service = new FileUploadService(listTestDir);
 
     // Upload files in two separate sessions
     const files1 = [
@@ -99,7 +183,7 @@ describe('FileUploadService - List Files', () => {
   });
 
   it('should return empty array for app with no uploads', async () => {
-    const service = new FileUploadService('/tmp/test-uploads');
+    const service = new FileUploadService(listTestDir);
 
     const files = await service.listUploadedFiles('nonexistent-app');
 

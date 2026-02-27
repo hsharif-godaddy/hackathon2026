@@ -13,7 +13,7 @@
  * - Validates data: URIs to prevent data:text/html attacks
  */
 
-import * as DOMPurify from 'isomorphic-dompurify'
+import DOMPurify from 'isomorphic-dompurify'
 
 export interface SanitizeSVGResult {
   /** The sanitized SVG content */
@@ -66,115 +66,49 @@ export function sanitizeSVG(svgContent: string): SanitizeSVGResult {
     detectedThreats.push('data-html-uri')
   }
 
-  // Configure DOMPurify for SVG sanitization
-  const cleanSVG = purify.sanitize(svgContent, {
-    // Use SVG profile - allows SVG elements and filters
-    USE_PROFILES: { svg: true, svgFilters: true },
-
-    // Explicitly allow safe SVG elements
-    ALLOWED_TAGS: [
-      // Core SVG elements
-      'svg', 'g', 'defs', 'symbol', 'use', 'marker',
-      // Shapes
-      'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse',
-      // Text
-      'text', 'tspan', 'textPath',
-      // Gradients and filters
-      'linearGradient', 'radialGradient', 'stop',
-      'filter', 'feGaussianBlur', 'feOffset', 'feBlend', 'feColorMatrix',
-      'feComponentTransfer', 'feComposite', 'feConvolveMatrix',
-      'feDiffuseLighting', 'feDisplacementMap', 'feFlood', 'feFunc',
-      'feFuncA', 'feFuncB', 'feFuncG', 'feFuncR', 'feImage', 'feMerge',
-      'feMergeNode', 'feMorphology', 'feSpecularLighting', 'feTile',
-      'feTurbulence', 'feDistantLight', 'fePointLight', 'feSpotLight',
-      // Clipping and masking
-      'clipPath', 'mask', 'pattern',
-      // Images (with href validation)
-      'image',
-      // Metadata
-      'title', 'desc', 'metadata',
-      // Animation (SMIL - not script-based)
-      'animate', 'animateTransform', 'animateMotion', 'set'
-    ],
-
-    // Explicitly allow safe SVG attributes
-    ALLOWED_ATTR: [
-      // Core attributes
-      'id', 'class', 'style', 'xmlns', 'xmlns:xlink', 'xml:space',
-      // Position and sizing
-      'x', 'y', 'width', 'height', 'viewBox', 'preserveAspectRatio',
-      // Shapes
-      'd', 'cx', 'cy', 'r', 'rx', 'ry', 'x1', 'y1', 'x2', 'y2', 'points',
-      // Styling
-      'fill', 'fill-opacity', 'fill-rule', 'stroke', 'stroke-width',
-      'stroke-opacity', 'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray',
-      'stroke-dashoffset', 'opacity',
-      // Transforms
-      'transform', 'transform-origin',
-      // Gradients
-      'offset', 'stop-color', 'stop-opacity', 'gradientUnits',
-      'gradientTransform', 'spreadMethod',
-      // Filters
-      'filterUnits', 'primitiveUnits', 'in', 'in2', 'result', 'type',
-      'values', 'mode', 'operator', 'k1', 'k2', 'k3', 'k4', 'stdDeviation',
-      'dx', 'dy', 'radius', 'bias', 'scale', 'xChannelSelector',
-      'yChannelSelector', 'edgeMode', 'kernelMatrix', 'divisor',
-      // Clipping and masking
-      'clip-path', 'clip-rule', 'mask', 'maskUnits', 'maskContentUnits',
-      // Links (will be validated by ALLOWED_URI_REGEXP)
-      'href', 'xlink:href',
-      // Text
-      'text-anchor', 'font-family', 'font-size', 'font-weight', 'font-style',
-      'letter-spacing', 'word-spacing',
-      // Animation
-      'attributeName', 'attributeType', 'begin', 'dur', 'end', 'min', 'max',
-      'restart', 'repeatCount', 'repeatDur', 'fill', 'calcMode', 'keyTimes',
-      'keySplines', 'from', 'to', 'by', 'path'
-    ],
-
-    // Explicitly forbid dangerous elements
-    FORBID_TAGS: [
-      // Scripts and styles
-      'script', 'style',
-      // HTML injection vectors
-      'foreignObject', 'iframe', 'object', 'embed', 'link', 'base',
-      // Media that can load external content
-      'audio', 'video', 'source',
-      // Forms
-      'form', 'input', 'button', 'textarea', 'select', 'option'
-    ],
-
-    // Explicitly forbid event handlers and dangerous attributes
-    FORBID_ATTR: [
-      // Event handlers
-      'onerror', 'onload', 'onclick', 'onmouseover', 'onmouseout', 'onmousedown',
-      'onmouseup', 'onmousemove', 'onmouseenter', 'onmouseleave', 'onfocus',
-      'onblur', 'onchange', 'onsubmit', 'onreset', 'onselect', 'onabort',
-      'onanimationend', 'onanimationstart', 'onanimationiteration',
-      'ontransitionend', 'ontouchstart', 'ontouchend', 'ontouchmove',
-      'onwheel', 'onscroll', 'ondrag', 'ondrop', 'onkeydown', 'onkeyup',
-      'onkeypress', 'oncontextmenu', 'oncopy', 'oncut', 'onpaste',
-      // XLink event handlers
-      'xlink:actuate', 'xlink:arcrole', 'xlink:role', 'xlink:show', 'xlink:title'
-    ],
-
-    // Validate URIs to block javascript: and dangerous data: URIs
-    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|data:image\/(?:png|jpg|jpeg|gif|webp|svg\+xml);|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
-
-    // Don't add any custom tags or attributes
-    ADD_TAGS: [],
-    ADD_ATTR: [],
-
-    // Remove content of forbidden tags entirely
-    KEEP_CONTENT: false,
-
-    // Don't modify the input in place
-    IN_PLACE: false,
-
-    // Return as string
-    RETURN_DOM: false,
-    RETURN_DOM_FRAGMENT: false
+  // Strip data: URIs that aren't images (e.g. data:text/html XSS vectors).
+  // We use a hook instead of ALLOWED_URI_REGEXP because the custom regex option
+  // gets applied to ALL attribute values (including SVG path `d`), breaking rendering.
+  purify.addHook('afterSanitizeAttributes', function strip(node) {
+    for (const attr of ['href', 'xlink:href']) {
+      const val = node.getAttribute(attr)
+      if (val && /^data:(?!image\/)/i.test(val)) {
+        node.removeAttribute(attr)
+      }
+    }
   })
+
+  let cleanSVG: string
+  try {
+    cleanSVG = purify.sanitize(svgContent, {
+      USE_PROFILES: { svg: true, svgFilters: true },
+
+      ADD_TAGS: ['use'],
+
+      FORBID_TAGS: [
+        'iframe', 'object', 'embed', 'link', 'base',
+        'audio', 'video', 'source',
+        'form', 'input', 'button', 'textarea', 'select', 'option'
+      ],
+
+      FORBID_ATTR: [
+        'onerror', 'onload', 'onclick', 'onmouseover', 'onmouseout', 'onmousedown',
+        'onmouseup', 'onmousemove', 'onmouseenter', 'onmouseleave', 'onfocus',
+        'onblur', 'onchange', 'onsubmit', 'onreset', 'onselect', 'onabort',
+        'onanimationend', 'onanimationstart', 'onanimationiteration',
+        'ontransitionend', 'ontouchstart', 'ontouchend', 'ontouchmove',
+        'onwheel', 'onscroll', 'ondrag', 'ondrop', 'onkeydown', 'onkeyup',
+        'onkeypress', 'oncontextmenu', 'oncopy', 'oncut', 'onpaste'
+      ],
+
+      KEEP_CONTENT: false,
+      IN_PLACE: false,
+      RETURN_DOM: false,
+      RETURN_DOM_FRAGMENT: false
+    })
+  } finally {
+    purify.removeAllHooks()
+  }
 
   return {
     sanitized: typeof cleanSVG === 'string' ? cleanSVG : '',

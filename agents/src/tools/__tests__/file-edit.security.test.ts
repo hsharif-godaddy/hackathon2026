@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { FileEditTool } from '../file-edit';
-import { mkdirSync, writeFileSync, symlinkSync, rmSync, existsSync, readFileSync } from 'fs';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import { mkdirSync, writeFileSync, symlinkSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { tmpdir } from 'node:os';
 
 describe('FileEditTool - Security Tests', () => {
   let fileEditTool: FileEditTool;
@@ -276,6 +276,66 @@ describe('FileEditTool - Security Tests', () => {
       
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/symlink.*outside.*app directory/i);
+    });
+  });
+
+  describe('Asset Symlink Whitelisting', () => {
+    let previewDir: string;
+    let assetsDir: string;
+
+    beforeEach(() => {
+      const uniqueId = Date.now() + Math.random().toString(36).substring(7);
+      const baseDir = join(tmpdir(), `test-v4-${uniqueId}`);
+      previewDir = join(baseDir, 'preview');
+      assetsDir = join(baseDir, 'assets');
+
+      mkdirSync(join(previewDir, 'public'), { recursive: true });
+      mkdirSync(join(assetsDir, 'public'), { recursive: true });
+
+      const relTarget = relative(join(previewDir, 'public'), join(assetsDir, 'public'));
+      symlinkSync(relTarget, join(previewDir, 'public', 'assets'));
+
+      fileEditTool = new FileEditTool();
+    });
+
+    afterEach(() => {
+      const baseDir = join(previewDir, '..');
+      if (existsSync(baseDir)) {
+        rmSync(baseDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should allow writes through the public/assets symlink to assets/public', async () => {
+      const result = await fileEditTool.editFile(previewDir, {
+        path: 'public/assets/heart.svg',
+        mode: 'create',
+        content: '<svg><path d="M10 20"/></svg>',
+      });
+
+      expect(result.success).toBe(true);
+
+      const written = readFileSync(join(assetsDir, 'public', 'heart.svg'), 'utf-8');
+      expect(written).toBe('<svg><path d="M10 20"/></svg>');
+    });
+
+    it('should still block symlinks to non-whitelisted directories', async () => {
+      const evilTarget = join(tmpdir(), `evil-${Date.now()}`);
+      mkdirSync(evilTarget, { recursive: true });
+      writeFileSync(join(evilTarget, 'secret.txt'), 'TOP_SECRET');
+
+      const evilLink = join(previewDir, 'evil');
+      symlinkSync(evilTarget, evilLink);
+
+      const result = await fileEditTool.editFile(previewDir, {
+        path: 'evil/secret.txt',
+        mode: 'rewrite',
+        content: 'hacked',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/symlink.*outside.*app directory/i);
+
+      rmSync(evilTarget, { recursive: true, force: true });
     });
   });
 });
