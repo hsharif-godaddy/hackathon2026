@@ -112,13 +112,15 @@ describe('useSettingsNavItems', () => {
     expect(feedbackItem?.disabled).toBe(false);
   });
 
-  it('should not include feedback item on mobile', () => {
+  it('should include feedback item on mobile', () => {
     mockDevelopStore.isMobile = true;
 
     const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     const feedbackItem = result.current.find(item => item.id === SettingsSection.FEEDBACK);
-    expect(feedbackItem).toBeUndefined();
+    expect(feedbackItem).toBeDefined();
+    expect(feedbackItem?.label).toBe('builder_settings_nav_feedback');
+    expect(feedbackItem?.disabled).toBe(false);
   });
 
   it('should have onClick handler for feedback item', () => {

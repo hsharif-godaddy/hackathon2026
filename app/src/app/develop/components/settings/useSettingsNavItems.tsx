@@ -40,7 +40,6 @@ export interface SettingsNavItem {
 export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] {
   const t = useTranslations();
   const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal);
-  const isMobile = useDevelopPageStore((state) => state.isMobile);
 
   const { data: isProjectEnabled } = useSwitchboard('appbuilder-settings-project', { enabled });
   const { data: isDomainEnabled } = useSwitchboard('appbuilder-settings-domain', { enabled });
@@ -133,12 +132,12 @@ export function useSettingsNavItems(enabled: boolean = true): SettingsNavItem[] 
       icon: <CalendarIcon />,
       disabled: false,
     }] : []),
-    ...(!isMobile ? [{
+    {
       id: SettingsSection.FEEDBACK,
       label: t('builder_settings_nav_feedback'),
       icon: <ClipboardIcon />,
       disabled: false,
       onClick: handleFeedbackClick,
-    }] : []),
+    },
   ];
 }
