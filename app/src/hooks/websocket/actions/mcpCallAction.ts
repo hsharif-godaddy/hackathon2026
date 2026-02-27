@@ -40,7 +40,7 @@ interface McpJsonRpcResponse {
  * MCP servers return SSE (Server-Sent Events) format responses, so we parse
  * the event stream and extract the final JSON-RPC result.
  */
-export const mcpCallAction: ClientActionExecutor = async (params) => {
+export const mcpCallAction: ClientActionExecutor = async (params, context) => {
   const { serverUrl, toolName, input } = params as unknown as McpCallParams
 
   // Validate required parameters
@@ -85,6 +85,7 @@ export const mcpCallAction: ClientActionExecutor = async (params) => {
         if (!response.ok) {
           const errorText = await response.text().catch(() => 'Unknown error')
           logger.error('mcp-call-action.http-error', {
+            appId: context.currentAppId,
             serverUrl,
             toolName,
             status: response.status,
@@ -107,6 +108,7 @@ export const mcpCallAction: ClientActionExecutor = async (params) => {
             // Check for JSON-RPC error in the response
             if (parsed.error) {
               logger.error('mcp-call-action.rpc-error', {
+                appId: context.currentAppId,
                 serverUrl,
                 toolName,
                 errorCode: parsed.error.code,
@@ -145,6 +147,7 @@ export const mcpCallAction: ClientActionExecutor = async (params) => {
             resolve(finalResult)
           } else {
             logger.error('mcp-call-action.no-result', {
+              appId: context.currentAppId,
               serverUrl,
               toolName,
             })
@@ -158,6 +161,7 @@ export const mcpCallAction: ClientActionExecutor = async (params) => {
         if (hasError) return
 
         logger.error('mcp-call-action.unexpected-error', {
+          appId: context.currentAppId,
           serverUrl,
           toolName,
           error: error instanceof Error ? error.message : String(error),
@@ -174,6 +178,7 @@ export const mcpCallAction: ClientActionExecutor = async (params) => {
       // Handle any errors from fetchEventSource itself
       if (!hasError) {
         logger.error('mcp-call-action.fetch-error', {
+          appId: context.currentAppId,
           serverUrl,
           toolName,
           error: error instanceof Error ? error.message : String(error),

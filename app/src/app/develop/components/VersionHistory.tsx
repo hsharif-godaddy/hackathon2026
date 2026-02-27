@@ -144,6 +144,7 @@ export default function VersionHistory() {
       })
 
       logger.error('version-history.commit.selection-error', {
+        appId,
         message: 'Failed to select commit',
         error: errorMessage
       });

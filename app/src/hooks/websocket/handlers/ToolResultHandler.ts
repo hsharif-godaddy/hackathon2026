@@ -46,6 +46,7 @@ export class ToolResultHandler implements MessageHandler {
           updateFromToolCall(toolCall.result)
         } catch (error) {
           logger.error('websocket.todo-list.update.failure', {
+            appId: context.currentAppId,
             error: error instanceof Error ? error.message : String(error),
           })
         }

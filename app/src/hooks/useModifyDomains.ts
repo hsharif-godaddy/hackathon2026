@@ -86,6 +86,7 @@ export function useModifyDomains() {
         const errorMessage = errorData.error || `Failed to modify domains: ${response.status}`;
         logger.error('domain-operations.modify.failure', {
           message: errorMessage,
+          appId: siteId,
           siteId,
           status: response.status,
         });

@@ -56,6 +56,7 @@ export class MessageHandlerRegistry {
       await handler.handle(data, context, ack)
     } catch (error) {
       logger.error('websocket.registry.handler_error', {
+        appId: context.currentAppId,
         type,
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined

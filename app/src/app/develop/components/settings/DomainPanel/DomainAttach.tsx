@@ -230,6 +230,7 @@ export default function DomainAttach() {
     } catch (error) {
       logger.error('domain-attach.connect.failure', {
         message: 'Failed to connect domain',
+        appId: currentAppId,
         domainName,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -261,6 +262,7 @@ export default function DomainAttach() {
     } catch (error) {
       logger.error('domain-attach.disconnect.failure', {
         message: 'Failed to disconnect domain',
+        appId: currentAppId,
         domainName,
         error: error instanceof Error ? error.message : String(error),
       });

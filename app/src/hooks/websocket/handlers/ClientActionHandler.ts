@@ -16,6 +16,7 @@ export class ClientActionHandler implements MessageHandler {
     // Validate message structure
     if (!data.data || typeof data.data !== 'object') {
       logger.error('websocket.client-action.invalid-message', {
+        appId: context.currentAppId,
         message: 'Message data is missing or not an object',
         data,
       })
@@ -31,6 +32,7 @@ export class ClientActionHandler implements MessageHandler {
     // Validate required fields
     if (!action || typeof action !== 'string') {
       logger.error('websocket.client-action.missing-action', {
+        appId: context.currentAppId,
         message: 'Action is missing or not a string',
         data: data.data,
       })
@@ -39,6 +41,7 @@ export class ClientActionHandler implements MessageHandler {
 
     if (!requestId || typeof requestId !== 'string') {
       logger.error('websocket.client-action.missing-request-id', {
+        appId: context.currentAppId,
         message: 'Request ID is missing or not a string',
         action,
         data: data.data,
@@ -88,6 +91,7 @@ export class ClientActionHandler implements MessageHandler {
       const exitCode = (error as any)?.exitCode
 
       logger.error('websocket.client-action.error', {
+        appId: context.currentAppId,
         action,
         requestId,
         error: errorMessage,

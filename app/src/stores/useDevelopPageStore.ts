@@ -666,7 +666,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
 
-        logger.error('develop-store.init.failure', { error: errorMessage })
+        logger.error('develop-store.init.failure', { appId, error: errorMessage })
 
         set((state) => {
           state.loadingPhase = 'idle'
@@ -696,6 +696,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
       } catch (error) {
         logger.error('develop-store.restart.failure', {
+          appId,
           error: error instanceof Error ? error.message : String(error)
         })
         throw error

@@ -100,7 +100,7 @@ const defaultFetchAgentToken = async (siteId: string): Promise<string | null> =>
     const token = data.token
 
     if (!token) {
-      logger.error('websocket.token.missing_field', {})
+      logger.error('websocket.token.missing_field', { appId: siteId })
       return null
     }
 
@@ -415,6 +415,7 @@ export class ConnectionManager {
 
       onError: (error: Error) => {
         logger.error('websocket.connection.error', {
+          appId,
           message: error.message,
           stack: error.stack,
         })

@@ -671,9 +671,10 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   },
 
   markUpstreamError: (error: StructuredError) => {
-    const { activeStream } = get()
+    const { activeStream, currentAppId } = get()
     if (!activeStream) {
       logger.error('streaming-store.mark-upstream-error.no-active-stream', {
+        appId: currentAppId ?? undefined,
         message: 'No active stream to mark as error'
       })
       return

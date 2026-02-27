@@ -191,12 +191,13 @@ export class ErrorHandler implements MessageHandler {
   ): void {
     if (isAppNotFound && elapsedTime >= 30000) {
       logger.error('websocket.error.app_not_found.timeout', {
+        appId: context.currentAppId,
         message: 'App not found after 30 seconds of retries',
         retryCount: retryState.retryCount,
         elapsedTime,
       })
     } else {
-      logger.error('websocket.error', { message: 'Socket.IO error', data })
+      logger.error('websocket.error', { appId: context.currentAppId, message: 'Socket.IO error', data })
     }
 
     // Send STREAM_ERROR event to machine (not retryable)

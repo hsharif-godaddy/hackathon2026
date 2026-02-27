@@ -854,6 +854,7 @@ export class AppService {
 
     } catch (error) {
       logger.error('develop-page.registration.error', {
+        appId,
         message: 'Error during registration',
         error: error instanceof Error ? error.message : 'Unknown error'
       })

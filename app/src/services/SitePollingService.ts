@@ -124,7 +124,7 @@ export class SitePollingService {
                 reject(new Error(createAppResult.error || 'Failed to create app'));
               }
             } catch (createError) {
-              logger.error('polling.create-app.failed', { error: createError });
+              logger.error('polling.create-app.failed', { appId: siteId, error: createError });
               await this.updateSiteStatus(siteId, 'failed');
               reject(createError);
             }
@@ -140,7 +140,7 @@ export class SitePollingService {
           }
 
         } catch (error) {
-          logger.error('polling.error', { error });
+          logger.error('polling.error', { appId: siteId, error });
 
           if (attempts >= this.maxAttempts) {
             await this.updateSiteStatus(siteId, 'failed');
@@ -276,7 +276,7 @@ export class SitePollingService {
       };
 
     } catch (error) {
-      logger.error('polling.create-app-via-agent.failed', { error });
+      logger.error('polling.create-app-via-agent.failed', { appId: siteId, error });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'

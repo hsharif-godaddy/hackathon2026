@@ -450,14 +450,14 @@ export class StreamingWebSocketController extends EventEmitter {
           error: response?.error
         })
         if (response?.error) {
-          logger.error('websocket.message.ack_error', { error: response.error })
+          logger.error('websocket.message.ack_error', { appId: this.currentAppId, error: response.error })
         }
       })
 
       this.emit('message:sent', { message: chatMessage })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      logger.error('websocket.message.failure', { error: errorMessage })
+      logger.error('websocket.message.failure', { appId: this.currentAppId, error: errorMessage })
 
       const errorObj = error instanceof Error ? error : new Error(errorMessage)
 

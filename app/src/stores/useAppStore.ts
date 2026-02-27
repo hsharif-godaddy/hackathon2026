@@ -147,7 +147,7 @@ export const useAppStore = create<AppStore>()(
           }
         }
       } catch (error) {
-        logger.error('app-store.polling.failure', { message: 'Error polling app status', error: error instanceof Error ? error.message : 'Unknown error occurred' })
+        logger.error('app-store.polling.failure', { appId, message: 'Error polling app status', error: error instanceof Error ? error.message : 'Unknown error occurred' })
         set((state) => {
           state.creationError = error instanceof Error ? error.message : 'Unknown error occurred'
           state.isCreating = false
@@ -214,7 +214,7 @@ export const useAppStore = create<AppStore>()(
           return
         } catch (error) {
           lastError = error as Error
-          logger.error('app-store.restart.attempt-failed', { message: 'Restart attempt failed', attempt, maxRetries, error: error instanceof Error ? error.message : 'Unknown error' })
+          logger.error('app-store.restart.attempt-failed', { appId, message: 'Restart attempt failed', attempt, maxRetries, error: error instanceof Error ? error.message : 'Unknown error' })
           
           if (attempt < maxRetries) {
             // Wait before retry, with exponential backoff

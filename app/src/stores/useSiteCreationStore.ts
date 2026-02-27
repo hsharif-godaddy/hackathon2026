@@ -94,7 +94,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
       try {
         useSiteStore.getState().cleanup()
       } catch (err) {
-        logger.error('site.creation.cache-clear-failed', { message: 'Failed to clear site cache', error: err })
+        logger.error('site.creation.cache-clear-failed', { appId: get().siteId ?? undefined, message: 'Failed to clear site cache', error: err })
       }
 
       set((state) => {
@@ -226,7 +226,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         get()._startPolling()
 
       } catch (error) {
-        logger.error('site.deployment.failure', { message: 'Error starting deployment', error: error instanceof Error ? error.message : 'Unknown error' })
+        logger.error('site.deployment.failure', { appId: get().siteId ?? undefined, message: 'Error starting deployment', error: error instanceof Error ? error.message : 'Unknown error' })
         set((state) => {
           state.error = error instanceof Error ? error.message : 'Failed to start deployment'
           state.phase = 'error'
@@ -398,7 +398,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         }
 
       } catch (error) {
-        logger.error('site.polling.failure', { message: 'Error polling for site status', error: error instanceof Error ? error.message : 'Unknown error' })
+        logger.error('site.polling.failure', { appId: get().siteId ?? undefined, message: 'Error polling for site status', error: error instanceof Error ? error.message : 'Unknown error' })
         get()._stopPolling()
         set((state) => {
           state.error = error instanceof Error ? error.message : 'Failed to check site status'
