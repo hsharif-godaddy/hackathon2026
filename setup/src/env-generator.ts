@@ -357,6 +357,8 @@ export class EnvGenerator {
 
 	private async promptGoCodeConfig(yesToAll: boolean = false): Promise<ModelConfig> {
 		console.log(chalk.yellow("\n🔧 GoCode Configuration"));
+		console.log(chalk.gray("Get your API key at: https://caas.open-webui.godaddy.com/workspace/apiKeys"));
+		console.log(chalk.gray("Or navigate to: GoCaaS -> Workspace -> API Keys -> New API Key"));
 
 		const defaultBaseUrl = "https://caas-gocode-prod.caas-prod.prod.onkatana.net";
 		const envApiKey = process.env.APPBUILDER_GOCODE_API_TOKEN;
@@ -1127,6 +1129,7 @@ SSO_HOST=${envConfig.ssoHost}
 		// KnowB Configuration
 		console.log(chalk.cyan("\n📚 KnowB Knowledge Base Configuration"));
 		console.log(chalk.gray("KnowB enables RAG (Retrieval-Augmented Generation) for design style searches."));
+		console.log(chalk.gray("Requires ssojwt binary: https://github.com/gdcorp-engineering/ssojwt"));
 		console.log(chalk.gray("CLI tool available: pnpm --filter @airo/agents tsx scripts/knowb-cli.ts"));
 
 		let knowbSsoJwt: string | undefined;
@@ -1358,6 +1361,8 @@ ELASTIC_APM_ENVIRONMENT=dev
 		console.log(chalk.cyan("\n🔑 GoCode API Key Configuration"));
 		console.log(chalk.gray("The image-search-service uses GoCode proxy for both Anthropic and OpenAI APIs."));
 		console.log(chalk.gray("You can use the same GoCode API key for both."));
+		console.log(chalk.gray("Get your API key at: https://caas.open-webui.godaddy.com/workspace/apiKeys"));
+		console.log(chalk.gray("Or navigate to: GoCaaS -> Workspace -> API Keys -> New API Key"));
 
 		const envGocodeKey = process.env.APPBUILDER_GOCODE_API_TOKEN;
 		const envAnthropicKey = process.env.ANTHROPIC_API_KEY || envGocodeKey;

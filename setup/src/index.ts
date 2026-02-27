@@ -121,6 +121,7 @@ async function selectiveConfiguration(): Promise<void> {
       { name: '🗄️  Check MySQL Container Status', value: 'mysql-check' },
       { name: '🐳 Start MySQL Container', value: 'mysql-start' },
       { name: '🔍 Check Current Configuration Status', value: 'status-check' },
+      { name: '🔑 Re-authenticate with Artifactory', value: 'artifactory-auth' },
       new inquirer.Separator(),
       { name: '✅ Exit', value: 'exit' }
     ];
@@ -186,6 +187,9 @@ async function selectiveConfiguration(): Promise<void> {
         case 'status-check':
           await checkCurrentStatus(envGenerator, gettySetup, knowbSetup, designRagSetup, commerceSetup, certSetup, jwtGenerator, caSetup);
           break;
+        case 'artifactory-auth':
+          await reauthenticateArtifactory();
+          break;
       }
     } catch (error) {
       console.log(chalk.red('❌ Configuration failed:'), error);
@@ -237,6 +241,29 @@ async function startMySQLContainer(): Promise<void> {
   } catch (error) {
     console.log(chalk.red('❌ Failed to start MySQL container'));
     console.log(chalk.gray('You can start it manually with: docker compose up app-mysql -d'));
+    throw error;
+  }
+}
+
+async function reauthenticateArtifactory(): Promise<void> {
+  console.log(chalk.cyan('🔑 Artifactory Authentication'));
+  console.log('');
+  console.log(chalk.gray('Registry: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/'));
+  console.log('');
+
+  try {
+    await execa('pnpm', [
+      'login',
+      '--progress', 'true',
+      '--registry', 'https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/',
+      '--auth-type', 'web'
+    ], {
+      cwd: projectRoot,
+      stdio: 'inherit'
+    });
+    console.log(chalk.green('✅ Artifactory authentication successful'));
+  } catch (error) {
+    console.log(chalk.red('❌ Artifactory authentication failed'));
     throw error;
   }
 }

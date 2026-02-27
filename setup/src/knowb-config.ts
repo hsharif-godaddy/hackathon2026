@@ -63,6 +63,7 @@ GODADDY_API_BASE_URL=${this.config.apiUrl}`;
     console.log(`API URL: ${this.config.apiUrl}`);
     console.log('Authentication: SSO JWT token');
     console.log('');
+    console.log(chalk.gray('Requires ssojwt binary: https://github.com/gdcorp-engineering/ssojwt'));
     console.log(chalk.gray('CLI tool available after setup: pnpm --filter @airo/agents tsx scripts/knowb-cli.ts'));
     console.log('');
 
