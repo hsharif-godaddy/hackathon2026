@@ -1,12 +1,9 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 
-import AccessDisabledComponent from '@/components/auth/AccessDisabledComponent'
 import LoadingComponent from '@/components/auth/LoadingComponent';
 import { useAuth } from '@/hooks/useAuth'
-import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { getGasketConfig, isAuthJWTSync } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
@@ -21,30 +18,11 @@ function AuthProviderComponent(props: any) {
 }
 
 function InnerAuthProvider({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
-  const isHomepage = pathname === '/' || pathname === '';
-
   const authData = useAuth();
-  const { isAuthenticated, isAuthDisabled, isLoading } = authData;
+  const { isLoading } = authData;
 
-  // Only check switchboard access when user is authenticated AND not on homepage
-  const shouldCheckAccess = !isHomepage && !isLoading && !isAuthDisabled && isAuthenticated;
-  const { data: isAppbuilderAccessEnabled, isLoading: isSwitchboardFeatureFlagsLoading } = useSwitchboard('appbuilder-access', { enabled: shouldCheckAccess });
-
-  // Show loading while auth validation are loading
-  // Skip switchboard loading check on homepage (homepage is accessible to everyone)
-  const shouldWaitForSwitchboard = !isHomepage && isSwitchboardFeatureFlagsLoading;
-  if (shouldWaitForSwitchboard || isLoading) {
+  if (isLoading) {
     return <LoadingComponent />
-  }
-
-  // User is authenticated but does not have access to App Builder (skip check on homepage)
-  if (!isHomepage && !isAuthDisabled && isAuthenticated && !isAppbuilderAccessEnabled) {
-    return (
-      <AuthContext.Provider value={authData}>
-        <AccessDisabledComponent />
-      </AuthContext.Provider>
-    )
   }
 
   return (
