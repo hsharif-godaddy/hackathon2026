@@ -104,6 +104,7 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 		"peopleCount",
 		"peopleFocus",
 		"tone",
+		"moods",
 		"copySpaceAmount",
 		"copySpaceLocation",
 		"colorMood",
@@ -111,6 +112,12 @@ func (c *Client) EnsureCollection(ctx context.Context) error {
 		"usageContext",
 		"backgroundType",
 		"visualComplexity",
+		// Getty metadata indexes
+		"orientation",
+		"graphicalStyle",
+		"numberOfPeople",
+		"ethnicity",
+		"ageOfPeople",
 	}
 
 	for _, field := range indexFields {
@@ -275,45 +282,45 @@ func gettyIDToPointID(gettyID string) (uint64, error) {
 	return strconv.ParseUint(gettyID, 10, 64)
 }
 
+// filterMapping maps a Qdrant field name to the filter values for that field.
+type filterMapping struct {
+	field  string
+	values []string
+}
+
 // buildFilters converts SearchFilters to a Qdrant filter.
 func buildFilters(filters models.SearchFilters) *qdrant.Filter {
-	var conditions []*qdrant.Condition
+	// Composition: merge Getty-native Compositions and analysis-enriched Composition
+	// since both map to the same Qdrant "composition" field.
+	compositionValues := append([]string{}, filters.Composition...)
+	compositionValues = append(compositionValues, filters.Compositions...)
 
-	if len(filters.Orientations) > 0 {
-		conditions = append(conditions, qdrant.NewMatchKeywords("aspectRatioCategory", filters.Orientations...))
+	mappings := []filterMapping{
+		{"orientation", filters.Orientations},
+		{"subjectCategory", filters.SubjectCategory},
+		{"peopleCount", filters.PeopleCount},
+		{"peopleFocus", filters.PeopleFocus},
+		{"tone", filters.Tone},
+		{"copySpaceAmount", filters.CopySpaceAmount},
+		{"copySpaceLocation", filters.CopySpaceLocation},
+		{"colorMood", filters.ColorMood},
+		{"composition", compositionValues},
+		{"usageContext", filters.UsageContext},
+		{"backgroundType", filters.BackgroundType},
+		{"visualComplexity", filters.VisualComplexity},
+		// Getty metadata filters
+		{"moods", filters.Moods},
+		{"graphicalStyle", filters.GraphicalStyles},
+		{"numberOfPeople", filters.NumberOfPeople},
+		{"ethnicity", filters.Ethnicity},
+		{"ageOfPeople", filters.AgeOfPeople},
 	}
-	if len(filters.SubjectCategory) > 0 {
-		conditions = append(conditions, qdrant.NewMatchKeywords("subjectCategory", filters.SubjectCategory...))
-	}
-	if len(filters.PeopleCount) > 0 {
-		conditions = append(conditions, qdrant.NewMatchKeywords("peopleCount", filters.PeopleCount...))
-	}
-	if len(filters.PeopleFocus) > 0 {
-		conditions = append(conditions, qdrant.NewMatchKeywords("peopleFocus", filters.PeopleFocus...))
-	}
-	if len(filters.Tone) > 0 {
-		conditions = append(conditions, qdrant.NewMatchKeywords("tone", filters.Tone...))
-	}
-	if len(filters.CopySpaceAmount) > 0 {
-		conditions = append(conditions, qdrant.NewMatchKeywords("copySpaceAmount", filters.CopySpaceAmount...))
-	}
-	if len(filters.CopySpaceLocation) > 0 {
-		conditions = append(conditions, qdrant.NewMatchKeywords("copySpaceLocation", filters.CopySpaceLocation...))
-	}
-	if len(filters.ColorMood) > 0 {
-		conditions = append(conditions, qdrant.NewMatchKeywords("colorMood", filters.ColorMood...))
-	}
-	if len(filters.Composition) > 0 {
-		conditions = append(conditions, qdrant.NewMatchKeywords("composition", filters.Composition...))
-	}
-	if len(filters.UsageContext) > 0 {
-		conditions = append(conditions, qdrant.NewMatchKeywords("usageContext", filters.UsageContext...))
-	}
-	if len(filters.BackgroundType) > 0 {
-		conditions = append(conditions, qdrant.NewMatchKeywords("backgroundType", filters.BackgroundType...))
-	}
-	if len(filters.VisualComplexity) > 0 {
-		conditions = append(conditions, qdrant.NewMatchKeywords("visualComplexity", filters.VisualComplexity...))
+
+	var conditions []*qdrant.Condition
+	for _, m := range mappings {
+		if len(m.values) > 0 {
+			conditions = append(conditions, qdrant.NewMatchKeywords(m.field, m.values...))
+		}
 	}
 
 	if len(conditions) == 0 {
@@ -353,6 +360,15 @@ func analysisToPayload(a *models.ImageAnalysis) map[string]*qdrant.Value {
 		"tone":                toInterfaceSlice(a.Tone),
 		"usageContext":        toInterfaceSlice(a.UsageContext),
 		"authenticityStyle":   string(a.AuthenticityStyle),
+		"orientation":         a.Orientation,
+		"graphicalStyle":      a.GraphicalStyle,
+		"moods":               toInterfaceSlice(a.Moods),
+		"numberOfPeople":      a.NumberOfPeople,
+		"ethnicity":           toInterfaceSlice(a.Ethnicity),
+		"ageOfPeople":         toInterfaceSlice(a.AgeOfPeople),
+		"collectionCode":      a.CollectionCode,
+		"artist":              a.Artist,
+		"gettyKeywords":       toInterfaceSlice(a.GettyKeywords),
 		"aspectRatioCategory": string(a.AspectRatioCategory),
 		"description":         a.Description,
 		"searchTerms":         toInterfaceSlice(a.SearchTerms),
@@ -411,6 +427,17 @@ func payloadToAnalysis(payload map[string]*qdrant.Value, score float32) *models.
 	analysis.Tone = getStringSlice(payload, "tone")
 	analysis.UsageContext = getStringSlice(payload, "usageContext")
 	analysis.AuthenticityStyle = models.AuthenticityStyle(getStringValue(payload, "authenticityStyle"))
+
+	// Getty metadata
+	analysis.Orientation = getStringValue(payload, "orientation")
+	analysis.GraphicalStyle = getStringValue(payload, "graphicalStyle")
+	analysis.Moods = getStringSlice(payload, "moods")
+	analysis.NumberOfPeople = getStringValue(payload, "numberOfPeople")
+	analysis.Ethnicity = getStringSlice(payload, "ethnicity")
+	analysis.AgeOfPeople = getStringSlice(payload, "ageOfPeople")
+	analysis.CollectionCode = getStringValue(payload, "collectionCode")
+	analysis.Artist = getStringValue(payload, "artist")
+	analysis.GettyKeywords = getStringSlice(payload, "gettyKeywords")
 
 	// Programmatic
 	analysis.AspectRatioCategory = models.AspectRatioCategory(getStringValue(payload, "aspectRatioCategory"))

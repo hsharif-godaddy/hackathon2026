@@ -54,3 +54,6 @@ server
 
 # Generated TLS certs for local dev
 tls/
+
+# Client certs for SSO JWT auth (pulled from Secrets Manager)
+certs/

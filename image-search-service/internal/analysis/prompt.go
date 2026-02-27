@@ -28,6 +28,7 @@ Analyze the image and provide ALL of the following fields:
   "peopleFocus": "none|background|secondary|primary",
 
   "tone": ["primary-tone", "secondary-tone (optional)", "tertiary-tone (optional)"],
+  "moods": ["mood1", "mood2 (optional)"],
   "usageContext": ["primary-context", "secondary-context (optional)", "tertiary-context (optional)"],
 
   "authenticityStyle": "stock|editorial|candid|artistic|documentary",
@@ -81,7 +82,13 @@ Never combine values with | or list multiple options.
    - Values: professional, casual, serious, playful, energetic, calm, dramatic, inspiring,
      luxurious, friendly, neutral
 
-7. usageContext: Pick 1-3 contexts where this image would work well. Array format.
+7. moods: Pick 1-2 visual mood/color characteristics of the image. Array format.
+   - Describes the overall color temperature and visual energy of the image
+   - Example: A warm sunset photo might be ["warm", "dramatic"]
+   - Example: A stark black-and-white portrait might be ["black_and_white", "bold"]
+   - Values: black_and_white, bold, cool, dramatic, natural, vivid, warm
+
+8. usageContext: Pick 1-3 contexts where this image would work well. Array format.
    - Consider the image's composition, copy space, and subject matter
    - Example: A person portrait with copy space might be ["hero", "testimonial", "profile"]
    - Values:
@@ -92,19 +99,19 @@ Never combine values with | or list multiple options.
      - content: Good for blog/article inline images
      - banner, thumbnail, icon, testimonial, gallery, general
 
-8. authenticityStyle: Assess the visual feel:
+9. authenticityStyle: Assess the visual feel:
    - "stock": Clearly posed/staged, generic scenarios, obvious stock photo
    - "editorial": News/magazine quality, specific event or story
    - "candid": Natural, unposed moment, feels authentic
    - "artistic": Creative, stylized, artistic expression
    - "documentary": Real-world, reportage, capturing reality
 
-9. settingType: Where was this image taken?
+10. settingType: Where was this image taken?
    - "studio": Professional photography setup with controlled lighting, solid/gradient backgrounds
    - "abstract": No recognizable environment, purely graphical/artistic elements
    - Use specific locations (office, home, outdoor, etc.) when environment is visible
 
-10. searchTerms: Generate 10-15 diverse keywords/phrases someone might search:
+11. searchTerms: Generate 10-15 diverse keywords/phrases someone might search:
     - Include the specific subject (e.g., "golden retriever", "business meeting")
     - Include emotions/mood (e.g., "happy", "professional", "relaxed")
     - Include activities (e.g., "working from home", "team collaboration")

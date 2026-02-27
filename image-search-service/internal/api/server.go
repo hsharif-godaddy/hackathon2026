@@ -66,7 +66,7 @@ func (s *Server) Initialize(ctx context.Context) error {
 
 	// Initialize Getty client
 	stepStart := time.Now()
-	gettyClient, err := getty.New(s.config)
+	gettyClient, err := createGettyClient(s.config)
 	if err != nil {
 		return fmt.Errorf("failed to create getty client: %w", err)
 	}
@@ -162,6 +162,20 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// createGettyClient creates a Getty client with the appropriate auth provider based on config.
+func createGettyClient(cfg *config.Config) (*getty.Client, error) {
+	switch cfg.GettyAuthType {
+	case "sso-jwt":
+		auth, err := getty.NewSSOJWTAuth(cfg.GettySSOHost, cfg.GettyCertPath, cfg.GettyKeyPath, cfg.GettyXAppKey)
+		if err != nil {
+			return nil, fmt.Errorf("SSO JWT auth setup: %w", err)
+		}
+		return getty.NewWithAuth(cfg, auth), nil
+	default:
+		return getty.New(cfg)
+	}
 }
 
 // setupRoutes configures all HTTP routes.

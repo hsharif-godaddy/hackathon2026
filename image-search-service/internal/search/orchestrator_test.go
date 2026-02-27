@@ -3,6 +3,7 @@ package search
 import (
 	"testing"
 
+	"github.com/airo-ai-builder/image-search-service/internal/getty"
 	"github.com/airo-ai-builder/image-search-service/pkg/models"
 )
 
@@ -97,5 +98,65 @@ func TestSortByRelevance_EqualScores(t *testing.T) {
 	}
 	if !ids["first"] || !ids["second"] || !ids["third"] {
 		t.Error("all items should be present after sorting")
+	}
+}
+
+func TestFiltersToGettyOptions(t *testing.T) {
+	filters := models.SearchFilters{
+		Orientations:    []string{"horizontal", "square"},
+		Moods:           []string{"warm"},
+		GraphicalStyles: []string{"photography"},
+		SortOrder:       "newest",
+		Color:           "#FF0000",
+		NumberOfPeople:  []string{"one"},
+		MinimumSize:     "large",
+	}
+
+	opts := filtersToGettyOptions("sunset beach", 20, filters)
+
+	if opts.Phrase != "sunset beach" {
+		t.Errorf("Phrase: got %q, want %q", opts.Phrase, "sunset beach")
+	}
+	if opts.PageSize != 20 {
+		t.Errorf("PageSize: got %d, want %d", opts.PageSize, 20)
+	}
+	if len(opts.Orientations) != 2 {
+		t.Errorf("Orientations: got %d, want 2", len(opts.Orientations))
+	}
+	if opts.Orientations[0] != getty.Orientation("horizontal") {
+		t.Errorf("Orientations[0]: got %q, want %q", opts.Orientations[0], "horizontal")
+	}
+	if len(opts.Moods) != 1 || opts.Moods[0] != getty.Mood("warm") {
+		t.Errorf("Moods: got %v, want [warm]", opts.Moods)
+	}
+	if opts.SortOrder != getty.SortOrder("newest") {
+		t.Errorf("SortOrder: got %q, want %q", opts.SortOrder, "newest")
+	}
+	if opts.Color != "#FF0000" {
+		t.Errorf("Color: got %q, want %q", opts.Color, "#FF0000")
+	}
+	if opts.MinimumSize != getty.MinimumSize("large") {
+		t.Errorf("MinimumSize: got %q, want %q", opts.MinimumSize, "large")
+	}
+	if len(opts.NumberOfPeople) != 1 || opts.NumberOfPeople[0] != getty.NumberOfPeople("one") {
+		t.Errorf("NumberOfPeople: got %v, want [one]", opts.NumberOfPeople)
+	}
+	if len(opts.Fields) == 0 {
+		t.Error("Fields should be populated with metadata fields")
+	}
+}
+
+func TestFiltersToGettyOptionsEmpty(t *testing.T) {
+	filters := models.SearchFilters{}
+	opts := filtersToGettyOptions("test", 10, filters)
+
+	if opts.Phrase != "test" {
+		t.Errorf("Phrase: got %q, want %q", opts.Phrase, "test")
+	}
+	if opts.PageSize != 10 {
+		t.Errorf("PageSize: got %d, want %d", opts.PageSize, 10)
+	}
+	if len(opts.Orientations) != 0 {
+		t.Errorf("Orientations should be empty, got %v", opts.Orientations)
 	}
 }

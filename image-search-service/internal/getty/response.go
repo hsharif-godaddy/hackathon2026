@@ -103,6 +103,11 @@ type ImageResult struct {
 	DateSubmitted  string `json:"date_submitted,omitempty"`
 	DateCameraShot string `json:"date_camera_shot,omitempty"`
 
+	// People & Demographics
+	NumberOfPeople string   `json:"number_of_people,omitempty"`
+	Ethnicity      []string `json:"ethnicity,omitempty"`
+	AgeOfPeople    []string `json:"age_of_people,omitempty"`
+
 	// Metadata
 	Keywords       []Keyword `json:"keywords,omitempty"`
 	AlternativeIDs []AltID   `json:"alternative_ids,omitempty"`

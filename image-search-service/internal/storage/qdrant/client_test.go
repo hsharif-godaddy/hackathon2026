@@ -56,6 +56,7 @@ func TestBuildFilters_AllFields(t *testing.T) {
 		PeopleCount:       []string{"1"},
 		PeopleFocus:       []string{"primary"},
 		Tone:              []string{"professional"},
+		Moods:             []string{"warm"},
 		CopySpaceAmount:   []string{"high"},
 		CopySpaceLocation: []string{"right"},
 		ColorMood:         []string{"warm"},
@@ -70,8 +71,8 @@ func TestBuildFilters_AllFields(t *testing.T) {
 		t.Fatal("expected non-nil filters")
 	}
 
-	if len(result.Must) != 12 {
-		t.Errorf("expected 12 conditions, got %d", len(result.Must))
+	if len(result.Must) != 13 {
+		t.Errorf("expected 13 conditions, got %d", len(result.Must))
 	}
 }
 
@@ -294,6 +295,94 @@ func TestGetStringSlice(t *testing.T) {
 	}
 	if v := getStringSlice(payload, "nonexistent"); v != nil {
 		t.Errorf("expected nil for missing key, got %v", v)
+	}
+}
+
+func TestAnalysisPayloadRoundTripGettyMetadata(t *testing.T) {
+	original := &models.ImageAnalysis{
+		GettyID:        "123456",
+		Title:          "Test",
+		Orientation:    "horizontal",
+		GraphicalStyle: "photography",
+		Moods:          []string{"warm", "natural"},
+		NumberOfPeople: "one",
+		Ethnicity:      []string{"east_asian"},
+		AgeOfPeople:    []string{"adult"},
+		CollectionCode: "test-col",
+		Artist:         "Test Artist",
+		GettyKeywords:  []string{"nature", "sunset"},
+		// Required fields for valid analysis
+		PrimarySubject:  "test",
+		SubjectCategory: "nature",
+		AnalysisVersion: "1",
+	}
+
+	payload := analysisToPayload(original)
+	restored := payloadToAnalysis(payload, 0.95)
+
+	if restored.Orientation != "horizontal" {
+		t.Errorf("Orientation: got %q, want %q", restored.Orientation, "horizontal")
+	}
+	if restored.GraphicalStyle != "photography" {
+		t.Errorf("GraphicalStyle: got %q, want %q", restored.GraphicalStyle, "photography")
+	}
+	if len(restored.Moods) != 2 || restored.Moods[0] != "warm" {
+		t.Errorf("Moods: got %v, want [warm natural]", restored.Moods)
+	}
+	if restored.NumberOfPeople != "one" {
+		t.Errorf("NumberOfPeople: got %q, want %q", restored.NumberOfPeople, "one")
+	}
+	if len(restored.Ethnicity) != 1 || restored.Ethnicity[0] != "east_asian" {
+		t.Errorf("Ethnicity: got %v, want [east_asian]", restored.Ethnicity)
+	}
+	if len(restored.AgeOfPeople) != 1 || restored.AgeOfPeople[0] != "adult" {
+		t.Errorf("AgeOfPeople: got %v, want [adult]", restored.AgeOfPeople)
+	}
+	if restored.CollectionCode != "test-col" {
+		t.Errorf("CollectionCode: got %q, want %q", restored.CollectionCode, "test-col")
+	}
+	if restored.Artist != "Test Artist" {
+		t.Errorf("Artist: got %q, want %q", restored.Artist, "Test Artist")
+	}
+	if len(restored.GettyKeywords) != 2 || restored.GettyKeywords[0] != "nature" {
+		t.Errorf("GettyKeywords: got %v, want [nature sunset]", restored.GettyKeywords)
+	}
+}
+
+func TestBuildFiltersGettyFields(t *testing.T) {
+	filters := models.SearchFilters{
+		GraphicalStyles: []string{"photography"},
+		NumberOfPeople:  []string{"one", "two"},
+		Orientations:    []string{"horizontal"},
+		Ethnicity:       []string{"east_asian"},
+		Moods:           []string{"warm", "natural"},
+	}
+
+	result := buildFilters(filters)
+	if result == nil {
+		t.Fatal("expected non-nil filter")
+	}
+	// 5 filter fields set = 5 Must conditions
+	if len(result.Must) != 5 {
+		t.Errorf("expected 5 conditions, got %d", len(result.Must))
+	}
+}
+
+func TestBuildFiltersCompositionMerge(t *testing.T) {
+	// When both Composition (analysis) and Compositions (Getty) are set,
+	// they should be merged into a single condition on "composition" field.
+	filters := models.SearchFilters{
+		Composition:  []string{"center"},
+		Compositions: []string{"close_up"},
+	}
+
+	result := buildFilters(filters)
+	if result == nil {
+		t.Fatal("expected non-nil filter")
+	}
+	// Both map to the same Qdrant field, so should produce 1 condition
+	if len(result.Must) != 1 {
+		t.Errorf("expected 1 condition (merged), got %d", len(result.Must))
 	}
 }
 

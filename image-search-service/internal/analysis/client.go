@@ -45,6 +45,7 @@ type Result struct {
 	PeopleCount       string   `json:"peopleCount"`
 	PeopleFocus       string   `json:"peopleFocus"`
 	Tone              []string `json:"tone"`
+	Moods             []string `json:"moods"`
 	UsageContext      []string `json:"usageContext"`
 	AuthenticityStyle string   `json:"authenticityStyle"`
 	Description       string   `json:"description"`
@@ -230,6 +231,7 @@ func ToImageAnalysis(r *Result) *models.ImageAnalysis {
 
 		// Mood & Style
 		Tone:              r.Tone,
+		Moods:             r.Moods,
 		UsageContext:      r.UsageContext,
 		AuthenticityStyle: models.AuthenticityStyle(r.AuthenticityStyle),
 

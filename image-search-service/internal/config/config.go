@@ -14,12 +14,16 @@ type Config struct {
 	Port     int
 	LogLevel string
 
-	// Getty API (via airo-builder proxy)
+	// Getty API
 	GettyUpstream     string
 	GettyToken        string // Bearer token for proxy auth (from GETTY_TOKEN)
 	GettyXAppKey      string // x-app-key header value (identifies calling app)
 	GettyRateLimitRPS int
 	GettyConcurrency  int
+	GettyAuthType     string // "bearer" (airo-proxy) or "sso-jwt" (direct Getty proxy)
+	GettyCertPath     string // Client cert path for SSO JWT auth
+	GettyKeyPath      string // Client key path for SSO JWT auth
+	GettySSOHost      string // SSO host for JWT token exchange
 
 	// Haiku/Anthropic
 	AnthropicAPIURL   string
@@ -74,12 +78,16 @@ func LoadConfig() *Config {
 		Port:     getEnvInt("PORT", 8080),
 		LogLevel: getEnvString("LOG_LEVEL", "info"),
 
-		// Getty API (via airo-builder proxy)
-		GettyUpstream:     getEnvString("GETTY_UPSTREAM", "https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net"),
+		// Getty API
+		GettyUpstream:     getEnvString("GETTY_UPSTREAM", "https://getty-images-proxy.api.godaddy.com"),
 		GettyToken:        getEnvString("GETTY_TOKEN", ""),
-		GettyXAppKey:      getEnvString("GETTY_X_APP_KEY", "image-search-service"),
+		GettyXAppKey:      getEnvString("GETTY_X_APP_KEY", "airo-app-builder"),
 		GettyRateLimitRPS: getEnvInt("GETTY_RATE_LIMIT_RPS", 50),
 		GettyConcurrency:  getEnvInt("GETTY_CONCURRENCY", 10),
+		GettyAuthType:     getEnvString("GETTY_AUTH_TYPE", "sso-jwt"),
+		GettyCertPath:     getEnvString("GETTY_CERT_PATH", ""),
+		GettyKeyPath:      getEnvString("GETTY_KEY_PATH", ""),
+		GettySSOHost:      getEnvString("GETTY_SSO_HOST", "sso.godaddy.com"),
 
 		// Haiku
 		AnthropicAPIURL:   getEnvString("ANTHROPIC_API_URL", "https://api.anthropic.com"),

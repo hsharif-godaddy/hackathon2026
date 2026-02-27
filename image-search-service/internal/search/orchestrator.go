@@ -122,36 +122,12 @@ func (o *Orchestrator) Search(ctx context.Context, params SearchParams) (*Search
 	// Step 4: Not enough cached - fetch from Getty, analyze, re-query Qdrant
 	slog.Info("search.fetching.getty", "cached", len(cachedResults), "minCached", params.MinCached)
 
-	// Query Getty for candidates
-	gettyStart := time.Now()
-	gettyResults, err := o.getty.Search(ctx, params.Query, params.Count*2)
+	gettyResults, earlyResult, err := o.fetchGettyResults(ctx, params, cachedResults)
 	if err != nil {
-		// If Getty fails but we have some cached results, return those
-		if len(cachedResults) > 0 {
-			slog.Warn("search.getty.failed.returning.cached", "error", err, "cachedCount", len(cachedResults))
-			results := collectResults(cachedResults, params.Count)
-			return &SearchResult{
-				Results:         results,
-				CachedCount:     len(results),
-				AnalyzedCount:   0,
-				PendingAnalysis: 0,
-				Complete:        false,
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to search Getty: %w", err)
+		return nil, err
 	}
-	slog.Info("search.getty.complete", "count", len(gettyResults), "durationMs", time.Since(gettyStart).Milliseconds())
-
-	if len(gettyResults) == 0 {
-		// No Getty results, return whatever we have from cache
-		results := collectResults(cachedResults, params.Count)
-		return &SearchResult{
-			Results:         results,
-			CachedCount:     len(results),
-			AnalyzedCount:   0,
-			PendingAnalysis: 0,
-			Complete:        true,
-		}, nil
+	if earlyResult != nil {
+		return earlyResult, nil
 	}
 
 	// Build Getty result map and check which are already cached
@@ -231,8 +207,15 @@ func (o *Orchestrator) warmCacheInBackground(ctx context.Context, query string, 
 		cachedIDs[a.GettyID] = true
 	}
 
-	// Fetch Getty candidates
-	gettyResults, err := o.getty.Search(ctx, query, count)
+	// Fetch Getty candidates (background warming uses default options)
+	gettyOpts := getty.NewSearchOptions(query)
+	gettyOpts.PageSize = count
+	gettyOpts.Fields = gettyMetadataFields
+	gettyResp, err := o.getty.SearchWithOptions(ctx, gettyOpts)
+	var gettyResults []getty.ImageResult
+	if gettyResp != nil {
+		gettyResults = gettyResp.Images
+	}
 	if err != nil {
 		slog.Warn("search.background.getty.failed", "error", err)
 		return
@@ -251,6 +234,52 @@ func (o *Orchestrator) warmCacheInBackground(ctx context.Context, query string, 
 		}
 		slog.Info("search.background.analysis.complete", "gettyId", result.ID)
 	}
+}
+
+// fetchGettyResults queries Getty for candidates and handles error/empty cases.
+// Returns (results, earlyReturn, error) - if earlyReturn is non-nil, caller should return it directly.
+func (o *Orchestrator) fetchGettyResults(
+	ctx context.Context,
+	params SearchParams,
+	cachedResults []*models.ImageAnalysis,
+) ([]getty.ImageResult, *SearchResult, error) {
+	gettyStart := time.Now()
+	gettyOpts := filtersToGettyOptions(params.Query, params.Count*2, params.Filters)
+	gettyResp, err := o.getty.SearchWithOptions(ctx, gettyOpts)
+	var gettyResults []getty.ImageResult
+	if gettyResp != nil {
+		gettyResults = gettyResp.Images
+	}
+	if err != nil {
+		// If Getty fails but we have some cached results, return those
+		if len(cachedResults) > 0 {
+			slog.Warn("search.getty.failed.returning.cached", "error", err, "cachedCount", len(cachedResults))
+			results := collectResults(cachedResults, params.Count)
+			return nil, &SearchResult{
+				Results:         results,
+				CachedCount:     len(results),
+				AnalyzedCount:   0,
+				PendingAnalysis: 0,
+				Complete:        false,
+			}, nil
+		}
+		return nil, nil, fmt.Errorf("failed to search Getty: %w", err)
+	}
+	slog.Info("search.getty.complete", "count", len(gettyResults), "durationMs", time.Since(gettyStart).Milliseconds())
+
+	if len(gettyResults) == 0 {
+		// No Getty results, return whatever we have from cache
+		results := collectResults(cachedResults, params.Count)
+		return nil, &SearchResult{
+			Results:         results,
+			CachedCount:     len(results),
+			AnalyzedCount:   0,
+			PendingAnalysis: 0,
+			Complete:        true,
+		}, nil
+	}
+
+	return gettyResults, nil, nil
 }
 
 // analyzeWithTimeout analyzes images until timeout, returning what completed.
@@ -335,6 +364,22 @@ func (o *Orchestrator) analyzeAndStore(ctx context.Context, gettyResult getty.Im
 	// Calculate aspect ratio category
 	imgAnalysis.AspectRatioCategory = calculateAspectRatio(gettyResult.Width(), gettyResult.Height())
 
+	// Populate Getty metadata from API response
+	imgAnalysis.Orientation = gettyResult.Orientation
+	imgAnalysis.GraphicalStyle = gettyResult.GraphicalStyle
+	imgAnalysis.Artist = gettyResult.Artist
+	imgAnalysis.CollectionCode = gettyResult.CollectionCode
+	imgAnalysis.NumberOfPeople = gettyResult.NumberOfPeople
+	imgAnalysis.Ethnicity = gettyResult.Ethnicity
+	imgAnalysis.AgeOfPeople = gettyResult.AgeOfPeople
+	if len(gettyResult.Keywords) > 0 {
+		keywords := make([]string, 0, len(gettyResult.Keywords))
+		for _, kw := range gettyResult.Keywords {
+			keywords = append(keywords, kw.Text)
+		}
+		imgAnalysis.GettyKeywords = keywords
+	}
+
 	// Generate embedding from analysis text
 	embedding, err := o.embeddings.Generate(ctx, imgAnalysis.EmbeddingText())
 	if err != nil {
@@ -388,6 +433,63 @@ func calculateAspectRatio(width, height int) models.AspectRatioCategory {
 	default:
 		return models.AspectRatioCategorySquare
 	}
+}
+
+// filtersToGettyOptions maps unified SearchFilters to Getty SearchOptions.
+// Only Getty-native filter fields are mapped; analysis-enriched fields are ignored.
+// gettyMetadataFields returns the Getty response fields needed for Qdrant storage and filtering.
+// gettyMetadataFields lists the response fields to request from the Getty proxy.
+// Note: number_of_people, age_of_people, and ethnicity are search-time filters only.
+// Requesting them as response fields causes a 400 error from the Getty proxy.
+var gettyMetadataFields = []getty.Field{
+	getty.FieldDisplaySet,
+	getty.FieldMaxDimensions,
+	getty.FieldTitle,
+	getty.FieldCaption,
+	getty.FieldOrientation,
+	getty.FieldGraphicalStyle,
+	getty.FieldKeywords,
+	getty.FieldArtist,
+	getty.FieldCollectionCode,
+}
+
+func filtersToGettyOptions(query string, count int, filters models.SearchFilters) *getty.SearchOptions {
+	opts := getty.NewSearchOptions(query)
+	opts.PageSize = count
+	opts.Fields = gettyMetadataFields
+
+	for _, v := range filters.Orientations {
+		opts.Orientations = append(opts.Orientations, getty.Orientation(v))
+	}
+	for _, v := range filters.Compositions {
+		opts.Compositions = append(opts.Compositions, getty.Composition(v))
+	}
+	for _, v := range filters.Moods {
+		opts.Moods = append(opts.Moods, getty.Mood(v))
+	}
+	for _, v := range filters.GraphicalStyles {
+		opts.GraphicalStyles = append(opts.GraphicalStyles, getty.GraphicalStyle(v))
+	}
+	for _, v := range filters.NumberOfPeople {
+		opts.NumberOfPeople = append(opts.NumberOfPeople, getty.NumberOfPeople(v))
+	}
+	for _, v := range filters.Ethnicity {
+		opts.Ethnicity = append(opts.Ethnicity, getty.Ethnicity(v))
+	}
+	for _, v := range filters.AgeOfPeople {
+		opts.AgeOfPeople = append(opts.AgeOfPeople, getty.AgeOfPeople(v))
+	}
+	if filters.MinimumSize != "" {
+		opts.MinimumSize = getty.MinimumSize(filters.MinimumSize)
+	}
+	if filters.SortOrder != "" {
+		opts.SortOrder = getty.SortOrder(filters.SortOrder)
+	}
+	if filters.Color != "" {
+		opts.Color = filters.Color
+	}
+
+	return opts
 }
 
 // sortByRelevance sorts analyses by RelevanceScore in descending order.

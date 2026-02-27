@@ -28,12 +28,17 @@ func skipIfNoCredentials(t *testing.T) *config.Config {
 
 	cfg := config.LoadConfig()
 
-	// Check Getty credentials
-	if cfg.GettyToken == "" {
-		t.Skip("Skipping: GETTY_TOKEN not set")
-	}
 	if cfg.GettyUpstream == "" {
 		t.Skip("Skipping: GETTY_UPSTREAM not set")
+	}
+
+	// Check Getty credentials based on auth type
+	if cfg.GettyAuthType == "sso-jwt" {
+		if cfg.GettyCertPath == "" || cfg.GettyKeyPath == "" {
+			t.Skip("Skipping: SSO JWT auth requires GETTY_CERT_PATH and GETTY_KEY_PATH")
+		}
+	} else if cfg.GettyToken == "" {
+		t.Skip("Skipping: GETTY_TOKEN not set")
 	}
 
 	// Check Anthropic credentials
@@ -47,14 +52,27 @@ func skipIfNoCredentials(t *testing.T) *config.Config {
 	return cfg
 }
 
+// createTestGettyClient creates a Getty client using the configured auth type.
+func createTestGettyClient(t *testing.T, cfg *config.Config) *getty.Client {
+	t.Helper()
+
+	if cfg.GettyAuthType == "sso-jwt" {
+		auth, err := getty.NewSSOJWTAuth(cfg.GettySSOHost, cfg.GettyCertPath, cfg.GettyKeyPath, cfg.GettyXAppKey)
+		if err != nil {
+			t.Fatalf("Failed to create SSO JWT auth: %v", err)
+		}
+		return getty.NewWithAuth(cfg, auth)
+	}
+
+	client := createTestGettyClient(t, cfg)
+	return client
+}
+
 // TestIntegration_GettySearch tests that we can search Getty Images API.
 func TestIntegration_GettySearch(t *testing.T) {
 	cfg := skipIfNoCredentials(t)
 
-	client, err := getty.New(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create Getty client: %v", err)
-	}
+	client := createTestGettyClient(t, cfg)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -83,10 +101,7 @@ func TestIntegration_GettySearch(t *testing.T) {
 func TestIntegration_GettySearchWithResults(t *testing.T) {
 	cfg := skipIfNoCredentials(t)
 
-	client, err := getty.New(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create Getty client: %v", err)
-	}
+	client := createTestGettyClient(t, cfg)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -120,10 +135,7 @@ func TestIntegration_HaikuAnalysis(t *testing.T) {
 	cfg := skipIfNoCredentials(t)
 
 	// First, get an image from Getty
-	gettyClient, err := getty.New(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create Getty client: %v", err)
-	}
+	gettyClient := createTestGettyClient(t, cfg)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -188,10 +200,7 @@ func TestIntegration_FullSearchFlow(t *testing.T) {
 	defer cancel()
 
 	// Create clients
-	gettyClient, err := getty.New(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create Getty client: %v", err)
-	}
+	gettyClient := createTestGettyClient(t, cfg)
 	analysisClient := analysis.New(cfg)
 
 	// Step 1: Search Getty for images

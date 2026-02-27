@@ -61,9 +61,13 @@ export interface ImageSearchEnvConfig {
 	qdrantHost: string;
 	qdrantPort: number;
 	qdrantCollection: string;
+	gettyAuthType: string;    // "sso-jwt" (direct) or "bearer" (via airo-proxy)
 	gettyUpstream: string;
-	gettyToken?: string;      // Bearer token for proxy auth
+	gettyToken?: string;      // Bearer token for proxy auth (when gettyAuthType=bearer)
 	gettyXAppKey?: string;    // x-app-key header value
+	gettyCertPath?: string;   // Client cert path (when gettyAuthType=sso-jwt)
+	gettyKeyPath?: string;    // Client key path (when gettyAuthType=sso-jwt)
+	gettySsoHost?: string;    // SSO host for JWT token exchange
 	gettyRateLimitRps: number;
 	gettyConcurrency: number;
 	anthropicApiUrl: string;
@@ -78,7 +82,7 @@ export interface ImageSearchEnvConfig {
 	defaultMinCached: number;
 	defaultMaxWaitSeconds: number;
 	ssoHost: string;
-	useGettyProxy: boolean;
+	gettyConfigured: boolean;
 	authType: string;
 	jwksUrl: string;
 }
@@ -133,6 +137,76 @@ export class EnvGenerator {
 		await fs.writeFile(filePath, content);
 		console.log(chalk.green(`✅ Generated ${displayName} .env file: ${filePath}`));
 		return true;
+	}
+
+	private async fetchGettyCerts(awsProfile: string): Promise<{ certPath: string; keyPath: string } | null> {
+		const certSecretPath = "/Katana/Secrets/airobuilde/proxy/dev-private-ecs/GETTY_CERT";
+		const keySecretPath = "/Katana/Secrets/airobuilde/proxy/dev-private-ecs/GETTY_KEY";
+		const region = "us-west-2";
+
+		try {
+			const { execa } = await import("execa");
+
+			console.log(chalk.blue("🔐 Fetching Getty client certificates from Secrets Manager..."));
+
+			const certArgs = [
+				"secretsmanager", "get-secret-value",
+				"--secret-id", certSecretPath,
+				"--region", region,
+				"--query", "SecretString",
+				"--output", "text",
+				"--profile", awsProfile,
+			];
+			const keyArgs = [
+				"secretsmanager", "get-secret-value",
+				"--secret-id", keySecretPath,
+				"--region", region,
+				"--query", "SecretString",
+				"--output", "text",
+				"--profile", awsProfile,
+			];
+
+			const [certResult, keyResult] = await Promise.all([
+				execa("aws", certArgs),
+				execa("aws", keyArgs),
+			]);
+
+			const certContent = certResult.stdout.trim();
+			const keyContent = keyResult.stdout.trim();
+
+			if (!certContent || !keyContent || certContent === "null" || keyContent === "null") {
+				throw new Error("Empty cert or key received from Secrets Manager");
+			}
+
+			// Write certs to image-search-service/certs/
+			const certsDir = path.join(this.projectRoot, "image-search-service", "certs");
+			await fs.ensureDir(certsDir);
+
+			const certFilePath = path.join(certsDir, "client.crt");
+			const keyFilePath = path.join(certsDir, "client.key");
+
+			await fs.writeFile(certFilePath, certContent);
+			await fs.writeFile(keyFilePath, keyContent, { mode: 0o600 });
+
+			console.log(chalk.green("✅ Client certificates written to image-search-service/certs/"));
+
+			return {
+				certPath: "./certs/client.crt",
+				keyPath: "./certs/client.key",
+			};
+		} catch (error: any) {
+			console.log(chalk.red("❌ Failed to fetch Getty certificates:"));
+
+			if (error.message?.includes("AccessDenied") || error.message?.includes("UnauthorizedOperation")) {
+				console.log(chalk.yellow("   Check your AWS permissions for the proxy secrets"));
+			} else if (error.message?.includes("ResourceNotFoundException")) {
+				console.log(chalk.yellow(`   Secret not found. Check paths: ${certSecretPath}`));
+			} else {
+				console.log(chalk.gray(`   Error: ${error.message}`));
+			}
+
+			return null;
+		}
 	}
 
 	private async promptCommerceConfig(
@@ -1277,15 +1351,23 @@ QDRANT_PORT=${config.qdrantPort}
 QDRANT_COLLECTION=${config.qdrantCollection}
 QDRANT_API_KEY=
 
-# Getty Images API (via airo-builder proxy)
-# The proxy handles SSO auth to the GoDaddy Getty proxy
-# GETTY_TOKEN: Bearer token for the airo-builder proxy (from Secrets Manager)
-# To get the token manually: aws secretsmanager get-secret-value --secret-id /Katana/Secrets/airobuilde/app/dev-private-ecs/GETTY_TOKEN --profile ${config.awsProfile} --query "SecretString" --output text
+# Getty Images API
+# AUTH_TYPE controls how the service authenticates to the Getty proxy:
+#   "sso-jwt" (recommended) - Direct to GoDaddy Getty proxy using client TLS cert
+#   "bearer" - Via airo-builder proxy using Bearer token
+GETTY_AUTH_TYPE=${config.gettyAuthType}
 GETTY_UPSTREAM=${config.gettyUpstream}
-GETTY_TOKEN=${config.gettyToken || ''}
-GETTY_X_APP_KEY=${config.gettyXAppKey || 'image-search-service'}
+GETTY_X_APP_KEY=${config.gettyXAppKey || 'airo-app-builder'}
 GETTY_RATE_LIMIT_RPS=${config.gettyRateLimitRps}
 GETTY_CONCURRENCY=${config.gettyConcurrency}
+${config.gettyAuthType === 'sso-jwt' ? `
+# SSO JWT Auth (direct to GoDaddy Getty proxy)
+# Client TLS cert/key for SSO token exchange
+GETTY_CERT_PATH=${config.gettyCertPath || ''}
+GETTY_KEY_PATH=${config.gettyKeyPath || ''}
+GETTY_SSO_HOST=${config.gettySsoHost || 'sso.godaddy.com'}` : `
+# Bearer Token Auth (via airo-builder proxy)
+GETTY_TOKEN=${config.gettyToken || ''}`}
 
 # Anthropic API (Haiku for image analysis) - via GoCode proxy
 ANTHROPIC_API_URL=${config.anthropicApiUrl}
@@ -1407,16 +1489,20 @@ ELASTIC_APM_ENVIRONMENT=dev
 		// Getty configuration
 		console.log(chalk.cyan("\n🖼️  Getty Images Configuration"));
 
+		let gettyAuthType = "sso-jwt";
 		let gettyToken = "";
-		let gettyXAppKey = "image-search-service";
-		let gettyUpstream = "https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net";
-		let useGettyProxy = false;
+		let gettyXAppKey = "airo-app-builder";
+		let gettyUpstream = "https://getty-images-proxy.api.godaddy.com";
+		let gettyCertPath = "";
+		let gettyKeyPath = "";
+		let gettySsoHost = "sso.godaddy.com";
+		let gettyConfigured = false;
 
-		const defaultGettyChoice = "aws-proxy";
+		const defaultGettyChoice = "sso-jwt";
 		let configureGetty = defaultGettyChoice;
 
 		if (yesToAll) {
-			console.log(chalk.gray("Automated mode: attempting Getty proxy configuration..."));
+			console.log(chalk.gray("Automated mode: attempting SSO JWT Getty configuration..."));
 		} else {
 			const response = await inquirer.prompt([
 				{
@@ -1424,8 +1510,9 @@ ELASTIC_APM_ENVIRONMENT=dev
 					name: "configureGetty",
 					message: "How would you like to configure Getty Images?",
 					choices: [
-						{ name: "Use airo-builder proxy with token from Secrets Manager (recommended)", value: "aws-proxy" },
-						{ name: "Enter Getty token manually", value: "manual" },
+						{ name: "Direct SSO JWT auth to Getty proxy (recommended)", value: "sso-jwt" },
+						{ name: "Bearer token via airo-builder proxy (legacy)", value: "bearer" },
+						{ name: "Enter Getty configuration manually", value: "manual" },
 						{ name: "Skip Getty configuration", value: "skip" }
 					],
 					default: defaultGettyChoice
@@ -1434,12 +1521,47 @@ ELASTIC_APM_ENVIRONMENT=dev
 			configureGetty = response.configureGetty;
 		}
 
-		if (configureGetty === "aws-proxy" || yesToAll) {
+		if (configureGetty === "sso-jwt" || (yesToAll && configureGetty === defaultGettyChoice)) {
+			// SSO JWT: Fetch client cert/key from Secrets Manager
+			console.log(chalk.gray("SSO JWT auth requires client TLS certificates from Secrets Manager."));
+
+			const gettySetup = new GettyConfigSetup();
+			let fetchedAwsProfile = await gettySetup.checkAWSCredentials();
+
+			if (!fetchedAwsProfile) {
+				fetchedAwsProfile = await gettySetup.setupAWSCredentials(yesToAll);
+			}
+
+			if (fetchedAwsProfile) {
+				const certResult = await this.fetchGettyCerts(fetchedAwsProfile);
+				if (certResult) {
+					gettyCertPath = certResult.certPath;
+					gettyKeyPath = certResult.keyPath;
+					gettyConfigured = true;
+					console.log(chalk.green("✅ Getty SSO JWT configured with client certificates"));
+				} else {
+					if (yesToAll) {
+						this.addWarning('Getty cert/key fetch failed. Configure Getty later by running setup again.');
+					} else {
+						console.log(chalk.yellow("Failed to fetch Getty certificates. You can configure manually later."));
+					}
+				}
+			} else {
+				if (yesToAll) {
+					this.addWarning('No AWS credentials for Getty cert fetch. Configure Getty later.');
+				} else {
+					console.log(chalk.yellow("No AWS credentials available for certificate fetch."));
+				}
+			}
+		} else if (configureGetty === "bearer") {
+			// Legacy Bearer token via airo-builder proxy
+			gettyAuthType = "bearer";
+			gettyUpstream = "https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net";
+
 			const gettySetup = new GettyConfigSetup();
 			const result = await gettySetup.setup(yesToAll);
 
 			if (result.success && result.envConfig) {
-				// Parse the env config to extract values
 				const lines = result.envConfig.split('\n');
 				for (const line of lines) {
 					if (line.startsWith('GETTY_API_URL=')) {
@@ -1448,33 +1570,59 @@ ELASTIC_APM_ENVIRONMENT=dev
 						gettyToken = line.replace('GETTY_TOKEN=', '');
 					}
 				}
-				useGettyProxy = true;
-				console.log(chalk.green("✅ Getty proxy configured successfully"));
+				gettyConfigured = true;
+				console.log(chalk.green("✅ Getty Bearer token configured"));
 			} else {
 				if (yesToAll) {
-					const warningMsg = 'Getty proxy configuration failed. You can configure Getty later by running setup again.';
-					this.addWarning(warningMsg);
+					this.addWarning('Getty proxy configuration failed. Configure Getty later by running setup again.');
 				} else {
 					console.log(chalk.yellow("Getty proxy configuration failed."));
 				}
 			}
 		} else if (configureGetty === "manual") {
-			const response = await inquirer.prompt([
+			const authResponse = await inquirer.prompt([
 				{
-					type: "input",
-					name: "gettyToken",
-					message: "Getty Token (Bearer token for airo-builder proxy):",
-				},
-				{
-					type: "input",
-					name: "gettyXAppKey",
-					message: "Getty X-App-Key:",
-					default: "image-search-service",
-				},
+					type: "list",
+					name: "authType",
+					message: "Getty auth type:",
+					choices: [
+						{ name: "SSO JWT (direct to Getty proxy)", value: "sso-jwt" },
+						{ name: "Bearer token (via airo-builder proxy)", value: "bearer" },
+					],
+					default: "sso-jwt"
+				}
 			]);
-			gettyToken = response.gettyToken;
-			gettyXAppKey = response.gettyXAppKey;
-			useGettyProxy = true;
+			gettyAuthType = authResponse.authType;
+
+			if (gettyAuthType === "sso-jwt") {
+				const response = await inquirer.prompt([
+					{
+						type: "input",
+						name: "certPath",
+						message: "Client certificate path:",
+						default: "./certs/client.crt",
+					},
+					{
+						type: "input",
+						name: "keyPath",
+						message: "Client key path:",
+						default: "./certs/client.key",
+					},
+				]);
+				gettyCertPath = response.certPath;
+				gettyKeyPath = response.keyPath;
+			} else {
+				gettyUpstream = "https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net";
+				const response = await inquirer.prompt([
+					{
+						type: "input",
+						name: "gettyToken",
+						message: "Getty Token (Bearer token for airo-builder proxy):",
+					},
+				]);
+				gettyToken = response.gettyToken;
+			}
+			gettyConfigured = true;
 		}
 
 		// GoCode proxy URL for AI APIs
@@ -1488,9 +1636,13 @@ ELASTIC_APM_ENVIRONMENT=dev
 			qdrantHost: "127.0.0.1",
 			qdrantPort: 6334,
 			qdrantCollection: "image_analyses",
+			gettyAuthType,
 			gettyUpstream,
 			gettyToken,
 			gettyXAppKey,
+			gettyCertPath,
+			gettyKeyPath,
+			gettySsoHost,
 			gettyRateLimitRps: 50,
 			gettyConcurrency: 10,
 			anthropicApiUrl: gocodeProxyUrl,
@@ -1505,7 +1657,7 @@ ELASTIC_APM_ENVIRONMENT=dev
 			defaultMinCached: 5,
 			defaultMaxWaitSeconds: 30,
 			ssoHost: "sso.godaddy.com",
-			useGettyProxy,
+			gettyConfigured,
 			authType: "none", // Local dev doesn't need auth
 			jwksUrl: "https://airo-builder.test-godaddy.com/.well-known/jwks.json",
 		};
@@ -1522,9 +1674,15 @@ ELASTIC_APM_ENVIRONMENT=dev
 		console.log(`Qdrant: ${config.qdrantHost}:${config.qdrantPort}`);
 		console.log(`Anthropic API Key: ${config.anthropicApiKey ? "configured" : "not configured"}`);
 		console.log(`OpenAI API Key: ${config.openaiApiKey ? "configured" : "not configured"}`);
-		if (config.useGettyProxy) {
-			console.log(`Getty Images: airo-builder proxy configured`);
-			console.log(`Getty Token: ${config.gettyToken ? "configured" : "not configured"}`);
+		if (config.gettyConfigured) {
+			if (config.gettyAuthType === "sso-jwt") {
+				console.log(`Getty Images: SSO JWT (direct to Getty proxy)`);
+				console.log(`Getty Cert: ${config.gettyCertPath || "not configured"}`);
+				console.log(`Getty Key: ${config.gettyKeyPath || "not configured"}`);
+			} else {
+				console.log(`Getty Images: Bearer token (via airo-builder proxy)`);
+				console.log(`Getty Token: ${config.gettyToken ? "configured" : "not configured"}`);
+			}
 			console.log(`Getty X-App-Key: ${config.gettyXAppKey}`);
 		} else {
 			console.log(`Getty Images: not configured`);

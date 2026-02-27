@@ -290,6 +290,17 @@ type ImageAnalysis struct {
 	UsageContext      []string          `json:"usageContext"` // Array of 1-3
 	AuthenticityStyle AuthenticityStyle `json:"authenticityStyle"`
 
+	// Getty metadata (populated from Getty API response)
+	Orientation    string   `json:"orientation,omitempty"`    // e.g. "horizontal", "vertical"
+	GraphicalStyle string   `json:"graphicalStyle,omitempty"` // e.g. "photography", "illustration"
+	Moods          []string `json:"moods,omitempty"`          // e.g. ["warm", "natural"]
+	NumberOfPeople string   `json:"numberOfPeople,omitempty"` // e.g. "none", "one", "two", "group"
+	Ethnicity      []string `json:"ethnicity,omitempty"`
+	AgeOfPeople    []string `json:"ageOfPeople,omitempty"`
+	CollectionCode string   `json:"collectionCode,omitempty"`
+	Artist         string   `json:"artist,omitempty"`
+	GettyKeywords  []string `json:"gettyKeywords,omitempty"` // From Getty keywords[].text
+
 	// Programmatic
 	AspectRatioCategory AspectRatioCategory `json:"aspectRatioCategory"`
 

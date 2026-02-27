@@ -1,9 +1,23 @@
 // Package models defines the data structures for image analysis.
 package models
 
-// SearchFilters for narrowing search results
+// SearchFilters for narrowing search results.
+// Getty-native filters are passed through to Getty API during backfill.
+// Analysis-enriched filters are applied during Qdrant vector search.
 type SearchFilters struct {
-	Orientations      []string `json:"orientations,omitempty"`
+	// Getty-native filters
+	Orientations    []string `json:"orientations,omitempty"`
+	Compositions    []string `json:"compositions,omitempty"`
+	Moods           []string `json:"moods,omitempty"`
+	GraphicalStyles []string `json:"graphicalStyles,omitempty"`
+	NumberOfPeople  []string `json:"numberOfPeople,omitempty"`
+	Ethnicity       []string `json:"ethnicity,omitempty"`
+	AgeOfPeople     []string `json:"ageOfPeople,omitempty"`
+	MinimumSize     string   `json:"minimumSize,omitempty"`
+	SortOrder       string   `json:"sortOrder,omitempty"`
+	Color           string   `json:"color,omitempty"`
+
+	// Analysis-enriched filters
 	SubjectCategory   []string `json:"subjectCategory,omitempty"`
 	PeopleCount       []string `json:"peopleCount,omitempty"`
 	PeopleFocus       []string `json:"peopleFocus,omitempty"`
