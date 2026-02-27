@@ -108,4 +108,61 @@ describe('DomainDNS', () => {
     const copyButtons = screen.getAllByRole('button', { name: 'builder_common_copy_clipboard' });
     expect(copyButtons.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('renders correct DCV record for root domain when DCV enabled', async () => {
+    const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+    vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+
+    renderWithProviders(
+      <DomainDNS
+        domainDetails={{
+          ...baseDomain,
+          certificateValidationCname: 'abc123.validation.secureserver.net',
+        }}
+      />
+    );
+
+    expect(screen.getByText('_acme-challenge')).toBeInTheDocument();
+    expect(screen.getByText('abc123.validation.secureserver.net')).toBeInTheDocument();
+  });
+
+  it('renders correct DCV record for subdomain when DCV enabled', async () => {
+    const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+    vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+
+    renderWithProviders(
+      <DomainDNS
+        domainDetails={{
+          fqdn: 'blog.example.com',
+          anycastIp: '1.2.3.4',
+          certificateValidationCname: 'xyz789.validation.secureserver.net',
+          status: 'pending',
+          isPrimary: true,
+        }}
+      />
+    );
+
+    expect(screen.getByText('_acme-challenge.blog')).toBeInTheDocument();
+    expect(screen.getByText('xyz789.validation.secureserver.net')).toBeInTheDocument();
+  });
+
+  it('renders correct DCV record for multi-level subdomain when DCV enabled', async () => {
+    const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+    vi.mocked(useSwitchboard).mockReturnValue({ data: true, isLoading: false } as ReturnType<typeof useSwitchboard>);
+
+    renderWithProviders(
+      <DomainDNS
+        domainDetails={{
+          fqdn: 'api.staging.example.com',
+          anycastIp: '1.2.3.4',
+          certificateValidationCname: 'def456.validation.secureserver.net',
+          status: 'pending',
+          isPrimary: true,
+        }}
+      />
+    );
+
+    expect(screen.getByText('_acme-challenge.api.staging')).toBeInTheDocument();
+    expect(screen.getByText('def456.validation.secureserver.net')).toBeInTheDocument();
+  });
 });

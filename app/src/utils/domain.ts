@@ -279,16 +279,16 @@ export function getDnsRecords(domain: string, anycastIp: string, certificateVali
     };
   }
 
-  const dcvRecord = certificateValidationCname ? {
-    type: 'CNAME' as const,
-    name: '_acme-challenge',
-    value: certificateValidationCname,
-    ttl: 3600,
-  } : null;
-
   if (parsed.isSubdomain) {
     // For subdomains (e.g., blog.example.com), only show A record
     // The user should point the subdomain directly to the IP
+    const dcvRecord = certificateValidationCname ? {
+      type: 'CNAME' as const,
+      name: `_acme-challenge.${parsed.subdomain}`,
+      value: certificateValidationCname,
+      ttl: 3600,
+    } : null;
+
     return {
       aRecord: {
         type: 'A',
@@ -301,6 +301,13 @@ export function getDnsRecords(domain: string, anycastIp: string, certificateVali
     };
   } else {
     // For root domains (e.g., example.com), show A record + www CNAME
+    const dcvRecord = certificateValidationCname ? {
+      type: 'CNAME' as const,
+      name: '_acme-challenge',
+      value: certificateValidationCname,
+      ttl: 3600,
+    } : null;
+
     return {
       aRecord: {
         type: 'A',

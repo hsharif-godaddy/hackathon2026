@@ -466,6 +466,108 @@ describe('getDnsRecords', () => {
       expect(result.cnameRecord?.type).toBe('CNAME');
     });
   });
+
+  describe('DCV (certificate validation) records', () => {
+    const certificateValidationCname = 'abc123.validation.secureserver.net';
+
+    describe('root domains with DCV', () => {
+      it('should return _acme-challenge DCV record for root domain', () => {
+        const result = getDnsRecords('example.com', anycastIp, certificateValidationCname);
+        expect(result.dcvRecord).toEqual({
+          type: 'CNAME',
+          name: '_acme-challenge',
+          value: certificateValidationCname,
+          ttl: 3600,
+        });
+      });
+
+      it('should return _acme-challenge DCV record for .org domain', () => {
+        const result = getDnsRecords('example.org', anycastIp, certificateValidationCname);
+        expect(result.dcvRecord?.name).toBe('_acme-challenge');
+        expect(result.dcvRecord?.value).toBe(certificateValidationCname);
+      });
+
+      it('should return _acme-challenge DCV record for two-part TLD', () => {
+        const result = getDnsRecords('example.co.uk', anycastIp, certificateValidationCname);
+        expect(result.dcvRecord?.name).toBe('_acme-challenge');
+        expect(result.dcvRecord?.value).toBe(certificateValidationCname);
+      });
+    });
+
+    describe('subdomains with DCV', () => {
+      it('should return _acme-challenge.subdomain for single-level subdomain', () => {
+        const result = getDnsRecords('blog.example.com', anycastIp, certificateValidationCname);
+        expect(result.dcvRecord).toEqual({
+          type: 'CNAME',
+          name: '_acme-challenge.blog',
+          value: certificateValidationCname,
+          ttl: 3600,
+        });
+      });
+
+      it('should return _acme-challenge.subdomain for www subdomain', () => {
+        const result = getDnsRecords('www.example.com', anycastIp, certificateValidationCname);
+        expect(result.dcvRecord).toEqual({
+          type: 'CNAME',
+          name: '_acme-challenge.www',
+          value: certificateValidationCname,
+          ttl: 3600,
+        });
+      });
+
+      it('should return _acme-challenge.subdomain for multi-level subdomain', () => {
+        const result = getDnsRecords('api.staging.example.com', anycastIp, certificateValidationCname);
+        expect(result.dcvRecord).toEqual({
+          type: 'CNAME',
+          name: '_acme-challenge.api.staging',
+          value: certificateValidationCname,
+          ttl: 3600,
+        });
+      });
+
+      it('should return _acme-challenge.subdomain for deeply nested subdomain', () => {
+        const result = getDnsRecords('a.b.c.example.com', anycastIp, certificateValidationCname);
+        expect(result.dcvRecord).toEqual({
+          type: 'CNAME',
+          name: '_acme-challenge.a.b.c',
+          value: certificateValidationCname,
+          ttl: 3600,
+        });
+      });
+
+      it('should return _acme-challenge.subdomain for subdomain with two-part TLD', () => {
+        const result = getDnsRecords('blog.example.co.uk', anycastIp, certificateValidationCname);
+        expect(result.dcvRecord).toEqual({
+          type: 'CNAME',
+          name: '_acme-challenge.blog',
+          value: certificateValidationCname,
+          ttl: 3600,
+        });
+      });
+    });
+
+    describe('domains without DCV', () => {
+      it('should return null DCV record when certificateValidationCname not provided for root domain', () => {
+        const result = getDnsRecords('example.com', anycastIp);
+        expect(result.dcvRecord).toBeNull();
+      });
+
+      it('should return null DCV record when certificateValidationCname not provided for subdomain', () => {
+        const result = getDnsRecords('blog.example.com', anycastIp);
+        expect(result.dcvRecord).toBeNull();
+      });
+
+      it('should return null DCV record when certificateValidationCname is undefined', () => {
+        const result = getDnsRecords('example.com', anycastIp, undefined);
+        expect(result.dcvRecord).toBeNull();
+      });
+
+      it('should return null DCV record when certificateValidationCname is empty string', () => {
+        const result = getDnsRecords('example.com', anycastIp, '');
+        expect(result.dcvRecord).toBeNull();
+      });
+    });
+  });
 });
 
 describe('isAiroSubdomain', () => {
