@@ -113,7 +113,7 @@ export default function PricingSection() {
   }
 
   return (
-    <PageSection>
+    <PageSection data-testid="pricing-section">
       <div className="flex flex-row flex-wrap justify-center items-center gap-4 md:gap-0 w-full max-w-screen-lg mx-auto">
         <div className="flex flex-col shrink-0 w-full md:max-w-1/2 p-4 lg:p-6 md:pr-12 md:mr-1 lg:pr-24 lg:mr-2 border border-intents-ux-box-borderColor rounded-2xl" data-partial="inverted">
           <text.h3 as="heading" size={0} className="mb-1">{t('builder_pricing_free_title')}</text.h3>

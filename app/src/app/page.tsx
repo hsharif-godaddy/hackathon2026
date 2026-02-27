@@ -19,7 +19,6 @@ import PricingSection from '@/components/layout/PricingSection'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { useSafariClass } from '@/hooks/useSafariClass'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { getErrorMessage } from '@/lib/errors'
 import { isFeatureEnabled } from '@/lib/features'
@@ -50,9 +49,6 @@ function HomeContent() {
   const upgradeModalSource = useDevelopPageStore((state) => state.upgradeModalSource)
   const upgradeModalItc = useDevelopPageStore((state) => state.upgradeModalItc)
   const closeUpgradeModal = useDevelopPageStore((state) => state.closeUpgradeModal)
-
-  const { data: isPricingSectionEnabled } = useSwitchboard('appbuilder-homepage-pricing');
-  const { data: isFAQSectionEnabled } = useSwitchboard('appbuilder-homepage-faq');
 
   useSafariClass()
 
@@ -361,13 +357,9 @@ function HomeContent() {
             ]}
           />
 
-          {isPricingSectionEnabled && (
-            <PricingSection />
-          )}
+          <PricingSection />
 
-          {isFAQSectionEnabled && (
-            <FAQSection />
-          )}
+          <FAQSection />
 
           <HelpSection />
 

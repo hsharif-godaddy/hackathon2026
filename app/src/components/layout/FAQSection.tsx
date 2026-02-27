@@ -87,7 +87,7 @@ function AnimatedFAQItem({ index }: { index: number }) {
 export default function FAQSection() {
   const t = useTranslations();
   return(
-    <PageSection>
+    <PageSection data-testid="faq-section">
       <div className="max-w-screen-lg mx-auto relative overflow-visible flex flex-col gap-4" itemScope itemType="https://schema.org/FAQPage">
         <text.h2 as="heading" size={2}>{t('builder_faq_title')}</text.h2>
         {Array.from({ length: NUMBER_OF_FAQS }).map((_, index) => (
